@@ -533,6 +533,27 @@ section.footer {
     z-index: 999;
   }
   
+  .item-galeria img {
+    width: 100%; /* Asegúrate de que ocupe todo el ancho del contenedor */
+    height: 300px; /* Define una altura fija */
+    object-fit: cover; /* Recorta la imagen manteniendo la proporción */
+    border-radius: 10px; /* Bordes redondeados opcionales */
+  }
+  section.galeria .row {
+    display: flex;
+    flex-wrap: wrap; /* Asegura que las imágenes se ajusten a múltiples líneas */
+    justify-content: space-between; /* Añade espacio uniforme entre columnas */
+  }
+  @media (max-width: 760px) {
+  .item-galeria img {
+    height: 150px; /* Reduce la altura en dispositivos pequeños */
+  }
+}
+section.galeria .container {
+  max-width: 1200px; /* Asegura un contenedor más amplio */
+  margin: 0 auto; /* Centra el contenedor horizontalmente */
+}
+
   
   
   /* ---------- */

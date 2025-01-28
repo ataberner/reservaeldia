@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <link rel="stylesheet" href="assets/css/jquery.fancybox.min.css">
     <link rel="stylesheet" href="assets/css/styles.css">
+    <!-- Fancybox CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/fancybox/4.0.27/fancybox.min.css" />
+
 </head>
 <body>
     <div class="parallax-mirror" style="visibility: visible; z-index: -100; position: fixed; top: 0px; left: 0px; overflow: hidden; transform: translate3d(0px, 0px, 0px); height: 695.2px; width: 1519.2px;"><img class="parallax-slider" src="assets/img/portada.jpg" style="transform: translate3d(0px, -79px, 0px); position: absolute; height: 854px; width: 1519.2px; max-width: none;"></div>
@@ -33,7 +36,7 @@
     <!-- Contenedor general de la cuenta regresiva -->
     <div class="container">
         <!-- Título -->
-        <h2>¡Faltan pocos días para el gran día!!!!</h2>
+        <h2>¡Faltan pocos días para el gran día!</h2>
 
             <!-- Contenedor para el mensaje -->
             <div id="mensaje-reloj"></div>
@@ -93,6 +96,46 @@
   </section>
 
 
+  <!-- Galeria -->
+
+  <section class="galeria">
+    <div class="container">
+      <h4 class="title-galery fade-in" style="opacity: 1;">NOSOTROS...</h4>
+      <div class="row">
+        <div class="col-6 col-md-4 item-galeria animated opacidad fadeInUp" style="opacity: 1;">
+          <a href="assets/img/galeria/01.jpg" data-fancybox="gallery" data-caption="Imagen 1">
+            <img class="img-fluid" src="assets/img/galeria/01.jpg" alt="Imagen 1">
+          </a>
+        </div>
+        <div class="col-6 col-md-4 item-galeria animated opacidad fadeInUp" style="opacity: 1;">
+          <a href="assets/img/galeria/02.jpg" data-fancybox="gallery" data-caption="Imagen 2">
+            <img class="img-fluid" src="assets/img/galeria/02.jpg" alt="Imagen 2">
+          </a>
+        </div>
+        <div class="col-6 col-md-4 item-galeria animated opacidad fadeInUp" style="opacity: 1;">
+          <a href="assets/img/galeria/03.jpg" data-fancybox="gallery" data-caption="Imagen 3">
+            <img class="img-fluid" src="assets/img/galeria/03.jpg" alt="Imagen 3">
+          </a>
+        </div>
+        <div class="col-6 col-md-4 item-galeria animated opacidad fadeInUp" style="opacity: 1;">
+          <a href="assets/img/galeria/04.jpg" data-fancybox="gallery" data-caption="Imagen 4">
+            <img class="img-fluid" src="assets/img/galeria/04.jpg" alt="Imagen 4">
+          </a>
+        </div>
+        <div class="col-6 col-md-4 item-galeria animated opacidad fadeInUp" style="opacity: 1;">
+          <a href="assets/img/galeria/05.jpg" data-fancybox="gallery" data-caption="Imagen 5">
+            <img class="img-fluid" src="assets/img/galeria/05.jpg" alt="Imagen 5">
+          </a>
+        </div>
+        <div class="col-6 col-md-4 item-galeria animated opacidad fadeInUp" style="opacity: 1;">
+          <a href="assets/img/galeria/06.jpg" data-fancybox="gallery" data-caption="Imagen 6">
+            <img class="img-fluid" src="assets/img/galeria/06.jpg" alt="Imagen 6">
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+  
 
 
 
@@ -101,8 +144,8 @@
     <section class="confirmacion text-center">
         <div class="container">
             <h2 class="mb-4">Confirma tu Asistencia</h2>
-            <p>Por favor, confirma antes del 20 de febrero de 2025.</p>
-            <a href="https://wa.me/1234567890" class="btn btn-primary">Confirmar por WhatsApp</a>
+            <p>Por favor, confirma antes del 30 de febrero de 2025.</p>
+            <a href="https://wa.me/1153119126" class="btn btn-primary">Confirmar por WhatsApp</a>
         </div>
     </section>
 
@@ -118,6 +161,7 @@
     <script src="assets/js/parallax.min.js"></script>
     <script src="assets/js/jquery.fancybox.min.js"></script>
     <script src="assets/js/scripts.js"></script>
+
 
     <script>
         // Espera a que el DOM esté cargado
@@ -149,7 +193,18 @@
 });
 
     </script>
-    
+    <!-- Fancybox JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fancybox/4.0.27/fancybox.umd.min.js"></script>
+<script>
+    Fancybox.bind("[data-fancybox='gallery']", {
+      Thumbs: {
+        autoStart: true, // Muestra las miniaturas al abrir la galería
+      },
+      Toolbar: {
+        display: ["zoom", "close"], // Opciones disponibles en la barra de herramientas
+      },
+    });
+  </script>
 
 </body>
 </html>

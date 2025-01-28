@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Invitación de casamiento personalizada">
+    <title>Invitación de Casamiento</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="assets/css/jquery.fancybox.min.css">
+    <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+    <div class="parallax-mirror" style="visibility: visible; z-index: -100; position: fixed; top: 0px; left: 0px; overflow: hidden; transform: translate3d(0px, 0px, 0px); height: 695.2px; width: 1519.2px;"><img class="parallax-slider" src="assets/img/portada.jpg" style="transform: translate3d(0px, -79px, 0px); position: absolute; height: 854px; width: 1519.2px; max-width: none;"></div>
+    <div class="parallax-mirror" style="visibility: hidden; z-index: -100; position: fixed; top: 0px; left: 0px; overflow: hidden; height: 600px; width: 1519.2px; transform: translate3d(0px, 690.4px, 0px);"><img class="parallax-slider" src="assets/img/confirmar.jpg" style="position: absolute; height: 854px; width: 1519.2px; max-width: none; transform: translate3d(0px, -641.32px, 0px);"></div>
+
+
+
+    <!-- Portada -->
+    <section class="portada">
+    
+            <div class="portada-contenido">
+                <img src="assets/img/logo-portada2.png" alt="Logo de la invitación">
+                
+        
+            </div>
+        </div>
+    </section>
+
+    
+   <!-- Sección Cuenta Regresiva -->
+<section class="cuenta-regresiva">
+    <!-- Contenedor general de la cuenta regresiva -->
+    <div class="container">
+        <!-- Título -->
+        <h2>¡Faltan pocos días para el gran día!</h2>
+
+            <!-- Contenedor para el mensaje -->
+            <div id="mensaje-reloj"></div>
+
+        <!-- Contenedor de los números -->
+         
+        <div class="row justify-content-center margenSup" id="reloj">
+            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+                <p class="num_cuenta" id="dias">00</p>
+                <p class="text_cuenta">días</p>
+            </div>
+            <p class="num_cuenta-separador">:</p>
+            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+                <p class="num_cuenta" id="horas">00</p>
+                <p class="text_cuenta">hs</p>
+            </div>
+            <p class="num_cuenta-separador">:</p>
+            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+                <p class="num_cuenta" id="min">00</p>
+                <p class="text_cuenta">min</p>
+            </div>
+            <p class="num_cuenta-separador">:</p>
+            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+                <p class="num_cuenta" id="seg">00</p>
+                <p class="text_cuenta">seg</p>
+            </div>
+        </div>
+        
+    
+
+    </div>
+</section>
+
+
+<!-- Ceremonia y Fiesta -->
+
+<section class="ceremonia-fiesta mb-5">
+    <div class="container">
+      <div class="row">
+                        <!-- Icono -->
+          <div class="col-md-12 columna">
+            <img src="assets/img/icono-anillos.svg" alt="" class="icon anillos fade-in" style="opacity: 1;">
+          </div>
+          <!-- Texto -->
+          <div class="col-md-12 columna no-margin-top divAnillos animated fadeInUp">
+            <h4>nuestra boda</h4>
+            <p>
+              28 de Marzo de 2025 a las 16:00 hs en Friendly.<br>
+  Recibí debajo las indicaciones para llegar.<br>
+  ¡Te esperamos! 
+            </p>
+            <a target="_blank" href="https://maps.app.goo.gl/ozdDp8R4sAkW6Hmx8" class="btn">CÓMO LLEGAR</a>
+          </div>
+        
+      </div>
+    </div>
+  </section>
+
+
+
+
+
+    
+    <!-- Confirmación de asistencia -->
+    <section class="confirmacion text-center">
+        <div class="container">
+            <h2 class="mb-4">Confirma tu Asistencia</h2>
+            <p>Por favor, confirma antes del 20 de febrero de 2025.</p>
+            <a href="https://wa.me/1234567890" class="btn btn-primary">Confirmar por WhatsApp</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center py-4">
+        <p>&copy; 2025 - Nuestra Boda</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="assets/js/jquery-3.5.1.slim.min.js"></script>
+    <script src="assets/js/popper.min.js"></script>
+    <script src="assets/js/bootstrap.min.js"></script>
+    <script src="assets/js/parallax.min.js"></script>
+    <script src="assets/js/jquery.fancybox.min.js"></script>
+    <script src="assets/js/scripts.js"></script>
+
+    <script>
+        // Espera a que el DOM esté cargado
+        document.addEventListener("DOMContentLoaded", function () {
+    const fechaEvento = new Date("2025-03-28T16:00:00").getTime();
+
+    function actualizarCuentaRegresiva() {
+        const ahora = new Date().getTime();
+        const tiempoRestante = fechaEvento - ahora;
+
+        if (tiempoRestante < 0) {
+    document.getElementById("mensaje-reloj").innerHTML = "<p>¡El evento ya comenzó!</p>";
+    return;
+}
+
+
+        const dias = Math.floor(tiempoRestante / (1000 * 60 * 60 * 24));
+        const horas = Math.floor((tiempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutos = Math.floor((tiempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+        const segundos = Math.floor((tiempoRestante % (1000 * 60)) / 1000);
+
+        document.getElementById("dias").textContent = dias;
+        document.getElementById("horas").textContent = horas;
+        document.getElementById("min").textContent = minutos;
+        document.getElementById("seg").textContent = segundos;
+    }
+
+    setInterval(actualizarCuentaRegresiva, 1000);
+});
+
+    </script>
+    
+
+</body>
+</html>

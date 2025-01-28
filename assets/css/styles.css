@@ -1,0 +1,946 @@
+/* Generales */
+
+:root {
+    --color-primario: #dab485;
+    --color-secundario: #a4bb8f;
+  }
+  
+  body{
+    font-family: 'Montserrat', sans-serif;
+    font-size: 17px;
+  }
+  
+  p{
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 300;
+    font-size: 17px;
+  }
+  
+  
+  h4
+  {
+    font-family: 'Montserrat', sans-serif;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-size: 25px;
+    font-weight: 400;
+  }
+  
+  .btn{
+    font-family: 'Montserrat', sans-serif;
+    color: white;
+    background-color: var(--color-primario);
+    border-radius: 30px;
+    padding: 10px 40px;
+    border: 1px solid var(--color-primario);
+    text-transform: uppercase;
+  }
+  
+  .btn:hover{
+    color:var(--color-primario);
+    background-color: white;
+  }
+  
+  .btn-alt{
+    font-family: 'Montserrat', sans-serif;
+    color: var(--color-primario);
+    background-color: white;
+  }
+  
+  .btn-alt:hover{
+    color: white;
+    background-color: var(--color-primario);
+    border: 1px solid white;
+  }
+  
+  .btn:focus{
+    box-shadow:none;
+  }
+  
+  
+  .fancybox-bg{
+    background-color: var(--color-primario) !important;
+  }
+  
+  ul{
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  
+  a:hover{
+    text-decoration: none;
+  }
+  
+  /* Animacion fade in */
+  .fade-in{
+    animation: fadeIn ease 4s;
+    -webkit-animation: fadeIn ease 4s;
+    -moz-animation: fadeIn ease 4s;
+    -o-animation: fadeIn ease 4s;
+    -ms-animation: fadeIn ease 4s;
+  }
+  
+  .fade-in-portada{
+    animation: fadeIn ease 8s;
+    -webkit-animation: fadeIn ease 8s;
+    -moz-animation: fadeIn ease 8s;
+    -o-animation: fadeIn ease 8s;
+    -ms-animation: fadeIn ease 8s;
+  }
+  
+  .fiesta{
+    opacity: 0;
+  }
+  .ceremonia{
+    opacity: 0;
+  }
+  .title-galery{
+    opacity: 0;
+  }
+  .regalo{
+    opacity: 0;
+  }
+  .opacidad{
+    opacity: 0;
+  }
+  .iconCalendario {
+    opacity: 0;
+  }
+  .iconInstagram{
+    opacity: 0;
+  }
+  .iconMusic{
+    opacity: 0;
+  }
+  .anillos{
+    opacity: 0;
+  }
+  
+  .divCanciones{
+    opacity: 0;
+  }
+  .divAlojamientos{
+    opacity: 0;
+  }
+  .divFiesta{
+    opacity: 0;
+  }
+  .divCeremonia {
+    opacity: 0;
+  }
+  .divTitleAgenda{
+    opacity: 0;
+  }
+  .divAgenda{
+    opacity: 0;
+  }
+  .divCbu{
+    opacity: 0;
+  }
+  .divDressCode{
+    opacity: 0;
+  }
+  .divIntagram{ 
+    opacity: 0;
+  }
+  .divGracias{
+    opacity: 0;
+  }
+  .divAnillos{
+    opacity: 0;
+  }
+  
+  
+  @keyframes fadeIn{
+    0% {
+      opacity:0;
+    }
+    100% {
+      opacity:1;
+    }
+  }
+  
+  @-moz-keyframes fadeIn {
+    0% {
+      opacity:0;
+    }
+    100% {
+      opacity:1;
+    }
+  }
+  
+  @-webkit-keyframes fadeIn {
+    0% {
+      opacity:0;
+    }
+    100% {
+      opacity:1;
+    }
+  }
+  
+  @-o-keyframes fadeIn {
+    0% {
+      opacity:0;
+    }
+    100% {
+      opacity:1;
+    }
+  }
+  
+  @-ms-keyframes fadeIn {
+    0% {
+      opacity:0;
+    }
+    100% {
+      opacity:1;
+    }
+  }
+  
+  
+  
+  /* Animacion fade in up */
+  .fadeInUp {
+    animation-name: fadeInUp;
+    -webkit-animation-name: fadeInUp;
+  }
+  
+  
+  .animated {
+    animation-duration: 1.5s;
+    animation-fill-mode: both;
+    -webkit-animation-duration: 1.5s;
+    -webkit-animation-fill-mode: both
+  }
+  
+  @keyframes fadeInUp{
+    0% {
+      opacity:0;
+      transform: translateY(120px);
+    }
+    100% {
+      opacity:1;
+      transform: translateY(0px);
+    }
+  }
+  
+  @-moz-keyframes fadeInUp {
+    0% {
+      opacity:0;
+      transform: translateY(120px);
+    }
+    100% {
+      opacity:1;
+      transform: translateY(0px);
+    }
+  }
+  
+  @-webkit-keyframes fadeInUp {
+    0% {
+      opacity:0;
+      transform: translateY(120px);
+    }
+    100% {
+      opacity:1;
+      transform: translateY(0px);
+    }
+  }
+  
+  @-o-keyframes fadeInUp {
+    0% {
+      opacity:0;
+      transform: translateY(120px);
+    }
+    100% {
+      opacity:1;
+      transform: translateY(0px);
+    }
+  }
+  
+  @-ms-keyframes fadeInUp {
+    0% {
+      opacity:0;
+      transform: translateY(120px);
+    }
+    100% {
+      opacity:1;
+      transform: translateY(0px);
+    }
+  }
+  
+  
+  
+  
+  /* Flecha para scroll de portada */
+  .scroll-down {
+    cursor: pointer;
+      position: absolute;
+      bottom: 40px;
+      display: block;
+      text-align: center;
+      font-size: 20px;
+      z-index: 100;
+      text-decoration: none;
+      text-shadow: 0;
+    width: 30px;
+    height: 30px;
+    border-bottom: 4px solid #000;
+    border-right: 4px solid #000;
+    z-index: 9;
+    left: calc(50% - 15px);
+    -webkit-transform: translate(-50%, 0%) rotate(45deg);
+    -moz-transform: translate(-50%, 0%) rotate(45deg);
+    transform: translate(-50%, 0%) rotate(45deg);
+      -webkit-animation: fade_move_down 2s ease-in-out infinite;
+      -moz-animation:    fade_move_down 2s ease-in-out infinite;
+      animation:         fade_move_down 2s ease-in-out infinite;
+  }
+  
+  
+  /*animated scroll arrow animation*/
+  @-webkit-keyframes fade_move_down {
+    0%   { -webkit-transform:translate(0,-10px) rotate(45deg); opacity: 0;  }
+    50%  { opacity: 1;  }
+    100% { -webkit-transform:translate(0,10px) rotate(45deg); opacity: 0; }
+  }
+  @-moz-keyframes fade_move_down {
+    0%   { -moz-transform:translate(0,-10px) rotate(45deg); opacity: 0;  }
+    50%  { opacity: 1;  }
+    100% { -moz-transform:translate(0,10px) rotate(45deg); opacity: 0; }
+  }
+  @keyframes fade_move_down {
+    0%   { transform:translate(0,-10px) rotate(45deg); opacity: 0;  }
+    50%  { opacity: 1;  }
+    100% { transform:translate(0,10px) rotate(45deg); opacity: 0; }
+  }
+  
+  
+  
+  /* ---------- */
+  
+  
+  /* Portada */
+
+  .parallax-mirror {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1; /* Mantiene las imágenes detrás del contenido */
+    pointer-events: none; /* Evita que interfieran con clics o scroll */
+}
+
+section.ceremonia-fiesta,
+section.confirmacion,
+section.footer {
+    background-color: #ffffff; /* Fondo sólido blanco */
+    position: relative; /* Necesario para que funcione el z-index */
+    z-index: 10; /* Se superpone a las imágenes de fondo */
+}
+
+  section.portada {
+    position: relative; /* Necesario para posicionar elementos dentro de esta sección */
+    height: 100vh; /* Altura completa de la pantalla */
+    display: flex; /* Para centrar el contenido */
+    justify-content: center; /* Centrar horizontalmente */
+    align-items: center; /* Centrar verticalmente */
+    overflow: hidden; /* Asegura que nada se salga de la sección */
+    text-align: center; /* Asegura que el texto esté centrado */
+}
+
+.parallax-container {
+    position: relative; /* Asegura que los elementos hijos puedan posicionarse correctamente */
+    width: 100%;
+    height: 100%;
+}
+
+.parallax-slider {
+    position: absolute; /* Fija la imagen como fondo */
+    top: 0;
+    left: 0;
+    width: 100%; /* Ocupa todo el ancho */
+    height: 100%; /* Ocupa toda la altura */
+    object-fit: cover; /* Ajusta la imagen al contenedor sin deformarla */
+    z-index: 1; /* Mantiene la imagen detrás del contenido */
+}
+
+.portada-contenido {
+    position: relative; /* Superpone este contenedor sobre la imagen */
+    z-index: 10; /* Asegura que el contenido esté sobre la imagen de fondo */
+    text-align: center; /* Centra el texto dentro del contenedor */
+    color: white; /* Cambia el color del texto para que sea visible sobre el fondo */
+}
+
+.portada-contenido img {
+    
+    height: auto;
+    margin-bottom: 20px;
+}
+
+
+  
+  section.audio {
+  
+    margin-top: 20px;
+  
+    margin-bottom: 20px;
+  
+    position: fixed;
+  
+  }
+  
+  section.audio .columna {
+    text-align: center;
+  }
+  
+  /* ---------- */
+  
+  
+  
+  /* ------------- Cuenta Regresiva -----------*/
+  
+  section.cuenta-regresiva{
+    font-family: 'Montserrat', sans-serif !important;
+    text-align: center;
+    padding-top: 40px;
+    background-color:#a4bb8f;
+    height: 250px;
+    position: relative; /* Necesario para que funcione el z-index */
+    z-index: 10; /* Se superpone a las imágenes de fondo */
+    color: #ffffff; 
+  }
+  
+  .num_cuenta-separador {
+    font-size: 30px; /* Asegúrate de que coincida con el tamaño de los números */
+    line-height: 1; /* Asegura un espacio uniforme */
+    vertical-align: middle; /* Alinea verticalmente con los números */
+    display: inline-block; /* Asegura que no afecte el flujo del diseño */
+    margin-top: -5px; /* Sube un poco el ":" */
+    font-weight: 600;
+}
+
+
+  
+  /* Clase de los numero de la cuenta regresiva (00:00:00) */
+  .num_cuenta {
+    font-size: 30px;
+    line-height: 1; /* Asegura que el texto no tenga espacio adicional */
+    text-align: center; /* Centra el texto */
+    display: flex; /* Configura como contenedor flexible */
+    align-items: center; /* Centra el contenido verticalmente */
+    justify-content: center; /* Centra el contenido horizontalmente */
+    margin: 0; /* Ajusta el espacio horizontal */
+    padding: 0; /* Asegura que no haya relleno */
+    font-weight: 600;
+}
+
+  
+  /* Clase que divide el titulo de los numeros de la cuenta regrasiva */
+  .margenSup{
+    margin-top: 30px;
+  }
+  /* Clase de los texto de la cuenta regresiva (dias, horas, minut, seg.) */
+  .text_cuenta{
+    font-size: 15px;
+  
+  }
+  
+  /* Texto que se muestra cuando la Cuenta Regresiva esta en 0 */
+  #reloj {
+    display: flex; /* Cambia la disposición de vertical a horizontal */
+    justify-content: center; /* Centra horizontalmente los bloques */
+    align-items: center; /* Centra verticalmente los bloques */
+    gap: 2px; /* Añade espacio entre las unidades */
+    font-size: 25px; /* Mantén el tamaño de fuente */
+    margin-bottom: 0;
+}
+.time-unit {
+    text-align: center; /* Centra el texto dentro de cada unidad */
+    margin: 0; /* Elimina márgenes adicionales */
+}
+
+  
+  .descartar{
+    display: none;
+  
+  }
+  
+  
+  
+  /* ------------- Fin Cuenta Regresiva -----------*/
+  
+  
+  
+  /* Ceremonia y Fiesta */
+  
+  /* section.ceremonia-fiesta{
+    padding: 70px 0 90px;
+  } */
+  
+  section.ceremonia-fiesta .columna{
+    text-align: center;
+    padding: 15px;
+  }
+  
+  section.ceremonia-fiesta .columna h4{
+    margin-top: 15px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+  
+  section.ceremonia-fiesta .columna p{
+    margin-bottom: 25px;
+  
+  }
+  
+  section.ceremonia-fiesta .columna img.icon{
+    width: 150px;
+  }
+  
+  section.ceremonia-fiesta .columna img.anillos{
+    width: 150px;
+  }
+  
+  
+  
+  /* ---------- */
+  
+  
+  /* Galeria /Historia */
+  section.galeria{
+    padding-bottom: 50px;
+  }
+  
+  section.galeria h4{
+    text-align: center;
+    margin-bottom: 60px;
+  }
+  section.galeria .item-galeria{
+    padding: 0 3px;
+    margin-bottom: 5px;
+  }
+  
+  section.galeria .item-galeria a img{
+    transition: all 0.3s ease-out;
+    border-radius: 10px;
+  }
+  
+  
+  section.galeria .item-galeria a:hover img{
+    transform: scale(1.1);
+    position: relative;
+    z-index: 999;
+  }
+  
+  
+  
+  /* ---------- */
+  
+  
+  /* CBU */
+  
+  section.cbu{
+    text-align: center;
+    padding: 40px 0 70px;
+    background-color:var(--color-primario);
+  }
+  
+  section.cbu img.icon{
+    width: 150px;
+  }
+  
+  
+  section.cbu p{
+    color: white;
+  }
+  
+  #hidden-cbu{
+    padding: 25px;
+    border-radius: 10px;
+  }
+  
+  
+  #hidden-cbu span.title{
+    font-family: 'Montserrat', sans-serif;
+    display: inline-block;
+    text-align: center;
+    width: 100%;
+    font-size: 25px;
+    color: var(--color-primario);
+  }
+  
+  
+  #hidden-cbu ul{
+    list-style: none;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    margin-bottom: 15px;
+  }
+  
+  
+  #hidden-cbu ul li a{
+    color: var(--color-primario);
+    text-decoration: underline;
+  
+  }
+  
+  /* ---------- */
+  
+  
+  /* CONFIRMAR ASISTENCIA */
+  
+  
+  
+  section.parallax-confirmar{
+    text-align: center;
+      height: 400px;
+   }
+  
+  section.parallax-confirmar .container img.icon{
+    width: 150px;
+  }
+  
+  /* ---------- */
+  
+  /* DRESS CODE */
+  
+  section.dresscode{
+    z-index: 1;
+    display: flex;
+    position: relative;
+    text-align: center;
+    padding: 70px 0 70px;
+    background-color: var(--color-secundario);
+  }
+  
+  section.dresscode h4 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: white;
+  }
+  
+  section.dresscode p{
+    color: white;
+  }
+  
+  section.dresscode img.icon{
+    width: 150px;
+  }
+  
+  /* ---------- */
+  
+  
+  /* INSTAGRAM */
+  
+  section.instagram{
+    text-align: center;
+  
+  }
+  
+  section.instagram .contenido{
+    padding: 100px;
+  }
+  
+  section.instagram span.hashtag{
+    font-family: 'Montserrat', sans-serif;
+    font-size: 30px;
+    font-weight: 400;
+    margin-top: 100px;
+  }
+  
+  section.instagram .contenido img.icon{
+    width: 150px;
+  }
+  
+  section.instagram p{
+    margin-top: 20px;
+    margin-bottom:30px;
+  }
+  
+  
+  
+  /* ---------- */
+  
+  
+  /* CANCIONES */
+  
+  section.canciones{
+    text-align: center;
+    padding: 70px 0 100px;
+  }
+  
+  section.canciones h4 {
+      text-align: center;
+      margin-bottom: 25px;
+  }
+  
+  section.canciones p{
+    margin-bottom: 20px;
+  }
+  
+  section.canciones img.icon{
+    width: 150px;
+  }
+  
+  /* ---------- */
+  
+  /* ALOJAMIENTOS */
+  
+  section.alojamientos{
+    text-align: center;
+    padding: 80px 0 80px;
+    background-color:var(--color-primario);
+    color: white;
+  }
+  
+  section.alojamientos .contenido{
+    padding: 50px 10px;
+  }
+  
+  section.alojamientos h4 {
+      text-align: center;
+      margin-bottom: 25px;
+  }
+  
+  section.alojamientos p{
+    margin-top: 20px;
+    margin-bottom:30px;
+  }
+  
+  #hidden-alojamientos{
+    padding: 25px;
+    border-radius: 10px;
+  }
+  
+  
+  #hidden-alojamientos span.title{
+    font-family: 'Montserrat', sans-serif;
+    color: var(--color-primario);
+    display: inline-block;
+    text-align: center;
+    width: 100%;
+    font-size: 25px;
+  }
+  
+  
+  #hidden-alojamientos ul{
+    list-style: none;
+    text-align: center;
+    margin-bottom: 15px;
+  }
+  
+  /* ---------- */
+  
+  /* PROTOCOLO */
+  
+  section.protocolo{
+    text-align: center;
+    padding: 90px 0 90px;
+    background-color:var(--color-primario);
+  }
+  
+  section.protocolo h4 {
+      text-align: center;
+      margin-bottom: 25px;
+      color: white;
+  }
+  
+  section.protocolo img.icon{
+    width: 150px;
+  }
+  
+  section.protocolo p{
+    color: white;
+  }
+  
+  /* ---------- */
+  
+  /* GRACIAS */
+  
+  section.gracias{
+    text-align: center;
+    padding: 50px 0;
+    background-color:var(--color-secundario);
+  }
+  
+  section.gracias p{
+    color: white;
+  }
+  
+  
+  /* ---------- */
+  
+  
+  /* FOOTER */
+  
+  section.menu-footer{
+    background: #e6e6e6;
+    padding: 30px 0;
+  }
+  
+  section.menu-footer ul li{
+    margin: 0 20px;
+  }
+  
+  section.menu-footer ul a{
+    text-decoration: underline;
+    color: #999;
+    font-size: 13px;
+  }
+  
+  section.menu-footer ul a:hover{
+    color: #35aa7f
+  }
+  
+  
+  
+  section.footer{
+    text-align: center;
+    padding: 20px 0;
+    background-color: #666;
+    position: relative; /* Asegura que el fondo cubra todo el área */
+    z-index: 10; /* Garantiza que el fondo esté delante de la imagen */
+    box-shadow: none; /* Elimina sombras si se aplican por error */
+  }
+  
+  section.footer p{
+    text-align: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 300;
+    margin: 0;
+    padding: 0;
+  }
+  
+  section.footer a{
+    color: white;
+  }
+  
+  
+  /* ---------- */
+  
+  /* CONTACTO */
+  
+  section.contacto{
+    padding: 100px 0;
+  }
+  
+  section.contacto h4{
+    font-weight: 400;
+  }
+  
+  section.contacto p{
+    font-weight: 300;
+  }
+  
+  section.contacto a{
+    color: #35aa7f;
+  }
+  
+  section.contacto a:hover{
+    color: black;
+  }
+  
+  section.contacto ul li{
+    margin-bottom: 5px;
+  }
+  
+  section.contacto ul li i{
+    font-size: 18px;
+    margin-right: 3px;
+  }
+  
+  
+  
+  
+  
+  
+  
+  /* ---------- */
+  
+  /* Audio */
+  .botonAudio-container {
+    text-align: center;
+  }
+  
+  .botonAudio {
+    width: 6rem;
+    padding: 10px 20px;
+    margin: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    position: fixed;
+    display: flex;
+    right: 1rem;
+  }
+  
+  .hidden {
+    display: none;
+  }
+  
+  .pulse {
+    animation: pulse-animation 2s infinite;
+  }
+  
+  @keyframes pulse-animation {
+    0% {
+        transform: scale(1);
+    }
+  
+    50% {
+        transform: scale(1.1);
+    }
+  
+    100% {
+        transform: scale(1);
+    }
+  }
+  .vertical_shake {
+    animation: vertical-shaking 0.7s infinite;
+  }
+  
+  
+  @keyframes vertical-shaking {
+    0% { transform: translateY(0) }
+    25% { transform: translateY(4px) }
+    50% { transform: translateY(-4px) }
+    75% { transform: translateY(4px) }
+    100% { transform: translateY(0) }
+  }
+  
+  
+  
+  /* ---------- */
+  
+  /* Medias queries */
+  
+  @media (max-width: 760px) {
+  
+  
+    .logo-portada img{
+      max-width: 85%;
+      margin-bottom: 0%;
+      margin-top: 0%;
+    }
+  
+    .logo-portada{
+      text-align: center;
+    }
+  
+    section.ceremonia-fiesta .row .columna:nth-child(2){
+      margin-top: 0px;
+    }
+  
+    section.ceremonia-fiesta .row .columna.no-margin-top{
+      margin-top: 0;
+    }
+  
+    section.menu-footer ul li{
+      margin-top: 10px;
+    }
+  
+  
+  }

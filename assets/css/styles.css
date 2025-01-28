@@ -337,6 +337,9 @@ section.footer {
     background-color: #ffffff; /* Fondo sólido blanco */
     position: relative; /* Necesario para que funcione el z-index */
     z-index: 10; /* Se superpone a las imágenes de fondo */
+    padding: 60px 0; /* Espacio interno para agrandar la sección */
+
+
 }
 
   section.portada {
@@ -509,7 +512,10 @@ section.footer {
   
   /* Galeria /Historia */
   section.galeria{
-    padding-bottom: 50px;
+    background-color: #ffffff; /* Fondo blanco */
+    padding: 50px 0; /* Añade un espacio superior e inferior */
+    border-radius: 10px; /* Opcional: bordes redondeados */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Opcional: sombra para destacar */
   }
   
   section.galeria h4{
@@ -558,6 +564,10 @@ section.galeria .container {
   
   /* ---------- */
   
+
+
+
+
   
   /* CBU */
   
@@ -612,8 +622,7 @@ section.galeria .container {
   
   /* CONFIRMAR ASISTENCIA */
   
-  
-  
+   
   section.parallax-confirmar{
     text-align: center;
       height: 400px;

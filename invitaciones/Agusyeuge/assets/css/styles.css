@@ -517,97 +517,94 @@ section.footer {
   
   
   /* Galeria /Historia */
+
   section.galeria{
     background-color: #ffffff; /* Fondo blanco */
     padding: 50px 0; /* Añade un espacio superior e inferior */
-    border-radius: 10px; /* Opcional: bordes redondeados */
-    position: relative;
+    /*position: relative;*/
     z-index: 1;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Opcional: sombra para destacar */
+  }
+
+  section.galeria .container {
+    max-width: 1200px; /* Asegura un contenedor más amplio */
+    margin: 0 auto; /* Centra el contenedor horizontalmente */
+    /*position: relative;*/
+    
   }
   
   section.galeria h4{
     text-align: center;
     margin-bottom: 60px;
   }
-  section.galeria .item-galeria{
-    padding: 0 3px;
-    margin-bottom: 5px;
-    position: relative; 
-    overflow: visible; /* Permite que las imágenes se expandan fuera */
-    justify-content: center;
-    align-items: center;
-  }
-  
-  section.galeria .item-galeria a img{
-    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
-    border-radius: 10px;
-    width: 100%;
-    height: 300px; /* Define una altura fija para todas las filas */
+
+  .row {
+    position: relative; /* Asegura que los elementos dentro respeten el z-index */
+    z-index: 1;
+}
+
+  .item-galeria {
+    width: 100%; /* Ocupa el ancho completo de la columna */
+    aspect-ratio: 1 / 1; /* Mantiene la celda cuadrada */
+    position: relative; /* Necesario para manejar la animación */
+    z-index: 1; /* Base para todas las imágenes */  
    
   }
-  
-   /* ---- EFECTO HOVER ---- */
-  section.galeria .item-galeria a:hover img{
-    transform: scale(1.1);
-    
-    z-index: 10; /* Asegura que esté sobre las demás */
-    box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
-  }
- 
- 
-section.galeria .item-galeria:hover {
-  z-index: 10; /* Asegura que la imagen se eleve sobre las demás */
+
+  .item-galeria a {
+    display: block;
+    width: 100%;
+    height: 100%;
+    position: relative;
 }
   
- 
-  section.galeria .row {
-    display: flex;
-    flex-wrap: wrap; /* Asegura que las imágenes se ajusten a múltiples líneas */
-     justify-content: space-between; /* Añade espacio uniforme entre columnas */
-     position: relative; /* Evita que el z-index de las imágenes sea bloqueado */
-     z-index: 1; /* Mantiene el fondo sin bloquear elementos flotantes */
-     align-items: stretch; /* Asegura que todas las columnas tengan la misma altura */
-   
+  .item-galeria img {
+    width: 100%; /* Que ocupe todo el ancho del contenedor */
+    height: 100%; /* Que llene el alto del contenedor */
+    object-fit: cover; /* Recorta la imagen sin deformarla */
+    border-radius: 10px; /* Opcional: mantiene bordes redondeados */
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+    position: relative; /* Se mantiene dentro del contenedor */
+    z-index: 1; /* En estado normal, las imágenes están en la misma capa */
   }
-   
   
-  @media (max-width: 760px) {
+ 
+
+
+   
+
+
+   /* ---- EFECTO HOVER ---- */
+ 
+
+/* Mantener animación sin afectar el z-index */
+
+
+/* Aseguramos que el hover suba correctamente */
+.item-galeria:hover {
+  z-index: 9999 !important; /* Se eleva sobre las demás */
+  position: relative !important; /* Mantiene el flujo normal */
+}
+
+.item-galeria:hover img {
+  transform: scale(1.1);
+  z-index: 10001 !important; /* Se mantiene arriba */
+  box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+ 
+ 
+
+  
+    /* ---------------- */
+
+
+
+@media (max-width: 760px) {
   .item-galeria img {
     height: 150px; /* Reduce la altura en dispositivos pequeños */
   }
 }
-section.galeria .container {
-  max-width: 1200px; /* Asegura un contenedor más amplio */
-  margin: 0 auto; /* Centra el contenedor horizontalmente */
-  position: relative;
-  
-}
-.item-galeria {
-  display: flex; /* Asegura que los elementos internos se alineen */
-  align-items: center; /* Centra la imagen en el contenedor */
-  height: 200px; /* Define una altura fija para todas las filas */
-  overflow: hidden; /* Evita que las imágenes desborden */
-  position: relative; /* Asegura que el z-index funcione correctamente */
-  justify-content: center;
-  z-index: 1; /* Asegura que cada imagen tenga su propio nivel */
-  
- 
-}
-
-.item-galeria img {
-  width: 100%; /* Que ocupe todo el ancho del contenedor */
-  height: 100%; /* Que llene el alto del contenedor */
-  object-fit: cover; /* Recorta la imagen sin deformarla */
-  border-radius: 10px; /* Opcional: mantiene bordes redondeados */
-  /*  overflow: hidden; /* Evita que las imágenes desborden */
-  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
-
-  
-}
-
-
-
   
   
   /* ---------- */

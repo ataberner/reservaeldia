@@ -39,18 +39,21 @@
   .btn:hover{
     color:var(--color-primario);
     background-color: white;
+    border-color: #dab485; /* Agrega el contorno azul en hover/focus */
+    box-shadow: 0 0 5px #dab485; /* Agrega efecto similar al Bootstrap */
   }
   
   .btn-alt{
     font-family: 'Montserrat', sans-serif;
     color: var(--color-primario);
     background-color: white;
-  }
+    }
   
   .btn-alt:hover{
     color: white;
     background-color: var(--color-primario);
     border: 1px solid white;
+    box-shadow: 0 0 5px #ffffff; /* Agrega efecto similar al Bootstrap */
   }
   
   .btn:focus{
@@ -482,12 +485,7 @@ section.footer {
   /* section.ceremonia-fiesta{
     padding: 70px 0 90px;
   } */
-  section.ceremonia-fiesta {
-    background-color: #ffffff; /* Fondo blanco sólido */
-    position: relative; /* Asegura que se superponga sobre la imagen */
-    z-index: 10; /* Mantiene la sección por encima de la imagen */
-}
-
+ 
   
   section.ceremonia-fiesta .columna{
     text-align: center;
@@ -544,19 +542,20 @@ section.footer {
   section.galeria .item-galeria a img{
     transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
     border-radius: 10px;
-    max-width: 100%;
-    height: auto;
-    object-fit: cover;
+    width: 100%;
+    height: 300px; /* Define una altura fija para todas las filas */
+   
   }
   
-  
+   /* ---- EFECTO HOVER ---- */
   section.galeria .item-galeria a:hover img{
     transform: scale(1.1);
     
     z-index: 10; /* Asegura que esté sobre las demás */
     box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
   }
-  /* ---- EFECTO HOVER ---- */
+ 
+ 
 section.galeria .item-galeria:hover {
   z-index: 10; /* Asegura que la imagen se eleve sobre las demás */
 }
@@ -565,11 +564,14 @@ section.galeria .item-galeria:hover {
   section.galeria .row {
     display: flex;
     flex-wrap: wrap; /* Asegura que las imágenes se ajusten a múltiples líneas */
-    justify-content: space-between; /* Añade espacio uniforme entre columnas */
-    position: relative; /* Evita que el z-index de las imágenes sea bloqueado */
-    z-index: 0; /* Mantiene el fondo sin bloquear elementos flotantes */
+     justify-content: space-between; /* Añade espacio uniforme entre columnas */
+     position: relative; /* Evita que el z-index de las imágenes sea bloqueado */
+     z-index: 1; /* Mantiene el fondo sin bloquear elementos flotantes */
+     align-items: stretch; /* Asegura que todas las columnas tengan la misma altura */
    
   }
+   
+  
   @media (max-width: 760px) {
   .item-galeria img {
     height: 150px; /* Reduce la altura en dispositivos pequeños */
@@ -579,8 +581,32 @@ section.galeria .container {
   max-width: 1200px; /* Asegura un contenedor más amplio */
   margin: 0 auto; /* Centra el contenedor horizontalmente */
   position: relative;
-  overflow: visible; /* Asegura que las imágenes puedan expandirse fuera */
+  
 }
+.item-galeria {
+  display: flex; /* Asegura que los elementos internos se alineen */
+  align-items: center; /* Centra la imagen en el contenedor */
+  height: 200px; /* Define una altura fija para todas las filas */
+  overflow: hidden; /* Evita que las imágenes desborden */
+  position: relative; /* Asegura que el z-index funcione correctamente */
+  justify-content: center;
+  z-index: 1; /* Asegura que cada imagen tenga su propio nivel */
+  
+ 
+}
+
+.item-galeria img {
+  width: 100%; /* Que ocupe todo el ancho del contenedor */
+  height: 100%; /* Que llene el alto del contenedor */
+  object-fit: cover; /* Recorta la imagen sin deformarla */
+  border-radius: 10px; /* Opcional: mantiene bordes redondeados */
+  /*  overflow: hidden; /* Evita que las imágenes desborden */
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+
+  
+}
+
+
 
   
   

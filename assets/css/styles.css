@@ -131,3 +131,54 @@ footer {
       padding: 8px 16px;
   }
 }
+
+
+/* Estilos galeria paginas */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.gallery {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 20px;
+}
+
+.gallery-item {
+  width: calc(25% - 20px); /* 4 imágenes por fila con margen */
+  min-width: 200px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: center;
+}
+
+.gallery-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.gallery-item p {
+  margin: 10px 0;
+  font-size: 1.1em;
+  font-weight: bold;
+}
+
+/* Responsivo */
+@media (max-width: 800px) {
+  .gallery-item {
+      width: calc(50% - 20px); /* 2 imágenes por fila */
+  }
+}
+
+@media (max-width: 500px) {
+  .gallery-item {
+      width: 100%; /* 1 imagen por fila */
+  }
+}

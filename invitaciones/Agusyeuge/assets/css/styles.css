@@ -382,6 +382,7 @@ section.footer {
     
     height: auto;
     margin-top: 60px;
+    animation-duration: 3s; /* Hace que la animación sea más lenta */
 }
 
 

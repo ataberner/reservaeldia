@@ -418,9 +418,10 @@ section.footer {
     font-size: 30px; /* Asegúrate de que coincida con el tamaño de los números */
     line-height: 1; /* Asegura un espacio uniforme */
     vertical-align: middle; /* Alinea verticalmente con los números */
-    display: inline-block; /* Asegura que no afecte el flujo del diseño */
+    display: flex; /* Asegura que no afecte el flujo del diseño */
     margin-top: -5px; /* Sube un poco el ":" */
     font-weight: 600;
+  
 }
 
 
@@ -439,13 +440,14 @@ section.footer {
 }
 
   
-  /* Clase que divide el titulo de los numeros de la cuenta regrasiva */
+  /* Clase que separa el titulo de los numeros de la cuenta regrasiva */
   .margenSup{
     margin-top: 30px;
   }
   /* Clase de los texto de la cuenta regresiva (dias, horas, minut, seg.) */
   .text_cuenta{
     font-size: 15px;
+    text-align: center;
   
   }
   
@@ -480,6 +482,12 @@ section.footer {
   /* section.ceremonia-fiesta{
     padding: 70px 0 90px;
   } */
+  section.ceremonia-fiesta {
+    background-color: #ffffff; /* Fondo blanco sólido */
+    position: relative; /* Asegura que se superponga sobre la imagen */
+    z-index: 10; /* Mantiene la sección por encima de la imagen */
+}
+
   
   section.ceremonia-fiesta .columna{
     text-align: center;
@@ -515,6 +523,8 @@ section.footer {
     background-color: #ffffff; /* Fondo blanco */
     padding: 50px 0; /* Añade un espacio superior e inferior */
     border-radius: 10px; /* Opcional: bordes redondeados */
+    position: relative;
+    z-index: 1;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Opcional: sombra para destacar */
   }
   
@@ -525,30 +535,40 @@ section.footer {
   section.galeria .item-galeria{
     padding: 0 3px;
     margin-bottom: 5px;
+    position: relative; 
+    overflow: visible; /* Permite que las imágenes se expandan fuera */
+    justify-content: center;
+    align-items: center;
   }
   
   section.galeria .item-galeria a img{
-    transition: all 0.3s ease-out;
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
     border-radius: 10px;
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;
   }
   
   
   section.galeria .item-galeria a:hover img{
     transform: scale(1.1);
-    position: relative;
-    z-index: 999;
+    
+    z-index: 10; /* Asegura que esté sobre las demás */
+    box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
   }
+  /* ---- EFECTO HOVER ---- */
+section.galeria .item-galeria:hover {
+  z-index: 10; /* Asegura que la imagen se eleve sobre las demás */
+}
   
-  .item-galeria img {
-    width: 100%; /* Asegúrate de que ocupe todo el ancho del contenedor */
-    height: 300px; /* Define una altura fija */
-    object-fit: cover; /* Recorta la imagen manteniendo la proporción */
-    border-radius: 10px; /* Bordes redondeados opcionales */
-  }
+ 
   section.galeria .row {
     display: flex;
     flex-wrap: wrap; /* Asegura que las imágenes se ajusten a múltiples líneas */
     justify-content: space-between; /* Añade espacio uniforme entre columnas */
+    position: relative; /* Evita que el z-index de las imágenes sea bloqueado */
+    z-index: 0; /* Mantiene el fondo sin bloquear elementos flotantes */
+   
   }
   @media (max-width: 760px) {
   .item-galeria img {
@@ -558,6 +578,8 @@ section.footer {
 section.galeria .container {
   max-width: 1200px; /* Asegura un contenedor más amplio */
   margin: 0 auto; /* Centra el contenedor horizontalmente */
+  position: relative;
+  overflow: visible; /* Asegura que las imágenes puedan expandirse fuera */
 }
 
   

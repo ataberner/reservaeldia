@@ -549,6 +549,7 @@ section.footer {
     aspect-ratio: 1 / 1; /* Mantiene la celda cuadrada */
     position: relative; /* Necesario para manejar la animación */
     z-index: 1; /* Base para todas las imágenes */  
+    padding: 10px;
    
   }
 

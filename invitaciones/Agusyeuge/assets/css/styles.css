@@ -204,17 +204,18 @@
   
   /* Animacion fade in up */
   .fadeInUp {
-    animation-name: fadeInUp;
-    -webkit-animation-name: fadeInUp;
+    opacity: 0; /* Inicialmente invisible */
+    transform: translateY(50px); /* Desplazado hacia abajo */
+    transition: opacity 1s ease-out, transform 1s ease-out; /* Suaviza la transición */
   }
   
-  
-  .animated {
-    animation-duration: 1.5s;
-    animation-fill-mode: both;
-    -webkit-animation-duration: 1.5s;
-    -webkit-animation-fill-mode: both
-  }
+  /* Clase activa que se agregará cuando el elemento esté en pantalla */
+.fadeInUp.active {
+  opacity: 1; /* Hace visible el elemento */
+  transform: translateY(0); /* Lo mueve a su posición normal */
+}
+
+
   
   @keyframes fadeInUp{
     0% {
@@ -292,11 +293,11 @@
       z-index: 9;
       left: calc(50% - 15px);
       -webkit-transform: translate(-50%, 0%) rotate(45deg);
-      -moz-transform: translate(-50%, 0%) rotate(45deg);
-      transform: translate(-50%, 0%) rotate(45deg);
+    -moz-transform: translate(-50%, 0%) rotate(45deg);
+    transform: translate(-50%, 0%) rotate(45deg);
       -webkit-animation: fade_move_down 2s ease-in-out infinite;
       -moz-animation:    fade_move_down 2s ease-in-out infinite;
-       animation:         fade_move_down 2s ease-in-out infinite;
+      animation:         fade_move_down 2s ease-in-out infinite;
   }
   
   

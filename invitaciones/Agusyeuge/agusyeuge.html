@@ -40,7 +40,7 @@
     
             <div class="portada-contenido">
                 <img src="assets/img/logo-portada2.png" alt="Logo de la invitación" class="animate__animated animate__fadeIn" style="animation-delay: 10ms;">
-                
+                <div class="scroll-down" id="scrollDown"></div>
         
             </div>
         </div>
@@ -265,6 +265,17 @@
         });
     });
 </script>
+
+<script>
+  document.getElementById("scrollDown").addEventListener("click", function() {
+      window.scrollTo({
+          top: window.innerHeight, // Baja hasta la altura de la ventana
+          behavior: "smooth"
+      });
+  });
+</script>
+
+
 
 <script>
     // Cuenta regresiva

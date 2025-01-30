@@ -346,7 +346,16 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     object-fit: cover !important;
     object-position: right center !important; /* Enfoca más a la derecha */
     transform: translateX(-48%) !important; /* Mueve la imagen a la izquierda para centrar mejor */
+    margin-top: 0px !important;
   }
+
+
+  /* Ajustar el tamaño del logo */
+.portada-contenido img {
+  width: 90% !important;  /* Reduce el tamaño del logo */
+  margin-top: 10px !important;
+  height: auto !important;
+}
 }
 
 
@@ -358,6 +367,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     object-fit: contain !important; /* Hace que la imagen se ajuste sin recortar */
     object-position: center center !important; /* Centra la imagen */
     transform: none !important; /* Elimina cualquier desplazamiento */
+    
   }
 
 
@@ -368,12 +378,12 @@ transform: translateY(0); /* Lo mueve a su posición normal */
   height: auto !important;
 }
 
-
-
-
-
-
 }
+
+
+
+
+
 
 
 

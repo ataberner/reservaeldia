@@ -2,7 +2,8 @@
 
 :root {
   --color-primario: #dab485;
-  --color-secundario: #a4bb8f;
+  --color-secundario: #54592f;
+  --color-texto: #ffffff;
 }
 
 body{
@@ -95,9 +96,7 @@ a:hover{
 .fiesta{
   opacity: 0;
 }
-.ceremonia{
-  opacity: 0;
-}
+
 .title-galery{
   opacity: 0;
 }
@@ -116,9 +115,6 @@ a:hover{
 .iconMusic{
   opacity: 0;
 }
-.anillos{
-  opacity: 0;
-}
 
 .divCanciones{
   opacity: 0;
@@ -129,9 +125,7 @@ a:hover{
 .divFiesta{
   opacity: 0;
 }
-.divCeremonia {
-  opacity: 0;
-}
+
 .divTitleAgenda{
   opacity: 0;
 }
@@ -149,9 +143,6 @@ a:hover{
 }
 .divGracias{
   opacity: 1;
-}
-.divAnillos{
-  opacity: 0;
 }
 
 
@@ -393,7 +384,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 
 
 
-section.ceremonia-fiesta,
+
 section.confirmacion,
 section.footer {
   background-color: #ffffff; /* Fondo sólido blanco */
@@ -465,56 +456,42 @@ section.audio .columna {
 /* ---------- */
 
 
-
-/* ------------- Cuenta Regresiva -----------*/
-
-section.cuenta-regresiva{
-  font-family: 'Montserrat', sans-serif !important;
+/* ==========================
+ CUENTA REGRESIVA
+========================== */
+.cuenta-regresiva {
+  font-family: 'Montserrat', sans-serif;
   text-align: center;
   padding-top: 40px;
-  background-color:#54592f;
+  background-color: var(--color-secundario);
   height: 250px;
+  color: var(--color-texto);
   position: relative; /* Necesario para que funcione el z-index */
   z-index: 10; /* Se superpone a las imágenes de fondo */
-  color: #ffffff; 
+}
+section.cuenta-regresiva{
+}
+
+
+.num_cuenta {
+  font-size: 30px;
+  font-weight: 600;
+  margin: 0;
+}
+
+
+.text_cuenta {
+  font-size: 15px;
 }
 
 .num_cuenta-separador {
-  font-size: 30px; /* Asegúrate de que coincida con el tamaño de los números */
-  line-height: 1; /* Asegura un espacio uniforme */
-  vertical-align: middle; /* Alinea verticalmente con los números */
-  display: flex; /* Asegura que no afecte el flujo del diseño */
-  margin-top: -5px; /* Sube un poco el ":" */
-  font-weight: 600;
-
-}
-
-
-
-/* Clase de los numero de la cuenta regresiva (00:00:00) */
-.num_cuenta {
   font-size: 30px;
-  line-height: 1; /* Asegura que el texto no tenga espacio adicional */
-  text-align: center; /* Centra el texto */
-  display: flex; /* Configura como contenedor flexible */
-  align-items: center; /* Centra el contenido verticalmente */
-  justify-content: center; /* Centra el contenido horizontalmente */
-  margin: 0; /* Ajusta el espacio horizontal */
-  padding: 0; /* Asegura que no haya relleno */
   font-weight: 600;
+  margin-right: 10px;
+  margin-left: 10px;
+  margin-top: -22px;
 }
 
-
-/* Clase que separa el titulo de los numeros de la cuenta regrasiva */
-.margenSup{
-  margin-top: 30px;
-}
-/* Clase de los texto de la cuenta regresiva (dias, horas, minut, seg.) */
-.text_cuenta{
-  font-size: 15px;
-  text-align: center;
-
-}
 
 /* Texto que se muestra cuando la Cuenta Regresiva esta en 0 */
 #reloj {
@@ -525,95 +502,49 @@ section.cuenta-regresiva{
   font-size: 25px; /* Mantén el tamaño de fuente */
   margin-bottom: 0;
 }
-.time-unit {
-  text-align: center; /* Centra el texto dentro de cada unidad */
-  margin: 0; /* Elimina márgenes adicionales */
-}
 
 
-.descartar{
-  display: none;
-
-}
-
-
-
-/* ------------- Fin Cuenta Regresiva -----------*/
-
-
-
-/* Ceremonia y Fiesta */
-
-/* section.ceremonia-fiesta{
-  padding: 70px 0 90px;
-} */
-
-
-section.ceremonia-fiesta .columna{
+/* ==========================
+ CEREMONIA Y FIESTA
+========================== */
+.ceremonia-fiesta {
+  background-color: white;
+  padding: 60px 0;
   text-align: center;
-  padding: 15px;
 }
 
-section.ceremonia-fiesta .columna h4{
+.ceremonia-fiesta .icon {
+  width: 150px;
+}
+
+.ceremonia-fiesta h4 {
   margin-top: 15px;
   margin-bottom: 20px;
-  text-transform: uppercase;
 }
 
-section.ceremonia-fiesta .columna p{
+.ceremonia-fiesta p {
   margin-bottom: 25px;
-
-}
-
-section.ceremonia-fiesta .columna img.icon{
-  width: 150px;
-}
-
-section.ceremonia-fiesta .columna img.anillos{
-  width: 150px;
 }
 
 
 
-/* ---------- */
 
-
-/* Galeria /Historia */
-
-section.galeria{
-  background-color: #ffffff; /* Fondo blanco */
-  padding: 50px 0; /* Añade un espacio superior e inferior */
-  /*position: relative;*/
-  z-index: 1;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Opcional: sombra para destacar */
-}
-
-section.galeria .container {
-  max-width: 1200px; /* Asegura un contenedor más amplio */
-  margin: 0 auto; /* Centra el contenedor horizontalmente */
-  /*position: relative;*/
-  
-}
-
-section.galeria h4{
+/* ==========================
+ GALERÍA
+========================== */
+.galeria {
+  background-color: white;
+  padding: 50px 0;
   text-align: center;
-  margin-bottom: 60px;
-}
-
-.row {
-  position: relative; /* Asegura que los elementos dentro respeten el z-index */
-  z-index: 1;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .item-galeria {
-  width: 100%; /* Ocupa el ancho completo de la columna */
-  aspect-ratio: 1 / 1; /* Mantiene la celda cuadrada */
-  position: relative; /* Necesario para manejar la animación */
-  z-index: 1; /* Base para todas las imágenes */  
+  width: 100%;
   padding: 10px;
- 
+  position: relative;
+  aspect-ratio: 1 / 1; 
 }
-
 .item-galeria a {
   display: block;
   width: 100%;
@@ -622,128 +553,26 @@ section.galeria h4{
 }
 
 .item-galeria img {
-  width: 100%; /* Que ocupe todo el ancho del contenedor */
-  height: 100%; /* Que llene el alto del contenedor */
-  object-fit: cover; /* Recorta la imagen sin deformarla */
-  border-radius: 10px; /* Opcional: mantiene bordes redondeados */
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
   transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
-  position: relative; /* Se mantiene dentro del contenedor */
+  position: relative;
   z-index: 1; /* En estado normal, las imágenes están en la misma capa */
 }
 
 
-
-
- 
-
-
- /* ---- EFECTO HOVER ---- */
-
-
-/* Mantener animación sin afectar el z-index */
-
-
-/* Aseguramos que el hover suba correctamente */
-.item-galeria:hover {
-z-index: 9999 !important; /* Se eleva sobre las demás */
-position: relative !important; /* Mantiene el flujo normal */
-}
-
 .item-galeria:hover img {
-transform: scale(1.1);
-z-index: 10001 !important; /* Se mantiene arriba */
-box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
+  transform: scale(1.1);
+  box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
+  z-index: 9999 !important; /* Eleva la imagen al frente cuando está en hover */
 }
 
-
-
-
-
-  /* ---------------- */
-
-
-
-@media (max-width: 760px) {
-.item-galeria img {
-  height: 150px; /* Reduce la altura en dispositivos pequeños */
-}
-}
-
-
-/* ---------- */
-
-
-
-
-
-
-/* CBU */
-
-section.cbu{
-  text-align: center;
-  padding: 40px 0 70px;
-  background-color:var(--color-primario);
-}
-
-section.cbu img.icon{
-  width: 150px;
-}
-
-
-section.cbu p{
-  color: white;
-}
-
-#hidden-cbu{
-  padding: 25px;
-  border-radius: 10px;
-}
-
-
-#hidden-cbu span.title{
-  font-family: 'Montserrat', sans-serif;
-  display: inline-block;
-  text-align: center;
-  width: 100%;
-  font-size: 25px;
-  color: var(--color-primario);
-}
-
-
-#hidden-cbu ul{
-  list-style: none;
-  text-align: center;
-  margin: 0;
-  padding: 0;
-  margin-bottom: 15px;
-}
-
-
-#hidden-cbu ul li a{
-  color: var(--color-primario);
-  text-decoration: underline;
-
-}
-
-/* ---------- */
-
-
-/* CONFIRMAR ASISTENCIA */
-
- 
-section.parallax-confirmar{
-  text-align: center;
-    height: 400px;
- }
-
-section.parallax-confirmar .container img.icon{
-  width: 150px;
-}
-
-/* ---------- */
-
-/* DRESS CODE */
-
+/* ==========================
+DRESSCODE
+========================== */
+  
 section.dresscode{
   z-index: 1;
   display: flex;
@@ -767,318 +596,125 @@ section.dresscode img.icon{
   width: 150px;
 }
 
-/* ---------- */
 
-
-/* INSTAGRAM */
-
-section.instagram{
+/* ==========================
+ CONFIRMACIÓN DE ASISTENCIA
+========================== */
+.confirmacion {
   text-align: center;
-
+  padding: 60px 0;  
 }
 
-section.instagram .contenido{
-  padding: 100px;
-}
-
-section.instagram span.hashtag{
-  font-family: 'Montserrat', sans-serif;
-  font-size: 30px;
-  font-weight: 400;
-  margin-top: 100px;
-}
-
-section.instagram .contenido img.icon{
-  width: 150px;
-}
-
-section.instagram p{
-  margin-top: 20px;
-  margin-bottom:30px;
-}
-
-
-
-/* ---------- */
-
-
-/* CANCIONES */
-
-section.canciones{
-  text-align: center;
-  padding: 70px 0 100px;
-}
-
-section.canciones h4 {
-    text-align: center;
-    margin-bottom: 25px;
-}
-
-section.canciones p{
+.confirmacion h4 {
   margin-bottom: 20px;
 }
 
-section.canciones img.icon{
+
+/* ==========================
+ CANCIONES
+========================== */
+section.canciones {
+  text-align: center;
+  padding: 60px 0 100px;
+  background-color: #ffffff;
+}
+.canciones .icon {
   width: 150px;
 }
 
-/* ---------- */
-
-/* ALOJAMIENTOS */
-
-section.alojamientos{
+/* ==========================
+  CBU
+ ========================== */
+  
+ section.cbu{
   text-align: center;
-  padding: 80px 0 80px;
+  padding: 40px 0 70px;
   background-color:var(--color-primario);
+}
+section.cbu img.icon{
+  width: 150px;
+}
+section.cbu p{
   color: white;
 }
-
-section.alojamientos .contenido{
-  padding: 50px 10px;
-}
-
-section.alojamientos h4 {
-    text-align: center;
-    margin-bottom: 25px;
-}
-
-section.alojamientos p{
-  margin-top: 20px;
-  margin-bottom:30px;
-}
-
-#hidden-alojamientos{
+#hidden-cbu{
   padding: 25px;
   border-radius: 10px;
 }
-
-
-#hidden-alojamientos span.title{
+#hidden-cbu span.title{
   font-family: 'Montserrat', sans-serif;
-  color: var(--color-primario);
   display: inline-block;
   text-align: center;
   width: 100%;
   font-size: 25px;
+  color: var(--color-primario);
 }
-
-
-#hidden-alojamientos ul{
+#hidden-cbu ul{
   list-style: none;
   text-align: center;
+  margin: 0;
+  padding: 0;
   margin-bottom: 15px;
 }
-
-/* ---------- */
-
-/* PROTOCOLO */
-
-section.protocolo{
-  text-align: center;
-  padding: 90px 0 90px;
-  background-color:var(--color-primario);
+#hidden-cbu ul li a{
+  color: var(--color-primario);
+  text-decoration: underline;
 }
 
-section.protocolo h4 {
-    text-align: center;
-    margin-bottom: 25px;
-    color: white;
-}
-
-section.protocolo img.icon{
-  width: 150px;
-}
-
-section.protocolo p{
-  color: white;
-}
-
-/* ---------- */
-
-/* GRACIAS */
-
+/* ==========================
+ GRACIAS
+========================== */  
 section.gracias{
   text-align: center;
   padding: 50px 0;
   background-color:var(--color-secundario);
 }
-
 section.gracias p{
   color: white;
 }
-
-
-/* ---------- */
-
-
-/* FOOTER */
-
-section.menu-footer{
-  background: #e6e6e6;
-  padding: 30px 0;
-}
-
-section.menu-footer ul li{
-  margin: 0 20px;
-}
-
-section.menu-footer ul a{
-  text-decoration: underline;
-  color: #999;
-  font-size: 13px;
-}
-
-section.menu-footer ul a:hover{
-  color: #35aa7f
-}
-
-
-
-section.footer{
+/* ==========================
+ FOOTER
+========================== */
+footer {
   text-align: center;
-  padding: 20px 0;
+  padding: 20px;
   background-color: #666;
-  position: relative; /* Asegura que el fondo cubra todo el área */
-  z-index: 10; /* Garantiza que el fondo esté delante de la imagen */
-  box-shadow: none; /* Elimina sombras si se aplican por error */
-}
-
-section.footer p{
-  text-align: center;
-  color: white;
-  font-size: 12px;
-  font-weight: 300;
-  margin: 0;
-  padding: 0;
-}
-
-section.footer a{
   color: white;
 }
 
-
-/* ---------- */
-
-/* CONTACTO */
-
-section.contacto{
-  padding: 100px 0;
+/* ==========================
+ EFECTOS DE ANIMACIÓN
+========================== */
+.fade-in {
+  opacity: 0; /* El elemento empieza invisible */
+  animation: fadeIn ease 4s forwards;
 }
 
-section.contacto h4{
-  font-weight: 400;
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
-section.contacto p{
-  font-weight: 300;
+.fadeInUp {
+  opacity: 0;
+  transform: translateY(50px);
+  transition: opacity 1s ease-out, transform 2s ease-out;
+  position: relative; /* Asegura que el z-index funcione */
+  z-index: 1; /* Asegura que no cambie su orden */
 }
 
-section.contacto a{
-  color: #35aa7f;
+.fadeInUp.active {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-section.contacto a:hover{
-  color: black;
-}
-
-section.contacto ul li{
-  margin-bottom: 5px;
-}
-
-section.contacto ul li i{
-  font-size: 18px;
-  margin-right: 3px;
-}
-
-
-
-
-
-
-
-/* ---------- */
-
-/* Audio */
-.botonAudio-container {
-  text-align: center;
-}
-
-.botonAudio {
-  width: 6rem;
-  padding: 10px 20px;
-  margin: 10px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  position: fixed;
-  display: flex;
-  right: 1rem;
-}
-
-.hidden {
-  display: none;
-}
-
-.pulse {
-  animation: pulse-animation 2s infinite;
-}
-
-@keyframes pulse-animation {
+@keyframes fadeInUp {
   0% {
-      transform: scale(1);
+    opacity: 0;
+    transform: translateY(50px);
   }
-
-  50% {
-      transform: scale(1.1);
-  }
-
   100% {
-      transform: scale(1);
+    opacity: 1;
+    transform: translateY(0);
   }
-}
-.vertical_shake {
-  animation: vertical-shaking 0.7s infinite;
-}
-
-
-@keyframes vertical-shaking {
-  0% { transform: translateY(0) }
-  25% { transform: translateY(4px) }
-  50% { transform: translateY(-4px) }
-  75% { transform: translateY(4px) }
-  100% { transform: translateY(0) }
-}
-
-
-
-/* ---------- */
-
-/* Medias queries */
-
-@media (max-width: 760px) {
-
-
-  .logo-portada img{
-    max-width: 85%;
-    margin-bottom: 0%;
-    margin-top: 0%;
-  }
-
-  .logo-portada{
-    text-align: center;
-  }
-
-  section.ceremonia-fiesta .row .columna:nth-child(2){
-    margin-top: 0px;
-  }
-
-  section.ceremonia-fiesta .row .columna.no-margin-top{
-    margin-top: 0;
-  }
-
-  section.menu-footer ul li{
-    margin-top: 10px;
-  }
-
-
 }

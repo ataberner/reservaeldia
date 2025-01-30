@@ -367,11 +367,11 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 @media (max-width: 1024px) and (orientation: landscape) {
   .parallax-mirror img {
     width: 50% !important;  /* Asegura que la imagen cubra todo el ancho */
-    height: 100vh !important;  /* Mantiene la proporción */
-    object-fit: contain !important; /* Hace que la imagen se ajuste sin recortar */
-    object-position: center center !important; /* Centra la imagen */
+    height: auto;
+    object-fit: cover !important; /* Hace que la imagen se ajuste sin recortar */
+    object-position: center bottom !important; /* Centra la imagen */
     transform: none !important; /* Elimina cualquier desplazamiento */
-    
+    transform: translateY(-15%) !important; /* Mueve la imagen hacia abajo */
   }
 
 

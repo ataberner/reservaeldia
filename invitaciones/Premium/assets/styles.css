@@ -335,6 +335,25 @@ transform: translateY(0); /* Lo mueve a su posición normal */
   pointer-events: none; /* Evita que interfieran con clics o scroll */
 }
 
+
+.parallax-mirror img {
+  object-fit: cover;
+  object-position: center; /* Centrado por defecto */
+  width: 100%;
+  height: auto;
+}
+
+/* Para móviles */
+@media (max-width: 760px) {
+  .parallax-mirror img {
+    object-position: right center; /* Enfoca más la derecha */
+    width: 120%; /* Aumenta la imagen para que se vea más */
+    max-width: none; /* Evita restricciones */
+    transform: translateX(-10%); /* Mueve la imagen hacia la izquierda */
+  }
+}
+
+
 section.ceremonia-fiesta,
 section.confirmacion,
 section.footer {

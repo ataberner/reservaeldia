@@ -336,22 +336,28 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 }
 
 
-.parallax-mirror img {
-  object-fit: cover;
-  object-position: center; /* Centrado por defecto */
-  width: 100%;
-  height: auto;
-}
 
-/* Para móviles */
+
 @media (max-width: 760px) {
   .parallax-mirror img {
-    object-position: right center; /* Enfoca más la derecha */
-    width: 120%; /* Aumenta la imagen para que se vea más */
-    max-width: none; /* Evita restricciones */
-    transform: translateX(-10%); /* Mueve la imagen hacia la izquierda */
+    width: 69% !important;  /* Aumenta el tamaño un 20% (simula zoom out) */
+    max-width: none !important;
+    height: auto !important;
+    object-fit: cover !important;
+    object-position: right center !important; /* Enfoca más a la derecha */
+    transform: translateX(-48%) !important; /* Mueve la imagen a la izquierda para centrar mejor */
   }
 }
+@media (max-width: 1024px) and (orientation: landscape) {
+  .parallax-mirror img {
+    width: 100% !important;  /* Expande la imagen un poco más en horizontal */
+    transform: translateX(-25%) !important; /* Asegura que no haya bordes blancos */
+  }
+}
+
+
+
+
 
 
 section.ceremonia-fiesta,

@@ -355,7 +355,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     margin-top: 0px !important;
  }
  Section.cuenta-regresiva{
-  margin-top: -69px;
+  margin-top: -66px;
 }
 
 
@@ -366,15 +366,13 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 /* Ajustes para móviles en posición horizontal (landscape) */
 @media (max-width: 1024px) and (orientation: landscape) {
   .parallax-mirror img {
-    width: 50% !important;  /* Asegura que la imagen cubra todo el ancho */
-    height: auto;
+    width: 100vw !important;  /* Asegura que la imagen cubra todo el ancho */
+    height: 100vh !important;
     object-fit: cover !important; /* Hace que la imagen se ajuste sin recortar */
     object-position: center bottom !important; /* Centra la imagen */
     transform: none !important; /* Elimina cualquier desplazamiento */
-    transform: translateY(-15%) !important; /* Mueve la imagen hacia abajo */
+   
   }
-
-
 /* Ajustar el tamaño del logo en landscape */
 .portada-contenido img {
   width: 60% !important;  /* Reduce el tamaño del logo */

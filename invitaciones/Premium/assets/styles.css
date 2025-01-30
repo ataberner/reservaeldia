@@ -348,11 +348,31 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     transform: translateX(-48%) !important; /* Mueve la imagen a la izquierda para centrar mejor */
   }
 }
-@media (max-width: 760px) and (orientation: landscape) {
+
+
+/* Ajustes para móviles en posición horizontal (landscape) */
+@media (max-width: 1024px) and (orientation: landscape) {
   .parallax-mirror img {
-    width: 80% !important;  /* Expande la imagen un poco más en horizontal */
-    transform: translateX(0%) !important; /* Asegura que no haya bordes blancos */
+    width: 45% !important;  /* Asegura que la imagen cubra todo el ancho */
+    height: auto !important;  /* Mantiene la proporción */
+    object-fit: contain !important; /* Hace que la imagen se ajuste sin recortar */
+    object-position: center center !important; /* Centra la imagen */
+    transform: none !important; /* Elimina cualquier desplazamiento */
   }
+
+
+/* Ajustar el tamaño del logo en landscape */
+.portada-contenido img {
+  width: 60% !important;  /* Reduce el tamaño del logo */
+  
+  height: auto !important;
+}
+
+
+
+
+
+
 }
 
 

@@ -47,69 +47,69 @@
     </section>
 
     
-   <!-- Sección Cuenta Regresiva -->
+    <!-- Sección Cuenta Regresiva -->
 <section class="cuenta-regresiva">
-    <!-- Contenedor general de la cuenta regresiva -->
-    <div class="container">
-        <!-- Título -->
-        <h2>¡Faltan pocos días para el gran día!</h2>
+  <!-- Contenedor general de la cuenta regresiva -->
+  <div class="container">
+      <!-- Título -->
+      <h2>¡Faltan pocos días para el gran día!</h2>
 
-            <!-- Contenedor para el mensaje -->
-            <div id="mensaje-reloj"></div>
+          <!-- Contenedor para el mensaje -->
+          <div id="mensaje-reloj"></div>
 
-        <!-- Contenedor de los números -->
-         
-        <div class="d-flex justify-content-center align-items-center margenSup" id="reloj">
-            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
-                <p class="num_cuenta" id="dias">00</p>
-                <p class="text_cuenta">días</p>
-            </div>
-            <p class="num_cuenta-separador">:</p>
-            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
-                <p class="num_cuenta" id="horas">00</p>
-                <p class="text_cuenta">hs</p>
-            </div>
-            <p class="num_cuenta-separador">:</p>
-            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
-                <p class="num_cuenta" id="min">00</p>
-                <p class="text_cuenta">min</p>
-            </div>
-            <p class="num_cuenta-separador">:</p>
-            <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
-                <p class="num_cuenta" id="seg">00</p>
-                <p class="text_cuenta">seg</p>
-            </div>
-        </div>
-        
-    
+      <!-- Contenedor de los números -->
+       
+      <div class="d-flex justify-content-center align-items-center margenSup" id="reloj">
+          <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+              <p class="num_cuenta" id="dias">00</p>
+              <p class="text_cuenta">días</p>
+          </div>
+          <p class="num_cuenta-separador">:</p>
+          <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+              <p class="num_cuenta" id="horas">00</p>
+              <p class="text_cuenta">hs</p>
+          </div>
+          <p class="num_cuenta-separador">:</p>
+          <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+              <p class="num_cuenta" id="min">00</p>
+              <p class="text_cuenta">min</p>
+          </div>
+          <p class="num_cuenta-separador">:</p>
+          <div class="col-md-1 col-2 d-flex flex-column justify-content-center p-0">
+              <p class="num_cuenta" id="seg">00</p>
+              <p class="text_cuenta">seg</p>
+          </div>
+      </div>
+      
+  
 
-    </div>
+  </div>
 </section>
-
 
 <!-- Ceremonia y Fiesta -->
 
+
 <section class="ceremonia-fiesta">
-    <div class="container">
-      <div class="row">
-                        <!-- Icono -->
-          <div class="col-md-12 columna">
-            <img src="assets/img/icono-anillos.svg" alt="" class="icon anillos fade-in" style="opacity: 1;">
-          </div>
-          <!-- Texto -->
-          <div class="col-md-12 columna no-margin-top divAnillos animated fadeInUp">
-            <h4>nuestra boda</h4>
-            <p>
-              28 de Marzo de 2025 a las 16:00 hs en Friendly.<br>
-  Recibí debajo las indicaciones para llegar.<br>
-  ¡Te esperamos! 
-            </p>
-            <a target="_blank" href="https://maps.app.goo.gl/ozdDp8R4sAkW6Hmx8" class="btn">CÓMO LLEGAR</a>
-          </div>
-        
+  <div class="container">
+    <div class="row">
+      <!-- Icono -->
+      <div class="col-md-12 columna">
+        <img src="assets/img/icono-anillos.svg" alt="" class="icon anillos fade-in" style="opacity: 1;">
+      </div>
+      <!-- Texto con efecto de animación -->
+      <div class="col-md-12 columna no-margin-top divAnillos fadeInUp" id="animarTexto">
+        <h4>nuestra boda</h4>
+        <p>
+          28 de Marzo de 2025 a las 16:00 hs en Friendly.<br>
+          Recibí debajo las indicaciones para llegar.<br>
+          ¡Te esperamos!
+        </p>
+        <a target="_blank" href="https://maps.app.goo.gl/ozdDp8R4sAkW6Hmx8" class="btn">CÓMO LLEGAR</a>
       </div>
     </div>
-  </section>
+  </div>
+</section>
+
 
 
   <!-- Galeria -->
@@ -240,7 +240,7 @@
         <p>&copy; 2025 - <a href="../../index.html">Reserva el día</a> - Nuestra Boda</p>
     </footer>
 
-    <!-- Scripts -->
+     <!-- Scripts -->
     <!-- jQuery desde CDN -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
@@ -265,6 +265,17 @@
         });
     });
 </script>
+
+<script>
+  document.getElementById("scrollDown").addEventListener("click", function() {
+      window.scrollTo({
+          top: window.innerHeight, // Baja hasta la altura de la ventana
+          behavior: "smooth"
+      });
+  });
+</script>
+
+
 
 <script>
     // Cuenta regresiva
@@ -295,6 +306,25 @@
     });
 </script>
 
+<script>
+ document.addEventListener("DOMContentLoaded", function() {
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add("active"); // Activa la animación
+            }
+        });
+    }, { threshold: 0.3 }); // Se activa cuando el 30% del elemento es visible
+
+    // Aplicar el observer a TODOS los elementos con la clase fadeInUp
+    document.querySelectorAll(".fadeInUp").forEach(element => {
+        observer.observe(element);
+    });
+});
+
+  </script>
+
+  
 
 
 </body>

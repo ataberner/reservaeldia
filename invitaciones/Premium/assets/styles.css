@@ -352,9 +352,9 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 
   /* Ajustar el tamaño del logo */
 .portada-contenido img {
-  width: 90% !important;  /* Reduce el tamaño del logo */
-  margin-top: 10px !important;
-  height: auto !important;
+  
+  margin-top: 0px !important;
+ 
 }
 }
 
@@ -362,7 +362,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 /* Ajustes para móviles en posición horizontal (landscape) */
 @media (max-width: 1024px) and (orientation: landscape) {
   .parallax-mirror img {
-    width: 50% !important;  /* Asegura que la imagen cubra todo el ancho */
+    width: 60% !important;  /* Asegura que la imagen cubra todo el ancho */
     height: auto !important;  /* Mantiene la proporción */
     object-fit: contain !important; /* Hace que la imagen se ajuste sin recortar */
     object-position: center center !important; /* Centra la imagen */

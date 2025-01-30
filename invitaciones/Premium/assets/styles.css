@@ -411,7 +411,7 @@ section.footer {
     font-family: 'Montserrat', sans-serif !important;
     text-align: center;
     padding-top: 40px;
-    background-color:#a4bb8f;
+    background-color:#54592f;
     height: 250px;
     position: relative; /* Necesario para que funcione el z-index */
     z-index: 10; /* Se superpone a las imágenes de fondo */

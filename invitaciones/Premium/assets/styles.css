@@ -352,17 +352,21 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 
   /* Ajustar el tamaño del logo */
 .portada-contenido img {
-  
-  margin-top: 0px !important;
- 
+    margin-top: 0px !important;
+ }
+ Section.cuenta-regresiva{
+  margin-top: -50px;
 }
+
+
+ 
 }
 
 
 /* Ajustes para móviles en posición horizontal (landscape) */
 @media (max-width: 1024px) and (orientation: landscape) {
   .parallax-mirror img {
-    width: 60% !important;  /* Asegura que la imagen cubra todo el ancho */
+    width: 50% !important;  /* Asegura que la imagen cubra todo el ancho */
     height: auto !important;  /* Mantiene la proporción */
     object-fit: contain !important; /* Hace que la imagen se ajuste sin recortar */
     object-position: center center !important; /* Centra la imagen */
@@ -379,8 +383,6 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 }
 
 }
-
-
 
 
 
@@ -409,6 +411,8 @@ section.portada {
   align-items: center; /* Centrar verticalmente */
   overflow: hidden; /* Asegura que nada se salga de la sección */
   text-align: center; /* Asegura que el texto esté centrado */
+ 
+  z-index: -2;
 }
 
 .parallax-container {

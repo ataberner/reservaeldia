@@ -52,6 +52,13 @@ h4 {
 .btn-alt {
   color: var(--color-primario);
   background-color: white;
+  font-family: 'Montserrat', sans-serif;
+  border-radius: 30px;
+  padding: 10px 40px;
+  border: 1px solid var(--color-primario);
+  text-transform: uppercase;
+  transition: all 0.3s ease-in-out;
+  text-decoration: none;
 }
 
 .btn-alt:hover {
@@ -59,6 +66,7 @@ h4 {
   background-color: var(--color-primario);
   box-shadow: 0 0 5px white;
 }
+
 
 /* ==========================
  EFECTO PARALLAX
@@ -125,10 +133,10 @@ h4 {
 /* Flecha scroll */
 .scroll-down {
   cursor: pointer;
-  position: fixed;
-  bottom: 40px;
+  position: relative;
+  bottom: 80px;
   left: 50%;
-  transform: translateX(-50%) rotate(45deg);
+  transform: translateX(-80%) rotate(45deg);
   width: 30px;
   height: 30px;
   border-bottom: 4px solid black;
@@ -138,9 +146,7 @@ h4 {
   pointer-events: auto; /* Permite hacer clic */
 }
 
-* {
-  outline: 1px solid red !important;
-}
+
 div.portada-contenido {
   pointer-events: none !important; /* Evita que bloquee clics */
 }
@@ -180,7 +186,7 @@ div.portada-contenido {
   font-weight: 600;
   margin-right: 10px;
   margin-left: 10px;
-  margin-top: 0px;
+  margin-top: -22px;
 }
 
 /* ==========================
@@ -219,34 +225,134 @@ div.portada-contenido {
   width: 100%;
   padding: 10px;
   position: relative;
+  aspect-ratio: 1 / 1; 
+}
+.item-galeria a {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 
 .item-galeria img {
   width: 100%;
+  height: 100%;
   object-fit: cover;
   border-radius: 10px;
   transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+  position: relative;
+  z-index: 1; /* En estado normal, las imágenes están en la misma capa */
 }
+
 
 .item-galeria:hover img {
   transform: scale(1.1);
   box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
+  z-index: 9999 !important; /* Eleva la imagen al frente cuando está en hover */
 }
+
+/* ==========================
+DRESSCODE
+========================== */
+  
+section.dresscode{
+  z-index: 1;
+  display: flex;
+  position: relative;
+  text-align: center;
+  padding: 70px 0 70px;
+  background-color: var(--color-secundario);
+}
+
+section.dresscode h4 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: white;
+}
+
+section.dresscode p{
+  color: white;
+}
+
+section.dresscode img.icon{
+  width: 150px;
+}
+
 
 /* ==========================
  CONFIRMACIÓN DE ASISTENCIA
 ========================== */
 .confirmacion {
   text-align: center;
-  padding: 60px 0;
-  background-color: var(--color-primario);
-  color: var(--color-texto);
+  padding: 60px 0;  
 }
 
-.confirmacion h2 {
+.confirmacion h4 {
   margin-bottom: 20px;
 }
 
+
+/* ==========================
+ CANCIONES
+========================== */
+section.canciones {
+  text-align: center;
+  padding: 60px 0 100px;
+}
+.canciones .icon {
+  width: 150px;
+}
+
+/* ==========================
+  CBU
+ ========================== */
+  
+ section.cbu{
+  text-align: center;
+  padding: 40px 0 70px;
+  background-color:var(--color-primario);
+}
+section.cbu img.icon{
+  width: 150px;
+}
+section.cbu p{
+  color: white;
+}
+#hidden-cbu{
+  padding: 25px;
+  border-radius: 10px;
+}
+#hidden-cbu span.title{
+  font-family: 'Montserrat', sans-serif;
+  display: inline-block;
+  text-align: center;
+  width: 100%;
+  font-size: 25px;
+  color: var(--color-primario);
+}
+#hidden-cbu ul{
+  list-style: none;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+  margin-bottom: 15px;
+}
+#hidden-cbu ul li a{
+  color: var(--color-primario);
+  text-decoration: underline;
+}
+
+/* ==========================
+ GRACIAS
+========================== */  
+section.gracias{
+  text-align: center;
+  padding: 50px 0;
+  background-color:var(--color-secundario);
+}
+section.gracias p{
+  color: white;
+}
 /* ==========================
  FOOTER
 ========================== */
@@ -261,7 +367,8 @@ footer {
  EFECTOS DE ANIMACIÓN
 ========================== */
 .fade-in {
-  animation: fadeIn ease 4s;
+  opacity: 0; /* El elemento empieza invisible */
+  animation: fadeIn ease 4s forwards;
 }
 
 @keyframes fadeIn {
@@ -272,12 +379,25 @@ footer {
 .fadeInUp {
   opacity: 0;
   transform: translateY(50px);
-  transition: opacity 1s ease-out, transform 1s ease-out;
+  transition: opacity 1s ease-out, transform 2s ease-out;
+  position: relative; /* Asegura que el z-index funcione */
+  z-index: 1; /* Asegura que no cambie su orden */
 }
 
 .fadeInUp.active {
   opacity: 1;
   transform: translateY(0);
+}
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ==========================

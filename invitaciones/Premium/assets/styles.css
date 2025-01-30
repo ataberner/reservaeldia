@@ -355,7 +355,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     margin-top: 0px !important;
  }
  Section.cuenta-regresiva{
-  margin-top: -55px;
+  margin-top: -65px;
 }
 
 
@@ -380,6 +380,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
   width: 60% !important;  /* Reduce el tamaño del logo */
   margin-top: 10px !important;
   height: auto !important;
+  margin-top: -60px;
 }
 
 }

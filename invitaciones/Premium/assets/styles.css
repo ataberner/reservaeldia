@@ -383,7 +383,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
   }
 
   .portada-contenido {
-    margin-top: -40px;
+    margin-top: -80px;
     }
 }
 
@@ -444,7 +444,7 @@ section.portada {
 .portada-contenido img {
   
   height: auto;
-  margin-top: 60px;
+  margin-top: 40px;
   animation-duration: 3s; /* Hace que la animación sea más lenta */
 }
 

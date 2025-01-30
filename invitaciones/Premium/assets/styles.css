@@ -340,7 +340,7 @@ transform: translateY(0); /* Lo mueve a su posición normal */
 
 @media (max-width: 760px) {
   .parallax-mirror img {
-    width: 69% !important;  /* Aumenta el tamaño un 20% (simula zoom out) */
+    width: 60% !important;  /* Aumenta el tamaño un 20% (simula zoom out) */
     max-width: none !important;
     height: auto !important;
     object-fit: cover !important;
@@ -348,10 +348,10 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     transform: translateX(-48%) !important; /* Mueve la imagen a la izquierda para centrar mejor */
   }
 }
-@media (max-width: 1024px) and (orientation: landscape) {
+@media (max-width: 760px) and (orientation: landscape) {
   .parallax-mirror img {
-    width: 100% !important;  /* Expande la imagen un poco más en horizontal */
-    transform: translateX(-25%) !important; /* Asegura que no haya bordes blancos */
+    width: 40% !important;  /* Expande la imagen un poco más en horizontal */
+    transform: translateX(0%) !important; /* Asegura que no haya bordes blancos */
   }
 }
 

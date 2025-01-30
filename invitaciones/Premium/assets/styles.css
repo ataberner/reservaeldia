@@ -369,9 +369,9 @@ transform: translateY(0); /* Lo mueve a su posición normal */
     width: 100vw !important;  /* Asegura que la imagen cubra todo el ancho */
     height: 100vh !important;
     object-fit: cover !important; /* Hace que la imagen se ajuste sin recortar */
-    object-position: center bottom !important; /* Centra la imagen */
+    object-position: center center !important; /* Centra la imagen */
     transform: none !important; /* Elimina cualquier desplazamiento */
-   
+ 
   }
 /* Ajustar el tamaño del logo en landscape */
 .portada-contenido img {

@@ -121,6 +121,7 @@ h4 {
   animation-duration: 3s;
   max-width: none; /* Ajusta el tamaño de la imagen */
   z-index: 1;
+  transform: scale(1.25);
 }
 
 /* Flecha scroll */
@@ -408,7 +409,9 @@ footer {
     background-size: cover !important; /* Cambia el tamaño para mostrar toda la imagen */
     background-position: 80% center !important; /* Mueve la imagen más arriba */
   }
-
+  .portada-contenido img { /* Ajuste del logo */
+    transform: scale(1) !important;
+  }
 }
 
 /* 📱 Más ajustes para celulares muy pequeños */
@@ -416,6 +419,9 @@ footer {
   .parallax {
     background-size: cover !important;
     background-position: 85% !important;
+  }
+  .portada-contenido img { /* Ajuste del logo */
+    transform: scale(1) !important;
   }
 }
 
@@ -428,7 +434,7 @@ footer {
   .portada-contenido img { /* Ajuste del logo */
     width: 69% !important; /* Reduce el tamaño del logo en landscape */
     max-width: 669px !important; /* Límite máximo para que no sea muy grande */
-    margin-top: -10px !important; /* !!! Ajusta altura de la imagen */
+    margin-top: 0px !important; /* !!! Ajusta altura de la imagen */
   }
 }
 

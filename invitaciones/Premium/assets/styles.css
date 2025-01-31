@@ -1,33 +1,38 @@
-/* Generales */
-
+/* ==========================
+   VARIABLES GLOBALES
+========================== */
 :root {
   --color-primario: #dab485;
   --color-secundario: #54592f;
   --color-texto: #ffffff;
 }
 
-body{
+/* ==========================
+ ESTILOS GENERALES
+========================== */
+body {
   font-family: 'Montserrat', sans-serif;
   font-size: 17px;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
 }
 
-p{
+p, h4 {
   font-family: 'Montserrat', sans-serif;
-  font-weight: 300;
-  font-size: 17px;
 }
 
-
-h4
-{
-  font-family: 'Montserrat', sans-serif;
+h4 {
   letter-spacing: 3px;
   text-transform: uppercase;
   font-size: 25px;
   font-weight: 400;
 }
 
-.btn{
+/* ==========================
+ BOTONES
+========================== */
+.btn {
   font-family: 'Montserrat', sans-serif;
   color: white;
   background-color: var(--color-primario);
@@ -35,426 +40,111 @@ h4
   padding: 10px 40px;
   border: 1px solid var(--color-primario);
   text-transform: uppercase;
+  transition: all 0.3s ease-in-out;
 }
 
-.btn:hover{
-  color:var(--color-primario);
-  background-color: white;
-  border-color: #dab485; /* Agrega el contorno azul en hover/focus */
-  box-shadow: 0 0 5px #dab485; /* Agrega efecto similar al Bootstrap */
-}
-
-.btn-alt{
-  font-family: 'Montserrat', sans-serif;
+.btn:hover {
   color: var(--color-primario);
   background-color: white;
-  }
-
-.btn-alt:hover{
-  color: white;
-  background-color: var(--color-primario);
-  border: 1px solid white;
-  box-shadow: 0 0 5px #ffffff; /* Agrega efecto similar al Bootstrap */
+  box-shadow: 0 0 5px var(--color-primario);
 }
 
-.btn:focus{
-  box-shadow:none;
-}
-
-
-.fancybox-bg{
-  background-color: var(--color-primario) !important;
-}
-
-ul{
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-a:hover{
+.btn-alt {
+  color: var(--color-primario);
+  background-color: white;
+  font-family: 'Montserrat', sans-serif;
+  border-radius: 30px;
+  padding: 10px 40px;
+  border: 1px solid var(--color-primario);
+  text-transform: uppercase;
+  transition: all 0.3s ease-in-out;
   text-decoration: none;
 }
-
-/* Animacion fade in */
-.fade-in{
-  animation: fadeIn ease 4s;
-  -webkit-animation: fadeIn ease 4s;
-  -moz-animation: fadeIn ease 4s;
-  -o-animation: fadeIn ease 4s;
-  -ms-animation: fadeIn ease 4s;
+.btn-alt:hover {
+  color: white;
+  background-color: var(--color-primario);
+  box-shadow: 0 0 5px white;
 }
 
-.fade-in-portada{
-  animation: fadeIn ease 8s;
-  -webkit-animation: fadeIn ease 8s;
-  -moz-animation: fadeIn ease 8s;
-  -o-animation: fadeIn ease 8s;
-  -ms-animation: fadeIn ease 8s;
+/* ==========================
+ EFECTO PARALLAX
+========================== */
+/* Contenedor que mantiene el parallax en su posición */
+.parallax-container {
+  position: relative;
+  width: 100%;
+  height: 100vh; /* Mantiene el tamaño de la imagen */
+  overflow: hidden; /* Evita que se salga del área visible */
+  margin-bottom: 0;
+}
+/* Imagen de fondo con movimiento lento */
+.parallax {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh; /* Un poco más grande para que se vea el efecto */
+  background-image: url('../assets/img/portada.jpg');
+  background-size: cover;
+  background-position: center;
+  z-index: -1; /* Mantiene la imagen detrás del contenido */
+  margin-bottom: 0;
 }
 
-.fiesta{
-  opacity: 0;
+/* ==========================
+ PORTADA
+========================== */
+.portada {
+  position: absolute;
+  top: 50%; /* Centra verticalmente */
+  left: 50%;
+  transform: translate(-50%, -50%); /* Centra correctamente */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  text-align: center;
+  z-index: 10; /* Asegura que esté sobre la imagen de fondo */
 }
-
-.title-galery{
-  opacity: 0;
+/* Contenido dentro de la portada */
+.portada-contenido {
+  position: relative;
+  text-align: center;
+  color: var(--color-texto);
 }
-.regalo{
-  opacity: 0;
+.portada-contenido img {
+  height: auto;
+  margin-top: 1px;
+  animation-duration: 3s;
+  max-width: 100%; /* Ajusta el tamaño de la imagen */
+  z-index: 1;
 }
-.opacidad{
-  opacity: 0;
-}
-.iconCalendario {
-  opacity: 0;
-}
-.iconInstagram{
-  opacity: 0;
-}
-.iconMusic{
-  opacity: 0;
-}
-
-.divCanciones{
-  opacity: 0;
-}
-.divAlojamientos{
-  opacity: 0;
-}
-.divFiesta{
-  opacity: 0;
-}
-
-.divTitleAgenda{
-  opacity: 0;
-}
-.divAgenda{
-  opacity: 0;
-}
-.divCbu{
-  opacity: 0;
-}
-.divDressCode{
-  opacity: 0;
-}
-.divIntagram{ 
-  opacity: 0;
-}
-.divGracias{
-  opacity: 1;
-}
-
-
-@keyframes fadeIn{
-  0% {
-    opacity:0;
-  }
-  100% {
-    opacity:1;
-  }
-}
-
-@-moz-keyframes fadeIn {
-  0% {
-    opacity:0;
-  }
-  100% {
-    opacity:1;
-  }
-}
-
-@-webkit-keyframes fadeIn {
-  0% {
-    opacity:0;
-  }
-  100% {
-    opacity:1;
-  }
-}
-
-@-o-keyframes fadeIn {
-  0% {
-    opacity:0;
-  }
-  100% {
-    opacity:1;
-  }
-}
-
-@-ms-keyframes fadeIn {
-  0% {
-    opacity:0;
-  }
-  100% {
-    opacity:1;
-  }
-}
-
-
-
-/* Animacion fade in up */
-.fadeInUp {
-  opacity: 0; /* Inicialmente invisible */
-  transform: translateY(50px); /* Desplazado hacia abajo */
-  transition: opacity 1s ease-out, transform 1s ease-out; /* Suaviza la transición */
-}
-
-/* Clase activa que se agregará cuando el elemento esté en pantalla */
-.fadeInUp.active {
-opacity: 1; /* Hace visible el elemento */
-transform: translateY(0); /* Lo mueve a su posición normal */
-}
-
-
-
-@keyframes fadeInUp{
-  0% {
-    opacity:0;
-    transform: translateY(120px);
-  }
-  100% {
-    opacity:1;
-    transform: translateY(0px);
-  }
-}
-
-@-moz-keyframes fadeInUp {
-  0% {
-    opacity:0;
-    transform: translateY(120px);
-  }
-  100% {
-    opacity:1;
-    transform: translateY(0px);
-  }
-}
-
-@-webkit-keyframes fadeInUp {
-  0% {
-    opacity:0;
-    transform: translateY(120px);
-  }
-  100% {
-    opacity:1;
-    transform: translateY(0px);
-  }
-}
-
-@-o-keyframes fadeInUp {
-  0% {
-    opacity:0;
-    transform: translateY(120px);
-  }
-  100% {
-    opacity:1;
-    transform: translateY(0px);
-  }
-}
-
-@-ms-keyframes fadeInUp {
-  0% {
-    opacity:0;
-    transform: translateY(120px);
-  }
-  100% {
-    opacity:1;
-    transform: translateY(0px);
-  }
-}
-
-
-
-
-/* Flecha para scroll de portada */
+/* Flecha scroll */
 .scroll-down {
   cursor: pointer;
-    position: absolute;
-    bottom: 40px;
-    display: block;
-    text-align: center;
-    font-size: 20px;
-    z-index: 100;
-    text-decoration: none;
-    text-shadow: 0;
-    width: 30px;
-    height: 30px;
-    border-bottom: 4px solid #000;
-    border-right: 4px solid #000;
-    z-index: 9;
-    left: calc(50% - 15px);
-    -webkit-transform: translate(-50%, 0%) rotate(45deg);
-  -moz-transform: translate(-50%, 0%) rotate(45deg);
-  transform: translate(-50%, 0%) rotate(45deg);
-    -webkit-animation: fade_move_down 2s ease-in-out infinite;
-    -moz-animation:    fade_move_down 2s ease-in-out infinite;
-    animation:         fade_move_down 2s ease-in-out infinite;
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-80%) rotate(45deg);
+  width: 30px;
+  height: 30px;
+  border-bottom: 4px solid black;
+  border-right: 4px solid black;
+  animation: fade_move_down 2s ease-in-out infinite;
+  z-index: 99999 !important; /* Asegura que esté encima de otros elementos */
+  pointer-events: auto; /* Permite hacer clic */
+}
+div.portada-contenido {
+  pointer-events: none !important; /* Evita que bloquee clics */
 }
 
-
-/*animated scroll arrow animation*/
-@-webkit-keyframes fade_move_down {
-  0%   { -webkit-transform:translate(0,-10px) rotate(45deg); opacity: 0;  }
-  50%  { opacity: 1;  }
-  100% { -webkit-transform:translate(0,10px) rotate(45deg); opacity: 0; }
-}
-@-moz-keyframes fade_move_down {
-  0%   { -moz-transform:translate(0,-10px) rotate(45deg); opacity: 0;  }
-  50%  { opacity: 1;  }
-  100% { -moz-transform:translate(0,10px) rotate(45deg); opacity: 0; }
-}
+/* Animación flecha */
 @keyframes fade_move_down {
-  0%   { transform:translate(0,-10px) rotate(45deg); opacity: 0;  }
-  50%  { opacity: 1;  }
-  100% { transform:translate(0,10px) rotate(45deg); opacity: 0; }
+  0% { transform: translateY(0) rotate(45deg); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(10px) rotate(45deg); opacity: 0; }
 }
-
-
-
-/* ---------- */
-
-
-/* Portada */
-
-.parallax-mirror {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: -1; /* Mantiene las imágenes detrás del contenido */
-  pointer-events: none; /* Evita que interfieran con clics o scroll */
-}
-
-
-
-
-@media (max-width: 760px) {
-  .parallax-mirror img {
-    width: 60% !important;  /* Aumenta el tamaño un 20% (simula zoom out) */
-    max-width: none !important;
-    height: auto !important;
-    object-fit: cover !important;
-    object-position: right center !important; /* Enfoca más a la derecha */
-    transform: translateX(-48%) !important; /* Mueve la imagen a la izquierda para centrar mejor */
-    margin-top: 0px !important;
-  }
-
-
-  /* Ajustar el tamaño del logo */
-.portada-contenido img {
-    margin-top: 0px !important;
- }
- Section.cuenta-regresiva{
-  margin-top: -66px;
-}
-
-
- 
-}
-
-
-/* Ajustes para móviles en posición horizontal (landscape) */
-@media (max-width: 1024px) and (orientation: landscape) {
-  .parallax-mirror img {
-    width: 100vw !important;  /* Asegura que la imagen cubra todo el ancho */
-    height: 100vh !important;
-    object-fit: cover !important; /* Hace que la imagen se ajuste sin recortar */
-    object-position: center center !important; /* Centra la imagen */
-    transform: none !important; /* Elimina cualquier desplazamiento */
- 
-  }
-/* Ajustar el tamaño del logo en landscape */
-.portada-contenido img {
-  width: 60% !important;  /* Reduce el tamaño del logo */
-  margin-top: 10px !important;
-  height: auto !important;
-  }
-
-  .portada-contenido {
-    margin-top: -80px;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-section.confirmacion,
-section.footer {
-  background-color: #ffffff; /* Fondo sólido blanco */
-  position: relative; /* Necesario para que funcione el z-index */
-  z-index: 10; /* Se superpone a las imágenes de fondo */
-  padding: 60px 0; /* Espacio interno para agrandar la sección */
-
-
-}
-
-section.portada {
-  position: relative; /* Necesario para posicionar elementos dentro de esta sección */
-  height: 100vh; /* Altura completa de la pantalla */
-  display: flex; /* Para centrar el contenido */
-  justify-content: center; /* Centrar horizontalmente */
-  align-items: center; /* Centrar verticalmente */
-  overflow: hidden; /* Asegura que nada se salga de la sección */
-  text-align: center; /* Asegura que el texto esté centrado */
- 
-  z-index: -2;
-}
-
-.parallax-container {
-  position: relative; /* Asegura que los elementos hijos puedan posicionarse correctamente */
-  width: 100%;
-  height: 100%;
-}
-
-.parallax-slider {
-  position: absolute; /* Fija la imagen como fondo */
-  top: 0;
-  left: 0;
-  width: 100%; /* Ocupa todo el ancho */
-  height: 100%; /* Ocupa toda la altura */
-  object-fit: cover; /* Ajusta la imagen al contenedor sin deformarla */
-  z-index: 1; /* Mantiene la imagen detrás del contenido */
-}
-
-.portada-contenido {
-  position: relative; /* Superpone este contenedor sobre la imagen */
-  z-index: 10; /* Asegura que el contenido esté sobre la imagen de fondo */
-  text-align: center; /* Centra el texto dentro del contenedor */
-  color: white; /* Cambia el color del texto para que sea visible sobre el fondo */
-}
-
-.portada-contenido img {
-  
-  height: auto;
-  margin-top: 40px;
-  animation-duration: 3s; /* Hace que la animación sea más lenta */
-}
-
-
-
-section.audio {
-
-  margin-top: 20px;
-
-  margin-bottom: 20px;
-
-  position: fixed;
-
-}
-
-section.audio .columna {
-  text-align: center;
-}
-
-/* ---------- */
-
 
 /* ==========================
  CUENTA REGRESIVA
@@ -468,22 +158,16 @@ section.audio .columna {
   color: var(--color-texto);
   position: relative; /* Necesario para que funcione el z-index */
   z-index: 10; /* Se superpone a las imágenes de fondo */
+  margin-top: 0;
 }
-section.cuenta-regresiva{
-}
-
-
 .num_cuenta {
   font-size: 30px;
   font-weight: 600;
   margin: 0;
 }
-
-
 .text_cuenta {
   font-size: 15px;
 }
-
 .num_cuenta-separador {
   font-size: 30px;
   font-weight: 600;
@@ -491,8 +175,6 @@ section.cuenta-regresiva{
   margin-left: 10px;
   margin-top: -22px;
 }
-
-
 /* Texto que se muestra cuando la Cuenta Regresiva esta en 0 */
 #reloj {
   display: flex; /* Cambia la disposición de vertical a horizontal */
@@ -502,7 +184,6 @@ section.cuenta-regresiva{
   font-size: 25px; /* Mantén el tamaño de fuente */
   margin-bottom: 0;
 }
-
 
 /* ==========================
  CEREMONIA Y FIESTA
@@ -525,9 +206,6 @@ section.cuenta-regresiva{
 .ceremonia-fiesta p {
   margin-bottom: 25px;
 }
-
-
-
 
 /* ==========================
  GALERÍA
@@ -716,5 +394,43 @@ footer {
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+/* ==========================
+ RESPONSIVE DESIGN
+========================== */
+/* 📱 Ajustes para dispositivos pequeños */
+@media screen and (max-width: 768px) {
+  .parallax {
+    background-size: cover !important; /* Cambia el tamaño para mostrar toda la imagen */
+    background-position: 80% center !important; /* Mueve la imagen más arriba */
+  }
+}
+
+/* 📱 Más ajustes para celulares muy pequeños */
+@media screen and (max-width: 480px) {
+  .parallax {
+    background-size: cover !important;
+    background-position: 85% !important;
+  }
+}
+
+/* Ajustes generales en landscape */
+@media screen and (orientation: landscape) {
+  .parallax {
+    background-size: cover; 
+    /*background-position: 80% center;  Ajusta la imagen más a la derecha */
+  }
+  .portada-contenido img { /* Ajuste del logo */
+    width: 69% !important; /* Reduce el tamaño del logo en landscape */
+    max-width: 669px !important; /* Límite máximo para que no sea muy grande */
+  }
+}
+
+/* Ajustes en landscape para celulares pequeños */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+  .portada-contenido img {
+    width: 55% !important;; /* Reduce más el logo */
+    max-width: 600px !important;; /* Ajuste máximo */
   }
 }

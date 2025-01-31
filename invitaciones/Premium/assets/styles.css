@@ -2,8 +2,8 @@
    VARIABLES GLOBALES
 ========================== */
 :root {
-  --color-primario: #dab485;
-  --color-secundario: #54592f;
+  --color-primario: #E6A96B;
+  --color-secundario: #6B7B3E;
   --color-texto: #ffffff;
 }
 
@@ -115,10 +115,11 @@ h4 {
 }
 .portada-contenido img {
   height: auto;
-  margin-top: 1px;
+  margin-top: -50px;
   animation-duration: 3s;
-  max-width: 100%; /* Ajusta el tamaño de la imagen */
+  max-width: none; /* Ajusta el tamaño de la imagen */
   z-index: 1;
+  transform: scale(1.25)
 }
 /* Flecha scroll */
 .scroll-down {
@@ -355,7 +356,7 @@ section.gracias p{
 ========================== */
 footer {
   text-align: center;
-  padding: 20px;
+  padding: 10px;
   background-color: #666;
   color: white;
 }

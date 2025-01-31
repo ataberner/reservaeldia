@@ -122,9 +122,7 @@ h4 {
   max-width: none; /* Ajusta el tamaño de la imagen */
   z-index: 1;
 }
-* {
-  outline: solid 1px red !important;
-}
+
 /* Flecha scroll */
 .scroll-down {
   cursor: pointer;

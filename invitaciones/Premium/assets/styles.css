@@ -117,7 +117,7 @@ h4 {
 }
 .portada-contenido img {
   height: auto;
-  margin-top: -50px;
+  margin-top: -50px; /* !!! Ajusta altura de la imagen */
   animation-duration: 3s;
   max-width: none; /* Ajusta el tamaño de la imagen */
   z-index: 1;
@@ -428,6 +428,7 @@ footer {
   .portada-contenido img { /* Ajuste del logo */
     width: 69% !important; /* Reduce el tamaño del logo en landscape */
     max-width: 669px !important; /* Límite máximo para que no sea muy grande */
+    margin-top: -10px !important; /* !!! Ajusta altura de la imagen */
   }
 }
 

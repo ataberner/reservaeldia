@@ -103,6 +103,8 @@ h4 {
   justify-content: center;
   align-items: center;
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   height: auto;
   text-align: center;
   z-index: 10; /* Asegura que esté sobre la imagen de fondo */
@@ -119,7 +121,9 @@ h4 {
   animation-duration: 3s;
   max-width: none; /* Ajusta el tamaño de la imagen */
   z-index: 1;
-  transform: scale(1.25)
+}
+* {
+  outline: solid 1px red !important;
 }
 /* Flecha scroll */
 .scroll-down {
@@ -406,6 +410,7 @@ footer {
     background-size: cover !important; /* Cambia el tamaño para mostrar toda la imagen */
     background-position: 80% center !important; /* Mueve la imagen más arriba */
   }
+
 }
 
 /* 📱 Más ajustes para celulares muy pequeños */

@@ -406,7 +406,7 @@ footer {
 ========================== */
 @media (max-width: 760px) {
   .portada-contenido img {
-      max-width: 85%;
+      max-width: 100vw;
       margin-bottom: 0;
   }
 

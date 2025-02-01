@@ -12,6 +12,7 @@ html, body {
   overflow-x: hidden;
   font-family: 'Montserrat', sans-serif;
   text-align: center;
+  scroll-behavior: smooth;
 }
 
 /* Barra de navegación */
@@ -36,7 +37,7 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: url('../img/portada1.webp') no-repeat center center/cover;
+  background: url('../img/portada2.jpg') no-repeat center center/cover;
   color: white;
 }
 
@@ -110,34 +111,139 @@ html, body {
 
 
 
-/* Galería */
-.gallery {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 20px;
-  padding: 20px;
+/* Sección Cómo Funciona */
+.how-it-works {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+  border-radius: 10px;
 }
 
-.gallery-item {
-  width: calc(50% - 20px);
-  min-width: 200px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.gallery-item img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.gallery-item p {
-  margin: 10px 0;
-  font-size: 1.1em;
+.how-it-works h2 {
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 40px;
   font-weight: bold;
 }
+
+.steps-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+}
+
+.step {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 250px;
+  transition: transform 0.3s ease-in-out;
+}
+
+.step:hover {
+  transform: translateY(-5px);
+}
+
+.icon {
+  font-size: 40px;
+  margin-bottom: 15px;
+}
+
+.step h3 {
+  font-size: 1.4rem;
+  color: #444;
+  margin-bottom: 10px;
+}
+
+.step p {
+  font-size: 1rem;
+  color: #666;
+}
+
+
+
+
+
+
+
+
+
+
+/* Sección de Testimonios */
+.testimonials {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+  border-radius: 10px;
+}
+
+.testimonials h2 {
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 40px;
+  font-weight: bold;
+}
+
+/* Contenedor de Testimonios */
+.testimonials-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+}
+
+/* Tarjeta de Testimonio */
+.testimonial {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 300px;
+  transition: transform 0.3s ease-in-out;
+  text-align: left;
+}
+
+.testimonial:hover {
+  transform: scale(1.05);
+}
+
+.testimonial-content p {
+  font-size: 1rem;
+  color: #666;
+  font-style: italic;
+}
+
+/* Información del Cliente */
+.client-info {
+  display: flex;
+  align-items: center;
+  margin-top: 15px;
+}
+
+.client-info img {
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  margin-right: 15px;
+}
+
+.client-text h4 {
+  font-size: 1.2rem;
+  color: #444;
+  margin: 0;
+}
+
+.client-text span {
+  font-size: 0.9rem;
+  color: #777;
+}
+
+
+
+
+
 
 /* Footer */
 footer {

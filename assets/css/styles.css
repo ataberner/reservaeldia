@@ -11,6 +11,7 @@ html, body {
   height: 100%;
   overflow-x: hidden;
   font-family: 'Montserrat', sans-serif;
+  text-align: center;
 }
 
 /* Barra de navegación */
@@ -35,12 +36,10 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: center;
-  text-align: center;
   background: url('../img/portada1.webp') no-repeat center center/cover;
   color: white;
 }
 
-/* Oscurecer un poco la imagen de fondo para mejorar la legibilidad del texto */
 .hero::before {
   content: "";
   position: absolute;
@@ -51,7 +50,6 @@ html, body {
   background: rgba(0, 0, 0, 0.4);
 }
 
-/* Contenido dentro de Hero */
 .hero-content {
   position: relative;
   z-index: 2;
@@ -69,78 +67,50 @@ html, body {
   margin-bottom: 20px;
 }
 
+.hero img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Botón principal */
 .btn-primary {
   font-family: 'Montserrat', sans-serif;
   color: white;
   background-color: transparent;
-  border: 2px solid white; /* Borde blanco */
+  border: 2px solid white;
   border-radius: 30px;
   padding: 10px 40px;
   font-size: 1.2rem;
   font-weight: 600;
   text-transform: uppercase;
   transition: all 0.3s ease-in-out;
-  
 }
 
 .btn-primary:hover {
   background-color: white;
-  color: #000; /* Puedes cambiarlo a un color más acorde a tu diseño */
+  color: #000;
   border-color: white;
-  box-shadow: 0 0 5px white; /* Agrega efecto similar al Bootstrap */
+  box-shadow: 0 0 5px white;
 }
 
-/* Evitar fondo azul al hacer clic */
 .btn-primary:focus, 
 .btn-primary:active {
-    background-color: transparent !important;
-    color: white !important;
-    border-color: white !important;
-    box-shadow: none !important;
-    outline: none !important;
-}
-
-/* Ajuste de imagen */
-.hero img {
-  max-width: 100%;
-  height: auto;
-}
-
-/* Footer */
-footer {
-  background: #f8f9fa;
-  padding: 20px;
-  text-align: center;
-  font-size: 1rem;
-  color: #333;
-}
-
-/* Responsividad */
-@media (max-width: 768px) {
-  .hero-content h1 {
-      font-size: 2rem;
-  }
-
-  .hero-content p {
-      font-size: 1rem;
-  }
-
-  .btn-primary {
-      font-size: 1rem;
-      padding: 8px 16px;
-  }
+  background-color: transparent !important;
+  color: white !important;
+  border-color: white !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 
-/* Estilos galeria paginas */
-body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 0;
-  text-align: center;
+.py-4 h2{
+  margin: 20px 0px 50px 0px;
 }
 
+
+
+
+/* Galería */
 .gallery {
   display: flex;
   justify-content: center;
@@ -150,12 +120,11 @@ body {
 }
 
 .gallery-item {
-  width: calc(25% - 20px); /* 4 imágenes por fila con margen */
+  width: calc(50% - 20px);
   min-width: 200px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   border-radius: 8px;
   overflow: hidden;
-  text-align: center;
 }
 
 .gallery-item img {
@@ -170,22 +139,39 @@ body {
   font-weight: bold;
 }
 
-/* Responsivo */
-@media (max-width: 800px) {
-  .gallery-item {
-      width: calc(50% - 20px); /* 2 imágenes por fila */
+/* Footer */
+footer {
+  background: #f8f9fa;
+  padding: 20px;
+  font-size: 1rem;
+  color: #333;
+}
+
+/* Iconos */
+.icon-img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+}
+
+/* Responsividad */
+@media (max-width: 768px) {
+  .hero-content h1 {
+    font-size: 2rem;
+  }
+  
+  .hero-content p {
+    font-size: 1rem;
+  }
+  
+  .btn-primary {
+    font-size: 1rem;
+    padding: 8px 16px;
   }
 }
 
 @media (max-width: 500px) {
   .gallery-item {
-      width: 100%; /* 1 imagen por fila */
+    width: 100%;
   }
-}
-
-
-.icon-img {
-  width: 60px;  /* Ancho fijo */
-  height: 60px; /* Alto fijo */
-  object-fit: contain; /* Ajusta la imagen sin deformarla */
 }

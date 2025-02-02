@@ -15,6 +15,24 @@ html, body {
   scroll-behavior: smooth;
 }
 
+
+/***********************
+ Variables de Colores
+ ***********************/
+ :root {
+  --primary-color: #d7b8e8; /* Morado pastel claro */
+  --secondary-color: #503d84; /* Morado profundo */
+  --background-light: #f8f9fa; /* Fondo claro */
+  --background-gradient: linear-gradient(to bottom, rgba(215, 184, 232, 0.5), rgba(255, 255, 255, 1)); /* Gradiente */
+  --text-light: #ffffff; /* Texto claro */
+  --text-dark: #333333; /* Texto oscuro */
+  --border-light: rgba(215, 184, 232, 0.6); /* Borde pastel claro */
+  --box-shadow: rgba(0, 0, 0, 0.1); /* Sombra leve */
+  --box-shadow-hover: rgba(0, 0, 0, 0.2); /* Sombra al hacer hover */
+}
+
+
+
 /* Barra de navegación */
 .navbar {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -37,7 +55,7 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: url('../img/portada2.jpg') no-repeat center center/cover;
+  background: url('../img/portada1.jpg') no-repeat center center/cover;
   color: white;
 }
 
@@ -111,18 +129,85 @@ html, body {
 
 
 /***********************
- Sección Funcionalidades
+ Sección Galería Ajustada
  ***********************/
-.funcionalidades {
+ #invitaciones {
   text-align: center;
   padding: 60px 20px;
-  background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+  background: var(--background-light); /* Fondo claro */
+  width: 100vw; /* Asegura que cubra todo el ancho */
+}
+
+#invitaciones h2 {
+  font-size: 2.5rem;
+  color: var(--secondary-color); /* Morado profundo */
+  margin-bottom: 40px;
+  font-weight: bold;
+}
+
+/* Contenedor de imágenes */
+#invitaciones .row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center; /* Centra las tarjetas */
+  max-width: 1200px; /* Evita que se expanda demasiado */
+  width: 100%;
+  margin: 0 auto; /* Centra el contenido */
+  gap: 20px;
+}
+
+/* Tarjetas de la galería */
+#invitaciones .col-12 {
+  background: var(--text-light); /* Fondo blanco */
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px var(--box-shadow); /* Sombra leve */
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+  width: 250px; /* Tamaño uniforme */
+}
+
+#invitaciones .col-12:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px var(--box-shadow-hover); /* Sombra al hover */
+  border: 2px solid var(--primary-color); /* Resalta con morado pastel */
+}
+
+/* Imágenes dentro de las tarjetas */
+#invitaciones img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  transition: transform 0.3s ease-in-out;
+}
+
+#invitaciones .col-12:hover img {
+  transform: scale(1.05); /* Zoom suave al hover */
+}
+
+/* Títulos debajo de las imágenes */
+#invitaciones p {
+  font-size: 1.2rem;
+  color: var(--secondary-color); /* Morado profundo */
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+
+
+/***********************
+ Sección Funcionalidades
+ ***********************/
+ .funcionalidades {
+  text-align: center;
+  padding: 60px 20px;
+  background: var(--background-gradient);
   border-radius: 10px;
 }
 
 .funcionalidades h2 {
   font-size: 2.5rem;
-  color: #333;
+  color: var(--secondary-color);
   margin-bottom: 40px;
   font-weight: bold;
 }
@@ -137,57 +222,58 @@ html, body {
 
 /* Estilos de cada funcionalidad */
 .funcionalidad {
-  background: white;
+  background: var(--text-light);
   padding: 20px;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px var(--box-shadow);
   width: 220px;
   text-align: center;
   transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-  border: 2px solid #ddd;
+  border: 2px solid var(--border-light);
 }
 
 .funcionalidad:hover {
   transform: translateY(-5px);
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
-  border-color: #27ae60;
+  box-shadow: 0 8px 20px var(--box-shadow-hover);
+  border-color: var(--secondary-color);
 }
 
 /* Estilos de Icono */
 .funcionalidad img {
   width: 50px;
   margin-bottom: 10px;
+  filter: drop-shadow(0 2px 4px var(--box-shadow-hover));
 }
 
 /* Títulos y Texto */
 .funcionalidad h5 {
-  font-size: 1.2rem;
-  color: #444;
-  margin-bottom: 5px;
+  font-size: 1.4rem;
+  color: var(--secondary-color);
+  margin-bottom: 10px;
+  font-weight: bold;
 }
 
 .funcionalidad p {
-  font-size: 0.9rem;
-  color: #666;
+  font-size: 1rem;
+  color: var(--text-dark);
   margin: 0;
+  line-height: 1.4;
 }
-
-
 
 
 /***********************
  Sección Cómo Funciona
  ***********************/
-.how-it-works {
+ .how-it-works {
   text-align: center;
   padding: 60px 20px;
-  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
-  border-radius: 10px;
+  background: var(--secondary-color); /* Fondo morado oscuro */
+  color: var(--text-light); /* Texto claro */
 }
 
 .how-it-works h2 {
   font-size: 2.5rem;
-  color: #333;
+  color: var(--primary-color); /* Morado pastel */
   margin-bottom: 40px;
   font-weight: bold;
 }
@@ -200,54 +286,63 @@ html, body {
 }
 
 .step {
-  background: white;
+  background: var(--text-light); /* Fondo blanco */
   padding: 20px;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); /* Sombra más intensa */
   width: 250px;
-  transition: transform 0.3s ease-in-out;
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
 }
 
 .step:hover {
   transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3); /* Sombra más fuerte */
 }
 
+/* Iconos dentro de los pasos */
 .icon {
   font-size: 40px;
   margin-bottom: 15px;
+  color: var(--secondary-color); /* Morado profundo */
+  background: var(--primary-color); /* Morado pastel */
+  width: 60px;
+  height: 60px;
+  line-height: 60px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 2px 4px rgba(255, 255, 255, 0.3);
 }
 
 .step h3 {
   font-size: 1.4rem;
-  color: #444;
+  color: var(--secondary-color); /* Morado oscuro */
   margin-bottom: 10px;
+  font-weight: bold;
 }
 
 .step p {
   font-size: 1rem;
-  color: #666;
+  color: var(--text-dark); /* Texto oscuro */
+  line-height: 1.5;
 }
 
 
 
 
-
-
-
-
-
-
-/* Sección de Testimonios */
-.testimonials {
+/************************
+ Sección de Testimonios
+ ************************/
+ .testimonials {
   text-align: center;
   padding: 60px 20px;
-  background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+  background: var(--background-gradient); /* Gradiente suave */
   border-radius: 10px;
 }
 
 .testimonials h2 {
   font-size: 2.5rem;
-  color: #333;
+  color: var(--secondary-color); /* Morado profundo */
   margin-bottom: 40px;
   font-weight: bold;
 }
@@ -257,74 +352,92 @@ html, body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 20px;
+  gap: 30px;
 }
 
 /* Tarjeta de Testimonio */
 .testimonial {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  width: 300px;
-  transition: transform 0.3s ease-in-out;
+  background: var(--text-light); /* Fondo blanco */
+  padding: 25px;
+  border-radius: 15px;
+  box-shadow: 0 4px 15px var(--box-shadow); /* Sombra suave */
+  width: 320px;
   text-align: left;
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
 }
 
 .testimonial:hover {
-  transform: scale(1.05);
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px var(--box-shadow-hover); /* Sombra al hover */
+  border: 2px solid var(--primary-color); /* Resalta con morado pastel */
 }
 
+/* Contenido del Testimonio */
 .testimonial-content p {
   font-size: 1rem;
-  color: #666;
+  color: var(--text-dark); /* Texto oscuro */
   font-style: italic;
+  line-height: 1.5;
 }
 
 /* Información del Cliente */
 .client-info {
   display: flex;
   align-items: center;
-  margin-top: 15px;
+  margin-top: 20px;
 }
 
 .client-info img {
   border-radius: 50%;
-  width: 60px;
-  height: 60px;
+  width: 70px;
+  height: 70px;
   margin-right: 15px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* Sombra para destacar */
 }
 
 .client-text h4 {
-  font-size: 1.2rem;
-  color: #444;
+  font-size: 1.3rem;
+  color: var(--secondary-color); /* Morado profundo */
   margin: 0;
+  font-weight: bold;
 }
 
 .client-text span {
   font-size: 0.9rem;
-  color: #777;
+  color: var(--text-dark); /* Texto oscuro */
 }
 
+/* Animación de Aparición */
+.testimonial {
+  opacity: 0;
+  transform: translateY(30px);
+  animation: fadeIn 0.5s ease-in-out forwards;
+}
 
-
+/* Keyframes para animación */
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 
 /*********************
  Sección de Precios
- ********************/
+ *********************/
 
 /* Sección de Precios */
 .pricing {
   text-align: center;
   padding: 60px 20px;
-  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+  background: var(--background-light); /* Fondo claro */
   border-radius: 10px;
 }
 
 .pricing h2 {
   font-size: 2.5rem;
-  color: #333;
+  color: var(--secondary-color); /* Morado profundo */
   margin-bottom: 40px;
   font-weight: bold;
 }
@@ -339,30 +452,32 @@ html, body {
 
 /* Tarjetas de Planes */
 .pricing-card {
-  background: white;
+  background: var(--text-light); /* Fondo blanco */
   padding: 30px;
   border-radius: 15px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px var(--box-shadow); /* Sombra leve */
   width: 350px;
   text-align: center;
-  transition: transform 0.3s ease-in-out;
-  border: 2px solid #ddd;
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+  border: 2px solid var(--border-light); /* Borde suave */
 }
 
 .pricing-card:hover {
-  transform: scale(1.05);
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px var(--box-shadow-hover); /* Sombra al hover */
+  border-color: var(--secondary-color); /* Resalta con morado oscuro */
 }
 
 .pricing-card h3 {
   font-size: 1.8rem;
-  color: #444;
+  color: var(--secondary-color); /* Morado profundo */
   margin-bottom: 15px;
 }
 
 .price {
-  font-size: 2rem;
+  font-size: 2.2rem;
   font-weight: bold;
-  color: #27ae60;
+  color: var(--primary-color); /* Morado pastel */
   margin-bottom: 20px;
 }
 
@@ -375,8 +490,9 @@ html, body {
 
 .pricing-card ul li {
   font-size: 1rem;
-  color: #666;
+  color: var(--text-dark); /* Texto oscuro */
   padding: 8px 0;
+  position: relative;
 }
 
 /* Elementos que no están incluidos */
@@ -388,34 +504,35 @@ html, body {
 /* Destacar Beneficios Exclusivos del Plan Premium */
 .highlight {
   font-weight: bold;
-  color: #ff9800;
+  color: var(--secondary-color); /* Morado profundo */
   font-size: 1.1rem;
 }
 
 /* Plan Premium con estilo diferenciado */
 .premium {
-  border: 2px solid #ff9800;
-  background: linear-gradient(to bottom, #fff7e6, #ffffff);
+  border: 2px solid var(--primary-color); /* Morado pastel */
+  background: linear-gradient(to bottom, rgba(215, 184, 232, 0.3), var(--text-light)); /* Gradiente */
 }
 
 .premium .price {
-  color: #ff9800;
+  color: var(--secondary-color); /* Morado profundo */
 }
 
 /* Botón de Selección */
 .pricing-card button {
-  background: #27ae60;
-  color: white;
+  background: var(--secondary-color); /* Morado profundo */
+  color: var(--text-light); /* Blanco */
   border: none;
   padding: 12px 20px;
   font-size: 1rem;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: background 0.3s, transform 0.3s;
 }
 
 .pricing-card button:hover {
-  background: #219150;
+  background: var(--primary-color); /* Morado pastel */
+  transform: scale(1.05);
 }
 
 
@@ -424,14 +541,87 @@ html, body {
 
 
 /*********************
-  Footer
+  Footer Mejorado
  *********************/
-footer {
-  background: #f8f9fa;
-  padding: 20px;
+ footer {
+  background: var(--secondary-color); /* Morado profundo */
+  padding: 40px 20px;
   font-size: 1rem;
-  color: #333;
+  color: var(--text-light); /* Texto blanco */
+  text-align: center;
 }
+
+footer p {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* Contenedor de enlaces en el footer */
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+/* Enlaces en el footer */
+.footer-links a {
+  color: var(--primary-color); /* Morado pastel */
+  text-decoration: none;
+  font-size: 1rem;
+  transition: color 0.3s ease-in-out;
+}
+
+.footer-links a:hover {
+  color: var(--text-light); /* Blanco */
+}
+
+/* Redes Sociales */
+.footer-social {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+/* Iconos de redes sociales */
+.footer-social a {
+  color: var(--primary-color); /* Morado pastel */
+  font-size: 1.5rem;
+  transition: color 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.footer-social a:hover {
+  color: var(--text-light); /* Blanco */
+  transform: scale(1.1);
+}
+
+/* Línea divisoria superior */
+.footer-divider {
+  width: 80%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 20px auto;
+}
+
+/* Responsividad */
+@media (max-width: 768px) {
+  .footer-links {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .footer-social {
+    gap: 10px;
+  }
+}
+
+
+
+
+
+
 
 /* Iconos */
 .icon-img {
@@ -461,3 +651,5 @@ footer {
     width: 100%;
   }
 }
+
+

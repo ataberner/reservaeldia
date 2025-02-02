@@ -110,8 +110,74 @@ html, body {
 
 
 
+/***********************
+ Sección Funcionalidades
+ ***********************/
+.funcionalidades {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+  border-radius: 10px;
+}
 
-/* Sección Cómo Funciona */
+.funcionalidades h2 {
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 40px;
+  font-weight: bold;
+}
+
+/* Diseño de Grid para funcionalidades */
+.funcionalidades-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  justify-items: center;
+}
+
+/* Estilos de cada funcionalidad */
+.funcionalidad {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 220px;
+  text-align: center;
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+  border: 2px solid #ddd;
+}
+
+.funcionalidad:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+  border-color: #27ae60;
+}
+
+/* Estilos de Icono */
+.funcionalidad img {
+  width: 50px;
+  margin-bottom: 10px;
+}
+
+/* Títulos y Texto */
+.funcionalidad h5 {
+  font-size: 1.2rem;
+  color: #444;
+  margin-bottom: 5px;
+}
+
+.funcionalidad p {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0;
+}
+
+
+
+
+/***********************
+ Sección Cómo Funciona
+ ***********************/
 .how-it-works {
   text-align: center;
   padding: 60px 20px;

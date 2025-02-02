@@ -244,8 +244,122 @@ html, body {
 
 
 
+/*********************
+ Sección de Precios
+ ********************/
 
-/* Footer */
+/* Sección de Precios */
+.pricing {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+  border-radius: 10px;
+}
+
+.pricing h2 {
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 40px;
+  font-weight: bold;
+}
+
+/* Contenedor de Precios */
+.pricing-container {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+/* Tarjetas de Planes */
+.pricing-card {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  width: 350px;
+  text-align: center;
+  transition: transform 0.3s ease-in-out;
+  border: 2px solid #ddd;
+}
+
+.pricing-card:hover {
+  transform: scale(1.05);
+}
+
+.pricing-card h3 {
+  font-size: 1.8rem;
+  color: #444;
+  margin-bottom: 15px;
+}
+
+.price {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #27ae60;
+  margin-bottom: 20px;
+}
+
+/* Lista de Beneficios */
+.pricing-card ul {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.pricing-card ul li {
+  font-size: 1rem;
+  color: #666;
+  padding: 8px 0;
+}
+
+/* Elementos que no están incluidos */
+.not-included {
+  color: #ccc;
+  text-decoration: line-through;
+}
+
+/* Destacar Beneficios Exclusivos del Plan Premium */
+.highlight {
+  font-weight: bold;
+  color: #ff9800;
+  font-size: 1.1rem;
+}
+
+/* Plan Premium con estilo diferenciado */
+.premium {
+  border: 2px solid #ff9800;
+  background: linear-gradient(to bottom, #fff7e6, #ffffff);
+}
+
+.premium .price {
+  color: #ff9800;
+}
+
+/* Botón de Selección */
+.pricing-card button {
+  background: #27ae60;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  font-size: 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.pricing-card button:hover {
+  background: #219150;
+}
+
+
+
+
+
+
+/*********************
+  Footer
+ *********************/
 footer {
   background: #f8f9fa;
   padding: 20px;

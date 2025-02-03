@@ -184,7 +184,7 @@ h4 {
 
 .portada-contenido img {
   height: auto;
-  margin-top: 1px;
+  margin-top: 50px;
   animation-duration: 3s;
   max-width: 100%; /* Ajusta el tamaño de la imagen */
   z-index: 1;

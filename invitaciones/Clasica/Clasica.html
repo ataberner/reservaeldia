@@ -17,19 +17,43 @@
 
     <!-- Fancybox CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/fancybox/3.5.7/jquery.fancybox.min.css" />
+  
 
     <!-- Estilos personalizados -->
     <link rel="stylesheet" href="assets/css/styles.css">
 </head>
+
+
 <body>
+<!-- Sección de Audio -->
+<section class="audio">
+    <div class="container">
+        <div class="botonAudio-container">
+            <!-- Reproductor de Audio -->
+            <audio id="audioPlayer" loop>
+                <source src="assets/musica.mp3" type="audio/mp3">
+                ¡Ups! Tu navegador no soporta este archivo de audio.
+            </audio>
+
+            <!-- Botón de Play -->
+            <img id="btnPlay" src="assets/img/icono-play-blanco.png" alt="botón play"
+                onclick="playAudio()" class="botonAudio vertical_shake">
+
+            <!-- Botón de Pausa (oculto por defecto) -->
+            <img id="btnPause" src="assets/img/icono-pausa-blanco.png" alt="botón pausa"
+                onclick="pauseAudio()" class="botonAudio pulse hidden">
+        </div>
+    </div>
+</section>
+
 
     <!-- Fondo con efecto parallax -->
-    <div class="parallax-container"></div>
+    <div class="parallax-container">
         <div class="parallax"></div>
     </div>
         <section class="portada">
             <div class="portada-contenido">
-                <img src="assets/img/logo-portada2.png" alt="Logo de la invitación" class="animate__animated animate__fadeIn">
+                <img src="assets/img/logo-portada.png" alt="Logo de la invitación" class="animate__animated animate__fadeIn">
                 
             </div>
         </section>
@@ -71,7 +95,7 @@
             <img src="assets/img/icono-anillos.svg" alt="Anillos" class="icon fade-in">
             <div class="fadeInUp">
                 <h4>Nuestra boda</h4>
-                <p>28 de Marzo de 2025 a las 16:00 hs en Friendly.<br>¡Te esperamos!</p>
+                <p>15 de julio de 2025 a las 20:00 hs en Friendly.<br>¡Te esperamos!</p>
                 <a target="_blank" href="https://maps.app.goo.gl/ozdDp8R4sAkW6Hmx8" class="btn">CÓMO LLEGAR</a>
             </div>
         </div>
@@ -99,28 +123,28 @@
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/03.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/03.jpg" alt="Imagen 2">
+                            <img class="img-fluid" src="galeria/03.jpg" alt="Imagen 3">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/04.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/04.jpg" alt="Imagen 2">
+                            <img class="img-fluid" src="galeria/04.jpg" alt="Imagen 4">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/05.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/05.jpg" alt="Imagen 2">
+                            <img class="img-fluid" src="galeria/05.jpg" alt="Imagen 5">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/06.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/06.jpg" alt="Imagen 2">
+                            <img class="img-fluid" src="galeria/06.jpg" alt="Imagen 6">
                         </a>
                     </div>
                 </div>
@@ -146,8 +170,8 @@
         <div class="container">
             <div class="fadeInUp">
                 <h4>Confirma tu Asistencia</h2>
-                <p>Por favor, confirma antes del 30 de febrero de 2025.</p>
-                <a href="https://wa.me/1153119126" class="btn">Confirmar por WhatsApp</a>
+                <p>Por favor, confirma antes del 15 de mayo de 2025.</p>
+                <a href="https://forms.gle/Z49j4g3aNJmvfXyh7" class="btn">Confirmar por WhatsApp</a>
             </div>
         </div>
     </section>
@@ -181,7 +205,7 @@
                 <ul>
                     <li>Caja de Ahorro $ 1111111111111111111</li>
                     <li>CBU: 1111111111111111111</li>
-                    <li>Alias: EUGE.Y.AGUS</li>
+                    <li>Alias: JULI.Y.SANTI</li>
                 </ul> 
             </div>
         </div>
@@ -198,7 +222,7 @@
 
     <!-- Footer -->
     <footer class="text-center py-4">
-        <p>&copy; 2025 - <a href="../../index.html">Reserva el día</a> - Nuestra Boda</p>
+        <p>&copy; 2025 - <a href="/index.html">Reserva el día</a> - Nuestra Boda</p>
     </footer>
 
 
@@ -227,22 +251,24 @@
         }, 500); // Espera 500ms para asegurarse de que el elemento está disponible
 
         // ⏳ Cuenta regresiva
-        const fechaEvento = new Date(2025, 2, 28, 16, 0, 0).getTime();
+        const fechaEvento = new Date(2025, 7, 15, 20, 0, 0).getTime();
         function actualizarCuentaRegresiva() {
-            const ahora = new Date().getTime();
-            const tiempoRestante = fechaEvento - ahora;
+    const ahora = new Date().getTime();
+    const tiempoRestante = fechaEvento - ahora;
 
-            if (tiempoRestante < 0) {
-                document.getElementById("mensaje-reloj").innerHTML = "<p>¡El evento ya comenzó!</p>";
-                return;
-            }
+    if (tiempoRestante < 0) {
+        document.getElementById("mensaje-reloj").innerHTML = "<p>¡El evento ya comenzó!</p>";
+        clearInterval(intervaloCuentaRegresiva);
+        return;
+    }
+    // Actualiza los valores en pantalla
+    document.getElementById("dias").textContent = Math.floor(tiempoRestante / (1000 * 60 * 60 * 24));
+    document.getElementById("horas").textContent = Math.floor((tiempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    document.getElementById("min").textContent = Math.floor((tiempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+    document.getElementById("seg").textContent = Math.floor((tiempoRestante % (1000 * 60)) / 1000);
+}
 
-            document.getElementById("dias").textContent = Math.floor(tiempoRestante / (1000 * 60 * 60 * 24));
-            document.getElementById("horas").textContent = Math.floor((tiempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            document.getElementById("min").textContent = Math.floor((tiempoRestante % (1000 * 60 * 60)) / (1000 * 60));
-            document.getElementById("seg").textContent = Math.floor((tiempoRestante % (1000 * 60)) / 1000);
-        }
-        setInterval(actualizarCuentaRegresiva, 1000);
+const intervaloCuentaRegresiva = setInterval(actualizarCuentaRegresiva, 1000);
 
         // 🔥 Animación "fadeInUp" cuando los elementos son visibles en pantalla
         var observer = new IntersectionObserver(function(entries) {
@@ -266,17 +292,30 @@
    
     // 🖼️ Parallax
     document.addEventListener("DOMContentLoaded", function () {
-    window.addEventListener("scroll", function () {
-        let scrollPos = window.scrollY; // Detecta cuánto ha scrolleado el usuario
-        let parallax = document.querySelector(".parallax"); 
+    let parallax = document.querySelector(".parallax");
+    let ticking = false; // Controla si una actualización ya está en cola
 
+    function updateParallax() {
+        let scrollPos = window.scrollY;
         if (parallax) {
-            parallax.style.transform = `translateY(${scrollPos * 0.3}px)`; 
+            parallax.style.transform = `translateY(${scrollPos * 0.3}px)`;
+        }
+        ticking = false; // Permite que el próximo scroll active otra animación
+    }
+
+    window.addEventListener("scroll", function () {
+        if (!ticking) { // Solo se activa si no hay una actualización en curso
+            ticking = true;
+            requestAnimationFrame(updateParallax);
         }
     });
 });
 
+
 </script>
+
+<!-- Tu JavaScript para controlar la música -->
+<script src="script.js" defer></script>
 
 </body>
 </html>

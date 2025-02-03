@@ -12,7 +12,7 @@
 ========================== */
 body {
   font-family: 'Montserrat', sans-serif;
-  font-size: 17px;
+  font-size: 1.3rem;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
@@ -25,7 +25,7 @@ p, h4 {
 h4 {
   letter-spacing: 3px;
   text-transform: uppercase;
-  font-size: 25px;
+  font-size: 2rem;
   font-weight: 400;
 }
 
@@ -66,6 +66,67 @@ h4 {
   background-color: var(--color-primario);
   box-shadow: 0 0 5px white;
 }
+
+
+
+/* ==========================
+   MUSIC BUTTONS
+========================== */
+.botonAudio {
+  width: 50px;   /* Ajusta el tamaño del icono */
+  height: 50px;  /* Asegura que sea un cuadrado */
+  cursor: pointer; /* Cambia el cursor al pasar sobre el botón */
+  transition: transform 0.2s ease-in-out;
+}
+
+.botonAudio:hover {
+  transform: scale(1.1); /* Efecto de agrandado al pasar el mouse */
+}
+
+/* Para asegurar que el botón de pausa inicie oculto */
+.hidden {
+  display: none;
+}
+
+/* ==========================
+   MUSIC BUTTON STYLE
+========================== */
+.botonAudio-container {
+  position: fixed;    /* Fijar el botón en pantalla */
+  top: 20px;         /* Distancia desde la parte superior */
+  right: 20px;       /* Distancia desde la derecha */
+  z-index: 1000;     /* Asegurar que esté sobre otros elementos */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;       /* Tamaño del contenedor */
+  height: 60px;
+  background-color: rgba(0, 0, 0, 0.6);  /* Fondo semitransparente */
+  border-radius: 50%; /* Hace que el botón sea redondo */
+  transition: background-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+}
+.botonAudio {
+  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5)); /* Agrega sombra negra suave */
+}
+
+.botonAudio-container:hover {
+  background-color: rgba(255, 255, 255, 0.2); /* Cambio de color al pasar el mouse */
+  transform: scale(1.1);  /* Pequeño agrandado al pasar el mouse */
+}
+
+/* Estilo de los iconos */
+.botonAudio {
+  width: 30px;   /* Ajusta el tamaño del icono */
+  height: 30px;
+  cursor: pointer;
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Ocultar el botón de pausa por defecto */
+.hidden {
+  display: none;
+}
+
 
 
 /* ==========================
@@ -136,7 +197,7 @@ h4 {
   position: absolute;
   bottom: 80px;
   left: 50%;
-  transform: translateX(-80%) rotate(45deg);
+  transform: translateX(-50%) rotate(45deg);
   width: 30px;
   height: 30px;
   border-bottom: 4px solid black;

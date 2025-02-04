@@ -1,0 +1,13 @@
+{
+    "name": "reservaeldia",
+    "version": "1.0.0",
+    "description": "Automatización de screenshots en Netlify",
+    "main": "index.js",
+    "scripts": {
+        "build": "echo 'No build step required'",
+        "generate": "node generate-previews.js"
+    },
+    "dependencies": {
+        "puppeteer": "^24.1.1"
+    }
+}

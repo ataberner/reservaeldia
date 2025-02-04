@@ -163,7 +163,6 @@ html, body {
 }
 
 
-
 /***********************
  Sección Galería Ajustada
  ***********************/
@@ -171,7 +170,7 @@ html, body {
   text-align: center;
   padding: 80px 20px;
   background: var(--background-light); /* Fondo claro */
-  width: 100vw; /* Asegura que cubra todo el ancho */
+  width: 100%;
 }
 
 #invitaciones h2 {
@@ -181,50 +180,26 @@ html, body {
   font-weight: bold;
 }
 
-/* Contenedor de imágenes */
-#invitaciones .row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center; /* Centra las tarjetas */
-  max-width: 1200px; /* Evita que se expanda demasiado */
-  width: 100%;
-  margin: 0 auto; /* Centra el contenido */
-  gap: 20px;
-}
-
-/* Tarjetas de la galería */
-#invitaciones .col-12 {
-  background: var(--text-light); /* Fondo blanco */
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px var(--box-shadow); /* Sombra leve */
-  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-  width: 250px; /* Tamaño uniforme */
-}
-
-#invitaciones .col-12:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 20px var(--box-shadow-hover); /* Sombra al hover */
-  border: 2px solid var(--primary-color); /* Resalta con morado pastel */
-}
-
-/* Imágenes dentro de las tarjetas */
+/* Imagen destacada */
 #invitaciones img {
-  width: 100%;
-  height: auto;
   border-radius: 8px;
-  margin-bottom: 10px;
   transition: transform 0.3s ease-in-out;
 }
 
-#invitaciones .col-12:hover img {
-  transform: scale(1.05); /* Zoom suave al hover */
+#invitaciones img:hover {
+  transform: scale(1.05);
 }
 
-/* Títulos debajo de las imágenes */
-#invitaciones p {
+/* Contenedor flexible de los ítems */
+#invitaciones .d-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#invitaciones .text-center p {
   font-size: 1.2rem;
-  color: var(--secondary-color); /* Morado profundo */
+  color: var(--secondary-color);
   font-weight: bold;
   margin-top: 10px;
 }

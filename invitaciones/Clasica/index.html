@@ -59,6 +59,9 @@
     <div class="parallax-container">
         <div class="parallax"></div>
     </div>
+    <button id="toggleBackground">🖼 Cambiar Fondo</button>
+    <button id="toggleTheme">🎨 Cambiar Estilo</button>
+
         <section class="portada">
             <div class="portada-contenido">
                 <img src="assets/img/logo-portada.png" alt="Logo de la invitación" class="animate__animated animate__fadeIn">
@@ -235,6 +238,50 @@
 
 
 <!-- Scripts -->
+
+
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const buttonTheme = document.getElementById("toggleTheme");
+        const buttonBackground = document.getElementById("toggleBackground");
+    
+        // 🎨 5 combinaciones de colores
+        const colorThemes = [
+            { primary: "#dab485", secondary: "#a4bb8f" }, // Original
+            { primary: "#6c5ce7", secondary: "#fdcb6e" }, // Estilo 2
+            { primary: "#ff7675", secondary: "#55efc4" }, // Estilo 3
+            { primary: "#00cec9", secondary: "#fab1a0" }, // Estilo 4
+            { primary: "#2d3436", secondary: "#dfe6e9" }  // Estilo 5
+        ];
+    
+        let currentThemeIndex = 0;
+        buttonTheme.addEventListener("click", function () {
+            currentThemeIndex = (currentThemeIndex + 1) % colorThemes.length;
+            document.documentElement.style.setProperty("--color-primario", colorThemes[currentThemeIndex].primary);
+            document.documentElement.style.setProperty("--color-secundario", colorThemes[currentThemeIndex].secondary);
+        });
+    
+        // 🖼 5 imágenes de fondo
+        const backgroundImages = [
+            "portada.jpg",  // Imagen original
+            "portada1.jpg",
+            "portada2.jpg",
+            "portada3.jpg",
+            "portada4.jpg"
+        ];
+    
+        let currentBackgroundIndex = 0;
+        buttonBackground.addEventListener("click", function () {
+            currentBackgroundIndex = (currentBackgroundIndex + 1) % backgroundImages.length;
+            document.querySelector(".parallax").style.backgroundImage = `url('assets/img/${backgroundImages[currentBackgroundIndex]}')`;
+        });
+    });
+    </script>
+    
+
+
+
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fancybox/3.5.7/jquery.fancybox.min.js"></script>

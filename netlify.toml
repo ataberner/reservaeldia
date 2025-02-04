@@ -2,3 +2,8 @@
   from = "/boda/eugeyagus/"
   to = "/boda/eugeyagus/index.html"
   status = 200
+
+
+[build]
+  command = "node generate-previews.js && npm run build"
+  publish = "public"

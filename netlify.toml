@@ -6,5 +6,6 @@
 
 [build]
   command = "npx puppeteer browsers install chrome && node generate-previews.js"
-  publish = "boda"
+  publish = "."
+
 

@@ -59,8 +59,14 @@
     <div class="parallax-container">
         <div class="parallax"></div>
     </div>
-    <button id="toggleBackground">🖼 Cambiar Fondo</button>
-    <button id="toggleTheme">🎨 Cambiar Estilo</button>
+   <!-- Botón principal -->
+<button id="editDesign">Editar Diseño</button>
+
+<!-- Botones ocultos por defecto -->
+<button id="toggleBackground" class="hidden">Cambiar Fondo</button>
+<button id="togglePortada" class="hidden">Cambiar Portada</button>
+<button id="toggleTheme" class="hidden">Cambiar Estilo</button>
+
 
         <section class="portada">
             <div class="portada-contenido">
@@ -238,15 +244,80 @@
 
 
 <!-- Scripts -->
-
-
-
+<!-- 📌 SCRIPT 1: Mostrar/Ocultar Botones de Edición -->
 <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const editButton = document.getElementById("editDesign");
+        const themeButton = document.getElementById("toggleTheme");
+        const backgroundButton = document.getElementById("toggleBackground");
+        const portadaButton = document.getElementById("togglePortada");
+    
+        let isMenuOpen = false; // Estado del menú
+    
+        editButton.addEventListener("click", function () {
+            isMenuOpen = !isMenuOpen;
+    
+            if (isMenuOpen) {
+                themeButton.classList.add("show");
+                themeButton.classList.remove("hidden");
+                backgroundButton.classList.add("show");
+                backgroundButton.classList.remove("hidden");
+                portadaButton.classList.add("show");
+                portadaButton.classList.remove("hidden");
+            } else {
+                themeButton.classList.remove("show");
+                themeButton.classList.add("hidden");
+                backgroundButton.classList.remove("show");
+                backgroundButton.classList.add("hidden");
+                portadaButton.classList.remove("show");
+                portadaButton.classList.add("hidden");
+            }
+        });
+    });
+    </script>
+    
+    
+    <!-- 📌 SCRIPT 2: Cambiar la Portada con Animación -->
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const portadaButton = document.getElementById("togglePortada");
+    
+        // 🖼 Lista de imágenes de portada disponibles
+        const portadaImages = [
+            "logo-portada.png",  // Imagen original
+            "logo-portada1.png",
+            "logo-portada2.png",
+            "logo-portada3.png",
+            "logo-portada4.png"
+        ];
+    
+        let currentPortadaIndex = 0;
+        const portadaImg = document.querySelector(".portada-contenido img");
+    
+        portadaButton.addEventListener("click", function () {
+            // Aplicar animación de salida hacia la izquierda
+            portadaImg.style.animation = "slideOutLeft 0.5s forwards";
+    
+            setTimeout(() => {
+                // Cambiar la imagen después de la animación de salida
+                currentPortadaIndex = (currentPortadaIndex + 1) % portadaImages.length;
+                portadaImg.src = `assets/img/${portadaImages[currentPortadaIndex]}`;
+    
+                // Aplicar animación de entrada desde la derecha
+                portadaImg.style.animation = "slideInRight 0.5s forwards";
+            }, 500); // Espera el tiempo de la animación de salida
+        });
+    });
+    </script>
+    
+    
+    <!-- 📌 SCRIPT 3: Cambiar Estilo de Colores y Fondos -->
+    <script>
     document.addEventListener("DOMContentLoaded", function () {
         const buttonTheme = document.getElementById("toggleTheme");
         const buttonBackground = document.getElementById("toggleBackground");
     
-        // 🎨 5 combinaciones de colores
+        // 🎨 5 combinaciones de colores para el sitio
         const colorThemes = [
             { primary: "#dab485", secondary: "#a4bb8f" }, // Original
             { primary: "#6c5ce7", secondary: "#fdcb6e" }, // Estilo 2
@@ -262,13 +333,23 @@
             document.documentElement.style.setProperty("--color-secundario", colorThemes[currentThemeIndex].secondary);
         });
     
-        // 🖼 5 imágenes de fondo
+        // 🖼 15 imágenes de fondo disponibles
         const backgroundImages = [
-            "portada.jpg",  // Imagen original
+            "portada.jpg",   // Imagen original
             "portada1.jpg",
             "portada2.jpg",
             "portada3.jpg",
-            "portada4.jpg"
+            "portada4.jpg",
+            "portada5.jpg",
+            "portada6.jpg",
+            "portada7.jpg",
+            "portada8.jpg",
+            "portada9.jpg",
+            "portada10.jpg",
+            "portada11.jpg",
+            "portada12.jpg",
+            "portada13.jpg",
+            "portada14.jpg"
         ];
     
         let currentBackgroundIndex = 0;
@@ -279,7 +360,6 @@
     });
     </script>
     
-
 
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>

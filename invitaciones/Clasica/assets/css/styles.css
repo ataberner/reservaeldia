@@ -72,50 +72,108 @@ h4 {
   box-shadow: 0 0 5px white;
 }
 
-/* ==========================
- BOTÓN CAMBIAR COLORES
-========================== */
 
-#toggleTheme {
+
+/* ==========================
+ BOTÓN PRINCIPAL "EDITAR DISEÑO"
+========================== */
+#editDesign {
   position: fixed;
-  top: 80px; /* Movemos este botón más abajo */
   left: 20px;
-  z-index: 1000;
-  background-color: var(--color-primario);
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 5px;
-  transition: background-color 0.3s ease;
-}
-
-#toggleTheme:hover {
-  background-color: var(--color-secundario);
-}
-
-/* ==========================
- BOTÓN CAMBIAR FONDO
-========================== */
-#toggleBackground {
-  position: fixed;
   top: 20px;
-  left: 20px;
-  z-index: 1001; /* Asegura que esté sobre otros elementos */
-  background-color: var(--color-secundario);
-  color: white;
-  border: none;
-  padding: 10px 15px;
+  width: 160px;
+  height: 45px;
   font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #ffffff;
+  background: #333;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
-  border-radius: 5px;
-  transition: background-color 0.3s ease;
+  z-index: 1002;
+  transition: all 0.3s ease-in-out;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
 }
 
-#toggleBackground:hover {
-  background-color: var(--color-primario);
+#editDesign:hover {
+  background: #444;
 }
+
+/* ==========================
+ BOTONES OCULTOS DE DISEÑO
+========================== */
+/* Animación de entrada de los botones */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Animación de salida de los botones */
+@keyframes fadeSlideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+/* Estilos iniciales de los botones ocultos */
+#toggleBackground, #toggleTheme, #togglePortada {
+  position: fixed;
+  left: 20px;
+  width: 160px;
+  height: 45px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #ffffff;
+  background: #333;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 1001;
+  transition: all 0.3s ease-in-out;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateX(-20px);
+  visibility: hidden;
+}
+
+/* Posición de cada botón al mostrarse */
+#toggleBackground {
+  top: 75px;
+}
+#toggleTheme {
+  top: 130px;
+}
+#togglePortada {
+  top: 185px;
+}
+
+/* Animación al desplegarse */
+.show {
+  animation: fadeSlideIn 0.4s ease-out forwards;
+  visibility: visible !important;
+}
+
+/* Animación al ocultarse */
+.hide {
+  animation: fadeSlideOut 0.3s ease-in forwards;
+  visibility: hidden !important;
+}
+
 
 
 
@@ -133,9 +191,17 @@ h4 {
   transform: scale(1.1); /* Efecto de agrandado al pasar el mouse */
 }
 
-/* Para asegurar que el botón de pausa inicie oculto */
 .hidden {
-  display: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Cuando el botón debe mostrarse */
+.show {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translateY(0) !important;
 }
 
 /* ==========================
@@ -273,6 +339,42 @@ div.portada-contenido {
   50% { opacity: 1; }
   100% { transform: translateY(10px) rotate(45deg); opacity: 0; }
 }
+
+
+
+/*Efecto portada*/
+
+/* Animación de entrada desde la derecha */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Animación de salida hacia la izquierda */
+@keyframes slideOutLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+/* Aplicamos la animación */
+.portada-contenido img {
+  transition: opacity 0.5s ease-in-out;
+}
+
+
+
 
 /* ==========================
  CUENTA REGRESIVA

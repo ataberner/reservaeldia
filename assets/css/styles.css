@@ -166,7 +166,7 @@ html, body {
 /***********************
  Sección Galería Ajustada
  ***********************/
- #invitaciones {
+#invitaciones {
   text-align: center;
   padding: 80px 20px;
   background: var(--background-light); /* Fondo claro */
@@ -203,7 +203,25 @@ html, body {
   font-weight: bold;
   margin-top: 10px;
 }
+/* 🔹 SOLO SE APLICA EN PANTALLAS PEQUEÑAS */
+@media (max-width: 576px) {
+  #funcionalidades .funcionalidad {
+    max-width: 160px; /* Reduce el tamaño solo en móviles */
+    padding: 10px;
+  }
 
+  #funcionalidades .funcionalidad img {
+    width: 50px; /* Reduce los iconos en móviles */
+  }
+
+  #funcionalidades .funcionalidad h5 {
+    font-size: 1rem; /* Reduce el texto en móviles */
+  }
+
+  #funcionalidades .funcionalidad p {
+    font-size: 0.85rem; /* Reduce el tamaño del párrafo */
+  }
+}
 
 
 /***********************

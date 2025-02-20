@@ -4,10 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Invitación de casamiento personalizada">
-    <title>Invitación de Casamiento</title>
+    <title>Invitación de Boda Digital de Juli & Santi 💍 | Reserva el Día</title>
+    <meta name="description" content="Juli & Santi te invitan a celebrar su boda. Confirma tu asistencia, revisa los detalles y acompáñanos en este día especial.">
+
 
     <!-- Fuentes -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;900&display=swap" as="style">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;900&display=swap" rel="stylesheet">
+
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -22,13 +26,48 @@
     <!-- Estilos personalizados -->
     <link rel="stylesheet" href="assets/css/styles.css">
 
-    <meta property="og:title" content="¡Nos Casamos! 💍 Juli & Santi">
-    <meta property="og:description" content="Te invitamos a celebrar con nosotros este día tan especial. ¡No faltes!">
+    <meta property="og:title" content="Invitación de Boda de Juli & Santi 💍">
+    <meta property="og:description" content="Estás invitado a nuestra boda. Confirma tu asistencia y acompáñanos en este día tan especial.">
     <meta property="og:image" content="https://reservaeldia.com.ar/invitaciones/Clasica/preview.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:url" content="https://reservaeldia.com.ar/invitaciones/Clasica/">
     <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Reserva el Día">
+    <meta property="og:locale" content="es_ES">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Invitación de Boda de Juli & Santi 💍">
+    <meta name="twitter:description" content="Estás invitado a nuestra boda. Confirma tu asistencia y acompáñanos en este día tan especial.">
+    <meta name="twitter:image" content="https://reservaeldia.com.ar/invitaciones/Clasica/preview.jpg">
+    <meta name="twitter:site" content="@reservaeldia">
+    <link rel="canonical" href="https://reservaeldia.com.ar/invitaciones/Clasica/">
+
+    <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Event",
+          "name": "Boda de Juli & Santi",
+          "startDate": "2025-07-15T20:00",
+          "location": {
+            "@type": "Place",
+            "name": "Friendly",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Dirección aquí",
+              "addressLocality": "Ciudad",
+              "addressCountry": "AR"
+            }
+          },
+          "image": "https://reservaeldia.com.ar/invitaciones/Clasica/preview.jpg",
+          "description": "Estás invitado a la boda de Juli & Santi. Confirma tu asistencia y acompáñanos en este día especial.",
+          "organizer": {
+            "@type": "Organization",
+            "name": "Reserva el Día",
+            "url": "https://reservaeldia.com.ar/"
+          }
+        }
+        </script>
+        
 </head>
 
 
@@ -45,11 +84,11 @@
 
             <!-- Botón de Play -->
             <img id="btnPlay" src="assets/img/icono-play-blanco.png" alt="botón play"
-                onclick="playAudio()" class="botonAudio vertical_shake">
+                onclick="playAudio()" class="botonAudio vertical_shake" loading="lazy">
 
             <!-- Botón de Pausa (oculto por defecto) -->
             <img id="btnPause" src="assets/img/icono-pausa-blanco.png" alt="botón pausa"
-                onclick="pauseAudio()" class="botonAudio pulse hidden">
+                onclick="pauseAudio()" class="botonAudio pulse hidden" loading="lazy">
         </div>
     </div>
 </section>
@@ -70,7 +109,7 @@ style="position: fixed; left: 20px; top: 70px; width: 160px; height: 45px; font-
 
         <section class="portada">
             <div class="portada-contenido">
-                <img src="assets/img/logo-portada.png" alt="Logo de la invitación" class="animate__animated animate__fadeIn">
+                <img src="assets/img/logo-portada.png" alt="Logo de la invitación" class="animate__animated animate__fadeIn" loading="lazy">
                 
             </div>
         </section>
@@ -109,7 +148,7 @@ style="position: fixed; left: 20px; top: 70px; width: 160px; height: 45px; font-
     <!-- Ceremonia y Fiesta -->
     <section class="ceremonia-fiesta">
         <div class="container text-center">
-            <img src="assets/img/icono-anillos.svg" alt="Anillos" class="icon fade-in">
+            <img src="assets/img/icono-anillos.svg" alt="Anillos" class="icon fade-in" loading="lazy">
             <div class="fadeInUp">
                 <h4>Nuestra boda</h4>
                 <p>15 de julio de 2025 a las 20:00 hs en Friendly.<br>¡Te esperamos!</p>
@@ -126,42 +165,42 @@ style="position: fixed; left: 20px; top: 70px; width: 160px; height: 45px; font-
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/01.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/01.jpg" alt="Imagen 1">
+                            <img class="img-fluid" src="galeria/01.jpg" alt="Imagen 1" loading="lazy">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/02.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/02.jpg" alt="Imagen 2">
+                            <img class="img-fluid" src="galeria/02.jpg" alt="Imagen 2"loading="lazy">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/03.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/03.jpg" alt="Imagen 3">
+                            <img class="img-fluid" src="galeria/03.jpg" alt="Imagen 3" loading="lazy">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/04.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/04.jpg" alt="Imagen 4">
+                            <img class="img-fluid" src="galeria/04.jpg" alt="Imagen 4" loading="lazy">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/05.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/05.jpg" alt="Imagen 5">
+                            <img class="img-fluid" src="galeria/05.jpg" alt="Imagen 5" loading="lazy">
                         </a>
                     </div>
                 </div>
                 <div class="col-6 col-md-4 fadeInUp">
                     <div class="item-galeria">
                         <a href="galeria/06.jpg" data-fancybox="gallery">
-                            <img class="img-fluid" src="galeria/06.jpg" alt="Imagen 6">
+                            <img class="img-fluid" src="galeria/06.jpg" alt="Imagen 6" loading="lazy">
                         </a>
                     </div>
                 </div>
@@ -174,7 +213,7 @@ style="position: fixed; left: 20px; top: 70px; width: 160px; height: 45px; font-
 
     <section class="dresscode">
         <div class="container animated divDressCode fadeInUp"> 
-          <img src="assets/img/icono-dresscode.svg" alt="" class="icon">
+          <img src="assets/img/icono-dresscode.svg" alt="Código de vestimenta para la boda de Juli & Santi" class="icon">
           <h4>DRESS CODE</h4>
           <p>Elegante Sport</p>
         </div>
@@ -196,7 +235,7 @@ style="position: fixed; left: 20px; top: 70px; width: 160px; height: 45px; font-
     <!-- Canciones -->
     <section class="canciones text-center">
         <div class="container">   
-          <img src="assets/img/icono-canciones.svg" alt="" class="icon fadeInUp">
+          <img src="assets/img/icono-canciones.svg" alt="" class="icon fadeInUp" loading="lazy">
           <br>
           <div class="animated fadeInUp">
             <h4>¿QUÉ CANCIONES NO PUEDEN FALTAR?</h4>
@@ -211,7 +250,7 @@ style="position: fixed; left: 20px; top: 70px; width: 160px; height: 45px; font-
     <!-- CBU -->
     <section class="cbu">
         <div class="container">  
-          <img src="assets/img/icono-regalo.svg" alt="" class="icon regalo fadeInUp" style="opacity: 1;">
+          <img src="assets/img/icono-regalo.svg" alt="" class="icon regalo fadeInUp" style="opacity: 1;" loading="lazy">
           <div class="animated divCbu fadeInUp">
             <p>El mejor regalo es que nos acompañes en este día tan especial ♡<br>Si además queres hacernos otro regalo podes aportar al CBU, será bien invertido en nuestra Luna de Miel.</p>
             <a data-fancybox="" data-src="#hidden-cbu" href="javascript:;" data-options="{&quot;touch&quot; : false}" class="btn btn-alt">Ver Datos Bancarios</a>

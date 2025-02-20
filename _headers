@@ -1,2 +1,6 @@
 /boda/
   X-Robots-Tag: noindex, nofollow, noarchive
+
+/*
+  Content-Encoding: br, gzip
+  Cache-Control: max-age=31536000

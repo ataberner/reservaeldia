@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-const baseURL = 'https://reservaeldia.com.ar/boda/';  // Cambia esto por tu dominio
+const baseURL = 'https://reservaeldia.com.ar/boda/eugeyagus/';  // Cambia esto por tu dominio
 const basePath = path.join(__dirname, 'boda');  // Ruta local de las carpetas de bodas
 
 (async () => {

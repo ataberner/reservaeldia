@@ -1,0 +1,605 @@
+/* ==========================
+   VARIABLES GLOBALES
+========================== */
+:root {
+  --color-primario: #E6C78B;
+  --color-secundario: #C484A6;
+  --color-texto: #ffffff;
+}
+
+/* Agregamos transición a los elementos que usan los colores */
+body, .btn, .btn-alt, .cuenta-regresiva, .dresscode, .cbu, .gracias {
+  transition: background-color 0.5s ease-in-out, color 0.5s ease-in-out;
+}
+
+/* ==========================
+ ESTILOS GENERALES
+========================== */
+body {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.2rem;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+p, h4 {
+  font-family: 'Montserrat', sans-serif;
+}
+
+h4 {
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  font-size: 1.8rem;
+  font-weight: 400;
+}
+
+/* ==========================
+ BOTONES
+========================== */
+.btn {
+  font-family: 'Montserrat', sans-serif;
+  color: white;
+  background-color: var(--color-primario);
+  border-radius: 30px;
+  padding: 10px 40px;
+  border: 1px solid var(--color-primario);
+  text-transform: uppercase;
+  transition: all 0.3s ease-in-out;
+}
+
+.btn:hover {
+  color: var(--color-primario);
+  background-color: white;
+  box-shadow: 0 0 5px var(--color-primario);
+}
+
+.btn-alt {
+  color: var(--color-primario);
+  background-color: white;
+  font-family: 'Montserrat', sans-serif;
+  border-radius: 30px;
+  padding: 10px 40px;
+  border: 1px solid var(--color-primario);
+  text-transform: uppercase;
+  transition: all 0.3s ease-in-out;
+  text-decoration: none;
+}
+
+.btn-alt:hover {
+  color: white;
+  background-color: var(--color-primario);
+  box-shadow: 0 0 5px white;
+}
+
+/* ==========================
+ BOTÓN PRINCIPAL "CAMBIAR TEMA"
+========================== */
+#toggleTheme {
+  position: fixed;
+  left: 20px;
+  top: 20px;
+  width: 160px;
+  height: 45px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #ffffff;
+  background: #333;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 1002;
+  transition: all 0.3s ease-in-out;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+#toggleTheme:hover {
+  background: #444;
+}
+</style>
+
+
+button#inicioButton {
+  position: fixed !important;
+  left: 20px !important;
+  top: 70px !important; /* Ajusta la posición para que no quede oculto */
+  width: 160px !important;
+  height: 45px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  color: #ffffff !important;
+  background: #333 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  z-index: 9999 !important; /* Asegura que esté por encima de todo */
+  transition: all 0.3s ease-in-out !important;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15) !important;
+}
+
+button#inicioButton:hover {
+  background: #666 !important;
+}
+  
+
+
+/* ==========================
+   MUSIC BUTTONS
+========================== */
+.botonAudio {
+  width: 50px;   /* Ajusta el tamaño del icono */
+  height: 50px;  /* Asegura que sea un cuadrado */
+  cursor: pointer; /* Cambia el cursor al pasar sobre el botón */
+  transition: transform 0.2s ease-in-out;
+}
+
+.botonAudio:hover {
+  transform: scale(1.1); /* Efecto de agrandado al pasar el mouse */
+}
+
+.hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Cuando el botón debe mostrarse */
+.show {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translateY(0) !important;
+}
+
+/* ==========================
+   MUSIC BUTTON STYLE
+========================== */
+.botonAudio-container {
+  position: fixed;    /* Fijar el botón en pantalla */
+  top: 20px;         /* Distancia desde la parte superior */
+  right: 20px;       /* Distancia desde la derecha */
+  z-index: 1000;     /* Asegurar que esté sobre otros elementos */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;       /* Tamaño del contenedor */
+  height: 60px;
+  background-color: rgba(0, 0, 0, 0.6);  /* Fondo semitransparente */
+  border-radius: 50%; /* Hace que el botón sea redondo */
+  transition: background-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+}
+.botonAudio {
+  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5)); /* Agrega sombra negra suave */
+}
+
+.botonAudio-container:hover {
+  background-color: rgba(255, 255, 255, 0.2); /* Cambio de color al pasar el mouse */
+  transform: scale(1.1);  /* Pequeño agrandado al pasar el mouse */
+}
+
+/* Estilo de los iconos */
+.botonAudio {
+  width: 30px;   /* Ajusta el tamaño del icono */
+  height: 30px;
+  cursor: pointer;
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Ocultar el botón de pausa por defecto */
+.hidden {
+  display: none;
+}
+
+
+
+/* ==========================
+ EFECTO PARALLAX
+========================== */
+/* Contenedor que mantiene el parallax en su posición */
+.parallax-container {
+  position: relative;
+  width: 100%;
+  height: 100vh; /* Mantiene el tamaño de la imagen */
+  overflow: hidden; /* Evita que se salga del área visible */
+}
+
+
+/* Imagen de fondo con movimiento lento */
+.parallax {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh; /* Un poco más grande para que se vea el efecto */
+  background-image: url('../img/portada-romantico.png');
+  background-size: cover;
+  background-position: center;
+  z-index: -1; /* Mantiene la imagen detrás del contenido */
+}
+
+/* cambio suave al cambiar el fondo*/
+.parallax {
+  transition: background-image 0.5s ease-in-out;
+}
+
+
+
+
+/* ==========================
+ PORTADA
+========================== */
+.portada {
+  position: absolute;
+  top: 50%; /* Centra verticalmente */
+  left: 50%;
+  transform: translate(-50%, -50%); /* Centra correctamente */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  text-align: center;
+  z-index: 10; /* Asegura que esté sobre la imagen de fondo */
+}
+
+/* Contenido dentro de la portada */
+.portada-contenido {
+  position: relative;
+  text-align: center;
+  color: var(--color-texto);
+}
+
+.portada-contenido img {
+  height: auto;
+  margin-top: 50px;
+  animation-duration: 3s;
+  max-width: 100%; /* Ajusta el tamaño de la imagen */
+  z-index: 1;
+}
+
+
+/* Flecha scroll */
+.scroll-down {
+  cursor: pointer;
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 30px;
+  height: 30px;
+  border-bottom: 4px solid black;
+  border-right: 4px solid black;
+  animation: fade_move_down 2s ease-in-out infinite;
+  z-index: 99999 !important; /* Asegura que esté encima de otros elementos */
+  pointer-events: auto; /* Permite hacer clic */
+}
+
+
+div.portada-contenido {
+  pointer-events: none !important; /* Evita que bloquee clics */
+}
+
+
+/* Animación flecha */
+@keyframes fade_move_down {
+  0% { transform: translateY(0) rotate(45deg); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(10px) rotate(45deg); opacity: 0; }
+}
+
+
+
+/*Efecto portada*/
+
+/* Animación de entrada desde la derecha */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Animación de salida hacia la izquierda */
+@keyframes slideOutLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+/* Aplicamos la animación */
+.portada-contenido img {
+  transition: opacity 0.5s ease-in-out;
+}
+
+
+
+
+/* ==========================
+ CUENTA REGRESIVA
+========================== */
+.cuenta-regresiva {
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  padding: 40px 0;
+  background-color: var(--color-secundario);
+  height: 250px;
+  color: var(--color-texto);
+}
+
+.num_cuenta {
+  font-size: 30px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.text_cuenta {
+  font-size: 15px;
+}
+
+.num_cuenta-separador {
+  font-size: 30px;
+  font-weight: 600;
+  margin-right: 10px;
+  margin-left: 10px;
+  margin-top: -22px;
+}
+
+/* ==========================
+ CEREMONIA Y FIESTA
+========================== */
+.ceremonia-fiesta {
+  background-color: white;
+  padding: 60px 0;
+  text-align: center;
+}
+
+.ceremonia-fiesta .icon {
+  width: 150px;
+}
+
+.ceremonia-fiesta h4 {
+  margin-top: 15px;
+  margin-bottom: 20px;
+}
+
+.ceremonia-fiesta p {
+  margin-bottom: 25px;
+}
+
+/* ==========================
+ GALERÍA
+========================== */
+.galeria {
+  background-color: white;
+  padding: 50px 0;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.item-galeria {
+  width: 100%;
+  padding: 10px;
+  position: relative;
+  aspect-ratio: 1 / 1; 
+}
+.item-galeria a {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.item-galeria img {
+  width: 95%;
+  height: 95%;
+  object-fit: cover;
+  border-radius: 10px;
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+  position: relative;
+  z-index: 1; /* En estado normal, las imágenes están en la misma capa */
+}
+
+
+.item-galeria:hover img {
+  transform: scale(1.1);
+  box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
+  z-index: 9999 !important; /* Eleva la imagen al frente cuando está en hover */
+}
+
+/* ==========================
+DRESSCODE
+========================== */
+  
+section.dresscode{
+  z-index: 1;
+  display: flex;
+  position: relative;
+  text-align: center;
+  padding: 70px 0 70px;
+  background-color: var(--color-secundario);
+}
+
+section.dresscode h4 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: white;
+}
+
+section.dresscode p{
+  color: white;
+}
+
+section.dresscode img.icon{
+  width: 150px;
+}
+
+/* ==========================
+ REDES SOCIALES
+========================== */
+.redes {
+  text-align: center;
+  padding: 60px 0;  
+  background-color: #ffffff;
+}
+
+.redes h4 {
+  margin-bottom: 20px;
+}
+
+.redes .icon {
+  width: 100px;
+  padding-bottom: 20px;
+}
+
+/* ==========================
+ CONFIRMACIÓN DE ASISTENCIA
+========================== */
+.confirmacion {
+  text-align: center;
+  padding: 60px 0;  
+}
+
+.confirmacion h4 {
+  margin-bottom: 20px;
+}
+
+
+/* ==========================
+ CANCIONES
+========================== */
+section.canciones {
+  text-align: center;
+  padding: 60px 0 100px;
+}
+.canciones .icon {
+  width: 150px;
+}
+
+/* ==========================
+  CBU
+ ========================== */
+  
+ section.cbu{
+  text-align: center;
+  padding: 40px 0 70px;
+  background-color:var(--color-primario);
+}
+section.cbu img.icon{
+  width: 150px;
+}
+section.cbu p{
+  color: white;
+}
+#hidden-cbu{
+  padding: 25px;
+  border-radius: 10px;
+}
+#hidden-cbu span.title{
+  font-family: 'Montserrat', sans-serif;
+  display: inline-block;
+  text-align: center;
+  width: 100%;
+  font-size: 25px;
+  color: var(--color-primario);
+}
+#hidden-cbu ul{
+  list-style: none;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+  margin-bottom: 15px;
+}
+#hidden-cbu ul li a{
+  color: var(--color-primario);
+  text-decoration: underline;
+}
+
+/* ==========================
+ GRACIAS
+========================== */  
+section.gracias{
+  text-align: center;
+  padding: 50px 0;
+  background-color:var(--color-secundario);
+}
+section.gracias p{
+  color: white;
+}
+/* ==========================
+ FOOTER
+========================== */
+footer {
+  text-align: center;
+  padding: 20px;
+  background-color: #666;
+  color: white;
+  font-size: 1rem;
+}
+
+footer a {
+color:#d7b8e8;
+}
+
+
+/* ==========================
+ EFECTOS DE ANIMACIÓN
+========================== */
+.fade-in {
+  opacity: 0; /* El elemento empieza invisible */
+  animation: fadeIn ease 4s forwards;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.fadeInUp {
+  opacity: 0;
+  transform: translateY(50px);
+  transition: opacity 1s ease-out, transform 2s ease-out;
+  position: relative; /* Asegura que el z-index funcione */
+  z-index: 1; /* Asegura que no cambie su orden */
+}
+
+.fadeInUp.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================
+ RESPONSIVE DESIGN
+========================== */
+@media (max-width: 760px) {
+  .portada-contenido img {
+     margin-bottom: 0;
+     width: 90%;
+  }
+
+  .item-galeria img {
+      height: 150px;
+  }
+}

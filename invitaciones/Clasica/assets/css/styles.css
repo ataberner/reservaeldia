@@ -445,6 +445,23 @@ section.dresscode img.icon{
   width: 150px;
 }
 
+/* ==========================
+ REDES SOCIALES
+========================== */
+.redes {
+  text-align: center;
+  padding: 60px 0;  
+  background-color: #ffffff;
+}
+
+.redes h4 {
+  margin-bottom: 20px;
+}
+
+.redes .icon {
+  width: 100px;
+  padding-bottom: 20px;
+}
 
 /* ==========================
  CONFIRMACIÓN DE ASISTENCIA

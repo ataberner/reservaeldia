@@ -1,7 +1,7 @@
 const puppeteer = require('puppeteer');
 
 (async () => {
-    const url = 'https://reservaeldia.com.ar/boda/eugeyagus/';
+    const url = 'https://reservaeldia.com.ar/boda/';
     const outputPath = 'preview.jpg'; // Nombre del archivo de salida
 
     // Lanzar el navegador en modo headless

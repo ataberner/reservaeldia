@@ -73,7 +73,7 @@
       getDoc(ref).then(docSnap => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          document.getElementById("nombres").innerText = data.nombres || "";
+          document.getElementById("nombres").outerHTML = data.nombres;
           const fechaHoraCeremonia = data.fechaCeremonia && data.horaCeremonia ? `${data.fechaCeremonia} a las ${data.horaCeremonia} hs` : "";
           const datosEvento = fechaHoraCeremonia + (data.lugar ? ` en ${data.lugar}` : '') + ". ¡Te esperamos!";
           document.getElementById("datos-evento").innerHTML = datosEvento;

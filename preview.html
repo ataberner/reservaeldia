@@ -812,7 +812,7 @@ const radios = document.querySelectorAll('input[name="tipoEvento"]');
   // 4. Lógica del botón "Confirmar y generar invitación"
   document.querySelector('.btn-confirmar').addEventListener('click', async () => {
     // 4.1. Obtener datos del formulario
-    const nombres = document.getElementById('nombres')?.innerText?.trim() || '';
+    const nombres = document.getElementById('nombres')?.outerHTML || '';
     const fechaCeremonia = document.getElementById('fechaCeremonia')?.value || '';
     const horaCeremonia = document.getElementById('horaCeremonia')?.value || '';
     const fechaFiesta = document.getElementById('fechaFiesta')?.value || '';

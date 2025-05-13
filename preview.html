@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Previsualización Editable | Reserva el Día</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet">
+
+
+
+  <style>
+ :root {
+
+    --color-primario: #dab485;
+  --color-secundario: #a4bb8f;
+  --color-texto: #fff;
+  --color-nombres: #44663e;
+  --color-reservaeldia: #503d84;
+  --color-reservaeldia2: #d7b8e8;
+}
+
+
+  .cuenta-regresiva {
+    background-color: var(--color-secundario);
+  }
+
+  .num_cuenta-separador {
+     margin: 0 12px; /* Espacio horizontal a la izquierda y derecha */
+    position: relative;
+    top: -28px;
+     font-size: 2rem; /* Opcional: ajustá el tamaño si querés */
+}
+#cuentaRegresiva {
+  color: var(--color-texto); /* Cambiá este color al que quieras */
+}
+
+
+
+  .galeria {
+    background-color: var(--color-secundario);
+  }
+  .dresscode {
+    background-color: var(--color-secundario);
+  }
+  .confirmacion {
+    background-color: var(--color-secundario);
+  }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: #fff;
+      color: #333;
+      margin: 0;
+    }
+
+    .editor-sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      width: 280px;
+      background-color: #f8f9fa;
+      border-right: 1px solid #ddd;
+      padding: 20px;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+      z-index: 2000;
+      overflow-y: auto;
+    }
+
+    .editor-sidebar h5 {
+      font-weight: bold;
+      margin-bottom: 20px;
+      color: var(--color-reservaeldia2);
+    }
+
+    .editor-sidebar label {
+      font-size: 0.9rem;
+      margin-top: 15px;
+    }
+
+    .editor-sidebar input,
+    .editor-sidebar select {
+      width: 100%;
+      margin-top: 5px;
+      padding: 5px 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    .editor-sidebar .form-check {
+      margin-top: 10px;
+    }
+
+    .main-content {
+      margin-left: 280px;
+    }
+
+    .editable {
+      outline: 2px dashed transparent;
+      transition: outline 0.2s ease;
+      position: relative;
+      z-index: 2;
+      user-select: text;
+    }
+
+    .editable:hover,
+    .editable:focus {
+      outline: 2px dashed var(--color-reservaeldia2);
+    }
+
+    .btn-confirmar {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: var(--color-reservaeldia);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transition: transform 0.2s ease;
+      z-index: 1001;
+    }
+
+    .btn-confirmar:hover {
+      transform: scale(1.05);
+    }
+
+    .hidden-section {
+      display: none;
+    }
+
+    section.portada {
+  position: relative;
+  height: 100vh;
+  background: url('/invitaciones/Clasica/assets/img/portada.jpg') no-repeat center center / cover;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+.portada-parallax {
+  position: relative;
+  z-index: 2;
+  will-change: transform;
+  transition: transform 0.1s ease-out;
+  width: 100%;
+  height: 100%;
+}
+
+.portada-contenido {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+.portada-parallax {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.imagen-portada {
+  position: absolute;
+  top: 90%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+
+
+.portada-contenido {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+
+.titulo-nombres {
+  font-family: 'Alex Brush', cursive;
+  font-size: 4rem;
+  color: var(--color-nombres);
+  text-align: center;
+}
+
+.subtitulo {
+  font-size: 1.4rem;
+  color: #9db699;
+  font-weight: 600;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+  </style>
+  <style id="selection-style">
+::selection {
+  background: #c69ae0; /* color fijo */
+  color: #ffffff; /* color del texto al seleccionar */
+}
+
+
+#toolbar {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 3000;
+  transition: opacity 0.2s ease;
+}
+
+.toolbar-hidden {
+  display: none !important
+}
+
+#toolbar select,
+#toolbar input[type="color"],
+#toolbar input[type="number"] {
+  font-size: 14px;
+  padding: 4px;
+}
+
+#toolbar button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  color: #333;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+#toolbar button:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+#toolbar button:focus {
+  outline: none;
+}
+#toolbar button.active {
+  background: var(--color-reservaeldia);
+  color: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+/* Asegurar que los estilos de subrayado sean específicos */
+span[style*="underline"] {
+    text-decoration: underline !important;
+}
+
+span[style*="text-decoration: underline"] {
+    text-decoration: underline !important;
+}
+
+span[style*="none"] {
+    text-decoration: none !important;
+}
+
+.icon {
+  width: 150px;
+  }
+
+  .fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.8s ease-out;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.form-check-input[type="radio"] {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+  #bloqueCeremonia,
+  #bloqueFiesta {
+    display: none;
+  }
+
+</style>
+
+</head>
+<body>
+    <aside class="editor-sidebar p-3" style="width: 280px; position: fixed; top: 0; left: 0; height: 100vh; background: #f8f9fa; border-right: 1px solid #ddd; overflow-y: auto;">
+        <h5 class="mb-3">⚙️ Configuración</h5>
+
+
+        <h6 class="mb-2">📋 Tipo de evento</h6>
+        <div class="d-flex flex-column gap-1">
+        <label class="d-flex align-items-center">
+            <input type="radio" name="tipoEvento" value="ceremonia" checked class="form-check-input me-2">
+            Solo ceremonia
+        </label>
+        <label class="d-flex align-items-center">
+            <input type="radio" name="tipoEvento" value="fiesta" class="form-check-input me-2">
+            Solo fiesta
+        </label>
+        <label class="d-flex align-items-center">
+            <input type="radio" name="tipoEvento" value="ambos" class="form-check-input me-2">
+            Ceremonia y fiesta
+        </label>
+        </div>
+
+
+        <div id="bloqueCeremonia">
+            <label for="fechaCeremonia" class="form-label">📅 Fecha de la ceremonia</label>
+            <input type="date" id="fechaCeremonia" class="form-control mb-2" value="2025-12-24">
+          
+            <label for="horaCeremonia" class="form-label">🕒 Hora de la ceremonia</label>
+            <input type="time" id="horaCeremonia" class="form-control mb-3" value="20:00">
+          </div>
+          
+        
+        <!-- BLOQUE FIESTA -->
+        <div id="bloqueFiesta">
+            <label for="fechaFiesta" class="form-label">📅 Fecha de la fiesta</label>
+            <input type="date" id="fechaFiesta" class="form-control mb-2">
+        
+            <label for="horaFiesta" class="form-label">🕒 Hora de la fiesta</label>
+            <input type="time" id="horaFiesta" class="form-control mb-3">
+        </div>
+  
+  
+  
+
+
+
+
+
+        
+        <hr>
+        
+        
+        <label for="colorPrincipal">Color primario</label>
+        <input type="color" id="colorPrincipal" value="#c69ae0" class="form-control mb-3">
+      
+        <label for="colorSecundario">Color secundario</label>
+        <input type="color" id="colorSecundario" value="#f7f0fb" class="form-control mb-3">
+      
+        </select>
+      
+        <hr>
+      
+        <h6 class="mb-2">🎨 Diseños predefinidos</h6>
+        <div class="d-flex gap-2 mb-3">
+          <button  class="btn btn-outline-primary btn-sm">Lavanda</button>
+          <button  class="btn btn-outline-danger btn-sm">Rosa</button>
+          <button  class="btn btn-outline-success btn-sm">Verde Agua</button>
+        </div>
+      
+        <hr>
+      
+        <h6 class="mb-2">🎛 Colores por sección</h6>
+        <label for="colorCuenta">Cuenta regresiva</label>
+        <input type="color" id="colorCuenta" value="#f7f0fb" class="form-control mb-2">
+      
+        <label for="colorGaleria">Galería</label>
+        <input type="color" id="colorGaleria" value="#f7f0fb" class="form-control mb-2">
+      
+        <label for="colorDress">Dress Code</label>
+        <input type="color" id="colorDress" value="#f7f0fb" class="form-control mb-2">
+      
+        <label for="colorConf">Confirmación</label>
+        <input type="color" id="colorConf" value="#f7f0fb" class="form-control mb-3">
+      </aside>
+
+      
+  <main class="main-content">
+
+    
+    <section class="portada">
+        <div class="portada-parallax">
+          <div class="portada-contenido">
+            <p class="subtitulo editable" contenteditable="true">¡Nos Casamos!</p>
+            <h1 class="editable titulo-nombres" contenteditable="true" id="nombres">Juli & Santi</h1>
+            <img src="/invitaciones/Clasica/assets/img/portada-editable1.png" alt="Hoja decorativa" class="imagen-portada">
+          </div>
+        </div>
+      </section>
+      
+
+      <section id="cuentaRegresiva" class="cuenta-regresiva text-center py-5">
+        <h2 class="editable" contenteditable="true">¡Faltan pocos días para el gran día!</h2>
+        <div id="mensaje-reloj"></div>
+        <div id="reloj" class="d-flex justify-content-center align-items-center fade-in">
+          <div class="time-unit">
+            <p class="num_cuenta" id="dias">00</p><p class="text_cuenta editable" contenteditable="true">días</p>
+          </div><p class="num_cuenta-separador">:</p>
+          <div class="time-unit">
+            <p class="num_cuenta" id="horas">00</p><p class="text_cuenta editable" contenteditable="true">hs</p>
+          </div><p class="num_cuenta-separador">:</p>
+          <div class="time-unit">
+            <p class="num_cuenta" id="min">00</p><p class="text_cuenta editable" contenteditable="true">min</p>
+          </div><p class="num_cuenta-separador">:</p>
+          <div class="time-unit">
+            <p class="num_cuenta" id="seg">00</p><p class="text_cuenta editable" contenteditable="true">seg</p>
+          </div>
+        </div>
+      </section>
+
+      
+    <section class="text-center py-5">
+      <img src="/assets/img/icono-anillos.svg" alt="Anillos" class="icon fade-in">
+      <h4 class="editable" contenteditable="true">Nuestra boda</h4>
+      <p class="editable" contenteditable="true" id="datos-evento">15 de julio de 2025 a las 20:00 hs en Friendly. <br>¡Te esperamos!</p>
+    </section>
+
+          
+      <section id="galeria" class="galeria text-center py-5">
+        <h4 class="editable" contenteditable="true">Nosotros...</h4>
+        <p class="editable" contenteditable="true">Galería de imágenes de la pareja</p>
+      </section>
+      
+      <section id="dresscode" class="dresscode text-center py-5">
+        <h4 class="editable" contenteditable="true">DRESS CODE</h4>
+        <p class="editable" contenteditable="true">Cocktail</p>
+      </section>
+      
+      <section id="confirmacion" class="confirmacion text-center py-5">
+        <h4 class="editable" contenteditable="true">Confirmación de asistencia</h4>
+        <p class="editable" contenteditable="true">Confirmá antes del 1 de marzo de 2025</p>
+        <a href="#" class="btn btn-primary editable" contenteditable="true">Confirmar asistencia</a>
+      </section>
+      
+
+    <footer class="text-center py-4">
+      <p>&copy; 2025 Reserva el Día - Todos los derechos reservados</p>
+    </footer>
+  </main>
+
+  <button class="btn-confirmar">Confirmar y generar invitación</button>
+  
+ 
+  <div id="toolbar" class="toolbar-hidden">
+    <select id="fontSelectorToolbar">
+      <option value="'Alex Brush', cursive">Alex Brush</option>
+      <option value="'Georgia', serif">Georgia</option>
+      <option value="'Montserrat', sans-serif">Montserrat</option>
+      <option value="'Arial', sans-serif">Arial</option>
+    </select>
+    <input type="number" id="fontSizeInput" min="8" max="100" step="1" value="16">
+    <input type="color" id="fontColorInput" value="#000000">
+    <button type="button" id="boldBtn" title="Negrita"><strong>B</strong></button>
+<button type="button" id="italicBtn" title="Cursiva"><em>I</em></button>
+<button type="button" id="underlineBtn" title="Subrayado"><u>U</u></button>
+
+  </div>
+
+  
+
+
+
+
+
+
+
+  <script type="module">
+  
+  document.addEventListener("DOMContentLoaded", function () {
+  // ------------------------
+  // VARIABLES GLOBALES
+  // ------------------------
+  const colorPrincipal = document.getElementById('colorPrincipal');
+  const colorSecundario = document.getElementById('colorSecundario');
+  const toolbar = document.getElementById("toolbar");
+  const fontSelectorToolbar = document.getElementById("fontSelectorToolbar");
+  const fontSizeInput = document.getElementById("fontSizeInput");
+  const fontColorInput = document.getElementById("fontColorInput");
+
+  let currentRange = null;
+
+  // ------------------------
+  // FUNCIONES DE FORMATO
+  // ------------------------
+
+  function saveSelection() {
+    const selection = window.getSelection();
+    currentRange = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  }
+
+  function applyStyle(property, value) {
+    if (!currentRange) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(currentRange);
+
+    document.execCommand("styleWithCSS", false, true);
+    document.execCommand(property, false, value);
+
+    selection.removeAllRanges();
+    selection.addRange(currentRange);
+    updateToolbarStyles();
+  }
+
+  function toggleStyle(command) {
+    if (!currentRange) return;
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(currentRange);
+
+    document.execCommand(command, false, null);
+
+    currentRange = selection.getRangeAt(0);
+    updateToolbarStyles();
+  }
+
+  function updateToolbarStyles() {
+    if (!currentRange) return;
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0) return;
+
+    const node = selection.anchorNode.parentNode;
+    const computed = window.getComputedStyle(node);
+
+    fontColorInput.value = rgbToHex(computed.color);
+    fontSizeInput.value = parseInt(computed.fontSize);
+
+    document.getElementById("boldBtn").classList.toggle("active", document.queryCommandState("bold"));
+    document.getElementById("italicBtn").classList.toggle("active", document.queryCommandState("italic"));
+    document.getElementById("underlineBtn").classList.toggle("active", document.queryCommandState("underline"));
+
+    const cleanedFont = computed.fontFamily.split(',')[0].replace(/["']/g, "").trim();
+    const options = Array.from(fontSelectorToolbar.options);
+    const match = options.find(opt => opt.value.includes(cleanedFont));
+    if (match) fontSelectorToolbar.value = match.value;
+  }
+
+  function rgbToHex(rgb) {
+    const match = rgb.match(/\d+/g);
+    if (!match) return "#000000";
+    return "#" + match.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+  }
+
+  // ------------------------
+  // MANEJO DE SELECCIÓN
+  // ------------------------
+
+  document.addEventListener("mouseup", function (e) {
+    const selection = window.getSelection();
+    currentRange = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    const parent = selection.anchorNode?.parentElement;
+
+    if (currentRange && !selection.isCollapsed && parent && parent.closest(".editable")) {
+      toolbar.classList.remove("toolbar-hidden");
+      updateToolbarStyles();
+    } else if (!e.target.closest("#toolbar")) {
+      toolbar.classList.add("toolbar-hidden");
+      currentRange = null;
+    }
+  });
+
+  toolbar.addEventListener("mousedown", function (e) {
+    e.stopPropagation();
+    saveSelection();
+  });
+
+  fontSizeInput.addEventListener("mousedown", function (e) {
+    e.stopPropagation();
+    saveSelection();
+  });
+
+  fontColorInput.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+    saveSelection();
+  });
+
+  fontSelectorToolbar.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+    saveSelection();
+  });
+
+  // ------------------------
+  // EVENT LISTENERS
+  // ------------------------
+
+  document.getElementById("boldBtn").addEventListener("click", () => toggleStyle("bold"));
+  document.getElementById("italicBtn").addEventListener("click", () => toggleStyle("italic"));
+  document.getElementById("underlineBtn").addEventListener("click", () => toggleStyle("underline"));
+
+  fontSelectorToolbar.addEventListener("change", function () {
+    const value = this.value;
+    setTimeout(() => {
+      if (!currentRange) return;
+      applyStyle("fontName", value);
+    }, 0);
+  });
+
+  fontSizeInput.addEventListener("input", function () {
+    console.log("📏 Cambiando tamaño a:", this.value);
+
+    if (!currentRange || currentRange.collapsed) {
+        console.warn("⚠️ No hay selección activa o está vacía.");
+        return;
+    }
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(currentRange);
+
+    const contents = currentRange.cloneContents();
+    const selectedText = contents.textContent.trim();
+
+    if (!selectedText) {
+        console.warn("⚠️ El contenido seleccionado está vacío.");
+        return;
+    }
+
+    const span = document.createElement("span");
+    span.style.fontSize = this.value + "px";
+    span.appendChild(currentRange.extractContents());
+    currentRange.insertNode(span);
+
+    // Restaurar selección sobre el nuevo span
+    currentRange = document.createRange();
+    currentRange.selectNodeContents(span);
+    selection.removeAllRanges();
+    selection.addRange(currentRange);
+
+    console.log("✅ Tamaño aplicado con span:", span.outerHTML);
+    updateToolbarStyles();
+    });
+
+
+  fontColorInput.addEventListener("input", function () {
+    const color = this.value;
+    setTimeout(() => {
+      if (!currentRange) return;
+      applyStyle("foreColor", color);
+    }, 0);
+  });
+
+
+///// fecha y hora de fiesta ////
+
+const radios = document.querySelectorAll('input[name="tipoEvento"]');
+    const bloqueCeremonia = document.getElementById('bloqueCeremonia');
+    const bloqueFiesta = document.getElementById('bloqueFiesta');
+
+    const fechaCeremonia = document.getElementById('fechaCeremonia');
+    const horaCeremonia = document.getElementById('horaCeremonia');
+    const fechaFiesta = document.getElementById('fechaFiesta');
+    const horaFiesta = document.getElementById('horaFiesta');
+
+    function actualizarVisibilidadCampos() {
+      const seleccionado = document.querySelector('input[name="tipoEvento"]:checked');
+      const valor = seleccionado ? seleccionado.value : null;
+
+      if (valor === 'ceremonia') {
+        bloqueCeremonia.style.display = 'block';
+        bloqueFiesta.style.display = 'none';
+        fechaFiesta.value = '';
+        horaFiesta.value = '';
+      } else if (valor === 'fiesta') {
+        bloqueCeremonia.style.display = 'none';
+        bloqueFiesta.style.display = 'block';
+        fechaCeremonia.value = '';
+        horaCeremonia.value = '';
+      } else if (valor === 'ambos') {
+        bloqueCeremonia.style.display = 'block';
+        bloqueFiesta.style.display = 'block';
+      }
+    }
+
+    radios.forEach(radio => {
+      radio.addEventListener('change', actualizarVisibilidadCampos);
+    });
+
+    actualizarVisibilidadCampos();
+
+
+
+
+  // ------------------------
+  // CAMBIOS DE COLOR GENERALES
+  // ------------------------
+
+  colorPrincipal.addEventListener('input', e => {
+    document.documentElement.style.setProperty('--color-principal', e.target.value);
+    document.querySelector('.portada').style.backgroundColor = e.target.value;
+    document.querySelector('.btn-confirmar').style.backgroundColor = e.target.value;
+  });
+
+  colorSecundario.addEventListener('input', e => {
+    document.documentElement.style.setProperty('--color-secundario', e.target.value);
+    document.querySelectorAll('.cuenta-regresiva, .galeria, .dresscode, .confirmacion')
+      .forEach(el => el.style.backgroundColor = e.target.value);
+  });
+});
+
+
+
+  /////// Efecto Parallax //////
+  window.addEventListener("scroll", function () {
+    const portada = document.querySelector(".portada-parallax");
+    const offset = window.scrollY;
+
+    if (portada) {
+      portada.style.transform = `translateY(${offset * -0.3}px)`;
+    }
+  });
+
+
+
+
+
+  //////// Cuenta regresiva //////
+  const inputFecha = document.getElementById("fechaCeremonia");
+
+  const mensajeReloj = document.getElementById("mensaje-reloj");
+
+  let fechaEvento = null;
+
+  inputFecha.addEventListener("input", () => {
+    fechaEvento = new Date(inputFecha.value + "T00:00:00"); // Se asegura que sea medianoche
+    iniciarCuentaRegresiva();
+  });
+
+  function iniciarCuentaRegresiva() {
+    if (!fechaEvento) return;
+
+    clearInterval(window.intervaloCuenta);
+    window.intervaloCuenta = setInterval(() => {
+      const ahora = new Date();
+      const diferencia = fechaEvento - ahora;
+
+      if (diferencia <= 0) {
+        document.getElementById("reloj").style.display = "none";
+        mensajeReloj.innerText = "¡Llegó el gran día!";
+        clearInterval(window.intervaloCuenta);
+        return;
+      }
+
+      const dias = Math.floor(diferencia / (1000 * 60 * 60 * 24));
+      const horas = Math.floor((diferencia / (1000 * 60 * 60)) % 24);
+      const minutos = Math.floor((diferencia / (1000 * 60)) % 60);
+      const segundos = Math.floor((diferencia / 1000) % 60);
+
+      document.getElementById("dias").innerText = String(dias).padStart(2, "0");
+      document.getElementById("horas").innerText = String(horas).padStart(2, "0");
+      document.getElementById("min").innerText = String(minutos).padStart(2, "0");
+      document.getElementById("seg").innerText = String(segundos).padStart(2, "0");
+    }, 1000);
+  }
+        fechaEvento = new Date(inputFecha.value + "T00:00:00");
+        iniciarCuentaRegresiva();
+
+
+
+    ////// fade-in//////
+  const fadeElements = document.querySelectorAll('.fade-in');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target); // para que solo ocurra una vez
+      }
+    });
+  }, { threshold: 0.1 });
+
+  fadeElements.forEach(el => observer.observe(el));
+
+
+
+   
+
+  // 1. Importar módulos necesarios de Firebase
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js";
+  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js";
+
+  // 2. Configuración de tu proyecto en Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
+    authDomain: "reservaeldia-7a440.firebaseapp.com",
+    projectId: "reservaeldia-7a440",
+    storageBucket: "reservaeldia-7a440.firebasestorage.app",
+    messagingSenderId: "860495975406",
+    appId: "1:860495975406:web:3a49ad0cf55d60313534ff",
+    measurementId: "G-NPTJQXS655"
+  };
+
+  // 3. Inicializar Firebase y obtener referencia a Firestore
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // 4. Lógica del botón "Confirmar y generar invitación"
+  document.querySelector('.btn-confirmar').addEventListener('click', async () => {
+    // 4.1. Obtener datos del formulario
+    const nombres = document.getElementById('nombres')?.innerText?.trim() || '';
+    const fechaCeremonia = document.getElementById('fechaCeremonia')?.value || '';
+    const horaCeremonia = document.getElementById('horaCeremonia')?.value || '';
+    const fechaFiesta = document.getElementById('fechaFiesta')?.value || '';
+    const horaFiesta = document.getElementById('horaFiesta')?.value || '';
+
+    // 4.2. Validar campos obligatorios
+    if (!nombres || !fechaCeremonia || !horaCeremonia) {
+      alert("Por favor completá los campos obligatorios: nombres, fecha y hora de ceremonia.");
+      return;
+    }
+
+    // 4.3. Generar un ID único: nombres-sin-espacios + fechaCeremonia
+    const nombresSanitizados = nombres.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+    const id = `${nombresSanitizados}-${fechaCeremonia}`;
+
+    // 4.4. Crear objeto con todos los datos a guardar
+    const datos = {
+      nombres,
+      fechaCeremonia,
+      horaCeremonia,
+      fechaFiesta: fechaFiesta || null,
+      horaFiesta: horaFiesta || null,
+      creado: new Date().toISOString()
+    };
+
+    // 4.5. Guardar en Firestore y redirigir
+    try {
+      await setDoc(doc(db, "invitaciones", id), datos);
+      window.location.href = `/boda/invitacion.html?id=${id}`;
+    } catch (error) {
+      console.error("❌ Error al guardar la invitación:", error);
+      alert("Ocurrió un error al guardar la invitación. Por favor intentá nuevamente.");
+    }
+  });
+
+
+
+
+
+        
+      </script>
+      
+
+</body>
+</html>

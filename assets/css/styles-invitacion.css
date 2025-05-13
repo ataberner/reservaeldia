@@ -1,0 +1,149 @@
+:root {
+
+    --color-primario: #dab485;
+  --color-secundario: #a4bb8f;
+  --color-texto: #fff;
+  --color-nombres: #44663e;
+  --color-reservaeldia: #503d84;
+  --color-reservaeldia2: #d7b8e8;
+}
+
+
+  .cuenta-regresiva {
+    background-color: var(--color-secundario);
+  }
+
+  .num_cuenta-separador {
+     margin: 0 12px; /* Espacio horizontal a la izquierda y derecha */
+    position: relative;
+    top: -28px;
+     font-size: 2rem; /* Opcional: ajustá el tamaño si querés */
+}
+#cuentaRegresiva {
+  color: var(--color-texto); /* Cambiá este color al que quieras */
+}
+
+
+
+  .galeria {
+    background-color: var(--color-secundario);
+  }
+  .dresscode {
+    background-color: var(--color-secundario);
+  }
+  .confirmacion {
+    background-color: var(--color-secundario);
+  }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: #fff;
+      color: #333;
+      margin: 0;
+    }
+
+
+    .editor-sidebar .form-check {
+      margin-top: 10px;
+    }
+
+    .main-content {
+      margin-left: 280px;
+    }
+
+
+    .btn-confirmar:hover {
+      transform: scale(1.05);
+    }
+
+    .hidden-section {
+      display: none;
+    }
+
+    section.portada {
+  position: relative;
+  height: 100vh;
+  background: url('/invitaciones/Clasica/assets/img/portada.jpg') no-repeat center center / cover;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+.portada-parallax {
+  position: relative;
+  z-index: 2;
+  will-change: transform;
+  transition: transform 0.1s ease-out;
+  width: 100%;
+  height: 100%;
+}
+
+.portada-contenido {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+.portada-parallax {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.imagen-portada {
+  position: absolute;
+  top: 90%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+
+.portada-contenido {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+
+.titulo-nombres {
+  font-family: 'Alex Brush', cursive;
+  font-size: 4rem;
+  color: var(--color-nombres);
+  text-align: center;
+}
+
+.subtitulo {
+  font-size: 1.4rem;
+  color: #9db699;
+  font-weight: 600;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.icon {
+  width: 150px;
+  }
+
+  .fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.8s ease-out;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+

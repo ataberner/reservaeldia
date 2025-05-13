@@ -783,3 +783,47 @@ footer p {
       gap: 10px;
   }
 }
+
+
+
+
+#crear-invitacion {
+  background: var(--background-light);
+  padding: 80px 20px;
+  text-align: center;
+  border-top: 2px solid var(--border-light);
+  border-bottom: 2px solid var(--border-light);
+}
+
+#crear-invitacion h2 {
+  font-size: 2.5rem;
+  color: var(--secondary-color);
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+#crear-invitacion p {
+  font-size: 1.2rem;
+  color: var(--text-dark);
+  margin-bottom: 30px;
+}
+
+#crear-invitacion .btn-success {
+  background-color: var(--secondary-color);
+  border: 2px solid var(--primary-color);
+  color: var(--text-light);
+  font-size: 1.2rem;
+  padding: 12px 40px;
+  border-radius: 30px;
+  font-weight: 600;
+  text-transform: uppercase;
+  transition: all 0.3s ease-in-out;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+#crear-invitacion .btn-success:hover {
+  background-color: var(--primary-color);
+  color: var(--text-dark);
+  border-color: var(--secondary-color);
+  transform: scale(1.05);
+}

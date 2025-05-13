@@ -812,11 +812,26 @@ const radios = document.querySelectorAll('input[name="tipoEvento"]');
   // 4. Lógica del botón "Confirmar y generar invitación"
   document.querySelector('.btn-confirmar').addEventListener('click', async () => {
     // 4.1. Obtener datos del formulario
-    const nombres = document.getElementById('nombres')?.outerHTML || '';
-    const fechaCeremonia = document.getElementById('fechaCeremonia')?.value || '';
-    const horaCeremonia = document.getElementById('horaCeremonia')?.value || '';
-    const fechaFiesta = document.getElementById('fechaFiesta')?.value || '';
-    const horaFiesta = document.getElementById('horaFiesta')?.value || '';
+  // 4.1.1. Obtenemos el HTML completo (para guardar con estilo)
+const nombresHtml = document.getElementById('nombres')?.outerHTML || '';
+
+// 4.1.2. Obtenemos el texto plano (para usar como ID)
+const nombresTexto = document.getElementById('nombres')?.innerText?.trim() || '';
+
+// 4.1.3. Generamos ID con el texto limpio
+const nombresSanitizados = nombresTexto.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+const id = `${nombresSanitizados}-${fechaCeremonia}`;
+
+// 4.1.4. Creamos el objeto con el HTML estilizado
+const datos = {
+  nombres: nombresHtml,
+  fechaCeremonia,
+  horaCeremonia,
+  fechaFiesta: fechaFiesta || null,
+  horaFiesta: horaFiesta || null,
+  creado: new Date().toISOString()
+};
+
 
     // 4.2. Validar campos obligatorios
     if (!nombres || !fechaCeremonia || !horaCeremonia) {

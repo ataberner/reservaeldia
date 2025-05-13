@@ -68,6 +68,36 @@ html, body {
   background: var(--background-light);
 }
 
+.btn-iniciar-sesion {
+  background-color: white;
+  color: black;
+  border: 1px solid #503d84;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-iniciar-sesion:hover {
+  background-color: #f1f1f1;
+  text-decoration: none;
+  color: black;
+}
+
+.btn-registrarme {
+  background-color: #503d84;
+  color: white;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-registrarme:hover {
+  background-color: #3e2e6c;
+  text-decoration: none;
+  color: white;
+}
 
 
 

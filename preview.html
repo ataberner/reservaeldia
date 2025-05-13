@@ -788,7 +788,6 @@ const radios = document.querySelectorAll('input[name="tipoEvento"]');
 
 
 
-   
 
   // 1. Importar módulos necesarios de Firebase
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js";
@@ -812,25 +811,34 @@ const radios = document.querySelectorAll('input[name="tipoEvento"]');
   // 4. Lógica del botón "Confirmar y generar invitación"
   document.querySelector('.btn-confirmar').addEventListener('click', async () => {
     // 4.1. Obtener datos del formulario
-  // 4.1.1. Obtenemos el HTML completo (para guardar con estilo)
-const nombresHtml = document.getElementById('nombres')?.outerHTML || '';
+    const nombresHtml = document.getElementById('nombres')?.outerHTML || '';
+    const nombresTexto = document.getElementById('nombres')?.innerText?.trim() || '';
+    const nombresSanitizados = nombresTexto.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
 
-// 4.1.2. Obtenemos el texto plano (para usar como ID)
-const nombresTexto = document.getElementById('nombres')?.innerText?.trim() || '';
+    // Extraer valores de inputs
+    const fechaCeremonia = document.getElementById("fechaCeremonia")?.value || '';
+    const horaCeremonia = document.getElementById("horaCeremonia")?.value || '';
+    const fechaFiesta = document.getElementById("fechaFiesta")?.value || '';
+    const horaFiesta = document.getElementById("horaFiesta")?.value || '';
 
-// 4.1.3. Generamos ID con el texto limpio
-const nombresSanitizados = nombresTexto.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-const id = `${nombresSanitizados}-${fechaCeremonia}`;
+    // Validación mínima
+    if (!nombresSanitizados || !fechaCeremonia || !horaCeremonia) {
+      alert("Por favor completá los datos obligatorios.");
+      return;
+    }
 
-// 4.1.4. Creamos el objeto con el HTML estilizado
-const datos = {
-  nombres: nombresHtml,
-  fechaCeremonia,
-  horaCeremonia,
-  fechaFiesta: fechaFiesta || null,
-  horaFiesta: horaFiesta || null,
-  creado: new Date().toISOString()
-};
+    // Generar ID
+    const id = `${nombresSanitizados}-${fechaCeremonia}`;
+
+    // Crear objeto a guardar
+    const datos = {
+      nombres: nombresHtml,
+      fechaCeremonia,
+      horaCeremonia,
+      fechaFiesta: fechaFiesta || null,
+      horaFiesta: horaFiesta || null,
+      creado: new Date().toISOString()
+    };
 
     // 4.5. Guardar en Firestore y redirigir
     try {
@@ -841,6 +849,7 @@ const datos = {
       alert("Ocurrió un error al guardar la invitación. Por favor intentá nuevamente.");
     }
   });
+
 
 
 

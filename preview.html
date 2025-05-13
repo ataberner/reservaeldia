@@ -832,27 +832,6 @@ const datos = {
   creado: new Date().toISOString()
 };
 
-
-    // 4.2. Validar campos obligatorios
-    if (!nombres || !fechaCeremonia || !horaCeremonia) {
-      alert("Por favor completá los campos obligatorios: nombres, fecha y hora de ceremonia.");
-      return;
-    }
-
-    // 4.3. Generar un ID único: nombres-sin-espacios + fechaCeremonia
-    const nombresSanitizados = nombres.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-    const id = `${nombresSanitizados}-${fechaCeremonia}`;
-
-    // 4.4. Crear objeto con todos los datos a guardar
-    const datos = {
-      nombres,
-      fechaCeremonia,
-      horaCeremonia,
-      fechaFiesta: fechaFiesta || null,
-      horaFiesta: horaFiesta || null,
-      creado: new Date().toISOString()
-    };
-
     // 4.5. Guardar en Firestore y redirigir
     try {
       await setDoc(doc(db, "invitaciones", id), datos);

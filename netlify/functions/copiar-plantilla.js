@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+
 
 exports.handler = async (event) => {
   try {
@@ -23,7 +25,8 @@ exports.handler = async (event) => {
 
     // Rutas dentro del entorno de ejecución de Netlify
     const origen = path.join(__dirname, 'plantillas', plantillaId);
-    const destino = path.join(__dirname, 'borradores', slug); // temporal, para debug
+    const destino = path.join(os.tmpdir(), slug);
+
 
     console.log('📂 Path origen:', origen);
     console.log('📂 Path destino:', destino);

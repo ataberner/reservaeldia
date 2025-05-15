@@ -27,9 +27,9 @@ export default function Home() {
 
       <header className="navbar navbar-expand-lg navbar-light bg-light fixed-top py-3">
         <div className="container">
-          <link className="navbar-brand" href="/">
-            <a><img src="/assets/img/logo.png" alt="Reserva el Día - Invitaciones Digitales" width="200" /></a>
-          </link>
+          <Link href="/">
+            <a className="navbar-brand"><img src="/assets/img/logo.png" alt="Reserva el Día - Invitaciones Digitales" width="200" /></a>
+          </Link>
           <button className="navbar-toggler" type="button" onClick={() => setMenuOpen(!menuOpen)}  aria-label="Toggle navigation">
 
             <span className="navbar-toggler-icon"></span>
@@ -38,10 +38,10 @@ export default function Home() {
           <div className={`navbar-collapse ${menuOpen ? 'show' : ''}`} id="navbarNav">
 
             <ul className="navbar-nav ms-auto me-0">
-              <li className="nav-item"><link className="nav-link" href="#hero" onClick={() => setMenuOpen(false)}><a>Inicio</a></link></li>
-              <li className="nav-item"><link className="nav-link" href="#funcionalidades" onClick={() => setMenuOpen(false)}><a>Funcionalidades</a></link></li>
-              <li className="nav-item"><link className="nav-link" href="#como-funciona" onClick={() => setMenuOpen(false)}><a>Cómo Funciona</a></link></li>
-              <li className="nav-item"><link className="nav-link" href="#precios" onClick={() => setMenuOpen(false)}><a>Precios</a></link></li>
+              <li className="nav-item"><Link href="#hero" onClick={() => setMenuOpen(false)}><a className="nav-link" >Inicio</a></Link></li>
+              <li className="nav-item"><Link href="#funcionalidades" onClick={() => setMenuOpen(false)}><a className="nav-link" >Funcionalidades</a></Link></li>
+              <li className="nav-item"><Link href="#como-funciona" onClick={() => setMenuOpen(false)}><a className="nav-link" >Cómo Funciona</a></Link></li>
+              <li className="nav-item"><Link href="#precios" onClick={() => setMenuOpen(false)}><a className="nav-link" >Precios</a></Link></li>
             </ul>
           </div>
           <div className="d-flex gap-2 ms-lg-3 mt-3 mt-lg-0">
@@ -62,7 +62,7 @@ export default function Home() {
           <h1>Invitaciones Digitales para Bodas</h1>
           <h3>Tu boda comienza con la invitación perfecta.</h3>
           <p>Crea invitaciones digitales únicas y personalizadas en segundos.<br />Envía tu enlace y comparte la emoción con tus seres queridos.<br />¡Conocé nuestros modelos ahora!</p>
-          <link href="#invitaciones" className="btn btn-primary"><a>Ver Invitaciones</a></link>
+          <Link href="#invitaciones"><a className="btn btn-primary">Ver Invitaciones</a></Link>
         </div>
       </section>
 
@@ -80,17 +80,17 @@ export default function Home() {
                     <div className="d-flex gap-4">
                         {/* Item 2*/}
                         <div classna="text-center">
-                            <link href="invitaciones/Clasica/index.html">
+                            <Link href="invitaciones/Clasica/index.html">
                                 <a><img src="assets/img/celu2.png" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy"/>
                                 <p>Clásica</p></a>
-                            </link>
+                            </Link>
                         </div>
                         {/* Item 3 */}
                         <div className="text-center">
-                            <link href="invitaciones/foto-premium/index.html">
+                            <Link href="invitaciones/foto-premium/index.html">
                                 <a><img src="assets/img/celu3.png" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy"/>
                                 <p>Premium</p></a>
-                            </link>
+                            </Link>
                         </div>
                     </div>
                 </div>
@@ -223,13 +223,13 @@ export default function Home() {
         <li className="not-included">❌ Playlist para el evento</li>
         <li className="not-included">❌ Selección de menú</li>
       </ul>
-      <link
+      <Link
         href="https://wa.me/5491153119126?text=¡¡Hola!!Estoy%20interesado%20en%20la%20*invitaci%C3%B3n%20cl%C3%A1sica*%20para%20un%20casamiento..."
         target="_blank"
         rel="noopener noreferrer"
       >
         <a><button>Elegir Plan</button></a>
-      </link>
+      </Link>
     </div>
 
     {/* Plan Premium */}
@@ -246,13 +246,13 @@ export default function Home() {
         <li className="highlight">🎵 Playlist para el evento</li>
         <li className="highlight">🍽️ Selección de menú</li>
       </ul>
-      <link
+      <Link
         href="https://wa.me/5491153119126?text=¡¡Hola!!Estoy%20interesado%20en%20la%20*invitaci%C3%B3n%20premium*%20para%20un%20casamiento..."
         target="_blank"
         rel="noopener noreferrer"
       >
         <a><button>Elegir Plan</button></a>
-      </link>
+      </Link>
     </div>
   </div>
 </section>
@@ -262,9 +262,9 @@ export default function Home() {
   <div className="container text-center">
     <h2>Creá tu invitación ahora</h2>
     <p>Completá los datos y generá tu invitación antes de pagar</p>
-    <link href="/crear.html" className="btn btn-success btn-lg mt-3">
-      <a>Comenzar</a>
-    </link>
+    <Link href="/crear.html">
+      <a className="btn btn-success btn-lg mt-3">Comenzar</a>
+    </Link>
   </div>
 </section>
 

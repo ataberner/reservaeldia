@@ -1,17 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-
 
 exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return {
-        statusCode: 405,
-        body: JSON.stringify({ error: 'Método no permitido' }),
-      };
-    }
-
     const { plantillaId, slug } = JSON.parse(event.body || '{}');
 
     if (!plantillaId || !slug) {
@@ -21,12 +12,11 @@ exports.handler = async (event) => {
       };
     }
 
-    console.log(`📦 Copiando plantilla "${plantillaId}" en carpeta slug: ${slug}`);
-
-    // Rutas dentro del entorno de ejecución de Netlify
+    // Ruta origen: donde están las plantillas originales
     const origen = path.join(__dirname, 'plantillas', plantillaId);
-    const destino = path.join(os.tmpdir(), slug);
 
+    // Ruta destino: dentro del sitio público para poder editar
+    const destino = path.join(__dirname, '..', '..', 'public', 'borradores', slug);
 
     console.log('📂 Path origen:', origen);
     console.log('📂 Path destino:', destino);
@@ -39,11 +29,9 @@ exports.handler = async (event) => {
       };
     }
 
-    // Crear carpeta destino
     fs.mkdirSync(destino, { recursive: true });
 
-    // Copiar archivos
-    const copiarDirectorio = (origen, destino) => {
+    function copiarDirectorio(origen, destino) {
       const archivos = fs.readdirSync(origen);
       archivos.forEach((archivo) => {
         const origenPath = path.join(origen, archivo);
@@ -56,7 +44,7 @@ exports.handler = async (event) => {
           fs.copyFileSync(origenPath, destinoPath);
         }
       });
-    };
+    }
 
     copiarDirectorio(origen, destino);
 
@@ -64,7 +52,6 @@ exports.handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({ ok: true, slug }),
     };
-
   } catch (error) {
     console.error('❌ Error:', error);
     return {

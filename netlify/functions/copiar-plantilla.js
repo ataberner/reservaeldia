@@ -1,8 +1,16 @@
-const path = require('path');
-const fs = require('fs-extra');
-const templates = require('./templates-dist/templates');
+// Usar ES Modules para consistencia (si tu package.json tiene "type": "module")
+import path from 'path';
+import fs from 'fs-extra';
+import { fileURLToPath } from 'url';
 
-exports.handler = async (event) => {
+// Obtener __dirname en ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cargar plantillas compiladas
+import templates from './templates-dist/templates.js';
+
+export const handler = async (event) => {
   // Validación del método HTTP
   if (event.httpMethod !== 'POST') {
     return {
@@ -22,8 +30,12 @@ exports.handler = async (event) => {
       };
     }
 
-    // Ruta destino en la carpeta pública
-    const borradorDir = path.join(process.cwd(), '..', 'public', 'borradores', slug);
+    // SOLUCIÓN CLAVE: Usar /tmp en producción y public/borradores en desarrollo
+    const isProduction = process.env.NETLIFY === 'true';
+    const borradorDir = isProduction
+      ? path.join('/tmp', 'borradores', slug) // Netlify permite escribir en /tmp
+      : path.join(__dirname, '..', '..', 'public', 'borradores', slug); // Desarrollo local
+
     await fs.ensureDir(borradorDir);
 
     // Escribir cada archivo de la plantilla
@@ -36,6 +48,19 @@ exports.handler = async (event) => {
     );
 
     await Promise.all(fileWrites);
+
+    // En producción, necesitamos devolver el contenido en lugar de la ruta
+    if (isProduction) {
+      const htmlContent = templates[plantillaId]['index.html'];
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ 
+          success: true,
+          content: htmlContent, // Enviamos el HTML directamente
+          slug: slug
+        })
+      };
+    }
 
     return {
       statusCode: 200,

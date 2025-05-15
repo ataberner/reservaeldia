@@ -1,7 +1,20 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Obtener __dirname en ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Resto del código igual pero con sintaxis ES
 const templateDir = path.join(__dirname, '../plantillas');
 const outputDir = path.join(__dirname, '../netlify/functions/templates-dist');
+
+console.log('----------------------------------------');
+console.log('DEBUG: Buscando plantillas en:', templateDir);
+console.log('DEBUG: Directorios encontrados:', fs.readdirSync(templateDir));
+console.log('----------------------------------------');
 
 // Crear directorio de salida si no existe
 if (!fs.existsSync(outputDir)) {
@@ -17,7 +30,6 @@ templateFolders.forEach(folder => {
   if (fs.statSync(templatePath).isDirectory()) {
     templates[folder] = {};
     
-    // Leer todos los archivos de la plantilla
     const files = fs.readdirSync(templatePath);
     files.forEach(file => {
       const filePath = path.join(templatePath, file);
@@ -28,7 +40,7 @@ templateFolders.forEach(folder => {
 
 // Guardar como módulo JS
 const outputContent = `// Generado automáticamente
-module.exports = ${JSON.stringify(templates, null, 2)};`;
+export default ${JSON.stringify(templates, null, 2)};`;
 
 fs.writeFileSync(path.join(outputDir, 'templates.js'), outputContent);
 console.log('✅ Plantillas compiladas correctamente');

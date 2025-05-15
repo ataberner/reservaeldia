@@ -77,33 +77,46 @@ if (typeof onInvitacionCreada === 'function') {
             className="plantilla-card"
             
                     onClick={async () => {
-                      const user = auth.currentUser;
-                      if (!user) {
-                        alert('Debés estar logueado para crear una invitación.');
-                        return;
-                      }
+                              const user = auth.currentUser;
+                              if (!user) {
+                                alert('Debés estar logueado para crear una invitación.');
+                                return;
+                              }
 
-                      const timestamp = Date.now();
-                      const slug = `${user.uid}__${plantilla.id}__${timestamp}`; // ← nuevo formato
+                              const timestamp = Date.now();
+                              const slug = `${user.uid}__${plantilla.id}__${timestamp}`;
 
-                      try {
-                        const res = await fetch('/.netlify/functions/copiar-plantilla', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ plantillaId: plantilla.id, slug })
-                        });
+                              console.log('➡️ Enviando a Netlify:', {
+                                plantillaId: plantilla.id,
+                                slug
+                              });
 
-                        if (res.ok) {
-                          onSeleccionarPlantilla(slug); // carga el iframe con el slug nuevo
-                        } else {
-                          const error = await res.json();
-                          alert('Error: ' + error.error);
-                        }
-                      } catch (err) {
-                        console.error(err);
-                        alert('Error al crear la invitación.');
-                      }
-                    }}
+                              try {
+                                const res = await fetch('/.netlify/functions/copiar-plantilla', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json'
+                                  },
+                                  body: JSON.stringify({
+                                    plantillaId: plantilla.id,
+                                    slug
+                                  })
+                                });
+
+                                const data = await res.json();
+
+                                if (!res.ok) {
+                                  throw new Error(data.error || 'Error desconocido');
+                                }
+
+                                onSeleccionarPlantilla(slug); // mostrá el iframe con la copia
+                              } catch (err) {
+                                console.error('Error en la copia:', err);
+                                alert(`Error: ${err.message}`);
+                              }
+                            }}
+
+
           >
 
             {plantilla.portada && (

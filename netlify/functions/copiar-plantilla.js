@@ -25,7 +25,7 @@ exports.handler = async (event) => {
 
     // Paso 3: Definir paths correctos
     const base = path.resolve(__dirname, '../../../'); // sube desde /netlify/functions hasta raíz del proyecto
-    const origen = path.join(base, 'plantillas', plantillaId); // <- carpeta real con las plantillas
+    const origen = path.join(__dirname, '..', '..', '..', 'plantillas', plantillaId);
     const destino = path.join(base, 'public', 'borradores', slug);
 
     console.log('📂 Path origen esperado:', origen);

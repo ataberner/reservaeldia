@@ -25,7 +25,7 @@ exports.handler = async (event) => {
 
     /// Paso 3: Definir paths
 const base = path.resolve(__dirname, '../../..'); // ← Va de /netlify/functions a raíz del proyecto
-const origen = path.join(base, 'public', 'plantillas', plantillaId);
+const origen = path.join(__dirname, '../plantillas', plantillaId);
 const destino = path.join(base, 'public', 'borradores', slug);
 
 // 🔍 DEBUG: Mostrar la ruta de origen y si existe
@@ -41,7 +41,12 @@ if (fs.existsSync(parentDir)) {
   console.log('📁 Plantillas disponibles:', disponibles);
 } else {
   console.log('❌ Directorio de plantillas no encontrado:', parentDir);
+  console.log('📂 Origen:', origen);
+console.log('📂 Destino:', destino);
+console.log('🧱 ¿Existe el origen?', fs.existsSync(origen));
+
 }
+
 
 if (!fs.existsSync(origen)) {
   return {

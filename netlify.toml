@@ -5,7 +5,7 @@
 
 [functions]
   included_files = ["plantillas/**"]
- 
+
 
 [context.production.environment]
   NODE_VERSION = "18"

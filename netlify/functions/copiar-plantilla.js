@@ -23,18 +23,23 @@ exports.handler = async (event) => {
 
     console.log(`📦 Copiando plantilla "${plantillaId}" en carpeta slug: ${slug}`);
 
-    // Paso 3: Definir paths
-    const base = path.resolve(__dirname, '../../..'); // ← Va de /netlify/functions a raíz del proyecto
-    const origen = path.join(__dirname, '../assets/plantillas', plantillaId);
-    const destino = path.join(base, 'public', 'borradores', slug);
+    /// Paso 3: Definir paths
+const base = path.resolve(__dirname, '../../..'); // ← Va de /netlify/functions a raíz del proyecto
+const origen = path.join(__dirname, '../assets/plantillas', plantillaId);
+const destino = path.join(base, 'public', 'borradores', slug);
 
-    // Paso 4: Verificar si existe el origen
-    if (!fs.existsSync(origen)) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ error: 'Plantilla no encontrada' }),
-      };
-    }
+// 🔍 DEBUG: Mostrar la ruta de origen y si existe
+console.log('📂 Path origen esperado:', origen);
+console.log('🧱 Existe el path?', fs.existsSync(origen));
+
+// Paso 4: Verificar si existe el origen
+if (!fs.existsSync(origen)) {
+  return {
+    statusCode: 404,
+    body: JSON.stringify({ error: 'Plantilla no encontrada' }),
+  };
+}
+
 
     // Paso 5: Crear destino
     fs.mkdirSync(destino, { recursive: true });

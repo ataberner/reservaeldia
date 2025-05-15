@@ -87,7 +87,7 @@ if (typeof onInvitacionCreada === 'function') {
                       const slug = `${user.uid}__${plantilla.id}__${timestamp}`; // ← nuevo formato
 
                       try {
-                        const res = await fetch('/api/copiar-plantilla', {
+                        const res = await fetch('/.netlify/functions/copiar-plantilla', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ plantillaId: plantilla.id, slug })

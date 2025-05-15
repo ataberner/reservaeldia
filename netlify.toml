@@ -4,11 +4,7 @@
   functions = "netlify/functions"
 
 [functions]
-  included_files = ["plantillas/**"]
-
-
-[context.production.environment]
-  NODE_VERSION = "18"
+  included_files = ["netlify/functions/plantillas/**"]
 
 [[redirects]]
   from = "/boda/*"

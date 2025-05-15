@@ -33,6 +33,16 @@ console.log('📂 Path origen esperado:', origen);
 console.log('🧱 Existe el path?', fs.existsSync(origen));
 
 // Paso 4: Verificar si existe el origen
+
+// ✅ DEBUG EXTRA
+const parentDir = path.join(__dirname, '../assets/plantillas');
+if (fs.existsSync(parentDir)) {
+  const disponibles = fs.readdirSync(parentDir);
+  console.log('📁 Plantillas disponibles:', disponibles);
+} else {
+  console.log('❌ Directorio de plantillas no encontrado:', parentDir);
+}
+
 if (!fs.existsSync(origen)) {
   return {
     statusCode: 404,

@@ -1,18 +1,16 @@
 // components/PlantillaGrid.jsx
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, setDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { useRouter } from 'next/router';
 import { db } from '../firebase';
 
-export default function PlantillaGrid({ tipo, onInvitacionCreada, onSeleccionarPlantilla }) {
+export default function PlantillaGrid({ tipo, onSeleccionarPlantilla }) {
   const [plantillas, setPlantillas] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const router = useRouter(); // ✅ esto va arriba
-  const auth = getAuth();     // ✅ también arriba
+  const auth = getAuth();
 
-  // 🔁 traer las plantillas del tipo seleccionado
+  // 🔁 Traer las plantillas del tipo seleccionado
   useEffect(() => {
     const fetchPlantillas = async () => {
       try {
@@ -33,39 +31,64 @@ export default function PlantillaGrid({ tipo, onInvitacionCreada, onSeleccionarP
     fetchPlantillas();
   }, [tipo]);
 
-  // ✅ funcion crear invitacion desde plantilla
-  const crearInvitacionDesdePlantilla = async (plantilla) => {
+  // ✅ Crear copia física + registro en Firestore
+  const manejarSeleccion = async (plantilla) => {
     const user = auth.currentUser;
-
     if (!user) {
       alert('Debés estar logueado para crear una invitación.');
       return;
     }
 
+    const timestamp = Date.now();
+    const slug = `${user.uid}__${plantilla.id}__${timestamp}`;
+
+    console.log('➡️ Enviando a Netlify:', { plantillaId: plantilla.id, slug });
+
     try {
-      const nuevaInvitacion = {
+      // 1. Copiar archivos físicos de la plantilla
+      const res = await fetch('/.netlify/functions/copiar-plantilla', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plantillaId: plantilla.id, slug })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error desconocido');
+      }
+
+      // 2. Guardar referencia en Firestore (colección: borradores)
+      const ref = doc(db, 'borradores', slug);
+      await setDoc(ref, {
         userId: user.uid,
-        plantillaId: plantilla.id,
-        tipo: plantilla.tipo,
-        nombre: `Invitación basada en ${plantilla.nombre}`,
-        contenido: plantilla.contenido,
-        ultimaEdicion: serverTimestamp()
-      };
+        plantilla: plantilla.id,
+        creadoEn: serverTimestamp(),
+        estado: 'activo',
+        datos: {
+          nombres: '',
+          fecha: '',
+          hora: '',
+          ubicacion: '',
+          colores: {
+            primario: '#dab485',
+            secundario: '#a4bb8f',
+          }
+        }
+      });
 
-     const docRef = await addDoc(collection(db, 'invitaciones'), nuevaInvitacion);
-if (typeof onInvitacionCreada === 'function') {
-  onInvitacionCreada(docRef.id);
-}
+      // 3. Mostrar iframe de edición
+      onSeleccionarPlantilla(slug);
 
-    } catch (error) {
-      console.error('Error al crear la invitación:', error);
-      alert('Ocurrió un error al crear la invitación.');
+    } catch (err) {
+      console.error('Error en la copia:', err);
+      alert(`Error: ${err.message}`);
     }
   };
 
-  // 👇 JSX (interfaz)
+  // 👇 Renderizado
   if (loading) return <p>Cargando plantillas...</p>;
-  if (plantillas.length === 0) return <p>No hay plantillas para este tipo aún.</p>;
+  if (plantillas.length === 0) return <p>No hay plantillas disponibles.</p>;
 
   return (
     <div>
@@ -74,51 +97,9 @@ if (typeof onInvitacionCreada === 'function') {
         {plantillas.map((plantilla) => (
           <div
             key={plantilla.id}
-            className="plantilla-card"
-            
-                    onClick={async () => {
-                              const user = auth.currentUser;
-                              if (!user) {
-                                alert('Debés estar logueado para crear una invitación.');
-                                return;
-                              }
-
-                              const timestamp = Date.now();
-                              const slug = `${user.uid}__${plantilla.id}__${timestamp}`;
-
-                              console.log('➡️ Enviando a Netlify:', {
-                                plantillaId: plantilla.id,
-                                slug
-                              });
-
-                              try {
-                                const res = await fetch('/.netlify/functions/copiar-plantilla', {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json'
-                                  },
-                                  body: JSON.stringify({
-                                    plantillaId: plantilla.id,
-                                    slug
-                                  })
-                                });
-
-                                const data = await res.json();
-
-                                if (!res.ok) {
-                                  throw new Error(data.error || 'Error desconocido');
-                                }
-
-                                onSeleccionarPlantilla(slug); // mostrá el iframe con la copia
-                              } catch (err) {
-                                console.error('Error en la copia:', err);
-                                alert(`Error: ${err.message}`);
-                              }
-                            }}
-
-
+            className="plantilla-card cursor-pointer hover:scale-105 transition"
+            onClick={() => manejarSeleccion(plantilla)}
           >
-
             {plantilla.portada && (
               <img src={plantilla.portada} alt={plantilla.nombre} className="w-full h-48 object-cover" />
             )}

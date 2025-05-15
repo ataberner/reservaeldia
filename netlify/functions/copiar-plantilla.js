@@ -25,7 +25,7 @@ exports.handler = async (event) => {
 
     /// Paso 3: Definir paths
 const base = path.resolve(__dirname, '../../..'); // ← Va de /netlify/functions a raíz del proyecto
-const origen = path.join(__dirname, '../assets/plantillas', plantillaId);
+const origen = path.join(base, 'public', 'plantillas', plantillaId);
 const destino = path.join(base, 'public', 'borradores', slug);
 
 // 🔍 DEBUG: Mostrar la ruta de origen y si existe

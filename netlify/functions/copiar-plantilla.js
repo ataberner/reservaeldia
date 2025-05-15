@@ -23,43 +23,26 @@ exports.handler = async (event) => {
 
     console.log(`📦 Copiando plantilla "${plantillaId}" en carpeta slug: ${slug}`);
 
-    /// Paso 3: Definir paths
-const base = path.resolve(__dirname, '../../..'); // ← Va de /netlify/functions a raíz del proyecto
-const origen = path.resolve(__dirname, '../../../plantillas', plantillaId);
-const destino = path.join(base, 'public', 'borradores', slug);
+    // Paso 3: Definir paths correctos
+    const base = path.resolve(__dirname, '../../../'); // sube desde /netlify/functions hasta raíz del proyecto
+    const origen = path.join(base, 'plantillas', plantillaId); // <- carpeta real con las plantillas
+    const destino = path.join(base, 'public', 'borradores', slug);
 
-// 🔍 DEBUG: Mostrar la ruta de origen y si existe
-console.log('📂 Path origen esperado:', origen);
-console.log('🧱 Existe el path?', fs.existsSync(origen));
+    console.log('📂 Path origen esperado:', origen);
+    console.log('📂 Destino:', destino);
+    console.log('🧱 ¿Existe el origen?', fs.existsSync(origen));
 
-// Paso 4: Verificar si existe el origen
+    if (!fs.existsSync(origen)) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: 'Plantilla no encontrada' }),
+      };
+    }
 
-// ✅ DEBUG EXTRA
-const parentDir = path.join(__dirname, '../assets/plantillas');
-if (fs.existsSync(parentDir)) {
-  const disponibles = fs.readdirSync(parentDir);
-  console.log('📁 Plantillas disponibles:', disponibles);
-} else {
-  console.log('❌ Directorio de plantillas no encontrado:', parentDir);
-  console.log('📂 Origen:', origen);
-console.log('📂 Destino:', destino);
-console.log('🧱 ¿Existe el origen?', fs.existsSync(origen));
-
-}
-
-
-if (!fs.existsSync(origen)) {
-  return {
-    statusCode: 404,
-    body: JSON.stringify({ error: 'Plantilla no encontrada' }),
-  };
-}
-
-
-    // Paso 5: Crear destino
+    // Paso 4: Crear destino
     fs.mkdirSync(destino, { recursive: true });
 
-    // Paso 6: Función auxiliar para copiar
+    // Paso 5: Función auxiliar para copiar
     function copiarDirectorio(origen, destino) {
       const archivos = fs.readdirSync(origen);
       archivos.forEach((archivo) => {

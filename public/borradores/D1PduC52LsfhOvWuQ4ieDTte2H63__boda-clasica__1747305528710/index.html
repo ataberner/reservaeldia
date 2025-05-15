@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invitación - Boda clásica</title>
+
+  <!-- Tipografía (puede cambiarse) -->
+  <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;600&display=swap" rel="stylesheet">
+
+  <!-- CSS de la plantilla (lo agregaremos luego) -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <main class="main-content">
+
+    <!-- ✅ PORTADA INCLUIDA -->
+    <section class="portada">
+      <div class="portada-parallax">
+        <div class="portada-contenido">
+          <p class="subtitulo editable" contenteditable="true" data-id="subtitulo">¡Nos Casamos!</p>
+          <h1 class="editable titulo-nombres" contenteditable="true" data-id="nombres">Juli & Santi</h1>
+          <img src="assets/img/portada-editable1.png" alt="Hoja decorativa" class="imagen-portada">
+        </div>
+      </div>
+    </section>
+
+    <!-- Cuenta regresiva -->
+    <section id="cuentaRegresiva" class="cuenta-regresiva text-center py-5">
+      <h2 class="editable" contenteditable="true" data-id="mensajeCuentaRegresiva">¡Faltan pocos días para el gran día!</h2>
+      <div id="reloj" class="reloj">
+        <span id="dias">00</span>d :
+        <span id="horas">00</span>h :
+        <span id="min">00</span>min :
+        <span id="seg">00</span>s
+      </div>
+    </section>
+
+    <!-- Datos del evento -->
+    <section class="text-center py-5">
+      <h4 class="editable" contenteditable="true" data-id="tituloEvento">Nuestra boda</h4>
+      <p class="editable" contenteditable="true" data-id="datos-evento">
+        15 de julio de 2025 a las 20:00 hs en Friendly.<br>¡Te esperamos!
+      </p>
+    </section>
+
+    <!-- Galería -->
+    <section id="galeria" class="galeria text-center py-5">
+      <h4 class="editable" contenteditable="true" data-id="galeriaTitulo">Nosotros...</h4>
+      <p class="editable" contenteditable="true" data-id="galeriaTexto">Galería de imágenes de la pareja</p>
+    </section>
+
+    <!-- Dress code -->
+    <section id="dresscode" class="dresscode text-center py-5">
+      <h4 class="editable" contenteditable="true" data-id="dresscodeTitulo">DRESS CODE</h4>
+      <p class="editable" contenteditable="true" data-id="dresscodeValor">Cocktail</p>
+    </section>
+
+    <!-- Confirmación -->
+    <section id="confirmacion" class="confirmacion text-center py-5">
+      <h4 class="editable" contenteditable="true" data-id="confirmacionTitulo">Confirmación de asistencia</h4>
+      <p class="editable" contenteditable="true" data-id="confirmacionTexto">Confirmá antes del 1 de marzo de 2025</p>
+      <button class="btn-confirmar" id="btn-publicar">Generar invitación</button>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center py-4">
+      <p>&copy; 2025 Reserva el Día - Todos los derechos reservados</p>
+    </footer>
+
+  </main>
+
+  
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const btn = document.getElementById('btn-publicar');
+
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const slugBorrador = window.location.pathname.split('/')[2]; // carpeta actual del borrador
+
+    const nombres = document.querySelector('[data-id="nombres"]')?.innerText.trim();
+    const datosEvento = document.querySelector('[data-id="datos-evento"]')?.innerText.trim();
+
+    // 🔎 Mostrar en consola para debug
+    console.log('👤 Nombres:', nombres);
+    console.log('📅 Datos evento:', datosEvento);
+
+    if (!nombres || !datosEvento) {
+      alert('Faltan datos obligatorios (nombres o evento).');
+      return;
+    }
+
+    // Slug de nombres
+    const nombresSlug = nombres
+      .toLowerCase()
+      .replace(/[^a-z0-9áéíóúñü\s]/gi, '') // limpia caracteres especiales
+      .replace(/\s+/g, '-')                // espacios por guiones
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // quita acentos
+
+    // Buscar fecha en formato dd de mes de aaaa o dd/mm/aaaa
+    let fechaSlug = '';
+    const fechaRegex1 = /\d{1,2} de [a-zA-Z]+ de \d{4}/;
+    const fechaRegex2 = /\d{4}-\d{2}-\d{2}/;
+    const match = datosEvento.match(fechaRegex1) || datosEvento.match(fechaRegex2);
+
+    if (match) {
+      fechaSlug = match[0]
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w-]/g, '');
+    } else {
+      fechaSlug = Date.now(); // fallback si no encuentra fecha
+    }
+
+    const slugFinal = `${nombresSlug}-${fechaSlug}`;
+
+    try {
+      const res = await fetch('/api/publicar-invitacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slugBorrador, slugFinal })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        window.location.href = `${data.url}index.html`;
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (err) {
+      console.error('❌ Error:', err);
+      alert('No se pudo generar la invitación.');
+    }
+  });
+});
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+export const datosInvitacion = {
+  nombres: 'Agus & Euge',
+  subtitulo: '¡Nos Casamos!',
+  fecha: '15 de julio de 2025 a las 20:00 hs en La Toscana',
+  galeriaTitulo: 'Nuestra historia',
+  galeriaTexto: 'Una historia de amor y risas',
+  dresscodeTitulo: 'Dress Code',
+  dresscodeValor: 'Elegante sport',
+  confirmacionTitulo: '¿Nos acompañás?',
+  confirmacionTexto: 'Confirmá antes del 10 de junio',
+  confirmacionBoton: 'Confirmar ahora',
+  tituloEvento: 'Nuestra boda',
+  'datos-evento': '15 de julio de 2025 a las 20:00 hs en La Toscana. ¡Te esperamos!',
+  mensajeCuentaRegresiva: '¡Se viene el gran día!',
+};

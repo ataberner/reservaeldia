@@ -1,9 +1,11 @@
-[[redirects]]
-  from = "/boda/eugeyagus/"
-  to = "/boda/eugeyagus/index.html"
-  status = 200
-
 [build]
-  command = "npx puppeteer browsers install chrome && node generate-previews.js"
-  publish = "."
-  functions = ".netlify/functions"
+  command = "npm run build"
+  publish = "out"
+
+[context.production.environment]
+  NODE_VERSION = "18"
+
+[[redirects]]
+  from = "/boda/*"
+  to = "/boda/:splat"
+  status = 200

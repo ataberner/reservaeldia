@@ -1,0 +1,138 @@
+:root {
+  --color-primario: #dab485;
+  --color-secundario: #a4bb8f;
+  --color-texto: #fff;
+  --color-nombres: #44663e;
+  --color-reservaeldia: #503d84;
+  --color-reservaeldia2: #d7b8e8;
+}
+
+body {
+  font-family: 'Montserrat', sans-serif;
+  background: #fff;
+  color: #333;
+  margin: 0;
+}
+
+
+.editable {
+  outline: 2px dashed transparent;
+  transition: outline 0.2s ease;
+  position: relative;
+  z-index: 2;
+  user-select: text;
+}
+
+.editable:hover,
+.editable:focus {
+  outline: 2px dashed var(--color-reservaeldia2);
+}
+
+.btn-confirmar {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  background: var(--color-reservaeldia);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  transition: transform 0.2s ease;
+  z-index: 1001;
+}
+
+.btn-confirmar:hover {
+  transform: scale(1.05);
+}
+
+.cuenta-regresiva,
+.galeria,
+.dresscode,
+.confirmacion {
+  background-color: var(--color-secundario);
+}
+
+#cuentaRegresiva {
+  color: var(--color-texto);
+}
+
+.num_cuenta-separador {
+  margin: 0 12px;
+  position: relative;
+  top: -28px;
+  font-size: 2rem;
+}
+
+section.portada {
+  position: relative;
+  height: 100vh;
+  background: url('assets/img/portada.jpg') no-repeat center center / cover;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+.portada-parallax {
+  position: relative;
+  z-index: 2;
+  will-change: transform;
+  transition: transform 0.1s ease-out;
+  width: 100%;
+  height: 100%;
+}
+
+.portada-contenido {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+
+.imagen-portada {
+  position: absolute;
+  top: 90%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.titulo-nombres {
+  font-family: 'Alex Brush', cursive;
+  font-size: 4rem;
+  color: var(--color-nombres);
+  text-align: center;
+}
+
+.subtitulo {
+  font-size: 1.4rem;
+  color: #9db699;
+  font-weight: 600;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.icon {
+  width: 150px;
+}
+
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.8s ease-out;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}

@@ -3,11 +3,11 @@
   "name": "login-app",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev",
+ "scripts": {
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "export": "next export",
+    "compile-templates": "node scripts/compile-templates.js",
+    "prebuild": "npm run compile-templates"
   },
   "dependencies": {
     "firebase": "^11.7.1",

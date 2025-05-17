@@ -334,10 +334,6 @@ html, body {
   background: var(--background-light);
 }
 
-.navbar-brand {
-  margin-left: -50px; /* o -15px según prefieras */
-}
-
 
 
 /* =======================

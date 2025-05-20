@@ -8,9 +8,8 @@
   <!-- Tipografía (puede cambiarse) -->
   <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.firebasestorage.app/o/plantillas%2Fboda-clasica%2Fcss-boda-clasica.css?alt=media&token=dc9aed01-854e-40a6-ba9a-5ca89c2e7806" />
 
-  <!-- CSS de la plantilla (lo agregaremos luego) -->
-  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
@@ -22,7 +21,7 @@
         <div class="portada-contenido">
           <p class="subtitulo editable" contenteditable="true" data-id="subtitulo">¡Nos Casamos!</p>
           <h1 class="editable titulo-nombres" contenteditable="true" data-id="nombres">Juli & Santi</h1>
-          <img src="assets/img/portada-editable1.png" alt="Hoja decorativa" class="imagen-portada">
+          <img src="https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.firebasestorage.app/o/plantillas%2Fboda-clasica%2Fimg%2Fportada-editable1.png?alt=media&token=b5fbcbe6-99c9-4cb1-ae99-44260fbbea95" alt="Hoja decorativa" class="imagen-portada">
         </div>
       </div>
     </section>
@@ -72,74 +71,116 @@
 
   </main>
 
-  
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const btn = document.getElementById('btn-publicar');
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const slug = new URLSearchParams(window.location.search).get("slug");
 
-  if (!btn) return;
+    // ✅ Botón para generar la invitación final
+    const btn = document.getElementById('btn-publicar');
 
-  btn.addEventListener('click', async () => {
-    const slugBorrador = window.location.pathname.split('/')[2]; // carpeta actual del borrador
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        const slugBorrador = slug;
 
-    const nombres = document.querySelector('[data-id="nombres"]')?.innerText.trim();
-    const datosEvento = document.querySelector('[data-id="datos-evento"]')?.innerText.trim();
+        const nombres = document.querySelector('[data-id="nombres"]')?.innerText.trim();
+        const datosEvento = document.querySelector('[data-id="datos-evento"]')?.innerText.trim();
 
-    // 🔎 Mostrar en consola para debug
-    console.log('👤 Nombres:', nombres);
-    console.log('📅 Datos evento:', datosEvento);
+        if (!nombres || !datosEvento) {
+          alert('Faltan datos obligatorios (nombres o evento).');
+          return;
+        }
 
-    if (!nombres || !datosEvento) {
-      alert('Faltan datos obligatorios (nombres o evento).');
-      return;
-    }
+        const nombresSlug = nombres
+          .toLowerCase()
+          .replace(/[^a-z0-9áéíóúñü\s]/gi, '')
+          .replace(/\s+/g, '-')
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    // Slug de nombres
-    const nombresSlug = nombres
-      .toLowerCase()
-      .replace(/[^a-z0-9áéíóúñü\s]/gi, '') // limpia caracteres especiales
-      .replace(/\s+/g, '-')                // espacios por guiones
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // quita acentos
+        let fechaSlug = '';
+        const fechaRegex1 = /\d{1,2} de [a-zA-Z]+ de \d{4}/;
+        const fechaRegex2 = /\d{4}-\d{2}-\d{2}/;
+        const match = datosEvento.match(fechaRegex1) || datosEvento.match(fechaRegex2);
 
-    // Buscar fecha en formato dd de mes de aaaa o dd/mm/aaaa
-    let fechaSlug = '';
-    const fechaRegex1 = /\d{1,2} de [a-zA-Z]+ de \d{4}/;
-    const fechaRegex2 = /\d{4}-\d{2}-\d{2}/;
-    const match = datosEvento.match(fechaRegex1) || datosEvento.match(fechaRegex2);
+        if (match) {
+          fechaSlug = match[0]
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^\w-]/g, '');
+        } else {
+          fechaSlug = Date.now();
+        }
 
-    if (match) {
-      fechaSlug = match[0]
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w-]/g, '');
-    } else {
-      fechaSlug = Date.now(); // fallback si no encuentra fecha
-    }
+        const slugFinal = `${nombresSlug}-${fechaSlug}`;
 
-    const slugFinal = `${nombresSlug}-${fechaSlug}`;
+        try {
+          const res = await fetch('/api/publicar-invitacion', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slugBorrador, slugFinal })
+          });
 
-    try {
-      const res = await fetch('/api/publicar-invitacion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slugBorrador, slugFinal })
+          const data = await res.json();
+
+          if (res.ok) {
+            window.location.href = `${data.url}index.html`;
+          } else {
+            alert('Error: ' + data.error);
+          }
+        } catch (err) {
+          console.error('❌ Error:', err);
+          alert('No se pudo generar la invitación.');
+        }
       });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        window.location.href = `${data.url}index.html`;
-      } else {
-        alert('Error: ' + data.error);
-      }
-    } catch (err) {
-      console.error('❌ Error:', err);
-      alert('No se pudo generar la invitación.');
     }
-  });
-});
-</script>
 
+    // ✅ Función para obtener todos los overrides del DOM
+    const getOverrides = () => {
+      const elementos = document.querySelectorAll("[data-id]");
+      const datos = {};
+      elementos.forEach(el => {
+        datos[el.dataset.id] = el.innerHTML;
+      });
+      return datos;
+    };
+
+    // ✅ Guardar automáticamente cada 2 segundos
+    const guardarCambios = async () => {
+      const overrides = getOverrides();
+      try {
+        await fetch(`https://us-central1-reservaeldia-7a440.cloudfunctions.net/guardarEdicion`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ slug, overrides })
+        });
+        console.log("✅ Guardado automático");
+      } catch (err) {
+        console.error("❌ Error al guardar", err);
+      }
+    };
+
+    setInterval(guardarCambios, 2000);
+
+    // ✅ Al cargar la página, aplicar overrides
+    const aplicarOverrides = async () => {
+      try {
+        const response = await fetch(`https://us-central1-reservaeldia-7a440.cloudfunctions.net/leerEdicion?slug=${slug}`);
+        const data = await response.json();
+        const overrides = data.overrides || {};
+
+        Object.entries(overrides).forEach(([id, contenido]) => {
+          const el = document.querySelector(`[data-id="${id}"]`);
+          if (el) el.innerHTML = contenido;
+        });
+      } catch (err) {
+        console.error("❌ No se pudieron aplicar los overrides", err);
+      }
+    };
+
+    aplicarOverrides();
+  });
+</script>
 
 </body>
 </html>

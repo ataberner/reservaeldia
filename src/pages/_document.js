@@ -14,7 +14,7 @@ export default function Document() {
           href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;900&display=swap"
           rel="stylesheet"
         />
-        <link rel="stylesheet" href="/src/styles/styles.css" />
+       
         <Script
           src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
           strategy="beforeInteractive"

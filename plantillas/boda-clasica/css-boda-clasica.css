@@ -68,7 +68,7 @@ body {
 section.portada {
   position: relative;
   height: 100vh;
-  background: url('assets/img/portada.jpg') no-repeat center center / cover;
+  background: url('https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.firebasestorage.app/o/plantillas%2Fboda-clasica%2Fportadas%2Fportada.jpg?alt=media&token=d20172d1-974f-4ff8-b1d8-ce29af329b96') no-repeat center center / cover;
   display: flex;
   justify-content: center;
   align-items: center;

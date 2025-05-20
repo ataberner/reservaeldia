@@ -94,29 +94,54 @@ const toggleZoom = () => {
           {slugInvitacion && (
   <>
    <div className="flex items-center gap-3 mb-6">
-  {/* Botón volver */}
-  <button
-    onClick={() => setSlugInvitacion(null)}
-    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition"
-  >
-    ← Volver al menú
-  </button>
+        {/* Botón volver */}
+        <button
+          onClick={() => setSlugInvitacion(null)}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition"
+        >
+          ← Volver al menú
+        </button>
 
-  {/* Botón de zoom */}
-  <div className="relative group">
-    <button
-      onClick={toggleZoom}
-      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white text-gray-800 border border-gray-300 rounded-full shadow hover:bg-gray-100 transition"
-    >
-      <span className="text-base">{zoom === 1 ? '➖' : '➕'}</span>
-      <span className="text-sm font-medium">{zoom === 1 ? '100%' : '50%'}</span>
-    </button>
-    {/* Tooltip */}
-    <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
-      {zoom === 1 ? 'Alejar al 50%' : 'Acercar al 100%'}
+            {/* Botón de zoom */}
+            <div className="relative group">
+              <button
+                onClick={toggleZoom}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white text-gray-800 border border-gray-300 rounded-full shadow hover:bg-gray-100 transition"
+              >
+                <span className="text-base">{zoom === 1 ? '➖' : '➕'}</span>
+                <span className="text-sm font-medium">{zoom === 1 ? '100%' : '50%'}</span>
+              </button>
+              {/* Tooltip */}
+              <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
+                {zoom === 1 ? 'Alejar al 50%' : 'Acercar al 100%'}
+              </div>
+            </div>
+
+        {/* Botón para generar invitación final */}
+        <button
+          onClick={async () => {
+            const confirmar = confirm("¿Querés publicar esta invitación?");
+            if (!confirmar) return;
+
+            const functions = await import("firebase/functions").then(mod => mod.getFunctions());
+            const publicarInvitacion = await import("firebase/functions").then(mod => mod.httpsCallable(functions, "publicarInvitacion"));
+
+            try {
+              const result = await publicarInvitacion({ slug: slugInvitacion });
+              const urlFinal = result.data?.url;
+              if (urlFinal) window.open(urlFinal, "_blank");
+            } catch (error) {
+              alert("❌ Error al publicar la invitación.");
+              console.error(error);
+            }
+          }}
+          className="ml-auto bg-[#773dbe] text-white px-4 py-2 rounded hover:bg-purple-700 transition text-sm"
+        >
+          Generar invitación
+        </button>
+
+
     </div>
-  </div>
-</div>
 
 
     {/* Contenedor con zoom */}

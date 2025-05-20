@@ -1,6 +1,8 @@
 import * as functions from "firebase-functions";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
+import { JSDOM } from "jsdom";
+
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -211,3 +213,143 @@ export const borrarBorrador = functions.https.onCall(
     return { success: true, archivosEliminados: files.length };
   }
 );
+
+
+
+// 👇 Acá definís el tipo de datos esperados
+interface PublicarInvitacionData {
+  slug: string;
+}
+
+
+export const publicarInvitacion = functions.https.onCall(
+  async (request: functions.https.CallableRequest<PublicarInvitacionData>) => {
+    const { slug } = request.data;
+
+    if (!slug) {
+      throw new functions.https.HttpsError("invalid-argument", "Falta el slug");
+    }
+
+    const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
+    const origen = `borradores/${slug}/index.html`;
+    const destino = `publicadas/${slug}/index.html`;
+
+    const firestore = admin.firestore();
+    const docBorrador = await firestore.collection("borradores").doc(slug).get();
+    const dataBorrador = docBorrador.data();
+
+    if (!dataBorrador) {
+      throw new functions.https.HttpsError("not-found", `No se encontró el borrador ${slug}`);
+    }
+
+    const overrides = dataBorrador.overrides || {};
+
+    // 1️⃣ Leer el archivo HTML original desde Storage
+    const [contenidoOriginal] = await bucket.file(origen).download();
+    const htmlOriginal = contenidoOriginal.toString();
+
+    // 2️⃣ Aplicar overrides y limpiar edición
+    const htmlFinal = aplicarOverrides(htmlOriginal, overrides);
+
+    // 3️⃣ Subir el HTML final a la carpeta publicadas
+    await bucket.file(destino).save(htmlFinal, {
+      contentType: "text/html",
+      gzip: true,
+    });
+
+    // 4️⃣ Guardar metadata en Firestore
+    await firestore.collection("publicadas").doc(slug).set({
+  slug,
+  userId: dataBorrador.userId || null,
+  plantillaId: dataBorrador.plantillaId || null,
+  overrides, // 🟢 se actualiza con los nuevos
+  publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge: true }); // 🔁 Importante para sobrescribir correctamente
+
+
+    const url = `https://reservaeldia-7a440.web.app/i/${slug}`;
+
+    return { success: true, url };
+  }
+);
+
+function limpiarCSSDeEdicion(document: Document) {
+  const styles = Array.from(document.querySelectorAll("style"));
+
+  styles.forEach((styleTag) => {
+    if (styleTag.textContent?.includes(".editable:hover")) {
+      styleTag.textContent = styleTag.textContent
+        .replace(/\.editable:hover[\s\S]*?\{[^}]*\}/g, "") // remueve el bloque hover
+        .replace(/\.editable:focus[\s\S]*?\{[^}]*\}/g, ""); // remueve el bloque focus
+    }
+  });
+}
+
+
+// Función utilitaria para aplicar overrides y limpiar el HTML
+function aplicarOverrides(htmlOriginal: string, overrides: Record<string, string>): string {
+  const dom = new JSDOM(htmlOriginal);
+  const document = dom.window.document;
+
+  for (const [key, valor] of Object.entries(overrides)) {
+    const el = document.querySelector(`[data-id="${key}"]`);
+    if (el) el.textContent = valor;
+  }
+
+  document.querySelectorAll("[contenteditable]").forEach((el: Element) => {
+    el.removeAttribute("contenteditable");
+  });
+
+  document.querySelectorAll(".editable").forEach((el: Element) => {
+  el.classList.remove("editable");
+});
+
+
+  limpiarCSSDeEdicion(document); // 🔥 limpia el efecto visual editable
+
+  return dom.serialize();
+}
+
+
+
+
+import express, { Request, Response } from "express";
+const app = express();
+
+app.get("/i/:slug", async (req: Request, res: Response) => {
+
+  const slug = req.params.slug;
+
+  if (!slug) {
+    res.status(400).send("Falta el parámetro 'slug'");
+    return;
+  }
+
+  const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
+  const filePath = `publicadas/${slug}/index.html`;
+  const file = bucket.file(filePath);
+
+  console.log("📂 Buscando archivo en:", filePath);
+
+  try {
+    const [exists] = await file.exists();
+    if (!exists) {
+      res.status(404).send("Invitación publicada no encontrada");
+      return;
+    }
+
+    const [contenido] = await file.download();
+
+    res.set("Content-Type", "text/html");
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    res.removeHeader?.("X-Frame-Options");
+    res.send(contenido.toString());
+  } catch (error) {
+    console.error("❌ Error leyendo el archivo publicado:", error);
+    res.status(500).send("Error al mostrar la invitación publicada");
+  }
+});
+
+export const verInvitacionPublicada = functions.https.onRequest(app);

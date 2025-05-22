@@ -14,19 +14,35 @@ body {
   margin: 0;
 }
 
+ /* Estilos adicionales para el drag and drop */
+    
+ 
+  
+   
 
 .editable {
   outline: 2px dashed transparent;
-  transition: outline 0.2s ease;
-  position: relative;
+  cursor: move;
+  user-select: none;
   z-index: 2;
   user-select: text;
+  position: absolute;
 }
+.editable[contenteditable="true"] {
+    user-select: text;
+    cursor: text;
+    outline: none;
+    }
 
 .editable:hover,
 .editable:focus {
   outline: 2px dashed var(--color-reservaeldia2);
 }
+.zona-editable {
+  position: relative;
+      min-height: 300px;
+      width: 100%;
+    }
 
 .btn-confirmar {
   position: fixed;

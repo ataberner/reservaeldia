@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prueba Drag & Drop</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f0f0f0;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+
+    .editable {
+      position: absolute;
+      padding: 10px 20px;
+      background: white;
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      font-size: 20px;
+      cursor: move;
+      user-select: text;
+      transition: border-color 0.3s;
+    }
+
+    .editable:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+
+    .status {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      padding: 8px 16px;
+      background: #333;
+      color: white;
+      border-radius: 4px;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="editable" data-id="nombres" style="top: 100px; left: 100px;" contenteditable="true">Euge & Agus</div>
+  <div class="editable" data-id="fecha" style="top: 180px; left: 120px;" contenteditable="true">15 de julio</div>
+  <div class="status" id="status">Cargando...</div>
+
+  <script type="module">
+    console.log("✅ Script MÓDULO cargado");
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import {
+      getFirestore, doc, setDoc, updateDoc, getDoc, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+    import {
+      getAuth, onAuthStateChanged, signInAnonymously
+    } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
+      authDomain: "reservaeldia-7a440.firebaseapp.com",
+      projectId: "reservaeldia-7a440"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const slug = "prueba-drag-drop";
+    const statusEl = document.getElementById('status');
+    let currentUser = null;
+    let saveTimeout = null;
+    let changesToSave = {};
+    let docRef = null; // Variable global para la referencia al documento
+
+    // Mostrar estado
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.style.backgroundColor = isError ? '#f44336' : '#4CAF50';
+      if (!isError) {
+        setTimeout(() => statusEl.style.backgroundColor = '#333', 2000);
+      }
+    }
+
+    // 🔐 Login anónimo automático
+    signInAnonymously(auth).catch(err => {
+      console.error("❌ Error en login anónimo:", err);
+      setStatus("Error de autenticación", true);
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setStatus("No autenticado", true);
+        return;
+      }
+      
+      currentUser = user;
+      setStatus("Conectado");
+
+      docRef = doc(db, "borradores", slug); // Asignamos a la variable global
+
+      try {
+        // 🔍 Verificar si el documento existe
+        const snap = await getDoc(docRef);
+        
+        if (!snap.exists()) {
+          console.log("📄 Documento nuevo, se crea con userId");
+          await setDoc(docRef, { 
+            userId: user.uid,
+            creado: serverTimestamp()
+          });
+        } else {
+          // Cargar datos existentes
+          const data = snap.data();
+          if (data.userId && data.userId !== user.uid) {
+            setStatus("Este documento pertenece a otro usuario", true);
+            return;
+          }
+
+          const contenido = data?.contenido || {};
+          Object.entries(contenido).forEach(([id, val]) => {
+            const el = document.querySelector(`[data-id="${id}"]`);
+            if (!el) return;
+            el.innerText = val.texto;
+            el.style.top = val.top;
+            el.style.left = val.left;
+          });
+        }
+
+        setupDragAndDrop();
+        setupAutoSave();
+        
+      } catch (error) {
+        console.error("Error al cargar documento:", error);
+        setStatus("Error al cargar", true);
+      }
+    });
+
+    function setupDragAndDrop() {
+      document.querySelectorAll(".editable").forEach(el => {
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+
+        el.addEventListener("mousedown", (e) => {
+          if (e.target !== el) return; // No arrastrar si se hace clic en texto seleccionado
+          
+          isDragging = true;
+          offsetX = e.clientX - el.getBoundingClientRect().left;
+          offsetY = e.clientY - el.getBoundingClientRect().top;
+          el.style.zIndex = 1000;
+
+          const onMouseMove = (e) => {
+            if (!isDragging) return;
+            el.style.left = `${e.clientX - offsetX}px`;
+            el.style.top = `${e.clientY - offsetY}px`;
+          };
+
+          const onMouseUp = () => {
+            isDragging = false;
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+            el.style.zIndex = "";
+
+            // Programar guardado
+            scheduleSave(el);
+          };
+
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mouseup", onMouseUp);
+        });
+
+        // Guardar cuando se edita el texto
+        el.addEventListener("input", () => scheduleSave(el));
+      });
+    }
+
+    function scheduleSave(el) {
+      if (!currentUser || !docRef) return;
+
+      const id = el.dataset.id;
+      changesToSave[id] = {
+        texto: el.innerText,
+        top: el.style.top,
+        left: el.style.left
+      };
+
+      // Retrasar el guardado para evitar múltiples llamadas
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(saveChanges, 1000);
+    }
+
+    function setupAutoSave() {
+      // Autoguardado cada 30 segundos por si acaso
+      setInterval(() => {
+        if (Object.keys(changesToSave).length > 0) {
+          saveChanges();
+        }
+      }, 30000);
+    }
+
+    async function saveChanges() {
+      if (!currentUser || !docRef || Object.keys(changesToSave).length === 0) return;
+
+      try {
+        setStatus("Guardando...");
+        
+        await updateDoc(docRef, {
+          contenido: changesToSave,
+          ultimaEdicion: serverTimestamp()
+        });
+
+        console.log("✅ Cambios guardados:", changesToSave);
+        changesToSave = {};
+        setStatus("Guardado");
+        
+      } catch (error) {
+        console.error("❌ Error al guardar:", error);
+        setStatus("Error al guardar", true);
+        
+        // Intento de recuperación: crear el documento si no existe
+        if (error.code === 'not-found') {
+          try {
+            await setDoc(docRef, { 
+              userId: currentUser.uid,
+              contenido: changesToSave,
+              creado: serverTimestamp(),
+              ultimaEdicion: serverTimestamp()
+            });
+            changesToSave = {};
+            setStatus("Documento creado y guardado");
+          } catch (createError) {
+            console.error("❌ Error al crear documento:", createError);
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

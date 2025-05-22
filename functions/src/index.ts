@@ -7,52 +7,74 @@ import { JSDOM } from "jsdom";
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+const db = admin.firestore();
 
 
-// ✅ Función para servir la invitación en el iframe
-
+// ✅ Función para ver la invitación en el iframe
 
 export const verInvitacion = functions.https.onRequest(async (req, res) => {
-  const rawSlug = req.query.slug;
-  const slug = Array.isArray(rawSlug)
-    ? rawSlug[0]
-    : typeof rawSlug === "string"
-    ? decodeURIComponent(rawSlug)
-    : "";
-
-  console.log("📩 Slug recibido:", slug);
-
+  const slug = req.query.slug as string;
   if (!slug) {
-    console.log("❌ Slug inválido");
-    res.status(400).send("Falta el parámetro 'slug'");
-    return;
+    res.status(400).send("Falta el slug");
+return;
   }
 
-  const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
-  const filePath = `borradores/${slug}/index.html`;
-  const file = bucket.file(filePath);
-
-  console.log("📂 Buscando archivo en:", filePath);
 
   try {
-    const [exists] = await file.exists();
-    console.log("📁 ¿Existe el archivo?", exists);
-
-    if (!exists) {
-      console.warn("⚠️ El archivo no existe en Storage:", filePath);
-      res.status(404).send("Invitación no encontrada");
-      return;
+    // 1. Leer contenido de Firestore
+    const docRef = db.collection("borradores").doc(slug);
+    const snap = await docRef.get();
+    if (!snap.exists) {
+    res.status(404).send("Invitación no encontrada");
+    return;
     }
 
-    const [contenido] = await file.download();
+    const datos = snap.data();
+    const contenido = datos?.contenido || {};
 
+    // 2. Descargar el archivo HTML desde Storage
+    const bucket = getStorage().bucket();
+    const file = bucket.file(`borradores/${slug}/index.html`);
+    const [htmlBuffer] = await file.download();
+    const html = htmlBuffer.toString("utf-8");
+
+    // 3. Usar JSDOM para editar el HTML
+    const dom = new JSDOM(html);
+    const { document } = dom.window;
+
+    // 4. Aplicar cada bloque editable (texto + posición)
+    Object.entries(contenido).forEach(([id, valores]: any) => {
+      const el = document.querySelector(`[data-id="${id}"]`);
+      if (!el) return;
+
+      if (valores.texto) el.textContent = valores.texto;
+
+      // ⬇️ Agregar estilos de posición si existen
+      if (valores.top || valores.left) {
+        el.setAttribute(
+          "style",
+          `position: absolute; top: ${valores.top}; left: ${valores.left};`
+        );
+      }
+    });
+
+    // 5. Eliminar estilos de edición (opcional)
+    const styleTags = document.querySelectorAll("style");
+    styleTags.forEach((style) => {
+      if (style.textContent?.includes(".editable:hover") || style.textContent?.includes(".editable:focus")) {
+        style.remove();
+      }
+    });
+
+    // 6. Eliminar cabecera que bloquea iframe
+    res.set("X-Frame-Options", "");
+
+    // 7. Enviar HTML modificado
     res.set("Content-Type", "text/html");
-    res.set("Cache-Control", "public, max-age=3600");
-    res.removeHeader?.("X-Frame-Options"); // opcional: no todos los entornos lo soportan
-    res.send(contenido.toString());
-  } catch (error) {
-    console.error("❌ Error leyendo el archivo:", error);
-    res.status(500).send("Error al mostrar la invitación");
+    res.status(200).send(dom.serialize());
+  } catch (err) {
+    console.error("Error al servir la invitación:", err);
+    res.status(500).send("Error interno del servidor");
   }
 });
 
@@ -69,7 +91,7 @@ export const copiarPlantilla = functions.https.onCall(
     const { plantillaId, slug } = request.data;
     const uid = request.auth?.uid;
 
-console.log("🧪 Slug recibido:", slug);
+    console.log("🧪 Slug recibido:", slug);
 
 
 
@@ -91,7 +113,7 @@ console.log("🧪 Slug recibido:", slug);
     }
 
     await Promise.all(
-  archivos
+     archivos
     .filter((archivo) => {
       const nombre = archivo.name.split("/").pop();
       return nombre === "index.html"; // Solo copiamos este
@@ -104,21 +126,56 @@ console.log("🧪 Slug recibido:", slug);
       await archivoOriginal.copy(bucket.file(destino));
       console.log(`✅ Copiado: ${archivoOriginal.name} → ${destino}`);
     })
-);
+    );
 
+    
+const archivoHtml = archivos.find(f => f.name.endsWith("index.html"));
+if (!archivoHtml) {
+  throw new functions.https.HttpsError("not-found", "No se encontró index.html");
+}
+
+const [htmlBuffer] = await archivoHtml.download();
+const html = htmlBuffer.toString("utf-8");
+const dom = new JSDOM(html);
+const { document } = dom.window;
+
+// ✅ Extraer contenido inicial de elementos con data-id
+const elementos = document.querySelectorAll("[data-id]");
+const contenido: Record<string, any> = {};
+
+elementos.forEach((el) => {
+  const id = el.getAttribute("data-id");
+  const texto = el.textContent?.trim() || "";
+
+  // Extraer posición si está definida inline
+  const style = el.getAttribute("style") || "";
+  const topMatch = style.match(/top:\s*([^;]+)/);
+  const leftMatch = style.match(/left:\s*([^;]+)/);
+
+  const top = topMatch?.[1]?.trim();
+  const left = leftMatch?.[1]?.trim();
+
+  contenido[id!] = {
+    texto,
+    ...(top && { top }),
+    ...(left && { left }),
+  };
+});
 
     const firestore = admin.firestore();
     await firestore.collection("borradores").doc(slug).set({
-      userId: uid,
-      slug,
-      plantillaId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+          userId: uid,
+          slug,
+          plantillaId,
+          contenido, // ⬅️ El contenido inicial extraído
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
 
-    return {
-  slug,
-  url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`
-};
+
+          return {
+        slug,
+        url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`
+      };
 
   }
 );
@@ -344,7 +401,7 @@ app.get("/i/:slug", async (req: Request, res: Response) => {
     res.set("Cache-Control", "no-cache, no-store, must-revalidate");
     res.set("Pragma", "no-cache");
     res.set("Expires", "0");
-    res.removeHeader?.("X-Frame-Options");
+    res.removeHeader("X-Frame-Options");
     res.send(contenido.toString());
   } catch (error) {
     console.error("❌ Error leyendo el archivo publicado:", error);

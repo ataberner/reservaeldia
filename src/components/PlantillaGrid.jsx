@@ -24,6 +24,8 @@ export default function PlantillaGrid({ plantillas, onSeleccionarPlantilla }) {
   setLoadingId(plantilla.id);
   try {
     const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
+
+
     const slug = `${generarSlug(plantilla.nombre)}-${Date.now()}`;
 
     const result = await copiarPlantilla({ plantillaId: plantilla.id, slug });
@@ -56,7 +58,7 @@ export default function PlantillaGrid({ plantillas, onSeleccionarPlantilla }) {
           <button
  onClick={async () => {
   const slug = await crearCopia(p);
-  if (slug) onSeleccionarPlantilla(slug); // 👈 solo pasás el slug
+  if (slug) onSeleccionarPlantilla(slug, p);
 }}
 
 >

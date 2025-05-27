@@ -16,7 +16,7 @@ export default function Sidebar() {
       }}
     >
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '24px' }}>
-        Menú
+        MenúUUU
       </h2>
 
       <nav style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

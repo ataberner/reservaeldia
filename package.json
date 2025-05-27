@@ -1,23 +1,31 @@
 {
-  "name": "reservaeldia",
-  "version": "1.0.0",
-"scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "export": "next export",
-  "deploy:hosting": "npm run build && npm run export && firebase deploy --only hosting"
-},
-  "dependencies": {
-    "firebase": "^11.7.3",
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-icons": "^5.5.0"
-  },
-  "devDependencies": {
-    "autoprefixer": "^10.4.14",
-    "postcss": "^8.4.21",
-    "tailwindcss": "^3.4.1"
+   "name": "reservaeldia",
+   "type": "module",
+   "version": "1.0.0",
+   "scripts": {
+      "dev": "next dev",
+      "build": "next build",
+      "export": "next export",
+      "deploy:full": "npm run build && firebase deploy",
+      "deploy:hosting": "npm run build && npm run export && firebase deploy --only hosting"
+   },
+   "dependencies": {
+      "firebase": "^11.7.3",
+      "konva": "^9.3.20",
+      "next": "latest",
+      "react": "latest",
+      "react-dom": "latest",
+      "react-icons": "^5.5.0",
+      "react-konva": "^19.0.3",
+      "use-image": "^1.1.4"
+   },
+   "devDependencies": {
+      "autoprefixer": "^10.4.14",
+      "postcss": "^8.4.21",
+      "tailwindcss": "^3.4.1"
+   },
+   "engines": {
+    "node": "20"
   }
-}
 
+}

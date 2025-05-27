@@ -80,9 +80,15 @@ export default function BorradoresGrid() {
                 
                 <button
                     className="text-green-600 hover:underline text-sm"
-                    onClick={() =>
-                        window.dispatchEvent(new CustomEvent('abrir-borrador', { detail: borrador }))
-                    }
+                    onClick={() => {
+                        const detalle = {
+                          slug: borrador.slug || borrador.id,
+                          editor: borrador.editor || "iframe",
+                        };
+
+                        window.dispatchEvent(new CustomEvent("abrir-borrador", { detail: detalle }));
+                      }}
+
                     >
                     Editar
                     </button>

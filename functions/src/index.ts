@@ -2,10 +2,52 @@ import * as functions from "firebase-functions";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import { JSDOM } from "jsdom";
+import { onCall } from "firebase-functions/v2/https";
+import { CallableRequest } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import express, { Request, Response } from "express";
 
 
+
+const app = express();
+app.get("/i/:slug", async (req, res) => {  // Cambiado a "/i/:slug"
+  const slug = req.params.slug;
+
+  if (!slug) {
+    res.status(400).send("Falta el slug");
+    return;
+  }
+
+  const bucket = getStorage().bucket();
+  const filePath = `publicadas/${slug}/index.html`;
+  const file = bucket.file(filePath);
+
+  try {
+    const [exists] = await file.exists();
+    if (!exists) {
+      res.status(404).send("Invitación publicada no encontrada");
+      return;
+    }
+
+    const [contenido] = await file.download();
+    res.set("Content-Type", "text/html");
+    res.send(contenido.toString());
+  } catch (error) {
+    console.error("❌ Error leyendo el archivo publicado:", error);
+    res.status(500).send("Error al mostrar la invitación publicada");
+  }
+});
+
+export const verInvitacionPublicada = functions.https.onRequest(app);
+
+
+// Inicialización de Firebase Admin
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    storageBucket: "reservaeldia-7a440.firebasestorage.app"
+  });
 }
 const db = admin.firestore();
 
@@ -79,19 +121,21 @@ return;
 });
 
 
-// ✅ Función para copiar una plantilla al bucket
 type CopiarPlantillaData = {
   plantillaId: string;
   slug: string;
-};
+    };
 
 
-export const copiarPlantilla = functions.https.onCall(
-  async (request: functions.https.CallableRequest<CopiarPlantillaData>) => {
-    const { plantillaId, slug } = request.data;
-    const uid = request.auth?.uid;
 
-    console.log("🧪 Slug recibido:", slug);
+// ✅Copia index.html de una plantilla a una nueva carpeta de borrador y guarda el contenido inicial en Firestore.
+
+export const copiarPlantillaHTML = functions.https.onCall(
+          async (request: functions.https.CallableRequest<CopiarPlantillaData>) => {
+            const { plantillaId, slug } = request.data;
+            const uid = request.auth?.uid;
+
+      console.log("🧪 Slug recibido:", slug);
 
 
 
@@ -103,7 +147,7 @@ export const copiarPlantilla = functions.https.onCall(
       throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado");
     }
 
-    const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
+    const bucket = getStorage().bucket();
     console.log("Bucket usado:", bucket.name);
 
     const [archivos] = await bucket.getFiles({ prefix: `plantillas/${plantillaId}/` });
@@ -125,14 +169,17 @@ export const copiarPlantilla = functions.https.onCall(
       );
       await archivoOriginal.copy(bucket.file(destino));
       console.log(`✅ Copiado: ${archivoOriginal.name} → ${destino}`);
+      console.log("Bucket usado:", bucket.name);
     })
     );
 
-    
-const archivoHtml = archivos.find(f => f.name.endsWith("index.html"));
-if (!archivoHtml) {
-  throw new functions.https.HttpsError("not-found", "No se encontró index.html");
+          
+      const archivoHtml = archivos.find(f => f.name.endsWith("index.html"));
+      if (!archivoHtml) {
+        throw new functions.https.HttpsError("not-found", "No se encontró index.html");
 }
+
+
 
 const [htmlBuffer] = await archivoHtml.download();
 const html = htmlBuffer.toString("utf-8");
@@ -182,7 +229,7 @@ elementos.forEach((el) => {
 
 
 
-
+// Guarda una edición desde el frontend (lo que cambia el usuario al mover o escribir algo).
 export const guardarEdicion = functions.https.onRequest(async (req, res) => {
   const { slug, overrides } = req.body;
 
@@ -245,7 +292,8 @@ export const borrarBorrador = functions.https.onCall(
     }
 
     const firestore = admin.firestore();
-    const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
+    const bucket = getStorage().bucket();
+
 
     // 🔒 Verificar que el documento le pertenece al usuario
     const docRef = firestore.collection("borradores").doc(slug);
@@ -278,59 +326,22 @@ interface PublicarInvitacionData {
   slug: string;
 }
 
+function aplicarOverrides(html: string, contenido: Record<string, any>) {
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
 
-export const publicarInvitacion = functions.https.onCall(
-  async (request: functions.https.CallableRequest<PublicarInvitacionData>) => {
-    const { slug } = request.data;
+  // ✅ Reemplazar contenido editable
+  Object.entries(contenido).forEach(([id, val]) => {
+    const el = document.querySelector(`[data-id="${id}"]`) as HTMLElement;
+    if (!el) return;
+    if (Object.prototype.hasOwnProperty.call(val, 'texto')) {
+      el.innerHTML = val.texto;
+      }
+    if (val.top) el.style.top = val.top;
+    if (val.left) el.style.left = val.left;
+  });
 
-    if (!slug) {
-      throw new functions.https.HttpsError("invalid-argument", "Falta el slug");
-    }
-
-    const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
-    const origen = `borradores/${slug}/index.html`;
-    const destino = `publicadas/${slug}/index.html`;
-
-    const firestore = admin.firestore();
-    const docBorrador = await firestore.collection("borradores").doc(slug).get();
-    const dataBorrador = docBorrador.data();
-
-    if (!dataBorrador) {
-      throw new functions.https.HttpsError("not-found", `No se encontró el borrador ${slug}`);
-    }
-
-    const overrides = dataBorrador.overrides || {};
-
-    // 1️⃣ Leer el archivo HTML original desde Storage
-    const [contenidoOriginal] = await bucket.file(origen).download();
-    const htmlOriginal = contenidoOriginal.toString();
-
-    // 2️⃣ Aplicar overrides y limpiar edición
-    const htmlFinal = aplicarOverrides(htmlOriginal, overrides);
-
-    // 3️⃣ Subir el HTML final a la carpeta publicadas
-    await bucket.file(destino).save(htmlFinal, {
-      contentType: "text/html",
-      gzip: true,
-    });
-
-    // 4️⃣ Guardar metadata en Firestore
-    await firestore.collection("publicadas").doc(slug).set({
-  slug,
-  userId: dataBorrador.userId || null,
-  plantillaId: dataBorrador.plantillaId || null,
-  overrides, // 🟢 se actualiza con los nuevos
-  publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
-}, { merge: true }); // 🔁 Importante para sobrescribir correctamente
-
-
-    const url = `https://reservaeldia-7a440.web.app/i/${slug}`;
-
-    return { success: true, url };
-  }
-);
-
-function limpiarCSSDeEdicion(document: Document) {
+  function limpiarCSSDeEdicion(document: Document) {
   const styles = Array.from(document.querySelectorAll("style"));
 
   styles.forEach((styleTag) => {
@@ -343,70 +354,259 @@ function limpiarCSSDeEdicion(document: Document) {
 }
 
 
-// Función utilitaria para aplicar overrides y limpiar el HTML
-function aplicarOverrides(htmlOriginal: string, overrides: Record<string, string>): string {
-  const dom = new JSDOM(htmlOriginal);
-  const document = dom.window.document;
+  // 🧹 Limpiar edición visual
+  limpiarCSSDeEdicion(document);
 
-  for (const [key, valor] of Object.entries(overrides)) {
-    const el = document.querySelector(`[data-id="${key}"]`);
-    if (el) el.textContent = valor;
-  }
-
-  document.querySelectorAll("[contenteditable]").forEach((el: Element) => {
+  // 🧹 Opcional: remover atributos de edición
+  document.querySelectorAll("[contenteditable]").forEach(el => {
     el.removeAttribute("contenteditable");
   });
-
-  document.querySelectorAll(".editable").forEach((el: Element) => {
-  el.classList.remove("editable");
-});
-
-
-  limpiarCSSDeEdicion(document); // 🔥 limpia el efecto visual editable
+  document.querySelectorAll(".editable").forEach(el => {
+    el.classList.remove("editable");
+  });
+  document.querySelectorAll(".zona-editable").forEach(el => {
+    el.classList.remove("zona-editable");
+  });
 
   return dom.serialize();
 }
 
 
-
-
-import express, { Request, Response } from "express";
-const app = express();
-
-app.get("/i/:slug", async (req: Request, res: Response) => {
-
-  const slug = req.params.slug;
-
-  if (!slug) {
-    res.status(400).send("Falta el parámetro 'slug'");
-    return;
-  }
-
-  const bucket = getStorage().bucket("reservaeldia-7a440.firebasestorage.app");
-  const filePath = `publicadas/${slug}/index.html`;
-  const file = bucket.file(filePath);
-
-  console.log("📂 Buscando archivo en:", filePath);
-
-  try {
-    const [exists] = await file.exists();
-    if (!exists) {
-      res.status(404).send("Invitación publicada no encontrada");
-      return;
+export const publicarInvitacion = functions.https.onCall(
+  async (request: functions.https.CallableRequest<{ slug: string }>) => {
+    const { slug } = request.data;
+    if (!slug) {
+      throw new functions.https.HttpsError("invalid-argument", "Falta el slug");
     }
 
-    const [contenido] = await file.download();
+    const firestore = admin.firestore();
+    const bucket = getStorage().bucket();
 
-    res.set("Content-Type", "text/html");
-    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
-    res.removeHeader("X-Frame-Options");
-    res.send(contenido.toString());
-  } catch (error) {
-    console.error("❌ Error leyendo el archivo publicado:", error);
-    res.status(500).send("Error al mostrar la invitación publicada");
+    // 🔍 1. Leer el borrador
+    const docSnap = await firestore.collection("borradores").doc(slug).get();
+    if (!docSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "No se encontró el borrador");
+    }
+
+    const data = docSnap.data();
+    if (!data) {
+  throw new functions.https.HttpsError("internal", "El documento está vacío");
+}
+
+    const objetosBase = data?.objetos || [];
+    const overrides = data?.overrides || {};
+
+    // 🧠 2. Aplicar overrides sobre los objetos
+    const objetosFinales = objetosBase.map((obj: any) => {
+      const mod = overrides[obj.id] || {};
+      return { ...obj, ...mod };
+    });
+
+    // 🧱 3. Generar el HTML con los objetos editados
+    const htmlFinal = generarHTMLDesdeObjetos(objetosFinales);
+
+    // 📤 4. Guardar en publicadas/<slug>/index.html
+    const filePath = `publicadas/${slug}/index.html`;
+    await bucket.file(filePath).save(htmlFinal, {
+      contentType: "text/html",
+      public: true,
+      metadata: {
+        cacheControl: "public,max-age=3600",
+      },
+    });
+
+    // 🧾 5. Registrar en Firestore
+    await firestore.collection("publicadas").doc(slug).set(
+      {
+        slug,
+        userId: data.userId || null,
+        plantillaId: data.plantillaId || null,
+        publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+   const url = `https://reservaeldia.com.ar/i/${slug}`;
+
+    return { success: true, url };
   }
-});
+);
 
-export const verInvitacionPublicada = functions.https.onRequest(app);
+
+
+
+export const borrarTodosLosBorradores = onCall(
+  async (request: CallableRequest<unknown>) => {
+    const userId = request.auth?.uid;
+    if (!userId) {
+      throw new Error("No estás autenticado.");
+    }
+
+    const db = admin.firestore();
+    const storage = admin.storage();
+
+    const snapshot = await db.collection("borradores").where("userId", "==", userId).get();
+
+    const deletePromises = snapshot.docs.map(async (doc) => {
+      const slug = doc.id;
+      await doc.ref.delete();
+      await storage.bucket().deleteFiles({ prefix: `borradores/${slug}/` });
+    });
+
+    await Promise.all(deletePromises);
+
+    return { success: true };
+  }
+);
+
+
+export const copiarPlantilla = onCall(
+  async (request: CallableRequest<{ plantillaId: string; slug: string }>): Promise<{ slug: string }> => {
+    const { plantillaId, slug } = request.data;
+    const uid = request.auth?.uid;
+
+    if (!uid) throw new Error("Usuario no autenticado");
+    if (!plantillaId || !slug) throw new Error("Faltan datos requeridos");
+
+    const docPlantilla = await db.collection("plantillas").doc(plantillaId).get();
+    const datos = docPlantilla.data();
+
+    if (!datos) throw new Error("Plantilla no encontrada");
+
+    await db.collection("borradores").doc(slug).set({
+      slug,
+      userId: uid,
+      plantillaId,
+      editor: datos.editor || "konva",
+      objetos: datos.objetos || [],
+      ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
+      creado: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    logger.info(`✅ Borrador creado desde plantilla '${plantillaId}' con slug '${slug}'`);
+    return { slug };
+  }
+);
+
+export const crearPlantilla = onCall(
+  async (request: CallableRequest<{ id: string; datos: any }>) => {
+    const { id, datos } = request.data;
+
+    if (!id || !datos) throw new Error("Faltan datos");
+
+    await db.collection("plantillas").doc(id).set(datos);
+    logger.info(`✅ Plantilla '${id}' creada con éxito`);
+    return { success: true };
+  }
+);
+
+
+function generarHTMLDesdeObjetos(objetos: any[]): string {
+  const elementos = objetos.map((obj) => {
+    const rotacion = obj.rotation ?? 0;
+    const scaleX = obj.scaleX ?? 1;
+    const scaleY = obj.scaleY ?? 1;
+
+    if (obj.tipo === "texto") {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        font-size: ${obj.fontSize || 24}px;
+        color: ${obj.color || "#000"};
+        font-family: ${obj.fontFamily || "inherit"};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+        white-space: pre-wrap;
+      ">${obj.texto}</div>`;
+    }
+
+    if (obj.tipo === "imagen") {
+      const width = obj.width ?? 800;
+      const height = obj.height ?? 600;
+
+      return `<img src="${obj.src}" style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${width}px;
+        height: ${height}px;
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+      " />`;
+    }
+
+    return "";
+  });
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Invitación</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta property="og:title" content="¡Estás invitado!" />
+  <meta property="og:description" content="Mirá esta invitación especial 💌" />
+  <meta property="og:image" content="https://reservaeldia.com.ar/img/preview.jpg" />
+  <meta property="og:type" content="website" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: white;
+    font-family: sans-serif;
+    width: 100%;
+    height: 100%;
+  }
+
+  .canvas-wrapper {
+    width: 100%;
+    overflow-x: hidden;
+    padding: 0;
+    margin: 0;
+  }
+
+  .canvas {
+    position: relative;
+    width: 800px;
+    height: 1400px;
+    transform-origin: top left;
+  }
+
+  .scaler {
+    transform-origin: top left;
+  }
+</style>
+
+</head>
+<body>
+  <div class="canvas-wrapper">
+    <div
+      class="canvas scaler"
+      style="transform: scale(SCALE)">
+      ${elementos.join("\n")}
+    </div>
+  </div>
+  <script>
+  function escalarCanvas() {
+    const baseWidth = 800;
+    const pantalla = window.innerWidth;
+    const escala = pantalla / baseWidth;
+    const canvas = document.querySelector(".scaler");
+    if (canvas) {
+      canvas.style.transform = "scale(" + escala + ")";
+    }
+  }
+
+  window.addEventListener("load", escalarCanvas);
+  window.addEventListener("resize", escalarCanvas);
+</script>
+
+</body>
+
+</html>
+`;
+}

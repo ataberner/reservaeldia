@@ -25,9 +25,17 @@
     ],
     "rewrites": [
       {
-        "source": "/i/:slug",
+        "source": "/i/**",
         "function": "verInvitacionPublicada"
+      },
+      {
+        "source": "/dashboard",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/dashboard/**",
+        "destination": "/index.html"
       }
     ]
   }
-} 
+}

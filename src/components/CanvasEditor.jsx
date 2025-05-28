@@ -3,33 +3,12 @@ import { useEffect, useState, useRef } from "react";
 import { Stage, Layer, Text, Transformer, Image as KonvaImage } from "react-konva";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import useImage from "use-image";
+import ElementoCanvas from "./ElementoCanvas";
 
 
 
 
-function ImagenCanvas({ obj }) {
-  const [img] = useImage(obj.src);
-  if (!img) return null;
-
-  return (
-    <KonvaImage
-      image={img}
-      x={obj.x ?? 0}
-      y={obj.y ?? 0}
-      width={obj.width}
-      height={obj.height}
-      scaleX={obj.scaleX || 1}
-      scaleY={obj.scaleY || 1}
-    />
-  );
-}
-
-
-
-
-
-export default function CanvasEditor({ slug }) {
+export default function CanvasEditor({ slug, zoom = 1 }) {
   const [objetos, setObjetos] = useState([]);
   const [elementoSeleccionado, setElementoSeleccionado] = useState(null);
     const [posBarra, setPosBarra] = useState({ x: 0, y: 0 });
@@ -37,33 +16,11 @@ export default function CanvasEditor({ slug }) {
     const [cargado, setCargado] = useState(false);
     const stageRef = useRef(null);
     const transformerRef = useRef();
-    const textRefs = useRef({});
+    const elementRefs = useRef({});
     const contenedorRef = useRef(null);
-    const [anchoCanvas, setAnchoCanvas] = useState(800);
     const [altoCanvas, setAltoCanvas] = useState(1400);
+    const [anchoStage, setAnchoStage] = useState(800);
 
-
-    useEffect(() => {
-  const observer = new ResizeObserver((entries) => {
-    for (let entry of entries) {
-      const ancho = entry.contentRect.width;
-      setAnchoCanvas(ancho);
-
-      // 🛠️ Redibuja el canvas forzadamente
-      if (stageRef.current) {
-        stageRef.current.batchDraw();
-      }
-    }
-  });
-
-  if (contenedorRef.current) {
-    observer.observe(contenedorRef.current);
-  }
-
-  return () => {
-    observer.disconnect();
-  };
-}, []);
 
 
 useEffect(() => {
@@ -80,7 +37,7 @@ useEffect(() => {
 
 
  useEffect(() => {
-    const node = textRefs.current[elementoSeleccionado];
+    const node = elementRefs.current[elementoSeleccionado];
     if (node && transformerRef.current) {
       transformerRef.current.nodes([node]);
       transformerRef.current.getLayer().batchDraw();
@@ -88,7 +45,7 @@ useEffect(() => {
   }, [elementoSeleccionado]);
 
 useEffect(() => {
-  const node = textRefs.current[elementoSeleccionado];
+  const node = elementRefs.current[elementoSeleccionado];
   if (node) {
     const stage = node.getStage();
     const box = node.getClientRect({ relativeTo: stage });
@@ -100,6 +57,34 @@ useEffect(() => {
     });
   }
 }, [elementoSeleccionado]);
+
+
+
+
+
+
+const [scale, setScale] = useState(1);
+
+useEffect(() => {
+  if (!contenedorRef.current || zoom !== 1) return;
+
+  const actualizarEscala = () => {
+    const anchoContenedor = contenedorRef.current.offsetWidth;
+    const escala = anchoContenedor / 800;
+    setScale(escala);
+  };
+
+  actualizarEscala();
+
+  const observer = new ResizeObserver(actualizarEscala);
+  observer.observe(contenedorRef.current);
+
+  return () => observer.disconnect();
+}, [zoom]);
+
+
+
+
 
 
   useEffect(() => {
@@ -139,7 +124,7 @@ useEffect(() => {
 
 
 const iniciarEdicionInline = (obj) => {
-  const textNode = textRefs.current[obj.id];
+  const textNode = elementRefs.current[obj.id];
   const stage = textNode.getStage();
   const container = stage.container();
   const box = textNode.getClientRect({ relativeTo: stage });
@@ -199,102 +184,97 @@ area.style.zIndex = 1000;
 
   setModoEdicion(true);
 };
-
+console.log("zoom en CanvasEditor:", zoom);
   return (
     <div className="flex justify-center">
-     <div
+   
+
+   <div
   ref={contenedorRef}
-  className="flex justify-center w-full"
+  className="w-full"
   style={{
-   overflow: "hidden",
-   boxSizing: "border-box",
+    overflow: "auto",
+    boxSizing: "border-box",
+    padding: zoom < 1 ? "60px 0" : "0",
+    backgroundColor: "#f5f5f5",
+    display: "flex",
+    justifyContent: "center",
   }}
 >
-
-      <Stage
-        ref={stageRef}
-        width={anchoCanvas}
-        height={altoCanvas}
-        style={{ background: "white", borderRadius: 16, maxWidth: "100%" }}
+    
+  <div
+  style={{
+    width: "800px",
+    transform: `scale(${zoom === 1 ? scale : zoom})`,
+    transformOrigin: "top center",
+  }}
 >
-  <Layer
-   scaleX={anchoCanvas / 800}
-    scaleY={anchoCanvas / 800}>
-    {objetos.map((obj, i) => {
-      if (modoEdicion && elementoSeleccionado === obj.id) return null;
+  <Stage
+    ref={stageRef}
+    width={800}
+    height={1400}
+    scaleX={1}
+    scaleY={1}
+    style={{
+      background: "white",
+      borderRadius: 16,
+      overflow: "hidden",
+    }}
+  >
 
-      if (obj.tipo === "texto") {
-        return (
-          <Text
-            key={obj.id}
-            ref={(node) => {
-              if (node) textRefs.current[obj.id] = node;
-            }}
-            text={obj.texto}
-            x={obj.x}
-            y={obj.y}
-            fontSize={obj.fontSize || 24}
-            fill={obj.color || "black"}
-            rotation={obj.rotation || 0}
-            scaleX={obj.scaleX || 1}
-            scaleY={obj.scaleY || 1}
-            draggable
-            onClick={() => setElementoSeleccionado(obj.id)}
-            onTap={() => setElementoSeleccionado(obj.id)}
-            onDblClick={() => iniciarEdicionInline(obj)}
-            onDragEnd={(e) => {
-              actualizarObjeto(i, { x: e.target.x(), y: e.target.y() });
-            }}
-            onTransformEnd={(e) => {
-              const node = e.target;
-              actualizarObjeto(i, {
-                x: node.x(),
-                y: node.y(),
-                rotation: node.rotation(),
-                scaleX: node.scaleX(),
-                scaleY: node.scaleY(),
-              });
+      <Layer>
+        {objetos.map((obj, i) => {
+          if (modoEdicion && elementoSeleccionado === obj.id) return null;
+
+          return (
+            <ElementoCanvas
+              key={obj.id}
+              obj={obj}
+              anchoCanvas={800}
+              isSelected={elementoSeleccionado === obj.id}
+              onSelect={setElementoSeleccionado}
+              onChange={(id, nuevo) => {
+                const i = objetos.findIndex((o) => o.id === id);
+                if (i !== -1) actualizarObjeto(i, nuevo);
+              }}
+              registerRef={(id, node) => {
+                elementRefs.current[id] = node;
+              }}
+            />
+          );
+        })}
+
+        {elementoSeleccionado && (
+          <Transformer
+            ref={transformerRef}
+            nodes={
+              elementRefs.current[elementoSeleccionado]
+                ? [elementRefs.current[elementoSeleccionado]]
+                : []
+            }
+            rotateEnabled={true}
+            enabledAnchors={[
+              "top-left",
+              "top-right",
+              "bottom-left",
+              "bottom-right",
+              "middle-left",
+              "middle-right",
+            ]}
+            boundBoxFunc={(oldBox, newBox) => {
+              if (newBox.width < 30 || newBox.height < 20) {
+                return oldBox;
+              }
+              return newBox;
             }}
           />
-        );
-      }
+        )}
+      </Layer>
+    </Stage>
+  </div>
+</div>
 
-      if (obj.tipo === "imagen") {
-        return <ImagenCanvas key={obj.id} obj={obj} anchoCanvas={anchoCanvas} />;
-      }
 
-      return null;
-    })}
-
-    {elementoSeleccionado && (
-      <Transformer
-        ref={transformerRef}
-        nodes={
-          textRefs.current[elementoSeleccionado]
-            ? [textRefs.current[elementoSeleccionado]]
-            : []
-        }
-        rotateEnabled={true}
-        enabledAnchors={[
-          "top-left",
-          "top-right",
-          "bottom-left",
-          "bottom-right",
-          "middle-left",
-          "middle-right",
-        ]}
-        boundBoxFunc={(oldBox, newBox) => {
-          if (newBox.width < 30 || newBox.height < 20) {
-            return oldBox;
-          }
-          return newBox;
-        }}
-      />
-    )}
-  </Layer>
-</Stage>
-
-      </div>
       {elementoSeleccionado && (
   <div
     className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"

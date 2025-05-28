@@ -3,23 +3,24 @@ import { useState } from "react";
 import { FaBars } from "react-icons/fa";
 import Link from "next/link";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import useImage from "use-image";
 
 
-function escalarProporcionadamente(imgWidth, imgHeight, canvasWidth = 800, canvasHeight = 1400) {
-  const imgRatio = imgWidth / imgHeight;
-  const canvasRatio = canvasWidth / canvasHeight;
 
-  let width, height;
-  if (imgRatio > canvasRatio) {
-    // Imagen más ancha → limitar por altura
-    height = canvasHeight;
-    width = height * imgRatio;
-  } else {
-    // Imagen más alta → limitar por ancho
-    width = canvasWidth;
-    height = width / imgRatio;
-  }
 
+function calcularTamañoInicial(imgWidth, imgHeight, maxAncho = 400) {
+  const ratio = imgHeight / imgWidth;
+  const width = Math.min(imgWidth, maxAncho); // nunca mayor al max
+  const height = width * ratio;
+  return { width, height };
+}
+
+
+
+function escalarParaAncho(imgWidth, imgHeight, canvasWidth = 800) {
+  const ratio = imgHeight / imgWidth;
+  const width = canvasWidth;
+  const height = width * ratio;
   return { width, height };
 }
 
@@ -37,7 +38,8 @@ export default function DashboardLayout({ children }) {
     img.src = urlFondo;
 
     img.onload = async () => {
-      const { width, height } = escalarProporcionadamente(img.width, img.height);
+      const { width, height } = escalarParaAncho(img.width, img.height);
+
 
       const fondo = {
         id: "fondo",
@@ -45,11 +47,8 @@ export default function DashboardLayout({ children }) {
         src: urlFondo,
         x: 0,
         y: 0,
-        width,
-        height,
         rotation: 0,
-        scaleX: 1,
-        scaleY: 1,
+        esFondo: true
       };
 
       try {
@@ -71,7 +70,7 @@ export default function DashboardLayout({ children }) {
                 texto: "¡Nos Casamos!",
                 x: 100,
                 y: 200,
-                fontSize: 48,
+                fontSize: 20,
                 color: "#773dbe",
                 rotation: 0,
                 scaleX: 1,
@@ -84,12 +83,20 @@ export default function DashboardLayout({ children }) {
                 texto: "Euge & Agus",
                 x: 100,
                 y: 280,
-                fontSize: 64,
+                fontSize: 24,
                 color: "#333",
                 scaleX: 1,
                 scaleY: 1,
                 fontFamily: "sans-serif"
+              },
+              {
+              id: "hoja",
+              tipo: "imagen",
+              src: "https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.firebasestorage.app/o/plantillas%2Fboda-clasica%2Fimg%2Fhoja-portada.png?alt=media&token=f7c2abf4-86f2-480a-9566-116f56435409",
+              x: 100,
+              y: 300,
               }
+
             ]
           }
         });

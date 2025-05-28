@@ -512,29 +512,44 @@ function generarHTMLDesdeObjetos(objetos: any[]): string {
         position: absolute;
         top: ${obj.y}px;
         left: ${obj.x}px;
-        font-size: ${obj.fontSize || 24}px;
+        font-size: ${obj.fontSize || 12}px;
         color: ${obj.color || "#000"};
         font-family: ${obj.fontFamily || "inherit"};
         transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
         transform-origin: top left;
         white-space: pre-wrap;
+        width: ${obj.width || 800}px;
       ">${obj.texto}</div>`;
     }
 
     if (obj.tipo === "imagen") {
-      const width = obj.width ?? 800;
-      const height = obj.height ?? 600;
+  const rotacion = obj.rotation ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
 
-      return `<img src="${obj.src}" style="
-        position: absolute;
-        top: ${obj.y}px;
-        left: ${obj.x}px;
-        width: ${width}px;
-        height: ${height}px;
-        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-        transform-origin: top left;
-      " />`;
-    }
+  if (obj.esFondo) {
+    return `<img src="${obj.src}" style="
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: auto;
+      z-index: -1;
+    " />`;
+  }
+
+  return `<img src="${obj.src}" style="
+    position: absolute;
+    top: ${obj.y}px;
+    left: ${obj.x}px;
+    width: ${obj.width}px;
+    height: ${obj.height}px;
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: top left;
+  " />`;
+}
+
+
 
     return "";
   });
@@ -567,6 +582,7 @@ function generarHTMLDesdeObjetos(objetos: any[]): string {
     overflow-x: hidden;
     padding: 0;
     margin: 0;
+    overflow: hidden;
   }
 
   .canvas {

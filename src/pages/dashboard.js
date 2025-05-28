@@ -153,7 +153,7 @@ if (!usuario) return null; // Seguridad por si no se redirige
          {slugInvitacion && (
   <>
     {/* Barra superior de acciones */}
-    <div className="flex justify-between items-center flex-wrap gap-3 mb-6 bg-white p-4 rounded shadow-sm border border-gray-200">
+    <div className="flex items-center flex-wrap gap-3 mb-6 bg-white p-3 rounded shadow-sm border border-gray-200">
       {/* Botón volver */}
       <button
         onClick={() => {
@@ -201,7 +201,7 @@ if (!usuario) return null; // Seguridad por si no se redirige
             console.error(error);
           }
         }}
-        className="px-4 py-2 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-sm"
+        className="px-4 ml-auto py-2 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-sm"
       >
         Generar invitación
       </button>
@@ -209,7 +209,8 @@ if (!usuario) return null; // Seguridad por si no se redirige
 
     {/* Editor */}
     {modoEditor === "konva" && (
-      <CanvasEditor slug={slugInvitacion} />
+      <CanvasEditor slug={slugInvitacion} zoom={zoom} />
+
     )}
 
     {modoEditor === "iframe" && (

@@ -23,10 +23,12 @@ export default function Dashboard() {
   const [usuario, setUsuario] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [modoEditor, setModoEditor] = useState(null);
+  const [historialExternos, setHistorialExternos] = useState([]);
+  const [futurosExternos, setFuturosExternos] = useState([]);
 
 
 const toggleZoom = () => {
-  setZoom((prev) => (prev === 1 ? 0.5 : 1));
+  setZoom((prev) => (prev === 1 ? 0.8 : 1));
 };
 
 
@@ -91,8 +93,7 @@ const toggleZoom = () => {
     if (user) {
       setUsuario(user);
     } else {
-      // Si querés redirigir al index si no está logueado:
-      window.location.href = "/";
+      setUsuario(null);
     }
     setCheckingAuth(false);
   });
@@ -104,7 +105,8 @@ if (checkingAuth) return <p>Cargando...</p>;
 if (!usuario) return null; // Seguridad por si no se redirige
 
   return (
-     <DashboardLayout>
+     <DashboardLayout mostrarMiniToolbar={!!slugInvitacion} >
+
       {!slugInvitacion && (
         <>
           <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
@@ -178,6 +180,62 @@ if (!usuario) return null; // Seguridad por si no se redirige
           {zoom === 1 ? "Alejar al 50%" : "Acercar al 100%"}
         </div>
       </div>
+      <div className="flex gap-2 items-center">
+  {/* Botón Deshacer */}
+  <div className="relative group">
+    <div className="inline-block">
+    <button
+  onClick={() => {
+    const e = new KeyboardEvent('keydown', {
+      key: 'z',
+      ctrlKey: true,
+    });
+    window.dispatchEvent(e);
+  }}
+  disabled={historialExternos.length <= 1}
+  className={`px-3 py-2 rounded-full transition-all duration-200 ${
+    historialExternos.length <= 1
+      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+      : "bg-white hover:bg-gray-100 text-purple-700 shadow"
+  }`}
+>
+  ⟲
+</button>
+</div>
+
+    {/* Tooltip */}
+    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition pointer-events-none">
+      Deshacer<br /><span className="text-gray-300">Ctrl + Z</span>
+    </div>
+  </div>
+
+  {/* Botón Rehacer */}
+  <div className="relative group">
+    <button
+  onClick={() => {
+    const e = new KeyboardEvent('keydown', {
+      key: 'y',
+      ctrlKey: true,
+    });
+    window.dispatchEvent(e);
+  }}
+  disabled={futurosExternos.length === 0}
+  className={`px-3 py-2 rounded-full transition-all duration-200 ${
+    futurosExternos.length === 0
+      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+      : "bg-white hover:bg-gray-100 text-purple-700 shadow"
+  }`}
+>
+  ⟳
+</button>
+
+    {/* Tooltip */}
+    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition pointer-events-none">
+      Rehacer<br /><span className="text-gray-300">Ctrl + Y</span>
+    </div>
+  </div>
+</div>
+
 
       {/* Generar invitación */}
       <button
@@ -209,8 +267,13 @@ if (!usuario) return null; // Seguridad por si no se redirige
 
     {/* Editor */}
     {modoEditor === "konva" && (
-      <CanvasEditor slug={slugInvitacion} zoom={zoom} />
-
+      <CanvasEditor 
+        slug={slugInvitacion} 
+        zoom={zoom} 
+        onHistorialChange={setHistorialExternos} 
+        onFuturosChange={setFuturosExternos}
+        userId={usuario?.uid}
+      />
     )}
 
     {modoEditor === "iframe" && (
@@ -218,7 +281,6 @@ if (!usuario) return null; // Seguridad por si no se redirige
         className="flex justify-center items-start"
         style={{
           backgroundColor: zoom < 1 ? "#e5e5e5" : "transparent",
-          padding: zoom < 1 ? "60px 0" : "0",
           overflow: "auto",
           borderRadius: "16px",
         }}

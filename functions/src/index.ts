@@ -500,59 +500,55 @@ export const crearPlantilla = onCall(
   }
 );
 
-
-function generarHTMLDesdeObjetos(objetos: any[]): string {
-  const elementos = objetos.map((obj) => {
-    const rotacion = obj.rotation ?? 0;
-    const scaleX = obj.scaleX ?? 1;
-    const scaleY = obj.scaleY ?? 1;
-
-    if (obj.tipo === "texto") {
-      return `<div style="
-        position: absolute;
-        top: ${obj.y}px;
-        left: ${obj.x}px;
-        font-size: ${obj.fontSize || 12}px;
-        color: ${obj.color || "#000"};
-        font-family: ${obj.fontFamily || "inherit"};
-        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-        transform-origin: top left;
-        white-space: pre-wrap;
-        width: ${obj.width || 800}px;
-      ">${obj.texto}</div>`;
-    }
-
-    if (obj.tipo === "imagen") {
-  const rotacion = obj.rotation ?? 0;
-  const scaleX = obj.scaleX ?? 1;
-  const scaleY = obj.scaleY ?? 1;
-
-  if (obj.esFondo) {
-    return `<img src="${obj.src}" style="
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: auto;
-      z-index: -1;
-    " />`;
-  }
-
-  return `<img src="${obj.src}" style="
-    position: absolute;
-    top: ${obj.y}px;
-    left: ${obj.x}px;
-    width: ${obj.width}px;
-    height: ${obj.height}px;
-    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-    transform-origin: top left;
-  " />`;
+function escapeHTML(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 
 
-    return "";
-  });
+function generarHTMLDesdeObjetos(objetos: any[]): string {
+  const elementos = objetos.map((obj) => {
+  const rotacion = obj.rotation ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+
+  if (obj.tipo === "texto") {
+    return `<div style="
+      position: absolute;
+      top: ${obj.y}px;
+      left: ${obj.x}px;
+      font-size: ${obj.fontSize || 12}px;
+      color: ${obj.color || "#000"};
+      font-family: ${obj.fontFamily || "inherit"};
+      transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+      transform-origin: top left;
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: clip;
+      max-width: ${obj.width ? obj.width + "px" : "none"};
+    ">${escapeHTML(obj.texto)}</div>`;
+  }
+
+  if (obj.tipo === "imagen") {
+    return `<img src="${obj.src}" style="
+      position: absolute;
+      top: ${obj.y}px;
+      left: ${obj.x}px;
+      width: ${obj.width ? obj.width + "px" : "auto"};
+      height: ${obj.height ? obj.height + "px" : "auto"};
+      transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+      transform-origin: top left;
+    " />`;
+  }
+
+  return "";
+});
+
 
   return `
 <!DOCTYPE html>
@@ -575,10 +571,16 @@ function generarHTMLDesdeObjetos(objetos: any[]): string {
     font-family: sans-serif;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+  }
+     * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
 
-  .canvas-wrapper {
-    width: 100%;
+   .canvas-wrapper {
+    height: 100vh;
     overflow-x: hidden;
     padding: 0;
     margin: 0;
@@ -590,6 +592,7 @@ function generarHTMLDesdeObjetos(objetos: any[]): string {
     width: 800px;
     height: 1400px;
     transform-origin: top left;
+    overflow: hidden;
   }
 
   .scaler {
@@ -601,8 +604,7 @@ function generarHTMLDesdeObjetos(objetos: any[]): string {
 <body>
   <div class="canvas-wrapper">
     <div
-      class="canvas scaler"
-      style="transform: scale(SCALE)">
+      class="canvas scaler">
       ${elementos.join("\n")}
     </div>
   </div>

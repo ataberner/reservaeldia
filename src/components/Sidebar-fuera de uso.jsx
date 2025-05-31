@@ -6,7 +6,7 @@ export default function Sidebar() {
     <aside
       style={{
         backgroundColor: '#773dbe', // mismo que 'bg-reserva-purple'
-        width: '256px',
+        width: '56px',
         minHeight: '100vh',
         padding: '24px',
         color: 'white',

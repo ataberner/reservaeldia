@@ -1,19 +1,21 @@
 // src/components/DashboardLayout.jsx
-import { useState } from "react";
-import { FaBars } from "react-icons/fa";
+import { useState, useEffect } from "react";
+import { FaBars, FaLock, FaLockOpen } from "react-icons/fa";
 import Link from "next/link";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useImage from "use-image";
+import MiniToolbar from "./MiniToolbar";
+import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
+import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
+import useMisImagenes from "@/hooks/useMisImagenes";
+import PanelDeFormas from "@/components/PanelDeFormas";
+
+
+import { corregirURLsInvalidas } from "@/utils/corregirImagenes";
 
 
 
 
-function calcularTamañoInicial(imgWidth, imgHeight, maxAncho = 400) {
-  const ratio = imgHeight / imgWidth;
-  const width = Math.min(imgWidth, maxAncho); // nunca mayor al max
-  const height = width * ratio;
-  return { width, height };
-}
 
 
 
@@ -25,8 +27,47 @@ function escalarParaAncho(imgWidth, imgHeight, canvasWidth = 800) {
 }
 
 
-export default function DashboardLayout({ children }) {
-  const [sidebarAbierta, setSidebarAbierta] = useState(true);
+export default function DashboardLayout({ children, mostrarMiniToolbar }) {
+  const [hoverSidebar, setHoverSidebar] = useState(false);
+  const [fijadoSidebar, setFijadoSidebar] = useState(false);
+    const [mostrarGaleria, setMostrarGaleria] = useState(false);
+const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
+const [mostrarPanelFormas, setMostrarPanelFormas] = useState(false);
+
+useEffect(() => {
+  corregirURLsInvalidas(); // 🔧 Se ejecuta automáticamente al entrar
+}, []);
+
+
+const {
+  imagenes,
+  imagenesEnProceso,
+  cargarImagenes,
+  subirImagen,
+  borrarImagen,
+  hayMas,
+  cargando,
+} = useMisImagenes();
+
+const { abrirSelector, componenteInput } = useUploaderDeImagen(subirImagen);
+
+
+
+    useEffect(() => {
+        const handleClickFuera = (e) => {
+          const sidebar = document.querySelector("aside");
+          if (!sidebar) return;
+
+          if (!sidebar.contains(e.target) && !fijadoSidebar) {
+            setHoverSidebar(false);
+          }
+        };
+
+        document.addEventListener("mousedown", handleClickFuera);
+        return () => document.removeEventListener("mousedown", handleClickFuera);
+      }, [fijadoSidebar]);
+
+  
 
   const ejecutarCrearPlantilla = async () => {
     const confirmar = confirm("¿Querés crear la plantilla?");
@@ -75,7 +116,12 @@ export default function DashboardLayout({ children }) {
                 rotation: 0,
                 scaleX: 1,
                 scaleY: 1,
-                fontFamily: "sans-serif"
+                fontFamily: "sans-serif",
+                fontWeight: "normal",    // Controla negrita (bold)
+                fontStyle: "normal",     // Controla cursiva (italic)
+                textDecoration: "none",  // Controla subrayado (underline)
+                textAlign: "left",       // Alineación del texto
+                lineHeight: 1.2          // Espaciado entre líneas
               },
               {
                 id: "nombres",
@@ -87,7 +133,12 @@ export default function DashboardLayout({ children }) {
                 color: "#333",
                 scaleX: 1,
                 scaleY: 1,
-                fontFamily: "sans-serif"
+                fontFamily: "sans-serif",
+                fontWeight: "normal",    // Controla negrita (bold)
+                fontStyle: "normal",     // Controla cursiva (italic)
+                textDecoration: "none",  // Controla subrayado (underline)
+                textAlign: "left",       // Alineación del texto
+                lineHeight: 1.2          // Espaciado entre líneas
               },
               {
               id: "hoja",
@@ -110,56 +161,166 @@ export default function DashboardLayout({ children }) {
     };
   };
 
+const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
   return (
     <div className="flex h-screen bg-gray-100">
       
-      {/* Sidebar */}
-      <aside className={`bg-purple-800 text-white transition-all duration-300 ${sidebarAbierta ? "w-64" : "w-16"} flex flex-col`}>
-        <div className="flex items-center justify-between p-4 border-b border-purple-700">
-          <button onClick={() => setSidebarAbierta(!sidebarAbierta)}>
-            <FaBars className="text-white text-xl" />
-          </button>
-          {sidebarAbierta && <span className="ml-2 font-bold">Menú</span>}
-        </div>
-        {sidebarAbierta && (
-          <nav className="p-4">
-            <ul className="space-y-2">
-              <li><Link href="/dashboard">DashboardDD</Link></li>
-              <li>
-              <button
-                onClick={ejecutarCrearPlantilla}
-                className="w-full text-left text-white hover:underline"
-              >
-                ✨ Crear plantilla
-              </button>
-            </li>
 
-            </ul>
-<Link
-                href="#"
-                onClick={async () => {
-                  const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
-                  if (!confirmar) return;
+              {/* Sidebar */}  
 
-                  try {
-                    const functions = getFunctions();
-                    const borrarTodos = httpsCallable(functions, "borrarTodosLosBorradores");
-                    await borrarTodos();
+              {componenteInput} {/* input invisible que va a manejar la carga */}
 
-                    alert("✅ Todos los borradores fueron eliminados.");
-                    window.location.reload(); // recarga la vista
-                  } catch (error) {
-                    console.error("❌ Error al borrar todos los borradores", error);
-                    alert("No se pudieron borrar los borradores.");
-                  }
-                }}
-                style={{ textDecoration: 'none', color: 'white' }}
-              >
-                🗑️ Borrar todos los borradores
-              </Link>
-            </nav>
+              <aside
+          onMouseEnter={() => setHoverSidebar(true)}
+          onMouseLeave={() => {
+  if (
+    typeof window !== "undefined" &&
+    (window.modoEdicionCanvas || imagenesSeleccionadas > 0)
+  ) return;
+  setHoverSidebar(false);
+}}
+
+
+
+          className={`bg-purple-800 text-white transition-all duration-300 ${
+            sidebarAbierta ? "w-80" : "w-16"
+          } flex flex-col`}
+        >
+
+
+<div className="p-4 border-b border-purple-700 flex flex-col gap-4">
+  {/* Menú */}
+  <div
+    className="flex items-center gap-2 cursor-pointer"
+    onClick={() => setFijadoSidebar(!fijadoSidebar)}
+  >
+    <FaBars className="text-white text-xl" />
+    {sidebarAbierta && (
+      <>
+        <span className="font-bold">Menú</span>
+        {fijadoSidebar ? (
+          <FaLock className="text-white text-sm ml-1" title="Fijado" />
+        ) : (
+          <FaLockOpen className="text-white text-sm ml-1" title="No fijado" />
         )}
+      </>
+    )}
+  </div>
+
+  {/* Toolbar + Panel */}
+  <div className="flex flex-col gap-2 w-full">
+    <MiniToolbar
+      visible={mostrarMiniToolbar}
+      sidebarAbierta={sidebarAbierta}
+      onAgregarTexto={(e) => {
+        e?.stopPropagation?.();
+        window.dispatchEvent(new CustomEvent("agregar-cuadro-texto"));
+      }}
+      onAgregarForma={(e) => {
+        e?.stopPropagation?.();
+        setMostrarPanelFormas((prev) => !prev);
+        setMostrarGaleria(false);
+      }}
+      cerrarSidebar={!fijadoSidebar ? () => setHoverSidebar(false) : undefined}
+      onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
+      galeriaAbierta={mostrarGaleria}
+      mostrarPanelFormas={mostrarPanelFormas}
+      PanelDeFormasComponent={
+      <PanelDeFormas
+        abierto={true}
+        sidebarAbierta={sidebarAbierta}
+        onInsertarForma={(obj) => {
+          window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: obj }));
+          
+        }}
+        onInsertarIcono={(obj) => {
+          window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: obj }));
+          
+        }}
+      />
+      }
+    />
+  
+
+
+
+
+  
+</div>
+
+
+
+  {mostrarGaleria && (
+    <div
+      className="text-sm text-white overflow-hidden transition-all duration-300 ease-in-out"
+      style={{
+        maxHeight: "600px",
+        opacity: 1,
+        transition: "max-height 0.3s ease, opacity 0.3s ease",
+      }}
+    >
+    <div className="flex flex-col items-start gap-2 transition-all duration-300">
+        {/* Botón para subir imagen */}
+        <button
+          onClick={abrirSelector}
+          className="bg-white text-purple-800 px-3 py-1 rounded hover:bg-purple-200 transition text-sm"
+        >
+          Subir imagen
+        </button>
+
+
+      {/* Galería */}
+     <GaleriaDeImagenes
+    imagenes={imagenes}
+  imagenesEnProceso={imagenesEnProceso}
+  cargarImagenes={cargarImagenes}
+  borrarImagen={borrarImagen}
+  hayMas={hayMas}
+  cargando={cargando}
+  onInsertar={(nuevo) => {
+    window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: nuevo }));
+    setMostrarGaleria(false);
+  }}
+  onSeleccionadasChange={setImagenesSeleccionadas}
+/>
+
+
+
+      {/* Crear plantilla */}
+      <button
+        onClick={ejecutarCrearPlantilla}
+        className="hover:underline"
+      >
+        ✨ Crear plantilla
+      </button>
+
+      {/* Borrar todos */}
+      <button
+        onClick={async () => {
+          const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
+          if (!confirmar) return;
+
+          try {
+            const functions = getFunctions();
+            const borrarTodos = httpsCallable(functions, "borrarTodosLosBorradores");
+            await borrarTodos();
+            alert("✅ Todos los borradores fueron eliminados.");
+            window.location.reload();
+          } catch (error) {
+            console.error("❌ Error al borrar todos los borradores", error);
+            alert("No se pudieron borrar los borradores.");
+          }
+        }}
+        className="hover:underline"
+      >
+        🗑️ Borrar todos los borradores
+      </button>
+    </div>
+  </div>
+)}
+</div>
+
         
       </aside>
 

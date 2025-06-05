@@ -19,7 +19,7 @@ export default function Dashboard() {
   const [plantillas, setPlantillas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [urlIframe, setUrlIframe] = useState(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.8);
   const [usuario, setUsuario] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [modoEditor, setModoEditor] = useState(null);

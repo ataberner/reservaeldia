@@ -23,6 +23,7 @@ function escalarParaAncho(imgWidth, imgHeight, canvasWidth = 800) {
   const ratio = imgHeight / imgWidth;
   const width = canvasWidth;
   const height = width * ratio;
+  
   return { width, height };
 }
 
@@ -33,6 +34,7 @@ export default function DashboardLayout({ children, mostrarMiniToolbar }) {
     const [mostrarGaleria, setMostrarGaleria] = useState(false);
 const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
 const [mostrarPanelFormas, setMostrarPanelFormas] = useState(false);
+const [modoFormasCompleto, setModoFormasCompleto] = useState(false);
 
 useEffect(() => {
   corregirURLsInvalidas(); // 🔧 Se ejecuta automáticamente al entrar
@@ -183,22 +185,21 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
 
 
-          className={`bg-purple-800 text-white transition-all duration-300 ${
-            sidebarAbierta ? "w-80" : "w-16"
-          } flex flex-col`}
+          className={`bg-gradient-to-b from-purple-800 via-purple-900 to-purple-950 text-white transition-all duration-300 shadow-xl
+    ${sidebarAbierta ? "w-80" : "w-16"} px-0 py-2 flex flex-col gap-2`}
         >
 
 
-<div className="p-4 border-b border-purple-700 flex flex-col gap-4">
+<div className="p-4 border-purple-700 flex flex-col gap-4">
   {/* Menú */}
   <div
-    className="flex items-center gap-2 cursor-pointer"
+    className="flex items-center justify-start h-12 cursor-pointer transition"
     onClick={() => setFijadoSidebar(!fijadoSidebar)}
   >
-    <FaBars className="text-white text-xl" />
+    <FaBars className="text-white text-xl flex-shrink-0" />
     {sidebarAbierta && (
       <>
-        <span className="font-bold">Menú</span>
+        <span className="font-bold px-2">Menú</span>
         {fijadoSidebar ? (
           <FaLock className="text-white text-sm ml-1" title="Fijado" />
         ) : (
@@ -210,37 +211,48 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
   {/* Toolbar + Panel */}
   <div className="flex flex-col gap-2 w-full">
-    <MiniToolbar
-      visible={mostrarMiniToolbar}
-      sidebarAbierta={sidebarAbierta}
-      onAgregarTexto={(e) => {
-        e?.stopPropagation?.();
-        window.dispatchEvent(new CustomEvent("agregar-cuadro-texto"));
-      }}
-      onAgregarForma={(e) => {
-        e?.stopPropagation?.();
-        setMostrarPanelFormas((prev) => !prev);
-        setMostrarGaleria(false);
-      }}
-      cerrarSidebar={!fijadoSidebar ? () => setHoverSidebar(false) : undefined}
-      onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
-      galeriaAbierta={mostrarGaleria}
-      mostrarPanelFormas={mostrarPanelFormas}
-      PanelDeFormasComponent={
+   {modoFormasCompleto ? (
+  <>
+     <button
+      onClick={() => setModoFormasCompleto(false)}
+      className="text-left text-sm text-white underline mb-2"
+    >
+      ← Formas
+    </button>
+
+    <div className="flex-1 overflow-y-auto pr-2">
       <PanelDeFormas
         abierto={true}
         sidebarAbierta={sidebarAbierta}
         onInsertarForma={(obj) => {
           window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: obj }));
-          
         }}
         onInsertarIcono={(obj) => {
           window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: obj }));
-          
         }}
       />
-      }
-    />
+    </div>
+  </>
+) : (
+  <MiniToolbar
+    visible={mostrarMiniToolbar}
+    sidebarAbierta={sidebarAbierta}
+    onAgregarTexto={(e) => {
+      e?.stopPropagation?.();
+      window.dispatchEvent(new CustomEvent("agregar-cuadro-texto"));
+    }}
+    onAgregarForma={(e) => {
+      e?.stopPropagation?.();
+      setModoFormasCompleto(true); // 🟣 Entrar a modo "formulario completo"
+    }}
+    onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
+    cerrarSidebar={!fijadoSidebar ? () => setHoverSidebar(false) : undefined}
+    galeriaAbierta={mostrarGaleria}
+    mostrarPanelFormas={false}
+    PanelDeFormasComponent={null}
+  />
+)}
+
   
 
 

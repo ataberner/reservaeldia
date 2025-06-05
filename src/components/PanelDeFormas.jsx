@@ -1,95 +1,171 @@
 // src/components/PanelDeFormas.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import useIconosPublicos from "@/hooks/useIconosPublicos";
+import { ChevronRight } from "lucide-react";
+
 
 export default function PanelDeFormas({ abierto, onCerrar, sidebarAbierta, onInsertarForma, onInsertarIcono }) {
-  const [verTodo, setVerTodo] = useState(null); // "formas" o "iconos"
+  const [verTodo, setVerTodo] = useState(null);
+const { iconos, populares, cargarMas, cargando, hayMas, cargarPorCategoria } = useIconosPublicos();
+
+const [categoriaEspecial, setCategoriaEspecial] = useState([]);
+
+
+useEffect(() => {
+  cargarPorCategoria("corazones").then(setCategoriaEspecial);
+}, []);
+
+
 
   if (!abierto || !sidebarAbierta) return null;
 
   const formas = [
-    { id: "cuadrado", tipo: "forma", figura: "rect", color: "#773dbe" },
-    { id: "circulo", tipo: "forma", figura: "circle", color: "#773dbe" },
-    { id: "linea", tipo: "forma", figura: "line", color: "#773dbe" },
-    { id: "triangulo", tipo: "forma", figura: "triangle", color: "#773dbe" },
+    { id: "cuadrado", tipo: "forma", figura: "rect", color: "#000000" },
+    { id: "circulo", tipo: "forma", figura: "circle", color: "#000000" },
+    { id: "linea", tipo: "forma", figura: "line", color: "#000000" },
+    { id: "triangulo", tipo: "forma", figura: "triangle", color: "#000000" },
   ];
 
-  const iconos = [
-    { id: "icono1", src: "/iconos/estrella.png" },
-    { id: "icono2", src: "/iconos/corazon.png" },
-    { id: "icono3", src: "/iconos/arcoiris.png" },
-    // 🔁 luego los vas a cargar dinámicamente de Firebase
-  ];
+ 
 
   return (
   <div className="transition-all duration-500 ease-in-out overflow-hidden max-h-[500px] opacity-100">
-    <div className="flex flex-col gap-6 pt-2">
+    <div className="flex flex-col pt-2">
+      
+
+{/* ⭐ Íconos populares */}
+<div>
+  <div className="flex justify-between items-center px-2">
+    <span className="text-xs text-purple-200 uppercase tracking-wider font-semibold">
+      Íconos populares
+    </span>
+    <button
+      className="text-xs underline text-white"
+      onClick={() => setVerTodo(verTodo === "populares" ? null : "populares")}
+    >
+      {verTodo === "populares" ? "Cerrar" : "Ver todo"}
+    </button>
+  </div>
+
+  <div className="relative">
+    <div
+      className={`flex gap-2 px-2 overflow-x-auto scrollbar-hide py-2 transition-all ${
+        verTodo === "populares" ? "max-h-[400px]" : "max-h-[100px]"
+      }`}
+    >
+      {populares.map((icono) => {
+        if (!icono.src) return null;
+
+        return (
+          <div
+            key={`pop-${icono.id}`}
+            className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition flex-shrink-0"
+            onClick={() =>
+              onInsertarIcono({
+                id: `icono-${Date.now()}`,
+                tipo: "icono",
+                src: icono.src,
+                x: 100,
+                y: 100,
+                scaleX: 1,
+                scaleY: 1,
+                rotation: 0,
+              })
+            }
+          >
+            <div
+              className="w-10 h-10 bg-center bg-no-repeat bg-contain"
+              style={{ backgroundImage: `url(${icono.src})` }}
+            />
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Flecha flotante */}
+    <div className="pointer-events-none absolute right-1 top-[30%] z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm">
+      <ChevronRight className="w-5 h-5 text-white drop-shadow" />
+    </div>
+  </div>
+</div>
+
+
+
+
+<hr className="border-purple-700/50 my-3 mx-2" />
+
       {/* Hilera de Formas */}
       <div>
         <div className="flex justify-between items-center px-2">
-          <span className="font-semibold text-sm text-white">Formas básicas</span>
+          <span className="text-xs text-purple-200 uppercase tracking-wider font-semibold">Formas básicas</span>
           <button
             className="text-xs underline text-white"
             onClick={() => setVerTodo(verTodo === "formas" ? null : "formas")}
           >
             {verTodo === "formas" ? "Cerrar" : "Ver todo"}
           </button>
-        </div>
-
-       
-<div
-  className={`flex gap-2 px-2 overflow-x-auto py-2 transition-all ${
-    verTodo === "formas" ? "max-h-[400px]" : "max-h-[100px]"
-  }`}
->
-  {formas.map((forma) => (
-    <div
-      key={forma.id}
-      className="w-20 h-20 rounded bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition relative"
-      onClick={() =>
-        onInsertarForma({
-          id: `forma-${Date.now()}`,
-          tipo: "forma",
-          figura: forma.figura,
-          color: forma.color,
-          x: 100,
-          y: 100,
-          scaleX: 1,
-          scaleY: 1,
-          rotation: 0,
-        })
-      }
-    >
-      {/* Dibujos visuales por tipo */}
-      {forma.figura === "rect" && (
-        <div className="w-10 h-10 bg-black" />
-      )}
-      {forma.figura === "circle" && (
-        <div className="w-10 h-10 rounded-full bg-black" />
-      )}
-      {forma.figura === "line" && (
-        <div className="w-10 h-[2px] bg-black" />
-      )}
-      {forma.figura === "triangle" && (
+        </div>  
         <div
-          className="w-0 h-0"
-          style={{
-            borderLeft: "20px solid transparent",
-            borderRight: "20px solid transparent",
-            borderBottom: "35px solid #000000",
-          }}
-        />
-      )}
-    </div>
+          className={`flex gap-2 px-2 overflow-x-auto py-2 transition-all ${
+            verTodo === "formas" ? "max-h-[400px]" : "max-h-[100px]"
+          }`}
+        >
+
+        {formas.map((forma) => (
+          <div
+            key={forma.id}
+            className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow hover:scale-105 transition cursor-pointer"
+            onClick={() =>
+              onInsertarForma({
+                id: `forma-${Date.now()}`,
+                tipo: "forma",
+                figura: forma.figura,
+                color: forma.color,
+                x: 100,
+                y: 100,
+                scaleX: 1,
+                scaleY: 1,
+                rotation: 0,
+              })
+            }
+          >
+            {/* Dibujos visuales por tipo */}
+            {forma.figura === "rect" && (
+              <div className="w-8 h-8 bg-black" />
+            )}
+            {forma.figura === "circle" && (
+              <div className="w-8 h-8 rounded-full bg-black" />
+            )}
+            {forma.figura === "line" && (
+              <div className="w-8 h-[2px] bg-black" />
+            )}
+            {forma.figura === "triangle" && (
+              <div
+                className="w-0 h-0"
+                style={{
+                  borderLeft: "20px solid transparent",
+                  borderRight: "20px solid transparent",
+                  borderBottom: "35px solid #000000",
+                }}
+              />
+            )}
+      </div>
   ))}
 </div>
 
        </div>
-    
+
+
+<hr className="border-purple-700/50 my-3 mx-2" />
+
 
       {/* Hilera de Iconos */}
       <div>
         <div className="flex justify-between items-center px-2">
-          <span className="font-semibold text-sm text-white">Íconos & GIFs</span>
+          <span className="text-xs text-purple-200 uppercase tracking-wider font-semibold">
+            Íconos & GIFs
+          </span>
+
           <button
             className="text-xs underline text-white"
             onClick={() => setVerTodo(verTodo === "iconos" ? null : "iconos")}
@@ -98,35 +174,66 @@ export default function PanelDeFormas({ abierto, onCerrar, sidebarAbierta, onIns
           </button>
         </div>
 
-        <div
-          className={`flex gap-2 px-2 overflow-x-auto py-2 transition-all ${
-            verTodo === "iconos" ? "max-h-[400px]" : "max-h-[100px]"
-          }`}
-        >
-          {iconos.map((icono) => (
-            <div
-              key={icono.id}
-              className="w-20 h-20 rounded bg-white flex items-center justify-center overflow-hidden cursor-pointer hover:scale-105 transition"
-              onClick={() =>
-                onInsertarIcono({
-                  id: `icono-${Date.now()}`,
-                  tipo: "icono",
-                  src: icono.src,
-                  x: 100,
-                  y: 100,
-                  scaleX: 1,
-                  scaleY: 1,
-                  rotation: 0,
-                })
-              }
-            >
-              <img src={icono.src} alt="" className="w-full h-full object-contain" />
-            </div>
-          ))}
+      <div className="relative">
+       <div
+        className={`flex gap-2 px-2 overflow-x-auto scrollbar-hide py-2 min-h-[112px] transition-all ${
+          verTodo === "iconos" ? "max-h-[400px]" : "max-h-[124px]"
+        }`}
+      >    
+        {iconos.map((icono) => {
+  
+
+            return (
+                     <div
+                      key={icono.id}
+                      className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition flex-shrink-0"
+                      onClick={() =>
+                        onInsertarIcono({
+                          id: `icono-${Date.now()}`,
+                          tipo: "icono",
+                          src: icono.src,
+                          x: 100,
+                          y: 100,
+                          scaleX: 1,
+                          scaleY: 1,
+                          rotation: 0,
+                        })
+                      }
+                    >
+                      <div
+                        className="w-10 h-10 bg-center bg-no-repeat bg-contain"
+                        style={{ backgroundImage: `url(${icono.src})` }}
+                      />
+                    </div>
+                    );
+                  })}{cargando &&
+                    [...Array(3)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-14 h-14 rounded-xl bg-gray-300 animate-pulse shadow flex-shrink-0"
+                      />
+                    ))}
+
+                  {hayMas && !cargando && (
+                    <button
+                      onClick={cargarMas}
+                      className="w-14 h-14 bg-purple-200 text-purple-800 text-sm font-semibold rounded-xl hover:bg-purple-300 transition shadow flex-shrink-0"
+                    >
+                      +
+                    </button>
+                  )}
+
         </div>
+
+        <div className="pointer-events-none absolute right-1 top-[22%] z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm">
+          <ChevronRight className="w-5 h-5 text-white drop-shadow" />
+        </div>
+
+      </div>
+
       </div>
     </div>
   </div>
 );
-
 }
+

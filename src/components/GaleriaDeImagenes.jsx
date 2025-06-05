@@ -1,6 +1,7 @@
 import useMisImagenes from "@/hooks/useMisImagenes";
 import { useState, useEffect, useRef } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Heart, Star, Smile } from "lucide-react";
+
 
 
 

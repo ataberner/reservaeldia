@@ -1,6 +1,6 @@
 // components/CanvasEditor.jsx
 import { useEffect, useState, useRef } from "react";
-import { Stage, Layer, Line, Text, Transformer, Image as KonvaImage, Group , Circle} from "react-konva";
+import { Stage, Layer, Line, Rect, Text, Transformer, Image as KonvaImage, Group , Circle} from "react-konva";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import ElementoCanvas from "./ElementoCanvas";
@@ -22,6 +22,7 @@ import {
 
 
 
+
 const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="black" />);
 const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 
@@ -35,7 +36,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const [modoEdicion, setModoEdicion] = useState(false);
     const [cargado, setCargado] = useState(false);
     const stageRef = useRef(null);
+    const dragStartPos = useRef(null);
+    const hasDragged = useRef(false);
+    const [seleccionActiva, setSeleccionActiva] = useState(false);
+    const [inicioSeleccion, setInicioSeleccion] = useState(null);
+    const [areaSeleccion, setAreaSeleccion] = useState(null);
+    const [elementosPreSeleccionados, setElementosPreSeleccionados] = useState([]);
     const guiaLayerRef = useRef(null);
+    const [hoverId, setHoverId] = useState(null);
     const [guiaLineas, setGuiaLineas] = useState([]);
     const [scale, setScale] = useState(1);
     const transformerRef = useRef();
@@ -71,10 +79,10 @@ const fuentesGoogle = [
   { nombre: "Roboto", valor: "Roboto" },
   { nombre: "Lobster", valor: "Lobster" },
 ];
-const [mostrarSelectorTamaño, setMostrarSelectorTamaño] = useState(false);
-const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
-const [icono] = useImage(urlData);
-const nuevoTextoRef = useRef(null);
+      const [mostrarSelectorTamaño, setMostrarSelectorTamaño] = useState(false);
+      const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
+      const [icono] = useImage(urlData);
+      const nuevoTextoRef = useRef(null);
 
 
 
@@ -105,8 +113,6 @@ const moverElemento = (accion) => {
 
 
 
-
-
 useEffect(() => {
   const handler = (e) => {
     const nueva = e.detail;
@@ -122,6 +128,7 @@ useEffect(() => {
   const handler = (e) => {
     const nuevo = e.detail;
     setObjetos((prev) => [...prev, nuevo]);
+    setElementosSeleccionados([nuevo.id]); 
   };
 
   window.addEventListener("insertar-icono", handler);
@@ -162,7 +169,7 @@ useEffect(() => {
 
   const obj = objetos.find((o) => o.id === nuevoTextoRef.current);
   if (obj) {
-    setElementosSeleccionados[0](obj.id);
+    setElementosSeleccionados([obj.id]);
     iniciarEdicionInline(obj, true);
     nuevoTextoRef.current = null; // 🧼 Limpiamos para evitar repetir
   }
@@ -215,17 +222,16 @@ useEffect(() => {
 
 
 useEffect(() => {
-  const node = elementRefs.current[elementosSeleccionados[0]];
-  if (node && transformerRef.current) {
-    const transformer = transformerRef.current;
+  const nodes = elementosSeleccionados
+    .map((id) => elementRefs.current[id])
+    .filter(Boolean);
 
-    // 🔥 Desactivamos explícitamente el control de rotación en el nodo
-    node.rotationEnabled && node.rotationEnabled(false);
-
-    transformer.nodes([node]);
-    transformer.getLayer().batchDraw();
+  if (nodes.length > 0 && transformerRef.current) {
+    transformerRef.current.nodes(nodes);
+    transformerRef.current.getLayer().batchDraw();
   }
-}, [elementosSeleccionados[0]]);
+}, [elementosSeleccionados]);
+
 
 
 
@@ -269,16 +275,6 @@ useEffect(() => {
 
   return () => observer.disconnect();
 }, [zoom]);
-
-
-useEffect(() => {
-  if (contenedorRef.current) {
-    const styles = window.getComputedStyle(contenedorRef.current);
-    console.log("PADDING CONTENEDOR:", styles.padding);
-  }
-}, [zoom]);
-
-
 
 
 
@@ -339,16 +335,18 @@ useEffect(() => {
 useEffect(() => {
   const handleKeyDown = (e) => {
     // solo elimina si hay un elemento seleccionado
-    if ((e.key === "Delete" || e.key === "Backspace") && elementosSeleccionados[0]) {
-      e.preventDefault(); // evita borrar en otro lado
-      setObjetos((prev) => prev.filter((o) => o.id !== elementosSeleccionados[0]));
-      setElementosSeleccionados[0](null); // deselecciona
-    }
+    if ((e.key === "Delete" || e.key === "Backspace") && elementosSeleccionados.length > 0) {
+  e.preventDefault();
+  setObjetos((prev) => prev.filter((o) => !elementosSeleccionados.includes(o.id)));
+  setElementosSeleccionados([]); // vaciamos la selección
+}
   };
 
   window.addEventListener("keydown", handleKeyDown);
   return () => window.removeEventListener("keydown", handleKeyDown);
-}, [elementosSeleccionados[0]]);
+}, [elementosSeleccionados]);
+
+
 useEffect(() => {
   const handleKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -361,7 +359,7 @@ useEffect(() => {
           ignoreNextUpdateRef.current = true;
             setObjetos(anterior);
 
-            setElementosSeleccionados[0](null); // ✅ Evita error si ya no existe
+            setElementosSeleccionados([]); // ✅ Evita error si ya no existe
             setModoEdicion(false);         // ✅ Cierra edición inline si estaba activa
 
           setFuturos((f) => [actual, ...f]); // guarda para rehacer
@@ -394,6 +392,7 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   const id = obj.id;
   const textNode = elementRefs.current[id];
   
+  if (elementosSeleccionados.length > 1) return;
   // Verificar que el nodo y el stage existan
   if (!textNode || !stageRef.current) {
     console.warn('El nodo o el stage no están listos');
@@ -413,6 +412,7 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   const escala = zoom === 1 ? scale : zoom;
 
   area.style.top = `${container.getBoundingClientRect().top + box.y * escala}px`;
+  area.style.top = `${container.getBoundingClientRect().top + (box.y - box.height / 2) * escala}px`;
   area.style.left = `${container.getBoundingClientRect().left + box.x * escala}px`;
   area.style.width = `${box.width}px`;
   area.style.height = "auto";
@@ -457,8 +457,14 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
     }
 
     const actualizado = [...objetos];
-    actualizado[index] = { ...actualizado[index], texto: textoNuevo };
+    actualizado[index] = {
+      ...actualizado[index],
+      texto: textoNuevo,
+      x: textNode.x(), // ✅ guardar posición actual
+      y: textNode.y(), // ✅ guardar posición actual
+    };
     setObjetos(actualizado);
+
     setModoEdicion(false);
 
     if (area && area.parentNode) area.remove();
@@ -481,6 +487,44 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   setModoEdicion(true);
   window.modoEdicionCanvas = true;
 };
+
+
+
+const finalizarEdicionInline = () => {
+  return new Promise((resolve) => {
+    if (!modoEdicion || !nuevoTextoRef.current) return resolve();
+
+    const id = nuevoTextoRef.current;
+    const textNode = elementRefs.current[id];
+
+    const textarea = document.querySelector("textarea");
+    if (!textarea) return resolve();
+
+    const textoNuevo = textarea.value;
+    const index = objetos.findIndex((o) => o.id === id);
+
+    if (index === -1) {
+      console.warn("No se pudo guardar: el objeto fue eliminado o deshecho");
+      textarea.remove();
+      setModoEdicion(false);
+      return resolve();
+    }
+
+    const actualizado = [...objetos];
+    actualizado[index] = {
+      ...actualizado[index],
+      texto: textoNuevo,
+      // 👇 NO tocar x, y aquí
+    };
+
+    setObjetos(actualizado);
+    setModoEdicion(false);
+    if (textarea && textarea.parentNode) textarea.remove();
+    nuevoTextoRef.current = null;
+    resolve();
+  });
+};
+
 
 
 
@@ -568,6 +612,7 @@ const fuentesDisponibles = [...fuentesLocales, ...fuentesGoogle];
 const objetoSeleccionado = objetos.find((o) => o.id === elementosSeleccionados[0]);
 console.log("zoom en CanvasEditor:", zoom);
 
+const hoverTransformerRef = useRef();
 
 const mostrarGuias = (pos, idActual) => {
   const lineas = [];
@@ -651,49 +696,55 @@ const mostrarGuias = (pos, idActual) => {
 
 // 🧠 Copiar el objeto seleccionado
 const copiarElemento = () => {
-  const objeto = objetos.find((o) => o.id === elementosSeleccionados[0]);
-  if (objeto) {
-    // guardamos temporalmente en window
-    window._objetoCopiado = { ...objeto, id: undefined }; // removemos el id para evitar conflicto
+  const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
+  if (seleccionados.length > 0) {
+    // Guardamos todos los seleccionados sin los IDs
+    window._objetosCopiados = seleccionados.map((o) => ({ ...o, id: undefined }));
   }
 };
+
 
 // 🧠 Pegar el objeto copiado
 const pegarElemento = () => {
-  const copiado = window._objetoCopiado;
-  if (copiado) {
-    const nuevo = {
-      ...copiado,
-      id: `obj-${Date.now()}`,
-      x: (copiado.x || 100) + 30,
-      y: (copiado.y || 100) + 30,
-    };
-    setObjetos([...objetos, nuevo]);
-  }
+  const copiados = window._objetosCopiados || [];
+  const nuevos = copiados.map((c, i) => ({
+    ...c,
+    id: `obj-${Date.now()}-${i}`,
+    x: (c.x || 100) + 30 * (i + 1),
+    y: (c.y || 100) + 30 * (i + 1),
+  }));
+
+  setObjetos((prev) => [...prev, ...nuevos]);
+  setElementosSeleccionados(nuevos.map((n) => n.id));
 };
+
 
 // 🧠 Duplicar el objeto seleccionado
 const duplicarElemento = () => {
-  const original = objetos.find((o) => o.id === elementosSeleccionados[0]);
-  if (!original) return;
-
-  const copia = {
+  const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
+  const duplicados = seleccionados.map((original, i) => ({
     ...original,
-    id: `obj-${Date.now()}`,
+    id: `obj-${Date.now()}-${i}`,
     x: original.x + 20,
     y: original.y + 20,
-  };
-
-  setObjetos([...objetos, copia]);
+  }));
+  setObjetos((prev) => [...prev, ...duplicados]);
+  setElementosSeleccionados(duplicados.map((d) => d.id));
 };
+
 
 // 🧠 Eliminar el objeto seleccionado
 const eliminarElemento = () => {
-  if (!elementosSeleccionados[0]) return;
-  setObjetos(objetos.filter((o) => o.id !== elementosSeleccionados[0]));
-  setElementosSeleccionados[0](null);
-  setMostrarPanelZ(false); // cerramos el menú
+  if (elementosSeleccionados.length === 0) return;
+
+  setObjetos((prev) =>
+    prev.filter((o) => !elementosSeleccionados.includes(o.id))
+  );
+  setElementosSeleccionados([]);
+  setMostrarPanelZ(false);
 };
+
+
 
 
 
@@ -730,15 +781,84 @@ const eliminarElemento = () => {
       borderRadius: 16,
       overflow: "hidden",
     }}
+    
     onMouseDown={(e) => {
-  const clickedOnEmpty = e.target === e.target.getStage();
-  if (clickedOnEmpty) {
-    setElementosSeleccionados([]);
-        setModoEdicion(false); // si tenés edición inline abierta
-        setMostrarPanelZ(false); // si querés cerrar el menú contextual
-        setMostrarSubmenuCapa(false); // si el submenú está abierto
-      }
-    }}
+        const stage = e.target.getStage();
+        const esStage = e.target === stage;
+        dragStartPos.current = e.target.getStage().getPointerPosition();
+        hasDragged.current = false;
+                // Verificamos si se hizo clic en un área "vacía" (no un nodo seleccionado)
+                const noHizoClickEnElemento = !Object.values(elementRefs.current).some((node) => {
+                  return node === e.target || node.hasName?.(e.target.name?.());
+                });
+
+                if (esStage && noHizoClickEnElemento) {
+                  setElementosSeleccionados([]);
+                  setModoEdicion(false);
+                  setMostrarPanelZ(false);
+                  setMostrarSubmenuCapa(false);
+
+                  const pos = stage.getPointerPosition();
+                  setInicioSeleccion({ x: pos.x, y: pos.y });
+                  setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
+                  setSeleccionActiva(true);
+                }
+
+      }}
+
+              onMouseMove={(e) => {
+                     if (!seleccionActiva || !areaSeleccion) return;
+
+                    const pos = e.target.getStage().getPointerPosition();
+                    const area = {
+                      x: Math.min(inicioSeleccion.x, pos.x),
+                      y: Math.min(inicioSeleccion.y, pos.y),
+                      width: Math.abs(pos.x - inicioSeleccion.x),
+                      height: Math.abs(pos.y - inicioSeleccion.y),
+                    };
+
+
+                    setAreaSeleccion(area);
+                    // Detectar qué elementos están tocados
+                    const ids = objetos.filter((obj) => {
+                      const node = elementRefs.current[obj.id];
+                      if (!node) return false;
+                      const box = node.getClientRect();
+
+                      return (
+                        box.x + box.width >= area.x &&
+                        box.x <= area.x + area.width &&
+                        box.y + box.height >= area.y &&
+                        box.y <= area.y + area.height
+                      );
+                    }).map((obj) => obj.id);
+
+                    setElementosPreSeleccionados(ids);
+                }}
+
+        onMouseUp={() => {
+          if (!seleccionActiva || !areaSeleccion) return;
+
+          const nuevaSeleccion = objetos.filter((obj) => {
+            const node = elementRefs.current[obj.id];
+            if (!node) return false;
+            const box = node.getClientRect();
+            return (
+              box.x >= areaSeleccion.x &&
+              box.y >= areaSeleccion.y &&
+              box.x + box.width <= areaSeleccion.x + areaSeleccion.width &&
+              box.y + box.height <= areaSeleccion.y + areaSeleccion.height
+            );
+          });
+
+          setElementosSeleccionados(elementosPreSeleccionados);
+          setElementosPreSeleccionados([]);
+          setSeleccionActiva(false);
+          setAreaSeleccion(null);
+
+        }}
+
+    
 
   >
 
@@ -752,9 +872,16 @@ const eliminarElemento = () => {
         key={obj.id}
         obj={obj}
         anchoCanvas={800}
-        isSelected={elementosSeleccionados[0] === obj.id}
-        onSelect={(id, obj, e) => {
+        isSelected={elementosSeleccionados.includes(obj.id)}
+        preSeleccionado={elementosPreSeleccionados.includes(obj.id)}
+        onHover={setHoverId}
+        onSelect={async (id, obj, e) => {
+            e.evt.cancelBubble = true;
             const esShift = e?.evt?.shiftKey;
+
+             if (modoEdicion) {
+                await finalizarEdicionInline(); // ✅ esperamos a que se guarde ANTES de continuar
+              }
 
             setElementosSeleccionados((prev) => {
               if (esShift) {
@@ -769,8 +896,10 @@ const eliminarElemento = () => {
             });
 
             if (!esShift && obj?.tipo === "texto") {
-              iniciarEdicionInline(obj);
-            }
+            // Solo iniciamos edición si no hay selección múltiple
+            iniciarEdicionInline(obj);
+          }
+
           }}
 
         onChange={(id, nuevo) => {
@@ -782,12 +911,24 @@ const eliminarElemento = () => {
         }}
         onDragMovePersonalizado={mostrarGuias}
         onDragEndPersonalizado={() => setGuiaLineas([])}
-
-
+        dragStartPos={dragStartPos}
+        hasDragged={hasDragged}    
       />
     );
   })}
 
+{seleccionActiva && areaSeleccion && (
+  <Rect
+    x={areaSeleccion.x}
+    y={areaSeleccion.y}
+    width={areaSeleccion.width}
+    height={areaSeleccion.height}
+    fill="rgba(119, 61, 190, 0.1)" // violeta claro
+    stroke="#773dbe"
+    strokeWidth={1}
+    dash={[4, 4]}
+  />
+)}
 
        
 {elementosSeleccionados.length > 0 && (
@@ -817,6 +958,22 @@ const eliminarElemento = () => {
     anchorSize={6}
   />
 )}
+
+{hoverId &&
+  !elementosSeleccionados.includes(hoverId) &&
+  elementRefs.current[hoverId] && (
+    <Transformer
+      nodes={[elementRefs.current[hoverId]]}
+      rotationEnabled={false}
+      ref={hoverTransformerRef}
+      borderStroke="#aaa"
+      borderStrokeWidth={1}
+      anchorSize={4}
+      anchorFill="#eee"
+      anchorStroke="#aaa"
+    />
+)}
+
 
 
 
@@ -898,7 +1055,7 @@ const eliminarElemento = () => {
 
 
 {/* ✅ Botón de orden de capas (para cualquier tipo de objeto) */}
-{elementosSeleccionados[0] && (
+{elementosSeleccionados.length === 1 && (
   <div
     className="fixed z-50 bg-white border rounded shadow p-1 text-sm boton-mini-z"
     style={{
@@ -1054,14 +1211,16 @@ const eliminarElemento = () => {
               className="flex items-center gap-2 px-2 py-2 hover:bg-gray-100 rounded cursor-pointer"
               style={{ fontFamily: fuente.valor }}
               onClick={(e) => {
-                e.stopPropagation();
-                const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-                if (index !== -1) {
-                  const actualizado = [...objetos];
-                  actualizado[index].fontFamily = fuente.valor;
-                  setObjetos(actualizado);
-                }
-              }}
+              e.stopPropagation();
+              setObjetos((prev) =>
+                prev.map((o) =>
+                  elementosSeleccionados.includes(o.id)
+                    ? { ...o, fontFamily: fuente.valor }
+                    : o
+                )
+              );
+            }}
+
             >
           {/* Nombre visible */}
           <span className="text-sm text-gray-700 whitespace-nowrap text-left">{fuente.nombre}</span>
@@ -1094,21 +1253,23 @@ const eliminarElemento = () => {
 <div className="relative">
     <div className="flex items-center bg-white border rounded-lg overflow-hidden">
   {/* Botón - */}
-  <button
-    className="px-2 py-1 hover:bg-gray-100 transition"
-    onClick={() => {
-  const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-  if (index !== -1) {
-    const actual = objetos[index].fontSize || 24;
-    const nuevo = Math.max(6, actual - 2);
-    const actualizado = [...objetos];
-    actualizado[index].fontSize = nuevo;
-    setObjetos(actualizado);
-  }
-}}
-  >
-    −
-  </button>
+<button
+  className="px-2 py-1 hover:bg-gray-100 transition"
+  onClick={(e) => {
+    e.stopPropagation();
+    setObjetos((prev) =>
+      prev.map((o) => {
+        if (!elementosSeleccionados.includes(o.id)) return o;
+        const actual = o.fontSize || 24;
+        const nuevo = Math.max(6, actual - 2);
+        return { ...o, fontSize: nuevo };
+      })
+    );
+  }}
+>
+  −
+</button>
+
 
   {/* Número de tamaño */}
   <div
@@ -1130,14 +1291,16 @@ const eliminarElemento = () => {
             className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
             onClick={(e) => {
               e.stopPropagation();
-              const i = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-              if (i !== -1) {
-                const actualizado = [...objetos];
-                actualizado[i].fontSize = tam;
-                setObjetos(actualizado);
-              }
+              setObjetos((prev) =>
+                prev.map((o) =>
+                  elementosSeleccionados.includes(o.id)
+                    ? { ...o, fontSize: tam }
+                    : o
+                )
+              );
               setMostrarSelectorTamaño(false);
             }}
+
           >
             {tam}
           </div>
@@ -1150,15 +1313,15 @@ const eliminarElemento = () => {
   <button
     className="px-2 py-1 hover:bg-gray-100 transition"
     onClick={() => {
-  const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-  if (index !== -1) {
-    const actual = objetos[index].fontSize || 24;
-    const nuevo = Math.min(120, actual + 2);
-    const actualizado = [...objetos];
-    actualizado[index].fontSize = nuevo;
-    setObjetos(actualizado);
-  }
-}}
+        setObjetos((prev) =>
+          prev.map((o) => {
+            if (!elementosSeleccionados.includes(o.id)) return o;
+            const nuevo = Math.min(120, (o.fontSize || 24) + 2);
+            return { ...o, fontSize: nuevo };
+          })
+        );
+      }}
+
   >
     +
   </button>
@@ -1171,13 +1334,16 @@ const eliminarElemento = () => {
       type="color"
       value={objetoSeleccionado?.color || "#000000"}
       onChange={(e) => {
-        const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-        if (index !== -1) {
-          const actualizado = [...objetos];
-          actualizado[index].color = e.target.value;
-          setObjetos(actualizado);
-        }
+        const nuevoColor = e.target.value;
+        setObjetos((prev) =>
+          prev.map((o) =>
+            elementosSeleccionados.includes(o.id)
+              ? { ...o, color: nuevoColor }
+              : o
+          )
+        );
       }}
+
     />
 
    {/* B */}
@@ -1186,15 +1352,17 @@ const eliminarElemento = () => {
     objetoSeleccionado?.fontWeight === "bold" ? "bg-gray-200" : "hover:bg-gray-100"
   }`}
   onClick={() => {
-    const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-    if (index !== -1) {
-      const actualizado = [...objetos];
-      const actual = actualizado[index];
-      actualizado[index].fontWeight = actual.fontWeight === "bold" ? "normal" : "bold";
-      console.log("➡️ fontWeight actual:", actual.fontWeight);
-      setObjetos(actualizado);
-    }
-  }}
+  setObjetos((prev) =>
+    prev.map((o) => {
+      if (!elementosSeleccionados.includes(o.id)) return o;
+      return {
+        ...o,
+        fontWeight: o.fontWeight === "bold" ? "normal" : "bold",
+      };
+    })
+  );
+}}
+
 >
   B
 </button>
@@ -1204,15 +1372,18 @@ const eliminarElemento = () => {
   className={`px-2 py-1 rounded border text-sm italic transition ${
     objetoSeleccionado?.fontStyle === "italic" ? "bg-gray-200" : "hover:bg-gray-100"
   }`}
-  onClick={() => {
-    const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-    if (index !== -1) {
-      const actualizado = [...objetos];
-      const actual = actualizado[index];
-      actualizado[index].fontStyle = actual.fontStyle === "italic" ? "normal" : "italic";
-      setObjetos(actualizado);
-    }
-  }}
+ onClick={() => {
+  setObjetos((prev) =>
+    prev.map((o) => {
+      if (!elementosSeleccionados.includes(o.id)) return o;
+      return {
+        ...o,
+        fontStyle: o.fontStyle === "italic" ? "normal" : "italic",
+      };
+    })
+  );
+}}
+
 >
   I
 </button>
@@ -1222,16 +1393,18 @@ const eliminarElemento = () => {
   className={`px-2 py-1 rounded border text-sm transition ${
     objetoSeleccionado?.textDecoration === "underline" ? "bg-gray-200 underline" : "hover:bg-gray-100"
   }`}
-  onClick={() => {
-    const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-    if (index !== -1) {
-      const actualizado = [...objetos];
-      const actual = actualizado[index];
-      actualizado[index].textDecoration =
-        actual.textDecoration === "underline" ? "none" : "underline";
-      setObjetos(actualizado);
-    }
-  }}
+ onClick={() => {
+  setObjetos((prev) =>
+    prev.map((o) => {
+      if (!elementosSeleccionados.includes(o.id)) return o;
+      return {
+        ...o,
+        textDecoration: o.textDecoration === "underline" ? "none" : "underline",
+      };
+    })
+  );
+}}
+
 >
   S
 </button>

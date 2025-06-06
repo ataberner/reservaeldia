@@ -372,6 +372,36 @@ function aplicarOverrides(html: string, contenido: Record<string, any>) {
 }
 
 
+async function resolverURLsDeObjetos(objetos: any[]): Promise<any[]> {
+  const bucket = getStorage().bucket();
+
+  const procesados = await Promise.all(
+    objetos.map(async (obj) => {
+      if (
+        (obj.tipo === "imagen" || obj.tipo === "icono") &&
+        obj.src &&
+        !obj.src.startsWith("http")
+      ) {
+        try {
+          const [url] = await bucket.file(obj.src).getSignedUrl({
+            action: "read",
+            expires: Date.now() + 1000 * 60 * 60 * 24 * 365, // 1 año
+          });
+          return { ...obj, src: url };
+        } catch (error) {
+          console.warn("❌ Error resolviendo URL de", obj.src, error);
+          return obj;
+        }
+      }
+      return obj;
+    })
+  );
+
+  return procesados;
+}
+
+
+
 export const publicarInvitacion = functions.https.onCall(
   async (request: functions.https.CallableRequest<{ slug: string }>) => {
     const { slug } = request.data;
@@ -396,11 +426,13 @@ export const publicarInvitacion = functions.https.onCall(
     const objetosBase = data?.objetos || [];
     const overrides = data?.overrides || {};
 
-    // 🧠 2. Aplicar overrides sobre los objetos
-    const objetosFinales = objetosBase.map((obj: any) => {
-      const mod = overrides[obj.id] || {};
-      return { ...obj, ...mod };
-    });
+    // 🧠 2. Aplicar overrides y luego resolver URLs de imagen/icono
+const objetosConOverrides = objetosBase.map((obj: any) => {
+  const mod = overrides[obj.id] || {};
+  return { ...obj, ...mod };
+});
+const objetosFinales = await resolverURLsDeObjetos(objetosConOverrides);
+
 
     // 🧱 3. Generar el HTML con los objetos editados
     const htmlFinal = generarHTMLDesdeObjetos(objetosFinales);
@@ -509,47 +541,131 @@ function escapeHTML(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
-
-
 function generarHTMLDesdeObjetos(objetos: any[]): string {
-  const elementos = objetos.map((obj) => {
-  const rotacion = obj.rotation ?? 0;
-  const scaleX = obj.scaleX ?? 1;
-  const scaleY = obj.scaleY ?? 1;
+  const elementos: string[] = objetos.map((obj) => {
+    const rotacion = obj.rotation ?? 0;
+    const scaleX = obj.scaleX ?? 1;
+    const scaleY = obj.scaleY ?? 1;
 
-  if (obj.tipo === "texto") {
-    return `<div style="
-      position: absolute;
-      top: ${obj.y}px;
-      left: ${obj.x}px;
-      font-size: ${obj.fontSize || 12}px;
-      color: ${obj.color || "#000"};
-      font-family: ${obj.fontFamily || "inherit"};
-      transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-      transform-origin: top left;
-      white-space: pre;
-      overflow: hidden;
-      text-overflow: clip;
-      max-width: ${obj.width ? obj.width + "px" : "none"};
-    ">${escapeHTML(obj.texto)}</div>`;
+    if (obj.tipo === "texto") {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        font-size: ${obj.fontSize || 12}px;
+        color: ${obj.color || "#000"};
+        font-family: ${obj.fontFamily || "inherit"};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+        white-space: pre;
+        overflow: hidden;
+        text-overflow: clip;
+        max-width: ${obj.width ? obj.width + "px" : "none"};
+      ">${escapeHTML(obj.texto)}</div>`;
+    }
+
+    if (obj.tipo === "imagen" || obj.tipo === "icono") {
+      return `<img src="${obj.src}" style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${obj.width ? obj.width + "px" : "auto"};
+        height: ${obj.height ? obj.height + "px" : "auto"};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+      " />`;
+    }
+
+    if (obj.tipo === "icono-svg" && obj.d) {
+      return `<svg viewBox="0 0 100 100" style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${obj.width || 100}px;
+        height: ${obj.height || 100}px;
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+        fill: ${obj.color || "#000"};
+      ">
+        <path d="${obj.d}" />
+      </svg>`;
+    }
+
+   if (obj.tipo === "forma") {
+  const fill = obj.color || "#000";
+  const figura = obj.figura;
+  const transformOrigin = "center center";
+  const size = 100; // ✅ Declarado afuera
+
+  switch (figura) {
+    case "rect": {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${size}px;
+        height: ${size}px;
+        background: ${fill};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: ${transformOrigin};
+      "></div>`;
+    }
+
+    case "circle": {
+  return `<div style="
+    position: absolute;
+    top: ${obj.y - size / 2}px;
+    left: ${obj.x - size / 2}px;
+    width: ${size}px;
+    height: ${size}px;
+    border-radius: 50%;
+    background: ${fill};
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: center center;
+  "></div>`;
+}
+
+    case "line": {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${size}px;
+        height: 4px;
+        background: ${fill};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: ${transformOrigin};
+      "></div>`;
+    }
+
+   case "triangle": {
+  const radius = 60;
+  const height = radius * Math.sqrt(3);
+  return `<div style="
+    position: absolute;
+    top: ${obj.y - height / 2 + height / 6}px;
+    left: ${obj.x - radius}px;
+    width: 0;
+    height: 0;
+    border-left: ${radius}px solid transparent;
+    border-right: ${radius}px solid transparent;
+    border-bottom: ${height}px solid ${fill};
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: center center;
+  "></div>`;
+}
+
+
+    default:
+      return "";
   }
-
-  if (obj.tipo === "imagen") {
-    return `<img src="${obj.src}" style="
-      position: absolute;
-      top: ${obj.y}px;
-      left: ${obj.x}px;
-      width: ${obj.width ? obj.width + "px" : "auto"};
-      height: ${obj.height ? obj.height + "px" : "auto"};
-      transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-      transform-origin: top left;
-    " />`;
-  }
-
-  return "";
-});
+}
 
 
+    return ""; // para cualquier tipo desconocido
+  });
+
+  // ⬇️ HTML completo
   return `
 <!DOCTYPE html>
 <html lang="es">
@@ -561,70 +677,58 @@ function generarHTMLDesdeObjetos(objetos: any[]): string {
   <meta property="og:description" content="Mirá esta invitación especial 💌" />
   <meta property="og:image" content="https://reservaeldia.com.ar/img/preview.jpg" />
   <meta property="og:type" content="website" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: white;
-    font-family: sans-serif;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-     * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-   .canvas-wrapper {
-    height: 100vh;
-    overflow-x: hidden;
-    padding: 0;
-    margin: 0;
-    overflow: hidden;
-  }
-
-  .canvas {
-    position: relative;
-    width: 800px;
-    height: 1400px;
-    transform-origin: top left;
-    overflow: hidden;
-  }
-
-  .scaler {
-    transform-origin: top left;
-  }
-</style>
-
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: white;
+      font-family: sans-serif;
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    .canvas-wrapper {
+      height: 100vh;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    .canvas {
+      position: relative;
+      width: 800px;
+      height: 1400px;
+      transform-origin: top left;
+    }
+    .scaler {
+      transform-origin: top left;
+    }
+  </style>
 </head>
 <body>
   <div class="canvas-wrapper">
-    <div
-      class="canvas scaler">
+    <div class="canvas scaler">
       ${elementos.join("\n")}
     </div>
   </div>
   <script>
-  function escalarCanvas() {
-    const baseWidth = 800;
-    const pantalla = window.innerWidth;
-    const escala = pantalla / baseWidth;
-    const canvas = document.querySelector(".scaler");
-    if (canvas) {
-      canvas.style.transform = "scale(" + escala + ")";
+    function escalarCanvas() {
+      const baseWidth = 800;
+      const pantalla = window.innerWidth;
+      const escala = pantalla / baseWidth;
+      const canvas = document.querySelector(".scaler");
+      if (canvas) {
+        canvas.style.transform = "scale(" + escala + ")";
+      }
     }
-  }
 
-  window.addEventListener("load", escalarCanvas);
-  window.addEventListener("resize", escalarCanvas);
-</script>
-
+    window.addEventListener("load", escalarCanvas);
+    window.addEventListener("resize", escalarCanvas);
+  </script>
 </body>
-
 </html>
 `;
 }

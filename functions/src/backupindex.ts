@@ -7,8 +7,7 @@ import { CallableRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import express, { Request, Response } from "express";
-import { generarHTMLDesdeObjetos } from "./utils/generarHTMLDesdeObjetos";
-import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
+
 
 
 const app = express();
@@ -426,7 +425,6 @@ export const publicarInvitacion = functions.https.onCall(
 
     const objetosBase = data?.objetos || [];
     const overrides = data?.overrides || {};
-    const secciones = data?.secciones || [];
 
     // 🧠 2. Aplicar overrides y luego resolver URLs de imagen/icono
 const objetosConOverrides = objetosBase.map((obj: any) => {
@@ -435,18 +433,9 @@ const objetosConOverrides = objetosBase.map((obj: any) => {
 });
 const objetosFinales = await resolverURLsDeObjetos(objetosConOverrides);
 
-console.log("🧪 Secciones:", JSON.stringify(secciones));
-console.log("🧪 Objetos finales:", JSON.stringify(objetosFinales));
 
     // 🧱 3. Generar el HTML con los objetos editados
-let htmlFinal = "";
-try {
-  htmlFinal = generarHTMLDesdeSecciones(secciones, objetosFinales);
-} catch (error) {
-  console.error("❌ Error generando HTML:", error);
-  throw new functions.https.HttpsError("internal", "Error al generar el HTML.");
-}
-
+    const htmlFinal = generarHTMLDesdeObjetos(objetosFinales);
 
     // 📤 4. Guardar en publicadas/<slug>/index.html
     const filePath = `publicadas/${slug}/index.html`;
@@ -457,8 +446,6 @@ try {
         cacheControl: "public,max-age=3600",
       },
     });
-
-    console.log("🧾 HTML generado (primeros 300 caracteres):", htmlFinal.slice(0, 300));
 
     // 🧾 5. Registrar en Firestore
     await firestore.collection("publicadas").doc(slug).set(
@@ -554,5 +541,194 @@ function escapeHTML(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function generarHTMLDesdeObjetos(objetos: any[]): string {
+  const elementos: string[] = objetos.map((obj) => {
+    const rotacion = obj.rotation ?? 0;
+    const scaleX = obj.scaleX ?? 1;
+    const scaleY = obj.scaleY ?? 1;
+
+    if (obj.tipo === "texto") {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        font-size: ${obj.fontSize || 12}px;
+        color: ${obj.color || "#000"};
+        font-family: ${obj.fontFamily || "inherit"};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+        white-space: pre;
+        overflow: hidden;
+        text-overflow: clip;
+        max-width: ${obj.width ? obj.width + "px" : "none"};
+      ">${escapeHTML(obj.texto)}</div>`;
+    }
+
+    if (obj.tipo === "imagen" || obj.tipo === "icono") {
+      return `<img src="${obj.src}" style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${obj.width ? obj.width + "px" : "auto"};
+        height: ${obj.height ? obj.height + "px" : "auto"};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+      " />`;
+    }
+
+    if (obj.tipo === "icono-svg" && obj.d) {
+      return `<svg viewBox="0 0 100 100" style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${obj.width || 100}px;
+        height: ${obj.height || 100}px;
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+        fill: ${obj.color || "#000"};
+      ">
+        <path d="${obj.d}" />
+      </svg>`;
+    }
+
+   if (obj.tipo === "forma") {
+  const fill = obj.color || "#000";
+  const figura = obj.figura;
+  const transformOrigin = "center center";
+  const size = 100; // ✅ Declarado afuera
+
+  switch (figura) {
+    case "rect": {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${size}px;
+        height: ${size}px;
+        background: ${fill};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: ${transformOrigin};
+      "></div>`;
+    }
+
+    case "circle": {
+  return `<div style="
+    position: absolute;
+    top: ${obj.y - size / 2}px;
+    left: ${obj.x - size / 2}px;
+    width: ${size}px;
+    height: ${size}px;
+    border-radius: 50%;
+    background: ${fill};
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: center center;
+  "></div>`;
+}
+
+    case "line": {
+      return `<div style="
+        position: absolute;
+        top: ${obj.y}px;
+        left: ${obj.x}px;
+        width: ${size}px;
+        height: 4px;
+        background: ${fill};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: ${transformOrigin};
+      "></div>`;
+    }
+
+   case "triangle": {
+  const radius = 60;
+  const height = radius * Math.sqrt(3);
+  return `<div style="
+    position: absolute;
+    top: ${obj.y - height / 2 + height / 6}px;
+    left: ${obj.x - radius}px;
+    width: 0;
+    height: 0;
+    border-left: ${radius}px solid transparent;
+    border-right: ${radius}px solid transparent;
+    border-bottom: ${height}px solid ${fill};
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: center center;
+  "></div>`;
+}
 
 
+    default:
+      return "";
+  }
+}
+
+
+    return ""; // para cualquier tipo desconocido
+  });
+
+  // ⬇️ HTML completo
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Invitación</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta property="og:title" content="¡Estás invitado!" />
+  <meta property="og:description" content="Mirá esta invitación especial 💌" />
+  <meta property="og:image" content="https://reservaeldia.com.ar/img/preview.jpg" />
+  <meta property="og:type" content="website" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: white;
+      font-family: sans-serif;
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    .canvas-wrapper {
+      height: 100vh;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    .canvas {
+      position: relative;
+      width: 800px;
+      height: 1400px;
+      transform-origin: top left;
+    }
+    .scaler {
+      transform-origin: top left;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas-wrapper">
+    <div class="canvas scaler">
+      ${elementos.join("\n")}
+    </div>
+  </div>
+  <script>
+    function escalarCanvas() {
+      const baseWidth = 800;
+      const pantalla = window.innerWidth;
+      const escala = pantalla / baseWidth;
+      const canvas = document.querySelector(".scaler");
+      if (canvas) {
+        canvas.style.transform = "scale(" + escala + ")";
+      }
+    }
+
+    window.addEventListener("load", escalarCanvas);
+    window.addEventListener("resize", escalarCanvas);
+  </script>
+</body>
+</html>
+`;
+}

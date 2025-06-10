@@ -75,7 +75,14 @@ export default function ElementoCanvas({
 },
 
   onTap: (e) => onSelect(obj.id, obj, e),
-  onDragEnd: (e) => onChange(obj.id, { x: e.target.x(), y: e.target.y() }),
+  onDragEnd: (e) => {
+  const node = e.target;
+  onChange(obj.id, { 
+    x: node.x(), 
+    y: node.y(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
+  });
+},
   onTransformEnd: (e) => {
     const node = e.target;
     if (obj.tipo === "texto") {
@@ -168,7 +175,7 @@ export default function ElementoCanvas({
   }
 }}
 
-            onDragEnd={(e) => {
+           onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -176,10 +183,10 @@ export default function ElementoCanvas({
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
 
 
@@ -219,7 +226,7 @@ export default function ElementoCanvas({
   }
 }}
 
-            onDragEnd={(e) => {
+           onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -227,10 +234,10 @@ export default function ElementoCanvas({
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
 
 
@@ -272,7 +279,7 @@ if (obj.tipo === "icono-svg") {
   }
 }}
 
-            onDragEnd={(e) => {
+           onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -280,10 +287,10 @@ if (obj.tipo === "icono-svg") {
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
 
             stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
@@ -298,8 +305,8 @@ if (obj.tipo === "icono-svg") {
       <KonvaImage
         {...commonProps}
         image={img}
-        width={img?.width}
-        height={img?.height}
+        width={obj.width || img.width}
+        height={obj.height || img.height}
         onMouseEnter={() => onHover(obj.id)}
         onMouseLeave={() => onHover(null)}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
@@ -344,7 +351,7 @@ if (obj.tipo === "icono-svg") {
   }
 }}
 
-                onDragEnd={(e) => {
+               onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -352,10 +359,10 @@ if (obj.tipo === "icono-svg") {
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
 
 
@@ -390,7 +397,7 @@ if (obj.tipo === "icono-svg") {
   }
 }}
 
-        onDragEnd={(e) => {
+      onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -398,10 +405,10 @@ if (obj.tipo === "icono-svg") {
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
 
 
@@ -440,7 +447,7 @@ if (obj.tipo === "icono-svg") {
   }
 }}
 
-          onDragEnd={(e) => {
+        onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -448,10 +455,10 @@ if (obj.tipo === "icono-svg") {
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
           
           />
@@ -486,7 +493,7 @@ if (obj.tipo === "icono-svg") {
   }
 }}
 
-            onDragEnd={(e) => {
+       onDragEnd={(e) => {
   const node = e.target;
   onChange(obj.id, {
     x: node.x(),
@@ -494,10 +501,10 @@ if (obj.tipo === "icono-svg") {
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
     rotation: node.rotation(),
+    finalizoDrag: true  // 🔥 NUEVA FLAG
   });
   if (onDragEndPersonalizado) onDragEndPersonalizado();
   hasDragged.current = false;
-
 }}
 
 

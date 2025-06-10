@@ -4,7 +4,7 @@ import useIconosPublicos from "@/hooks/useIconosPublicos";
 import { ChevronRight } from "lucide-react";
 
 
-export default function PanelDeFormas({ abierto, onCerrar, sidebarAbierta, onInsertarForma, onInsertarIcono }) {
+export default function PanelDeFormas({ abierto, onCerrar, sidebarAbierta, seccionActivaId, }) {
   const [verTodo, setVerTodo] = useState(null);
 const { iconos, populares, cargarMas, cargando, hayMas, cargarPorCategoria } = useIconosPublicos();
 
@@ -60,18 +60,24 @@ useEffect(() => {
           <div
             key={`pop-${icono.id}`}
             className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition flex-shrink-0"
-            onClick={() =>
-              onInsertarIcono({
-                id: `icono-${Date.now()}`,
-                tipo: "icono",
-                src: icono.src,
-                x: 100,
-                y: 100,
-                scaleX: 1,
-                scaleY: 1,
-                rotation: 0,
-              })
-            }
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("insertar-elemento", {
+  detail: {
+    id: `icono-${Date.now()}`,
+    tipo: "icono",
+    src: icono.src,
+    x: 100,
+    y: 100,
+    seccionId: seccionActivaId,
+    scaleX: 1,
+    scaleY: 1,
+    width: 100,
+    height: 100,
+    rotation: 0,
+  }
+}));
+
+            }}
           >
             <div
               className="w-10 h-10 bg-center bg-no-repeat bg-contain"
@@ -115,19 +121,22 @@ useEffect(() => {
           <div
             key={forma.id}
             className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow hover:scale-105 transition cursor-pointer"
-            onClick={() =>
-              onInsertarForma({
+            onClick={() => {
+             window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: {
                 id: `forma-${Date.now()}`,
                 tipo: "forma",
                 figura: forma.figura,
                 color: forma.color,
                 x: 100,
                 y: 100,
+                width: 100,
+                height: 100,
                 scaleX: 1,
                 scaleY: 1,
                 rotation: 0,
-              })
-            }
+              }}));
+
+            }}
           >
             {/* Dibujos visuales por tipo */}
             {forma.figura === "rect" && (
@@ -187,18 +196,21 @@ useEffect(() => {
                      <div
                       key={icono.id}
                       className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition flex-shrink-0"
-                      onClick={() =>
-                        onInsertarIcono({
-                          id: `icono-${Date.now()}`,
-                          tipo: "icono",
-                          src: icono.src,
-                          x: 100,
-                          y: 100,
-                          scaleX: 1,
-                          scaleY: 1,
-                          rotation: 0,
-                        })
-                      }
+                      onClick={() => {
+                         window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                           detail: {
+                            id: `icono-${Date.now()}`,
+                            tipo: "icono",
+                            src: icono.src,
+                            x: 100,
+                            y: 100,
+                            width: 100,
+                            height: 100,
+                            scaleX: 1,
+                            scaleY: 1,
+                            rotation: 0,
+                          }}));
+                        }}
                     >
                       <div
                         className="w-10 h-10 bg-center bg-no-repeat bg-contain"

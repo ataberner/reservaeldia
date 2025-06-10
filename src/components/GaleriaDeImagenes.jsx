@@ -10,6 +10,7 @@ export default function GaleriaDeImagenes({
   imagenesEnProceso,
   cargarImagenes,
   cargando,
+  seccionActivaId,
   borrarImagen,
   hayMas,
   onInsertar,
@@ -108,6 +109,7 @@ export default function GaleriaDeImagenes({
         src: img.url,
         x: 100,
         y: 100,
+        seccionId: seccionActivaId,
         width: Math.min(300, img.ancho),
         height: (Math.min(300, img.ancho) * img.alto) / img.ancho,
       });

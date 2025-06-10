@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import DashboardLayout from '../components/DashboardLayout';
@@ -20,11 +20,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [urlIframe, setUrlIframe] = useState(null);
   const [zoom, setZoom] = useState(0.8);
+  const [secciones, setSecciones] = useState([]);
+  const [seccionActivaId, setSeccionActivaId] = useState(null);
   const [usuario, setUsuario] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [modoEditor, setModoEditor] = useState(null);
   const [historialExternos, setHistorialExternos] = useState([]);
   const [futurosExternos, setFuturosExternos] = useState([]);
+  
 
 
 const toggleZoom = () => {
@@ -87,6 +90,16 @@ const toggleZoom = () => {
 
     
   }, []);
+
+
+  // cuando hay cambios en secciones
+useEffect(() => {
+  if (!seccionActivaId && secciones.length > 0) {
+    setSeccionActivaId(secciones[0].id);
+  }
+}, [secciones]);
+
+
   useEffect(() => {
   const auth = getAuth();
   const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -105,7 +118,7 @@ if (checkingAuth) return <p>Cargando...</p>;
 if (!usuario) return null; // Seguridad por si no se redirige
 
   return (
-     <DashboardLayout mostrarMiniToolbar={!!slugInvitacion} >
+     <DashboardLayout mostrarMiniToolbar={!!slugInvitacion} seccionActivaId={seccionActivaId}>
 
       {!slugInvitacion && (
         <>
@@ -236,6 +249,47 @@ if (!usuario) return null; // Seguridad por si no se redirige
   </div>
 </div>
 
+{/* Guardar como plantilla */}
+<button
+  onClick={async () => {
+    const nombre = prompt("¿Qué nombre querés darle a la nueva plantilla?");
+    if (!nombre) return;
+
+    try {
+      const ref = doc(db, "borradores", slugInvitacion);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) throw new Error("No se encontró el borrador");
+
+      const data = snap.data();
+
+      const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+
+      const functions = getFunctions();
+      const crearPlantilla = httpsCallable(functions, "crearPlantilla");
+
+      await crearPlantilla({
+        id,
+        datos: {
+          nombre,
+          tipo: "boda",
+          portada: "https://reservaeldia.com.ar/img/previews/boda-parallax.jpg",
+          editor: "konva",
+          objetos: data.objetos,
+        },
+      });
+
+      alert("✅ La plantilla se guardó correctamente.");
+    } catch (error) {
+      console.error("❌ Error al guardar plantilla:", error);
+      alert("Ocurrió un error al guardar la plantilla.");
+    }
+  }}
+  className="px-4 py-2 bg-purple-100 text-purple-800 rounded hover:bg-purple-200 transition text-sm"
+>
+  Guardar como plantilla
+</button>
+
+
 
       {/* Generar invitación */}
       <button
@@ -273,6 +327,7 @@ if (!usuario) return null; // Seguridad por si no se redirige
         onHistorialChange={setHistorialExternos} 
         onFuturosChange={setFuturosExternos}
         userId={usuario?.uid}
+        secciones={[]}
       />
     )}
 

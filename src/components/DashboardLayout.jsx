@@ -9,8 +9,8 @@ import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
 import useMisImagenes from "@/hooks/useMisImagenes";
 import PanelDeFormas from "@/components/PanelDeFormas";
-
-
+import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
+import ModalCrearSeccion from "@/components/ModalCrearSeccion";
 import { corregirURLsInvalidas } from "@/utils/corregirImagenes";
 
 
@@ -28,13 +28,15 @@ function escalarParaAncho(imgWidth, imgHeight, canvasWidth = 800) {
 }
 
 
-export default function DashboardLayout({ children, mostrarMiniToolbar }) {
+export default function DashboardLayout({ children, mostrarMiniToolbar, seccionActivaId, }) {
   const [hoverSidebar, setHoverSidebar] = useState(false);
   const [fijadoSidebar, setFijadoSidebar] = useState(false);
-    const [mostrarGaleria, setMostrarGaleria] = useState(false);
-const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
-const [mostrarPanelFormas, setMostrarPanelFormas] = useState(false);
-const [modoFormasCompleto, setModoFormasCompleto] = useState(false);
+  const [mostrarGaleria, setMostrarGaleria] = useState(false);
+  const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
+  const [mostrarPanelFormas, setMostrarPanelFormas] = useState(false);
+  const [modoFormasCompleto, setModoFormasCompleto] = useState(false);
+  const modalCrear = useModalCrearSeccion();
+
 
 useEffect(() => {
   corregirURLsInvalidas(); // 🔧 Se ejecuta automáticamente al entrar
@@ -54,6 +56,14 @@ const {
 const { abrirSelector, componenteInput } = useUploaderDeImagen(subirImagen);
 
 
+useEffect(() => {
+  if (!mostrarMiniToolbar) {
+    setMostrarGaleria(false);
+    setMostrarPanelFormas(false);
+    setModoFormasCompleto(false);
+  }
+}, [mostrarMiniToolbar]);
+
 
     useEffect(() => {
         const handleClickFuera = (e) => {
@@ -68,6 +78,16 @@ const { abrirSelector, componenteInput } = useUploaderDeImagen(subirImagen);
         document.addEventListener("mousedown", handleClickFuera);
         return () => document.removeEventListener("mousedown", handleClickFuera);
       }, [fijadoSidebar]);
+
+      useEffect(() => {
+  const sidebarAbierta = fijadoSidebar || hoverSidebar;
+
+  if (!sidebarAbierta) {
+    setMostrarGaleria(false);
+    setMostrarPanelFormas(false);
+    setModoFormasCompleto(false);
+  }
+}, [fijadoSidebar, hoverSidebar]);
 
   
 
@@ -224,11 +244,12 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
       <PanelDeFormas
         abierto={true}
         sidebarAbierta={sidebarAbierta}
+        seccionActivaId={seccionActivaId}
         onInsertarForma={(obj) => {
-          window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: obj }));
+          window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }));
         }}
         onInsertarIcono={(obj) => {
-          window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: obj }));
+          window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }));
         }}
       />
     </div>
@@ -239,7 +260,25 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
     sidebarAbierta={sidebarAbierta}
     onAgregarTexto={(e) => {
       e?.stopPropagation?.();
-      window.dispatchEvent(new CustomEvent("agregar-cuadro-texto"));
+      window.dispatchEvent(new CustomEvent("insertar-elemento", {
+  detail: {
+    id: `texto-${Date.now()}`,
+    tipo: "texto",
+    texto: "Texto",
+    x: 100,
+    y: 100,
+    fontSize: 24,
+    color: "#000000",
+    fontFamily: "sans-serif",
+    fontWeight: "normal",
+    fontStyle: "normal",
+    textDecoration: "none",
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+  }
+}));
+
     }}
     onAgregarForma={(e) => {
       e?.stopPropagation?.();
@@ -252,12 +291,7 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
     PanelDeFormasComponent={null}
   />
 )}
-
-  
-
-
-
-
+     
   
 </div>
 
@@ -281,25 +315,30 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
           Subir imagen
         </button>
 
-
       {/* Galería */}
      <GaleriaDeImagenes
-    imagenes={imagenes}
-  imagenesEnProceso={imagenesEnProceso}
-  cargarImagenes={cargarImagenes}
-  borrarImagen={borrarImagen}
-  hayMas={hayMas}
-  cargando={cargando}
-  onInsertar={(nuevo) => {
-    window.dispatchEvent(new CustomEvent("insertar-imagen", { detail: nuevo }));
-    setMostrarGaleria(false);
-  }}
-  onSeleccionadasChange={setImagenesSeleccionadas}
-/>
+          imagenes={imagenes}
+        imagenesEnProceso={imagenesEnProceso}
+        cargarImagenes={cargarImagenes}
+        borrarImagen={borrarImagen}
+        hayMas={hayMas}
+        seccionActivaId={seccionActivaId}
+        cargando={cargando}
+        onInsertar={(nuevo) => {
+          window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
+          setMostrarGaleria(false);
+        }}
+        onSeleccionadasChange={setImagenesSeleccionadas}
+      />
+      
+    </div>
+  </div>
+  
+)}
 
-
-
-      {/* Crear plantilla */}
+{sidebarAbierta && (
+  <>
+{/* Crear plantilla */}
       <button
         onClick={ejecutarCrearPlantilla}
         className="hover:underline"
@@ -328,13 +367,32 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
       >
         🗑️ Borrar todos los borradores
       </button>
-    </div>
-  </div>
-)}
+
+      {/* ➕ Añadir nueva sección */}
+<div className="px-4 mt-auto pb-4">
+  <button
+    onClick={modalCrear.abrir}
+    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded transition"
+  >
+    + Añadir sección
+  </button>
 </div>
 
-        
-      </aside>
+</>
+)}
+
+
+</div>
+
+     </aside>
+
+
+<ModalCrearSeccion
+  visible={modalCrear.visible}
+  onClose={modalCrear.cerrar}
+  onConfirm={modalCrear.onConfirmar}
+/>
+
 
       {/* Área principal */}
       <main className="flex-1 overflow-y-auto p-4">

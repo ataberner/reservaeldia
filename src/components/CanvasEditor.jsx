@@ -1,10 +1,14 @@
 // components/CanvasEditor.jsx
 import { useEffect, useState, useRef } from "react";
 import { Stage, Layer, Line, Rect, Text, Transformer, Image as KonvaImage, Group , Circle} from "react-konva";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import { db } from "../firebase";
 import ElementoCanvas from "./ElementoCanvas";
 import ReactDOMServer from "react-dom/server";
+import { convertirAlturaVH, calcularOffsetY } from "../utils/layout";
+import { crearSeccion } from "@/models/estructuraInicial";
+import usePlantillasDeSeccion from "@/hooks/usePlantillasDeSeccion";
 import useImage from "use-image";
 import {
   Check,
@@ -27,8 +31,9 @@ const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="blac
 const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 
 
-export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange }) {
+export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
   const [objetos, setObjetos] = useState([]);
+  const [secciones, setSecciones] = useState([]);
   const [historial, setHistorial] = useState([]);
   const [futuros, setFuturos] = useState([]);
    const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
@@ -38,21 +43,25 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const stageRef = useRef(null);
     const dragStartPos = useRef(null);
     const hasDragged = useRef(false);
+    const [animandoSeccion, setAnimandoSeccion] = useState(null);
+    const [seccionActivaId, setSeccionActivaId] = useState(null);
     const [seleccionActiva, setSeleccionActiva] = useState(false);
     const [inicioSeleccion, setInicioSeleccion] = useState(null);
     const [areaSeleccion, setAreaSeleccion] = useState(null);
     const [elementosPreSeleccionados, setElementosPreSeleccionados] = useState([]);
     const guiaLayerRef = useRef(null);
     const [hoverId, setHoverId] = useState(null);
+    const altoCanvas = secciones.reduce((acc, s) => acc + s.altura, 0) || 800;
     const [guiaLineas, setGuiaLineas] = useState([]);
     const [scale, setScale] = useState(1);
+    const { refrescar: refrescarPlantillasDeSeccion } = usePlantillasDeSeccion();
     const transformerRef = useRef();
     const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
     const [elementoCopiado, setElementoCopiado] = useState(null);
     const elementRefs = useRef({});
     const contenedorRef = useRef(null);
     const ignoreNextUpdateRef = useRef(false);
-    const [altoCanvas, setAltoCanvas] = useState(1400);
+    
     const [anchoStage, setAnchoStage] = useState(800);
     const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
     const [posMiniBoton, setPosMiniBoton] = useState({ x: 0, y: 0 });
@@ -112,33 +121,57 @@ const moverElemento = (accion) => {
 };
 
 
-
 useEffect(() => {
   const handler = (e) => {
-    const nueva = e.detail;
-    setObjetos((prev) => [...prev, nueva]);
+    handleCrearSeccion(e.detail);
   };
 
-  window.addEventListener("insertar-imagen", handler);
-  return () => window.removeEventListener("insertar-imagen", handler);
+  window.addEventListener("crear-seccion", handler);
+  return () => window.removeEventListener("crear-seccion", handler);
 }, []);
 
-// ✅ Insertar íconos al canvas
+
+
 useEffect(() => {
   const handler = (e) => {
     const nuevo = e.detail;
-    setObjetos((prev) => [...prev, nuevo]);
-    setElementosSeleccionados([nuevo.id]); 
+    console.log("🧭 insertando elemento:", nuevo);
+    console.log("📌 Sección activa:", seccionActivaId);
+
+    // 🔒 Validación de sección activa
+    if (!seccionActivaId) {
+      alert("⚠️ Primero seleccioná una sección para insertar el elemento.");
+      return;
+    }
+
+    const nuevoConSeccion = {
+      ...nuevo,
+      seccionId: seccionActivaId,
+    };
+
+    // ✅ Insertar el nuevo objeto con sección asignada
+    setObjetos((prev) => [...prev, nuevoConSeccion]);
+
+    // ✅ Seleccionarlo automáticamente
+    setElementosSeleccionados([nuevoConSeccion.id]);
   };
 
-  window.addEventListener("insertar-icono", handler);
-  return () => window.removeEventListener("insertar-icono", handler);
-}, []);
+  window.addEventListener("insertar-elemento", handler);
+  return () => window.removeEventListener("insertar-elemento", handler);
+}, [seccionActivaId]);
+
+
 
 
 
 useEffect(() => {
   const handler = () => {
+     if (!seccionActivaId) {
+      alert("Seleccioná una sección antes de agregar un cuadro de texto.");
+      return;
+    }
+
+
     const nuevo = {
       id: `texto-${Date.now()}`,
       tipo: "texto",
@@ -153,16 +186,20 @@ useEffect(() => {
       textDecoration: "none",
       rotation: 0,
       scaleX: 1,
-      scaleY: 1
+      scaleY: 1,
+      seccionId: seccionActivaId
     };
 
-    nuevoTextoRef.current = nuevo.id; // 👈 Guardamos el id que queremos editar
+    nuevoTextoRef.current = nuevo.id;
     setObjetos((prev) => [...prev, nuevo]);
   };
 
   window.addEventListener("agregar-cuadro-texto", handler);
   return () => window.removeEventListener("agregar-cuadro-texto", handler);
-}, []);
+}, [seccionActivaId]);
+
+
+
 
 useEffect(() => {
   if (!nuevoTextoRef.current) return;
@@ -207,17 +244,6 @@ useEffect(() => {
 }, []);
 
 
-
-useEffect(() => {
-  const actualizarAlto = () => {
-    setAltoCanvas(window.innerHeight);
-  };
-
-  window.addEventListener("resize", actualizarAlto);
-  actualizarAlto(); // valor inicial
-
-  return () => window.removeEventListener("resize", actualizarAlto);
-}, []);
 
 
 
@@ -278,18 +304,24 @@ useEffect(() => {
 
 
 
-  useEffect(() => {
+useEffect(() => {
   const cargar = async () => {
     const ref = doc(db, "borradores", slug);
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const data = snap.data();
       setObjetos(data.objetos || []);
+      setSecciones(data.secciones || []);
+
+      // ✅ Setea la primera sección como activa si hay
+      if (!seccionActivaId && data.secciones && data.secciones.length > 0) {
+        setSeccionActivaId(data.secciones[0].id);
+      }
     }
-    setCargado(true); // ✅ activamos solo cuando terminó de cargar
+    setCargado(true);
   };
   cargar();
-    }, [slug]);
+}, [slug]);
 
 
 useEffect(() => {
@@ -402,6 +434,9 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   const stage = stageRef.current;
   const container = stage.container();
   const box = textNode.getClientRect({ relativeTo: stage });
+
+  
+
   const fontFamily = obj.fontFamily || "inherit";
 
   const area = document.createElement("textarea");
@@ -411,8 +446,14 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   area.style.position = "absolute";
   const escala = zoom === 1 ? scale : zoom;
 
-  area.style.top = `${container.getBoundingClientRect().top + box.y * escala}px`;
-  area.style.top = `${container.getBoundingClientRect().top + (box.y - box.height / 2) * escala}px`;
+// 🔥 box.y ya viene con coordenadas absolutas del canvas (con offset aplicado)
+// No necesitamos restar offsetY porque textNode ya está posicionado correctamente
+
+area.style.top = `${
+  container.getBoundingClientRect().top + box.y * escala
+}px`;
+
+
   area.style.left = `${container.getBoundingClientRect().left + box.x * escala}px`;
   area.style.width = `${box.width}px`;
   area.style.height = "auto";
@@ -420,13 +461,15 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   area.style.fontFamily = fontFamily;
   area.style.color = obj.color || "#000";
   area.style.border = "none";
-  area.style.padding = "4px";
+  area.style.padding = "0px";
+  area.style.lineHeight = "1";
+  area.style.boxSizing = "border-box";
   area.style.margin = "0";
   area.style.background = "transparent";
   area.style.outline = "none";
   area.style.resize = "none";
   area.style.overflow = "hidden";
-  area.style.transform = `rotate(${obj.rotation || 0}deg)`;
+  area.style.transform = `scale(${escala}) rotate(${obj.rotation || 0}deg)`;
   area.style.zIndex = 1000;
   area.style.fontWeight = obj.fontWeight || "normal";
   area.style.fontStyle = obj.fontStyle || "normal";
@@ -457,12 +500,11 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
     }
 
     const actualizado = [...objetos];
-    actualizado[index] = {
-      ...actualizado[index],
-      texto: textoNuevo,
-      x: textNode.x(), // ✅ guardar posición actual
-      y: textNode.y(), // ✅ guardar posición actual
-    };
+actualizado[index] = {
+  ...actualizado[index],
+  texto: textoNuevo,
+  // 🔥 NO tocar x, y aquí - mantener las coordenadas que ya tiene
+};
     setObjetos(actualizado);
 
     setModoEdicion(false);
@@ -608,6 +650,68 @@ useEffect(() => {
 
 
 
+const actualizarFondoSeccion = (id, nuevoFondo) => {
+  setSecciones((prev) =>
+    prev.map((s) => s.id === id ? { ...s, fondo: nuevoFondo } : s)
+  );
+};
+
+
+
+const handleGuardarComoPlantilla = async (seccionId) => {
+  const seccion = secciones.find((s) => s.id === seccionId);
+  if (!seccion) return;
+
+  console.log("Todos los objetos actuales:", objetos);
+console.log("Buscando objetos con seccionId:", seccionId);
+
+
+  const objetosDeEsaSeccion = objetos.filter((obj) => obj.seccionId === seccionId);
+
+  console.log("Objetos de esa sección:", objetosDeEsaSeccion);
+
+
+  const user = getAuth().currentUser;
+  if (!user) {
+    alert("⚠️ No estás logueado. No se puede guardar la plantilla.");
+    return;
+  }
+
+  const objetosFinales = await Promise.all(
+    objetosDeEsaSeccion.map(async (obj) => {
+      if (obj.tipo === "imagen" && obj.src && obj.src.startsWith("user_uploads/")) {
+        const nuevaUrl = await subirImagenPublica(obj.src);
+        return { ...obj, src: nuevaUrl };
+      }
+      return obj;
+    })
+  );
+
+  const nombre = prompt("Nombre de la plantilla:");
+  if (!nombre) return;
+
+  const plantilla = {
+    nombre,
+    altura: seccion.altura,
+    fondo: seccion.fondo,
+    tipo: seccion.tipo,
+    objetos: objetosFinales,
+  };
+
+  console.log("Voy a guardar plantilla con datos:", plantilla);
+  console.log("Usuario actual:", user.uid);
+
+  const ref = collection(db, "plantillas_secciones");
+  await addDoc(ref, plantilla);
+await refrescarPlantillasDeSeccion();
+
+
+  alert("✅ Plantilla guardada correctamente");
+};
+
+
+
+
 const fuentesDisponibles = [...fuentesLocales, ...fuentesGoogle];
 const objetoSeleccionado = objetos.find((o) => o.id === elementosSeleccionados[0]);
 console.log("zoom en CanvasEditor:", zoom);
@@ -746,16 +850,123 @@ const eliminarElemento = () => {
 
 
 
+const determinarNuevaSeccion = (yRelativaConOffset, seccionActualId) => {
+  // yRelativaConOffset viene de ElementoCanvas con el offset ya aplicado
+  // Necesitamos convertirla a Y absoluta real del canvas
+  
+  const seccionActual = seccionesOrdenadas.find(s => s.id === seccionActualId);
+  if (!seccionActual) return { nuevaSeccion: null, coordenadasAjustadas: {} };
+  
+  // yRelativaConOffset ya es la Y real en el canvas (viene con offset aplicado)
+  const yAbsolutaReal = yRelativaConOffset;
+  
+  console.log("🧪 Debug determinarNuevaSeccion:", {
+    yRelativaConOffset,
+    yAbsolutaReal,
+    seccionActualId,
+    seccionesOrdenadas: seccionesOrdenadas.map(s => ({ id: s.id, altura: s.altura }))
+  });
+  
+  // Determinar nueva sección basada en Y absoluta real
+  let acumulado = 0;
+  for (const seccion of seccionesOrdenadas) {
+    if (yAbsolutaReal >= acumulado && yAbsolutaReal < acumulado + seccion.altura) {
+      if (seccion.id === seccionActualId) {
+        // No cambió de sección
+        return { nuevaSeccion: null, coordenadasAjustadas: {} };
+      }
+      
+      // Cambió de sección - calcular nueva Y relativa
+      const nuevaY = yAbsolutaReal - acumulado;
+      console.log(`✅ Nueva sección encontrada: ${seccion.id}, nuevaY: ${nuevaY}`);
+      
+      return { 
+        nuevaSeccion: seccion.id, 
+        coordenadasAjustadas: { y: nuevaY } 
+      };
+    }
+    acumulado += seccion.altura;
+  }
+  
+  // Está fuera de todas las secciones - mover a la más cercana
+  if (yAbsolutaReal < 0) {
+    // Arriba de todo - primera sección
+    console.log("📍 Fuera arriba - moviendo a primera sección");
+    return { 
+      nuevaSeccion: seccionesOrdenadas[0].id, 
+      coordenadasAjustadas: { y: 0 } 
+    };
+  } else {
+    // Abajo de todo - última sección
+    console.log("📍 Fuera abajo - moviendo a última sección");
+    const ultimaSeccion = seccionesOrdenadas[seccionesOrdenadas.length - 1];
+    return { 
+      nuevaSeccion: ultimaSeccion.id, 
+      coordenadasAjustadas: { y: ultimaSeccion.altura - 50 } 
+    };
+  }
+};
+
+
+
+const handleCrearSeccion = async (datos) => {
+  const ref = doc(db, "borradores", slug);
+
+  setSecciones((prevSecciones) => {
+    const nueva = crearSeccion(datos, prevSecciones); // ✅ usar el estado actual
+
+    let objetosDesdePlantilla = [];
+
+    if (datos.desdePlantilla && Array.isArray(datos.objetos)) {
+      objetosDesdePlantilla = datos.objetos.map((obj) => ({
+        ...obj,
+        id: "obj-" + Date.now() + Math.random().toString(36).substring(2, 6),
+        seccionId: nueva.id,
+      }));
+    }
+
+    const nuevasSecciones = [...prevSecciones, nueva];
+
+    setObjetos((prevObjetos) => {
+      const nuevosObjetos = [...prevObjetos, ...objetosDesdePlantilla];
+
+      updateDoc(ref, {
+        secciones: nuevasSecciones,
+        objetos: nuevosObjetos,
+      })
+        .then(() => {
+          console.log("✅ Sección agregada:", nueva);
+        })
+        .catch((error) => {
+          console.error("❌ Error al guardar sección", error);
+        });
+
+      return nuevosObjetos;
+    });
+
+    return nuevasSecciones;
+  });
+};
+
+
+
+const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+
+
+const escalaActiva = zoom === 1 ? scale : zoom;
+const escalaVisual = zoom === 1 ? scale : zoom;
+
+const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
 
   return (
-    <div className="flex justify-center">
+       <div className="flex justify-center">
    
    <div
   ref={contenedorRef}
-  className="w-full"
-  style={{
-    overflow: "auto",
+   style={{
+    minHeight: "100vh",
+    width: "100%",
     boxSizing: "border-box",
     backgroundColor: "#f5f5f5",
     display: "flex",
@@ -765,49 +976,108 @@ const eliminarElemento = () => {
     
   <div
   style={{
+    transform: `scale(${escalaVisual})`,
+    transformOrigin: 'top center',
     width: "800px",
-    transform: `scale(${zoom === 1 ? scale : zoom})`,
-    transformOrigin: "top center",
   }}
 >
-  <Stage
-    ref={stageRef}
-    width={800}
-    height={1400}
-    scaleX={1}
-    scaleY={1}
-    style={{
-      background: "white",
-      borderRadius: 16,
-      overflow: "hidden",
-    }}
+  
+ <div style={{ width: 800 }}>
+  
+<div
+  className="relative"
+  style={{
+    width: "800px",
+
+  }}
+>
+  {/* 💾 Botones flotantes */}
+  {secciones.map((seccion, index) => {
+    const offsetY = calcularOffsetY(secciones, index, altoCanvas);
+
     
-    onMouseDown={(e) => {
-        const stage = e.target.getStage();
-        const esStage = e.target === stage;
-        dragStartPos.current = e.target.getStage().getPointerPosition();
-        hasDragged.current = false;
-                // Verificamos si se hizo clic en un área "vacía" (no un nodo seleccionado)
-                const noHizoClickEnElemento = !Object.values(elementRefs.current).some((node) => {
-                  return node === e.target || node.hasName?.(e.target.name?.());
-                });
+    return (
+      <div
+        key={`btn-${seccion.id}`}
+        className="absolute"
+        style={{
+          top: offsetY * zoom + 8,
+          right: 12,
+          zIndex: 20
+        }}
+      >
+        <button
+          className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-100 shadow"
+          onClick={() => handleGuardarComoPlantilla(seccion.id)}
+        >
+          💾 Guardar como plantilla
+        </button>
+      </div>
+    );
+  })}
 
-                if (esStage && noHizoClickEnElemento) {
-                  setElementosSeleccionados([]);
-                  setModoEdicion(false);
-                  setMostrarPanelZ(false);
-                  setMostrarSubmenuCapa(false);
+  
 
-                  const pos = stage.getPointerPosition();
-                  setInicioSeleccion({ x: pos.x, y: pos.y });
-                  setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
-                  setSeleccionActiva(true);
-                }
+<Stage
+  ref={stageRef}
+  width={800}
+  height={altoCanvasDinamico}
+  style={{
+    background: "white",
+    overflow: "hidden",
+  }}
+    
+            onMouseDown={(e) => {
+            
+            
+            const stage = e.target.getStage();
+            const esStage = e.target === stage;
+            dragStartPos.current = stage.getPointerPosition();
+            hasDragged.current = false;
 
-      }}
 
-              onMouseMove={(e) => {
-                     if (!seleccionActiva || !areaSeleccion) return;
+            // ✅ NUEVA LÓGICA: Permitir selección desde Stage O desde Rect de sección
+            const esSeccion = e.target.constructor.name === "Rect" && 
+                              secciones.some(s => e.target.attrs?.id === s.id || true); // temporalmente true para testing
+
+            const noHizoClickEnElemento = !Object.values(elementRefs.current).some((node) => {
+              return node === e.target || node.hasName?.(e.target.name?.());
+            });
+
+            
+            // ✅ Activar selección si es Stage O si es una sección vacía
+            if ((esStage || esSeccion) && noHizoClickEnElemento) {
+              setElementosSeleccionados([]);
+              setModoEdicion(false);
+              setMostrarPanelZ(false);
+              setMostrarSubmenuCapa(false);
+
+              // ✅ Solo deseleccionar sección si hicimos click en el Stage, no en una sección
+              if (esStage) {
+                setSeccionActivaId(null);
+              }
+
+              const pos = stage.getPointerPosition();
+              setInicioSeleccion({ x: pos.x, y: pos.y });
+              setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
+              setSeleccionActiva(true);
+              
+              
+            } else {
+              
+            }
+          }}                  
+
+
+
+                   onMouseMove={(e) => {
+                      if (!seleccionActiva || !areaSeleccion) {
+                        if (!seleccionActiva) console.log("⏸️ seleccionActiva es false");
+                        if (!areaSeleccion) console.log("⏸️ areaSeleccion es null");
+                        return;
+                      }
+
+                      console.log("🔄 MouseMove durante selección");
 
                     const pos = e.target.getStage().getPointerPosition();
                     const area = {
@@ -817,7 +1087,7 @@ const eliminarElemento = () => {
                       height: Math.abs(pos.y - inicioSeleccion.y),
                     };
 
-
+                    console.log("📏 Área calculada:", area);
                     setAreaSeleccion(area);
                     // Detectar qué elementos están tocados
                     const ids = objetos.filter((obj) => {
@@ -861,8 +1131,179 @@ const eliminarElemento = () => {
     
 
   >
+    
+
 
       <Layer>
+     
+     {seccionesOrdenadas.map((seccion, index) => {
+  const alturaPx = seccion.altura;
+  const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+  const esActiva = seccion.id === seccionActivaId;
+  const estaAnimando = animandoSeccion === seccion.id;
+
+  return (
+    <> 
+      {/* Fondo principal de la sección */}
+      <Rect
+        key={seccion.id} // ✅ El key va aquí ahora
+        x={0}
+        y={offsetY}
+        width={800}
+        height={alturaPx}
+        fill={seccion.fondo || "#ffffff"}
+        stroke="transparent"
+        strokeWidth={0}
+        listening={true}
+        onClick={() => {
+    setAnimandoSeccion(seccion.id);      // ← Inicia animación
+    setSeccionActivaId(seccion.id);      // ← Selecciona la sección
+    setTimeout(() => setAnimandoSeccion(null), 300); // ← Termina animación después de 300ms
+  }}
+      />
+      
+      {/* Border y efectos de selección */}
+      {esActiva ? (
+        <>
+          {/* Borde principal con gradiente y sombra */}
+            <Rect
+              x={8}
+              y={offsetY + 8}
+              width={784}
+              height={alturaPx - 16}
+              fill="transparent"
+              stroke="#773dbe"
+              strokeWidth={estaAnimando ? 4 : 3} // ← Borde más grueso cuando anima
+              cornerRadius={8}
+              shadowColor="rgba(119, 61, 190, 0.25)"
+              shadowBlur={estaAnimando ? 16 : 12} // ← Sombra más intensa cuando anima
+              shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }} // ← Sombra más profunda
+              listening={false}
+            />
+          
+          {/* Borde interior sutil */}
+          <Rect
+            x={12}
+            y={offsetY + 12}
+            width={776}
+            height={alturaPx - 24}
+            fill="transparent"
+            stroke="rgba(119, 61, 190, 0.3)"
+            strokeWidth={1}
+            cornerRadius={6}
+            listening={false}
+          />
+          
+          {/* Overlay de selección con opacity muy baja */}
+          <Rect
+            x={8}
+            y={offsetY + 8}
+            width={784}
+            height={alturaPx - 16}
+            fill={estaAnimando ? "rgba(119, 61, 190, 0.08)" : "rgba(119, 61, 190, 0.03)"} // ← Más opaco cuando anima
+            cornerRadius={8}
+            listening={false}
+          />
+          
+          {/* Indicadores de esquina modernos */}
+          <Rect
+            x={16}
+            y={offsetY + 16}
+            width={8}
+            height={8}
+            fill="#773dbe"
+            cornerRadius={1}
+            listening={false}
+          />
+          <Rect
+            x={776}
+            y={offsetY + 16}
+            width={8}
+            height={8}
+            fill="#773dbe"
+            cornerRadius={1}
+            listening={false}
+          />
+          <Rect
+            x={16}
+            y={offsetY + alturaPx - 24}
+            width={8}
+            height={8}
+            fill="#773dbe"
+            cornerRadius={1}
+            listening={false}
+          />
+          <Rect
+            x={776}
+            y={offsetY + alturaPx - 24}
+            width={8}
+            height={8}
+            fill="#773dbe"
+            cornerRadius={1}
+            listening={false}
+          />
+          
+          {/* Badge de sección activa con animación */}
+          <Rect
+            x={24}
+            y={offsetY + 24}
+            width={120}
+            height={18}
+            fill="#773dbe"
+            cornerRadius={9}
+            shadowColor="rgba(119, 61, 190, 0.4)"
+            shadowBlur={6}
+            shadowOffset={{ x: 0, y: 2 }}
+            listening={false}
+          />
+          <Text
+            x={84}
+            y={offsetY + 29}
+            text="SECCIÓN ACTIVA"
+            fontSize={9}
+            fontFamily="Arial, sans-serif"
+            fontWeight="bold"
+            fill="white"
+            align="center"
+            listening={false}
+          />
+          
+          {/* Líneas de guía sutiles en los bordes */}
+          <Line
+            points={[8, offsetY + 8, 8, offsetY + alturaPx - 8]}
+            stroke="rgba(119, 61, 190, 0.2)"
+            strokeWidth={1}
+            dash={[4, 4]}
+            listening={false}
+          />
+          <Line
+            points={[792, offsetY + 8, 792, offsetY + alturaPx - 8]}
+            stroke="rgba(119, 61, 190, 0.2)"
+            strokeWidth={1}
+            dash={[4, 4]}
+            listening={false}
+          />
+        </>
+      ) : (
+        /* Borde sutil para secciones no activas */
+        <Rect
+          x={0}
+          y={offsetY}
+          width={800}
+          height={alturaPx}
+          fill="transparent"
+          stroke="#e5e7eb"
+          strokeWidth={1}
+          dash={[8, 4]}
+          listening={false}
+        />
+      )}
+    </>
+  );
+})}
+
+
+
         {objetos
     .map((obj, i) => {
     if (modoEdicion && elementosSeleccionados[0] === obj.id) return null;
@@ -870,7 +1311,14 @@ const eliminarElemento = () => {
     return (
       <ElementoCanvas
         key={obj.id}
-        obj={obj}
+        obj={{
+              ...obj,
+              y: obj.y + calcularOffsetY(
+                seccionesOrdenadas,
+                seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId),
+                altoCanvas
+              ),
+            }}
         anchoCanvas={800}
         isSelected={elementosSeleccionados.includes(obj.id)}
         preSeleccionado={elementosPreSeleccionados.includes(obj.id)}
@@ -902,10 +1350,53 @@ const eliminarElemento = () => {
 
           }}
 
-        onChange={(id, nuevo) => {
-          const i = objetos.findIndex((o) => o.id === id);
-          if (i !== -1) actualizarObjeto(i, nuevo);
-        }}
+
+
+       onChange={(id, nuevo) => {
+  const objOriginal = objetos.find((o) => o.id === id);
+  if (!objOriginal) return;
+
+  // 🔥 SOLO si finalizó el drag, verificar cambio de sección
+  if (nuevo.finalizoDrag) {
+    const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(nuevo.y, objOriginal.seccionId);
+    if (nuevaSeccion) {
+      console.log(`🔄 Elemento ${id} cambió de sección ${objOriginal.seccionId} → ${nuevaSeccion}`);
+      nuevo = { ...nuevo, ...coordenadasAjustadas, seccionId: nuevaSeccion };
+    }
+    // Remover la flag
+    delete nuevo.finalizoDrag;
+  }
+
+  // Usar la sección actual (puede haber cambiado arriba)
+// Usar la sección actual (puede haber cambiado arriba)
+const seccionId = nuevo.seccionId || objOriginal.seccionId;
+const seccion = seccionesOrdenadas.find((s) => s.id === seccionId);
+if (!seccion) return;
+
+const i = objetos.findIndex((o) => o.id === id);
+if (i !== -1) {
+  // 🔥 Si cambió de sección, nuevo.y ya viene calculado correctamente
+  if (nuevo.seccionId && nuevo.seccionId !== objOriginal.seccionId) {
+    console.log("🔧 Cambio de sección detectado - usando Y sin offset:", nuevo.y);
+    actualizarObjeto(i, nuevo); // usar Y tal como viene
+  } else {
+    // 🔧 Movimiento normal dentro de la misma sección
+    const offsetY = calcularOffsetY(
+      seccionesOrdenadas,
+      seccionesOrdenadas.findIndex((s) => s.id === seccion.id),
+      altoCanvas
+    );
+    actualizarObjeto(i, {
+      ...nuevo,
+      y: nuevo.y - offsetY, // restar offset solo en movimientos normales
+    });
+  }
+}
+}}
+
+
+
+
         registerRef={(id, node) => {
           elementRefs.current[id] = node;
         }}
@@ -975,62 +1466,6 @@ const eliminarElemento = () => {
 )}
 
 
-
-
-{/* 
-        {elementosSeleccionados[0] && elementRefs.current[elementosSeleccionados[0]] && (
-  <Group
-    x={elementRefs.current[elementosSeleccionados[0]].x()}
-    y={elementRefs.current[elementosSeleccionados[0]].y() - 40} // 🔼 40px arriba del objeto
-    draggable
-   onDragMove={(e) => {
-  const node = elementRefs.current[elementosSeleccionados[0]];
-  if (node) {
-    const dx = e.target.x() - node.x();
-    const dy = e.target.y() - node.y();
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-
-    const i = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-    if (i !== -1) {
-      actualizarObjeto(i, { rotation: angle });
-    }
-  }
-}}
-
-    onDragEnd={(e) => {
-  const node = elementRefs.current[elementosSeleccionados[0]];
-  if (node) {
-    const x = node.x();
-    const y = node.y();
-    e.target.position({ x, y: y - 40 });
-  }
-}}
-
-  >
-   <>
-  {/* Fondo violeta circular opcional 
-  <Circle
-    radius={12}
-    fill="#ffffff"
-    stroke="#cccccc"
-    strokeWidth={1}
-    shadowBlur={2}
-    shadowOpacity={0.15}
-  />
-  
-  {/* Ícono SVG cargado como imagen 
-  <KonvaImage
-    image={icono}
-    width={12}
-    height={12}
-    offsetX={6}
-    offsetY={6}
-  />
-</>
-
-  </Group>
-)}*/}
-
       </Layer>
 
       <Layer ref={guiaLayerRef}>
@@ -1044,10 +1479,19 @@ const eliminarElemento = () => {
     />
   ))}
 </Layer>
-
-
-
     </Stage>
+
+
+</div>
+</div>
+    {/* ➕ Botón para añadir nueva sección */}
+<button
+  onClick={handleCrearSeccion}
+  className="fixed bottom-6 right-6 z-50 bg-[#773dbe] text-white px-4 py-2 rounded-full shadow-lg hover:bg-purple-700 transition"
+>
+  + Añadir sección
+</button>
+
   </div>
 </div>
 

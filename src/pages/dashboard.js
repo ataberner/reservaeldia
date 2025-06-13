@@ -168,7 +168,7 @@ if (!usuario) return null; // Seguridad por si no se redirige
          {slugInvitacion && (
   <>
     {/* Barra superior de acciones */}
-    <div className="flex items-center flex-wrap gap-3 mb-6 bg-white p-3 rounded shadow-sm border border-gray-200">
+<div className="fixed top-0 left-0 right-0 z-40 mb-6 flex items-center flex-wrap gap-3 bg-white p-3 shadow-lg border-b border-gray-200">
       {/* Botón volver */}
       <button
         onClick={() => {

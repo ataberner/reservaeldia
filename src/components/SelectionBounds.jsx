@@ -28,13 +28,19 @@ export default function SelectionBounds({
 
   console.log("🎯 SelectionBounds - nodos encontrados:", selectedNodes.length);
 
-  if (selectedNodes.length > 0) {
-    transformerRef.current.nodes(selectedNodes);
-    transformerRef.current.getLayer()?.batchDraw();
-  } else {
-    transformerRef.current.nodes([]);
-    transformerRef.current.getLayer()?.batchDraw();
+ if (selectedNodes.length > 0) {
+  transformerRef.current.nodes(selectedNodes);
+  // 🔥 OPTIMIZACIÓN: Solo redibujar si es necesario
+  const layer = transformerRef.current.getLayer();
+  if (layer) {
+    requestAnimationFrame(() => {
+      layer.batchDraw();
+    });
   }
+} else {
+  transformerRef.current.nodes([]);
+  transformerRef.current.getLayer()?.batchDraw();
+}
 
   // 🔥 CLEANUP: Limpiar eventos al desmontar
   return () => {
@@ -47,7 +53,7 @@ export default function SelectionBounds({
       }
     }
   };
-}, [selectedElements.join(',')]);
+}, [selectedElements]);
 
 
   if (selectedElements.length === 0) return null;
@@ -122,6 +128,10 @@ export default function SelectionBounds({
       
       onTransformStart={() => {
   window._resizeData = { isResizing: true };
+  // 🔥 OPTIMIZACIÓN: Reducir updates durante transform
+  if (transformerRef.current) {
+    transformerRef.current.getLayer().listening(false);
+  }
 }}
 
 onTransform={(e) => {
@@ -284,11 +294,16 @@ onTransformEnd={(e) => {
       onTransform(finalData);
     }
     
-    // Limpiar flags
-    window._resizeData = { isResizing: false };
-    setTimeout(() => {
-      window._resizeData = null;
-    }, 100);
+  // 🔥 RESTAURAR LISTENING
+if (transformerRef.current) {
+  transformerRef.current.getLayer().listening(true);
+}
+
+// Limpiar flags
+window._resizeData = { isResizing: false };
+setTimeout(() => {
+  window._resizeData = null;
+}, 100);
 
   } catch (error) {
     console.warn("⚠️ Error en onTransformEnd:", error);

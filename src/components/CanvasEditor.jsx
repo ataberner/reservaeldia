@@ -40,7 +40,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [historial, setHistorial] = useState([]);
   const [futuros, setFuturos] = useState([]);
    const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
-    const [posBarra, setPosBarra] = useState({ x: 0, y: 0 });
     const [modoEdicion, setModoEdicion] = useState(false);
     const [cargado, setCargado] = useState(false);
     const stageRef = useRef(null);
@@ -68,7 +67,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     
     const [anchoStage, setAnchoStage] = useState(800);
     const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
-    const [posMiniBoton, setPosMiniBoton] = useState({ x: 0, y: 0 });
     const fuentesLocales = [
   { nombre: "Arial", valor: "Arial, sans-serif" },
   { nombre: "Helvetica", valor: "Helvetica, sans-serif" },
@@ -221,29 +219,11 @@ useEffect(() => {
   const obj = objetos.find((o) => o.id === nuevoTextoRef.current);
   if (obj) {
     setElementosSeleccionados([obj.id]);
-    iniciarEdicionInline(obj, true);
-    nuevoTextoRef.current = null; // 🧼 Limpiamos para evitar repetir
+    // NO iniciar edición automáticamente - solo seleccionar
+    nuevoTextoRef.current = null;
   }
 }, [objetos]);
 
-
-useEffect(() => {
-  if (!elementosSeleccionados[0] || !stageRef.current || !elementRefs.current[elementosSeleccionados[0]]) return;
-
-  const stage = stageRef.current;
-  const node = elementRefs.current[elementosSeleccionados[0]];
-  const escala = zoom === 1 ? scale : zoom;
-
-  const box = node.getClientRect({ relativeTo: stage });
-
-  const containerRect = stage.container().getBoundingClientRect();
-
-  setPosMiniBoton({
-  x: containerRect.left + (box.x + box.width) * escala - 20, // esquina derecha - un pequeño margen
-  y: containerRect.top + box.y * escala - 50,                // un poco más arriba del objeto
-});
-
-}, [elementosSeleccionados[0], zoom, scale, objetos]);
 
 
 
@@ -257,18 +237,6 @@ useEffect(() => {
   return () => document.removeEventListener("mousedown", handleClickFuera);
 }, []);
 
-
-
-useEffect(() => {
-  if (!elementosSeleccionados[0] || !contenedorRef.current) return;
-
-  const contenedorRect = contenedorRef.current.getBoundingClientRect();
-
-  setPosMiniBoton({
-    x: contenedorRect.left + contenedorRef.current.offsetWidth / 2 - 200,
-    y: contenedorRect.top + 10,
-  });
-}, [elementosSeleccionados[0]]); // 🔥 QUITAR zoom, scale, objetos de las dependencias
 
 
 
@@ -407,35 +375,37 @@ useEffect(() => {
         return;
       }
 
-      // Eliminar (Delete o Backspace)
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        const idsAEliminar = [...elementosSeleccionados];
-      
-        
-         // 🔥 LIMPIAR SELECCIÓN PRIMERO
-        setElementosSeleccionados([]);
-        setModoEdicion(false);
-        setMostrarPanelZ(false);
-        
-        // 🔥 ELIMINAR CON CALLBACK MÁS SEGURO
-        setObjetos(prev => {
-          const filtrados = prev.filter((o) => !idsAEliminar.includes(o.id));
-         
-          return filtrados;
-        });
+// Eliminar (Delete o Backspace)
+if (e.key === "Delete" || e.key === "Backspace") {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  const idsAEliminar = [...elementosSeleccionados];
+  
+  // 🔥 LIMPIAR HOVER STATE
+  setHoverId(null);
+  
+  // 🔥 LIMPIAR SELECCIÓN Y ESTADOS
+  setModoEdicion(false);
+  setElementosSeleccionados([]);
+  setMostrarPanelZ(false);
+  
+  setTimeout(() => {
+    setObjetos(prev => {
+      const filtrados = prev.filter((o) => !idsAEliminar.includes(o.id));
+      return filtrados;
+    });
+  }, 50);
 
-        return;
-      }
+  return;
+}
     }
   };
 
-  document.addEventListener("keydown", handleKeyDown, true);
+  document.addEventListener("keydown", handleKeyDown, false);
   
   return () => {
-    document.removeEventListener("keydown", handleKeyDown, true);
+    document.removeEventListener("keydown", handleKeyDown, false);
   };
 }, [elementosSeleccionados]);
 
@@ -482,6 +452,10 @@ useEffect(() => {
 
 
 const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
+    console.log("🚨 === iniciarEdicionInline ===");
+  console.log("🚨 obj.id:", obj.id);
+  console.log("🚨 seleccionarTodo:", seleccionarTodo);
+  console.log("🚨 elementosSeleccionados actuales:", elementosSeleccionados);
   const id = obj.id;
   const textNode = elementRefs.current[id];
   
@@ -507,12 +481,12 @@ const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
   area.style.position = "absolute";
   const escala = zoom === 1 ? scale : zoom;
 
-// 🔥 box.y ya viene con coordenadas absolutas del canvas (con offset aplicado)
-// No necesitamos restar offsetY porque textNode ya está posicionado correctamente
+    // 🔥 box.y ya viene con coordenadas absolutas del canvas (con offset aplicado)
+    // No necesitamos restar offsetY porque textNode ya está posicionado correctamente
 
-area.style.top = `${
-  container.getBoundingClientRect().top + box.y * escala
-}px`;
+  area.style.top = `${
+    container.getBoundingClientRect().top + box.y * escala
+  }px`;
 
 
   area.style.left = `${container.getBoundingClientRect().left + box.x * escala}px`;
@@ -643,35 +617,9 @@ useEffect(() => {
 }, []);
 
 
-useEffect(() => {
-  const handler = (e) => {
-    const { x, y } = e.detail;
-    setPosMiniBoton({ x, y });
-    setMostrarPanelZ(true);
-    setMostrarSubmenuCapa(false);
-  };
-
-  window.addEventListener("abrir-menu-contextual", handler);
-  return () => window.removeEventListener("abrir-menu-contextual", handler);
-}, []);
 
 
 
-useEffect(() => {
-  const handleClickOutside = (e) => {
-    const esMenuZ = e.target.closest(".menu-z-index");
-    const esBotonMini = e.target.closest(".boton-mini-z");
-
-    // Si no se hizo clic ni en el menú ni en el botón ☰ → cerrar
-    if (!esMenuZ && !esBotonMini) {
-      setMostrarPanelZ(false);
-      setMostrarSubmenuCapa(false);
-    }
-  };
-
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => document.removeEventListener("mousedown", handleClickOutside);
-}, []);
 
 
 
@@ -880,7 +828,8 @@ const eliminarElemento = () => {
 // Agregar esta función después de la línea 724 (después de finalizarEdicionInline)
 
 const handleStartTextEdit = async (id, obj) => {
-  
+  console.log("🚨 handleStartTextEdit llamado para:", id);
+  console.trace("🔍 Stack trace de handleStartTextEdit");
   
   // ✅ Si ya estamos en modo edición, finalizar primero
   if (modoEdicion) {
@@ -1119,28 +1068,38 @@ useEffect(() => {
 }, []);
 
   return (
-       <div className="flex justify-center">
+     <div className="flex justify-center" style={{ paddingTop: "55px" }}>
    
    <div
   ref={contenedorRef}
    style={{
-    minHeight: "100vh",
+   height: "calc(90vh - 150x)", /* Resta la altura de la barra superior */
     width: "100%",
     boxSizing: "border-box",
     backgroundColor: "#f5f5f5",
     display: "flex",
     justifyContent: "center",
+    overflow: "hidden",
   }}
 >
     
   <div
   style={{
-    transform: `scale(${escalaVisual})`,
-    transformOrigin: 'top center',
-    width: "800px",
-    filter: "drop-shadow(-8px 0 16px rgba(0, 0, 0, 0.15)) drop-shadow(8px 0 16px rgba(0, 0, 0, 0.15))",
+    height: "100vh",
+    overflowY: "auto",
+    display: "flex",
+    justifyContent: "center",
+    paddingTop: "60px", // Espacio para la barra superior
   }}
 >
+  <div
+    style={{
+      transform: `scale(${escalaVisual})`,
+      transformOrigin: 'top center',
+      width: "800px",
+      filter: "drop-shadow(-8px 0 16px rgba(0, 0, 0, 0.15)) drop-shadow(8px 0 16px rgba(0, 0, 0, 0.15))",
+    }}
+  >
   
  <div style={{ width: 800 }}>
   
@@ -1236,6 +1195,8 @@ useEffect(() => {
   height={altoCanvasDinamico}
     perfectDrawEnabled={false}
   listening={true}
+  imageSmoothingEnabled={false}
+  hitGraphEnabled={false}
     style={{
     background: "white",
     overflow: "hidden",
@@ -1557,24 +1518,24 @@ onMouseDown={(e) => {
         
           registerRef={registerRef}
     
-    onSelect={async (id, obj, e) => {
+
+
+  
+// onSelect simple, sin lógica de segundo click
+onSelect={async (id, obj, e) => {
   console.log("🎯 onSelect - elemento:", id, "tipo:", obj.tipo);
   
-  // 🔥 NUEVO: Limpiar flag de resize si existe
   if (window._resizeData?.isResizing) {
-    console.log("🧹 Limpiando flag de resize bloqueado");
     window._resizeData = null;
   }
   
   e.evt.cancelBubble = true;
   const esShift = e?.evt?.shiftKey;
 
-  // ✅ Si hay modo edición activo, finalizarlo primero
   if (modoEdicion) {
     await finalizarEdicionInline();
   }
 
-  // ✅ Actualizar selección
   setElementosSeleccionados((prev) => {
     if (esShift) {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
@@ -1584,11 +1545,8 @@ onMouseDown={(e) => {
     }
   });
 
-  console.log("✅ Elemento seleccionado:", id, "- Esperando segundo click para editar texto");
+  console.log("✅ Elemento seleccionado:", id);
 }}
-
-
-
 
 
 onChange={(id, nuevo) => {
@@ -1782,10 +1740,13 @@ onChange={(id, nuevo) => {
 )}
 
 
- <HoverIndicator
+{/* 🔥 OPTIMIZACIÓN: No mostrar hover durante drag/resize */}
+{!window._resizeData?.isResizing && !window._isDragging && (
+  <HoverIndicator
     hoveredElement={hoverId}
     elementRefs={elementRefs}
   />
+)}
 
       </Layer>
 
@@ -1815,7 +1776,7 @@ onChange={(id, nuevo) => {
 
   </div>
 </div>
-
+</div>
 
 
 
@@ -1824,8 +1785,8 @@ onChange={(id, nuevo) => {
   <div
     className="fixed z-50 bg-white border rounded shadow p-1 text-sm boton-mini-z"
     style={{
-      top: posMiniBoton.y,
-      left: posMiniBoton.x,
+      top: "80px", // Arriba de la barra de texto
+      right: "20px", // Esquina derecha
     }}
   >
     <button
@@ -1836,7 +1797,6 @@ onChange={(id, nuevo) => {
       ☰
     </button>
   </div>
-  
 )}
 
 
@@ -1844,8 +1804,8 @@ onChange={(id, nuevo) => {
   <div
     className="fixed z-50 bg-white border rounded shadow p-3 text-sm space-y-1 menu-z-index w-64"
     style={{
-      top: posMiniBoton.y + 30,
-      left: posMiniBoton.x + 20,
+      top: "110px", // Justo debajo del botón ☰
+      right: "20px",
     }}
   >
     <button
@@ -1940,14 +1900,17 @@ onChange={(id, nuevo) => {
 
 
 
-      {objetoSeleccionado?.tipo === "texto" && (
-          <div
-            className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
-            style={{
-              top: posBarra.y,
-              left: posBarra.x,
-            }}
-          >
+     {objetoSeleccionado?.tipo === "texto" && (
+  <div
+    className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
+    style={{
+      top: "120px", // Justo debajo de la barra superior
+      left: "50%",
+      transform: "translateX(-50%)", // Centrado horizontalmente
+      width: "auto",
+      maxWidth: "800px", // Ancho máximo igual al canvas
+    }}
+  >
     
                 <div
                   className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${

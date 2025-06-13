@@ -207,6 +207,13 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
           className={`bg-gradient-to-b from-purple-800 via-purple-900 to-purple-950 text-white transition-all duration-300 shadow-xl
     ${sidebarAbierta ? "w-80" : "w-16"} px-0 py-2 flex flex-col gap-2`}
+    style={{ 
+    position: 'fixed',
+    top: '70px', // altura de la barra superior
+    left: 0,
+    height: 'calc(100vh - 70px)', // altura total menos la barra superior
+    zIndex: 30
+  }}
         >
 
 

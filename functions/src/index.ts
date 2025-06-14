@@ -230,52 +230,8 @@ elementos.forEach((el) => {
 
 
 
-// Guarda una edición desde el frontend (lo que cambia el usuario al mover o escribir algo).
-export const guardarEdicion = functions.https.onRequest(async (req, res) => {
-  const { slug, overrides } = req.body;
-
-  if (!slug || !overrides) {
-    res.status(400).send("Faltan datos");
-    return;
-  }
-
-  try {
-    await admin.firestore().collection("borradores").doc(slug).update({
-      overrides,
-      ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    res.status(200).send("Guardado OK");
-  } catch (error) {
-    console.error("Error al guardar:", error);
-    res.status(500).send("Error interno");
-  }
-});
-
-
-export const leerEdicion = functions.https.onRequest(async (req, res) => {
-  const slug = req.query.slug as string;
-
-  if (!slug) {
-    res.status(400).send("Falta slug");
-    return;
-  }
-
-  try {
-    const doc = await admin.firestore().collection("borradores").doc(slug).get();
-    if (!doc.exists) {
-      res.status(404).send("No encontrado");
-      return;
-    }
-
-    const data = doc.data();
-    res.status(200).json({ overrides: data?.overrides || {} });
-  } catch (error) {
-    console.error("Error al leer edición:", error);
-    res.status(500).send("Error interno");
-  }
-});
-
+// 🗑️ ELIMINADAS: guardarEdicion y leerEdicion
+// Estas funciones no se usaban en el canvas Konva
 
 
 
@@ -327,50 +283,8 @@ interface PublicarInvitacionData {
   slug: string;
 }
 
-function aplicarOverrides(html: string, contenido: Record<string, any>) {
-  const dom = new JSDOM(html);
-  const document = dom.window.document;
-
-  // ✅ Reemplazar contenido editable
-  Object.entries(contenido).forEach(([id, val]) => {
-    const el = document.querySelector(`[data-id="${id}"]`) as HTMLElement;
-    if (!el) return;
-    if (Object.prototype.hasOwnProperty.call(val, 'texto')) {
-      el.innerHTML = val.texto;
-      }
-    if (val.top) el.style.top = val.top;
-    if (val.left) el.style.left = val.left;
-  });
-
-  function limpiarCSSDeEdicion(document: Document) {
-  const styles = Array.from(document.querySelectorAll("style"));
-
-  styles.forEach((styleTag) => {
-    if (styleTag.textContent?.includes(".editable:hover")) {
-      styleTag.textContent = styleTag.textContent
-        .replace(/\.editable:hover[\s\S]*?\{[^}]*\}/g, "") // remueve el bloque hover
-        .replace(/\.editable:focus[\s\S]*?\{[^}]*\}/g, ""); // remueve el bloque focus
-    }
-  });
-}
-
-
-  // 🧹 Limpiar edición visual
-  limpiarCSSDeEdicion(document);
-
-  // 🧹 Opcional: remover atributos de edición
-  document.querySelectorAll("[contenteditable]").forEach(el => {
-    el.removeAttribute("contenteditable");
-  });
-  document.querySelectorAll(".editable").forEach(el => {
-    el.classList.remove("editable");
-  });
-  document.querySelectorAll(".zona-editable").forEach(el => {
-    el.classList.remove("zona-editable");
-  });
-
-  return dom.serialize();
-}
+// 🗑️ ELIMINADA: función aplicarOverrides
+// Esta función era específica del editor HTML contenteditable
 
 
 async function resolverURLsDeObjetos(objetos: any[]): Promise<any[]> {
@@ -425,15 +339,11 @@ export const publicarInvitacion = functions.https.onCall(
 }
 
     const objetosBase = data?.objetos || [];
-    const overrides = data?.overrides || {};
+    // 🗑️ ELIMINADO: const overrides = data?.overrides || {};
     const secciones = data?.secciones || [];
 
-    // 🧠 2. Aplicar overrides y luego resolver URLs de imagen/icono
-const objetosConOverrides = objetosBase.map((obj: any) => {
-  const mod = overrides[obj.id] || {};
-  return { ...obj, ...mod };
-});
-const objetosFinales = await resolverURLsDeObjetos(objetosConOverrides);
+    // 🧠 2. Resolver URLs de imagen/icono directamente
+    const objetosFinales = await resolverURLsDeObjetos(objetosBase);
 
 console.log("🧪 Secciones:", JSON.stringify(secciones));
 console.log("🧪 Objetos finales:", JSON.stringify(objetosFinales));
@@ -553,6 +463,3 @@ function escapeHTML(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
-
-
-

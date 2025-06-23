@@ -270,6 +270,13 @@ useEffect(() => {
 }, [zoom]);
 
 
+useEffect(() => {
+  console.log("📊 Estado selección cambió:", {
+    seleccionActiva,
+    areaSeleccion,
+    inicioSeleccion
+  });
+}, [seleccionActiva, areaSeleccion, inicioSeleccion]);
 
 useEffect(() => {
   const cargar = async () => {
@@ -1202,10 +1209,16 @@ useEffect(() => {
     overflow: "hidden",
   }}
     
-                           // REEMPLAZAR el onMouseDown del Stage:
+
 onMouseDown={(e) => {
   const stage = e.target.getStage();
+  const pointerPos = stage.getPointerPosition();
+  
+     
   const esStage = e.target === stage;
+  const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
+
+ 
   dragStartPos.current = stage.getPointerPosition();
   hasDragged.current = false;
 
@@ -1214,7 +1227,6 @@ onMouseDown={(e) => {
                       e.target.parent?.getClassName?.() === 'Transformer' ||
                       e.target.attrs?.name?.includes('_anchor');
 
-  // ✅ Si es click en Transformer, no hacer nada
   if (esTransformer) {
     return;
   }
@@ -1224,14 +1236,9 @@ onMouseDown={(e) => {
     return node === e.target;
   });
 
-  // ✅ Si clickeó en un elemento, NO activar selección por área
   if (clickEnElemento) {
     return;
   }
-
-  // ✅ NUEVA LÓGICA: Solo activar selección por área si es Stage O sección vacía
-  const esSeccion = e.target.constructor.name === "Rect" && 
-                    secciones.some(s => e.target.attrs?.id === s.id || true);
 
   if (esStage || esSeccion) {
     setElementosSeleccionados([]);
@@ -1239,72 +1246,92 @@ onMouseDown={(e) => {
     setMostrarPanelZ(false);
     setMostrarSubmenuCapa(false);
 
-    // ✅ Solo deseleccionar sección si hicimos click en el Stage, no en una sección
     if (esStage) {
       setSeccionActivaId(null);
     }
 
-    const pos = stage.getPointerPosition();
+    const pos = stage.getPointerPosition(); // 🔧 SOLO UNA DECLARACIÓN
     setInicioSeleccion({ x: pos.x, y: pos.y });
     setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
     setSeleccionActiva(true);
-  }
+
+    }
 }}
 
-            onMouseMove={(e) => {
-              // ✅ Validar que hay una selección activa ANTES de proceder
-              if (!seleccionActiva || !inicioSeleccion) return;
 
-              const pos = e.target.getStage().getPointerPosition();
-              const area = {
-                x: Math.min(inicioSeleccion.x, pos.x),
-                y: Math.min(inicioSeleccion.y, pos.y),
-                width: Math.abs(pos.x - inicioSeleccion.x),
-                height: Math.abs(pos.y - inicioSeleccion.y),
-              };
+onMouseMove={(e) => {
+   
+  if (!seleccionActiva || !inicioSeleccion) return;
 
-              setAreaSeleccion(area);
-              // Detectar qué elementos están tocados
-              const ids = objetos.filter((obj) => {
-                const node = elementRefs.current[obj.id];
-                if (!node) return false;
-                const box = node.getClientRect();
+  if (window._mouseMoveThrottle) return;
+  window._mouseMoveThrottle = true;
+  
+  requestAnimationFrame(() => {
+    window._mouseMoveThrottle = false;
+    
+    const stage = e.target.getStage();
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    
+    const area = {
+      x: Math.min(inicioSeleccion.x, pos.x),
+      y: Math.min(inicioSeleccion.y, pos.y),
+      width: Math.abs(pos.x - inicioSeleccion.x),
+      height: Math.abs(pos.y - inicioSeleccion.y),
+    };
 
-                return (
-                  box.x + box.width >= area.x &&
-                  box.x <= area.x + area.width &&
-                  box.y + box.height >= area.y &&
-                  box.y <= area.y + area.height
-                );
-              }).map((obj) => obj.id);
+    setAreaSeleccion(area);
+    
+    if (Math.abs(area.width) > 5 || Math.abs(area.height) > 5) {
+      const ids = objetos.filter((obj) => {
+        const node = elementRefs.current[obj.id];
+        if (!node) return false;
+        
+        // 🔧 SOLUCIÓN: Usar getClientRect con relativeTo stage
+        const box = node.getClientRect({ relativeTo: stage });
 
-              setElementosPreSeleccionados(ids);
-            }}
-                  
+        return (
+          box.x + box.width >= area.x &&
+          box.x <= area.x + area.width &&
+          box.y + box.height >= area.y &&
+          box.y <= area.y + area.height
+        );
+      }).map((obj) => obj.id);
 
+      setElementosPreSeleccionados(ids);
+    }
+  });
+}}
 
-        onMouseUp={() => {
-          if (!seleccionActiva || !areaSeleccion) return;
+onMouseUp={() => {
+  if (!seleccionActiva || !areaSeleccion) return;
 
-          const nuevaSeleccion = objetos.filter((obj) => {
-            const node = elementRefs.current[obj.id];
-            if (!node) return false;
-            const box = node.getClientRect();
-            return (
-              box.x >= areaSeleccion.x &&
-              box.y >= areaSeleccion.y &&
-              box.x + box.width <= areaSeleccion.x + areaSeleccion.width &&
-              box.y + box.height <= areaSeleccion.y + areaSeleccion.height
-            );
-          });
+ 
+  const nuevaSeleccion = objetos.filter((obj) => {
+    const node = elementRefs.current[obj.id];
+    if (!node) {
+      console.warn("❌ Ref perdida para:", obj.id);
+      return false;
+    }
+    
+    // 🔧 CORRECCIÓN: Obtener stage desde stageRef
+    const stage = stageRef.current;
+    const box = node.getClientRect();
+    
+     
+    return (
+      box.x >= areaSeleccion.x &&
+      box.y >= areaSeleccion.y &&
+      box.x + box.width <= areaSeleccion.x + areaSeleccion.width &&
+      box.y + box.height <= areaSeleccion.y + areaSeleccion.height
+    );
+  });
 
-          setElementosSeleccionados(elementosPreSeleccionados);
-          setElementosPreSeleccionados([]);
-          setSeleccionActiva(false);
-          setAreaSeleccion(null);
-
-        }}
-
+  setElementosSeleccionados(elementosPreSeleccionados);
+  setElementosPreSeleccionados([]);
+  setSeleccionActiva(false);
+  setAreaSeleccion(null);
+}}
     
 
   >
@@ -1327,6 +1354,7 @@ onMouseDown={(e) => {
     // Fondo principal de la sección
     <Rect
       key={`seccion-${seccion.id}`}
+      id={seccion.id}
       x={0}
       y={offsetY}
       width={800}

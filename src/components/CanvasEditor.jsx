@@ -1204,11 +1204,13 @@ return (
   listening={true}
   imageSmoothingEnabled={false}
   hitGraphEnabled={false}
+  clipFunc={() => {}}
     style={{
     background: "white",
     overflow: "visible",
     position: "relative",
     boxShadow: "0 4px 20px rgba(0,0,0,0.5)", // ✅ SOMBRA PARA DESTACAR
+    clipPath: "none",
   }}
     
 
@@ -1777,102 +1779,77 @@ onChange={(id, nuevo) => {
   />
 )}
 
+
+{/* Líneas de guía dinámicas */}
+{guiaLineas.map((linea, i) => (
+  <Line
+    key={i}
+    points={linea.points}
+    stroke="#773dbe"
+    strokeWidth={1}
+    dash={[4, 4]}
+    listening={false}
+  />
+))}
+
+
       </Layer>
 
-      <Layer ref={guiaLayerRef}>
-  {guiaLineas.map((linea, i) => (
-    <Line
-      key={i}
-      points={linea.points}
-      stroke="#773dbe"
-      strokeWidth={1}
-      dash={[4, 4]}
-    />
-  ))}
-</Layer>
-</Stage>
+     </Stage>
 
 
-</div>
-
-{/* Líneas divisorias - SOLUCIÓN FINAL CORREGIDA */}
-{zoom === 0.8 && seccionesOrdenadas.length > 1 && (
-  <div
+{/* 🔥 STAGE ADICIONAL SOLO PARA LÍNEAS DIVISORIAS */}
+{zoom === 0.8 && (
+  <Stage
+    width={1200} // 800px canvas + 200px cada lado
+    height={altoCanvasDinamico}
     style={{
       position: "absolute",
-      top: "0px",
-      left: "0",
-      width: "1000px",
-      height: `${altoCanvasDinamico * escalaVisual}px`,
+      top: 0,
+      left: "50%", // Centrar el Stage secundario
+      transform: "translateX(-50%)", // Centrar exactamente
       pointerEvents: "none",
       zIndex: 10,
     }}
   >
-    {(() => {
-      // 🎯 CALCULAR POSICIÓN DEL STAGE RELATIVA AL CONTENEDOR
-      let stageOffsetRelativo = 0;
-      
-      if (stageRef.current && contenedorRef.current) {
-        const stageContainer = stageRef.current.container();
-        const contenedorRect = contenedorRef.current.getBoundingClientRect();
-        const stageRect = stageContainer.getBoundingClientRect();
-        
-        // ✅ DIFERENCIA RELATIVA entre Stage y contenedor
-        stageOffsetRelativo = stageRect.top - contenedorRect.top;
-        
-        console.log("📏 Contenedor top:", contenedorRect.top);
-        console.log("📏 Stage top:", stageRect.top);
-        console.log("🎯 Stage offset RELATIVO:", stageOffsetRelativo);
-      }
-      
-      console.log("📏 escalaVisual:", escalaVisual);
-      
-      return seccionesOrdenadas.slice(0, -1).map((seccion, index) => {
-        // ✅ ACUMULAR ALTURAS DIRECTAMENTE
+    <Layer>
+      {seccionesOrdenadas.slice(0, -1).map((seccion, index) => {
         let alturaAcumulada = 0;
         for (let i = 0; i <= index; i++) {
           alturaAcumulada += seccionesOrdenadas[i].altura;
         }
         
-        // ✅ POSICIÓN RELATIVA AL CONTENEDOR (no al viewport)
-        const yLineaFinal = (alturaAcumulada * escalaVisual) + stageOffsetRelativo;
-        
-        console.log(`📍 Sección ${index}: altura acumulada=${alturaAcumulada}, yLinea=${yLineaFinal}`);
-        
         return (
-          <div key={`divider-final-${seccion.id}`}>
-            {/* Línea izquierda */}
-            <div
-              style={{
-                position: "absolute",
-                top: `${yLineaFinal}px`,
-                left: "0px",
-                width: "100px",
-                height: "2px",
-                backgroundColor: "#94a3b8",
-                opacity: 0.8,
-                zIndex: 10,
-              }}
+          <Group key={`dividers-secondary-${seccion.id}`}>
+            {/* Línea izquierda - 200px hacia afuera, punteada, gris */}
+            <Line
+              points={[0, alturaAcumulada, 200, alturaAcumulada]}
+              stroke="#666666"
+              strokeWidth={2}
+              opacity={0.8}
+              dash={[8, 6]}
+              listening={false}
             />
-            {/* Línea derecha */}
-            <div
-              style={{
-                position: "absolute",
-                top: `${yLineaFinal}px`,
-                left: "900px",
-                width: "100px",
-                height: "2px",
-                backgroundColor: "#94a3b8",
-                opacity: 0.8,
-                zIndex: 10,
-              }}
+            {/* Línea derecha - 200px hacia afuera, punteada, gris */}
+            <Line
+              points={[1000, alturaAcumulada, 1200, alturaAcumulada]}
+              stroke="#666666"
+              strokeWidth={2}
+              opacity={0.8}
+              dash={[8, 6]}
+              listening={false}
             />
-          </div>
+          </Group>
         );
-      });
-    })()}
-  </div>
+      })}
+    </Layer>
+  </Stage>
 )}
+     
+     
+
+
+</div>
 
 
     {/* ➕ Botón para añadir nueva sección */}

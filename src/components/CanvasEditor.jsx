@@ -1074,47 +1074,47 @@ useEffect(() => {
   };
 }, []);
 
-  return (
-     <div className="flex justify-center" style={{ paddingTop: "55px" }}>
+return (
+    <div 
+      className="flex justify-center" 
+      style={{ 
+        marginTop: "50px", // ✅ MÁS ESPACIO PARA LA BARRA SUPERIOR
+        height: "calc(100vh - 100px)", // ✅ AJUSTAR ALTURA
+        overflowY: "auto",
+        overflowX: "hidden", // ✅ EVITAR SCROLL HORIZONTAL
+      }}
+    >
    
    <div
   ref={contenedorRef}
    style={{
-   height: "calc(90vh - 150x)", /* Resta la altura de la barra superior */
     width: "100%",
-    boxSizing: "border-box",
+    maxWidth: "1200px",
     backgroundColor: "#f5f5f5",
     display: "flex",
     justifyContent: "center",
-    overflow: "hidden",
+    paddingTop: "20px", // ✅ MENOS PADDING INTERNO
+    paddingBottom: "40px", // ✅ ESPACIO INFERIOR
   }}
 >
-    
-  <div
-  style={{
-    height: "100vh",
-    overflowY: "auto",
-    display: "flex",
-    justifyContent: "center",
-    paddingTop: "60px", // Espacio para la barra superior
-  }}
->
+
   <div
     style={{
       transform: `scale(${escalaVisual})`,
       transformOrigin: 'top center',
-      width: "800px",
-      filter: "drop-shadow(-8px 0 16px rgba(0, 0, 0, 0.15)) drop-shadow(8px 0 16px rgba(0, 0, 0, 0.15))",
+      width: "1000px", // ✅ MÁS ANCHO PARA LÍNEAS + CANVAS
+      position: "relative",
     }}
   >
-  
- <div style={{ width: 800 }}>
+
+
   
 <div
   className="relative"
   style={{
-    width: "800px",
-
+    width: "1000px", // ✅ CONTENEDOR MÁS ANCHO
+    display: "flex",
+    justifyContent: "center",
   }}
 >
 
@@ -1133,7 +1133,7 @@ useEffect(() => {
       className="absolute flex flex-col gap-2"
       style={{
         top: offsetY * zoom + 50,
-        right: -80,
+        right: -130,
         zIndex: 25,
       }}
     >
@@ -1206,7 +1206,9 @@ useEffect(() => {
   hitGraphEnabled={false}
     style={{
     background: "white",
-    overflow: "hidden",
+    overflow: "visible",
+    position: "relative",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.5)", // ✅ SOMBRA PARA DESTACAR
   }}
     
 
@@ -1341,14 +1343,14 @@ onMouseUp={() => {
       <Layer>
      
    {seccionesOrdenadas.flatMap((seccion, index) => {
-  const alturaPx = seccion.altura;
-  const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
-  const esActiva = seccion.id === seccionActivaId;
-  const estaAnimando = seccionesAnimando.includes(seccion.id);
+          const alturaPx = seccion.altura;
+          const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+          const esActiva = seccion.id === seccionActivaId;
+          const estaAnimando = seccionesAnimando.includes(seccion.id);
 
-  if (estaAnimando) {
-    console.log("🎭 SECCIÓN ANIMANDO:", seccion.id);
-  }
+      if (estaAnimando) {
+        console.log("🎭 SECCIÓN ANIMANDO:", seccion.id);
+      }
 
   const elementos = [
     // Fondo principal de la sección
@@ -1519,7 +1521,6 @@ onMouseUp={() => {
 
   return elementos;
 })}
-
 
 
         {objetos.map((obj, i) => {
@@ -1789,11 +1790,91 @@ onChange={(id, nuevo) => {
     />
   ))}
 </Layer>
-    </Stage>
+</Stage>
 
 
 </div>
-</div>
+
+{/* Líneas divisorias - SOLUCIÓN FINAL CORREGIDA */}
+{zoom === 0.8 && seccionesOrdenadas.length > 1 && (
+  <div
+    style={{
+      position: "absolute",
+      top: "0px",
+      left: "0",
+      width: "1000px",
+      height: `${altoCanvasDinamico * escalaVisual}px`,
+      pointerEvents: "none",
+      zIndex: 10,
+    }}
+  >
+    {(() => {
+      // 🎯 CALCULAR POSICIÓN DEL STAGE RELATIVA AL CONTENEDOR
+      let stageOffsetRelativo = 0;
+      
+      if (stageRef.current && contenedorRef.current) {
+        const stageContainer = stageRef.current.container();
+        const contenedorRect = contenedorRef.current.getBoundingClientRect();
+        const stageRect = stageContainer.getBoundingClientRect();
+        
+        // ✅ DIFERENCIA RELATIVA entre Stage y contenedor
+        stageOffsetRelativo = stageRect.top - contenedorRect.top;
+        
+        console.log("📏 Contenedor top:", contenedorRect.top);
+        console.log("📏 Stage top:", stageRect.top);
+        console.log("🎯 Stage offset RELATIVO:", stageOffsetRelativo);
+      }
+      
+      console.log("📏 escalaVisual:", escalaVisual);
+      
+      return seccionesOrdenadas.slice(0, -1).map((seccion, index) => {
+        // ✅ ACUMULAR ALTURAS DIRECTAMENTE
+        let alturaAcumulada = 0;
+        for (let i = 0; i <= index; i++) {
+          alturaAcumulada += seccionesOrdenadas[i].altura;
+        }
+        
+        // ✅ POSICIÓN RELATIVA AL CONTENEDOR (no al viewport)
+        const yLineaFinal = (alturaAcumulada * escalaVisual) + stageOffsetRelativo;
+        
+        console.log(`📍 Sección ${index}: altura acumulada=${alturaAcumulada}, yLinea=${yLineaFinal}`);
+        
+        return (
+          <div key={`divider-final-${seccion.id}`}>
+            {/* Línea izquierda */}
+            <div
+              style={{
+                position: "absolute",
+                top: `${yLineaFinal}px`,
+                left: "0px",
+                width: "100px",
+                height: "2px",
+                backgroundColor: "#94a3b8",
+                opacity: 0.8,
+                zIndex: 10,
+              }}
+            />
+            {/* Línea derecha */}
+            <div
+              style={{
+                position: "absolute",
+                top: `${yLineaFinal}px`,
+                left: "900px",
+                width: "100px",
+                height: "2px",
+                backgroundColor: "#94a3b8",
+                opacity: 0.8,
+                zIndex: 10,
+              }}
+            />
+          </div>
+        );
+      });
+    })()}
+  </div>
+)}
+
+
     {/* ➕ Botón para añadir nueva sección */}
 <button
   onClick={handleCrearSeccion}
@@ -1803,7 +1884,8 @@ onChange={(id, nuevo) => {
 </button>
 
   </div>
-</div>
+
+
 </div>
 
 

@@ -53,9 +53,14 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
 
 
    return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-        <h2 className="text-xl font-semibold mb-4">Crear nueva sección</h2>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="mb-6">
+  <h2 className="text-xl font-semibold text-gray-900 mb-2">Crear nueva sección</h2>
+  <p className="text-sm text-gray-600">
+    Las secciones son los "bloques" de tu invitación. Cada sección puede tener diferente tamaño y contenido.
+  </p>
+</div>
 
         <div className="mb-4 flex gap-4">
           <label className="flex items-center gap-2">
@@ -82,44 +87,144 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
 
         {modo === "vacia" && (
           <>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Altura (px)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Tamaño de la sección</label>
         
-<select
-  value={altura}
-  onChange={(e) => setAltura(Number(e.target.value))}
-  className="w-full mb-4 border rounded px-3 py-2"
->
+
+<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
   {[
-    { px: 150, label: "Compacta (150px)", descripcion: "Ideal para headers y navegación" },
-    { px: 200, label: "Pequeña (200px)", descripcion: "Contenido básico" },
-    { px: 300, label: "Media (300px)", descripcion: "Contenido estándar" },
-    { px: 400, label: "Mediana-Grande (400px)", descripcion: "Sección con más contenido" },
-    { px: 500, label: "Grande (500px)", descripcion: "Sección destacada" },
-    { px: 600, label: "Muy Grande (600px)", descripcion: "Galería o contenido extenso" },
-    { px: 800, label: "Pantalla completa (800px)", descripcion: "Hero section principal" }
+    { 
+      px: 120,
+      label: "Compacta", 
+      descripcion: "Headers, navegación",
+      porcentaje: "10%"
+    },
+    { 
+      px: 180,
+      label: "Pequeña", 
+      descripcion: "Info básica",
+      porcentaje: "15%"
+    },
+    { 
+      px: 240,
+      label: "Media Chica", 
+      descripcion: "Contenido secundario",
+      porcentaje: "20%"
+    },
+    { 
+      px: 360,
+      label: "Media", 
+      descripcion: "Contenido principal",
+      porcentaje: "30%"
+    },
+    { 
+      px: 480,
+      label: "Grande", 
+      descripcion: "Sección destacada",
+      porcentaje: "40%"
+    },
+    { 
+      px: 600,
+      label: "Muy Grande", 
+      descripcion: "Hero section",
+      porcentaje: "50%"
+    },
+    { 
+      px: 960,
+      label: "Dominante", 
+      descripcion: "Sección principal",
+      porcentaje: "80%"
+    },
+    { 
+      px: 1200,
+      label: "Pantalla Completa", 
+      descripcion: "Ocupa toda la pantalla",
+      porcentaje: "100%"
+    }
   ].map((opcion) => (
-    <option key={opcion.px} value={opcion.px}>
-      {opcion.label} - {opcion.descripcion}
-    </option>
+    <div
+      key={opcion.px}
+      onClick={() => setAltura(opcion.px)}
+      className={`relative border-2 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+        altura === opcion.px 
+          ? "border-purple-500 bg-purple-50 shadow-md" 
+          : "border-gray-200 hover:border-purple-300 hover:bg-purple-25"
+      }`}
+    >
+      {/* Preview visual centrado */}
+      <div className="flex justify-center mb-3">
+        <div className="w-16 h-20 bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-gray-200 rounded overflow-hidden shadow-sm">
+          <div 
+            className={`w-full transition-all duration-300 ${
+              altura === opcion.px 
+                ? "bg-gradient-to-b from-purple-400 to-purple-500" 
+                : "bg-gradient-to-b from-purple-300 to-purple-400"
+            }`}
+            style={{ height: opcion.porcentaje }}
+          />
+        </div>
+      </div>
+      
+      {/* Información centrada */}
+      <div className="text-center">
+        <div className="font-semibold text-sm text-gray-900 mb-1">{opcion.label}</div>
+        <div className={`text-xs px-2 py-1 rounded-full font-medium mb-2 inline-block ${
+          altura === opcion.px 
+            ? "bg-purple-100 text-purple-700" 
+            : "bg-gray-100 text-gray-600"
+        }`}>
+          {opcion.porcentaje}
+        </div>
+        <div className="text-xs text-gray-600">{opcion.descripcion}</div>
+      </div>
+      
+      {/* Checkmark en esquina */}
+      {altura === opcion.px && (
+        <div className="absolute top-2 right-2 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      )}
+    </div>
   ))}
-</select>
+</div>
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Color de fondo</label>
-            <input
-              type="color"
-              value={fondo}
-              onChange={(e) => setFondo(e.target.value)}
-              className="w-full mb-4 border rounded px-3 py-2 h-12"
-            />
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo (opcional)</label>
-            <input
-              type="text"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-              placeholder="hero, galeria, etc"
-              className="w-full mb-4 border rounded px-3 py-2"
-            />
+{/* Información contextual */}
+<div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+  <div className="flex items-center gap-2">
+    <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <div className="text-sm text-blue-700">
+      <strong>Los porcentajes</strong> se refieren a la proporción de tu invitación completa. Una sección del 30% ocupará un tercio de cualquier pantalla.
+    </div>
+  </div>
+</div>
+
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">Color de fondo</label>
+    <input
+      type="color"
+      value={fondo}
+      onChange={(e) => setFondo(e.target.value)}
+      className="w-full border rounded px-3 py-2 h-12"
+    />
+  </div>
+  
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo (opcional)</label>
+    <input
+      type="text"
+      value={tipo}
+      onChange={(e) => setTipo(e.target.value)}
+      placeholder="hero, galeria, etc"
+      className="w-full border rounded px-3 py-2"
+    />
+  </div>
+</div>
           </>
         )}
 

@@ -92,55 +92,67 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
 
 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
   {[
-    { 
-      px: 120,
-      label: "Compacta", 
-      descripcion: "Headers, navegación",
-      porcentaje: "10%"
-    },
-    { 
-      px: 180,
-      label: "Pequeña", 
-      descripcion: "Info básica",
-      porcentaje: "15%"
-    },
-    { 
-      px: 240,
-      label: "Media Chica", 
-      descripcion: "Contenido secundario",
-      porcentaje: "20%"
-    },
-    { 
-      px: 360,
-      label: "Media", 
-      descripcion: "Contenido principal",
-      porcentaje: "30%"
-    },
-    { 
-      px: 480,
-      label: "Grande", 
-      descripcion: "Sección destacada",
-      porcentaje: "40%"
-    },
-    { 
-      px: 600,
-      label: "Muy Grande", 
-      descripcion: "Hero section",
-      porcentaje: "50%"
-    },
-    { 
-      px: 960,
-      label: "Dominante", 
-      descripcion: "Sección principal",
-      porcentaje: "80%"
-    },
-    { 
-      px: 1200,
-      label: "Pantalla Completa", 
-      descripcion: "Ocupa toda la pantalla",
-      porcentaje: "100%"
-    }
-  ].map((opcion) => (
+  { 
+    px: 80,
+    label: "Compacta", 
+    descripcion: "Headers, navegación",
+    porcentaje: "10%"
+  },
+  { 
+    px: 120,
+    label: "Pequeña", 
+    descripcion: "Info básica",
+    porcentaje: "15%"
+  },
+  { 
+    px: 160,
+    label: "Media Chica", 
+    descripcion: "Contenido secundario",
+    porcentaje: "20%"
+  },
+  { 
+    px: 240,
+    label: "Media", 
+    descripcion: "Contenido principal",
+    porcentaje: "30%"
+  },
+  { 
+    px: 320,
+    label: "Grande", 
+    descripcion: "Sección destacada",
+    porcentaje: "40%"
+  },
+  { 
+    px: 400,
+    label: "Muy Grande", 
+    descripcion: "Hero section",
+    porcentaje: "50%"
+  },
+  { 
+    px: 640,
+    label: "Dominante", 
+    descripcion: "Sección principal",
+    porcentaje: "80%"
+  },
+  { 
+    px: 800,
+    label: "Pantalla Completa", 
+    descripcion: "Ocupa toda la pantalla",
+    porcentaje: "100%"
+  },
+  { 
+    px: 1200,
+    label: "Extra Grande", 
+    descripcion: "Sección muy alta",
+    porcentaje: "150%"
+  },
+  { 
+    px: 1600,
+    label: "Super Grande", 
+    descripcion: "Sección extensa",
+    porcentaje: "200%"
+  }
+].map((opcion) => (
     <div
       key={opcion.px}
       onClick={() => setAltura(opcion.px)}

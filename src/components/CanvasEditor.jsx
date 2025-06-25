@@ -1061,7 +1061,7 @@ const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
 
 
 const escalaActiva = zoom === 1 ? scale : zoom;
-const escalaVisual = zoom === 1 ? scale : zoom;
+const escalaVisual = zoom === 1 ? scale : (zoom * 1.15); // ✅ 800px × 1.15 = 920px visuales
 
 const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
@@ -1102,7 +1102,7 @@ return (
     style={{
       transform: `scale(${escalaVisual})`,
       transformOrigin: 'top center',
-      width: "1000px", // ✅ MÁS ANCHO PARA LÍNEAS + CANVAS
+      width: zoom === 0.8 ? "1220px" : "1000px", // ✅ 920px canvas + 150px cada lado
       position: "relative",
     }}
   >
@@ -1112,7 +1112,7 @@ return (
 <div
   className="relative"
   style={{
-    width: "1000px", // ✅ CONTENEDOR MÁS ANCHO
+    width: zoom === 0.8 ? "1220px" : "1000px", // ✅ AJUSTAR SEGÚN ZOOM
     display: "flex",
     justifyContent: "center",
   }}
@@ -1371,155 +1371,26 @@ onMouseUp={() => {
     />
   ];
 
-  if (esActiva) {
-    elementos.push(
-      // Borde principal con gradiente y sombra
-      <Rect
-        key={`border-principal-${seccion.id}`}
-        x={8}
-        y={offsetY + 8}
-        width={784}
-        height={alturaPx - 16}
-        fill="transparent"
-        stroke="#773dbe"
-        strokeWidth={estaAnimando ? 4 : 3}
-        cornerRadius={8}
-        shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
-        shadowBlur={estaAnimando ? 16 : 12}
-        shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
-        listening={false}
-      />,
-      
-      // Borde interior sutil
-      <Rect
-        key={`border-interior-${seccion.id}`}
-        x={12}
-        y={offsetY + 12}
-        width={776}
-        height={alturaPx - 24}
-        fill="transparent"
-        stroke="rgba(119, 61, 190, 0.3)"
-        strokeWidth={1}
-        cornerRadius={6}
-        listening={false}
-      />,
-      
-      // Overlay de selección con opacity muy baja
-      <Rect
-        key={`overlay-${seccion.id}`}
-        x={8}
-        y={offsetY + 8}
-        width={784}
-        height={alturaPx - 16}
-        fill={estaAnimando ? "rgba(119, 61, 190, 0.08)" : "rgba(119, 61, 190, 0.03)"}
-        cornerRadius={8}
-        listening={false}
-      />,
-      
-      // Indicadores de esquina modernos
-      <Rect
-        key={`esquina-tl-${seccion.id}`}
-        x={16}
-        y={offsetY + 16}
-        width={8}
-        height={8}
-        fill="#773dbe"
-        cornerRadius={1}
-        listening={false}
-      />,
-      <Rect
-        key={`esquina-tr-${seccion.id}`}
-        x={776}
-        y={offsetY + 16}
-        width={8}
-        height={8}
-        fill="#773dbe"
-        cornerRadius={1}
-        listening={false}
-      />,
-      <Rect
-        key={`esquina-bl-${seccion.id}`}
-        x={16}
-        y={offsetY + alturaPx - 24}
-        width={8}
-        height={8}
-        fill="#773dbe"
-        cornerRadius={1}
-        listening={false}
-      />,
-      <Rect
-        key={`esquina-br-${seccion.id}`}
-        x={776}
-        y={offsetY + alturaPx - 24}
-        width={8}
-        height={8}
-        fill="#773dbe"
-        cornerRadius={1}
-        listening={false}
-      />,
-      
-      // Badge de sección activa con animación
-      <Rect
-        key={`badge-rect-${seccion.id}`}
-        x={24}
-        y={offsetY + 24}
-        width={120}
-        height={18}
-        fill="#773dbe"
-        cornerRadius={9}
-        shadowColor="rgba(119, 61, 190, 0.4)"
-        shadowBlur={6}
-        shadowOffset={{ x: 0, y: 2 }}
-        listening={false}
-      />,
-      <Text
-        key={`badge-text-${seccion.id}`}
-        x={84}
-        y={offsetY + 29}
-        text="SECCIÓN ACTIVA"
-        fontSize={9}
-        fontFamily="Arial, sans-serif"
-        fontWeight="bold"
-        fill="white"
-        align="center"
-        listening={false}
-      />,
-      
-      // Líneas de guía sutiles en los bordes
-      <Line
-        key={`guia-izq-${seccion.id}`}
-        points={[8, offsetY + 8, 8, offsetY + alturaPx - 8]}
-        stroke="rgba(119, 61, 190, 0.2)"
-        strokeWidth={1}
-        dash={[4, 4]}
-        listening={false}
-      />,
-      <Line
-        key={`guia-der-${seccion.id}`}
-        points={[792, offsetY + 8, 792, offsetY + alturaPx - 8]}
-        stroke="rgba(119, 61, 190, 0.2)"
-        strokeWidth={1}
-        dash={[4, 4]}
-        listening={false}
-      />
-    );
-  } else {
-    // Borde sutil para secciones no activas
-    elementos.push(
-      <Rect
-        key={`seccion-border-${seccion.id}`}
-        x={0}
-        y={offsetY}
-        width={800}
-        height={alturaPx}
-        fill="transparent"
-        stroke="#e5e7eb"
-        strokeWidth={1}
-        dash={[8, 4]}
-        listening={false}
-      />
-    );
-  }
+ if (esActiva) {
+  elementos.push(
+    // Borde principal - justo en el margen de la sección, sin bordes redondeados
+    <Rect
+      key={`border-principal-${seccion.id}`}
+      x={0}
+      y={offsetY}
+      width={800}
+      height={alturaPx}
+      fill="transparent"
+      stroke="#773dbe"
+      strokeWidth={estaAnimando ? 4 : 3}
+      cornerRadius={0} // ✅ SIN BORDES REDONDEADOS
+      shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
+      shadowBlur={estaAnimando ? 16 : 12}
+      shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
+      listening={false}
+    />
+  );
+}
 
   return elementos;
 })}
@@ -1801,7 +1672,7 @@ onChange={(id, nuevo) => {
 {/* 🔥 STAGE ADICIONAL SOLO PARA LÍNEAS DIVISORIAS */}
 {zoom === 0.8 && (
   <Stage
-    width={1200} // 800px canvas + 200px cada lado
+    width={1220} // ✅ 920px canvas + 150px cada lado
     height={altoCanvasDinamico}
     style={{
       position: "absolute",
@@ -1821,25 +1692,30 @@ onChange={(id, nuevo) => {
         
         return (
           <Group key={`dividers-secondary-${seccion.id}`}>
-            {/* Línea izquierda - 200px hacia afuera, punteada, gris */}
-            <Line
-              points={[0, alturaAcumulada, 200, alturaAcumulada]}
-              stroke="#666666"
-              strokeWidth={2}
-              opacity={0.8}
-              dash={[8, 6]}
-              listening={false}
-            />
-            {/* Línea derecha - 200px hacia afuera, punteada, gris */}
-            <Line
-              points={[1000, alturaAcumulada, 1200, alturaAcumulada]}
-              stroke="#666666"
-              strokeWidth={2}
-              opacity={0.8}
-              dash={[8, 6]}
-              listening={false}
-            />
-          </Group>
+  {/* Línea izquierda - PEGADA al borde izquierdo del canvas */}
+  <Line
+    points={[210, alturaAcumulada, 10, alturaAcumulada]} // ✅ DESDE X=210 (borde real del canvas) HACIA X=10
+    stroke="#999999"
+    strokeWidth={1}
+    opacity={0.6}
+    dash={[3, 3]} // ✅ PUNTOS CORTOS
+    listening={false}
+  />
+  
+  {/* Línea derecha - PEGADA al borde derecho del canvas */}
+  <Line
+    points={[1010, alturaAcumulada, 1210, alturaAcumulada]} // ✅ DESDE X=1010 (borde real del canvas) HACIA X=1210
+    stroke="#999999"
+    strokeWidth={1}
+    opacity={0.6}
+    dash={[3, 3]} // ✅ PUNTOS CORTOS
+    listening={false}
+  />
+  
+  {/* ✨ Conectores sutiles eliminados - ya no son necesarios */}
+</Group>
+
+          
         );
       })}
     </Layer>

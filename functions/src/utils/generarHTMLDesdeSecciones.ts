@@ -23,7 +23,10 @@ export function generarHTMLDesdeSecciones(secciones: any[], objetos: any[]): str
         top: ${topPercent}%;
         height: ${heightPercent}%;
         width: 100%;
-        background: ${seccion.fondo || "transparent"};
+        background: ${seccion.fondoTipo === "imagen" 
+  ? `url(${seccion.fondoImagen}) center/cover no-repeat`
+  : (seccion.fondo || "transparent")
+};
       ">
         ${contenido}
       </div>

@@ -30,6 +30,43 @@ import {
 
 
 
+// Componente para secciones con fondo de imagen
+const SeccionConFondoImagen = ({ seccion, offsetY, alturaPx, onSelect }) => {
+  const [fondoImage] = useImage(seccion.fondoImagen);
+  
+  return (
+    <Group>
+      {/* Fondo base (fallback si la imagen no carga) */}
+      <Rect
+        id={seccion.id}
+        x={0}
+        y={offsetY}
+        width={800}
+        height={alturaPx}
+        fill={seccion.fondo?.startsWith('url(') ? "#f0f0f0" : (seccion.fondo || "#ffffff")}
+        listening={true}
+        onClick={onSelect}
+      />
+      
+      {/* Imagen de fondo si está cargada */}
+      {fondoImage && (
+        <KonvaImage
+          image={fondoImage}
+          x={0}
+          y={offsetY}
+          width={800}
+          height={alturaPx}
+          listening={true}
+          onClick={onSelect}
+          // Ajustar la imagen para cubrir toda la sección
+          scaleX={800 / fondoImage.width}
+          scaleY={alturaPx / fondoImage.height}
+        />
+      )}
+    </Group>
+  );
+};
+
 const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="black" />);
 const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 
@@ -97,7 +134,7 @@ const fuentesGoogle = [
       const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
       const [icono] = useImage(urlData);
       const nuevoTextoRef = useRef(null);
-
+      const botonOpcionesRef = useRef(null);
 
 
  const registerRef = useCallback((id, node) => {
@@ -244,12 +281,18 @@ useEffect(() => {
 
 
 useEffect(() => {
-  if (onHistorialChange) onHistorialChange(historial);
-}, [historial]);
+  if (onHistorialChange) {
+    console.log("📤 Enviando historial al exterior:", historial.length);
+    onHistorialChange(historial);
+  }
+}, [historial, onHistorialChange]);
 
 useEffect(() => {
-  if (onFuturosChange) onFuturosChange(futuros);
-}, [futuros]);
+  if (onFuturosChange) {
+    console.log("📤 Enviando futuros al exterior:", futuros.length);
+    onFuturosChange(futuros);
+  }
+}, [futuros, onFuturosChange]);
 
 
 
@@ -301,7 +344,7 @@ useEffect(() => {
 }, [slug]);
 
 
-// REEMPLAZAR ESTE useEffect:
+// 📚 Sistema de historial completo (objetos + secciones)
 useEffect(() => {
   if (!cargado) return;
 
@@ -310,41 +353,53 @@ useEffect(() => {
     return;
   }
 
-  // 🎯 NUEVO: No guardar historial durante transformaciones
+  // 🎯 No guardar historial durante transformaciones
   if (window._resizeData?.isResizing) {
     return;
   }
 
-  // 🔥 Usar un ref para comparar el estado anterior
-  const objetosStringified = JSON.stringify(objetos);
+  // 🔥 Crear estado completo con objetos y secciones
+  const estadoCompleto = {
+    objetos: objetos,
+    secciones: secciones,
+    timestamp: Date.now()
+  };
+  
+  const estadoStringified = JSON.stringify(estadoCompleto);
   
   setHistorial((prev) => {
     const ultimoStringified = prev.length > 0 ? JSON.stringify(prev[prev.length - 1]) : null;
-    if (ultimoStringified !== objetosStringified) {
-      return [...prev.slice(-19), objetos]; // 🔥 Limitar historial a 20 elementos
+    if (ultimoStringified !== estadoStringified) {
+      const nuevoHistorial = [...prev.slice(-19), estadoCompleto]; // Limitar a 20 elementos
+      console.log("💾 Guardando en historial:", {
+        objetosCount: objetos.length,
+        seccionesCount: secciones.length,
+        historialSize: nuevoHistorial.length
+      });
+      return nuevoHistorial;
     }
     return prev;
   });
 
+  // Limpiar futuros cuando hay nuevos cambios
   setFuturos([]);
   
-  // 💾 Guardado con debounce más largo
+  // 💾 Guardado en Firebase con debounce
   const timeoutId = setTimeout(async () => {
     try {
       const ref = doc(db, "borradores", slug);
       await updateDoc(ref, {
         objetos,
+        secciones,
         ultimaEdicion: serverTimestamp(),
       });
     } catch (error) {
       console.error("Error guardando:", error);
     }
-  }, 500); // 🔥 Aumentar debounce a 500ms
+  }, 500);
 
   return () => clearTimeout(timeoutId);
-}, [objetos, cargado, slug]); // 🔥 Agregar slug como dependencia explícita
-
-
+}, [objetos, secciones, cargado, slug]); // 🔥 Incluir secciones en dependencias
 
 const actualizarObjeto = (index, nuevo) => {
    
@@ -420,45 +475,93 @@ if (e.key === "Delete" || e.key === "Backspace") {
 }, [elementosSeleccionados]);
 
 
+// 🔄 Sistema completo de deshacer/rehacer (objetos + secciones)
 useEffect(() => {
   const handleKeyDown = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    // Deshacer (Ctrl + Z)
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault();
+      console.log("🔄 Deshacer - Historial actual:", historial.length);
+      
       if (historial.length > 1) {
+        // Cerrar cualquier modo de edición activo
+        setModoEdicion(false);
+        setElementosSeleccionados([]);
+        setMostrarPanelZ(false);
+        
         setHistorial((prev) => {
           const nuevoHistorial = [...prev];
-          const actual = nuevoHistorial.pop();
-          const anterior = nuevoHistorial[nuevoHistorial.length - 1];
+          const estadoActual = nuevoHistorial.pop(); // Remover estado actual
+          const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
+          
+          console.log("🔄 Restaurando estado:", {
+            objetosCount: estadoAnterior.objetos?.length || 0,
+            seccionesCount: estadoAnterior.secciones?.length || 0
+          });
+          
+          // 🔥 Marcar que viene del historial para evitar guardarlo de nuevo
           ignoreNextUpdateRef.current = true;
-            setObjetos(anterior);
-
-            setElementosSeleccionados([]); // ✅ Evita error si ya no existe
-            setModoEdicion(false);         // ✅ Cierra edición inline si estaba activa
-
-          setFuturos((f) => [actual, ...f]); // guarda para rehacer
+          
+          // 🔥 Restaurar TANTO objetos como secciones
+          setObjetos(estadoAnterior.objetos || []);
+          setSecciones(estadoAnterior.secciones || []);
+          
+          // Guardar estado actual en futuros para rehacer
+          setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
+          
+          console.log("✅ Deshecho aplicado completamente");
           return nuevoHistorial;
         });
+      } else {
+        console.log("❌ No hay más cambios para deshacer");
       }
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+    // Rehacer (Ctrl + Y o Ctrl + Shift + Z)
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
       e.preventDefault();
+      console.log("🔄 Rehacer - Futuros disponibles:", futuros.length);
+      
       if (futuros.length > 0) {
-        const siguiente = futuros[0];
+        // Cerrar cualquier modo de edición activo
+        setModoEdicion(false);
+        setElementosSeleccionados([]);
+        setMostrarPanelZ(false);
+        
+        const siguienteEstado = futuros[0];
+        
+        console.log("🔄 Restaurando estado futuro:", {
+          objetosCount: siguienteEstado.objetos?.length || 0,
+          seccionesCount: siguienteEstado.secciones?.length || 0
+        });
+        
+        // 🔥 Marcar que viene del historial
         ignoreNextUpdateRef.current = true;
-        setObjetos(siguiente);
-
-        setFuturos((f) => f.slice(1)); // eliminamos el que usamos
-        setHistorial((h) => [...h, siguiente]); // lo agregamos al historial
+        
+        // 🔥 Restaurar TANTO objetos como secciones
+        setObjetos(siguienteEstado.objetos || []);
+        setSecciones(siguienteEstado.secciones || []);
+        
+        // Mover de futuros a historial
+        setFuturos((f) => f.slice(1));
+        setHistorial((h) => [...h, siguienteEstado]);
+        
+        console.log("✅ Rehecho aplicado completamente");
+      } else {
+        console.log("❌ No hay cambios para rehacer");
       }
     }
   };
 
-  window.addEventListener("keydown", handleKeyDown);
-  return () => window.removeEventListener("keydown", handleKeyDown);
+  // Escuchar tanto en document como en window para máxima compatibilidad
+document.addEventListener("keydown", handleKeyDown);
+window.addEventListener("keydown", handleKeyDown);
+
+return () => {
+  document.removeEventListener("keydown", handleKeyDown);
+  window.removeEventListener("keydown", handleKeyDown);
+};
 }, [historial, futuros]);
-
-
 
 
 const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
@@ -672,6 +775,8 @@ useEffect(() => {
     };
   }
 }, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
+
+
 
 
 const finalizarEdicionInline = () => {
@@ -931,8 +1036,229 @@ const eliminarElemento = () => {
 };
 
 
+// 🎨 Reemplazar fondo de sección con imagen seleccionada
+const reemplazarFondoSeccion = async (elementoImagen) => {
+  if (!elementoImagen || elementoImagen.tipo !== "imagen") {
+    console.warn("❌ El elemento no es una imagen válida");
+    return;
+  }
 
-// Agregar esta función después de la línea 724 (después de finalizarEdicionInline)
+  if (!elementoImagen.seccionId) {
+    console.warn("❌ La imagen no tiene sección asignada");
+    return;
+  }
+
+  const confirmar = confirm("¿Querés usar esta imagen como fondo de la sección?\n\nEsto reemplazará el fondo actual.");
+  if (!confirmar) return;
+
+  try {
+    console.log("🎨 Convirtiendo imagen a fondo de sección:", elementoImagen.id);
+    
+    // 🔥 NO usar setState separados - hacer todo en un solo cambio
+    // para que el historial capture ambos cambios juntos
+    
+    // Actualizar secciones
+    const seccionesActualizadas = secciones.map(seccion => 
+      seccion.id === elementoImagen.seccionId 
+        ? { 
+            ...seccion, 
+            fondo: `url(${elementoImagen.src})`,
+            fondoTipo: "imagen",
+            fondoImagen: elementoImagen.src
+          }
+        : seccion
+    );
+    
+    // Filtrar objetos (eliminar la imagen)
+    const objetosFiltrados = objetos.filter(obj => obj.id !== elementoImagen.id);
+    
+    // 🔥 Actualizar ambos estados AL MISMO TIEMPO
+    setSecciones(seccionesActualizadas);
+    setObjetos(objetosFiltrados);
+    
+    // Limpiar selección
+    setElementosSeleccionados([]);
+    setMostrarPanelZ(false);
+
+    console.log("✅ Fondo de sección actualizado con imagen");
+    
+  } catch (error) {
+    console.error("❌ Error al reemplazar fondo de sección:", error);
+    alert("Ocurrió un error al cambiar el fondo. Inténtalo de nuevo.");
+  }
+};
+
+const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+const escalaActiva = zoom === 1 ? scale : zoom;
+const escalaVisual = zoom === 1 ? scale : (zoom * 1.15);
+const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
+
+
+// 🚀 Función para actualizar posición del botón SIN re-render
+const actualizarPosicionBotonOpciones = useCallback(() => {
+  if (!botonOpcionesRef.current || elementosSeleccionados.length !== 1) return;
+  
+  const nodeRef = elementRefs.current[elementosSeleccionados[0]];
+  const stage = stageRef.current;
+  const contenedor = contenedorRef.current;
+  
+  if (!nodeRef || !stage || !contenedor) return;
+  
+  try {
+    // 🔥 OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE (coordenadas locales)
+    const box = nodeRef.getClientRect();
+    
+    // 🔥 OBTENER POSICIÓN DEL STAGE EN EL VIEWPORT
+    const stageContainer = stage.container();
+    const stageRect = stageContainer.getBoundingClientRect();
+    
+    // 🔥 OBTENER SCROLL Y OFFSET DEL CONTENEDOR PRINCIPAL
+    const contenedorRect = contenedor.getBoundingClientRect();
+    const scrollTop = contenedor.scrollTop || 0;
+    const scrollLeft = contenedor.scrollLeft || 0;
+    
+    // 🎯 CÁLCULO CORRECTO: Posición absoluta en viewport
+    const elementoX = stageRect.left + (box.x * escalaVisual);
+    const elementoY = stageRect.top + (box.y * escalaVisual);
+    const anchoElemento = box.width * escalaVisual;
+    
+    // 🔥 POSICIÓN FINAL: Esquina superior derecha del elemento
+    const botonX = elementoX + anchoElemento - 12; // -12px (mitad del botón)
+    const botonY = elementoY - 12; // -12px (mitad del botón)
+    
+    // 🔥 VALIDACIÓN: Solo mostrar si está dentro del viewport visible
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    if (botonX >= 0 && botonX <= viewportWidth && botonY >= 0 && botonY <= viewportHeight) {
+      botonOpcionesRef.current.style.left = `${botonX}px`;
+      botonOpcionesRef.current.style.top = `${botonY}px`;
+      botonOpcionesRef.current.style.display = 'flex';
+    } else {
+      // Ocultar si está fuera del viewport
+      botonOpcionesRef.current.style.display = 'none';
+    }
+    
+  } catch (error) {
+    console.warn("Error actualizando posición del botón:", error);
+    // En caso de error, ocultar el botón
+    if (botonOpcionesRef.current) {
+      botonOpcionesRef.current.style.display = 'none';
+    }
+  }
+}, [elementosSeleccionados, escalaVisual, elementRefs]);
+
+
+// 🔄 Actualizar posición del botón cuando cambia la selección o escala
+useEffect(() => {
+  if (elementosSeleccionados.length === 1) {
+    // Pequeño delay para que el elemento esté renderizado
+    setTimeout(() => {
+      actualizarPosicionBotonOpciones();
+    }, 50);
+  }
+}, [elementosSeleccionados, escalaActiva, actualizarPosicionBotonOpciones]);
+
+// 🔄 Actualizar posición en scroll/resize
+useEffect(() => {
+  const handleScrollResize = () => {
+    if (elementosSeleccionados.length === 1) {
+      actualizarPosicionBotonOpciones();
+    }
+  };
+  
+  window.addEventListener('scroll', handleScrollResize, true);
+  window.addEventListener('resize', handleScrollResize);
+  
+  return () => {
+    window.removeEventListener('scroll', handleScrollResize, true);
+    window.removeEventListener('resize', handleScrollResize);
+  };
+}, [elementosSeleccionados, actualizarPosicionBotonOpciones]);
+
+
+// 🔧 Funciones públicas para deshacer/rehacer (llamadas desde botones externos)
+const ejecutarDeshacer = useCallback(() => {
+  console.log("🔄 ejecutarDeshacer llamado desde botón externo");
+  console.log("📊 Estado actual:", { historial: historial.length, futuros: futuros.length });
+  
+  if (historial.length > 1) {
+    // Cerrar cualquier modo de edición activo
+    setModoEdicion(false);
+    setElementosSeleccionados([]);
+    setMostrarPanelZ(false);
+    
+    setHistorial((prev) => {
+      const nuevoHistorial = [...prev];
+      const estadoActual = nuevoHistorial.pop();
+      const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
+      
+      console.log("🔄 Restaurando estado:", {
+        objetosCount: estadoAnterior.objetos?.length || 0,
+        seccionesCount: estadoAnterior.secciones?.length || 0
+      });
+      
+      ignoreNextUpdateRef.current = true;
+      setObjetos(estadoAnterior.objetos || []);
+      setSecciones(estadoAnterior.secciones || []);
+      
+      setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
+      
+      console.log("✅ Deshecho aplicado desde botón externo");
+      return nuevoHistorial;
+    });
+  } else {
+    console.log("❌ No hay más cambios para deshacer");
+  }
+}, [historial, futuros]);
+
+const ejecutarRehacer = useCallback(() => {
+  console.log("🔄 ejecutarRehacer llamado desde botón externo");
+  console.log("📊 Estado actual:", { historial: historial.length, futuros: futuros.length });
+  
+  if (futuros.length > 0) {
+    setModoEdicion(false);
+    setElementosSeleccionados([]);
+    setMostrarPanelZ(false);
+    
+    const siguienteEstado = futuros[0];
+    
+    console.log("🔄 Restaurando estado futuro:", {
+      objetosCount: siguienteEstado.objetos?.length || 0,
+      seccionesCount: siguienteEstado.secciones?.length || 0
+    });
+    
+    ignoreNextUpdateRef.current = true;
+    setObjetos(siguienteEstado.objetos || []);
+    setSecciones(siguienteEstado.secciones || []);
+    
+    setFuturos((f) => f.slice(1));
+    setHistorial((h) => [...h, siguienteEstado]);
+    
+    console.log("✅ Rehecho aplicado desde botón externo");
+  } else {
+    console.log("❌ No hay cambios para rehacer");
+  }
+}, [historial, futuros]);
+
+// 🌐 Exponer funciones al window para acceso desde botones externos
+useEffect(() => {
+  window.canvasEditor = {
+    deshacer: ejecutarDeshacer,
+    rehacer: ejecutarRehacer,
+    getHistorial: () => ({ historial: historial.length, futuros: futuros.length })
+  };
+  
+  console.log("🌐 Funciones de historial expuestas al window");
+  
+  return () => {
+    if (window.canvasEditor) {
+      delete window.canvasEditor;
+    }
+  };
+}, [ejecutarDeshacer, ejecutarRehacer, historial.length, futuros.length]);
+
+
 
 const handleStartTextEdit = async (id, obj) => {
   console.log("🚨 handleStartTextEdit llamado para:", id);
@@ -1156,14 +1482,6 @@ const moverSeccion = async (seccionId, direccion) => {
 
 
 
-
-const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
-
-
-const escalaActiva = zoom === 1 ? scale : zoom;
-const escalaVisual = zoom === 1 ? scale : (zoom * 1.15); // ✅ 800px × 1.15 = 920px visuales
-
-const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
 
 
@@ -1454,8 +1772,17 @@ onMouseUp={() => {
         console.log("🎭 SECCIÓN ANIMANDO:", seccion.id);
       }
 
-  const elementos = [
-    // Fondo principal de la sección
+ const elementos = [
+  // Fondo de sección - puede ser color o imagen
+  seccion.fondoTipo === "imagen" ? (
+    <SeccionConFondoImagen
+      key={`seccion-img-${seccion.id}`}
+      seccion={seccion}
+      offsetY={offsetY}
+      alturaPx={alturaPx}
+      onSelect={() => setSeccionActivaId(seccion.id)}
+    />
+  ) : (
     <Rect
       key={`seccion-${seccion.id}`}
       id={seccion.id}
@@ -1469,7 +1796,8 @@ onMouseUp={() => {
       listening={true}
       onClick={() => setSeccionActivaId(seccion.id)}
     />
-  ];
+  )
+];
 
  if (esActiva) {
   elementos.push(
@@ -1793,7 +2121,18 @@ onChange={(id, nuevo) => {
   });
 }}
       
-        onDragMovePersonalizado={mostrarGuias}
+      onDragMovePersonalizado={(pos, elementId) => {
+  mostrarGuias(pos, elementId);
+  
+  // 🔥 ACTUALIZAR BOTÓN EN TIEMPO REAL si es el elemento seleccionado
+  if (elementosSeleccionados.includes(elementId)) {
+    requestAnimationFrame(() => {
+      if (typeof actualizarPosicionBotonOpciones === 'function') {
+        actualizarPosicionBotonOpciones();
+      }
+    });
+  }
+}}
         onDragEndPersonalizado={() => setGuiaLineas([])}
         dragStartPos={dragStartPos}
         hasDragged={hasDragged}    
@@ -1866,6 +2205,13 @@ onChange={(id, nuevo) => {
               nuevos[objIndex] = updatedElement;
               return nuevos;
             });
+
+            // 🔥 ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
+requestAnimationFrame(() => {
+  if (typeof actualizarPosicionBotonOpciones === 'function') {
+    actualizarPosicionBotonOpciones();
+  }
+});
             
         } else if (newAttrs.isFinal) {
   // Final: actualización completa
@@ -2004,34 +2350,115 @@ onChange={(id, nuevo) => {
 
 
 
-{/* ✅ Botón de orden de capas (para cualquier tipo de objeto) */}
-{elementosSeleccionados.length === 1 && (
+{/* ✅ Botón de opciones PEGADO a la esquina superior derecha del elemento */}
+{elementosSeleccionados.length === 1 && (() => {
+  const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
+  const nodeRef = elementRefs.current[elementosSeleccionados[0]];
+  
+  if (!nodeRef || !elementoSeleccionado) return null;
+  
+  const contenedor = contenedorRef.current;
+  const stage = stageRef.current;
+  if (!contenedor || !stage) return null;
+  
+  // 🔥 OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE
+  const box = nodeRef.getClientRect();
+  
+  // 🔥 OBTENER COORDENADAS DEL STAGE RELATIVAS AL VIEWPORT
+  const stageContainer = stage.container();
+  const stageRect = stageContainer.getBoundingClientRect();
+  
+  // 🔥 CALCULAR POSICIÓN EXACTA DEL ELEMENTO EN PANTALLA
+  const elementoEnPantallaX = stageRect.left + (box.x * escalaActiva);
+  const elementoEnPantallaY = stageRect.top + (box.y * escalaActiva);
+  const anchoElemento = box.width * escalaActiva;
+  
+  // 🎯 POSICIÓN MUY CERCA: Esquina superior derecha pegada al elemento
+  const botonX = elementoEnPantallaX + anchoElemento - 8; // Solo -8px para que se superponga un poco
+  const botonY = elementoEnPantallaY - 8; // -8px arriba del elemento
+  
+  return (
   <div
-    className="fixed z-50 bg-white border rounded shadow p-1 text-sm boton-mini-z"
+    ref={botonOpcionesRef}
+    className="fixed z-50 bg-white border-2 border-purple-500 rounded-full shadow-lg hover:shadow-xl transition-shadow duration-200"
     style={{
-      top: "80px", // Arriba de la barra de texto
-      right: "20px", // Esquina derecha
+      left: "0px", // 🔥 POSICIÓN INICIAL - será actualizada por la función
+        top: "0px",
+      width: "24px",
+      height: "24px",
+      display: "none",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "auto",
+      transition: "none",
+      backgroundColor: "rgba(255, 255, 255, 0.95)",
+      backdropFilter: "blur(4px)",
+      border: "2px solid #773dbe",
     }}
   >
     <button
-      onClick={() => setMostrarPanelZ((prev) => !prev)}
-      className="hover:bg-gray-100 px-2 py-1 rounded"
-      title="Orden de capa"
+      onClick={(e) => {
+        e.stopPropagation();
+        setMostrarPanelZ((prev) => !prev);
+      }}
+      className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors text-xs"
+      title="Opciones del elemento"
     >
-      ☰
+      ⚙️
     </button>
   </div>
-)}
+);
+})()}
 
 
-{mostrarPanelZ && (
-  <div
-    className="fixed z-50 bg-white border rounded shadow p-3 text-sm space-y-1 menu-z-index w-64"
-    style={{
-      top: "110px", // Justo debajo del botón ☰
-      right: "20px",
-    }}
-  >
+
+{mostrarPanelZ && (() => {
+  const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
+  const nodeRef = elementRefs.current[elementosSeleccionados[0]];
+  
+  if (!nodeRef || !elementoSeleccionado || !botonOpcionesRef.current) return null;
+  
+  // 🔥 OBTENER POSICIÓN EXACTA DEL BOTÓN (no del elemento)
+  const botonRect = botonOpcionesRef.current.getBoundingClientRect();
+  
+  // 🎯 POSICIÓN DEL MENÚ: Desde el botón hacia derecha y abajo
+  const menuX = botonRect.right + 8; // 8px a la derecha del botón
+  const menuY = botonRect.top; // Alineado con el top del botón
+  
+  // 🔥 VALIDACIÓN: Ajustar si se sale de pantalla
+  const menuWidth = 256; // Ancho del menú (w-64 = 256px)
+  const menuHeight = 300; // Altura estimada del menú
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  // Ajustar posición X si se sale por la derecha
+  let finalX = menuX;
+  if (menuX + menuWidth > viewportWidth) {
+    finalX = botonRect.left - menuWidth - 8; // A la izquierda del botón
+  }
+  
+  // Ajustar posición Y si se sale por abajo
+  let finalY = menuY;
+  if (menuY + menuHeight > viewportHeight) {
+    finalY = Math.max(8, botonRect.bottom - menuHeight); // Arriba del botón o mínimo 8px del top
+  }
+  
+  return (
+    <div
+      className="fixed z-50 bg-white border rounded-lg shadow-xl p-3 text-sm space-y-1 menu-z-index w-64"
+      style={{
+        left: `${finalX}px`,
+        top: `${finalY}px`,
+        // 🎯 ESTILOS MEJORADOS PARA MEJOR APARIENCIA
+        borderColor: "#773dbe",
+        borderWidth: "1px",
+        maxHeight: "400px",
+        overflowY: "auto",
+        // 🔥 ANIMACIÓN SUAVE DE APARICIÓN
+        animation: "fadeInScale 0.15s ease-out",
+      }}
+    >
+
     <button
     onClick={() => {
     copiarElemento();
@@ -2058,6 +2485,20 @@ onChange={(id, nuevo) => {
    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
       <PlusCircle className="w-4 h-4" /> Duplicar
     </button>
+
+    {/* Reemplazar fondo (solo para imágenes) */}
+{elementoSeleccionado?.tipo === "imagen" && (
+  <button
+    onClick={() => {
+      reemplazarFondoSeccion(elementoSeleccionado);
+      setMostrarPanelZ(false);
+    }}
+    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+  >
+    <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded"></div>
+    Usar como fondo
+  </button>
+)}
 
     <button
     onClick={() => {
@@ -2117,8 +2558,9 @@ onChange={(id, nuevo) => {
         </div>
       )}
     </div>
-  </div>
-)}
+    </div>
+  );
+})()}  
 
 
 
@@ -2365,6 +2807,22 @@ onChange={(id, nuevo) => {
   </div>
 )}
 
-    </div>
-  );
+
+    {/* 🔥 AGREGAR ESTAS LÍNEAS AQUÍ */}
+    <style jsx>{`
+      @keyframes fadeInScale {
+        from {
+          opacity: 0;
+          transform: scale(0.95) translateY(-5px);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+    `}</style>
+
+  </div>
+);
+
 }

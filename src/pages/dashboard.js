@@ -227,61 +227,94 @@ if (!usuario) return null; // Seguridad por si no se redirige
           {zoom === 1 ? "Alejar al 50%" : "Acercar al 100%"}
         </div>
       </div>
-      <div className="flex gap-2 items-center">
+     <div className="flex gap-2 items-center">
   {/* Botón Deshacer */}
   <div className="relative group">
     <div className="inline-block">
     <button
   onClick={() => {
-    const e = new KeyboardEvent('keydown', {
-      key: 'z',
-      ctrlKey: true,
-    });
-    window.dispatchEvent(e);
+    console.log("🔘 Botón deshacer clickeado");
+    
+    // Método 1: Llamar función directa (preferido)
+    if (window.canvasEditor?.deshacer) {
+      window.canvasEditor.deshacer();
+    } else {
+      // Método 2: Fallback con evento
+      console.log("⚠️ Usando fallback de evento");
+      const e = new KeyboardEvent('keydown', {
+        key: 'z',
+        ctrlKey: true,
+        bubbles: true
+      });
+      document.dispatchEvent(e);
+    }
   }}
   disabled={historialExternos.length <= 1}
-  className={`px-3 py-2 rounded-full transition-all duration-200 ${
+  className={`px-3 py-2 rounded-full transition-all duration-200 flex items-center gap-1 ${
     historialExternos.length <= 1
       ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-      : "bg-white hover:bg-gray-100 text-purple-700 shadow"
+      : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
   }`}
 >
-  ⟲
+  <span>⟲</span>
+  {historialExternos.length > 1 && (
+    <span className="text-xs bg-purple-100 text-purple-600 px-1 rounded-full min-w-[16px] text-center">
+      {historialExternos.length - 1}
+    </span>
+  )}
 </button>
 </div>
 
-    {/* Tooltip */}
+    {/* Tooltip mejorado */}
     <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition pointer-events-none">
-      Deshacer<br /><span className="text-gray-300">Ctrl + Z</span>
+      Deshacer ({historialExternos.length - 1} disponibles)<br />
+      <span className="text-gray-300">Ctrl + Z</span>
     </div>
   </div>
 
   {/* Botón Rehacer */}
   <div className="relative group">
-    <button
+   <button
   onClick={() => {
-    const e = new KeyboardEvent('keydown', {
-      key: 'y',
-      ctrlKey: true,
-    });
-    window.dispatchEvent(e);
+    console.log("🔘 Botón rehacer clickeado");
+    
+    // Método 1: Llamar función directa (preferido)
+    if (window.canvasEditor?.rehacer) {
+      window.canvasEditor.rehacer();
+    } else {
+      // Método 2: Fallback con evento
+      console.log("⚠️ Usando fallback de evento");
+      const e = new KeyboardEvent('keydown', {
+        key: 'y',
+        ctrlKey: true,
+        bubbles: true
+      });
+      document.dispatchEvent(e);
+    }
   }}
   disabled={futurosExternos.length === 0}
-  className={`px-3 py-2 rounded-full transition-all duration-200 ${
+  className={`px-3 py-2 rounded-full transition-all duration-200 flex items-center gap-1 ${
     futurosExternos.length === 0
       ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-      : "bg-white hover:bg-gray-100 text-purple-700 shadow"
+      : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
   }`}
 >
-  ⟳
+  <span>⟳</span>
+  {futurosExternos.length > 0 && (
+    <span className="text-xs bg-green-100 text-green-600 px-1 rounded-full min-w-[16px] text-center">
+      {futurosExternos.length}
+    </span>
+  )}
 </button>
 
-    {/* Tooltip */}
+    {/* Tooltip mejorado */}
     <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition pointer-events-none">
-      Rehacer<br /><span className="text-gray-300">Ctrl + Y</span>
+      Rehacer ({futurosExternos.length} disponibles)<br />
+      <span className="text-gray-300">Ctrl + Y</span>
     </div>
   </div>
 </div>
+
 
 {/* Guardar como plantilla */}
 <button

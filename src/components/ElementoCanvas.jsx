@@ -250,19 +250,19 @@ onDragStart: (e) => {
           />
         );
         
-      case "line":
-        return (
-          <Line
-            {...propsForma}
-            points={obj.points || [0, 0, 100, 0]}
-            onMouseEnter={() => onHover(obj.id)}
-            onMouseLeave={() => onHover(null)}
-            stroke={obj.color || "#000000"}
-            strokeWidth={4}
-            tension={0}
-            lineCap="round"
-          />
-        );
+     case "line":
+  return (
+    <Line
+      {...propsForma}
+      points={[0, 0, obj.width || 100, 0]}
+      onMouseEnter={() => onHover(obj.id)}
+      onMouseLeave={() => onHover(null)}
+      stroke={obj.color || "#000000"}
+      strokeWidth={2}
+      tension={0}
+      lineCap="round"
+    />
+  );
         
       case "triangle":
         return (
@@ -270,7 +270,6 @@ onDragStart: (e) => {
             {...propsForma}
             sides={3}
             radius={obj.radius || 60}
-            rotation={180}
             onMouseEnter={() => onHover(obj.id)}
             onMouseLeave={() => onHover(null)}
             stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}

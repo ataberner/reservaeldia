@@ -106,36 +106,48 @@ export function generarHTMLDesdeObjetos(
 
 
         case "line": {
-          const w = `${(obj.width ?? 100) / 800 * 100}%`;
-          const h = `${(obj.height ?? 4) / alturaSeccion * 100}%`;
-
-          return `<div class="objeto" style="
-            top: ${top}%;
-            left: ${left}%;
-            width: ${w};
-            height: ${h};
-            background: ${fill};
-            transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-          "></div>`;
-        }
+  const w = `${(obj.width ?? 100) / 800 * 100}%`;
+  
+  return `<div class="objeto" style="
+    top: ${top}%;
+    left: ${left}%;
+    width: ${w};
+    height: 2px;
+    background: ${fill};
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+  "></div>`;
+}
 
 
     
- case "triangle": {
-  const base = obj.base ?? 120;
-  const heightTri = (base * Math.sqrt(3)) / 2;
-
-  // 🔧 Ajuste visual leve: bajamos 2% y achicamos 5% verticalmente
-// Ajustes visuales
-  const ajusteAlto = 0.9;
-  const ajusteAncho = 0.9;
-  const correccionTop = 5; // en %
-
-  const topTriangle = ((obj.y - (heightTri * ajusteAlto) / 2) / alturaSeccion) * 100 + correccionTop;
-  const leftTriangle = ((obj.x - (base * ajusteAncho) / 2) / 800) * 100;
-
-  const widthPct = `${((base * ajusteAncho) / 800) * 100}%`;
-  const heightPct = `${((heightTri * ajusteAlto) / alturaSeccion) * 100}%`;
+case "triangle": {
+  const radius = obj.radius || 60;
+  
+  // 🎯 CÁLCULO PRECISO: En Konva RegularPolygon con sides=3
+  // Los vértices están en ángulos: 270°, 30°, 150° (empezando desde arriba)
+  // Vértice superior: (0, -radius)
+  // Vértices inferiores: (-radius*sin(60°), radius*cos(60°)) y (radius*sin(60°), radius*cos(60°))
+  
+  const sin60 = Math.sqrt(3) / 2; // ≈ 0.866
+  const cos60 = 0.5;
+  
+  // Dimensiones reales del triángulo
+  const triangleWidth = 2 * radius * sin60; // Ancho total
+  const triangleHeight = radius * (1 + cos60); // Altura total (desde vértice superior hasta base)
+  
+  // El centro del triángulo está a 1/3 de la altura desde la base
+  const centroidOffsetY = triangleHeight / 3;
+  
+  // En Konva, obj.y es el centro del triángulo
+  // En HTML, necesitamos la esquina superior izquierda del contenedor
+  const topContainer = obj.y - (triangleHeight - centroidOffsetY); // Desde centro hasta top del contenedor
+  const leftContainer = obj.x - (triangleWidth / 2); // Desde centro hasta left del contenedor
+  
+  // Convertir a porcentajes
+  const topTriangle = (topContainer / alturaSeccion) * 100;
+  const leftTriangle = (leftContainer / 800) * 100;
+  const widthPct = `${(triangleWidth / 800) * 100}%`;
+  const heightPct = `${(triangleHeight / alturaSeccion) * 100}%`;
 
   return `<div class="objeto" style="
     top: ${topTriangle}%;
@@ -146,8 +158,6 @@ export function generarHTMLDesdeObjetos(
     clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
     transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
     transform-origin: center center;
-    backface-visibility: hidden;
-    transform-style: preserve-3d;
   "></div>`;
 }
 

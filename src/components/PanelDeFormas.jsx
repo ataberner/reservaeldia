@@ -22,7 +22,7 @@ useEffect(() => {
   const formas = [
     { id: "cuadrado", tipo: "forma", figura: "rect", color: "#000000" },
     { id: "circulo", tipo: "forma", figura: "circle", color: "#000000" },
-    { id: "linea", tipo: "forma", figura: "line", color: "#000000" },
+    { id: "linea", tipo: "forma", figura: "line", color: "#000000", width: 100, height: 2 },
     { id: "triangulo", tipo: "forma", figura: "triangle", color: "#000000" },
   ];
 

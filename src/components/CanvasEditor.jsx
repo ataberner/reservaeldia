@@ -45,6 +45,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const stageRef = useRef(null);
     const dragStartPos = useRef(null);
     const hasDragged = useRef(false);
+    const [controlandoAltura, setControlandoAltura] = useState(false);
+const [alturaInicial, setAlturaInicial] = useState(0);
+const [posicionInicialMouse, setPosicionInicialMouse] = useState(0);
     const imperativeObjects = useImperativeObjects();
    const [animandoSeccion, setAnimandoSeccion] = useState(null);
     const [seccionActivaId, setSeccionActivaId] = useState(null);
@@ -572,6 +575,103 @@ actualizado[index] = {
   window.modoEdicionCanvas = true;
 };
 
+
+
+const iniciarControlAltura = (e, seccionId) => {
+  e.evt.stopPropagation(); // ✅ CORRECTO
+  const seccion = secciones.find(s => s.id === seccionId);
+  if (!seccion) return;
+  
+  setControlandoAltura(seccionId);
+  setAlturaInicial(seccion.altura);
+  setPosicionInicialMouse(e.evt.clientY);
+  
+  // Prevenir selección de texto durante el drag
+  document.body.style.userSelect = 'none';
+  document.body.style.cursor = 'ns-resize';
+};
+
+const manejarControlAltura = useCallback((e) => {
+  if (!controlandoAltura) return;
+  
+  // 🔥 THROTTLE MÁS SUAVE: Solo 8ms (120fps)
+  if (window._alturaResizeThrottle) return;
+  window._alturaResizeThrottle = true;
+  
+  requestAnimationFrame(() => {
+    const posicionActualMouse = e.clientY;
+    const deltaY = posicionActualMouse - posicionInicialMouse;
+    const nuevaAltura = Math.max(50, Math.round(alturaInicial + deltaY)); // Redondear para pixeles exactos
+    
+    // Actualizar altura en tiempo real
+    setSecciones(prev => 
+      prev.map(s => 
+        s.id === controlandoAltura 
+          ? { ...s, altura: nuevaAltura }
+          : s
+      )
+    );
+    
+    // Limpiar throttle después de la actualización
+    setTimeout(() => {
+      window._alturaResizeThrottle = false;
+    }, 8);
+  });
+}, [controlandoAltura, posicionInicialMouse, alturaInicial]);
+
+
+const finalizarControlAltura = useCallback(async () => {
+  if (!controlandoAltura) return;
+  
+  document.body.style.userSelect = '';
+  document.body.style.cursor = '';
+  
+  // 🔥 LIMPIAR THROTTLE
+  if (window._alturaResizeThrottle) {
+    window._alturaResizeThrottle = false;
+  }
+  
+  const seccionId = controlandoAltura;
+  setControlandoAltura(false);
+  setAlturaInicial(0);
+  setPosicionInicialMouse(0);
+  
+  // 🔥 GUARDAR CON DEBOUNCE para evitar múltiples saves
+  if (window._saveAlturaTimeout) {
+    clearTimeout(window._saveAlturaTimeout);
+  }
+  
+  window._saveAlturaTimeout = setTimeout(async () => {
+    try {
+      const ref = doc(db, "borradores", slug);
+      await updateDoc(ref, {
+        secciones: secciones,
+        ultimaEdicion: serverTimestamp(),
+      });
+      console.log("✅ Altura guardada:", seccionId);
+    } catch (error) {
+      console.error("❌ Error guardando altura:", error);
+    }
+  }, 300);
+}, [controlandoAltura, secciones, slug]);
+
+
+useEffect(() => {
+  if (controlandoAltura) {
+    document.addEventListener('mousemove', manejarControlAltura, { passive: true });
+    document.addEventListener('mouseup', finalizarControlAltura);
+    
+    return () => {
+      document.removeEventListener('mousemove', manejarControlAltura);
+      document.removeEventListener('mouseup', finalizarControlAltura);
+      
+      // Cleanup
+      if (window._alturaResizeThrottle) {
+        window._alturaResizeThrottle = false;
+      }
+    };
+  }
+}, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
 
 
 const finalizarEdicionInline = () => {
@@ -1395,6 +1495,167 @@ onMouseUp={() => {
   return elementos;
 })}
 
+
+{/* Control de altura para sección activa */}
+{seccionActivaId && seccionesOrdenadas.map((seccion, index) => {
+  if (seccion.id !== seccionActivaId) return null;
+  
+  const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+  const controlY = offsetY + seccion.altura - 5; // 5px antes del final
+  
+  return (
+    <Group key={`control-altura-${seccion.id}`}>
+      {/* Línea indicadora */}
+      <Line
+        points={[50, controlY, 750, controlY]}
+        stroke="#773dbe"
+        strokeWidth={2}
+        dash={[5, 5]}
+        listening={false}
+      />
+      
+     {/* Control central mejorado */}
+<Group
+  x={400}
+  y={controlY}
+  onMouseDown={(e) => iniciarControlAltura(e, seccion.id)}
+  onMouseEnter={() => {
+    const stage = stageRef.current;
+    if (stage) {
+      stage.container().style.cursor = 'ns-resize';
+    }
+  }}
+  onMouseLeave={() => {
+    const stage = stageRef.current;
+    if (stage && !controlandoAltura) {
+      stage.container().style.cursor = 'default';
+    }
+  }}
+  draggable={false}
+>
+  {/* Área de detección */}
+  <Rect
+    x={-35}
+    y={-12}
+    width={70}
+    height={24}
+    fill="transparent"
+    listening={true}
+  />
+  
+  {/* Fondo del control con estado activo */}
+  <Rect
+    x={-25}
+    y={-6}
+    width={50}
+    height={12}
+    fill={controlandoAltura === seccion.id ? "#773dbe" : "rgba(119, 61, 190, 0.9)"}
+    cornerRadius={6}
+    shadowColor="rgba(0,0,0,0.3)"
+    shadowBlur={controlandoAltura === seccion.id ? 8 : 6}
+    shadowOffset={{ x: 0, y: controlandoAltura === seccion.id ? 4 : 3 }}
+    listening={false}
+  />
+  
+  {/* Animación de pulso durante el control */}
+  {controlandoAltura === seccion.id && (
+    <Rect
+      x={-30}
+      y={-8}
+      width={60}
+      height={16}
+      fill="transparent"
+      stroke="#773dbe"
+      strokeWidth={2}
+      cornerRadius={8}
+      opacity={0.6}
+      listening={false}
+    />
+  )}
+  
+  {/* Indicador visual */}
+  <Text
+    x={-6}
+    y={-3}
+    text="⋮⋮"
+    fontSize={10}
+    fill="white"
+    fontFamily="Arial"
+    listening={false}
+  />
+  
+  {/* Puntos de agarre */}
+  <Circle x={-15} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+  <Circle x={-10} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+  <Circle x={10} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+  <Circle x={15} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+</Group>
+
+      
+      {/* Fondo del indicador */}
+  <Rect
+    x={755}
+    y={controlY - 10}
+    width={40}
+    height={20}
+    fill="rgba(119, 61, 190, 0.1)"
+    stroke="rgba(119, 61, 190, 0.3)"
+    strokeWidth={1}
+    cornerRadius={4}
+    listening={false}
+  />
+  
+  {/* Texto del indicador */}
+  <Text
+    x={760}
+    y={controlY - 6}
+    text={`${Math.round(seccion.altura)}px`}
+    fontSize={11}
+    fill="#773dbe"
+    fontFamily="Arial"
+    fontWeight="bold"
+    listening={false}
+  />
+</Group>
+  );
+})}
+
+{/* Overlay mejorado durante control de altura */}
+{controlandoAltura && (
+  <Group>
+    {/* Overlay sutil */}
+    <Rect
+      x={0}
+      y={0}
+      width={800}
+      height={altoCanvasDinamico}
+      fill="rgba(119, 61, 190, 0.05)"
+      listening={false}
+    />
+    
+    {/* Indicador de la sección que se está modificando */}
+    {seccionesOrdenadas.map((seccion, index) => {
+      if (seccion.id !== controlandoAltura) return null;
+      
+      const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+      
+      return (
+        <Rect
+          key={`highlight-${seccion.id}`}
+          x={0}
+          y={offsetY}
+          width={800}
+          height={seccion.altura}
+          fill="transparent"
+          stroke="#773dbe"
+          strokeWidth={3}
+          dash={[8, 4]}
+          listening={false}
+        />
+      );
+    })}
+  </Group>
+)}
 
         {objetos.map((obj, i) => {
     if (modoEdicion && elementosSeleccionados[0] === obj.id) return null;

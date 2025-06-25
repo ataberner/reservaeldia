@@ -6,32 +6,48 @@ export function generarHTMLDesdeSecciones(secciones: any[], objetos: any[]): str
   const alturaTotal = secciones.reduce((acc, s) => acc + s.altura, 0);
   const topPorSeccion = calcularTopPorSeccion(secciones);
 
-  const htmlSecciones = secciones.map((seccion, index) => {
-    const offsetTop = topPorSeccion[seccion.id];
-    
-    // Calcular posición y altura como porcentajes del total
-    const topPercent = (offsetTop / alturaTotal) * 100;
-    const heightPercent = (seccion.altura / alturaTotal) * 100;
+const htmlSecciones = secciones.map((seccion, index) => {
+  const offsetTop = topPorSeccion[seccion.id];
+  const topPercent = (offsetTop / alturaTotal) * 100;
+  const heightPercent = (seccion.altura / alturaTotal) * 100;
 
-    const contenido = generarHTMLDesdeObjetos(
-      objetos.filter((o) => o.seccionId === seccion.id),
-      secciones 
-    );
+  const contenido = generarHTMLDesdeObjetos(
+    objetos.filter((o) => o.seccionId === seccion.id),
+    secciones 
+  );
 
-    return `
-      <div class="seccion" style="
-        top: ${topPercent}%;
-        height: ${heightPercent}%;
-        width: 100%;
-        background: ${seccion.fondoTipo === "imagen" 
-  ? `url(${seccion.fondoImagen}) center/cover no-repeat`
-  : (seccion.fondo || "transparent")
-};
-      ">
-        ${contenido}
-      </div>
+  // 🧠 NUEVA LÓGICA: Detectar tipo de fondo
+  const fondoValue = seccion.fondo || "transparent";
+  const esImagenFondo = fondoValue.startsWith("http") || 
+                       fondoValue.startsWith("data:") || 
+                       fondoValue.startsWith("blob:");
+  
+  // 🎨 APLICAR ESTILOS CORRECTOS
+  let estilosFondo;
+  if (esImagenFondo) {
+    // Para imágenes: usar background-size: cover
+    estilosFondo = `
+      background-image: url(${fondoValue});
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
     `;
-  }).join("\n");
+  } else {
+    // Para colores: usar background normal
+    estilosFondo = `background: ${fondoValue};`;
+  }
+
+  return `
+    <div class="seccion" style="
+      top: ${topPercent}%;
+      height: ${heightPercent}%;
+      width: 100%;
+      ${estilosFondo}
+    ">
+      ${contenido}
+    </div>
+  `;
+}).join("\n");
 
 return `
 <!DOCTYPE html>
@@ -81,12 +97,10 @@ return `
     }
 
     .seccion {
-      position: absolute;
-      width: 100%;
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-    }
+  position: absolute;
+  width: 100%;
+  overflow: hidden;
+}
 
     .objeto {
       position: absolute;

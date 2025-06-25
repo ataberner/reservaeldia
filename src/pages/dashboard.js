@@ -6,6 +6,8 @@ import DashboardLayout from '../components/DashboardLayout';
 import TipoSelector from '../components/TipoSelector';
 import PlantillaGrid from '../components/PlantillaGrid';
 import BorradoresGrid from '@/components/BorradoresGrid';
+import ModalVistaPrevia from '@/components/ModalVistaPrevia'; 
+
 import { getFunctions, httpsCallable } from "firebase/functions";
 import dynamic from "next/dynamic";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
@@ -27,13 +29,45 @@ export default function Dashboard() {
   const [modoEditor, setModoEditor] = useState(null);
   const [historialExternos, setHistorialExternos] = useState([]);
   const [futurosExternos, setFuturosExternos] = useState([]);
+  const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
+const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
+
   
 
 
 const toggleZoom = () => {
   setZoom((prev) => (prev === 1 ? 0.8 : 1));
-};
+    };
 
+const generarVistaPrevia = async () => {
+  try {
+    setHtmlVistaPrevia(null); // Reset del contenido
+    setMostrarVistaPrevia(true); // Abrir modal primero
+    
+    // Generar HTML para vista previa
+    const ref = doc(db, "borradores", slugInvitacion);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      alert("❌ No se encontró el borrador");
+      setMostrarVistaPrevia(false);
+      return;
+    }
+
+    const data = snap.data();
+    const objetosBase = data?.objetos || [];
+    const secciones = data?.secciones || [];
+
+    // Importar función de generación HTML
+    const { generarHTMLDesdeSecciones } = await import("../../functions/src/utils/generarHTMLDesdeSecciones");
+    const htmlGenerado = generarHTMLDesdeSecciones(secciones, objetosBase);
+    
+    setHtmlVistaPrevia(htmlGenerado);
+  } catch (error) {
+    console.error("❌ Error generando vista previa:", error);
+    alert("No se pudo generar la vista previa");
+    setMostrarVistaPrevia(false);
+  }
+};
 
 
   // 🔄 Cargar plantillas por tipo
@@ -291,33 +325,42 @@ if (!usuario) return null; // Seguridad por si no se redirige
 
 
 
-      {/* Generar invitación */}
-      <button
-        onClick={async () => {
-          const confirmar = confirm("¿Querés publicar esta invitación?");
-          if (!confirmar) return;
+     {/* Vista previa y Generar invitación */}
+<div className="flex gap-3 ml-auto">
+  <button
+    onClick={generarVistaPrevia}
+    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm flex items-center gap-2"
+  >
+    Vista previa
+  </button>
 
-          const functions = await import("firebase/functions").then((mod) =>
-            mod.getFunctions()
-          );
-          const publicarInvitacion = await import("firebase/functions").then((mod) =>
-            mod.httpsCallable(functions, "publicarInvitacion")
-          );
+  <button
+    onClick={async () => {
+      const confirmar = confirm("¿Querés publicar esta invitación?");
+      if (!confirmar) return;
 
-          try {
-            const result = await publicarInvitacion({ slug: slugInvitacion });
-            const urlFinal = result.data?.url;
-            if (urlFinal) window.open(urlFinal, "_blank");
-          } catch (error) {
-            alert("❌ Error al publicar la invitación.");
-            console.error(error);
-          }
-        }}
-        className="px-4 ml-auto py-2 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-sm"
-      >
-        Generar invitación
-      </button>
-    </div>
+      const functions = await import("firebase/functions").then((mod) =>
+        mod.getFunctions()
+      );
+      const publicarInvitacion = await import("firebase/functions").then((mod) =>
+        mod.httpsCallable(functions, "publicarInvitacion")
+      );
+
+      try {
+        const result = await publicarInvitacion({ slug: slugInvitacion });
+        const urlFinal = result.data?.url;
+        if (urlFinal) window.open(urlFinal, "_blank");
+      } catch (error) {
+        alert("❌ Error al publicar la invitación.");
+        console.error(error);
+      }
+    }}
+    className="px-4 py-2 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-sm"
+  >
+    Generar invitación
+  </button>
+</div>
+</div>
 
     {/* Editor */}
     {modoEditor === "konva" && (
@@ -370,6 +413,18 @@ if (!usuario) return null; // Seguridad por si no se redirige
   </>
 )}
 
+
+
+{/* Modal de vista previa */}
+<ModalVistaPrevia
+  visible={mostrarVistaPrevia}
+  onClose={() => {
+    setMostrarVistaPrevia(false);
+    setHtmlVistaPrevia(null);
+  }}
+  htmlContent={htmlVistaPrevia}
+  slug={slugInvitacion}
+/>
 
 
     </DashboardLayout>

@@ -29,46 +29,370 @@ import {
 
 
 
-
-// Componente para secciones con fondo de imagen
-const SeccionConFondoImagen = ({ seccion, offsetY, alturaPx, onSelect }) => {
-  const [fondoImage] = useImage(seccion.fondoImagen);
+// 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
+const limpiarObjetoUndefined = (obj) => {
+  if (Array.isArray(obj)) {
+    return obj.map(limpiarObjetoUndefined);
+  }
   
-  return (
-    <Group>
-      {/* Fondo base (fallback si la imagen no carga) */}
+  if (obj !== null && typeof obj === 'object') {
+    const objLimpio = {};
+    Object.keys(obj).forEach(key => {
+      const valor = obj[key];
+      if (valor !== undefined) {
+        objLimpio[key] = limpiarObjetoUndefined(valor);
+      }
+    });
+    return objLimpio;
+  }
+  
+  return obj;
+};
+
+// Componente para secciones con fondo de imagen draggable
+const SeccionConFondoImagen = ({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset }) => {
+  const [fondoImage] = useImage(seccion.fondoImagen);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPos = useRef(null);
+  
+  if (!fondoImage) {
+    // Mostrar fondo fallback mientras carga la imagen
+    return (
       <Rect
         id={seccion.id}
         x={0}
         y={offsetY}
         width={800}
         height={alturaPx}
-        fill={seccion.fondo?.startsWith('url(') ? "#f0f0f0" : (seccion.fondo || "#ffffff")}
+        fill={seccion.fondo || "#f0f0f0"}
+        listening={true}
+        onClick={onSelect}
+      />
+    );
+  }
+
+  // 🎯 CÁLCULOS PARA CUBRIR TODA LA SECCIÓN (COVER BEHAVIOR)
+  const canvasWidth = 800;
+  const canvasHeight = alturaPx;
+  const imageWidth = fondoImage.width;
+  const imageHeight = fondoImage.height;
+
+  // Calcular escalas para cubrir completamente la sección
+  const scaleX = canvasWidth / imageWidth;
+  const scaleY = canvasHeight / imageHeight;
+  const scale = Math.max(scaleX, scaleY); // 🔑 Usar la escala MAYOR para cubrir completamente
+
+  // Dimensiones finales de la imagen escalada
+  const scaledWidth = imageWidth * scale;
+  const scaledHeight = imageHeight * scale;
+
+  // Posición centrada por defecto
+  const offsetXCentrado = (canvasWidth - scaledWidth) / 2;
+  const offsetYCentrado = (canvasHeight - scaledHeight) / 2;
+  
+  // Posición final con offsets del usuario
+  const offsetXFinal = offsetXCentrado + (seccion.fondoImagenOffsetX || 0);
+  const offsetYFinal = offsetYCentrado + (seccion.fondoImagenOffsetY || 0);
+
+  return (
+    <Group>
+      {/* Fondo base (fallback) */}
+      <Rect
+        id={seccion.id}
+        x={0}
+        y={offsetY}
+        width={800}
+        height={alturaPx}
+        fill={seccion.fondo || "#f0f0f0"}
         listening={true}
         onClick={onSelect}
       />
       
-      {/* Imagen de fondo si está cargada */}
-      {fondoImage && (
+      {/* Máscara para recortar la imagen */}
+      <Group
+        clipX={0}
+        clipY={offsetY}
+        clipWidth={800}
+        clipHeight={alturaPx}
+      >
+        {/* Imagen de fondo draggable */}
         <KonvaImage
           image={fondoImage}
-          x={0}
-          y={offsetY}
-          width={800}
-          height={alturaPx}
+          x={offsetXFinal}
+          y={offsetY + offsetYFinal}
+          width={scaledWidth}
+          height={scaledHeight}
+          draggable={seccion.fondoImagenDraggable}
           listening={true}
-          onClick={onSelect}
-          // Ajustar la imagen para cubrir toda la sección
-          scaleX={800 / fondoImage.width}
-          scaleY={alturaPx / fondoImage.height}
+          
+          // 🔥 EVENTOS DE DRAG CORREGIDOS
+          onMouseDown={(e) => {
+            console.log("🖱️ MouseDown en imagen de fondo");
+            e.cancelBubble = true; // Prevenir propagación
+            setIsDragging(false); // Reset del estado
+            dragStartPos.current = e.target.getStage().getPointerPosition();
+          }}
+          
+          onDragStart={(e) => {
+            console.log("🚀 DragStart en imagen de fondo");
+            setIsDragging(true);
+            dragStartPos.current = e.target.getStage().getPointerPosition();
+            
+            // 🔥 PREVENIR CONFLICTOS CON OTROS ELEMENTOS
+            e.cancelBubble = true;
+            e.target.moveToTop(); // Mover al frente durante drag
+          }}
+          
+          onDragMove={(e) => {
+            if (!isDragging) return; // Solo procesar si estamos arrastrando
+            
+            console.log("🔄 DragMove en imagen de fondo");
+            const node = e.target;
+            
+            // 🔥 THROTTLE PARA MEJOR PERFORMANCE
+            if (window._fondoDragThrottle) return;
+            window._fondoDragThrottle = true;
+            
+            requestAnimationFrame(() => {
+              // Calcular nuevos offsets relativos al centro
+              const nuevaX = node.x();
+              const nuevaY = node.y() - offsetY;
+              
+              const nuevoOffsetX = nuevaX - offsetXCentrado;
+              const nuevoOffsetY = nuevaY - offsetYCentrado;
+              
+              console.log("📊 Nuevos offsets:", { 
+                offsetX: nuevoOffsetX, 
+                offsetY: nuevoOffsetY 
+              });
+              
+              // Actualizar offsets en tiempo real
+              if (onUpdateFondoOffset) {
+                onUpdateFondoOffset(seccion.id, { 
+                  offsetX: nuevoOffsetX, 
+                  offsetY: nuevoOffsetY 
+                }, true); // true = preview
+              }
+              
+              window._fondoDragThrottle = false;
+            });
+          }}
+          
+          onDragEnd={(e) => {
+            console.log("🏁 DragEnd en imagen de fondo");
+            
+            // 🔥 FORZAR FINALIZACIÓN DEL DRAG
+            setIsDragging(false);
+            const node = e.target;
+            
+            // 🔥 LIMPIAR THROTTLE
+            if (window._fondoDragThrottle) {
+              window._fondoDragThrottle = false;
+            }
+            
+            // Calcular offsets finales
+            const nuevaX = node.x();
+            const nuevaY = node.y() - offsetY;
+            
+            const nuevoOffsetX = nuevaX - offsetXCentrado;
+            const nuevoOffsetY = nuevaY - offsetYCentrado;
+            
+            console.log("💾 Guardando offsets finales:", { 
+              offsetX: nuevoOffsetX, 
+              offsetY: nuevoOffsetY 
+            });
+            
+            // Guardar offsets finales
+            if (onUpdateFondoOffset) {
+              onUpdateFondoOffset(seccion.id, { 
+                offsetX: nuevoOffsetX, 
+                offsetY: nuevoOffsetY 
+              }, false); // false = final
+            }
+            
+            // 🔥 FORZAR DESHABILITACIÓN DEL DRAGGABLE
+            setTimeout(() => {
+              if (node.draggable && node.draggable()) {
+                node.draggable(false);
+                setTimeout(() => {
+                  node.draggable(true);
+                }, 100);
+              }
+            }, 50);
+          }}
+          
+          // 🔥 EVENTOS ADICIONALES PARA ASEGURAR FINALIZACIÓN
+          onMouseUp={(e) => {
+            console.log("🖱️ MouseUp en imagen de fondo");
+            if (isDragging) {
+              console.log("⚠️ Forzando finalización de drag desde MouseUp");
+              setIsDragging(false);
+            }
+          }}
+          
+          onMouseLeave={(e) => {
+            if (isDragging) {
+              console.log("⚠️ Mouse salió durante drag - finalizando");
+              setIsDragging(false);
+            }
+          }}
+          
+          onClick={(e) => {
+            console.log("🖱️ Click en imagen de fondo, isDragging:", isDragging);
+            e.cancelBubble = true;
+            
+            // Solo procesar click si no estamos arrastrando
+            if (!isDragging) {
+              const currentPos = e.target.getStage().getPointerPosition();
+              const startPos = dragStartPos.current;
+              
+              // Verificar si realmente fue un click (no drag)
+              if (startPos && currentPos) {
+                const distance = Math.sqrt(
+                  Math.pow(currentPos.x - startPos.x, 2) + 
+                  Math.pow(currentPos.y - startPos.y, 2)
+                );
+                
+                if (distance < 5) { // Click real
+                  onSelect();
+                }
+              } else {
+                onSelect();
+              }
+            }
+          }}
+          
+          // Estilos visuales durante drag
+          opacity={isDragging ? 0.8 : 1}
+          shadowColor={isDragging ? "#773dbe" : "transparent"}
+          shadowBlur={isDragging ? 10 : 0}
         />
-      )}
+      </Group>
+      
     </Group>
   );
 };
 
+
+
 const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="black" />);
 const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
+
+// 🎨 Componente selector de color estético
+const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
+  const [mostrarPicker, setMostrarPicker] = useState(false);
+  const pickerRef = useRef(null);
+  
+  // Cerrar picker al hacer clic fuera
+  useEffect(() => {
+    const handleClickFuera = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setMostrarPicker(false);
+      }
+    };
+    
+    if (mostrarPicker) {
+      document.addEventListener('mousedown', handleClickFuera);
+      return () => document.removeEventListener('mousedown', handleClickFuera);
+    }
+  }, [mostrarPicker]);
+  
+  const colorActual = seccion.fondo || "#ffffff";
+  const tieneImagenFondo = seccion.fondoTipo === "imagen";
+  
+  return (
+    <div className="relative" ref={pickerRef}>
+      {/* Botón principal */}
+      <button
+        onClick={() => setMostrarPicker(!mostrarPicker)}
+        disabled={disabled}
+        className={`group flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+          disabled 
+            ? 'bg-gray-200 cursor-not-allowed' 
+            : tieneImagenFondo
+              ? 'bg-orange-50 hover:bg-orange-100 border border-orange-200'
+              : 'bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300'
+        } shadow-sm hover:shadow-md`}
+        title={tieneImagenFondo ? "Cambiar fondo (reemplazará la imagen)" : "Cambiar color de fondo"}
+      >
+        {/* Muestra de color */}
+        <div 
+          className={`w-5 h-5 rounded-full border-2 transition-transform group-hover:scale-110 ${
+            tieneImagenFondo ? 'border-orange-300' : 'border-gray-300'
+          }`}
+          style={{ backgroundColor: colorActual }}
+        />
+        
+        {/* Texto */}
+        <span className={`text-xs font-medium ${
+          tieneImagenFondo ? 'text-orange-700' : 'text-gray-700'
+        }`}>
+          {tieneImagenFondo ? "Color" : "Fondo"}
+        </span>
+        
+        {/* Ícono */}
+        <svg 
+          className={`w-3 h-3 transition-transform ${mostrarPicker ? 'rotate-180' : ''} ${
+            tieneImagenFondo ? 'text-orange-500' : 'text-gray-500'
+          }`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      
+     {/* Picker desplegable - CORREGIDO para no salirse */}
+{mostrarPicker && (
+  <div className="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50 min-w-[200px] max-w-[250px]">
+          {/* Aviso si tiene imagen de fondo */}
+          {tieneImagenFondo && (
+            <div className="mb-3 p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">
+              ⚠️ Esto reemplazará la imagen de fondo actual
+            </div>
+          )}
+          
+          {/* Selector de color */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-600">Seleccionar color:</label>
+            <input
+              type="color"
+              value={colorActual}
+              onChange={(e) => {
+                onChange(seccion.id, e.target.value);
+                setMostrarPicker(false);
+              }}
+              className="w-full h-10 rounded border border-gray-300 cursor-pointer"
+            />
+            
+            {/* Colores predefinidos */}
+            <div className="grid grid-cols-6 gap-1 pt-2">
+              {['#ffffff', '#f8f9fa', '#e9ecef', '#dee2e6', '#495057', '#212529'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => {
+                    onChange(seccion.id, color);
+                    setMostrarPicker(false);
+                  }}
+                  className="w-6 h-6 rounded border-2 border-gray-300 hover:border-purple-400 transition-colors"
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
+            </div>
+            
+            {/* Valor hex */}
+            <div className="pt-2 border-t text-center">
+              <span className="text-xs text-gray-500 font-mono">{colorActual}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 
 export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
@@ -142,6 +466,36 @@ const fuentesGoogle = [
   elementRefs.current[id] = node;
   imperativeObjects.registerObject(id, node);
 }, [imperativeObjects]);
+
+
+// 🎨 Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
+const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
+  console.log("🔄 actualizarOffsetFondo llamada:", {
+    seccionId,
+    nuevosOffsets,
+    esPreview
+  });
+  
+  setSecciones(prev => 
+    prev.map(s => {
+      if (s.id !== seccionId) return s;
+      
+      // 🔥 CREAR OBJETO LIMPIO
+      const seccionActualizada = { ...s };
+      
+      // 🔥 SOLO AGREGAR CAMPOS SI TIENEN VALORES VÁLIDOS
+      if (nuevosOffsets.offsetX !== undefined && nuevosOffsets.offsetX !== null) {
+        seccionActualizada.fondoImagenOffsetX = nuevosOffsets.offsetX;
+      }
+      if (nuevosOffsets.offsetY !== undefined && nuevosOffsets.offsetY !== null) {
+        seccionActualizada.fondoImagenOffsetY = nuevosOffsets.offsetY;
+      }
+      
+      return seccionActualizada;
+    })
+  );
+}, [setSecciones]);
+
 
 useEffect(() => {
   // Limpiar flag de resize al montar el componente
@@ -384,19 +738,48 @@ useEffect(() => {
   // Limpiar futuros cuando hay nuevos cambios
   setFuturos([]);
   
-  // 💾 Guardado en Firebase con debounce
-  const timeoutId = setTimeout(async () => {
-    try {
-      const ref = doc(db, "borradores", slug);
-      await updateDoc(ref, {
-        objetos,
-        secciones,
-        ultimaEdicion: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error("Error guardando:", error);
-    }
-  }, 500);
+  // 💾 Guardado en Firebase con debounce y filtro de undefined
+const timeoutId = setTimeout(async () => {
+  try {
+    // 🔥 FUNCIÓN PARA LIMPIAR UNDEFINED RECURSIVAMENTE
+    const limpiarUndefined = (obj) => {
+      if (Array.isArray(obj)) {
+        return obj.map(limpiarUndefined);
+      }
+      
+      if (obj !== null && typeof obj === 'object') {
+        const objLimpio = {};
+        Object.keys(obj).forEach(key => {
+          const valor = obj[key];
+          if (valor !== undefined) {
+            objLimpio[key] = limpiarUndefined(valor);
+          }
+        });
+        return objLimpio;
+      }
+      
+      return obj;
+    };
+
+    // 🔥 LIMPIAR DATOS ANTES DE ENVIAR A FIREBASE
+    const seccionesLimpias = limpiarUndefined(secciones);
+    const objetosLimpios = limpiarUndefined(objetos);
+    
+    console.log("💾 Guardando datos limpios:", {
+      seccionesCount: seccionesLimpias.length,
+      objetosCount: objetosLimpios.length
+    });
+
+    const ref = doc(db, "borradores", slug);
+    await updateDoc(ref, {
+      objetos: objetosLimpios,
+      secciones: seccionesLimpias,
+      ultimaEdicion: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error guardando:", error);
+  }
+}, 500);
 
   return () => clearTimeout(timeoutId);
 }, [objetos, secciones, cargado, slug]); // 🔥 Incluir secciones en dependencias
@@ -1048,23 +1431,21 @@ const reemplazarFondoSeccion = async (elementoImagen) => {
     return;
   }
 
-  const confirmar = confirm("¿Querés usar esta imagen como fondo de la sección?\n\nEsto reemplazará el fondo actual.");
-  if (!confirmar) return;
 
   try {
     console.log("🎨 Convirtiendo imagen a fondo de sección:", elementoImagen.id);
     
-    // 🔥 NO usar setState separados - hacer todo en un solo cambio
-    // para que el historial capture ambos cambios juntos
-    
-    // Actualizar secciones
+    // Actualizar secciones con información completa de la imagen
     const seccionesActualizadas = secciones.map(seccion => 
       seccion.id === elementoImagen.seccionId 
         ? { 
             ...seccion, 
-            fondo: `url(${elementoImagen.src})`,
+            fondo: "#ffffff", // Fondo fallback
             fondoTipo: "imagen",
-            fondoImagen: elementoImagen.src
+            fondoImagen: elementoImagen.src,
+            fondoImagenOffsetX: 0, // 🆕 Offset X para reposicionamiento (0 = centrado)
+            fondoImagenOffsetY: 0, // 🆕 Offset Y para reposicionamiento (0 = centrado)
+            fondoImagenDraggable: true // 🆕 Indicar que se puede arrastrar
           }
         : seccion
     );
@@ -1072,7 +1453,7 @@ const reemplazarFondoSeccion = async (elementoImagen) => {
     // Filtrar objetos (eliminar la imagen)
     const objetosFiltrados = objetos.filter(obj => obj.id !== elementoImagen.id);
     
-    // 🔥 Actualizar ambos estados AL MISMO TIEMPO
+    // Actualizar ambos estados AL MISMO TIEMPO
     setSecciones(seccionesActualizadas);
     setObjetos(objetosFiltrados);
     
@@ -1087,6 +1468,169 @@ const reemplazarFondoSeccion = async (elementoImagen) => {
     alert("Ocurrió un error al cambiar el fondo. Inténtalo de nuevo.");
   }
 };
+
+// 🔄 Desanclar imagen de fondo (TAMAÑO 100% NATURAL) - SIN ESCALADO
+const desanclarImagenDeFondo = async (seccionId) => {
+  const seccion = secciones.find(s => s.id === seccionId);
+  if (!seccion || seccion.fondoTipo !== "imagen") {
+    console.warn("❌ La sección no tiene imagen de fondo para desanclar");
+    return;
+  }
+
+  try {
+    console.log("🔄 Desanclando imagen de fondo de sección:", seccionId);
+    
+    // 🔥 CREAR IMAGEN Y ESPERAR A QUE CARGUE
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = seccion.fondoImagen;
+    
+    // 🔥 FUNCIÓN QUE SE EJECUTA CUANDO LA IMAGEN CARGA
+    img.onload = () => {
+      // 🎯 USAR DIMENSIONES 100% NATURALES (sin escalado)
+      const finalWidth = img.naturalWidth || img.width;
+      const finalHeight = img.naturalHeight || img.height;
+      
+      console.log("📐 Usando dimensiones 100% naturales:", {
+        ancho: finalWidth,
+        alto: finalHeight,
+        aspectRatio: (finalWidth / finalHeight).toFixed(2)
+      });
+      
+      // 🔥 POSICIÓN INICIAL (centrada horizontalmente en el canvas)
+      const posicionX = Math.max(0, (800 - finalWidth) / 2);
+      const posicionY = 50; // Cerca del top de la sección
+      
+      // Crear nuevo objeto imagen con dimensiones 100% NATURALES
+      const nuevoElementoImagen = {
+        id: `img-fondo-${Date.now()}`,
+        tipo: "imagen",
+        src: seccion.fondoImagen,
+        x: posicionX,
+        y: posicionY,
+        width: finalWidth,   // 🎯 TAMAÑO NATURAL COMPLETO
+        height: finalHeight, // 🎯 TAMAÑO NATURAL COMPLETO
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        seccionId: seccionId
+      };
+      
+      // 🔥 LIMPIAR propiedades de fondo de la sección
+      const seccionesActualizadas = secciones.map(s => {
+        if (s.id !== seccionId) return s;
+        
+        const seccionLimpia = {
+          ...s,
+          fondo: "#ffffff" // Volver a fondo blanco
+        };
+        
+        // Eliminar campos de imagen de fondo si existen
+        if (s.fondoTipo !== undefined) delete seccionLimpia.fondoTipo;
+        if (s.fondoImagen !== undefined) delete seccionLimpia.fondoImagen;
+        if (s.fondoImagenOffsetX !== undefined) delete seccionLimpia.fondoImagenOffsetX;
+        if (s.fondoImagenOffsetY !== undefined) delete seccionLimpia.fondoImagenOffsetY;
+        if (s.fondoImagenDraggable !== undefined) delete seccionLimpia.fondoImagenDraggable;
+        
+        return seccionLimpia;
+      });
+      
+      // Agregar nuevo elemento imagen
+      const objetosActualizados = [...objetos, nuevoElementoImagen];
+      
+      // Actualizar estados
+      setSecciones(seccionesActualizadas);
+      setObjetos(objetosActualizados);
+      
+      // Seleccionar automáticamente el nuevo elemento
+      setElementosSeleccionados([nuevoElementoImagen.id]);
+
+      console.log("✅ Imagen desanclada en tamaño 100% natural:", {
+        dimensionesFinales: `${finalWidth}x${finalHeight}px`,
+        posicion: { x: posicionX, y: posicionY },
+        esMuyGrande: finalWidth > 800 || finalHeight > 600
+      });
+      
+      // 🔔 AVISO si la imagen es muy grande
+      if (finalWidth > 1200 || finalHeight > 800) {
+        console.warn("⚠️ La imagen es muy grande. Puedes redimensionarla usando los controles de transformación.");
+      }
+    };
+    
+    // 🔥 FALLBACK si la imagen no carga
+    img.onerror = () => {
+      console.warn("⚠️ No se pudo cargar la imagen, usando dimensiones por defecto");
+      
+      // Crear elemento con dimensiones por defecto (tamaño medio)
+      const nuevoElementoImagen = {
+        id: `img-fondo-${Date.now()}`,
+        tipo: "imagen",
+        src: seccion.fondoImagen,
+        x: 100,
+        y: 50,
+        width: 600,  // Tamaño por defecto razonable
+        height: 400,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        seccionId: seccionId
+      };
+      
+      // Mismo proceso de limpieza
+      const seccionesActualizadas = secciones.map(s => {
+        if (s.id !== seccionId) return s;
+        
+        const seccionLimpia = { ...s, fondo: "#ffffff" };
+        if (s.fondoTipo !== undefined) delete seccionLimpia.fondoTipo;
+        if (s.fondoImagen !== undefined) delete seccionLimpia.fondoImagen;
+        if (s.fondoImagenOffsetX !== undefined) delete seccionLimpia.fondoImagenOffsetX;
+        if (s.fondoImagenOffsetY !== undefined) delete seccionLimpia.fondoImagenOffsetY;
+        if (s.fondoImagenDraggable !== undefined) delete seccionLimpia.fondoImagenDraggable;
+        
+        return seccionLimpia;
+      });
+      
+      const objetosActualizados = [...objetos, nuevoElementoImagen];
+      setSecciones(seccionesActualizadas);
+      setObjetos(objetosActualizados);
+      setElementosSeleccionados([nuevoElementoImagen.id]);
+      
+      console.log("✅ Imagen desanclada con dimensiones por defecto");
+    };
+    
+  } catch (error) {
+    console.error("❌ Error al desanclar imagen de fondo:", error);
+    alert("Ocurrió un error al desanclar la imagen. Inténtalo de nuevo.");
+  }
+};
+
+
+// 🎨 Cambiar color de fondo de sección (CORREGIDO - sin undefined)
+const cambiarColorFondoSeccion = useCallback((seccionId, nuevoColor) => {
+  console.log("🎨 Cambiando color de fondo:", { seccionId, nuevoColor });
+  
+  setSecciones(prev => 
+    prev.map(s => {
+      if (s.id !== seccionId) return s;
+      
+      // 🔥 CREAR OBJETO LIMPIO sin campos undefined
+      const seccionActualizada = {
+        ...s, 
+        fondo: nuevoColor
+      };
+      
+      // 🔥 ELIMINAR campos de imagen de fondo si existen (no usar undefined)
+      if (s.fondoTipo) delete seccionActualizada.fondoTipo;
+      if (s.fondoImagen) delete seccionActualizada.fondoImagen;
+      if (s.fondoImagenOffsetX !== undefined) delete seccionActualizada.fondoImagenOffsetX;
+      if (s.fondoImagenOffsetY !== undefined) delete seccionActualizada.fondoImagenOffsetY;
+      if (s.fondoImagenDraggable !== undefined) delete seccionActualizada.fondoImagenDraggable;
+      
+      return seccionActualizada;
+    })
+  );
+}, [setSecciones]);
+
 
 const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
 const escalaActiva = zoom === 1 ? scale : zoom;
@@ -1386,7 +1930,7 @@ const handleCrearSeccion = async (datos) => {
   const ref = doc(db, "borradores", slug);
 
   setSecciones((prevSecciones) => {
-    const nueva = crearSeccion(datos, prevSecciones); // ✅ usar el estado actual
+    const nueva = crearSeccion(datos, prevSecciones);
 
     let objetosDesdePlantilla = [];
 
@@ -1403,9 +1947,13 @@ const handleCrearSeccion = async (datos) => {
     setObjetos((prevObjetos) => {
       const nuevosObjetos = [...prevObjetos, ...objetosDesdePlantilla];
 
+      // 🔥 LIMPIAR ANTES DE GUARDAR
+      const seccionesLimpias = limpiarObjetoUndefined(nuevasSecciones);
+      const objetosLimpios = limpiarObjetoUndefined(nuevosObjetos);
+
       updateDoc(ref, {
-        secciones: nuevasSecciones,
-        objetos: nuevosObjetos,
+        secciones: seccionesLimpias,
+        objetos: objetosLimpios,
       })
         .then(() => {
           console.log("✅ Sección agregada:", nueva);
@@ -1420,7 +1968,6 @@ const handleCrearSeccion = async (datos) => {
     return nuevasSecciones;
   });
 };
-
 
 
 const moverSeccion = async (seccionId, direccion) => {
@@ -1551,7 +2098,7 @@ return (
       className="absolute flex flex-col gap-2"
       style={{
         top: offsetY * zoom + 50,
-        right: -130,
+        right: -150,
         zIndex: 25,
       }}
     >
@@ -1583,6 +2130,29 @@ return (
         💾 Plantilla
       </button>
       
+         {/* 🎨 NUEVO: Selector de color estético */}
+      <SelectorColorSeccion
+        seccion={seccion}
+        onChange={cambiarColorFondoSeccion}
+        disabled={estaAnimando}
+      />
+
+
+      {/* Botón Desanclar fondo (solo si tiene imagen de fondo) */}
+{seccion.fondoTipo === "imagen" && (
+  <button
+    onClick={() => desanclarImagenDeFondo(seccion.id)}
+    disabled={estaAnimando}
+    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
+      estaAnimando
+        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+        : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 shadow-md hover:shadow-lg'
+    } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
+    title="Convertir fondo en elemento editable"
+  >
+    🔄 Desanclar fondo
+  </button>
+)}
       {/* Botón Borrar sección */}
       <button
         onClick={() => borrarSeccion(seccion.id)}
@@ -1596,7 +2166,8 @@ return (
       >
         🗑️ Borrar
       </button>
-      
+
+
       {/* Botón Bajar */}
       <button
         onClick={() => moverSeccion(seccion.id, 'bajar')}
@@ -1781,6 +2352,7 @@ onMouseUp={() => {
       offsetY={offsetY}
       alturaPx={alturaPx}
       onSelect={() => setSeccionActivaId(seccion.id)}
+      onUpdateFondoOffset={actualizarOffsetFondo}
     />
   ) : (
     <Rect

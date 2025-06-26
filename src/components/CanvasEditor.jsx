@@ -29,6 +29,8 @@ import {
 
 
 
+
+
 // 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {
@@ -1667,8 +1669,8 @@ const actualizarPosicionBotonOpciones = useCallback(() => {
     const anchoElemento = box.width * escalaVisual;
     
     // 🔥 POSICIÓN FINAL: Esquina superior derecha del elemento
-    const botonX = elementoX + anchoElemento - 12; // -12px (mitad del botón)
-    const botonY = elementoY - 12; // -12px (mitad del botón)
+    const botonX = elementoX + anchoElemento; // -12px (mitad del botón)
+    const botonY = elementoY -24; // -12px (mitad del botón)
     
     // 🔥 VALIDACIÓN: Solo mostrar si está dentro del viewport visible
     const viewportWidth = window.innerWidth;
@@ -1801,6 +1803,54 @@ useEffect(() => {
     }
   };
 }, [ejecutarDeshacer, ejecutarRehacer, historial.length, futuros.length]);
+
+
+
+// 🎯 Deseleccionar con tecla ESC
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    // ESC para deseleccionar
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      
+      // Solo procesar si hay elementos seleccionados
+      if (elementosSeleccionados.length > 0) {
+        console.log("🔓 Deseleccionando elementos con ESC");
+        
+        // Limpiar todas las selecciones y estados relacionados
+        setElementosSeleccionados([]);
+        setModoEdicion(false);
+        setMostrarPanelZ(false);
+        setMostrarSubmenuCapa(false);
+        setMostrarSelectorFuente(false);
+        setMostrarSelectorTamaño(false);
+        setHoverId(null);
+        
+        // Finalizar cualquier edición inline activa
+        if (modoEdicion) {
+          finalizarEdicionInline();
+        }
+        
+        // Limpiar cualquier textarea de edición
+        const textareas = document.querySelectorAll('textarea');
+        textareas.forEach(textarea => {
+          if (textarea.parentNode) {
+            textarea.remove();
+          }
+        });
+        
+        console.log("✅ Elementos deseleccionados");
+      }
+    }
+  };
+
+  // Escuchar en document para capturar ESC desde cualquier lugar
+  document.addEventListener("keydown", handleKeyDown);
+  
+  return () => {
+    document.removeEventListener("keydown", handleKeyDown);
+  };
+}, [elementosSeleccionados, modoEdicion]); // Dependencias necesarias
 
 
 

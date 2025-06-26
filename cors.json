@@ -1,8 +1,22 @@
 [
   {
-    "origin": ["https://reservaeldia.com.ar"],
-    "method": ["GET"],
-    "maxAgeSeconds": 3600,
-    "responseHeader": ["Content-Type"]
+    "origin": [
+      "https://reservaeldia.com.ar",
+      "http://reservaeldia.com.ar", 
+      "https://www.reservaeldia.com.ar",
+      "http://www.reservaeldia.com.ar",
+      "https://us-central1-reservaeldia-7a440.cloudfunctions.net",
+      "https://reservaeldia-7a440.web.app",
+      "https://reservaeldia-7a440.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type", 
+      "Access-Control-Allow-Origin", 
+      "Access-Control-Allow-Methods",
+      "Access-Control-Allow-Headers",
+      "Cache-Control"
+    ],
+    "maxAgeSeconds": 86400
   }
 ]

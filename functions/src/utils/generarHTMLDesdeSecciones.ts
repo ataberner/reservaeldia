@@ -6,50 +6,88 @@ export function generarHTMLDesdeSecciones(secciones: any[], objetos: any[]): str
   const alturaTotal = secciones.reduce((acc, s) => acc + s.altura, 0);
   const topPorSeccion = calcularTopPorSeccion(secciones);
 
-const htmlSecciones = secciones.map((seccion, index) => {
-  const offsetTop = topPorSeccion[seccion.id];
-  const topPercent = (offsetTop / alturaTotal) * 100;
-  const heightPercent = (seccion.altura / alturaTotal) * 100;
+  const htmlSecciones = secciones.map((seccion, index) => {
+    const offsetTop = topPorSeccion[seccion.id];
+    const topPercent = (offsetTop / alturaTotal) * 100;
+    const heightPercent = (seccion.altura / alturaTotal) * 100;
 
-  const contenido = generarHTMLDesdeObjetos(
-    objetos.filter((o) => o.seccionId === seccion.id),
-    secciones 
-  );
+    const contenido = generarHTMLDesdeObjetos(
+      objetos.filter((o) => o.seccionId === seccion.id),
+      secciones 
+    );
 
-  // 🧠 NUEVA LÓGICA: Detectar tipo de fondo
-  const fondoValue = seccion.fondo || "transparent";
-  const esImagenFondo = fondoValue.startsWith("http") || 
-                       fondoValue.startsWith("data:") || 
-                       fondoValue.startsWith("blob:");
+    // 🧠 NUEVA LÓGICA: Detectar tipo de fondo
+    const fondoValue = seccion.fondo || "transparent";
+    const esImagenFondo = seccion.fondoTipo === "imagen" && seccion.fondoImagen;
+    
+    // 🎨 APLICAR ESTILOS CORRECTOS
+let estilosFondo = "";
+if (esImagenFondo) {
+  // 🔥 VERIFICAR URL Y HACER PÚBLICA
+  let imageUrl = seccion.fondoImagen;
   
-  // 🎨 APLICAR ESTILOS CORRECTOS
-  let estilosFondo;
-  if (esImagenFondo) {
-    // Para imágenes: usar background-size: cover
-    estilosFondo = `
-      background-image: url(${fondoValue});
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-    `;
-  } else {
-    // Para colores: usar background normal
-    estilosFondo = `background: ${fondoValue};`;
-  }
 
-  return `
-    <div class="seccion" style="
-      top: ${topPercent}%;
-      height: ${heightPercent}%;
-      width: 100%;
-      ${estilosFondo}
-    ">
-      ${contenido}
-    </div>
-  `;
-}).join("\n");
+  
+  // Si es una URL de Firebase Storage, asegurarse que tenga el token público
+  if (imageUrl && imageUrl.includes('firebasestorage.googleapis.com') && !imageUrl.includes('alt=media')) {
+    imageUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'alt=media';
+  }
+  
+  
+  
+  // Calcular posición basada en los offsets X e Y
+  let backgroundPosition = 'center center';
+  
+  if (seccion.fondoImagenOffsetX !== undefined || seccion.fondoImagenOffsetY !== undefined) {
+  const offsetX = seccion.fondoImagenOffsetX || 0;
+  const offsetY = seccion.fondoImagenOffsetY || 0;
+
+  
+  
+  // 🔥 CORREGIR CÁLCULO: Los offsets negativos mueven la imagen hacia arriba/izquierda
+  // Los offsets positivos mueven la imagen hacia abajo/derecha
+  const offsetXPercent = offsetX !== 0 ? `calc(50% - ${-offsetX}px)` : '50%';
+  const offsetYPercent = offsetY !== 0 ? `calc(50% - ${-offsetY}px)` : '50%';
+  
+  backgroundPosition = `${offsetXPercent} ${offsetYPercent}`;
+  
+
+}
+  
+  // 🔥 USAR COMILLAS SIMPLES PARA EVITAR CONFLICTOS
+  estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: ${backgroundPosition}; background-repeat: no-repeat;`;
+  
+} else if (fondoValue.startsWith("http") || fondoValue.startsWith("data:") || fondoValue.startsWith("blob:")) {
+  // Compatibilidad con el sistema anterior
+  let imageUrl = fondoValue.replace('url(', '').replace(')', '');
+  
+  if (imageUrl.includes('firebasestorage.googleapis.com') && !imageUrl.includes('alt=media')) {
+    imageUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'alt=media';
+  }
+  
+  // 🔥 USAR COMILLAS SIMPLES PARA EVITAR CONFLICTOS
+  estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: center center; background-repeat: no-repeat;`;
+} else {
+  estilosFondo = `background: ${fondoValue};`;
+}
+
+
+    // 🎯 CONSTRUIR ESTILOS DE FORMA SEGURA
+const estilosSeccion = [
+  `top: ${topPercent}%`,
+  `height: ${heightPercent}%`,
+  `width: 100%`,
+  estilosFondo.replace(/\s+/g, ' ').trim()
+].join('; ');
 
 return `
+  <div class="seccion" style="${estilosSeccion}">
+    ${contenido}
+  </div>
+`;
+  }).join("\n");
+
+  return `
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -97,10 +135,10 @@ return `
     }
 
     .seccion {
-  position: absolute;
-  width: 100%;
-  overflow: hidden;
-}
+      position: absolute;
+      width: 100%;
+      overflow: hidden;
+    }
 
     .objeto {
       position: absolute;
@@ -136,17 +174,17 @@ return `
       }
       
       // APLICAR ESCALA CON ORIGEN ADAPTATIVO
-if (anchoViewport < 768) {
-  // Móvil: origen top left para evitar overflow
-  canvas.style.transform = \`scale(\${factorEscala})\`;
-  canvas.style.transformOrigin = "top left";
-  canvas.style.margin = "0";
-} else {
-  // Desktop: origen top center para mantener centrado
-  canvas.style.transform = \`scale(\${factorEscala})\`;
-  canvas.style.transformOrigin = "top center";
-  canvas.style.margin = "0 auto";
-}
+      if (anchoViewport < 768) {
+        // Móvil: origen top left para evitar overflow
+        canvas.style.transform = \`scale(\${factorEscala})\`;
+        canvas.style.transformOrigin = "top left";
+        canvas.style.margin = "0";
+      } else {
+        // Desktop: origen top center para mantener centrado
+        canvas.style.transform = \`scale(\${factorEscala})\`;
+        canvas.style.transformOrigin = "top center";
+        canvas.style.margin = "0 auto";
+      }
       
       // Ajustar altura del contenedor
       const alturaEscalada = ${alturaTotal} * factorEscala;

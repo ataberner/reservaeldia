@@ -28,7 +28,7 @@ function escalarParaAncho(imgWidth, imgHeight, canvasWidth = 800) {
 }
 
 
-export default function DashboardLayout({ children, mostrarMiniToolbar, seccionActivaId, }) {
+export default function DashboardLayout({ children, mostrarMiniToolbar, seccionActivaId, modoSelector = false }) {
   const [hoverSidebar, setHoverSidebar] = useState(false);
   const [fijadoSidebar, setFijadoSidebar] = useState(false);
   const [mostrarGaleria, setMostrarGaleria] = useState(false);
@@ -209,9 +209,9 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
     ${sidebarAbierta ? "w-80" : "w-16"} px-0 py-2 flex flex-col gap-2`}
     style={{ 
     position: 'fixed',
-    top: '70px', // altura de la barra superior
+    top: modoSelector ? '0px' : '70px',
     left: 0,
-    height: 'calc(100vh - 70px)', // altura total menos la barra superior
+    height: modoSelector ? '100vh' : 'calc(100vh - 70px)',
     zIndex: 30
   }}
         >

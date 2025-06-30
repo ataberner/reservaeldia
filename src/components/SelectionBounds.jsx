@@ -133,11 +133,16 @@ const elementosSeleccionadosData = selectedElements.map(id =>
   objetos.find(obj => obj.id === id)
 ).filter(obj => obj);
 
+const primerElemento = elementosSeleccionadosData[0] || null; 
+const esTexto        = primerElemento?.tipo === 'texto';  
+
 const hayLineas = elementosSeleccionadosData.some(obj => {
   const esLinea = obj.tipo === 'forma' && obj.figura === 'line';
  
   return esLinea;
 });
+
+
 
 const soloLineas = elementosSeleccionadosData.length > 0 && elementosSeleccionadosData.every(obj => {
   const esLinea = obj.tipo === 'forma' && obj.figura === 'line';

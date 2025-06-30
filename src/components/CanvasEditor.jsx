@@ -645,14 +645,14 @@ useEffect(() => {
 
 useEffect(() => {
   if (onHistorialChange) {
-    console.log("📤 Enviando historial al exterior:", historial.length);
+    
     onHistorialChange(historial);
   }
 }, [historial, onHistorialChange]);
 
 useEffect(() => {
   if (onFuturosChange) {
-    console.log("📤 Enviando futuros al exterior:", futuros.length);
+   
     onFuturosChange(futuros);
   }
 }, [futuros, onFuturosChange]);
@@ -1310,27 +1310,34 @@ const fuentesDisponibles = [...fuentesLocales, ...fuentesGoogle];
 const objetoSeleccionado = objetos.find((o) => o.id === elementosSeleccionados[0]);
 
 
+// En CanvasEditor.jsx, reemplazar la función mostrarGuias (alrededor de la línea 940)
 const mostrarGuias = (pos, idActual) => {
+  // 🔥 NO MOSTRAR GUÍAS DURANTE DRAG GRUPAL
+  if (window._grupoLider) {
+    setGuiaLineas([]);
+    return;
+  }
+  
   const lineas = [];
   const margen = 5;
   const anchoCanvas = 800;
-  const altoCanvas = 1400;
-
+  const altoCanvas = altoCanvasDinamico; // Usar altura dinámica
+  
   const centroCanvasX = anchoCanvas / 2;
   const centroCanvasY = altoCanvas / 2;
-
+  
   const nodeActual = elementRefs.current[idActual];
   if (!nodeActual) return;
-
+  
   const boxActual = nodeActual.getClientRect();
   const centerX = boxActual.x + boxActual.width / 2;
   const centerY = boxActual.y + boxActual.height / 2;
-
+  
   const top = boxActual.y;
   const bottom = boxActual.y + boxActual.height;
   const left = boxActual.x;
   const right = boxActual.x + boxActual.width;
-
+  
   // Centrales del canvas
   if (Math.abs(centerX - centroCanvasX) < margen) {
     lineas.push({ points: [centroCanvasX, 0, centroCanvasX, altoCanvas] });
@@ -1340,21 +1347,21 @@ const mostrarGuias = (pos, idActual) => {
     lineas.push({ points: [0, centroCanvasY, anchoCanvas, centroCanvasY] });
     nodeActual.y(nodeActual.y() + (centroCanvasY - centerY));
   }
-
+  
   objetos.forEach((obj) => {
     if (obj.id === idActual) return;
     const node = elementRefs.current[obj.id];
     if (!node) return;
-
+    
     const box = node.getClientRect();
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
-
+    
     const t = box.y;
     const b = box.y + box.height;
     const l = box.x;
     const r = box.x + box.width;
-
+    
     // Centrado con otro objeto
     if (Math.abs(centerX - cx) < margen) {
       lineas.push({ points: [cx, 0, cx, altoCanvas] });
@@ -1364,7 +1371,7 @@ const mostrarGuias = (pos, idActual) => {
       lineas.push({ points: [0, cy, anchoCanvas, cy] });
       nodeActual.y(nodeActual.y() + (cy - centerY));
     }
-
+    
     // BORDES
     if (Math.abs(left - l) < margen) {
       lineas.push({ points: [l, 0, l, altoCanvas] });
@@ -1383,7 +1390,7 @@ const mostrarGuias = (pos, idActual) => {
       nodeActual.y(nodeActual.y() + (b - bottom));
     }
   });
-
+  
   setGuiaLineas(lineas);
 };
 
@@ -1815,6 +1822,42 @@ const ejecutarRehacer = useCallback(() => {
   }
 }, [historial, futuros]);
 
+
+// 🔥 OPTIMIZACIÓN: Limpiar cache de intersección al cambiar selección
+useEffect(() => {
+  // Limpiar cache cuando cambia la selección
+  if (window._lineIntersectionCache) {
+    window._lineIntersectionCache = {};
+  }
+}, [elementosSeleccionados.length]);
+
+// 🔥 OPTIMIZACIÓN: Forzar actualización de líneas después de drag grupal
+useEffect(() => {
+  if (!window._grupoLider && elementosSeleccionados.length > 0) {
+    // Verificar si hay líneas seleccionadas
+    const hayLineas = objetos.some(obj => 
+      elementosSeleccionados.includes(obj.id) && 
+      obj.tipo === 'forma' && 
+      obj.figura === 'line'
+    );
+    
+    if (hayLineas) {
+      // Forzar re-render de las líneas
+      const timer = setTimeout(() => {
+        elementosSeleccionados.forEach(id => {
+          const node = elementRefs.current[id];
+          if (node && node.getLayer) {
+            node.getLayer()?.batchDraw();
+          }
+        });
+      }, 50);
+      
+      return () => clearTimeout(timer);
+    }
+  }
+}, [window._grupoLider, elementosSeleccionados, objetos]);
+
+
 // 🌐 Exponer funciones al window para acceso desde botones externos
 useEffect(() => {
   window.canvasEditor = {
@@ -1823,7 +1866,7 @@ useEffect(() => {
     getHistorial: () => ({ historial: historial.length, futuros: futuros.length })
   };
   
-  console.log("🌐 Funciones de historial expuestas al window");
+  
   
   return () => {
     if (window.canvasEditor) {
@@ -1834,30 +1877,17 @@ useEffect(() => {
 
 
 
-// 🔧 Función OPTIMIZADA para detectar intersección con líneas
+// En CanvasEditor.jsx, reemplazar la función detectarInterseccionLinea
 const detectarInterseccionLinea = useMemo(() => {
   return (lineObj, area, stage) => {
     try {
-      // 🎯 Validación rápida de entrada
       if (!lineObj || !area || !lineObj.points) return false;
-      
-      // 🔥 CACHE para evitar recálculos
-      const cacheKey = `${lineObj.id}-${area.x}-${area.y}-${area.width}-${area.height}`;
-      if (window._lineIntersectionCache && window._lineIntersectionCache[cacheKey] !== undefined) {
-        return window._lineIntersectionCache[cacheKey];
-      }
-      
-      // Inicializar cache si no existe
-      if (!window._lineIntersectionCache) {
-        window._lineIntersectionCache = {};
-      }
       
       let points = lineObj.points;
       if (!Array.isArray(points) || points.length < 4) {
         points = [0, 0, 100, 0];
       }
       
-      // Validar puntos rápidamente
       const puntosLimpios = [
         parseFloat(points[0]) || 0,
         parseFloat(points[1]) || 0, 
@@ -1865,16 +1895,22 @@ const detectarInterseccionLinea = useMemo(() => {
         parseFloat(points[3]) || 0
       ];
       
+      // 🔥 IMPORTANTE: El lineObj ya tiene Y con offset aplicado desde ElementoCanvas
       const lineX = lineObj.x || 0;
       const lineY = lineObj.y || 0;
       
-      // Coordenadas absolutas
+      // Log para debugging
+      
+      
+      // Coordenadas absolutas de los puntos
       const startX = lineX + puntosLimpios[0];
       const startY = lineY + puntosLimpios[1];
       const endX = lineX + puntosLimpios[2];
       const endY = lineY + puntosLimpios[3];
       
-      // 🔥 MÉTODO SIMPLE Y RÁPIDO: Solo verificar endpoints
+      
+      
+      // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
       const startDentro = (
         startX >= area.x && startX <= area.x + area.width &&
         startY >= area.y && startY <= area.y + area.height
@@ -1885,18 +1921,71 @@ const detectarInterseccionLinea = useMemo(() => {
         endY >= area.y && endY <= area.y + area.height
       );
       
-      const resultado = startDentro || endDentro;
+      if (startDentro || endDentro) {
+        console.log("✅ Línea seleccionada por punto dentro del área");
+        return true;
+      }
       
-      // Guardar en cache
-      window._lineIntersectionCache[cacheKey] = resultado;
+      // 🔥 MÉTODO 2: Verificar si el área contiene completamente la línea
+      const lineMinX = Math.min(startX, endX);
+      const lineMaxX = Math.max(startX, endX);
+      const lineMinY = Math.min(startY, endY);
+      const lineMaxY = Math.max(startY, endY);
       
-      return resultado;
+      const areaContieneLinea = (
+        lineMinX >= area.x &&
+        lineMaxX <= area.x + area.width &&
+        lineMinY >= area.y &&
+        lineMaxY <= area.y + area.height
+      );
+      
+      if (areaContieneLinea) {
+        console.log("✅ Línea seleccionada por estar completamente dentro del área");
+        return true;
+      }
+      
+      // 🔥 MÉTODO 3: Verificar intersección línea-rectángulo
+      const intersectaConArea = lineIntersectsRect(
+        startX, startY, endX, endY,
+        area.x, area.y, area.x + area.width, area.y + area.height
+      );
+      
+      if (intersectaConArea) {
+      
+        return true;
+      }
+      
+  
+      return false;
       
     } catch (error) {
+      console.error("Error en detectarInterseccionLinea:", error);
       return false;
     }
   };
-}, []); // useMemo para evitar recrear la función
+}, []);
+
+// Función auxiliar para verificar intersección línea-rectángulo
+function lineIntersectsRect(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectBottom) {
+  // Verificar si la línea intersecta con alguno de los 4 lados del rectángulo
+  return (
+    lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectTop) || // Top
+    lineIntersectsLine(x1, y1, x2, y2, rectRight, rectTop, rectRight, rectBottom) || // Right
+    lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectBottom, rectRight, rectBottom) || // Bottom
+    lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectTop, rectLeft, rectBottom) // Left
+  );
+}
+
+// Función auxiliar para verificar intersección línea-línea
+function lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 0.0001) return false;
+  
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+  
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
 
 
 
@@ -2471,7 +2560,7 @@ onMouseMove={(e) => {
 onMouseUp={() => {
   // 🔥 FINALIZAR DRAG GRUPAL MANUAL
 if (window._grupoLider && window._dragStartPos && window._dragInicial) {
-  console.log("🏁 Finalizando drag grupal");
+
   
   const stage = stageRef.current;
   const currentPos = stage.getPointerPosition();
@@ -2481,7 +2570,7 @@ if (window._grupoLider && window._dragStartPos && window._dragInicial) {
     const deltaY = currentPos.y - window._dragStartPos.y;
     const elementosSeleccionados = window._elementosSeleccionados || [];
     
-    console.log("💾 Aplicando posiciones finales:", { deltaX, deltaY, elementos: elementosSeleccionados.length });
+ 
     
     // 🔥 APLICACIÓN FINAL SIN PREVIEW
     setObjetos(prev => {
@@ -2503,7 +2592,7 @@ if (window._grupoLider && window._dragStartPos && window._dragInicial) {
   }
   
   // 🔥 LIMPIEZA COMPLETA
-  console.log("🧹 Limpiando flags de drag grupal");
+  
   window._grupoLider = null;
   window._dragStartPos = null;
   window._dragInicial = null;
@@ -2530,54 +2619,94 @@ if (window._grupoLider && window._dragStartPos && window._dragInicial) {
     return false;
   }
   
-  // 🔥 MANEJO ESPECIAL PARA LÍNEAS
-  if (obj.tipo === 'forma' && obj.figura === 'line') {
-   
+     // 🔥 MANEJO ESPECIAL PARA LÍNEAS
+    if (obj.tipo === 'forma' && obj.figura === 'line') {
+      try {
+        // 🔥 OBTENER POSICIÓN REAL DEL NODO (no del objeto)
+        const nodePos = node.position();
+        const lineX = nodePos.x;
+        const lineY = nodePos.y;
+        
+        const points = obj.points || [0, 0, 100, 0];
+        const cleanPoints = [
+          parseFloat(points[0]) || 0,
+          parseFloat(points[1]) || 0,
+          parseFloat(points[2]) || 100,
+          parseFloat(points[3]) || 0
+        ];
+        
+        // Calcular puntos absolutos
+        const startX = lineX + cleanPoints[0];
+        const startY = lineY + cleanPoints[1];
+        const endX = lineX + cleanPoints[2];
+        const endY = lineY + cleanPoints[3];
+        
+        // Verificar si algún punto está dentro del área
+        const startDentro = (
+          startX >= areaSeleccion.x && startX <= areaSeleccion.x + areaSeleccion.width &&
+          startY >= areaSeleccion.y && startY <= areaSeleccion.y + areaSeleccion.height
+        );
+        
+        const endDentro = (
+          endX >= areaSeleccion.x && endX <= areaSeleccion.x + areaSeleccion.width &&
+          endY >= areaSeleccion.y && endY <= areaSeleccion.y + areaSeleccion.height
+        );
+        
+        // Verificar si el área cruza la línea
+        const lineMinX = Math.min(startX, endX);
+        const lineMaxX = Math.max(startX, endX);
+        const lineMinY = Math.min(startY, endY);
+        const lineMaxY = Math.max(startY, endY);
+        
+        const areaIntersectaLinea = !(
+          areaSeleccion.x > lineMaxX ||
+          areaSeleccion.x + areaSeleccion.width < lineMinX ||
+          areaSeleccion.y > lineMaxY ||
+          areaSeleccion.y + areaSeleccion.height < lineMinY
+        );
+        
+        const resultado = startDentro || endDentro || areaIntersectaLinea;
+        
+        
+        return resultado;
+      } catch (error) {
+        
+        return false;
+      }
+    }
+    
+    // 🔄 LÓGICA PARA ELEMENTOS NORMALES
     try {
-      const resultado = detectarInterseccionLinea(obj, areaSeleccion, stageRef.current);
-  
+      const box = node.getClientRect();
+      const resultado = (
+        box.x + box.width >= areaSeleccion.x &&
+        box.x <= areaSeleccion.x + areaSeleccion.width &&
+        box.y + box.height >= areaSeleccion.y &&
+        box.y <= areaSeleccion.y + areaSeleccion.height
+      );
+      
       return resultado;
     } catch (error) {
-     
+      
       return false;
     }
-  }
-  
-  // 🔄 LÓGICA PARA ELEMENTOS NORMALES (INTERSECCIÓN, NO COBERTURA COMPLETA)
-try {
-  const box = node.getClientRect();
-  const resultado = (
-    box.x + box.width >= areaSeleccion.x &&
-    box.x <= areaSeleccion.x + areaSeleccion.width &&
-    box.y + box.height >= areaSeleccion.y &&
-    box.y <= areaSeleccion.y + areaSeleccion.height
-  );
-    console.log("🎯 Resultado selección normal:", obj.id, resultado);
-    return resultado;
-  } catch (error) {
-    console.warn("❌ Error en selección normal:", error);
-    return false;
-  }
-});
+  });
 
 
 
-
- setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
-
+setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
 setElementosPreSeleccionados([]);
 setSeleccionActiva(false);
 setAreaSeleccion(null);
 
 // 🔥 LIMPIAR THROTTLES Y CACHE
-if (window._selectionThrottle) {
-  window._selectionThrottle = false;
-}
-// 🔥 NUEVO: Limpiar throttle de bounds
-if (window._boundsUpdateThrottle) {
-  window._boundsUpdateThrottle = false;
-}
-window._lineIntersectionCache = {};
+  if (window._selectionThrottle) {
+    window._selectionThrottle = false;
+  }
+  if (window._boundsUpdateThrottle) {
+    window._boundsUpdateThrottle = false;
+  }
+  window._lineIntersectionCache = {};
 }}
     
 
@@ -2862,17 +2991,11 @@ onSelect={async (id, obj, e) => {
 
 
 onChange={(id, nuevo) => {
-  console.log("🔀 onChange llamado:", { 
-    id, 
-    fromTransform: nuevo.fromTransform,
-    finalizoDrag: nuevo.finalizoDrag,
-    isBatchUpdateFinal: nuevo.isBatchUpdateFinal,
-    y: nuevo.y 
-  });
+  
 
   // 🔥 NUEVO: Manejar preview inmediato de drag grupal
   if (nuevo.isDragPreview) {
-    console.log("🎨 Aplicando preview inmediato para:", id);
+    
     setObjetos(prev => {
       const index = prev.findIndex(o => o.id === id);
       if (index === -1) return prev;
@@ -2887,7 +3010,7 @@ onChange={(id, nuevo) => {
 
   // 🔥 MANEJAR SOLO batch update final de drag grupal
   if (nuevo.isBatchUpdateFinal && id === 'BATCH_UPDATE_GROUP_FINAL') {
-    console.log("💾 Sincronizando React state después de drag grupal");
+    
     const { elementos, dragInicial, deltaX, deltaY } = nuevo;
     
     setObjetos(prev => {
@@ -2910,7 +3033,7 @@ onChange={(id, nuevo) => {
 
   // 🔥 NO procesar si viene del Transform
   if (nuevo.fromTransform) {
-    console.log("🔥 Ignorando onChange porque viene del Transform");
+   
     return;
   }
 

@@ -1,3 +1,4 @@
+// ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
 import { Text, Image as KonvaImage } from "react-konva";
 import { Rect, Circle, Line, RegularPolygon, Path } from "react-konva";
 import useImage from "use-image";
@@ -18,20 +19,21 @@ export default function ElementoCanvas({
   onStartTextEdit
 }) {
   const [img] = useImage(obj.src || null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
-const handleChange = useCallback((id, newData) => {
-  // No procesar cambios que vienen del autofix para evitar bucles
-  if (newData.fromAutoFix || !onChange) return;
-  onChange(id, newData);
-}, [onChange]);
+  const handleChange = useCallback((id, newData) => {
+    if (newData.fromAutoFix || !onChange) return;
+    onChange(id, newData);
+  }, [onChange]);
 
-    const handleRef = useCallback((node) => {
+  const handleRef = useCallback((node) => {
     if (node && registerRef) {
       registerRef(obj.id, node);
     }
   }, [obj.id, registerRef]);
 
+  // 🔥 MEMOIZAR PROPIEDADES COMUNES
   const commonProps = useMemo(() => ({
     x: obj.x ?? 0,
     y: obj.y ?? 0,
@@ -41,95 +43,92 @@ const handleChange = useCallback((id, newData) => {
     draggable: false,
     ref: handleRef,
 
-onMouseDown: (e) => {
-  e.cancelBubble = true;
-  hasDragged.current = false;
-  
-  // 🔥 SIEMPRE habilitar draggable para permitir drag directo
-  e.target.draggable(true);
-},
+    onMouseDown: (e) => {
+      e.cancelBubble = true;
+      hasDragged.current = false;
+      
+      // 🔥 HABILITAR draggable SIEMPRE
+      e.target.draggable(true);
+    },
 
     onMouseUp: (e) => {
-      // Solo deshabilitar si no estamos arrastrando
       if (e.target.draggable && !hasDragged.current) {
         e.target.draggable(false);
       }
     },
 
-// MANTENER ESTE onClick (que ya funciona bien):
-onClick: (e) => {
-  e.cancelBubble = true;
-  
-  if (!hasDragged.current) {
-    if (obj.tipo === "texto") {
-      if (isSelected) {
-        // Ya está seleccionado - entrar en edición
+    onClick: (e) => {
+      e.cancelBubble = true;
       
-        if (onStartTextEdit) {
-          onStartTextEdit(obj.id, obj);
+      if (!hasDragged.current) {
+        if (obj.tipo === "texto") {
+          if (isSelected) {
+            if (onStartTextEdit) {
+              onStartTextEdit(obj.id, obj);
+            }
+          } else {
+            onSelect(obj.id, obj, e);
+          }
+        } else {
+          onSelect(obj.id, obj, e);
+        }
+      }
+    },
+
+    onDragStart: (e) => {
+     
+      hasDragged.current = true;
+      window._isDragging = true;
+      setIsDragging(true);
+      
+      const elementosSeleccionados = window._elementosSeleccionados || [];
+      const esSeleccionMultiple = elementosSeleccionados.length > 1;
+      const esLinea = obj.tipo === 'forma' && obj.figura === 'line';
+      
+      if (esSeleccionMultiple && elementosSeleccionados.includes(obj.id)) {
+     
+        
+        // 🔥 CONFIGURAR LÍDER DEL GRUPO
+        if (!window._grupoLider) {
+          window._grupoLider = obj.id;
+          window._dragStartPos = e.target.getStage().getPointerPosition();
+          window._dragInicial = {};
+          
+          // 🔥 GUARDAR POSICIONES INICIALES DE TODOS LOS ELEMENTOS
+          elementosSeleccionados.forEach(id => {
+            const objeto = window._objetosActuales?.find(o => o.id === id);
+            if (objeto) {
+              // 🎯 Para líneas, guardar también los puntos
+              if (objeto.tipo === 'forma' && objeto.figura === 'line') {
+                window._dragInicial[id] = { 
+                  x: objeto.x || 0, 
+                  y: objeto.y || 0,
+                  points: [...(objeto.points || [0, 0, 100, 0])] // Clonar array
+                };
+              } else {
+                window._dragInicial[id] = { 
+                  x: objeto.x || 0, 
+                  y: objeto.y || 0 
+                };
+              }
+          
+            }
+          });
+          
+      
         }
       } else {
-        // No está seleccionado - solo seleccionar
-     
-        onSelect(obj.id, obj, e);
+        // 🔄 DRAG INDIVIDUAL
+        dragStartPos.current = e.target.getStage().getPointerPosition();
+   
       }
-    } else {
-      // Para otros elementos - siempre seleccionar
-      onSelect(obj.id, obj, e);
-    }
-  }
-},
+    },
 
-
-
-onDragStart: (e) => {
-  console.log("🚀 Iniciando drag para:", obj.id);
-  hasDragged.current = true;
-  window._isDragging = true;
-  
-  const elementosSeleccionados = window._elementosSeleccionados || [];
-  const esSeleccionMultiple = elementosSeleccionados.length > 1;
-  
-  if (esSeleccionMultiple) {
-    console.log("👥 Drag grupal detectado para:", elementosSeleccionados.length, "elementos");
-    
-    // 🔥 NO DESHABILITAR DRAGGABLE - mantenerlo activo
-    // e.target.draggable(false); // ❌ COMENTAR ESTA LÍNEA
-    
-    // 🔥 CONFIGURAR DRAG MANUAL
-    window._grupoLider = obj.id;
-    window._dragStartPos = e.target.getStage().getPointerPosition();
-    window._dragInicial = {};
-    
-    // 🔥 GUARDAR POSICIONES INICIALES
-    elementosSeleccionados.forEach(id => {
-      const objeto = window._objetosActuales?.find(o => o.id === id);
-      if (objeto) {
-        window._dragInicial[id] = { x: objeto.x || 0, y: objeto.y || 0 };
-        console.log(`📍 Posición inicial guardada para ${id}:`, window._dragInicial[id]);
-      }
-    });
-    
-    console.log("✅ Drag grupal configurado:", {
-      lider: window._grupoLider,
-      startPos: window._dragStartPos,
-      posicionesIniciales: Object.keys(window._dragInicial).length
-    });
-    
-    // 🔥 NO HACER RETURN - permitir que continúe el drag normal
-  } else {
-    // 🔄 DRAG INDIVIDUAL
-    dragStartPos.current = e.target.getStage().getPointerPosition();
-    console.log("🎯 Drag individual configurado para:", obj.id);
-  }
-},
-
-
-
+// En ElementoCanvas.jsx, dentro de commonProps, reemplazar onDragMove:
 onDragMove: (e) => {
   hasDragged.current = true;
   
-  // 🔥 SI HAY DRAG GRUPAL MANUAL ACTIVO, USAR MÉTODO ALTERNATIVO
+  // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
   if (window._grupoLider && obj.id === window._grupoLider) {
     const stage = e.target.getStage();
     const currentPos = stage.getPointerPosition();
@@ -140,131 +139,203 @@ onDragMove: (e) => {
       
       const elementosSeleccionados = window._elementosSeleccionados || [];
       
-      // 🔥 USAR onChange INMEDIATO SIN THROTTLE
-      if (onChange) {
-        // 🔥 ENVIAR ACTUALIZACIONES INDIVIDUALES INMEDIATAS
-        elementosSeleccionados.forEach(elementId => {
-          if (elementId !== obj.id && window._dragInicial[elementId]) {
-            const posInicial = window._dragInicial[elementId];
-            onChange(elementId, {
-              x: posInicial.x + deltaX,
-              y: posInicial.y + deltaY,
-              isDragPreview: true,
-              skipHistorial: true // Flag para evitar historial durante preview
-            });
+      // 🔥 ACTUALIZACIÓN INMEDIATA SIN THROTTLE PARA EVITAR LAG
+      elementosSeleccionados.forEach(elementId => {
+        if (window._dragInicial[elementId]) {
+          const posInicial = window._dragInicial[elementId];
+          
+          // 🎯 Actualizar posición directamente en el nodo para feedback inmediato
+          const node = window._elementRefs?.[elementId];
+          if (node) {
+            node.x(posInicial.x + deltaX);
+            node.y(posInicial.y + deltaY);
           }
-        });
-      }
+          
+          // También actualizar via onChange para sincronizar con React
+          onChange(elementId, {
+            x: posInicial.x + deltaX,
+            y: posInicial.y + deltaY,
+            isDragPreview: true,
+            skipHistorial: true
+          });
+        }
+      });
+      
+      // 🔥 Forzar redibujado inmediato
+      e.target.getLayer()?.batchDraw();
     }
     return;
   }
   
-  // 🔥 SI ES PARTE DEL GRUPO PERO NO ES EL LÍDER, NO PROCESAR
-  if (window._grupoLider && obj.id !== window._grupoLider) {
+  // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
+  if (window._grupoLider) {
     const elementosSeleccionados = window._elementosSeleccionados || [];
-    if (elementosSeleccionados.includes(obj.id)) {
+    if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
       return;
     }
   }
   
-  // 🔄 DRAG INDIVIDUAL (código original)
-  const node = e.target;
-  if (node && node.position) {
-    const nuevaPos = node.position();
-    
-    if (onDragMovePersonalizado) {
-      onDragMovePersonalizado(nuevaPos, obj.id);
+  // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
+  if (!window._grupoLider) {
+    const node = e.target;
+    if (node && node.position) {
+      const nuevaPos = node.position();
+      
+      if (onDragMovePersonalizado) {
+        onDragMovePersonalizado(nuevaPos, obj.id);
+      }
     }
   }
 },
 
-onDragEnd: (e) => {
-  console.log("🏁 Finalizando drag para:", obj.id);
-  
-  // 🔥 LIMPIAR FLAGS
-  window._isDragging = false;
-  
-  const node = e.target;
-  
-// 🔥 SI ES EL LÍDER DEL GRUPO, FINALIZAR DRAG GRUPAL
-  if (window._grupoLider && obj.id === window._grupoLider) {
-    console.log("🏁 Finalizando drag grupal desde elemento líder");
-    
-    const stage = e.target.getStage();
-    const currentPos = stage.getPointerPosition();
-    
-    if (currentPos && window._dragStartPos && window._dragInicial) {
-      const deltaX = currentPos.x - window._dragStartPos.x;
-      const deltaY = currentPos.y - window._dragStartPos.y;
-      const elementosSeleccionados = window._elementosSeleccionados || [];
+    onDragEnd: (e) => {
+            
+      window._isDragging = false;
+      setIsDragging(false);
       
-      console.log("💾 Sincronizando posiciones finales con React state:", { deltaX, deltaY, elementos: elementosSeleccionados.length });
+      const node = e.target;
       
-      // 🔥 SINCRONIZAR POSICIONES FINALES CON REACT STATE
-      if (onChange) {
-        onChange('BATCH_UPDATE_GROUP_FINAL', {
-          elementos: elementosSeleccionados,
-          dragInicial: window._dragInicial,
-          deltaX,
-          deltaY,
-          isBatchUpdateFinal: true
+      // 🔥 FINALIZAR DRAG GRUPAL SI ES EL LÍDER
+      if (window._grupoLider && obj.id === window._grupoLider) {
+      
+        
+        const stage = e.target.getStage();
+        const currentPos = stage.getPointerPosition();
+        
+        if (currentPos && window._dragStartPos && window._dragInicial) {
+          const deltaX = currentPos.x - window._dragStartPos.x;
+          const deltaY = currentPos.y - window._dragStartPos.y;
+          const elementosSeleccionados = window._elementosSeleccionados || [];
+          
+         
+          
+          // 🔥 APLICAR CAMBIOS FINALES
+          if (onChange) {
+            onChange('BATCH_UPDATE_GROUP_FINAL', {
+              elementos: elementosSeleccionados,
+              dragInicial: window._dragInicial,
+              deltaX,
+              deltaY,
+              isBatchUpdateFinal: true
+            });
+          }
+        }
+        
+        // 🔥 LIMPIAR FLAGS
+        window._grupoLider = null;
+        window._dragStartPos = null;
+        window._dragInicial = null;
+        window._dragGroupThrottle = false;
+        
+        // Re-habilitar draggable para todos
+        const elementosSeleccionados = window._elementosSeleccionados || [];
+        elementosSeleccionados.forEach(id => {
+          const elNode = window._elementRefs?.[id];
+          if (elNode) {
+            setTimeout(() => elNode.draggable(true), 50);
+          }
         });
+        
+        setTimeout(() => {
+          hasDragged.current = false;
+        }, 50);
+        
+        return;
       }
-    }
-    
-    // 🔥 LIMPIAR FLAGS DE DRAG GRUPAL
-    console.log("🧹 Limpiando flags de drag grupal desde elemento");
-    window._grupoLider = null;
-    window._dragStartPos = null;
-    window._dragInicial = null;
-    
-    setTimeout(() => {
-      hasDragged.current = false;
-    }, 50);
-    
-    return;
-  }
-  
-  // 🔥 SI ES SEGUIDOR EN GRUPO, NO PROCESAR
-  if (window._grupoLider) {
-    const elementosSeleccionados = window._elementosSeleccionados || [];
-    if (elementosSeleccionados.includes(obj.id)) {
-      console.log("🔄 Elemento seguidor finalizando - no procesar");
+      
+      // 🔥 SI ES SEGUIDOR, SOLO LIMPIAR FLAGS
+      if (window._grupoLider) {
+        const elementosSeleccionados = window._elementosSeleccionados || [];
+        if (elementosSeleccionados.includes(obj.id)) {
+          setTimeout(() => {
+            hasDragged.current = false;
+          }, 50);
+          return;
+        }
+      }
+      
+      // 🔄 DRAG INDIVIDUAL
+      onChange(obj.id, {
+        x: node.x(),
+        y: node.y(),
+        finalizoDrag: true
+      });
+      
+      if (onDragEndPersonalizado) onDragEndPersonalizado();
+      
       setTimeout(() => {
         hasDragged.current = false;
       }, 50);
-      return;
-    }
-  }
-  
-  // 🔄 DRAG INDIVIDUAL NORMAL
-  onChange(obj.id, {
-    x: node.x(),
-    y: node.y(),
-    finalizoDrag: true
-  });
-  
-  if (onDragEndPersonalizado) onDragEndPersonalizado();
-  
-  setTimeout(() => {
-    hasDragged.current = false;
-  }, 50);
-},
+    },
+  }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange]);
 
-  }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef]);
-
-
-
- // 🔥 MEMOIZAR HANDLERS PARA EVITAR RE-CREACIÓN
+  // 🔥 MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {
-    if (onHover) onHover(obj.id);
-  }, [onHover, obj.id]);
+    if (onHover && !isDragging && !window._isDragging) {
+      onHover(obj.id);
+    }
+  }, [onHover, obj.id, isDragging]);
 
   const handleMouseLeave = useCallback(() => {
     if (onHover) onHover(null);
   }, [onHover]);
 
+  // 🎯 RENDER DE LÍNEA OPTIMIZADO
+  if (obj.tipo === "forma" && obj.figura === "line") {
+    let linePoints = obj.points;
+    let pointsFixed = false;
+    
+    if (!linePoints || !Array.isArray(linePoints) || linePoints.length < 4) {
+      linePoints = [0, 0, 100, 0];
+      pointsFixed = true;
+    } else {
+      const puntosValidados = [];
+      for (let i = 0; i < 4; i++) {
+        const punto = parseFloat(linePoints[i]);
+        puntosValidados.push(isNaN(punto) ? 0 : punto);
+      }
+      
+      if (JSON.stringify(puntosValidados) !== JSON.stringify(linePoints.slice(0, 4))) {
+        linePoints = puntosValidados;
+        pointsFixed = true;
+      } else {
+        linePoints = linePoints.slice(0, 4);
+      }
+    }
+    
+    if (pointsFixed && handleChange) {
+      setTimeout(() => {
+        handleChange(obj.id, { 
+          points: linePoints,
+          fromAutoFix: true
+        });
+      }, 0);
+    }
+    
+    return (
+      <Line
+        {...commonProps}
+        points={linePoints}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        stroke={obj.color || "#000000"}
+        strokeWidth={3} // 🔥 Grosor ligeramente mayor para mejor interacción
+        tension={0}
+        lineCap="round"
+        lineJoin="round"
+        perfectDrawEnabled={false}
+        hitStrokeWidth={15} // 🔥 Área de click más grande
+        shadowForStrokeEnabled={false}
+        // 🎨 Efecto visual sutil cuando está seleccionada
+        opacity={isSelected ? 1 : 0.95}
+        shadowColor={isSelected ? "rgba(119, 61, 190, 0.3)" : "transparent"}
+        shadowBlur={isSelected ? 8 : 0}
+        shadowOffset={{ x: 0, y: 2 }}
+      />
+    );
+  }
 
+  // 🔄 RESTO DE ELEMENTOS (sin cambios)
   if (obj.tipo === "texto") {
     return (
       <Text
@@ -277,19 +348,8 @@ onDragEnd: (e) => {
         align="center"
         textDecoration={obj.textDecoration || "none"}
         fill={obj.color || "#000"}
-        onMouseEnter={() => onHover(obj.id)}
-        onMouseLeave={() => onHover(null)}
-        onContextMenu={(e) => {
-          e.evt.preventDefault();
-          // Solo mostrar menú contextual
-          const mousePos = e.evt;
-          const x = mousePos.clientX;
-          const y = mousePos.clientY;
-          const customEvent = new CustomEvent("abrir-menu-contextual", {
-            detail: { x, y },
-          });
-          window.dispatchEvent(customEvent);
-        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
         strokeWidth={isSelected || preSeleccionado ? 1 : 0}
       />
@@ -303,8 +363,8 @@ onDragEnd: (e) => {
         image={img}
         width={obj.width || img.width}
         height={obj.height || img.height}
-        onMouseEnter={() => onHover(obj.id)}
-        onMouseLeave={() => onHover(null)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
         strokeWidth={isSelected || preSeleccionado ? 1 : 0}
       />
@@ -317,8 +377,8 @@ onDragEnd: (e) => {
         {...commonProps}
         data={obj.d}
         fill={obj.color || "#000"}
-        onMouseEnter={() => onHover(obj.id)}
-        onMouseLeave={() => onHover(null)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
         strokeWidth={isSelected || preSeleccionado ? 1 : 0}
       />
@@ -332,8 +392,8 @@ onDragEnd: (e) => {
         image={img}
         width={obj.width || img.width}
         height={obj.height || img.height}
-        onMouseEnter={() => onHover(obj.id)}
-        onMouseLeave={() => onHover(null)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
         strokeWidth={isSelected || preSeleccionado ? 1 : 0}
       />
@@ -353,8 +413,8 @@ onDragEnd: (e) => {
             {...propsForma}
             width={Math.abs(obj.width || 100)}
             height={Math.abs(obj.height || 100)}
-            onMouseEnter={() => onHover(obj.id)}
-            onMouseLeave={() => onHover(null)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
             strokeWidth={isSelected || preSeleccionado ? 1 : 0}
           />
@@ -365,72 +425,21 @@ onDragEnd: (e) => {
           <Circle
             {...propsForma}
             radius={obj.radius || 50}
-            onMouseEnter={() => onHover(obj.id)}
-            onMouseLeave={() => onHover(null)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
             strokeWidth={isSelected || preSeleccionado ? 1 : 0}
           />
         );
         
-   case "line":
-  // 🔥 LIMPIEZA COMPLETA DE PUNTOS SIN LOGS REPETITIVOS
-  let linePoints = obj.points;
-  let pointsFixed = false;
-  
-  // Verificar si los puntos son válidos
-  if (!linePoints || !Array.isArray(linePoints) || linePoints.length < 4) {
-    linePoints = [0, 0, 100, 0]; // Fallback
-    pointsFixed = true;
-  } else {
-    // Validar que todos los puntos sean números
-    const puntosValidados = [];
-    for (let i = 0; i < 4; i++) {
-      const punto = parseFloat(linePoints[i]);
-      puntosValidados.push(isNaN(punto) ? 0 : punto);
-    }
-    
-    // Verificar si hubo cambios
-    if (JSON.stringify(puntosValidados) !== JSON.stringify(linePoints.slice(0, 4))) {
-      linePoints = puntosValidados;
-      pointsFixed = true;
-    } else {
-      linePoints = linePoints.slice(0, 4); // Solo tomar los primeros 4
-    }
-  }
- 
-  // 🔥 CORREGIR LOS PUNTOS AUTOMÁTICAMENTE SIN LOGS
-  if (pointsFixed && handleChange) {
-    setTimeout(() => {
-      handleChange(obj.id, { 
-        points: linePoints,
-        fromAutoFix: true
-      });
-    }, 0);
-  }
-  
-  return (
-    <Line
-      {...propsForma}
-      points={linePoints}
-      onMouseEnter={() => onHover && onHover(obj.id)}
-      onMouseLeave={() => onHover && onHover(null)}
-      stroke={obj.color || "#000000"}
-      strokeWidth={2} // 🔥 GROSOR CONSTANTE - SIN CAMBIOS AL SELECCIONAR
-      tension={0}
-      lineCap="round"
-      perfectDrawEnabled={false}
-      // 🔥 SIN EFECTOS VISUALES CUANDO ESTÁ SELECCIONADA
-    />
-  );
-
       case "triangle":
         return (
           <RegularPolygon
             {...propsForma}
             sides={3}
             radius={obj.radius || 60}
-            onMouseEnter={() => onHover(obj.id)}
-            onMouseLeave={() => onHover(null)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
             strokeWidth={isSelected || preSeleccionado ? 1 : 0}
           />

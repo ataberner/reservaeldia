@@ -319,12 +319,12 @@ onDragMove: (e) => {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         stroke={obj.color || "#000000"}
-        strokeWidth={3} // 🔥 Grosor ligeramente mayor para mejor interacción
+        strokeWidth={obj.strokeWidth || 2} // 🔥 Usar strokeWidth del objeto
         tension={0}
         lineCap="round"
         lineJoin="round"
         perfectDrawEnabled={false}
-        hitStrokeWidth={15} // 🔥 Área de click más grande
+        hitStrokeWidth={Math.max(15, (obj.strokeWidth || 2) + 10)} // 🔥 Área de click adaptativa
         shadowForStrokeEnabled={false}
         // 🎨 Efecto visual sutil cuando está seleccionada
         opacity={isSelected ? 1 : 0.95}

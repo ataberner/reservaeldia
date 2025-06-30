@@ -13,6 +13,7 @@ import usePlantillasDeSeccion from "@/hooks/usePlantillasDeSeccion";
 import { useImperativeObjects } from '@/hooks/useImperativeObjects';
 import SelectionBounds from './SelectionBounds';
 import HoverIndicator from './HoverIndicator';
+import LineToolbar from "./LineToolbar";
 import useImage from "use-image";
 import {
   Check,
@@ -456,6 +457,7 @@ const fuentesGoogle = [
   { nombre: "Playfair Display", valor: "Playfair Display" },
   { nombre: "Roboto", valor: "Roboto" },
   { nombre: "Lobster", valor: "Lobster" },
+  { nombre: "Great Vibes", valor: "'Great Vibes', cursive" },
 ];
       const [mostrarSelectorTamaño, setMostrarSelectorTamaño] = useState(false);
       const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
@@ -1310,89 +1312,77 @@ const fuentesDisponibles = [...fuentesLocales, ...fuentesGoogle];
 const objetoSeleccionado = objetos.find((o) => o.id === elementosSeleccionados[0]);
 
 
-// En CanvasEditor.jsx, reemplazar la función mostrarGuias (alrededor de la línea 940)
+// ✅ NUEVA FUNCIÓN – reemplaza la anterior
 const mostrarGuias = (pos, idActual) => {
-  // 🔥 NO MOSTRAR GUÍAS DURANTE DRAG GRUPAL
-  if (window._grupoLider) {
-    setGuiaLineas([]);
-    return;
-  }
-  
-  const lineas = [];
-  const margen = 5;
-  const anchoCanvas = 800;
-  const altoCanvas = altoCanvasDinamico; // Usar altura dinámica
-  
-  const centroCanvasX = anchoCanvas / 2;
-  const centroCanvasY = altoCanvas / 2;
-  
+  const margen   = 5;          // sensibilidad (px)
+  const ancho    = 800;        // ancho canvas
+  const alto     = altoCanvasDinamico;
+  const cxCanvas = ancho / 2;
+  const cyCanvas = alto  / 2;
+
   const nodeActual = elementRefs.current[idActual];
   if (!nodeActual) return;
-  
-  const boxActual = nodeActual.getClientRect();
-  const centerX = boxActual.x + boxActual.width / 2;
-  const centerY = boxActual.y + boxActual.height / 2;
-  
-  const top = boxActual.y;
-  const bottom = boxActual.y + boxActual.height;
-  const left = boxActual.x;
-  const right = boxActual.x + boxActual.width;
-  
-  // Centrales del canvas
-  if (Math.abs(centerX - centroCanvasX) < margen) {
-    lineas.push({ points: [centroCanvasX, 0, centroCanvasX, altoCanvas] });
-    nodeActual.x(nodeActual.x() + (centroCanvasX - centerX));
+
+  const boxA = nodeActual.getClientRect();
+
+  // 👉 Flags para NO repetir la misma guía
+  const done = {
+    cx:false, cy:false,
+    l:false,  r:false,
+    t:false,  b:false
+  };
+
+  const nuevas = [];
+
+  /* ---------- helper ------------- */
+  const addGuide = ({x1,y1,x2,y2,type})=>{
+    if (done[type]) return;     // ya hay una guía de ese tipo
+    nuevas.push({points:[x1,y1,x2,y2],type});
+    done[type] = true;
+  };
+
+  /* ---------- 1) centro canvas ----- */
+  if (Math.abs(boxA.x + boxA.width/2 - cxCanvas) < margen){
+    addGuide({x1:cxCanvas, y1:0, x2:cxCanvas, y2:alto, type:'cx'});
+    nodeActual.x(nodeActual.x() + (cxCanvas - (boxA.x + boxA.width/2)));
   }
-  if (Math.abs(centerY - centroCanvasY) < margen) {
-    lineas.push({ points: [0, centroCanvasY, anchoCanvas, centroCanvasY] });
-    nodeActual.y(nodeActual.y() + (centroCanvasY - centerY));
+  if (Math.abs(boxA.y + boxA.height/2 - cyCanvas) < margen){
+    addGuide({x1:0, y1:cyCanvas, x2:ancho, y2:cyCanvas, type:'cy'});
+    nodeActual.y(nodeActual.y() + (cyCanvas - (boxA.y + boxA.height/2)));
   }
-  
-  objetos.forEach((obj) => {
-    if (obj.id === idActual) return;
-    const node = elementRefs.current[obj.id];
-    if (!node) return;
-    
-    const box = node.getClientRect();
-    const cx = box.x + box.width / 2;
-    const cy = box.y + box.height / 2;
-    
-    const t = box.y;
-    const b = box.y + box.height;
-    const l = box.x;
-    const r = box.x + box.width;
-    
-    // Centrado con otro objeto
-    if (Math.abs(centerX - cx) < margen) {
-      lineas.push({ points: [cx, 0, cx, altoCanvas] });
-      nodeActual.x(nodeActual.x() + (cx - centerX));
-    }
-    if (Math.abs(centerY - cy) < margen) {
-      lineas.push({ points: [0, cy, anchoCanvas, cy] });
-      nodeActual.y(nodeActual.y() + (cy - centerY));
-    }
-    
-    // BORDES
-    if (Math.abs(left - l) < margen) {
-      lineas.push({ points: [l, 0, l, altoCanvas] });
-      nodeActual.x(nodeActual.x() + (l - left));
-    }
-    if (Math.abs(right - r) < margen) {
-      lineas.push({ points: [r, 0, r, altoCanvas] });
-      nodeActual.x(nodeActual.x() + (r - right));
-    }
-    if (Math.abs(top - t) < margen) {
-      lineas.push({ points: [0, t, anchoCanvas, t] });
-      nodeActual.y(nodeActual.y() + (t - top));
-    }
-    if (Math.abs(bottom - b) < margen) {
-      lineas.push({ points: [0, b, anchoCanvas, b] });
-      nodeActual.y(nodeActual.y() + (b - bottom));
-    }
+
+  /* ---------- 2) contra otros objetos ---- */
+  objetos.forEach(o=>{
+    if (o.id === idActual) return;
+    const n = elementRefs.current[o.id];
+    if (!n) return;
+    const b = n.getClientRect();
+
+    // centros
+    if (Math.abs(boxA.x + boxA.width/2 - (b.x + b.width/2)) < margen)
+      addGuide({x1:b.x+b.width/2, y1:0, x2:b.x+b.width/2, y2:alto, type:'cx'});
+    if (Math.abs(boxA.y + boxA.height/2 - (b.y + b.height/2)) < margen)
+      addGuide({x1:0, y1:b.y+b.height/2, x2:ancho, y2:b.y+b.height/2, type:'cy'});
+
+    // bordes (left / right / top / bottom)
+    if (Math.abs(boxA.x - b.x) < margen)
+      addGuide({x1:b.x, y1:0, x2:b.x, y2:alto, type:'l'});
+    if (Math.abs(boxA.x + boxA.width - (b.x + b.width)) < margen)
+      addGuide({x1:b.x+b.width, y1:0, x2:b.x+b.width, y2:alto, type:'r'});
+    if (Math.abs(boxA.y - b.y) < margen)
+      addGuide({x1:0, y1:b.y, x2:ancho, y2:b.y, type:'t'});
+    if (Math.abs(boxA.y + boxA.height - (b.y + b.height)) < margen)
+      addGuide({x1:0, y1:b.y+b.height, x2:ancho, y2:b.y+b.height, type:'b'});
   });
-  
-  setGuiaLineas(lineas);
+
+  /* ---------- publicar resultado ---------- */
+  setGuiaLineas(nuevas);
+
+  // ⏲️  auto-fade: limpiá guías si el usuario deja de mover 300 ms
+  clearTimeout(window._guidesTimeout);
+  window._guidesTimeout = setTimeout(()=>setGuiaLineas([]),300);
 };
+
 
 
 
@@ -3266,6 +3256,8 @@ onChange={(id, nuevo) => {
 
 
 
+
+
 {/* Líneas de guía dinámicas */}
 {guiaLineas.map((linea, i) => (
   <Line
@@ -3814,6 +3806,45 @@ onChange={(id, nuevo) => {
     
   </div>
 )}
+
+
+
+{/* 📐 AGREGAR AQUÍ EL NUEVO CÓDIGO DEL MENÚ DE LÍNEAS */}
+{elementosSeleccionados.length === 1 && (() => {
+  const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
+  
+  // Solo mostrar si es una línea
+  if (!elementoSeleccionado || elementoSeleccionado.tipo !== 'forma' || elementoSeleccionado.figura !== 'line') {
+    return null;
+  }
+
+  return (
+    <LineToolbar
+      key={`line-toolbar-${elementoSeleccionado.id}`}
+      lineElement={elementoSeleccionado}
+      onUpdateLine={actualizarLinea}
+      style={{
+        top: "120px", // Misma posición que el menú de texto
+        left: "50%",
+        transform: "translateX(-50%)", // Centrado horizontalmente
+      }}
+    />
+  );
+})()}
+
+{/* 🔥 AGREGAR ESTAS LÍNEAS AQUÍ */}
+<style jsx>{`
+  @keyframes fadeInScale {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(-5px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+`}</style>
 
 
     {/* 🔥 AGREGAR ESTAS LÍNEAS AQUÍ */}

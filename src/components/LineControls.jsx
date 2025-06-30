@@ -2,6 +2,12 @@
 import { Circle, Group, Line } from "react-konva";
 import { useState, useRef, useEffect } from "react";
 
+
+// 🚀 Utilidad para forzar repintado rápido
+const batchDraw = (node) => node.getLayer() && node.getLayer().batchDraw();
+
+
+
 export default function LineControls({ 
   lineElement, 
   elementRefs, 
@@ -116,12 +122,12 @@ export default function LineControls({
 
  
 
-    if (onUpdateLine) {
-      onUpdateLine(lineElement.id, {
-        points: newPoints,
-        isPreview: true
-      });
-    }
+     // 🚀 Preview directo en Konva (sin re-render)
+ const lineNode = elementRefs.current?.[lineElement.id];
+if (lineNode) {
+   lineNode.points(newPoints);   // feedback instantáneo
+   batchDraw(lineNode);
+ }
   };
 
   const handlePointDragEnd = (pointType, e) => {

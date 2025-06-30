@@ -9,7 +9,6 @@ import Link from 'next/link';
 
 
 
-
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -23,6 +22,7 @@ export default function Home() {
         <title>Invitaciones Digitales para Bodas | Reserva el Día</title>
         <meta name="description" content="Crea y personaliza invitaciones digitales para bodas de manera fácil y rápida. ¡Diseños únicos y elegantes para tu casamiento!" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="robots" content="noindex, nofollow" /> {/* BORRAR ESTA LINEA CUANDO QUIERA MEJORAR EL SEO */}
       </Head>
 
       <header className="navbar navbar-expand-lg navbar-light bg-light fixed-top py-3">

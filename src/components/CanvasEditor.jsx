@@ -5,6 +5,7 @@ import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection } from "fir
 import { getAuth } from "firebase/auth";
 import { db } from "../firebase";
 import ElementoCanvas from "./ElementoCanvas";
+import LineControls from "./LineControls"; 
 import ReactDOMServer from "react-dom/server";
 import { convertirAlturaVH, calcularOffsetY } from "../utils/layout";
 import { crearSeccion } from "@/models/estructuraInicial";
@@ -463,12 +464,18 @@ const fuentesGoogle = [
       const botonOpcionesRef = useRef(null);
 
 
- const registerRef = useCallback((id, node) => {
-  
+const registerRef = useCallback((id, node) => {
   elementRefs.current[id] = node;
   imperativeObjects.registerObject(id, node);
 }, [imperativeObjects]);
 
+
+// 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
+useEffect(() => {
+  window._elementosSeleccionados = elementosSeleccionados;
+  window._objetosActuales = objetos;
+ 
+}, [elementosSeleccionados, objetos]);
 
 // 🎨 Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
 const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
@@ -673,11 +680,7 @@ useEffect(() => {
 
 
 useEffect(() => {
-  console.log("📊 Estado selección cambió:", {
-    seleccionActiva,
-    areaSeleccion,
-    inicioSeleccion
-  });
+ 
 }, [seleccionActiva, areaSeleccion, inicioSeleccion]);
 
 useEffect(() => {
@@ -727,11 +730,7 @@ useEffect(() => {
     const ultimoStringified = prev.length > 0 ? JSON.stringify(prev[prev.length - 1]) : null;
     if (ultimoStringified !== estadoStringified) {
       const nuevoHistorial = [...prev.slice(-19), estadoCompleto]; // Limitar a 20 elementos
-      console.log("💾 Guardando en historial:", {
-        objetosCount: objetos.length,
-        seccionesCount: secciones.length,
-        historialSize: nuevoHistorial.length
-      });
+     
       return nuevoHistorial;
     }
     return prev;
@@ -767,10 +766,7 @@ const timeoutId = setTimeout(async () => {
     const seccionesLimpias = limpiarUndefined(secciones);
     const objetosLimpios = limpiarUndefined(objetos);
     
-    console.log("💾 Guardando datos limpios:", {
-      seccionesCount: seccionesLimpias.length,
-      objetosCount: objetosLimpios.length
-    });
+   
 
     const ref = doc(db, "borradores", slug);
     await updateDoc(ref, {
@@ -797,6 +793,44 @@ const actualizarObjeto = (index, nuevo) => {
    
   setObjetos(nuevos);
 };
+
+
+
+// 🔧 Función especializada para actualizar líneas
+const actualizarLinea = (lineId, nuevaData) => {
+
+  
+  const index = objetos.findIndex(obj => obj.id === lineId);
+ 
+  
+  if (index === -1) {
+   
+    return;
+  }
+  
+  if (nuevaData.isPreview) {
+    console.log("🎨 Aplicando preview...");
+    // 🎨 Preview: Solo actualización visual sin historial
+    setObjetos(prev => {
+      const nuevos = [...prev];
+      const { isPreview, ...cleanData } = nuevaData;
+      console.log("🎨 Datos limpios para preview:", cleanData);
+      nuevos[index] = { ...nuevos[index], ...cleanData };
+      return nuevos;
+    });
+  } else if (nuevaData.isFinal) {
+    
+    // 💾 Final: Guardar en historial
+    setObjetos(prev => {
+      const nuevos = [...prev];
+      const { isFinal, ...cleanData } = nuevaData;
+    
+      nuevos[index] = { ...nuevos[index], ...cleanData };
+      return nuevos;
+    });
+  }
+};
+
 
 useEffect(() => {
   const handleKeyDown = (e) => {
@@ -866,7 +900,7 @@ useEffect(() => {
     // Deshacer (Ctrl + Z)
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault();
-      console.log("🔄 Deshacer - Historial actual:", historial.length);
+      
       
       if (historial.length > 1) {
         // Cerrar cualquier modo de edición activo
@@ -879,10 +913,7 @@ useEffect(() => {
           const estadoActual = nuevoHistorial.pop(); // Remover estado actual
           const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
           
-          console.log("🔄 Restaurando estado:", {
-            objetosCount: estadoAnterior.objetos?.length || 0,
-            seccionesCount: estadoAnterior.secciones?.length || 0
-          });
+         
           
           // 🔥 Marcar que viene del historial para evitar guardarlo de nuevo
           ignoreNextUpdateRef.current = true;
@@ -894,7 +925,7 @@ useEffect(() => {
           // Guardar estado actual en futuros para rehacer
           setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
           
-          console.log("✅ Deshecho aplicado completamente");
+          
           return nuevoHistorial;
         });
       } else {
@@ -905,7 +936,7 @@ useEffect(() => {
     // Rehacer (Ctrl + Y o Ctrl + Shift + Z)
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
       e.preventDefault();
-      console.log("🔄 Rehacer - Futuros disponibles:", futuros.length);
+     
       
       if (futuros.length > 0) {
         // Cerrar cualquier modo de edición activo
@@ -915,10 +946,7 @@ useEffect(() => {
         
         const siguienteEstado = futuros[0];
         
-        console.log("🔄 Restaurando estado futuro:", {
-          objetosCount: siguienteEstado.objetos?.length || 0,
-          seccionesCount: siguienteEstado.secciones?.length || 0
-        });
+        
         
         // 🔥 Marcar que viene del historial
         ignoreNextUpdateRef.current = true;
@@ -1806,6 +1834,72 @@ useEffect(() => {
 
 
 
+// 🔧 Función OPTIMIZADA para detectar intersección con líneas
+const detectarInterseccionLinea = useMemo(() => {
+  return (lineObj, area, stage) => {
+    try {
+      // 🎯 Validación rápida de entrada
+      if (!lineObj || !area || !lineObj.points) return false;
+      
+      // 🔥 CACHE para evitar recálculos
+      const cacheKey = `${lineObj.id}-${area.x}-${area.y}-${area.width}-${area.height}`;
+      if (window._lineIntersectionCache && window._lineIntersectionCache[cacheKey] !== undefined) {
+        return window._lineIntersectionCache[cacheKey];
+      }
+      
+      // Inicializar cache si no existe
+      if (!window._lineIntersectionCache) {
+        window._lineIntersectionCache = {};
+      }
+      
+      let points = lineObj.points;
+      if (!Array.isArray(points) || points.length < 4) {
+        points = [0, 0, 100, 0];
+      }
+      
+      // Validar puntos rápidamente
+      const puntosLimpios = [
+        parseFloat(points[0]) || 0,
+        parseFloat(points[1]) || 0, 
+        parseFloat(points[2]) || 100,
+        parseFloat(points[3]) || 0
+      ];
+      
+      const lineX = lineObj.x || 0;
+      const lineY = lineObj.y || 0;
+      
+      // Coordenadas absolutas
+      const startX = lineX + puntosLimpios[0];
+      const startY = lineY + puntosLimpios[1];
+      const endX = lineX + puntosLimpios[2];
+      const endY = lineY + puntosLimpios[3];
+      
+      // 🔥 MÉTODO SIMPLE Y RÁPIDO: Solo verificar endpoints
+      const startDentro = (
+        startX >= area.x && startX <= area.x + area.width &&
+        startY >= area.y && startY <= area.y + area.height
+      );
+      
+      const endDentro = (
+        endX >= area.x && endX <= area.x + area.width &&
+        endY >= area.y && endY <= area.y + area.height
+      );
+      
+      const resultado = startDentro || endDentro;
+      
+      // Guardar en cache
+      window._lineIntersectionCache[cacheKey] = resultado;
+      
+      return resultado;
+      
+    } catch (error) {
+      return false;
+    }
+  };
+}, []); // useMemo para evitar recrear la función
+
+
+
 // 🎯 Deseleccionar con tecla ESC
 useEffect(() => {
   const handleKeyDown = (e) => {
@@ -2079,6 +2173,14 @@ const moverSeccion = async (seccionId, direccion) => {
 
 
 
+// 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
+useEffect(() => {
+  window._elementosSeleccionados = elementosSeleccionados;
+  window._objetosActuales = objetos;
+  // 🔥 NUEVO: Exponer elementRefs para actualización directa
+  window._elementRefs = elementRefs.current;
+}, [elementosSeleccionados, objetos]);
+
 
 
 
@@ -2239,17 +2341,15 @@ return (
   ref={stageRef}
   width={800}
   height={altoCanvasDinamico}
-    perfectDrawEnabled={false}
+  perfectDrawEnabled={false}
   listening={true}
   imageSmoothingEnabled={false}
   hitGraphEnabled={false}
-  clipFunc={() => {}}
-    style={{
+  style={{
     background: "white",
     overflow: "visible",
     position: "relative",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.5)", // ✅ SOMBRA PARA DESTACAR
-    clipPath: "none",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
   }}
     
 
@@ -2304,6 +2404,8 @@ onMouseDown={(e) => {
 
 onMouseMove={(e) => {
    
+
+  // 🔥 RESTO DE LA LÓGICA (selección de área)
   if (!seleccionActiva || !inicioSeleccion) return;
 
   if (window._mouseMoveThrottle) return;
@@ -2326,54 +2428,156 @@ onMouseMove={(e) => {
     setAreaSeleccion(area);
     
     if (Math.abs(area.width) > 5 || Math.abs(area.height) > 5) {
-      const ids = objetos.filter((obj) => {
-        const node = elementRefs.current[obj.id];
-        if (!node) return false;
-        
-        // 🔧 SOLUCIÓN: Usar getClientRect con relativeTo stage
-        const box = node.getClientRect({ relativeTo: stage });
+      if (window._selectionThrottle) return;
+      window._selectionThrottle = true;
+      
+      requestAnimationFrame(() => {
+        const ids = objetos.filter((obj) => {
+          const node = elementRefs.current[obj.id];
+          if (!node) return false;
+          
+          if (obj.tipo === 'forma' && obj.figura === 'line') {
+            try {
+              return detectarInterseccionLinea(obj, area, stage);
+            } catch (error) {
+              const box = node.getClientRect({ relativeTo: stage });
+              return (
+                box.x + box.width >= area.x &&
+                box.x <= area.x + area.width &&
+                box.y + box.height >= area.y &&
+                box.y <= area.y + area.height
+              );
+            }
+          }
+          
+          const box = node.getClientRect({ relativeTo: stage });
+          return (
+            box.x + box.width >= area.x &&
+            box.x <= area.x + area.width &&
+            box.y + box.height >= area.y &&
+            box.y <= area.y + area.height
+          );
+        }).map((obj) => obj.id);
 
-        return (
-          box.x + box.width >= area.x &&
-          box.x <= area.x + area.width &&
-          box.y + box.height >= area.y &&
-          box.y <= area.y + area.height
-        );
-      }).map((obj) => obj.id);
-
-      setElementosPreSeleccionados(ids);
+        setElementosPreSeleccionados(ids);
+        window._selectionThrottle = false;
+      });
     }
   });
 }}
 
+
+
 onMouseUp={() => {
+  // 🔥 FINALIZAR DRAG GRUPAL MANUAL
+if (window._grupoLider && window._dragStartPos && window._dragInicial) {
+  console.log("🏁 Finalizando drag grupal");
+  
+  const stage = stageRef.current;
+  const currentPos = stage.getPointerPosition();
+  
+  if (currentPos && window._dragStartPos) {
+    const deltaX = currentPos.x - window._dragStartPos.x;
+    const deltaY = currentPos.y - window._dragStartPos.y;
+    const elementosSeleccionados = window._elementosSeleccionados || [];
+    
+    console.log("💾 Aplicando posiciones finales:", { deltaX, deltaY, elementos: elementosSeleccionados.length });
+    
+    // 🔥 APLICACIÓN FINAL SIN PREVIEW
+    setObjetos(prev => {
+      return prev.map(objeto => {
+        if (elementosSeleccionados.includes(objeto.id)) {
+          if (window._dragInicial && window._dragInicial[objeto.id]) {
+            const posInicial = window._dragInicial[objeto.id];
+            const posicionFinal = {
+              x: posInicial.x + deltaX,
+              y: posInicial.y + deltaY
+            };
+            console.log(`📍 ${objeto.id}: ${posInicial.x},${posInicial.y} → ${posicionFinal.x},${posicionFinal.y}`);
+            return { ...objeto, ...posicionFinal };
+          }
+        }
+        return objeto;
+      });
+    });
+  }
+  
+  // 🔥 LIMPIEZA COMPLETA
+  console.log("🧹 Limpiando flags de drag grupal");
+  window._grupoLider = null;
+  window._dragStartPos = null;
+  window._dragInicial = null;
+  window._dragGroupThrottle = false;
+  window._boundsUpdateThrottle = false;
+  
+  // Re-habilitar draggable
+  elementosSeleccionados.forEach(id => {
+    const node = elementRefs.current[id];
+    if (node) {
+      setTimeout(() => node.draggable(true), 50);
+    }
+  });
+}
+
+  
   if (!seleccionActiva || !areaSeleccion) return;
 
  
-  const nuevaSeleccion = objetos.filter((obj) => {
-    const node = elementRefs.current[obj.id];
-    if (!node) {
-      console.warn("❌ Ref perdida para:", obj.id);
+ const nuevaSeleccion = objetos.filter((obj) => {
+  const node = elementRefs.current[obj.id];
+  if (!node) {
+
+    return false;
+  }
+  
+  // 🔥 MANEJO ESPECIAL PARA LÍNEAS
+  if (obj.tipo === 'forma' && obj.figura === 'line') {
+   
+    try {
+      const resultado = detectarInterseccionLinea(obj, areaSeleccion, stageRef.current);
+  
+      return resultado;
+    } catch (error) {
+     
       return false;
     }
-    
-    // 🔧 CORRECCIÓN: Obtener stage desde stageRef
-    const stage = stageRef.current;
-    const box = node.getClientRect();
-    
-     
-    return (
-      box.x >= areaSeleccion.x &&
-      box.y >= areaSeleccion.y &&
-      box.x + box.width <= areaSeleccion.x + areaSeleccion.width &&
-      box.y + box.height <= areaSeleccion.y + areaSeleccion.height
-    );
-  });
+  }
+  
+  // 🔄 LÓGICA PARA ELEMENTOS NORMALES (INTERSECCIÓN, NO COBERTURA COMPLETA)
+try {
+  const box = node.getClientRect();
+  const resultado = (
+    box.x + box.width >= areaSeleccion.x &&
+    box.x <= areaSeleccion.x + areaSeleccion.width &&
+    box.y + box.height >= areaSeleccion.y &&
+    box.y <= areaSeleccion.y + areaSeleccion.height
+  );
+    console.log("🎯 Resultado selección normal:", obj.id, resultado);
+    return resultado;
+  } catch (error) {
+    console.warn("❌ Error en selección normal:", error);
+    return false;
+  }
+});
 
-  setElementosSeleccionados(elementosPreSeleccionados);
-  setElementosPreSeleccionados([]);
-  setSeleccionActiva(false);
-  setAreaSeleccion(null);
+
+
+
+ setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
+
+setElementosPreSeleccionados([]);
+setSeleccionActiva(false);
+setAreaSeleccion(null);
+
+// 🔥 LIMPIAR THROTTLES Y CACHE
+if (window._selectionThrottle) {
+  window._selectionThrottle = false;
+}
+// 🔥 NUEVO: Limpiar throttle de bounds
+if (window._boundsUpdateThrottle) {
+  window._boundsUpdateThrottle = false;
+}
+window._lineIntersectionCache = {};
 }}
     
 
@@ -2625,18 +2829,13 @@ onMouseUp={() => {
         isSelected={elementosSeleccionados.includes(obj.id)}
         preSeleccionado={elementosPreSeleccionados.includes(obj.id)}
         onHover={setHoverId}
-        onStartTextEdit={handleStartTextEdit} 
-        
-
-        
-          registerRef={registerRef}
+        onStartTextEdit={handleStartTextEdit}      
+        registerRef={registerRef}
     
-
-
   
 // onSelect simple, sin lógica de segundo click
 onSelect={async (id, obj, e) => {
-  console.log("🎯 onSelect - elemento:", id, "tipo:", obj.tipo);
+ 
   
   if (window._resizeData?.isResizing) {
     window._resizeData = null;
@@ -2658,23 +2857,65 @@ onSelect={async (id, obj, e) => {
     }
   });
 
-  console.log("✅ Elemento seleccionado:", id);
+ 
 }}
 
 
 onChange={(id, nuevo) => {
-   console.log("🔀 onChange llamado:", { 
+  console.log("🔀 onChange llamado:", { 
     id, 
     fromTransform: nuevo.fromTransform,
     finalizoDrag: nuevo.finalizoDrag,
+    isBatchUpdateFinal: nuevo.isBatchUpdateFinal,
     y: nuevo.y 
   });
 
-    // 🔥 NO procesar si viene del Transform
+  // 🔥 NUEVO: Manejar preview inmediato de drag grupal
+  if (nuevo.isDragPreview) {
+    console.log("🎨 Aplicando preview inmediato para:", id);
+    setObjetos(prev => {
+      const index = prev.findIndex(o => o.id === id);
+      if (index === -1) return prev;
+      
+      const updated = [...prev];
+      const { isDragPreview, skipHistorial, ...cleanNuevo } = nuevo;
+      updated[index] = { ...updated[index], ...cleanNuevo };
+      return updated;
+    });
+    return;
+  }
+
+  // 🔥 MANEJAR SOLO batch update final de drag grupal
+  if (nuevo.isBatchUpdateFinal && id === 'BATCH_UPDATE_GROUP_FINAL') {
+    console.log("💾 Sincronizando React state después de drag grupal");
+    const { elementos, dragInicial, deltaX, deltaY } = nuevo;
+    
+    setObjetos(prev => {
+      return prev.map(objeto => {
+        if (elementos.includes(objeto.id)) {
+          if (dragInicial && dragInicial[objeto.id]) {
+            const posInicial = dragInicial[objeto.id];
+            return {
+              ...objeto,
+              x: posInicial.x + deltaX,
+              y: posInicial.y + deltaY
+            };
+          }
+        }
+        return objeto;
+      });
+    });
+    return;
+  }
+
+  // 🔥 NO procesar si viene del Transform
   if (nuevo.fromTransform) {
     console.log("🔥 Ignorando onChange porque viene del Transform");
     return;
   }
+
+  // 🔥 ELIMINAR: Ya no necesitamos manejar isDragPreview e isGroupDragFinal aquí
+  // porque ahora se hace directamente con setObjetos en ElementoCanvas
 
   const objOriginal = objetos.find((o) => o.id === id);
   if (!objOriginal) return;
@@ -2776,99 +3017,102 @@ onChange={(id, nuevo) => {
 )}
 
 
-{elementosSeleccionados.length > 0 && (
-  <SelectionBounds
-    key={`selection-${elementosSeleccionados.join('-')}`}
-    selectedElements={elementosSeleccionados}
-    elementRefs={elementRefs}
-    objetos={objetos}
-    onTransform={(newAttrs) => {
-      console.log("🔧 Transform detectado:", newAttrs);
-      
-      if (elementosSeleccionados.length === 1) {
-        const id = elementosSeleccionados[0];
-        const objIndex = objetos.findIndex(o => o.id === id); // 🔥 DEFINIR PRIMERO
+{elementosSeleccionados.length > 0 && (() => {
+  
+  return (
+    <SelectionBounds
+      key={`selection-${elementosSeleccionados.join('-')}`}
+      selectedElements={elementosSeleccionados}
+      elementRefs={elementRefs}
+      objetos={objetos}
+      onTransform={(newAttrs) => {
+        console.log("🔧 Transform detectado:", newAttrs);
         
-        // 🔥 MOVER EL LOG AQUÍ (después de definir objIndex)
-        if (newAttrs.isFinal) {
-          console.log("🎯 FINAL TRANSFORM:", {
-            originalY: newAttrs.y,
-            elementIndex: objIndex,
-            elementId: elementosSeleccionados[0]
-          });
-        }
-        
-        if (objIndex !== -1) {
+        if (elementosSeleccionados.length === 1) {
+          const id = elementosSeleccionados[0];
+          const objIndex = objetos.findIndex(o => o.id === id); // 🔥 DEFINIR PRIMERO
           
-          if (newAttrs.isPreview) {
-            // Preview: actualización sin historial
-            setObjetos(prev => {
-              const nuevos = [...prev];
-              const elemento = nuevos[objIndex];
-              
-              const updatedElement = {
-      ...elemento,
-      // 🔥 NO actualizar X,Y durante preview - solo dimensiones
-      rotation: newAttrs.rotation || elemento.rotation || 0
-    };
-              
-              if (elemento.tipo === 'texto' && newAttrs.fontSize) {
-                updatedElement.fontSize = newAttrs.fontSize;
-                updatedElement.scaleX = 1;
-                updatedElement.scaleY = 1;
-              } else {
-                if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
-                if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
-                if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
-                updatedElement.scaleX = 1;
-                updatedElement.scaleY = 1;
-              }
-              
-              nuevos[objIndex] = updatedElement;
-              return nuevos;
+          // 🔥 MOVER EL LOG AQUÍ (después de definir objIndex)
+          if (newAttrs.isFinal) {
+            console.log("🎯 FINAL TRANSFORM:", {
+              originalY: newAttrs.y,
+              elementIndex: objIndex,
+              elementId: elementosSeleccionados[0]
             });
-
-            // 🔥 ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
-requestAnimationFrame(() => {
-  if (typeof actualizarPosicionBotonOpciones === 'function') {
-    actualizarPosicionBotonOpciones();
-  }
-});
+          }
+          
+          if (objIndex !== -1) {
             
-        } else if (newAttrs.isFinal) {
-  // Final: actualización completa
-  console.log('🎯 Guardando estado final para historial');
-  window._resizeData = { isResizing: false };
-  
-  const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
-  
-  // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
-  const objOriginal = objetos[objIndex];
-  const seccionIndex = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
-  const offsetY = calcularOffsetY(seccionesOrdenadas, seccionIndex, altoCanvas);
-  
-  const finalAttrs = { 
-    ...cleanAttrs,
-    // Convertir Y absoluta a Y relativa restando el offset
-    y: cleanAttrs.y - offsetY,
-    fromTransform: true 
-  };
-  
-  console.log("🔧 Convirtiendo coordenadas:", {
-    yAbsoluta: cleanAttrs.y,
-    offsetY: offsetY,
-    yRelativa: finalAttrs.y
+            if (newAttrs.isPreview) {
+              // Preview: actualización sin historial
+              setObjetos(prev => {
+                const nuevos = [...prev];
+                const elemento = nuevos[objIndex];
+                
+                const updatedElement = {
+        ...elemento,
+        // 🔥 NO actualizar X,Y durante preview - solo dimensiones
+        rotation: newAttrs.rotation || elemento.rotation || 0
+      };
+                
+                if (elemento.tipo === 'texto' && newAttrs.fontSize) {
+                  updatedElement.fontSize = newAttrs.fontSize;
+                  updatedElement.scaleX = 1;
+                  updatedElement.scaleY = 1;
+                } else {
+                  if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
+                  if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
+                  if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
+                  updatedElement.scaleX = 1;
+                  updatedElement.scaleY = 1;
+                }
+                
+                nuevos[objIndex] = updatedElement;
+                return nuevos;
+              });
+
+              // 🔥 ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
+  requestAnimationFrame(() => {
+    if (typeof actualizarPosicionBotonOpciones === 'function') {
+      actualizarPosicionBotonOpciones();
+    }
   });
-  
-  setTimeout(() => {
-    actualizarObjeto(objIndex, finalAttrs);
-  }, 50);
-}
+              
+          } else if (newAttrs.isFinal) {
+    // Final: actualización completa
+    console.log('🎯 Guardando estado final para historial');
+    window._resizeData = { isResizing: false };
+    
+    const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
+    
+    // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
+    const objOriginal = objetos[objIndex];
+    const seccionIndex = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
+    const offsetY = calcularOffsetY(seccionesOrdenadas, seccionIndex, altoCanvas);
+    
+    const finalAttrs = { 
+      ...cleanAttrs,
+      // Convertir Y absoluta a Y relativa restando el offset
+      y: cleanAttrs.y - offsetY,
+      fromTransform: true 
+    };
+    
+    console.log("🔧 Convirtiendo coordenadas:", {
+      yAbsoluta: cleanAttrs.y,
+      offsetY: offsetY,
+      yRelativa: finalAttrs.y
+    });
+    
+    setTimeout(() => {
+      actualizarObjeto(objIndex, finalAttrs);
+    }, 50);
+  }
+          }
         }
-      }
-    }}
-  />
-)}
+      }}
+    />
+  );
+})()}
 
 
 {/* 🔥 OPTIMIZACIÓN: No mostrar hover durante drag/resize */}
@@ -2878,6 +3122,25 @@ requestAnimationFrame(() => {
     elementRefs={elementRefs}
   />
 )}
+
+
+{/* 🎯 Controles especiales para líneas seleccionadas */}
+{elementosSeleccionados.length === 1 && (() => {
+  const elementoSeleccionado = objetos.find(obj => obj.id === elementosSeleccionados[0]);
+  if (elementoSeleccionado?.tipo === 'forma' && elementoSeleccionado?.figura === 'line') {
+    return (
+  <LineControls
+    key={`line-controls-${elementoSeleccionado.id}-${JSON.stringify(elementoSeleccionado.points)}`}
+    lineElement={elementoSeleccionado}
+    elementRefs={elementRefs}
+    onUpdateLine={actualizarLinea}
+    altoCanvas={altoCanvasDinamico}
+  />
+);
+  }
+  return null;
+})()}
+
 
 
 {/* Líneas de guía dinámicas */}

@@ -15,6 +15,7 @@ const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
 });
 
 
+
 export default function Dashboard() {
   const [tipoSeleccionado, setTipoSeleccionado] = useState(null);
   const [slugInvitacion, setSlugInvitacion] = useState(null);
@@ -152,9 +153,13 @@ if (checkingAuth) return <p>Cargando...</p>;
 if (!usuario) return null; // Seguridad por si no se redirige
 
   return (
-     <DashboardLayout mostrarMiniToolbar={!!slugInvitacion} seccionActivaId={seccionActivaId}>
+  <DashboardLayout
+    mostrarMiniToolbar={!!slugInvitacion}
+    seccionActivaId={seccionActivaId}
+    modoSelector={!slugInvitacion}
+  >
 
-      {!slugInvitacion && (
+  {!slugInvitacion && (
         <>
           <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
           {tipoSeleccionado && (

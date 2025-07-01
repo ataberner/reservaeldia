@@ -3,6 +3,7 @@ import { Text, Image as KonvaImage } from "react-konva";
 import { Rect, Circle, Line, RegularPolygon, Path } from "react-konva";
 import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback } from "react";
+import { LINE_CONSTANTS } from '@/models/lineConstants';
 
 export default function ElementoCanvas({
   obj,
@@ -280,60 +281,58 @@ onDragMove: (e) => {
     if (onHover) onHover(null);
   }, [onHover]);
 
-  // 🎯 RENDER DE LÍNEA OPTIMIZADO
-  if (obj.tipo === "forma" && obj.figura === "line") {
-    let linePoints = obj.points;
-    let pointsFixed = false;
+ if (obj.tipo === "forma" && obj.figura === "line") {
+  let linePoints = obj.points;
+  let pointsFixed = false;
+  
+  if (!linePoints || !Array.isArray(linePoints) || linePoints.length < 4) {
+    linePoints = [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0]; // Usar constante
+    pointsFixed = true;
+  } else {
+    const puntosValidados = [];
+    for (let i = 0; i < 4; i++) {
+      const punto = parseFloat(linePoints[i]);
+      puntosValidados.push(isNaN(punto) ? 0 : punto);
+    }
     
-    if (!linePoints || !Array.isArray(linePoints) || linePoints.length < 4) {
-      linePoints = [0, 0, 100, 0];
+    if (JSON.stringify(puntosValidados) !== JSON.stringify(linePoints.slice(0, 4))) {
+      linePoints = puntosValidados;
       pointsFixed = true;
     } else {
-      const puntosValidados = [];
-      for (let i = 0; i < 4; i++) {
-        const punto = parseFloat(linePoints[i]);
-        puntosValidados.push(isNaN(punto) ? 0 : punto);
-      }
-      
-      if (JSON.stringify(puntosValidados) !== JSON.stringify(linePoints.slice(0, 4))) {
-        linePoints = puntosValidados;
-        pointsFixed = true;
-      } else {
-        linePoints = linePoints.slice(0, 4);
-      }
+      linePoints = linePoints.slice(0, 4);
     }
-    
-    if (pointsFixed && handleChange) {
-      setTimeout(() => {
-        handleChange(obj.id, { 
-          points: linePoints,
-          fromAutoFix: true
-        });
-      }, 0);
-    }
-    
-    return (
-      <Line
-        {...commonProps}
-        points={linePoints}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        stroke={obj.color || "#000000"}
-        strokeWidth={obj.strokeWidth || 2} // 🔥 Usar strokeWidth del objeto
-        tension={0}
-        lineCap="round"
-        lineJoin="round"
-        perfectDrawEnabled={false}
-        hitStrokeWidth={Math.max(15, (obj.strokeWidth || 2) + 10)} // 🔥 Área de click adaptativa
-        shadowForStrokeEnabled={false}
-        // 🎨 Efecto visual sutil cuando está seleccionada
-        opacity={isSelected ? 1 : 0.95}
-        shadowColor={isSelected ? "rgba(119, 61, 190, 0.3)" : "transparent"}
-        shadowBlur={isSelected ? 8 : 0}
-        shadowOffset={{ x: 0, y: 2 }}
-      />
-    );
   }
+  
+  if (pointsFixed && handleChange) {
+    setTimeout(() => {
+      handleChange(obj.id, { 
+        points: linePoints,
+        fromAutoFix: true
+      });
+    }, 0);
+  }
+  
+  return (
+    <Line
+      {...commonProps}
+      points={linePoints}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      stroke={obj.color || LINE_CONSTANTS.DEFAULT_COLOR}
+      strokeWidth={obj.strokeWidth || LINE_CONSTANTS.STROKE_WIDTH} 
+      tension={0}
+      lineCap="round"
+      lineJoin="round"
+      perfectDrawEnabled={false}
+      hitStrokeWidth={Math.max(LINE_CONSTANTS.HIT_STROKE_WIDTH, obj.strokeWidth || 2)}
+      shadowForStrokeEnabled={false}
+      opacity={isSelected ? 1 : 0.95}
+      shadowColor={isSelected ? "rgba(119, 61, 190, 0.3)" : "transparent"}
+      shadowBlur={isSelected ? 8 : 0}
+      shadowOffset={{ x: 0, y: 2 }}
+    />
+  );
+}
 
   // 🔄 RESTO DE ELEMENTOS (sin cambios)
   if (obj.tipo === "texto") {

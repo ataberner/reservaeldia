@@ -1,3 +1,5 @@
+import { LINE_CONSTANTS } from '../models/lineConstants';
+
 export function escapeHTML(texto: string = ""): string {
   return texto
     .replace(/&/g, "&amp;")
@@ -105,16 +107,44 @@ export function generarHTMLDesdeObjetos(
           }
 
 
-        case "line": {
-  const w = `${(obj.width ?? 100) / 800 * 100}%`;
+case "line": {
+  // Obtener puntos de la línea (formato Konva: [x1, y1, x2, y2])
+  const points = obj.points || [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0];
+  const x1 = parseFloat(points[0]) || 0;
+  const y1 = parseFloat(points[1]) || 0;
+  const x2 = parseFloat(points[2]) || LINE_CONSTANTS.DEFAULT_LENGTH;
+  const y2 = parseFloat(points[3]) || 0;
+
+   // 🔥 OBTENER GROSOR DE LÍNEA
+  const strokeWidth = obj.strokeWidth || LINE_CONSTANTS.STROKE_WIDTH;
   
-  return `<div class="objeto" style="
-    top: ${top}%;
-    left: ${left}%;
-    width: ${w};
-    height: 2px;
+  // Calcular dimensiones de la línea
+  const deltaX = x2 - x1;
+  const deltaY = y2 - y1;
+  const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+  const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+  
+  // Posición absoluta del punto inicial
+  const startX = obj.x + x1;
+  const startY = obj.y + y1;
+  
+  // Convertir a porcentajes
+  const leftPercent = (startX / 800) * 100;
+  const topPercent = (startY / alturaSeccion) * 100;
+  const widthPercent = (length / 800) * 100;
+  
+  // Aplicar rotación adicional del objeto si existe
+  const totalRotation = angle + (obj.rotation || 0);
+  
+  return `<div class="objeto linea" style="
+    position: absolute;
+    top: ${topPercent}%;
+    left: ${leftPercent}%;
+    width: ${widthPercent}%;
+    height: ${strokeWidth}px;
     background: ${fill};
-    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform: rotate(${totalRotation}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: 0 50%;
   "></div>`;
 }
 

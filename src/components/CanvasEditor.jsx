@@ -741,7 +741,6 @@ useEffect(() => {
   // Limpiar futuros cuando hay nuevos cambios
   setFuturos([]);
   
-  // 💾 Guardado en Firebase con debounce y filtro de undefined
 const timeoutId = setTimeout(async () => {
   try {
     // 🔥 FUNCIÓN PARA LIMPIAR UNDEFINED RECURSIVAMENTE
@@ -764,11 +763,51 @@ const timeoutId = setTimeout(async () => {
       return obj;
     };
 
+    // 🎯 NUEVA VALIDACIÓN: Asegurar que las líneas tengan puntos válidos
+    const objetosValidados = objetos.map(obj => {
+      // Si es una línea, validar y corregir puntos
+      if (obj.tipo === 'forma' && obj.figura === 'line') {
+        const puntosActuales = obj.points || [];
+        const puntosValidos = [];
+        
+        // Asegurar 4 valores numéricos
+        for (let i = 0; i < 4; i++) {
+          const valor = parseFloat(puntosActuales[i]);
+          puntosValidos.push(isNaN(valor) ? (i === 2 ? 100 : 0) : valor);
+        }
+        
+        console.log(`📐 Validando línea ${obj.id}:`, {
+          antes: puntosActuales,
+          despues: puntosValidos
+        });
+        
+        return {
+          ...obj,
+          points: puntosValidos
+        };
+      }
+      
+      // Para otros objetos, devolver sin cambios
+      return obj;
+    });
+
     // 🔥 LIMPIAR DATOS ANTES DE ENVIAR A FIREBASE
     const seccionesLimpias = limpiarUndefined(secciones);
-    const objetosLimpios = limpiarUndefined(objetos);
+    const objetosLimpios = limpiarUndefined(objetosValidados);
     
-   
+    // 📊 LOG DE DEPURACIÓN (quitar en producción)
+    const lineasEncontradas = objetosLimpios.filter(o => o.tipo === 'forma' && o.figura === 'line');
+    if (lineasEncontradas.length > 0) {
+      console.log("💾 Guardando líneas en Firebase:", {
+        cantidad: lineasEncontradas.length,
+        detalles: lineasEncontradas.map(l => ({
+          id: l.id,
+          points: l.points,
+          x: l.x,
+          y: l.y
+        }))
+      });
+    }
 
     const ref = doc(db, "borradores", slug);
     await updateDoc(ref, {
@@ -776,57 +815,84 @@ const timeoutId = setTimeout(async () => {
       secciones: seccionesLimpias,
       ultimaEdicion: serverTimestamp(),
     });
+    
+    console.log("✅ Guardado exitoso en Firebase");
+    
   } catch (error) {
-    console.error("Error guardando:", error);
+    console.error("❌ Error guardando en Firebase:", error);
+    
+    // Opcional: Mostrar notificación al usuario
+    // toast.error("Error al guardar cambios");
   }
 }, 500);
+
 
   return () => clearTimeout(timeoutId);
 }, [objetos, secciones, cargado, slug]); // 🔥 Incluir secciones en dependencias
 
 const actualizarObjeto = (index, nuevo) => {
-   
-  
   const nuevos = [...objetos];
-  // 🔥 REMOVER el flag antes de aplicar
   const { fromTransform, ...cleanNuevo } = nuevo;
-  nuevos[index] = { ...nuevos[index], ...cleanNuevo };
   
-   
+  // Preservar datos específicos según el tipo de objeto
+  if (nuevos[index].tipo === 'forma' && nuevos[index].figura === 'line') {
+    // Para líneas, asegurar que los puntos se preserven
+    nuevos[index] = { 
+      ...nuevos[index], 
+      ...cleanNuevo,
+      points: cleanNuevo.points || nuevos[index].points || [0, 0, 100, 0]
+    };
+  } else {
+    nuevos[index] = { ...nuevos[index], ...cleanNuevo };
+  }
+  
   setObjetos(nuevos);
 };
 
 
 
-// 🔧 Función especializada para actualizar líneas
 const actualizarLinea = (lineId, nuevaData) => {
-
-  
   const index = objetos.findIndex(obj => obj.id === lineId);
- 
   
   if (index === -1) {
-   
     return;
   }
   
   if (nuevaData.isPreview) {
-    console.log("🎨 Aplicando preview...");
-    // 🎨 Preview: Solo actualización visual sin historial
+    // Preview: Solo actualización visual sin historial
     setObjetos(prev => {
       const nuevos = [...prev];
       const { isPreview, ...cleanData } = nuevaData;
-      console.log("🎨 Datos limpios para preview:", cleanData);
+      
+      // Asegurar que los puntos siempre sean un array válido
+      if (cleanData.points) {
+        cleanData.points = cleanData.points.map(p => parseFloat(p) || 0);
+      }
+      
+      // 🔥 PRESERVAR strokeWidth si existe
+      if (cleanData.strokeWidth !== undefined) {
+        cleanData.strokeWidth = parseInt(cleanData.strokeWidth) || 2;
+      }
+
       nuevos[index] = { ...nuevos[index], ...cleanData };
       return nuevos;
     });
   } else if (nuevaData.isFinal) {
-    
-    // 💾 Final: Guardar en historial
+    // Final: Guardar en historial
     setObjetos(prev => {
       const nuevos = [...prev];
       const { isFinal, ...cleanData } = nuevaData;
-    
+      
+      // Asegurar que los puntos siempre sean un array válido
+      if (cleanData.points) {
+        cleanData.points = cleanData.points.map(p => parseFloat(p) || 0);
+      }
+
+       // 🔥 PRESERVAR strokeWidth si existe
+      if (cleanData.strokeWidth !== undefined) {
+        cleanData.strokeWidth = parseInt(cleanData.strokeWidth) || 2;
+      }
+      
       nuevos[index] = { ...nuevos[index], ...cleanData };
       return nuevos;
     });

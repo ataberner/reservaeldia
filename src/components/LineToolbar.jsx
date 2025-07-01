@@ -150,6 +150,30 @@ export default function LineToolbar({
                 </button>
               ))}
             </div>
+            {/* 🔢 Input manual para grosor */}
+<div className="pt-3 mt-3 border-t">
+  <label className="text-xs font-medium text-gray-600 block mb-1">
+    Grosor personalizado (1-50):
+  </label>
+  <input
+    type="number"
+    min={1}
+    max={50}
+    defaultValue={grosorActual}
+    onChange={(e) => {
+      const newWidth = parseInt(e.target.value);
+      if (!isNaN(newWidth) && newWidth > 0 && newWidth <= 50) {
+        onUpdateLine(lineElement.id, {
+          strokeWidth: newWidth,
+          isPreview: false,
+          isFinal: true
+        });
+      }
+    }}
+    className="w-full px-2 py-1 border rounded text-sm"
+  />
+</div>
+
           </div>
         )}
       </div>

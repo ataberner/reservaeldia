@@ -22,7 +22,7 @@ useEffect(() => {
   const formas = [
     { id: "cuadrado", tipo: "forma", figura: "rect", color: "#000000" },
     { id: "circulo", tipo: "forma", figura: "circle", color: "#000000" },
-    { id: "linea", tipo: "forma", figura: "line", color: "#000000", width: 100, height: 2 },
+   { id: "linea", tipo: "forma", figura: "line", color: "#000000", points: [0, 0, 100, 0] },
     { id: "triangulo", tipo: "forma", figura: "triangle", color: "#000000" },
   ];
 
@@ -122,21 +122,38 @@ useEffect(() => {
             key={forma.id}
             className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow hover:scale-105 transition cursor-pointer"
             onClick={() => {
-             window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: {
-                id: `forma-${Date.now()}`,
-                tipo: "forma",
-                figura: forma.figura,
-                color: forma.color,
-                x: 100,
-                y: 100,
-                width: 100,
-                height: 100,
-                scaleX: 1,
-                scaleY: 1,
-                rotation: 0,
-              }}));
+  // Objeto base con TODAS las propiedades por defecto
+  const elementoNuevo = {
+    id: `forma-${Date.now()}`,
+    tipo: "forma",
+    figura: forma.figura,
+    color: forma.color,
+    x: 100,
+    y: 100,
+    width: 100,      // Mantener para compatibilidad
+    height: 100,     // Mantener para compatibilidad
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+  };
 
-            }}
+  // Agregar propiedades ADICIONALES según el tipo
+  if (forma.figura === "line") {
+    // Para líneas, AGREGAR points (sin quitar width/height)
+    elementoNuevo.points = [0, 0, 100, 0];
+    elementoNuevo.strokeWidth = 2; // 🔥 AGREGAR GROSOR POR DEFECTO
+  } else if (forma.figura === "circle") {
+    // Para círculos, AGREGAR radius
+    elementoNuevo.radius = 50;
+  } else if (forma.figura === "triangle") {
+    // Para triángulos, AGREGAR radius (Konva usa RegularPolygon)
+    elementoNuevo.radius = 60;
+  }
+
+  window.dispatchEvent(new CustomEvent("insertar-elemento", { 
+    detail: elementoNuevo
+  }));
+}}
           >
             {/* Dibujos visuales por tipo */}
             {forma.figura === "rect" && (

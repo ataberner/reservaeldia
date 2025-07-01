@@ -18,6 +18,11 @@ export default function LineControls({
   const dragStartPos = useRef(null);
   const [lineBeingDragged, setLineBeingDragged] = useState(false);
   const [isGroupDrag, setIsGroupDrag] = useState(false); // 🔥 NUEVO
+  const [nodePos, setNodePos] = useState({
+  x: lineElement.x || 0,
+  y: lineElement.y || 0,
+});
+
 
   if (!lineElement || lineElement.tipo !== 'forma' || lineElement.figura !== 'line') {
     return null;
@@ -25,6 +30,29 @@ export default function LineControls({
 
   const nodeRef = elementRefs.current?.[lineElement.id];
   if (!nodeRef) return null;
+
+useEffect(() => {
+  if (!nodeRef) return;
+
+  // Función que copia la posición real del nodo
+  const syncPos = () => {
+    // `x()` y `y()` dan la posición durante el drag, aunque React no lo sepa
+    setNodePos({ x: nodeRef.x(), y: nodeRef.y() });
+  };
+
+  // 1- Lanzamos un primer sync por las dudas
+  syncPos();
+
+  // 2- Nos suscribimos al drag
+  nodeRef.on('dragmove', syncPos);
+
+  // 3- Limpiamos cuando el componente se desmonta
+  return () => {
+    nodeRef.off('dragmove', syncPos);
+  };
+}, [nodeRef]);
+
+
 
   // 🔥 DETECTAR DRAG GRUPAL
   useEffect(() => {
@@ -88,10 +116,10 @@ export default function LineControls({
 
   const [normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY] = normalizedPoints;
 
-  const startAbsoluteX = lineX + normalizedStartX;
-  const startAbsoluteY = lineY + normalizedStartY;  
-  const endAbsoluteX = lineX + normalizedEndX;
-  const endAbsoluteY = lineY + normalizedEndY;
+ const startAbsoluteX = nodePos.x + normalizedStartX;
+ const startAbsoluteY = nodePos.y + normalizedStartY;
+ const endAbsoluteX   = nodePos.x + normalizedEndX;
+ const endAbsoluteY   = nodePos.y + normalizedEndY;
 
   const handlePointDragStart = (pointType, e) => {
 

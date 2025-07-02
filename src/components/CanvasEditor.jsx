@@ -289,6 +289,8 @@ const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
   const [mostrarPicker, setMostrarPicker] = useState(false);
   const pickerRef = useRef(null);
+  const [colorHexManual, setColorHexManual] = useState(seccion.fondo || "#ffffff");
+
   
   // Cerrar picker al hacer clic fuera
   useEffect(() => {
@@ -306,6 +308,12 @@ const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
   
   const colorActual = seccion.fondo || "#ffffff";
   const tieneImagenFondo = seccion.fondoTipo === "imagen";
+
+  useEffect(() => {
+  setColorHexManual(seccion.fondo || "#ffffff");
+}, [seccion.fondo]);
+
+
   
   return (
     <div className="relative" ref={pickerRef}>
@@ -389,10 +397,31 @@ const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
               ))}
             </div>
             
-            {/* Valor hex */}
-            <div className="pt-2 border-t text-center">
-              <span className="text-xs text-gray-500 font-mono">{colorActual}</span>
-            </div>
+
+
+            {/* Input manual para escribir el color */}
+{/* Input manual para escribir el color */}
+<input
+  type="text"
+  value={colorHexManual}
+  onChange={(e) => {
+    const val = e.target.value;
+    setColorHexManual(val); // Lo dejamos escribir, aunque sea incompleto
+
+    const esValido = /^#([0-9A-Fa-f]{3}){1,2}$/.test(val);
+    if (esValido) {
+      onChange(seccion.id, val); // Solo aplicamos si es válido
+    }
+  }}
+  placeholder="#ffffff"
+  className={`w-full mt-2 px-2 py-1 border text-sm rounded font-mono ${
+    /^#([0-9A-Fa-f]{3}){1,2}$/.test(colorHexManual)
+      ? "border-gray-300"
+      : "border-red-400"
+  }`}
+/>
+
+
           </div>
         </div>
       )}

@@ -1,12 +1,9 @@
-// LineControls.jsx - Agregar al inicio del componente
+// LineControls.jsx - Versión optimizada para transformación fluida
 import { Circle, Group, Line } from "react-konva";
-import { useState, useRef, useEffect } from "react";
-
+import { useState, useRef, useEffect, useCallback } from "react";
 
 // 🚀 Utilidad para forzar repintado rápido
 const batchDraw = (node) => node.getLayer() && node.getLayer().batchDraw();
-
-
 
 export default function LineControls({ 
   lineElement, 
@@ -17,12 +14,15 @@ export default function LineControls({
   const [draggingPoint, setDraggingPoint] = useState(null);
   const dragStartPos = useRef(null);
   const [lineBeingDragged, setLineBeingDragged] = useState(false);
-  const [isGroupDrag, setIsGroupDrag] = useState(false); // 🔥 NUEVO
+  const [isGroupDrag, setIsGroupDrag] = useState(false);
   const [nodePos, setNodePos] = useState({
-  x: lineElement.x || 0,
-  y: lineElement.y || 0,
-});
+    x: lineElement.x || 0,
+    y: lineElement.y || 0,
+  });
 
+  // 🔥 CACHE PARA EVITAR RECÁLCULOS INNECESARIOS
+  const pointsCache = useRef(null);
+  const lastUpdateTime = useRef(0);
 
   if (!lineElement || lineElement.tipo !== 'forma' || lineElement.figura !== 'line') {
     return null;
@@ -31,30 +31,28 @@ export default function LineControls({
   const nodeRef = elementRefs.current?.[lineElement.id];
   if (!nodeRef) return null;
 
-useEffect(() => {
-  if (!nodeRef) return;
+  // 🔥 SYNC OPTIMIZADO CON THROTTLE
+  useEffect(() => {
+    if (!nodeRef) return;
 
-  // Función que copia la posición real del nodo
-  const syncPos = () => {
-    // `x()` y `y()` dan la posición durante el drag, aunque React no lo sepa
-    setNodePos({ x: nodeRef.x(), y: nodeRef.y() });
-  };
+    const syncPos = () => {
+      // 🚀 THROTTLE: Solo actualizar cada 8ms (120fps máximo)
+      const now = performance.now();
+      if (now - lastUpdateTime.current < 8) return;
+      lastUpdateTime.current = now;
 
-  // 1- Lanzamos un primer sync por las dudas
-  syncPos();
+      setNodePos({ x: nodeRef.x(), y: nodeRef.y() });
+    };
 
-  // 2- Nos suscribimos al drag
-  nodeRef.on('dragmove', syncPos);
+    syncPos();
+    nodeRef.on('dragmove', syncPos);
 
-  // 3- Limpiamos cuando el componente se desmonta
-  return () => {
-    nodeRef.off('dragmove', syncPos);
-  };
-}, [nodeRef]);
+    return () => {
+      nodeRef.off('dragmove', syncPos);
+    };
+  }, [nodeRef]);
 
-
-
-  // 🔥 DETECTAR DRAG GRUPAL
+  // 🔥 DETECTAR DRAG GRUPAL OPTIMIZADO
   useEffect(() => {
     const checkGroupDrag = () => {
       const elementosSeleccionados = window._elementosSeleccionados || [];
@@ -64,28 +62,17 @@ useEffect(() => {
       setIsGroupDrag(isDragging && isPartOfGroup && elementosSeleccionados.length > 1);
     };
 
-    // Verificar estado inicial
     checkGroupDrag();
-
-    // Escuchar cambios en el drag grupal
     const interval = setInterval(checkGroupDrag, 100);
-
     return () => clearInterval(interval);
   }, [lineElement.id]);
 
-  // 🔍 DETECTAR SI LA LÍNEA ESTÁ SIENDO ARRASTRADA
+  // 🔥 DETECTAR DRAG DE LÍNEA OPTIMIZADO
   useEffect(() => {
     if (!nodeRef) return;
 
-    const handleDragStart = () => {
-      
-      setLineBeingDragged(true);
-    };
-
-    const handleDragEnd = () => {
-      
-      setLineBeingDragged(false);
-    };
+    const handleDragStart = () => setLineBeingDragged(true);
+    const handleDragEnd = () => setLineBeingDragged(false);
 
     nodeRef.on('dragstart', handleDragStart);
     nodeRef.on('dragend', handleDragEnd);
@@ -96,50 +83,48 @@ useEffect(() => {
     };
   }, [nodeRef]);
 
-  // Resto del código sin cambios...
+  // 🔥 CÁLCULOS MEMOIZADOS
   const points = lineElement.points || [0, 0, 100, 0];
-  const startX = points[0] || 0;
-  const startY = points[1] || 0;
-  const endX = points[2] || 100;
-  const endY = points[3] || 0;
+  const puntosValidados = points.slice(0, 4).map((p, i) => {
+    const punto = parseFloat(p || 0);
+    return isNaN(punto) ? (i === 2 ? 100 : 0) : punto;
+  });
 
-  const lineX = lineElement.x || 0;
-  const lineY = lineElement.y || 0;
+  const [normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY] = puntosValidados;
 
-  let normalizedPoints = [...points];
-  const puntosValidados = [];
-  for (let i = 0; i < 4; i++) {
-    const punto = parseFloat(points[i] || 0);
-    puntosValidados.push(isNaN(punto) ? 0 : punto);
-  }
-  normalizedPoints = puntosValidados;
+  const startAbsoluteX = nodePos.x + normalizedStartX;
+  const startAbsoluteY = nodePos.y + normalizedStartY;
+  const endAbsoluteX = nodePos.x + normalizedEndX;
+  const endAbsoluteY = nodePos.y + normalizedEndY;
 
-  const [normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY] = normalizedPoints;
-
- const startAbsoluteX = nodePos.x + normalizedStartX;
- const startAbsoluteY = nodePos.y + normalizedStartY;
- const endAbsoluteX   = nodePos.x + normalizedEndX;
- const endAbsoluteY   = nodePos.y + normalizedEndY;
-
-  const handlePointDragStart = (pointType, e) => {
-
+  // 🔥 HANDLER OPTIMIZADO PARA DRAG START
+  const handlePointDragStart = useCallback((pointType, e) => {
     setDraggingPoint(pointType);
     dragStartPos.current = e.target.getStage().getPointerPosition();
     e.cancelBubble = true;
-  };
+    
+    // 🔥 LIMPIAR CACHE AL INICIAR
+    pointsCache.current = null;
+  }, []);
 
-  const handlePointDragMove = (pointType, e) => {
+  // 🔥 HANDLER ULTRA-OPTIMIZADO PARA DRAG MOVE
+  const handlePointDragMove = useCallback((pointType, e) => {
     if (draggingPoint !== pointType) return;
 
     const stage = e.target.getStage();
     const pointerPos = stage.getPointerPosition();
-    if (!pointerPos) {
-      console.warn("⚠️ No se pudo obtener la posición del puntero");
-      return;
-    }
+    if (!pointerPos) return;
     
-    const newPointX = pointerPos.x - lineX;
-    const newPointY = pointerPos.y - lineY;
+    // 🚀 THROTTLE AGRESIVO: Solo cada 4ms (250fps)
+    const now = performance.now();
+    if (now - lastUpdateTime.current < 4) return;
+    lastUpdateTime.current = now;
+
+    // 🔥 USAR POSICIÓN REAL DEL NODO EN TIEMPO REAL
+    const realNodeX = nodeRef.x();
+    const realNodeY = nodeRef.y();
+    const newPointX = pointerPos.x - realNodeX;
+    const newPointY = pointerPos.y - realNodeY;
 
     let newPoints;
     if (pointType === 'start') {
@@ -148,30 +133,42 @@ useEffect(() => {
       newPoints = [normalizedStartX, normalizedStartY, newPointX, newPointY];
     }
 
- 
+    // 🚀 ACTUALIZACIÓN DIRECTA SIN REACT RE-RENDER
+    const lineNode = elementRefs.current?.[lineElement.id];
+    if (lineNode) {
+      // 🔥 SOLO ACTUALIZAR SI LOS PUNTOS CAMBIARON SIGNIFICATIVAMENTE
+      const pointsStr = newPoints.join(',');
+      if (pointsCache.current !== pointsStr) {
+        pointsCache.current = pointsStr;
+        
+        // 🚀 FEEDBACK INSTANTÁNEO
+        lineNode.points(newPoints);
+        
+        // 🔥 USAR requestAnimationFrame PARA BATCH DRAW ÓPTIMO
+        if (!window._lineDrawScheduled) {
+          window._lineDrawScheduled = true;
+          requestAnimationFrame(() => {
+            batchDraw(lineNode);
+            window._lineDrawScheduled = false;
+          });
+        }
+      }
+    }
+  }, [draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, elementRefs, lineElement.id]);
 
-     // 🚀 Preview directo en Konva (sin re-render)
- const lineNode = elementRefs.current?.[lineElement.id];
-if (lineNode) {
-   lineNode.points(newPoints);   // feedback instantáneo
-   batchDraw(lineNode);
- }
-  };
-
-  const handlePointDragEnd = (pointType, e) => {
+  // 🔥 HANDLER OPTIMIZADO PARA DRAG END
+  const handlePointDragEnd = useCallback((pointType, e) => {
     if (draggingPoint !== pointType) return;
-    
-    
     
     const stage = e.target.getStage();
     const pointerPos = stage.getPointerPosition();
-    if (!pointerPos) {
-      console.warn("⚠️ No se pudo obtener la posición del puntero en dragEnd");
-      return;
-    }
+    if (!pointerPos) return;
     
-    const newPointX = pointerPos.x - lineX;
-    const newPointY = pointerPos.y - lineY;
+    // 🔥 USAR POSICIÓN REAL DEL NODO EN TIEMPO REAL
+    const realNodeX = nodeRef.x();
+    const realNodeY = nodeRef.y();
+    const newPointX = pointerPos.x - realNodeX;
+    const newPointY = pointerPos.y - realNodeY;
 
     let newPoints;
     if (pointType === 'start') {
@@ -180,8 +177,7 @@ if (lineNode) {
       newPoints = [normalizedStartX, normalizedStartY, newPointX, newPointY];
     }
 
-   
-
+    // 🔥 ACTUALIZACIÓN FINAL CON DEBOUNCE
     if (onUpdateLine) {
       onUpdateLine(lineElement.id, {
         points: newPoints,
@@ -191,7 +187,8 @@ if (lineNode) {
 
     setDraggingPoint(null);
     dragStartPos.current = null;
-  };
+    pointsCache.current = null; // 🔥 LIMPIAR CACHE
+  }, [draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, onUpdateLine, lineElement.id]);
 
   return (
     <Group>
@@ -221,6 +218,10 @@ if (lineNode) {
             shadowColor="rgba(59, 130, 246, 0.3)" 
             shadowBlur={4}
             shadowOffset={{ x: 0, y: 3 }}
+            // 🚀 OPTIMIZACIONES DE RENDIMIENTO
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
+            hitStrokeWidth={12} // Área de click más grande
           />
 
           {/* 🔴 Punto de control - FINAL */}
@@ -246,9 +247,13 @@ if (lineNode) {
             shadowColor="rgba(59, 130, 246, 0.3)"
             shadowBlur={6}
             shadowOffset={{ x: 0, y: 3 }}
+            // 🚀 OPTIMIZACIONES DE RENDIMIENTO
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
+            hitStrokeWidth={12} // Área de click más grande
           />
 
-          {/* 📏 Línea de guía durante drag de puntos */}
+          {/* 📏 Línea de guía durante drag de puntos - OPTIMIZADA */}
           {draggingPoint && (
             <Line
               points={[startAbsoluteX, startAbsoluteY, endAbsoluteX, endAbsoluteY]}
@@ -256,6 +261,8 @@ if (lineNode) {
               strokeWidth={1}
               dash={[4, 4]}
               listening={false}
+              perfectDrawEnabled={false}
+              shadowForStrokeEnabled={false}
             />
           )}
         </>

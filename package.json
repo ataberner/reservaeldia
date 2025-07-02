@@ -27,7 +27,8 @@
       "react-konva": "^19.0.3",
       "tailwind-scrollbar-hide": "^4.0.0",
       "use-image": "^1.1.4",
-      "uuid": "^11.1.0"
+      "uuid": "^11.1.0",
+      "webfontloader": "^1.6.28"
    },
    "devDependencies": {
       "autoprefixer": "^10.4.14",

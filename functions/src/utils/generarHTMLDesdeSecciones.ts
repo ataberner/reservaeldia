@@ -2,14 +2,57 @@ import { calcularTopPorSeccion } from "./calcularTopPorSeccion";
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
 
+
+
+
+const EXCLUDE_FONTS = new Set([
+  "serif","sans-serif","monospace","cursive","fantasy","system-ui",
+  "Arial","Helvetica","Times","Times New Roman","Georgia","Courier New"
+]);
+
+function buildGoogleFontsLink(fonts: string[]): string {
+  const familias = fonts
+    .map(f => f.replace(/['"]/g,"").split(",")[0].trim())   // "Great Vibes"
+    .filter(n => n && !EXCLUDE_FONTS.has(n))
+    .map(n => `family=${n.replace(/ /g, "+")}`)             // ← sin encodeURIComponent
+    .join("&");
+
+  if (!familias) return "";
+
+  return `
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?${familias}&display=swap" rel="stylesheet">`.trim();
+}
+
+
+
+
+
+
 export function generarHTMLDesdeSecciones(secciones: any[], objetos: any[]): string {
   const alturaTotal = secciones.reduce((acc, s) => acc + s.altura, 0);
+
+
+// 🔍 Detectar familias que aparecen en objetos de texto
+const fuentesUsadas = [
+  ...new Set(
+    objetos
+      .filter(o => o.tipo === "texto" && o.fontFamily)
+      .map(o => o.fontFamily)          // puede venir "Poppins, sans-serif"
+  ),
+];
+
+const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
+
+
+
   const topPorSeccion = calcularTopPorSeccion(secciones);
 
   const htmlSecciones = secciones.map((seccion, index) => {
     const offsetTop = topPorSeccion[seccion.id];
     const topPercent = (offsetTop / alturaTotal) * 100;
     const heightPercent = (seccion.altura / alturaTotal) * 100;
+    
 
     const contenido = generarHTMLDesdeObjetos(
       objetos.filter((o) => o.seccionId === seccion.id),
@@ -80,6 +123,8 @@ const estilosSeccion = [
   estilosFondo.replace(/\s+/g, ' ').trim()
 ].join('; ');
 
+
+
 return `
   <div class="seccion" style="${estilosSeccion}">
     ${contenido}
@@ -94,6 +139,7 @@ return `
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Invitación</title>
+  ${googleFontsLink}
   <style>
     /* RESETEO COMPLETO PARA MÓVIL */
     * {

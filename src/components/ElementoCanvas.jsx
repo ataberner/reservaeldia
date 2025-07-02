@@ -4,6 +4,7 @@ import { Rect, Circle, Line, RegularPolygon, Path } from "react-konva";
 import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
+import { fontManager } from '../utils/fontManager';
 
 export default function ElementoCanvas({
   obj,
@@ -334,26 +335,33 @@ onDragMove: (e) => {
   );
 }
 
-  // 🔄 RESTO DE ELEMENTOS (sin cambios)
-  if (obj.tipo === "texto") {
-    return (
-      <Text
-        {...commonProps}
-        text={obj.texto}
-        fontSize={obj.fontSize || 24}
-        fontFamily={obj.fontFamily || "sans-serif"}
-        fontWeight={obj.fontWeight || "normal"}
-        fontStyle={obj.fontStyle || "normal"}
-        align="center"
-        textDecoration={obj.textDecoration || "none"}
-        fill={obj.color || "#000"}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-        strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-      />
-    );
-  }
+
+
+// En el renderizado de texto, agregar verificación:
+if (obj.tipo === "texto") {
+  // Verificar si la fuente está cargada
+  const fontFamily = fontManager.isFontAvailable(obj.fontFamily) 
+    ? obj.fontFamily 
+    : "sans-serif";
+    
+  return (
+    <Text
+      {...commonProps}
+      text={obj.texto}
+      fontSize={obj.fontSize || 24}
+      fontFamily={fontFamily}
+      fontWeight={obj.fontWeight || "normal"}
+      fontStyle={obj.fontStyle || "normal"}
+      align="center"
+      textDecoration={obj.textDecoration || "none"}
+      fill={obj.color || "#000"}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
+      strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+    />
+  );
+}
 
   if (obj.tipo === "imagen" && img) {
     return (

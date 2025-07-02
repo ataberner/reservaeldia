@@ -15,6 +15,9 @@ import SelectionBounds from './SelectionBounds';
 import HoverIndicator from './HoverIndicator';
 import LineToolbar from "./LineToolbar";
 import useImage from "use-image";
+import { fontManager } from '../utils/fontManager';
+import FontSelector from './FontSelector';
+import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
   RotateCcw,
@@ -435,30 +438,14 @@ const [posicionInicialMouse, setPosicionInicialMouse] = useState(0);
     
     const [anchoStage, setAnchoStage] = useState(800);
     const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
-    const fuentesLocales = [
-  { nombre: "Arial", valor: "Arial, sans-serif" },
-  { nombre: "Helvetica", valor: "Helvetica, sans-serif" },
-  { nombre: "Verdana", valor: "Verdana, sans-serif" },
-  { nombre: "Tahoma", valor: "Tahoma, sans-serif" },
-  { nombre: "Trebuchet MS", valor: "'Trebuchet MS', sans-serif" },
-  { nombre: "Georgia", valor: "Georgia, serif" },
-  { nombre: "Times New Roman", valor: "'Times New Roman', serif" },
-  { nombre: "Courier New", valor: "'Courier New', monospace" },
-  { nombre: "Lucida Console", valor: "'Lucida Console', monospace" },
-  { nombre: "Comic Sans MS", valor: "'Comic Sans MS', cursive" },
-  { nombre: "Impact", valor: "Impact, sans-serif" },
-  { nombre: "sans-serif", valor: "sans-serif" },
-  { nombre: "serif", valor: "serif" },
-  { nombre: "monospace", valor: "monospace" },
-];
-const fuentesGoogle = [
-  { nombre: "Poppins", valor: "Poppins" },
-  { nombre: "Raleway", valor: "Raleway" },
-  { nombre: "Playfair Display", valor: "Playfair Display" },
-  { nombre: "Roboto", valor: "Roboto" },
-  { nombre: "Lobster", valor: "Lobster" },
-  { nombre: "Great Vibes", valor: "'Great Vibes', cursive" },
-];
+    const fuentesDisponibles = ALL_FONTS;
+
+    // 🆕 Elemento actualmente seleccionado (o null)
+  const objetoSeleccionado =
+    elementosSeleccionados.length === 1
+      ? objetos.find(o => o.id === elementosSeleccionados[0])
+      : null;
+
       const [mostrarSelectorTamaño, setMostrarSelectorTamaño] = useState(false);
       const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
       const [icono] = useImage(urlData);
@@ -470,6 +457,8 @@ const registerRef = useCallback((id, node) => {
   elementRefs.current[id] = node;
   imperativeObjects.registerObject(id, node);
 }, [imperativeObjects]);
+
+
 
 
 // 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
@@ -506,6 +495,8 @@ const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview =
     })
   );
 }, [setSecciones]);
+
+
 
 
 useEffect(() => {
@@ -679,6 +670,41 @@ useEffect(() => {
 
   return () => observer.disconnect();
 }, [zoom]);
+
+
+
+// Agregar después de los otros useEffect
+useEffect(() => {
+  // Pre-cargar fuentes populares al iniciar
+  fontManager.preloadPopularFonts();
+  
+  // Escuchar evento de fuentes cargadas para redibujar
+  const handleFontsLoaded = () => {
+    if (stageRef.current) {
+      stageRef.current.batchDraw();
+    }
+  };
+  
+  window.addEventListener('fonts-loaded', handleFontsLoaded);
+  
+  return () => {
+    window.removeEventListener('fonts-loaded', handleFontsLoaded);
+  };
+}, []);
+
+// Cargar fuentes usadas en objetos existentes
+useEffect(() => {
+  const fuentesUsadas = objetos
+    .filter(obj => obj.tipo === 'texto' && obj.fontFamily)
+    .map(obj => obj.fontFamily);
+    
+  const fuentesUnicas = [...new Set(fuentesUsadas)];
+  
+  if (fuentesUnicas.length > 0) {
+    fontManager.loadFonts(fuentesUnicas);
+  }
+}, [objetos]);
+
 
 
 useEffect(() => {
@@ -1372,10 +1398,6 @@ await refrescarPlantillasDeSeccion();
 };
 
 
-
-
-const fuentesDisponibles = [...fuentesLocales, ...fuentesGoogle];
-const objetoSeleccionado = objetos.find((o) => o.id === elementosSeleccionados[0]);
 
 
 // ✅ NUEVA FUNCIÓN – reemplaza la anterior
@@ -3662,16 +3684,33 @@ onChange={(id, nuevo) => {
                       }}
                     >
 
-    {mostrarSelectorFuente && (
-       <div className="bg-white border rounded-2xl shadow-md p-4 w-80 max-h-[500px] overflow-auto popup-fuente">
-        <div className="text-xs font-semibold text-gray-600 mb-2">Fuente</div>
-        {fuentesDisponibles.map((fuente) => (
-          <div
-              key={fuente.valor}
-              className="flex items-center gap-2 px-2 py-2 hover:bg-gray-100 rounded cursor-pointer"
-              style={{ fontFamily: fuente.valor }}
-              onClick={(e) => {
-              e.stopPropagation();
+   {mostrarSelectorFuente && (
+  <div className="bg-white border rounded-2xl shadow-md p-4 w-80 max-h-[500px] overflow-auto popup-fuente">
+    <div className="text-xs font-semibold text-gray-600 mb-2">Fuente</div>
+    {ALL_FONTS.map((fuente) => {
+      // Verificar si esta fuente está activa
+      const estaActiva = objetoSeleccionado?.fontFamily === fuente.valor;
+      
+      // Verificar si la fuente está cargada en el navegador
+      const estaCargada = fontManager.isFontAvailable(fuente.valor);
+      
+      return (
+        <div
+          key={fuente.valor}
+          className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${
+            estaCargada 
+              ? 'hover:bg-gray-100' 
+              : 'hover:bg-gray-50 opacity-70'
+          }`}
+          style={{ fontFamily: estaCargada ? fuente.valor : 'sans-serif' }}
+          onClick={async (e) => {
+            e.stopPropagation();
+            
+            try {
+              // Cargar la fuente antes de aplicarla
+              await fontManager.loadFonts([fuente.valor]);
+              
+              // Aplicar la fuente a los elementos seleccionados
               setObjetos((prev) =>
                 prev.map((o) =>
                   elementosSeleccionados.includes(o.id)
@@ -3679,31 +3718,49 @@ onChange={(id, nuevo) => {
                     : o
                 )
               );
-            }}
-
-            >
-          {/* Nombre visible */}
-          <span className="text-sm text-gray-700 whitespace-nowrap text-left">{fuente.nombre}</span>
-
-          {/* Ejemplo visual */}
+            } catch (error) {
+              console.error("Error cargando fuente:", error);
+              // Opcional: Aquí podrías mostrar un toast/notificación de error
+            }
+          }}
+        >
+          {/* Categoría de la fuente */}
+          <span className="text-xs text-gray-500 w-20">
+            {fuente.categoria}
+          </span>
+          
+          {/* Nombre de la fuente */}
+          <span className="text-sm text-gray-700 flex-1">
+            {fuente.nombre}
+          </span>
+          
+          {/* Preview de la fuente */}
           <span
-            className="text-base ml-2 text-gray-400"
-            style={{ fontFamily: fuente.valor }}
+            className="text-base text-gray-400"
+            style={{ 
+              fontFamily: estaCargada ? fuente.valor : 'sans-serif',
+              minWidth: '80px' 
+            }}
           >
             AaBbCc
           </span>
-
-          {/* Tilde si está activa */}
-          {objetoSeleccionado?.fontFamily === fuente.valor && (
-            <Check className="w-4 h-4 text-purple-600 ml-auto" />
-
+          
+          {/* Indicador de fuente activa */}
+          {estaActiva && (
+            <Check className="w-4 h-4 text-purple-600 ml-2" />
+          )}
+          
+          {/* Indicador de carga */}
+          {!estaCargada && (
+            <div className="w-4 h-4 ml-2">
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+            </div>
           )}
         </div>
-        ))}
-
-
-      </div>
-    )}
+      );
+    })}
+  </div>
+)}
 
 
   </div>

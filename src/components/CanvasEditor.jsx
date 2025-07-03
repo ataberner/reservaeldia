@@ -1100,119 +1100,200 @@ return () => {
 }, [historial, futuros]);
 
 
+// 🔥 Helper para obtener métricas precisas del texto
+const obtenerMetricasTexto = (texto, fontSize, fontFamily) => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  
+  const metrics = ctx.measureText(texto);
+  return {
+    width: metrics.width,
+    height: fontSize * 1.2, // Aproximación de altura basada en line-height
+    actualBoundingBoxAscent: metrics.actualBoundingBoxAscent || fontSize * 0.8,
+    actualBoundingBoxDescent: metrics.actualBoundingBoxDescent || fontSize * 0.2
+  };
+};
+
+
 const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
-    console.log("🚨 === iniciarEdicionInline ===");
-  console.log("🚨 obj.id:", obj.id);
-  console.log("🚨 seleccionarTodo:", seleccionarTodo);
-  console.log("🚨 elementosSeleccionados actuales:", elementosSeleccionados);
+  console.log("🚨 === iniciarEdicionInline ===");
+  console.log("🚨 obj:", obj);
+  
   const id = obj.id;
   const textNode = elementRefs.current[id];
   
   if (elementosSeleccionados.length > 1) return;
-  // Verificar que el nodo y el stage existan
   if (!textNode || !stageRef.current) {
     console.warn('El nodo o el stage no están listos');
     return;
   }
 
+  // 🔥 VERIFICAR SI YA HAY UN TEXTAREA
+  const existingTextarea = document.querySelector('textarea[data-editing-id="' + id + '"]');
+  if (existingTextarea) {
+    existingTextarea.focus();
+    return;
+  }
+
   const stage = stageRef.current;
   const container = stage.container();
-  const box = textNode.getClientRect({ relativeTo: stage });
-
   
-
-  const fontFamily = obj.fontFamily || "inherit";
-
-  const area = document.createElement("textarea");
-  document.body.appendChild(area);
-
-  area.value = obj.texto;
-  area.style.position = "absolute";
+  // 🔥 OBTENER LA POSICIÓN ABSOLUTA DEL TEXTO
+  const rect = textNode.getClientRect();
+  const containerRect = container.getBoundingClientRect();
   const escala = zoom === 1 ? scale : zoom;
-
-    // 🔥 box.y ya viene con coordenadas absolutas del canvas (con offset aplicado)
-    // No necesitamos restar offsetY porque textNode ya está posicionado correctamente
-
-  area.style.top = `${
-    container.getBoundingClientRect().top + box.y * escala
-  }px`;
-
-
-  area.style.left = `${container.getBoundingClientRect().left + box.x * escala}px`;
-  area.style.width = `${box.width}px`;
-  area.style.height = "auto";
-  area.style.fontSize = `${(obj.fontSize || 24) * escala}px`;
-  area.style.fontFamily = fontFamily;
-  area.style.color = obj.color || "#000";
-  area.style.border = "none";
-  area.style.padding = "0px";
-  area.style.lineHeight = "1";
-  area.style.boxSizing = "border-box";
-  area.style.margin = "0";
-  area.style.background = "transparent";
-  area.style.outline = "none";
-  area.style.resize = "none";
-  area.style.overflow = "hidden";
-  area.style.transform = `scale(${escala}) rotate(${obj.rotation || 0}deg)`;
-  area.style.zIndex = 1000;
+  
+  // 🔥 CALCULAR EL OFFSET DE LA SECCIÓN DE FORMA SEGURA
+  const seccionIndex = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
+  
+  // Calcular offset manualmente para no afectar otros usos
+  let offsetY = 0;
+  if (seccionIndex > 0) {
+    for (let i = 0; i < seccionIndex; i++) {
+      offsetY += seccionesOrdenadas[i].altura || 0;
+    }
+  }
+  
+  console.log("📐 Posicionamiento:", {
+    objeto: { x: obj.x, y: obj.y, seccionId: obj.seccionId },
+    seccionIndex,
+    offsetY,
+    clientRect: rect,
+    escala,
+    posicionAbsoluta: { 
+      x: rect.x * escala + containerRect.left,
+      y: rect.y * escala + containerRect.top
+    }
+  });
+  
+  // 🔥 CREAR TEXTAREA
+  const area = document.createElement("textarea");
+  area.setAttribute('data-editing-id', id);
+  area.value = obj.texto;
+  
+  // 🔥 POSICIONAMIENTO DIRECTO USANDO CLIENT RECT
+  area.style.position = "fixed"; // Cambiar a fixed para evitar problemas con scroll
+  area.style.left = `${containerRect.left + (rect.x * escala)}px`;
+  area.style.top = `${containerRect.top + ((rect.y - offsetY) * escala)}px`;
+  area.style.width = `${rect.width * escala}px`;
+  area.style.height = `${rect.height * escala}px`;
+  
+  // 🔥 ESTILOS
+  const fontSize = obj.fontSize || 24;
+  area.style.fontSize = `${fontSize * escala}px`;
+  area.style.fontFamily = obj.fontFamily || "sans-serif";
   area.style.fontWeight = obj.fontWeight || "normal";
   area.style.fontStyle = obj.fontStyle || "normal";
   area.style.textDecoration = obj.textDecoration || "none";
+  area.style.color = obj.color || "#000";
+  area.style.textAlign = "center";
+  area.style.lineHeight = "normal";
+  area.style.padding = "0";
+  area.style.margin = "0";
+  area.style.border = "1px solid #773dbe";
+  area.style.outline = "none";
+  area.style.background = "rgba(255, 255, 255, 0.95)";
+  area.style.resize = "none";
+  area.style.overflow = "hidden";
+  area.style.width = "auto";
 
-  // Asegurarnos de que el área de texto esté visible
-  setTimeout(() => {
-    area.focus();
-    if (seleccionarTodo) {
-      area.select();
-    }
-  }, 100);
-
-  let yaFinalizado = false;
-
+  area.style.boxSizing = "border-box";
+  area.style.zIndex = "10000";
+  
+  // 🔥 TRANSFORMACIONES
+  if (obj.rotation || (obj.scaleX && obj.scaleX !== 1) || (obj.scaleY && obj.scaleY !== 1)) {
+    const rotation = obj.rotation || 0;
+    const scaleX = obj.scaleX || 1;
+    const scaleY = obj.scaleY || 1;
+    area.style.transformOrigin = "center center";
+    area.style.transform = `rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`;
+  }
+  
+  // 🔥 AGREGAR AL DOM
+  document.body.appendChild(area);
+  
+  // 🔥 FLAG PARA EVITAR DOBLE REMOVE
+  let finalizando = false;
+  
+  // 🔥 FUNCIÓN PARA FINALIZAR
   const finalizar = () => {
-    if (yaFinalizado) return;
-    yaFinalizado = true;
-
+    if (finalizando) return;
+    finalizando = true;
+    
+    console.log("🏁 Finalizando edición");
+    
     const textoNuevo = area.value;
     const index = objetos.findIndex((o) => o.id === id);
-
-    if (index === -1) {
-      console.warn("No se pudo guardar: el objeto fue eliminado o deshecho");
-      if (area && area.parentNode) area.remove();
-      setModoEdicion(false);
-      return;
+    
+    if (index !== -1) {
+      const actualizado = [...objetos];
+      actualizado[index] = {
+        ...actualizado[index],
+        texto: textoNuevo,
+      };
+      setObjetos(actualizado);
     }
-
-    const actualizado = [...objetos];
-actualizado[index] = {
-  ...actualizado[index],
-  texto: textoNuevo,
-  // 🔥 NO tocar x, y aquí - mantener las coordenadas que ya tiene
-};
-    setObjetos(actualizado);
-
+    
+    // 🔥 REMOVER TEXTAREA DE FORMA SEGURA
+    try {
+      if (area && area.parentNode) {
+        area.parentNode.removeChild(area);
+      }
+    } catch (error) {
+      console.warn("Textarea ya fue removido");
+    }
+    
     setModoEdicion(false);
-
-    if (area && area.parentNode) area.remove();
     window.modoEdicionCanvas = false;
   };
-
+  
+  // 🔥 AJUSTAR ALTURA
+  const ajustarAltura = () => {
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+  };
+  
+  // 🔥 EVENT LISTENERS
   area.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      finalizar();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
       finalizar();
     }
   });
-
-  area.addEventListener("blur", finalizar);
-  area.addEventListener("input", () => {
-    area.style.height = "auto";
-    area.style.height = area.scrollHeight + "px";
+  
+  area.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (!finalizando) {
+        finalizar();
+      }
+    }, 100);
   });
-
+  
+  area.addEventListener("input", ajustarAltura);
+  
+  // 🔥 FOCUS Y SELECCIÓN
+  setTimeout(() => {
+    try {
+      area.focus();
+      ajustarAltura();
+      if (seleccionarTodo) {
+        area.select();
+      }
+    } catch (error) {
+      console.error("Error al enfocar:", error);
+    }
+  }, 10);
+  
   setModoEdicion(true);
   window.modoEdicionCanvas = true;
 };
+
+
 
 
 
@@ -2146,21 +2227,20 @@ useEffect(() => {
 
 const handleStartTextEdit = async (id, obj) => {
   console.log("🚨 handleStartTextEdit llamado para:", id);
-  console.trace("🔍 Stack trace de handleStartTextEdit");
   
-  // ✅ Si ya estamos en modo edición, finalizar primero
   if (modoEdicion) {
     await finalizarEdicionInline();
   }
   
-  // ✅ Asegurar que el elemento esté seleccionado
   if (!elementosSeleccionados.includes(id)) {
     setElementosSeleccionados([id]);
   }
   
-  // ✅ Iniciar edición inline con un pequeño delay para asegurar que el estado se actualizó
   setTimeout(() => {
-    iniciarEdicionInline(obj);
+   
+    
+   
+    iniciarEdicionInline(obj, false);
   }, 50);
 };
 

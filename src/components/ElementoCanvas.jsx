@@ -346,19 +346,24 @@ if (obj.tipo === "texto") {
     
   return (
     <Text
-      {...commonProps}
+        {...commonProps}
       text={obj.texto}
       fontSize={obj.fontSize || 24}
       fontFamily={fontFamily}
       fontWeight={obj.fontWeight || "normal"}
       fontStyle={obj.fontStyle || "normal"}
       align="center"
+      verticalAlign="middle"
+      wrap="word"
+      width={undefined} // 🔥 IMPORTANTE: No fijar width para que sea dinámico
       textDecoration={obj.textDecoration || "none"}
       fill={obj.color || "#000"}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
       strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+      listening={true} // 🔥 Asegurar que sea clickeable
+      perfectDrawEnabled={false} // 🔥 Mejor performance
     />
   );
 }

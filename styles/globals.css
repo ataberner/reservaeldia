@@ -5,3 +5,18 @@
 canvas {
   font-family: 'Roboto', sans-serif !important;
 }
+
+/* Estilos para textarea de edición inline */
+textarea[style*="position: absolute"] {
+  /* Resetear estilos del navegador */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  
+  /* Asegurar consistencia de fuente */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Prevenir zoom en móviles */
+  touch-action: manipulation;
+}

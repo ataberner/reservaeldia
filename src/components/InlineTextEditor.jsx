@@ -20,21 +20,22 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
     };
   }, [node]);
 
-  // 🧠 Alto dinámico en base al contenido
+  // 🧠 Ajuste dinámico de tamaño (alto + ancho)
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    textarea.style.height = "auto"; // reset previo
-    textarea.style.height = textarea.scrollHeight + "px";
-
-    const onInput = () => {
+    const ajustarTamaño = () => {
       textarea.style.height = "auto";
+      textarea.style.width = "auto";
       textarea.style.height = textarea.scrollHeight + "px";
+      textarea.style.width = textarea.scrollWidth + "px";
     };
 
-    textarea.addEventListener("input", onInput);
-    return () => textarea.removeEventListener("input", onInput);
+    ajustarTamaño(); // al montar
+
+    textarea.addEventListener("input", ajustarTamaño);
+    return () => textarea.removeEventListener("input", ajustarTamaño);
   }, [value]);
 
   return createPortal(
@@ -56,7 +57,8 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
         border: "none",
         outline: "none",
         resize: "none",
-        overflow: "hidden", // 💡 para evitar scroll interno
+        overflow: "hidden",
+        whiteSpace: "pre", // 👈 mantiene todo en una sola línea
         zIndex: 1000,
       }}
       onChange={(e) => onChange(e.target.value)}
@@ -67,11 +69,10 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
         }
       }}
       onBlur={() => {
-  setTimeout(() => {
-    onFinish();
-  }, 0);
-}}
-
+        setTimeout(() => {
+          onFinish();
+        }, 0);
+      }}
     />,
     document.body
   );

@@ -44,23 +44,25 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
       autoFocus
       value={value}
       style={{
-        position: "fixed",
-        left,
-        top,
-        width,
-        height,
-        font: `${node.fontStyle?.() || "normal"} ${node.fontSize?.() || 24}px ${node.fontFamily?.() || "sans-serif"}`,
-        lineHeight: node.lineHeight?.() || "normal",
-        background: "rgba(255,255,255,0.001)",
-        color: "#000",
-        caretColor: "#000",
-        border: "none",
-        outline: "none",
-        resize: "none",
-        overflow: "hidden",
-        whiteSpace: "pre", // 👈 mantiene todo en una sola línea
-        zIndex: 1000,
-      }}
+  position: "fixed",
+  left,
+  top,
+  width,
+  height,
+  font: `${node.fontStyle?.() || "normal"} ${node.fontWeight?.() || "normal"} ${node.fontSize?.() || 24}px ${node.fontFamily?.() || "sans-serif"}`,
+  lineHeight: node.lineHeight?.() || "normal",
+  color: node.fill?.() || "#000",
+  caretColor: node.fill?.() || "#000",
+  textDecoration: node.textDecoration?.() || "none",
+  background: "rgba(255,255,255,0.001)",
+  border: "none",
+  outline: "none",
+  resize: "none",
+  overflow: "hidden",
+  whiteSpace: "pre",
+  zIndex: 1000,
+}}
+
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
         if ((e.key === "Enter" && !e.shiftKey) || e.key === "Escape") {

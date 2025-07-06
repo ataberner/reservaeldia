@@ -11,6 +11,7 @@ export default function ElementoCanvas({
   isSelected,
   onSelect,
   onChange,
+  editingId,
   registerRef,
   onHover,
   preSeleccionado,
@@ -66,7 +67,7 @@ export default function ElementoCanvas({
         if (obj.tipo === "texto") {
           if (isSelected) {
             if (onStartTextEdit) {
-              onStartTextEdit(obj.id, obj);
+              onStartTextEdit(obj.id, obj.texto);
             }
           } else {
             onSelect(obj.id, obj, e);
@@ -337,16 +338,16 @@ onDragMove: (e) => {
 
 
 
-// En el renderizado de texto, agregar verificación:
 if (obj.tipo === "texto") {
   // Verificar si la fuente está cargada
   const fontFamily = fontManager.isFontAvailable(obj.fontFamily) 
     ? obj.fontFamily 
     : "sans-serif";
-    
+
+ 
   return (
     <Text
-        {...commonProps}
+      {...commonProps}
       text={obj.texto}
       fontSize={obj.fontSize || 24}
       fontFamily={fontFamily}
@@ -355,18 +356,20 @@ if (obj.tipo === "texto") {
       align="center"
       verticalAlign="middle"
       wrap="word"
-      width={undefined} // 🔥 IMPORTANTE: No fijar width para que sea dinámico
+      width={undefined}
       textDecoration={obj.textDecoration || "none"}
       fill={obj.color || "#000"}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
       strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-      listening={true} // 🔥 Asegurar que sea clickeable
-      perfectDrawEnabled={false} // 🔥 Mejor performance
+      listening={true}
+      perfectDrawEnabled={false}
     />
   );
 }
+
+
 
   if (obj.tipo === "imagen" && img) {
     return (

@@ -16,6 +16,8 @@ import HoverIndicator from './HoverIndicator';
 import LineToolbar from "./LineToolbar";
 import useImage from "use-image";
 import { fontManager } from '../utils/fontManager';
+import useInlineEditor from "@/hooks/useInlineEditor";
+import InlineTextEditor from "./InlineTextEditor";
 import FontSelector from './FontSelector';
 import { ALL_FONTS } from '../config/fonts';
 import {
@@ -55,6 +57,10 @@ const limpiarObjetoUndefined = (obj) => {
   
   return obj;
 };
+
+
+
+
 
 // Componente para secciones con fondo de imagen draggable
 const SeccionConFondoImagen = ({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset }) => {
@@ -437,7 +443,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [historial, setHistorial] = useState([]);
   const [futuros, setFuturos] = useState([]);
    const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
-    const [modoEdicion, setModoEdicion] = useState(false);
     const [cargado, setCargado] = useState(false);
     const stageRef = useRef(null);
     const dragStartPos = useRef(null);
@@ -468,6 +473,13 @@ const [posicionInicialMouse, setPosicionInicialMouse] = useState(0);
     const [anchoStage, setAnchoStage] = useState(800);
     const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
     const fuentesDisponibles = ALL_FONTS;
+
+    const {
+  editing,      // { id, value }
+  startEdit,    // (id, initial)
+  updateEdit,   // (nuevoValor)
+  finishEdit    // () => void
+} = useInlineEditor();
 
     // 🆕 Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
@@ -957,57 +969,25 @@ const actualizarLinea = (lineId, nuevaData) => {
 
 useEffect(() => {
   const handleKeyDown = (e) => {
-    const ctrl = e.ctrlKey || e.metaKey;
+  if (e.key === 'Escape') {
+    e.preventDefault();
 
-    // Atajos de teclado para elementos seleccionados
-    if (elementosSeleccionados.length > 0) {
-      // Copiar (Ctrl + C)
-      if (ctrl && e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        copiarElemento();
-        return;
-      }
-
-      // Pegar (Ctrl + V)
-      if (ctrl && e.key.toLowerCase() === "v") {
-        e.preventDefault();
-        pegarElemento();
-        return;
-      }
-
-      // Duplicar (Ctrl + D)
-      if (ctrl && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        duplicarElemento();
-        return;
-      }
-
-// Eliminar (Delete o Backspace)
-if (e.key === "Delete" || e.key === "Backspace") {
-  e.preventDefault();
-  e.stopPropagation();
-  
-  const idsAEliminar = [...elementosSeleccionados];
-  
-  // 🔥 LIMPIAR HOVER STATE
-  setHoverId(null);
-  
-  // 🔥 LIMPIAR SELECCIÓN Y ESTADOS
-  setModoEdicion(false);
-  setElementosSeleccionados([]);
-  setMostrarPanelZ(false);
-  
-  setTimeout(() => {
-    setObjetos(prev => {
-      const filtrados = prev.filter((o) => !idsAEliminar.includes(o.id));
-      return filtrados;
-    });
-  }, 50);
-
-  return;
-}
+    if (editing.id) {
+      finishEdit(); // 🔥 Guardamos primero
     }
-  };
+
+    if (elementosSeleccionados.length > 0) {
+      console.log("🔓 Deseleccionando elementos con ESC");
+      setElementosSeleccionados([]);
+      setMostrarPanelZ(false);
+      setMostrarSubmenuCapa(false);
+      setMostrarSelectorFuente(false);
+      setMostrarSelectorTamaño(false);
+      setHoverId(null);
+    }
+  }
+};
+
 
   document.addEventListener("keydown", handleKeyDown, false);
   
@@ -1027,7 +1007,6 @@ useEffect(() => {
       
       if (historial.length > 1) {
         // Cerrar cualquier modo de edición activo
-        setModoEdicion(false);
         setElementosSeleccionados([]);
         setMostrarPanelZ(false);
         
@@ -1063,7 +1042,6 @@ useEffect(() => {
       
       if (futuros.length > 0) {
         // Cerrar cualquier modo de edición activo
-        setModoEdicion(false);
         setElementosSeleccionados([]);
         setMostrarPanelZ(false);
         
@@ -1114,185 +1092,6 @@ const obtenerMetricasTexto = (texto, fontSize, fontFamily) => {
     actualBoundingBoxDescent: metrics.actualBoundingBoxDescent || fontSize * 0.2
   };
 };
-
-
-const iniciarEdicionInline = (obj, seleccionarTodo = false) => {
-  console.log("🚨 === iniciarEdicionInline ===");
-  console.log("🚨 obj:", obj);
-  
-  const id = obj.id;
-  const textNode = elementRefs.current[id];
-  
-  if (elementosSeleccionados.length > 1) return;
-  if (!textNode || !stageRef.current) {
-    console.warn('El nodo o el stage no están listos');
-    return;
-  }
-
-  // 🔥 VERIFICAR SI YA HAY UN TEXTAREA
-  const existingTextarea = document.querySelector('textarea[data-editing-id="' + id + '"]');
-  if (existingTextarea) {
-    existingTextarea.focus();
-    return;
-  }
-
-  const stage = stageRef.current;
-  const container = stage.container();
-  
-  // 🔥 OBTENER LA POSICIÓN ABSOLUTA DEL TEXTO
-  const rect = textNode.getClientRect();
-  const containerRect = container.getBoundingClientRect();
-  const escala = zoom === 1 ? scale : zoom;
-  
-  // 🔥 CALCULAR EL OFFSET DE LA SECCIÓN DE FORMA SEGURA
-  const seccionIndex = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
-  
-  // Calcular offset manualmente para no afectar otros usos
-  let offsetY = 0;
-  if (seccionIndex > 0) {
-    for (let i = 0; i < seccionIndex; i++) {
-      offsetY += seccionesOrdenadas[i].altura || 0;
-    }
-  }
-  
-  console.log("📐 Posicionamiento:", {
-    objeto: { x: obj.x, y: obj.y, seccionId: obj.seccionId },
-    seccionIndex,
-    offsetY,
-    clientRect: rect,
-    escala,
-    posicionAbsoluta: { 
-      x: rect.x * escala + containerRect.left,
-      y: rect.y * escala + containerRect.top
-    }
-  });
-  
-  // 🔥 CREAR TEXTAREA
-  const area = document.createElement("textarea");
-  area.setAttribute('data-editing-id', id);
-  area.value = obj.texto;
-  
-  // 🔥 POSICIONAMIENTO DIRECTO USANDO CLIENT RECT
-  area.style.position = "fixed"; // Cambiar a fixed para evitar problemas con scroll
-  area.style.left = `${containerRect.left + (rect.x * escala)}px`;
-  area.style.top = `${containerRect.top + ((rect.y - offsetY) * escala)}px`;
-  area.style.width = `${rect.width * escala}px`;
-  area.style.height = `${rect.height * escala}px`;
-  
-  // 🔥 ESTILOS
-  const fontSize = obj.fontSize || 24;
-  area.style.fontSize = `${fontSize * escala}px`;
-  area.style.fontFamily = obj.fontFamily || "sans-serif";
-  area.style.fontWeight = obj.fontWeight || "normal";
-  area.style.fontStyle = obj.fontStyle || "normal";
-  area.style.textDecoration = obj.textDecoration || "none";
-  area.style.color = obj.color || "#000";
-  area.style.textAlign = "center";
-  area.style.lineHeight = "normal";
-  area.style.padding = "0";
-  area.style.margin = "0";
-  area.style.border = "1px solid #773dbe";
-  area.style.outline = "none";
-  area.style.background = "rgba(255, 255, 255, 0.95)";
-  area.style.resize = "none";
-  area.style.overflow = "hidden";
-  area.style.width = "auto";
-
-  area.style.boxSizing = "border-box";
-  area.style.zIndex = "10000";
-  
-  // 🔥 TRANSFORMACIONES
-  if (obj.rotation || (obj.scaleX && obj.scaleX !== 1) || (obj.scaleY && obj.scaleY !== 1)) {
-    const rotation = obj.rotation || 0;
-    const scaleX = obj.scaleX || 1;
-    const scaleY = obj.scaleY || 1;
-    area.style.transformOrigin = "center center";
-    area.style.transform = `rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`;
-  }
-  
-  // 🔥 AGREGAR AL DOM
-  document.body.appendChild(area);
-  
-  // 🔥 FLAG PARA EVITAR DOBLE REMOVE
-  let finalizando = false;
-  
-  // 🔥 FUNCIÓN PARA FINALIZAR
-  const finalizar = () => {
-    if (finalizando) return;
-    finalizando = true;
-    
-    console.log("🏁 Finalizando edición");
-    
-    const textoNuevo = area.value;
-    const index = objetos.findIndex((o) => o.id === id);
-    
-    if (index !== -1) {
-      const actualizado = [...objetos];
-      actualizado[index] = {
-        ...actualizado[index],
-        texto: textoNuevo,
-      };
-      setObjetos(actualizado);
-    }
-    
-    // 🔥 REMOVER TEXTAREA DE FORMA SEGURA
-    try {
-      if (area && area.parentNode) {
-        area.parentNode.removeChild(area);
-      }
-    } catch (error) {
-      console.warn("Textarea ya fue removido");
-    }
-    
-    setModoEdicion(false);
-    window.modoEdicionCanvas = false;
-  };
-  
-  // 🔥 AJUSTAR ALTURA
-  const ajustarAltura = () => {
-    area.style.height = "auto";
-    area.style.height = `${area.scrollHeight}px`;
-  };
-  
-  // 🔥 EVENT LISTENERS
-  area.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      finalizar();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      finalizar();
-    }
-  });
-  
-  area.addEventListener("blur", () => {
-    setTimeout(() => {
-      if (!finalizando) {
-        finalizar();
-      }
-    }, 100);
-  });
-  
-  area.addEventListener("input", ajustarAltura);
-  
-  // 🔥 FOCUS Y SELECCIÓN
-  setTimeout(() => {
-    try {
-      area.focus();
-      ajustarAltura();
-      if (seleccionarTodo) {
-        area.select();
-      }
-    } catch (error) {
-      console.error("Error al enfocar:", error);
-    }
-  }, 10);
-  
-  setModoEdicion(true);
-  window.modoEdicionCanvas = true;
-};
-
 
 
 
@@ -1394,42 +1193,6 @@ useEffect(() => {
 }, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
 
 
-
-
-const finalizarEdicionInline = () => {
-  return new Promise((resolve) => {
-    if (!modoEdicion || !nuevoTextoRef.current) return resolve();
-
-    const id = nuevoTextoRef.current;
-    const textNode = elementRefs.current[id];
-
-    const textarea = document.querySelector("textarea");
-    if (!textarea) return resolve();
-
-    const textoNuevo = textarea.value;
-    const index = objetos.findIndex((o) => o.id === id);
-
-    if (index === -1) {
-      console.warn("No se pudo guardar: el objeto fue eliminado o deshecho");
-      textarea.remove();
-      setModoEdicion(false);
-      return resolve();
-    }
-
-    const actualizado = [...objetos];
-    actualizado[index] = {
-      ...actualizado[index],
-      texto: textoNuevo,
-      // 👇 NO tocar x, y aquí
-    };
-
-    setObjetos(actualizado);
-    setModoEdicion(false);
-    if (textarea && textarea.parentNode) textarea.remove();
-    nuevoTextoRef.current = null;
-    resolve();
-  });
-};
 
 
 
@@ -1635,7 +1398,6 @@ const eliminarElemento = () => {
   // Limpiar selección primero
   setElementosSeleccionados([]);
   setMostrarPanelZ(false);
-  setModoEdicion(false);
   
   // Eliminar objetos con delay
   setTimeout(() => {
@@ -1953,7 +1715,6 @@ const ejecutarDeshacer = useCallback(() => {
   
   if (historial.length > 1) {
     // Cerrar cualquier modo de edición activo
-    setModoEdicion(false);
     setElementosSeleccionados([]);
     setMostrarPanelZ(false);
     
@@ -1986,7 +1747,6 @@ const ejecutarRehacer = useCallback(() => {
   console.log("📊 Estado actual:", { historial: historial.length, futuros: futuros.length });
   
   if (futuros.length > 0) {
-    setModoEdicion(false);
     setElementosSeleccionados([]);
     setMostrarPanelZ(false);
     
@@ -2190,25 +1950,14 @@ useEffect(() => {
         
         // Limpiar todas las selecciones y estados relacionados
         setElementosSeleccionados([]);
-        setModoEdicion(false);
         setMostrarPanelZ(false);
         setMostrarSubmenuCapa(false);
         setMostrarSelectorFuente(false);
         setMostrarSelectorTamaño(false);
         setHoverId(null);
         
-        // Finalizar cualquier edición inline activa
-        if (modoEdicion) {
-          finalizarEdicionInline();
-        }
+          
         
-        // Limpiar cualquier textarea de edición
-        const textareas = document.querySelectorAll('textarea');
-        textareas.forEach(textarea => {
-          if (textarea.parentNode) {
-            textarea.remove();
-          }
-        });
         
         console.log("✅ Elementos deseleccionados");
       }
@@ -2221,28 +1970,10 @@ useEffect(() => {
   return () => {
     document.removeEventListener("keydown", handleKeyDown);
   };
-}, [elementosSeleccionados, modoEdicion]); // Dependencias necesarias
+}, [elementosSeleccionados]); // Dependencias necesarias
 
 
 
-const handleStartTextEdit = async (id, obj) => {
-  console.log("🚨 handleStartTextEdit llamado para:", id);
-  
-  if (modoEdicion) {
-    await finalizarEdicionInline();
-  }
-  
-  if (!elementosSeleccionados.includes(id)) {
-    setElementosSeleccionados([id]);
-  }
-  
-  setTimeout(() => {
-   
-    
-   
-    iniciarEdicionInline(obj, false);
-  }, 50);
-};
 
 
 
@@ -2661,7 +2392,6 @@ onMouseDown={(e) => {
 
   if (esStage || esSeccion) {
     setElementosSeleccionados([]);
-    setModoEdicion(false);
     setMostrarPanelZ(false);
     setMostrarSubmenuCapa(false);
 
@@ -3128,7 +2858,7 @@ setAreaSeleccion(null);
 )}
 
         {objetos.map((obj, i) => {
-    if (modoEdicion && elementosSeleccionados[0] === obj.id) return null;
+if (editing.id && elementosSeleccionados[0] === obj.id) return null;
 
     return (
       <ElementoCanvas
@@ -3144,25 +2874,28 @@ setAreaSeleccion(null);
         anchoCanvas={800}
         isSelected={elementosSeleccionados.includes(obj.id)}
         preSeleccionado={elementosPreSeleccionados.includes(obj.id)}
-        onHover={setHoverId}
-        onStartTextEdit={handleStartTextEdit}      
+        onHover={setHoverId}     
         registerRef={registerRef}
+
+
+        onStartTextEdit={(id, texto) => {
+   // 1) abrir editor en el hook
+   startEdit(id, texto);
+
+   // 2) opcional: desactivar el draggable mientras se edita
+   const node = elementRefs.current[id];
+   node?.draggable(false);
+ }}
+        finishInlineEdit={finishEdit}
     
   
-// onSelect simple, sin lógica de segundo click
-onSelect={async (id, obj, e) => {
- 
-  
-  if (window._resizeData?.isResizing) {
-    window._resizeData = null;
+onSelect={(id, obj, e) => {
+  if (editing.id && editing.id !== id) {
+    finishEdit(); // 🔥 Guardamos antes de cambiar selección
   }
-  
+
   e.evt.cancelBubble = true;
   const esShift = e?.evt?.shiftKey;
-
-  if (modoEdicion) {
-    await finalizarEdicionInline();
-  }
 
   setElementosSeleccionados((prev) => {
     if (esShift) {
@@ -3172,9 +2905,8 @@ onSelect={async (id, obj, e) => {
       return [id];
     }
   });
-
- 
 }}
+
 
 
 onChange={(id, nuevo) => {
@@ -3471,6 +3203,46 @@ onChange={(id, nuevo) => {
       </Layer>
 
      </Stage>
+
+
+
+{editing.id && elementRefs.current[editing.id] && (
+  <InlineTextEditor
+    node={elementRefs.current[editing.id]}
+    value={editing.value}
+    onChange={updateEdit}
+    onFinish={() => {
+      const textoNuevo = editing.value.trim(); // trim para evitar solo espacios
+      const index = objetos.findIndex(o => o.id === editing.id);
+      const objeto = objetos[index];
+
+      console.log("🧪 DEBUG al salir de edición:", { textoNuevo, index, objeto });
+
+      if (index === -1) {
+        console.warn("❌ El objeto ya no existe. Cancelando guardado.");
+        finishEdit();
+        return;
+      }
+
+      if (textoNuevo === "") {
+        console.warn("⚠️ El texto está vacío. No se actualiza.");
+        finishEdit();
+        return;
+      }
+
+      const actualizado = [...objetos];
+      actualizado[index] = {
+        ...actualizado[index],
+        texto: textoNuevo
+      };
+
+      setObjetos(actualizado);
+      finishEdit();
+    }}
+  />
+)}
+
+
 
 
 {/* 🔥 STAGE ADICIONAL SOLO PARA LÍNEAS DIVISORIAS */}

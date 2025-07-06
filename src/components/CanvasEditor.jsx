@@ -2179,6 +2179,23 @@ const moverSeccion = async (seccionId, direccion) => {
 };
 
 
+// 🔄 Ajustar el transformer cuando cambia el texto inline
+useEffect(() => {
+  if (!editing.id || !elementRefs.current[editing.id]) return;
+
+  const node = elementRefs.current[editing.id];
+  node.text(editing.value); // 🔁 Actualizar el contenido en tiempo real
+  node.getLayer()?.batchDraw(); // 🔁 Forzar re-render del nodo
+
+  // 🔁 Actualizar el transformer si está presente
+  const transformer = node.getStage()?.findOne('Transformer');
+  if (transformer && transformer.nodes && transformer.nodes().includes(node)) {
+    transformer.forceUpdate(); // Actualiza manualmente el transformer
+    transformer.getLayer()?.batchDraw(); // Redibuja
+  }
+}, [editing.value]);
+
+
 
 // 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
 useEffect(() => {
@@ -3203,6 +3220,7 @@ onChange={(id, nuevo) => {
       </Layer>
 
      </Stage>
+
 
 
 

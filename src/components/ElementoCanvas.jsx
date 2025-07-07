@@ -9,6 +9,7 @@ import { fontManager } from '../utils/fontManager';
 export default function ElementoCanvas({
   obj,
   isSelected,
+  isInEditMode,
   onSelect,
   onChange,
   editingId,
@@ -19,7 +20,8 @@ export default function ElementoCanvas({
   onDragEndPersonalizado,
   dragStartPos,
   hasDragged,
-  onStartTextEdit
+  onStartTextEdit,
+  editingMode = false
 }) {
   const [img] = useImage(obj.src || null);
   const [isDragging, setIsDragging] = useState(false);
@@ -43,8 +45,9 @@ export default function ElementoCanvas({
     rotation: obj.rotation || 0,
     scaleX: obj.scaleX || 1,
     scaleY: obj.scaleY || 1,
-    draggable: false,
+    draggable: !editingMode,
     ref: handleRef,
+    listening: !isInEditMode,
 
     onMouseDown: (e) => {
       e.cancelBubble = true;
@@ -270,18 +273,21 @@ onDragMove: (e) => {
         hasDragged.current = false;
       }, 50);
     },
-  }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange]);
+}), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange, isInEditMode]);
+
 
   // 🔥 MEMOIZAR HANDLERS HOVER
-  const handleMouseEnter = useCallback(() => {
-    if (onHover && !isDragging && !window._isDragging) {
-      onHover(obj.id);
-    }
-  }, [onHover, obj.id, isDragging]);
+const handleMouseEnter = useCallback(() => {
+  if (!onHover || isDragging || window._isDragging || isInEditMode) return;
+  onHover(obj.id);
+}, [onHover, obj.id, isDragging, isInEditMode]);
 
-  const handleMouseLeave = useCallback(() => {
-    if (onHover) onHover(null);
-  }, [onHover]);
+const handleMouseLeave = useCallback(() => {
+  if (!onHover || isInEditMode) return;
+  onHover(null);
+}, [onHover, isInEditMode]);
+
+
 
  if (obj.tipo === "forma" && obj.figura === "line") {
   let linePoints = obj.points;
@@ -337,14 +343,15 @@ onDragMove: (e) => {
 }
 
 
-
 if (obj.tipo === "texto") {
   // Verificar si la fuente está cargada
   const fontFamily = fontManager.isFontAvailable(obj.fontFamily) 
     ? obj.fontFamily 
     : "sans-serif";
 
- 
+  // 🔥 NUEVO: Detectar si está en modo edición
+  const isEditing = window._currentEditingId === obj.id;
+  
   return (
     <Text
       {...commonProps}
@@ -361,10 +368,12 @@ if (obj.tipo === "texto") {
       fill={obj.color || "#000"}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-      strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+      stroke={!isEditing && (isSelected || preSeleccionado) ? "#773dbe" : undefined}
+      strokeWidth={!isEditing && (isSelected || preSeleccionado) ? 1 : 0}
       listening={true}
       perfectDrawEnabled={false}
+      // 🔥 NUEVO: Ocultar durante edición
+       visible={!isInEditMode} // 🔥 Ocultar durante edición
     />
   );
 }

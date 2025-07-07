@@ -162,6 +162,16 @@ const deberiaUsarBounds = selectedElements.length > 0;
 
 // 🔥 useEffect SIMPLIFICADO solo para transformer
 useEffect(() => {
+  const editing = window.editing || {};
+  if (editing.id && selectedElements.includes(editing.id)) {
+    // Durante edición inline, limpiar transformer
+    if (transformerRef.current) {
+      transformerRef.current.nodes([]);
+      transformerRef.current.getLayer()?.batchDraw();
+    }
+    return;
+  }
+  
   if (!transformerRef.current || !deberiaUsarTransformer) {
     if (transformerRef.current) {
       transformerRef.current.nodes([]);

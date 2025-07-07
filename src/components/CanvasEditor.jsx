@@ -481,6 +481,8 @@ const [posicionInicialMouse, setPosicionInicialMouse] = useState(0);
   finishEdit    // () => void
 } = useInlineEditor();
 
+
+
     // 🆕 Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
     elementosSeleccionados.length === 1
@@ -500,6 +502,18 @@ const registerRef = useCallback((id, node) => {
 }, [imperativeObjects]);
 
 
+
+// ✅ AGREGAR DESPUÉS DE LA LÍNEA 398 (aproximadamente):
+useEffect(() => {
+  // ✅ EXPONER ESTADO DE EDICIÓN GLOBALMENTE
+  window.editing = editing;
+  
+  return () => {
+    if (window.editing && window.editing.id === editing.id) {
+      delete window.editing;
+    }
+  };
+}, [editing.id, editing.value]);
 
 
 // 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
@@ -2874,57 +2888,52 @@ setAreaSeleccion(null);
   </Group>
 )}
 
-        {objetos.map((obj, i) => {
-if (editing.id && elementosSeleccionados[0] === obj.id) return null;
-
-    return (
-      <ElementoCanvas
-        key={obj.id}
-        obj={{
-              ...obj,
-              y: obj.y + calcularOffsetY(
-                seccionesOrdenadas,
-                seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId),
-                altoCanvas
-              ),
-            }}
-        anchoCanvas={800}
-        isSelected={elementosSeleccionados.includes(obj.id)}
-        preSeleccionado={elementosPreSeleccionados.includes(obj.id)}
-        onHover={setHoverId}     
-        registerRef={registerRef}
 
 
-        onStartTextEdit={(id, texto) => {
-   // 1) abrir editor en el hook
-   startEdit(id, texto);
-
-   // 2) opcional: desactivar el draggable mientras se edita
-   const node = elementRefs.current[id];
-   node?.draggable(false);
- }}
-        finishInlineEdit={finishEdit}
-    
+{objetos.map((obj, i) => {
+  // 🎯 Determinar si está en modo edición
+  const isInEditMode = editing.id === obj.id && elementosSeleccionados[0] === obj.id;
   
-onSelect={(id, obj, e) => {
-  if (editing.id && editing.id !== id) {
-    finishEdit(); // 🔥 Guardamos antes de cambiar selección
-  }
+  return (
+    <ElementoCanvas
+      key={obj.id}
+      obj={{
+        ...obj,
+        y: obj.y + calcularOffsetY(
+          seccionesOrdenadas,
+          seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId),
+          altoCanvas
+        ),
+      }}
+    anchoCanvas={800}
+      isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
+      preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
+      isInEditMode={isInEditMode} // 🔥 NUEVA PROP
+      onHover={isInEditMode ? null : setHoverId}
+      registerRef={registerRef}
+      onStartTextEdit={isInEditMode ? null : (id, texto) => {
+        startEdit(id, texto);
+        const node = elementRefs.current[id];
+        node?.draggable(false);
+      }}
+      finishInlineEdit={finishEdit}
+      onSelect={isInEditMode ? null : (id, obj, e) => {
+        if (editing.id && editing.id !== id) {
+          finishEdit();
+        }
 
-  e.evt.cancelBubble = true;
-  const esShift = e?.evt?.shiftKey;
+        e.evt.cancelBubble = true;
+        const esShift = e?.evt?.shiftKey;
 
-  setElementosSeleccionados((prev) => {
-    if (esShift) {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      return [...prev, id];
-    } else {
-      return [id];
-    }
-  });
-}}
-
-
+        setElementosSeleccionados((prev) => {
+          if (esShift) {
+            if (prev.includes(id)) return prev.filter((x) => x !== id);
+            return [...prev, id];
+          } else {
+            return [id];
+          }
+        });
+      }}
 
 onChange={(id, nuevo) => {
   
@@ -3043,24 +3052,25 @@ onChange={(id, nuevo) => {
   });
 }}
       
-      onDragMovePersonalizado={(pos, elementId) => {
-  mostrarGuias(pos, elementId);
-  
-  // 🔥 ACTUALIZAR BOTÓN EN TIEMPO REAL si es el elemento seleccionado
-  if (elementosSeleccionados.includes(elementId)) {
-    requestAnimationFrame(() => {
-      if (typeof actualizarPosicionBotonOpciones === 'function') {
-        actualizarPosicionBotonOpciones();
-      }
-    });
-  }
-}}
-        onDragEndPersonalizado={() => setGuiaLineas([])}
-        dragStartPos={dragStartPos}
-        hasDragged={hasDragged}    
-      />
-    );
-  })}
+     onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
+        mostrarGuias(pos, elementId);
+        
+        if (elementosSeleccionados.includes(elementId)) {
+          requestAnimationFrame(() => {
+            if (typeof actualizarPosicionBotonOpciones === 'function') {
+              actualizarPosicionBotonOpciones();
+            }
+          });
+        }
+      }}
+      onDragEndPersonalizado={isInEditMode ? null : () => setGuiaLineas([])}
+      dragStartPos={dragStartPos}
+      hasDragged={hasDragged}
+    />
+  );
+})}
+
+
 
 {seleccionActiva && areaSeleccion && (
   <Rect

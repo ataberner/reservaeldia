@@ -366,6 +366,7 @@ if (obj.tipo === "texto") {
       width={undefined}
       textDecoration={obj.textDecoration || "none"}
       fill={obj.color || "#000"}
+      lineHeight={1.2} 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       stroke={!isEditing && (isSelected || preSeleccionado) ? "#773dbe" : undefined}
@@ -373,7 +374,7 @@ if (obj.tipo === "texto") {
       listening={true}
       perfectDrawEnabled={false}
       // 🔥 NUEVO: Ocultar durante edición
-       visible={!isInEditMode} // 🔥 Ocultar durante edición
+      opacity={isInEditMode ? 0 : 1}
     />
   );
 }

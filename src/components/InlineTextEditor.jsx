@@ -135,10 +135,21 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
         overflowWrap: "normal",
         
         // 🔥 COMPLETAMENTE INVISIBLE
-        background: "transparent",
-        border: "none",
-        outline: "none",
-        resize: "none",
+background: "transparent",
+border: "none",
+outline: "none",
+resize: "none",
+// ✅ FORZAR eliminación de cualquier borde residual
+borderWidth: "0",
+borderStyle: "none",
+borderColor: "transparent",
+outlineWidth: "0",
+outlineStyle: "none",
+outlineColor: "transparent",
+// ✅ Eliminar focus ring en todos los navegadores
+boxShadow: "none",
+WebkitAppearance: "none",
+MozAppearance: "none",
         
         // 🔥 SIN PADDING NI MARGIN
         padding: "0",

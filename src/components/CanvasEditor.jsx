@@ -3184,8 +3184,8 @@ onChange={(id, nuevo) => {
 })()}
 
 
-{/* 🔥 OPTIMIZACIÓN: No mostrar hover durante drag/resize */}
-{!window._resizeData?.isResizing && !window._isDragging && (
+{/* 🔥 OPTIMIZACIÓN: No mostrar hover durante drag/resize/edición */}
+{!window._resizeData?.isResizing && !window._isDragging && !editing.id && (
   <HoverIndicator
     hoveredElement={hoverId}
     elementRefs={elementRefs}

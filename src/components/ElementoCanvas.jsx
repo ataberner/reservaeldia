@@ -369,8 +369,8 @@ if (obj.tipo === "texto") {
       lineHeight={1.2} 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      stroke={!isEditing && (isSelected || preSeleccionado) ? "#773dbe" : undefined}
-      strokeWidth={!isEditing && (isSelected || preSeleccionado) ? 1 : 0}
+      stroke={undefined}
+      strokeWidth={0}
       listening={true}
       perfectDrawEnabled={false}
       // 🔥 NUEVO: Ocultar durante edición

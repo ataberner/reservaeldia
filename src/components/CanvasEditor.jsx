@@ -15,8 +15,10 @@ import SelectionBounds from './SelectionBounds';
 import HoverIndicator from './HoverIndicator';
 import LineToolbar from "./LineToolbar";
 import useImage from "use-image";
+import useKeyboardShortcuts from '@/hooks/useKeyboardShortcuts';
 import { fontManager } from '../utils/fontManager';
 import useInlineEditor from "@/hooks/useInlineEditor";
+import useEditorHandlers from '@/hooks/useEditorHandlers';
 import InlineTextEditor from "./InlineTextEditor";
 import FontSelector from './FontSelector';
 import { ALL_FONTS } from '../config/fonts';
@@ -33,8 +35,6 @@ import {
   PlusCircle,
   ClipboardPaste,
 } from "lucide-react";
-
-
 
 
 
@@ -503,7 +503,7 @@ const registerRef = useCallback((id, node) => {
 
 
 
-// ✅ AGREGAR DESPUÉS DE LA LÍNEA 398 (aproximadamente):
+
 useEffect(() => {
   // ✅ EXPONER ESTADO DE EDICIÓN GLOBALMENTE
   window.editing = editing;
@@ -583,6 +583,31 @@ const moverElemento = (accion) => {
   setObjetos(nuevos);
   setMostrarPanelZ(false);
 };
+
+
+
+
+const {
+  onDeshacer,
+  onRehacer,
+  onDuplicar,
+  onEliminar,
+  onCopiar,
+  onPegar,
+  onCambiarAlineacion
+} = useEditorHandlers({
+  objetos,
+  setObjetos,
+  elementosSeleccionados,
+  setElementosSeleccionados,
+  historial,
+  setHistorial,
+  futuros,
+  setFuturos,
+  setSecciones,
+  ignoreNextUpdateRef,
+  setMostrarPanelZ
+});
 
 
 useEffect(() => {
@@ -1012,85 +1037,6 @@ useEffect(() => {
 }, [elementosSeleccionados]);
 
 
-// 🔄 Sistema completo de deshacer/rehacer (objetos + secciones)
-useEffect(() => {
-  const handleKeyDown = (e) => {
-    // Deshacer (Ctrl + Z)
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-      e.preventDefault();
-      
-      
-      if (historial.length > 1) {
-        // Cerrar cualquier modo de edición activo
-        setElementosSeleccionados([]);
-        setMostrarPanelZ(false);
-        
-        setHistorial((prev) => {
-          const nuevoHistorial = [...prev];
-          const estadoActual = nuevoHistorial.pop(); // Remover estado actual
-          const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
-          
-         
-          
-          // 🔥 Marcar que viene del historial para evitar guardarlo de nuevo
-          ignoreNextUpdateRef.current = true;
-          
-          // 🔥 Restaurar TANTO objetos como secciones
-          setObjetos(estadoAnterior.objetos || []);
-          setSecciones(estadoAnterior.secciones || []);
-          
-          // Guardar estado actual en futuros para rehacer
-          setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
-          
-          
-          return nuevoHistorial;
-        });
-      } else {
-        console.log("❌ No hay más cambios para deshacer");
-      }
-    }
-
-    // Rehacer (Ctrl + Y o Ctrl + Shift + Z)
-    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
-      e.preventDefault();
-     
-      
-      if (futuros.length > 0) {
-        // Cerrar cualquier modo de edición activo
-        setElementosSeleccionados([]);
-        setMostrarPanelZ(false);
-        
-        const siguienteEstado = futuros[0];
-        
-        
-        
-        // 🔥 Marcar que viene del historial
-        ignoreNextUpdateRef.current = true;
-        
-        // 🔥 Restaurar TANTO objetos como secciones
-        setObjetos(siguienteEstado.objetos || []);
-        setSecciones(siguienteEstado.secciones || []);
-        
-        // Mover de futuros a historial
-        setFuturos((f) => f.slice(1));
-        setHistorial((h) => [...h, siguienteEstado]);
-        
-        console.log("✅ Rehecho aplicado completamente");
-      } else {
-        console.log("❌ No hay cambios para rehacer");
-      }
-    }
-  };
-
-  // Escuchar tanto en document como en window para máxima compatibilidad
-document.addEventListener("keydown", handleKeyDown);
-window.addEventListener("keydown", handleKeyDown);
-
-return () => {
-  document.removeEventListener("keydown", handleKeyDown);
-  window.removeEventListener("keydown", handleKeyDown);
-};
-}, [historial, futuros]);
 
 
 // 🔥 Helper para obtener métricas precisas del texto
@@ -1361,82 +1307,28 @@ const mostrarGuias = (pos, idActual) => {
 
 
 
+useKeyboardShortcuts({
+  onDeshacer,
+  onRehacer,
+  onDuplicar,
+  onEliminar,
+  onDeseleccionar: () => {
+    if (elementosSeleccionados.length > 0) {
+      setElementosSeleccionados([]);
+      setMostrarPanelZ(false);
+      setMostrarSubmenuCapa(false);
+      setMostrarSelectorFuente(false);
+      setMostrarSelectorTamaño(false);
+      setHoverId(null);
+    }
+  },
+  onCopiar,
+  onPegar,
+  onCambiarAlineacion,
+  isEditing: !!editing.id,
+  tieneSeleccion: elementosSeleccionados.length > 0
+});
 
-
-// 🧠 Copiar el objeto seleccionado
-const copiarElemento = () => {
-  const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
-  if (seleccionados.length > 0) {
-    // Guardamos todos los seleccionados sin los IDs
-    window._objetosCopiados = seleccionados.map((o) => ({ ...o, id: undefined }));
-  }
-};
-
-
-// 🧠 Pegar el objeto copiado
-const pegarElemento = () => {
-  const copiados = window._objetosCopiados || [];
-  const nuevos = copiados.map((c, i) => ({
-    ...c,
-    id: `obj-${Date.now()}-${i}`,
-    x: (c.x || 100) + 30 * (i + 1),
-    y: (c.y || 100) + 30 * (i + 1),
-  }));
-
-  setObjetos((prev) => [...prev, ...nuevos]);
-  setElementosSeleccionados(nuevos.map((n) => n.id));
-};
-
-
-// 🧠 Duplicar el objeto seleccionado
-const duplicarElemento = () => {
-  const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
-  const duplicados = seleccionados.map((original, i) => ({
-    ...original,
-    id: `obj-${Date.now()}-${i}`,
-    x: original.x + 20,
-    y: original.y + 20,
-  }));
-  setObjetos((prev) => [...prev, ...duplicados]);
-  setElementosSeleccionados(duplicados.map((d) => d.id));
-};
-
-
-// 🧠 Eliminar el objeto seleccionado
-// 🧠 Eliminar el objeto seleccionado
-const eliminarElemento = () => {
-  if (elementosSeleccionados.length === 0) return;
-
-  // 🔥 NUEVO: Guardar IDs antes de limpiar selección
-  const idsAEliminar = [...elementosSeleccionados];
-  
-  // Limpiar selección primero
-  setElementosSeleccionados([]);
-  setMostrarPanelZ(false);
-  
-  // Eliminar objetos con delay
-  setTimeout(() => {
-    setObjetos((prev) => prev.filter((o) => !idsAEliminar.includes(o.id)));
-  }, 10);
-};
-
-
-// 🎯 Función para cambiar alineación de texto
-const cambiarAlineacionTexto = () => {
-  const alineaciones = ['left', 'center', 'right', 'justify'];
-  
-  setObjetos((prev) =>
-    prev.map((o) => {
-      if (!elementosSeleccionados.includes(o.id) || o.tipo !== 'texto') return o;
-      
-      const currentIndex = alineaciones.indexOf(o.align || 'left');
-      const nextIndex = (currentIndex + 1) % alineaciones.length;
-      const nuevaAlineacion = alineaciones[nextIndex];
-      
-      return { ...o, align: nuevaAlineacion };
-    })
-  );
-};
 
 
 // 🎨 Reemplazar fondo de sección con imagen seleccionada
@@ -1741,67 +1633,7 @@ useEffect(() => {
 }, [elementosSeleccionados, actualizarPosicionBotonOpciones]);
 
 
-// 🔧 Funciones públicas para deshacer/rehacer (llamadas desde botones externos)
-const ejecutarDeshacer = useCallback(() => {
-  console.log("🔄 ejecutarDeshacer llamado desde botón externo");
-  console.log("📊 Estado actual:", { historial: historial.length, futuros: futuros.length });
-  
-  if (historial.length > 1) {
-    // Cerrar cualquier modo de edición activo
-    setElementosSeleccionados([]);
-    setMostrarPanelZ(false);
-    
-    setHistorial((prev) => {
-      const nuevoHistorial = [...prev];
-      const estadoActual = nuevoHistorial.pop();
-      const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
-      
-      console.log("🔄 Restaurando estado:", {
-        objetosCount: estadoAnterior.objetos?.length || 0,
-        seccionesCount: estadoAnterior.secciones?.length || 0
-      });
-      
-      ignoreNextUpdateRef.current = true;
-      setObjetos(estadoAnterior.objetos || []);
-      setSecciones(estadoAnterior.secciones || []);
-      
-      setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
-      
-      console.log("✅ Deshecho aplicado desde botón externo");
-      return nuevoHistorial;
-    });
-  } else {
-    console.log("❌ No hay más cambios para deshacer");
-  }
-}, [historial, futuros]);
 
-const ejecutarRehacer = useCallback(() => {
-  console.log("🔄 ejecutarRehacer llamado desde botón externo");
-  console.log("📊 Estado actual:", { historial: historial.length, futuros: futuros.length });
-  
-  if (futuros.length > 0) {
-    setElementosSeleccionados([]);
-    setMostrarPanelZ(false);
-    
-    const siguienteEstado = futuros[0];
-    
-    console.log("🔄 Restaurando estado futuro:", {
-      objetosCount: siguienteEstado.objetos?.length || 0,
-      seccionesCount: siguienteEstado.secciones?.length || 0
-    });
-    
-    ignoreNextUpdateRef.current = true;
-    setObjetos(siguienteEstado.objetos || []);
-    setSecciones(siguienteEstado.secciones || []);
-    
-    setFuturos((f) => f.slice(1));
-    setHistorial((h) => [...h, siguienteEstado]);
-    
-    console.log("✅ Rehecho aplicado desde botón externo");
-  } else {
-    console.log("❌ No hay cambios para rehacer");
-  }
-}, [historial, futuros]);
 
 
 // 🔥 OPTIMIZACIÓN: Limpiar cache de intersección al cambiar selección
@@ -1839,23 +1671,17 @@ useEffect(() => {
 }, [window._grupoLider, elementosSeleccionados, objetos]);
 
 
-// 🌐 Exponer funciones al window para acceso desde botones externos
 useEffect(() => {
   window.canvasEditor = {
-    deshacer: ejecutarDeshacer,
-    rehacer: ejecutarRehacer,
+    deshacer: onDeshacer,
+    rehacer: onRehacer,
     getHistorial: () => ({ historial: historial.length, futuros: futuros.length })
   };
-  
-  
-  
-  return () => {
-    if (window.canvasEditor) {
-      delete window.canvasEditor;
-    }
-  };
-}, [ejecutarDeshacer, ejecutarRehacer, historial.length, futuros.length]);
 
+  return () => {
+    delete window.canvasEditor;
+  };
+}, [onDeshacer, onRehacer, historial.length, futuros.length]);
 
 
 // En CanvasEditor.jsx, reemplazar la función detectarInterseccionLinea
@@ -1967,45 +1793,6 @@ function lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
   
   return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
-
-
-
-// 🎯 Deseleccionar con tecla ESC
-useEffect(() => {
-  const handleKeyDown = (e) => {
-    // ESC para deseleccionar
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      
-      // Solo procesar si hay elementos seleccionados
-      if (elementosSeleccionados.length > 0) {
-        console.log("🔓 Deseleccionando elementos con ESC");
-        
-        // Limpiar todas las selecciones y estados relacionados
-        setElementosSeleccionados([]);
-        setMostrarPanelZ(false);
-        setMostrarSubmenuCapa(false);
-        setMostrarSelectorFuente(false);
-        setMostrarSelectorTamaño(false);
-        setHoverId(null);
-        
-          
-        
-        
-        console.log("✅ Elementos deseleccionados");
-      }
-    }
-  };
-
-  // Escuchar en document para capturar ESC desde cualquier lugar
-  document.addEventListener("keydown", handleKeyDown);
-  
-  return () => {
-    document.removeEventListener("keydown", handleKeyDown);
-  };
-}, [elementosSeleccionados]); // Dependencias necesarias
-
-
 
 
 
@@ -3481,33 +3268,32 @@ onChange={(id, nuevo) => {
     >
 
     <button
-    onClick={() => {
-    copiarElemento();
+  onClick={() => {
+    onCopiar();
     setMostrarPanelZ(false);
   }}
-   className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-      <Copy className="w-4 h-4" /> Copiar
-    </button>
+  className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
+  <Copy className="w-4 h-4" /> Copiar
+</button>
 
-    <button
-    onClick={() => {
-    pegarElemento();
+<button
+  onClick={() => {
+    onPegar();
     setMostrarPanelZ(false);
   }}
-   className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-      <ClipboardPaste className="w-4 h-4" /> Pegar
-    </button>
+  className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
+  <ClipboardPaste className="w-4 h-4" /> Pegar
+</button>
 
-    <button
-    onClick={() => {
-    duplicarElemento();
+<button
+  onClick={() => {
+    onDuplicar();
     setMostrarPanelZ(false);
   }}
-   className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-      <PlusCircle className="w-4 h-4" /> Duplicar
-    </button>
+  className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
+  <PlusCircle className="w-4 h-4" /> Duplicar
+</button>
 
-    {/* Reemplazar fondo (solo para imágenes) */}
 {elementoSeleccionado?.tipo === "imagen" && (
   <button
     onClick={() => {
@@ -3521,14 +3307,15 @@ onChange={(id, nuevo) => {
   </button>
 )}
 
-    <button
-    onClick={() => {
-    eliminarElemento();
+<button
+  onClick={() => {
+    onEliminar();
     setMostrarPanelZ(false);
   }}
   className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-      <Trash2 className="w-4 h-4 text-red-500" /> Eliminar
-    </button>
+  <Trash2 className="w-4 h-4 text-red-500" /> Eliminar
+</button>
+
 
     <div className="relative">
       <button
@@ -3862,7 +3649,7 @@ onChange={(id, nuevo) => {
     {/* 🆕 Botón de alineación */}
 <button
   className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
-  onClick={cambiarAlineacionTexto}
+  onClick={onCambiarAlineacion}
   title={`Alineación: ${objetoSeleccionado?.align || 'izquierda'}`}
 >
   {(() => {

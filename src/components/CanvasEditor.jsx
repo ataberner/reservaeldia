@@ -3253,41 +3253,46 @@ onChange={(id, nuevo) => {
 
 
 
-{editing.id && elementRefs.current[editing.id] && (
-  <InlineTextEditor
-    node={elementRefs.current[editing.id]}
-    value={editing.value}
-    onChange={updateEdit}
-    onFinish={() => {
-      const textoNuevo = editing.value.trim(); // trim para evitar solo espacios
-      const index = objetos.findIndex(o => o.id === editing.id);
-      const objeto = objetos[index];
+{editing.id && elementRefs.current[editing.id] && (() => {
+  const objetoEnEdicion = objetos.find(o => o.id === editing.id);
+  
+  return (
+    <InlineTextEditor
+      node={elementRefs.current[editing.id]}
+      value={editing.value}
+      textAlign={objetoEnEdicion?.align || 'left'} // 🆕 Solo pasar alineación
+      onChange={updateEdit}
+      onFinish={() => {
+        const textoNuevo = editing.value.trim();
+        const index = objetos.findIndex(o => o.id === editing.id);
+        const objeto = objetos[index];
 
-      console.log("🧪 DEBUG al salir de edición:", { textoNuevo, index, objeto });
+        console.log("🧪 DEBUG al salir de edición:", { textoNuevo, index, objeto });
 
-      if (index === -1) {
-        console.warn("❌ El objeto ya no existe. Cancelando guardado.");
+        if (index === -1) {
+          console.warn("❌ El objeto ya no existe. Cancelando guardado.");
+          finishEdit();
+          return;
+        }
+
+        if (textoNuevo === "") {
+          console.warn("⚠️ El texto está vacío. No se actualiza.");
+          finishEdit();
+          return;
+        }
+
+        const actualizado = [...objetos];
+        actualizado[index] = {
+          ...actualizado[index],
+          texto: textoNuevo
+        };
+
+        setObjetos(actualizado);
         finishEdit();
-        return;
-      }
-
-      if (textoNuevo === "") {
-        console.warn("⚠️ El texto está vacío. No se actualiza.");
-        finishEdit();
-        return;
-      }
-
-      const actualizado = [...objetos];
-      actualizado[index] = {
-        ...actualizado[index],
-        texto: textoNuevo
-      };
-
-      setObjetos(actualizado);
-      finishEdit();
-    }}
-  />
-)}
+      }}
+    />
+  );
+})()}
 
 
 

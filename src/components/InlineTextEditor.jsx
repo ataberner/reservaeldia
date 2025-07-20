@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useMemo, useEffect, useRef } from "react";
 
-export default function InlineTextEditor({ node, value, onChange, onFinish }) {
+export default function InlineTextEditor({ node, value, onChange, onFinish, textAlign }) {
   if (!node) return null;
 
   const textareaRef = useRef();
@@ -126,7 +126,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
         // 🔥 COLOR Y ALINEACIÓN
         color: nodeProps.fill,
         caretColor: nodeProps.fill,
-        textAlign: "left",
+        textAlign: textAlign || "left", // 🆕 Usar prop, fallback a "left"
         
         // 🔥 CLAVE: SIN WRAPPING Y SIN SCROLL
         whiteSpace: "pre",

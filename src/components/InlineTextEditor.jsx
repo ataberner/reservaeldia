@@ -39,6 +39,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
       const scaleX = stageBox.width / stage.width();
       const scaleY = stageBox.height / stage.height();
       
+      
        // scaleX === scaleY porque el Stage se escala uniformemente
        return {
         left: stageBox.left + rect.x * scaleX + window.scrollX,
@@ -63,6 +64,16 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }, []);
 
+
+  useEffect(() => {
+  const textarea = textareaRef.current;
+  if (!textarea) return;
+
+  textarea.style.height = "auto";
+  textarea.style.height = textarea.scrollHeight + "px";
+}, [value]);
+
+
   return createPortal(
     <textarea
       ref={textareaRef}
@@ -75,7 +86,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
         
         // 🔥 USAR DIMENSIONES EXACTAS DEL NODO KONVA
         width: `${width}px`,
-        height: `${height}px`,
+        height: "auto",
         minWidth: `${width}px`,
         minHeight: `${height}px`,
         

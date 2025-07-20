@@ -360,9 +360,9 @@ if (obj.tipo === "texto") {
       fontFamily={fontFamily}
       fontWeight={obj.fontWeight || "normal"}
       fontStyle={obj.fontStyle || "normal"}
-      align="center"
-      verticalAlign="middle"
-      wrap="word"
+      align="left" // 🔥 CAMBIO: left en lugar de center
+      verticalAlign="top" // 🔥 CAMBIO: top en lugar de middle
+      wrap="none" 
       width={undefined}
       textDecoration={obj.textDecoration || "none"}
       fill={obj.color || "#000"}

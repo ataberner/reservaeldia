@@ -353,29 +353,28 @@ if (obj.tipo === "texto") {
   const isEditing = window._currentEditingId === obj.id;
   
   return (
-    <Text
-      {...commonProps}
-      text={obj.texto}
-      fontSize={obj.fontSize || 24}
-      fontFamily={fontFamily}
-      fontWeight={obj.fontWeight || "normal"}
-      fontStyle={obj.fontStyle || "normal"}
-      align="left" // 🔥 CAMBIO: left en lugar de center
-      verticalAlign="top" // 🔥 CAMBIO: top en lugar de middle
-      wrap="none" 
-      width={undefined}
-      textDecoration={obj.textDecoration || "none"}
-      fill={obj.color || "#000"}
-      lineHeight={1.2} 
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      stroke={undefined}
-      strokeWidth={0}
-      listening={true}
-      perfectDrawEnabled={false}
-      // 🔥 NUEVO: Ocultar durante edición
-      opacity={isInEditMode ? 0 : 1}
-    />
+   <Text
+  {...commonProps}
+  text={obj.texto}
+  fontSize={obj.fontSize || 24}
+  fontFamily={fontFamily}
+  fontWeight={obj.fontWeight || "normal"}
+  fontStyle={obj.fontStyle || "normal"}
+  align={obj.align || "left"} // 🆕 Usar alineación del objeto
+  verticalAlign="top"
+  wrap="word" // 🆕 Cambiar a "word" para que funcione justify
+  width={obj.width || undefined} // 🆕 Usar ancho si está definido
+  textDecoration={obj.textDecoration || "none"}
+  fill={obj.color || "#000"}
+  lineHeight={1.2} 
+  onMouseEnter={handleMouseEnter}
+  onMouseLeave={handleMouseLeave}
+  stroke={undefined}
+  strokeWidth={0}
+  listening={true}
+  perfectDrawEnabled={false}
+  opacity={isInEditMode ? 0 : 1}
+/>
   );
 }
 

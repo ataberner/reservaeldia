@@ -647,6 +647,7 @@ useEffect(() => {
       fontWeight: "normal",
       fontStyle: "normal",
       textDecoration: "none",
+      align: "left",
       rotation: 0,
       scaleX: 1,
       scaleY: 1,
@@ -1417,6 +1418,24 @@ const eliminarElemento = () => {
   setTimeout(() => {
     setObjetos((prev) => prev.filter((o) => !idsAEliminar.includes(o.id)));
   }, 10);
+};
+
+
+// 🎯 Función para cambiar alineación de texto
+const cambiarAlineacionTexto = () => {
+  const alineaciones = ['left', 'center', 'right', 'justify'];
+  
+  setObjetos((prev) =>
+    prev.map((o) => {
+      if (!elementosSeleccionados.includes(o.id) || o.tipo !== 'texto') return o;
+      
+      const currentIndex = alineaciones.indexOf(o.align || 'left');
+      const nextIndex = (currentIndex + 1) % alineaciones.length;
+      const nuevaAlineacion = alineaciones[nextIndex];
+      
+      return { ...o, align: nuevaAlineacion };
+    })
+  );
 };
 
 
@@ -3835,7 +3854,26 @@ onChange={(id, nuevo) => {
   S
 </button>
 
-    
+    {/* 🆕 Botón de alineación */}
+<button
+  className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
+  onClick={cambiarAlineacionTexto}
+  title={`Alineación: ${objetoSeleccionado?.align || 'izquierda'}`}
+>
+  {(() => {
+    const align = objetoSeleccionado?.align || 'left';
+    switch (align) {
+      case 'left': return '⬅️';
+      case 'center': return '↔️';
+      case 'right': return '➡️';
+      case 'justify': return '⚌';
+      default: return '⬅️';
+    }
+  })()}
+</button>
+
+
+
   </div>
 )}
 

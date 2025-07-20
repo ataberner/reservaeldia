@@ -31,17 +31,50 @@ export function generarHTMLDesdeObjetos(
     const scaleX = obj.scaleX ?? 1;
     const scaleY = obj.scaleY ?? 1;
 
-    if (obj.tipo === "texto") {
-      return `<div class="objeto" style="
-        top: ${top}%;
-        left: ${left}%;
-        font-size: ${fontSize};
-        color: ${obj.color || "#000"};
-        font-family: ${obj.fontFamily || "inherit"};
-        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-        max-width: ${width};
-      ">${escapeHTML(obj.texto)}</div>`;
-    }
+if (obj.tipo === "texto") {
+  const {
+    x = 0,
+    y = 0,
+    width,
+    fontSize = 24,
+    fontFamily = "sans-serif",
+    fontWeight = "normal",
+    fontStyle = "normal",
+    textDecoration = "none",
+    color = "#000",
+    align = "left",
+    texto = "",
+    lineHeight = 1.2,
+    rotation = 0,
+  } = obj;
+
+  const safeTexto = texto
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  const style = `
+    position: absolute;
+    left: ${x}px;
+    top: ${y}px;
+    ${width ? `width: ${width}px;` : ""}
+    font-size: ${fontSize}px;
+    font-family: ${fontFamily};
+    font-weight: ${fontWeight};
+    font-style: ${fontStyle};
+    text-decoration: ${textDecoration};
+    color: ${color};
+    text-align: ${align};
+    white-space: pre-wrap;
+    line-height: ${lineHeight};
+    transform: rotate(${rotation}deg);
+    transform-origin: top left;
+  `;
+
+  return `<div style="${style}">${safeTexto}</div>`;
+}
+
 
     if (obj.tipo === "imagen" || obj.tipo === "icono") {
       return `<img class="objeto" src="${obj.src}" style="

@@ -18,6 +18,7 @@ import useImage from "use-image";
 import useKeyboardShortcuts from '@/hooks/useKeyboardShortcuts';
 import { fontManager } from '../utils/fontManager';
 import useInlineEditor from "@/hooks/useInlineEditor";
+import ShapeToolbar from './ShapeToolbar';
 import useEditorHandlers from '@/hooks/useEditorHandlers';
 import InlineTextEditor from "./InlineTextEditor";
 import FontSelector from './FontSelector';
@@ -954,6 +955,13 @@ const actualizarObjeto = (index, nuevo) => {
   }
   
   setObjetos(nuevos);
+};
+
+
+const actualizarObjetoPorId = (id, cambios) => {
+  const index = objetos.findIndex((o) => o.id === id);
+  if (index === -1) return console.warn("❌ No se encontró el objeto con ID:", id);
+  actualizarObjeto(index, cambios);
 };
 
 
@@ -3671,57 +3679,59 @@ onChange={(id, nuevo) => {
 
 
 
-{/* 📐 AGREGAR AQUÍ EL NUEVO CÓDIGO DEL MENÚ DE LÍNEAS */}
 {elementosSeleccionados.length === 1 && (() => {
   const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
-  
-  // Solo mostrar si es una línea
-  if (!elementoSeleccionado || elementoSeleccionado.tipo !== 'forma' || elementoSeleccionado.figura !== 'line') {
-    return null;
-  }
+  if (!elementoSeleccionado) return null;
 
   return (
-    <LineToolbar
-      key={`line-toolbar-${elementoSeleccionado.id}`}
-      lineElement={elementoSeleccionado}
-      onUpdateLine={actualizarLinea}
-      style={{
-        top: "120px", // Misma posición que el menú de texto
-        left: "50%",
-        transform: "translateX(-50%)", // Centrado horizontalmente
-      }}
-    />
+    <>
+      {/* 🎯 Si es una línea */}
+      {elementoSeleccionado.tipo === 'forma' && elementoSeleccionado.figura === 'line' && (
+        <LineToolbar
+          key={`line-toolbar-${elementoSeleccionado.id}`}
+          lineElement={elementoSeleccionado}
+          onUpdateLine={actualizarLinea}
+          style={{
+            top: "120px", // podés ajustar dinámicamente después
+            left: "50%",
+            transform: "translateX(-50%)",
+          }}
+        />
+      )}
+
+      {/* 🟪 Si es una forma distinta de línea */}
+      {elementoSeleccionado.tipo === 'forma' && elementoSeleccionado.figura !== 'line' && (
+        <ShapeToolbar
+          key={`shape-toolbar-${elementoSeleccionado.id}`}
+          shapeElement={elementoSeleccionado}
+          onUpdateShape={actualizarObjetoPorId}
+          style={{
+            top: "120px",
+            left: "50%",
+            transform: "translateX(-50%)",
+          }}
+        />
+      )}
+
+      {/* 🔥 Animación para toolbars */}
+      <style jsx>{`
+        @keyframes fadeInScale {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(-5px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+      `}</style>
+    </>
   );
 })()}
 
-{/* 🔥 AGREGAR ESTAS LÍNEAS AQUÍ */}
-<style jsx>{`
-  @keyframes fadeInScale {
-    from {
-      opacity: 0;
-      transform: scale(0.95) translateY(-5px);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-    }
-  }
-`}</style>
 
 
-    {/* 🔥 AGREGAR ESTAS LÍNEAS AQUÍ */}
-    <style jsx>{`
-      @keyframes fadeInScale {
-        from {
-          opacity: 0;
-          transform: scale(0.95) translateY(-5px);
-        }
-        to {
-          opacity: 1;
-          transform: scale(1) translateY(0);
-        }
-      }
-    `}</style>
 
   </div>
 );

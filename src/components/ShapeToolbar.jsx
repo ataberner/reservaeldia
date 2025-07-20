@@ -70,6 +70,70 @@ export default function ShapeToolbar({ shapeElement, onUpdateShape, style = {} }
           </div>
         )}
       </div>
-    </div>
+
+
+
+{/* 🟪 Control de esquinas redondeadas */}
+<div className="flex flex-col items-start">
+  <label className="text-xs text-gray-600 mb-1">Esquinas</label>
+  <div className="flex items-center gap-2">
+    {/* Slider */}
+    <input
+      type="range"
+      min={0}
+      max={100}
+      step={1}
+      value={shapeElement.cornerRadius || 0}
+      onChange={(e) => {
+        const nuevoRadio = parseInt(e.target.value);
+        onUpdateShape(shapeElement.id, {
+          cornerRadius: nuevoRadio,
+          isPreview: true,
+        });
+      }}
+      onMouseUp={(e) => {
+        const nuevoRadio = parseInt(e.target.value);
+        onUpdateShape(shapeElement.id, {
+          cornerRadius: nuevoRadio,
+          isFinal: true,
+        });
+      }}
+      className="w-[120px]"
+    />
+
+    {/* Input numérico */}
+    <input
+      type="number"
+      min={0}
+      max={100}
+      value={shapeElement.cornerRadius || 0}
+      onChange={(e) => {
+        const nuevoValor = parseInt(e.target.value);
+        if (!isNaN(nuevoValor)) {
+          onUpdateShape(shapeElement.id, {
+            cornerRadius: nuevoValor,
+            isPreview: true,
+          });
+        }
+      }}
+      onBlur={(e) => {
+        const valorFinal = parseInt(e.target.value);
+        if (!isNaN(valorFinal)) {
+          onUpdateShape(shapeElement.id, {
+            cornerRadius: valorFinal,
+            isFinal: true,
+          });
+        }
+      }}
+      className="w-[50px] px-1 py-0.5 border rounded text-sm"
+    />
+  </div>
+</div>
+
+
+
+
+
+    </div>  
   );
 }

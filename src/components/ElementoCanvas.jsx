@@ -439,6 +439,7 @@ if (obj.tipo === "texto") {
             height={Math.abs(obj.height || 100)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            cornerRadius={obj.cornerRadius || 0}
             stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
             strokeWidth={isSelected || preSeleccionado ? 1 : 0}
           />

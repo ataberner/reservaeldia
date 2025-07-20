@@ -30,8 +30,8 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
     }
   }, [node, value]);
 
-  // 🔥 CALCULAR POSICIÓN Y DIMENSIONES REALES SIN ESCALADO
-  const { left, top, width, height } = useMemo(() => {
+  // 🔥 CALCULAR POSICIÓN, DIMENSIONES **y factor de escala**
+  const { left, top, width, height, scale } = useMemo(() => {
     try {
       const rect = node.getClientRect({ relativeTo: node.getStage() });
       const stage = node.getStage();
@@ -39,11 +39,13 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
       const scaleX = stageBox.width / stage.width();
       const scaleY = stageBox.height / stage.height();
       
-      return {
+       // scaleX === scaleY porque el Stage se escala uniformemente
+       return {
         left: stageBox.left + rect.x * scaleX + window.scrollX,
         top: stageBox.top + rect.y * scaleY + window.scrollY,
         width: rect.width * scaleX,
         height: rect.height * scaleY,
+        scale : scaleX       // ⬅️  lo necesitaremos para la tipografía
       };
     } catch (error) {
       console.warn("Error calculando posición:", error);
@@ -78,11 +80,15 @@ export default function InlineTextEditor({ node, value, onChange, onFinish }) {
         minHeight: `${height}px`,
         
         // 🔥 USAR PROPIEDADES EXACTAS SIN ESCALADO
-        fontSize: `${nodeProps.fontSize}px`,
+        /* Ajustamos el tamaño real en pantalla */
+        fontSize : `${nodeProps.fontSize * scale}px`,
         fontFamily: nodeProps.fontFamily,
         fontWeight: nodeProps.fontWeight,
         fontStyle: nodeProps.fontStyle,
-        lineHeight: "1.2", // Line height estándar de Konva
+        /* Si usás lineHeight numérico en el objeto, respétalo */
+        lineHeight: typeof node.lineHeight === "function"
+          ? node.lineHeight() * scale
+          : 1.2,
         
         // 🔥 ESTILOS PARA COINCIDENCIA EXACTA
         color: nodeProps.fill,

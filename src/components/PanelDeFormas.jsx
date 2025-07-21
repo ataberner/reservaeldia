@@ -123,19 +123,29 @@ useEffect(() => {
             className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow hover:scale-105 transition cursor-pointer"
             onClick={() => {
   // Objeto base con TODAS las propiedades por defecto
-  const elementoNuevo = {
-    id: `forma-${Date.now()}`,
-    tipo: "forma",
-    figura: forma.figura,
-    color: forma.color,
-    x: 100,
-    y: 100,
-    width: 100,      // Mantener para compatibilidad
-    height: 100,     // Mantener para compatibilidad
-    scaleX: 1,
-    scaleY: 1,
-    rotation: 0,
-  };
+ const elementoNuevo = {
+  id: `forma-${Date.now()}`,
+  tipo: "forma",
+  figura: forma.figura,
+  color: forma.color,
+  x: 100,
+  y: 100,
+  width: 100,
+  height: 100,
+  scaleX: 1,
+  scaleY: 1,
+  rotation: 0,
+
+  // 🆕 Propiedades para permitir texto dentro de la forma
+  texto: "",
+  fontSize: 24,
+  fontFamily: "sans-serif",
+  fontWeight: "normal",
+  fontStyle: "normal",
+  colorTexto: "#000000",
+  align: "center",
+};
+
 
   // Agregar propiedades ADICIONALES según el tipo
   if (forma.figura === "line") {

@@ -64,22 +64,34 @@ export default function ElementoCanvas({
     },
 
     onClick: (e) => {
-      e.cancelBubble = true;
-      
-      if (!hasDragged.current) {
-        if (obj.tipo === "texto") {
-          if (isSelected) {
-            if (onStartTextEdit) {
-              onStartTextEdit(obj.id, obj.texto);
-            }
-          } else {
-            onSelect(obj.id, obj, e);
-          }
-        } else {
-          onSelect(obj.id, obj, e);
-        }
+  e.cancelBubble = true;
+
+  if (!hasDragged.current) {
+    // 🧠 Si es texto, mismo comportamiento actual
+    if (obj.tipo === "texto") {
+      if (isSelected) {
+        onStartTextEdit?.(obj.id, obj.texto);
+      } else {
+        onSelect(obj.id, obj, e);
       }
-    },
+    }
+
+    // 🆕 Si es forma con texto, comportamiento similar
+    else if (obj.tipo === "forma" && obj.figura === "rect") {
+      if (isSelected) {
+        onStartTextEdit?.(obj.id, obj.texto || "");
+      } else {
+        onSelect(obj.id, obj, e);
+      }
+    }
+
+    // 🧱 Para todo lo demás
+    else {
+      onSelect(obj.id, obj, e);
+    }
+  }
+},
+
 
     onDragStart: (e) => {
      
@@ -365,7 +377,7 @@ if (obj.tipo === "texto") {
   wrap="word" // 🆕 Cambiar a "word" para que funcione justify
   width={obj.width || undefined} // 🆕 Usar ancho si está definido
   textDecoration={obj.textDecoration || "none"}
-  fill={obj.color || "#000"}
+  fill={obj.colorTexto || "#000"}
   lineHeight={1.2} 
   onMouseEnter={handleMouseEnter}
   onMouseLeave={handleMouseLeave}
@@ -433,17 +445,38 @@ if (obj.tipo === "texto") {
     switch (obj.figura) {
       case "rect":
         return (
-          <Rect
-            {...propsForma}
-            width={Math.abs(obj.width || 100)}
-            height={Math.abs(obj.height || 100)}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            cornerRadius={obj.cornerRadius || 0}
-            stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-            strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-          />
-        );
+  <>
+    {/* 🟪 Forma */}
+    <Rect
+      {...propsForma}
+      width={Math.abs(obj.width || 100)}
+      height={Math.abs(obj.height || 100)}
+      cornerRadius={obj.cornerRadius || 0}
+      stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
+      strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+    />
+
+    {/* ✏️ Texto encima de la forma */}
+    {obj.texto && (
+      <Text
+        x={obj.x}
+        y={obj.y}
+        width={obj.width}
+        height={obj.height}
+        text={obj.texto}
+        fontSize={obj.fontSize || 24}
+        fontFamily={obj.fontFamily || "sans-serif"}
+        fontWeight={obj.fontWeight || "normal"}
+        fontStyle={obj.fontStyle || "normal"}
+        fill={obj.colorTexto || "#000000"}
+        align={obj.align || "center"}
+        verticalAlign="middle"
+        listening={false} // No interfiere con selección
+      />
+    )}
+  </>
+);
+
         
       case "circle":
         return (

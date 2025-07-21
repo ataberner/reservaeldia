@@ -133,6 +133,69 @@ export default function ShapeToolbar({ shapeElement, onUpdateShape, style = {} }
 
 
 
+{/* Tamaño de fuente */}
+<div className="flex items-center gap-2">
+  <label className="text-xs text-white w-24">Tamaño texto</label>
+  <input
+    type="number"
+    min={8}
+    max={200}
+    value={shapeElement.fontSize || 24}
+    onChange={(e) =>
+      onActualizar({ fontSize: parseInt(e.target.value), isFinal: true })
+    }
+    className="w-20 text-black rounded px-1"
+  />
+</div>
+
+{/* Color del texto */}
+<div className="flex items-center gap-2">
+  <label className="text-xs text-white w-24">Color texto</label>
+  <input
+    type="color"
+    value={shapeElement.colorTexto || "#000000"}
+    onChange={(e) =>
+      onActualizar({ colorTexto: e.target.value, isFinal: true })
+    }
+    className="w-8 h-6 rounded"
+  />
+</div>
+
+{/* Fuente */}
+<div className="flex items-center gap-2">
+  <label className="text-xs text-white w-24">Fuente</label>
+  <select
+    value={shapeElement.fontFamily || "sans-serif"}
+    onChange={(e) =>
+      onActualizar({ fontFamily: e.target.value, isFinal: true })
+    }
+    className="text-black rounded px-1"
+  >
+    <option value="sans-serif">Sans-serif</option>
+    <option value="serif">Serif</option>
+    <option value="monospace">Monospace</option>
+    <option value="Great Vibes">Great Vibes</option>
+  </select>
+</div>
+
+{/* Alineación */}
+<div className="flex items-center gap-2">
+  <label className="text-xs text-white w-24">Alineación</label>
+  <select
+    value={shapeElement.align || "center"}
+    onChange={(e) =>
+      onActualizar({ align: e.target.value, isFinal: true })
+    }
+    className="text-black rounded px-1"
+  >
+    <option value="left">Izquierda</option>
+    <option value="center">Centro</option>
+    <option value="right">Derecha</option>
+  </select>
+</div>
+
+
+
 
     </div>  
   );

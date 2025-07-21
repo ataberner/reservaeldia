@@ -965,6 +965,45 @@ const actualizarObjetoPorId = (id, cambios) => {
 };
 
 
+// sirve para escribir al tener una forma seleccionada y agregarle el texto
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    // No editar si hay múltiples seleccionados
+    if (!elementosSeleccionados || elementosSeleccionados.length !== 1) return;
+
+    const objSeleccionado = elementosSeleccionados[0];
+    if (objSeleccionado.tipo !== "forma") return;
+
+    const index = objetos.findIndex((o) => o.id === objSeleccionado.id);
+    if (index === -1) return;
+
+    // No hacer nada si ya está en modo edición
+    if (editing?.id) return;
+
+    // Solo activar si es una letra o número
+    if (e.key.length === 1) {
+      // 🟣 Entrar en modo edición
+      setEditing({
+        id: objSeleccionado.id,
+        value: objSeleccionado.texto || "",
+        tipo: "forma",
+        index: index,
+      });
+
+      // Guardamos el primer caracter tecleado para agregarlo al iniciar
+      setTimeout(() => {
+        window._preFillChar = e.key;
+      }, 0);
+
+      e.preventDefault();
+    }
+  };
+
+  window.addEventListener("keydown", handleKeyDown);
+  return () => window.removeEventListener("keydown", handleKeyDown);
+}, [elementosSeleccionados, objetos, editing]);
+
+
 
 const actualizarLinea = (lineId, nuevaData) => {
   const index = objetos.findIndex(obj => obj.id === lineId);
@@ -2012,8 +2051,12 @@ useEffect(() => {
   if (!editing.id || !elementRefs.current[editing.id]) return;
 
   const node = elementRefs.current[editing.id];
-  node.text(editing.value); // 🔁 Actualizar el contenido en tiempo real
-  node.getLayer()?.batchDraw(); // 🔁 Forzar re-render del nodo
+
+  // ✅ Solo actualizamos el contenido si es un nodo de texto
+  if (node.getClassName && node.getClassName() === "Text") {
+    node.text(editing.value); // 🔁 Actualizar el contenido en tiempo real
+    node.getLayer()?.batchDraw(); // 🔁 Forzar re-render del nodo
+  }
 
   // 🔁 Actualizar el transformer si está presente
   const transformer = node.getStage()?.findOne('Transformer');
@@ -2022,6 +2065,7 @@ useEffect(() => {
     transformer.getLayer()?.batchDraw(); // Redibuja
   }
 }, [editing.value]);
+
 
 
 
@@ -3058,33 +3102,36 @@ onChange={(id, nuevo) => {
       textAlign={objetoEnEdicion?.align || 'left'} // 🆕 Solo pasar alineación
       onChange={updateEdit}
       onFinish={() => {
-        const textoNuevo = editing.value.trim();
-        const index = objetos.findIndex(o => o.id === editing.id);
-        const objeto = objetos[index];
+  const textoNuevo = editing.value.trim();
+  const index = objetos.findIndex(o => o.id === editing.id);
+  const objeto = objetos[index];
 
-        console.log("🧪 DEBUG al salir de edición:", { textoNuevo, index, objeto });
+  console.log("🧪 DEBUG al salir de edición:", { textoNuevo, index, objeto });
 
-        if (index === -1) {
-          console.warn("❌ El objeto ya no existe. Cancelando guardado.");
-          finishEdit();
-          return;
-        }
+  if (index === -1) {
+    console.warn("❌ El objeto ya no existe. Cancelando guardado.");
+    finishEdit();
+    return;
+  }
 
-        if (textoNuevo === "") {
-          console.warn("⚠️ El texto está vacío. No se actualiza.");
-          finishEdit();
-          return;
-        }
+  // ⚠️ Podés permitir texto vacío en formas si querés (yo lo permitiría)
+  if (textoNuevo === "" && objeto.tipo === "texto") {
+    console.warn("⚠️ El texto está vacío. No se actualiza.");
+    finishEdit();
+    return;
+  }
 
-        const actualizado = [...objetos];
-        actualizado[index] = {
-          ...actualizado[index],
-          texto: textoNuevo
-        };
+  const actualizado = [...objetos];
 
-        setObjetos(actualizado);
-        finishEdit();
-      }}
+  actualizado[index] = {
+    ...actualizado[index],
+    texto: textoNuevo
+  };
+
+  setObjetos(actualizado);
+  finishEdit();
+}}
+
     />
   );
 })()}
@@ -3380,356 +3427,300 @@ onChange={(id, nuevo) => {
 
 
 
+{(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma") && (() => {
+  const esTexto = objetoSeleccionado?.tipo === "texto";
+  const esFormaConTexto = objetoSeleccionado?.tipo === "forma" && objetoSeleccionado?.texto;
+  const esRect = objetoSeleccionado?.figura === "rect";
 
-
-     {objetoSeleccionado?.tipo === "texto" && (
-  <div
-    className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
-    style={{
-      top: "120px", // Justo debajo de la barra superior
-      left: "50%",
-      transform: "translateX(-50%)", // Centrado horizontalmente
-      width: "auto",
-      maxWidth: "800px", // Ancho máximo igual al canvas
-    }}
-  >
-    
-                <div
-                  className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${
-                    mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
-                  }`}
-                  style={{ fontFamily: objetoSeleccionado?.fontFamily || "sans-serif" }}
-                  title="Fuente"
-                  onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
-                >
-
-                     {objetoSeleccionado?.fontFamily || "sans-serif"}
-                      <div
-                      className="absolute popup-fuente z-50"
-                      style={{
-                        top: "40px",     // más abajo desde el botón
-                        left: "-200px",   // más hacia la izquierda desde el botón
-                      }}
-                    >
-
-   {mostrarSelectorFuente && (
-  <div className="bg-white border rounded-2xl shadow-md p-4 w-80 max-h-[500px] overflow-auto popup-fuente">
-    <div className="text-xs font-semibold text-gray-600 mb-2">Fuente</div>
-    {ALL_FONTS.map((fuente) => {
-      // Verificar si esta fuente está activa
-      const estaActiva = objetoSeleccionado?.fontFamily === fuente.valor;
-      
-      // Verificar si la fuente está cargada en el navegador
-      const estaCargada = fontManager.isFontAvailable(fuente.valor);
-      
-      return (
-        <div
-          key={fuente.valor}
-          className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${
-            estaCargada 
-              ? 'hover:bg-gray-100' 
-              : 'hover:bg-gray-50 opacity-70'
-          }`}
-          style={{ fontFamily: estaCargada ? fuente.valor : 'sans-serif' }}
-          onClick={async (e) => {
-            e.stopPropagation();
-            
-            try {
-              // Cargar la fuente antes de aplicarla
-              await fontManager.loadFonts([fuente.valor]);
-              
-              // Aplicar la fuente a los elementos seleccionados
+  return (
+    <div
+      className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
+      style={{
+        top: "120px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "auto",
+        maxWidth: "800px",
+      }}
+    >
+      {/* 🎨 Color de fondo (solo formas) */}
+        {objetoSeleccionado?.tipo === "forma" && (
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600">Fondo</label>
+          <input
+            type="color"
+            value={objetoSeleccionado.color || "#ffffff"}
+            onChange={(e) =>
               setObjetos((prev) =>
                 prev.map((o) =>
                   elementosSeleccionados.includes(o.id)
-                    ? { ...o, fontFamily: fuente.valor }
+                    ? { ...o, color: e.target.value }
                     : o
                 )
-              );
-            } catch (error) {
-              console.error("Error cargando fuente:", error);
-              // Opcional: Aquí podrías mostrar un toast/notificación de error
+              )
             }
+            className="w-8 h-6 rounded"
+          />
+        </div>
+      )}
+
+      {/* 🟣 Radio esquinas (solo rectángulos) */}
+      {objetoSeleccionado?.tipo === "forma" && esRect && (
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600">Esquinas</label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={objetoSeleccionado.cornerRadius || 0}
+            onChange={(e) =>
+              setObjetos((prev) =>
+                prev.map((o) =>
+                  elementosSeleccionados.includes(o.id)
+                    ? { ...o, cornerRadius: parseInt(e.target.value) }
+                    : o
+                )
+              )
+            }
+          />
+          <span className="text-xs text-gray-700">{objetoSeleccionado.cornerRadius || 0}</span>
+        </div>
+      )}
+
+      {/* Selector de fuente */}
+      <div
+        className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${
+          mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
+        }`}
+        style={{ fontFamily: objetoSeleccionado?.fontFamily || "sans-serif" }}
+        title="Fuente"
+        onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
+      >
+        {objetoSeleccionado?.fontFamily || "sans-serif"}
+
+        {mostrarSelectorFuente && (
+          <div
+            className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-4 w-80 max-h-[500px] overflow-auto"
+            style={{ top: "40px", left: "-200px" }}
+          >
+            <div className="text-xs font-semibold text-gray-600 mb-2">Fuente</div>
+            {ALL_FONTS.map((fuente) => {
+              const estaActiva = objetoSeleccionado?.fontFamily === fuente.valor;
+              const estaCargada = fontManager.isFontAvailable(fuente.valor);
+
+              return (
+                <div
+                  key={fuente.valor}
+                  className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${
+                    estaCargada ? "hover:bg-gray-100" : "hover:bg-gray-50 opacity-70"
+                  }`}
+                  style={{ fontFamily: estaCargada ? fuente.valor : "sans-serif" }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await fontManager.loadFonts([fuente.valor]);
+                      setObjetos((prev) =>
+                        prev.map((o) =>
+                          elementosSeleccionados.includes(o.id)
+                            ? { ...o, fontFamily: fuente.valor }
+                            : o
+                        )
+                      );
+                    } catch (error) {
+                      console.error("Error cargando fuente:", error);
+                    }
+                  }}
+                >
+                  <span className="text-xs text-gray-500 w-20">{fuente.categoria}</span>
+                  <span className="text-sm text-gray-700 flex-1">{fuente.nombre}</span>
+                  <span className="text-base text-gray-400" style={{ fontFamily: fuente.valor }}>
+                    AaBbCc
+                  </span>
+                  {estaActiva && <Check className="w-4 h-4 text-purple-600 ml-2" />}
+                  {!estaCargada && (
+                    <div className="w-4 h-4 ml-2">
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Control de tamaño */}
+      <div className="relative flex items-center bg-white border rounded-lg overflow-hidden">
+        <button
+          className="px-2 py-1 hover:bg-gray-100 transition"
+          onClick={(e) => {
+            e.stopPropagation();
+            setObjetos((prev) =>
+              prev.map((o) => {
+                if (!elementosSeleccionados.includes(o.id)) return o;
+                const actual = o.fontSize || 24;
+                return { ...o, fontSize: Math.max(6, actual - 2) };
+              })
+            );
           }}
         >
-          {/* Categoría de la fuente */}
-          <span className="text-xs text-gray-500 w-20">
-            {fuente.categoria}
-          </span>
-          
-          {/* Nombre de la fuente */}
-          <span className="text-sm text-gray-700 flex-1">
-            {fuente.nombre}
-          </span>
-          
-          {/* Preview de la fuente */}
-          <span
-            className="text-base text-gray-400"
-            style={{ 
-              fontFamily: estaCargada ? fuente.valor : 'sans-serif',
-              minWidth: '80px' 
-            }}
-          >
-            AaBbCc
-          </span>
-          
-          {/* Indicador de fuente activa */}
-          {estaActiva && (
-            <Check className="w-4 h-4 text-purple-600 ml-2" />
-          )}
-          
-          {/* Indicador de carga */}
-          {!estaCargada && (
-            <div className="w-4 h-4 ml-2">
-              <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+          −
+        </button>
+
+        <div
+          className={`px-2 py-1 text-sm cursor-pointer transition-all ${
+            mostrarSelectorTamaño ? "bg-gray-200" : "hover:bg-gray-100"
+          }`}
+          onClick={() => setMostrarSelectorTamaño(!mostrarSelectorTamaño)}
+        >
+          {objetoSeleccionado?.fontSize || 24}
+          {mostrarSelectorTamaño && (
+            <div
+              className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
+              style={{ top: "40px", left: "-10px" }}
+            >
+              {tamaniosDisponibles.map((tam) => (
+                <div
+                  key={tam}
+                  className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setObjetos((prev) =>
+                      prev.map((o) =>
+                        elementosSeleccionados.includes(o.id)
+                          ? { ...o, fontSize: tam }
+                          : o
+                      )
+                    );
+                    setMostrarSelectorTamaño(false);
+                  }}
+                >
+                  {tam}
+                </div>
+              ))}
             </div>
           )}
         </div>
-      );
-    })}
-  </div>
-)}
 
-
-  </div>
-</div>
-
-
-<div className="relative">
-    <div className="flex items-center bg-white border rounded-lg overflow-hidden">
-  {/* Botón - */}
-<button
-  className="px-2 py-1 hover:bg-gray-100 transition"
-  onClick={(e) => {
-    e.stopPropagation();
-    setObjetos((prev) =>
-      prev.map((o) => {
-        if (!elementosSeleccionados.includes(o.id)) return o;
-        const actual = o.fontSize || 24;
-        const nuevo = Math.max(6, actual - 2);
-        return { ...o, fontSize: nuevo };
-      })
-    );
-  }}
->
-  −
-</button>
-
-
-  {/* Número de tamaño */}
-  <div
-    className={`px-2 py-1 text-sm cursor-pointer transition-all ${
-      mostrarSelectorTamaño ? "bg-gray-200" : "hover:bg-gray-100"
-    }`}
-    onClick={() => setMostrarSelectorTamaño(!mostrarSelectorTamaño)}
-  >
-    {objetoSeleccionado?.fontSize || 24}
-    {/* Popup flotante */}
-    {mostrarSelectorTamaño && (
-      <div
-        className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
-        style={{ top: "40px", left: "-10px" }}
-      >
-        {tamaniosDisponibles.map((tam) => (
-          <div
-            key={tam}
-            className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
-            onClick={(e) => {
-              e.stopPropagation();
-              setObjetos((prev) =>
-                prev.map((o) =>
-                  elementosSeleccionados.includes(o.id)
-                    ? { ...o, fontSize: tam }
-                    : o
-                )
-              );
-              setMostrarSelectorTamaño(false);
-            }}
-
-          >
-            {tam}
-          </div>
-        ))}
+        <button
+          className="px-2 py-1 hover:bg-gray-100 transition"
+          onClick={() => {
+            setObjetos((prev) =>
+              prev.map((o) => {
+                if (!elementosSeleccionados.includes(o.id)) return o;
+                return { ...o, fontSize: Math.min(120, (o.fontSize || 24) + 2) };
+              })
+            );
+          }}
+        >
+          +
+        </button>
       </div>
-    )}
-  </div>
 
-  {/* Botón + */}
-  <button
-    className="px-2 py-1 hover:bg-gray-100 transition"
-    onClick={() => {
-        setObjetos((prev) =>
-          prev.map((o) => {
-            if (!elementosSeleccionados.includes(o.id)) return o;
-            const nuevo = Math.min(120, (o.fontSize || 24) + 2);
-            return { ...o, fontSize: nuevo };
-          })
-        );
-      }}
+      {/* 🎨 Color de texto */}
+      <input
+        type="color"
+        value={objetoSeleccionado?.colorTexto || "#000000"}
+        onChange={(e) => {
+          setObjetos((prev) =>
+            prev.map((o) =>
+              elementosSeleccionados.includes(o.id)
+                ? { ...o, colorTexto: e.target.value }
+                : o
+            )
+          );
+        }}
+      />
 
-  >
-    +
-  </button>
-</div>
-</div>
-
-
-    {/* 🎨 Cambiar color */}
-    <input
-      type="color"
-      value={objetoSeleccionado?.color || "#000000"}
-      onChange={(e) => {
-        const nuevoColor = e.target.value;
-        setObjetos((prev) =>
-          prev.map((o) =>
-            elementosSeleccionados.includes(o.id)
-              ? { ...o, color: nuevoColor }
-              : o
+      {/* B / I / S */}
+      <button
+        className={`px-2 py-1 rounded border text-sm font-bold transition ${
+          objetoSeleccionado?.fontWeight === "bold" ? "bg-gray-200" : "hover:bg-gray-100"
+        }`}
+        onClick={() =>
+          setObjetos((prev) =>
+            prev.map((o) =>
+              elementosSeleccionados.includes(o.id)
+                ? {
+                    ...o,
+                    fontWeight: o.fontWeight === "bold" ? "normal" : "bold",
+                  }
+                : o
+            )
           )
-        );
-      }}
-
-    />
-
-   {/* B */}
-<button
-  className={`px-2 py-1 rounded border text-sm font-bold transition ${
-    objetoSeleccionado?.fontWeight === "bold" ? "bg-gray-200" : "hover:bg-gray-100"
-  }`}
-  onClick={() => {
-  setObjetos((prev) =>
-    prev.map((o) => {
-      if (!elementosSeleccionados.includes(o.id)) return o;
-      return {
-        ...o,
-        fontWeight: o.fontWeight === "bold" ? "normal" : "bold",
-      };
-    })
-  );
-}}
-
->
-  B
-</button>
-
-{/* I */}
-<button
-  className={`px-2 py-1 rounded border text-sm italic transition ${
-    objetoSeleccionado?.fontStyle === "italic" ? "bg-gray-200" : "hover:bg-gray-100"
-  }`}
- onClick={() => {
-  setObjetos((prev) =>
-    prev.map((o) => {
-      if (!elementosSeleccionados.includes(o.id)) return o;
-      return {
-        ...o,
-        fontStyle: o.fontStyle === "italic" ? "normal" : "italic",
-      };
-    })
-  );
-}}
-
->
-  I
-</button>
-
-{/* S */}
-<button
-  className={`px-2 py-1 rounded border text-sm transition ${
-    objetoSeleccionado?.textDecoration === "underline" ? "bg-gray-200 underline" : "hover:bg-gray-100"
-  }`}
- onClick={() => {
-  setObjetos((prev) =>
-    prev.map((o) => {
-      if (!elementosSeleccionados.includes(o.id)) return o;
-      return {
-        ...o,
-        textDecoration: o.textDecoration === "underline" ? "none" : "underline",
-      };
-    })
-  );
-}}
-
->
-  S
-</button>
-
-    {/* 🆕 Botón de alineación */}
-<button
-  className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
-  onClick={onCambiarAlineacion}
-  title={`Alineación: ${objetoSeleccionado?.align || 'izquierda'}`}
->
-  {(() => {
-    const align = objetoSeleccionado?.align || 'left';
-    switch (align) {
-      case 'left': return '⬅️';
-      case 'center': return '↔️';
-      case 'right': return '➡️';
-      case 'justify': return '⚌';
-      default: return '⬅️';
-    }
-  })()}
-</button>
-
-
-
-  </div>
-)}
-
-
-
-{elementosSeleccionados.length === 1 && (() => {
-  const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
-  if (!elementoSeleccionado) return null;
-
-  return (
-    <>
-      {/* 🎯 Si es una línea */}
-      {elementoSeleccionado.tipo === 'forma' && elementoSeleccionado.figura === 'line' && (
-        <LineToolbar
-          key={`line-toolbar-${elementoSeleccionado.id}`}
-          lineElement={elementoSeleccionado}
-          onUpdateLine={actualizarLinea}
-          style={{
-            top: "120px", // podés ajustar dinámicamente después
-            left: "50%",
-            transform: "translateX(-50%)",
-          }}
-        />
-      )}
-
-      {/* 🟪 Si es una forma distinta de línea */}
-      {elementoSeleccionado.tipo === 'forma' && elementoSeleccionado.figura !== 'line' && (
-        <ShapeToolbar
-          key={`shape-toolbar-${elementoSeleccionado.id}`}
-          shapeElement={elementoSeleccionado}
-          onUpdateShape={actualizarObjetoPorId}
-          style={{
-            top: "120px",
-            left: "50%",
-            transform: "translateX(-50%)",
-          }}
-        />
-      )}
-
-      {/* 🔥 Animación para toolbars */}
-      <style jsx>{`
-        @keyframes fadeInScale {
-          from {
-            opacity: 0;
-            transform: scale(0.95) translateY(-5px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
         }
-      `}</style>
-    </>
+      >
+        B
+      </button>
+
+      <button
+        className={`px-2 py-1 rounded border text-sm italic transition ${
+          objetoSeleccionado?.fontStyle === "italic" ? "bg-gray-200" : "hover:bg-gray-100"
+        }`}
+        onClick={() =>
+          setObjetos((prev) =>
+            prev.map((o) =>
+              elementosSeleccionados.includes(o.id)
+                ? {
+                    ...o,
+                    fontStyle: o.fontStyle === "italic" ? "normal" : "italic",
+                  }
+                : o
+            )
+          )
+        }
+      >
+        I
+      </button>
+
+      <button
+        className={`px-2 py-1 rounded border text-sm transition ${
+          objetoSeleccionado?.textDecoration === "underline"
+            ? "bg-gray-200 underline"
+            : "hover:bg-gray-100"
+        }`}
+        onClick={() =>
+          setObjetos((prev) =>
+            prev.map((o) =>
+              elementosSeleccionados.includes(o.id)
+                ? {
+                    ...o,
+                    textDecoration:
+                      o.textDecoration === "underline" ? "none" : "underline",
+                  }
+                : o
+            )
+          )
+        }
+      >
+        S
+      </button>
+
+      {/* Alineación */}
+      <button
+        className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
+        onClick={onCambiarAlineacion}
+        title={`Alineación: ${objetoSeleccionado?.align || "izquierda"}`}
+      >
+        {(() => {
+          const align = objetoSeleccionado?.align || "left";
+          switch (align) {
+            case "left":
+              return "⬅️";
+            case "center":
+              return "↔️";
+            case "right":
+              return "➡️";
+            case "justify":
+              return "⚌";
+            default:
+              return "⬅️";
+          }
+        })()}
+      </button>
+    </div>
   );
 })()}
-
 
 
 

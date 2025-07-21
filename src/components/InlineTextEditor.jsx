@@ -80,13 +80,20 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
   }, [value, nodeProps.fontSize, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, scale]);
 
   // 🔥 AUTO-FOCUS Y POSICIONAMIENTO DEL CURSOR
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+useEffect(() => {
+  const textarea = textareaRef.current;
+  if (!textarea) return;
 
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-  }, []);
+  if (window._preFillChar) {
+  const nuevoValor = value + window._preFillChar;
+  onChange(nuevoValor); // ✅ Actualizás el valor en React
+  window._preFillChar = null;
+}
+
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}, []);
+
 
   // 🔥 ACTUALIZAR DIMENSIONES CUANDO CAMBIA EL CONTENIDO
   useEffect(() => {
@@ -124,8 +131,8 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
         lineHeight: 1.2,
         
         // 🔥 COLOR Y ALINEACIÓN
-        color: nodeProps.fill,
-        caretColor: nodeProps.fill,
+        color: "#000",
+        caretColor: "#000", // cursor negro
         textAlign: textAlign || "left", // 🆕 Usar prop, fallback a "left"
         
         // 🔥 CLAVE: SIN WRAPPING Y SIN SCROLL
@@ -135,8 +142,8 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
         overflowWrap: "normal",
         
         // 🔥 COMPLETAMENTE INVISIBLE
-background: "transparent",
-border: "none",
+background: "rgba(255, 0, 0, 0.3)",
+border: "1px solid blue",
 outline: "none",
 resize: "none",
 // ✅ FORZAR eliminación de cualquier borde residual
@@ -174,7 +181,7 @@ MozAppearance: "none",
         scrollbarWidth: "none",
         msOverflowStyle: "none",
         
-        zIndex: 1000,
+        zIndex: 9999,
       }}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {

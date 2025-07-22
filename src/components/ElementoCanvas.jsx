@@ -458,22 +458,24 @@ if (obj.tipo === "texto") {
 
     {/* ✏️ Texto encima de la forma */}
     {obj.texto && (
-      <Text
-        x={obj.x}
-        y={obj.y}
-        width={obj.width}
-        height={obj.height}
-        text={obj.texto}
-        fontSize={obj.fontSize || 24}
-        fontFamily={obj.fontFamily || "sans-serif"}
-        fontWeight={obj.fontWeight || "normal"}
-        fontStyle={obj.fontStyle || "normal"}
-        fill={obj.colorTexto || "#000000"}
-        align={obj.align || "center"}
-        verticalAlign="middle"
-        listening={false} // No interfiere con selección
-      />
-    )}
+  <Text
+    x={obj.x}
+    y={obj.y}
+    width={obj.width}
+    height={obj.height}
+    text={obj.texto}
+    fontSize={obj.fontSize || 24}
+    fontFamily={obj.fontFamily || "sans-serif"}
+    fontWeight={obj.fontWeight || "normal"}
+    fontStyle={obj.fontStyle || "normal"}
+    fill={obj.colorTexto || "#000000"}
+    align={obj.align || "center"}
+    verticalAlign="middle"
+    listening={false}
+    opacity={isInEditMode ? 0 : 1} // 👈 ocultar cuando se edita
+  />
+)}
+
   </>
 );
 

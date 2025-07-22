@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useMemo, useEffect, useRef } from "react";
 
-export default function InlineTextEditor({ node, value, onChange, onFinish, textAlign }) {
+export default function InlineTextEditor({ node, value, onChange, onFinish, textAlign, scaleVisual = 1 }) {
   if (!node) return null;
 
   const textareaRef = useRef();
@@ -30,35 +30,20 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     }
   }, [node, value]);
 
-  // 🔥 CALCULAR POSICIÓN Y ESCALA
-  const { left, top, scale } = useMemo(() => {
-    try {
-      const rect = node.getClientRect({ relativeTo: node.getStage() });
-      const stage = node.getStage();
-      const stageBox = stage.container().getBoundingClientRect();
-      const scaleX = stageBox.width / stage.width();
-      
-      return {
-        left: stageBox.left + rect.x * scaleX + window.scrollX,
-        top: stageBox.top + rect.y * scaleX + window.scrollY,
-        scale: scaleX
-      };
-    } catch (error) {
-      console.warn("Error calculando posición:", error);
-      return { left: 0, top: 0, scale: 1 };
-    }
-  }, [node]);
+  const fontSizeEdit = nodeProps.fontSize - 3;
 
-  // 🔥 CALCULAR DIMENSIONES DINÁMICAS DEL CONTENIDO
+
+  // 🔥 CALCULAR DIMENSIONES SIN ESCALA ADICIONAL
   const contentDimensions = useMemo(() => {
-    if (!value) return { width: 20, height: nodeProps.fontSize * scale * 1.2 };
-    
-    // Crear elemento temporal para medir el texto
+    if (!value) return { width: 20, height: nodeProps.fontSize * 1.2 };
+
+    // Crear elemento temporal para medir el texto SIN escala
     const tempDiv = document.createElement('div');
     tempDiv.style.position = 'absolute';
     tempDiv.style.visibility = 'hidden';
     tempDiv.style.whiteSpace = 'pre';
-    tempDiv.style.fontSize = `${nodeProps.fontSize * scale}px`;
+    const fontSizeEdit = nodeProps.fontSize - 3;
+tempDiv.style.fontSize = `${fontSizeEdit}px`;
     tempDiv.style.fontFamily = nodeProps.fontFamily;
     tempDiv.style.fontWeight = nodeProps.fontWeight;
     tempDiv.style.fontStyle = nodeProps.fontStyle;
@@ -67,44 +52,65 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     tempDiv.style.margin = '0';
     tempDiv.style.border = 'none';
     tempDiv.textContent = value;
-    
+
     document.body.appendChild(tempDiv);
     const width = tempDiv.offsetWidth;
     const height = tempDiv.offsetHeight;
     document.body.removeChild(tempDiv);
-    
+
     return {
-      width: Math.max(20, width + 10), // +10px de buffer
-      height: Math.max(nodeProps.fontSize * scale * 1.2, height + 5) // +5px de buffer
+      width: Math.max(20, width * scaleVisual +12),
+      height: Math.max(fontSizeEdit * scaleVisual * 1.2, height * scaleVisual +6)
+
     };
-  }, [value, nodeProps.fontSize, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, scale]);
+  }, [value, nodeProps.fontSize, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle]);
+
+  // 🔥 CALCULAR POSICIÓN USANDO LA ESCALA UNIFICADA
+  const { left, top } = useMemo(() => {
+    try {
+      const rect = node.getClientRect({ relativeTo: node.getStage() });
+      const stage = node.getStage();
+      const stageBox = stage.container().getBoundingClientRect();
+
+      const width = node.width?.() || 100;
+      const height = node.height?.() || 100;
+
+      const centerX = rect.x + width / 2;
+      const centerY = rect.y + height / 2;
+
+      return {
+        left: stageBox.left + centerX * scaleVisual - contentDimensions.width / 2 + window.scrollX,
+        top: stageBox.top + centerY * scaleVisual - contentDimensions.height / 2 + window.scrollY
+      };
+    } catch (error) {
+      console.warn("Error calculando posición:", error);
+      return { left: 0, top: 0 };
+    }
+  }, [node, contentDimensions, scaleVisual]);
 
   // 🔥 AUTO-FOCUS Y POSICIONAMIENTO DEL CURSOR
-useEffect(() => {
-  const textarea = textareaRef.current;
-  if (!textarea) return;
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-  if (window._preFillChar) {
-  const nuevoValor = value + window._preFillChar;
-  onChange(nuevoValor); // ✅ Actualizás el valor en React
-  window._preFillChar = null;
-}
+    if (window._preFillChar) {
+      const nuevoValor = value + window._preFillChar;
+      onChange(nuevoValor);
+      window._preFillChar = null;
+    }
 
-  textarea.focus();
-  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-}, []);
-
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, []);
 
   // 🔥 ACTUALIZAR DIMENSIONES CUANDO CAMBIA EL CONTENIDO
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    // Establecer las dimensiones calculadas
     textarea.style.width = `${contentDimensions.width}px`;
     textarea.style.height = `${contentDimensions.height}px`;
     
-    // Asegurar que no hay scroll interno
     textarea.scrollLeft = 0;
     textarea.scrollTop = 0;
   }, [contentDimensions.width, contentDimensions.height]);
@@ -115,89 +121,66 @@ useEffect(() => {
       autoFocus
       value={value}
       style={{
-        position: "fixed",
-        left: `${left}px`,
-        top: `${top}px`,
-        
-        // 🔥 DIMENSIONES EXACTAS CALCULADAS
-        width: `${contentDimensions.width}px`,
-        height: `${contentDimensions.height}px`,
-        
-        // 🔥 TIPOGRAFÍA EXACTA
-        fontSize: `${nodeProps.fontSize * scale}px`,
-        fontFamily: nodeProps.fontFamily,
-        fontWeight: nodeProps.fontWeight,
-        fontStyle: nodeProps.fontStyle,
-        lineHeight: 1.2,
-        
-        // 🔥 COLOR Y ALINEACIÓN
-        color: "#000",
-        caretColor: "#000", // cursor negro
-        textAlign: textAlign || "left", // 🆕 Usar prop, fallback a "left"
-        
-        // 🔥 CLAVE: SIN WRAPPING Y SIN SCROLL
-        whiteSpace: "pre",
-        overflow: "hidden", // 🎯 OCULTAR SCROLL COMPLETAMENTE
-        wordWrap: "normal",
-        overflowWrap: "normal",
-        
-        // 🔥 COMPLETAMENTE INVISIBLE
-background: "rgba(255, 0, 0, 0.3)",
-border: "1px solid blue",
-outline: "none",
-resize: "none",
-// ✅ FORZAR eliminación de cualquier borde residual
-borderWidth: "0",
-borderStyle: "none",
-borderColor: "transparent",
-outlineWidth: "0",
-outlineStyle: "none",
-outlineColor: "transparent",
-// ✅ Eliminar focus ring en todos los navegadores
-boxShadow: "none",
-WebkitAppearance: "none",
-MozAppearance: "none",
-        
-        // 🔥 SIN PADDING NI MARGIN
-        padding: "0",
-        margin: "0",
-        boxSizing: "border-box",
-        
-        // 🔥 SIN EFECTOS VISUALES
-        textDecoration: "none",
-        letterSpacing: "normal",
-        wordSpacing: "normal",
-        textIndent: "0",
-        textShadow: "none",
-        boxShadow: "none",
-        
-        // 🔥 SIN TRANSFORMACIONES
-        transform: "none",
-        transition: "none",
-        
-        // 🔥 FORZAR SIN SCROLL
-        overflowX: "hidden",
-        overflowY: "hidden",
-        scrollbarWidth: "none",
-        msOverflowStyle: "none",
-        
-        zIndex: 9999,
-      }}
+  position: "fixed",
+  left: `${left}px`,
+  top: `${top}px`,
+  width: `${contentDimensions.width}px`,
+  height: `${contentDimensions.height}px`,
+
+ fontSize: `${fontSizeEdit * scaleVisual +4}px`,
+  fontFamily: nodeProps.fontFamily,
+  fontWeight: nodeProps.fontWeight,
+  fontStyle: nodeProps.fontStyle,
+  lineHeight: 1,
+
+  color: "#000",
+  caretColor: "#000",
+  textAlign: textAlign || "center",
+
+  
+  whiteSpace: "pre",
+  overflow: "hidden",
+  wordWrap: "normal",
+  overflowWrap: "normal",
+
+  background: "rgba(255, 0, 0, 0.3)",
+  border: "none",
+  outline: "none",
+  resize: "none",
+  paddingTop:"0",
+  margin: "0",
+  boxSizing: "border-box",
+
+  textDecoration: "none",
+  letterSpacing: "normal",
+  wordSpacing: "normal",
+  textIndent: "0",
+  textShadow: "none",
+  boxShadow: "none",
+
+  transform: "none",
+  transition: "none",
+
+  overflowX: "hidden",
+  overflowY: "hidden",
+  scrollbarWidth: "none",
+  msOverflowStyle: "none",
+
+  zIndex: 9999,
+}}
+
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
-        // 🔥 ENTER = nueva línea
         if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
           return;
         }
         
-        // 🔥 SHIFT + ENTER = salir del modo edición
         if (e.key === "Enter" && e.shiftKey) {
           e.preventDefault();
           onFinish();
           return;
         }
         
-        // 🔥 ESCAPE = salir del modo edición
         if (e.key === "Escape") {
           e.preventDefault();
           onFinish();
@@ -209,7 +192,6 @@ MozAppearance: "none",
           onFinish();
         }, 100);
       }}
-      // 🔥 PREVENIR SCROLL MANUAL
       onScroll={(e) => {
         e.target.scrollLeft = 0;
         e.target.scrollTop = 0;

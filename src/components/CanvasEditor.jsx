@@ -3131,6 +3131,7 @@ onChange={(id, nuevo) => {
   setObjetos(actualizado);
   finishEdit();
 }}
+      scaleVisual={escalaVisual}
 
     />
   );

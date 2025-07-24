@@ -23,6 +23,13 @@ import useEditorHandlers from '@/hooks/useEditorHandlers';
 import InlineTextEditor from "./InlineTextEditor";
 import FontSelector from './FontSelector';
 import { guardarThumbnailDesdeStage } from "@/utils/guardarThumbnail";
+import { reemplazarFondoSeccion as reemplazarFondo } from "@/utils/accionesFondo";
+import { desanclarImagenDeFondo as desanclarFondo } from "@/utils/accionesFondo";
+import { borrarSeccion as borrarSeccionExternal } from "@/utils/editorSecciones";
+import { moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
+import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
+import { determinarNuevaSeccion } from "@/utils/layout";
+
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -1228,57 +1235,6 @@ const actualizarFondoSeccion = (id, nuevoFondo) => {
 
 
 
-const handleGuardarComoPlantilla = async (seccionId) => {
-  const seccion = secciones.find((s) => s.id === seccionId);
-  if (!seccion) return;
-
-
-
-
-  const objetosDeEsaSeccion = objetos.filter((obj) => obj.seccionId === seccionId);
-
-
-  const user = getAuth().currentUser;
-  if (!user) {
-    alert("⚠️ No estás logueado. No se puede guardar la plantilla.");
-    return;
-  }
-
-  const objetosFinales = await Promise.all(
-    objetosDeEsaSeccion.map(async (obj) => {
-      if (obj.tipo === "imagen" && obj.src && obj.src.startsWith("user_uploads/")) {
-        const nuevaUrl = await subirImagenPublica(obj.src);
-        return { ...obj, src: nuevaUrl };
-      }
-      return obj;
-    })
-  );
-
-  const nombre = prompt("Nombre de la plantilla:");
-  if (!nombre) return;
-
-  const plantilla = {
-    nombre,
-    altura: seccion.altura,
-    fondo: seccion.fondo,
-    tipo: seccion.tipo,
-    objetos: objetosFinales,
-  };
-
-
-
-  const ref = collection(db, "plantillas_secciones");
-  await addDoc(ref, plantilla);
-await refrescarPlantillasDeSeccion();
-
-
-  alert("✅ Plantilla guardada correctamente");
-};
-
-
-
-
-// ✅ NUEVA FUNCIÓN – reemplaza la anterior
 const mostrarGuias = (pos, idActual) => {
   const margen   = 5;          // sensibilidad (px)
   const ancho    = 800;        // ancho canvas
@@ -1373,192 +1329,6 @@ useKeyboardShortcuts({
   tieneSeleccion: elementosSeleccionados.length > 0
 });
 
-
-
-// 🎨 Reemplazar fondo de sección con imagen seleccionada
-const reemplazarFondoSeccion = async (elementoImagen) => {
-  if (!elementoImagen || elementoImagen.tipo !== "imagen") {
-    console.warn("❌ El elemento no es una imagen válida");
-    return;
-  }
-
-  if (!elementoImagen.seccionId) {
-    console.warn("❌ La imagen no tiene sección asignada");
-    return;
-  }
-
-
-  try {
-    console.log("🎨 Convirtiendo imagen a fondo de sección:", elementoImagen.id);
-    
-    // Actualizar secciones con información completa de la imagen
-    const seccionesActualizadas = secciones.map(seccion => 
-      seccion.id === elementoImagen.seccionId 
-        ? { 
-            ...seccion, 
-            fondo: "#ffffff", // Fondo fallback
-            fondoTipo: "imagen",
-            fondoImagen: elementoImagen.src,
-            fondoImagenOffsetX: 0, // 🆕 Offset X para reposicionamiento (0 = centrado)
-            fondoImagenOffsetY: 0, // 🆕 Offset Y para reposicionamiento (0 = centrado)
-            fondoImagenDraggable: true // 🆕 Indicar que se puede arrastrar
-          }
-        : seccion
-    );
-    
-    // Filtrar objetos (eliminar la imagen)
-    const objetosFiltrados = objetos.filter(obj => obj.id !== elementoImagen.id);
-    
-    // Actualizar ambos estados AL MISMO TIEMPO
-    setSecciones(seccionesActualizadas);
-    setObjetos(objetosFiltrados);
-    
-    // Limpiar selección
-    setElementosSeleccionados([]);
-    setMostrarPanelZ(false);
-
-    console.log("✅ Fondo de sección actualizado con imagen");
-    
-  } catch (error) {
-    console.error("❌ Error al reemplazar fondo de sección:", error);
-    alert("Ocurrió un error al cambiar el fondo. Inténtalo de nuevo.");
-  }
-};
-
-// 🔄 Desanclar imagen de fondo (TAMAÑO 100% NATURAL) - SIN ESCALADO
-const desanclarImagenDeFondo = async (seccionId) => {
-  const seccion = secciones.find(s => s.id === seccionId);
-  if (!seccion || seccion.fondoTipo !== "imagen") {
-    console.warn("❌ La sección no tiene imagen de fondo para desanclar");
-    return;
-  }
-
-  try {
-    console.log("🔄 Desanclando imagen de fondo de sección:", seccionId);
-    
-    // 🔥 CREAR IMAGEN Y ESPERAR A QUE CARGUE
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = seccion.fondoImagen;
-    
-    // 🔥 FUNCIÓN QUE SE EJECUTA CUANDO LA IMAGEN CARGA
-    img.onload = () => {
-      // 🎯 USAR DIMENSIONES 100% NATURALES (sin escalado)
-      const finalWidth = img.naturalWidth || img.width;
-      const finalHeight = img.naturalHeight || img.height;
-      
-      console.log("📐 Usando dimensiones 100% naturales:", {
-        ancho: finalWidth,
-        alto: finalHeight,
-        aspectRatio: (finalWidth / finalHeight).toFixed(2)
-      });
-      
-      // 🔥 POSICIÓN INICIAL (centrada horizontalmente en el canvas)
-      const posicionX = Math.max(0, (800 - finalWidth) / 2);
-      const posicionY = 50; // Cerca del top de la sección
-      
-      // Crear nuevo objeto imagen con dimensiones 100% NATURALES
-      const nuevoElementoImagen = {
-        id: `img-fondo-${Date.now()}`,
-        tipo: "imagen",
-        src: seccion.fondoImagen,
-        x: posicionX,
-        y: posicionY,
-        width: finalWidth,   // 🎯 TAMAÑO NATURAL COMPLETO
-        height: finalHeight, // 🎯 TAMAÑO NATURAL COMPLETO
-        rotation: 0,
-        scaleX: 1,
-        scaleY: 1,
-        seccionId: seccionId
-      };
-      
-      // 🔥 LIMPIAR propiedades de fondo de la sección
-      const seccionesActualizadas = secciones.map(s => {
-        if (s.id !== seccionId) return s;
-        
-        const seccionLimpia = {
-          ...s,
-          fondo: "#ffffff" // Volver a fondo blanco
-        };
-        
-        // Eliminar campos de imagen de fondo si existen
-        if (s.fondoTipo !== undefined) delete seccionLimpia.fondoTipo;
-        if (s.fondoImagen !== undefined) delete seccionLimpia.fondoImagen;
-        if (s.fondoImagenOffsetX !== undefined) delete seccionLimpia.fondoImagenOffsetX;
-        if (s.fondoImagenOffsetY !== undefined) delete seccionLimpia.fondoImagenOffsetY;
-        if (s.fondoImagenDraggable !== undefined) delete seccionLimpia.fondoImagenDraggable;
-        
-        return seccionLimpia;
-      });
-      
-      // Agregar nuevo elemento imagen
-      const objetosActualizados = [...objetos, nuevoElementoImagen];
-      
-      // Actualizar estados
-      setSecciones(seccionesActualizadas);
-      setObjetos(objetosActualizados);
-      
-      // Seleccionar automáticamente el nuevo elemento
-      setElementosSeleccionados([nuevoElementoImagen.id]);
-
-      console.log("✅ Imagen desanclada en tamaño 100% natural:", {
-        dimensionesFinales: `${finalWidth}x${finalHeight}px`,
-        posicion: { x: posicionX, y: posicionY },
-        esMuyGrande: finalWidth > 800 || finalHeight > 600
-      });
-      
-      // 🔔 AVISO si la imagen es muy grande
-      if (finalWidth > 1200 || finalHeight > 800) {
-        console.warn("⚠️ La imagen es muy grande. Puedes redimensionarla usando los controles de transformación.");
-      }
-    };
-    
-    // 🔥 FALLBACK si la imagen no carga
-    img.onerror = () => {
-      console.warn("⚠️ No se pudo cargar la imagen, usando dimensiones por defecto");
-      
-      // Crear elemento con dimensiones por defecto (tamaño medio)
-      const nuevoElementoImagen = {
-        id: `img-fondo-${Date.now()}`,
-        tipo: "imagen",
-        src: seccion.fondoImagen,
-        x: 100,
-        y: 50,
-        width: 600,  // Tamaño por defecto razonable
-        height: 400,
-        rotation: 0,
-        scaleX: 1,
-        scaleY: 1,
-        seccionId: seccionId
-      };
-      
-      // Mismo proceso de limpieza
-      const seccionesActualizadas = secciones.map(s => {
-        if (s.id !== seccionId) return s;
-        
-        const seccionLimpia = { ...s, fondo: "#ffffff" };
-        if (s.fondoTipo !== undefined) delete seccionLimpia.fondoTipo;
-        if (s.fondoImagen !== undefined) delete seccionLimpia.fondoImagen;
-        if (s.fondoImagenOffsetX !== undefined) delete seccionLimpia.fondoImagenOffsetX;
-        if (s.fondoImagenOffsetY !== undefined) delete seccionLimpia.fondoImagenOffsetY;
-        if (s.fondoImagenDraggable !== undefined) delete seccionLimpia.fondoImagenDraggable;
-        
-        return seccionLimpia;
-      });
-      
-      const objetosActualizados = [...objetos, nuevoElementoImagen];
-      setSecciones(seccionesActualizadas);
-      setObjetos(objetosActualizados);
-      setElementosSeleccionados([nuevoElementoImagen.id]);
-      
-      console.log("✅ Imagen desanclada con dimensiones por defecto");
-    };
-    
-  } catch (error) {
-    console.error("❌ Error al desanclar imagen de fondo:", error);
-    alert("Ocurrió un error al desanclar la imagen. Inténtalo de nuevo.");
-  }
-};
 
 
 // 🎨 Cambiar color de fondo de sección (CORREGIDO - sin undefined)
@@ -1841,104 +1611,6 @@ function lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
 
 
 
-const borrarSeccion = async (seccionId) => {
-  const seccion = secciones.find((s) => s.id === seccionId);
-  if (!seccion) return;
-
-  // 🚨 Confirmación
-  const confirmar = confirm(
-    `¿Estás seguro de que querés borrar la sección "${seccion.tipo || 'sin nombre'}"?\n\n` +
-    "Se eliminarán todos los elementos que contiene.\n" +
-    "Esta acción no se puede deshacer."
-  );
-  
-  if (!confirmar) return;
-
-  try {
-    // 🗑️ Eliminar objetos de la sección
-    const objetosFiltrados = objetos.filter(obj => obj.seccionId !== seccionId);
-    
-    // 🗑️ Eliminar la sección
-    const seccionesFiltradas = secciones.filter(s => s.id !== seccionId);
-    
-    // 📱 Actualizar estados
-    setObjetos(objetosFiltrados);
-    setSecciones(seccionesFiltradas);
-    
-    // 🔄 Si era la sección activa, deseleccionar
-    if (seccionActivaId === seccionId) {
-      setSeccionActivaId(null);
-    }
-    
-    // 💾 Guardar en Firebase
-    const ref = doc(db, "borradores", slug);
-    await updateDoc(ref, {
-      secciones: seccionesFiltradas,
-      objetos: objetosFiltrados,
-      ultimaEdicion: serverTimestamp(),
-    });
-    
-    
-    
-  } catch (error) {
-    console.error("❌ Error al borrar sección:", error);
-    alert("Ocurrió un error al borrar la sección. Inténtalo de nuevo.");
-  }
-};
-
-
-const determinarNuevaSeccion = (yRelativaConOffset, seccionActualId) => {
-  // yRelativaConOffset viene de ElementoCanvas con el offset ya aplicado
-  // Necesitamos convertirla a Y absoluta real del canvas
-  
-  const seccionActual = seccionesOrdenadas.find(s => s.id === seccionActualId);
-  if (!seccionActual) return { nuevaSeccion: null, coordenadasAjustadas: {} };
-  
-  // yRelativaConOffset ya es la Y real en el canvas (viene con offset aplicado)
-  const yAbsolutaReal = yRelativaConOffset;
-  
-  
-  // Determinar nueva sección basada en Y absoluta real
-  let acumulado = 0;
-  for (const seccion of seccionesOrdenadas) {
-    if (yAbsolutaReal >= acumulado && yAbsolutaReal < acumulado + seccion.altura) {
-      if (seccion.id === seccionActualId) {
-        // No cambió de sección
-        return { nuevaSeccion: null, coordenadasAjustadas: {} };
-      }
-      
-      // Cambió de sección - calcular nueva Y relativa
-      const nuevaY = yAbsolutaReal - acumulado;
-    
-
-      
-      return { 
-        nuevaSeccion: seccion.id, 
-        coordenadasAjustadas: { y: nuevaY } 
-      };
-    }
-    acumulado += seccion.altura;
-  }
-  
-  // Está fuera de todas las secciones - mover a la más cercana
-  if (yAbsolutaReal < 0) {
-    // Arriba de todo - primera sección
-  
-    return { 
-      nuevaSeccion: seccionesOrdenadas[0].id, 
-      coordenadasAjustadas: { y: 0 } 
-    };
-  } else {
-    // Abajo de todo - última sección
-    
-    const ultimaSeccion = seccionesOrdenadas[seccionesOrdenadas.length - 1];
-    return { 
-      nuevaSeccion: ultimaSeccion.id, 
-      coordenadasAjustadas: { y: ultimaSeccion.altura - 50 } 
-    };
-  }
-};
-
 
 
 const handleCrearSeccion = async (datos) => {
@@ -1984,63 +1656,6 @@ const handleCrearSeccion = async (datos) => {
   });
 };
 
-
-const moverSeccion = async (seccionId, direccion) => {
-  console.log("🚀 INICIANDO ANIMACIÓN - Sección:", seccionId, "Dirección:", direccion);
-  
-  const indiceActual = seccionesOrdenadas.findIndex(s => s.id === seccionId);
-  
-  // Validar límites
-  if (direccion === 'subir' && indiceActual === 0) {
-    console.log("❌ No se puede subir - ya es la primera");
-    return;
-  }
-  if (direccion === 'bajar' && indiceActual === seccionesOrdenadas.length - 1) {
-    console.log("❌ No se puede bajar - ya es la última");
-    return;
-  }
-  
-  const indiceDestino = direccion === 'subir' ? indiceActual - 1 : indiceActual + 1;
-  const seccionActual = seccionesOrdenadas[indiceActual];
-  const seccionDestino = seccionesOrdenadas[indiceDestino];
-  
-  console.log("🔄 Intercambiando:", seccionActual.id, "con", seccionDestino.id);
-  
-  // Marcar secciones como animando (ARRAY en lugar de Set)
-  setSeccionesAnimando([seccionActual.id, seccionDestino.id]);
-  console.log("🎬 ARRAY ANIMANDO:", [seccionActual.id, seccionDestino.id]);
-  
-  // Intercambiar órdenes
-  const nuevasSecciones = secciones.map(s => {
-    if (s.id === seccionActual.id) {
-      return { ...s, orden: seccionDestino.orden };
-    }
-    if (s.id === seccionDestino.id) {
-      return { ...s, orden: seccionActual.orden };
-    }
-    return s;
-  });
-  
-  // Actualizar estado
-  setSecciones(nuevasSecciones);
-  
-  // Terminar animación después de 500ms
-  setTimeout(() => {
-    console.log("🏁 LIMPIANDO ANIMACIÓN");
-    setSeccionesAnimando([]);
-  }, 500);
-  
-  // Guardar en Firebase
-  try {
-    const ref = doc(db, "borradores", slug);
-    await updateDoc(ref, {
-      secciones: nuevasSecciones,
-      ultimaEdicion: serverTimestamp(),
-    });
-  } catch (error) {
-    console.error("Error guardando orden de secciones:", error);
-  }
-};
 
 
 // 🔄 Ajustar el transformer cuando cambia el texto inline
@@ -2153,7 +1768,16 @@ return (
     >
       {/* Botón Subir */}
       <button
-        onClick={() => moverSeccion(seccion.id, 'subir')}
+        onClick={() =>
+            moverSeccionExternal({
+              seccionId: seccion.id,
+              direccion: "subir",
+              secciones,
+              slug,
+              setSecciones,
+              setSeccionesAnimando,
+            })
+          }
         disabled={esPrimera || estaAnimando}
         className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
           esPrimera || estaAnimando
@@ -2167,7 +1791,14 @@ return (
       
       {/* Botón Guardar como plantilla */}
       <button
-        onClick={() => handleGuardarComoPlantilla(seccion.id)}
+        onClick={() =>
+    guardarSeccionComoPlantilla({
+      seccionId: seccion.id,
+      secciones,
+      objetos,
+      refrescarPlantillasDeSeccion,
+    })
+  }
         disabled={estaAnimando}
         className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
           estaAnimando
@@ -2190,21 +1821,34 @@ return (
       {/* Botón Desanclar fondo (solo si tiene imagen de fondo) */}
 {seccion.fondoTipo === "imagen" && (
   <button
-    onClick={() => desanclarImagenDeFondo(seccion.id)}
-    disabled={estaAnimando}
-    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
-      estaAnimando
-        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-        : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 shadow-md hover:shadow-lg'
-    } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
-    title="Convertir fondo en elemento editable"
-  >
+    onClick={() =>
+  desanclarFondo({
+    seccionId: seccion.id,
+    secciones,
+    objetos,
+    setSecciones,
+    setObjetos,
+    setElementosSeleccionados,
+  })
+}
+>
     🔄 Desanclar fondo
   </button>
 )}
       {/* Botón Borrar sección */}
       <button
-        onClick={() => borrarSeccion(seccion.id)}
+        onClick={() =>
+            borrarSeccionExternal({
+              seccionId: seccion.id,
+              secciones,
+              objetos,
+              slug,
+              seccionActivaId,
+              setSecciones,
+              setObjetos,
+              setSeccionActivaId,
+            })
+          }
         disabled={estaAnimando}
         className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
           estaAnimando
@@ -2219,7 +1863,16 @@ return (
 
       {/* Botón Bajar */}
       <button
-        onClick={() => moverSeccion(seccion.id, 'bajar')}
+        onClick={() =>
+            moverSeccionExternal({
+              seccionId: seccion.id,
+              direccion: "bajar",
+              secciones,
+              slug,
+              setSecciones,
+              setSeccionesAnimando,
+            })
+          }
         disabled={esUltima || estaAnimando}
         className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
           esUltima || estaAnimando
@@ -2841,15 +2494,17 @@ onChange={(id, nuevo) => {
     return;
   }
 
-  // 🔥 ELIMINAR: Ya no necesitamos manejar isDragPreview e isGroupDragFinal aquí
-  // porque ahora se hace directamente con setObjetos en ElementoCanvas
-
   const objOriginal = objetos.find((o) => o.id === id);
   if (!objOriginal) return;
 
   // 🔥 Para drag final, procesar inmediatamente
   if (nuevo.finalizoDrag) {
-    const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(nuevo.y, objOriginal.seccionId);
+    
+    const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+    nuevo.y,
+    objOriginal.seccionId,
+    seccionesOrdenadas
+  );
     
     let coordenadasFinales = { ...nuevo };
     delete coordenadasFinales.finalizoDrag;
@@ -3353,10 +3008,18 @@ onChange={(id, nuevo) => {
 
 {elementoSeleccionado?.tipo === "imagen" && (
   <button
-    onClick={() => {
-      reemplazarFondoSeccion(elementoSeleccionado);
-      setMostrarPanelZ(false);
-    }}
+  onClick={() => {
+  reemplazarFondo({
+    elementoImagen: elementoSeleccionado,
+    secciones,
+    objetos,
+    setSecciones,
+    setObjetos,
+    setElementosSeleccionados,
+    setMostrarPanelZ,
+  });
+}}
+
     className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
   >
     <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded"></div>

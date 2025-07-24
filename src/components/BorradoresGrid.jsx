@@ -52,59 +52,60 @@ export default function BorradoresGrid() {
   if (!borradores.length) return <p className="text-gray-500">Aún no tenés borradores.</p>;
 
   return (
-    <div className="mt-8">
-      <h2 className="text-xl font-bold mb-4">Tus borradores</h2>
+  <div className="mt-8">
+    <h2 className="text-xl font-bold mb-4">Tus borradores</h2>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {borradores.map((borrador) => (
-          <div
-            key={borrador.slug}
-            className="border rounded-lg overflow-hidden shadow hover:shadow-lg transition bg-white"
-          >
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
+      {borradores.map((borrador) => (
+        <div
+          key={borrador.slug}
+          className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 max-w-sm mx-auto"
+        >
+          <div className="w-full h-52 bg-gray-100 overflow-hidden">
             <img
               src={borrador.thumbnailUrl || "/placeholder.jpg"}
               alt={`Vista previa de ${borrador.nombre}`}
-              className="rounded w-full h-40 object-cover"
+              className="w-full h-full object-cover object-top"
             />
+          </div>
 
 
-            <div className="p-4">
-              <h3 className="text-lg font-semibold truncate">{borrador.slug}</h3>
-              <p className="text-sm text-gray-600">
-                Última edición:{' '}
-                {borrador.ultimaEdicion?.seconds
-                  ? new Date(borrador.ultimaEdicion.seconds * 1000).toLocaleDateString()
-                  : 'Sin fecha'}
-              </p>
 
-              <div className="flex gap-3 mt-4 text-sm">
-                
-                <button
-                    className="text-green-600 hover:underline text-sm"
-                    onClick={() => {
-                        const detalle = {
-                          slug: borrador.slug || borrador.id,
-                          editor: borrador.editor || "iframe",
-                        };
+          <div className="p-4">
+            <h3 className="text-md font-semibold text-gray-800 truncate">{borrador.nombre || borrador.slug}</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Última edición:{" "}
+              {borrador.ultimaEdicion?.seconds
+                ? new Date(borrador.ultimaEdicion.seconds * 1000).toLocaleDateString()
+                : "Sin fecha"}
+            </p>
 
-                        window.dispatchEvent(new CustomEvent("abrir-borrador", { detail: detalle }));
-                      }}
+            <div className="flex gap-2 mt-4">
+              <button
+                className="bg-purple-600 text-white text-xs px-3 py-1 rounded hover:bg-purple-700 transition"
+                onClick={() => {
+                  const detalle = {
+                    slug: borrador.slug || borrador.id,
+                    editor: borrador.editor || "iframe",
+                  };
+                  window.dispatchEvent(new CustomEvent("abrir-borrador", { detail: detalle }));
+                }}
+              >
+                Editar
+              </button>
 
-                    >
-                    Editar
-                    </button>
-
-                <button
-                  className="text-red-600 hover:underline"
-                  onClick={() => borrarBorrador(borrador.slug)}
-                >
-                  Borrar
-                </button>
-              </div>
+              <button
+                className="bg-red-100 text-red-600 text-xs px-3 py-1 rounded hover:bg-red-200 transition"
+                onClick={() => borrarBorrador(borrador.slug)}
+              >
+                Borrar
+              </button>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
-  );
+  </div>
+);
+
 }

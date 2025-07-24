@@ -5,6 +5,8 @@ import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
 import { fontManager } from '../utils/fontManager';
+import { calcularOffsetY } from "../utils/layout";
+
 
 export default function ElementoCanvas({
   obj,
@@ -23,8 +25,10 @@ export default function ElementoCanvas({
   onStartTextEdit,
   editingMode = false
 }) {
-  const [img] = useImage(obj.src || null);
+  const [img] = useImage(obj.src || null, "anonymous");
   const [isDragging, setIsDragging] = useState(false);
+
+  console.log("➡️ Renderizando ElementoCanvas:", obj);
 
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
   const handleChange = useCallback((id, newData) => {
@@ -195,15 +199,23 @@ onDragMove: (e) => {
   
   // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
   if (!window._grupoLider) {
-    const node = e.target;
-    if (node && node.position) {
-      const nuevaPos = node.position();
-      
-      if (onDragMovePersonalizado) {
-        onDragMovePersonalizado(nuevaPos, obj.id);
-      }
+  const node = e.target;
+  if (node && node.position) {
+    const nuevaPos = node.position();
+
+    // 🔥 Mover también el texto si existe
+    const textoNode = window._elementRefs?.[`${obj.id}-text`];
+    if (textoNode) {
+      textoNode.x(nuevaPos.x);
+      textoNode.y(nuevaPos.y);
+      textoNode.getLayer()?.batchDraw(); // forzar redibujo
+    }
+
+    if (onDragMovePersonalizado) {
+      onDragMovePersonalizado(nuevaPos, obj.id);
     }
   }
+}
 },
 
     onDragEnd: (e) => {
@@ -332,6 +344,7 @@ const handleMouseLeave = useCallback(() => {
     }, 0);
   }
   
+  
   return (
     <Line
       {...commonProps}
@@ -391,12 +404,12 @@ if (obj.tipo === "texto") {
 }
 
 
-
   if (obj.tipo === "imagen" && img) {
     return (
       <KonvaImage
         {...commonProps}
         image={img}
+        crossOrigin="anonymous"
         width={obj.width || img.width}
         height={obj.height || img.height}
         onMouseEnter={handleMouseEnter}
@@ -426,6 +439,7 @@ if (obj.tipo === "texto") {
       <KonvaImage
         {...commonProps}
         image={img}
+        crossOrigin="anonymous"
         width={obj.width || img.width}
         height={obj.height || img.height}
         onMouseEnter={handleMouseEnter}
@@ -459,21 +473,26 @@ if (obj.tipo === "texto") {
     {/* ✏️ Texto encima de la forma */}
     {obj.texto && (
   <Text
-    x={obj.x}
-    y={obj.y}
-    width={obj.width}
-    height={obj.height}
-    text={obj.texto}
-    fontSize={obj.fontSize || 24}
-    fontFamily={obj.fontFamily || "sans-serif"}
-    fontWeight={obj.fontWeight || "normal"}
-    fontStyle={obj.fontStyle || "normal"}
-    fill={obj.colorTexto || "#000000"}
-    align={obj.align || "center"}
-    verticalAlign="middle"
-    listening={false}
-    opacity={isInEditMode ? 0 : 1} // 👈 ocultar cuando se edita
-  />
+  ref={(node) => {
+    if (node && registerRef) {
+      registerRef(`${obj.id}-text`, node); // clave única para el texto
+    }
+  }}
+  x={obj.x}
+  y={obj.y}
+  width={obj.width}
+  height={obj.height}
+  text={obj.texto}
+  fontSize={obj.fontSize || 24}
+  fontFamily={obj.fontFamily || "sans-serif"}
+  fontWeight={obj.fontWeight || "normal"}
+  fontStyle={obj.fontStyle || "normal"}
+  fill={obj.colorTexto || "#000000"}
+  align={obj.align || "center"}
+  verticalAlign="middle"
+  listening={false}
+  opacity={isInEditMode ? 0 : 1}
+/>
 )}
 
   </>
@@ -504,6 +523,7 @@ if (obj.tipo === "texto") {
             strokeWidth={isSelected || preSeleccionado ? 1 : 0}
           />
         );
+
         
       default:
         return null;

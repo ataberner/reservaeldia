@@ -105,19 +105,49 @@ if (obj.tipo === "texto") {
       const figura = obj.figura;
 
       switch (figura) {
-        case "rect": {
-          const w = `${(obj.width ?? 100) / 800 * 100}%`;
-          const h = `${(obj.height ?? 100) / alturaSeccion * 100}%`;
+       case "rect": {
+  const w = `${(obj.width ?? 100) / 800 * 100}%`;
+  const h = `${(obj.height ?? 100) / alturaSeccion * 100}%`;
+  const cornerRadius = obj.cornerRadius || 0;
+  const fontSize = obj.fontSize || 24;
+  const fontFamily = obj.fontFamily || "sans-serif";
+  const fontWeight = obj.fontWeight || "normal";
+  const fontStyle = obj.fontStyle || "normal";
+  const textDecoration = obj.textDecoration || "none";
+  const align = obj.align || "center";
+  const colorTexto = obj.colorTexto || "#000000";
+  const texto = (obj.texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-          return `<div class="objeto" style="
-            top: ${top}%;
-            left: ${left}%;
-            width: ${w};
-            height: ${h};
-            background: ${fill};
-            transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-          "></div>`;
-        }
+  return `<div class="objeto" style="
+    top: ${top}%;
+    left: ${left}%;
+    width: ${w};
+    height: ${h};
+    background: ${fill};
+    border-radius: ${cornerRadius}px;
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    display: flex;
+    align-items: center;
+    justify-content: ${align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center"};
+    text-align: ${align};
+    padding: 4px;
+    box-sizing: border-box;
+  ">
+    <div style="
+      width: 100%;
+      font-size: ${fontSize}px;
+      font-family: ${fontFamily};
+      font-weight: ${fontWeight};
+      font-style: ${fontStyle};
+      text-decoration: ${textDecoration};
+      color: ${colorTexto};
+      line-height: 1.2;
+      white-space: pre-wrap;
+      word-break: break-word;
+    ">${texto}</div>
+  </div>`;
+}
+
 
         case "circle": {
             const radius = obj.radius ?? 50;

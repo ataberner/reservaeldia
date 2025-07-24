@@ -22,6 +22,7 @@ import ShapeToolbar from './ShapeToolbar';
 import useEditorHandlers from '@/hooks/useEditorHandlers';
 import InlineTextEditor from "./InlineTextEditor";
 import FontSelector from './FontSelector';
+import { guardarThumbnailDesdeStage } from "@/utils/guardarThumbnail";
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -517,13 +518,6 @@ useEffect(() => {
 }, [editing.id, editing.value]);
 
 
-// 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
-useEffect(() => {
-  window._elementosSeleccionados = elementosSeleccionados;
-  window._objetosActuales = objetos;
- 
-}, [elementosSeleccionados, objetos]);
-
 // 🎨 Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
 const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
   console.log("🔄 actualizarOffsetFondo llamada:", {
@@ -755,7 +749,6 @@ useEffect(() => {
 
 
 
-// Agregar después de los otros useEffect
 useEffect(() => {
   // Pre-cargar fuentes populares al iniciar
   fontManager.preloadPopularFonts();
@@ -849,7 +842,7 @@ useEffect(() => {
   // Limpiar futuros cuando hay nuevos cambios
   setFuturos([]);
   
-const timeoutId = setTimeout(async () => {
+  const timeoutId = setTimeout(async () => {
   try {
     // 🔥 FUNCIÓN PARA LIMPIAR UNDEFINED RECURSIVAMENTE
     const limpiarUndefined = (obj) => {
@@ -925,6 +918,18 @@ const timeoutId = setTimeout(async () => {
     });
     
     console.log("✅ Guardado exitoso en Firebase");
+
+
+    // 🔥 NUEVO: Generar y subir thumbnail
+if (stageRef?.current && userId && slug) {
+  const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
+  await guardarThumbnailDesdeStage({
+    stageRef,
+    uid: userId,
+    slug,
+  });
+}
+
     
   } catch (error) {
     console.error("❌ Error guardando en Firebase:", error);
@@ -1203,9 +1208,6 @@ useEffect(() => {
 
 
 
-
-
-
 useEffect(() => {
   const handleClickOutside = (e) => {
     if (!e.target.closest(".menu-z-index")) {
@@ -1215,11 +1217,6 @@ useEffect(() => {
   document.addEventListener("mousedown", handleClickOutside);
   return () => document.removeEventListener("mousedown", handleClickOutside);
 }, []);
-
-
-
-
-
 
 
 
@@ -2069,13 +2066,17 @@ useEffect(() => {
 
 
 
-// 🔥 SINCRONIZAR ESTADO GLOBAL PARA ARRASTRE GRUPAL
 useEffect(() => {
   window._elementosSeleccionados = elementosSeleccionados;
   window._objetosActuales = objetos;
   // 🔥 NUEVO: Exponer elementRefs para actualización directa
   window._elementRefs = elementRefs.current;
-}, [elementosSeleccionados, objetos]);
+
+  // 🔥 NUEVO: Exponer secciones y altura total
+  window._seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+  window._altoCanvas = altoCanvas;
+}, [elementosSeleccionados, objetos, secciones, altoCanvas]);
+
 
 
 

@@ -101,7 +101,11 @@ export default function useMisImagenes() {
     setImagenesEnProceso((prev) => [...prev, fileName]);
 
     const storageRef = ref(storage, `usuarios/${uid}/imagenes/${fileName}`);
-    await uploadBytes(storageRef, archivoComprimido);
+await uploadBytes(storageRef, archivoComprimido, {
+  customMetadata: {
+    firebaseStorageDownloadTokens: null, // 👈 evita token privado (necesario para evitar tainted canvas)
+  },
+});
     const url = await getDownloadURL(storageRef);
 
     const { blob: thumbnailBlob, img } = await generarThumbnail(archivoComprimido);

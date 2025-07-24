@@ -193,6 +193,7 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
               {componenteInput} {/* input invisible que va a manejar la carga */}
 
+{!modoSelector && (
               <aside
           onMouseEnter={() => setHoverSidebar(true)}
           onMouseLeave={() => {
@@ -393,6 +394,7 @@ const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
      </aside>
 
+)}
 
 <ModalCrearSeccion
   visible={modalCrear.visible}

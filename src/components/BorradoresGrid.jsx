@@ -62,10 +62,11 @@ export default function BorradoresGrid() {
             className="border rounded-lg overflow-hidden shadow hover:shadow-lg transition bg-white"
           >
             <img
-              src="/assets/img/placeholder-600x400-3.jpg"
-              alt="Vista previa"
-              className="w-full h-48 object-cover"
+              src={borrador.thumbnailUrl || "/placeholder.jpg"}
+              alt={`Vista previa de ${borrador.nombre}`}
+              className="rounded w-full h-40 object-cover"
             />
+
 
             <div className="p-4">
               <h3 className="text-lg font-semibold truncate">{borrador.slug}</h3>

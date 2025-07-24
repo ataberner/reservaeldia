@@ -385,13 +385,19 @@ if (!usuario) return null; // Seguridad por si no se redirige
       );
 
       try {
-        const result = await publicarInvitacion({ slug: slugInvitacion });
-        const urlFinal = result.data?.url;
-        if (urlFinal) window.open(urlFinal, "_blank");
-      } catch (error) {
-        alert("❌ Error al publicar la invitación.");
-        console.error(error);
-      }
+  const result = await publicarInvitacion({ slug: slugInvitacion });
+  const urlFinal = result.data?.url;
+
+  // ✅ Generar preview
+  const generarPreview = httpsCallable(getFunctions(), "generarPreviewBorrador");
+  await generarPreview({ slug: slugInvitacion });
+
+  if (urlFinal) window.open(urlFinal, "_blank");
+} catch (error) {
+  alert("❌ Error al publicar la invitación.");
+  console.error(error);
+}
+
     }}
     className="px-4 py-2 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-sm"
   >

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { functions } from "@/firebase"; // según cómo tengas configurado tu alias
-import { httpsCallable } from "firebase/functions";
+import { getFunctions, httpsCallable } from "firebase/functions";
 const generarSlug = (texto) => {
   return texto
     .normalize("NFD")                     // separa letras y tildes
@@ -19,18 +19,21 @@ export default function PlantillaGrid({ plantillas, onSeleccionarPlantilla }) {
   const [loading, setLoading] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
 
-
- const crearCopia = async (plantilla) => {
+const crearCopia = async (plantilla) => {
   setLoadingId(plantilla.id);
   try {
+    const functions = getFunctions();
     const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
-
+    const generarPreview = httpsCallable(functions, "generarPreviewBorrador");
 
     const slug = `${generarSlug(plantilla.nombre)}-${Date.now()}`;
 
     const result = await copiarPlantilla({ plantillaId: plantilla.id, slug });
-
     console.log("✅ Resultado:", result.data);
+
+    // 🔥 Generar thumbnail automáticamente
+    await generarPreview({ slug });
+
     return result.data.slug;
   } catch (error) {
     console.error("❌ Error:", error);
@@ -47,11 +50,15 @@ export default function PlantillaGrid({ plantillas, onSeleccionarPlantilla }) {
       {(plantillas || []).map((p) => (
         <div key={p.id} className="border p-4 rounded shadow">
                 {p.portada && (
-                <img
-                  src={p.portada}
-                  alt={`Vista previa de ${p.nombre}`}
-                  className="mb-2 rounded shadow w-full h-40 object-cover"
-                />
+                <div className="mb-2 w-full h-48 overflow-hidden rounded shadow border border-gray-200">
+  <img
+    src={`https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.appspot.com/o/plantillas%2F${p.id}%2Fpreview.png?alt=media`}
+    alt={`Preview de ${p.nombre}`}
+    className="w-full h-full object-cover"
+    loading="lazy"
+  />
+</div>
+
               )}
 
           <h3 className="text-lg font-semibold">{p.nombre}</h3>

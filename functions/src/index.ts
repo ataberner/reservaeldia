@@ -9,6 +9,9 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import express, { Request, Response } from "express";
 import { generarHTMLDesdeObjetos } from "./utils/generarHTMLDesdeObjetos";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
+import { Storage } from "@google-cloud/storage";
+import puppeteer from "puppeteer";
+import { v4 as uuidv4 } from "uuid";
 
 
 const app = express();
@@ -463,3 +466,6 @@ function escapeHTML(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+
+

@@ -73,7 +73,7 @@ const limpiarObjetoUndefined = (obj) => {
 
 // Componente para secciones con fondo de imagen draggable
 const SeccionConFondoImagen = ({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset }) => {
-  const [fondoImage] = useImage(seccion.fondoImagen);
+const [fondoImage] = useImage(seccion.fondoImagen, "anonymous");
   const [isDragging, setIsDragging] = useState(false);
   const dragStartPos = useRef(null);
   

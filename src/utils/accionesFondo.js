@@ -77,32 +77,39 @@ export const desanclarImagenDeFondo = ({
     img.src = seccion.fondoImagen;
 
     img.onload = () => {
-      const finalWidth = img.naturalWidth || img.width;
-      const finalHeight = img.naturalHeight || img.height;
+  const originalWidth = img.naturalWidth || img.width;
+  const originalHeight = img.naturalHeight || img.height;
 
-      const nuevoElementoImagen = {
-        id: `img-fondo-${Date.now()}`,
-        tipo: "imagen",
-        src: seccion.fondoImagen,
-        x: Math.max(0, (800 - finalWidth) / 2),
-        y: 50,
-        width: finalWidth,
-        height: finalHeight,
-        rotation: 0,
-        scaleX: 1,
-        scaleY: 1,
-        seccionId,
-      };
+  const maxWidth = 450;
+  const scale = Math.min(1, maxWidth / originalWidth);
 
-      const seccionesActualizadas = limpiarFondoImagen(secciones, seccionId);
-      const objetosActualizados = [...objetos, nuevoElementoImagen];
+  const finalWidth = originalWidth * scale;
+  const finalHeight = originalHeight * scale;
 
-      setSecciones(seccionesActualizadas);
-      setObjetos(objetosActualizados);
-      setElementosSeleccionados([nuevoElementoImagen.id]);
+  const nuevoElementoImagen = {
+    id: `img-fondo-${Date.now()}`,
+    tipo: "imagen",
+    src: seccion.fondoImagen,
+    x: Math.max(0, (800 - finalWidth) / 2),
+    y: 50,
+    width: finalWidth,
+    height: finalHeight,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    seccionId,
+  };
 
-      console.log("✅ Imagen desanclada con tamaño real");
-    };
+  const seccionesActualizadas = limpiarFondoImagen(secciones, seccionId);
+  const objetosActualizados = [...objetos, nuevoElementoImagen];
+
+  setSecciones(seccionesActualizadas);
+  setObjetos(objetosActualizados);
+  setElementosSeleccionados([nuevoElementoImagen.id]);
+
+  console.log("✅ Imagen desanclada con tamaño ajustado");
+};
+
 
     img.onerror = () => {
       console.warn("⚠️ No se pudo cargar la imagen, usando tamaño por defecto");

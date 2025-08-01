@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
 
 export default function TipoSelector({ onSeleccionarTipo }) {
-  const [tipoSeleccionado, setTipoSeleccionado] = useState(null);
+  const [tipoSeleccionado, setTipoSeleccionado] = useState('boda');
 
   const tipos = [
     { id: 'boda', nombre: 'Boda', emoji: '💍' },
@@ -13,6 +14,11 @@ export default function TipoSelector({ onSeleccionarTipo }) {
     setTipoSeleccionado(id);
     onSeleccionarTipo(id);
   };
+
+   // 🔹 Simula click en Boda al montar
+  useEffect(() => {
+    manejarSeleccion('boda');
+  }, []);
 
   return (
     

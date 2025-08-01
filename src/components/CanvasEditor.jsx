@@ -883,21 +883,34 @@ useEffect(() => {
           const valor = parseFloat(puntosActuales[i]);
           puntosValidos.push(isNaN(valor) ? (i === 2 ? 100 : 0) : valor);
         }
-        
-        console.log(`📐 Validando línea ${obj.id}:`, {
-          antes: puntosActuales,
-          despues: puntosValidos
-        });
-        
+               
         return {
           ...obj,
           points: puntosValidos
         };
       }
+
+       // ✅ Si es texto, normalizamos propiedades visuales para HTML
+  if (obj.tipo === 'texto') {
+    return {
+      ...obj,
+      // 🔹 Mapeo de color principal
+      color: obj.colorTexto || obj.color || obj.fill || "#000000",
+      // 🔹 Stroke y sombras opcionales
+      stroke: obj.stroke || null,
+      strokeWidth: obj.strokeWidth || 0,
+      shadowColor: obj.shadowColor || null,
+      shadowBlur: obj.shadowBlur || 0,
+      shadowOffsetX: obj.shadowOffsetX || 0,
+      shadowOffsetY: obj.shadowOffsetY || 0,
+    };
+  }
       
       // Para otros objetos, devolver sin cambios
       return obj;
     });
+
+
 
     // 🔥 LIMPIAR DATOS ANTES DE ENVIAR A FIREBASE
     const seccionesLimpias = limpiarUndefined(secciones);

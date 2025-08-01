@@ -41,12 +41,31 @@ if (obj.tipo === "texto") {
     fontWeight = "normal",
     fontStyle = "normal",
     textDecoration = "none",
-    color = "#000",
     align = "left",
     texto = "",
     lineHeight = 1.2,
     rotation = 0,
+    stroke = "",            // Color del borde del texto
+    strokeWidth = 0,        // Grosor del borde
+    shadowColor = "",       // Color de sombra opcional
+    shadowBlur = 0,         // Intensidad del blur
+    shadowOffsetX = 0,
+    shadowOffsetY = 0,
   } = obj;
+
+  // Color principal (fill)
+  const color = obj.colorTexto || obj.color || obj.fill || "#000";
+
+  // Generar sombra si existe
+  const textShadow = shadowColor
+    ? `${shadowOffsetX}px ${shadowOffsetY}px ${shadowBlur}px ${shadowColor}`
+    : "none";
+
+  // Generar stroke si existe
+  const textStroke =
+    stroke && strokeWidth > 0
+      ? `-webkit-text-stroke: ${strokeWidth}px ${stroke};`
+      : "";
 
   const safeTexto = texto
     .replace(/&/g, "&amp;")
@@ -70,10 +89,13 @@ if (obj.tipo === "texto") {
     line-height: ${lineHeight};
     transform: rotate(${rotation}deg);
     transform-origin: top left;
+    ${textStroke}
+    text-shadow: ${textShadow};
   `;
 
   return `<div style="${style}">${safeTexto}</div>`;
 }
+
 
 
     if (obj.tipo === "imagen" || obj.tipo === "icono") {

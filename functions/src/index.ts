@@ -2,8 +2,7 @@ import * as functions from "firebase-functions";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import { JSDOM } from "jsdom";
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import { onCall, CallableRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import express, { Request, Response } from "express";
@@ -12,6 +11,7 @@ import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import { Storage } from "@google-cloud/storage";
 import puppeteer from "puppeteer";
 import { v4 as uuidv4 } from "uuid";
+
 
 
 const app = express();
@@ -233,10 +233,6 @@ elementos.forEach((el) => {
 
 
 
-// 🗑️ ELIMINADAS: guardarEdicion y leerEdicion
-// Estas funciones no se usaban en el canvas Konva
-
-
 
 export const borrarBorrador = functions.https.onCall(
   async (request: functions.https.CallableRequest<{ slug: string }>) => {
@@ -432,14 +428,18 @@ export const copiarPlantilla = onCall(
     if (!datos) throw new Error("Plantilla no encontrada");
 
     await db.collection("borradores").doc(slug).set({
-      slug,
-      userId: uid,
-      plantillaId,
-      editor: datos.editor || "konva",
-      objetos: datos.objetos || [],
-      ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
-      creado: admin.firestore.FieldValue.serverTimestamp(),
-    });
+  slug,
+  userId: uid,
+  plantillaId,
+  editor: datos.editor || "konva",
+  objetos: datos.objetos || [],
+  secciones: datos.secciones || [],
+  portada: datos.portada || null,
+  nombre: datos.nombre || "Plantilla sin nombre",
+  ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
+  creado: admin.firestore.FieldValue.serverTimestamp(),
+});
+
 
     logger.info(`✅ Borrador creado desde plantilla '${plantillaId}' con slug '${slug}'`);
     return { slug };
@@ -449,12 +449,44 @@ export const copiarPlantilla = onCall(
 export const crearPlantilla = onCall(
   async (request: CallableRequest<{ id: string; datos: any }>) => {
     const { id, datos } = request.data;
-
     if (!id || !datos) throw new Error("Faltan datos");
 
-    await db.collection("plantillas").doc(id).set(datos);
+    const bucket = getStorage().bucket();
+
+    let portada = datos.portada || null;
+
+    // 📸 Si se recibe una imagen en base64, subirla como portada
+    if (datos.previewBase64) {
+      try {
+        const base64 = datos.previewBase64.split(",")[1]; // Elimina encabezado data:image/png;base64,
+        const buffer = Buffer.from(base64, "base64");
+        const filePath = `plantillas/${id}/preview.png`;
+        const file = bucket.file(filePath);
+
+        await file.save(buffer, {
+          contentType: "image/png",
+          public: true,
+          metadata: {
+            cacheControl: "public,max-age=31536000",
+          },
+        });
+
+        portada = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        logger.info(`✅ Portada subida correctamente: ${portada}`);
+      } catch (error) {
+        logger.error("❌ Error al subir portada:", error);
+        throw new Error("Error al subir la imagen de portada");
+      }
+    }
+
+    // 📝 Guardar plantilla en Firestore
+    await db.collection("plantillas").doc(id).set({
+      ...datos,
+      portada, // 🔥 Ya sea subida ahora o provista por el frontend
+    });
+
     logger.info(`✅ Plantilla '${id}' creada con éxito`);
-    return { success: true };
+    return { success: true, portada };
   }
 );
 

@@ -324,39 +324,64 @@ if (!usuario) return null; // Seguridad por si no se redirige
 {/* Guardar como plantilla */}
 <button
   onClick={async () => {
-    const nombre = prompt("¿Qué nombre querés darle a la nueva plantilla?");
-    if (!nombre) return;
+  const nombre = prompt("¿Qué nombre querés darle a la nueva plantilla?");
+  if (!nombre) return;
 
-    try {
-      const ref = doc(db, "borradores", slugInvitacion);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) throw new Error("No se encontró el borrador");
+  try {
+    const ref = doc(db, "borradores", slugInvitacion);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error("No se encontró el borrador");
 
-      const data = snap.data();
+    const data = snap.data();
 
-      const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+    const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
 
-      const functions = getFunctions();
-      const crearPlantilla = httpsCallable(functions, "crearPlantilla");
-
-      await crearPlantilla({
-        id,
-        datos: {
-          nombre,
-          tipo: "boda",
-          portada: "https://reservaeldia.com.ar/img/previews/boda-parallax.jpg",
-          editor: "konva",
-          objetos: data.objetos,
-        },
-      });
-
-      alert("✅ La plantilla se guardó correctamente.");
-    } catch (error) {
-      console.error("❌ Error al guardar plantilla:", error);
-      alert("Ocurrió un error al guardar la plantilla.");
+    // ✅ Capturar imagen del canvas
+    const stage = window.canvasEditor?.stageRef;
+    if (!stage) {
+      alert("❌ El editor no está listo todavía.");
+      return;
     }
-  }}
-  className="px-4 py-2 bg-purple-100 text-purple-800 rounded hover:bg-purple-200 transition text-sm"
+
+    const dataURL = stage.toDataURL({ pixelRatio: 2 });
+
+    // ✅ Subir imagen a Firebase Storage
+    const res = await fetch(dataURL);
+    const blob = await res.blob();
+
+    const storage = (await import("firebase/storage")).getStorage();
+    const storageRef = (await import("firebase/storage")).ref(
+      storage,
+      `previews/plantillas/${id}.png`
+    );
+
+    await (await import("firebase/storage")).uploadBytes(storageRef, blob);
+
+    const portada = await (await import("firebase/storage")).getDownloadURL(storageRef);
+
+    // ✅ Llamar a función cloud con datos (sin imagen)
+    const functions = getFunctions();
+    const crearPlantilla = httpsCallable(functions, "crearPlantilla");
+
+    await crearPlantilla({
+      id,
+      datos: {
+        nombre,
+        tipo: "boda",
+        portada,
+        editor: "konva",
+        objetos: data.objetos,
+        secciones: data.secciones,
+      },
+    });
+
+    alert("✅ La plantilla se guardó correctamente.");
+  } catch (error) {
+    console.error("❌ Error al guardar plantilla:", error);
+    alert("Ocurrió un error al guardar la plantilla.");
+  }
+}}
+
 >
   Guardar como plantilla
 </button>
@@ -388,10 +413,7 @@ if (!usuario) return null; // Seguridad por si no se redirige
   const result = await publicarInvitacion({ slug: slugInvitacion });
   const urlFinal = result.data?.url;
 
-  // ✅ Generar preview
-  const generarPreview = httpsCallable(getFunctions(), "generarPreviewBorrador");
-  await generarPreview({ slug: slugInvitacion });
-
+ 
   if (urlFinal) window.open(urlFinal, "_blank");
 } catch (error) {
   alert("❌ Error al publicar la invitación.");

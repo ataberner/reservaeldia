@@ -59,7 +59,7 @@ export default function BorradoresGrid() {
       {borradores.map((borrador) => (
         <div
           key={borrador.slug}
-          className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 max-w-sm mx-auto"
+          className="w-[300px] bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200"
         >
           <div className="w-full h-52 bg-gray-100 overflow-hidden">
             <img

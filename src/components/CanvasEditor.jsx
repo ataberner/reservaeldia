@@ -1489,13 +1489,15 @@ useEffect(() => {
   window.canvasEditor = {
     deshacer: onDeshacer,
     rehacer: onRehacer,
-    getHistorial: () => ({ historial: historial.length, futuros: futuros.length })
+    stageRef: stageRef.current, // ✅ ahora sí
+    getHistorial: () => ({ historial: historial.length, futuros: futuros.length }),
   };
 
   return () => {
     delete window.canvasEditor;
   };
-}, [onDeshacer, onRehacer, historial.length, futuros.length]);
+}, [onDeshacer, onRehacer, historial.length, futuros.length, stageRef]);
+
 
 
 // En CanvasEditor.jsx, reemplazar la función detectarInterseccionLinea

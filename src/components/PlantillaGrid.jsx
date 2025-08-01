@@ -24,16 +24,14 @@ const crearCopia = async (plantilla) => {
   try {
     const functions = getFunctions();
     const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
-    const generarPreview = httpsCallable(functions, "generarPreviewBorrador");
+    
 
     const slug = `${generarSlug(plantilla.nombre)}-${Date.now()}`;
 
     const result = await copiarPlantilla({ plantillaId: plantilla.id, slug });
     console.log("✅ Resultado:", result.data);
 
-    // 🔥 Generar thumbnail automáticamente
-    await generarPreview({ slug });
-
+  
     return result.data.slug;
   } catch (error) {
     console.error("❌ Error:", error);
@@ -46,34 +44,39 @@ const crearCopia = async (plantilla) => {
 
 
   return (
-    <div className="grid grid-cols-2 gap-4">
-      {(plantillas || []).map((p) => (
-        <div key={p.id} className="border p-4 rounded shadow">
-                {p.portada && (
-                <div className="mb-2 w-full h-48 overflow-hidden rounded shadow border border-gray-200">
-  <img
-    src={`https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.appspot.com/o/plantillas%2F${p.id}%2Fpreview.png?alt=media`}
-    alt={`Preview de ${p.nombre}`}
-    className="w-full h-full object-cover"
-    loading="lazy"
-  />
-</div>
-
-              )}
-
-          <h3 className="text-lg font-semibold">{p.nombre}</h3>
-          <button
- onClick={async () => {
-  const slug = await crearCopia(p);
-  if (slug) onSeleccionarPlantilla(slug, p);
-}}
-
->
-  {loadingId === p.id ? "Copiando..." : "Usar esta plantilla"}
-</button>
-
-        </div>
-      ))}
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 mt-8">
+    {plantillas.map((p) => (
+  <div
+    key={p.id}
+    className="w-[300px] bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200"
+  >
+    <div className="w-full h-[340px] bg-gray-100 overflow-hidden">
+      <img
+        src={p.portada || "/placeholder.jpg"}
+        alt={`Vista previa de ${p.nombre}`}
+        className="w-full h-full object-cover object-top"
+      />
     </div>
-  );
+
+    <div className="p-3">
+      <h3 className="text-sm font-semibold text-gray-800 truncate text-center">{p.nombre}</h3>
+      <div className="flex justify-center mt-3">
+        <button
+          onClick={async () => {
+            const slug = await crearCopia(p);
+            if (slug) onSeleccionarPlantilla(slug, p);
+          }}
+          className="bg-purple-600 text-white text-xs px-3 py-2 rounded hover:bg-purple-700 transition"
+          disabled={loadingId === p.id}
+        >
+          {loadingId === p.id ? "Copiando..." : "Usar esta plantilla"}
+        </button>
+      </div>
+    </div>
+  </div>
+))}
+
+  </div>
+);
+
 }

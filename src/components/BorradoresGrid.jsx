@@ -51,42 +51,38 @@ export default function BorradoresGrid() {
 
   if (!borradores.length) return <p className="text-gray-500">Aún no tenés borradores.</p>;
 
-  return (
-  <div className="mt-8">
-    <h2 className="text-xl font-bold mb-4">Tus borradores</h2>
+return (
+  <div className="mt-12">
+    <h2 className="text-xl font-bold mb-6 text-center">Tus borradores</h2>
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
-      {borradores.map((borrador) => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-6 justify-center">
+      {borradores.map((b) => (
         <div
-          key={borrador.slug}
-          className="w-[300px] bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200"
+          key={b.slug}
+          className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
         >
-          <div className="w-full h-52 bg-gray-100 overflow-hidden">
+          {/* Imagen cuadrada */}
+          <div className="aspect-square bg-gray-100 overflow-hidden">
             <img
-              src={borrador.thumbnailUrl || "/placeholder.jpg"}
-              alt={`Vista previa de ${borrador.nombre}`}
-              className="w-full h-full object-cover object-top"
+              src={b.thumbnailUrl || "/placeholder.jpg"}
+              alt={`Vista previa de ${b.nombre || b.slug}`}
+              className="w-full h-full object-cover object-top transition-transform duration-300 hover:scale-105"
             />
           </div>
 
+          {/* Nombre y botones */}
+          <div className="p-2 flex flex-col items-center text-center">
+            <h3 className="text-xs sm:text-sm font-medium text-gray-700 truncate w-full">
+              {b.nombre || b.slug}
+            </h3>
 
-
-          <div className="p-4">
-            <h3 className="text-md font-semibold text-gray-800 truncate">{borrador.nombre || borrador.slug}</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              Última edición:{" "}
-              {borrador.ultimaEdicion?.seconds
-                ? new Date(borrador.ultimaEdicion.seconds * 1000).toLocaleDateString()
-                : "Sin fecha"}
-            </p>
-
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-2">
               <button
-                className="bg-purple-600 text-white text-xs px-3 py-1 rounded hover:bg-purple-700 transition"
+                className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-full hover:bg-purple-700 transition"
                 onClick={() => {
                   const detalle = {
-                    slug: borrador.slug || borrador.id,
-                    editor: borrador.editor || "iframe",
+                    slug: b.slug || b.id,
+                    editor: b.editor || "iframe",
                   };
                   window.dispatchEvent(new CustomEvent("abrir-borrador", { detail: detalle }));
                 }}
@@ -95,8 +91,8 @@ export default function BorradoresGrid() {
               </button>
 
               <button
-                className="bg-red-100 text-red-600 text-xs px-3 py-1 rounded hover:bg-red-200 transition"
-                onClick={() => borrarBorrador(borrador.slug)}
+                className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-full hover:bg-red-200 transition"
+                onClick={() => borrarBorrador(b.slug)}
               >
                 Borrar
               </button>
@@ -107,5 +103,8 @@ export default function BorradoresGrid() {
     </div>
   </div>
 );
+
+
+
 
 }

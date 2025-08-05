@@ -215,117 +215,96 @@ export default function Dashboard() {
         </>
       )}
 
-      {slugInvitacion && (
-        <>
-          {/* Barra superior de acciones */}
-          <div className="fixed top-0 left-0 right-0 z-40 mb-6 flex items-center flex-wrap gap-3 bg-white p-3 shadow-lg border-b border-gray-200">
+      {/* 🔹 Barra superior fija y fina */}
+      <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
+
+        {slugInvitacion ? (
+          /* ----------------- 🟣 Modo edición ----------------- */
+          <div className="flex items-center gap-2 flex-1">
             {/* Botón volver */}
             <button
               onClick={() => {
                 setSlugInvitacion(null);
                 setModoEditor(null);
               }}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition"
+              className="flex items-center gap-2 px-2 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition"
             >
-              ← Volver al menú
+              ← Volver
             </button>
 
             {/* Zoom */}
             <div className="relative group">
               <button
                 onClick={toggleZoom}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white text-gray-800 border border-gray-300 rounded-full shadow hover:bg-gray-100 transition"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-white text-gray-800 border border-gray-300 rounded shadow hover:bg-gray-100 transition"
               >
-                <span className="text-base">{zoom === 1 ? "➖" : "➕"}</span>
-                <span className="text-sm font-medium">{zoom === 1 ? "100%" : "50%"}</span>
+                <span>{zoom === 1 ? "➖" : "➕"}</span>
+                <span>{zoom === 1 ? "100%" : "50%"}</span>
               </button>
-              <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
-                {zoom === 1 ? "Alejar al 50%" : "Acercar al 100%"}
+              <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
+                {zoom === 1 ? "Alejar 50%" : "Acercar 100%"}
               </div>
             </div>
-            <div className="flex gap-2 items-center">
-              {/* Botón Deshacer */}
-              <div className="relative group">
-                <div className="inline-block">
-                  <button
-                    onClick={() => {
-                      console.log("🔘 Botón deshacer clickeado");
 
-                      // Método 1: Llamar función directa (preferido)
-                      if (window.canvasEditor?.deshacer) {
-                        window.canvasEditor.deshacer();
-                      } else {
-                        // Método 2: Fallback con evento
-                        console.log("⚠️ Usando fallback de evento");
-                        const e = new KeyboardEvent('keydown', {
-                          key: 'z',
-                          ctrlKey: true,
-                          bubbles: true
-                        });
-                        document.dispatchEvent(e);
-                      }
-                    }}
-                    disabled={historialExternos.length <= 1}
-                    className={`px-3 py-2 rounded-full transition-all duration-200 flex items-center gap-1 ${historialExternos.length <= 1
-                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                      : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
-                      }`}
-                  >
-                    <span>⟲</span>
-                    {historialExternos.length > 1 && (
-                      <span className="text-xs bg-purple-100 text-purple-600 px-1 rounded-full min-w-[16px] text-center">
-                        {historialExternos.length - 1}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Tooltip mejorado */}
-                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition pointer-events-none">
-                  Deshacer ({historialExternos.length - 1} disponibles)<br />
-                  <span className="text-gray-300">Ctrl + Z</span>
-                </div>
+            {/* 🔹 Botón Deshacer */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  if (window.canvasEditor?.deshacer) {
+                    window.canvasEditor.deshacer();
+                  } else {
+                    const e = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true });
+                    document.dispatchEvent(e);
+                  }
+                }}
+                disabled={historialExternos.length <= 1}
+                className={`px-2 py-1 rounded-full text-xs transition-all duration-200 flex items-center gap-1 ${historialExternos.length <= 1
+                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
+                  }`}
+              >
+                ⟲
+                {historialExternos.length > 1 && (
+                  <span className="text-[10px] bg-purple-100 text-purple-600 px-1 rounded-full min-w-[14px] text-center">
+                    {historialExternos.length - 1}
+                  </span>
+                )}
+              </button>
+              {/* Tooltip */}
+              <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                Deshacer ({Math.max(historialExternos.length - 1, 0)})
+                <br /><span className="text-gray-300">Ctrl+Z</span>
               </div>
+            </div>
 
-              {/* Botón Rehacer */}
-              <div className="relative group">
-                <button
-                  onClick={() => {
-                    console.log("🔘 Botón rehacer clickeado");
-
-                    // Método 1: Llamar función directa (preferido)
-                    if (window.canvasEditor?.rehacer) {
-                      window.canvasEditor.rehacer();
-                    } else {
-                      // Método 2: Fallback con evento
-                      console.log("⚠️ Usando fallback de evento");
-                      const e = new KeyboardEvent('keydown', {
-                        key: 'y',
-                        ctrlKey: true,
-                        bubbles: true
-                      });
-                      document.dispatchEvent(e);
-                    }
-                  }}
-                  disabled={futurosExternos.length === 0}
-                  className={`px-3 py-2 rounded-full transition-all duration-200 flex items-center gap-1 ${futurosExternos.length === 0
-                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
-                    }`}
-                >
-                  <span>⟳</span>
-                  {futurosExternos.length > 0 && (
-                    <span className="text-xs bg-green-100 text-green-600 px-1 rounded-full min-w-[16px] text-center">
-                      {futurosExternos.length}
-                    </span>
-                  )}
-                </button>
-
-                {/* Tooltip mejorado */}
-                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-black text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition pointer-events-none">
-                  Rehacer ({futurosExternos.length} disponibles)<br />
-                  <span className="text-gray-300">Ctrl + Y</span>
-                </div>
+            {/* 🔹 Botón Rehacer */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  if (window.canvasEditor?.rehacer) {
+                    window.canvasEditor.rehacer();
+                  } else {
+                    const e = new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, bubbles: true });
+                    document.dispatchEvent(e);
+                  }
+                }}
+                disabled={futurosExternos.length === 0}
+                className={`px-2 py-1 rounded-full text-xs transition-all duration-200 flex items-center gap-1 ${futurosExternos.length === 0
+                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
+                  }`}
+              >
+                ⟳
+                {futurosExternos.length > 0 && (
+                  <span className="text-[10px] bg-green-100 text-green-600 px-1 rounded-full min-w-[14px] text-center">
+                    {futurosExternos.length}
+                  </span>
+                )}
+              </button>
+              {/* Tooltip */}
+              <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                Rehacer ({futurosExternos.length})
+                <br /><span className="text-gray-300">Ctrl+Y</span>
               </div>
             </div>
 
@@ -339,10 +318,9 @@ export default function Dashboard() {
                 try {
                   const ref = doc(db, "borradores", slugInvitacion);
                   const snap = await getDoc(ref);
-                  if (!snap.exists()) throw new Error("No se encontró el borrador");
+                  if (!snap.exists) throw new Error("No se encontró el borrador");
 
                   const data = snap.data();
-
                   const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
 
                   // ✅ Capturar imagen del canvas
@@ -353,22 +331,20 @@ export default function Dashboard() {
                   }
 
                   const dataURL = stage.toDataURL({ pixelRatio: 2 });
-
-                  // ✅ Subir imagen a Firebase Storage
                   const res = await fetch(dataURL);
                   const blob = await res.blob();
 
+                  // ✅ Subir imagen a Firebase Storage
                   const storage = (await import("firebase/storage")).getStorage();
                   const storageRef = (await import("firebase/storage")).ref(
                     storage,
                     `previews/plantillas/${id}.png`
                   );
-
                   await (await import("firebase/storage")).uploadBytes(storageRef, blob);
 
                   const portada = await (await import("firebase/storage")).getDownloadURL(storageRef);
 
-                  // ✅ Llamar a función cloud con datos (sin imagen)
+                  // ✅ Crear plantilla en Firestore
                   const functions = getFunctions();
                   const crearPlantilla = httpsCallable(functions, "crearPlantilla");
 
@@ -390,18 +366,18 @@ export default function Dashboard() {
                   alert("Ocurrió un error al guardar la plantilla.");
                 }
               }}
-
+              className="px-3 py-1 bg-yellow-400 text-gray-800 rounded hover:bg-yellow-500 transition text-xs"
             >
-              Guardar como plantilla
+              Guardar plantilla
             </button>
 
 
 
-            {/* Vista previa y Generar invitación */}
-            <div className="flex gap-3 items-center ml-auto">
+            {/* Botones Vista previa / Generar invitación */}
+            <div className="flex gap-2 ml-auto">
               <button
                 onClick={generarVistaPrevia}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm flex items-center gap-2"
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs flex items-center gap-1"
               >
                 Vista previa
               </button>
@@ -411,9 +387,7 @@ export default function Dashboard() {
                   const confirmar = confirm("¿Querés publicar esta invitación?");
                   if (!confirmar) return;
 
-                  const functions = await import("firebase/functions").then((mod) =>
-                    mod.getFunctions()
-                  );
+                  const functions = await import("firebase/functions").then((mod) => mod.getFunctions());
                   const publicarInvitacion = await import("firebase/functions").then((mod) =>
                     mod.httpsCallable(functions, "publicarInvitacion")
                   );
@@ -421,73 +395,75 @@ export default function Dashboard() {
                   try {
                     const result = await publicarInvitacion({ slug: slugInvitacion });
                     const urlFinal = result.data?.url;
-
-
                     if (urlFinal) window.open(urlFinal, "_blank");
                   } catch (error) {
                     alert("❌ Error al publicar la invitación.");
                     console.error(error);
                   }
-
                 }}
-                className="px-4 py-2 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-sm"
+                className="px-3 py-1 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-xs"
               >
-                Generar invitación
+                Generar
               </button>
-
-              {/* 🔹 Menú desplegable de usuario */}
-              <div className="relative" ref={menuRef}>
-                <div
-                  className="flex items-center gap-2 cursor-pointer rounded-full px-1 py-1 transition-all duration-200 hover:bg-gray-100"
-                  onClick={() => setMenuAbierto(!menuAbierto)}
-                >
-                  {usuario?.photoURL ? (
-                    <img
-                      src={usuario.photoURL}
-                      alt="Foto de perfil"
-                      className="w-8 h-8 rounded-full object-cover transition-transform duration-200 hover:scale-105"
-                      title={usuario.displayName || usuario.email || 'Usuario'}
-                    />
-                  ) : (
-                    <div
-                      className="w-8 h-8 flex items-center justify-center rounded-full text-white font-semibold transition-transform duration-200 hover:scale-105"
-                      style={{ backgroundColor: "#773dbe" }}
-                      title={usuario?.displayName || usuario?.email || 'Usuario'}
-                    >
-                      {usuario?.email?.[0]?.toUpperCase() || "U"}
-                    </div>
-                  )}
-                  <span className="text-gray-600 text-sm">▼</span>
-                </div>
-
-                {menuAbierto && (
-                  <div className="absolute right-0 mt-2 w-40 bg-white border rounded shadow-lg py-1 z-50 origin-top-right animate-fade-slide">
-                    <button
-                      onClick={async () => {
-                        const { getAuth, signOut } = await import("firebase/auth");
-                        const auth = getAuth();
-
-                        await signOut(auth); // 🔹 Cierra sesión en Firebase
-                        window.location.href = "/"; // 🔹 Redirige al index
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      Cerrar sesión
-                    </button>
-
-                  </div>
-                )}
-              </div>
-
             </div>
           </div>
+        ) : (
+          /* ----------------- 🟢 Vista dashboard ----------------- */
+          <div className="flex items-center gap-2 flex-1">
+            <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
+            <span className="text-xs font-semibold text-gray-700 hidden sm:block">DASHBOARD</span>
+          </div>
+        )}
+
+        {/* 🔹 Menú usuario siempre visible */}
+        <div className="relative ml-2" ref={menuRef}>
+          <div
+            className="flex items-center gap-1 cursor-pointer rounded-full px-1 py-1 transition-all duration-200 hover:bg-gray-100"
+            onClick={() => setMenuAbierto(!menuAbierto)}
+          >
+            {usuario?.photoURL ? (
+              <img
+                src={usuario.photoURL}
+                alt="Foto de perfil"
+                className="w-7 h-7 rounded-full object-cover transition-transform duration-200 hover:scale-105"
+                title={usuario.displayName || usuario.email || 'Usuario'}
+              />
+            ) : (
+              <div
+                className="w-7 h-7 flex items-center justify-center rounded-full text-white text-xs font-semibold transition-transform duration-200 hover:scale-105"
+                style={{ backgroundColor: "#773dbe" }}
+                title={usuario?.displayName || usuario?.email || 'Usuario'}
+              >
+                {usuario?.email?.[0]?.toUpperCase() || "U"}
+              </div>
+            )}
+            <span className="text-gray-600 text-xs">▼</span>
+          </div>
+
+          {menuAbierto && (
+            <div className="absolute right-0 mt-1 w-36 bg-white border rounded shadow-md py-1 z-50 origin-top-right animate-fade-slide text-xs">
+              <button
+                onClick={async () => {
+                  const { getAuth, signOut } = await import("firebase/auth");
+                  const auth = getAuth();
+                  await signOut(auth);
+                  window.location.href = "/";
+                }}
+                className="w-full text-left px-3 py-1 hover:bg-gray-100 transition-colors"
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
 
 
 
-
-
-          {/* Editor */}
+      {/* Editor de invitación */}
+      {slugInvitacion && (
+        <>
           {modoEditor === "konva" && (
             <CanvasEditor
               slug={slugInvitacion}
@@ -511,14 +487,8 @@ export default function Dashboard() {
               <div
                 style={{
                   ...(zoom < 1
-                    ? {
-                      transform: `scale(0.8)`,
-                      transformOrigin: "top center",
-                      width: "800px",
-                    }
-                    : {
-                      width: "100%",
-                    }),
+                    ? { transform: `scale(0.8)`, transformOrigin: "top center", width: "800px" }
+                    : { width: "100%" }),
                 }}
               >
                 <iframe

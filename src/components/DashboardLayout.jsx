@@ -23,7 +23,7 @@ function escalarParaAncho(imgWidth, imgHeight, canvasWidth = 800) {
   const ratio = imgHeight / imgWidth;
   const width = canvasWidth;
   const height = width * ratio;
-  
+
   return { width, height };
 }
 
@@ -38,58 +38,58 @@ export default function DashboardLayout({ children, mostrarMiniToolbar, seccionA
   const modalCrear = useModalCrearSeccion();
 
 
-useEffect(() => {
-  corregirURLsInvalidas(); // 🔧 Se ejecuta automáticamente al entrar
-}, []);
+  useEffect(() => {
+    corregirURLsInvalidas(); // 🔧 Se ejecuta automáticamente al entrar
+  }, []);
 
 
-const {
-  imagenes,
-  imagenesEnProceso,
-  cargarImagenes,
-  subirImagen,
-  borrarImagen,
-  hayMas,
-  cargando,
-} = useMisImagenes();
+  const {
+    imagenes,
+    imagenesEnProceso,
+    cargarImagenes,
+    subirImagen,
+    borrarImagen,
+    hayMas,
+    cargando,
+  } = useMisImagenes();
 
-const { abrirSelector, componenteInput } = useUploaderDeImagen(subirImagen);
-
-
-useEffect(() => {
-  if (!mostrarMiniToolbar) {
-    setMostrarGaleria(false);
-    setMostrarPanelFormas(false);
-    setModoFormasCompleto(false);
-  }
-}, [mostrarMiniToolbar]);
+  const { abrirSelector, componenteInput } = useUploaderDeImagen(subirImagen);
 
 
-    useEffect(() => {
-        const handleClickFuera = (e) => {
-          const sidebar = document.querySelector("aside");
-          if (!sidebar) return;
+  useEffect(() => {
+    if (!mostrarMiniToolbar) {
+      setMostrarGaleria(false);
+      setMostrarPanelFormas(false);
+      setModoFormasCompleto(false);
+    }
+  }, [mostrarMiniToolbar]);
 
-          if (!sidebar.contains(e.target) && !fijadoSidebar) {
-            setHoverSidebar(false);
-          }
-        };
 
-        document.addEventListener("mousedown", handleClickFuera);
-        return () => document.removeEventListener("mousedown", handleClickFuera);
-      }, [fijadoSidebar]);
+  useEffect(() => {
+    const handleClickFuera = (e) => {
+      const sidebar = document.querySelector("aside");
+      if (!sidebar) return;
 
-      useEffect(() => {
-  const sidebarAbierta = fijadoSidebar || hoverSidebar;
+      if (!sidebar.contains(e.target) && !fijadoSidebar) {
+        setHoverSidebar(false);
+      }
+    };
 
-  if (!sidebarAbierta) {
-    setMostrarGaleria(false);
-    setMostrarPanelFormas(false);
-    setModoFormasCompleto(false);
-  }
-}, [fijadoSidebar, hoverSidebar]);
+    document.addEventListener("mousedown", handleClickFuera);
+    return () => document.removeEventListener("mousedown", handleClickFuera);
+  }, [fijadoSidebar]);
 
-  
+  useEffect(() => {
+    const sidebarAbierta = fijadoSidebar || hoverSidebar;
+
+    if (!sidebarAbierta) {
+      setMostrarGaleria(false);
+      setMostrarPanelFormas(false);
+      setModoFormasCompleto(false);
+    }
+  }, [fijadoSidebar, hoverSidebar]);
+
+
 
   const ejecutarCrearPlantilla = async () => {
     const confirmar = confirm("¿Querés crear la plantilla?");
@@ -163,11 +163,11 @@ useEffect(() => {
                 lineHeight: 1.2          // Espaciado entre líneas
               },
               {
-              id: "hoja",
-              tipo: "imagen",
-              src: "https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.firebasestorage.app/o/plantillas%2Fboda-clasica%2Fimg%2Fhoja-portada.png?alt=media&token=f7c2abf4-86f2-480a-9566-116f56435409",
-              x: 100,
-              y: 300,
+                id: "hoja",
+                tipo: "imagen",
+                src: "https://firebasestorage.googleapis.com/v0/b/reservaeldia-7a440.firebasestorage.app/o/plantillas%2Fboda-clasica%2Fimg%2Fhoja-portada.png?alt=media&token=f7c2abf4-86f2-480a-9566-116f56435409",
+                x: 100,
+                y: 300,
               }
 
             ]
@@ -183,228 +183,229 @@ useEffect(() => {
     };
   };
 
-const sidebarAbierta = fijadoSidebar || hoverSidebar;
+  const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
   return (
     <div className="flex h-screen bg-gray-100">
-      
 
-              {/* Sidebar */}  
 
-              {componenteInput} {/* input invisible que va a manejar la carga */}
+      {/* Sidebar */}
 
-{!modoSelector && (
-              <aside
+      {componenteInput} {/* input invisible que va a manejar la carga */}
+
+      {!modoSelector && (
+        <aside
           onMouseEnter={() => setHoverSidebar(true)}
           onMouseLeave={() => {
-  if (
-    typeof window !== "undefined" &&
-    (window.modoEdicionCanvas || imagenesSeleccionadas > 0)
-  ) return;
-  setHoverSidebar(false);
-}}
+            if (
+              typeof window !== "undefined" &&
+              (window.modoEdicionCanvas || imagenesSeleccionadas > 0)
+            ) return;
+            setHoverSidebar(false);
+          }}
 
 
 
           className={`bg-gradient-to-b from-purple-800 via-purple-900 to-purple-950 text-white transition-all duration-300 shadow-xl
     ${sidebarAbierta ? "w-80" : "w-16"} px-0 py-2 flex flex-col gap-2`}
-    style={{ 
-    position: 'fixed',
-    top: modoSelector ? '0px' : '70px',
-    left: 0,
-    height: modoSelector ? '100vh' : 'calc(100vh - 70px)',
-    zIndex: 30
-  }}
+          style={{
+            position: 'fixed',
+            top: modoSelector ? '0px' : '40px',   // 🔹 antes 70px
+            left: 0,
+            height: modoSelector ? '100vh' : 'calc(100vh - 40px)', // 🔹 antes 70px
+            zIndex: 30
+          }}
+
         >
 
 
-<div className="p-4 border-purple-700 flex flex-col gap-4">
-  {/* Menú */}
-  <div
-    className="flex items-center justify-start h-12 cursor-pointer transition"
-    onClick={() => setFijadoSidebar(!fijadoSidebar)}
-  >
-    <FaBars className="text-white text-xl flex-shrink-0" />
-    {sidebarAbierta && (
-      <>
-        <span className="font-bold px-2">Menú</span>
-        {fijadoSidebar ? (
-          <FaLock className="text-white text-sm ml-1" title="Fijado" />
-        ) : (
-          <FaLockOpen className="text-white text-sm ml-1" title="No fijado" />
-        )}
-      </>
-    )}
-  </div>
+          <div className="p-4 border-purple-700 flex flex-col gap-4">
+            {/* Menú */}
+            <div
+              className="flex items-center justify-start h-12 cursor-pointer transition"
+              onClick={() => setFijadoSidebar(!fijadoSidebar)}
+            >
+              <FaBars className="text-white text-xl flex-shrink-0" />
+              {sidebarAbierta && (
+                <>
+                  <span className="font-bold px-2">Menú</span>
+                  {fijadoSidebar ? (
+                    <FaLock className="text-white text-sm ml-1" title="Fijado" />
+                  ) : (
+                    <FaLockOpen className="text-white text-sm ml-1" title="No fijado" />
+                  )}
+                </>
+              )}
+            </div>
 
-  {/* Toolbar + Panel */}
-  <div className="flex flex-col gap-2 w-full">
-   {modoFormasCompleto ? (
-  <>
-     <button
-      onClick={() => setModoFormasCompleto(false)}
-      className="text-left text-sm text-white underline mb-2"
-    >
-      ← Formas
-    </button>
+            {/* Toolbar + Panel */}
+            <div className="flex flex-col gap-2 w-full">
+              {modoFormasCompleto ? (
+                <>
+                  <button
+                    onClick={() => setModoFormasCompleto(false)}
+                    className="text-left text-sm text-white underline mb-2"
+                  >
+                    ← Formas
+                  </button>
 
-    <div className="flex-1 overflow-y-auto pr-2">
-      <PanelDeFormas
-        abierto={true}
-        sidebarAbierta={sidebarAbierta}
-        seccionActivaId={seccionActivaId}
-        onInsertarForma={(obj) => {
-          window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }));
-        }}
-        onInsertarIcono={(obj) => {
-          window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }));
-        }}
+                  <div className="flex-1 overflow-y-auto pr-2">
+                    <PanelDeFormas
+                      abierto={true}
+                      sidebarAbierta={sidebarAbierta}
+                      seccionActivaId={seccionActivaId}
+                      onInsertarForma={(obj) => {
+                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }));
+                      }}
+                      onInsertarIcono={(obj) => {
+                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }));
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <MiniToolbar
+                  visible={mostrarMiniToolbar}
+                  sidebarAbierta={sidebarAbierta}
+                  onAgregarTexto={(e) => {
+                    e?.stopPropagation?.();
+                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                      detail: {
+                        id: `texto-${Date.now()}`,
+                        tipo: "texto",
+                        texto: "Texto",
+                        x: 100,
+                        y: 100,
+                        fontSize: 24,
+                        color: "#000000",
+                        fontFamily: "sans-serif",
+                        fontWeight: "normal",
+                        fontStyle: "normal",
+                        textDecoration: "none",
+                        rotation: 0,
+                        scaleX: 1,
+                        scaleY: 1,
+                      }
+                    }));
+
+                  }}
+                  onAgregarForma={(e) => {
+                    e?.stopPropagation?.();
+                    setModoFormasCompleto(true); // 🟣 Entrar a modo "formulario completo"
+                  }}
+                  onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
+                  cerrarSidebar={!fijadoSidebar ? () => setHoverSidebar(false) : undefined}
+                  galeriaAbierta={mostrarGaleria}
+                  mostrarPanelFormas={false}
+                  PanelDeFormasComponent={null}
+                />
+              )}
+
+
+            </div>
+
+
+
+            {mostrarGaleria && (
+              <div
+                className="text-sm text-white overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                  maxHeight: "600px",
+                  opacity: 1,
+                  transition: "max-height 0.3s ease, opacity 0.3s ease",
+                }}
+              >
+                <div className="flex flex-col items-start gap-2 transition-all duration-300">
+                  {/* Botón para subir imagen */}
+                  <button
+                    onClick={abrirSelector}
+                    className="bg-white text-purple-800 px-3 py-1 rounded hover:bg-purple-200 transition text-sm"
+                  >
+                    Subir imagen
+                  </button>
+
+                  {/* Galería */}
+                  <GaleriaDeImagenes
+                    imagenes={imagenes}
+                    imagenesEnProceso={imagenesEnProceso}
+                    cargarImagenes={cargarImagenes}
+                    borrarImagen={borrarImagen}
+                    hayMas={hayMas}
+                    seccionActivaId={seccionActivaId}
+                    cargando={cargando}
+                    onInsertar={(nuevo) => {
+                      window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
+                      setMostrarGaleria(false);
+                    }}
+                    onSeleccionadasChange={setImagenesSeleccionadas}
+                  />
+
+                </div>
+              </div>
+
+            )}
+
+            {sidebarAbierta && (
+              <>
+                {/* Crear plantilla */}
+                <button
+                  onClick={ejecutarCrearPlantilla}
+                  className="hover:underline"
+                >
+                  ✨ Crear plantilla
+                </button>
+
+                {/* Borrar todos */}
+                <button
+                  onClick={async () => {
+                    const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
+                    if (!confirmar) return;
+
+                    try {
+                      const functions = getFunctions();
+                      const borrarTodos = httpsCallable(functions, "borrarTodosLosBorradores");
+                      await borrarTodos();
+                      alert("✅ Todos los borradores fueron eliminados.");
+                      window.location.reload();
+                    } catch (error) {
+                      console.error("❌ Error al borrar todos los borradores", error);
+                      alert("No se pudieron borrar los borradores.");
+                    }
+                  }}
+                  className="hover:underline"
+                >
+                  🗑️ Borrar todos los borradores
+                </button>
+
+                {/* ➕ Añadir nueva sección */}
+                <div className="px-4 mt-auto pb-4">
+                  <button
+                    onClick={modalCrear.abrir}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded transition"
+                  >
+                    + Añadir sección
+                  </button>
+                </div>
+
+              </>
+            )}
+
+
+          </div>
+
+        </aside>
+
+      )}
+
+      <ModalCrearSeccion
+        visible={modalCrear.visible}
+        onClose={modalCrear.cerrar}
+        onConfirm={modalCrear.onConfirmar}
       />
-    </div>
-  </>
-) : (
-  <MiniToolbar
-    visible={mostrarMiniToolbar}
-    sidebarAbierta={sidebarAbierta}
-    onAgregarTexto={(e) => {
-      e?.stopPropagation?.();
-      window.dispatchEvent(new CustomEvent("insertar-elemento", {
-  detail: {
-    id: `texto-${Date.now()}`,
-    tipo: "texto",
-    texto: "Texto",
-    x: 100,
-    y: 100,
-    fontSize: 24,
-    color: "#000000",
-    fontFamily: "sans-serif",
-    fontWeight: "normal",
-    fontStyle: "normal",
-    textDecoration: "none",
-    rotation: 0,
-    scaleX: 1,
-    scaleY: 1,
-  }
-}));
-
-    }}
-    onAgregarForma={(e) => {
-      e?.stopPropagation?.();
-      setModoFormasCompleto(true); // 🟣 Entrar a modo "formulario completo"
-    }}
-    onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
-    cerrarSidebar={!fijadoSidebar ? () => setHoverSidebar(false) : undefined}
-    galeriaAbierta={mostrarGaleria}
-    mostrarPanelFormas={false}
-    PanelDeFormasComponent={null}
-  />
-)}
-     
-  
-</div>
-
-
-
-  {mostrarGaleria && (
-    <div
-      className="text-sm text-white overflow-hidden transition-all duration-300 ease-in-out"
-      style={{
-        maxHeight: "600px",
-        opacity: 1,
-        transition: "max-height 0.3s ease, opacity 0.3s ease",
-      }}
-    >
-    <div className="flex flex-col items-start gap-2 transition-all duration-300">
-        {/* Botón para subir imagen */}
-        <button
-          onClick={abrirSelector}
-          className="bg-white text-purple-800 px-3 py-1 rounded hover:bg-purple-200 transition text-sm"
-        >
-          Subir imagen
-        </button>
-
-      {/* Galería */}
-     <GaleriaDeImagenes
-          imagenes={imagenes}
-        imagenesEnProceso={imagenesEnProceso}
-        cargarImagenes={cargarImagenes}
-        borrarImagen={borrarImagen}
-        hayMas={hayMas}
-        seccionActivaId={seccionActivaId}
-        cargando={cargando}
-        onInsertar={(nuevo) => {
-          window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
-          setMostrarGaleria(false);
-        }}
-        onSeleccionadasChange={setImagenesSeleccionadas}
-      />
-      
-    </div>
-  </div>
-  
-)}
-
-{sidebarAbierta && (
-  <>
-{/* Crear plantilla */}
-      <button
-        onClick={ejecutarCrearPlantilla}
-        className="hover:underline"
-      >
-        ✨ Crear plantilla
-      </button>
-
-      {/* Borrar todos */}
-      <button
-        onClick={async () => {
-          const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
-          if (!confirmar) return;
-
-          try {
-            const functions = getFunctions();
-            const borrarTodos = httpsCallable(functions, "borrarTodosLosBorradores");
-            await borrarTodos();
-            alert("✅ Todos los borradores fueron eliminados.");
-            window.location.reload();
-          } catch (error) {
-            console.error("❌ Error al borrar todos los borradores", error);
-            alert("No se pudieron borrar los borradores.");
-          }
-        }}
-        className="hover:underline"
-      >
-        🗑️ Borrar todos los borradores
-      </button>
-
-      {/* ➕ Añadir nueva sección */}
-<div className="px-4 mt-auto pb-4">
-  <button
-    onClick={modalCrear.abrir}
-    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded transition"
-  >
-    + Añadir sección
-  </button>
-</div>
-
-</>
-)}
-
-
-</div>
-
-     </aside>
-
-)}
-
-<ModalCrearSeccion
-  visible={modalCrear.visible}
-  onClose={modalCrear.cerrar}
-  onConfirm={modalCrear.onConfirmar}
-/>
 
 
       {/* Área principal */}
-      <main className="flex-1 overflow-y-auto p-4">
+      <main className="flex-1 p-4 pt-16">
         {children}
       </main>
     </div>

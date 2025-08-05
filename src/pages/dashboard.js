@@ -168,10 +168,19 @@ export default function Dashboard() {
       mostrarMiniToolbar={!!slugInvitacion}
       seccionActivaId={seccionActivaId}
       modoSelector={!slugInvitacion}
+      slugInvitacion={slugInvitacion}
+      setSlugInvitacion={setSlugInvitacion}
+      setModoEditor={setModoEditor}
+      zoom={zoom}
+      toggleZoom={toggleZoom}
+      historialExternos={historialExternos}
+      futurosExternos={futurosExternos}
+      generarVistaPrevia={generarVistaPrevia}
+      usuario={usuario}
     >
 
       {!slugInvitacion && (
-        <>
+        <div className="w-full px-4 pb-8">
           <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
           {tipoSeleccionado && (
             <>
@@ -212,16 +221,16 @@ export default function Dashboard() {
             </>
           )}
           <BorradoresGrid />
-        </>
+        </div>
       )}
 
-      {/* 🔹 Barra superior fija y fina */}
+      {/* 🔹 Barra superior fija y fina 
       <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
 
         {slugInvitacion ? (
-          /* ----------------- 🟣 Modo edición ----------------- */
+          /* ----------------- 🟣 Modo edición ----------------- 
           <div className="flex items-center gap-2 flex-1">
-            {/* Botón volver */}
+            {/* Botón volver 
             <button
               onClick={() => {
                 setSlugInvitacion(null);
@@ -232,7 +241,7 @@ export default function Dashboard() {
               ← Volver
             </button>
 
-            {/* Zoom */}
+            {/* Zoom *
             <div className="relative group">
               <button
                 onClick={toggleZoom}
@@ -246,7 +255,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 🔹 Botón Deshacer */}
+            {/* 🔹 Botón Deshacer *
             <div className="relative group">
               <button
                 onClick={() => {
@@ -270,14 +279,14 @@ export default function Dashboard() {
                   </span>
                 )}
               </button>
-              {/* Tooltip */}
+              {/* Tooltip *
               <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition pointer-events-none">
                 Deshacer ({Math.max(historialExternos.length - 1, 0)})
                 <br /><span className="text-gray-300">Ctrl+Z</span>
               </div>
             </div>
 
-            {/* 🔹 Botón Rehacer */}
+            {/* 🔹 Botón Rehacer *
             <div className="relative group">
               <button
                 onClick={() => {
@@ -301,7 +310,7 @@ export default function Dashboard() {
                   </span>
                 )}
               </button>
-              {/* Tooltip */}
+              {/* Tooltip *
               <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition pointer-events-none">
                 Rehacer ({futurosExternos.length})
                 <br /><span className="text-gray-300">Ctrl+Y</span>
@@ -309,7 +318,7 @@ export default function Dashboard() {
             </div>
 
 
-            {/* Guardar como plantilla */}
+            {/* Guardar como plantilla *
             <button
               onClick={async () => {
                 const nombre = prompt("¿Qué nombre querés darle a la nueva plantilla?");
@@ -373,7 +382,7 @@ export default function Dashboard() {
 
 
 
-            {/* Botones Vista previa / Generar invitación */}
+            {/* Botones Vista previa / Generar invitación *
             <div className="flex gap-2 ml-auto">
               <button
                 onClick={generarVistaPrevia}
@@ -408,14 +417,14 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          /* ----------------- 🟢 Vista dashboard ----------------- */
+          /* ----------------- 🟢 Vista dashboard ----------------- 
           <div className="flex items-center gap-2 flex-1">
             <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
             <span className="text-xs font-semibold text-gray-700 hidden sm:block">DASHBOARD</span>
           </div>
         )}
 
-        {/* 🔹 Menú usuario siempre visible */}
+        {/* 🔹 Menú usuario siempre visible *
         <div className="relative ml-2" ref={menuRef}>
           <div
             className="flex items-center gap-1 cursor-pointer rounded-full px-1 py-1 transition-all duration-200 hover:bg-gray-100"
@@ -456,7 +465,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-      </div>
+      </div>*/}
 
 
 

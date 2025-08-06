@@ -3,11 +3,9 @@ import { useState, useEffect, useRef } from "react";
 import { Trash2, Heart, Star, Smile } from "lucide-react";
 
 
-
-
 export default function GaleriaDeImagenes({
-  imagenes,
-  imagenesEnProceso,
+  imagenes = [],           // ✅ Siempre será array aunque no llegue nada
+  imagenesEnProceso = [],  // ✅ Igual para imágenes en proceso
   cargarImagenes,
   cargando,
   seccionActivaId,
@@ -16,6 +14,7 @@ export default function GaleriaDeImagenes({
   onInsertar,
   onSeleccionadasChange
 }) {
+
 
   const [seleccionadas, setSeleccionadas] = useState([]);
   const [modoSeleccion, setModoSeleccion] = useState(false);

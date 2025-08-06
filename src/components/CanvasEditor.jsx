@@ -29,7 +29,7 @@ import { borrarSeccion as borrarSeccionExternal } from "@/utils/editorSecciones"
 import { moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import { determinarNuevaSeccion } from "@/utils/layout";
-
+import FondoSeccion from './editor/FondoSeccion';
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -66,235 +66,6 @@ const limpiarObjetoUndefined = (obj) => {
   
   return obj;
 };
-
-
-
-
-
-// Componente para secciones con fondo de imagen draggable
-const SeccionConFondoImagen = ({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset }) => {
-const [fondoImage] = useImage(seccion.fondoImagen, "anonymous");
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartPos = useRef(null);
-  
-  if (!fondoImage) {
-    // Mostrar fondo fallback mientras carga la imagen
-    return (
-      <Rect
-        id={seccion.id}
-        x={0}
-        y={offsetY}
-        width={800}
-        height={alturaPx}
-        fill={seccion.fondo || "#f0f0f0"}
-        listening={true}
-        onClick={onSelect}
-      />
-    );
-  }
-
-  // 🎯 CÁLCULOS PARA CUBRIR TODA LA SECCIÓN (COVER BEHAVIOR)
-  const canvasWidth = 800;
-  const canvasHeight = alturaPx;
-  const imageWidth = fondoImage.width;
-  const imageHeight = fondoImage.height;
-
-  // Calcular escalas para cubrir completamente la sección
-  const scaleX = canvasWidth / imageWidth;
-  const scaleY = canvasHeight / imageHeight;
-  const scale = Math.max(scaleX, scaleY); // 🔑 Usar la escala MAYOR para cubrir completamente
-
-  // Dimensiones finales de la imagen escalada
-  const scaledWidth = imageWidth * scale;
-  const scaledHeight = imageHeight * scale;
-
-  // Posición centrada por defecto
-  const offsetXCentrado = (canvasWidth - scaledWidth) / 2;
-  const offsetYCentrado = (canvasHeight - scaledHeight) / 2;
-  
-  // Posición final con offsets del usuario
-  const offsetXFinal = offsetXCentrado + (seccion.fondoImagenOffsetX || 0);
-  const offsetYFinal = offsetYCentrado + (seccion.fondoImagenOffsetY || 0);
-
-  return (
-    <Group>
-      {/* Fondo base (fallback) */}
-      <Rect
-        id={seccion.id}
-        x={0}
-        y={offsetY}
-        width={800}
-        height={alturaPx}
-        fill={seccion.fondo || "#f0f0f0"}
-        listening={true}
-        onClick={onSelect}
-      />
-      
-      {/* Máscara para recortar la imagen */}
-      <Group
-        clipX={0}
-        clipY={offsetY}
-        clipWidth={800}
-        clipHeight={alturaPx}
-      >
-        {/* Imagen de fondo draggable */}
-        <KonvaImage
-          image={fondoImage}
-          x={offsetXFinal}
-          y={offsetY + offsetYFinal}
-          width={scaledWidth}
-          height={scaledHeight}
-          draggable={seccion.fondoImagenDraggable}
-          listening={true}
-          
-          // 🔥 EVENTOS DE DRAG CORREGIDOS
-          onMouseDown={(e) => {
-            console.log("🖱️ MouseDown en imagen de fondo");
-            e.cancelBubble = true; // Prevenir propagación
-            setIsDragging(false); // Reset del estado
-            dragStartPos.current = e.target.getStage().getPointerPosition();
-          }}
-          
-          onDragStart={(e) => {
-            console.log("🚀 DragStart en imagen de fondo");
-            setIsDragging(true);
-            dragStartPos.current = e.target.getStage().getPointerPosition();
-            
-            // 🔥 PREVENIR CONFLICTOS CON OTROS ELEMENTOS
-            e.cancelBubble = true;
-            e.target.moveToTop(); // Mover al frente durante drag
-          }}
-          
-          onDragMove={(e) => {
-            if (!isDragging) return; // Solo procesar si estamos arrastrando
-            
-            console.log("🔄 DragMove en imagen de fondo");
-            const node = e.target;
-            
-            // 🔥 THROTTLE PARA MEJOR PERFORMANCE
-            if (window._fondoDragThrottle) return;
-            window._fondoDragThrottle = true;
-            
-            requestAnimationFrame(() => {
-              // Calcular nuevos offsets relativos al centro
-              const nuevaX = node.x();
-              const nuevaY = node.y() - offsetY;
-              
-              const nuevoOffsetX = nuevaX - offsetXCentrado;
-              const nuevoOffsetY = nuevaY - offsetYCentrado;
-              
-              console.log("📊 Nuevos offsets:", { 
-                offsetX: nuevoOffsetX, 
-                offsetY: nuevoOffsetY 
-              });
-              
-              // Actualizar offsets en tiempo real
-              if (onUpdateFondoOffset) {
-                onUpdateFondoOffset(seccion.id, { 
-                  offsetX: nuevoOffsetX, 
-                  offsetY: nuevoOffsetY 
-                }, true); // true = preview
-              }
-              
-              window._fondoDragThrottle = false;
-            });
-          }}
-          
-          onDragEnd={(e) => {
-            console.log("🏁 DragEnd en imagen de fondo");
-            
-            // 🔥 FORZAR FINALIZACIÓN DEL DRAG
-            setIsDragging(false);
-            const node = e.target;
-            
-            // 🔥 LIMPIAR THROTTLE
-            if (window._fondoDragThrottle) {
-              window._fondoDragThrottle = false;
-            }
-            
-            // Calcular offsets finales
-            const nuevaX = node.x();
-            const nuevaY = node.y() - offsetY;
-            
-            const nuevoOffsetX = nuevaX - offsetXCentrado;
-            const nuevoOffsetY = nuevaY - offsetYCentrado;
-            
-            console.log("💾 Guardando offsets finales:", { 
-              offsetX: nuevoOffsetX, 
-              offsetY: nuevoOffsetY 
-            });
-            
-            // Guardar offsets finales
-            if (onUpdateFondoOffset) {
-              onUpdateFondoOffset(seccion.id, { 
-                offsetX: nuevoOffsetX, 
-                offsetY: nuevoOffsetY 
-              }, false); // false = final
-            }
-            
-            // 🔥 FORZAR DESHABILITACIÓN DEL DRAGGABLE
-            setTimeout(() => {
-              if (node.draggable && node.draggable()) {
-                node.draggable(false);
-                setTimeout(() => {
-                  node.draggable(true);
-                }, 100);
-              }
-            }, 50);
-          }}
-          
-          // 🔥 EVENTOS ADICIONALES PARA ASEGURAR FINALIZACIÓN
-          onMouseUp={(e) => {
-            console.log("🖱️ MouseUp en imagen de fondo");
-            if (isDragging) {
-              console.log("⚠️ Forzando finalización de drag desde MouseUp");
-              setIsDragging(false);
-            }
-          }}
-          
-          onMouseLeave={(e) => {
-            if (isDragging) {
-              console.log("⚠️ Mouse salió durante drag - finalizando");
-              setIsDragging(false);
-            }
-          }}
-          
-          onClick={(e) => {
-            console.log("🖱️ Click en imagen de fondo, isDragging:", isDragging);
-            e.cancelBubble = true;
-            
-            // Solo procesar click si no estamos arrastrando
-            if (!isDragging) {
-              const currentPos = e.target.getStage().getPointerPosition();
-              const startPos = dragStartPos.current;
-              
-              // Verificar si realmente fue un click (no drag)
-              if (startPos && currentPos) {
-                const distance = Math.sqrt(
-                  Math.pow(currentPos.x - startPos.x, 2) + 
-                  Math.pow(currentPos.y - startPos.y, 2)
-                );
-                
-                if (distance < 5) { // Click real
-                  onSelect();
-                }
-              } else {
-                onSelect();
-              }
-            }
-          }}
-          
-          // Estilos visuales durante drag
-          opacity={isDragging ? 0.8 : 1}
-          shadowColor={isDragging ? "#773dbe" : "transparent"}
-          shadowBlur={isDragging ? 10 : 0}
-        />
-      </Group>
-      
-    </Group>
-  );
-};
-
 
 
 const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="black" />);
@@ -526,13 +297,7 @@ useEffect(() => {
 
 
 // 🎨 Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
-const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
-  console.log("🔄 actualizarOffsetFondo llamada:", {
-    seccionId,
-    nuevosOffsets,
-    esPreview
-  });
-  
+const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => { 
   setSecciones(prev => 
     prev.map(s => {
       if (s.id !== seccionId) return s;
@@ -1922,7 +1687,12 @@ onMouseDown={(e) => {
   const stage = e.target.getStage();
   const pointerPos = stage.getPointerPosition();
   
+  const clickedOnStage = e.target === stage;
      
+  // ✅ Si el click NO es sobre una imagen de fondo → salir modo mover
+  if (!clickedOnStage && e.target.getClassName() !== "Image") {
+    window.dispatchEvent(new Event("salir-modo-mover-fondo"));
+  }
   const esStage = e.target === stage;
   const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
 
@@ -1948,21 +1718,31 @@ onMouseDown={(e) => {
     return;
   }
 
-  if (esStage || esSeccion) {
-    setElementosSeleccionados([]);
-    setMostrarPanelZ(false);
-    setMostrarSubmenuCapa(false);
+  const esImagenFondo = e.target.getClassName() === "Image";
 
-    if (esStage) {
-      setSeccionActivaId(null);
-    }
+if (esStage || esSeccion || esImagenFondo) {
+  setElementosSeleccionados([]);
+  setMostrarPanelZ(false);
+  setMostrarSubmenuCapa(false);
 
-    const pos = stage.getPointerPosition(); // 🔧 SOLO UNA DECLARACIÓN
-    setInicioSeleccion({ x: pos.x, y: pos.y });
-    setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
-    setSeleccionActiva(true);
+  if (esStage) {
+    // Click en el fondo del Stage → desactivar sección
+    setSeccionActivaId(null);
+  } else {
+    // Click en sección o imagen de fondo → activar la sección correspondiente
+    const idSeccion = e.target.attrs?.id 
+      || secciones.find(s => s.id === e.target.parent?.attrs?.id)?.id 
+      || secciones[0]?.id; // fallback
+    if (idSeccion) setSeccionActivaId(idSeccion);
+  }
 
-    }
+  const pos = stage.getPointerPosition();
+  setInicioSeleccion({ x: pos.x, y: pos.y });
+  setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
+  setSeleccionActiva(true);
+}
+
+
 }}
 
 
@@ -2203,30 +1983,30 @@ setAreaSeleccion(null);
 
  const elementos = [
   // Fondo de sección - puede ser color o imagen
-  seccion.fondoTipo === "imagen" ? (
-    <SeccionConFondoImagen
-      key={`seccion-img-${seccion.id}`}
-      seccion={seccion}
-      offsetY={offsetY}
-      alturaPx={alturaPx}
-      onSelect={() => setSeccionActivaId(seccion.id)}
-      onUpdateFondoOffset={actualizarOffsetFondo}
-    />
-  ) : (
-    <Rect
-      key={`seccion-${seccion.id}`}
-      id={seccion.id}
-      x={0}
-      y={offsetY}
-      width={800}
-      height={alturaPx}
-      fill={seccion.fondo || "#ffffff"}
-      stroke="transparent"
-      strokeWidth={0}
-      listening={true}
-      onClick={() => setSeccionActivaId(seccion.id)}
-    />
-  )
+ seccion.fondoTipo === "imagen" ? (
+  <FondoSeccion
+    key={`fondo-${seccion.id}`}
+    seccion={seccion}
+    offsetY={offsetY}
+    alturaPx={alturaPx}
+    onSelect={() => setSeccionActivaId(seccion.id)}
+    onUpdateFondoOffset={actualizarOffsetFondo}
+  />
+) : (
+  <Rect
+    key={`seccion-${seccion.id}`}
+    id={seccion.id}
+    x={0}
+    y={offsetY}
+    width={800}
+    height={alturaPx}
+    fill={seccion.fondo || "#ffffff"}
+    stroke="transparent"
+    strokeWidth={0}
+    listening={true}
+    onClick={() => setSeccionActivaId(seccion.id)}
+  />
+)
 ];
 
  if (esActiva) {

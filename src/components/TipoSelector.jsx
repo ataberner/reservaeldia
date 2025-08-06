@@ -29,7 +29,7 @@ export default function TipoSelector({ onSeleccionarTipo }) {
           <div
             key={tipo.id}
             onClick={() => manejarSeleccion(tipo.id)}
-            className={`relative w-52 h-32 sm:w-56 sm:h-36 rounded-xl overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:scale-105 
+            className={`relative w-48 h-28 sm:w-52 sm:h-32 rounded-xl overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:scale-105 
               ${tipoSeleccionado === tipo.id ? 'ring-4 ring-purple-500' : ''}`}
           >
             <img

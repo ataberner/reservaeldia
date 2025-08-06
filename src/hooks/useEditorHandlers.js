@@ -51,13 +51,29 @@ export default function useEditorHandlers({
     setElementosSeleccionados
   }), [objetos, elementosSeleccionados]);
 
-  const onEliminar = useCallback(() => eliminarElemento({
+const onEliminar = useCallback(() => {
+  // 🔹 Limpiar hover inmediato
+  if (typeof window !== 'undefined' && window.setHoverIdGlobal) {
+    window.setHoverIdGlobal(null);
+  }
+
+  // 🔹 Limpiar referencias si existen en window
+  if (window._elementRefs && elementosSeleccionados.length > 0) {
+    elementosSeleccionados.forEach(id => {
+      delete window._elementRefs[id];
+    });
+  }
+
+  // 🔹 Ejecutar la eliminación real
+  eliminarElemento({
     objetos,
     elementosSeleccionados,
     setObjetos,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [objetos, elementosSeleccionados]);
+  });
+}, [objetos, elementosSeleccionados]);
+
 
   const onCopiar = useCallback(() => copiarElemento({
     objetos,

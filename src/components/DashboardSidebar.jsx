@@ -1,5 +1,5 @@
 // src/components/DashboardSidebar.jsx
-import { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import GaleriaDeImagenes from "./GaleriaDeImagenes";
@@ -8,14 +8,13 @@ import { FaBars, FaLock, FaLockOpen } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
+import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
 
 
 export default function DashboardSidebar({
     modoSelector,
     mostrarMiniToolbar,
     seccionActivaId,
-    abrirSelector,
-    componenteInput,
 }) {
     // --------------------------
     // 🔹 Estados internos del sidebar
@@ -26,15 +25,17 @@ export default function DashboardSidebar({
     const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
     const [modoFormasCompleto, setModoFormasCompleto] = useState(false);
     const modalCrear = useModalCrearSeccion();
+    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'menu' | null
     const {
         imagenes,
         imagenesEnProceso,
         cargarImagenes,
-        subirImagen,       // <- para usar en "Subir imagen"
+        subirImagen,
         borrarImagen,
         hayMas,
         cargando
     } = useMisImagenes();
+    const { abrirSelector, componenteInput, handleSeleccion } = useUploaderDeImagen(subirImagen);
     const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
     // --------------------------
@@ -157,6 +158,29 @@ export default function DashboardSidebar({
         };
     };
 
+
+
+    const alternarSidebarConBoton = (boton) => {
+        setFijadoSidebar((prevFijado) => {
+            const mismoBoton = botonActivo === boton;
+
+            // Si ya estaba fijado y vuelvo a hacer click en el mismo botón => cierro
+            if (prevFijado && mismoBoton) {
+                setHoverSidebar(false);
+                setBotonActivo(null);
+                return false;
+            }
+
+            // Si clic en otro botón => cambio el botón y dejo fijado
+            setHoverSidebar(true);
+            setBotonActivo(boton);
+            return true;
+        });
+    };
+
+
+
+
     // --------------------------
     // 🔹 No renderizar en modo selector
     // --------------------------
@@ -164,76 +188,74 @@ export default function DashboardSidebar({
 
     return (
         <>
-            {componenteInput} {/* Input invisible para subida de imagen */}
+            {componenteInput &&
+                React.cloneElement(componenteInput, {
+                    onChange: async (e) => {
+                        await handleSeleccion(e);
+                        // ✅ Solo sube la imagen y actualiza la galería
+                        // ❌ Ya no la inserta automáticamente en el canvas
+                    },
+                })}
 
             <aside
-                onMouseEnter={() => setHoverSidebar(true)}
-                onMouseLeave={() => {
-                    if (
-                        typeof window !== "undefined" &&
-                        (window.modoEdicionCanvas || imagenesSeleccionadas > 0)
-                    )
-                        return;
-                    setHoverSidebar(false);
-                }}
-                className={`bg-gradient-to-b from-purple-800 via-purple-900 to-purple-950 text-white transition-all duration-300 shadow-xl
-        ${sidebarAbierta ? "w-80" : "w-16"} px-0 py-2 flex flex-col gap-2`}
+                className="bg-purple-900 text-white w-16 flex flex-col items-center py-2"
                 style={{
                     position: "fixed",
-                    top: "50px", // debajo de la barra superior
+                    top: "50px",
                     left: 0,
                     height: "calc(100vh - 50px)",
-                    zIndex: 30,
+                    zIndex: 50,
                 }}
             >
-                <div className="p-4 border-purple-700 flex flex-col gap-4">
-                    {/* 🔹 Menú principal */}
+
+
+
+                {/* 🔹 Panel flotante al hacer hover */}
+                {(hoverSidebar || fijadoSidebar) && (
                     <div
-                        className="flex items-center justify-start h-12 cursor-pointer transition"
-                        onClick={() => setFijadoSidebar(!fijadoSidebar)}
+                        className="absolute left-16 top-4 h-[calc(100%-2rem)] w-72 bg-white border border-purple-300 shadow-2xl rounded-2xl z-40 overflow-y-auto transition-all duration-200"
+                        onMouseEnter={() => setHoverSidebar(true)}
+                        onMouseLeave={() => setHoverSidebar(false)}
                     >
-                        <FaBars className="text-white text-xl flex-shrink-0" />
-                        {sidebarAbierta && (
-                            <>
-                                <span className="font-bold px-2">Menú</span>
-                                {fijadoSidebar ? (
-                                    <FaLock className="text-white text-sm ml-1" title="Fijado" />
-                                ) : (
-                                    <FaLockOpen className="text-white text-sm ml-1" title="No fijado" />
-                                )}
-                            </>
-                        )}
-                    </div>
-
-                    {/* 🔹 Toolbar o Panel de Formas */}
-                    <div className="flex flex-col gap-2 w-full">
-                        {modoFormasCompleto ? (
-                            <>
+                        <div className="relative p-5 pt-10 flex flex-col gap-5 text-gray-800">
+                            {/* 🔹 Botón para desfijar */}
+                            {fijadoSidebar && (
                                 <button
-                                    onClick={() => setModoFormasCompleto(false)}
-                                    className="text-left text-sm text-white underline mb-2"
+                                    onClick={() => {
+                                        setFijadoSidebar(false);
+                                        setHoverSidebar(false);
+                                        setBotonActivo(null);
+                                    }}
+                                    className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-full shadow transition"
+                                    title="Cerrar panel"
                                 >
-                                    ← Formas
+                                    ←
                                 </button>
+                            )}
 
-                                <div className="flex-1 overflow-y-auto pr-2">
-                                    <PanelDeFormas
-                                        abierto={true}
-                                        sidebarAbierta={sidebarAbierta}
-                                        seccionActivaId={seccionActivaId}
-                                        onInsertarForma={(obj) =>
-                                            window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }))
-                                        }
-                                        onInsertarIcono={(obj) =>
-                                            window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: obj }))
-                                        }
-                                    />
-                                </div>
-                            </>
-                        ) : (
+
+                            {/* Galería */}
+                            {mostrarGaleria && (
+                                <GaleriaDeImagenes
+                                    imagenes={imagenes || []}
+                                    imagenesEnProceso={imagenesEnProceso || []}
+                                    cargarImagenes={cargarImagenes}
+                                    borrarImagen={borrarImagen}
+                                    hayMas={hayMas}
+                                    seccionActivaId={seccionActivaId}
+                                    cargando={cargando}
+                                    onInsertar={(nuevo) => {
+                                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
+                                        setMostrarGaleria(false);
+                                    }}
+                                    onSeleccionadasChange={setImagenesSeleccionadas}
+                                />
+                            )}
+
                             <MiniToolbar
-                                visible={mostrarMiniToolbar}
-                                sidebarAbierta={sidebarAbierta}
+                                visible={true}
+                                esFlotante={true}
+                                sidebarAbierta={true}
                                 onAgregarTexto={(e) => {
                                     e?.stopPropagation?.();
                                     window.dispatchEvent(
@@ -262,53 +284,30 @@ export default function DashboardSidebar({
                                     setModoFormasCompleto(true);
                                 }}
                                 onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
-                                cerrarSidebar={!fijadoSidebar ? () => setHoverSidebar(false) : undefined}
+                                cerrarSidebar={() => setHoverSidebar(false)}
                                 galeriaAbierta={mostrarGaleria}
                                 mostrarPanelFormas={false}
                                 PanelDeFormasComponent={null}
                             />
-                        )}
-                    </div>
-
-                    {/* 🔹 Galería */}
-                    {mostrarGaleria && (
-                        <div
-                            className="text-sm text-white overflow-hidden transition-all duration-300 ease-in-out"
-                            style={{ maxHeight: "600px", opacity: 1 }}
-                        >
-                            <div className="flex flex-col items-start gap-2 transition-all duration-300">
-                                <button
-                                    onClick={abrirSelector}
-                                    className="bg-white text-purple-800 px-3 py-1 rounded hover:bg-purple-200 transition text-sm"
-                                >
-                                    Subir imagen
-                                </button>
-
-                                <GaleriaDeImagenes
-                                    imagenes={imagenes || []}               // ✅ fallback vacío
-                                    imagenesEnProceso={imagenesEnProceso || []} // ✅ fallback vacío
-                                    cargarImagenes={cargarImagenes}
-                                    borrarImagen={borrarImagen}
-                                    hayMas={hayMas}
-                                    seccionActivaId={seccionActivaId}
-                                    cargando={cargando}
-                                    onInsertar={(nuevo) => {
-                                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
-                                        setMostrarGaleria(false);
-                                    }}
-                                    onSeleccionadasChange={setImagenesSeleccionadas}
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 🔹 Botones extra */}
-                    {sidebarAbierta && (
-                        <>
-                            <button onClick={ejecutarCrearPlantilla} className="hover:underline">
-                                ✨ Crear plantilla
+                            {/* 🔹 Botón añadir sección */}
+                            <button
+                                onClick={modalCrear.abrir}
+                                className="flex items-center gap-2 w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all duration-200"
+                            >
+                                <span className="text-lg">➕</span>
+                                <span>Añadir sección</span>
                             </button>
 
+                            {/* 🔹 Botón crear plantilla */}
+                            <button
+                                onClick={ejecutarCrearPlantilla}
+                                className="flex items-center gap-2 w-full bg-blue-100 hover:bg-blue-200 text-blue-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all duration-200"
+                            >
+                                <span className="text-lg">✨</span>
+                                <span>Crear plantilla</span>
+                            </button>
+
+                            {/* 🔹 Botón borrar todos */}
                             <button
                                 onClick={async () => {
                                     const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
@@ -328,21 +327,110 @@ export default function DashboardSidebar({
                                         alert("No se pudieron borrar los borradores.");
                                     }
                                 }}
-                                className="hover:underline"
+                                className="flex items-center gap-2 w-full bg-red-100 hover:bg-red-200 text-red-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all duration-200"
                             >
-                                🗑️ Borrar todos los borradores
+                                <span className="text-lg">🗑️</span>
+                                <span>Borrar todos los borradores</span>
                             </button>
 
-                            <div className="px-4 mt-auto pb-4">
+
+
+                        </div>
+                    </div>
+                )}
+
+
+                <div className="p-4 border-purple-700 flex flex-col gap-4">
+                    {/* 🔹 Menú principal */}
+                    <div
+                        onClick={() => alternarSidebarConBoton("menu")}
+                        onMouseEnter={() => setHoverSidebar(true)}
+                        className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "menu" ? 'bg-purple-800' : 'hover:bg-purple-700'
+                            }`}
+                        title="Menú"
+                    >
+                        <FaBars className="text-white text-xl" />
+                    </div>
+
+
+
+
+
+                    {/* 🔹 Íconos con control de hover individual */}
+                    <div
+                        onMouseEnter={() => setHoverSidebar(true)}
+                        onMouseLeave={() => setHoverSidebar(false)}
+                        className="flex flex-col gap-4 mt-4 items-center"
+                    >
+                        <button
+                            onClick={() => alternarSidebarConBoton("texto")}
+                            onMouseEnter={() => setHoverSidebar(true)}
+                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "texto" ? 'bg-purple-800' : 'hover:bg-purple-700'
+                                }`}
+                            title="Añadir texto"
+                        >
+                            <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
+                        </button>
+
+
+                        <button
+                            onClick={() => alternarSidebarConBoton("forma")}
+                            onMouseEnter={() => setHoverSidebar(true)}
+                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "forma" ? 'bg-purple-800' : 'hover:bg-purple-700'
+                                }`}
+                            title="Añadir forma"
+                        >
+                            <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
+                        </button>
+
+
+                        <button
+                            onClick={() => alternarSidebarConBoton("imagen")}
+                            onMouseEnter={() => setHoverSidebar(true)}
+                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "imagen" ? 'bg-purple-800' : 'hover:bg-purple-700'
+                                }`}
+                            title="Abrir galería"
+                        >
+                            <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
+                        </button>
+
+                    </div>
+
+
+
+                    {/* 🔹 Galería */}
+                    {mostrarGaleria && (
+                        <div
+                            className="text-sm text-white overflow-hidden transition-all duration-300 ease-in-out"
+                            style={{ maxHeight: "600px", opacity: 1 }}
+                        >
+                            <div className="flex flex-col items-start gap-2 transition-all duration-300">
                                 <button
-                                    onClick={modalCrear.abrir}
-                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded transition"
+                                    onClick={abrirSelector}
+                                    className="bg-white text-purple-800 px-3 py-1 rounded hover:bg-purple-200 transition text-sm"
                                 >
-                                    + Añadir sección
+                                    Subir imagen
                                 </button>
+
+
+                                <GaleriaDeImagenes
+                                    imagenes={imagenes || []}               // ✅ fallback vacío
+                                    imagenesEnProceso={imagenesEnProceso || []} // ✅ fallback vacío
+                                    cargarImagenes={cargarImagenes}
+                                    borrarImagen={borrarImagen}
+                                    hayMas={hayMas}
+                                    seccionActivaId={seccionActivaId}
+                                    cargando={cargando}
+                                    onInsertar={(nuevo) => {
+                                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
+                                        setMostrarGaleria(false);
+                                    }}
+                                    onSeleccionadasChange={setImagenesSeleccionadas}
+                                />
                             </div>
-                        </>
+                        </div>
                     )}
+
                 </div>
             </aside>
 

@@ -88,50 +88,57 @@ export default function useMisImagenes() {
   };
 
   const subirImagen = async (archivoOriginal) => {
-    if (!uid || !archivoOriginal) return;
+  if (!uid || !archivoOriginal) return;
 
-    const archivoComprimido = await imageCompression(archivoOriginal, {
-      maxSizeMB: 1,
-      maxWidthOrHeight: 1024,
-      useWebWorker: true,
-    });
+  // 1️⃣ Comprimir imagen
+  const archivoComprimido = await imageCompression(archivoOriginal, {
+    maxSizeMB: 1,
+    maxWidthOrHeight: 1024,
+    useWebWorker: true,
+  });
 
-    const timestamp = Date.now();
-    const fileName = `${timestamp}_${archivoComprimido.name}`;
-    setImagenesEnProceso((prev) => [...prev, fileName]);
+  const timestamp = Date.now();
+  const fileName = `${timestamp}_${archivoComprimido.name}`;
+  setImagenesEnProceso((prev) => [...prev, fileName]);
 
-    const storageRef = ref(storage, `usuarios/${uid}/imagenes/${fileName}`);
-await uploadBytes(storageRef, archivoComprimido, {
-  customMetadata: {
-    firebaseStorageDownloadTokens: null, // 👈 evita token privado (necesario para evitar tainted canvas)
-  },
-});
-    const url = await getDownloadURL(storageRef);
+  // 2️⃣ Subir imagen principal a Storage
+  const storageRef = ref(storage, `usuarios/${uid}/imagenes/${fileName}`);
+  await uploadBytes(storageRef, archivoComprimido);
 
-    const { blob: thumbnailBlob, img } = await generarThumbnail(archivoComprimido);
-    const thumbRef = ref(storage, `usuarios/${uid}/thumbnails/${fileName}_thumb.webp`);
-    await uploadBytes(thumbRef, thumbnailBlob);
-    const thumbUrl = await getDownloadURL(thumbRef);
+  // Obtener URL principal para usar en canvas o galería
+  const url = await getDownloadURL(storageRef);
 
-    const metadata = {
-      fileName,
-      url,
-      thumbnailUrl: thumbUrl,
-      nombre: archivoComprimido.name,
-      nombreCompleto: fileName,
-      fechaSubida: serverTimestamp(),
-      pesoKb: Math.round(archivoComprimido.size / 1024),
-      ancho: img.width,
-      alto: img.height,
-    };
+  // 3️⃣ Generar thumbnail y subirlo
+  const { blob: thumbnailBlob, img } = await generarThumbnail(archivoComprimido);
+  const thumbRef = ref(storage, `usuarios/${uid}/thumbnails/${fileName}_thumb.webp`);
+  await uploadBytes(thumbRef, thumbnailBlob);
+  const thumbUrl = await getDownloadURL(thumbRef);
 
-    const refCol = collection(db, "usuarios", uid, "imagenes");
-    const docRef = await addDoc(refCol, metadata);
-    const nuevoId = docRef.id;
-
-    setImagenes((prev) => [{ id: nuevoId, ...metadata }, ...prev]);
-    setImagenesEnProceso((prev) => prev.filter((f) => f !== fileName));
+  // 4️⃣ Guardar metadata en Firestore
+  const metadata = {
+    fileName,
+    url,                     // URL de la imagen principal
+    thumbnailUrl: thumbUrl,  // URL del thumbnail
+    nombre: archivoComprimido.name,
+    nombreCompleto: fileName,
+    fechaSubida: serverTimestamp(),
+    pesoKb: Math.round(archivoComprimido.size / 1024),
+    ancho: img.width,
+    alto: img.height,
   };
+
+  const refCol = collection(db, "usuarios", uid, "imagenes");
+  const docRef = await addDoc(refCol, metadata);
+  const nuevoId = docRef.id;
+
+  // 5️⃣ Actualizar estado en galería
+  setImagenes((prev) => [{ id: nuevoId, ...metadata }, ...prev]);
+  setImagenesEnProceso((prev) => prev.filter((f) => f !== fileName));
+
+  // 6️⃣ Retornar URL principal para que useUploaderDeImagen la use
+  return url;
+};
+
 
   const borrarImagen = async (img) => {
     if (!uid || !img?.fileName) return;

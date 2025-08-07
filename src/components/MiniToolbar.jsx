@@ -8,61 +8,58 @@ export default function MiniToolbar({
   onAgregarImagen,
   onAgregarForma,
   cerrarSidebar,
+  esFlotante,
   galeriaAbierta,
   mostrarPanelFormas,
   PanelDeFormasComponent,
 }) {
-
-
-    
   if (!visible) return null;
 
   return (
     <div
-  className="flex flex-col gap-4"
-  onMouseDown={(e) => e.stopPropagation()}
->
+      className="flex flex-col gap-4"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* 🔹 Botón texto */}
       <button
-          onClick={(e) => {
+        onClick={(e) => {
           onAgregarTexto(e);
           cerrarSidebar?.();
         }}
-        className="flex items-center gap-2 text-white text-sm"
+        className="flex items-center gap-2 text-black text-sm"
       >
-        <div className="w-8 h-8 flex-shrink-0 flex items-center justify-start pl-0 ml-[-4px]">
-        <Image src="/icons/texto.png" width={32} height={32} alt="Texto" />
+        <div className="w-8 h-8 flex-shrink-0 flex items-center justify-start ml-[-4px]">
+          <Image src="/icons/texto.png" width={32} height={32} alt="Texto" />
         </div>
-        {sidebarAbierta && <span>Añadir una caja de texto</span>}
+        {esFlotante && <span>Añadir texto</span>}
       </button>
 
+      {/* 🔹 Botón forma */}
       <button
         onClick={(e) => {
           onAgregarForma(e);
         }}
-        className="flex items-center gap-2 text-white text-sm"
+        className="flex items-center gap-2 text-black text-sm"
       >
-        <div className="w-8 h-8 flex-shrink-0 flex items-center justify-start pl-0 ml-[-4px]">
-        <Image src="/icons/forma.png" width={32} height={32} alt="Forma" />
+        <div className="w-8 h-8 flex-shrink-0 flex items-center justify-start ml-[-4px]">
+          <Image src="/icons/forma.png" width={32} height={32} alt="Forma" />
         </div>
-        {sidebarAbierta && <span>Añadir una forma</span>}
+        {esFlotante && <span>Añadir forma</span>}
       </button>
+
       {mostrarPanelFormas && PanelDeFormasComponent}
 
+      {/* 🔹 Botón imagen */}
       <button
         onClick={(e) => {
           onAgregarImagen(e);
         }}
-        className="flex items-center gap-2 text-white text-sm"
+        className="flex items-center gap-2 text-black text-sm"
       >
-        <div className="w-8 h-8 flex-shrink-0 flex items-center justify-start pl-0 ml-[-4px]">
-        <Image src="/icons/imagen.png" width={32} height={32} alt="Imagen" />
+        <div className="w-8 h-8 flex-shrink-0 flex items-center justify-start ml-[-4px]">
+          <Image src="/icons/imagen.png" width={32} height={32} alt="Imagen" />
         </div>
-        {sidebarAbierta && (
-                <span>
-                    {galeriaAbierta ? "Ocultar imágenes ⬆️" : "Añadir una imagen ⬇️"}
-                </span>
-                )}
-
+        {esFlotante && <span>Abrir galería</span>}
       </button>
     </div>
   );

@@ -1,6 +1,5 @@
+// hooks/useUploaderDeImagen.js
 import { useRef } from "react";
-import useMisImagenes from "./useMisImagenes";
-
 
 export default function useUploaderDeImagen(subirImagen) {
   const inputRef = useRef(null);
@@ -13,12 +12,14 @@ export default function useUploaderDeImagen(subirImagen) {
     const archivo = e.target.files?.[0];
     if (!archivo) return;
 
-    window.dispatchEvent(new CustomEvent("imagen-subiendo"));
-    await subirImagen(archivo); // 👉 ahora usa el mismo subirImagen
+    // 🔹 1. Subir a Firebase
+    const url = await subirImagen(archivo);
 
+    // 🔹 2. Limpiar input
     if (inputRef.current) inputRef.current.value = null;
 
-    window.dispatchEvent(new CustomEvent("imagen-subida"));
+    // 🔹 3. Retornar la URL
+    return url;
   };
 
   const componenteInput = (
@@ -31,5 +32,5 @@ export default function useUploaderDeImagen(subirImagen) {
     />
   );
 
-  return { abrirSelector, componenteInput };
+  return { abrirSelector, componenteInput, handleSeleccion };
 }

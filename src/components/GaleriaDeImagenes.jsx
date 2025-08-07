@@ -66,10 +66,10 @@ export default function GaleriaDeImagenes({
   };
 
   return (
-    <div className="relative w-[300px]">
+<div className="relative w-full">
      <div
   ref={galeriaRef}
-  className="grid grid-cols-3 gap-2 overflow-y-auto max-h-[320px] p-2"
+  className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto flex-1 min-h-0 p-2 w-full"
 >
 
     {imagenesEnProceso.map((nombre) => (

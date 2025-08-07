@@ -217,7 +217,8 @@ export default function DashboardSidebar({
                         onMouseEnter={() => setHoverSidebar(true)}
                         onMouseLeave={() => setHoverSidebar(false)}
                     >
-                        <div className="relative p-5 pt-10 flex flex-col gap-5 text-gray-800">
+                        <div className="relative pt-10 px-3 pb-4 flex flex-col gap-5 text-gray-800 w-full h-full min-h-0f">
+
                             {/* 🔹 Botón para desfijar */}
                             {fijadoSidebar && (
                                 <button
@@ -233,86 +234,45 @@ export default function DashboardSidebar({
                                 </button>
                             )}
 
-
-                            {/* Galería */}
-                            {mostrarGaleria && (
-                                <GaleriaDeImagenes
-                                    imagenes={imagenes || []}
-                                    imagenesEnProceso={imagenesEnProceso || []}
-                                    cargarImagenes={cargarImagenes}
-                                    borrarImagen={borrarImagen}
-                                    hayMas={hayMas}
-                                    seccionActivaId={seccionActivaId}
-                                    cargando={cargando}
-                                    onInsertar={(nuevo) => {
-                                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
-                                        setMostrarGaleria(false);
-                                    }}
-                                    onSeleccionadasChange={setImagenesSeleccionadas}
-                                />
-                            )}
-
                             <MiniToolbar
-                                visible={true}
-                                esFlotante={true}
-                                sidebarAbierta={true}
-                                onAgregarTexto={(e) => {
-                                    e?.stopPropagation?.();
-                                    window.dispatchEvent(
-                                        new CustomEvent("insertar-elemento", {
-                                            detail: {
-                                                id: `texto-${Date.now()}`,
-                                                tipo: "texto",
-                                                texto: "Texto",
-                                                x: 100,
-                                                y: 100,
-                                                fontSize: 24,
-                                                color: "#000000",
-                                                fontFamily: "sans-serif",
-                                                fontWeight: "normal",
-                                                fontStyle: "normal",
-                                                textDecoration: "none",
-                                                rotation: 0,
-                                                scaleX: 1,
-                                                scaleY: 1,
-                                            },
-                                        })
-                                    );
+                                botonActivo={botonActivo}
+                                onAgregarTexto={() => {
+                                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                                        detail: {
+                                            id: `texto-${Date.now()}`,
+                                            tipo: "texto",
+                                            texto: "Texto",
+                                            x: 100,
+                                            y: 100,
+                                            fontSize: 24,
+                                            color: "#000000",
+                                            fontFamily: "sans-serif",
+                                            fontWeight: "normal",
+                                            fontStyle: "normal",
+                                            textDecoration: "none",
+                                            rotation: 0,
+                                            scaleX: 1,
+                                            scaleY: 1,
+                                        }
+                                    }));
                                 }}
-                                onAgregarForma={(e) => {
-                                    e?.stopPropagation?.();
-                                    setModoFormasCompleto(true);
-                                }}
-                                onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
-                                cerrarSidebar={() => setHoverSidebar(false)}
-                                galeriaAbierta={mostrarGaleria}
-                                mostrarPanelFormas={false}
-                                PanelDeFormasComponent={null}
-                            />
-                            {/* 🔹 Botón añadir sección */}
-                            <button
-                                onClick={modalCrear.abrir}
-                                className="flex items-center gap-2 w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all duration-200"
-                            >
-                                <span className="text-lg">➕</span>
-                                <span>Añadir sección</span>
-                            </button>
-
-                            {/* 🔹 Botón crear plantilla */}
-                            <button
-                                onClick={ejecutarCrearPlantilla}
-                                className="flex items-center gap-2 w-full bg-blue-100 hover:bg-blue-200 text-blue-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all duration-200"
-                            >
-                                <span className="text-lg">✨</span>
-                                <span>Crear plantilla</span>
-                            </button>
-
-                            {/* 🔹 Botón borrar todos */}
-                            <button
-                                onClick={async () => {
+                                onAgregarForma={() => setModoFormasCompleto(true)}
+                                onAgregarImagen={() => setMostrarGaleria(prev => !prev)}
+                                mostrarGaleria={mostrarGaleria}
+                                setMostrarGaleria={setMostrarGaleria}
+                                imagenes={imagenes}
+                                imagenesEnProceso={imagenesEnProceso}
+                                cargarImagenes={cargarImagenes}
+                                borrarImagen={borrarImagen}
+                                hayMas={hayMas}
+                                cargando={cargando}
+                                seccionActivaId={seccionActivaId}
+                                setImagenesSeleccionadas={setImagenesSeleccionadas}
+                                abrirSelector={abrirSelector}
+                                onCrearPlantilla={ejecutarCrearPlantilla}
+                                onBorrarTodos={async () => {
                                     const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
                                     if (!confirmar) return;
-
                                     try {
                                         const functions = (await import("firebase/functions")).getFunctions();
                                         const borrarTodos = (await import("firebase/functions")).httpsCallable(
@@ -327,11 +287,16 @@ export default function DashboardSidebar({
                                         alert("No se pudieron borrar los borradores.");
                                     }
                                 }}
-                                className="flex items-center gap-2 w-full bg-red-100 hover:bg-red-200 text-red-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all duration-200"
-                            >
-                                <span className="text-lg">🗑️</span>
-                                <span>Borrar todos los borradores</span>
-                            </button>
+                                onAbrirModalSeccion={modalCrear.abrir}
+                            />
+                            {botonActivo === "forma" && (
+                                <PanelDeFormas
+                                    abierto={true}
+                                    onCerrar={() => setModoFormasCompleto(false)}
+                                    sidebarAbierta={sidebarAbierta}
+                                    seccionActivaId={seccionActivaId}
+                                />
+                            )}
 
 
 
@@ -344,7 +309,11 @@ export default function DashboardSidebar({
                     {/* 🔹 Menú principal */}
                     <div
                         onClick={() => alternarSidebarConBoton("menu")}
-                        onMouseEnter={() => setHoverSidebar(true)}
+                        onMouseEnter={() => {
+                            setHoverSidebar(true);
+                            setBotonActivo("menu");
+                        }}
+
                         className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "menu" ? 'bg-purple-800' : 'hover:bg-purple-700'
                             }`}
                         title="Menú"
@@ -359,12 +328,15 @@ export default function DashboardSidebar({
                     {/* 🔹 Íconos con control de hover individual */}
                     <div
                         onMouseEnter={() => setHoverSidebar(true)}
-                        onMouseLeave={() => setHoverSidebar(false)}
                         className="flex flex-col gap-4 mt-4 items-center"
                     >
                         <button
                             onClick={() => alternarSidebarConBoton("texto")}
-                            onMouseEnter={() => setHoverSidebar(true)}
+                            onMouseEnter={() => {
+                                setHoverSidebar(true);
+                                setBotonActivo("texto");
+                            }}
+
                             className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "texto" ? 'bg-purple-800' : 'hover:bg-purple-700'
                                 }`}
                             title="Añadir texto"
@@ -375,7 +347,11 @@ export default function DashboardSidebar({
 
                         <button
                             onClick={() => alternarSidebarConBoton("forma")}
-                            onMouseEnter={() => setHoverSidebar(true)}
+                            onMouseEnter={() => {
+                                setHoverSidebar(true);
+                                setBotonActivo("forma");
+                            }}
+
                             className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "forma" ? 'bg-purple-800' : 'hover:bg-purple-700'
                                 }`}
                             title="Añadir forma"
@@ -386,7 +362,11 @@ export default function DashboardSidebar({
 
                         <button
                             onClick={() => alternarSidebarConBoton("imagen")}
-                            onMouseEnter={() => setHoverSidebar(true)}
+                            onMouseEnter={() => {
+                                setHoverSidebar(true);
+                                setBotonActivo("imagen");
+                            }}
+
                             className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "imagen" ? 'bg-purple-800' : 'hover:bg-purple-700'
                                 }`}
                             title="Abrir galería"
@@ -395,41 +375,6 @@ export default function DashboardSidebar({
                         </button>
 
                     </div>
-
-
-
-                    {/* 🔹 Galería */}
-                    {mostrarGaleria && (
-                        <div
-                            className="text-sm text-white overflow-hidden transition-all duration-300 ease-in-out"
-                            style={{ maxHeight: "600px", opacity: 1 }}
-                        >
-                            <div className="flex flex-col items-start gap-2 transition-all duration-300">
-                                <button
-                                    onClick={abrirSelector}
-                                    className="bg-white text-purple-800 px-3 py-1 rounded hover:bg-purple-200 transition text-sm"
-                                >
-                                    Subir imagen
-                                </button>
-
-
-                                <GaleriaDeImagenes
-                                    imagenes={imagenes || []}               // ✅ fallback vacío
-                                    imagenesEnProceso={imagenesEnProceso || []} // ✅ fallback vacío
-                                    cargarImagenes={cargarImagenes}
-                                    borrarImagen={borrarImagen}
-                                    hayMas={hayMas}
-                                    seccionActivaId={seccionActivaId}
-                                    cargando={cargando}
-                                    onInsertar={(nuevo) => {
-                                        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
-                                        setMostrarGaleria(false);
-                                    }}
-                                    onSeleccionadasChange={setImagenesSeleccionadas}
-                                />
-                            </div>
-                        </div>
-                    )}
 
                 </div>
             </aside>

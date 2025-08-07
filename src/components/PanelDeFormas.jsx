@@ -29,14 +29,16 @@ useEffect(() => {
  
 
   return (
-  <div className="transition-all duration-500 ease-in-out overflow-hidden max-h-[500px] opacity-100">
+<div className="bg-white text-gray-800 rounded-2xl shadow-inner border border-purple-200 px-3 py-4 overflow-y-auto max-h-[calc(100vh-120px)] flex flex-col gap-4">
+
     <div className="flex flex-col pt-2">
       
 
 {/* ⭐ Íconos populares */}
 <div>
   <div className="flex justify-between items-center px-2">
-    <span className="text-xs text-purple-200 uppercase tracking-wider font-semibold">
+   <span className="text-sm text-purple-700 font-semibold mb-1">
+
       Íconos populares
     </span>
     <button
@@ -59,7 +61,7 @@ useEffect(() => {
         return (
           <div
             key={`pop-${icono.id}`}
-            className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition flex-shrink-0"
+            className="w-14 h-14 rounded-xl bg-gray-50 border hover:bg-purple-100 transition flex items-center justify-center shadow-sm cursor-pointer"
             onClick={() => {
               window.dispatchEvent(new CustomEvent("insertar-elemento", {
   detail: {
@@ -120,7 +122,7 @@ useEffect(() => {
         {formas.map((forma) => (
           <div
             key={forma.id}
-            className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow hover:scale-105 transition cursor-pointer"
+            className="w-14 h-14 rounded-xl bg-gray-50 border hover:bg-purple-100 transition flex items-center justify-center shadow-sm cursor-pointer"
             onClick={() => {
   // Objeto base con TODAS las propiedades por defecto
  const elementoNuevo = {
@@ -198,7 +200,8 @@ useEffect(() => {
       {/* Hilera de Iconos */}
       <div>
         <div className="flex justify-between items-center px-2">
-          <span className="text-xs text-purple-200 uppercase tracking-wider font-semibold">
+         <span className="text-sm text-purple-700 font-semibold mb-1">
+
             Íconos & GIFs
           </span>
 
@@ -222,7 +225,7 @@ useEffect(() => {
             return (
                      <div
                       key={icono.id}
-                      className="w-14 h-14 rounded-xl bg-white flex items-center justify-center shadow cursor-pointer hover:scale-105 transition flex-shrink-0"
+                      className="w-14 h-14 rounded-xl bg-gray-50 border hover:bg-purple-100 transition flex items-center justify-center shadow-sm cursor-pointer"
                       onClick={() => {
                          window.dispatchEvent(new CustomEvent("insertar-elemento", {
                            detail: {

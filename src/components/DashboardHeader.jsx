@@ -31,9 +31,7 @@ useEffect(() => {
 
       if (snap.exists()) {
         const data = snap.data();
-        // Log para depuración
-        console.log("📄 Datos del borrador:", data);
-
+        
         // Si no tiene nombre, poner un valor temporal
         setNombreBorrador(data.nombre || "Sin nombre");
       }

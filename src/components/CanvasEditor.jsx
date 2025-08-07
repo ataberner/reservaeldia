@@ -697,9 +697,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           ultimaEdicion: serverTimestamp(),
         });
 
-        console.log("✅ Guardado exitoso en Firebase");
-
-
         // 🔥 NUEVO: Generar y subir thumbnail
         if (stageRef?.current && userId && slug) {
           const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");

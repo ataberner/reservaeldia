@@ -55,7 +55,7 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
     const refDoc = doc(db, "borradores", slug);
     await updateDoc(refDoc, { thumbnailUrl: urlFinal });
 
-    console.log("✅ Thumbnail guardado en:", urlFinal);
+  
   } catch (error) {
     console.error("❌ Error al generar o subir thumbnail:", error);
   }

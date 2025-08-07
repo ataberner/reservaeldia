@@ -27,8 +27,7 @@ export default function ElementoCanvas({
   const [img] = useImage(obj.src || null, "anonymous");
   const [isDragging, setIsDragging] = useState(false);
 
-  console.log("➡️ Renderizando ElementoCanvas:", obj);
-
+  
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
   const handleChange = useCallback((id, newData) => {
     if (newData.fromAutoFix || !onChange) return;

@@ -1,5 +1,6 @@
 // src/components/modals/ModalRSVP.jsx
-import React from "react";
+import React, { useEffect } from "react";
+
 
 export default function ModalRSVP({ visible, onClose }) {
   if (!visible) return null;

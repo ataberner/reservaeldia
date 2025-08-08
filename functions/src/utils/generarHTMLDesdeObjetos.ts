@@ -122,6 +122,47 @@ if (obj.tipo === "texto") {
       </svg>`;
     }
 
+
+    if (obj.tipo === "rsvp-boton") {
+  const texto = escapeHTML(obj.texto || "Confirmar asistencia");
+  const ancho = (obj.ancho || 200) / 800 * 100;
+  const alto = (obj.alto || 50) / mapaAltura[obj.seccionId] * 100;
+  const color = obj.color || "#773dbe";
+  const colorTexto = obj.colorTexto || "#ffffff";
+  const fontSize = obj.fontSize || 18;
+  const fontFamily = obj.fontFamily || "sans-serif";
+  const fontWeight = obj.fontWeight || "bold";
+  const fontStyle = obj.fontStyle || "normal";
+  const textDecoration = obj.textDecoration || "none";
+  const align = obj.align || "center";
+
+  return `<div class="rsvp-boton" data-accion="abrir-rsvp" data-rsvp-open role="button" tabindex="0" aria-label="Confirmar asistencia" style="
+    position: absolute;
+    left: ${left}%;
+    top: ${top}%;
+    width: ${ancho}%;
+    height: ${alto}%;
+    background-color: ${color};
+    color: ${colorTexto};
+    font-size: ${fontSize}px;
+    font-family: ${fontFamily};
+    font-weight: ${fontWeight};
+    font-style: ${fontStyle};
+    text-decoration: ${textDecoration};
+    text-align: ${align};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    cursor: pointer;
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: top left;
+  ">
+    ${texto}
+  </div>`;
+}
+
+
     if (obj.tipo === "forma") {
       const fill = obj.color || "#000";
       const figura = obj.figura;

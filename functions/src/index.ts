@@ -11,6 +11,8 @@ import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import { Storage } from "@google-cloud/storage";
 import puppeteer from "puppeteer";
 import { v4 as uuidv4 } from "uuid";
+import type { RSVPConfig } from "./utils/generarModalRSVP";
+
 
 
 
@@ -341,16 +343,26 @@ export const publicarInvitacion = functions.https.onCall(
     // 🗑️ ELIMINADO: const overrides = data?.overrides || {};
     const secciones = data?.secciones || [];
 
+
     // 🧠 2. Resolver URLs de imagen/icono directamente
     const objetosFinales = await resolverURLsDeObjetos(objetosBase);
 
 console.log("🧪 Secciones:", JSON.stringify(secciones));
 console.log("🧪 Objetos finales:", JSON.stringify(objetosFinales));
 
+     
+
+
     // 🧱 3. Generar el HTML con los objetos editados
 let htmlFinal = "";
 try {
-  htmlFinal = generarHTMLDesdeSecciones(secciones, objetosFinales);
+
+
+const rsvp: RSVPConfig = { enabled: true, ...(data?.rsvp ?? {}) }; // ✅ default ON
+htmlFinal = generarHTMLDesdeSecciones(secciones, objetosFinales, rsvp);
+
+
+
 } catch (error) {
   console.error("❌ Error generando HTML:", error);
   throw new functions.https.HttpsError("internal", "Error al generar el HTML.");

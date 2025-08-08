@@ -31,6 +31,7 @@ import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
 import { ALL_FONTS } from '../config/fonts';
+import ModalRSVP from "./modals/ModalRSVP"
 import {
   Check,
   RotateCcw,
@@ -108,10 +109,10 @@ const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
         onClick={() => setMostrarPicker(!mostrarPicker)}
         disabled={disabled}
         className={`group flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${disabled
-            ? 'bg-gray-200 cursor-not-allowed'
-            : tieneImagenFondo
-              ? 'bg-orange-50 hover:bg-orange-100 border border-orange-200'
-              : 'bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300'
+          ? 'bg-gray-200 cursor-not-allowed'
+          : tieneImagenFondo
+            ? 'bg-orange-50 hover:bg-orange-100 border border-orange-200'
+            : 'bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300'
           } shadow-sm hover:shadow-md`}
         title={tieneImagenFondo ? "Cambiar fondo (reemplazará la imagen)" : "Cambiar color de fondo"}
       >
@@ -197,8 +198,8 @@ const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
               }}
               placeholder="#ffffff"
               className={`w-full mt-2 px-2 py-1 border text-sm rounded font-mono ${/^#([0-9A-Fa-f]{3}){1,2}$/.test(colorHexManual)
-                  ? "border-gray-300"
-                  : "border-red-400"
+                ? "border-gray-300"
+                : "border-red-400"
                 }`}
             />
 
@@ -244,7 +245,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const elementRefs = useRef({});
   const contenedorRef = useRef(null);
   const ignoreNextUpdateRef = useRef(false);
-
+  const [mostrarModalRSVP, setMostrarModalRSVP] = useState(false);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
@@ -1552,8 +1553,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     }
                     disabled={esPrimera || estaAnimando}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${esPrimera || estaAnimando
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esPrimera ? 'Ya es la primera sección' : 'Subir sección'}
                   >
@@ -1572,8 +1573,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     }
                     disabled={estaAnimando}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 shadow-md hover:shadow-lg'
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 shadow-md hover:shadow-lg'
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title="Guardar esta sección como plantilla"
                   >
@@ -1621,8 +1622,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     }
                     disabled={estaAnimando}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-red-600 text-white hover:bg-red-700 hover:scale-105 shadow-md hover:shadow-lg'
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-red-600 text-white hover:bg-red-700 hover:scale-105 shadow-md hover:shadow-lg'
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title="Borrar esta sección y todos sus elementos"
                   >
@@ -1644,8 +1645,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     }
                     disabled={esUltima || estaAnimando}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${esUltima || estaAnimando
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esUltima ? 'Ya es la última sección' : 'Bajar sección'}
                   >
@@ -2213,6 +2214,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       }}
                       finishInlineEdit={finishEdit}
                       onSelect={isInEditMode ? null : (id, obj, e) => {
+                        if (obj.tipo === "rsvp-boton") {
+                          console.log("🟣 Click en botón RSVP");
+                          setMostrarModalRSVP(true);
+                          return; // ⛔ Cortar acá para que no se seleccione o edite
+                        }
+
                         if (editing.id && editing.id !== id) {
                           finishEdit();
                         }
@@ -2229,6 +2236,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           }
                         });
                       }}
+
 
                       onChange={(id, nuevo) => {
 
@@ -2528,6 +2536,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
             </Stage>
 
+            <ModalRSVP
+              visible={mostrarModalRSVP}
+              onClose={() => setMostrarModalRSVP(false)}
+            />
 
 
 
@@ -3118,8 +3130,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
             <button
               className={`px-2 py-1 rounded border text-sm transition ${objetoSeleccionado?.textDecoration === "underline"
-                  ? "bg-gray-200 underline"
-                  : "hover:bg-gray-100"
+                ? "bg-gray-200 underline"
+                : "hover:bg-gray-100"
                 }`}
               onClick={() =>
                 setObjetos((prev) =>
@@ -3164,6 +3176,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         );
       })()}
 
+      <ModalRSVP visible={mostrarModalRSVP} onClose={() => setMostrarModalRSVP(false)} />
 
 
     </div>

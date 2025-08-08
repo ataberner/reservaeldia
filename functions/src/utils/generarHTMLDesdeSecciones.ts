@@ -1,18 +1,17 @@
 import { calcularTopPorSeccion } from "./calcularTopPorSeccion";
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
-
-
+import { generarModalRSVPHTML, type RSVPConfig } from "./generarModalRSVP";
 
 
 const EXCLUDE_FONTS = new Set([
-  "serif","sans-serif","monospace","cursive","fantasy","system-ui",
-  "Arial","Helvetica","Times","Times New Roman","Georgia","Courier New"
+  "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
+  "Arial", "Helvetica", "Times", "Times New Roman", "Georgia", "Courier New"
 ]);
 
 function buildGoogleFontsLink(fonts: string[]): string {
   const familias = fonts
-    .map(f => f.replace(/['"]/g,"").split(",")[0].trim())   // "Great Vibes"
+    .map(f => f.replace(/['"]/g, "").split(",")[0].trim())   // "Great Vibes"
     .filter(n => n && !EXCLUDE_FONTS.has(n))
     .map(n => `family=${n.replace(/ /g, "+")}`)             // ← sin encodeURIComponent
     .join("&");
@@ -29,20 +28,24 @@ function buildGoogleFontsLink(fonts: string[]): string {
 
 
 
-export function generarHTMLDesdeSecciones(secciones: any[], objetos: any[]): string {
+export function generarHTMLDesdeSecciones(
+  secciones: any[],
+  objetos: any[],
+  rsvp?: RSVPConfig
+): string {
+
   const alturaTotal = secciones.reduce((acc, s) => acc + s.altura, 0);
 
+  // 🔍 Detectar familias que aparecen en objetos de texto
+  const fuentesUsadas = [
+    ...new Set(
+      objetos
+        .filter(o => o.tipo === "texto" && o.fontFamily)
+        .map(o => o.fontFamily)          // puede venir "Poppins, sans-serif"
+    ),
+  ];
 
-// 🔍 Detectar familias que aparecen en objetos de texto
-const fuentesUsadas = [
-  ...new Set(
-    objetos
-      .filter(o => o.tipo === "texto" && o.fontFamily)
-      .map(o => o.fontFamily)          // puede venir "Poppins, sans-serif"
-  ),
-];
-
-const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
+  const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
 
 
 
@@ -52,85 +55,90 @@ const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
     const offsetTop = topPorSeccion[seccion.id];
     const topPercent = (offsetTop / alturaTotal) * 100;
     const heightPercent = (seccion.altura / alturaTotal) * 100;
-    
+
 
     const contenido = generarHTMLDesdeObjetos(
       objetos.filter((o) => o.seccionId === seccion.id),
-      secciones 
+      secciones
     );
 
     // 🧠 NUEVA LÓGICA: Detectar tipo de fondo
     const fondoValue = seccion.fondo || "transparent";
     const esImagenFondo = seccion.fondoTipo === "imagen" && seccion.fondoImagen;
-    
+
     // 🎨 APLICAR ESTILOS CORRECTOS
-let estilosFondo = "";
-if (esImagenFondo) {
-  // 🔥 VERIFICAR URL Y HACER PÚBLICA
-  let imageUrl = seccion.fondoImagen;
-  
+    let estilosFondo = "";
+    if (esImagenFondo) {
+      // 🔥 VERIFICAR URL Y HACER PÚBLICA
+      let imageUrl = seccion.fondoImagen;
 
-  
-  // Si es una URL de Firebase Storage, asegurarse que tenga el token público
-  if (imageUrl && imageUrl.includes('firebasestorage.googleapis.com') && !imageUrl.includes('alt=media')) {
-    imageUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'alt=media';
-  }
-  
-  
-  
-  // Calcular posición basada en los offsets X e Y
-  let backgroundPosition = 'center center';
-  
-  if (seccion.fondoImagenOffsetX !== undefined || seccion.fondoImagenOffsetY !== undefined) {
-  const offsetX = seccion.fondoImagenOffsetX || 0;
-  const offsetY = seccion.fondoImagenOffsetY || 0;
 
-  
-  
-  // 🔥 CORREGIR CÁLCULO: Los offsets negativos mueven la imagen hacia arriba/izquierda
-  // Los offsets positivos mueven la imagen hacia abajo/derecha
-  const offsetXPercent = offsetX !== 0 ? `calc(50% - ${-offsetX}px)` : '50%';
-  const offsetYPercent = offsetY !== 0 ? `calc(50% - ${-offsetY}px)` : '50%';
-  
-  backgroundPosition = `${offsetXPercent} ${offsetYPercent}`;
-  
 
-}
-  
-  // 🔥 USAR COMILLAS SIMPLES PARA EVITAR CONFLICTOS
-  estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: ${backgroundPosition}; background-repeat: no-repeat;`;
-  
-} else if (fondoValue.startsWith("http") || fondoValue.startsWith("data:") || fondoValue.startsWith("blob:")) {
-  // Compatibilidad con el sistema anterior
-  let imageUrl = fondoValue.replace('url(', '').replace(')', '');
-  
-  if (imageUrl.includes('firebasestorage.googleapis.com') && !imageUrl.includes('alt=media')) {
-    imageUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'alt=media';
-  }
-  
-  // 🔥 USAR COMILLAS SIMPLES PARA EVITAR CONFLICTOS
-  estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: center center; background-repeat: no-repeat;`;
-} else {
-  estilosFondo = `background: ${fondoValue};`;
-}
+      // Si es una URL de Firebase Storage, asegurarse que tenga el token público
+      if (imageUrl && imageUrl.includes('firebasestorage.googleapis.com') && !imageUrl.includes('alt=media')) {
+        imageUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'alt=media';
+      }
+
+
+
+      // Calcular posición basada en los offsets X e Y
+      let backgroundPosition = 'center center';
+
+      if (seccion.fondoImagenOffsetX !== undefined || seccion.fondoImagenOffsetY !== undefined) {
+        const offsetX = seccion.fondoImagenOffsetX || 0;
+        const offsetY = seccion.fondoImagenOffsetY || 0;
+
+
+
+        // 🔥 CORREGIR CÁLCULO: Los offsets negativos mueven la imagen hacia arriba/izquierda
+        // Los offsets positivos mueven la imagen hacia abajo/derecha
+        const offsetXPercent = offsetX !== 0 ? `calc(50% - ${-offsetX}px)` : '50%';
+        const offsetYPercent = offsetY !== 0 ? `calc(50% - ${-offsetY}px)` : '50%';
+
+        backgroundPosition = `${offsetXPercent} ${offsetYPercent}`;
+
+
+      }
+
+      // 🔥 USAR COMILLAS SIMPLES PARA EVITAR CONFLICTOS
+      estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: ${backgroundPosition}; background-repeat: no-repeat;`;
+
+    } else if (fondoValue.startsWith("http") || fondoValue.startsWith("data:") || fondoValue.startsWith("blob:")) {
+      // Compatibilidad con el sistema anterior
+      let imageUrl = fondoValue.replace('url(', '').replace(')', '');
+
+      if (imageUrl.includes('firebasestorage.googleapis.com') && !imageUrl.includes('alt=media')) {
+        imageUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'alt=media';
+      }
+
+      // 🔥 USAR COMILLAS SIMPLES PARA EVITAR CONFLICTOS
+      estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: center center; background-repeat: no-repeat;`;
+    } else {
+      estilosFondo = `background: ${fondoValue};`;
+    }
 
 
     // 🎯 CONSTRUIR ESTILOS DE FORMA SEGURA
-const estilosSeccion = [
-  `top: ${topPercent}%`,
-  `height: ${heightPercent}%`,
-  `width: 100%`,
-  estilosFondo.replace(/\s+/g, ' ').trim()
-].join('; ');
+    const estilosSeccion = [
+      `top: ${topPercent}%`,
+      `height: ${heightPercent}%`,
+      `width: 100%`,
+      estilosFondo.replace(/\s+/g, ' ').trim()
+    ].join('; ');
 
 
 
-return `
+    return `
   <div class="seccion" style="${estilosSeccion}">
     ${contenido}
   </div>
 `;
   }).join("\n");
+
+  // ✅ Forzar modal ON salvo que te lo pidan OFF explícitamente
+  const cfgRSVP: RSVPConfig = { enabled: true, ...(rsvp ?? {}) };
+  const modalRSVP = rsvp ? generarModalRSVPHTML(rsvp) : "";
+
 
   return `
 <!DOCTYPE html>
@@ -198,6 +206,8 @@ return `
       ${htmlSecciones}
     </div>
   </div>
+
+   ${modalRSVP} 
 
   <script>
     function ajustarCanvas() {

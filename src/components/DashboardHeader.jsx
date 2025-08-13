@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
+import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 
@@ -21,6 +22,8 @@ export default function DashboardHeader({
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
+    const router = useRouter();
+
 
     // Cargar nombre del borrador al montar o cambiar slug
     useEffect(() => {
@@ -139,7 +142,11 @@ export default function DashboardHeader({
                 <div className="flex items-center gap-2 flex-1">
                     {/* Botón volver */}
                     <button
-                        onClick={() => {
+                        onClick={async () => {
+                            // 1) Limpiar la URL (saca ?slug=...) sin agregar historial nuevo
+                            await router.replace("/dashboard", undefined, { shallow: true });
+
+                            // 2) Recién ahora reseteamos estado y vista
                             setSlugInvitacion(null);
                             setModoEditor(null);
                             onCambiarVista?.("home");
@@ -258,33 +265,33 @@ export default function DashboardHeader({
                     </div>
                 </div>
             ) : (
-              /* ----------------- 🟢 Vista dashboard ----------------- */
-<div className="flex items-center gap-2 flex-1 justify-between">
-  <div className="flex items-center gap-2">
-    <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
-    <span className="text-xs font-semibold text-gray-700 hidden sm:block">DASHBOARD</span>
-  </div>
+                /* ----------------- 🟢 Vista dashboard ----------------- */
+                <div className="flex items-center gap-2 flex-1 justify-between">
+                    <div className="flex items-center gap-2">
+                        <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
+                        <span className="text-xs font-semibold text-gray-700 hidden sm:block">DASHBOARD</span>
+                    </div>
 
-  <div className="flex items-center gap-2 mr-2">
-    {vistaActual === "publicadas" ? (
-      <button
-        onClick={() => onCambiarVista("home")}
-        className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
-        title="Volver al inicio del dashboard"
-      >
-        ← Volver al dashboard
-      </button>
-    ) : (
-      <button
-        onClick={() => onCambiarVista("publicadas")}
-        className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
-        title="Ver tus invitaciones publicadas"
-      >
-        Mis invitaciones publicadas
-      </button>
-    )}
-  </div>
-</div>
+                    <div className="flex items-center gap-2 mr-2">
+                        {vistaActual === "publicadas" ? (
+                            <button
+                                onClick={() => onCambiarVista("home")}
+                                className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+                                title="Volver al inicio del dashboard"
+                            >
+                                ← Volver al dashboard
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => onCambiarVista("publicadas")}
+                                className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+                                title="Ver tus invitaciones publicadas"
+                            >
+                                Mis invitaciones publicadas
+                            </button>
+                        )}
+                    </div>
+                </div>
 
 
             )}

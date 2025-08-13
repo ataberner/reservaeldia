@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { collection, query, where, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
 import TipoSelector from '../components/TipoSelector';
 import PlantillaGrid from '../components/PlantillaGrid';
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const menuRef = useRef(null);
   const [vista, setVista] = useState("home");
+  const router = useRouter();
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -45,6 +47,26 @@ export default function Dashboard() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+
+ // 🔗 Sincronizar ?slug=... con el estado (siempre usar Konva)
+useEffect(() => {
+  if (!router.isReady) return;
+
+  const { slug } = router.query;
+  const slugURL = typeof slug === "string" ? slug : null;
+
+  if (slugURL) {
+    setSlugInvitacion(slugURL);
+    setModoEditor("konva"); // Siempre Konva
+    setVista("editor");
+  } else {
+    // Si no hay slug y no estás editando nada, volvemos a "home"
+    if (!slugInvitacion) {
+      setVista("home");
+    }
+  }
+}, [router.isReady, router.query, slugInvitacion]);
 
 
   const toggleZoom = () => {

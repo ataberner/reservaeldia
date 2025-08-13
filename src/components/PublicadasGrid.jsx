@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { db } from "@/firebase";
 import { Link2, Copy, ExternalLink, Image as ImageIcon } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 /**
  * Vista: Lista (tabla) de invitaciones publicadas
@@ -55,10 +56,10 @@ export default function PublicadasGrid({ usuario }) {
         typeof it.confirmados === "number"
           ? it.confirmados
           : typeof it.confirmadosCount === "number"
-          ? it.confirmadosCount
-          : typeof it.invitadosConfirmados === "number"
-          ? it.invitadosConfirmados
-          : 0;
+            ? it.confirmadosCount
+            : typeof it.invitadosConfirmados === "number"
+              ? it.invitadosConfirmados
+              : 0;
 
       return {
         id: it.id,
@@ -68,6 +69,7 @@ export default function PublicadasGrid({ usuario }) {
         publicadaEn: it.publicadaEn?.toDate ? it.publicadaEn.toDate() : null,
         estado,
         confirmados,
+        borradorSlug: it.borradorSlug || it.borradorId || it.slug || it.id,
       };
     });
   }, [items]);
@@ -116,12 +118,13 @@ export default function PublicadasGrid({ usuario }) {
       {/* Contenedor responsivo: en móviles se apila, en desktop se ve tabular */}
       <div className="overflow-x-auto rounded-xl border">
         {/* Encabezado */}
-        <div className="hidden md:grid grid-cols-[88px_1fr_160px_220px_220px] bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide">
+        <div className="hidden md:grid grid-cols-[88px_1fr_160px_220px_220px_140px] bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide">
           <div className="px-4 py-3">Preview</div>
           <div className="px-4 py-3">Nombre</div>
           <div className="px-4 py-3">Estado</div>
           <div className="px-4 py-3">Fecha de publicación</div>
           <div className="px-4 py-3">Invitados confirmados</div>
+          <div className="px-4 py-3 text-right">Editar</div>
         </div>
 
         {/* Filas */}
@@ -129,24 +132,24 @@ export default function PublicadasGrid({ usuario }) {
           {filas.map((f) => (
             <li
               key={f.id}
-              className="grid md:grid-cols-[88px_1fr_160px_220px_220px] grid-cols-1 gap-3 md:gap-0 items-center px-3 sm:px-4 py-3 hover:bg-gray-50 transition-colors"
+              className="group grid md:grid-cols-[88px_1fr_160px_220px_220px_140px] grid-cols-1 gap-3 md:gap-0 items-center px-3 sm:px-4 py-3 hover:bg-gray-50 transition-colors"
             >
               {/* Preview */}
               <div className="flex items-center gap-3">
                 <div className="h-16 w-16 rounded-lg overflow-hidden bg-gray-100 border">
                   <a href={f.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                  {f.portada ? (
-                    <img
-                      src={f.portada}
-                      alt={`Portada de ${f.nombre}`}
-                      className="h-full w-full object-cover object-top"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-gray-400">
-                      <ImageIcon className="h-6 w-6" />
-                    </div>
-                  )}
+                    {f.portada ? (
+                      <img
+                        src={f.portada}
+                        alt={`Portada de ${f.nombre}`}
+                        className="h-full w-full object-cover object-top"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center text-gray-400">
+                        <ImageIcon className="h-6 w-6" />
+                      </div>
+                    )}
                   </a>
                 </div>
                 {/* Acciones rápidas en móvil */}
@@ -191,6 +194,21 @@ export default function PublicadasGrid({ usuario }) {
 
               {/* Confirmados */}
               <div className="md:px-4 text-sm text-gray-700">{f.confirmados}</div>
+              {/* 🔹 NUEVA celda: botón Editar */}
+              <div className="md:px-4 flex md:justify-end">
+                {f.borradorSlug ? (
+                  <a
+                    href={`/dashboard/?slug=${encodeURIComponent(f.borradorSlug)}`}
+                    className="inline-flex items-center gap-2 text-xs font-medium px-2.5 py-1.5 border rounded-lg hover:bg-gray-100"
+                    title="Editar borrador"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Editar
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400">No disponible</span>
+                )}
+              </div>
             </li>
           ))}
         </ul>

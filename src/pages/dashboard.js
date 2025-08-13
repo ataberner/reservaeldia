@@ -7,7 +7,7 @@ import TipoSelector from '../components/TipoSelector';
 import PlantillaGrid from '../components/PlantillaGrid';
 import BorradoresGrid from '@/components/BorradoresGrid';
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
-
+import PublicadasGrid from "@/components/PublicadasGrid";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import dynamic from "next/dynamic";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
@@ -34,7 +34,7 @@ export default function Dashboard() {
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const menuRef = useRef(null);
-
+  const [vista, setVista] = useState("home");
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -126,6 +126,7 @@ export default function Dashboard() {
         setUrlIframe(url);
         setModoEditor("iframe");
       }
+      setVista("editor");
     };
 
 
@@ -167,7 +168,7 @@ export default function Dashboard() {
     <DashboardLayout
       mostrarMiniToolbar={!!slugInvitacion}
       seccionActivaId={seccionActivaId}
-      modoSelector={!slugInvitacion}
+      modoSelector={!slugInvitacion && vista === "home"}
       slugInvitacion={slugInvitacion}
       setSlugInvitacion={setSlugInvitacion}
       setModoEditor={setModoEditor}
@@ -177,9 +178,13 @@ export default function Dashboard() {
       futurosExternos={futurosExternos}
       generarVistaPrevia={generarVistaPrevia}
       usuario={usuario}
+      vista={vista}
+      onCambiarVista={setVista}
+      ocultarSidebar={vista === "publicadas"} 
     >
 
-      {!slugInvitacion && (
+      {/* 🔹 Vista HOME (selector, plantillas, borradores) */}
+      {!slugInvitacion && vista === "home" && (
         <div className="w-full px-4 pb-8">
           <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
           {tipoSeleccionado && (
@@ -196,7 +201,6 @@ export default function Dashboard() {
                     try {
                       const functions = getFunctions();
                       const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
-
                       const res = await copiarPlantilla({ plantillaId: plantilla.id, slug });
 
                       if (plantilla.editor === "konva") {
@@ -208,21 +212,27 @@ export default function Dashboard() {
                         setSlugInvitacion(slug);
                         setUrlIframe(url);
                       }
+                      setVista("editor");
                     } catch (error) {
                       alert("❌ Error al copiar la plantilla");
                       console.error(error);
                     }
                   }}
                 />
-
-
-
               )}
             </>
           )}
           <BorradoresGrid />
         </div>
       )}
+
+      {/* 🔹 Vista PUBLICADAS */}
+      {!slugInvitacion && vista === "publicadas" && (
+        <div className="w-full px-4 pb-8">
+          <PublicadasGrid usuario={usuario} />
+        </div>
+      )}
+
 
 
       {/* Editor de invitación */}

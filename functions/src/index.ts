@@ -381,20 +381,48 @@ htmlFinal = generarHTMLDesdeSecciones(secciones, objetosFinales, rsvp);
 
     console.log("🧾 HTML generado (primeros 300 caracteres):", htmlFinal.slice(0, 300));
 
-    // 🧾 5. Registrar en Firestore
-    await firestore.collection("publicadas").doc(slug).set(
-      {
-        slug,
-        userId: data.userId || null,
-        plantillaId: data.plantillaId || null,
-        publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+   // 🧾 5. Registrar en Firestore (mejorado)
+const url = `https://reservaeldia.com.ar/i/${slug}`;
 
-   const url = `https://reservaeldia.com.ar/i/${slug}`;
+// ✅ Validar que el borrador tenga userId
+const userId = data.userId as string | undefined;
+if (!userId) {
+  console.error("Borrador sin userId. Slug:", slug);
+  throw new functions.https.HttpsError(
+    "failed-precondition",
+    "El borrador no tiene userId. No se puede publicar sin propietario."
+  );
+}
 
-    return { success: true, url };
+// Campos opcionales que ayudan al dashboard
+const nombre = (data.nombre as string) || slug;
+const tipo = (data.tipo as string) || (data.plantillaTipo as string) || "desconocido";
+// Si tenés portada (thumbnail) del borrador, guardala; si no, dejá null
+const portada = (data.thumbnailUrl as string) || null;
+
+// Si llevás conteo de invitados confirmados en el borrador, podés mapearlo aquí.
+// Si no, inicializamos en 0 para evitar undefined en el cliente.
+const invitadosCount =
+  (typeof data.invitadosCount === "number" ? data.invitadosCount : 0);
+
+// 💾 Guardar el doc completo en `publicadas/{slug}`
+await firestore.collection("publicadas").doc(slug).set(
+  {
+    slug,
+    userId,
+    plantillaId: data.plantillaId || null,
+    urlPublica: url,               // ⬅️ importante para el botón "Ver" / "Copiar"
+    nombre,                        // ⬅️ mostrable en tarjeta
+    tipo,                          // ⬅️ filtro futuro
+    portada,                       // ⬅️ imagen de portada si existe
+    invitadosCount,                // ⬅️ métrica simple inicial
+    publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
+
+return { success: true, url };
+
   }
 );
 

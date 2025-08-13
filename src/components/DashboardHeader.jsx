@@ -15,33 +15,35 @@ export default function DashboardHeader({
     setModoEditor,
     toggleZoom,
     generarVistaPrevia,
+    vistaActual,
+    onCambiarVista,
 }) {
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
 
-// Cargar nombre del borrador al montar o cambiar slug
-useEffect(() => {
-  const cargarNombre = async () => {
-    if (!slugInvitacion) return;
+    // Cargar nombre del borrador al montar o cambiar slug
+    useEffect(() => {
+        const cargarNombre = async () => {
+            if (!slugInvitacion) return;
 
-    try {
-      const ref = doc(db, "borradores", slugInvitacion);
-      const snap = await getDoc(ref);
+            try {
+                const ref = doc(db, "borradores", slugInvitacion);
+                const snap = await getDoc(ref);
 
-      if (snap.exists()) {
-        const data = snap.data();
-        
-        // Si no tiene nombre, poner un valor temporal
-        setNombreBorrador(data.nombre || "Sin nombre");
-      }
-    } catch (error) {
-      console.error("❌ Error cargando nombre del borrador:", error);
-    }
-  };
+                if (snap.exists()) {
+                    const data = snap.data();
 
-  cargarNombre();
-}, [slugInvitacion]);
+                    // Si no tiene nombre, poner un valor temporal
+                    setNombreBorrador(data.nombre || "Sin nombre");
+                }
+            } catch (error) {
+                console.error("❌ Error cargando nombre del borrador:", error);
+            }
+        };
+
+        cargarNombre();
+    }, [slugInvitacion]);
 
 
     // Cerrar menú si clic afuera
@@ -140,6 +142,7 @@ useEffect(() => {
                         onClick={() => {
                             setSlugInvitacion(null);
                             setModoEditor(null);
+                            onCambiarVista?.("home");
                         }}
                         className="flex items-center gap-2 px-2 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition"
                     >
@@ -220,26 +223,26 @@ useEffect(() => {
                         Guardar plantilla
                     </button>
 
-                    
+
 
                     {/* Botones Vista previa / Generar */}
                     <div className="flex gap-2 ml-auto">
                         {/* 🔹 Input editable con nombre del borrador */}
-                    <input
-                        type="text"
-                        value={nombreBorrador}
-                        onChange={(e) => setNombreBorrador(e.target.value)}
-                        onBlur={async () => {
-                            // Guardar en Firestore cuando se pierde el foco
-                            if (!slugInvitacion) return;
-                            const ref = doc(db, "borradores", slugInvitacion);
-                            await (await import("firebase/firestore")).updateDoc(ref, {
-                                nombre: nombreBorrador,
-                            });
-                        }}
-                        className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                        title="Editar nombre del borrador"
-                    />
+                        <input
+                            type="text"
+                            value={nombreBorrador}
+                            onChange={(e) => setNombreBorrador(e.target.value)}
+                            onBlur={async () => {
+                                // Guardar en Firestore cuando se pierde el foco
+                                if (!slugInvitacion) return;
+                                const ref = doc(db, "borradores", slugInvitacion);
+                                await (await import("firebase/firestore")).updateDoc(ref, {
+                                    nombre: nombreBorrador,
+                                });
+                            }}
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                            title="Editar nombre del borrador"
+                        />
                         <button
                             onClick={generarVistaPrevia}
                             className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs flex items-center gap-1"
@@ -255,11 +258,35 @@ useEffect(() => {
                     </div>
                 </div>
             ) : (
-                /* ----------------- 🟢 Vista dashboard ----------------- */
-                <div className="flex items-center gap-2 flex-1">
-                    <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
-                    <span className="text-xs font-semibold text-gray-700 hidden sm:block">DASHBOARD</span>
-                </div>
+              /* ----------------- 🟢 Vista dashboard ----------------- */
+<div className="flex items-center gap-2 flex-1 justify-between">
+  <div className="flex items-center gap-2">
+    <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
+    <span className="text-xs font-semibold text-gray-700 hidden sm:block">DASHBOARD</span>
+  </div>
+
+  <div className="flex items-center gap-2 mr-2">
+    {vistaActual === "publicadas" ? (
+      <button
+        onClick={() => onCambiarVista("home")}
+        className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+        title="Volver al inicio del dashboard"
+      >
+        ← Volver al dashboard
+      </button>
+    ) : (
+      <button
+        onClick={() => onCambiarVista("publicadas")}
+        className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+        title="Ver tus invitaciones publicadas"
+      >
+        Mis invitaciones publicadas
+      </button>
+    )}
+  </div>
+</div>
+
+
             )}
 
             {/* 🔹 Menú usuario siempre visible */}

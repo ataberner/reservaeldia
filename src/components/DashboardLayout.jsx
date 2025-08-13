@@ -18,6 +18,9 @@ export default function DashboardLayout({
   mostrarMiniToolbar,
   seccionActivaId,
   modoSelector = false,
+  vista,
+  onCambiarVista,
+  ocultarSidebar = false,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // 🔧 Corrige URLs inválidas al entrar
@@ -37,14 +40,18 @@ export default function DashboardLayout({
         futurosExternos={futurosExternos}
         generarVistaPrevia={generarVistaPrevia}
         usuario={usuario}
+        vistaActual={vista}
+        onCambiarVista={onCambiarVista}
       />
 
       {/* 🔹 Sidebar */}
+      {!ocultarSidebar && (
       <DashboardSidebar
         modoSelector={modoSelector}
         mostrarMiniToolbar={mostrarMiniToolbar}
         seccionActivaId={seccionActivaId}
       />
+      )}
 
       {/* 🔹 Área principal */}
       <main
@@ -56,11 +63,11 @@ export default function DashboardLayout({
         style={
           modoSelector
             ? {
-                top: "50px",
-                height: "calc(100vh - 50px)",
-                transform: "translateZ(0)",
-                zIndex: 0,
-              }
+              top: "50px",
+              height: "calc(100vh - 50px)",
+              transform: "translateZ(0)",
+              zIndex: 0,
+            }
             : {}
         }
       >

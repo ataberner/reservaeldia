@@ -136,7 +136,7 @@ if (obj.tipo === "texto") {
   const textDecoration = obj.textDecoration || "none";
   const align = obj.align || "center";
 
-  return `<div class="rsvp-boton" data-accion="abrir-rsvp" data-rsvp-open role="button" tabindex="0" aria-label="Confirmar asistencia" style="
+  return `<div class="rsvp-boton" id="abrirModalRSVP" data-accion="abrir-rsvp" data-rsvp-open role="button" tabindex="0" aria-label="Confirmar asistencia" style="
     position: absolute;
     left: ${left}%;
     top: ${top}%;

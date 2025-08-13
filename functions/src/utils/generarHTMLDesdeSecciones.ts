@@ -1,7 +1,7 @@
 import { calcularTopPorSeccion } from "./calcularTopPorSeccion";
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
-import { generarModalRSVPHTML, type RSVPConfig } from "./generarModalRSVP";
+type RSVPConfig = { enabled?: boolean };
 
 
 const EXCLUDE_FONTS = new Set([
@@ -31,7 +31,19 @@ function buildGoogleFontsLink(fonts: string[]): string {
 export function generarHTMLDesdeSecciones(
   secciones: any[],
   objetos: any[],
-  rsvp?: RSVPConfig
+  rsvp?: RSVPConfig,
+  opts?: {
+    slug?: string;
+    firebaseConfig?: {
+      apiKey: string;
+      authDomain: string;
+      projectId: string;
+      appId: string;
+      storageBucket?: string;
+      messagingSenderId?: string;
+      measurementId?: string;
+    };
+  }
 ): string {
 
   const alturaTotal = secciones.reduce((acc, s) => acc + s.altura, 0);
@@ -47,7 +59,8 @@ export function generarHTMLDesdeSecciones(
 
   const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
 
-
+  const slugPublica = opts?.slug ?? "";
+  const firebaseConfigJson = JSON.stringify(opts?.firebaseConfig || null);
 
   const topPorSeccion = calcularTopPorSeccion(secciones);
 
@@ -127,7 +140,6 @@ export function generarHTMLDesdeSecciones(
     ].join('; ');
 
 
-
     return `
   <div class="seccion" style="${estilosSeccion}">
     ${contenido}
@@ -135,9 +147,119 @@ export function generarHTMLDesdeSecciones(
 `;
   }).join("\n");
 
-  // ✅ Forzar modal ON salvo que te lo pidan OFF explícitamente
-  const cfgRSVP: RSVPConfig = { enabled: true, ...(rsvp ?? {}) };
-  const modalRSVP = rsvp ? generarModalRSVPHTML(rsvp) : "";
+
+  // modal HTML oculto listo para usar
+const modalRSVP = `
+<div id="modal-rsvp" aria-hidden="true" style="
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,.6); z-index: 9999;
+">
+  <div style="
+    background: #fff; padding: 24px; border-radius: 12px;
+    width: 92%; max-width: 420px; box-shadow: 0 12px 32px rgba(0,0,0,.25);
+    font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 12px;
+  ">
+    <h2 style="font-size: 20px; font-weight: 700;">Confirmar asistencia</h2>
+
+    <label style="font-size: 12px; color: #555;">Nombre*</label>
+    <input id="rsvp-nombre" data-rsvp-nombre placeholder="Tu nombre"
+           style="padding: 10px; border: 1px solid #ddd; border-radius: 8px;" />
+
+    <label style="font-size: 12px; color: #555;">Cantidad de asistentes</label>
+    <input id="rsvp-cantidad" data-rsvp-cantidad type="number" min="1" value="1"
+           style="padding: 10px; border: 1px solid #ddd; border-radius: 8px;" />
+
+    <label style="font-size: 12px; color: #555;">Mensaje (opcional)</label>
+    <input id="rsvp-mensaje" data-rsvp-mensaje placeholder="¿Querés dejar algún mensaje?"
+           style="padding: 10px; border: 1px solid #ddd; border-radius: 8px;" />
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+      <button data-rsvp-close
+              style="padding:10px 12px; background:#eee; border:none; border-radius:8px;">Cancelar</button>
+      <button id="rsvp-submit" data-rsvp-submit
+              style="padding:10px 14px; background:#773dbe; color:#fff; border:none; border-radius:8px;">Enviar</button>
+    </div>
+  </div>
+</div>
+`;
+
+
+
+// Forzá ON salvo que te lo pidan OFF (si lo necesitás para habilitar/deshabilitar el script)
+const cfgRSVP: RSVPConfig = { enabled: true, ...(rsvp ?? {}) };
+
+  // 🔌 Script inline para manejar el envío del RSVP en el HTML estático
+const scriptRSVP = `
+<script type="module">
+  (async () => {
+    const SLUG = ${JSON.stringify(slugPublica)};
+    const CONFIG = ${firebaseConfigJson};
+
+    console.log("[RSVP] Script embebido cargado", { slug: SLUG, hasConfig: !!CONFIG });
+    if (!CONFIG) { console.error("[RSVP] Falta firebaseConfig"); return; }
+
+    const [{ initializeApp }, { getFirestore, collection, addDoc, serverTimestamp }] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"),
+    ]);
+    const app = initializeApp(CONFIG);
+    const db  = getFirestore(app);
+
+    // Referencias fijas (porque ahora sí existe el modal en el DOM)
+    const modal        = document.getElementById("modal-rsvp");
+    const inputNombre  = modal?.querySelector("#rsvp-nombre");
+    const inputCantidad= modal?.querySelector("#rsvp-cantidad");
+    const inputMensaje = modal?.querySelector("#rsvp-mensaje");
+    const btnSubmit    = modal?.querySelector("#rsvp-submit");
+    const btnClose     = modal?.querySelector("[data-rsvp-close]");
+
+    // Botón que ya existe en tu HTML: #abrirModalRSVP (lo vi en tu dump de HTML)
+    const abrirBtn = document.getElementById("abrirModalRSVP") 
+                  || document.querySelector("[data-rsvp-open], [data-accion='abrir-rsvp']");
+
+    const abrirModal = () => { if (modal) { modal.style.display = "flex"; modal.setAttribute("aria-hidden","false"); } };
+    const cerrarModal = () => { if (modal) { modal.style.display = "none"; modal.setAttribute("aria-hidden","true"); } };
+
+    abrirBtn?.addEventListener("click", (e) => { e.preventDefault?.(); abrirModal(); });
+    btnClose?.addEventListener("click", cerrarModal);
+    modal?.addEventListener("click", (e) => { if (e.target === modal) cerrarModal(); }); // click en overlay
+
+    if (btnSubmit) {
+      btnSubmit.addEventListener("click", async () => {
+        try {
+          const nombre   = (inputNombre?.value || "").trim();
+          const cantidad = parseInt((inputCantidad?.value || "1"), 10) || 1;
+          const mensaje  = (inputMensaje?.value || "").trim() || null;
+
+          console.log("[RSVP] Enviando...", { nombre, cantidad, slug: SLUG });
+          if (!nombre) { alert("Por favor, ingresá tu nombre."); return; }
+
+          btnSubmit.disabled = true;
+
+          const ref = await addDoc(collection(db, "publicadas", SLUG, "rsvps"), {
+            nombre, cantidad, mensaje, slug: SLUG,
+            createdAt: serverTimestamp(),
+            userAgent: navigator.userAgent
+          });
+
+          console.log("[RSVP] Guardado OK:", ref.id);
+          alert(\`¡Gracias por confirmar, \${nombre}!\`);
+          cerrarModal();
+        } catch (e) {
+          console.error("[RSVP] Error guardando", e);
+          alert("Hubo un error al guardar tu confirmación. Probá de nuevo.");
+        } finally {
+          btnSubmit.disabled = false;
+        }
+      });
+    } else {
+      console.warn("[RSVP] No se encontró #rsvp-submit dentro del modal.");
+    }
+  })();
+</script>
+`;
+
 
 
   return `
@@ -200,14 +322,15 @@ export function generarHTMLDesdeSecciones(
     }
   </style>
 </head>
-<body>
+<body data-slug="${slugPublica}">
   <div class="canvas-container">
     <div class="canvas">
       ${htmlSecciones}
     </div>
   </div>
 
-   ${modalRSVP} 
+  ${modalRSVP}
+   ${cfgRSVP.enabled ? scriptRSVP : ""}
 
   <script>
     function ajustarCanvas() {

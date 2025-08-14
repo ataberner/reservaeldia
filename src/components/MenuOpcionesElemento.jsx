@@ -3,7 +3,24 @@ import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
+    Link2, X
 } from "lucide-react";
+
+// Normaliza y valida URL básica
+function sanitizeURL(url) {
+    if (!url) return "";
+    const t = String(url).trim();
+    const ok = /^(https?:\/\/|mailto:|tel:|whatsapp:)/i.test(t);
+    if (ok) return t;
+    // dominio simple -> completar
+    if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(t)) return `https://${t}`;
+    try {
+        const u = new URL(t);
+        return u.toString();
+    } catch {
+        return "";
+    }
+}
 
 
 /**
@@ -71,6 +88,114 @@ export default function MenuOpcionesElemento({
 
         return { x, y };
     };
+
+
+    // --- Submenú Enlace ---
+    const [mostrarSubmenuEnlace, setMostrarSubmenuEnlace] = useState(false);
+    const btnEnlaceRef = useRef(null);
+    const submenuEnlaceRef = useRef(null);
+    const [enlacePos, setEnlacePos] = useState({ x: -9999, y: -9999 });
+    const [enlaceReady, setEnlaceReady] = useState(false);
+    const [urlInput, setUrlInput] = useState("");
+    const [urlError, setUrlError] = useState(false);
+
+    // Al abrir el menú, pre-cargar la URL actual del elemento (si tiene)
+    useEffect(() => {
+        if (!isOpen || !elementoSeleccionado) return;
+        const actual = elementoSeleccionado?.enlace?.href || elementoSeleccionado?.enlace || "";
+        setUrlInput(actual || "");
+        setUrlError(false);
+    }, [isOpen, elementoSeleccionado]);
+
+    // Posicionar el flyout de "Enlace"
+    useLayoutEffect(() => {
+        if (!mostrarSubmenuEnlace) {
+            setEnlaceReady(false);
+            setEnlacePos({ x: -9999, y: -9999 });
+            return;
+        }
+        const btn = btnEnlaceRef.current;
+        if (!btn) return;
+
+        const r = btn.getBoundingClientRect();
+        const flyoutWidth = 320;  // un poco más ancho para el input
+        const flyoutHeight = 160; // estimado
+        const gap = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let x = r.right + gap;
+        let y = r.top;
+
+        if (x + flyoutWidth > vw) x = r.left - flyoutWidth - gap;
+        if (y + flyoutHeight > vh) y = Math.max(8, r.bottom - flyoutHeight);
+
+        setEnlacePos({ x, y });
+        setEnlaceReady(true);
+    }, [mostrarSubmenuEnlace]);
+
+    // Reposicionar ante scroll/resize con el flyout abierto
+    useEffect(() => {
+        if (!mostrarSubmenuEnlace) return;
+        const handle = () => {
+            const btn = btnEnlaceRef.current;
+            if (!btn) return;
+            const r = btn.getBoundingClientRect();
+            const flyoutWidth = 320, flyoutHeight = 160, gap = 8;
+            const vw = window.innerWidth, vh = window.innerHeight;
+
+            let x = r.right + gap;
+            let y = r.top;
+            if (x + flyoutWidth > vw) x = r.left - flyoutWidth - gap;
+            if (y + flyoutHeight > vh) y = Math.max(8, r.bottom - flyoutHeight);
+
+            setEnlacePos({ x, y });
+        };
+        window.addEventListener("resize", handle);
+        window.addEventListener("scroll", handle, true);
+        return () => {
+            window.removeEventListener("resize", handle);
+            window.removeEventListener("scroll", handle, true);
+        };
+    }, [mostrarSubmenuEnlace]);
+
+    const guardarEnlace = () => {
+        const limpio = sanitizeURL(urlInput);
+        if (!limpio) {
+            setUrlError(true);
+            return;
+        }
+        // Guardamos como objeto con target siempre _blank
+        setObjetos(prev =>
+            prev.map(o => {
+                if (o.id !== elementoSeleccionado?.id) return o;
+                return {
+                    ...o,
+                    enlace: {
+                        href: limpio,
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                    },
+                };
+            })
+        );
+        setMostrarSubmenuEnlace(false);
+        onCerrar();
+    };
+
+    const quitarEnlace = () => {
+        setObjetos(prev =>
+            prev.map(o => {
+                if (o.id !== elementoSeleccionado?.id) return o;
+                const { enlace, ...rest } = o;
+                return rest;
+            })
+        );
+        setMostrarSubmenuEnlace(false);
+        onCerrar();
+    };
+
+
 
     // 1) Posicionar ANTES del paint para evitar flicker
     useLayoutEffect(() => {
@@ -216,6 +341,108 @@ export default function MenuOpcionesElemento({
                 <PlusCircle className="w-4 h-4" /> Duplicar
             </button>
 
+
+            {/* Enlace */}
+            <div className="relative">
+                <button
+                    ref={btnEnlaceRef}
+                    onClick={() => {
+                        // cerramos el de capa si estaba abierto, para no superponer
+                        setMostrarSubmenuCapa(false);
+                        setMostrarSubmenuEnlace(prev => !prev);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                >
+                    <Link2 className="w-4 h-4" /> Enlace
+                </button>
+
+                {/* Flyout Enlace */}
+                {mostrarSubmenuEnlace &&
+                    createPortal(
+                        <div
+                            ref={submenuEnlaceRef}
+                            className="fixed z-[60] bg-white border rounded shadow-lg p-3 space-y-3 menu-z-index"
+                            style={{
+                                left: enlacePos.x,
+                                top: enlacePos.y,
+                                width: 320,
+                                visibility: enlaceReady ? "visible" : "hidden",
+                                borderColor: "#773dbe",
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="text-sm font-medium">Agregar enlace</div>
+
+                            <input
+                                type="text"
+                                value={urlInput}
+                                onChange={(e) => {
+                                    setUrlInput(e.target.value);
+                                    if (urlError) setUrlError(false);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") guardarEnlace();
+                                    if (e.key === "Escape") setMostrarSubmenuEnlace(false);
+                                }}
+                                placeholder="https://ejemplo.com o mailto:..."
+                                className={`w-full px-3 py-2 border rounded outline-none ${urlError ? "border-red-500" : "border-gray-300"
+                                    }`}
+                            />
+
+                            {/* Chips rápidos (opcional) */}
+                            <div className="flex flex-wrap gap-2 text-xs">
+                                {["https://", "mailto:", "tel:", "whatsapp:"].map((pref) => (
+                                    <button
+                                        key={pref}
+                                        onClick={() => setUrlInput((u) => (u.startsWith(pref) ? u : pref + u))}
+                                        className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200"
+                                    >
+                                        {pref}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Footer responsivo */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center mt-2">
+                                {/* Botón Quitar enlace */}
+                                <button
+                                    onClick={quitarEnlace}
+                                    className="inline-flex items-center gap-2 px-2.5 py-1.5 text-[13px] text-red-600 hover:bg-red-50 rounded whitespace-nowrap"
+                                >
+                                    <X className="w-4 h-4" />
+                                    Quitar enlace
+                                </button>
+
+                                {/* Botones Cancelar y Guardar */}
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        onClick={() => setMostrarSubmenuEnlace(false)}
+                                        className="px-2.5 py-1.5 text-[13px] rounded hover:bg-gray-100 whitespace-nowrap"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={guardarEnlace}
+                                        className="px-2.5 py-1.5 text-[13px] bg-[#773dbe] text-white rounded hover:opacity-90 whitespace-nowrap"
+                                    >
+                                        Guardar
+                                    </button>
+                                </div>
+                            </div>
+
+
+                            <p className="text-[11px] text-gray-500">
+                                Se abrirá siempre en una pestaña nueva.
+                            </p>
+                        </div>,
+                        document.body
+                    )
+                }
+            </div>
+
+
+
             {/* Usar como fondo (solo si es imagen) */}
             {esImagen && (
                 <button
@@ -260,66 +487,66 @@ export default function MenuOpcionesElemento({
 
 
                 {mostrarSubmenuCapa &&
-  createPortal(
-    <div
-      ref={submenuRef}
-      className="fixed z-[60] bg-white border rounded shadow-lg p-2 space-y-1 menu-z-index"
-      style={{
-        left: submenuPos.x,
-        top: submenuPos.y,
-        width: 224,              // w-56
-        visibility: submenuReady ? "visible" : "hidden",
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        onClick={() => {
-          moverElemento("al-frente");
-          setMostrarSubmenuCapa(false);
-          onCerrar();
-        }}
-        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-      >
-        <ArrowUp className="w-4 h-4" /> Traer al frente
-      </button>
+                    createPortal(
+                        <div
+                            ref={submenuRef}
+                            className="fixed z-[60] bg-white border rounded shadow-lg p-2 space-y-1 menu-z-index"
+                            style={{
+                                left: submenuPos.x,
+                                top: submenuPos.y,
+                                width: 224,              // w-56
+                                visibility: submenuReady ? "visible" : "hidden",
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                onClick={() => {
+                                    moverElemento("al-frente");
+                                    setMostrarSubmenuCapa(false);
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <ArrowUp className="w-4 h-4" /> Traer al frente
+                            </button>
 
-      <button
-        onClick={() => {
-          moverElemento("subir");
-          setMostrarSubmenuCapa(false);
-          onCerrar();
-        }}
-        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-      >
-        <MoveUp className="w-4 h-4" /> Subir
-      </button>
+                            <button
+                                onClick={() => {
+                                    moverElemento("subir");
+                                    setMostrarSubmenuCapa(false);
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <MoveUp className="w-4 h-4" /> Subir
+                            </button>
 
-      <button
-        onClick={() => {
-          moverElemento("bajar");
-          setMostrarSubmenuCapa(false);
-          onCerrar();
-        }}
-        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-      >
-        <MoveDown className="w-4 h-4" /> Bajar
-      </button>
+                            <button
+                                onClick={() => {
+                                    moverElemento("bajar");
+                                    setMostrarSubmenuCapa(false);
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <MoveDown className="w-4 h-4" /> Bajar
+                            </button>
 
-      <button
-        onClick={() => {
-          moverElemento("al-fondo");
-          setMostrarSubmenuCapa(false);
-          onCerrar();
-        }}
-        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-      >
-        <ArrowDown className="w-4 h-4" /> Enviar al fondo
-      </button>
-    </div>,
-    document.body
-  )
-}
+                            <button
+                                onClick={() => {
+                                    moverElemento("al-fondo");
+                                    setMostrarSubmenuCapa(false);
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <ArrowDown className="w-4 h-4" /> Enviar al fondo
+                            </button>
+                        </div>,
+                        document.body
+                    )
+                }
 
 
             </div>

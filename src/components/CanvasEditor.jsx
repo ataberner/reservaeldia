@@ -30,6 +30,7 @@ import { moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
+import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -239,13 +240,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [scale, setScale] = useState(1);
   const [seccionesAnimando, setSeccionesAnimando] = useState([]);
   const { refrescar: refrescarPlantillasDeSeccion } = usePlantillasDeSeccion();
-  const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const [elementoCopiado, setElementoCopiado] = useState(null);
   const elementRefs = useRef({});
   const contenedorRef = useRef(null);
   const ignoreNextUpdateRef = useRef(false);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
+  const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
 
   const {
@@ -255,6 +256,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     finishEdit    // () => void
   } = useInlineEditor();
 
+
+  const cerrarMenusFlotantes = useCallback(() => {
+    setMostrarPanelZ(false);
+    setMostrarSubmenuCapa(false);
+    setMostrarSelectorFuente(false);
+    setMostrarSelectorTamaño(false);
+    setHoverId(null);
+  }, []);
 
 
   // 🆕 Elemento actualmente seleccionado (o null)
@@ -1672,38 +1681,29 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
               onMouseDown={(e) => {
                 const stage = e.target.getStage();
-                const pointerPos = stage.getPointerPosition();
 
                 const clickedOnStage = e.target === stage;
 
-                // ✅ Si el click NO es sobre una imagen de fondo → salir modo mover
+                // Salir de modo mover fondo si no clickeaste una imagen de fondo
                 if (!clickedOnStage && e.target.getClassName() !== "Image") {
                   window.dispatchEvent(new Event("salir-modo-mover-fondo"));
                 }
-                const esStage = e.target === stage;
-                const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
 
+                const esStage = clickedOnStage;
+                const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
 
                 dragStartPos.current = stage.getPointerPosition();
                 hasDragged.current = false;
 
-                // 🔒 EXCLUIR CLICKS EN TRANSFORMER
+                // Ignorar Transformer/anchors
                 const esTransformer = e.target.getClassName?.() === 'Transformer' ||
                   e.target.parent?.getClassName?.() === 'Transformer' ||
                   e.target.attrs?.name?.includes('_anchor');
+                if (esTransformer) return;
 
-                if (esTransformer) {
-                  return;
-                }
-
-                // 🔥 NUEVO: Verificar si el click fue en un elemento arrastrable
-                const clickEnElemento = Object.values(elementRefs.current).some((node) => {
-                  return node === e.target;
-                });
-
-                if (clickEnElemento) {
-                  return;
-                }
+                // Si clic en un elemento registrado, no arrancar selección
+                const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
+                if (clickEnElemento) return;
 
                 const esImagenFondo = e.target.getClassName() === "Image";
 
@@ -1711,15 +1711,16 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   setElementosSeleccionados([]);
                   setMostrarPanelZ(false);
                   setMostrarSubmenuCapa(false);
+                  setMostrarSelectorFuente(false);   // 👈 extra
+                  setMostrarSelectorTamaño(false);   // 👈 extra
+                  setHoverId(null);                  // 👈 extra
 
                   if (esStage) {
-                    // Click en el fondo del Stage → desactivar sección
                     setSeccionActivaId(null);
                   } else {
-                    // Click en sección o imagen de fondo → activar la sección correspondiente
                     const idSeccion = e.target.attrs?.id
                       || secciones.find(s => s.id === e.target.parent?.attrs?.id)?.id
-                      || secciones[0]?.id; // fallback
+                      || secciones[0]?.id;
                     if (idSeccion) setSeccionActivaId(idSeccion);
                   }
 
@@ -1728,9 +1729,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
                   setSeleccionActiva(true);
                 }
-
-
               }}
+
 
 
               onMouseMove={(e) => {
@@ -2214,7 +2214,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       onSelect={isInEditMode ? null : (id, obj, e) => {
                         if (obj.tipo === "rsvp-boton") {
                           console.log("🟣 Click en botón RSVP");
-                          
+
                           return; // ⛔ Cortar acá para que no se seleccione o edite
                         }
 
@@ -2534,7 +2534,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
             </Stage>
 
-           
+
             {editing.id && elementRefs.current[editing.id] && (() => {
               const objetoEnEdicion = objetos.find(o => o.id === editing.id);
 
@@ -2719,163 +2719,26 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-      {mostrarPanelZ && (() => {
-        const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
-        const nodeRef = elementRefs.current[elementosSeleccionados[0]];
+      {mostrarPanelZ && (
+        <MenuOpcionesElemento
+          isOpen={mostrarPanelZ}
+          botonOpcionesRef={botonOpcionesRef}
+          elementoSeleccionado={objetos.find(o => o.id === elementosSeleccionados[0])}
+          onCopiar={onCopiar}
+          onPegar={onPegar}
+          onDuplicar={onDuplicar}
+          onEliminar={onEliminar}
+          moverElemento={moverElemento}
+          onCerrar={() => setMostrarPanelZ(false)}
+          reemplazarFondo={reemplazarFondo}
+          secciones={secciones}
+          objetos={objetos}
+          setSecciones={setSecciones}
+          setObjetos={setObjetos}
+          setElementosSeleccionados={setElementosSeleccionados}
+        />
+      )}
 
-        if (!nodeRef || !elementoSeleccionado || !botonOpcionesRef.current) return null;
-
-        // 🔥 OBTENER POSICIÓN EXACTA DEL BOTÓN (no del elemento)
-        const botonRect = botonOpcionesRef.current.getBoundingClientRect();
-
-        // 🎯 POSICIÓN DEL MENÚ: Desde el botón hacia derecha y abajo
-        const menuX = botonRect.right + 8; // 8px a la derecha del botón
-        const menuY = botonRect.top; // Alineado con el top del botón
-
-        // 🔥 VALIDACIÓN: Ajustar si se sale de pantalla
-        const menuWidth = 256; // Ancho del menú (w-64 = 256px)
-        const menuHeight = 300; // Altura estimada del menú
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-
-        // Ajustar posición X si se sale por la derecha
-        let finalX = menuX;
-        if (menuX + menuWidth > viewportWidth) {
-          finalX = botonRect.left - menuWidth - 8; // A la izquierda del botón
-        }
-
-        // Ajustar posición Y si se sale por abajo
-        let finalY = menuY;
-        if (menuY + menuHeight > viewportHeight) {
-          finalY = Math.max(8, botonRect.bottom - menuHeight); // Arriba del botón o mínimo 8px del top
-        }
-
-        return (
-          <div
-            className="fixed z-50 bg-white border rounded-lg shadow-xl p-3 text-sm space-y-1 menu-z-index w-64"
-            style={{
-              left: `${finalX}px`,
-              top: `${finalY}px`,
-              // 🎯 ESTILOS MEJORADOS PARA MEJOR APARIENCIA
-              borderColor: "#773dbe",
-              borderWidth: "1px",
-              maxHeight: "400px",
-              overflowY: "auto",
-              // 🔥 ANIMACIÓN SUAVE DE APARICIÓN
-              animation: "fadeInScale 0.15s ease-out",
-            }}
-          >
-
-            <button
-              onClick={() => {
-                onCopiar();
-                setMostrarPanelZ(false);
-              }}
-              className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-              <Copy className="w-4 h-4" /> Copiar
-            </button>
-
-            <button
-              onClick={() => {
-                onPegar();
-                setMostrarPanelZ(false);
-              }}
-              className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-              <ClipboardPaste className="w-4 h-4" /> Pegar
-            </button>
-
-            <button
-              onClick={() => {
-                onDuplicar();
-                setMostrarPanelZ(false);
-              }}
-              className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-              <PlusCircle className="w-4 h-4" /> Duplicar
-            </button>
-
-            {elementoSeleccionado?.tipo === "imagen" && (
-              <button
-                onClick={() => {
-                  reemplazarFondo({
-                    elementoImagen: elementoSeleccionado,
-                    secciones,
-                    objetos,
-                    setSecciones,
-                    setObjetos,
-                    setElementosSeleccionados,
-                    setMostrarPanelZ,
-                  });
-                }}
-
-                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-              >
-                <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded"></div>
-                Usar como fondo
-              </button>
-            )}
-
-            <button
-              onClick={() => {
-                onEliminar();
-                setMostrarPanelZ(false);
-              }}
-              className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-              <Trash2 className="w-4 h-4 text-red-500" /> Eliminar
-            </button>
-
-
-            <div className="relative">
-              <button
-                onClick={() => setMostrarSubmenuCapa((prev) => !prev)}
-                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-              >
-                <Layers className="w-4 h-4" /> Orden de capa
-              </button>
-
-              {mostrarSubmenuCapa && (
-                <div className="absolute top-0 left-full ml-2 w-56 bg-white border rounded shadow p-2 space-y-1 z-50">
-                  <button
-                    onClick={() => {
-                      moverElemento("al-frente");
-                      setMostrarPanelZ(false);
-                      setMostrarSubmenuCapa(false);
-                    }}
-                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-                    <ArrowUp className="w-4 h-4" /> Traer al frente
-                  </button>
-                  <button
-                    onClick={() => {
-                      moverElemento("subir");
-                      setMostrarPanelZ(false);
-                      setMostrarSubmenuCapa(false);
-                    }}
-                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-                    <MoveUp className="w-4 h-4" /> Subir
-                  </button>
-                  <button
-                    onClick={() => {
-                      moverElemento("bajar");
-                      setMostrarPanelZ(false);
-                      setMostrarSubmenuCapa(false);
-                    }}
-                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-                    <MoveDown className="w-4 h-4" /> Bajar
-                  </button>
-                  <button
-                    onClick={() => {
-                      moverElemento("al-fondo");
-                      setMostrarPanelZ(false);
-                      setMostrarSubmenuCapa(false);
-                    }}
-                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition">
-                    <ArrowDown className="w-4 h-4" /> Enviar al fondo
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
 
 
@@ -3168,7 +3031,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         );
       })()}
 
-      </div>
+    </div>
   );
 
 }

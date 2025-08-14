@@ -38,6 +38,22 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
       <input id="rsvp-mensaje" placeholder="Mensaje (opcional)" style="padding:10px; border:1px solid #ccc; border-radius:6px;" />
     </div>
 
+     <!-- ✅ NUEVO: selector Sí/No con estilo segmentado -->
+    <div style="margin-top:12px;">
+      <label style="display:block; font-weight:600; margin-bottom:8px;">¿Confirmás asistencia?</label>
+      <div id="rsvp-confirma" style="
+        display:inline-flex; gap:0; border:1px solid #ddd; border-radius:10px; overflow:hidden;
+        box-shadow: inset 0 1px 0 rgba(0,0,0,0.03);
+      ">
+        <button type="button" data-confirma="si" aria-pressed="true" style="
+          padding:10px 14px; border:none; background:${color}; color:#fff; font-weight:600; cursor:pointer;
+        ">Sí, voy</button>
+        <button type="button" data-confirma="no" aria-pressed="false" style="
+          padding:10px 14px; border:none; background:#f6f6f6; color:#444; cursor:pointer;
+        ">No puedo</button>
+      </div>
+    </div>
+
     <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
       <button id="rsvp-cancel" style="padding:8px 12px; border-radius:6px; border:1px solid #ddd; background:#f3f3f3; cursor:pointer;">Cancelar</button>
       <button id="rsvp-send" style="padding:8px 12px; border-radius:6px; border:none; color:#fff; cursor:pointer; background:${color};">${btnText}</button>
@@ -100,7 +116,12 @@ function getSlugDePagina() {
   var modal = document.getElementById('modal-rsvp');
   if (!modal) return;
 
-  function openModal() { modal.style.display = 'flex'; }
+  function openModal() { 
+  modal.style.display = 'flex'; 
+  // 🔁 Reset visual y estado cada vez que se abre
+  setConfirmaUI("si", ${JSON.stringify(color)});
+}
+
   function closeModal() { modal.style.display = 'none'; }
 
   // Botones internos
@@ -124,6 +145,55 @@ document.querySelectorAll('[data-rsvp-open], [data-accion="abrir-rsvp"], .rsvp-b
     });
   });
 
+
+// Estado interno del selector Sí/No
+var confirmaValor = "si"; // default
+
+function setConfirmaUI(valor, color) {
+  var cont = document.getElementById('rsvp-confirma');
+  if (!cont) return;
+  var btnSi = cont.querySelector('[data-confirma="si"]');
+  var btnNo = cont.querySelector('[data-confirma="no"]');
+  confirmaValor = (valor === "no") ? "no" : "si";
+
+  if (btnSi && btnNo) {
+    if (confirmaValor === "si") {
+      btnSi.style.background = color;
+      btnSi.style.color = "#fff";
+      btnSi.setAttribute("aria-pressed", "true");
+
+      btnNo.style.background = "#f6f6f6";
+      btnNo.style.color = "#444";
+      btnNo.setAttribute("aria-pressed", "false");
+    } else {
+      btnNo.style.background = color;
+      btnNo.style.color = "#fff";
+      btnNo.setAttribute("aria-pressed", "true");
+
+      btnSi.style.background = "#f6f6f6";
+      btnSi.style.color = "#444";
+      btnSi.setAttribute("aria-pressed", "false");
+    }
+  }
+}
+
+// 🔹 Dejar "Sí" seleccionado al cargar
+setConfirmaUI("si", ${JSON.stringify(color)});
+
+// 🔹 Alternar selección al click
+var confirmaWrap = document.getElementById('rsvp-confirma');
+if (confirmaWrap) {
+  confirmaWrap.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-confirma]');
+    if (!btn) return;
+    var v = btn.getAttribute('data-confirma');
+    setConfirmaUI(v, ${JSON.stringify(color)});
+    try { console.log("[RSVP] cambia confirmaValor =", v); } catch(_) {}
+  });
+}
+
+
+
   // ✅ Envío con Firestore + logs
 if (sendBtn) {
   sendBtn.addEventListener('click', function() {
@@ -135,6 +205,7 @@ if (sendBtn) {
       return;
     }
 
+    const confirma = (confirmaValor === "si"); 
     const slug = getSlugDePagina();
     console.log("[RSVP] Enviando RSVP… slug =", slug);
 
@@ -180,13 +251,13 @@ if (sendBtn) {
       const payload = {
         nombre: nombre.trim(),
         mensaje: (mensaje && mensaje.trim()) || null,
-        // Estos 3 son opcionales según tus reglas actuales:
-        slug: slug,
+        confirma,
         createdAt: serverTimestamp(),
         userAgent: navigator.userAgent.slice(0, 512)
       };
 
-      console.log("[RSVP] Payload a guardar:", payload);
+      console.log("[RSVP] Payload keys =", Object.keys(payload));
+      console.log("[RSVP] Payload =", JSON.stringify(payload));
 
       return addDoc(collection(db, "publicadas", slug, "rsvps"), payload);
     })

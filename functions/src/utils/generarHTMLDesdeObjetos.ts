@@ -1,5 +1,55 @@
 import { LINE_CONSTANTS } from '../models/lineConstants';
 
+function escapeAttr(str: string = ""): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Acepta obj.enlace como string o { href, target, rel }.
+ * Devuelve { href, target, rel } saneados.
+ */
+function getLinkProps(obj: any) {
+  const raw = obj?.enlace;
+  if (!raw) return null;
+
+  if (typeof raw === "string") {
+    return {
+      href: escapeAttr(raw),
+      target: "_blank",
+      rel: "noopener noreferrer",
+    };
+  }
+
+  // objeto
+  const href = escapeAttr(raw.href || "");
+  if (!href) return null;
+
+  const target = escapeAttr(raw.target || "_blank");
+  // forzamos noopener por seguridad
+  const rel = escapeAttr(raw.rel || "noopener noreferrer");
+
+  return { href, target, rel };
+}
+
+/**
+ * Envuelve el HTML del elemento en <a> si el objeto tiene enlace.
+ * NO altera estilos/posicionamiento del hijo gracias a display:contents.
+ */
+function envolverSiEnlace(htmlElemento: string, obj: any): string {
+  // no envolver el botón de RSVP para que no interfiera con el modal
+  if (obj?.tipo === "rsvp-boton") return htmlElemento;
+
+  const link = getLinkProps(obj);
+  if (!link) return htmlElemento;
+
+  return `<a href="${link.href}" target="${link.target}" rel="${link.rel}" style="text-decoration:none;color:inherit;display:contents">${htmlElemento}</a>`;
+}
+
+
 export function escapeHTML(texto: string = ""): string {
   return texto
     .replace(/&/g, "&amp;")
@@ -93,33 +143,35 @@ if (obj.tipo === "texto") {
     text-shadow: ${textShadow};
   `;
 
-  return `<div style="${style}">${safeTexto}</div>`;
+  return envolverSiEnlace(`<div style="${style}">${safeTexto}</div>`, obj);
 }
 
 
 
     if (obj.tipo === "imagen" || obj.tipo === "icono") {
-      return `<img class="objeto" src="${obj.src}" style="
-        top: ${top}%;
-        left: ${left}%;
-        width: ${width};
-        height: ${height};
-        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-        object-fit: contain;
-      " />`;
+   return envolverSiEnlace(`<img class="objeto" src="${obj.src}" style="
+  top: ${top}%;
+  left: ${left}%;
+  width: ${width};
+  height: ${height};
+  transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+  object-fit: contain;
+" />`, obj);
     }
 
     if (obj.tipo === "icono-svg" && obj.d) {
-      return `<svg class="objeto" viewBox="0 0 100 100" style="
-        top: ${top}%;
-        left: ${left}%;
-        width: ${width};
-        height: ${height};
-        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-        fill: ${obj.color || "#000"};
-      ">
-        <path d="${obj.d}" />
-      </svg>`;
+      return envolverSiEnlace(`<svg class="objeto" viewBox="0 0 100 100" style="
+  top: ${top}%;
+  left: ${left}%;
+  width: ${width};
+  height: ${height};
+  transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+  fill: ${obj.color || "#000"};
+">
+  <path d="${obj.d}" />
+</svg>`, obj);
+
+
     }
 
 
@@ -181,7 +233,7 @@ if (obj.tipo === "texto") {
   const colorTexto = obj.colorTexto || "#000000";
   const texto = (obj.texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  return `<div class="objeto" style="
+  return envolverSiEnlace(`<div class="objeto" style="
     top: ${top}%;
     left: ${left}%;
     width: ${w};
@@ -208,7 +260,7 @@ if (obj.tipo === "texto") {
       white-space: pre-wrap;
       word-break: break-word;
     ">${texto}</div>
-  </div>`;
+  </div>`, obj);
 }
 
 
@@ -220,7 +272,7 @@ if (obj.tipo === "texto") {
             const widthPct = `${(diameter / 800) * 100}%`;
             const heightPct = `${(diameter / alturaSeccion) * 100}%`;
 
-            return `<div class="objeto" style="
+return envolverSiEnlace(`<div class="objeto" style="
               top: ${topCircle}%;
               left: ${leftCircle}%;
               width: ${widthPct};
@@ -229,7 +281,8 @@ if (obj.tipo === "texto") {
               background: ${fill};
               transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
               transform-origin: center center;
-            "></div>`;
+            ">
+            </div>`, obj);
           }
 
 
@@ -262,7 +315,7 @@ case "line": {
   // Aplicar rotación adicional del objeto si existe
   const totalRotation = angle + (obj.rotation || 0);
   
-  return `<div class="objeto linea" style="
+  return envolverSiEnlace(`<div class="objeto linea" style="
     position: absolute;
     top: ${topPercent}%;
     left: ${leftPercent}%;
@@ -271,7 +324,7 @@ case "line": {
     background: ${fill};
     transform: rotate(${totalRotation}deg) scale(${scaleX}, ${scaleY});
     transform-origin: 0 50%;
-  "></div>`;
+  "></div>`, obj);
 }
 
 
@@ -305,7 +358,7 @@ case "triangle": {
   const widthPct = `${(triangleWidth / 800) * 100}%`;
   const heightPct = `${(triangleHeight / alturaSeccion) * 100}%`;
 
-  return `<div class="objeto" style="
+  return envolverSiEnlace(`<div class="objeto" style="
     top: ${topTriangle}%;
     left: ${leftTriangle}%;
     width: ${widthPct};
@@ -314,7 +367,7 @@ case "triangle": {
     clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
     transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
     transform-origin: center center;
-  "></div>`;
+  "></div>`, obj);
 }
 
 

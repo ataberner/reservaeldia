@@ -8,11 +8,10 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import express, { Request, Response } from "express";
 import { generarHTMLDesdeObjetos } from "./utils/generarHTMLDesdeObjetos";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
+import { type RSVPConfig as ModalConfig } from "./utils/generarModalRSVP";
 import { Storage } from "@google-cloud/storage";
 import puppeteer from "puppeteer";
 import { v4 as uuidv4 } from "uuid";
-
-type RSVPConfig = { enabled?: boolean };
 
 const app = express();
 app.get("/i/:slug", async (req, res) => {  // Cambiado a "/i/:slug"
@@ -315,17 +314,6 @@ async function resolverURLsDeObjetos(objetos: any[]): Promise<any[]> {
 }
 
 
-const firebaseConfigPublic = {
-  apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
-  authDomain: "reservaeldia-7a440.firebaseapp.com",
-  projectId: "reservaeldia-7a440",
-  storageBucket: "reservaeldia-7a440.firebasestorage.app",
-  messagingSenderId: "860495975406",
-  appId: "1:860495975406:web:3a49ad0cf55d60313534ff",
-};
-
-
-
 export const publicarInvitacion = functions.https.onCall(
   async (request: functions.https.CallableRequest<{ slug: string }>) => {
     const { slug } = request.data;
@@ -366,15 +354,21 @@ let htmlFinal = "";
 try {
 
 
-const rsvp: RSVPConfig = { enabled: true, ...(data?.rsvp ?? {}) };
+ const rsvp: ModalConfig = {
+  enabled: data?.rsvp?.enabled === false ? false : true,
+  title: data?.rsvp?.title,
+  subtitle: data?.rsvp?.subtitle,
+  buttonText: data?.rsvp?.buttonText,
+  primaryColor: data?.rsvp?.primaryColor,
+  sheetUrl: data?.rsvp?.sheetUrl,
+};
 
 htmlFinal = generarHTMLDesdeSecciones(
   secciones,
   objetosFinales,
   rsvp,
   {
-    slug,                       // ⬅️ importante
-    firebaseConfig: firebaseConfigPublic, // ⬅️ config pública del cliente
+    slug
   }
 );
 

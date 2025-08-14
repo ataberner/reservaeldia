@@ -1,6 +1,4 @@
 // functions/src/utils/generarModalRSVP.ts
-import React, { useEffect } from "react";
-
 
 export type RSVPConfig = {
     enabled: boolean;
@@ -48,7 +46,57 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
 </div>
 
 <script>
-(function() {
+document.addEventListener('DOMContentLoaded', function () {
+
+function getSlugDePagina() {
+  // 0) Log de ayuda
+  try { console.log("[RSVP] href:", location.href); } catch (e) {}
+
+  // 1) <html data-slug="..."> (si lo inyectás en el HTML final)
+  const ds = document.documentElement?.dataset?.slug;
+  if (ds) {
+    console.log("[RSVP] slug por data-atributo:", ds);
+    return ds;
+  }
+
+  // 2) ?slug=... en la URL
+  const q = new URLSearchParams(location.search).get("slug");
+  if (q) {
+    console.log("[RSVP] slug por querystring:", q);
+    return q;
+  }
+
+  // 3) /publicadas/<slug>/... en un sitio estático (Hosting/Proxy)
+  const parts = location.pathname.split("/").filter(Boolean);
+  const i = parts.indexOf("publicadas");
+  if (i >= 0 && parts[i + 1]) {
+    console.log("[RSVP] slug por pathname directo:", parts[i + 1]);
+    return parts[i + 1];
+  }
+
+  // 4) URL de Firebase Storage:
+  //    https://firebasestorage.googleapis.com/v0/b/<bucket>/o/publicadas%2F<slug>%2Findex.html?alt=media&token=...
+  //    https://<bucket>.firebasestorage.app/v0/b/<bucket>/o/publicadas%2F<slug>%2Findex.html?alt=media
+  try {
+    const pathAfterO = location.pathname.split("/o/")[1]; // "publicadas%2F<slug>%2Findex.html"
+    if (pathAfterO) {
+      const decoded = decodeURIComponent(pathAfterO);      // "publicadas/<slug>/index.html"
+      const segs = decoded.split("/").filter(Boolean);
+      const j = segs.indexOf("publicadas");
+      if (j >= 0 && segs[j + 1]) {
+        console.log("[RSVP] slug por URL de Storage:", segs[j + 1]);
+        return segs[j + 1];
+      }
+    }
+  } catch (e) {
+    console.warn("[RSVP] Error parseando URL de Storage:", e);
+  }
+
+  console.warn("[RSVP] No se pudo detectar slug. Fallback: sin-slug");
+  return "sin-slug";
+}
+
+
   var modal = document.getElementById('modal-rsvp');
   if (!modal) return;
 
@@ -76,31 +124,87 @@ document.querySelectorAll('[data-rsvp-open], [data-accion="abrir-rsvp"], .rsvp-b
     });
   });
 
-  // Envío básico
-  if (sendBtn) {
-    sendBtn.addEventListener('click', function() {
-      var nombre = (document.getElementById('rsvp-nombre') || {}).value || '';
-      var mensaje = (document.getElementById('rsvp-mensaje') || {}).value || '';
-      if (!nombre.trim()) {
-        alert('Por favor ingresá tu nombre.');
-        return;
-      }
+  // ✅ Envío con Firestore + logs
+if (sendBtn) {
+  sendBtn.addEventListener('click', function() {
+    var nombre = (document.getElementById('rsvp-nombre') || {}).value || '';
+    var mensaje = (document.getElementById('rsvp-mensaje') || {}).value || '';
 
-      // Si tenés endpoint/sheet configurado, podrías hacer fetch aquí:
-      var sheetUrl = ${JSON.stringify(cfg.sheetUrl || "")};
-      if (sheetUrl) {
+    if (!nombre.trim()) {
+      alert('Por favor ingresá tu nombre.');
+      return;
+    }
+
+    const slug = getSlugDePagina();
+    console.log("[RSVP] Enviando RSVP… slug =", slug);
+
+    // (opcional) si seguís usando sheetUrl, mantenemos el POST “en paralelo”
+    var sheetUrl = ${JSON.stringify(cfg.sheetUrl || "")};
+    if (sheetUrl) {
+      try {
         fetch(sheetUrl, {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ nombre: nombre.trim(), mensaje: mensaje.trim(), ts: Date.now() })
-        }).catch(function() { /* swallow */ });
+          body: JSON.stringify({
+            nombre: nombre.trim(),
+            mensaje: mensaje.trim(),
+            slug: slug,
+            ts: Date.now()
+          })
+        }).catch(function(e){ console.warn("[RSVP] sheetUrl error:", e); });
+      } catch (e) {
+        console.warn("[RSVP] sheetUrl throw:", e);
       }
+    }
 
+    // 🔌 Importar Firebase dinámicamente y guardar en Firestore
+    Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js"),
+    ])
+    .then(([appMod, fsMod]) => {
+      const { initializeApp } = appMod;
+      const { getFirestore, collection, addDoc, serverTimestamp } = fsMod;
+
+      // ⚙️ Config mínima (apiKey y projectId son suficientes para el cliente)
+      const firebaseConfig = {
+        apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
+        authDomain: "reservaeldia-7a440.firebaseapp.com",
+        projectId: "reservaeldia-7a440",
+        appId: "1:860495975406:web:3a49ad0cf55d60313534ff"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db  = getFirestore(app);
+
+      const payload = {
+        nombre: nombre.trim(),
+        mensaje: (mensaje && mensaje.trim()) || null,
+        // Estos 3 son opcionales según tus reglas actuales:
+        slug: slug,
+        createdAt: serverTimestamp(),
+        userAgent: navigator.userAgent.slice(0, 512)
+      };
+
+      console.log("[RSVP] Payload a guardar:", payload);
+
+      return addDoc(collection(db, "publicadas", slug, "rsvps"), payload);
+    })
+    .then((docRef) => {
+      console.log("[RSVP] RSVP guardado con ID:", docRef.id, "en /publicadas/"+slug+"/rsvps");
       alert('¡Gracias por confirmar tu asistencia, ' + nombre + '!');
       closeModal();
+    })
+    .catch((err) => {
+      console.error("[RSVP] Error guardando en Firestore:", err);
+      alert('Hubo un error al guardar tu confirmación. Probá de nuevo.');
     });
-  }
-})();
+  });
+}
+ 
+  
+
+});
 </script>
 `;
 }

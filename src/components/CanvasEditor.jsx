@@ -31,7 +31,6 @@ import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
 import { ALL_FONTS } from '../config/fonts';
-import ModalRSVP from "./modals/ModalRSVP"
 import {
   Check,
   RotateCcw,
@@ -245,7 +244,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const elementRefs = useRef({});
   const contenedorRef = useRef(null);
   const ignoreNextUpdateRef = useRef(false);
-  const [mostrarModalRSVP, setMostrarModalRSVP] = useState(false);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
@@ -2216,7 +2214,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       onSelect={isInEditMode ? null : (id, obj, e) => {
                         if (obj.tipo === "rsvp-boton") {
                           console.log("🟣 Click en botón RSVP");
-                          setMostrarModalRSVP(true);
+                          
                           return; // ⛔ Cortar acá para que no se seleccione o edite
                         }
 
@@ -2536,13 +2534,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
             </Stage>
 
-            <ModalRSVP
-              visible={mostrarModalRSVP}
-              onClose={() => setMostrarModalRSVP(false)}
-            />
-
-
-
+           
             {editing.id && elementRefs.current[editing.id] && (() => {
               const objetoEnEdicion = objetos.find(o => o.id === editing.id);
 
@@ -3176,10 +3168,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         );
       })()}
 
-      <ModalRSVP visible={mostrarModalRSVP} onClose={() => setMostrarModalRSVP(false)} />
-
-
-    </div>
+      </div>
   );
 
 }

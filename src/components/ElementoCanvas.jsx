@@ -481,6 +481,36 @@ export default function ElementoCanvas({
     );
   }
 
+
+if (obj.tipo === "rsvp-boton") {
+  return (
+    <div
+      key={obj.id}
+      data-id={obj.id}
+      style={{
+        position: "absolute",
+        left: obj.x,
+        top: obj.y,
+        width: obj.ancho,
+        height: obj.alto,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: obj.color ?? "#773dbe",
+        color: obj.colorTexto ?? "#fff",
+        borderRadius: 10,
+        fontSize: obj.fontSize ?? 16,
+        fontFamily: obj.fontFamily ?? "Inter, system-ui, sans-serif",
+        userSelect: "none",
+        pointerEvents: "none",
+      }}
+    >
+      {obj.texto ?? "Confirmar asistencia"}
+    </div>
+  );
+}
+
+
   if (obj.tipo === "icono-svg") {
     return (
       <Path

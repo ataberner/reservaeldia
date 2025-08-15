@@ -51,17 +51,6 @@ export default function MiniToolbar({
       {botonActivo === "imagen" && (
         <>
           <button
-            onClick={onAgregarImagen}
-            className={`flex items-center gap-2 w-full ${mostrarGaleria
-                ? "bg-red-100 hover:bg-red-200 text-red-800"
-                : "bg-blue-100 hover:bg-blue-200 text-blue-800"
-              } font-medium py-2 px-4 rounded-xl shadow-sm transition-all`}
-          >
-            <span className="text-lg">{mostrarGaleria ? "❌" : "🖼️"}</span>
-            <span>{mostrarGaleria ? "Cerrar galería" : "Abrir galería"}</span>
-          </button>
-
-          <button
             onClick={abrirSelector}
             className="flex items-center gap-2 w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
           >
@@ -69,24 +58,23 @@ export default function MiniToolbar({
             <span>Subir imagen</span>
           </button>
 
-          {mostrarGaleria && (
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <GaleriaDeImagenes
-                imagenes={imagenes || []}
-                imagenesEnProceso={imagenesEnProceso || []}
-                cargarImagenes={cargarImagenes}
-                borrarImagen={borrarImagen}
-                hayMas={hayMas}
-                seccionActivaId={seccionActivaId}
-                cargando={cargando}
-                onInsertar={(nuevo) => {
-                  window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
-                  setMostrarGaleria(false);
-                }}
-                onSeleccionadasChange={setImagenesSeleccionadas}
-              />
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <GaleriaDeImagenes
+              imagenes={imagenes || []}
+              imagenesEnProceso={imagenesEnProceso || []}
+              cargarImagenes={cargarImagenes}
+              borrarImagen={borrarImagen}
+              hayMas={hayMas}
+              seccionActivaId={seccionActivaId}
+              cargando={cargando}
+              onInsertar={(nuevo) => {
+                window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
+                setMostrarGaleria(false);
+              }}
+              onSeleccionadasChange={setImagenesSeleccionadas}
+            />
+          </div>
+
         </>
       )}
 

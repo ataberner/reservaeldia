@@ -47,7 +47,6 @@ import {
 } from "lucide-react";
 
 
-
 // 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {
@@ -320,7 +319,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       })
     );
   }, [setSecciones]);
-
 
 
 

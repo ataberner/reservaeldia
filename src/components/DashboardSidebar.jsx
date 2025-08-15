@@ -1,5 +1,5 @@
 // src/components/DashboardSidebar.jsx
-import React, { useState, useCallback , useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import GaleriaDeImagenes from "./GaleriaDeImagenes";
@@ -11,7 +11,7 @@ import useMisImagenes from "@/hooks/useMisImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
 
 
-const ratioValue = (r) => (r === "4:3" ? 4 / 3 : r === "16:9" ? 16 / 9 : 1);
+const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
 
 
 export default function DashboardSidebar({
@@ -164,17 +164,27 @@ export default function DashboardSidebar({
 
 
     const insertarGaleria = useCallback((cfg) => {
-        const anchoBase = 800;                      // tu ancho fijo de lienzo
-        const r = ratioValue(cfg.ratio);
-        const width = anchoBase * 0.7;              // 70% del ancho
-        const height = Math.max(100, width / r);
-        const x = (anchoBase - width) / 2;          // centro horizontal
-        const y = 120;                               // posición Y simple (fija)
+        const anchoBase = 800;
+
+        const width = anchoBase * 0.7;
+
+        // 🔢 Alto total necesario en función de celdas y gap:
+        // cellW = (width - gap*(cols-1)) / cols
+        // cellH = cellW * ratioCell
+        // totalH = rows*cellH + gap*(rows-1)
+        const gap = cfg.gap ?? 0;
+        const cols = Math.max(1, cfg.cols || 1);
+        const rows = Math.max(1, cfg.rows || 1);
+        const cellW = (width - gap * (cols - 1)) / cols;
+        const cellH = cellW * ratioCell(cfg.ratio);
+        const height = rows * cellH + gap * (rows - 1);
+
+        const x = (anchoBase - width) / 2;
+        const y = 120;
 
         const id = `gal-${Date.now().toString(36)}`;
         const total = cfg.rows * cfg.cols;
 
-        // Reutilizamos el mismo mecanismo que usás para insertar otros elementos
         window.dispatchEvent(new CustomEvent("insertar-elemento", {
             detail: {
                 id,
@@ -188,6 +198,7 @@ export default function DashboardSidebar({
             }
         }));
     }, []);
+
 
 
 

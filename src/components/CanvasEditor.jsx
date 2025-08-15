@@ -31,6 +31,7 @@ import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
 import MenuOpcionesElemento from "./MenuOpcionesElemento";
+import { calcGalleryLayout } from "@/utils/calcGrid";
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -1472,14 +1473,135 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-
-
   // Cleanup del sistema imperativo
   useEffect(() => {
     return () => {
       imperativeObjects.cleanup();
     };
   }, []);
+
+
+
+  // 👉 Componente interno para renderizar una imagen ajustada a "cover"/"contain"
+  function ImagenCelda({ src, fit = "cover", w, h, KonvaImage }) {
+    const [img] = useImage(src, "anonymous");
+    if (!img) return null;
+
+    const escContain = Math.min(w / img.width, h / img.height);
+    const escCover = Math.max(w / img.width, h / img.height);
+    const esc = fit === "contain" ? escContain : escCover;
+
+    const iw = img.width * esc;
+    const ih = img.height * esc;
+    const ix = (w - iw) / 2;
+    const iy = (h - ih) / 2;
+
+    return <KonvaImage image={img} x={ix} y={iy} width={iw} height={ih} listening={false} />;
+  }
+
+ function GaleriaKonva({ obj }) {
+  const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
+  const offsetY = calcularOffsetY(seccionesOrdenadas, indexSeccion, altoCanvas);
+
+  const radius = Math.max(0, obj.radius || 0);
+  const gap = Math.max(0, obj.gap || 0);
+  const rows = Math.max(1, obj.rows || 1);
+  const cols = Math.max(1, obj.cols || 1);
+
+  // ⚖️ ratio de CELDA = ALTO/ANCHO
+  const cellRatio = obj.ratio === "4:3" ? 3 / 4 : obj.ratio === "16:9" ? 9 / 16 : 1;
+
+  const width = obj.width || 400;
+
+  // 🧮 Calculamos rects y alto total en base al ancho del grupo
+  const { rects, totalHeight } = useMemo(() => {
+    return calcGalleryLayout({
+      width,
+      rows,
+      cols,
+      gap,
+      cellRatio,
+    });
+  }, [width, rows, cols, gap, cellRatio]);
+
+  return (
+    <Group
+      x={obj.x || 0}
+      y={(obj.y || 0) + offsetY}
+      draggable
+      onClick={(e) => {
+        e.evt.cancelBubble = true;
+        setElementosSeleccionados([obj.id]);
+      }}
+      ref={(node) => registerRef(obj.id, node)}
+      onDragEnd={(e) => {
+        const finalX = e.target.x();
+        const finalYAbs = e.target.y();
+        const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+          finalYAbs,
+          obj.seccionId,
+          seccionesOrdenadas
+        );
+
+        setObjetos((prev) =>
+          prev.map((o) => {
+            if (o.id !== obj.id) return o;
+            if (nuevaSeccion) {
+              return { ...o, x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas };
+            }
+            const yRel = finalYAbs - offsetY;
+            return { ...o, x: finalX, y: yRel };
+          })
+        );
+      }}
+    >
+      {/* Fondo del grupo (define el bounding box para selección) */}
+      <Rect x={0} y={0} width={width} height={totalHeight} fill="transparent" />
+
+      {/* Celdas */}
+      {rects.map((r, i) => {
+        const cell = obj.cells?.[i] || {};
+        const bg = cell.bg || "#f3f4f6";
+        const mediaUrl = cell.mediaUrl || null;
+        const fit = cell.fit || "cover";
+
+        const clipFunc = (ctx) => {
+          const w = r.width;
+          const h = r.height;
+          const rad = Math.min(radius, Math.min(w, h) / 2);
+          ctx.beginPath();
+          ctx.moveTo(rad, 0);
+          ctx.lineTo(w - rad, 0);
+          ctx.quadraticCurveTo(w, 0, w, rad);
+          ctx.lineTo(w, h - rad);
+          ctx.quadraticCurveTo(w, h, w - rad, h);
+          ctx.lineTo(rad, h);
+          ctx.quadraticCurveTo(0, h, 0, h - rad);
+          ctx.lineTo(0, rad);
+          ctx.quadraticCurveTo(0, 0, rad, 0);
+          ctx.closePath();
+        };
+
+        return (
+          <Group key={i} x={r.x} y={r.y} clipFunc={clipFunc} listening={false}>
+            <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
+            {mediaUrl && (
+              <ImagenCelda
+                src={mediaUrl}
+                fit={fit}
+                w={r.width}
+                h={r.height}
+                KonvaImage={KonvaImage}
+              />
+            )}
+          </Group>
+        );
+      })}
+    </Group>
+  );
+}
+
+
 
   return (
     <div
@@ -2185,6 +2307,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 {objetos.map((obj, i) => {
                   // 🎯 Determinar si está en modo edición
                   const isInEditMode = editing.id === obj.id && elementosSeleccionados[0] === obj.id;
+
+                  // 🖼️ Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
+                  if (obj.tipo === "galeria") {
+                    return <GaleriaKonva key={obj.id} obj={obj} />;
+                  }
 
                   return (
                     <ElementoCanvas

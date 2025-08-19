@@ -1499,64 +1499,92 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     return <KonvaImage image={img} x={ix} y={iy} width={iw} height={ih} listening={false} />;
   }
 
- function GaleriaKonva({ obj }) {
+function GaleriaKonva({
+  obj,
+  registerRef,                 // si lo estás pasando; si no, dejá ref={(n)=>registerRef?.(obj.id,n)}
+  isSelected,
+  onSelect,
+  onChange,
+  onDragStartPersonalizado,
+  onDragMovePersonalizado,
+  onDragEndPersonalizado
+}) {
+  // 1) Sección segura
   const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
-  const offsetY = calcularOffsetY(seccionesOrdenadas, indexSeccion, altoCanvas);
+  const safeIndex = indexSeccion >= 0 ? indexSeccion : 0;
+  const offsetY = calcularOffsetY(seccionesOrdenadas, safeIndex, altoCanvas) || 0;
 
-  const radius = Math.max(0, obj.radius || 0);
-  const gap = Math.max(0, obj.gap || 0);
-  const rows = Math.max(1, obj.rows || 1);
-  const cols = Math.max(1, obj.cols || 1);
+  // 2) Normalizar números
+  const toNum = (v, d=0) => Number.isFinite(+v) ? +v : d;
+  const radius = Math.max(0, toNum(obj.radius, 0));
+  const gap    = Math.max(0, toNum(obj.gap, 0));
+  const rows   = Math.max(1, toNum(obj.rows, 1));
+  const cols   = Math.max(1, toNum(obj.cols, 1));
+  const width  = Math.max(1, toNum(obj.width, 400));
 
-  // ⚖️ ratio de CELDA = ALTO/ANCHO
-  const cellRatio = obj.ratio === "4:3" ? 3 / 4 : obj.ratio === "16:9" ? 9 / 16 : 1;
+  // 3) Ratio
+  const cellRatio =
+    obj.ratio === "4:3" ? 3/4 :
+    obj.ratio === "16:9" ? 9/16 :
+    1;
 
-  const width = obj.width || 400;
-
-  // 🧮 Calculamos rects y alto total en base al ancho del grupo
+  // 4) Layout
   const { rects, totalHeight } = useMemo(() => {
-    return calcGalleryLayout({
-      width,
-      rows,
-      cols,
-      gap,
-      cellRatio,
-    });
+    try {
+      return calcGalleryLayout({ width, rows, cols, gap, cellRatio });
+    } catch {
+      return { rects: [], totalHeight: 0 };
+    }
   }, [width, rows, cols, gap, cellRatio]);
+
+  const safeTotalHeight = Math.max(1, totalHeight);
 
   return (
     <Group
-      x={obj.x || 0}
-      y={(obj.y || 0) + offsetY}
+      x={toNum(obj.x, 0)}
+      y={toNum(obj.y, 0) + offsetY}
       draggable
+      ref={(node) => registerRef?.(obj.id, node)}
       onClick={(e) => {
-        e.evt.cancelBubble = true;
-        setElementosSeleccionados([obj.id]);
+        if (e && e.evt) e.evt.cancelBubble = true;   // ❗️sin optional chaining en asignación
+        onSelect?.(obj.id, e);
       }}
-      ref={(node) => registerRef(obj.id, node)}
+      onDragStart={() => {
+        window._isDragging = true;
+        onDragStartPersonalizado?.(obj.id);
+      }}
+      onDragMove={(e) => {
+        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
+      }}
       onDragEnd={(e) => {
         const finalX = e.target.x();
         const finalYAbs = e.target.y();
+
         const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-          finalYAbs,
-          obj.seccionId,
-          seccionesOrdenadas
+          finalYAbs, obj.seccionId, seccionesOrdenadas
         );
 
-        setObjetos((prev) =>
-          prev.map((o) => {
-            if (o.id !== obj.id) return o;
-            if (nuevaSeccion) {
-              return { ...o, x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas };
-            }
-            const yRel = finalYAbs - offsetY;
-            return { ...o, x: finalX, y: yRel };
-          })
-        );
+        if (nuevaSeccion) {
+          onChange?.(obj.id, { x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas });
+        } else {
+          const yRel = finalYAbs - offsetY;
+          onChange?.(obj.id, { x: finalX, y: yRel });
+        }
+
+        window._isDragging = false;
+        onDragEndPersonalizado?.(obj.id);
       }}
     >
-      {/* Fondo del grupo (define el bounding box para selección) */}
-      <Rect x={0} y={0} width={width} height={totalHeight} fill="transparent" />
+      {/* Hit-box: poné stroke 1 minuto para verificar que aparece */}
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={safeTotalHeight}
+        fill="transparent"
+        stroke="#ddd"
+        listening={true}
+      />
 
       {/* Celdas */}
       {rects.map((r, i) => {
@@ -1602,7 +1630,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 }
 
 
-
   return (
     <div
       className="flex justify-center"
@@ -1635,8 +1662,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
             position: "relative",
           }}
         >
-
-
 
           <div
             className="relative"
@@ -1790,7 +1815,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               perfectDrawEnabled={false}
               listening={true}
               imageSmoothingEnabled={false}
-              hitGraphEnabled={false}
+              hitGraphEnabled={true}
               style={{
                 background: "white",
                 overflow: "visible",
@@ -1801,6 +1826,22 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
               onMouseDown={(e) => {
                 const stage = e.target.getStage();
+                if (!stage) return;
+
+                // ⛔️ NO usar comparaciones directas contra e.target
+                // const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
+
+                // ✅ Usar findAncestor: ¿el target pertenece a algún "nodo raíz" registrado?
+                const roots = Object.values(elementRefs.current || {});
+                const rootHit = e.target.findAncestor((n) => roots.includes(n), true); // includeSelf=true
+
+                if (rootHit) {
+                  // Clic adentro de un elemento: NO inicies selección por lazo
+                  // Dejá que el drag del elemento maneje el movimiento
+                  return;
+                }
+
+
 
                 const clickedOnStage = e.target === stage;
 
@@ -2310,8 +2351,57 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                   // 🖼️ Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
                   if (obj.tipo === "galeria") {
-                    return <GaleriaKonva key={obj.id} obj={obj} />;
+                    const yConOffset = obj.y + calcularOffsetY(
+                      seccionesOrdenadas,
+                      seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId),
+                      altoCanvas
+                    );
+
+                    return (
+                      <GaleriaKonva
+                        key={obj.id}
+                        obj={obj} 
+                        registerRef={registerRef}
+                        isSelected={elementosSeleccionados.includes(obj.id)}
+                        onSelect={(id, e) => {
+                          e?.evt && (e.evt.cancelBubble = true);
+                          setElementosSeleccionados([id]);
+                        }}
+                        onDragMovePersonalizado={(pos, id) => {
+                          // mismas señales que usás en ElementoCanvas
+                          window._isDragging = true;
+                          // mover el botón en el próximo frame para evitar saltos
+                          requestAnimationFrame(() => {
+                            if (typeof actualizarPosicionBotonOpciones === 'function') {
+                              actualizarPosicionBotonOpciones();
+                            }
+                          });
+                        }}
+                        onDragStartPersonalizado={(id) => {
+                          window._isDragging = true;
+                        }}
+                        onDragEndPersonalizado={(id) => {
+                          window._isDragging = false;
+                          setGuiaLineas([]);
+                          // reposicionar por las dudas
+                          if (typeof actualizarPosicionBotonOpciones === 'function') {
+                            actualizarPosicionBotonOpciones();
+                          }
+                        }}
+                        onChange={(id, nuevo) => {
+                          // si ya tenés lógica para commit final de drag de galería, respetala
+                          setObjetos(prev => {
+                            const i = prev.findIndex(o => o.id === id);
+                            if (i === -1) return prev;
+                            const updated = [...prev];
+                            updated[i] = { ...updated[i], ...nuevo };
+                            return updated;
+                          });
+                        }}
+                      />
+                    );
                   }
+
 
                   return (
                     <ElementoCanvas
@@ -2347,7 +2437,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           finishEdit();
                         }
 
-                        e.evt.cancelBubble = true;
+                       e?.evt && (e.evt.cancelBubble = true);
+
                         const esShift = e?.evt?.shiftKey;
 
                         setElementosSeleccionados((prev) => {
@@ -2515,6 +2606,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
                 {elementosSeleccionados.length > 0 && (() => {
+                  // 🔒 Si la selección incluye al menos una galería, no mostramos Transformer
+                  const hayGaleriaSeleccionada = elementosSeleccionados.some(id => {
+                    const o = objetos.find(x => x.id === id);
+                    return o?.tipo === "galeria";
+                  });
+                  if (hayGaleriaSeleccionada) return null;
 
                   return (
                     <SelectionBounds

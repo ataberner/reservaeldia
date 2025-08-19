@@ -163,41 +163,48 @@ export default function DashboardSidebar({
 
 
 
-    const insertarGaleria = useCallback((cfg) => {
-        const anchoBase = 800;
+   
+const insertarGaleria = useCallback((cfg) => {
+  const anchoBase = 800; // ancho del canvas
 
-        const width = anchoBase * 0.7;
+  // ✅ tomar porcentaje desde el popover, con fallback y clamp
+  const widthPct = Math.max(10, Math.min(100, Number(cfg.widthPct ?? 70)));
+  const width = (anchoBase * widthPct) / 100;
 
-        // 🔢 Alto total necesario en función de celdas y gap:
-        // cellW = (width - gap*(cols-1)) / cols
-        // cellH = cellW * ratioCell
-        // totalH = rows*cellH + gap*(rows-1)
-        const gap = cfg.gap ?? 0;
-        const cols = Math.max(1, cfg.cols || 1);
-        const rows = Math.max(1, cfg.rows || 1);
-        const cellW = (width - gap * (cols - 1)) / cols;
-        const cellH = cellW * ratioCell(cfg.ratio);
-        const height = rows * cellH + gap * (rows - 1);
+  // 🔢 Alto total en función de celdas, gap y ratio
+  const gap = cfg.gap ?? 0;
+  const cols = Math.max(1, cfg.cols || 1);
+  const rows = Math.max(1, cfg.rows || 1);
+  const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
+  const cellW = (width - gap * (cols - 1)) / cols;
+  const cellH = cellW * ratioCell(cfg.ratio);
+  const height = rows * cellH + gap * (rows - 1);
 
-        const x = (anchoBase - width) / 2;
-        const y = 120;
+  // centrar horizontalmente según width calculado
+  const x = (anchoBase - width) / 2;
+  const y = 120;
 
-        const id = `gal-${Date.now().toString(36)}`;
-        const total = cfg.rows * cfg.cols;
+  const id = `gal-${Date.now().toString(36)}`;
+  const total = rows * cols;
 
-        window.dispatchEvent(new CustomEvent("insertar-elemento", {
-            detail: {
-                id,
-                tipo: "galeria",
-                x, y, width, height,
-                rows: cfg.rows, cols: cfg.cols,
-                gap: cfg.gap, radius: cfg.radius, ratio: cfg.ratio,
-                cells: Array.from({ length: total }, () => ({
-                    mediaUrl: null, fit: "cover", bg: "#f3f4f6"
-                })),
-            }
-        }));
-    }, []);
+  window.dispatchEvent(new CustomEvent("insertar-elemento", {
+    detail: {
+      id,
+      tipo: "galeria",
+      x, y, width, height,
+      rows, cols,
+      gap: cfg.gap,
+      radius: cfg.radius,
+      ratio: cfg.ratio,
+      // opcional: guardar el widthPct por si después querés recalcular
+      widthPct, 
+      cells: Array.from({ length: total }, () => ({
+        mediaUrl: null, fit: "cover", bg: "#f3f4f6"
+      })),
+    }
+  }));
+}, []);
+
 
 
 

@@ -31,6 +31,7 @@ export default function MiniToolbar({
     gap: 8,
     radius: 6,
     ratio: "1:1", // "1:1" | "4:3" | "16:9"
+    widthPct: 70,
   });
 
 
@@ -130,6 +131,20 @@ export default function MiniToolbar({
                       </button>
                     ))}
                   </div>
+
+                  {/* Ancho (% del canvas) */}
+                  <div className="mt-2">
+                    <label className="text-xs font-medium">
+                      Ancho (% del canvas): {cfg.widthPct}%
+                      <input
+                        type="range" min={10} max={100}
+                        value={cfg.widthPct}
+                        onChange={e => setCfg({ ...cfg, widthPct: clamp(+e.target.value, 10, 100) })}
+                        className="w-full"
+                      />
+                    </label>
+                  </div>
+
                 </div>
 
                 {/* CTA */}
@@ -236,4 +251,4 @@ export default function MiniToolbar({
     </div>
   );
 }
-function clamp(n, min, max){ return Math.max(min, Math.min(max, isNaN(n)?min:n)); }
+function clamp(n, min, max) { return Math.max(min, Math.min(max, isNaN(n) ? min : n)); }

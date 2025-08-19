@@ -23,6 +23,10 @@ export default function MiniToolbar({
   seccionActivaId,
   setImagenesSeleccionadas,
   onInsertarGaleria,
+  objetoSeleccionado,
+  celdaGaleriaActiva,
+  onAsignarImagenGaleria,
+  onQuitarImagenGaleria,
 }) {
   const [mostrarPopoverGaleria, setMostrarPopoverGaleria] = useState(false);
   const [cfg, setCfg] = useState({
@@ -70,6 +74,48 @@ export default function MiniToolbar({
               <span className="text-lg">📷📦</span>
               <span>Insertar galería</span>
             </button>
+
+
+            {/* ---------- Acciones de Galería (solo si hay selección y celda activa) ---------- */}
+            {objetoSeleccionado?.tipo === "galeria" && celdaGaleriaActiva && (
+              <div className="flex items-center gap-2">
+                {/* Input file oculto */}
+                <input
+                  id="file-galeria"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    // MVP: usamos Object URL local. Luego lo cambiamos por upload a Storage y usar la URL pública.
+                    const url = URL.createObjectURL(file);
+                    onAsignarImagenGaleria?.(url);
+                    // Limpio el input para permitir re-seleccionar el mismo archivo luego si quiere
+                    e.target.value = "";
+                  }}
+                />
+
+                {/* Botón visible que dispara el input */}
+                <label
+                  htmlFor="file-galeria"
+                  className="px-2 py-1 text-sm rounded bg-violet-600 text-white cursor-pointer hover:bg-violet-700"
+                  title="Asignar imagen a la celda activa"
+                >
+                  Asignar imagen
+                </label>
+
+                {/* Quitar imagen del slot activo */}
+                <button
+                  type="button"
+                  onClick={() => onQuitarImagenGaleria?.()}
+                  className="px-2 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200"
+                  title="Quitar imagen de la celda activa"
+                >
+                  Quitar
+                </button>
+              </div>
+            )}
 
             {mostrarPopoverGaleria && (
               <div className="absolute z-50 mt-2 w-72 right-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl p-3">
@@ -183,9 +229,30 @@ export default function MiniToolbar({
               seccionActivaId={seccionActivaId}
               cargando={cargando}
               onInsertar={(nuevo) => {
-                window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
-                setMostrarGaleria(false);
-              }}
+  // intenta asignar a la celda activa si existe
+  // 'nuevo' puede venir con distintas keys; tomamos la URL de forma defensiva
+  const url =
+    nuevo?.url ||
+    nuevo?.src ||
+    nuevo?.downloadURL ||
+    nuevo?.mediaUrl ||
+    (typeof nuevo === "string" ? nuevo : null);
+
+  if (url && typeof window.asignarImagenACelda === "function") {
+    const ok = window.asignarImagenACelda(url, "cover");
+    if (ok) {
+      // flujo rápido: cerrá el panel si querés
+      setMostrarGaleria(false);
+      return; // ✅ NO insertes como objeto suelto
+    }
+  }
+
+  // ⬇️ fallback: comportamiento anterior (insertar imagen suelta)
+  window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: nuevo }));
+  setMostrarGaleria(false);
+}}
+
+
               onSeleccionadasChange={setImagenesSeleccionadas}
             />
           </div>

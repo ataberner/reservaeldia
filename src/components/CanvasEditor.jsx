@@ -215,6 +215,7 @@ const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
 
 export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
   const [objetos, setObjetos] = useState([]);
+  const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
   const [secciones, setSecciones] = useState([]);
   const [historial, setHistorial] = useState([]);
   const [futuros, setFuturos] = useState([]);
@@ -320,6 +321,66 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       })
     );
   }, [setSecciones]);
+
+  // Asigna una imagen (por URL) a la celda activa
+  function asignarImagenAGaleria(url) {
+    setObjetos((prev) => {
+      if (!celdaGaleriaActiva) return prev;
+      const { objId, index } = celdaGaleriaActiva;
+      const i = prev.findIndex(o => o.id === objId && o.tipo === "galeria");
+      if (i === -1) return prev;
+
+      const copia = structuredClone(prev);
+      const g = copia[i];
+      // Seguridad: que exista y que haya cells[index]
+      if (!g?.cells || !g.cells[index]) return prev;
+
+      g.cells[index] = {
+        ...(g.cells[index] ?? {}),
+        mediaUrl: url,
+        fit: g.cells[index]?.fit ?? "cover",
+        bg: g.cells[index]?.bg ?? "#eee",
+      };
+      return copia;
+    });
+  }
+
+  // CanvasEditor.jsx (dentro del componente, después de declarar estados)
+  useEffect(() => {
+    // expone una función global segura para asignar imagen a la celda activa
+    window.asignarImagenACelda = (mediaUrl, fit = "cover", bg) => {
+      if (!celdaGaleriaActiva) return false; // no hay slot activo
+      const { objId, index } = celdaGaleriaActiva;
+
+      setObjetos(prev => {
+        const i = prev.findIndex(o => o.id === objId);
+        if (i === -1) return prev;
+
+        const obj = prev[i];
+        if (obj.tipo !== "galeria") return prev;
+
+        const next = [...prev];
+        const cells = Array.isArray(obj.cells) ? [...obj.cells] : [];
+        const prevCell = cells[index] || {};
+        cells[index] = {
+          ...prevCell,
+          mediaUrl,
+          fit: fit || prevCell.fit || "cover",
+          bg: bg ?? prevCell.bg ?? "#f3f4f6",
+        };
+
+        next[i] = { ...obj, cells };
+        return next;
+      });
+
+      // opcional: desactivar el slot activo después de asignar
+      setCeldaGaleriaActiva(null);
+      return true;
+    };
+
+    // cleanup opcional
+    return () => { if (window.asignarImagenACelda) delete window.asignarImagenACelda; };
+  }, [celdaGaleriaActiva, setObjetos]);
 
 
 
@@ -1499,135 +1560,166 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     return <KonvaImage image={img} x={ix} y={iy} width={iw} height={ih} listening={false} />;
   }
 
-function GaleriaKonva({
-  obj,
-  registerRef,                 // si lo estás pasando; si no, dejá ref={(n)=>registerRef?.(obj.id,n)}
-  isSelected,
-  onSelect,
-  onChange,
-  onDragStartPersonalizado,
-  onDragMovePersonalizado,
-  onDragEndPersonalizado
-}) {
-  // 1) Sección segura
-  const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
-  const safeIndex = indexSeccion >= 0 ? indexSeccion : 0;
-  const offsetY = calcularOffsetY(seccionesOrdenadas, safeIndex, altoCanvas) || 0;
+  function GaleriaKonva({
+    obj,
+    registerRef,                 // si lo estás pasando; si no, dejá ref={(n)=>registerRef?.(obj.id,n)}
+    isSelected,
+    onSelect,
+    onChange,
+    onDragStartPersonalizado,
+    onDragMovePersonalizado,
+    onDragEndPersonalizado,
+    celdaGaleriaActiva,
+    onPickCell,
+  }) {
+    const downPosRef = useRef(null); // 👈 guarda el punto de inicio del mouse
+    // 1) Sección segura
+    const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
+    const safeIndex = indexSeccion >= 0 ? indexSeccion : 0;
+    const offsetY = calcularOffsetY(seccionesOrdenadas, safeIndex, altoCanvas) || 0;
 
-  // 2) Normalizar números
-  const toNum = (v, d=0) => Number.isFinite(+v) ? +v : d;
-  const radius = Math.max(0, toNum(obj.radius, 0));
-  const gap    = Math.max(0, toNum(obj.gap, 0));
-  const rows   = Math.max(1, toNum(obj.rows, 1));
-  const cols   = Math.max(1, toNum(obj.cols, 1));
-  const width  = Math.max(1, toNum(obj.width, 400));
+    // 2) Normalizar números
+    const toNum = (v, d = 0) => Number.isFinite(+v) ? +v : d;
+    const radius = Math.max(0, toNum(obj.radius, 0));
+    const gap = Math.max(0, toNum(obj.gap, 0));
+    const rows = Math.max(1, toNum(obj.rows, 1));
+    const cols = Math.max(1, toNum(obj.cols, 1));
+    const width = Math.max(1, toNum(obj.width, 400));
 
-  // 3) Ratio
-  const cellRatio =
-    obj.ratio === "4:3" ? 3/4 :
-    obj.ratio === "16:9" ? 9/16 :
-    1;
+    // 3) Ratio
+    const cellRatio =
+      obj.ratio === "4:3" ? 3 / 4 :
+        obj.ratio === "16:9" ? 9 / 16 :
+          1;
 
-  // 4) Layout
-  const { rects, totalHeight } = useMemo(() => {
-    try {
-      return calcGalleryLayout({ width, rows, cols, gap, cellRatio });
-    } catch {
-      return { rects: [], totalHeight: 0 };
-    }
-  }, [width, rows, cols, gap, cellRatio]);
+    // 4) Layout
+    const { rects, totalHeight } = useMemo(() => {
+      try {
+        return calcGalleryLayout({ width, rows, cols, gap, cellRatio });
+      } catch {
+        return { rects: [], totalHeight: 0 };
+      }
+    }, [width, rows, cols, gap, cellRatio]);
 
-  const safeTotalHeight = Math.max(1, totalHeight);
+    const safeTotalHeight = Math.max(1, totalHeight);
 
-  return (
-    <Group
-      x={toNum(obj.x, 0)}
-      y={toNum(obj.y, 0) + offsetY}
-      draggable
-      ref={(node) => registerRef?.(obj.id, node)}
-      onClick={(e) => {
-        if (e && e.evt) e.evt.cancelBubble = true;   // ❗️sin optional chaining en asignación
-        onSelect?.(obj.id, e);
-      }}
-      onDragStart={() => {
-        window._isDragging = true;
-        onDragStartPersonalizado?.(obj.id);
-      }}
-      onDragMove={(e) => {
-        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
-      }}
-      onDragEnd={(e) => {
-        const finalX = e.target.x();
-        const finalYAbs = e.target.y();
+    return (
+      <Group
+        x={toNum(obj.x, 0)}
+        y={toNum(obj.y, 0) + offsetY}
+        draggable
+        ref={(node) => registerRef?.(obj.id, node)}
+        onClick={(e) => {
+          if (e && e.evt) e.evt.cancelBubble = true;
+          onSelect?.(obj.id, e);
+        }}
+        onDragStart={() => { window._isDragging = true; onDragStartPersonalizado?.(obj.id); }}
+        onDragMove={(e) => { onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id); }}
+        onDragEnd={(e) => {
+          const finalX = e.target.x();
+          const finalYAbs = e.target.y();
+          const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(finalYAbs, obj.seccionId, seccionesOrdenadas);
+          if (nuevaSeccion) {
+            onChange?.(obj.id, { x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas });
+          } else {
+            const yRel = finalYAbs - offsetY;
+            onChange?.(obj.id, { x: finalX, y: yRel });
+          }
+          window._isDragging = false;
+          onDragEndPersonalizado?.(obj.id);
+        }}
+      >
+        <Rect x={0} y={0} width={width} height={safeTotalHeight} fill="transparent" stroke="#ddd" listening={true} />
 
-        const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-          finalYAbs, obj.seccionId, seccionesOrdenadas
-        );
+        {rects.map((r, i) => {
+          const cell = obj.cells?.[i] || {};
+          const bg = cell.bg || "#f3f4f6";
+          const mediaUrl = cell.mediaUrl || null;
+          const fit = cell.fit || "cover";
 
-        if (nuevaSeccion) {
-          onChange?.(obj.id, { x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas });
-        } else {
-          const yRel = finalYAbs - offsetY;
-          onChange?.(obj.id, { x: finalX, y: yRel });
-        }
+          const esActiva = celdaGaleriaActiva?.objId === obj.id && celdaGaleriaActiva?.index === i;
 
-        window._isDragging = false;
-        onDragEndPersonalizado?.(obj.id);
-      }}
-    >
-      {/* Hit-box: poné stroke 1 minuto para verificar que aparece */}
-      <Rect
-        x={0}
-        y={0}
-        width={width}
-        height={safeTotalHeight}
-        fill="transparent"
-        stroke="#ddd"
-        listening={true}
-      />
+          const clipFunc = (ctx) => {
+            const w = r.width;
+            const h = r.height;
+            const rad = Math.min(radius, Math.min(w, h) / 2);
+            ctx.beginPath();
+            ctx.moveTo(rad, 0);
+            ctx.lineTo(w - rad, 0);
+            ctx.quadraticCurveTo(w, 0, w, rad);
+            ctx.lineTo(w, h - rad);
+            ctx.quadraticCurveTo(w, h, w - rad, h);
+            ctx.lineTo(rad, h);
+            ctx.quadraticCurveTo(0, h, 0, h - rad);
+            ctx.lineTo(0, rad);
+            ctx.quadraticCurveTo(0, 0, rad, 0);
+            ctx.closePath();
+          };
 
-      {/* Celdas */}
-      {rects.map((r, i) => {
-        const cell = obj.cells?.[i] || {};
-        const bg = cell.bg || "#f3f4f6";
-        const mediaUrl = cell.mediaUrl || null;
-        const fit = cell.fit || "cover";
+          return (
+            <Group
+              key={i}
+              x={r.x}
+              y={r.y}
+              clipFunc={clipFunc}
+              listening={true}
+              // 1) Guardar la posición inicial del mouse
+              onMouseDown={(e) => {
+                const stage = e.target.getStage();
+                downPosRef.current = stage?.getPointerPosition() || null;
+                // Importante: NO usar e.cancelBubble acá, así el Group padre puede iniciar drag
+              }}
+              // 2) Decidir click vs drag al soltar
+              onMouseUp={(e) => {
+                const stage = e.target.getStage();
+                const up = stage?.getPointerPosition();
+                const down = downPosRef.current;
+                downPosRef.current = null;
 
-        const clipFunc = (ctx) => {
-          const w = r.width;
-          const h = r.height;
-          const rad = Math.min(radius, Math.min(w, h) / 2);
-          ctx.beginPath();
-          ctx.moveTo(rad, 0);
-          ctx.lineTo(w - rad, 0);
-          ctx.quadraticCurveTo(w, 0, w, rad);
-          ctx.lineTo(w, h - rad);
-          ctx.quadraticCurveTo(w, h, w - rad, h);
-          ctx.lineTo(rad, h);
-          ctx.quadraticCurveTo(0, h, 0, h - rad);
-          ctx.lineTo(0, rad);
-          ctx.quadraticCurveTo(0, 0, rad, 0);
-          ctx.closePath();
-        };
+                // distancia recorrida
+                const moved = (down && up) ? Math.hypot(up.x - down.x, up.y - down.y) : 0;
 
-        return (
-          <Group key={i} x={r.x} y={r.y} clipFunc={clipFunc} listening={false}>
-            <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
-            {mediaUrl && (
-              <ImagenCelda
-                src={mediaUrl}
-                fit={fit}
-                w={r.width}
-                h={r.height}
-                KonvaImage={KonvaImage}
+                // Si NO arrastró (debajo del umbral) y no hubo drag global, es click ⇒ activar celda
+                if (moved < 4 && !window._isDragging) {
+                  setCeldaGaleriaActiva({ objId: obj.id, index: i });
+                  onSelect?.(obj.id, e); // asegura que quede seleccionada la galería
+                  // Opcional: e.cancelBubble = true; // si querés evitar “lazo” de selección del stage
+                }
+              }}
+            >
+              {/* Fondo de celda */}
+              <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
+
+              {/* Imagen si hay */}
+              {mediaUrl && (
+                <ImagenCelda
+                  src={mediaUrl}
+                  fit={fit}
+                  w={r.width}
+                  h={r.height}
+                  KonvaImage={KonvaImage}
+                />
+              )}
+
+              {/* Borde activo */}
+              <Rect
+                x={0}
+                y={0}
+                width={r.width}
+                height={r.height}
+                cornerRadius={radius || 0}
+                stroke={esActiva ? "#773dbe" : "#ddd"}
+                strokeWidth={esActiva ? 2 : 1}
+                dash={esActiva ? [6, 4] : []}
+                listening={false}
               />
-            )}
-          </Group>
-        );
-      })}
-    </Group>
-  );
-}
+            </Group>
+          );
+        })}
+
+      </Group>
+    );
+  }
 
 
   return (
@@ -2360,12 +2452,18 @@ function GaleriaKonva({
                     return (
                       <GaleriaKonva
                         key={obj.id}
-                        obj={obj} 
+                        obj={obj}
                         registerRef={registerRef}
                         isSelected={elementosSeleccionados.includes(obj.id)}
+                        celdaGaleriaActiva={celdaGaleriaActiva}
+                        onPickCell={(info) => setCeldaGaleriaActiva(info)}
                         onSelect={(id, e) => {
                           e?.evt && (e.evt.cancelBubble = true);
                           setElementosSeleccionados([id]);
+                        }}
+                        onCeldaClick={(objId, index) => {
+                          setElementosSeleccionados([objId]);           // seleccioná la galería
+                          setCeldaGaleriaActiva({ objId, index });      // marcá el slot
                         }}
                         onDragMovePersonalizado={(pos, id) => {
                           // mismas señales que usás en ElementoCanvas
@@ -2437,7 +2535,7 @@ function GaleriaKonva({
                           finishEdit();
                         }
 
-                       e?.evt && (e.evt.cancelBubble = true);
+                        e?.evt && (e.evt.cancelBubble = true);
 
                         const esShift = e?.evt?.shiftKey;
 

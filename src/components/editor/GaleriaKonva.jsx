@@ -143,16 +143,7 @@ export default function GaleriaKonva({
         e.target.draggable(false);
       }}
     >
-      {/* Bounding del grupo (útil para drag/selección visual) */}
-      <Rect
-        x={0}
-        y={0}
-        width={width}
-        height={safeTotalHeight}
-        fill="transparent"
-        stroke="#ddd"
-        listening={false}
-      />
+
 
       {rects.map((r, i) => {
         const cell = obj.cells?.[i] || {};
@@ -182,76 +173,80 @@ export default function GaleriaKonva({
         };
 
         return (
-          <React.Fragment key={`${obj.id}-${i}`}>
-            {/* Grupo de la celda (con clip) */}
-            <Group
-              x={r.x}
-              y={r.y}
-              clipFunc={clipFunc}
-              listening={true}
-              onMouseDown={() => {
-                onPickCell?.({ objId: obj.id, index: i });
-                setCeldaGaleriaActiva?.({ objId: obj.id, index: i });
-              }}
-              onMouseEnter={() => setHoveredCell(i)}
-              onMouseLeave={(e) => {
-                // 👉 Si el mouse entra a la X (btn-...), NO limpiamos
-                const target = e.relatedTarget;
-                if (target && target.findAncestor(`#btn-${obj.id}-${i}`, true)) {
-                  return;
-                }
-                setHoveredCell(null);
-              }}
-            >
-              <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
-              {mediaUrl && (
-                <ImagenCelda src={mediaUrl} fit={fit} w={r.width} h={r.height} />
-              )}
-              <Rect
-                x={0}
-                y={0}
-                width={r.width}
-                height={r.height}
-                cornerRadius={radius || 0}
-                stroke={esActiva ? "#773dbe" : "#ddd"}
-                strokeWidth={esActiva ? 2 : 1}
-                dash={esActiva ? [6, 4] : []}
-                listening={false}
-              />
-            </Group>
+          // Reemplazá el retorno de cada celda dentro del map(rects) por esta estructura:
 
-            {/* Botón ❌ por fuera del clip */}
-            {mediaUrl && hoveredCell === i && (
-              <Group
-                id={`btn-${obj.id}-${i}`}
-                x={r.x + r.width - 20}
-                y={r.y}
-                width={20}
-                height={20}
-                listening={true}
-                onMouseEnter={() => setHoveredCell(i)}   // mantener activo
-                onMouseLeave={() => setHoveredCell(null)} // salir realmente
-                onMouseDown={(e) => {
-                  e.cancelBubble = true;
-                  const nuevasCells = [...(obj.cells || [])];
-                  nuevasCells[i] = { ...nuevasCells[i], mediaUrl: null };
-                  onChange?.(obj.id, { cells: nuevasCells });
-                }}
-              >
-                <Rect width={20} height={20} fill="rgba(0,0,0,0.6)" cornerRadius={4} />
-                <KonvaText
-                  text="×"
-                  fontSize={16}
-                  fill="#fff"
-                  align="center"
-                  verticalAlign="middle"
-                  width={20}
-                  height={20}
-                  listening={false}
-                />
-              </Group>
-            )}
-          </React.Fragment>
+<React.Fragment key={`${obj.id}-${i}`}>
+  {/* 🔲 WRAPPER: maneja hover de celda + botón X como una sola zona */}
+  <Group
+    x={r.x}
+    y={r.y}
+    // hover unificado
+    onMouseEnter={() => setHoveredCell(i)}
+    onMouseLeave={() => setHoveredCell(null)}
+    // click en el wrapper: si cae en la celda, selecciona
+    onMouseDown={(e) => {
+      // Evitamos que un click en la X (hijo) “pase” a la celda
+      if (e.target?.id?.() === `btn-${obj.id}-${i}`) return;
+      onPickCell?.({ objId: obj.id, index: i });
+      setCeldaGaleriaActiva?.({ objId: obj.id, index: i });
+    }}
+  >
+    {/* Base de hit para que el wrapper tenga área “clickeable/hovereable” */}
+    <Rect x={0} y={0} width={r.width} height={r.height} fill="transparent" />
+
+    {/* 🖼️ CELDA con clip */}
+    <Group clipFunc={clipFunc} listening={true}>
+      <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
+      {mediaUrl && (
+        <ImagenCelda src={mediaUrl} fit={fit} w={r.width} h={r.height} />
+      )}
+      <Rect
+        x={0}
+        y={0}
+        width={r.width}
+        height={r.height}
+        cornerRadius={radius || 0}
+        stroke={esActiva ? "#773dbe" : "#ddd"}
+        strokeWidth={esActiva ? 2 : 1}
+        dash={esActiva ? [6, 4] : []}
+        listening={false}
+      />
+    </Group>
+
+    {/* ❌ Botón borrar (fuera del clip pero dentro del mismo wrapper) */}
+    {mediaUrl && hoveredCell === i && (
+      <Group
+        id={`btn-${obj.id}-${i}`}
+        x={r.width - 20}
+        y={0}
+        width={20}
+        height={20}
+        listening={true}
+        // mantener hover mientras esté sobre la X
+        onMouseEnter={() => setHoveredCell(i)}
+        onMouseDown={(e) => {
+          e.cancelBubble = true; // no seleccionar la celda
+          const nuevasCells = [...(obj.cells || [])];
+          nuevasCells[i] = { ...nuevasCells[i], mediaUrl: null };
+          onChange?.(obj.id, { cells: nuevasCells });
+        }}
+      >
+        <Rect width={20} height={20} fill="rgba(0,0,0,0.6)" cornerRadius={4} />
+        <KonvaText
+          text="×"
+          fontSize={16}
+          fill="#fff"
+          align="center"
+          verticalAlign="middle"
+          width={20}
+          height={20}
+          listening={false}
+        />
+      </Group>
+    )}
+  </Group>
+</React.Fragment>
+
         );
       })}
     </Group>

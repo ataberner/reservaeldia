@@ -28,6 +28,7 @@ import { desanclarImagenDeFondo as desanclarFondo } from "@/utils/accionesFondo"
 import { borrarSeccion as borrarSeccionExternal } from "@/utils/editorSecciones";
 import { moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
+import GaleriaKonva from "@/components/editor/GaleriaKonva";
 import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
 import MenuOpcionesElemento from "./MenuOpcionesElemento";
@@ -1542,186 +1543,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, []);
 
 
-
-  // 👉 Componente interno para renderizar una imagen ajustada a "cover"/"contain"
-  function ImagenCelda({ src, fit = "cover", w, h, KonvaImage }) {
-    const [img] = useImage(src, "anonymous");
-    if (!img) return null;
-
-    const escContain = Math.min(w / img.width, h / img.height);
-    const escCover = Math.max(w / img.width, h / img.height);
-    const esc = fit === "contain" ? escContain : escCover;
-
-    const iw = img.width * esc;
-    const ih = img.height * esc;
-    const ix = (w - iw) / 2;
-    const iy = (h - ih) / 2;
-
-    return <KonvaImage image={img} x={ix} y={iy} width={iw} height={ih} listening={false} />;
-  }
-
-  function GaleriaKonva({
-    obj,
-    registerRef,                 // si lo estás pasando; si no, dejá ref={(n)=>registerRef?.(obj.id,n)}
-    isSelected,
-    onSelect,
-    onChange,
-    onDragStartPersonalizado,
-    onDragMovePersonalizado,
-    onDragEndPersonalizado,
-    celdaGaleriaActiva,
-    onPickCell,
-  }) {
-    const downPosRef = useRef(null); // 👈 guarda el punto de inicio del mouse
-    // 1) Sección segura
-    const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
-    const safeIndex = indexSeccion >= 0 ? indexSeccion : 0;
-    const offsetY = calcularOffsetY(seccionesOrdenadas, safeIndex, altoCanvas) || 0;
-
-    // 2) Normalizar números
-    const toNum = (v, d = 0) => Number.isFinite(+v) ? +v : d;
-    const radius = Math.max(0, toNum(obj.radius, 0));
-    const gap = Math.max(0, toNum(obj.gap, 0));
-    const rows = Math.max(1, toNum(obj.rows, 1));
-    const cols = Math.max(1, toNum(obj.cols, 1));
-    const width = Math.max(1, toNum(obj.width, 400));
-
-    // 3) Ratio
-    const cellRatio =
-      obj.ratio === "4:3" ? 3 / 4 :
-        obj.ratio === "16:9" ? 9 / 16 :
-          1;
-
-    // 4) Layout
-    const { rects, totalHeight } = useMemo(() => {
-      try {
-        return calcGalleryLayout({ width, rows, cols, gap, cellRatio });
-      } catch {
-        return { rects: [], totalHeight: 0 };
-      }
-    }, [width, rows, cols, gap, cellRatio]);
-
-    const safeTotalHeight = Math.max(1, totalHeight);
-
-    return (
-      <Group
-        x={toNum(obj.x, 0)}
-        y={toNum(obj.y, 0) + offsetY}
-        draggable
-        ref={(node) => registerRef?.(obj.id, node)}
-        onClick={(e) => {
-          if (e && e.evt) e.evt.cancelBubble = true;
-          onSelect?.(obj.id, e);
-        }}
-        onDragStart={() => { window._isDragging = true; onDragStartPersonalizado?.(obj.id); }}
-        onDragMove={(e) => { onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id); }}
-        onDragEnd={(e) => {
-          const finalX = e.target.x();
-          const finalYAbs = e.target.y();
-          const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(finalYAbs, obj.seccionId, seccionesOrdenadas);
-          if (nuevaSeccion) {
-            onChange?.(obj.id, { x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas });
-          } else {
-            const yRel = finalYAbs - offsetY;
-            onChange?.(obj.id, { x: finalX, y: yRel });
-          }
-          window._isDragging = false;
-          onDragEndPersonalizado?.(obj.id);
-        }}
-      >
-        <Rect x={0} y={0} width={width} height={safeTotalHeight} fill="transparent" stroke="#ddd" listening={true} />
-
-        {rects.map((r, i) => {
-          const cell = obj.cells?.[i] || {};
-          const bg = cell.bg || "#f3f4f6";
-          const mediaUrl = cell.mediaUrl || null;
-          const fit = cell.fit || "cover";
-
-          const esActiva = celdaGaleriaActiva?.objId === obj.id && celdaGaleriaActiva?.index === i;
-
-          const clipFunc = (ctx) => {
-            const w = r.width;
-            const h = r.height;
-            const rad = Math.min(radius, Math.min(w, h) / 2);
-            ctx.beginPath();
-            ctx.moveTo(rad, 0);
-            ctx.lineTo(w - rad, 0);
-            ctx.quadraticCurveTo(w, 0, w, rad);
-            ctx.lineTo(w, h - rad);
-            ctx.quadraticCurveTo(w, h, w - rad, h);
-            ctx.lineTo(rad, h);
-            ctx.quadraticCurveTo(0, h, 0, h - rad);
-            ctx.lineTo(0, rad);
-            ctx.quadraticCurveTo(0, 0, rad, 0);
-            ctx.closePath();
-          };
-
-          return (
-            <Group
-              key={i}
-              x={r.x}
-              y={r.y}
-              clipFunc={clipFunc}
-              listening={true}
-              // 1) Guardar la posición inicial del mouse
-              onMouseDown={(e) => {
-                const stage = e.target.getStage();
-                downPosRef.current = stage?.getPointerPosition() || null;
-                // Importante: NO usar e.cancelBubble acá, así el Group padre puede iniciar drag
-              }}
-              // 2) Decidir click vs drag al soltar
-              onMouseUp={(e) => {
-                const stage = e.target.getStage();
-                const up = stage?.getPointerPosition();
-                const down = downPosRef.current;
-                downPosRef.current = null;
-
-                // distancia recorrida
-                const moved = (down && up) ? Math.hypot(up.x - down.x, up.y - down.y) : 0;
-
-                // Si NO arrastró (debajo del umbral) y no hubo drag global, es click ⇒ activar celda
-                if (moved < 4 && !window._isDragging) {
-                  setCeldaGaleriaActiva({ objId: obj.id, index: i });
-                  onSelect?.(obj.id, e); // asegura que quede seleccionada la galería
-                  // Opcional: e.cancelBubble = true; // si querés evitar “lazo” de selección del stage
-                }
-              }}
-            >
-              {/* Fondo de celda */}
-              <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
-
-              {/* Imagen si hay */}
-              {mediaUrl && (
-                <ImagenCelda
-                  src={mediaUrl}
-                  fit={fit}
-                  w={r.width}
-                  h={r.height}
-                  KonvaImage={KonvaImage}
-                />
-              )}
-
-              {/* Borde activo */}
-              <Rect
-                x={0}
-                y={0}
-                width={r.width}
-                height={r.height}
-                cornerRadius={radius || 0}
-                stroke={esActiva ? "#773dbe" : "#ddd"}
-                strokeWidth={esActiva ? 2 : 1}
-                dash={esActiva ? [6, 4] : []}
-                listening={false}
-              />
-            </Group>
-          );
-        })}
-
-      </Group>
-    );
-  }
-
-
   return (
     <div
       className="flex justify-center"
@@ -2443,11 +2264,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                   // 🖼️ Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
                   if (obj.tipo === "galeria") {
-                    const yConOffset = obj.y + calcularOffsetY(
-                      seccionesOrdenadas,
-                      seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId),
-                      altoCanvas
-                    );
 
                     return (
                       <GaleriaKonva
@@ -2457,39 +2273,33 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         isSelected={elementosSeleccionados.includes(obj.id)}
                         celdaGaleriaActiva={celdaGaleriaActiva}
                         onPickCell={(info) => setCeldaGaleriaActiva(info)}
+                        seccionesOrdenadas={seccionesOrdenadas}
+                        altoCanvas={altoCanvas}
                         onSelect={(id, e) => {
                           e?.evt && (e.evt.cancelBubble = true);
                           setElementosSeleccionados([id]);
                         }}
-                        onCeldaClick={(objId, index) => {
-                          setElementosSeleccionados([objId]);           // seleccioná la galería
-                          setCeldaGaleriaActiva({ objId, index });      // marcá el slot
-                        }}
                         onDragMovePersonalizado={(pos, id) => {
-                          // mismas señales que usás en ElementoCanvas
                           window._isDragging = true;
-                          // mover el botón en el próximo frame para evitar saltos
                           requestAnimationFrame(() => {
-                            if (typeof actualizarPosicionBotonOpciones === 'function') {
+                            if (typeof actualizarPosicionBotonOpciones === "function") {
                               actualizarPosicionBotonOpciones();
                             }
                           });
                         }}
-                        onDragStartPersonalizado={(id) => {
+                        onDragStartPersonalizado={() => {
                           window._isDragging = true;
                         }}
-                        onDragEndPersonalizado={(id) => {
+                        onDragEndPersonalizado={() => {
                           window._isDragging = false;
                           setGuiaLineas([]);
-                          // reposicionar por las dudas
-                          if (typeof actualizarPosicionBotonOpciones === 'function') {
+                          if (typeof actualizarPosicionBotonOpciones === "function") {
                             actualizarPosicionBotonOpciones();
                           }
                         }}
                         onChange={(id, nuevo) => {
-                          // si ya tenés lógica para commit final de drag de galería, respetala
-                          setObjetos(prev => {
-                            const i = prev.findIndex(o => o.id === id);
+                          setObjetos((prev) => {
+                            const i = prev.findIndex((o) => o.id === id);
                             if (i === -1) return prev;
                             const updated = [...prev];
                             updated[i] = { ...updated[i], ...nuevo };
@@ -2497,6 +2307,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           });
                         }}
                       />
+
                     );
                   }
 
@@ -2508,8 +2319,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         ...obj,
                         y: obj.y + calcularOffsetY(
                           seccionesOrdenadas,
-                          seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId),
-                          altoCanvas
+                          seccionesOrdenadas.findIndex(s => s.id === obj.seccionId)
                         ),
                       }}
                       anchoCanvas={800}

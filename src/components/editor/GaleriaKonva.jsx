@@ -9,8 +9,8 @@
 // Dependencias de frontend: utils/layout (NO usar funciones de functions/).
 // ----------------------------------------------------------------------
 
-import React, { useMemo } from "react";
-import { Group, Rect, Image as KonvaImage } from "react-konva";
+import React, { useMemo, useState } from "react";
+import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
 import useImage from "use-image";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
@@ -58,6 +58,8 @@ export default function GaleriaKonva({
   seccionesOrdenadas = [],
   altoCanvas = 0,
 }) {
+  const [hoveredCell, setHoveredCell] = useState(null);
+
   // 1) Sección y offset
   const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
   const offsetY = calcularOffsetY(seccionesOrdenadas, indexSeccion);
@@ -92,9 +94,10 @@ export default function GaleriaKonva({
     <Group
       x={toNum(obj.x, 0)}
       y={toNum(obj.y, 0) + offsetY}
-      id={obj.id} 
+      id={obj.id}
       draggable={false}
       ref={(node) => registerRef?.(obj.id, node)}
+      onMouseLeave={() => setHoveredCell(null)}
       onClick={(e) => {
         if (e && e.evt) e.evt.cancelBubble = true;
         onSelect?.(obj.id, e);
@@ -111,13 +114,13 @@ export default function GaleriaKonva({
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
       }}
       onMouseDown={(e) => {
-  if (!isSelected) return;
-  const node = e.target.getStage()?.findOne(`#${obj.id}`);
-  if (node) {
-    node.draggable(true);   // habilitar
-    node.startDrag(e);      // iniciar drag real
-  }
-}}
+        if (!isSelected) return;
+        const node = e.target.getStage()?.findOne(`#${obj.id}`);
+        if (node) {
+          node.draggable(true);   // habilitar
+          node.startDrag(e);      // iniciar drag real
+        }
+      }}
       onDragEnd={(e) => {
         const finalX = e.target.x();
         const finalYAbs = e.target.y();
@@ -148,7 +151,7 @@ export default function GaleriaKonva({
         height={safeTotalHeight}
         fill="transparent"
         stroke="#ddd"
-        listening={true}
+        listening={false}
       />
 
       {rects.map((r, i) => {
@@ -179,44 +182,76 @@ export default function GaleriaKonva({
         };
 
         return (
-          <Group
-            key={`${obj.id}-${i}`}
-            x={r.x}
-            y={r.y}
-            clipFunc={clipFunc}
-            listening={true}
-            onMouseDown={() => {
-              // Marcá celda activa (soportamos ambos contratos)
-              onPickCell?.({ objId: obj.id, index: i });
-              setCeldaGaleriaActiva?.({ objId: obj.id, index: i });
-            }}
-          >
-            {/* Fondo de celda */}
-            <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
-
-            {/* Imagen si hay */}
-            {mediaUrl && (
-              <ImagenCelda
-                src={mediaUrl}
-                fit={fit}
-                w={r.width}
-                h={r.height}
+          <React.Fragment key={`${obj.id}-${i}`}>
+            {/* Grupo de la celda (con clip) */}
+            <Group
+              x={r.x}
+              y={r.y}
+              clipFunc={clipFunc}
+              listening={true}
+              onMouseDown={() => {
+                onPickCell?.({ objId: obj.id, index: i });
+                setCeldaGaleriaActiva?.({ objId: obj.id, index: i });
+              }}
+              onMouseEnter={() => setHoveredCell(i)}
+              onMouseLeave={(e) => {
+                // 👉 Si el mouse entra a la X (btn-...), NO limpiamos
+                const target = e.relatedTarget;
+                if (target && target.findAncestor(`#btn-${obj.id}-${i}`, true)) {
+                  return;
+                }
+                setHoveredCell(null);
+              }}
+            >
+              <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
+              {mediaUrl && (
+                <ImagenCelda src={mediaUrl} fit={fit} w={r.width} h={r.height} />
+              )}
+              <Rect
+                x={0}
+                y={0}
+                width={r.width}
+                height={r.height}
+                cornerRadius={radius || 0}
+                stroke={esActiva ? "#773dbe" : "#ddd"}
+                strokeWidth={esActiva ? 2 : 1}
+                dash={esActiva ? [6, 4] : []}
+                listening={false}
               />
-            )}
+            </Group>
 
-            {/* Borde activo */}
-            <Rect
-              x={0}
-              y={0}
-              width={r.width}
-              height={r.height}
-              cornerRadius={radius || 0}
-              stroke={esActiva ? "#773dbe" : "#ddd"}
-              strokeWidth={esActiva ? 2 : 1}
-              dash={esActiva ? [6, 4] : []}
-              listening={false}
-            />
-          </Group>
+            {/* Botón ❌ por fuera del clip */}
+            {mediaUrl && hoveredCell === i && (
+              <Group
+                id={`btn-${obj.id}-${i}`}
+                x={r.x + r.width - 20}
+                y={r.y}
+                width={20}
+                height={20}
+                listening={true}
+                onMouseEnter={() => setHoveredCell(i)}   // mantener activo
+                onMouseLeave={() => setHoveredCell(null)} // salir realmente
+                onMouseDown={(e) => {
+                  e.cancelBubble = true;
+                  const nuevasCells = [...(obj.cells || [])];
+                  nuevasCells[i] = { ...nuevasCells[i], mediaUrl: null };
+                  onChange?.(obj.id, { cells: nuevasCells });
+                }}
+              >
+                <Rect width={20} height={20} fill="rgba(0,0,0,0.6)" cornerRadius={4} />
+                <KonvaText
+                  text="×"
+                  fontSize={16}
+                  fill="#fff"
+                  align="center"
+                  verticalAlign="middle"
+                  width={20}
+                  height={20}
+                  listening={false}
+                />
+              </Group>
+            )}
+          </React.Fragment>
         );
       })}
     </Group>

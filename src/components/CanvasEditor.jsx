@@ -33,6 +33,7 @@ import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
 import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import { calcGalleryLayout } from "@/utils/calcGrid";
+import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -346,6 +347,15 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     });
   }
 
+
+  // ✅ Recordar la última sección válida para usarla como fallback
+useEffect(() => {
+  if (seccionActivaId) {
+    window._lastSeccionActivaId = seccionActivaId;
+  }
+}, [seccionActivaId]);
+
+
   // CanvasEditor.jsx (dentro del componente, después de declarar estados)
   useEffect(() => {
     // expone una función global segura para asignar imagen a la celda activa
@@ -452,32 +462,43 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  useEffect(() => {
-    const handler = (e) => {
-      const nuevo = e.detail;
+useEffect(() => {
+  const handler = (e) => {
+    const nuevo = e.detail;
+    console.log("[Canvas] insertar-elemento recibido:", nuevo);
 
+    const fallbackId =
+      window._lastSeccionActivaId ||
+      (Array.isArray(secciones) && secciones[0]?.id) ||
+      null;
 
-      // 🔒 Validación de sección activa
-      if (!seccionActivaId) {
-        alert("⚠️ Primero seleccioná una sección para insertar el elemento.");
-        return;
-      }
+    const targetSeccionId = seccionActivaId || fallbackId;
+    console.log("[Canvas] seccionActivaId:", seccionActivaId, "fallbackId:", fallbackId, "→ targetSeccionId:", targetSeccionId);
 
-      const nuevoConSeccion = {
-        ...nuevo,
-        seccionId: seccionActivaId,
-      };
+    if (!targetSeccionId) {
+      alert("⚠️ No hay secciones aún. Creá una sección para insertar el elemento.");
+      return;
+    }
 
-      // ✅ Insertar el nuevo objeto con sección asignada
-      setObjetos((prev) => [...prev, nuevoConSeccion]);
+    const nuevoConSeccion = { ...nuevo, seccionId: targetSeccionId };
 
-      // ✅ Seleccionarlo automáticamente
-      setElementosSeleccionados([nuevoConSeccion.id]);
-    };
+    setObjetos((prev) => {
+      const next = [...prev, nuevoConSeccion];
+      console.log("[Canvas] Insertado tipo:", nuevoConSeccion.tipo, "id:", nuevoConSeccion.id, "objs:", prev.length, "→", next.length);
+      return next;
+    });
 
-    window.addEventListener("insertar-elemento", handler);
-    return () => window.removeEventListener("insertar-elemento", handler);
-  }, [seccionActivaId]);
+    setElementosSeleccionados([nuevoConSeccion.id]);
+  };
+
+  window.addEventListener("insertar-elemento", handler);
+  return () => window.removeEventListener("insertar-elemento", handler);
+}, [seccionActivaId, secciones]);
+
+// Recordar última sección activa
+useEffect(() => {
+  if (seccionActivaId) window._lastSeccionActivaId = seccionActivaId;
+}, [seccionActivaId]);
 
 
 
@@ -2308,6 +2329,37 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         }}
                       />
 
+                    );
+                  }
+
+
+                  if (obj.tipo === "countdown") {
+                    return (
+                      <CountdownKonva
+                        key={obj.id}
+                        obj={obj}
+                        registerRef={registerRef}
+                        isSelected={elementosSeleccionados.includes(obj.id)}
+                        seccionesOrdenadas={seccionesOrdenadas}
+                        altoCanvas={altoCanvas}
+                        onSelect={(id, e) => {
+                          e?.evt && (e.evt.cancelBubble = true);
+                          setElementosSeleccionados([id]);
+                        }}
+                        onChange={(id, cambios) => {
+                          // 👇 misma firma que usás para GaleriaKonva/ElementoCanvas
+                          setObjetos(prev => {
+                            const i = prev.findIndex(o => o.id === id);
+                            if (i === -1) return prev;
+
+                            // 🚩 Atajo: si esto es el final del drag, CanvasEditor ya maneja
+                            // el cambio de sección con 'finalizoDrag' y Y absoluta.
+                            const updated = [...prev];
+                            updated[i] = { ...updated[i], ...cambios };
+                            return updated;
+                          });
+                        }}
+                      />
                     );
                   }
 

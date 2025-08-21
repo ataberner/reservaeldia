@@ -81,49 +81,49 @@ export function generarHTMLDesdeObjetos(
     const scaleX = obj.scaleX ?? 1;
     const scaleY = obj.scaleY ?? 1;
 
-if (obj.tipo === "texto") {
-  const {
-    x = 0,
-    y = 0,
-    width,
-    fontSize = 24,
-    fontFamily = "sans-serif",
-    fontWeight = "normal",
-    fontStyle = "normal",
-    textDecoration = "none",
-    align = "left",
-    texto = "",
-    lineHeight = 1.2,
-    rotation = 0,
-    stroke = "",            // Color del borde del texto
-    strokeWidth = 0,        // Grosor del borde
-    shadowColor = "",       // Color de sombra opcional
-    shadowBlur = 0,         // Intensidad del blur
-    shadowOffsetX = 0,
-    shadowOffsetY = 0,
-  } = obj;
+    if (obj.tipo === "texto") {
+      const {
+        x = 0,
+        y = 0,
+        width,
+        fontSize = 24,
+        fontFamily = "sans-serif",
+        fontWeight = "normal",
+        fontStyle = "normal",
+        textDecoration = "none",
+        align = "left",
+        texto = "",
+        lineHeight = 1.2,
+        rotation = 0,
+        stroke = "",            // Color del borde del texto
+        strokeWidth = 0,        // Grosor del borde
+        shadowColor = "",       // Color de sombra opcional
+        shadowBlur = 0,         // Intensidad del blur
+        shadowOffsetX = 0,
+        shadowOffsetY = 0,
+      } = obj;
 
-  // Color principal (fill)
-  const color = obj.colorTexto || obj.color || obj.fill || "#000";
+      // Color principal (fill)
+      const color = obj.colorTexto || obj.color || obj.fill || "#000";
 
-  // Generar sombra si existe
-  const textShadow = shadowColor
-    ? `${shadowOffsetX}px ${shadowOffsetY}px ${shadowBlur}px ${shadowColor}`
-    : "none";
+      // Generar sombra si existe
+      const textShadow = shadowColor
+        ? `${shadowOffsetX}px ${shadowOffsetY}px ${shadowBlur}px ${shadowColor}`
+        : "none";
 
-  // Generar stroke si existe
-  const textStroke =
-    stroke && strokeWidth > 0
-      ? `-webkit-text-stroke: ${strokeWidth}px ${stroke};`
-      : "";
+      // Generar stroke si existe
+      const textStroke =
+        stroke && strokeWidth > 0
+          ? `-webkit-text-stroke: ${strokeWidth}px ${stroke};`
+          : "";
 
-  const safeTexto = texto
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+      const safeTexto = texto
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
 
-  const style = `
+      const style = `
     position: absolute;
     left: ${x}px;
     top: ${y}px;
@@ -143,13 +143,13 @@ if (obj.tipo === "texto") {
     text-shadow: ${textShadow};
   `;
 
-  return envolverSiEnlace(`<div style="${style}">${safeTexto}</div>`, obj);
-}
+      return envolverSiEnlace(`<div style="${style}">${safeTexto}</div>`, obj);
+    }
 
 
 
     if (obj.tipo === "imagen" || obj.tipo === "icono") {
-   return envolverSiEnlace(`<img class="objeto" src="${obj.src}" style="
+      return envolverSiEnlace(`<img class="objeto" src="${obj.src}" style="
   top: ${top}%;
   left: ${left}%;
   width: ${width};
@@ -175,20 +175,100 @@ if (obj.tipo === "texto") {
     }
 
 
-    if (obj.tipo === "rsvp-boton") {
-  const texto = escapeHTML(obj.texto || "Confirmar asistencia");
-  const ancho = (obj.ancho || 200) / 800 * 100;
-  const alto = (obj.alto || 50) / mapaAltura[obj.seccionId] * 100;
-  const color = obj.color || "#773dbe";
-  const colorTexto = obj.colorTexto || "#ffffff";
-  const fontSize = obj.fontSize || 18;
-  const fontFamily = obj.fontFamily || "sans-serif";
-  const fontWeight = obj.fontWeight || "bold";
-  const fontStyle = obj.fontStyle || "normal";
-  const textDecoration = obj.textDecoration || "none";
-  const align = obj.align || "center";
+    // --- GALERÍA -----------------------------------------------------------
+    if (obj.tipo === "galeria") {
+      // 1) Lectura segura de props
+      const rows = Math.max(1, parseInt(obj.rows || 1, 10));
+      const cols = Math.max(1, parseInt(obj.cols || 1, 10));
+      const gapPx = Math.max(0, parseInt(obj.gap || 0, 10));
+      const radiusPx = Math.max(0, parseInt(obj.radius || 0, 10));
+      const ratio = obj.ratio || "1:1";
 
-  return `<div class="rsvp-boton" id="abrirModalRSVP" data-accion="abrir-rsvp" data-rsvp-open role="button" tabindex="0" aria-label="Confirmar asistencia" style="
+      // 2) Posición/tamaño absolutos en % (como imagen/icono)
+      //    Estos vienen calculados arriba: left, top, width, height, rotacion, scaleX, scaleY
+      const styleContenedor = `
+        position: absolute;
+        left: ${left}%;
+        top: ${top}%;
+        width: ${width};
+        height: ${height};
+        transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+        transform-origin: top left;
+        display: grid;
+        grid-template-columns: repeat(${cols}, 1fr);
+        grid-template-rows: repeat(${rows}, 1fr);
+        gap: ${gapPx}px;
+        box-sizing: border-box;
+      `;
+
+      // 3) Normalizar celdas al tamaño rows*cols
+      const total = rows * cols;
+      const cells = Array.from({ length: total }, (_, i) => {
+        const c = (obj.cells && obj.cells[i]) || {};
+        return {
+          mediaUrl: c.mediaUrl || "",
+          fit: c.fit === "contain" ? "contain" : "cover",
+          bg: c.bg || "#f3f4f6",
+        };
+      });
+
+      // 4) Construir HTML de celdas
+      const htmlCeldas = cells.map((cell, idx) => {
+        const safeSrc = escapeAttr(cell.mediaUrl || "");
+        const celdaStyle = `
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          border-radius: ${radiusPx}px;
+          background: ${cell.bg};
+        `;
+
+        // si no hay imagen, devuelvo solo el fondo
+        if (!safeSrc) {
+          return `<div class="galeria-celda" data-index="${idx}" style="${celdaStyle}"></div>`;
+        }
+
+        // con imagen
+        return `
+          <div class="galeria-celda" data-index="${idx}" style="${celdaStyle}">
+            <img
+              src="${safeSrc}"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              style="
+                width: 100%;
+                height: 100%;
+                object-fit: ${cell.fit};
+                display: block;
+              "
+            />
+          </div>
+        `;
+      }).join("");
+
+      // 5) Envolver en contenedor y (opcional) en <a> si obj.enlace existe
+      const htmlGaleria = `<div class="objeto galeria" style="${styleContenedor}">${htmlCeldas}</div>`;
+      return envolverSiEnlace(htmlGaleria, obj);
+    }
+
+
+
+    if (obj.tipo === "rsvp-boton") {
+      const texto = escapeHTML(obj.texto || "Confirmar asistencia");
+      const ancho = (obj.ancho || 200) / 800 * 100;
+      const alto = (obj.alto || 50) / mapaAltura[obj.seccionId] * 100;
+      const color = obj.color || "#773dbe";
+      const colorTexto = obj.colorTexto || "#ffffff";
+      const fontSize = obj.fontSize || 18;
+      const fontFamily = obj.fontFamily || "sans-serif";
+      const fontWeight = obj.fontWeight || "bold";
+      const fontStyle = obj.fontStyle || "normal";
+      const textDecoration = obj.textDecoration || "none";
+      const align = obj.align || "center";
+
+      return `<div class="rsvp-boton" id="abrirModalRSVP" data-accion="abrir-rsvp" data-rsvp-open role="button" tabindex="0" aria-label="Confirmar asistencia" style="
     position: absolute;
     left: ${left}%;
     top: ${top}%;
@@ -212,7 +292,7 @@ if (obj.tipo === "texto") {
   ">
     ${texto}
   </div>`;
-}
+    }
 
 
     if (obj.tipo === "forma") {
@@ -220,20 +300,20 @@ if (obj.tipo === "texto") {
       const figura = obj.figura;
 
       switch (figura) {
-       case "rect": {
-  const w = `${(obj.width ?? 100) / 800 * 100}%`;
-  const h = `${(obj.height ?? 100) / alturaSeccion * 100}%`;
-  const cornerRadius = obj.cornerRadius || 0;
-  const fontSize = obj.fontSize || 24;
-  const fontFamily = obj.fontFamily || "sans-serif";
-  const fontWeight = obj.fontWeight || "normal";
-  const fontStyle = obj.fontStyle || "normal";
-  const textDecoration = obj.textDecoration || "none";
-  const align = obj.align || "center";
-  const colorTexto = obj.colorTexto || "#000000";
-  const texto = (obj.texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        case "rect": {
+          const w = `${(obj.width ?? 100) / 800 * 100}%`;
+          const h = `${(obj.height ?? 100) / alturaSeccion * 100}%`;
+          const cornerRadius = obj.cornerRadius || 0;
+          const fontSize = obj.fontSize || 24;
+          const fontFamily = obj.fontFamily || "sans-serif";
+          const fontWeight = obj.fontWeight || "normal";
+          const fontStyle = obj.fontStyle || "normal";
+          const textDecoration = obj.textDecoration || "none";
+          const align = obj.align || "center";
+          const colorTexto = obj.colorTexto || "#000000";
+          const texto = (obj.texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  return envolverSiEnlace(`<div class="objeto" style="
+          return envolverSiEnlace(`<div class="objeto" style="
     top: ${top}%;
     left: ${left}%;
     width: ${w};
@@ -261,18 +341,18 @@ if (obj.tipo === "texto") {
       word-break: break-word;
     ">${texto}</div>
   </div>`, obj);
-}
+        }
 
 
         case "circle": {
-            const radius = obj.radius ?? 50;
-            const diameter = radius * 2;
-            const topCircle = ((obj.y - radius) / alturaSeccion) * 100;
-            const leftCircle = ((obj.x - radius) / 800) * 100;
-            const widthPct = `${(diameter / 800) * 100}%`;
-            const heightPct = `${(diameter / alturaSeccion) * 100}%`;
+          const radius = obj.radius ?? 50;
+          const diameter = radius * 2;
+          const topCircle = ((obj.y - radius) / alturaSeccion) * 100;
+          const leftCircle = ((obj.x - radius) / 800) * 100;
+          const widthPct = `${(diameter / 800) * 100}%`;
+          const heightPct = `${(diameter / alturaSeccion) * 100}%`;
 
-return envolverSiEnlace(`<div class="objeto" style="
+          return envolverSiEnlace(`<div class="objeto" style="
               top: ${topCircle}%;
               left: ${leftCircle}%;
               width: ${widthPct};
@@ -283,39 +363,39 @@ return envolverSiEnlace(`<div class="objeto" style="
               transform-origin: center center;
             ">
             </div>`, obj);
-          }
+        }
 
 
-case "line": {
-  // Obtener puntos de la línea (formato Konva: [x1, y1, x2, y2])
-  const points = obj.points || [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0];
-  const x1 = parseFloat(points[0]) || 0;
-  const y1 = parseFloat(points[1]) || 0;
-  const x2 = parseFloat(points[2]) || LINE_CONSTANTS.DEFAULT_LENGTH;
-  const y2 = parseFloat(points[3]) || 0;
+        case "line": {
+          // Obtener puntos de la línea (formato Konva: [x1, y1, x2, y2])
+          const points = obj.points || [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0];
+          const x1 = parseFloat(points[0]) || 0;
+          const y1 = parseFloat(points[1]) || 0;
+          const x2 = parseFloat(points[2]) || LINE_CONSTANTS.DEFAULT_LENGTH;
+          const y2 = parseFloat(points[3]) || 0;
 
-   // 🔥 OBTENER GROSOR DE LÍNEA
-  const strokeWidth = obj.strokeWidth || LINE_CONSTANTS.STROKE_WIDTH;
-  
-  // Calcular dimensiones de la línea
-  const deltaX = x2 - x1;
-  const deltaY = y2 - y1;
-  const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-  const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-  
-  // Posición absoluta del punto inicial
-  const startX = obj.x + x1;
-  const startY = obj.y + y1;
-  
-  // Convertir a porcentajes
-  const leftPercent = (startX / 800) * 100;
-  const topPercent = (startY / alturaSeccion) * 100;
-  const widthPercent = (length / 800) * 100;
-  
-  // Aplicar rotación adicional del objeto si existe
-  const totalRotation = angle + (obj.rotation || 0);
-  
-  return envolverSiEnlace(`<div class="objeto linea" style="
+          // 🔥 OBTENER GROSOR DE LÍNEA
+          const strokeWidth = obj.strokeWidth || LINE_CONSTANTS.STROKE_WIDTH;
+
+          // Calcular dimensiones de la línea
+          const deltaX = x2 - x1;
+          const deltaY = y2 - y1;
+          const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+          const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+
+          // Posición absoluta del punto inicial
+          const startX = obj.x + x1;
+          const startY = obj.y + y1;
+
+          // Convertir a porcentajes
+          const leftPercent = (startX / 800) * 100;
+          const topPercent = (startY / alturaSeccion) * 100;
+          const widthPercent = (length / 800) * 100;
+
+          // Aplicar rotación adicional del objeto si existe
+          const totalRotation = angle + (obj.rotation || 0);
+
+          return envolverSiEnlace(`<div class="objeto linea" style="
     position: absolute;
     top: ${topPercent}%;
     left: ${leftPercent}%;
@@ -325,40 +405,40 @@ case "line": {
     transform: rotate(${totalRotation}deg) scale(${scaleX}, ${scaleY});
     transform-origin: 0 50%;
   "></div>`, obj);
-}
+        }
 
 
-    
-case "triangle": {
-  const radius = obj.radius || 60;
-  
-  // 🎯 CÁLCULO PRECISO: En Konva RegularPolygon con sides=3
-  // Los vértices están en ángulos: 270°, 30°, 150° (empezando desde arriba)
-  // Vértice superior: (0, -radius)
-  // Vértices inferiores: (-radius*sin(60°), radius*cos(60°)) y (radius*sin(60°), radius*cos(60°))
-  
-  const sin60 = Math.sqrt(3) / 2; // ≈ 0.866
-  const cos60 = 0.5;
-  
-  // Dimensiones reales del triángulo
-  const triangleWidth = 2 * radius * sin60; // Ancho total
-  const triangleHeight = radius * (1 + cos60); // Altura total (desde vértice superior hasta base)
-  
-  // El centro del triángulo está a 1/3 de la altura desde la base
-  const centroidOffsetY = triangleHeight / 3;
-  
-  // En Konva, obj.y es el centro del triángulo
-  // En HTML, necesitamos la esquina superior izquierda del contenedor
-  const topContainer = obj.y - (triangleHeight - centroidOffsetY); // Desde centro hasta top del contenedor
-  const leftContainer = obj.x - (triangleWidth / 2); // Desde centro hasta left del contenedor
-  
-  // Convertir a porcentajes
-  const topTriangle = (topContainer / alturaSeccion) * 100;
-  const leftTriangle = (leftContainer / 800) * 100;
-  const widthPct = `${(triangleWidth / 800) * 100}%`;
-  const heightPct = `${(triangleHeight / alturaSeccion) * 100}%`;
 
-  return envolverSiEnlace(`<div class="objeto" style="
+        case "triangle": {
+          const radius = obj.radius || 60;
+
+          // 🎯 CÁLCULO PRECISO: En Konva RegularPolygon con sides=3
+          // Los vértices están en ángulos: 270°, 30°, 150° (empezando desde arriba)
+          // Vértice superior: (0, -radius)
+          // Vértices inferiores: (-radius*sin(60°), radius*cos(60°)) y (radius*sin(60°), radius*cos(60°))
+
+          const sin60 = Math.sqrt(3) / 2; // ≈ 0.866
+          const cos60 = 0.5;
+
+          // Dimensiones reales del triángulo
+          const triangleWidth = 2 * radius * sin60; // Ancho total
+          const triangleHeight = radius * (1 + cos60); // Altura total (desde vértice superior hasta base)
+
+          // El centro del triángulo está a 1/3 de la altura desde la base
+          const centroidOffsetY = triangleHeight / 3;
+
+          // En Konva, obj.y es el centro del triángulo
+          // En HTML, necesitamos la esquina superior izquierda del contenedor
+          const topContainer = obj.y - (triangleHeight - centroidOffsetY); // Desde centro hasta top del contenedor
+          const leftContainer = obj.x - (triangleWidth / 2); // Desde centro hasta left del contenedor
+
+          // Convertir a porcentajes
+          const topTriangle = (topContainer / alturaSeccion) * 100;
+          const leftTriangle = (leftContainer / 800) * 100;
+          const widthPct = `${(triangleWidth / 800) * 100}%`;
+          const heightPct = `${(triangleHeight / alturaSeccion) * 100}%`;
+
+          return envolverSiEnlace(`<div class="objeto" style="
     top: ${topTriangle}%;
     left: ${leftTriangle}%;
     width: ${widthPct};
@@ -368,7 +448,7 @@ case "triangle": {
     transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
     transform-origin: center center;
   "></div>`, obj);
-}
+        }
 
 
 

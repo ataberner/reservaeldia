@@ -163,47 +163,78 @@ export default function DashboardSidebar({
 
 
 
-   
-const insertarGaleria = useCallback((cfg) => {
-  const anchoBase = 800; // ancho del canvas
+    // 👇 handler para insertar el contador con defaults
+    const onAgregarCuentaRegresiva = useCallback(({ targetISO, preset }) => {
+        if (!seccionActivaId) {
+            alert("Seleccioná una sección antes de agregar la cuenta regresiva.");
+            return;
+        }
 
-  // ✅ tomar porcentaje desde el popover, con fallback y clamp
-  const widthPct = Math.max(10, Math.min(100, Number(cfg.widthPct ?? 70)));
-  const width = (anchoBase * widthPct) / 100;
+        const id = `count-${Date.now().toString(36)}`;
+        const anchoBase = 800;
+        const width = 600;
+        const height = 90;
+        const x = (anchoBase - width) / 2;
+        const y = 140;
 
-  // 🔢 Alto total en función de celdas, gap y ratio
-  const gap = cfg.gap ?? 0;
-  const cols = Math.max(1, cfg.cols || 1);
-  const rows = Math.max(1, cfg.rows || 1);
-  const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
-  const cellW = (width - gap * (cols - 1)) / cols;
-  const cellH = cellW * ratioCell(cfg.ratio);
-  const height = rows * cellH + gap * (rows - 1);
+        window.dispatchEvent(new CustomEvent("insertar-elemento", {
+            detail: {
+                id,
+                tipo: "cuenta-regresiva",
+                x, y, width, height,
+                rotation: 0,
+                scaleX: 1,
+                scaleY: 1,
+                targetISO,            // 🎯 fecha configurada en el panel
+                // 🔁 aplicamos el preset (sin duplicar render)
+                ...((preset && preset.props) || {}),
+                presetId: preset?.id, // opcional: por si tu renderer usa un switch por id
+            }
+        }));
+    }, [seccionActivaId]);
 
-  // centrar horizontalmente según width calculado
-  const x = (anchoBase - width) / 2;
-  const y = 120;
 
-  const id = `gal-${Date.now().toString(36)}`;
-  const total = rows * cols;
 
-  window.dispatchEvent(new CustomEvent("insertar-elemento", {
-    detail: {
-      id,
-      tipo: "galeria",
-      x, y, width, height,
-      rows, cols,
-      gap: cfg.gap,
-      radius: cfg.radius,
-      ratio: cfg.ratio,
-      // opcional: guardar el widthPct por si después querés recalcular
-      widthPct, 
-      cells: Array.from({ length: total }, () => ({
-        mediaUrl: null, fit: "cover", bg: "#f3f4f6"
-      })),
-    }
-  }));
-}, []);
+    const insertarGaleria = useCallback((cfg) => {
+        const anchoBase = 800; // ancho del canvas
+
+        // ✅ tomar porcentaje desde el popover, con fallback y clamp
+        const widthPct = Math.max(10, Math.min(100, Number(cfg.widthPct ?? 70)));
+        const width = (anchoBase * widthPct) / 100;
+
+        // 🔢 Alto total en función de celdas, gap y ratio
+        const gap = cfg.gap ?? 0;
+        const cols = Math.max(1, cfg.cols || 1);
+        const rows = Math.max(1, cfg.rows || 1);
+        const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
+        const cellW = (width - gap * (cols - 1)) / cols;
+        const cellH = cellW * ratioCell(cfg.ratio);
+        const height = rows * cellH + gap * (rows - 1);
+
+        // centrar horizontalmente según width calculado
+        const x = (anchoBase - width) / 2;
+        const y = 120;
+
+        const id = `gal-${Date.now().toString(36)}`;
+        const total = rows * cols;
+
+        window.dispatchEvent(new CustomEvent("insertar-elemento", {
+            detail: {
+                id,
+                tipo: "galeria",
+                x, y, width, height,
+                rows, cols,
+                gap: cfg.gap,
+                radius: cfg.radius,
+                ratio: cfg.ratio,
+                // opcional: guardar el widthPct por si después querés recalcular
+                widthPct,
+                cells: Array.from({ length: total }, () => ({
+                    mediaUrl: null, fit: "cover", bg: "#f3f4f6"
+                })),
+            }
+        }));
+    }, []);
 
 
 
@@ -261,11 +292,9 @@ const insertarGaleria = useCallback((cfg) => {
 
                 {/* 🔹 Panel flotante al hacer hover */}
                 {(hoverSidebar || fijadoSidebar) && (
-                    <div
-                        className="absolute left-16 top-4 h-[calc(100%-2rem)] w-72 bg-white border border-purple-300 shadow-2xl rounded-2xl z-40 overflow-y-auto transition-all duration-200"
+                    <div className="absolute left-16 top-4 h-[calc(100%-2rem)] w-72 bg-white border border-purple-300 shadow-2xl rounded-2xl z-40 overflow-y-auto transition-all duration-200"
                         onMouseEnter={() => setHoverSidebar(true)}
-                        onMouseLeave={() => setHoverSidebar(false)}
-                    >
+                        onMouseLeave={() => setHoverSidebar(false)}>
                         <div className="relative pt-10 px-3 pb-4 flex flex-col gap-5 text-gray-800 w-full h-full min-h-0f">
 
                             {/* 🔹 Botón para desfijar */}
@@ -287,26 +316,12 @@ const insertarGaleria = useCallback((cfg) => {
                                 botonActivo={botonActivo}
                                 onAgregarTexto={() => {
                                     window.dispatchEvent(new CustomEvent("insertar-elemento", {
-                                        detail: {
-                                            id: `texto-${Date.now()}`,
-                                            tipo: "texto",
-                                            texto: "Texto",
-                                            x: 100,
-                                            y: 100,
-                                            fontSize: 24,
-                                            color: "#000000",
-                                            fontFamily: "sans-serif",
-                                            fontWeight: "normal",
-                                            fontStyle: "normal",
-                                            textDecoration: "none",
-                                            rotation: 0,
-                                            scaleX: 1,
-                                            scaleY: 1,
-                                        }
+                                        detail: { id: `texto-${Date.now()}`, tipo: "texto", texto: "Texto", x: 100, y: 100, fontSize: 24, color: "#000000", fontFamily: "sans-serif", fontWeight: "normal", fontStyle: "normal", textDecoration: "none", rotation: 0, scaleX: 1, scaleY: 1 }
                                     }));
                                 }}
                                 onAgregarForma={() => setModoFormasCompleto(true)}
                                 onAgregarImagen={() => setMostrarGaleria(prev => !prev)}
+                                onAgregarCuentaRegresiva={onAgregarCuentaRegresiva}
                                 mostrarGaleria={mostrarGaleria}
                                 setMostrarGaleria={setMostrarGaleria}
                                 imagenes={imagenes}
@@ -422,6 +437,16 @@ const insertarGaleria = useCallback((cfg) => {
                             title="Abrir galería"
                         >
                             <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
+                        </button>
+
+                        {/* 🆕 Cuenta regresiva */}
+                        <button
+                            onClick={() => alternarSidebarConBoton("contador")}
+                            onMouseEnter={() => { setHoverSidebar(true); setBotonActivo("contador"); }}
+                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "contador" ? 'bg-purple-800' : 'hover:bg-purple-700'}`}
+                            title="Cuenta regresiva"
+                        >
+                            <span className="text-xl">⏱️</span>
                         </button>
 
                     </div>

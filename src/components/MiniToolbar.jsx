@@ -1,6 +1,10 @@
 // components/MiniToolbar.jsx
 import React, { useState } from "react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
+import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
+import { COUNTDOWN_PRESETS } from "@/config/countdownPresets";
+
+
 
 
 // Helper: convierte "YYYY-MM-DDTHH:mm" a ISO (UTC) y agrega segundos si faltan.
@@ -64,101 +68,15 @@ export default function MiniToolbar({
   });
 
 
- // valor inicial: +30 días, formateado como "YYYY-MM-DDTHH:mm"
-const ahoraMas30d = (() => {
-  const d = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-})();
+  // valor inicial: +30 días, formateado como "YYYY-MM-DDTHH:mm"
+  const ahoraMas30d = (() => {
+    const d = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
 
 
   const [fechaEventoStr, setFechaEventoStr] = useState(ahoraMas30d);
-
-  // 🆕 Presets/diseños sin duplicar lógica de render (solo seteamos props)
-  const COUNTDOWN_PRESETS = [
-    {
-      id: "simple",
-      nombre: "Simple",
-      // sólo estilos/datos; el render lo hace tu sistema existente
-      props: {
-        fontFamily: "Inter, system-ui, sans-serif",
-        fontSize: 28,
-        colorTexto: "#111111",
-        showLabels: true,
-        chipBackground: "transparent",
-        chipBorder: "transparent",
-        chipRadius: 0,
-        spacing: 10,
-        align: "center",
-      }
-    },
-    {
-      id: "chips",
-      nombre: "Chips",
-      props: {
-        fontFamily: "Inter, system-ui, sans-serif",
-        fontSize: 28,
-        colorTexto: "#773dbe",
-        showLabels: true,
-        chipBackground: "#ffffff",
-        chipBorder: "#773dbe",
-        chipRadius: 12,
-        chipPadding: 8,
-        spacing: 12,
-        align: "center",
-      }
-    },
-    {
-      id: "pill",
-      nombre: "Píldoras",
-      props: {
-        fontFamily: "Inter, system-ui, sans-serif",
-        fontSize: 26,
-        colorTexto: "#ffffff",
-        showLabels: false,
-        chipBackground: "#773dbe",
-        chipBorder: "transparent",
-        chipRadius: 999,
-        chipPadding: 10,
-        spacing: 8,
-        align: "center",
-      }
-    },
-    {
-      id: "outline",
-      nombre: "Outline",
-      props: {
-        fontFamily: "Inter, system-ui, sans-serif",
-        fontSize: 26,
-        colorTexto: "#773dbe",
-        showLabels: true,
-        chipBackground: "transparent",
-        chipBorder: "#773dbe",
-        chipRadius: 10,
-        chipPadding: 8,
-        spacing: 10,
-        align: "center",
-      }
-    },
-    {
-      id: "boxed",
-      nombre: "Cajas",
-      props: {
-        fontFamily: "Inter, system-ui, sans-serif",
-        fontSize: 24,
-        colorTexto: "#111111",
-        showLabels: true,
-        chipBackground: "#f4f4f5",
-        chipBorder: "#e4e4e7",
-        chipRadius: 8,
-        chipPadding: 10,
-        spacing: 8,
-        align: "center",
-      }
-    },
-  ];
-
-
 
   if (!botonActivo) return null;
 
@@ -383,103 +301,69 @@ const ahoraMas30d = (() => {
       )}
 
 
-{botonActivo === "contador" && (
-  <div className="flex flex-col gap-3">
-    {/* CTA superior */}
-    <button
-      className="flex items-center gap-2 w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
-      onClick={() => {
-        const targetISO = fechaStrToISO(fechaEventoStr);
-        console.log("[Panel contador] CTA → fechaEventoStr:", fechaEventoStr, "→ targetISO:", targetISO);
-        if (!targetISO) {
-          alert("⚠️ La fecha/hora no es válida. Elegí una fecha.");
-          return;
-        }
+      {botonActivo === "contador" && (
+        <div className="flex flex-col gap-3">
 
-        window.dispatchEvent(new CustomEvent("insertar-elemento", {
-          detail: {
-            id: `count-${Date.now().toString(36)}`,
-            tipo: "countdown",     // ✅ tipo correcto para el renderer
-            x: 100,
-            y: 140,
-            width: 600,
-            height: 90,
-            rotation: 0,
-            scaleX: 1,
-            scaleY: 1,
-            targetISO,
-            fechaISO: targetISO,
-            ...(COUNTDOWN_PRESETS[0].props),
-            presetId: COUNTDOWN_PRESETS[0].id,
-          }
-        }));
-      }}
-    >
-      <span className="text-lg">⏳</span>
-      <span>Agregar cuenta regresiva</span>
-    </button>
+          {/* Selector de fecha/hora */}
+          <div className="p-3 rounded-xl border border-zinc-200">
+            <label className="text-xs font-medium text-zinc-700">Fecha y hora del evento</label>
+            <input
+              type="datetime-local"
+              value={fechaEventoStr}
+              onChange={(e) => setFechaEventoStr(e.target.value)}
+              className="mt-1 w-full rounded-lg border px-2 py-2 text-sm"
+            />
 
-    {/* Selector de fecha/hora */}
-    <div className="p-3 rounded-xl border border-zinc-200">
-      <label className="text-xs font-medium text-zinc-700">Fecha y hora del evento</label>
-      <input
-        type="datetime-local"
-        value={fechaEventoStr}
-        onChange={(e) => setFechaEventoStr(e.target.value)}
-        className="mt-1 w-full rounded-lg border px-2 py-2 text-sm"
-      />
-      <p className="mt-1 text-[11px] text-zinc-500">
-        Usamos tu hora local y la guardamos en ISO (UTC) para consistencia.
-      </p>
-    </div>
+          </div>
 
-    {/* Diseños */}
-    <div>
-      <div className="text-xs font-medium text-zinc-700 mb-2">Diseños</div>
-      <div className="grid grid-cols-2 gap-2">
-        {COUNTDOWN_PRESETS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => {
-              const targetISO = fechaStrToISO(fechaEventoStr);
-              console.log("[Panel contador] Preset:", p.id, "→ fechaEventoStr:", fechaEventoStr, "→ targetISO:", targetISO);
-              if (!targetISO) {
-                alert("⚠️ La fecha/hora no es válida. Elegí una fecha.");
-                return;
-              }
 
-              window.dispatchEvent(new CustomEvent("insertar-elemento", {
-                detail: {
-                  id: `count-${Date.now().toString(36)}`,
-                  tipo: "countdown",
-                  x: 100,
-                  y: 140,
-                  width: 600,
-                  height: 90,
-                  rotation: 0,
-                  scaleX: 1,
-                  scaleY: 1,
-                  targetISO,
-                  fechaISO: targetISO, 
-                  fechaObjetivo: targetISO,
-                  ...(p.props),
-                  presetId: p.id,
-                }
-              }));
-            }}
-            className="group p-3 rounded-xl border border-zinc-200 hover:border-purple-300 hover:shadow-sm text-left"
-            title={`Insertar: ${p.nombre}`}
-          >
-            <div className="text-sm font-semibold text-zinc-800 mb-2">{p.nombre}</div>
-            <div className="h-10 rounded-lg border border-dashed flex items-center justify-center text-xs text-zinc-500 group-hover:text-purple-700">
-              12 : 34 : 56
+          {/* Diseños */}
+          <div>
+            <div className="text-xs font-medium text-zinc-700 mb-2">Diseños</div>
+            <div className="flex flex-col gap-3">
+              {COUNTDOWN_PRESETS.map((p) => {
+                const isoPreview = fechaStrToISO(fechaEventoStr) || new Date().toISOString();
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      const iso = fechaStrToISO(fechaEventoStr);
+                      if (!iso) {
+                        alert("⚠️ La fecha/hora no es válida. Elegí una fecha.");
+                        return;
+                      }
+                      window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                        detail: {
+                          id: `count-${Date.now().toString(36)}`,
+                          tipo: "countdown",
+                          x: 100, y: 140, width: 600, height: 90,
+                          fechaObjetivo: iso, fechaISO: iso, targetISO: iso,
+                          ...(p.props),
+                          presetId: p.id,
+                        }
+                      }));
+                    }}
+                    className="w-full group rounded-xl border border-zinc-200 hover:border-purple-300 hover:shadow-sm text-left flex flex-col px-2 py-3"
+                  >
+                    <div className="text-sm font-semibold text-zinc-800 mb-2">{p.nombre}</div>
+
+                    {/* Wrapper para controlar tamaño exacto del preview */}
+                    <div className="w-full">
+                      <CountdownPreview targetISO={isoPreview} preset={p.props} size="sm" />
+                    </div>
+
+
+                  </button>
+                );
+              })}
             </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
+          </div>
+
+
+
+
+        </div>
+      )}
 
 
 

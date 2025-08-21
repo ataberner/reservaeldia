@@ -1,4 +1,6 @@
 import { LINE_CONSTANTS } from '../models/lineConstants';
+import { generarCountdownHTML } from "./generarCountdownHTML";
+
 
 function escapeAttr(str: string = ""): string {
   return String(str)
@@ -175,6 +177,125 @@ export function generarHTMLDesdeObjetos(
     }
 
 
+if (obj.tipo === "countdown") {
+  // --- DATOS ---
+  const targetISO =
+    obj.targetISO || obj.fechaObjetivo || obj.fechaISO || "";
+
+  const textColor = obj.colorTexto ?? obj.color ?? "#111";
+  const fontFamily = obj.fontFamily || "Inter, system-ui, sans-serif";
+  const valueSize = Number.isFinite(obj.fontSize) ? obj.fontSize : 16;
+  const labelSize = Number.isFinite(obj.labelSize) ? obj.labelSize : 10;
+  const labelColor = obj.labelColor ?? "#6b7280";
+  const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
+  const letterSpacing = Number.isFinite(obj.letterSpacing) ? obj.letterSpacing : 0;
+
+  const preset = obj.presetId || obj.layout || "pills";
+  const isMinimal = String(preset).toLowerCase().includes("minimal");
+
+  const gap = (Number.isFinite(obj.gap) ? obj.gap :
+              (Number.isFinite(obj.spacing) ? obj.spacing : 8));
+  const padding = Number.isFinite(obj.padding) ? obj.padding : 0;
+
+  // Fondo SOLO en chips, no en contenedor
+  const containerBgFinal = "transparent";
+
+  const chipBgFinal =
+    (isMinimal ? "transparent" : (obj.chipBackground ?? obj.boxBg ?? "transparent"));
+
+  const chipBorderColorFinal =
+    (isMinimal ? "transparent" : (obj.chipBorder ?? obj.boxBorder ?? "transparent"));
+
+  const containerRadius =
+    (Number.isFinite(obj.boxRadius) ? obj.boxRadius :
+    (Number.isFinite(obj.radius) ? obj.radius : 8));
+
+  const chipRadiusFinal =
+    (Number.isFinite(obj.chipRadius) ? obj.chipRadius : containerRadius);
+
+  const zIndex = Number.isFinite(obj.zIndex) ? obj.zIndex : undefined;
+
+  // --- STYLES CONTENEDOR (transparente) ---
+  const containerStyle = `
+    position: absolute;
+    left: ${left}%;
+    top: ${top}%;
+    width: ${width};
+    height: ${height};
+    transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+    transform-origin: top left;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: ${gap}px;
+    padding: ${padding}px;
+    font-family: ${fontFamily};
+    color: ${textColor};
+    background: ${containerBgFinal};
+    border-radius: ${containerRadius}px;
+    letter-spacing: ${letterSpacing}px;
+    ${zIndex !== undefined ? `z-index:${zIndex};` : ""}
+  `.trim();
+
+  // --- STYLES CHIP (aquí va el color) ---
+  const chipStyle = `
+    min-width: 46px;
+    padding: 6px 8px;
+    border: ${isMinimal ? "0" : `1px solid ${chipBorderColorFinal}`};
+    border-radius: ${chipRadiusFinal}px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: ${chipBgFinal};
+  `.trim();
+
+  const valueStyle = `
+    font-weight: ${fontWeight};
+    font-size: ${valueSize}px;
+    line-height: 1;
+  `.trim();
+
+  const labelStyle = `
+    font-size: ${labelSize}px;
+    color: ${labelColor};
+    line-height: 1;
+  `.trim();
+
+  const showLabels = obj.showLabels !== false;
+  const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
+
+  return `
+    <div
+      data-countdown
+      data-target="${escapeAttr(targetISO)}"
+      data-preset="${escapeAttr(preset)}"
+      style="${containerStyle}"
+    >
+      <div class="cd-chip" style="${chipStyle}">
+        <span class="cd-val" style="${valueStyle}">00</span>
+        ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.dias)}</span>` : ""}
+      </div>
+      <div class="cd-chip" style="${chipStyle}">
+        <span class="cd-val" style="${valueStyle}">00</span>
+        ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.horas)}</span>` : ""}
+      </div>
+      <div class="cd-chip" style="${chipStyle}">
+        <span class="cd-val" style="${valueStyle}">00</span>
+        ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.min)}</span>` : ""}
+      </div>
+      <div class="cd-chip" style="${chipStyle}">
+        <span class="cd-val" style="${valueStyle}">00</span>
+        ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.seg)}</span>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+
+
+
+
     // --- GALERÍA -----------------------------------------------------------
     if (obj.tipo === "galeria") {
       // 1) Lectura segura de props
@@ -252,6 +373,8 @@ export function generarHTMLDesdeObjetos(
       const htmlGaleria = `<div class="objeto galeria" style="${styleContenedor}">${htmlCeldas}</div>`;
       return envolverSiEnlace(htmlGaleria, obj);
     }
+
+
 
 
 

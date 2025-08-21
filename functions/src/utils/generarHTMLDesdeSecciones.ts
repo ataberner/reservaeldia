@@ -32,8 +32,8 @@ export function generarHTMLDesdeSecciones(
   secciones: any[],
   objetos: any[],
   rsvp?: ModalConfig,
-  opciones?: GenerarHTMLOpciones,       
-  opts?: { slug?: string }    
+  opciones?: GenerarHTMLOpciones,
+  opts?: { slug?: string }
 ): string {
 
   const slug = opciones?.slug ?? ""; // <- define slug (vacío si no viene)
@@ -44,15 +44,16 @@ export function generarHTMLDesdeSecciones(
   const fuentesUsadas = [
     ...new Set(
       objetos
-        .filter(o => o.tipo === "texto" && o.fontFamily)
-        .map(o => o.fontFamily)          // puede venir "Poppins, sans-serif"
+        .filter(o => (o.tipo === "texto" || o.tipo === "countdown") && o.fontFamily)
+        .map(o => o.fontFamily)
     ),
   ];
+
 
   const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
 
   const slugPublica = opts?.slug ?? "";
- 
+
   const topPorSeccion = calcularTopPorSeccion(secciones);
 
   const htmlSecciones = secciones.map((seccion, index) => {
@@ -138,18 +139,67 @@ export function generarHTMLDesdeSecciones(
 `;
   }).join("\n");
 
-// ✅ Ver si el canvas tiene un botón RSVP
-const hayRSVPEnCanvas = objetos?.some(o => o.tipo === "rsvp-boton");
-// Solo mostrar si en el canvas hay botón RSVP
-const botonRSVP = hayRSVPEnCanvas
-  ? "" // 👈 ya se generará dentro del contenido de la sección por generarHTMLDesdeObjetos
-  : "";
+  // ✅ Ver si el canvas tiene un botón RSVP
+  const hayRSVPEnCanvas = objetos?.some(o => o.tipo === "rsvp-boton");
+  // Solo mostrar si en el canvas hay botón RSVP
+  const botonRSVP = hayRSVPEnCanvas
+    ? "" // 👈 ya se generará dentro del contenido de la sección por generarHTMLDesdeObjetos
+    : "";
 
-// El modal solo se inyecta si hay botón RSVP en canvas
-const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled
-  ? generarModalRSVPHTML(rsvp)
-  : "";
- 
+  // El modal solo se inyecta si hay botón RSVP en canvas
+  const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled
+    ? generarModalRSVPHTML(rsvp)
+    : "";
+
+
+  // 👇 Función utilitaria
+  function hayCountdown(objetos: any[]) {
+    return Array.isArray(objetos) && objetos.some(o => o?.tipo === "countdown");
+  }
+
+  // 👇 Script global (string). Solo se insertará si hay countdowns.
+  const scriptCountdown = hayCountdown(objetos) ? `
+<script>
+(function(){
+  function pad(n){ n=Math.floor(Math.abs(n)); return n<10 ? "0"+n : ""+n; }
+  function diffParts(target){
+    const now = Date.now();
+    let ms = Math.max(0, target.getTime() - now);
+    const d = Math.floor(ms / 86400000); ms -= d*86400000;
+    const h = Math.floor(ms / 3600000);  ms -= h*3600000;
+    const m = Math.floor(ms / 60000);    ms -= m*60000;
+    const s = Math.floor(ms / 1000);
+    return { d, h, m, s };
+  }
+  function tickOne(root){
+    const iso = root.getAttribute("data-target");
+    if(!iso) return;
+    const t = new Date(iso);
+    if(isNaN(t.getTime())) return;
+    const {d,h,m,s} = diffParts(t);
+    const vals = root.querySelectorAll(".cd-val");
+    if(vals && vals.length >= 4){
+      vals[0].textContent = String(d).padStart(2,"0");
+      vals[1].textContent = pad(h);
+      vals[2].textContent = pad(m);
+      vals[3].textContent = pad(s);
+    }
+  }
+  function boot(){
+    const roots = Array.from(document.querySelectorAll("[data-countdown]"));
+    if(!roots.length) return;
+    roots.forEach(tickOne);
+    setInterval(() => roots.forEach(tickOne), 1000);
+  }
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+`.trim() : "";
+
 
 
 
@@ -211,6 +261,31 @@ const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled
       position: absolute;
       transform-origin: top left;
     }
+
+.cd-chip {
+  min-width: 46px;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb; /* este lo pisa el inline si corresponde */
+  border-radius: 8px;        /* este lo pisa el inline si corresponde */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: saturate(1.1);
+  margin: 0 2px;
+}
+
+
+.cd-val {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.cd-lab {
+  font-size: 10px;
+  color: #444;
+}
+
   </style>
 </head>
 <body data-slug="${slugPublica}">
@@ -222,6 +297,8 @@ const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled
 
  ${botonRSVP}
  ${modalRSVP}
+
+  ${scriptCountdown}
  
   <script>
     function ajustarCanvas() {

@@ -49,24 +49,24 @@ export default function Dashboard() {
   }, []);
 
 
- // 🔗 Sincronizar ?slug=... con el estado (siempre usar Konva)
-useEffect(() => {
-  if (!router.isReady) return;
+  // 🔗 Sincronizar ?slug=... con el estado (siempre usar Konva)
+  useEffect(() => {
+    if (!router.isReady) return;
 
-  const { slug } = router.query;
-  const slugURL = typeof slug === "string" ? slug : null;
+    const { slug } = router.query;
+    const slugURL = typeof slug === "string" ? slug : null;
 
-  if (slugURL) {
-    setSlugInvitacion(slugURL);
-    setModoEditor("konva"); // Siempre Konva
-    setVista("editor");
-  } else {
-    // Si no hay slug y no estás editando nada, volvemos a "home"
-    if (!slugInvitacion) {
-      setVista("home");
+    if (slugURL) {
+      setSlugInvitacion(slugURL);
+      setModoEditor("konva"); // Siempre Konva
+      setVista("editor");
+    } else {
+      // Si no hay slug y no estás editando nada, volvemos a "home"
+      if (!slugInvitacion) {
+        setVista("home");
+      }
     }
-  }
-}, [router.isReady, router.query, slugInvitacion]);
+  }, [router.isReady, router.query, slugInvitacion]);
 
 
   const toggleZoom = () => {
@@ -94,6 +94,14 @@ useEffect(() => {
       // Importar función de generación HTML
       const { generarHTMLDesdeSecciones } = await import("../../functions/src/utils/generarHTMLDesdeSecciones");
       const htmlGenerado = generarHTMLDesdeSecciones(secciones, objetosBase);
+
+      // 👇 DEBUG: ver qué props tiene cada countdown
+      try {
+        const cds = (objetosBase || []).filter(o => o?.tipo === "countdown");
+        console.log("🔎 DEBUG COUNTDOWNS >>>", JSON.stringify(cds, null, 2));
+      } catch (e) {
+        console.log("❌ DEBUG COUNTDOWNS ERROR:", e);
+      }
 
       setHtmlVistaPrevia(htmlGenerado);
     } catch (error) {
@@ -202,7 +210,7 @@ useEffect(() => {
       usuario={usuario}
       vista={vista}
       onCambiarVista={setVista}
-      ocultarSidebar={vista === "publicadas"} 
+      ocultarSidebar={vista === "publicadas"}
     >
 
       {/* 🔹 Vista HOME (selector, plantillas, borradores) */}

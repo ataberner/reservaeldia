@@ -254,7 +254,8 @@ export function generarHTMLDesdeSecciones(
     .seccion {
       position: absolute;
       width: 100%;
-      overflow: hidden;
+      overflow: visible;
+      z-index: 0;
     }
 
     .objeto {

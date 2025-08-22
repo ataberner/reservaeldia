@@ -45,144 +45,126 @@ export default function CountdownKonva({
     { key: "s", value: fmt(state.s, obj.padZero), label: "Seg" },
   ];
 
-  const boxH = Math.max(40, (obj.height ?? 80) - 10);
-  const gap = obj.gap ?? 12;
-  const boxW = Math.max(70, ((obj.width ?? 300) - gap * 3) / 4);
-
+  
   const handleDragEnd = (e) => {
     const node = e.target;
     // 🔥 Mandamos coords absolutas; CanvasEditor se encarga de convertir y decidir sección
     onChange?.(obj.id, { x: node.x(), y: node.y(), finalizoDrag: true });
   };
 
+
+// --- cálculos comunes ---
+const n = parts.length;
+const gap = obj.gap ?? 8;
+const paddingY = obj.paddingY ?? 6;
+const paddingX = obj.paddingX ?? 8;
+
+const valueSize = obj.fontSize ?? 16;
+const labelSize = obj.labelSize ?? 10;
+const showLabels = !!obj.showLabels;
+
+// ancho y alto de cada chip como en CSS
+const chipW = (obj.chipWidth ?? 46) + paddingX * 2;
+const chipH = paddingY * 2 + valueSize + (showLabels ? labelSize : 0);
+
+// ancho total del conjunto
+const totalChipsW = n * chipW + gap * (n - 1);
+const containerW = obj.width ?? totalChipsW;
+const containerH = chipH; // el alto del contenedor es el de un chip
+
+// centrar el conjunto dentro del ancho disponible
+const startX = (containerW - totalChipsW) / 2;
+
+
   return (
     <Group
-      ref={groupRef}
-      x={obj.x ?? 0}
-      y={yAbs}
-      draggable
-      onDragMove={() => {
-        // Preview: suave, sin historia
-        onChange?.(obj.id, { isDragPreview: true, x: groupRef.current.x(), y: groupRef.current.y() });
-      }}
-      onDragEnd={handleDragEnd}
-      onClick={(e) => { e.cancelBubble = true; onSelect?.(obj.id, e); }}
-      listening
-    >
-      {/* Fondo del bloque (para ver selección) */}
-      <Rect
-        width={obj.width ?? 300}
-        height={obj.height ?? 80}
-        fill={obj.background || "transparent"}
-        stroke={isSelected ? "#773dbe" : "transparent"}
-        strokeWidth={isSelected ? 2 : 0}
-        cornerRadius={8}
-      />
+  ref={groupRef}
+  x={obj.x ?? 0}
+  y={yAbs}
+  draggable
+  onDragMove={() => {
+    onChange?.(obj.id, { isDragPreview: true, x: groupRef.current.x(), y: groupRef.current.y() });
+  }}
+  onDragEnd={handleDragEnd}
+  onClick={(e) => { e.cancelBubble = true; onSelect?.(obj.id, e); }}
+  listening
+>
+  {/* Fondo del bloque */}
+  <Rect
+    width={containerW}
+    height={containerH}
+    fill={obj.background || "transparent"}
+    stroke={isSelected ? "#773dbe" : "transparent"}
+    strokeWidth={isSelected ? 2 : 0}
+    cornerRadius={8}
+  />
 
-      {/* Mensajes de estado */}
-      {state.invalid && (
-        <Text
-          text="Fecha inválida"
-          fill="#ef4444"
-          fontSize={obj.fontSize}
-          fontFamily={obj.fontFamily}
-          width={obj.width ?? 300}
-          height={obj.height ?? 80}
-          align="center"
-          verticalAlign="middle"
-        />
-      )}
+  {/* Contenido normal */}
+  {!state.invalid && !state.ended && (
+    <Group>
+      {parts.map((it, i) => {
+        const x = startX + i * (chipW + gap);
+        const sepText = obj.separator || "";
 
-      {!state.invalid && state.ended && (
-        <Text
-          text="¡Llegó el día!"
-          fill={obj.color}
-          fontSize={obj.fontSize}
-          fontFamily={obj.fontFamily}
-          width={obj.width ?? 300}
-          height={obj.height ?? 80}
-          align="center"
-          verticalAlign="middle"
-        />
-      )}
+        return (
+          <Group key={it.key} x={x} y={0}>
+            {/* Chip */}
+            {obj.layout !== "minimal" && (
+              <Rect
+                width={chipW}
+                height={chipH}
+                fill={obj.boxBg || "#fff"}
+                stroke={obj.boxBorder || "#e5e7eb"}
+                cornerRadius={Math.min(obj.boxRadius ?? 8, chipW / 2, chipH / 2)}
+                shadowBlur={obj.boxShadow ? 8 : 0}
+                shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
+              />
+            )}
 
-      {/* Contenido normal */}
-      {!state.invalid && !state.ended && (
-        <Group>
-          {parts.map((it, i) => {
-            const x = i * (boxW + gap);
-            const showLabels = !!obj.showLabels;
-            const sepText = obj.separator || "";
+            {/* Valor */}
+            <Text
+              text={it.value}
+              fill={obj.color || "#111827"}
+              fontFamily={obj.fontFamily}
+              fontStyle="bold"
+              fontSize={valueSize}
+              width={chipW}
+              align="center"
+              y={paddingY + valueSize / 2}
+              offsetY={valueSize / 2}
+            />
 
-            return (
-              <Group key={it.key} x={x} y={5}>
-                {/* Caja visual para pills/flip */}
-                {obj.layout !== "minimal" && (
-                  <Rect
-                    width={boxW}
-                    height={boxH}
-                    fill={obj.boxBg || "#fff"}
-                    stroke={obj.boxBorder || "#e5e7eb"}
-                    cornerRadius={obj.boxRadius ?? 12}
-                    shadowBlur={obj.boxShadow ? 8 : 0}
-                    shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
-                  />
-                )}
+            {/* Etiqueta */}
+            {showLabels && (
+              <Text
+                text={it.label}
+                fill={obj.labelColor || "#6b7280"}
+                fontFamily={obj.fontFamily}
+                fontSize={labelSize}
+                width={chipW}
+                align="center"
+                y={paddingY + valueSize + labelSize / 2}
+                offsetY={labelSize / 2}
+              />
+            )}
 
-                {/* flip: separador central */}
-                {obj.layout === "flip" && (
-                  <Line
-                    points={[0, boxH/2, boxW, boxH/2]}
-                    stroke={obj.flipDividerColor || "#e5e7eb"}
-                    strokeWidth={1}
-                    dash={[4,4]}
-                  />
-                )}
-
-                {/* Valor */}
-                <Text
-                  text={it.value}
-                  fill={obj.color || "#111827"}
-                  fontFamily={obj.fontFamily}
-                  fontStyle="700"
-                  fontSize={(obj.fontSize ?? 26) + (obj.layout === "minimal" ? 6 : 2)}
-                  width={boxW}
-                  height={showLabels ? boxH * 0.6 : boxH}
-                  align="center"
-                  verticalAlign="middle"
-                />
-
-                {/* Etiqueta */}
-                {showLabels && (
-                  <Text
-                    y={boxH * 0.62}
-                    text={it.label}
-                    fill={obj.labelColor || "#6b7280"}
-                    fontFamily={obj.fontFamily}
-                    fontSize={Math.max(10, (obj.fontSize ?? 26) - 8)}
-                    width={boxW}
-                    height={boxH * 0.38}
-                    align="center"
-                    verticalAlign="middle"
-                  />
-                )}
-
-                {/* Separador textual */}
-                {!!sepText && i < parts.length - 1 && (
-                  <Text
-                    x={boxW + (gap * 0.25)}
-                    y={boxH * 0.3}
-                    text={sepText}
-                    fill={obj.color || "#111827"}
-                    fontFamily={obj.fontFamily}
-                    fontSize={obj.fontSize ?? 26}
-                  />
-                )}
-              </Group>
-            );
-          })}
-        </Group>
-      )}
+            {/* Separador textual */}
+            {!!sepText && i < parts.length - 1 && (
+              <Text
+                x={chipW + gap * 0.25}
+                y={chipH * 0.3}
+                text={sepText}
+                fill={obj.color || "#111827"}
+                fontFamily={obj.fontFamily}
+                fontSize={valueSize}
+              />
+            )}
+          </Group>
+        );
+      })}
     </Group>
+  )}
+</Group>
+
   );
 }

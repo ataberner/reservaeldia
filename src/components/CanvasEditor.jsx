@@ -7,7 +7,7 @@ import { db } from "../firebase";
 import ElementoCanvas from "./ElementoCanvas";
 import LineControls from "./LineControls";
 import ReactDOMServer from "react-dom/server";
-import { convertirAlturaVH, calcularOffsetY } from "../utils/layout";
+import { calcularOffsetY, convertirAbsARel, determinarNuevaSeccion } from "@/utils/layout";
 import { crearSeccion } from "@/models/estructuraInicial";
 import usePlantillasDeSeccion from "@/hooks/usePlantillasDeSeccion";
 import { useImperativeObjects } from '@/hooks/useImperativeObjects';
@@ -27,9 +27,9 @@ import { reemplazarFondoSeccion as reemplazarFondo } from "@/utils/accionesFondo
 import { desanclarImagenDeFondo as desanclarFondo } from "@/utils/accionesFondo";
 import { borrarSeccion as borrarSeccionExternal } from "@/utils/editorSecciones";
 import { moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
+import { validarPuntosLinea, detectarInterseccionLinea } from "@/components/editor/selection/selectionUtils";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import GaleriaKonva from "@/components/editor/GaleriaKonva";
-import { determinarNuevaSeccion } from "@/utils/layout";
 import FondoSeccion from './editor/FondoSeccion';
 import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import { calcGalleryLayout } from "@/utils/calcGrid";
@@ -349,11 +349,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   // ✅ Recordar la última sección válida para usarla como fallback
-useEffect(() => {
-  if (seccionActivaId) {
-    window._lastSeccionActivaId = seccionActivaId;
-  }
-}, [seccionActivaId]);
+  useEffect(() => {
+    if (seccionActivaId) {
+      window._lastSeccionActivaId = seccionActivaId;
+    }
+  }, [seccionActivaId]);
 
 
   // CanvasEditor.jsx (dentro del componente, después de declarar estados)
@@ -462,43 +462,43 @@ useEffect(() => {
 
 
 
-useEffect(() => {
-  const handler = (e) => {
-    const nuevo = e.detail;
-    console.log("[Canvas] insertar-elemento recibido:", nuevo);
+  useEffect(() => {
+    const handler = (e) => {
+      const nuevo = e.detail;
+      console.log("[Canvas] insertar-elemento recibido:", nuevo);
 
-    const fallbackId =
-      window._lastSeccionActivaId ||
-      (Array.isArray(secciones) && secciones[0]?.id) ||
-      null;
+      const fallbackId =
+        window._lastSeccionActivaId ||
+        (Array.isArray(secciones) && secciones[0]?.id) ||
+        null;
 
-    const targetSeccionId = seccionActivaId || fallbackId;
-    console.log("[Canvas] seccionActivaId:", seccionActivaId, "fallbackId:", fallbackId, "→ targetSeccionId:", targetSeccionId);
+      const targetSeccionId = seccionActivaId || fallbackId;
+      console.log("[Canvas] seccionActivaId:", seccionActivaId, "fallbackId:", fallbackId, "→ targetSeccionId:", targetSeccionId);
 
-    if (!targetSeccionId) {
-      alert("⚠️ No hay secciones aún. Creá una sección para insertar el elemento.");
-      return;
-    }
+      if (!targetSeccionId) {
+        alert("⚠️ No hay secciones aún. Creá una sección para insertar el elemento.");
+        return;
+      }
 
-    const nuevoConSeccion = { ...nuevo, seccionId: targetSeccionId };
+      const nuevoConSeccion = { ...nuevo, seccionId: targetSeccionId };
 
-    setObjetos((prev) => {
-      const next = [...prev, nuevoConSeccion];
-      console.log("[Canvas] Insertado tipo:", nuevoConSeccion.tipo, "id:", nuevoConSeccion.id, "objs:", prev.length, "→", next.length);
-      return next;
-    });
+      setObjetos((prev) => {
+        const next = [...prev, nuevoConSeccion];
+        console.log("[Canvas] Insertado tipo:", nuevoConSeccion.tipo, "id:", nuevoConSeccion.id, "objs:", prev.length, "→", next.length);
+        return next;
+      });
 
-    setElementosSeleccionados([nuevoConSeccion.id]);
-  };
+      setElementosSeleccionados([nuevoConSeccion.id]);
+    };
 
-  window.addEventListener("insertar-elemento", handler);
-  return () => window.removeEventListener("insertar-elemento", handler);
-}, [seccionActivaId, secciones]);
+    window.addEventListener("insertar-elemento", handler);
+    return () => window.removeEventListener("insertar-elemento", handler);
+  }, [seccionActivaId, secciones]);
 
-// Recordar última sección activa
-useEffect(() => {
-  if (seccionActivaId) window._lastSeccionActivaId = seccionActivaId;
-}, [seccionActivaId]);
+  // Recordar última sección activa
+  useEffect(() => {
+    if (seccionActivaId) window._lastSeccionActivaId = seccionActivaId;
+  }, [seccionActivaId]);
 
 
 
@@ -725,19 +725,7 @@ useEffect(() => {
         const objetosValidados = objetos.map(obj => {
           // Si es una línea, validar y corregir puntos
           if (obj.tipo === 'forma' && obj.figura === 'line') {
-            const puntosActuales = obj.points || [];
-            const puntosValidos = [];
-
-            // Asegurar 4 valores numéricos
-            for (let i = 0; i < 4; i++) {
-              const valor = parseFloat(puntosActuales[i]);
-              puntosValidos.push(isNaN(valor) ? (i === 2 ? 100 : 0) : valor);
-            }
-
-            return {
-              ...obj,
-              points: puntosValidos
-            };
+            return validarPuntosLinea(obj);
           }
 
           // ✅ Si es texto, normalizamos propiedades visuales para HTML
@@ -1826,8 +1814,6 @@ useEffect(() => {
                 }
               }}
 
-
-
               onMouseMove={(e) => {
 
 
@@ -1863,17 +1849,7 @@ useEffect(() => {
                         if (!node) return false;
 
                         if (obj.tipo === 'forma' && obj.figura === 'line') {
-                          try {
-                            return detectarInterseccionLinea(obj, area, stage);
-                          } catch (error) {
-                            const box = node.getClientRect({ relativeTo: stage });
-                            return (
-                              box.x + box.width >= area.x &&
-                              box.x <= area.x + area.width &&
-                              box.y + box.height >= area.y &&
-                              box.y <= area.y + area.height
-                            );
-                          }
+                          return detectarInterseccionLinea(obj, area, stage);
                         }
 
                         const box = node.getClientRect({ relativeTo: stage });
@@ -1892,144 +1868,45 @@ useEffect(() => {
                 });
               }}
 
+              onMouseUp={(e) => {
+
+                const stage = e.target.getStage();
 
 
-              onMouseUp={() => {
-                // 🔥 FINALIZAR DRAG GRUPAL MANUAL
-                if (window._grupoLider && window._dragStartPos && window._dragInicial) {
-
-
-                  const stage = stageRef.current;
-                  const currentPos = stage.getPointerPosition();
-
-                  if (currentPos && window._dragStartPos) {
-                    const deltaX = currentPos.x - window._dragStartPos.x;
-                    const deltaY = currentPos.y - window._dragStartPos.y;
-                    const elementosSeleccionados = window._elementosSeleccionados || [];
-
-
-
-                    // 🔥 APLICACIÓN FINAL SIN PREVIEW
-                    setObjetos(prev => {
-                      return prev.map(objeto => {
-                        if (elementosSeleccionados.includes(objeto.id)) {
-                          if (window._dragInicial && window._dragInicial[objeto.id]) {
-                            const posInicial = window._dragInicial[objeto.id];
-                            const posicionFinal = {
-                              x: posInicial.x + deltaX,
-                              y: posInicial.y + deltaY
-                            };
-                            console.log(`📍 ${objeto.id}: ${posInicial.x},${posInicial.y} → ${posicionFinal.x},${posicionFinal.y}`);
-                            return { ...objeto, ...posicionFinal };
-                          }
-                        }
-                        return objeto;
-                      });
-                    });
-                  }
-
-                  // 🔥 LIMPIEZA COMPLETA
-
-                  window._grupoLider = null;
-                  window._dragStartPos = null;
-                  window._dragInicial = null;
-                  window._dragGroupThrottle = false;
-                  window._boundsUpdateThrottle = false;
-
-                  // Re-habilitar draggable
-                  elementosSeleccionados.forEach(id => {
-                    const node = elementRefs.current[id];
-                    if (node) {
-                      setTimeout(() => node.draggable(true), 50);
-                    }
-                  });
+                // Solo verificar si hay drag grupal activo para no procesar selección
+                if (window._grupoLider) {
+                  console.log("🎯 Drag grupal activo, esperando onDragEnd...");
+                  return; // No hacer nada más, dejar que ElementoCanvas maneje todo
                 }
 
-
+                // El resto del código de selección por área continúa igual...
                 if (!seleccionActiva || !areaSeleccion) return;
-
 
                 const nuevaSeleccion = objetos.filter((obj) => {
                   const node = elementRefs.current[obj.id];
                   if (!node) {
-
                     return false;
                   }
 
                   // 🔥 MANEJO ESPECIAL PARA LÍNEAS
                   if (obj.tipo === 'forma' && obj.figura === 'line') {
-                    try {
-                      // 🔥 OBTENER POSICIÓN REAL DEL NODO (no del objeto)
-                      const nodePos = node.position();
-                      const lineX = nodePos.x;
-                      const lineY = nodePos.y;
-
-                      const points = obj.points || [0, 0, 100, 0];
-                      const cleanPoints = [
-                        parseFloat(points[0]) || 0,
-                        parseFloat(points[1]) || 0,
-                        parseFloat(points[2]) || 100,
-                        parseFloat(points[3]) || 0
-                      ];
-
-                      // Calcular puntos absolutos
-                      const startX = lineX + cleanPoints[0];
-                      const startY = lineY + cleanPoints[1];
-                      const endX = lineX + cleanPoints[2];
-                      const endY = lineY + cleanPoints[3];
-
-                      // Verificar si algún punto está dentro del área
-                      const startDentro = (
-                        startX >= areaSeleccion.x && startX <= areaSeleccion.x + areaSeleccion.width &&
-                        startY >= areaSeleccion.y && startY <= areaSeleccion.y + areaSeleccion.height
-                      );
-
-                      const endDentro = (
-                        endX >= areaSeleccion.x && endX <= areaSeleccion.x + areaSeleccion.width &&
-                        endY >= areaSeleccion.y && endY <= areaSeleccion.y + areaSeleccion.height
-                      );
-
-                      // Verificar si el área cruza la línea
-                      const lineMinX = Math.min(startX, endX);
-                      const lineMaxX = Math.max(startX, endX);
-                      const lineMinY = Math.min(startY, endY);
-                      const lineMaxY = Math.max(startY, endY);
-
-                      const areaIntersectaLinea = !(
-                        areaSeleccion.x > lineMaxX ||
-                        areaSeleccion.x + areaSeleccion.width < lineMinX ||
-                        areaSeleccion.y > lineMaxY ||
-                        areaSeleccion.y + areaSeleccion.height < lineMinY
-                      );
-
-                      const resultado = startDentro || endDentro || areaIntersectaLinea;
-
-
-                      return resultado;
-                    } catch (error) {
-
-                      return false;
-                    }
+                    return detectarInterseccionLinea(obj, areaSeleccion, stage);
                   }
+
 
                   // 🔄 LÓGICA PARA ELEMENTOS NORMALES
                   try {
                     const box = node.getClientRect();
-                    const resultado = (
+                    return (
                       box.x + box.width >= areaSeleccion.x &&
                       box.x <= areaSeleccion.x + areaSeleccion.width &&
                       box.y + box.height >= areaSeleccion.y &&
                       box.y <= areaSeleccion.y + areaSeleccion.height
                     );
-
-                    return resultado;
                   } catch (error) {
-
                     return false;
                   }
                 });
-
-
 
                 setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
                 setElementosPreSeleccionados([]);
@@ -2045,12 +1922,7 @@ useEffect(() => {
                 }
                 window._lineIntersectionCache = {};
               }}
-
-
             >
-
-
-
               <Layer>
 
                 {seccionesOrdenadas.flatMap((seccion, index) => {
@@ -2475,20 +2347,19 @@ useEffect(() => {
                           delete coordenadasFinales.finalizoDrag;
 
                           if (nuevaSeccion) {
-                            console.log(`🔄 Elemento ${id} cambió de sección ${objOriginal.seccionId} → ${nuevaSeccion}`);
-                            coordenadasFinales = { ...coordenadasFinales, ...coordenadasAjustadas, seccionId: nuevaSeccion };
+                            coordenadasFinales = {
+                              ...coordenadasFinales,
+                              ...coordenadasAjustadas,
+                              seccionId: nuevaSeccion
+                            };
                           } else {
-                            // Calcular offset para la sección actual
-                            const seccion = seccionesOrdenadas.find((s) => s.id === objOriginal.seccionId);
-                            if (seccion) {
-                              const offsetY = calcularOffsetY(
-                                seccionesOrdenadas,
-                                seccionesOrdenadas.findIndex((s) => s.id === seccion.id),
-                                altoCanvas
-                              );
-                              coordenadasFinales.y = nuevo.y - offsetY;
-                            }
+                            coordenadasFinales.y = convertirAbsARel(
+                              nuevo.y,
+                              objOriginal.seccionId,
+                              seccionesOrdenadas
+                            );
                           }
+
 
                           // Actualizar inmediatamente
                           setObjetos(prev => {
@@ -2641,15 +2512,12 @@ useEffect(() => {
 
                               // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
                               const objOriginal = objetos[objIndex];
-                              const seccionIndex = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
-                              const offsetY = calcularOffsetY(seccionesOrdenadas, seccionIndex, altoCanvas);
-
                               const finalAttrs = {
                                 ...cleanAttrs,
-                                // Convertir Y absoluta a Y relativa restando el offset
-                                y: cleanAttrs.y - offsetY,
+                                y: convertirAbsARel(cleanAttrs.y, objOriginal.seccionId, seccionesOrdenadas),
                                 fromTransform: true
                               };
+
 
                               console.log("🔧 Convirtiendo coordenadas:", {
                                 yAbsoluta: cleanAttrs.y,

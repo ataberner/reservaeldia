@@ -6,12 +6,24 @@ export function calcularOffsetY(secciones: { altura: number }[], index: number):
   return anteriores.reduce((acc, s) => acc + s.altura, 0);
 }
 
+// ✅ convertirAbsARel
+export function convertirAbsARel(
+  yAbs: number,
+  seccionId: string,
+  secciones: { id: string; altura: number }[]
+): number {
+  const seccionIndex = secciones.findIndex(s => s.id === seccionId);
+  if (seccionIndex < 0) return yAbs;
+  const offsetY = calcularOffsetY(secciones, seccionIndex);
+  return yAbs - offsetY;
+}
+
 // ✅ determinarNuevaSeccion
 export const determinarNuevaSeccion = (
   yRelativaConOffset: number,
   seccionActualId: string,
   seccionesOrdenadas: { id: string; altura: number }[]
-) => {
+): { nuevaSeccion: string | null; coordenadasAjustadas: { y?: number } } => {
   const seccionActual = seccionesOrdenadas.find(s => s.id === seccionActualId);
   if (!seccionActual) return { nuevaSeccion: null, coordenadasAjustadas: {} };
 

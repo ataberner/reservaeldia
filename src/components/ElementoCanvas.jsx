@@ -4,7 +4,10 @@ import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
 import { fontManager } from '../utils/fontManager';
-import { calcularOffsetY } from "../utils/layout";
+import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
+import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
+
+
 
 
 export default function ElementoCanvas({
@@ -27,7 +30,7 @@ export default function ElementoCanvas({
   const [img] = useImage(obj.src || null, "anonymous");
   const [isDragging, setIsDragging] = useState(false);
 
-  
+
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
   const handleChange = useCallback((id, newData) => {
     if (newData.fromAutoFix || !onChange) return;
@@ -94,97 +97,26 @@ export default function ElementoCanvas({
       }
     },
 
-
     onDragStart: (e) => {
-
       hasDragged.current = true;
       window._isDragging = true;
       setIsDragging(true);
 
-      const elementosSeleccionados = window._elementosSeleccionados || [];
-      const esSeleccionMultiple = elementosSeleccionados.length > 1;
-      const esLinea = obj.tipo === 'forma' && obj.figura === 'line';
-
-      if (esSeleccionMultiple && elementosSeleccionados.includes(obj.id)) {
-
-
-        // 🔥 CONFIGURAR LÍDER DEL GRUPO
-        if (!window._grupoLider) {
-          window._grupoLider = obj.id;
-          window._dragStartPos = e.target.getStage().getPointerPosition();
-          window._dragInicial = {};
-
-          // 🔥 GUARDAR POSICIONES INICIALES DE TODOS LOS ELEMENTOS
-          elementosSeleccionados.forEach(id => {
-            const objeto = window._objetosActuales?.find(o => o.id === id);
-            if (objeto) {
-              // 🎯 Para líneas, guardar también los puntos
-              if (objeto.tipo === 'forma' && objeto.figura === 'line') {
-                window._dragInicial[id] = {
-                  x: objeto.x || 0,
-                  y: objeto.y || 0,
-                  points: [...(objeto.points || [0, 0, 100, 0])] // Clonar array
-                };
-              } else {
-                window._dragInicial[id] = {
-                  x: objeto.x || 0,
-                  y: objeto.y || 0
-                };
-              }
-
-            }
-          });
-
-
-        }
-      } else {
-        // 🔄 DRAG INDIVIDUAL
-        dragStartPos.current = e.target.getStage().getPointerPosition();
-
+      // 🔥 Intentar drag grupal
+      const fueGrupal = startDragGrupalLider(e, obj);
+      if (!fueGrupal) {
+        startDragIndividual(e, dragStartPos);
       }
     },
 
-    // En ElementoCanvas.jsx, dentro de commonProps, reemplazar onDragMove:
+
     onDragMove: (e) => {
       hasDragged.current = true;
 
       // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
-        const stage = e.target.getStage();
-        const currentPos = stage.getPointerPosition();
-
-        if (currentPos && window._dragStartPos && window._dragInicial) {
-          const deltaX = currentPos.x - window._dragStartPos.x;
-          const deltaY = currentPos.y - window._dragStartPos.y;
-
-          const elementosSeleccionados = window._elementosSeleccionados || [];
-
-          // 🔥 ACTUALIZACIÓN INMEDIATA SIN THROTTLE PARA EVITAR LAG
-          elementosSeleccionados.forEach(elementId => {
-            if (window._dragInicial[elementId]) {
-              const posInicial = window._dragInicial[elementId];
-
-              // 🎯 Actualizar posición directamente en el nodo para feedback inmediato
-              const node = window._elementRefs?.[elementId];
-              if (node) {
-                node.x(posInicial.x + deltaX);
-                node.y(posInicial.y + deltaY);
-              }
-
-              // También actualizar via onChange para sincronizar con React
-              onChange(elementId, {
-                x: posInicial.x + deltaX,
-                y: posInicial.y + deltaY,
-                isDragPreview: true,
-                skipHistorial: true
-              });
-            }
-          });
-
-          // 🔥 Forzar redibujado inmediato
-          e.target.getLayer()?.batchDraw();
-        }
-        return;
+        previewDragGrupal(e, obj, onChange);
+        return; // 👈 MUY IMPORTANTE: igual que antes
       }
 
       // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
@@ -197,104 +129,28 @@ export default function ElementoCanvas({
 
       // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
       if (!window._grupoLider) {
-        const node = e.target;
-        if (node && node.position) {
-          const nuevaPos = node.position();
-
-          // 🔥 Mover también el texto si existe
-          const textoNode = window._elementRefs?.[`${obj.id}-text`];
-          if (textoNode) {
-            textoNode.x(nuevaPos.x);
-            textoNode.y(nuevaPos.y);
-            textoNode.getLayer()?.batchDraw(); // forzar redibujo
-          }
-
-          if (onDragMovePersonalizado) {
-            onDragMovePersonalizado(nuevaPos, obj.id);
-          }
-        }
+        previewDragIndividual(e, obj, onDragMovePersonalizado);
       }
+
     },
 
-    onDragEnd: (e) => {
 
+    onDragEnd: (e) => {
+      console.log("🏁 DRAG END:", obj.id, "Líder actual:", window._grupoLider);
       window._isDragging = false;
       setIsDragging(false);
 
       const node = e.target;
 
-      // 🔥 FINALIZAR DRAG GRUPAL SI ES EL LÍDER
-      if (window._grupoLider && obj.id === window._grupoLider) {
+      // 🔥 Intentar drag grupal
+      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
+      if (fueGrupal) return;
 
-
-        const stage = e.target.getStage();
-        const currentPos = stage.getPointerPosition();
-
-        if (currentPos && window._dragStartPos && window._dragInicial) {
-          const deltaX = currentPos.x - window._dragStartPos.x;
-          const deltaY = currentPos.y - window._dragStartPos.y;
-          const elementosSeleccionados = window._elementosSeleccionados || [];
-
-
-
-          // 🔥 APLICAR CAMBIOS FINALES
-          if (onChange) {
-            onChange('BATCH_UPDATE_GROUP_FINAL', {
-              elementos: elementosSeleccionados,
-              dragInicial: window._dragInicial,
-              deltaX,
-              deltaY,
-              isBatchUpdateFinal: true
-            });
-          }
-        }
-
-        // 🔥 LIMPIAR FLAGS
-        window._grupoLider = null;
-        window._dragStartPos = null;
-        window._dragInicial = null;
-        window._dragGroupThrottle = false;
-
-        // Re-habilitar draggable para todos
-        const elementosSeleccionados = window._elementosSeleccionados || [];
-        elementosSeleccionados.forEach(id => {
-          const elNode = window._elementRefs?.[id];
-          if (elNode) {
-            setTimeout(() => elNode.draggable(true), 50);
-          }
-        });
-
-        setTimeout(() => {
-          hasDragged.current = false;
-        }, 50);
-
-        return;
-      }
-
-      // 🔥 SI ES SEGUIDOR, SOLO LIMPIAR FLAGS
-      if (window._grupoLider) {
-        const elementosSeleccionados = window._elementosSeleccionados || [];
-        if (elementosSeleccionados.includes(obj.id)) {
-          setTimeout(() => {
-            hasDragged.current = false;
-          }, 50);
-          return;
-        }
-      }
-
-      // 🔄 DRAG INDIVIDUAL
-      onChange(obj.id, {
-        x: node.x(),
-        y: node.y(),
-        finalizoDrag: true
-      });
-
-      if (onDragEndPersonalizado) onDragEndPersonalizado();
-
-      setTimeout(() => {
-        hasDragged.current = false;
-      }, 50);
+      // 🔄 DRAG INDIVIDUAL (no cambió)
+      endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
     },
+
+
   }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange, isInEditMode]);
 
 
@@ -482,33 +338,33 @@ export default function ElementoCanvas({
   }
 
 
-if (obj.tipo === "rsvp-boton") {
-  return (
-    <div
-      key={obj.id}
-      data-id={obj.id}
-      style={{
-        position: "absolute",
-        left: obj.x,
-        top: obj.y,
-        width: obj.ancho,
-        height: obj.alto,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: obj.color ?? "#773dbe",
-        color: obj.colorTexto ?? "#fff",
-        borderRadius: 10,
-        fontSize: obj.fontSize ?? 16,
-        fontFamily: obj.fontFamily ?? "Inter, system-ui, sans-serif",
-        userSelect: "none",
-        pointerEvents: "none",
-      }}
-    >
-      {obj.texto ?? "Confirmar asistencia"}
-    </div>
-  );
-}
+  if (obj.tipo === "rsvp-boton") {
+    return (
+      <div
+        key={obj.id}
+        data-id={obj.id}
+        style={{
+          position: "absolute",
+          left: obj.x,
+          top: obj.y,
+          width: obj.ancho,
+          height: obj.alto,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: obj.color ?? "#773dbe",
+          color: obj.colorTexto ?? "#fff",
+          borderRadius: 10,
+          fontSize: obj.fontSize ?? 16,
+          fontFamily: obj.fontFamily ?? "Inter, system-ui, sans-serif",
+          userSelect: "none",
+          pointerEvents: "none",
+        }}
+      >
+        {obj.texto ?? "Confirmar asistencia"}
+      </div>
+    );
+  }
 
 
   if (obj.tipo === "icono-svg") {

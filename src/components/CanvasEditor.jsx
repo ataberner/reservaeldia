@@ -1150,7 +1150,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   } = useGuiasCentrado({
     anchoCanvas: 800,
     altoCanvas: altoCanvasDinamico,
-    margenSensibilidad: 5,
+    // 👇 Tweaks de experiencia
+    margenSensibilidad: 8,   // dibuja líneas cercanas
+    magnetRadius: 18,        // 🔥 captura más fuerte
+    hysteresis: 10,          // 🔥 suelta recién lejos
+    snapStrength: 1,         // 1 = fijación exacta (probalo en 0.5 si querés “tracción suave”)
+    snapToEdges: true,
+    snapToCenters: true,
     seccionesOrdenadas
   });
 
@@ -1236,6 +1242,25 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     };
   }, [elementosSeleccionados, actualizarPosicionBotonOpciones]);
 
+
+
+  // dentro de CanvasEditor (función)
+  useEffect(() => {
+    const onDragStartGlobal = () => {
+      // limpiar hover inmediatamente para que no quede “pegado”
+      setHoverId(null);
+    };
+    const onDragEndGlobal = () => {
+      // nada por ahora; si quisieras, podrías recalcular algo acá
+    };
+
+    window.addEventListener("dragging-start", onDragStartGlobal);
+    window.addEventListener("dragging-end", onDragEndGlobal);
+    return () => {
+      window.removeEventListener("dragging-start", onDragStartGlobal);
+      window.removeEventListener("dragging-end", onDragEndGlobal);
+    };
+  }, []);
 
 
 
@@ -2530,13 +2555,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 })()}
 
 
-                {/* 🔥 OPTIMIZACIÓN: No mostrar hover durante drag/resize/edición */}
-                {!window._resizeData?.isResizing && !window._isDragging && !editing.id && (
-                  <HoverIndicator
-                    hoveredElement={hoverId}
-                    elementRefs={elementRefs}
-                  />
+                {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
+                {!window._resizeData?.isResizing && !window._isDragging && !window._grupoLider && !editing.id && (
+                  <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} />
                 )}
+
 
 
                 {/* 🎯 Controles especiales para líneas seleccionadas */}

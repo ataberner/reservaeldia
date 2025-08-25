@@ -1,267 +1,250 @@
 // hooks/useGuiasCentrado.js
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 /**
- * Hook para manejar las líneas de guía de centrado en el editor Konva
- * @param {Object} config - Configuración del hook
- * @param {number} config.anchoCanvas - Ancho del canvas
- * @param {number} config.altoCanvas - Alto del canvas
- * @param {number} config.margenSensibilidad - Margen de sensibilidad para las guías (default: 5px)
- * @param {Array} config.seccionesOrdenadas - Array de secciones ordenadas
- * @returns {Object} - Funciones y estado para manejar las guías
+ * Guías con:
+ * - Sección: muestra CX/CY SOLO si estás cerca (no siempre).
+ * - Elementos: SOLO misma sección, líneas punteadas tipo "reach" hasta el otro elemento.
+ * - Nada de otras secciones.
  */
 export default function useGuiasCentrado({
   anchoCanvas = 800,
   altoCanvas = 800,
-  margenSensibilidad = 5,
+  magnetRadius = 16,       // distancia para activar el snap
+  sectionShowRadius = 18,  // distancia para MOSTRAR las líneas de sección (puede ser = o > magnetRadius)
+  snapStrength = 1,        // 1 = pegado exacto; 0.4-0.6 = tracción suave
   seccionesOrdenadas = []
 }) {
   const [guiaLineas, setGuiaLineas] = useState([]);
 
-  /**
-   * Limpia las líneas de guía
-   */
-  const limpiarGuias = useCallback(() => {
-    setGuiaLineas([]);
-    
-    // Limpiar timeout existente si existe
-    if (window._guidesTimeout) {
-      clearTimeout(window._guidesTimeout);
-      window._guidesTimeout = null;
-    }
-  }, []);
-
-  /**
-   * Obtiene la sección a la que pertenece un elemento
-   */
-  const obtenerSeccionElemento = useCallback((objetoId, objetos) => {
-    const objeto = objetos.find(obj => obj.id === objetoId);
-    if (!objeto || !objeto.seccionId) return null;
-    
-    return seccionesOrdenadas.find(seccion => seccion.id === objeto.seccionId);
-  }, [seccionesOrdenadas]);
-
-  /**
-   * Calcula el offset Y de una sección
-   */
+  // ---- Utilidades de secciones ----
   const calcularOffsetSeccion = useCallback((seccionId) => {
     let offsetY = 0;
-    for (const seccion of seccionesOrdenadas) {
-      if (seccion.id === seccionId) break;
-      offsetY += seccion.altura;
+    for (const s of seccionesOrdenadas) {
+      if (s.id === seccionId) break;
+      offsetY += s.altura;
     }
     return offsetY;
   }, [seccionesOrdenadas]);
 
-  /**
-   * Añade una nueva línea de guía
-   * @param {Object} guia - Configuración de la guía
-   * @param {number[]} guia.points - Puntos de la línea [x1, y1, x2, y2]
-   * @param {string} guia.type - Tipo de guía
-   * @param {string} guia.style - Estilo de la línea ('solid' o 'dashed')
-   * @param {string} guia.priority - Prioridad ('seccion' o 'elemento')
-   */
-  const agregarGuia = useCallback(({ points, type, style = 'solid', priority = 'elemento' }) => {
-    setGuiaLineas(prev => [...prev, { points, type, style, priority }]);
-  }, []);
+  const obtenerSeccionElemento = useCallback((objId, objetos) => {
+    const obj = objetos.find(o => o.id === objId);
+    if (!obj?.seccionId) return null;
+    return seccionesOrdenadas.find(s => s.id === obj.seccionId) || null;
+  }, [seccionesOrdenadas]);
 
-  /**
-   * Verifica y aplica snap para el centro de la sección
-   * @param {Object} boxElemento - Bounding box del elemento
-   * @param {Object} nodeElemento - Nodo Konva del elemento
-   * @param {string} objetoId - ID del objeto
-   * @param {Array} objetos - Array de objetos
-   * @returns {Object} - Información sobre snap aplicado
-   */
-  const verificarCentroSeccion = useCallback((boxElemento, nodeElemento, objetoId, objetos) => {
-    const seccion = obtenerSeccionElemento(objetoId, objetos);
-    if (!seccion) return { snapX: false, snapY: false };
-
-    const offsetSeccion = calcularOffsetSeccion(seccion.id);
-    const centroSeccionX = anchoCanvas / 2;
-    const centroSeccionY = offsetSeccion + (seccion.altura / 2);
-
-    let snapX = false;
-    let snapY = false;
-
-    // Centro horizontal de la sección
-    const centroElementoX = boxElemento.x + boxElemento.width / 2;
-    if (Math.abs(centroElementoX - centroSeccionX) < margenSensibilidad) {
-      agregarGuia({
-        points: [centroSeccionX, offsetSeccion, centroSeccionX, offsetSeccion + seccion.altura],
-        type: 'seccion-cx',
-        style: 'solid',
-        priority: 'seccion'
-      });
-      
-      // Aplicar snap
-      const ajusteX = centroSeccionX - centroElementoX;
-      nodeElemento.x(nodeElemento.x() + ajusteX);
-      snapX = true;
+  // ---- Segmentos "reach" entre cajas (va hasta el otro elemento) ----
+  const reachVertical = (x, selfBox, otherBox, gap = 6) => {
+    const selfCy = selfBox.y + selfBox.height / 2;
+    const otherCy = otherBox.y + otherBox.height / 2;
+    let y1, y2;
+    if (otherCy <= selfCy) {
+      y1 = otherBox.y + otherBox.height + gap; // desde borde inferior del otro
+      y2 = selfBox.y - gap;                     // hasta borde superior del self
+    } else {
+      y1 = selfBox.y + selfBox.height + gap;
+      y2 = otherBox.y - gap;
     }
+    return [x, y1, x, y2];
+  };
 
-    // Centro vertical de la sección
-    const centroElementoY = boxElemento.y + boxElemento.height / 2;
-    if (Math.abs(centroElementoY - centroSeccionY) < margenSensibilidad) {
-      agregarGuia({
-        points: [0, centroSeccionY, anchoCanvas, centroSeccionY],
-        type: 'seccion-cy',
-        style: 'solid',
-        priority: 'seccion'
-      });
-      
-      // Aplicar snap
-      const ajusteY = centroSeccionY - centroElementoY;
-      nodeElemento.y(nodeElemento.y() + ajusteY);
-      snapY = true;
+  const reachHorizontal = (y, selfBox, otherBox, gap = 6) => {
+    const selfCx = selfBox.x + selfBox.width / 2;
+    const otherCx = otherBox.x + otherBox.width / 2;
+    let x1, x2;
+    if (otherCx <= selfCx) {
+      x1 = otherBox.x + otherBox.width + gap; // desde borde derecho del otro
+      x2 = selfBox.x - gap;                    // hasta borde izquierdo del self
+    } else {
+      x1 = selfBox.x + selfBox.width + gap;
+      x2 = otherBox.x - gap;
     }
+    return [x1, y, x2, y];
+  };
 
-    return { snapX, snapY };
-  }, [anchoCanvas, margenSensibilidad, obtenerSeccionElemento, calcularOffsetSeccion, agregarGuia]);
+  // ---- Delta para alinear a la guía más cercana ----
+  const deltaForGuide = (axis, guideValue, box) => {
+    if (axis === "x") {
+      const center = box.x + box.width / 2;
+      const left = box.x;
+      const right = box.x + box.width;
+      const opts = [
+        { dist: Math.abs(center - guideValue), delta: guideValue - center },
+        { dist: Math.abs(left   - guideValue), delta: guideValue - left   },
+        { dist: Math.abs(right  - guideValue), delta: guideValue - right  },
+      ].sort((a,b)=>a.dist-b.dist)[0];
+      return opts.delta;
+    } else {
+      const center = box.y + box.height / 2;
+      const top = box.y;
+      const bottom = box.y + box.height;
+      const opts = [
+        { dist: Math.abs(center - guideValue), delta: guideValue - center },
+        { dist: Math.abs(top    - guideValue), delta: guideValue - top    },
+        { dist: Math.abs(bottom - guideValue), delta: guideValue - bottom },
+      ].sort((a,b)=>a.dist-b.dist)[0];
+      return opts.delta;
+    }
+  };
 
-  /**
-   * Verifica alineación contra otros elementos (solo las más relevantes)
-   * @param {Object} boxElementoActual - Bounding box del elemento actual
-   * @param {string} idElementoActual - ID del elemento actual
-   * @param {Array} objetos - Array de todos los objetos
-   * @param {Object} elementRefs - Referencias a los nodos Konva
-   */
-  const verificarContraOtrosElementos = useCallback((
-    boxElementoActual, 
-    idElementoActual, 
-    objetos, 
-    elementRefs
-  ) => {
-    // Limitar a los 5 elementos más cercanos para evitar saturación
-    const elementosCercanos = objetos
-      .filter(objeto => objeto.id !== idElementoActual)
-      .map(objeto => {
-        const nodo = elementRefs.current?.[objeto.id];
-        if (!nodo) return null;
-        
+  // ---- Candidatos de la MISMA sección (centros + bordes) ----
+  const buildSameSectionGuides = (node, stage, objetos, elementRefs, idSelf, seccionId) => {
+    const selfBox = node.getClientRect({ relativeTo: stage });
+    const candidates = objetos
+      .filter(o => o.id !== idSelf && o.seccionId === seccionId) // 🔒 MISMA SECCIÓN
+      .map(o => {
+        const n = elementRefs.current?.[o.id];
+        if (!n) return null;
         try {
-          const box = nodo.getClientRect();
-          const distancia = Math.abs(
-            (boxElementoActual.x + boxElementoActual.width / 2) - 
-            (box.x + box.width / 2)
-          ) + Math.abs(
-            (boxElementoActual.y + boxElementoActual.height / 2) - 
-            (box.y + box.height / 2)
-          );
-          
-          return { objeto, box, distancia };
-        } catch (error) {
-          return null;
-        }
+          const b = n.getClientRect({ relativeTo: stage });
+          const d = Math.abs((selfBox.x + selfBox.width/2) - (b.x + b.width/2))
+                  + Math.abs((selfBox.y + selfBox.height/2) - (b.y + b.height/2));
+          return { box: b, d };
+        } catch { return null; }
       })
       .filter(Boolean)
-      .sort((a, b) => a.distancia - b.distancia)
-      .slice(0, 3); // Solo los 3 más cercanos
+      .sort((a,b) => a.d - b.d)
+      .slice(0, 3); // pocos vecinos → menos ruido
 
-    elementosCercanos.forEach(({ objeto, box }) => {
-      verificarCentrosConElemento(boxElementoActual, box, objeto.id);
-    });
-  }, [margenSensibilidad]);
+    const g = [];
+    for (const { box } of candidates) {
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      const left = box.x;
+      const right = box.x + box.width;
+      const top = box.y;
+      const bottom = box.y + box.height;
 
-  /**
-   * Verifica alineación de centros con un elemento específico
-   */
-  const verificarCentrosConElemento = useCallback((boxA, boxB, elementoBId) => {
-    const centroAX = boxA.x + boxA.width / 2;
-    const centroAY = boxA.y + boxA.height / 2;
-    const centroBX = boxB.x + boxB.width / 2;
-    const centroBY = boxB.y + boxB.height / 2;
-
-    // Centro horizontal - línea punteada entre elementos
-    if (Math.abs(centroAX - centroBX) < margenSensibilidad) {
-      const minY = Math.min(boxA.y, boxB.y);
-      const maxY = Math.max(boxA.y + boxA.height, boxB.y + boxB.height);
-      
-      agregarGuia({
-        points: [centroBX, minY, centroBX, maxY],
-        type: `elemento-cx-${elementoBId}`,
-        style: 'dashed',
-        priority: 'elemento'
-      });
+      // Centros
+      g.push({ axis: "x", value: cx, type: "el-cx", targetBox: box, priority: "elemento", style: "dashed" });
+      g.push({ axis: "y", value: cy, type: "el-cy", targetBox: box, priority: "elemento", style: "dashed" });
+      // Bordes
+      g.push({ axis: "x", value: left,  type: "el-left",  targetBox: box, priority: "elemento", style: "dashed" });
+      g.push({ axis: "x", value: right, type: "el-right", targetBox: box, priority: "elemento", style: "dashed" });
+      g.push({ axis: "y", value: top,    type: "el-top",    targetBox: box, priority: "elemento", style: "dashed" });
+      g.push({ axis: "y", value: bottom, type: "el-bottom", targetBox: box, priority: "elemento", style: "dashed" });
     }
+    return g;
+  };
 
-    // Centro vertical - línea punteada entre elementos  
-    if (Math.abs(centroAY - centroBY) < margenSensibilidad) {
-      const minX = Math.min(boxA.x, boxB.x);
-      const maxX = Math.max(boxA.x + boxA.width, boxB.x + boxB.width);
-      
-      agregarGuia({
-        points: [minX, centroBY, maxX, centroBY],
-        type: `elemento-cy-${elementoBId}`,
-        style: 'dashed',
-        priority: 'elemento'
-      });
-    }
-  }, [margenSensibilidad, agregarGuia]);
-
-  /**
-   * Función principal para mostrar guías durante el drag
-   * @param {Object} pos - Posición actual del elemento
-   * @param {string} idActual - ID del elemento que se está moviendo
-   * @param {Array} objetos - Array de todos los objetos
-   * @param {Object} elementRefs - Referencias a los nodos Konva
-   */
+  // ---- Mostrar guías durante el drag ----
   const mostrarGuias = useCallback((pos, idActual, objetos, elementRefs) => {
-    const nodeActual = elementRefs.current?.[idActual];
-    if (!nodeActual) {
-      console.warn(`No se encontró el nodo para ${idActual}`);
-      return;
-    }
+    const node = elementRefs.current?.[idActual];
+    if (!node) return;
+    const stage = node.getStage?.();
+    if (!stage) return;
 
     try {
-      const boxActual = nodeActual.getClientRect();
-      
-      // Limpiar guías anteriores
-      setGuiaLineas([]);
+      const selfBoxBefore = node.getClientRect({ relativeTo: stage });
+      const selfCx = selfBoxBefore.x + selfBoxBefore.width / 2;
+      const selfCy = selfBoxBefore.y + selfBoxBefore.height / 2;
 
-      // 1. PRIORIDAD: Verificar centro de la sección (líneas continuas)
-      const snapSeccion = verificarCentroSeccion(boxActual, nodeActual, idActual, objetos);
-
-      // 2. SECUNDARIO: Verificar contra otros elementos (líneas punteadas)
-      // Solo si no hay snap con la sección para evitar saturación
-      if (!snapSeccion.snapX || !snapSeccion.snapY) {
-        verificarContraOtrosElementos(boxActual, idActual, objetos, elementRefs);
-      }
-
-      // 3. Auto-fade: limpiar guías después de 300ms de inactividad
-      if (window._guidesTimeout) {
-        clearTimeout(window._guidesTimeout);
-      }
-      
-      window._guidesTimeout = setTimeout(() => {
+      const seccion = obtenerSeccionElemento(idActual, objetos);
+      if (!seccion) {
         setGuiaLineas([]);
-      }, 300);
+        return;
+      }
+      const offY = calcularOffsetSeccion(seccion.id);
+      const secCx = anchoCanvas / 2;
+      const secCy = offY + seccion.altura / 2;
 
-    } catch (error) {
-      console.error('Error en mostrarGuias:', error);
+      const lines = [];
+
+      // 1) SECCIÓN: mostrar CX/CY SOLO si está cerca
+      const distSecX = Math.abs(selfCx - secCx);
+      const distSecY = Math.abs(selfCy - secCy);
+
+      if (distSecX <= sectionShowRadius) {
+        lines.push({
+          type: "seccion-cx",
+          priority: "seccion",
+          style: "solid",
+          points: [secCx, offY, secCx, offY + seccion.altura] // línea vertical solo dentro de la sección
+        });
+        // (opcional snap al centro de sección si querés)
+        if (distSecX <= magnetRadius) {
+          const delta = deltaForGuide("x", secCx, selfBoxBefore);
+          node.x(node.x() + delta * snapStrength);
+        }
+      }
+      if (distSecY <= sectionShowRadius) {
+        lines.push({
+          type: "seccion-cy",
+          priority: "seccion",
+          style: "solid",
+          points: [0, secCy, anchoCanvas, secCy] // la sección ocupa todo el ancho
+        });
+        if (distSecY <= magnetRadius) {
+          const delta = deltaForGuide("y", secCy, selfBoxBefore);
+          node.y(node.y() + delta * snapStrength);
+        }
+      }
+
+      // 2) ELEMENTOS (MISMA SECCIÓN): elegimos mejor candidato por eje y, si hay snap, dibujamos reach punteada
+      const elementGuides = buildSameSectionGuides(node, stage, objetos, elementRefs, idActual, seccion.id);
+
+      const nearX = elementGuides
+        .filter(g => g.axis === "x")
+        .map(g => ({ g, dist: Math.abs(selfCx - g.value) }))
+        .sort((a,b)=>a.dist-b.dist)[0];
+
+      const nearY = elementGuides
+        .filter(g => g.axis === "y")
+        .map(g => ({ g, dist: Math.abs(selfCy - g.value) }))
+        .sort((a,b)=>a.dist-b.dist)[0];
+
+      // aplicar snap sólo si está dentro del magnetRadius (para reducir ruido)
+      const trySnapAxis = (axis, near) => {
+        if (!near) return false;
+        if (near.dist > magnetRadius) return false;
+        const fresh = node.getClientRect({ relativeTo: stage });
+        const delta = deltaForGuide(axis, near.g.value, fresh);
+        if (axis === "x") node.x(node.x() + delta * snapStrength);
+        else node.y(node.y() + delta * snapStrength);
+        return true;
+      };
+
+      const snappedX = trySnapAxis("x", nearX);
+      const snappedY = trySnapAxis("y", nearY);
+
+      // Recalcular box luego del snap para dibujar reach exacta
+      const selfBoxAfter = node.getClientRect({ relativeTo: stage });
+
+      if (snappedX && nearX?.g?.targetBox) {
+        lines.push({
+          type: "reach-x",
+          priority: "elemento",
+          style: "dashed", // 🔴 punteada
+          points: reachVertical(nearX.g.value, selfBoxAfter, nearX.g.targetBox)
+        });
+      }
+      if (snappedY && nearY?.g?.targetBox) {
+        lines.push({
+          type: "reach-y",
+          priority: "elemento",
+          style: "dashed", // 🔴 punteada
+          points: reachHorizontal(nearY.g.value, selfBoxAfter, nearY.g.targetBox)
+        });
+      }
+
+      setGuiaLineas(lines);
+    } catch (e) {
+      // silencioso para no cortar el drag
     }
-  }, [verificarCentroSeccion, verificarContraOtrosElementos]);
+  }, [
+    anchoCanvas, altoCanvas,
+    magnetRadius, sectionShowRadius, snapStrength,
+    seccionesOrdenadas,
+    obtenerSeccionElemento, calcularOffsetSeccion
+  ]);
 
-  /**
-   * Configurar las líneas de guía en el evento onDragEnd
-   */
-  const configurarDragEnd = useCallback(() => {
-    limpiarGuias();
-  }, [limpiarGuias]);
+  const limpiarGuias = useCallback(() => setGuiaLineas([]), []);
+  const configurarDragEnd = useCallback(() => setGuiaLineas([]), []);
 
   return {
-    // Estado
     guiaLineas,
-    
-    // Funciones principales
     mostrarGuias,
     limpiarGuias,
-    configurarDragEnd,
-    
-    // Funciones auxiliares (por si necesitas usarlas externamente)
-    verificarCentroSeccion,
-    verificarContraOtrosElementos,
-    obtenerSeccionElemento,
-    calcularOffsetSeccion
+    configurarDragEnd
   };
 }

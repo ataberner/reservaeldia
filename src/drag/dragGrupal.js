@@ -11,9 +11,12 @@ export function startDragGrupalLider(e, obj) {
       window._skipIndividualEnd = new Set(seleccion);
       window._skipUntil = 0;
 
-      console.log("🎯 INICIANDO DRAG GRUPAL");
-      console.log("Líder del grupo:", obj.id);
-      console.log("Sección del líder:", obj.seccionId);
+      window._isDragging = true;
+      try {
+        document.body.style.cursor = "grabbing";
+      } catch {}
+      window.dispatchEvent(new Event("dragging-start"));
+
 
       // Bloqueo de drag individual en seguidores + snapshot inicial
       seleccion.forEach((id) => {
@@ -55,7 +58,6 @@ export function previewDragGrupal(e, obj, onChange) {
 export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
   // Solo procesa el líder
   if (window._grupoLider && obj.id === window._grupoLider) {
-    console.log("🏁 FIN DRAG GRUPAL - LÍDER:", obj.id);
 
     const stage = e.target.getStage();
     const currentPos = stage.getPointerPosition();

@@ -1,42 +1,62 @@
 // src/components/editor/countdown/CountdownKonva.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Group, Rect, Text, Line } from "react-konva";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Group, Rect, Text } from "react-konva";
 import { getRemainingParts, fmt } from "./countdownUtils";
 import { calcularOffsetY } from "@/utils/layout";
 
+import {
+  startDragGrupalLider,
+  previewDragGrupal,
+  endDragGrupal,
+} from "@/drag/dragGrupal";
+import {
+  startDragIndividual,
+  previewDragIndividual,
+  endDragIndividual,
+} from "@/drag/dragIndividual";
+
 export default function CountdownKonva({
   obj,
-  registerRef,                 // (id, node) => void  → para SelectionBounds
+  registerRef,                 // (id, node) => void
   isSelected,
   seccionesOrdenadas,
   altoCanvas,
   onSelect,                     // (id, e) => void
   onChange,                     // (id, cambios) => void
+
+  // opcionales
+  onDragMovePersonalizado,      // (pos, id) => void
+  onDragEndPersonalizado,       // () => void
+  dragStartPos,                 // ref
+  hasDragged,                   // ref
 }) {
-  // ⏱️ Estado interno para forzar re-render cada segundo (sin tocar Firestore)
+  // 1) Tick cada 1s (no re-render si estamos arrastrando)
   const [tick, setTick] = useState(0);
+  const draggingRef = useRef(false);
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => (n + 1) % 60), 1000);
+    const t = setInterval(() => {
+      if (!draggingRef.current) setTick((n) => (n + 1) % 60);
+    }, 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Nodo raíz (Group) para registrar en elementRefs
-  const groupRef = useRef(null);
-  useEffect(() => {
-    if (groupRef.current && typeof registerRef === "function") {
-      registerRef(obj.id, groupRef.current);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupRef.current, obj.id]);
+  // 2) Registrar nodo raíz para SelectionBounds/guías
+  const handleRef = useCallback(
+    (node) => {
+      if (node && typeof registerRef === "function") registerRef(obj.id, node);
+    },
+    [obj.id, registerRef]
+  );
 
-  // Posición absoluta (aplicar offset de su sección)
+  // 3) y absoluta = y relativa + offset de sección
   const yAbs = useMemo(() => {
-    const idx = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
-    const off = calcularOffsetY(seccionesOrdenadas, idx, altoCanvas);
+    const idx = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
+    const safe = idx >= 0 ? idx : 0;
+    const off = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
     return (obj.y ?? 0) + off;
   }, [obj.y, obj.seccionId, seccionesOrdenadas, altoCanvas]);
 
-  // Datos de tiempo (recalcula en cada tick)
+  // 4) Partes del tiempo
   const state = getRemainingParts(obj.fechaObjetivo);
   const parts = [
     { key: "d", value: fmt(state.d, obj.padZero), label: "Días" },
@@ -45,126 +65,198 @@ export default function CountdownKonva({
     { key: "s", value: fmt(state.s, obj.padZero), label: "Seg" },
   ];
 
-  
-  const handleDragEnd = (e) => {
-    const node = e.target;
-    // 🔥 Mandamos coords absolutas; CanvasEditor se encarga de convertir y decidir sección
-    onChange?.(obj.id, { x: node.x(), y: node.y(), finalizoDrag: true });
-  };
+  // 5) Layout
+  const n = parts.length;
+  const gap = obj.gap ?? 8;
+  const paddingY = obj.paddingY ?? 6;
+  const paddingX = obj.paddingX ?? 8;
 
+  const valueSize = obj.fontSize ?? 16;
+  const labelSize = obj.labelSize ?? 10;
+  const showLabels = !!obj.showLabels;
 
-// --- cálculos comunes ---
-const n = parts.length;
-const gap = obj.gap ?? 8;
-const paddingY = obj.paddingY ?? 6;
-const paddingX = obj.paddingX ?? 8;
+  const chipW = (obj.chipWidth ?? 46) + paddingX * 2;
+  const chipH = paddingY * 2 + valueSize + (showLabels ? labelSize : 0);
 
-const valueSize = obj.fontSize ?? 16;
-const labelSize = obj.labelSize ?? 10;
-const showLabels = !!obj.showLabels;
+  const totalChipsW = n * chipW + gap * (n - 1);
+  const containerW = obj.width ?? totalChipsW;
+  const containerH = chipH;
 
-// ancho y alto de cada chip como en CSS
-const chipW = (obj.chipWidth ?? 46) + paddingX * 2;
-const chipH = paddingY * 2 + valueSize + (showLabels ? labelSize : 0);
+  const startX = (containerW - totalChipsW) / 2;
 
-// ancho total del conjunto
-const totalChipsW = n * chipW + gap * (n - 1);
-const containerW = obj.width ?? totalChipsW;
-const containerH = chipH; // el alto del contenedor es el de un chip
+  // 6) Handlers de drag
+  const commonProps = useMemo(
+    () => ({
+      x: obj.x ?? 0,
+      y: yAbs,
+      draggable: true,
+      listening: true,
+      ref: handleRef,
 
-// centrar el conjunto dentro del ancho disponible
-const startX = (containerW - totalChipsW) / 2;
+      onMouseDown: (e) => {
+        e.cancelBubble = true;
+        if (hasDragged?.current != null) hasDragged.current = false;
+      },
 
+      onClick: (e) => {
+        e.cancelBubble = true;
+        onSelect?.(obj.id, e);
+      },
 
+      onDragStart: (e) => {
+        draggingRef.current = true;
+        window._isDragging = true;
+        if (hasDragged?.current != null) hasDragged.current = true;
+
+        // Cachear el grupo para acelerar drag
+        try {
+          const node = e.target;         // ← será el Group (nodo draggable)
+          node.cache({ pixelRatio: 1 });
+          node.drawHitFromCache();
+          node.getLayer()?.batchDraw();
+        } catch {}
+
+        const esGrupal = startDragGrupalLider(e, obj);
+        if (!esGrupal) startDragIndividual(e, dragStartPos);
+      },
+
+      onDragMove: (e) => {
+        if (window._grupoLider) {
+          if (obj.id === window._grupoLider) previewDragGrupal(e, obj, onChange);
+          return;
+        }
+        // Individual: no tocar estado, preview liviano
+        previewDragIndividual(e, obj, (pos) => {
+          onDragMovePersonalizado?.(pos, obj.id);
+        });
+      },
+
+      onDragEnd: (e) => {
+        draggingRef.current = false;
+        window._isDragging = false;
+
+        // Limpiar cache
+        try {
+          const node = e.target;
+          node.clearCache();
+          node.getLayer()?.batchDraw();
+        } catch {}
+
+        // Cerrar drag grupal primero
+        const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});
+        if (fueGrupal) {
+          onDragEndPersonalizado?.();
+          return;
+        }
+        // Cerrar drag individual
+        const node = e.target;
+        endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+      },
+    }),
+    [
+      obj.id,
+      obj.x,
+      yAbs,
+      handleRef,
+      onSelect,
+      onChange,
+      onDragMovePersonalizado,
+      onDragEndPersonalizado,
+      dragStartPos,
+      hasDragged,
+    ]
+  );
+
+  // 7) Render (dejamos UN hijo con listening=true para hit)
   return (
-    <Group
-  ref={groupRef}
-  x={obj.x ?? 0}
-  y={yAbs}
-  draggable
-  onDragMove={() => {
-    onChange?.(obj.id, { isDragPreview: true, x: groupRef.current.x(), y: groupRef.current.y() });
-  }}
-  onDragEnd={handleDragEnd}
-  onClick={(e) => { e.cancelBubble = true; onSelect?.(obj.id, e); }}
-  listening
->
-  {/* Fondo del bloque */}
-  <Rect
-    width={containerW}
-    height={containerH}
-    fill={obj.background || "transparent"}
-    stroke={isSelected ? "#773dbe" : "transparent"}
-    strokeWidth={isSelected ? 2 : 0}
-    cornerRadius={8}
-  />
+    <Group {...commonProps}>
+      {/* Fondo del bloque: DEBE participar del hit */}
+      <Rect
+        width={containerW}
+        height={containerH}
+        fill={obj.background || "transparent"}
+        stroke={isSelected ? "#773dbe" : "transparent"}
+        strokeWidth={isSelected ? 2 : 0}
+        cornerRadius={8}
+        // 👇 importante: dejarlo en true (o quitar la prop) para que haya hit
+        listening={true}
+        perfectDrawEnabled={false}
+      />
 
-  {/* Contenido normal */}
-  {!state.invalid && !state.ended && (
-    <Group>
-      {parts.map((it, i) => {
-        const x = startX + i * (chipW + gap);
-        const sepText = obj.separator || "";
+      {/* Contenido */}
+      {!state.invalid && !state.ended && (
+        <Group listening={false}>
+          {parts.map((it, i) => {
+            const x = startX + i * (chipW + gap);
+            const sepText = obj.separator || "";
 
-        return (
-          <Group key={it.key} x={x} y={0}>
-            {/* Chip */}
-            {obj.layout !== "minimal" && (
-              <Rect
-                width={chipW}
-                height={chipH}
-                fill={obj.boxBg || "#fff"}
-                stroke={obj.boxBorder || "#e5e7eb"}
-                cornerRadius={Math.min(obj.boxRadius ?? 8, chipW / 2, chipH / 2)}
-                shadowBlur={obj.boxShadow ? 8 : 0}
-                shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
-              />
-            )}
+            return (
+              <Group key={it.key} x={x} y={0} listening={false}>
+                {/* Chip */}
+                {obj.layout !== "minimal" && (
+                  <Rect
+                    width={chipW}
+                    height={chipH}
+                    fill={obj.boxBg || "#fff"}
+                    stroke={obj.boxBorder || "#e5e7eb"}
+                    cornerRadius={Math.min(obj.boxRadius ?? 8, chipW / 2, chipH / 2)}
+                    shadowBlur={obj.boxShadow ? 8 : 0}
+                    shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                    shadowForStrokeEnabled={false}
+                  />
+                )}
 
-            {/* Valor */}
-            <Text
-              text={it.value}
-              fill={obj.color || "#111827"}
-              fontFamily={obj.fontFamily}
-              fontStyle="bold"
-              fontSize={valueSize}
-              width={chipW}
-              align="center"
-              y={paddingY + valueSize / 2}
-              offsetY={valueSize / 2}
-            />
+                {/* Valor */}
+                <Text
+                  text={it.value}
+                  fill={obj.color || "#111827"}
+                  fontFamily={obj.fontFamily}
+                  fontStyle="bold"
+                  fontSize={valueSize}
+                  width={chipW}
+                  align="center"
+                  y={paddingY + valueSize / 2}
+                  offsetY={valueSize / 2}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
 
-            {/* Etiqueta */}
-            {showLabels && (
-              <Text
-                text={it.label}
-                fill={obj.labelColor || "#6b7280"}
-                fontFamily={obj.fontFamily}
-                fontSize={labelSize}
-                width={chipW}
-                align="center"
-                y={paddingY + valueSize + labelSize / 2}
-                offsetY={labelSize / 2}
-              />
-            )}
+                {/* Etiqueta */}
+                {showLabels && (
+                  <Text
+                    text={it.label}
+                    fill={obj.labelColor || "#6b7280"}
+                    fontFamily={obj.fontFamily}
+                    fontSize={labelSize}
+                    width={chipW}
+                    align="center"
+                    y={paddingY + valueSize + labelSize / 2}
+                    offsetY={labelSize / 2}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                )}
 
-            {/* Separador textual */}
-            {!!sepText && i < parts.length - 1 && (
-              <Text
-                x={chipW + gap * 0.25}
-                y={chipH * 0.3}
-                text={sepText}
-                fill={obj.color || "#111827"}
-                fontFamily={obj.fontFamily}
-                fontSize={valueSize}
-              />
-            )}
-          </Group>
-        );
-      })}
+                {/* Separador textual */}
+                {!!sepText && i < parts.length - 1 && (
+                  <Text
+                    x={chipW + gap * 0.25}
+                    y={chipH * 0.3}
+                    text={sepText}
+                    fill={obj.color || "#111827"}
+                    fontFamily={obj.fontFamily}
+                    fontSize={valueSize}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                )}
+              </Group>
+            );
+          })}
+        </Group>
+      )}
     </Group>
-  )}
-</Group>
-
   );
 }

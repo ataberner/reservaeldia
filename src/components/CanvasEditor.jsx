@@ -2214,26 +2214,77 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         isSelected={elementosSeleccionados.includes(obj.id)}
                         seccionesOrdenadas={seccionesOrdenadas}
                         altoCanvas={altoCanvas}
+
+                        // ✅ selección
                         onSelect={(id, e) => {
                           e?.evt && (e.evt.cancelBubble = true);
                           setElementosSeleccionados([id]);
                         }}
+
+                        // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
+                        onDragMovePersonalizado={(pos, id) => {
+                          window._isDragging = true;
+                          requestAnimationFrame(() => {
+                            if (typeof actualizarPosicionBotonOpciones === "function") {
+                              actualizarPosicionBotonOpciones();
+                            }
+                          });
+                        }}
+
+                        // ✅ FIN de drag: limpiar guías / UI auxiliar
+                        onDragEndPersonalizado={() => {
+                          window._isDragging = false;
+                          setGuiaLineas([]);
+                          if (typeof actualizarPosicionBotonOpciones === "function") {
+                            actualizarPosicionBotonOpciones();
+                          }
+                        }}
+
+                        // ✅ refs para el motor de drag
+                        dragStartPos={dragStartPos}
+                        hasDragged={hasDragged}
+
+                        // ✅ ¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
                         onChange={(id, cambios) => {
-                          // 👇 misma firma que usás para GaleriaKonva/ElementoCanvas
                           setObjetos(prev => {
                             const i = prev.findIndex(o => o.id === id);
                             if (i === -1) return prev;
 
-                            // 🚩 Atajo: si esto es el final del drag, CanvasEditor ya maneja
-                            // el cambio de sección con 'finalizoDrag' y Y absoluta.
+                            const objOriginal = prev[i];
+
+                            // 🟣 Si no es final de drag, mergeamos sin más (no tocar coords)
+                            if (!cambios.finalizoDrag) {
+                              const updated = [...prev];
+                              updated[i] = { ...updated[i], ...cambios };
+                              return updated;
+                            }
+
+                            // 🟣 Final de drag: 'cambios.y' viene ABSOLUTA (Stage coords)
+                            const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+                              cambios.y,
+                              objOriginal.seccionId,
+                              seccionesOrdenadas
+                            );
+
+                            let next = { ...cambios };
+                            delete next.finalizoDrag;
+
+                            if (nuevaSeccion) {
+                              next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
+                            } else {
+                              // convertir y absoluta → y relativa a la sección actual
+                              next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
+                            }
+
                             const updated = [...prev];
-                            updated[i] = { ...updated[i], ...cambios };
+                            updated[i] = { ...updated[i], ...next };
                             return updated;
                           });
                         }}
                       />
                     );
                   }
+
 
 
                   return (

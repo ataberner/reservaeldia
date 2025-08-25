@@ -1150,7 +1150,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   } = useGuiasCentrado({
     anchoCanvas: 800,
     altoCanvas: altoCanvasDinamico,
-    margenSensibilidad: 5
+    margenSensibilidad: 5,
+    seccionesOrdenadas
   });
 
   // 🚀 Función para actualizar posición del botón SIN re-render
@@ -2126,7 +2127,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         }}
                         onDragEndPersonalizado={() => {
                           window._isDragging = false;
-                          setGuiaLineas([]);
+                          limpiarGuias();
                           if (typeof actualizarPosicionBotonOpciones === "function") {
                             actualizarPosicionBotonOpciones();
                           }
@@ -2175,7 +2176,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         // ✅ FIN de drag: limpiar guías / UI auxiliar
                         onDragEndPersonalizado={() => {
                           window._isDragging = false;
-                          setGuiaLineas([]);
+                          limpiarGuias();
                           if (typeof actualizarPosicionBotonOpciones === "function") {
                             actualizarPosicionBotonOpciones();
                           }
@@ -2559,17 +2560,28 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-                {/* Líneas de guía dinámicas */}
-                {guiaLineas.map((linea, i) => (
-                  <Line
-                    key={i}
-                    points={linea.points}
-                    stroke="#773dbe"
-                    strokeWidth={1}
-                    dash={[4, 4]}
-                    listening={false}
-                  />
-                ))}
+                {/* Líneas de guía dinámicas mejoradas */}
+                {guiaLineas.map((linea, i) => {
+                  // Determinar el estilo visual según el tipo
+                  const esLineaSeccion = linea.priority === 'seccion';
+
+                  return (
+                    <Line
+                      key={`${linea.type}-${i}`}
+                      points={linea.points}
+                      stroke={esLineaSeccion ? "#773dbe" : "#9333ea"} // Violeta más intenso para sección
+                      strokeWidth={esLineaSeccion ? 2 : 1} // Líneas de sección más gruesas
+                      dash={linea.style === 'dashed' ? [8, 6] : undefined} // Punteado para elementos
+                      opacity={esLineaSeccion ? 0.9 : 0.7} // Líneas de sección más opacas
+                      listening={false}
+                      perfectDrawEnabled={false}
+                      // Efecto sutil de resplandor para líneas de sección
+                      shadowColor={esLineaSeccion ? "rgba(119, 61, 190, 0.3)" : undefined}
+                      shadowBlur={esLineaSeccion ? 4 : 0}
+                      shadowEnabled={esLineaSeccion}
+                    />
+                  );
+                })}
 
 
               </Layer>

@@ -34,6 +34,7 @@ import FondoSeccion from './editor/FondoSeccion';
 import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
+import useGuiasCentrado from '@/hooks/useGuiasCentrado';
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -239,7 +240,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const guiaLayerRef = useRef(null);
   const [hoverId, setHoverId] = useState(null);
   const altoCanvas = secciones.reduce((acc, s) => acc + s.altura, 0) || 800;
-  const [guiaLineas, setGuiaLineas] = useState([]);
   const [scale, setScale] = useState(1);
   const [seccionesAnimando, setSeccionesAnimando] = useState([]);
   const { refrescar: refrescarPlantillasDeSeccion } = usePlantillasDeSeccion();
@@ -1083,77 +1083,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  const mostrarGuias = (pos, idActual) => {
-    const margen = 5;          // sensibilidad (px)
-    const ancho = 800;        // ancho canvas
-    const alto = altoCanvasDinamico;
-    const cxCanvas = ancho / 2;
-    const cyCanvas = alto / 2;
-
-    const nodeActual = elementRefs.current[idActual];
-    if (!nodeActual) return;
-
-    const boxA = nodeActual.getClientRect();
-
-    // 👉 Flags para NO repetir la misma guía
-    const done = {
-      cx: false, cy: false,
-      l: false, r: false,
-      t: false, b: false
-    };
-
-    const nuevas = [];
-
-    /* ---------- helper ------------- */
-    const addGuide = ({ x1, y1, x2, y2, type }) => {
-      if (done[type]) return;     // ya hay una guía de ese tipo
-      nuevas.push({ points: [x1, y1, x2, y2], type });
-      done[type] = true;
-    };
-
-    /* ---------- 1) centro canvas ----- */
-    if (Math.abs(boxA.x + boxA.width / 2 - cxCanvas) < margen) {
-      addGuide({ x1: cxCanvas, y1: 0, x2: cxCanvas, y2: alto, type: 'cx' });
-      nodeActual.x(nodeActual.x() + (cxCanvas - (boxA.x + boxA.width / 2)));
-    }
-    if (Math.abs(boxA.y + boxA.height / 2 - cyCanvas) < margen) {
-      addGuide({ x1: 0, y1: cyCanvas, x2: ancho, y2: cyCanvas, type: 'cy' });
-      nodeActual.y(nodeActual.y() + (cyCanvas - (boxA.y + boxA.height / 2)));
-    }
-
-    /* ---------- 2) contra otros objetos ---- */
-    objetos.forEach(o => {
-      if (o.id === idActual) return;
-      const n = elementRefs.current[o.id];
-      if (!n) return;
-      const b = n.getClientRect();
-
-      // centros
-      if (Math.abs(boxA.x + boxA.width / 2 - (b.x + b.width / 2)) < margen)
-        addGuide({ x1: b.x + b.width / 2, y1: 0, x2: b.x + b.width / 2, y2: alto, type: 'cx' });
-      if (Math.abs(boxA.y + boxA.height / 2 - (b.y + b.height / 2)) < margen)
-        addGuide({ x1: 0, y1: b.y + b.height / 2, x2: ancho, y2: b.y + b.height / 2, type: 'cy' });
-
-      // bordes (left / right / top / bottom)
-      if (Math.abs(boxA.x - b.x) < margen)
-        addGuide({ x1: b.x, y1: 0, x2: b.x, y2: alto, type: 'l' });
-      if (Math.abs(boxA.x + boxA.width - (b.x + b.width)) < margen)
-        addGuide({ x1: b.x + b.width, y1: 0, x2: b.x + b.width, y2: alto, type: 'r' });
-      if (Math.abs(boxA.y - b.y) < margen)
-        addGuide({ x1: 0, y1: b.y, x2: ancho, y2: b.y, type: 't' });
-      if (Math.abs(boxA.y + boxA.height - (b.y + b.height)) < margen)
-        addGuide({ x1: 0, y1: b.y + b.height, x2: ancho, y2: b.y + b.height, type: 'b' });
-    });
-
-    /* ---------- publicar resultado ---------- */
-    setGuiaLineas(nuevas);
-
-    // ⏲️  auto-fade: limpiá guías si el usuario deja de mover 300 ms
-    clearTimeout(window._guidesTimeout);
-    window._guidesTimeout = setTimeout(() => setGuiaLineas([]), 300);
-  };
-
-
 
   useKeyboardShortcuts({
     onDeshacer,
@@ -1211,6 +1140,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const escalaVisual = zoom === 1 ? scale : (zoom * 1.15);
   const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
+
+  // 🆕 NUEVO HOOK PARA GUÍAS
+  const {
+    guiaLineas,
+    mostrarGuias,
+    limpiarGuias,
+    configurarDragEnd
+  } = useGuiasCentrado({
+    anchoCanvas: 800,
+    altoCanvas: altoCanvasDinamico,
+    margenSensibilidad: 5
+  });
 
   // 🚀 Función para actualizar posición del botón SIN re-render
   const actualizarPosicionBotonOpciones = useCallback(() => {
@@ -2454,7 +2395,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       }}
 
                       onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                        mostrarGuias(pos, elementId);
+                        mostrarGuias(pos, elementId, objetos, elementRefs);
 
                         if (elementosSeleccionados.includes(elementId)) {
                           requestAnimationFrame(() => {
@@ -2464,7 +2405,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           });
                         }
                       }}
-                      onDragEndPersonalizado={isInEditMode ? null : () => setGuiaLineas([])}
+                      onDragEndPersonalizado={isInEditMode ? null : () => configurarDragEnd([])}
                       dragStartPos={dragStartPos}
                       hasDragged={hasDragged}
                     />

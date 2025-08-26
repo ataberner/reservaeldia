@@ -35,6 +35,7 @@ import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import useGuiasCentrado from '@/hooks/useGuiasCentrado';
+import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar";
 import SelectorColorSeccion from "./SelectorColorSeccion";
 import { ALL_FONTS } from '../config/fonts';
 import {
@@ -1062,7 +1063,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const onSelectSeccion = (id) => {
     try {
       // si ya tenés un setSeccionActivaId, llamalo acá:
-       setSeccionActivaId(id);
+      setSeccionActivaId(id);
 
       window._seccionActivaId = id;
       window.dispatchEvent(new CustomEvent("seccion-activa", { detail: { id } }));
@@ -2804,296 +2805,21 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       )}
 
 
+      <FloatingTextToolbar
+        objetoSeleccionado={objetoSeleccionado}
+        setObjetos={setObjetos}
+        elementosSeleccionados={elementosSeleccionados}
+        mostrarSelectorFuente={mostrarSelectorFuente}
+        setMostrarSelectorFuente={setMostrarSelectorFuente}
+        mostrarSelectorTamaño={mostrarSelectorTamaño}
+        setMostrarSelectorTamaño={setMostrarSelectorTamaño}
+        ALL_FONTS={ALL_FONTS}
+        fontManager={fontManager}
+        tamaniosDisponibles={tamaniosDisponibles}
+        onCambiarAlineacion={onCambiarAlineacion}
+      />
 
 
-      {(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma") && (() => {
-        const esTexto = objetoSeleccionado?.tipo === "texto";
-        const esFormaConTexto = objetoSeleccionado?.tipo === "forma" && objetoSeleccionado?.texto;
-        const esRect = objetoSeleccionado?.figura === "rect";
-
-        return (
-          <div
-            className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
-            style={{
-              top: "120px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "auto",
-              maxWidth: "800px",
-            }}
-          >
-            {/* 🎨 Color de fondo (solo formas) */}
-            {objetoSeleccionado?.tipo === "forma" && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-600">Fondo</label>
-                <input
-                  type="color"
-                  value={objetoSeleccionado.color || "#ffffff"}
-                  onChange={(e) =>
-                    setObjetos((prev) =>
-                      prev.map((o) =>
-                        elementosSeleccionados.includes(o.id)
-                          ? { ...o, color: e.target.value }
-                          : o
-                      )
-                    )
-                  }
-                  className="w-8 h-6 rounded"
-                />
-              </div>
-            )}
-
-            {/* 🟣 Radio esquinas (solo rectángulos) */}
-            {objetoSeleccionado?.tipo === "forma" && esRect && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-600">Esquinas</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={objetoSeleccionado.cornerRadius || 0}
-                  onChange={(e) =>
-                    setObjetos((prev) =>
-                      prev.map((o) =>
-                        elementosSeleccionados.includes(o.id)
-                          ? { ...o, cornerRadius: parseInt(e.target.value) }
-                          : o
-                      )
-                    )
-                  }
-                />
-                <span className="text-xs text-gray-700">{objetoSeleccionado.cornerRadius || 0}</span>
-              </div>
-            )}
-
-            {/* Selector de fuente */}
-            <div
-              className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
-                }`}
-              style={{ fontFamily: objetoSeleccionado?.fontFamily || "sans-serif" }}
-              title="Fuente"
-              onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
-            >
-              {objetoSeleccionado?.fontFamily || "sans-serif"}
-
-              {mostrarSelectorFuente && (
-                <div
-                  className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-4 w-80 max-h-[500px] overflow-auto"
-                  style={{ top: "40px", left: "-200px" }}
-                >
-                  <div className="text-xs font-semibold text-gray-600 mb-2">Fuente</div>
-                  {ALL_FONTS.map((fuente) => {
-                    const estaActiva = objetoSeleccionado?.fontFamily === fuente.valor;
-                    const estaCargada = fontManager.isFontAvailable(fuente.valor);
-
-                    return (
-                      <div
-                        key={fuente.valor}
-                        className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${estaCargada ? "hover:bg-gray-100" : "hover:bg-gray-50 opacity-70"
-                          }`}
-                        style={{ fontFamily: estaCargada ? fuente.valor : "sans-serif" }}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            await fontManager.loadFonts([fuente.valor]);
-                            setObjetos((prev) =>
-                              prev.map((o) =>
-                                elementosSeleccionados.includes(o.id)
-                                  ? { ...o, fontFamily: fuente.valor }
-                                  : o
-                              )
-                            );
-                          } catch (error) {
-                            console.error("Error cargando fuente:", error);
-                          }
-                        }}
-                      >
-                        <span className="text-xs text-gray-500 w-20">{fuente.categoria}</span>
-                        <span className="text-sm text-gray-700 flex-1">{fuente.nombre}</span>
-                        <span className="text-base text-gray-400" style={{ fontFamily: fuente.valor }}>
-                          AaBbCc
-                        </span>
-                        {estaActiva && <Check className="w-4 h-4 text-purple-600 ml-2" />}
-                        {!estaCargada && (
-                          <div className="w-4 h-4 ml-2">
-                            <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Control de tamaño */}
-            <div className="relative flex items-center bg-white border rounded-lg overflow-hidden">
-              <button
-                className="px-2 py-1 hover:bg-gray-100 transition"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setObjetos((prev) =>
-                    prev.map((o) => {
-                      if (!elementosSeleccionados.includes(o.id)) return o;
-                      const actual = o.fontSize || 24;
-                      return { ...o, fontSize: Math.max(6, actual - 2) };
-                    })
-                  );
-                }}
-              >
-                −
-              </button>
-
-              <div
-                className={`px-2 py-1 text-sm cursor-pointer transition-all ${mostrarSelectorTamaño ? "bg-gray-200" : "hover:bg-gray-100"
-                  }`}
-                onClick={() => setMostrarSelectorTamaño(!mostrarSelectorTamaño)}
-              >
-                {objetoSeleccionado?.fontSize || 24}
-                {mostrarSelectorTamaño && (
-                  <div
-                    className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
-                    style={{ top: "40px", left: "-10px" }}
-                  >
-                    {tamaniosDisponibles.map((tam) => (
-                      <div
-                        key={tam}
-                        className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setObjetos((prev) =>
-                            prev.map((o) =>
-                              elementosSeleccionados.includes(o.id)
-                                ? { ...o, fontSize: tam }
-                                : o
-                            )
-                          );
-                          setMostrarSelectorTamaño(false);
-                        }}
-                      >
-                        {tam}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                className="px-2 py-1 hover:bg-gray-100 transition"
-                onClick={() => {
-                  setObjetos((prev) =>
-                    prev.map((o) => {
-                      if (!elementosSeleccionados.includes(o.id)) return o;
-                      return { ...o, fontSize: Math.min(120, (o.fontSize || 24) + 2) };
-                    })
-                  );
-                }}
-              >
-                +
-              </button>
-            </div>
-
-            {/* 🎨 Color de texto */}
-            <input
-              type="color"
-              value={objetoSeleccionado?.colorTexto || "#000000"}
-              onChange={(e) => {
-                setObjetos((prev) =>
-                  prev.map((o) =>
-                    elementosSeleccionados.includes(o.id)
-                      ? { ...o, colorTexto: e.target.value }
-                      : o
-                  )
-                );
-              }}
-            />
-
-            {/* B / I / S */}
-            <button
-              className={`px-2 py-1 rounded border text-sm font-bold transition ${objetoSeleccionado?.fontWeight === "bold" ? "bg-gray-200" : "hover:bg-gray-100"
-                }`}
-              onClick={() =>
-                setObjetos((prev) =>
-                  prev.map((o) =>
-                    elementosSeleccionados.includes(o.id)
-                      ? {
-                        ...o,
-                        fontWeight: o.fontWeight === "bold" ? "normal" : "bold",
-                      }
-                      : o
-                  )
-                )
-              }
-            >
-              B
-            </button>
-
-            <button
-              className={`px-2 py-1 rounded border text-sm italic transition ${objetoSeleccionado?.fontStyle === "italic" ? "bg-gray-200" : "hover:bg-gray-100"
-                }`}
-              onClick={() =>
-                setObjetos((prev) =>
-                  prev.map((o) =>
-                    elementosSeleccionados.includes(o.id)
-                      ? {
-                        ...o,
-                        fontStyle: o.fontStyle === "italic" ? "normal" : "italic",
-                      }
-                      : o
-                  )
-                )
-              }
-            >
-              I
-            </button>
-
-            <button
-              className={`px-2 py-1 rounded border text-sm transition ${objetoSeleccionado?.textDecoration === "underline"
-                ? "bg-gray-200 underline"
-                : "hover:bg-gray-100"
-                }`}
-              onClick={() =>
-                setObjetos((prev) =>
-                  prev.map((o) =>
-                    elementosSeleccionados.includes(o.id)
-                      ? {
-                        ...o,
-                        textDecoration:
-                          o.textDecoration === "underline" ? "none" : "underline",
-                      }
-                      : o
-                  )
-                )
-              }
-            >
-              S
-            </button>
-
-            {/* Alineación */}
-            <button
-              className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
-              onClick={onCambiarAlineacion}
-              title={`Alineación: ${objetoSeleccionado?.align || "izquierda"}`}
-            >
-              {(() => {
-                const align = objetoSeleccionado?.align || "left";
-                switch (align) {
-                  case "left":
-                    return "⬅️";
-                  case "center":
-                    return "↔️";
-                  case "right":
-                    return "➡️";
-                  case "justify":
-                    return "⚌";
-                  default:
-                    return "⬅️";
-                }
-              })()}
-            </button>
-          </div>
-        );
-      })()}
 
     </div>
   );

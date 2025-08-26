@@ -382,97 +382,179 @@ export default function SelectionBounds({
       }}
 
       onTransformEnd={(e) => {
-        if (!transformerRef.current || !onTransform) return;
+  if (!transformerRef.current || !onTransform) return;
 
-        const node = e.target;
-        if (!node || !node.getStage || !node.getStage()) return;
-        if (typeof node.x !== 'function' || typeof node.y !== 'function') return;
+  const tr = transformerRef.current;
+  const nodes = typeof tr.nodes === 'function' ? (tr.nodes() || []) : [];
 
+  // 🔥 Caso SELECCIÓN MÚLTIPLE: commit por lote y reset del transformer
+  if (nodes.length > 1) {
+    try {
+      // El Transformer aplica una escala común al “bounding box” de la selección
+      const tScaleX = typeof tr.scaleX === 'function' ? (tr.scaleX() || 1) : 1;
+      const tScaleY = typeof tr.scaleY === 'function' ? (tr.scaleY() || 1) : 1;
+      const avg = (Math.abs(tScaleX) + Math.abs(tScaleY)) / 2;
+
+      // Armamos updates por cada nodo seleccionado
+      const updates = nodes.map((n) => {
+        // id del objeto (asegurate que cada nodo Konva tenga id={obj.id})
+        let id = null;
         try {
-          const finalData = {
-            x: node.x(),
-            y: node.y(),
-            rotation: node.rotation() || 0,
-            isFinal: true
-          };
+          id = (typeof n.id === 'function' ? n.id() : n.attrs?.id) || null;
+        } catch { /* noop */ }
+        if (!id) return null;
 
-          if (esTexto) {
-            const originalFontSize = primerElemento.fontSize || 24;
-            const scaleX = typeof node.scaleX === 'function' ? node.scaleX() : 1;
-            const scaleY = typeof node.scaleY === 'function' ? node.scaleY() : 1;
-            const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+        const obj = (objetos || []).find(o => o.id === id);
+        if (!obj) return null;
 
-            finalData.fontSize = Math.max(6, Math.round(originalFontSize * avgScale));
-            finalData.scaleX = 1;
-            finalData.scaleY = 1;
+        // Posición y rotación finales ya están “en vista” gracias al preview de Konva
+        const upd = {
+          id,
+          x: typeof n.x === 'function' ? n.x() : obj.x,
+          y: typeof n.y === 'function' ? n.y() : obj.y,
+          rotation: typeof n.rotation === 'function' ? (n.rotation() || 0) : (obj.rotation || 0),
+        };
 
-            setTimeout(() => {
-              if (node && node.getStage && node.getStage() && typeof node.scaleX === 'function') {
-                try {
-                  node.scaleX(1);
-                  node.scaleY(1);
-                  node.getLayer()?.batchDraw();
-                } catch (err) {
-                  console.warn("Error reseteando escalas de texto:", err);
-                }
-              }
-            }, 0);
+        // Tamaño final por tipo
+        if (obj.tipo === 'texto') {
+          const base = obj.fontSize || 24;
+          upd.fontSize = Math.max(6, Math.round(base * avg));
+          // Reseteo de escalas para evitar rebote
+          if (typeof n.scaleX === 'function') { n.scaleX(1); n.scaleY(1); }
+          return upd;
+        }
 
-          } else {
-            const originalWidth = primerElemento.width || 100;
-            const originalHeight = primerElemento.height || 100;
+        if (obj.tipo === 'forma' && obj.figura === 'circle') {
+          const baseR = obj.radius || 50;
+          upd.radius = baseR * avg;
+          if (typeof n.scaleX === 'function') { n.scaleX(1); n.scaleY(1); }
+          return upd;
+        }
 
-            const scaleX = typeof node.scaleX === 'function' ? node.scaleX() : 1;
-            const scaleY = typeof node.scaleY === 'function' ? node.scaleY() : 1;
+        // rect / imagen / icono / otros con width/height
+        const baseW = (obj.width != null ? obj.width : (typeof n.width === 'function' ? n.width() : 100)) || 100;
+        const baseH = (obj.height != null ? obj.height : (typeof n.height === 'function' ? n.height() : 100)) || 100;
 
-            finalData.width = Math.abs(originalWidth * scaleX);
-            finalData.height = Math.abs(originalHeight * scaleY);
-            finalData.scaleX = 1;
-            finalData.scaleY = 1;
+        upd.width = Math.abs(baseW * tScaleX);
+        upd.height = Math.abs(baseH * tScaleY);
 
-            if (primerElemento?.figura === 'circle') {
-              const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
-              finalData.radius = (primerElemento.radius || 50) * avgScale;
+        if (typeof n.scaleX === 'function') { n.scaleX(1); n.scaleY(1); }
+        return upd;
+      }).filter(Boolean);
+
+      // Enviamos batch al padre (CanvasEditor) para que actualice estado de TODOS
+      onTransform({ isFinal: true, batch: updates });
+
+      // Reseteamos el transformer para que no “arrastre” la escala al siguiente gesto
+      if (typeof tr.scaleX === 'function') {
+        tr.scaleX(1);
+        tr.scaleY(1);
+      }
+      tr.getLayer()?.batchDraw();
+
+      // Flags internos (si los usás)
+      window._resizeData = { isResizing: false };
+      setTimeout(() => { window._resizeData = null; }, 100);
+
+      return; // 👈 importante: no seguir con la lógica de selección simple
+    } catch (err) {
+      console.warn("Error en onTransformEnd (multi):", err);
+      window._resizeData = null;
+      return;
+    }
+  }
+
+  // ✅ Caso SELECCIÓN SIMPLE: tu código original sin cambios
+  const node = e.target;
+  if (!node || !node.getStage || !node.getStage()) return;
+  if (typeof node.x !== 'function' || typeof node.y !== 'function') return;
+
+  try {
+    const finalData = {
+      x: node.x(),
+      y: node.y(),
+      rotation: node.rotation() || 0,
+      isFinal: true
+    };
+
+    if (esTexto) {
+      const originalFontSize = primerElemento.fontSize || 24;
+      const scaleX = typeof node.scaleX === 'function' ? node.scaleX() : 1;
+      const scaleY = typeof node.scaleY === 'function' ? node.scaleY() : 1;
+      const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+
+      finalData.fontSize = Math.max(6, Math.round(originalFontSize * avgScale));
+      finalData.scaleX = 1;
+      finalData.scaleY = 1;
+
+      setTimeout(() => {
+        if (node && node.getStage && node.getStage() && typeof node.scaleX === 'function') {
+          try {
+            node.scaleX(1);
+            node.scaleY(1);
+            node.getLayer()?.batchDraw();
+          } catch (err) {
+            console.warn("Error reseteando escalas de texto:", err);
+          }
+        }
+      }, 0);
+
+    } else {
+      const originalWidth = primerElemento.width || 100;
+      const originalHeight = primerElemento.height || 100;
+
+      const scaleX = typeof node.scaleX === 'function' ? node.scaleX() : 1;
+      const scaleY = typeof node.scaleY === 'function' ? node.scaleY() : 1;
+
+      finalData.width = Math.abs(originalWidth * scaleX);
+      finalData.height = Math.abs(originalHeight * scaleY);
+      finalData.scaleX = 1;
+      finalData.scaleY = 1;
+
+      if (primerElemento?.figura === 'circle') {
+        const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+        finalData.radius = (primerElemento.radius || 50) * avgScale;
+      }
+
+      setTimeout(() => {
+        if (node && node.getStage && node.getStage() && typeof node.scaleX === 'function') {
+          try {
+            node.scaleX(1);
+            node.scaleY(1);
+
+            if (typeof node.width === 'function') node.width(finalData.width);
+            if (typeof node.height === 'function') node.height(finalData.height);
+            if (typeof node.radius === 'function' && primerElemento?.figura === 'circle') {
+              node.radius(finalData.radius);
             }
 
-            setTimeout(() => {
-              if (node && node.getStage && node.getStage() && typeof node.scaleX === 'function') {
-                try {
-                  node.scaleX(1);
-                  node.scaleY(1);
-
-                  if (typeof node.width === 'function') node.width(finalData.width);
-                  if (typeof node.height === 'function') node.height(finalData.height);
-                  if (typeof node.radius === 'function' && primerElemento?.figura === 'circle') {
-                    node.radius(finalData.radius);
-                  }
-
-                  node.getLayer()?.batchDraw();
-                } catch (err) {
-                  console.warn("Error reseteando escalas:", err);
-                }
-              }
-            }, 0);
+            node.getLayer()?.batchDraw();
+          } catch (err) {
+            console.warn("Error reseteando escalas:", err);
           }
-
-          if (onTransform) {
-            onTransform(finalData);
-          }
-
-          if (transformerRef.current) {
-            transformerRef.current.getLayer().listening(true);
-          }
-
-          window._resizeData = { isResizing: false };
-          setTimeout(() => {
-            window._resizeData = null;
-          }, 100);
-
-        } catch (error) {
-          console.warn("Error en onTransformEnd:", error);
-          window._resizeData = null;
         }
-      }}
+      }, 0);
+    }
+
+    if (onTransform) {
+      onTransform(finalData);
+    }
+
+    if (transformerRef.current) {
+      transformerRef.current.getLayer().listening(true);
+    }
+
+    window._resizeData = { isResizing: false };
+    setTimeout(() => {
+      window._resizeData = null;
+    }, 100);
+
+  } catch (error) {
+    console.warn("Error en onTransformEnd:", error);
+    window._resizeData = null;
+  }
+}}
+
     />
   );
 }

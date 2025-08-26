@@ -4,6 +4,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import SelectorColorSeccion from "./SelectorColorSeccion";
+
 
 
 export default function DashboardHeader({
@@ -23,6 +25,23 @@ export default function DashboardHeader({
     const menuRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
     const router = useRouter();
+    const [colorFondo, setColorFondo] = useState("#ffffff");
+    const [seccionActiva, setSeccionActiva] = useState(null);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (window.canvasEditor?.seccionActivaId && window.canvasEditor?.secciones) {
+                const activa = window.canvasEditor.secciones.find(
+                    (s) => s.id === window.canvasEditor.seccionActivaId
+                );
+                if (activa) {
+                    setSeccionActiva(activa);
+                    setColorFondo(activa.fondo || "#ffffff");
+                }
+            }
+        }, 300); // chequeo cada 300ms
+        return () => clearInterval(interval);
+    }, []);
 
 
     // Cargar nombre del borrador al montar o cambiar slug
@@ -221,6 +240,23 @@ export default function DashboardHeader({
                             )}
                         </button>
                     </div>
+
+                    {/* Botón cuadrado para elegir color */}
+                    {seccionActiva && (
+                        <SelectorColorSeccion
+                            seccion={seccionActiva}
+                            onChange={(id, color) => {
+                                window.canvasEditor?.cambiarColorFondoSeccion?.(id, color);
+                                setColorFondo(color); // reflejar cambio inmediato en el cuadrado
+                            }}
+                        />
+                    )}
+
+
+
+
+
+
 
                     {/* Guardar plantilla */}
                     <button

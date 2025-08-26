@@ -35,6 +35,7 @@ import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import useGuiasCentrado from '@/hooks/useGuiasCentrado';
+import SelectorColorSeccion from "./SelectorColorSeccion";
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -75,144 +76,6 @@ const limpiarObjetoUndefined = (obj) => {
 const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="black" />);
 const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 
-// 🎨 Componente selector de color estético
-const SelectorColorSeccion = ({ seccion, onChange, disabled = false }) => {
-  const [mostrarPicker, setMostrarPicker] = useState(false);
-  const pickerRef = useRef(null);
-  const [colorHexManual, setColorHexManual] = useState(seccion.fondo || "#ffffff");
-
-
-  // Cerrar picker al hacer clic fuera
-  useEffect(() => {
-    const handleClickFuera = (e) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
-        setMostrarPicker(false);
-      }
-    };
-
-    if (mostrarPicker) {
-      document.addEventListener('mousedown', handleClickFuera);
-      return () => document.removeEventListener('mousedown', handleClickFuera);
-    }
-  }, [mostrarPicker]);
-
-  const colorActual = seccion.fondo || "#ffffff";
-  const tieneImagenFondo = seccion.fondoTipo === "imagen";
-
-  useEffect(() => {
-    setColorHexManual(seccion.fondo || "#ffffff");
-  }, [seccion.fondo]);
-
-
-
-  return (
-    <div className="relative" ref={pickerRef}>
-      {/* Botón principal */}
-      <button
-        onClick={() => setMostrarPicker(!mostrarPicker)}
-        disabled={disabled}
-        className={`group flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${disabled
-          ? 'bg-gray-200 cursor-not-allowed'
-          : tieneImagenFondo
-            ? 'bg-orange-50 hover:bg-orange-100 border border-orange-200'
-            : 'bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300'
-          } shadow-sm hover:shadow-md`}
-        title={tieneImagenFondo ? "Cambiar fondo (reemplazará la imagen)" : "Cambiar color de fondo"}
-      >
-        {/* Muestra de color */}
-        <div
-          className={`w-5 h-5 rounded-full border-2 transition-transform group-hover:scale-110 ${tieneImagenFondo ? 'border-orange-300' : 'border-gray-300'
-            }`}
-          style={{ backgroundColor: colorActual }}
-        />
-
-        {/* Texto */}
-        <span className={`text-xs font-medium ${tieneImagenFondo ? 'text-orange-700' : 'text-gray-700'
-          }`}>
-          {tieneImagenFondo ? "Color" : "Fondo"}
-        </span>
-
-        {/* Ícono */}
-        <svg
-          className={`w-3 h-3 transition-transform ${mostrarPicker ? 'rotate-180' : ''} ${tieneImagenFondo ? 'text-orange-500' : 'text-gray-500'
-            }`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {/* Picker desplegable - CORREGIDO para no salirse */}
-      {mostrarPicker && (
-        <div className="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50 min-w-[200px] max-w-[250px]">
-          {/* Aviso si tiene imagen de fondo */}
-          {tieneImagenFondo && (
-            <div className="mb-3 p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">
-              ⚠️ Esto reemplazará la imagen de fondo actual
-            </div>
-          )}
-
-          {/* Selector de color */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-600">Seleccionar color:</label>
-            <input
-              type="color"
-              value={colorActual}
-              onChange={(e) => {
-                onChange(seccion.id, e.target.value);
-                setMostrarPicker(false);
-              }}
-              className="w-full h-10 rounded border border-gray-300 cursor-pointer"
-            />
-
-            {/* Colores predefinidos */}
-            <div className="grid grid-cols-6 gap-1 pt-2">
-              {['#ffffff', '#f8f9fa', '#e9ecef', '#dee2e6', '#495057', '#212529'].map(color => (
-                <button
-                  key={color}
-                  onClick={() => {
-                    onChange(seccion.id, color);
-                    setMostrarPicker(false);
-                  }}
-                  className="w-6 h-6 rounded border-2 border-gray-300 hover:border-purple-400 transition-colors"
-                  style={{ backgroundColor: color }}
-                  title={color}
-                />
-              ))}
-            </div>
-
-
-
-            {/* Input manual para escribir el color */}
-            {/* Input manual para escribir el color */}
-            <input
-              type="text"
-              value={colorHexManual}
-              onChange={(e) => {
-                const val = e.target.value;
-                setColorHexManual(val); // Lo dejamos escribir, aunque sea incompleto
-
-                const esValido = /^#([0-9A-Fa-f]{3}){1,2}$/.test(val);
-                if (esValido) {
-                  onChange(seccion.id, val); // Solo aplicamos si es válido
-                }
-              }}
-              placeholder="#ffffff"
-              className={`w-full mt-2 px-2 py-1 border text-sm rounded font-mono ${/^#([0-9A-Fa-f]{3}){1,2}$/.test(colorHexManual)
-                ? "border-gray-300"
-                : "border-red-400"
-                }`}
-            />
-
-
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 
 
@@ -1128,31 +991,46 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  // 🎨 Cambiar color de fondo de sección (CORREGIDO - sin undefined)
+  // CanvasEditor.jsx
   const cambiarColorFondoSeccion = useCallback((seccionId, nuevoColor) => {
     console.log("🎨 Cambiando color de fondo:", { seccionId, nuevoColor });
 
     setSecciones(prev =>
       prev.map(s => {
         if (s.id !== seccionId) return s;
-
-        // 🔥 CREAR OBJETO LIMPIO sin campos undefined
-        const seccionActualizada = {
-          ...s,
-          fondo: nuevoColor
-        };
-
-        // 🔥 ELIMINAR campos de imagen de fondo si existen (no usar undefined)
-        if (s.fondoTipo) delete seccionActualizada.fondoTipo;
-        if (s.fondoImagen) delete seccionActualizada.fondoImagen;
-        if (s.fondoImagenOffsetX !== undefined) delete seccionActualizada.fondoImagenOffsetX;
-        if (s.fondoImagenOffsetY !== undefined) delete seccionActualizada.fondoImagenOffsetY;
-        if (s.fondoImagenDraggable !== undefined) delete seccionActualizada.fondoImagenDraggable;
-
-        return seccionActualizada;
+        return { ...s, fondo: nuevoColor };
       })
     );
   }, [setSecciones]);
+
+  // ✅ Exponer inmediatamente (no solo en useEffect)
+  window.canvasEditor = {
+    ...(window.canvasEditor || {}),
+    cambiarColorFondoSeccion
+  };
+
+
+  // 🔥 Exponer globalmente (en cada render actualizamos la ref)
+  useEffect(() => {
+    window.canvasEditor = {
+      ...(window.canvasEditor || {}),
+      cambiarColorFondoSeccion,
+      seccionActivaId,
+      secciones
+    };
+  }, [cambiarColorFondoSeccion, seccionActivaId, secciones]);
+
+
+
+
+  // ✅ Exponer al window para usarlo en DashboardHeader
+  useEffect(() => {
+    window.canvasEditor = {
+      ...(window.canvasEditor || {}),
+      cambiarColorFondoSeccion
+    };
+  }, [cambiarColorFondoSeccion]);
+
 
 
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
@@ -1639,14 +1517,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     💾 Plantilla
                   </button>
 
-                  {/* 🎨 NUEVO: Selector de color estético */}
-                  <SelectorColorSeccion
-                    seccion={seccion}
-                    onChange={cambiarColorFondoSeccion}
-                    disabled={estaAnimando}
-                  />
-
-
+            
                   {/* Botón Desanclar fondo (solo si tiene imagen de fondo) */}
                   {seccion.fondoTipo === "imagen" && (
                     <button

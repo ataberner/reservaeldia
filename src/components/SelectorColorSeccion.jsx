@@ -59,8 +59,9 @@ export default function SelectorColorSeccion({ seccion, onChange, disabled = fal
                             color={color}
                             disableAlpha={false}
                             onChange={(newColor) => {
-                                setColor(newColor.hex);
-                                onChange(seccion.id, newColor.hex);
+                                const rgba = `rgba(${newColor.rgb.r}, ${newColor.rgb.g}, ${newColor.rgb.b}, ${newColor.rgb.a})`;
+                                setColor(rgba);
+                                onChange(seccion.id, rgba);
                             }}
                         />
 

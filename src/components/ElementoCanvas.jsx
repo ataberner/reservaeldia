@@ -1,13 +1,11 @@
 // ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
 import { Text, Image as KonvaImage, Rect, Circle, Line, RegularPolygon, Path, Group } from "react-konva";
 import useImage from "use-image";
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
 import { fontManager } from '../utils/fontManager';
 import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
-
-
 
 
 export default function ElementoCanvas({
@@ -30,6 +28,7 @@ export default function ElementoCanvas({
   const [img] = useImage(obj.src || null, "anonymous");
   const [isDragging, setIsDragging] = useState(false);
 
+  const textNodeRef = useRef(null);
 
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
   const handleChange = useCallback((id, newData) => {
@@ -165,6 +164,8 @@ export default function ElementoCanvas({
     },
 
 
+
+
     onDragEnd: (e) => {
       console.log("🏁 [ELEMENTO CANVAS] onDragEnd:", {
         elementoId: obj.id,
@@ -199,6 +200,94 @@ export default function ElementoCanvas({
     if (!onHover || isInEditMode) return;
     onHover(null);
   }, [onHover, isInEditMode]);
+
+  const recalcGroupAlign = useCallback(() => {
+    if (obj.tipo !== "texto") return;
+    if (!obj.__groupAlign || !obj.__groupId) return;
+    if (typeof window === "undefined" || typeof onChange !== "function") return;
+
+    const refs = window._elementRefs || {};
+    const getObj = window.__getObjById || (() => null);
+
+    let maxW = 0;
+    let thisW = 0;
+
+    for (const [id, node] of Object.entries(refs)) {
+      const o = getObj(id);
+      if (!o || o.tipo !== "texto" || o.__groupId !== obj.__groupId) continue;
+      const w = node?.getTextWidth ? Math.ceil(node.getTextWidth()) : 0;
+      if (id === obj.id) thisW = w;
+      if (w > maxW) maxW = w;
+    }
+    if (!maxW || !thisW) return;
+
+    const baseX = Number.isFinite(obj.__groupOriginX) ? obj.__groupOriginX : (obj.x || 0);
+    let targetX = baseX;
+    if (obj.__groupAlign === "center") {
+      targetX = baseX + (maxW - thisW) / 2;
+    } else if (obj.__groupAlign === "right") {
+      targetX = baseX + (maxW - thisW);
+    }
+
+    if (Math.abs((obj.x || 0) - targetX) > 0.5) {
+      onChange(obj.id, { x: targetX });
+    }
+  }, [obj.id, obj.x, obj.tipo, obj.__groupAlign, obj.__groupId, obj.__groupOriginX, onChange]);
+
+
+
+
+  useEffect(() => {
+    // Recalcular cuando este texto cambia y tras montar sus vecinos
+    let r1, r2;
+    r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => {
+        recalcGroupAlign();
+      });
+    });
+    return () => {
+      if (r1) cancelAnimationFrame(r1);
+      if (r2) cancelAnimationFrame(r2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recalcGroupAlign, obj.texto, obj.fontFamily, obj.fontSize, obj.fontStyle, obj.fontWeight]);
+
+
+
+
+  useEffect(() => {
+    const handler = (e) => {
+      const wanted = e?.detail?.groupId;
+      if (!obj.__groupId) return;
+      if (!wanted || wanted === obj.__groupId) {
+        recalcGroupAlign();
+      }
+    };
+    window.addEventListener("alinear-grupo", handler);
+    return () => window.removeEventListener("alinear-grupo", handler);
+  }, [obj.__groupId, recalcGroupAlign]);
+
+
+
+
+  useEffect(() => {
+    if (obj.tipo !== "texto") return;
+    if (obj.__groupAlign) return; // 👉 si alineamos por grupo, no seteamos width
+    const align = (obj.align || "left").toLowerCase();
+    if (align === "left") return;
+    if (obj.width || obj.__autoWidth === false) return;
+
+    const node = textNodeRef.current;
+    if (!node || typeof onChange !== "function") return;
+
+    requestAnimationFrame(() => {
+      const w = Math.ceil(node.getTextWidth());
+      if (Number.isFinite(w) && w > 0) {
+        onChange(obj.id, { width: w, __autoWidth: false });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obj.id, obj.texto, obj.fontFamily, obj.fontSize, obj.fontStyle, obj.fontWeight, obj.align]);
 
 
 
@@ -266,29 +355,38 @@ export default function ElementoCanvas({
     // 🔥 NUEVO: Detectar si está en modo edición
     const isEditing = window._currentEditingId === obj.id;
 
+    const align = (obj.align || "left").toLowerCase();        // "left" | "center" | "right" | "justify"
+    const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";  // 👈 prioridad a colorTexto
+    const lineHeight =
+      (typeof obj.lineHeight === "number" && obj.lineHeight > 0) ? obj.lineHeight : 1.2;
+    // 🔒 Mantener el comportamiento anterior: solo usar width si el objeto ya lo tiene
+    const width = obj.width || undefined;
+
+
     return (
       <Text
         {...commonProps}
+        ref={(node) => {
+          textNodeRef.current = node;
+          registerRef?.(obj.id, node);
+        }}
         text={obj.texto}
         fontSize={obj.fontSize || 24}
         fontFamily={fontFamily}
         fontWeight={obj.fontWeight || "normal"}
         fontStyle={obj.fontStyle || "normal"}
-        align={obj.align || "left"} // 🆕 Usar alineación del objeto
+        align={align}
         verticalAlign="top"
-        wrap="word" // 🆕 Cambiar a "word" para que funcione justify
-        width={obj.width || undefined} // 🆕 Usar ancho si está definido
+        wrap="word"
+        width={width}
         textDecoration={obj.textDecoration || "none"}
-        fill={obj.colorTexto || "#000"}
-        lineHeight={1.2}
+        fill={fillColor}
+        lineHeight={lineHeight}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        stroke={undefined}
-        strokeWidth={0}
-        listening={true}
-        perfectDrawEnabled={false}
         opacity={isInEditMode ? 0 : 1}
       />
+
     );
   }
 

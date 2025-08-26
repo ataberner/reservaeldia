@@ -1038,6 +1038,45 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const escalaVisual = zoom === 1 ? scale : (zoom * 1.15);
   const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
+  // 1) Exponer info de secciones (top/height) para centrar correctamente
+  useEffect(() => {
+    window.__getSeccionInfo = (id) => {
+      try {
+        const idx = seccionesOrdenadas.findIndex(s => s.id === id);
+        if (idx === -1) return null;
+        const height = Number(seccionesOrdenadas[idx]?.altura ?? seccionesOrdenadas[idx]?.height ?? 400);
+        const top = calcularOffsetY(seccionesOrdenadas, idx); // tu helper actual
+        return { idx, top, height };
+      } catch { return null; }
+    };
+    return () => { delete window.__getSeccionInfo; };
+  }, [seccionesOrdenadas]);
+
+  // 2) Exponer un getter de objetos por id (fallback cuando hay elementos seleccionados)
+  useEffect(() => {
+    window.__getObjById = (id) => (objetos || []).find(o => o.id === id) || null;
+    return () => { delete window.__getObjById; };
+  }, [objetos]);
+
+  // 3) Cada vez que el usuario selecciona una sección, actualizamos global y notificamos
+  const onSelectSeccion = (id) => {
+    try {
+      // si ya tenés un setSeccionActivaId, llamalo acá:
+       setSeccionActivaId(id);
+
+      window._seccionActivaId = id;
+      window.dispatchEvent(new CustomEvent("seccion-activa", { detail: { id } }));
+    } catch (e) {
+      console.warn("No pude emitir seccion-activa:", e);
+    }
+  };
+
+  // Ejemplo de uso: en el handler de click de la sección
+  // <Rect onClick={() => onSelectSeccion(seccion.id)} ... />
+
+
+
+
 
   // 🆕 NUEVO HOOK PARA GUÍAS
   const {
@@ -1517,7 +1556,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     💾 Plantilla
                   </button>
 
-            
+
                   {/* Botón Desanclar fondo (solo si tiene imagen de fondo) */}
                   {seccion.fondoTipo === "imagen" && (
                     <button
@@ -2004,25 +2043,38 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                     {/* Indicador de la sección que se está modificando */}
                     {seccionesOrdenadas.map((seccion, index) => {
-                      if (seccion.id !== controlandoAltura) return null;
-
                       const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
 
                       return (
-                        <Rect
-                          key={`highlight-${seccion.id}`}
-                          x={0}
-                          y={offsetY}
-                          width={800}
-                          height={seccion.altura}
-                          fill="transparent"
-                          stroke="#773dbe"
-                          strokeWidth={3}
-                          dash={[8, 4]}
-                          listening={false}
-                        />
+                        <Group key={seccion.id}>
+                          {/* Rect “fondo” clickeable */}
+                          <Rect
+                            x={0}
+                            y={offsetY}
+                            width={800}
+                            height={seccion.altura}
+                            fill={seccion.fondo || "transparent"} // podés poner blanco u otro color
+                            onClick={() => onSelectSeccion(seccion.id)}   // 👈 dispara el evento
+                          />
+
+                          {/* Rect highlight si estás controlando la altura */}
+                          {seccion.id === controlandoAltura && (
+                            <Rect
+                              x={0}
+                              y={offsetY}
+                              width={800}
+                              height={seccion.altura}
+                              fill="transparent"
+                              stroke="#773dbe"
+                              strokeWidth={3}
+                              dash={[8, 4]}
+                              listening={false}
+                            />
+                          )}
+                        </Group>
                       );
                     })}
+
                   </Group>
                 )}
 

@@ -314,9 +314,55 @@ export default function DashboardSidebar({
 
                             <MiniToolbar
                                 botonActivo={botonActivo}
-                                onAgregarTexto={() => {
+                                onAgregarTitulo={() => {
                                     window.dispatchEvent(new CustomEvent("insertar-elemento", {
-                                        detail: { id: `texto-${Date.now()}`, tipo: "texto", texto: "Texto", x: 100, y: 100, fontSize: 24, color: "#000000", fontFamily: "sans-serif", fontWeight: "normal", fontStyle: "normal", textDecoration: "none", rotation: 0, scaleX: 1, scaleY: 1 }
+                                        detail: {
+                                            id: `titulo-${Date.now()}`,
+                                            tipo: "texto",
+                                            texto: "Título",
+                                            x: 100, y: 100,
+                                            fontSize: 36,
+                                            color: "#000000",
+                                            fontFamily: "sans-serif",
+                                            fontWeight: "bold",
+                                            fontStyle: "normal",
+                                            textDecoration: "none",
+                                            rotation: 0, scaleX: 1, scaleY: 1,
+                                        }
+                                    }));
+                                }}
+                                onAgregarSubtitulo={() => {
+                                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                                        detail: {
+                                            id: `subtitulo-${Date.now()}`,
+                                            tipo: "texto",
+                                            texto: "Subtítulo",
+                                            x: 100, y: 160,
+                                            fontSize: 24,
+                                            color: "#333333",
+                                            fontFamily: "sans-serif",
+                                            fontWeight: "normal",
+                                            fontStyle: "italic",
+                                            textDecoration: "none",
+                                            rotation: 0, scaleX: 1, scaleY: 1,
+                                        }
+                                    }));
+                                }}
+                                onAgregarParrafo={() => {
+                                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                                        detail: {
+                                            id: `parrafo-${Date.now()}`,
+                                            tipo: "texto",
+                                            texto: "Texto del párrafo...",
+                                            x: 100, y: 220,
+                                            fontSize: 18,
+                                            color: "#444444",
+                                            fontFamily: "sans-serif",
+                                            fontWeight: "normal",
+                                            fontStyle: "normal",
+                                            textDecoration: "none",
+                                            rotation: 0, scaleX: 1, scaleY: 1,
+                                        }
                                     }));
                                 }}
                                 onAgregarForma={() => setModoFormasCompleto(true)}

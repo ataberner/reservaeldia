@@ -1,9 +1,191 @@
 // components/MiniToolbar.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { COUNTDOWN_PRESETS } from "@/config/countdownPresets";
+import { TEXT_PRESETS } from "@/config/textPresets";
 
+
+
+// Normaliza props de texto para que CanvasEditor/ElementoCanvas las entienda
+function normalizeTextProps(el) {
+  const fontSize = Number(el.fontSize ?? el.size ?? 24);
+
+  // Alineación: tomamos alias y devolvemos en minúscula
+  const align =
+    (el.align || el.textAlign || el.alignment || el.alineacion || "left").toLowerCase();
+
+  // Color: soportar alias y setear ambos (color y fill)
+  const color =
+    el.color ?? el.fill ?? el.colorTexto ?? el.textColor ?? "#000000";
+
+  // Konva usa factor para lineHeight
+  const lineHeight =
+    typeof el.lineHeight === "number" && el.lineHeight > 0
+      ? el.lineHeight
+      : typeof el.lineHeightPx === "number" && fontSize > 0
+        ? el.lineHeightPx / fontSize
+        : 1.2;
+
+  // La alineación necesita un ancho para notarse. Si no vino, damos uno por defecto cuando no es left.
+  const width = el.width ?? undefined;
+
+  return {
+    fontSize,
+    fontFamily: el.fontFamily ?? el.font ?? "sans-serif",
+    fontWeight: el.fontWeight ?? el.weight ?? "normal",
+    fontStyle: el.fontStyle ?? el.style ?? "normal",
+    textDecoration: el.textDecoration ?? el.decoration ?? "none",
+    lineHeight,
+    align,
+    color,         // para tu modelo de datos
+    fill: color,   // para Konva/Text (por si tu ElementoCanvas lo pasa tal cual)
+    colorTexto: color,
+    width,         // necesario para que align se vea
+  };
+}
+
+
+// 🔎 Obtiene una sección destino robusta, usando fallbacks del Canvas
+function getSeccionDestino(explicitId) {
+  if (explicitId) return explicitId;
+  if (typeof window === "undefined") return null;
+  return (
+    window._seccionActivaId ||
+    (window.canvasEditor && window.canvasEditor.seccionActivaId) ||
+    window._lastSeccionActivaId ||
+    (Array.isArray(window._seccionesOrdenadas) && window._seccionesOrdenadas[0]?.id) ||
+    null
+  );
+
+}
+
+// Altura aproximada del bloque de texto (en px) para apilado vertical
+function calcTextBlockHeight(el) {
+  const fs = Number(el.fontSize ?? 24);
+  // En Konva, lineHeight es un factor (1.0 = igual al fontSize, 1.2 recomendable)
+  const lineH = (typeof el.lineHeight === "number" && el.lineHeight > 0) ? el.lineHeight : 1.2;
+  const lines = String(el.texto ?? "").split("\n").length || 1;
+  return Math.ceil(fs * lineH * lines);
+}
+
+
+// Inserta una combinación prediseñada de textos usando el mismo camino que "Añadir título"
+// Inserta una combinación prediseñada de textos centrando cada renglón por su propio ancho
+function insertarPresetTexto(preset, seccionActivaId) {
+  const seccionId = getSeccionDestino(seccionActivaId);
+  if (!seccionId) {
+    alert("⚠️ No hay secciones aún. Creá una sección para insertar el preset.");
+    return;
+  }
+
+  // Tomamos un “centro base” para el grupo. Podés moverlo con preset.centerX si querés.
+  const centerX = Number.isFinite(preset.centerX) ? preset.centerX : (preset.baseX ?? 300);
+  const baseY = preset.baseY ?? 120;
+  const gapY = preset.gapY ?? 6;
+
+  const items = preset.elements || preset.items || preset.objetos || [];
+  if (!items.length) return;
+
+  let cursorY = baseY;
+
+  items.forEach((raw, idx) => {
+    const el = raw || {};
+    const norm = normalizeTextProps(el); // tipografías, tamaños, color…
+
+    // Posición vertical: y explícito (y/dy) o apilar
+    const hasY = (el.y != null) || (el.dy != null);
+    const y = hasY ? (baseY + Number(el.y ?? 0) + Number(el.dy ?? 0)) : cursorY;
+
+    // Medimos ancho "real" de este renglón con su fuente
+    const w = measureTextWidth(el.texto ?? "", {
+      fontStyle: norm.fontStyle,
+      fontWeight: norm.fontWeight,
+      fontSize: norm.fontSize,
+      fontFamily: norm.fontFamily,
+    });
+
+    // Posición horizontal: centrado respecto a centerX (+ dx opcional)
+    // Si querés anular el centrado en un renglón, podés pasar el.x para forzar un x absoluto.
+    let x;
+    if (el.x != null) {
+      x = (preset.baseX ?? 0) + Number(el.x); // x absoluto si lo pidieron
+    } else {
+      const dx = Number(el.dx ?? 0);
+      x = Math.round((centerX - (w / 2)) + dx);
+    }
+
+    // Armamos el payload. Importante: NO seteamos width para no “atar” el alineado.
+    const detail = {
+      id: `${el.tipo || "texto"}-${Date.now().toString(36)}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      tipo: el.tipo || "texto",
+      texto: el.texto ?? "",
+      x, y,
+
+      // estilo
+      fontSize: norm.fontSize,
+      fontFamily: norm.fontFamily,
+      fontWeight: norm.fontWeight,
+      fontStyle: norm.fontStyle,
+      textDecoration: norm.textDecoration,
+      lineHeight: norm.lineHeight,
+
+      // color (respetamos tu modelo actual)
+      color: norm.color,
+      colorTexto: norm.color,
+      fill: norm.fill,
+
+      // alineación visual en Konva: dejamos "left" para que el x calculado domine
+      align: "left",
+
+      // sin width → cada línea queda libre
+      width: undefined,
+
+      rotation: el.rotation ?? 0,
+      scaleX: el.scaleX ?? 1,
+      scaleY: el.scaleY ?? 1,
+      seccionId,
+    };
+
+    window.dispatchEvent(new CustomEvent("insertar-elemento", { detail }));
+
+    // Si no vino Y explícito, apilamos dejando gap
+    if (!hasY) {
+      // alto estimado del renglón (una sola línea); si esperás wraps, podés mejorar esto
+      const lineH = (typeof norm.lineHeight === "number" && norm.lineHeight > 0) ? norm.lineHeight : 1.2;
+      const h = Math.ceil(norm.fontSize * lineH);
+      cursorY = y + h + gapY;
+    }
+  });
+}
+
+
+
+// ——— Helpers para medir texto en el DOM (offscreen) ———
+let __measureCtx = null;
+
+function getMeasureCtx() {
+  if (typeof document === "undefined") return null;
+  if (__measureCtx) return __measureCtx;
+  const c = document.createElement("canvas");
+  __measureCtx = c.getContext("2d");
+  return __measureCtx;
+}
+
+function buildFontString({ fontStyle = "normal", fontWeight = "normal", fontSize = 24, fontFamily = "sans-serif" }) {
+  // Ej: "italic 600 24px Poppins, sans-serif"
+  const style = (fontStyle && fontStyle !== "normal") ? `${fontStyle} ` : "";
+  const weight = (fontWeight && fontWeight !== "normal") ? `${fontWeight} ` : "";
+  return `${style}${weight}${Number(fontSize)}px ${fontFamily}`;
+}
+
+function measureTextWidth(texto, fontDesc) {
+  const ctx = getMeasureCtx();
+  if (!ctx) return 0;
+  ctx.font = buildFontString(fontDesc);
+  // Nota: measureText().width da el ancho de la línea (sin wraps)
+  return Math.ceil(ctx.measureText(String(texto ?? "")).width);
+}
 
 
 
@@ -33,7 +215,9 @@ function fechaStrToISO(str) {
 
 export default function MiniToolbar({
   botonActivo,
-  onAgregarTexto,
+  onAgregarTitulo,
+  onAgregarSubtitulo,
+  onAgregarParrafo,
   onAgregarForma,
   onAgregarImagen,
   onCrearPlantilla,
@@ -48,7 +232,7 @@ export default function MiniToolbar({
   borrarImagen,
   hayMas,
   cargando,
-  seccionActivaId,
+  seccionActivaId: seccionProp,
   setImagenesSeleccionadas,
   onInsertarGaleria,
   objetoSeleccionado,
@@ -67,6 +251,40 @@ export default function MiniToolbar({
     widthPct: 70,
   });
 
+  // Estado interno sincronizado con 3 fuentes: prop -> evento global -> fallback por selección
+  const [seccionActivaId, setSeccionActivaId] = useState(
+    seccionProp || (typeof window !== "undefined" ? window._seccionActivaId : null)
+  );
+
+  // 1) Sync con la prop cuando cambie
+  useEffect(() => {
+    if (seccionProp) setSeccionActivaId(seccionProp);
+  }, [seccionProp]);
+
+  // Escuchar el evento global
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (e) => setSeccionActivaId(e?.detail?.id ?? null);
+    window.addEventListener("seccion-activa", handler);
+    return () => window.removeEventListener("seccion-activa", handler);
+  }, []);
+
+
+  // 3) Fallback: si no hay sección pero hay elementos seleccionados, usar su seccionId
+  const getSeccionIdParaInsertar = () => {
+    let sid = seccionActivaId || (typeof window !== "undefined" ? window._seccionActivaId : null);
+    if (sid) return sid;
+
+    try {
+      const sel = (typeof window !== "undefined" && window._elementosSeleccionados) ? window._elementosSeleccionados : [];
+      if (sel && sel.length > 0 && typeof window.__getObjById === "function") {
+        const objSel = window.__getObjById(sel[0]);
+        if (objSel?.seccionId) sid = objSel.seccionId;
+      }
+    } catch {/* ignore */ }
+    return sid || null;
+  };
+
 
   // valor inicial: +30 días, formateado como "YYYY-MM-DDTHH:mm"
   const ahoraMas30d = (() => {
@@ -81,17 +299,97 @@ export default function MiniToolbar({
   if (!botonActivo) return null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 h-full min-h-0">
 
       {botonActivo === "texto" && (
-        <button
-          onClick={onAgregarTexto}
-          className="flex items-center gap-2 w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
-        >
-          <span className="text-lg">📝</span>
-          <span>Añadir texto</span>
-        </button>
+        <div className="flex flex-col gap-2 flex-1 min-h-0">
+          {/* Botones individuales */}
+          {/* Botón Título */}
+          <button
+            onClick={onAgregarTitulo}
+            className="w-full px-4 py-2 rounded-lg border border-zinc-300 
+             bg-white text-zinc-800 font-semibold text-center
+             hover:bg-purple-100 hover:border-purple-500 hover:text-purple-700
+             hover:shadow-md transition-all"
+          >
+            Añadir título
+          </button>
+
+          {/* Botón Subtítulo */}
+          <button
+            onClick={onAgregarSubtitulo}
+            className="w-full px-4 py-2 rounded-lg border border-zinc-300 
+             bg-white text-zinc-700 font-medium text-center
+             hover:bg-purple-100 hover:border-purple-500 hover:text-purple-700
+             hover:shadow-md transition-all"
+          >
+            Añadir subtítulo
+          </button>
+
+          {/* Botón Párrafo */}
+          <button
+            onClick={onAgregarParrafo}
+            className="w-full px-4 py-2 rounded-lg border border-zinc-300 
+             bg-white text-zinc-600 text-center
+             hover:bg-purple-100 hover:border-purple-500 hover:text-purple-700
+             hover:shadow-md transition-all"
+          >
+            Añadir párrafo
+          </button>
+
+
+
+          {/* 🔹 NUEVA SECCIÓN DE PRESETS */}
+          <div className="mt-4 flex-1 min-h-0">
+            <div className="flex flex-col gap-3 h-full overflow-y-auto pr-1">
+              {TEXT_PRESETS.map((preset) => (
+
+                <button
+                  key={preset.id}
+                  onClick={() => insertarPresetTexto(preset, seccionActivaId)}
+                  className="w-full p-2 rounded-lg border border-zinc-200 hover:border-purple-400 hover:shadow-md transition bg-zinc-100 flex items-center justify-center"
+                >
+                  <div
+                    className="flex flex-col items-center justify-center text-center"
+                    style={{
+                      transform: "scale(0.8)",   // 🔥 escala proporcional
+                      transformOrigin: "center",
+                      whiteSpace: "nowrap",      // 🔥 evita que corte líneas en 2
+                    }}
+                  >
+                    {(preset.objetos || preset.elements || preset.items || []).map((obj, i) => {
+                      const norm = normalizeTextProps(obj);
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            fontFamily: norm.fontFamily,
+                            fontSize: norm.fontSize, // usamos el real (se escala arriba)
+                            color: norm.color,
+                            fontWeight: norm.fontWeight,
+                            fontStyle: norm.fontStyle,
+                            textDecoration: norm.textDecoration,
+                            lineHeight: norm.lineHeight,
+                          }}
+                        >
+                          {obj.texto}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </button>
+
+
+              ))}
+            </div>
+          </div>
+
+
+
+        </div>
       )}
+
+
 
       {botonActivo === "forma" && (
         <button

@@ -142,7 +142,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     const stage = e.target.getStage();
     const currentPos = stage.getPointerPosition();
     const startPos = window._dragStartPos;
-    
+
     console.log("📍 [DRAG GRUPAL] Posiciones:", {
       inicial: startPos,
       actual: currentPos
@@ -152,50 +152,53 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
       // 🔥 CALCULAR EL DELTA DEL MOVIMIENTO
       const deltaX = currentPos.x - startPos.x;
       const deltaY = currentPos.y - startPos.y;
-      
+
       console.log("📏 [DRAG GRUPAL] Delta calculado:", { deltaX, deltaY });
 
       const seleccion = window._elementosSeleccionados || [];
-      
+
       // 🔥 APLICAR EL DELTA A CADA ELEMENTO
       seleccion.forEach((elementId) => {
-        const objeto = window._objetosActuales?.find(o => o.id === elementId);
-        if (!objeto) {
-          console.warn(`⚠️ [DRAG GRUPAL] No se encontró objeto para ${elementId}`);
+        // 🔥 SKIP: No procesar al líder aquí - ya está en su posición correcta
+        if (elementId === window._grupoLider) {
+          console.log(`👑 [DRAG GRUPAL] Saltando líder ${elementId} - ya procesado por Konva`);
+
+          // Solo mutear para evitar procesamiento individual
+          const node = window._elementRefs?.[elementId];
+          try {
+            node?.setAttr && node.setAttr("_muteNextEnd", true);
+          } catch { }
+
           return;
         }
+
+        // Procesar seguidores normalmente
+        const objeto = window._objetosActuales?.find(o => o.id === elementId);
+        if (!objeto) return;
 
         const posInicial = window._dragInicial[elementId];
-        if (!posInicial) {
-          console.warn(`⚠️ [DRAG GRUPAL] No se encontró posición inicial para ${elementId}`);
-          return;
-        }
+        if (!posInicial) return;
 
-        // 🎯 NUEVA POSICIÓN = POSICIÓN INICIAL + DELTA
         const nuevaX = posInicial.x + deltaX;
         const nuevaY = posInicial.y + deltaY;
 
-        console.log(`📍 [DRAG GRUPAL] Elemento ${elementId}:`, {
+        console.log(`👥 [DRAG GRUPAL] Seguidor ${elementId}:`, {
           posInicial,
           delta: { deltaX, deltaY },
           nuevaPos: { x: nuevaX, y: nuevaY }
         });
 
         const node = window._elementRefs?.[elementId];
-
-        // Determinar nueva sección por yAbs
         const { nuevaSeccion } = determinarNuevaSeccion(
           nuevaY,
           objeto.seccionId,
           window._seccionesOrdenadas || []
         );
 
-        // 🔇 Mutear el próximo end individual
-        try { 
-          node?.setAttr && node.setAttr("_muteNextEnd", true); 
-        } catch {}
+        try {
+          node?.setAttr && node.setAttr("_muteNextEnd", true);
+        } catch { }
 
-        // 🔌 PERSISTIR CON LAS COORDENADAS CALCULADAS
         const cambios = {
           x: nuevaX,
           y: nuevaY,
@@ -203,21 +206,20 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
           finalizoDrag: true,
           causa: "drag-grupal"
         };
-        
-        console.log(`💾 [DRAG GRUPAL] Persistiendo cambios para ${elementId}:`, cambios);
+
         onChange(elementId, cambios);
       });
     }
 
     // Cleanup
     window._skipUntil = performance.now() + 400;
-    
+
     const seleccion = window._elementosSeleccionados || [];
     seleccion.forEach((id) => {
       const elNode = window._elementRefs?.[id];
       if (elNode) {
-        setTimeout(() => { 
-          try { elNode.draggable(true); } catch {} 
+        setTimeout(() => {
+          try { elNode.draggable(true); } catch { }
         }, 24);
       }
     });

@@ -1,15 +1,19 @@
 // LineControls.jsx - Versión optimizada para transformación fluida
 import { Circle, Group, Line } from "react-konva";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { startDragGrupalLider } from "@/drag/dragGrupal";
+
 
 // 🚀 Utilidad para forzar repintado rápido
 const batchDraw = (node) => node.getLayer() && node.getLayer().batchDraw();
 
-export default function LineControls({ 
-  lineElement, 
-  elementRefs, 
+export default function LineControls({
+  lineElement,
+  elementRefs,
   onUpdateLine,
-  altoCanvas
+  altoCanvas,
+  isDragGrupalActive = false,  // 🔥 NUEVA PROP
+  elementosSeleccionados = []
 }) {
   const [draggingPoint, setDraggingPoint] = useState(null);
   const dragStartPos = useRef(null);
@@ -52,27 +56,72 @@ export default function LineControls({
     };
   }, [nodeRef]);
 
-  // 🔥 DETECTAR DRAG GRUPAL OPTIMIZADO
+
+
+  // 🔥 DETECTAR DRAG GRUPAL MEJORADO
   useEffect(() => {
-    const checkGroupDrag = () => {
-      const elementosSeleccionados = window._elementosSeleccionados || [];
-      const isDragging = window._grupoLider !== null;
-      const isPartOfGroup = elementosSeleccionados.includes(lineElement.id);
-      
-      setIsGroupDrag(isDragging && isPartOfGroup && elementosSeleccionados.length > 1);
-    };
+    const isPartOfMultipleSelection = elementosSeleccionados.length > 1;
+    const isThisLineSelected = elementosSeleccionados.includes(lineElement.id);
 
-    checkGroupDrag();
-    const interval = setInterval(checkGroupDrag, 100);
-    return () => clearInterval(interval);
-  }, [lineElement.id]);
+    setIsGroupDrag(isDragGrupalActive && isPartOfMultipleSelection && isThisLineSelected);
+  }, [isDragGrupalActive, elementosSeleccionados, lineElement.id]);
 
-  // 🔥 DETECTAR DRAG DE LÍNEA OPTIMIZADO
+
+
+  // 🔥 DETECTAR DRAG DE LÍNEA Y COORDINACIÓN CON DRAG GRUPAL
   useEffect(() => {
     if (!nodeRef) return;
 
-    const handleDragStart = () => setLineBeingDragged(true);
-    const handleDragEnd = () => setLineBeingDragged(false);
+    const handleDragStart = (e) => {
+      console.log("🎬 [LINE CONTROLS] Drag start para línea:", lineElement.id);
+      setLineBeingDragged(true);
+
+      // 🎯 COORDINACIÓN CON DRAG GRUPAL
+      const elementosSeleccionados = window._elementosSeleccionados || [];
+      console.log("📋 [LINE CONTROLS] Elementos seleccionados:", elementosSeleccionados);
+      console.log("📏 [LINE CONTROLS] ¿Esta línea está en selección?", elementosSeleccionados.includes(lineElement.id));
+      console.log("🔢 [LINE CONTROLS] ¿Múltiples elementos?", elementosSeleccionados.length > 1);
+
+      if (elementosSeleccionados.length > 1 && elementosSeleccionados.includes(lineElement.id)) {
+        console.log("🎯 [LINE CONTROLS] Intentando iniciar drag grupal desde línea...");
+
+        try {
+          const isGroupLeader = startDragGrupalLider(e, lineElement);
+          console.log("👑 [LINE CONTROLS] ¿Es líder del grupo?", isGroupLeader);
+
+          if (!isGroupLeader) {
+            console.log("🚫 [LINE CONTROLS] No es líder, deshabilitando drag individual...");
+            setTimeout(() => {
+              if (nodeRef && nodeRef.draggable) {
+                const wasDraggable = nodeRef.draggable();
+                nodeRef.draggable(false);
+                console.log(`🔒 [LINE CONTROLS] Drag deshabilitado para línea ${lineElement.id} (era: ${wasDraggable})`);
+              }
+            }, 0);
+          } else {
+            console.log("👑 [LINE CONTROLS] Línea es líder del drag grupal");
+          }
+        } catch (error) {
+          console.error("❌ [LINE CONTROLS] Error en drag grupal:", error);
+        }
+      } else {
+        console.log("📏 [LINE CONTROLS] Drag individual normal para línea");
+      }
+    };
+
+    const handleDragEnd = () => {
+      console.log("🏁 [LINE CONTROLS] Drag end para línea:", lineElement.id);
+      setLineBeingDragged(false);
+
+      // Reactivar drag después de un breve delay
+      setTimeout(() => {
+        if (nodeRef && nodeRef.draggable) {
+          const wasDraggable = nodeRef.draggable();
+          nodeRef.draggable(true);
+          console.log(`🔓 [LINE CONTROLS] Drag reactivado para línea ${lineElement.id} (era: ${wasDraggable})`);
+        }
+      }, 100);
+    };
 
     nodeRef.on('dragstart', handleDragStart);
     nodeRef.on('dragend', handleDragEnd);
@@ -81,7 +130,9 @@ export default function LineControls({
       nodeRef.off('dragstart', handleDragStart);
       nodeRef.off('dragend', handleDragEnd);
     };
-  }, [nodeRef]);
+  }, [nodeRef, lineElement.id, lineElement]);
+
+
 
   // 🔥 CÁLCULOS MEMOIZADOS
   const points = lineElement.points || [0, 0, 100, 0];
@@ -102,7 +153,7 @@ export default function LineControls({
     setDraggingPoint(pointType);
     dragStartPos.current = e.target.getStage().getPointerPosition();
     e.cancelBubble = true;
-    
+
     // 🔥 LIMPIAR CACHE AL INICIAR
     pointsCache.current = null;
   }, []);
@@ -114,7 +165,7 @@ export default function LineControls({
     const stage = e.target.getStage();
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
-    
+
     // 🚀 THROTTLE AGRESIVO: Solo cada 4ms (250fps)
     const now = performance.now();
     if (now - lastUpdateTime.current < 4) return;
@@ -140,10 +191,10 @@ export default function LineControls({
       const pointsStr = newPoints.join(',');
       if (pointsCache.current !== pointsStr) {
         pointsCache.current = pointsStr;
-        
+
         // 🚀 FEEDBACK INSTANTÁNEO
         lineNode.points(newPoints);
-        
+
         // 🔥 USAR requestAnimationFrame PARA BATCH DRAW ÓPTIMO
         if (!window._lineDrawScheduled) {
           window._lineDrawScheduled = true;
@@ -159,11 +210,11 @@ export default function LineControls({
   // 🔥 HANDLER OPTIMIZADO PARA DRAG END
   const handlePointDragEnd = useCallback((pointType, e) => {
     if (draggingPoint !== pointType) return;
-    
+
     const stage = e.target.getStage();
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
-    
+
     // 🔥 USAR POSICIÓN REAL DEL NODO EN TIEMPO REAL
     const realNodeX = nodeRef.x();
     const realNodeY = nodeRef.y();
@@ -215,7 +266,7 @@ export default function LineControls({
                 e.target.getStage().container().style.cursor = 'default';
               }
             }}
-            shadowColor="rgba(59, 130, 246, 0.3)" 
+            shadowColor="rgba(59, 130, 246, 0.3)"
             shadowBlur={4}
             shadowOffset={{ x: 0, y: 3 }}
             // 🚀 OPTIMIZACIONES DE RENDIMIENTO

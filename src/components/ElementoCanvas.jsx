@@ -115,7 +115,44 @@ export default function ElementoCanvas({
 
       // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
-        previewDragGrupal(e, obj, onChange);
+        // Preview visual para drag grupal
+        const stage = e.target.getStage();
+        const currentPos = stage.getPointerPosition();
+        const startPos = window._dragStartPos;
+
+        if (currentPos && startPos && window._dragInicial) {
+          const deltaX = currentPos.x - startPos.x;
+          const deltaY = currentPos.y - startPos.y;
+          const seleccion = window._elementosSeleccionados || [];
+
+          // Actualizar visualmente todos los seguidores
+          seleccion.forEach((elementId) => {
+            if (elementId === obj.id) return; // El líder ya se mueve automáticamente
+
+            const node = window._elementRefs?.[elementId];
+            const posInicial = window._dragInicial[elementId];
+
+            if (node && posInicial) {
+              node.x(posInicial.x + deltaX);
+              node.y(posInicial.y + deltaY);
+            }
+          });
+
+          // Redibujar para mostrar cambios
+          if (e.target.getLayer) {
+            e.target.getLayer().batchDraw();
+          }
+        }
+
+        // Continuar con preview individual para el líder
+        if (onDragMovePersonalizado) {
+          const node = e.target;
+          if (node?.position) {
+            const nuevaPos = node.position();
+            onDragMovePersonalizado(nuevaPos, obj.id);
+          }
+        }
+
         return; // 👈 MUY IMPORTANTE: igual que antes
       }
 
@@ -131,12 +168,16 @@ export default function ElementoCanvas({
       if (!window._grupoLider) {
         previewDragIndividual(e, obj, onDragMovePersonalizado);
       }
-
     },
 
 
     onDragEnd: (e) => {
-      console.log("🏁 DRAG END:", obj.id, "Líder actual:", window._grupoLider);
+      console.log("🏁 [ELEMENTO CANVAS] onDragEnd:", {
+        elementoId: obj.id,
+        grupoLider: window._grupoLider,
+        hasDragged: hasDragged.current,
+        tipoElemento: obj.tipo
+      });
       window._isDragging = false;
       setIsDragging(false);
 

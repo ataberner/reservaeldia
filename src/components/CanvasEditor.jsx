@@ -268,6 +268,26 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setHoverId(null);
   }, []);
 
+  // 🔍 DEBUG: Monitorear cambios en selección
+  useEffect(() => {
+    console.log("🎯 [CANVAS EDITOR] Selección cambió:", {
+      elementos: elementosSeleccionados,
+      cantidad: elementosSeleccionados.length,
+      detalles: elementosSeleccionados.map(id => {
+        const obj = objetos.find(o => o.id === id);
+        return {
+          id,
+          tipo: obj?.tipo,
+          figura: obj?.figura
+        };
+      })
+    });
+
+    // Exponer globalmente para debug
+    window._elementosSeleccionados = elementosSeleccionados;
+    window._objetosActuales = objetos;
+
+  }, [elementosSeleccionados, objetos]);
 
   // 🆕 Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
@@ -1315,93 +1335,90 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  // En CanvasEditor.jsx, reemplazar la función detectarInterseccionLinea
-  const detectarInterseccionLinea = useMemo(() => {
-    return (lineObj, area, stage) => {
-      try {
-        if (!lineObj || !area || !lineObj.points) return false;
-
-        let points = lineObj.points;
-        if (!Array.isArray(points) || points.length < 4) {
-          points = [0, 0, 100, 0];
+const detectarInterseccionLinea = useMemo(() => {
+  return (lineObj, area, stage) => {
+    try {
+      console.log("🔍 [DETECCIÓN LÍNEA] Analizando:", {
+        lineId: lineObj.id,
+        area,
+        lineObj: {
+          x: lineObj.x,
+          y: lineObj.y,
+          points: lineObj.points
         }
+      });
 
-        const puntosLimpios = [
-          parseFloat(points[0]) || 0,
-          parseFloat(points[1]) || 0,
-          parseFloat(points[2]) || 100,
-          parseFloat(points[3]) || 0
-        ];
+      if (!lineObj || !area || !lineObj.points) return false;
 
-        // 🔥 IMPORTANTE: El lineObj ya tiene Y con offset aplicado desde ElementoCanvas
-        const lineX = lineObj.x || 0;
-        const lineY = lineObj.y || 0;
-
-        // Log para debugging
-
-
-        // Coordenadas absolutas de los puntos
-        const startX = lineX + puntosLimpios[0];
-        const startY = lineY + puntosLimpios[1];
-        const endX = lineX + puntosLimpios[2];
-        const endY = lineY + puntosLimpios[3];
-
-
-
-        // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
-        const startDentro = (
-          startX >= area.x && startX <= area.x + area.width &&
-          startY >= area.y && startY <= area.y + area.height
-        );
-
-        const endDentro = (
-          endX >= area.x && endX <= area.x + area.width &&
-          endY >= area.y && endY <= area.y + area.height
-        );
-
-        if (startDentro || endDentro) {
-          console.log("✅ Línea seleccionada por punto dentro del área");
-          return true;
-        }
-
-        // 🔥 MÉTODO 2: Verificar si el área contiene completamente la línea
-        const lineMinX = Math.min(startX, endX);
-        const lineMaxX = Math.max(startX, endX);
-        const lineMinY = Math.min(startY, endY);
-        const lineMaxY = Math.max(startY, endY);
-
-        const areaContieneLinea = (
-          lineMinX >= area.x &&
-          lineMaxX <= area.x + area.width &&
-          lineMinY >= area.y &&
-          lineMaxY <= area.y + area.height
-        );
-
-        if (areaContieneLinea) {
-          console.log("✅ Línea seleccionada por estar completamente dentro del área");
-          return true;
-        }
-
-        // 🔥 MÉTODO 3: Verificar intersección línea-rectángulo
-        const intersectaConArea = lineIntersectsRect(
-          startX, startY, endX, endY,
-          area.x, area.y, area.x + area.width, area.y + area.height
-        );
-
-        if (intersectaConArea) {
-
-          return true;
-        }
-
-
-        return false;
-
-      } catch (error) {
-        console.error("Error en detectarInterseccionLinea:", error);
-        return false;
+      let points = lineObj.points;
+      if (!Array.isArray(points) || points.length < 4) {
+        points = [0, 0, 100, 0];
       }
-    };
-  }, []);
+
+      const puntosLimpios = [
+        parseFloat(points[0]) || 0,
+        parseFloat(points[1]) || 0,
+        parseFloat(points[2]) || 100,
+        parseFloat(points[3]) || 0
+      ];
+
+      // 🔥 USAR LA POSICIÓN DEL NODO REAL EN EL STAGE
+      const node = window._elementRefs?.[lineObj.id];
+      const lineX = node ? node.x() : (lineObj.x || 0);
+      const lineY = node ? node.y() : (lineObj.y || 0);
+
+      // Coordenadas absolutas de los puntos
+      const startX = lineX + puntosLimpios[0];
+      const startY = lineY + puntosLimpios[1];
+      const endX = lineX + puntosLimpios[2];
+      const endY = lineY + puntosLimpios[3];
+
+      console.log("📏 [DETECCIÓN LÍNEA] Coordenadas calculadas:", {
+        linePos: { x: lineX, y: lineY },
+        puntos: { startX, startY, endX, endY },
+        area
+      });
+
+      // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
+      const startDentro = (
+        startX >= area.x && startX <= area.x + area.width &&
+        startY >= area.y && startY <= area.y + area.height
+      );
+
+      const endDentro = (
+        endX >= area.x && endX <= area.x + area.width &&
+        endY >= area.y && endY <= area.y + area.height
+      );
+
+      console.log("🎯 [DETECCIÓN LÍNEA] Puntos dentro:", { startDentro, endDentro });
+
+      if (startDentro || endDentro) {
+        console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por punto dentro");
+        return true;
+      }
+
+      // 🔥 MÉTODO 2: Verificar intersección línea-rectángulo
+      const intersecta = lineIntersectsRect(
+        startX, startY, endX, endY,
+        area.x, area.y, area.x + area.width, area.y + area.height
+      );
+
+      console.log("🔄 [DETECCIÓN LÍNEA] ¿Intersecta con área?", intersecta);
+
+      if (intersecta) {
+        console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por intersección");
+        return true;
+      }
+
+      console.log("❌ [DETECCIÓN LÍNEA] Línea NO seleccionada");
+      return false;
+
+    } catch (error) {
+      console.error("❌ [DETECCIÓN LÍNEA] Error:", error);
+      return false;
+    }
+  };
+}, []);
 
   // Función auxiliar para verificar intersección línea-rectángulo
   function lineIntersectsRect(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectBottom) {
@@ -1714,6 +1731,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
               onMouseDown={(e) => {
+                console.log("🖱️ [STAGE] Mouse down:", {
+                  target: e.target?.getClassName ? e.target.getClassName() : 'unknown',
+                  shiftKey: e.evt?.shiftKey,
+                  seleccionActual: elementosSeleccionados
+                });
                 const stage = e.target.getStage();
                 if (!stage) return;
 
@@ -1836,7 +1858,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               }}
 
               onMouseUp={(e) => {
-
+                console.log("🖱️ [STAGE] Mouse up:", {
+                  target: e.target?.getClassName ? e.target.getClassName() : 'unknown',
+                  seleccionActual: elementosSeleccionados,
+                  grupoLider: window._grupoLider
+                });
                 const stage = e.target.getStage();
 
 
@@ -1852,11 +1878,15 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 const nuevaSeleccion = objetos.filter((obj) => {
                   const node = elementRefs.current[obj.id];
                   if (!node) {
+                    console.log(`⚠️ [SELECCIÓN ÁREA] No se encontró node para ${obj.id}`);
+
                     return false;
                   }
 
                   // 🔥 MANEJO ESPECIAL PARA LÍNEAS
                   if (obj.tipo === 'forma' && obj.figura === 'line') {
+                    console.log(`📏 [SELECCIÓN ÁREA] Detectando línea ${obj.id} en área`);
+
                     return detectarInterseccionLinea(obj, areaSeleccion, stage);
                   }
 
@@ -1870,10 +1900,19 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       box.y + box.height >= areaSeleccion.y &&
                       box.y <= areaSeleccion.y + areaSeleccion.height
                     );
+                    if (intersecta) {
+                      console.log(`✅ [SELECCIÓN ÁREA] Elemento ${obj.id} intersecta con área`);
+                    }
+
+                    return intersecta;
                   } catch (error) {
+                        console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
+
                     return false;
                   }
                 });
+
+                console.log("🎯 [SELECCIÓN ÁREA] Elementos seleccionados:", nuevaSeleccion.map(o => o.id));
 
                 setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
                 setElementosPreSeleccionados([]);
@@ -2277,10 +2316,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       }}
                       finishInlineEdit={finishEdit}
                       onSelect={isInEditMode ? null : (id, obj, e) => {
+                        console.log("🎯 [CANVAS EDITOR] onSelect disparado:", {
+                          id,
+                          tipo: obj?.tipo,
+                          figura: obj?.figura,
+                          shiftKey: e?.evt?.shiftKey,
+                          seleccionActual: elementosSeleccionados
+                        });
+
                         if (obj.tipo === "rsvp-boton") {
                           console.log("🟣 Click en botón RSVP");
-
-                          return; // ⛔ Cortar acá para que no se seleccione o edite
+                          return;
                         }
 
                         if (editing.id && editing.id !== id) {
@@ -2290,12 +2336,25 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         e?.evt && (e.evt.cancelBubble = true);
 
                         const esShift = e?.evt?.shiftKey;
+                        console.log("⌨️ [CANVAS EDITOR] ¿Es Shift+Click?", esShift);
 
                         setElementosSeleccionados((prev) => {
+                          console.log("📋 [CANVAS EDITOR] Selección anterior:", prev);
+
                           if (esShift) {
-                            if (prev.includes(id)) return prev.filter((x) => x !== id);
-                            return [...prev, id];
+                            console.log("➕ [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
+
+                            if (prev.includes(id)) {
+                              const nueva = prev.filter((x) => x !== id);
+                              console.log("➖ [CANVAS EDITOR] Elemento removido. Nueva selección:", nueva);
+                              return nueva;
+                            } else {
+                              const nueva = [...prev, id];
+                              console.log("➕ [CANVAS EDITOR] Elemento agregado. Nueva selección:", nueva);
+                              return nueva;
+                            }
                           } else {
+                            console.log("🎯 [CANVAS EDITOR] Modo normal: selección única");
                             return [id];
                           }
                         });
@@ -2573,6 +2632,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         elementRefs={elementRefs}
                         onUpdateLine={actualizarLinea}
                         altoCanvas={altoCanvasDinamico}
+                        // 🔥 NUEVA PROP: Pasar información sobre drag grupal
+                        isDragGrupalActive={window._grupoLider !== null}
+                        elementosSeleccionados={elementosSeleccionados}
                       />
                     );
                   }

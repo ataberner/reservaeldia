@@ -2,9 +2,63 @@
 import { determinarNuevaSeccion } from "@/utils/layout";
 
 export function startDragGrupalLider(e, obj) {
+  console.log("🚀 [DRAG GRUPAL] Iniciando drag grupal - Objeto:", {
+    id: obj.id,
+    tipo: obj.tipo,
+    figura: obj.figura
+  });
+
   const seleccion = window._elementosSeleccionados || [];
+  console.log("📋 [DRAG GRUPAL] Selección actual:", seleccion);
+
   if (seleccion.length > 1 && seleccion.includes(obj.id)) {
+    console.log("✅ [DRAG GRUPAL] Condiciones cumplidas para drag grupal");
+
+    // 🔥 DETECTAR LÍNEAS EN LA SELECCIÓN
+    const elementosDetallados = seleccion.map(id => {
+      const objeto = window._objetosActuales?.find(o => o.id === id);
+      const node = window._elementRefs?.[id];
+      return {
+        id,
+        objeto: objeto ? {
+          tipo: objeto.tipo,
+          figura: objeto.figura
+        } : null,
+        nodeExists: !!node,
+        nodeDraggable: node ? node.draggable() : null
+      };
+    });
+
+    console.log("📊 [DRAG GRUPAL] Análisis detallado de elementos:", elementosDetallados);
+
+    const hayLineas = seleccion.some(id => {
+      const objeto = window._objetosActuales?.find(o => o.id === id);
+      return objeto?.tipo === 'forma' && objeto?.figura === 'line';
+    });
+
+    console.log("📏 [DRAG GRUPAL] ¿Hay líneas en la selección?", hayLineas);
+
+    if (hayLineas) {
+      console.log("🔧 [DRAG GRUPAL] Preparando líneas para drag grupal...");
+      seleccion.forEach(id => {
+        const objeto = window._objetosActuales?.find(o => o.id === id);
+        if (objeto?.tipo === 'forma' && objeto?.figura === 'line') {
+          const node = window._elementRefs?.[id];
+          console.log(`📏 [DRAG GRUPAL] Línea ${id}:`, {
+            nodeExists: !!node,
+            draggableBefore: node ? node.draggable() : null
+          });
+
+          if (node && node.draggable) {
+            node.draggable(true);
+            console.log(`✅ [DRAG GRUPAL] Línea ${id} habilitada para drag`);
+          }
+        }
+      });
+    }
+
     if (!window._grupoLider) {
+      console.log("👑 [DRAG GRUPAL] Estableciendo líder:", obj.id);
       window._grupoLider = obj.id;
       window._dragStartPos = e.target.getStage().getPointerPosition();
       window._dragInicial = {};
@@ -14,24 +68,33 @@ export function startDragGrupalLider(e, obj) {
       window._isDragging = true;
       try {
         document.body.style.cursor = "grabbing";
-      } catch {}
+      } catch { }
       window.dispatchEvent(new Event("dragging-start"));
-
 
       // Bloqueo de drag individual en seguidores + snapshot inicial
       seleccion.forEach((id) => {
         const objeto = window._objetosActuales?.find(o => o.id === id);
         const node = window._elementRefs?.[id];
 
+        console.log(`🔄 [DRAG GRUPAL] Procesando elemento ${id}:`, {
+          esLider: id === obj.id,
+          nodeExists: !!node,
+          objetoType: objeto?.tipo
+        });
+
         if (node && id !== obj.id) {
-          try { node.draggable(false); } catch {}
+          const draggableBefore = node.draggable();
+          try {
+            node.draggable(false);
+            console.log(`🚫 [DRAG GRUPAL] Deshabilitado drag para seguidor ${id} (era: ${draggableBefore})`);
+          } catch (err) {
+            console.error(`❌ [DRAG GRUPAL] Error deshabilitando ${id}:`, err);
+          }
         }
 
         if (objeto) {
-          // guardamos posición absoluta de inicio (para preview si la usás)
           const yAbsIni = (() => {
             if (node && node.y) return node.y();
-            // fallback: y relativa + offset de su sección
             const idx = (window._seccionesOrdenadas || []).findIndex(s => s.id === objeto.seccionId);
             const offsetY = idx >= 0 ? (window._seccionesOrdenadas || [])
               .slice(0, idx)
@@ -43,74 +106,126 @@ export function startDragGrupalLider(e, obj) {
             x: node?.x ? node.x() : (objeto.x || 0),
             y: yAbsIni
           };
+
+          console.log(`📍 [DRAG GRUPAL] Posición inicial guardada para ${id}:`, window._dragInicial[id]);
         }
       });
+
+      console.log("🎯 [DRAG GRUPAL] Drag grupal iniciado correctamente");
+    } else {
+      console.log("⚠️ [DRAG GRUPAL] Ya hay un líder activo:", window._grupoLider);
     }
     return true;
   }
+
+  console.log("❌ [DRAG GRUPAL] Condiciones no cumplidas para drag grupal");
   return false;
 }
+
+
 
 export function previewDragGrupal(e, obj, onChange) {
   // tu lógica actual de preview (si la hay) queda igual
 }
 
 export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
+  console.log("🏁 [DRAG GRUPAL] endDragGrupal llamado:", {
+    objId: obj.id,
+    esLider: obj.id === window._grupoLider,
+    grupoLider: window._grupoLider
+  });
+
   // Solo procesa el líder
   if (window._grupoLider && obj.id === window._grupoLider) {
+    console.log("👑 [DRAG GRUPAL] Procesando como líder...");
 
     const stage = e.target.getStage();
     const currentPos = stage.getPointerPosition();
+    const startPos = window._dragStartPos;
+    
+    console.log("📍 [DRAG GRUPAL] Posiciones:", {
+      inicial: startPos,
+      actual: currentPos
+    });
 
-    if (currentPos && window._dragInicial) {
+    if (currentPos && startPos && window._dragInicial) {
+      // 🔥 CALCULAR EL DELTA DEL MOVIMIENTO
+      const deltaX = currentPos.x - startPos.x;
+      const deltaY = currentPos.y - startPos.y;
+      
+      console.log("📏 [DRAG GRUPAL] Delta calculado:", { deltaX, deltaY });
+
       const seleccion = window._elementosSeleccionados || [];
-
-      // Leemos posición REAL de cada nodo al soltar, y persistimos eso.
+      
+      // 🔥 APLICAR EL DELTA A CADA ELEMENTO
       seleccion.forEach((elementId) => {
         const objeto = window._objetosActuales?.find(o => o.id === elementId);
-        if (!objeto) return;
+        if (!objeto) {
+          console.warn(`⚠️ [DRAG GRUPAL] No se encontró objeto para ${elementId}`);
+          return;
+        }
+
+        const posInicial = window._dragInicial[elementId];
+        if (!posInicial) {
+          console.warn(`⚠️ [DRAG GRUPAL] No se encontró posición inicial para ${elementId}`);
+          return;
+        }
+
+        // 🎯 NUEVA POSICIÓN = POSICIÓN INICIAL + DELTA
+        const nuevaX = posInicial.x + deltaX;
+        const nuevaY = posInicial.y + deltaY;
+
+        console.log(`📍 [DRAG GRUPAL] Elemento ${elementId}:`, {
+          posInicial,
+          delta: { deltaX, deltaY },
+          nuevaPos: { x: nuevaX, y: nuevaY }
+        });
 
         const node = window._elementRefs?.[elementId];
-        // x/y ABSOLUTAS en el Stage
-        const xAbs = node?.x ? node.x() : (window._dragInicial[elementId]?.x ?? objeto.x ?? 0);
-        const yAbs = node?.y ? node.y() : (window._dragInicial[elementId]?.y ?? objeto.y ?? 0);
 
-        // Determinamos nueva sección por yAbs
+        // Determinar nueva sección por yAbs
         const { nuevaSeccion } = determinarNuevaSeccion(
-          yAbs,
+          nuevaY,
           objeto.seccionId,
           window._seccionesOrdenadas || []
         );
 
-        // 🔇 Muteamos el próximo end individual de este nodo
-        try { node?.setAttr && node.setAttr("_muteNextEnd", true); } catch {}
+        // 🔇 Mutear el próximo end individual
+        try { 
+          node?.setAttr && node.setAttr("_muteNextEnd", true); 
+        } catch {}
 
-        // 📌 Persistimos SIEMPRE con coord. absolutas (CanvasEditor convierte a relativas)
-        onChange(elementId, {
-          x: xAbs,
-          y: yAbs,
+        // 🔌 PERSISTIR CON LAS COORDENADAS CALCULADAS
+        const cambios = {
+          x: nuevaX,
+          y: nuevaY,
           ...(nuevaSeccion ? { seccionId: nuevaSeccion } : {}),
           finalizoDrag: true,
           causa: "drag-grupal"
-        });
+        };
+        
+        console.log(`💾 [DRAG GRUPAL] Persistiendo cambios para ${elementId}:`, cambios);
+        onChange(elementId, cambios);
       });
     }
 
-    // Ventana para ignorar cualquier end individual rezagado
+    // Cleanup
     window._skipUntil = performance.now() + 400;
-
-    // Rehabilitar drags y limpiar flags
+    
     const seleccion = window._elementosSeleccionados || [];
     seleccion.forEach((id) => {
       const elNode = window._elementRefs?.[id];
-      if (elNode) setTimeout(() => { try { elNode.draggable(true); } catch {} }, 24);
+      if (elNode) {
+        setTimeout(() => { 
+          try { elNode.draggable(true); } catch {} 
+        }, 24);
+      }
     });
 
     window._grupoLider = null;
     window._dragStartPos = null;
     window._dragInicial = null;
 
-    // Limpiar el set un poquito después
     setTimeout(() => {
       window._skipIndividualEnd = null;
       window._skipUntil = 0;
@@ -120,7 +235,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     return true;
   }
 
-  // Si aún hay líder, los seguidores no persisten nada acá
+  // Seguidores
   if (window._grupoLider) {
     const seleccion = window._elementosSeleccionados || [];
     if (seleccion.includes(obj.id)) {
@@ -131,3 +246,5 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
 
   return false;
 }
+
+

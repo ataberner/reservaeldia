@@ -144,16 +144,10 @@ export default function ElementoCanvas({
           }
         }
 
-        // Continuar con preview individual para el líder
-        if (onDragMovePersonalizado) {
-          const node = e.target;
-          if (node?.position) {
-            const nuevaPos = node.position();
-            onDragMovePersonalizado(nuevaPos, obj.id);
-          }
-        }
+        // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
+        // El preview individual ya no es necesario porque manejamos todo aquí
 
-        return; // 👈 MUY IMPORTANTE: igual que antes
+        return;
       }
 
       // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR

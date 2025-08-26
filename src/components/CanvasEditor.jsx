@@ -1335,90 +1335,90 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-const detectarInterseccionLinea = useMemo(() => {
-  return (lineObj, area, stage) => {
-    try {
-      console.log("🔍 [DETECCIÓN LÍNEA] Analizando:", {
-        lineId: lineObj.id,
-        area,
-        lineObj: {
-          x: lineObj.x,
-          y: lineObj.y,
-          points: lineObj.points
+  const detectarInterseccionLinea = useMemo(() => {
+    return (lineObj, area, stage) => {
+      try {
+        console.log("🔍 [DETECCIÓN LÍNEA] Analizando:", {
+          lineId: lineObj.id,
+          area,
+          lineObj: {
+            x: lineObj.x,
+            y: lineObj.y,
+            points: lineObj.points
+          }
+        });
+
+        if (!lineObj || !area || !lineObj.points) return false;
+
+        let points = lineObj.points;
+        if (!Array.isArray(points) || points.length < 4) {
+          points = [0, 0, 100, 0];
         }
-      });
 
-      if (!lineObj || !area || !lineObj.points) return false;
+        const puntosLimpios = [
+          parseFloat(points[0]) || 0,
+          parseFloat(points[1]) || 0,
+          parseFloat(points[2]) || 100,
+          parseFloat(points[3]) || 0
+        ];
 
-      let points = lineObj.points;
-      if (!Array.isArray(points) || points.length < 4) {
-        points = [0, 0, 100, 0];
+        // 🔥 USAR LA POSICIÓN DEL NODO REAL EN EL STAGE
+        const node = window._elementRefs?.[lineObj.id];
+        const lineX = node ? node.x() : (lineObj.x || 0);
+        const lineY = node ? node.y() : (lineObj.y || 0);
+
+        // Coordenadas absolutas de los puntos
+        const startX = lineX + puntosLimpios[0];
+        const startY = lineY + puntosLimpios[1];
+        const endX = lineX + puntosLimpios[2];
+        const endY = lineY + puntosLimpios[3];
+
+        console.log("📏 [DETECCIÓN LÍNEA] Coordenadas calculadas:", {
+          linePos: { x: lineX, y: lineY },
+          puntos: { startX, startY, endX, endY },
+          area
+        });
+
+        // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
+        const startDentro = (
+          startX >= area.x && startX <= area.x + area.width &&
+          startY >= area.y && startY <= area.y + area.height
+        );
+
+        const endDentro = (
+          endX >= area.x && endX <= area.x + area.width &&
+          endY >= area.y && endY <= area.y + area.height
+        );
+
+        console.log("🎯 [DETECCIÓN LÍNEA] Puntos dentro:", { startDentro, endDentro });
+
+        if (startDentro || endDentro) {
+          console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por punto dentro");
+          return true;
+        }
+
+        // 🔥 MÉTODO 2: Verificar intersección línea-rectángulo
+        const intersecta = lineIntersectsRect(
+          startX, startY, endX, endY,
+          area.x, area.y, area.x + area.width, area.y + area.height
+        );
+
+        console.log("🔄 [DETECCIÓN LÍNEA] ¿Intersecta con área?", intersecta);
+
+        if (intersecta) {
+          console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por intersección");
+          return true;
+        }
+
+        console.log("❌ [DETECCIÓN LÍNEA] Línea NO seleccionada");
+        return false;
+
+      } catch (error) {
+        console.error("❌ [DETECCIÓN LÍNEA] Error:", error);
+        return false;
       }
-
-      const puntosLimpios = [
-        parseFloat(points[0]) || 0,
-        parseFloat(points[1]) || 0,
-        parseFloat(points[2]) || 100,
-        parseFloat(points[3]) || 0
-      ];
-
-      // 🔥 USAR LA POSICIÓN DEL NODO REAL EN EL STAGE
-      const node = window._elementRefs?.[lineObj.id];
-      const lineX = node ? node.x() : (lineObj.x || 0);
-      const lineY = node ? node.y() : (lineObj.y || 0);
-
-      // Coordenadas absolutas de los puntos
-      const startX = lineX + puntosLimpios[0];
-      const startY = lineY + puntosLimpios[1];
-      const endX = lineX + puntosLimpios[2];
-      const endY = lineY + puntosLimpios[3];
-
-      console.log("📏 [DETECCIÓN LÍNEA] Coordenadas calculadas:", {
-        linePos: { x: lineX, y: lineY },
-        puntos: { startX, startY, endX, endY },
-        area
-      });
-
-      // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
-      const startDentro = (
-        startX >= area.x && startX <= area.x + area.width &&
-        startY >= area.y && startY <= area.y + area.height
-      );
-
-      const endDentro = (
-        endX >= area.x && endX <= area.x + area.width &&
-        endY >= area.y && endY <= area.y + area.height
-      );
-
-      console.log("🎯 [DETECCIÓN LÍNEA] Puntos dentro:", { startDentro, endDentro });
-
-      if (startDentro || endDentro) {
-        console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por punto dentro");
-        return true;
-      }
-
-      // 🔥 MÉTODO 2: Verificar intersección línea-rectángulo
-      const intersecta = lineIntersectsRect(
-        startX, startY, endX, endY,
-        area.x, area.y, area.x + area.width, area.y + area.height
-      );
-
-      console.log("🔄 [DETECCIÓN LÍNEA] ¿Intersecta con área?", intersecta);
-
-      if (intersecta) {
-        console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por intersección");
-        return true;
-      }
-
-      console.log("❌ [DETECCIÓN LÍNEA] Línea NO seleccionada");
-      return false;
-
-    } catch (error) {
-      console.error("❌ [DETECCIÓN LÍNEA] Error:", error);
-      return false;
-    }
-  };
-}, []);
+    };
+  }, []);
 
   // Función auxiliar para verificar intersección línea-rectángulo
   function lineIntersectsRect(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectBottom) {
@@ -1906,7 +1906,7 @@ const detectarInterseccionLinea = useMemo(() => {
 
                     return intersecta;
                   } catch (error) {
-                        console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
+                    console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
 
                     return false;
                   }
@@ -2480,8 +2480,10 @@ const detectarInterseccionLinea = useMemo(() => {
                       }}
 
                       onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                        mostrarGuias(pos, elementId, objetos, elementRefs);
-
+                        // 🔥 NO mostrar guías durante drag grupal
+                        if (!window._grupoLider) {
+                          mostrarGuias(pos, elementId, objetos, elementRefs);
+                        }
                         if (elementosSeleccionados.includes(elementId)) {
                           requestAnimationFrame(() => {
                             if (typeof actualizarPosicionBotonOpciones === 'function') {

@@ -2,6 +2,11 @@
 
 export function startDragIndividual(e, dragStartPos) {
   dragStartPos.current = e.target.getStage().getPointerPosition();
+
+  // Cambiar cursor a grabbing
+  try {
+    document.body.style.cursor = "grabbing";
+  } catch { }
 }
 
 export function previewDragIndividual(e, obj, onDragMovePersonalizado) {
@@ -13,9 +18,13 @@ export function previewDragIndividual(e, obj, onDragMovePersonalizado) {
 }
 
 export function endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged) {
+  // Resetear cursor al finalizar
+  try {
+    document.body.style.cursor = "default";
+  } catch { }
   // 🔇 1) Mute por nodo (a prueba de balas)
   if (node?.getAttr && node.getAttr("_muteNextEnd")) {
-    try { node.setAttr("_muteNextEnd", false); } catch {}
+    try { node.setAttr("_muteNextEnd", false); } catch { }
     if (onDragEndPersonalizado) onDragEndPersonalizado();
     setTimeout(() => { hasDragged.current = false; }, 30);
     return;
@@ -28,7 +37,7 @@ export function endDragIndividual(obj, node, onChange, onDragEndPersonalizado, h
     window._skipIndividualEnd.has(obj.id) &&
     (!window._skipUntil || ahora <= window._skipUntil)
   ) {
-    try { window._skipIndividualEnd.delete(obj.id); } catch {}
+    try { window._skipIndividualEnd.delete(obj.id); } catch { }
     if (onDragEndPersonalizado) onDragEndPersonalizado();
     setTimeout(() => { hasDragged.current = false; }, 30);
     return;

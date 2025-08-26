@@ -228,6 +228,11 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     window._dragStartPos = null;
     window._dragInicial = null;
 
+    // 🔥 RESETEAR CURSOR AL FINALIZAR DRAG GRUPAL
+    try {
+      document.body.style.cursor = "default";
+    } catch { }
+
     setTimeout(() => {
       window._skipIndividualEnd = null;
       window._skipUntil = 0;

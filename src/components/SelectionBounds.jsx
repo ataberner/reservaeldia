@@ -1,17 +1,31 @@
-// SelectionBounds.jsx - CÓDIGO COMPLETO CORREGIDO
-import { useEffect, useRef } from 'react';
+// SelectionBounds.jsx
+import { useEffect, useRef, useState } from 'react';
 import { Transformer, Rect } from 'react-konva';
-
 
 // 🎨 Componente para mostrar bounds sin transformer
 const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
+  const [forceUpdate, setForceUpdate] = useState(0);
+
+  useEffect(() => {
+    const stage = elementRefs.current?.[selectedElements[0]]?.getStage?.();
+    if (!stage) return;
+
+    const handleDragMove = () => {
+      setForceUpdate(p => p + 1);
+    };
+
+    stage.on("dragmove", handleDragMove);
+    return () => {
+      stage.off("dragmove", handleDragMove);
+    };
+  }, [selectedElements.join(",")]);
+
+
   const elementosData = selectedElements.map(id =>
     objetos.find(obj => obj.id === id)
   ).filter(obj => obj);
 
-
   if (elementosData.length === 0) {
-
     return null;
   }
 
@@ -27,7 +41,6 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
         // 🔥 CÁLCULO CORRECTO PARA LÍNEAS
         const points = obj.points || [0, 0, 100, 0];
 
-        // Asegurar que tenemos 4 puntos válidos
         const cleanPoints = [
           parseFloat(points[0]) || 0,
           parseFloat(points[1]) || 0,
@@ -35,17 +48,15 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
           parseFloat(points[3]) || 0
         ];
 
-        // 🔥 USAR POSICIÓN REAL DEL NODO (incluyendo durante drag)
-        const realX = node.x ? node.x() : (obj.x || 0);
-        const realY = node.y ? node.y() : (obj.y || 0);
+        // 🔥 USAR POSICIÓN REAL DEL NODO EN TIEMPO REAL (clave para drag grupal)
+        const realX = node.x();
+        const realY = node.y();
 
-        // Calcular posiciones absolutas de los endpoints
         const x1 = realX + cleanPoints[0];
         const y1 = realY + cleanPoints[1];
         const x2 = realX + cleanPoints[2];
         const y2 = realY + cleanPoints[3];
 
-        // 🔥 AGREGAR PADDING PARA LÍNEAS (para que sean más visibles en el bounds)
         const linePadding = 5;
 
         minX = Math.min(minX, x1 - linePadding, x2 - linePadding);
@@ -53,23 +64,24 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
         maxX = Math.max(maxX, x1 + linePadding, x2 + linePadding);
         maxY = Math.max(maxY, y1 + linePadding, y2 + linePadding);
 
-
       } else {
-        // 🔄 PARA OTROS ELEMENTOS: usar getClientRect en tiempo real
-        const box = node.getClientRect();
-        minX = Math.min(minX, box.x);
-        minY = Math.min(minY, box.y);
-        maxX = Math.max(maxX, box.x + box.width);
-        maxY = Math.max(maxY, box.y + box.height);
+        // 🔥 PARA OTROS ELEMENTOS: usar posición real del nodo
+        const realX = node.x();
+        const realY = node.y();
+        const width = node.width() || obj.width || 50;
+        const height = node.height() || obj.height || 20;
+
+        minX = Math.min(minX, realX);
+        minY = Math.min(minY, realY);
+        maxX = Math.max(maxX, realX + width);
+        maxY = Math.max(maxY, realY + height);
       }
 
     } catch (error) {
-
-
-      // 🔥 FALLBACK: usar posición básica del objeto
+      // Fallback usando datos del objeto
       const fallbackX = obj.x || 0;
       const fallbackY = obj.y || 0;
-      const fallbackSize = 20; // Tamaño mínimo
+      const fallbackSize = 20;
 
       minX = Math.min(minX, fallbackX);
       minY = Math.min(minY, fallbackY);
@@ -78,12 +90,7 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
     }
   });
 
-
-
   if (minX === Infinity || maxX === -Infinity) {
-    console.warn("⚠️ Bounds inválidos calculados, usando fallback");
-
-    // 🔥 FALLBACK: usar posición del primer elemento
     const primerElemento = elementosData[0];
     if (primerElemento) {
       minX = primerElemento.x || 0;
@@ -100,8 +107,6 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
   const finalY = minY - padding;
   const finalWidth = maxX - minX + padding * 2;
   const finalHeight = maxY - minY + padding * 2;
-
-
 
   return (
     <Rect
@@ -136,10 +141,10 @@ export default function SelectionBounds({
   const primerElemento = elementosSeleccionadosData[0] || null;
   const esTexto = primerElemento?.tipo === 'texto';
 
-// ¿La selección contiene alguna galería?
- const hasGallery = elementosSeleccionadosData.some(o => o.tipo === 'galeria');
+  // ¿La selección contiene alguna galería?
+  const hasGallery = elementosSeleccionadosData.some(o => o.tipo === 'galeria');
 
-  
+
   const hayLineas = elementosSeleccionadosData.some(obj => {
     const esLinea = obj.tipo === 'forma' && obj.figura === 'line';
 
@@ -166,12 +171,12 @@ export default function SelectionBounds({
 
   // 🔥 useEffect SIMPLIFICADO solo para transformer
   useEffect(() => {
-     if (hasGallery) {
-     // Si hay galería en la selección, vaciamos el transformer
-     transformerRef.current?.nodes([]);
-     transformerRef.current?.getLayer()?.batchDraw();
-     return;
-   }
+    if (hasGallery) {
+      // Si hay galería en la selección, vaciamos el transformer
+      transformerRef.current?.nodes([]);
+      transformerRef.current?.getLayer()?.batchDraw();
+      return;
+    }
     const editing = window.editing || {};
     if (editing.id && selectedElements.includes(editing.id)) {
       // Durante edición inline, limpiar transformer
@@ -231,17 +236,17 @@ export default function SelectionBounds({
     />;
   }
 
-  
-   // 🚫 Si hay galería seleccionada: solo bounds (sin anchors)
- if (hasGallery) {
-   return (
-     <BoundsIndicator
-       selectedElements={selectedElements}
-       elementRefs={elementRefs}
-       objetos={objetos}
-     />
-   );
- }
+
+  // 🚫 Si hay galería seleccionada: solo bounds (sin anchors)
+  if (hasGallery) {
+    return (
+      <BoundsIndicator
+        selectedElements={selectedElements}
+        elementRefs={elementRefs}
+        objetos={objetos}
+      />
+    );
+  }
 
 
   // 🎨 TRANSFORMER COMPONENT (mantener todo el código existente del transformer)

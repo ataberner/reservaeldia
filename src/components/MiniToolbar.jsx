@@ -391,16 +391,6 @@ export default function MiniToolbar({
 
 
 
-      {botonActivo === "forma" && (
-        <button
-          onClick={onAgregarForma}
-          className="flex items-center gap-2 w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
-        >
-          <span className="text-lg">🔷</span>
-          <span>Añadir forma</span>
-        </button>
-      )}
-
       {botonActivo === "imagen" && (
         <>
           {/* 🔹 Insertar galería (nuevo) */}

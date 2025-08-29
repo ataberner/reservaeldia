@@ -305,11 +305,21 @@ export default function DashboardSidebar({
                                         setHoverSidebar(false);
                                         setBotonActivo(null);
                                     }}
-                                    className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-full shadow transition"
+                                    className="absolute top-2 right-2 z-[60] w-8 h-8 flex items-center justify-center 
+               bg-purple-100 text-purple-700 hover:bg-purple-200 
+               rounded-full shadow transition pointer-events-auto"
                                     title="Cerrar panel"
                                 >
                                     ←
                                 </button>
+                            )}
+                            {botonActivo === "forma" && (
+                                <PanelDeFormas
+                                    abierto={true}
+                                    onCerrar={() => setModoFormasCompleto(false)}
+                                    sidebarAbierta={sidebarAbierta}
+                                    seccionActivaId={seccionActivaId}
+                                />
                             )}
 
                             <MiniToolbar
@@ -400,14 +410,7 @@ export default function DashboardSidebar({
                                 onAbrirModalSeccion={modalCrear.abrir}
                                 onInsertarGaleria={insertarGaleria}
                             />
-                            {botonActivo === "forma" && (
-                                <PanelDeFormas
-                                    abierto={true}
-                                    onCerrar={() => setModoFormasCompleto(false)}
-                                    sidebarAbierta={sidebarAbierta}
-                                    seccionActivaId={seccionActivaId}
-                                />
-                            )}
+
 
 
 

@@ -1,281 +1,362 @@
 // src/components/PanelDeFormas.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import useIconosPublicos from "@/hooks/useIconosPublicos";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ChevronLeft } from "lucide-react";
 
+// 🔹 Componente de flecha con auto-scroll horizontal
+function FlechaScroll({ direccion = "right" }) {
+  const rafId = useRef(null);
+  const hovering = useRef(false);
 
-export default function PanelDeFormas({ abierto, onCerrar, sidebarAbierta, seccionActivaId, }) {
+  const startScroll = (targetEl) => {
+    if (!targetEl) return;
+    const speed = 12; // px por frame (~60fps)
+
+    const tick = () => {
+      if (!hovering.current) return;
+      if (direccion === "right") {
+        targetEl.scrollLeft = Math.min(
+          targetEl.scrollLeft + speed,
+          targetEl.scrollWidth - targetEl.clientWidth
+        );
+        if (hovering.current && targetEl.scrollLeft < targetEl.scrollWidth - targetEl.clientWidth) {
+          rafId.current = requestAnimationFrame(tick);
+        }
+      } else {
+        targetEl.scrollLeft = Math.max(targetEl.scrollLeft - speed, 0);
+        if (hovering.current && targetEl.scrollLeft > 0) {
+          rafId.current = requestAnimationFrame(tick);
+        }
+      }
+    };
+    rafId.current = requestAnimationFrame(tick);
+  };
+
+  return (
+    <div
+      className={`absolute ${direccion === "right" ? "right-1" : "left-1"} top-[30%] 
+                  z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm cursor-pointer select-none`}
+      onMouseEnter={(e) => {
+        const cont = e.currentTarget
+          .closest(".relative")
+          ?.querySelector(".scroll-horizontal");
+        if (!cont) return;
+        if (cont.scrollWidth <= cont.clientWidth + 1) return; // nada para scrollear
+        hovering.current = true;
+        startScroll(cont);
+      }}
+      onMouseLeave={() => {
+        hovering.current = false;
+        if (rafId.current) cancelAnimationFrame(rafId.current);
+      }}
+    >
+      {direccion === "right" ? (
+        <ChevronRight className="w-5 h-5 text-white drop-shadow" />
+      ) : (
+        <ChevronLeft className="w-5 h-5 text-white drop-shadow" />
+      )}
+    </div>
+  );
+}
+
+export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId }) {
   const [verTodo, setVerTodo] = useState(null);
-const { iconos, populares, cargarMas, cargando, hayMas, cargarPorCategoria } = useIconosPublicos();
+  const { iconos, populares, cargarMas, cargando, hayMas, cargarPorCategoria } = useIconosPublicos();
 
-const [categoriaEspecial, setCategoriaEspecial] = useState([]);
+  const [categoriaEspecial, setCategoriaEspecial] = useState([]);
+  const loadMoreRef = useRef(null);
+  const scrollRef = useRef(null);
 
-
-useEffect(() => {
-  cargarPorCategoria("corazones").then(setCategoriaEspecial);
-}, []);
-
-
+  useEffect(() => {
+    cargarPorCategoria("corazones").then(setCategoriaEspecial);
+  }, [cargarPorCategoria]);
 
   if (!abierto || !sidebarAbierta) return null;
 
   const formas = [
     { id: "cuadrado", tipo: "forma", figura: "rect", color: "#000000" },
     { id: "circulo", tipo: "forma", figura: "circle", color: "#000000" },
-   { id: "linea", tipo: "forma", figura: "line", color: "#000000", points: [0, 0, 100, 0] },
+    { id: "linea", tipo: "forma", figura: "line", color: "#000000" },
     { id: "triangulo", tipo: "forma", figura: "triangle", color: "#000000" },
   ];
 
- 
+  // ——————————————————————— Helpers insertar
+  const insertarIcono = (src) => {
+    if (!src) return;
+    window.dispatchEvent(
+      new CustomEvent("insertar-elemento", {
+        detail: {
+          id: `icono-${Date.now()}`,
+          tipo: "icono",
+          src,
+          x: 100,
+          y: 100,
+          width: 100,
+          height: 100,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          seccionId: seccionActivaId,
+        },
+      })
+    );
+  };
 
-  return (
-<div className="bg-white text-gray-800 rounded-2xl shadow-inner border border-purple-200 px-3 py-4 overflow-y-auto max-h-[calc(100vh-120px)] flex flex-col gap-4">
+  const insertarForma = (forma) => {
+    const el = {
+      id: `forma-${Date.now()}`,
+      tipo: "forma",
+      figura: forma.figura,
+      color: forma.color,
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      seccionId: seccionActivaId,
+      texto: "",
+      fontSize: 24,
+      fontFamily: "sans-serif",
+      fontWeight: "normal",
+      fontStyle: "normal",
+      colorTexto: "#000000",
+      align: "center",
+    };
+    if (forma.figura === "line") {
+      el.points = [0, 0, 100, 0];
+      el.strokeWidth = 2;
+    } else if (forma.figura === "circle") {
+      el.radius = 50;
+    } else if (forma.figura === "triangle") {
+      el.radius = 60;
+    }
+    window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: el }));
+  };
 
-    <div className="flex flex-col pt-2">
-      
 
-{/* ⭐ Íconos populares */}
-<div>
-  <div className="flex justify-between items-center px-2">
-   <span className="text-sm text-purple-700 font-semibold mb-1">
-
-      Íconos populares
-    </span>
-    <button
-      className="text-xs underline text-white"
-      onClick={() => setVerTodo(verTodo === "populares" ? null : "populares")}
-    >
-      {verTodo === "populares" ? "Cerrar" : "Ver todo"}
-    </button>
-  </div>
-
-  <div className="relative">
+  const ItemIcono = ({ src, id }) => (
     <div
-      className={`flex gap-2 px-2 overflow-x-auto scrollbar-hide py-2 transition-all ${
-        verTodo === "populares" ? "max-h-[400px]" : "max-h-[100px]"
-      }`}
+      key={id}
+      className="w-14 h-14 rounded-xl bg-white border border-gray-200 hover:ring-2 hover:ring-purple-400 
+               flex items-center justify-center shadow-sm cursor-pointer select-none"
+      onMouseDown={(e) => {
+        e.preventDefault(); // 👈 evita que robe foco o selección de texto
+        const payload = {
+          id: `icono-${Date.now()}`,
+          tipo: "icono",
+          src,
+          x: 100,
+          y: 100,
+          width: 100,
+          height: 100,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          seccionId: seccionActivaId,
+        };
+        console.log("🟣 Insertar icono → dispatch:", payload);
+        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: payload }));
+      }}
     >
-      {populares.map((icono) => {
-        if (!icono.src) return null;
-
-        return (
-          <div
-            key={`pop-${icono.id}`}
-            className="w-14 h-14 rounded-xl bg-gray-50 border hover:bg-purple-100 transition flex items-center justify-center shadow-sm cursor-pointer"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("insertar-elemento", {
-  detail: {
-    id: `icono-${Date.now()}`,
-    tipo: "icono",
-    src: icono.src,
-    x: 100,
-    y: 100,
-    seccionId: seccionActivaId,
-    scaleX: 1,
-    scaleY: 1,
-    width: 100,
-    height: 100,
-    rotation: 0,
-  }
-}));
-
-            }}
-          >
-            <div
-              className="w-10 h-10 bg-center bg-no-repeat bg-contain"
-              style={{ backgroundImage: `url(${icono.src})` }}
-            />
-          </div>
-        );
-      })}
+      <div
+        className="w-10 h-10 bg-center bg-no-repeat bg-contain"
+        style={{ backgroundImage: `url(${src})` }}
+      />
     </div>
+  );
 
-    {/* Flecha flotante */}
-    <div className="pointer-events-none absolute right-1 top-[30%] z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm">
-      <ChevronRight className="w-5 h-5 text-white drop-shadow" />
-    </div>
-  </div>
-</div>
+  const ItemForma = ({ forma }) => (
+    <div
+      key={forma.id}
+      className="w-14 h-14 rounded-xl bg-white border border-gray-200 hover:ring-2 hover:ring-purple-400 
+               flex items-center justify-center shadow-sm cursor-pointer select-none"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        const payload = {
+          id: `forma-${Date.now()}`,
+          tipo: "forma",
+          figura: forma.figura,
+          color: forma.color,
+          x: 100,
+          y: 100,
+          width: 100,
+          height: 100,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          seccionId: seccionActivaId,
+        };
 
+        if (forma.figura === "line") {
+          payload.points = [0, 0, 100, 0];
+          payload.strokeWidth = 2;
+        } else if (forma.figura === "circle") {
+          payload.radius = 50;
+        } else if (forma.figura === "triangle") {
+          payload.radius = 60;
+        }
 
-
-
-<hr className="border-purple-700/50 my-3 mx-2" />
-
-      {/* Hilera de Formas */}
-      <div>
-        <div className="flex justify-between items-center px-2">
-          <span className="text-xs text-purple-200 uppercase tracking-wider font-semibold">Formas básicas</span>
-          <button
-            className="text-xs underline text-white"
-            onClick={() => setVerTodo(verTodo === "formas" ? null : "formas")}
-          >
-            {verTodo === "formas" ? "Cerrar" : "Ver todo"}
-          </button>
-        </div>  
+        console.log("🔷 Insertar forma → dispatch:", payload);
+        window.dispatchEvent(new CustomEvent("insertar-elemento", { detail: payload }));
+      }}
+    >
+      {/* Preview de la forma */}
+      {forma.figura === "rect" && <div className="w-8 h-8 bg-black" />}
+      {forma.figura === "circle" && <div className="w-8 h-8 rounded-full bg-black" />}
+      {forma.figura === "line" && <div className="w-8 h-[2px] bg-black" />}
+      {forma.figura === "triangle" && (
         <div
-          className={`flex gap-2 px-2 overflow-x-auto py-2 transition-all ${
-            verTodo === "formas" ? "max-h-[400px]" : "max-h-[100px]"
-          }`}
-        >
-
-        {formas.map((forma) => (
-          <div
-            key={forma.id}
-            className="w-14 h-14 rounded-xl bg-gray-50 border hover:bg-purple-100 transition flex items-center justify-center shadow-sm cursor-pointer"
-            onClick={() => {
-  // Objeto base con TODAS las propiedades por defecto
- const elementoNuevo = {
-  id: `forma-${Date.now()}`,
-  tipo: "forma",
-  figura: forma.figura,
-  color: forma.color,
-  x: 100,
-  y: 100,
-  width: 100,
-  height: 100,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-
-  // 🆕 Propiedades para permitir texto dentro de la forma
-  texto: "",
-  fontSize: 24,
-  fontFamily: "sans-serif",
-  fontWeight: "normal",
-  fontStyle: "normal",
-  colorTexto: "#000000",
-  align: "center",
-};
+          className="w-0 h-0"
+          style={{
+            borderLeft: "20px solid transparent",
+            borderRight: "20px solid transparent",
+            borderBottom: "35px solid #000000",
+          }}
+        />
+      )}
+    </div>
+  );
 
 
-  // Agregar propiedades ADICIONALES según el tipo
-  if (forma.figura === "line") {
-    // Para líneas, AGREGAR points (sin quitar width/height)
-    elementoNuevo.points = [0, 0, 100, 0];
-    elementoNuevo.strokeWidth = 2; // 🔥 AGREGAR GROSOR POR DEFECTO
-  } else if (forma.figura === "circle") {
-    // Para círculos, AGREGAR radius
-    elementoNuevo.radius = 50;
-  } else if (forma.figura === "triangle") {
-    // Para triángulos, AGREGAR radius (Konva usa RegularPolygon)
-    elementoNuevo.radius = 60;
+
+
+  // ——————————————————————— Infinite scroll en “iconos”
+  useEffect(() => {
+    if (verTodo !== "iconos") return;
+    if (!loadMoreRef.current) return;
+    const sentinel = loadMoreRef.current;
+    const rootEl = scrollRef.current || null;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting) && !cargando && hayMas) {
+          cargarMas();
+        }
+      },
+      { root: rootEl, rootMargin: "200px", threshold: 0.01 }
+    );
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [verTodo, cargando, hayMas, cargarMas]);
+
+  // ——————————————————————— Vista “Ver todo”
+  if (verTodo) {
+    const lista = verTodo === "populares" ? populares : iconos;
+    const tituloCategoria =
+      verTodo === "populares" ? "Íconos populares" : "Íconos & GIFs";
+
+    return (
+      <div className="flex flex-col h-full px-2 pt-1 -mt-1">
+        {/* Header fijo */}
+        <div className="flex items-center gap-2 flex-none sticky top-0 z-10 bg-white/80 backdrop-blur-sm py-1">
+          <button
+            className="p-1 rounded-lg hover:bg-zinc-100 transition"
+            onClick={() => setVerTodo(null)}
+            title="Volver"
+          >
+            <ChevronLeft className="w-5 h-5 text-zinc-700" />
+          </button>
+          <div className="text-sm font-semibold text-purple-700">{tituloCategoria}</div>
+        </div>
+
+        {/* Cuerpo scrollable */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-3 gap-2">
+            {lista.map((it) => {
+              const src = it?.src;
+              if (!src) return null;
+              return <ItemIcono key={it.id || src} id={it.id || src} src={src} />;
+            })}
+          </div>
+
+          {verTodo === "iconos" && (
+            <>
+              {cargando && (
+                <div className="flex items-center justify-center py-3">
+                  <div className="h-5 w-5 rounded-full border-2 border-zinc-300 border-t-purple-500 animate-spin" />
+                </div>
+              )}
+              {hayMas && <div ref={loadMoreRef} className="h-6" />}
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
-  window.dispatchEvent(new CustomEvent("insertar-elemento", { 
-    detail: elementoNuevo
-  }));
-}}
-          >
-            {/* Dibujos visuales por tipo */}
-            {forma.figura === "rect" && (
-              <div className="w-8 h-8 bg-black" />
-            )}
-            {forma.figura === "circle" && (
-              <div className="w-8 h-8 rounded-full bg-black" />
-            )}
-            {forma.figura === "line" && (
-              <div className="w-8 h-[2px] bg-black" />
-            )}
-            {forma.figura === "triangle" && (
-              <div
-                className="w-0 h-0"
-                style={{
-                  borderLeft: "20px solid transparent",
-                  borderRight: "20px solid transparent",
-                  borderBottom: "35px solid #000000",
-                }}
-              />
-            )}
-      </div>
-  ))}
-</div>
+  // ——————————————————————— Vista principal
+  return (
+    <div className="flex flex-col gap-4 px-2 pt-1 h-full">
 
-       </div>
-
-
-<hr className="border-purple-700/50 my-3 mx-2" />
-
-
-      {/* Hilera de Iconos */}
+      {/* 🟪 Formas básicas */}
       <div>
-        <div className="flex justify-between items-center px-2">
-         <span className="text-sm text-purple-700 font-semibold mb-1">
-
-            Íconos & GIFs
+        <div className="flex justify-between items-center px-1">
+          <span className="text-xs text-purple-700 uppercase tracking-wider font-semibold">
+            Formas básicas
           </span>
+        </div>
+        <div className="flex gap-2 px-1 overflow-x-auto py-2 scroll-horizontal">
+          {formas.map((forma) => (
+            <ItemForma key={forma.id} forma={forma} />
+          ))}
+        </div>
+      </div>
 
+      <hr className="border-purple-700/20 my-1 mx-2" />
+
+      {/* ⭐ Íconos populares */}
+      <div>
+        <div className="flex justify-between items-center px-1">
+          <span className="text-sm text-purple-700 font-semibold mb-1">Íconos populares</span>
           <button
-            className="text-xs underline text-white"
-            onClick={() => setVerTodo(verTodo === "iconos" ? null : "iconos")}
+            className="text-xs underline text-purple-700 hover:text-purple-800"
+            onClick={() => setVerTodo("populares")}
           >
-            {verTodo === "iconos" ? "Cerrar" : "Ver todo"}
+            Ver todo
           </button>
         </div>
-
-      <div className="relative">
-       <div
-        className={`flex gap-2 px-2 overflow-x-auto scrollbar-hide py-2 min-h-[112px] transition-all ${
-          verTodo === "iconos" ? "max-h-[400px]" : "max-h-[124px]"
-        }`}
-      >    
-        {iconos.map((icono) => {
-  
-
-            return (
-                     <div
-                      key={icono.id}
-                      className="w-14 h-14 rounded-xl bg-gray-50 border hover:bg-purple-100 transition flex items-center justify-center shadow-sm cursor-pointer"
-                      onClick={() => {
-                         window.dispatchEvent(new CustomEvent("insertar-elemento", {
-                           detail: {
-                            id: `icono-${Date.now()}`,
-                            tipo: "icono",
-                            src: icono.src,
-                            x: 100,
-                            y: 100,
-                            width: 100,
-                            height: 100,
-                            scaleX: 1,
-                            scaleY: 1,
-                            rotation: 0,
-                          }}));
-                        }}
-                    >
-                      <div
-                        className="w-10 h-10 bg-center bg-no-repeat bg-contain"
-                        style={{ backgroundImage: `url(${icono.src})` }}
-                      />
-                    </div>
-                    );
-                  })}{cargando &&
-                    [...Array(3)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-14 h-14 rounded-xl bg-gray-300 animate-pulse shadow flex-shrink-0"
-                      />
-                    ))}
-
-                  {hayMas && !cargando && (
-                    <button
-                      onClick={cargarMas}
-                      className="w-14 h-14 bg-purple-200 text-purple-800 text-sm font-semibold rounded-xl hover:bg-purple-300 transition shadow flex-shrink-0"
-                    >
-                      +
-                    </button>
-                  )}
-
+        <div className="relative">
+          <div className="flex gap-2 px-1 overflow-x-auto scrollbar-hide py-2 scroll-horizontal">
+            {populares.map((icono) => {
+              if (!icono?.src) return null;
+              return <ItemIcono key={`pop-${icono.id || icono.src}`} id={icono.id || icono.src} src={icono.src} />;
+            })}
+          </div>
+          <FlechaScroll direccion="left" />
+          <FlechaScroll direccion="right" />
         </div>
-
-        <div className="pointer-events-none absolute right-1 top-[22%] z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm">
-          <ChevronRight className="w-5 h-5 text-white drop-shadow" />
-        </div>
-
       </div>
 
+      <hr className="border-purple-700/20 my-1 mx-2" />
+
+      {/* 🟣 Íconos & GIFs */}
+      <div>
+        <div className="flex justify-between items-center px-1">
+          <span className="text-sm text-purple-700 font-semibold mb-1">Íconos & GIFs</span>
+          <button
+            className="text-xs underline text-purple-700 hover:text-purple-800"
+            onClick={() => setVerTodo("iconos")}
+          >
+            Ver todo
+          </button>
+        </div>
+        <div className="relative">
+          <div className="flex gap-2 px-1 overflow-x-auto scrollbar-hide py-2 scroll-horizontal">
+            {iconos.map((icono) => {
+              if (!icono?.src) return null;
+              return <ItemIcono key={icono.id || icono.src} id={icono.id || icono.src} src={icono.src} />;
+            })}
+            {cargando &&
+              [...Array(3)].map((_, i) => (
+                <div key={i} className="w-14 h-14 rounded-xl bg-gray-200 animate-pulse shadow flex-shrink-0" />
+              ))}
+          </div>
+          <FlechaScroll direccion="left" />
+          <FlechaScroll direccion="right" />
+        </div>
       </div>
     </div>
-  </div>
-);
-}
+  );
 
+}

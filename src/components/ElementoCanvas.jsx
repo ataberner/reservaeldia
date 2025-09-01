@@ -57,13 +57,12 @@ export default function ElementoCanvas({
       e.cancelBubble = true;
       hasDragged.current = false;
 
-      // 🔥 HABILITAR draggable SIEMPRE
-      e.target.draggable(true);
+      e.currentTarget?.draggable(true);
     },
 
     onMouseUp: (e) => {
-      if (e.target.draggable && !hasDragged.current) {
-        e.target.draggable(false);
+      if (e.currentTarget?.draggable && !hasDragged.current) {
+        e.currentTarget.draggable(false);
       }
     },
 
@@ -97,6 +96,12 @@ export default function ElementoCanvas({
     },
 
     onDragStart: (e) => {
+
+      
+      window._dragCount = 0;
+      window._lastMouse = null;
+      window._lastElement = null;
+
       hasDragged.current = true;
       window._isDragging = true;
       setIsDragging(true);
@@ -111,6 +116,13 @@ export default function ElementoCanvas({
 
     onDragMove: (e) => {
       hasDragged.current = true;
+
+      const stage = e.target.getStage();
+      const mousePos = stage.getPointerPosition();
+      const elementPos = { x: e.target.x(), y: e.target.y() };
+
+      window._lastMouse = mousePos;
+      window._lastElement = elementPos;
 
       // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
@@ -167,16 +179,11 @@ export default function ElementoCanvas({
 
 
     onDragEnd: (e) => {
-      console.log("🏁 [ELEMENTO CANVAS] onDragEnd:", {
-        elementoId: obj.id,
-        grupoLider: window._grupoLider,
-        hasDragged: hasDragged.current,
-        tipoElemento: obj.tipo
-      });
+
       window._isDragging = false;
       setIsDragging(false);
 
-      const node = e.target;
+      const node = e.currentTarget; 
 
       // 🔥 Intentar drag grupal
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
@@ -289,6 +296,27 @@ export default function ElementoCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obj.id, obj.texto, obj.fontFamily, obj.fontSize, obj.fontStyle, obj.fontWeight, obj.align]);
 
+
+
+  const groupRef = useRef(null);
+
+  useEffect(() => {
+    // Cachear cuando cambie el color
+    if (groupRef.current && obj.tipo === "icono" && obj.color && obj.color !== "#000000") {
+      groupRef.current.cache();
+      groupRef.current.getLayer()?.batchDraw();
+    }
+  }, [obj.color, obj.id]);
+
+
+  // Convierte "minX minY width height" -> números
+  function parseViewBox(vb) {
+    if (!vb || typeof vb !== "string") return null;
+    const parts = vb.trim().split(/\s+/).map(Number);
+    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null;
+    const [minX, minY, vbWidth, vbHeight] = parts;
+    return { minX, minY, vbWidth, vbHeight };
+  }
 
 
   if (obj.tipo === "forma" && obj.figura === "line") {
@@ -471,64 +499,195 @@ export default function ElementoCanvas({
   }
 
 
-  if (obj.tipo === "rsvp-boton") {
-    return (
-      <div
-        key={obj.id}
-        data-id={obj.id}
-        style={{
-          position: "absolute",
-          left: obj.x,
-          top: obj.y,
-          width: obj.ancho,
-          height: obj.alto,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: obj.color ?? "#773dbe",
-          color: obj.colorTexto ?? "#fff",
-          borderRadius: 10,
-          fontSize: obj.fontSize ?? 16,
-          fontFamily: obj.fontFamily ?? "Inter, system-ui, sans-serif",
-          userSelect: "none",
-          pointerEvents: "none",
-        }}
-      >
-        {obj.texto ?? "Confirmar asistencia"}
-      </div>
-    );
-  }
+  /* ---------------- ICONO SVG (tipo:"icono", formato:"svg") — CON HITBOX FUNCIONAL ---------------- */
+  if (obj.tipo === "icono" && obj.formato === "svg") {
+    const color = obj.color || "#000000";
+    const paths = Array.isArray(obj.paths) ? obj.paths : [];
+    const W = Number(obj.width) || 128;
+    const H = Number(obj.height) || 128;
+    const vb = parseViewBox(obj.viewBox) || { minX: 0, minY: 0, vbWidth: 100, vbHeight: 100 };
 
-
-  if (obj.tipo === "icono-svg") {
     return (
-      <Path
+      <Group
         {...commonProps}
-        data={obj.d}
-        fill={obj.color || "#000"}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-        strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-      />
+        width={W}
+        height={H}
+      >
+        {/* 🔥 HITBOX INVISIBLE - SOLO para eventos de drag/click */}
+        <Rect
+          x={0}
+          y={0}
+          width={W}
+          height={H}
+          fill="rgba(0,0,0,0.001)"  // Casi transparente pero clickeable
+          stroke="transparent"      // Sin borde
+          listening={true}          // DEBE recibir eventos
+          draggable={false}
+        />
+
+        {/* Contenido SVG visual - NO maneja eventos */}
+        {paths.map((p, i) => (
+          <Path
+            key={i}
+            data={p.d}
+            fill={color}
+            scaleX={W / vb.vbWidth}
+            scaleY={H / vb.vbHeight}
+            x={-vb.minX * (W / vb.vbWidth)}
+            y={-vb.minY * (H / vb.vbHeight)}
+            listening={false}        // NO maneja eventos
+            perfectDrawEnabled={false}
+          />
+        ))}
+
+        {/* Marco de selección visual */}
+        {(isSelected || preSeleccionado) && (
+          <Rect
+            x={0}
+            y={0}
+            width={W}
+            height={H}
+            stroke="#773dbe"
+            strokeWidth={1}
+            fill="transparent"
+            listening={false}        // Solo visual
+          />
+        )}
+      </Group>
     );
   }
 
-  if (obj.tipo === "icono" && img) {
+
+
+  /* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
+  if (obj.tipo === "icono" && obj.formato === "png") {
+    const [img] = useImage(obj.url, "anonymous");
+
     return (
       <KonvaImage
         {...commonProps}
         image={img}
         crossOrigin="anonymous"
-        width={obj.width || img.width}
-        height={obj.height || img.height}
+        width={obj.width || (img?.width ?? 120)}
+        height={obj.height || (img?.height ?? 120)}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
         strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+        onClick={(e) => { e.cancelBubble = true; if (!obj) return; onSelect?.(obj, e); }}
+        onTap={(e) => { e.cancelBubble = true; if (!obj) return; onSelect?.(obj, e); }}
+        onDragEnd={(e) => {
+          const patch = {
+            id: obj.id,
+            tipo: obj.tipo,
+            formato: obj.formato,
+            x: e.target.x(),
+            y: e.target.y(),
+            isDragPreview: false,
+            isFinal: true,
+          };
+          const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
+          onChange?.(patch, meta);
+        }}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          const patch = {
+            id: obj.id,
+            tipo: obj.tipo,
+            formato: obj.formato,
+            x: node.x(),
+            y: node.y(),
+            rotation: node.rotation() || 0,
+            scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
+            scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
+            isDragPreview: false,
+            isFinal: true,
+          };
+          const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
+          onChange?.(patch, meta);
+        }}
       />
     );
   }
+
+
+  /* ---------------- LEGACY: ICONO SVG (tipo: "icono-svg" con obj.d) ---------------- */
+  if (obj.tipo === "icono-svg") {
+    const W = Number(obj.width) || 128;
+    const H = Number(obj.height) || 128;
+
+    const vb = parseViewBox(obj.viewBox) || { minX: 0, minY: 0, vbWidth: 100, vbHeight: 100 };
+    const scaleX = vb.vbWidth ? W / vb.vbWidth : 1;
+    const scaleY = vb.vbHeight ? H / vb.vbHeight : 1;
+
+    return (
+      <Group
+        {...commonProps}
+        draggable={true}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onClick={(e) => { e.cancelBubble = true; if (!obj) return; onSelect?.(obj, e); }}
+        onTap={(e) => { e.cancelBubble = true; if (!obj) return; onSelect?.(obj, e); }}
+        onDragEnd={(e) => {
+          const patch = {
+            id: obj.id,
+            tipo: obj.tipo,
+            x: e.target.x(),
+            y: e.target.y(),
+            isDragPreview: false,
+            isFinal: true,
+          };
+          const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
+          onChange?.(patch, meta);
+        }}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          const patch = {
+            id: obj.id,
+            tipo: obj.tipo,
+            x: node.x(),
+            y: node.y(),
+            rotation: node.rotation() || 0,
+            scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
+            scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
+            isDragPreview: false,
+            isFinal: true,
+          };
+          const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
+          onChange?.(patch, meta);
+        }}
+      >
+        <Rect
+          x={0}
+          y={0}
+          width={W}
+          height={H}
+          fill="rgba(0,0,0,0.001)"
+          stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
+          strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+          listening={true}
+        />
+        <Group x={0} y={0} scaleX={scaleX} scaleY={scaleY}>
+          <Group x={-vb.minX} y={-vb.minY}>
+            <Path
+              data={obj.d}
+              fill={obj.color || "#000"}
+              stroke={obj.color || "#000"}
+              strokeWidth={1}
+              perfectDrawEnabled
+              listening={false}
+            />
+          </Group>
+        </Group>
+      </Group>
+    );
+  }
+
+
+
+
 
   if (obj.tipo === "forma") {
     const propsForma = {

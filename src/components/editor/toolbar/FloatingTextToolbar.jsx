@@ -26,9 +26,65 @@ export default function FloatingTextToolbar({
     objetoSeleccionado?.tipo === "forma" && objetoSeleccionado?.texto;
   const esRect = objetoSeleccionado?.figura === "rect";
 
-  // Si no aplica barra, no renderizamos (igual que tu condición arriba)
-  if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma")) {
+  if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma" || objetoSeleccionado?.tipo === "icono")) {
     return null;
+  }
+
+  // 🆕 AGREGAR ESTE BLOQUE COMPLETO después de la línea del return null:
+
+  // Para iconos, solo mostrar selector de color
+  if (objetoSeleccionado?.tipo === "icono") {
+    return (
+      <div
+        className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
+        style={{
+          top: "120px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "auto",
+          maxWidth: "200px",
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600">Color</label>
+          <input
+            type="color"
+            value={objetoSeleccionado.color || "#000000"}
+            onChange={(e) => {
+              const nuevoColor = e.target.value;
+              console.log("🎨 [TOOLBAR] Cambiando color de ícono:", {
+                elementoId: elementosSeleccionados[0],
+                colorAnterior: objetoSeleccionado.color,
+                colorNuevo: nuevoColor,
+                elementosSeleccionados
+              });
+
+              setObjetos((prev) => {
+                console.log("🔍 [TOOLBAR] Objetos antes del cambio:", prev.length);
+
+                const nuevosObjetos = prev.map((o) => {
+                  if (elementosSeleccionados.includes(o.id)) {
+                    console.log("✅ [TOOLBAR] Actualizando objeto:", {
+                      id: o.id,
+                      tipo: o.tipo,
+                      colorAnterior: o.color,
+                      colorNuevo: nuevoColor
+                    });
+                    return { ...o, color: nuevoColor };
+                  }
+                  return o;
+                });
+
+                console.log("🔍 [TOOLBAR] Objetos después del cambio:", nuevosObjetos.length);
+                return nuevosObjetos;
+              });
+            }}
+            className="w-8 h-6 rounded cursor-pointer"
+            title="Color del ícono"
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -90,9 +146,8 @@ export default function FloatingTextToolbar({
 
       {/* Selector de fuente */}
       <div
-        className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${
-          mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
-        }`}
+        className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
+          }`}
         style={{ fontFamily: objetoSeleccionado?.fontFamily || "sans-serif" }}
         title="Fuente"
         onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
@@ -114,11 +169,10 @@ export default function FloatingTextToolbar({
               return (
                 <div
                   key={fuente.valor}
-                  className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${
-                    estaCargada
-                      ? "hover:bg-gray-100"
-                      : "hover:bg-gray-50 opacity-70"
-                  }`}
+                  className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${estaCargada
+                    ? "hover:bg-gray-100"
+                    : "hover:bg-gray-50 opacity-70"
+                    }`}
                   style={{ fontFamily: estaCargada ? fuente.valor : "sans-serif" }}
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -180,9 +234,8 @@ export default function FloatingTextToolbar({
         </button>
 
         <div
-          className={`px-2 py-1 text-sm cursor-pointer transition-all ${
-            mostrarSelectorTamaño ? "bg-gray-200" : "hover:bg-gray-100"
-          }`}
+          className={`px-2 py-1 text-sm cursor-pointer transition-all ${mostrarSelectorTamaño ? "bg-gray-200" : "hover:bg-gray-100"
+            }`}
           onClick={() => setMostrarSelectorTamaño(!mostrarSelectorTamaño)}
         >
           {objetoSeleccionado?.fontSize || 24}
@@ -249,19 +302,18 @@ export default function FloatingTextToolbar({
 
       {/* B / I / S */}
       <button
-        className={`px-2 py-1 rounded border text-sm font-bold transition ${
-          objetoSeleccionado?.fontWeight === "bold"
-            ? "bg-gray-200"
-            : "hover:bg-gray-100"
-        }`}
+        className={`px-2 py-1 rounded border text-sm font-bold transition ${objetoSeleccionado?.fontWeight === "bold"
+          ? "bg-gray-200"
+          : "hover:bg-gray-100"
+          }`}
         onClick={() =>
           setObjetos((prev) =>
             prev.map((o) =>
               elementosSeleccionados.includes(o.id)
                 ? {
-                    ...o,
-                    fontWeight: o.fontWeight === "bold" ? "normal" : "bold",
-                  }
+                  ...o,
+                  fontWeight: o.fontWeight === "bold" ? "normal" : "bold",
+                }
                 : o
             )
           )
@@ -271,19 +323,18 @@ export default function FloatingTextToolbar({
       </button>
 
       <button
-        className={`px-2 py-1 rounded border text-sm italic transition ${
-          objetoSeleccionado?.fontStyle === "italic"
-            ? "bg-gray-200"
-            : "hover:bg-gray-100"
-        }`}
+        className={`px-2 py-1 rounded border text-sm italic transition ${objetoSeleccionado?.fontStyle === "italic"
+          ? "bg-gray-200"
+          : "hover:bg-gray-100"
+          }`}
         onClick={() =>
           setObjetos((prev) =>
             prev.map((o) =>
               elementosSeleccionados.includes(o.id)
                 ? {
-                    ...o,
-                    fontStyle: o.fontStyle === "italic" ? "normal" : "italic",
-                  }
+                  ...o,
+                  fontStyle: o.fontStyle === "italic" ? "normal" : "italic",
+                }
                 : o
             )
           )
@@ -293,20 +344,19 @@ export default function FloatingTextToolbar({
       </button>
 
       <button
-        className={`px-2 py-1 rounded border text-sm transition ${
-          objetoSeleccionado?.textDecoration === "underline"
-            ? "bg-gray-200 underline"
-            : "hover:bg-gray-100"
-        }`}
+        className={`px-2 py-1 rounded border text-sm transition ${objetoSeleccionado?.textDecoration === "underline"
+          ? "bg-gray-200 underline"
+          : "hover:bg-gray-100"
+          }`}
         onClick={() =>
           setObjetos((prev) =>
             prev.map((o) =>
               elementosSeleccionados.includes(o.id)
                 ? {
-                    ...o,
-                    textDecoration:
-                      o.textDecoration === "underline" ? "none" : "underline",
-                  }
+                  ...o,
+                  textDecoration:
+                    o.textDecoration === "underline" ? "none" : "underline",
+                }
                 : o
             )
           )

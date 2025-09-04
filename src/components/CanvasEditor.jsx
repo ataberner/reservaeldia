@@ -37,6 +37,7 @@ import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import useGuiasCentrado from '@/hooks/useGuiasCentrado';
 import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar";
 import SelectorColorSeccion from "./SelectorColorSeccion";
+import Konva from "konva";
 import { ALL_FONTS } from '../config/fonts';
 import {
   Check,
@@ -52,6 +53,8 @@ import {
   ClipboardPaste,
 } from "lucide-react";
 
+
+Konva.dragDistance = 4;
 
 // 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {

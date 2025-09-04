@@ -560,57 +560,76 @@ export default function ElementoCanvas({
   }
 
 
+/* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
+if (obj.tipo === "icono" && obj.formato === "png") {
+  const [img] = useImage(obj.url, "anonymous");
 
-  /* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
-  if (obj.tipo === "icono" && obj.formato === "png") {
-    const [img] = useImage(obj.url, "anonymous");
+  return (
+    <KonvaImage
+      {...commonProps}
+      image={img}
+      crossOrigin="anonymous"
+      width={obj.width || (img?.width ?? 120)}
+      height={obj.height || (img?.height ?? 120)}
+      listening={true}
 
-    return (
-      <KonvaImage
-        {...commonProps}
-        image={img}
-        crossOrigin="anonymous"
-        width={obj.width || (img?.width ?? 120)}
-        height={obj.height || (img?.height ?? 120)}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-        strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-        onClick={(e) => { e.cancelBubble = true; if (!obj) return; onSelect?.(obj, e); }}
-        onTap={(e) => { e.cancelBubble = true; if (!obj) return; onSelect?.(obj, e); }}
-        onDragEnd={(e) => {
-          const patch = {
-            id: obj.id,
-            tipo: obj.tipo,
-            formato: obj.formato,
-            x: e.target.x(),
-            y: e.target.y(),
-            isDragPreview: false,
-            isFinal: true,
-          };
-          const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
-          onChange?.(patch, meta);
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target;
-          const patch = {
-            id: obj.id,
-            tipo: obj.tipo,
-            formato: obj.formato,
-            x: node.x(),
-            y: node.y(),
-            rotation: node.rotation() || 0,
-            scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
-            scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
-            isDragPreview: false,
-            isFinal: true,
-          };
-          const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
-          onChange?.(patch, meta);
-        }}
-      />
-    );
-  }
+      // UX cursor (si ya lo manejás en commonProps, podés omitir estos dos)
+      onMouseEnter={(e) => {
+        const stage = e.currentTarget.getStage();
+        if (stage) stage.container().style.cursor = "grab";
+        handleMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        const stage = e.currentTarget.getStage();
+        if (stage) stage.container().style.cursor = "default";
+        handleMouseLeave?.(e);
+      }}
+
+      // Selección por click/tap
+      onClick={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
+      onTap={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
+
+      // ✅ Persistimos SIEMPRE la posición del contenedor top-level
+      onDragEnd={(e) => {
+        const node = e.currentTarget;
+        const patch = {
+          id: obj.id,
+          tipo: obj.tipo,
+          formato: obj.formato,
+          x: node.x(),
+          y: node.y(),
+          isDragPreview: false,
+          isFinal: true,
+        };
+        const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
+        onChange?.(patch, meta);
+
+        // limpiar cursor
+        const stage = node.getStage();
+        if (stage) stage.container().style.cursor = "default";
+      }}
+
+      onTransformEnd={(e) => {
+        const node = e.currentTarget;
+        const patch = {
+          id: obj.id,
+          tipo: obj.tipo,
+          formato: obj.formato,
+          x: node.x(),
+          y: node.y(),
+          rotation: node.rotation() || 0,
+          scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
+          scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
+          isDragPreview: false,
+          isFinal: true,
+        };
+        const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
+        onChange?.(patch, meta);
+      }}
+    />
+  );
+}
+
 
 
   /* ---------------- LEGACY: ICONO SVG (tipo: "icono-svg" con obj.d) ---------------- */

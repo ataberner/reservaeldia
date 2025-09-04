@@ -81,6 +81,24 @@ const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="blac
 const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 
 
+// Utils de cursor global (arriba del componente)
+function setGlobalCursor(cursor = '', stageRef = null) {
+  try {
+    document.body.style.cursor = cursor || '';
+    // 💡 limpiamos también el contenedor del Stage si existe
+    const stage = stageRef?.current?.container?.() || null;
+    if (stage) stage.style.cursor = cursor || '';
+    // fallback: canvas principal
+    const canvas = document.querySelector('canvas');
+    if (canvas && canvas.parentElement) canvas.parentElement.style.cursor = cursor || '';
+  } catch { }
+}
+
+function clearGlobalCursor(stageRef = null) {
+  setGlobalCursor('', stageRef);
+}
+
+
 
 
 export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
@@ -852,7 +870,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   const iniciarControlAltura = (e, seccionId) => {
-    e.evt.stopPropagation(); // ✅ CORRECTO
+    e.evt.stopPropagation();
+
     const seccion = secciones.find(s => s.id === seccionId);
     if (!seccion) return;
 
@@ -860,10 +879,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setAlturaInicial(seccion.altura);
     setPosicionInicialMouse(e.evt.clientY);
 
-    // Prevenir selección de texto durante el drag
+    // Evitar selección de texto y fijar cursor
     document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'ns-resize';
+    setGlobalCursor('ns-resize');
+
+    // Capturá el puntero si está disponible (mejora confiabilidad)
+    const target = e.target?.getStage?.()?.content || e.target?.getStage?.()?.container?.();
+    if (target && target.setPointerCapture && e.evt.pointerId != null) {
+      try { target.setPointerCapture(e.evt.pointerId); } catch { }
+    }
   };
+
 
   const manejarControlAltura = useCallback((e) => {
     if (!controlandoAltura) return;
@@ -897,10 +923,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const finalizarControlAltura = useCallback(async () => {
     if (!controlandoAltura) return;
 
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
+    // SIEMPRE limpiar estados visuales, pase lo que pase
+    try {
+      document.body.style.userSelect = '';
+    } catch { }
+    clearGlobalCursor();
 
-    // 🔥 LIMPIAR THROTTLE
+    // limpiar throttle
     if (window._alturaResizeThrottle) {
       window._alturaResizeThrottle = false;
     }
@@ -910,11 +939,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setAlturaInicial(0);
     setPosicionInicialMouse(0);
 
-    // 🔥 GUARDAR CON DEBOUNCE para evitar múltiples saves
-    if (window._saveAlturaTimeout) {
-      clearTimeout(window._saveAlturaTimeout);
-    }
-
+    // Guardado con debounce (igual que antes)
+    if (window._saveAlturaTimeout) clearTimeout(window._saveAlturaTimeout);
     window._saveAlturaTimeout = setTimeout(async () => {
       try {
         const ref = doc(db, "borradores", slug);
@@ -928,6 +954,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       }
     }, 300);
   }, [controlandoAltura, secciones, slug]);
+
 
 
   useEffect(() => {
@@ -948,6 +975,41 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
 
 
+useEffect(() => {
+  if (!controlandoAltura) return;
+  const end = () => finalizarControlAltura();
+
+  const handlePointerUp = end;
+  const handlePointerCancel = end;
+  const handleMouseLeave = (ev) => { if (ev.relatedTarget === null) end(); };
+  const handleBlur = end;
+  const handleVisibility = () => { if (document.visibilityState !== 'visible') end(); };
+  const handleKeyDown = (e) => { if (e.key === 'Escape') end(); };
+
+  window.addEventListener('pointerup', handlePointerUp, { capture: true });
+  window.addEventListener('pointercancel', handlePointerCancel, { capture: true });
+  window.addEventListener('mouseleave', handleMouseLeave, { capture: true });
+  window.addEventListener('blur', handleBlur, { capture: true });
+  document.addEventListener('visibilitychange', handleVisibility, { capture: true });
+  document.addEventListener('keydown', handleKeyDown, { capture: true });
+
+  return () => {
+    window.removeEventListener('pointerup', handlePointerUp, { capture: true });
+    window.removeEventListener('pointercancel', handlePointerCancel, { capture: true });
+    window.removeEventListener('mouseleave', handleMouseLeave, { capture: true });
+    window.removeEventListener('blur', handleBlur, { capture: true });
+    document.removeEventListener('visibilitychange', handleVisibility, { capture: true });
+    document.removeEventListener('keydown', handleKeyDown, { capture: true });
+  };
+}, [controlandoAltura, finalizarControlAltura]);
+
+
+useEffect(() => {
+  if (!controlandoAltura) {
+    clearGlobalCursor(stageRef);
+    try { document.body.style.userSelect = ''; } catch {}
+  }
+}, [controlandoAltura]);
 
 
   useEffect(() => {
@@ -1932,17 +1994,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         y={controlY}
                         onMouseDown={(e) => iniciarControlAltura(e, seccion.id)}
                         onMouseEnter={() => {
-                          const stage = stageRef.current;
-                          if (stage) {
-                            stage.container().style.cursor = 'ns-resize';
-                          }
+                          // solo mostrar ns-resize si no estás arrastrando
+                          if (!controlandoAltura) setGlobalCursor('ns-resize', stageRef);
                         }}
                         onMouseLeave={() => {
-                          const stage = stageRef.current;
-                          if (stage && !controlandoAltura) {
-                            stage.container().style.cursor = 'default';
-                          }
+                          // no limpies el cursor si estás arrastrando (lo limpia finalizarControlAltura)
+                          if (!controlandoAltura) clearGlobalCursor(stageRef);
                         }}
+
                         draggable={false}
                       >
                         {/* Área de detección */}

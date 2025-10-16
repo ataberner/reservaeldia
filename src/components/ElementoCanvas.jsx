@@ -277,24 +277,25 @@ export default function ElementoCanvas({
 
 
 
-  useEffect(() => {
-    if (obj.tipo !== "texto") return;
-    if (obj.__groupAlign) return; // 👉 si alineamos por grupo, no seteamos width
-    const align = (obj.align || "left").toLowerCase();
-    if (align === "left") return;
-    if (obj.width || obj.__autoWidth === false) return;
+// 🔒 Nueva versión: solo corrige width en casos especiales (no por align)
+useEffect(() => {
+  if (obj.tipo !== "texto") return;
+  if (obj.__groupAlign) return;
+  if (obj.width || obj.__autoWidth === false) return;
 
-    const node = textNodeRef.current;
-    if (!node || typeof onChange !== "function") return;
+  const node = textNodeRef.current;
+  if (!node || typeof onChange !== "function") return;
 
-    requestAnimationFrame(() => {
-      const w = Math.ceil(node.getTextWidth());
-      if (Number.isFinite(w) && w > 0) {
-        onChange(obj.id, { width: w, __autoWidth: false });
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [obj.id, obj.texto, obj.fontFamily, obj.fontSize, obj.fontStyle, obj.fontWeight, obj.align]);
+  // Solo si el texto recién se creó y no tiene width (por ejemplo, texto vacío que ahora tiene contenido)
+  if ((obj.texto?.length || 0) > 0 && !obj.width) {
+    const w = Math.ceil(node.getTextWidth?.() || 0);
+    if (Number.isFinite(w) && w > 0) {
+      onChange(obj.id, { width: undefined, __autoWidth: false });
+    }
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [obj.id, obj.texto]);
+
 
 
 
@@ -373,50 +374,148 @@ export default function ElementoCanvas({
     );
   }
 
-
-  if (obj.tipo === "texto") {
-    // Verificar si la fuente está cargada
-    const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
-      ? obj.fontFamily
-      : "sans-serif";
-
-    // 🔥 NUEVO: Detectar si está en modo edición
-    const isEditing = window._currentEditingId === obj.id;
-
-    const align = (obj.align || "left").toLowerCase();        // "left" | "center" | "right" | "justify"
-    const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";  // 👈 prioridad a colorTexto
-    const lineHeight =
-      (typeof obj.lineHeight === "number" && obj.lineHeight > 0) ? obj.lineHeight : 1.2;
-    // 🔒 Mantener el comportamiento anterior: solo usar width si el objeto ya lo tiene
-    const width = obj.width || undefined;
-
-
-    return (
-      <Text
-        {...commonProps}
-        ref={(node) => {
-          textNodeRef.current = node;
-          registerRef?.(obj.id, node);
-        }}
-        text={obj.texto}
-        fontSize={obj.fontSize || 24}
-        fontFamily={fontFamily}
-        fontWeight={obj.fontWeight || "normal"}
-        fontStyle={obj.fontStyle || "normal"}
-        align={align}
-        verticalAlign="top"
-        wrap="word"
-        width={width}
-        textDecoration={obj.textDecoration || "none"}
-        fill={fillColor}
-        lineHeight={lineHeight}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        opacity={isInEditMode ? 0 : 1}
-      />
-
-    );
+// --- DEBUG helper (no cambia comportamiento) ---
+const __DBG_TEXT = true; // ponelo en false para silenciar
+function tlog(...args) {
+  if (__DBG_TEXT && typeof window !== 'undefined') {
+    // timestamp corto para ver secuencia
+    const t = Math.round(performance.now());
+    console.log(`[TextoDBG ${t}ms]`, ...args);
   }
+}
+
+
+if (obj.tipo === "texto") {
+  // Verificar si la fuente está cargada
+  const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
+    ? obj.fontFamily
+    : "sans-serif";
+
+  // Detectar si está en modo edición
+  const isEditing = window._currentEditingId === obj.id;
+
+  const align = (obj.align || "left").toLowerCase(); // "left" | "center" | "right" | "justify"
+  const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";
+  const lineHeight =
+    (typeof obj.lineHeight === "number" && obj.lineHeight > 0) ? obj.lineHeight : 1.2;
+
+  // Mantener comportamiento: solo usar width si ya existe
+  const width = obj.width || undefined;
+
+  // --- LOG: ver si commonProps trae escalas u offsets "sorpresa"
+  const scalesFromCommon = {
+    scaleX: commonProps?.scaleX,
+    scaleY: commonProps?.scaleY,
+    offsetX: commonProps?.offsetX,
+    offsetY: commonProps?.offsetY,
+  };
+  tlog('render<Text>', {
+    id: obj.id,
+    align,
+    widthProp: width,
+    fontSize: obj.fontSize || 24,
+    commonScalesOffsets: scalesFromCommon
+  });
+
+  return (
+    <Text
+      {...commonProps}
+      ref={(node) => {
+        textNodeRef.current = node;
+        registerRef?.(obj.id, node);
+      }}
+      text={obj.texto}
+      fontSize={obj.fontSize || 24}
+      fontFamily={fontFamily}
+      fontWeight={obj.fontWeight || "normal"}
+      fontStyle={obj.fontStyle || "normal"}
+      align={align}
+      verticalAlign="top"
+      wrap="word"
+      width={width}
+      textDecoration={obj.textDecoration || "none"}
+      fill={fillColor}
+      lineHeight={lineHeight}
+      onMouseEnter={(e) => {
+        handleMouseEnter?.(e);
+        const n = textNodeRef.current;
+        tlog('mouseEnter', {
+          id: obj.id,
+          x: n?.x(), y: n?.y(),
+          scaleX: n?.scaleX(), scaleY: n?.scaleY(),
+          widthProp: width, getTextWidth: n?.getTextWidth?.()
+        });
+      }}
+      onMouseLeave={(e) => {
+        handleMouseLeave?.(e);
+        const n = textNodeRef.current;
+        tlog('mouseLeave', {
+          id: obj.id,
+          x: n?.x(), y: n?.y(),
+          scaleX: n?.scaleX(), scaleY: n?.scaleY()
+        });
+      }}
+      // 🔎 TRANSFORM LOGS (cuando uses Transformer sobre este nodo)
+      onTransformStart={() => {
+        const n = textNodeRef.current;
+        window._isTextTransforming = true;
+        tlog('transformStart', {
+          id: obj.id,
+          align,
+          x: n?.x(), y: n?.y(),
+          scaleX: n?.scaleX(), scaleY: n?.scaleY(),
+          widthProp: width, getTextWidth: n?.getTextWidth?.(),
+          rotation: n?.rotation()
+        });
+      }}
+      onTransform={(e) => {
+        const n = textNodeRef.current;
+        // cuidado con el spam; comentar si es mucho
+        tlog('transform', {
+          id: obj.id,
+          scaleX: n?.scaleX(), scaleY: n?.scaleY(),
+          box: {
+            width: n?.width?.(), height: n?.height?.()
+          }
+        });
+      }}
+      onTransformEnd={() => {
+        const n = textNodeRef.current;
+        const log = {
+          id: obj.id,
+          align,
+          x: n?.x(), y: n?.y(),
+          scaleX: n?.scaleX(), scaleY: n?.scaleY(),
+          widthProp: width,
+          getTextWidth: n?.getTextWidth?.(),
+          bbox: { width: n?.width?.(), height: n?.height?.() }
+        };
+        window._isTextTransforming = false;
+        tlog('transformEnd', log);
+      }}
+      onDragStart={() => {
+        const n = textNodeRef.current;
+        tlog('dragStart', {
+          id: obj.id, x: n?.x(), y: n?.y(),
+          scaleX: n?.scaleX(), scaleY: n?.scaleY()
+        });
+      }}
+      onDragMove={() => {
+        const n = textNodeRef.current;
+        tlog('dragMove', { id: obj.id, x: n?.x(), y: n?.y() });
+      }}
+      onDragEnd={() => {
+        const n = textNodeRef.current;
+        tlog('dragEnd', {
+          id: obj.id, x: n?.x(), y: n?.y(),
+          scaleX: n?.scaleX(), scaleY: n?.scaleY()
+        });
+      }}
+      opacity={isInEditMode ? 0 : 1}
+    />
+  );
+}
+
 
 
   if (obj.tipo === "rsvp-boton") {

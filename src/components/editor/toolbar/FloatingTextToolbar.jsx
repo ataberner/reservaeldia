@@ -1,6 +1,8 @@
 // src/components/editor/toolbar/FloatingTextToolbar.jsx
 import React from "react";
 import { Check } from "lucide-react"; // mismo icono que usabas
+import FontSelector from "@/components/FontSelector";
+
 
 export default function FloatingTextToolbar({
   // 🔧 Datos y handlers que YA existen en CanvasEditor (los pasamos por props)
@@ -29,8 +31,6 @@ export default function FloatingTextToolbar({
   if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma" || objetoSeleccionado?.tipo === "icono")) {
     return null;
   }
-
-  // 🆕 AGREGAR ESTE BLOQUE COMPLETO después de la línea del return null:
 
   // Para iconos, solo mostrar selector de color
   if (objetoSeleccionado?.tipo === "icono") {
@@ -97,6 +97,7 @@ export default function FloatingTextToolbar({
         width: "auto",
         maxWidth: "800px",
       }}
+
     >
       {/* 🎨 Color de fondo (solo formas) */}
       {objetoSeleccionado?.tipo === "forma" && (
@@ -146,74 +147,37 @@ export default function FloatingTextToolbar({
 
       {/* Selector de fuente */}
       <div
-        className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
+        className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all truncate ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"
           }`}
-        style={{ fontFamily: objetoSeleccionado?.fontFamily || "sans-serif" }}
-        title="Fuente"
+        style={{
+          fontFamily: objetoSeleccionado?.fontFamily || "sans-serif",
+          width: "180px", // 👈 ancho fijo del botón de fuente
+          textAlign: "left",
+        }}
+        title={objetoSeleccionado?.fontFamily || "sans-serif"}
         onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
       >
         {objetoSeleccionado?.fontFamily || "sans-serif"}
-
-        {mostrarSelectorFuente && (
-          <div
-            className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-4 w-80 max-h-[500px] overflow-auto"
-            style={{ top: "40px", left: "-200px" }}
-          >
-            <div className="text-xs font-semibold text-gray-600 mb-2">
-              Fuente
-            </div>
-            {ALL_FONTS.map((fuente) => {
-              const estaActiva = objetoSeleccionado?.fontFamily === fuente.valor;
-              const estaCargada = fontManager.isFontAvailable(fuente.valor);
-
-              return (
-                <div
-                  key={fuente.valor}
-                  className={`flex items-center gap-2 px-2 py-2 rounded cursor-pointer transition-all ${estaCargada
-                    ? "hover:bg-gray-100"
-                    : "hover:bg-gray-50 opacity-70"
-                    }`}
-                  style={{ fontFamily: estaCargada ? fuente.valor : "sans-serif" }}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    try {
-                      await fontManager.loadFonts([fuente.valor]);
-                      setObjetos((prev) =>
-                        prev.map((o) =>
-                          elementosSeleccionados.includes(o.id)
-                            ? { ...o, fontFamily: fuente.valor }
-                            : o
-                        )
-                      );
-                    } catch (error) {
-                      console.error("Error cargando fuente:", error);
-                    }
-                  }}
-                >
-                  <span className="text-xs text-gray-500 w-20">
-                    {fuente.categoria}
-                  </span>
-                  <span className="text-sm text-gray-700 flex-1">
-                    {fuente.nombre}
-                  </span>
-                  <span
-                    className="text-base text-gray-400"
-                    style={{ fontFamily: fuente.valor }}
-                  >
-                    AaBbCc
-                  </span>
-                  {estaActiva && <Check className="w-4 h-4 text-purple-600 ml-2" />}
-                  {!estaCargada && (
-                    <div className="w-4 h-4 ml-2">
-                      <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
+
+
+      {/* 🪄 FontSelector separado (fuera del botón) */}
+      <FontSelector
+        currentFont={objetoSeleccionado?.fontFamily || "sans-serif"}
+        onFontChange={async (nuevaFuente) => {
+          await fontManager.loadFonts([nuevaFuente]);
+          setObjetos((prev) =>
+            prev.map((o) =>
+              elementosSeleccionados.includes(o.id)
+                ? { ...o, fontFamily: nuevaFuente }
+                : o
+            )
+          );
+        }}
+        isOpen={mostrarSelectorFuente}
+        onClose={() => setMostrarSelectorFuente(false)}
+      />
+
 
       {/* Control de tamaño */}
       <div className="relative flex items-center bg-white border rounded-lg">

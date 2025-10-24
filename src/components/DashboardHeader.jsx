@@ -28,6 +28,12 @@ export default function DashboardHeader({
     const [colorFondo, setColorFondo] = useState("#ffffff");
     const [seccionActiva, setSeccionActiva] = useState(null);
 
+
+    const [publicando, setPublicando] = useState(false);
+    const [progreso, setProgreso] = useState(0);
+    const [urlFinal, setUrlFinal] = useState(null);
+
+
     useEffect(() => {
         const interval = setInterval(() => {
             if (window.canvasEditor?.seccionActivaId && window.canvasEditor?.secciones) {
@@ -138,21 +144,37 @@ export default function DashboardHeader({
 
     // 🔹 Función para publicar invitación
     const publicarInvitacion = async () => {
-        const confirmar = confirm("¿Querés publicar esta invitación?");
-        if (!confirmar) return;
-
-        const functions = getFunctions();
-        const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
+        setPublicando(true);
+        setProgreso(10);
+        setUrlFinal(null);
 
         try {
+            const functions = getFunctions();
+            const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
+
+            // Simular progreso mientras se genera el HTML
+            const fakeProgress = setInterval(() => {
+                setProgreso((prev) => (prev < 90 ? prev + 5 : prev));
+            }, 400);
+
             const result = await publicarInvitacion({ slug: slugInvitacion });
-            const urlFinal = result.data?.url;
-            if (urlFinal) window.open(urlFinal, "_blank");
+            clearInterval(fakeProgress);
+
+            const url = result.data?.url;
+            if (!url) throw new Error("No se recibió la URL final");
+
+            // Completa la barra y muestra éxito
+            setProgreso(100);
+            setUrlFinal(url);
+
         } catch (error) {
-            alert("❌ Error al publicar la invitación.");
-            console.error(error);
+            console.error("❌ Error al publicar la invitación:", error);
+            alert("Ocurrió un error al publicar la invitación.");
         }
     };
+
+
+
 
     return (
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
@@ -373,6 +395,88 @@ export default function DashboardHeader({
                     </div>
                 )}
             </div>
+
+            {publicando && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100]">
+                    <div className="bg-white p-6 rounded-2xl shadow-xl w-96 text-center animate-fadeIn">
+                        {!urlFinal ? (
+                            <>
+                                <h3 className="text-sm font-medium mb-3 text-gray-700">
+                                    Publicando invitación...
+                                </h3>
+                                <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden mb-2">
+                                    <div
+                                        className="bg-[#773dbe] h-2 rounded-full transition-all duration-300"
+                                        style={{ width: `${progreso}%` }}
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500">{progreso}% completado</p>
+                            </>
+                        ) : (
+                            <>
+                                <h3 className="text-base font-semibold mb-2 text-gray-800">
+                                    🎉 ¡Invitación publicada!
+                                </h3>
+                                <p className="text-xs text-gray-500 mb-4">
+                                    Tu invitación ya está lista para compartir.
+                                </p>
+
+                                {/* 🔹 Caja con URL y botón Copiar */}
+                                <div className="relative mb-4 flex items-center">
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value={urlFinal}
+                                        className="flex-1 border border-gray-300 rounded-l-lg text-xs px-3 py-2 text-gray-700 bg-gray-50 select-all focus:outline-none"
+                                    />
+
+                                    {/* Estado interno del botón Copiar */}
+                                    <button
+                                        onClick={(e) => {
+                                            navigator.clipboard.writeText(urlFinal);
+                                            e.target.textContent = "Copiado ✓";
+                                            e.target.classList.add("bg-green-500", "hover:bg-green-600");
+                                            setTimeout(() => {
+                                                e.target.textContent = "Copiar";
+                                                e.target.classList.remove("bg-green-500", "hover:bg-green-600");
+                                            }, 1200);
+                                        }}
+                                        className="bg-[#773dbe] text-white text-xs px-3 py-2 rounded-r-lg hover:bg-purple-700 transition-all"
+                                        title="Copiar enlace"
+                                    >
+                                        Copiar
+                                    </button>
+                                </div>
+
+                                {/* 🔹 Botones de acción */}
+                                <div className="flex justify-center gap-3">
+                                    <a
+                                        href={urlFinal}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-[#773dbe] text-white px-4 py-2 rounded-lg text-xs hover:bg-purple-700 transition"
+                                    >
+                                        Ver invitación
+                                    </a>
+                                    <button
+                                        onClick={() => setPublicando(false)}
+                                        className="text-xs text-gray-500 hover:text-gray-700 transition"
+                                    >
+                                        Cerrar
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+
+
+
+
         </div>
+
+
     );
 }

@@ -225,9 +225,6 @@ export default function Dashboard() {
                 <PlantillaGrid
                   plantillas={plantillas}
                   onSeleccionarPlantilla={async (slug, plantilla) => {
-                    const confirmar = confirm(`¿Querés usar la plantilla: ${plantilla.nombre}?`);
-                    if (!confirmar) return;
-
                     try {
                       const functions = getFunctions();
                       const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
@@ -248,6 +245,7 @@ export default function Dashboard() {
                       console.error(error);
                     }
                   }}
+
                 />
               )}
             </>

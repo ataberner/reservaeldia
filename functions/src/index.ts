@@ -1,278 +1,190 @@
-import * as functions from "firebase-functions";
+import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import { JSDOM } from "jsdom";
-import { onCall, CallableRequest } from "firebase-functions/v2/https";
-import * as logger from "firebase-functions/logger";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import express, { Request, Response } from "express";
-import { generarHTMLDesdeObjetos } from "./utils/generarHTMLDesdeObjetos";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import { type RSVPConfig as ModalConfig } from "./utils/generarModalRSVP";
-import { Storage } from "@google-cloud/storage";
-import puppeteer from "puppeteer";
-import { v4 as uuidv4 } from "uuid";
 
-const app = express();
-app.get("/i/:slug", async (req, res) => {  // Cambiado a "/i/:slug"
-  const slug = req.params.slug;
-
-  if (!slug) {
-    res.status(400).send("Falta el slug");
-    return;
-  }
-
-  const bucket = getStorage().bucket();
-  const filePath = `publicadas/${slug}/index.html`;
-  const file = bucket.file(filePath);
-
-  try {
-    const [exists] = await file.exists();
-    if (!exists) {
-      res.status(404).send("Invitación publicada no encontrada");
-      return;
-    }
-
-    const [contenido] = await file.download();
-    res.set("Content-Type", "text/html");
-    res.send(contenido.toString());
-  } catch (error) {
-    console.error("❌ Error leyendo el archivo publicado:", error);
-    res.status(500).send("Error al mostrar la invitación publicada");
-  }
-});
-
-export const verInvitacionPublicada = functions.https.onRequest(app);
-
+import * as logger from "firebase-functions/logger";
 
 // Inicialización de Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
-    storageBucket: "reservaeldia-7a440.firebasestorage.app"
+    storageBucket: "reservaeldia-7a440.firebasestorage.app",
   });
 }
+
 const db = admin.firestore();
+const bucket = getStorage().bucket();
+
+const app = express();
+
+
+app.get("/i/:slug", async (req: Request, res: Response) => {
+  const slug = req.params.slug;
+  if (!slug) return res.status(400).send("Falta el slug");
+
+  const file = bucket.file(`publicadas/${slug}/index.html`);
+  const [exists] = await file.exists();
+
+  if (!exists) return res.status(404).send("Invitación publicada no encontrada");
+
+  const [contenido] = await file.download();
+  res.set("Content-Type", "text/html").send(contenido.toString());
+});
+
+export const verInvitacionPublicada = onRequest(
+  { region: "us-central1" },
+  app
+);
+
+
+
+
+
 
 
 // ✅ Función para ver la invitación en el iframe
 
-export const verInvitacion = functions.https.onRequest(async (req, res) => {
-  const slug = req.query.slug as string;
-  if (!slug) {
-    res.status(400).send("Falta el slug");
-return;
-  }
-
-
-  try {
-    // 1. Leer contenido de Firestore
-    const docRef = db.collection("borradores").doc(slug);
-    const snap = await docRef.get();
-    if (!snap.exists) {
-    res.status(404).send("Invitación no encontrada");
-    return;
+export const verInvitacion = onRequest(
+  { region: "us-central1" },
+  async (req, res): Promise<void> => {
+    const slug = req.query.slug as string;
+    if (!slug) {
+      res.status(400).send("Falta el slug");
+      return;
     }
 
-    const datos = snap.data();
-    const contenido = datos?.contenido || {};
-
-    // 2. Descargar el archivo HTML desde Storage
-    const bucket = getStorage().bucket();
-    const file = bucket.file(`borradores/${slug}/index.html`);
-    const [htmlBuffer] = await file.download();
-    const html = htmlBuffer.toString("utf-8");
-
-    // 3. Usar JSDOM para editar el HTML
-    const dom = new JSDOM(html);
-    const { document } = dom.window;
-
-    // 4. Aplicar cada bloque editable (texto + posición)
-    Object.entries(contenido).forEach(([id, valores]: any) => {
-      const el = document.querySelector(`[data-id="${id}"]`);
-      if (!el) return;
-
-      if (valores.texto) el.textContent = valores.texto;
-
-      // ⬇️ Agregar estilos de posición si existen
-      if (valores.top || valores.left) {
-        el.setAttribute(
-          "style",
-          `position: absolute; top: ${valores.top}; left: ${valores.left};`
-        );
+    try {
+      const snap = await db.collection("borradores").doc(slug).get();
+      if (!snap.exists) {
+        res.status(404).send("Invitación no encontrada");
+        return;
       }
-    });
 
-    // 5. Eliminar estilos de edición (opcional)
-    const styleTags = document.querySelectorAll("style");
-    styleTags.forEach((style) => {
-      if (style.textContent?.includes(".editable:hover") || style.textContent?.includes(".editable:focus")) {
-        style.remove();
-      }
-    });
+      const datos = snap.data();
+      const contenido = datos?.contenido || {};
 
-    // 6. Eliminar cabecera que bloquea iframe
-    res.set("X-Frame-Options", "");
+      const file = bucket.file(`borradores/${slug}/index.html`);
+      const [htmlBuffer] = await file.download();
+      const html = htmlBuffer.toString("utf-8");
 
-    // 7. Enviar HTML modificado
-    res.set("Content-Type", "text/html");
-    res.status(200).send(dom.serialize());
-  } catch (err) {
-    console.error("Error al servir la invitación:", err);
-    res.status(500).send("Error interno del servidor");
+      const dom = new JSDOM(html);
+      const { document } = dom.window;
+
+      Object.entries(contenido).forEach(([id, valores]: any) => {
+        const el = document.querySelector(`[data-id="${id}"]`);
+        if (!el) return;
+        if (valores.texto) el.textContent = valores.texto;
+        if (valores.top || valores.left) {
+          el.setAttribute(
+            "style",
+            `position: absolute; top: ${valores.top}; left: ${valores.left};`
+          );
+        }
+      });
+
+      document.querySelectorAll("style").forEach((style) => {
+        if (style.textContent?.includes(".editable")) style.remove();
+      });
+
+      res.set("X-Frame-Options", "").set("Content-Type", "text/html");
+      res.status(200).send(dom.serialize());
+    } catch (error) {
+      logger.error("❌ Error al servir invitación:", error);
+      res.status(500).send("Error interno del servidor");
+    }
   }
-});
+);
+
+
 
 
 type CopiarPlantillaData = {
   plantillaId: string;
   slug: string;
-    };
+};
 
 
 
 // ✅Copia index.html de una plantilla a una nueva carpeta de borrador y guarda el contenido inicial en Firestore.
 
-export const copiarPlantillaHTML = functions.https.onCall(
-          async (request: functions.https.CallableRequest<CopiarPlantillaData>) => {
-            const { plantillaId, slug } = request.data;
-            const uid = request.auth?.uid;
+export const copiarPlantillaHTML = onCall(async (request) => {
+  const { plantillaId, slug } = request.data;
+  const uid = request.auth?.uid;
 
-      console.log("🧪 Slug recibido:", slug);
+  if (!plantillaId || !slug)
+    throw new HttpsError("invalid-argument", "Faltan datos");
+  if (!uid) throw new HttpsError("unauthenticated", "Usuario no autenticado");
 
+  const [archivos] = await bucket.getFiles({ prefix: `plantillas/${plantillaId}/` });
+  const archivoHtml = archivos.find((f) => f.name.endsWith("index.html"));
+  if (!archivoHtml)
+    throw new HttpsError("not-found", "No se encontró index.html");
 
+  const destino = archivoHtml.name.replace(
+    `plantillas/${plantillaId}/`,
+    `borradores/${slug}/`
+  );
+  await archivoHtml.copy(bucket.file(destino));
 
-    if (!plantillaId || !slug) {
-      throw new functions.https.HttpsError("invalid-argument", "Faltan datos");
-    }
+  const [htmlBuffer] = await archivoHtml.download();
+  const html = htmlBuffer.toString("utf-8");
+  const dom = new JSDOM(html);
+  const { document } = dom.window;
 
-    if (!uid) {
-      throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado");
-    }
+  const contenido: Record<string, any> = {};
+  document.querySelectorAll("[data-id]").forEach((el) => {
+    const id = el.getAttribute("data-id");
+    const texto = el.textContent?.trim() || "";
+    const style = el.getAttribute("style") || "";
+    const top = style.match(/top:\s*([^;]+)/)?.[1]?.trim();
+    const left = style.match(/left:\s*([^;]+)/)?.[1]?.trim();
 
-    const bucket = getStorage().bucket();
-    console.log("Bucket usado:", bucket.name);
+    contenido[id!] = { texto, ...(top && { top }), ...(left && { left }) };
+  });
 
-    const [archivos] = await bucket.getFiles({ prefix: `plantillas/${plantillaId}/` });
+  await db.collection("borradores").doc(slug).set({
+    userId: uid,
+    slug,
+    plantillaId,
+    contenido,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
-    if (!archivos.length) {
-      throw new functions.https.HttpsError("not-found", `No se encontraron archivos en plantillas/${plantillaId}`);
-    }
-
-    await Promise.all(
-     archivos
-    .filter((archivo) => {
-      const nombre = archivo.name.split("/").pop();
-      return nombre === "index.html"; // Solo copiamos este
-    })
-    .map(async (archivoOriginal) => {
-      const destino = archivoOriginal.name.replace(
-        `plantillas/${plantillaId}/`,
-        `borradores/${slug}/`
-      );
-      await archivoOriginal.copy(bucket.file(destino));
-      console.log(`✅ Copiado: ${archivoOriginal.name} → ${destino}`);
-      console.log("Bucket usado:", bucket.name);
-    })
-    );
-
-          
-      const archivoHtml = archivos.find(f => f.name.endsWith("index.html"));
-      if (!archivoHtml) {
-        throw new functions.https.HttpsError("not-found", "No se encontró index.html");
-}
-
-
-
-const [htmlBuffer] = await archivoHtml.download();
-const html = htmlBuffer.toString("utf-8");
-const dom = new JSDOM(html);
-const { document } = dom.window;
-
-// ✅ Extraer contenido inicial de elementos con data-id
-const elementos = document.querySelectorAll("[data-id]");
-const contenido: Record<string, any> = {};
-
-elementos.forEach((el) => {
-  const id = el.getAttribute("data-id");
-  const texto = el.textContent?.trim() || "";
-
-  // Extraer posición si está definida inline
-  const style = el.getAttribute("style") || "";
-  const topMatch = style.match(/top:\s*([^;]+)/);
-  const leftMatch = style.match(/left:\s*([^;]+)/);
-
-  const top = topMatch?.[1]?.trim();
-  const left = leftMatch?.[1]?.trim();
-
-  contenido[id!] = {
-    texto,
-    ...(top && { top }),
-    ...(left && { left }),
+  return {
+    slug,
+    url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`,
   };
 });
 
-    const firestore = admin.firestore();
-    await firestore.collection("borradores").doc(slug).set({
-          userId: uid,
-          slug,
-          plantillaId,
-          contenido, // ⬅️ El contenido inicial extraído
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-
-          return {
-        slug,
-        url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`
-      };
-
-  }
-);
 
 
 
 
-export const borrarBorrador = functions.https.onCall(
-  async (request: functions.https.CallableRequest<{ slug: string }>) => {
-    const { slug } = request.data;
-    const uid = request.auth?.uid;
+export const borrarBorrador = onCall(async (request) => {
+  const { slug } = request.data;
+  const uid = request.auth?.uid;
 
-    if (!slug) {
-      throw new functions.https.HttpsError("invalid-argument", "Falta el slug");
-    }
+  if (!slug) throw new HttpsError("invalid-argument", "Falta el slug");
+  if (!uid) throw new HttpsError("unauthenticated", "Usuario no autenticado");
 
-    if (!uid) {
-      throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado");
-    }
+  const docRef = db.collection("borradores").doc(slug);
+  const snap = await docRef.get();
 
-    const firestore = admin.firestore();
-    const bucket = getStorage().bucket();
+  if (!snap.exists) throw new HttpsError("not-found", "No existe el borrador");
+  if (snap.data()?.userId !== uid)
+    throw new HttpsError("permission-denied", "No podés borrar este borrador");
 
+  await docRef.delete();
+  const [files] = await bucket.getFiles({ prefix: `borradores/${slug}/` });
+  await Promise.all(files.map((f) => f.delete()));
 
-    // 🔒 Verificar que el documento le pertenece al usuario
-    const docRef = firestore.collection("borradores").doc(slug);
-    const docSnap = await docRef.get();
+  return { success: true, archivosEliminados: files.length };
+});
 
-    if (!docSnap.exists) {
-      throw new functions.https.HttpsError("not-found", "El borrador no existe");
-    }
-
-    if (docSnap.data()?.userId !== uid) {
-      throw new functions.https.HttpsError("permission-denied", "No podés borrar este borrador");
-    }
-
-    // 🔥 Borrar documento de Firestore
-    await docRef.delete();
-
-    // 🔥 Borrar archivos en Storage
-    const [files] = await bucket.getFiles({ prefix: `borradores/${slug}/` });
-    const deletePromises = files.map(file => file.delete());
-    await Promise.all(deletePromises);
-
-    return { success: true, archivosEliminados: files.length };
-  }
-);
 
 
 
@@ -314,127 +226,80 @@ async function resolverURLsDeObjetos(objetos: any[]): Promise<any[]> {
 }
 
 
-export const publicarInvitacion = functions.https.onCall(
-  async (request: functions.https.CallableRequest<{ slug: string }>) => {
-    const { slug } = request.data;
-    if (!slug) {
-      throw new functions.https.HttpsError("invalid-argument", "Falta el slug");
-    }
+export const publicarInvitacion = onCall(
+  { region: "us-central1", memory: "512MiB" },
+  async (request) => {
+    const { slug, slugPublico } = request.data;
+    if (!slug) throw new HttpsError("invalid-argument", "Falta el slug del borrador");
 
-    const firestore = admin.firestore();
-    const bucket = getStorage().bucket();
+    const slugDestino = slugPublico || slug;
 
-    // 🔍 1. Leer el borrador
-    const docSnap = await firestore.collection("borradores").doc(slug).get();
-    if (!docSnap.exists) {
-      throw new functions.https.HttpsError("not-found", "No se encontró el borrador");
-    }
+    // 🔹 1. Leer el borrador original
+    const docSnap = await db.collection("borradores").doc(slug).get();
+    if (!docSnap.exists) throw new HttpsError("not-found", "No se encontró el borrador");
 
     const data = docSnap.data();
-    if (!data) {
-  throw new functions.https.HttpsError("internal", "El documento está vacío");
-}
+    if (!data) throw new HttpsError("not-found", "El documento está vacío");
 
-    const objetosBase = data?.objetos || [];
-    // 🗑️ ELIMINADO: const overrides = data?.overrides || {};
+    // 🔹 2. Resolver datos del borrador
+    const objetos = data?.objetos || [];
     const secciones = data?.secciones || [];
+    const objetosFinales = await resolverURLsDeObjetos(objetos);
 
+    const rsvp: ModalConfig = {
+      enabled: data?.rsvp?.enabled !== false,
+      title: data?.rsvp?.title,
+      subtitle: data?.rsvp?.subtitle,
+      buttonText: data?.rsvp?.buttonText,
+      primaryColor: data?.rsvp?.primaryColor,
+      sheetUrl: data?.rsvp?.sheetUrl,
+    };
 
-    // 🧠 2. Resolver URLs de imagen/icono directamente
-    const objetosFinales = await resolverURLsDeObjetos(objetosBase);
+    // 🔹 3. Generar HTML
+    const htmlFinal = generarHTMLDesdeSecciones(secciones, objetosFinales, rsvp, {
+      slug: slugDestino,
+    });
 
-console.log("🧪 Secciones:", JSON.stringify(secciones));
-console.log("🧪 Objetos finales:", JSON.stringify(objetosFinales));
-
-     
-
-
-    // 🧱 3. Generar el HTML con los objetos editados
-let htmlFinal = "";
-try {
-
-
- const rsvp: ModalConfig = {
-  enabled: data?.rsvp?.enabled === false ? false : true,
-  title: data?.rsvp?.title,
-  subtitle: data?.rsvp?.subtitle,
-  buttonText: data?.rsvp?.buttonText,
-  primaryColor: data?.rsvp?.primaryColor,
-  sheetUrl: data?.rsvp?.sheetUrl,
-};
-
-htmlFinal = generarHTMLDesdeSecciones(
-  secciones,
-  objetosFinales,
-  rsvp,
-  {
-    slug
-  }
-);
-
-
-} catch (error) {
-  console.error("❌ Error generando HTML:", error);
-  throw new functions.https.HttpsError("internal", "Error al generar el HTML.");
-}
-
-
-    // 📤 4. Guardar en publicadas/<slug>/index.html
-    const filePath = `publicadas/${slug}/index.html`;
+    // 🔹 4. Subir HTML a Storage con el slug destino
+    const filePath = `publicadas/${slugDestino}/index.html`;
     await bucket.file(filePath).save(htmlFinal, {
       contentType: "text/html",
       public: true,
-      metadata: {
-        cacheControl: "public,max-age=3600",
-      },
+      metadata: { cacheControl: "public,max-age=3600" },
     });
 
-    console.log("🧾 HTML generado (primeros 300 caracteres):", htmlFinal.slice(0, 300));
+    // 🔹 5. Guardar metadatos en Firestore
+    const url = `https://reservaeldia.com.ar/i/${slugDestino}`;
+    await db.collection("publicadas").doc(slugDestino).set(
+      {
+        slug: slugDestino,
+        slugOriginal: slug !== slugDestino ? slug : undefined,
+        userId: data.userId,
+        plantillaId: data.plantillaId || null,
+        urlPublica: url,
+        nombre: data.nombre || slugDestino,
+        tipo: data.tipo || data.plantillaTipo || "desconocido",
+        portada: data.thumbnailUrl || null,
+        invitadosCount: data.invitadosCount || 0,
+        publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 
-   // 🧾 5. Registrar en Firestore (mejorado)
-const url = `https://reservaeldia.com.ar/i/${slug}`;
+    // 🔁 6. Guardar también el slugPublico dentro del borrador original
+    if (slugPublico && slugPublico !== slug) {
+      await db.collection("borradores").doc(slug).set(
+        { slugPublico },
+        { merge: true }
+      );
+    }
 
-// ✅ Validar que el borrador tenga userId
-const userId = data.userId as string | undefined;
-if (!userId) {
-  console.error("Borrador sin userId. Slug:", slug);
-  throw new functions.https.HttpsError(
-    "failed-precondition",
-    "El borrador no tiene userId. No se puede publicar sin propietario."
-  );
-}
-
-// Campos opcionales que ayudan al dashboard
-const nombre = (data.nombre as string) || slug;
-const tipo = (data.tipo as string) || (data.plantillaTipo as string) || "desconocido";
-// Si tenés portada (thumbnail) del borrador, guardala; si no, dejá null
-const portada = (data.thumbnailUrl as string) || null;
-
-// Si llevás conteo de invitados confirmados en el borrador, podés mapearlo aquí.
-// Si no, inicializamos en 0 para evitar undefined en el cliente.
-const invitadosCount =
-  (typeof data.invitadosCount === "number" ? data.invitadosCount : 0);
-
-// 💾 Guardar el doc completo en `publicadas/{slug}`
-await firestore.collection("publicadas").doc(slug).set(
-  {
-    slug,
-    userId,
-    plantillaId: data.plantillaId || null,
-    urlPublica: url,               // ⬅️ importante para el botón "Ver" / "Copiar"
-    nombre,                        // ⬅️ mostrable en tarjeta
-    tipo,                          // ⬅️ filtro futuro
-    portada,                       // ⬅️ imagen de portada si existe
-    invitadosCount,                // ⬅️ métrica simple inicial
-    publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
-  },
-  { merge: true }
-);
-
-return { success: true, url };
-
+    return { success: true, url };
   }
 );
+
+
+
 
 
 
@@ -478,17 +343,17 @@ export const copiarPlantilla = onCall(
     if (!datos) throw new Error("Plantilla no encontrada");
 
     await db.collection("borradores").doc(slug).set({
-  slug,
-  userId: uid,
-  plantillaId,
-  editor: datos.editor || "konva",
-  objetos: datos.objetos || [],
-  secciones: datos.secciones || [],
-  portada: datos.portada || null,
-  nombre: datos.nombre || "Plantilla sin nombre",
-  ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
-  creado: admin.firestore.FieldValue.serverTimestamp(),
-});
+      slug,
+      userId: uid,
+      plantillaId,
+      editor: datos.editor || "konva",
+      objetos: datos.objetos || [],
+      secciones: datos.secciones || [],
+      portada: datos.portada || null,
+      nombre: datos.nombre || "Plantilla sin nombre",
+      ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
+      creado: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
 
     logger.info(`✅ Borrador creado desde plantilla '${plantillaId}' con slug '${slug}'`);

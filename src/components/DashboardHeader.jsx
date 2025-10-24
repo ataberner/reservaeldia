@@ -33,6 +33,33 @@ export default function DashboardHeader({
     const [progreso, setProgreso] = useState(0);
     const [urlFinal, setUrlFinal] = useState(null);
 
+    const [mostrarModalURL, setMostrarModalURL] = useState(false);
+    const [slugPersonalizado, setSlugPersonalizado] = useState("");
+    const [slugDisponible, setSlugDisponible] = useState(null); // true / false / null
+    const [verificandoSlug, setVerificandoSlug] = useState(false);
+    const [slugPublicoExistente, setSlugPublicoExistente] = useState(null);
+
+
+    // 🧠 Función para verificar si existe el slug en Firestore
+    const verificarDisponibilidadSlug = async (slug) => {
+        if (!slug) {
+            setSlugDisponible(null);
+            return;
+        }
+
+        setVerificandoSlug(true);
+        try {
+            const ref = doc(db, "publicadas", slug);
+            const snap = await getDoc(ref);
+            setSlugDisponible(!snap.exists());
+        } catch (err) {
+            console.error("Error verificando slug:", err);
+            setSlugDisponible(null);
+        } finally {
+            setVerificandoSlug(false);
+        }
+    };
+
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -166,12 +193,51 @@ export default function DashboardHeader({
             // Completa la barra y muestra éxito
             setProgreso(100);
             setUrlFinal(url);
+            setSlugPublicoExistente(slugPersonalizado);
+
 
         } catch (error) {
             console.error("❌ Error al publicar la invitación:", error);
             alert("Ocurrió un error al publicar la invitación.");
         }
     };
+
+    useEffect(() => {
+        const cargarSlugPublico = async () => {
+            // 🧠 Solo se ejecuta cuando abrís el modal y hay un slugInvitacion cargado
+            if (!mostrarModalURL || !slugInvitacion) return;
+
+            try {
+                // 🔍 Buscar si el borrador ya tiene guardado un slugPublico
+                const ref = doc(db, "borradores", slugInvitacion);
+                const snap = await getDoc(ref);
+
+                if (snap.exists()) {
+                    const data = snap.data();
+
+                    // ✅ Si el borrador ya tiene un slugPublico, lo guardamos en estado
+                    if (data.slugPublico) {
+                        setSlugPublicoExistente(data.slugPublico);
+                        setSlugDisponible(true);
+                    } else {
+                        // ❌ Si no tiene slugPublico, reseteamos estado
+                        setSlugPublicoExistente(null);
+                        setSlugDisponible(null);
+                    }
+                } else {
+                    setSlugPublicoExistente(null);
+                    setSlugDisponible(null);
+                }
+            } catch (err) {
+                console.error("Error cargando slugPublico:", err);
+                setSlugPublicoExistente(null);
+                setSlugDisponible(null);
+            }
+        };
+
+        cargarSlugPublico();
+    }, [mostrarModalURL, slugInvitacion]);
+
 
 
 
@@ -315,11 +381,12 @@ export default function DashboardHeader({
                             Vista previa
                         </button>
                         <button
-                            onClick={publicarInvitacion}
+                            onClick={() => setMostrarModalURL(true)}
                             className="px-3 py-1 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-xs"
                         >
-                            Generar
+                            Publicar
                         </button>
+
                     </div>
                 </div>
             ) : (
@@ -467,6 +534,167 @@ export default function DashboardHeader({
                                 </div>
                             </>
                         )}
+                    </div>
+                </div>
+            )}
+
+
+            {mostrarModalURL && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100]">
+                    <div className="bg-white p-6 rounded-2xl shadow-xl w-96 text-center animate-fadeIn">
+                        {slugPublicoExistente ? (
+                            <>
+                                <h3 className="text-base font-semibold mb-2 text-gray-800">
+                                    🌐 Tu invitación ya está publicada
+                                </h3>
+                                <p className="text-xs text-gray-500 mb-4">
+                                    Podés ver tu invitación o volver a publicar los últimos cambios.
+                                </p>
+
+                                {/* 🔹 Link clickeable */}
+                                <div className="mb-4">
+                                    <a
+                                        href={`https://reservaeldia.com.ar/i/${slugPublicoExistente}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block text-sm text-[#773dbe] font-medium underline hover:text-purple-800 break-words"
+                                    >
+                                        https://reservaeldia.com.ar/i/{slugPublicoExistente}
+                                    </a>
+                                </div>
+
+                                {/* 🔹 Botones */}
+                                <div className="flex justify-center gap-3 mt-2">
+                                    <button
+                                        onClick={() => setMostrarModalURL(false)}
+                                        className="text-xs text-gray-500 hover:text-gray-700 transition"
+                                    >
+                                        Cerrar
+                                    </button>
+
+                                    <button
+                                        onClick={async () => {
+                                            setMostrarModalURL(false);
+                                            setPublicando(true);
+                                            setProgreso(10);
+                                            setUrlFinal(null);
+
+                                            try {
+                                                const functions = getFunctions();
+                                                const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
+
+                                                // 🟣 Re-publicar usando el mismo slug público
+                                                const result = await publicarInvitacion({
+                                                    slug: slugInvitacion,
+                                                    slugPublico: slugPublicoExistente,
+                                                });
+
+                                                const url = result.data?.url;
+                                                if (!url) throw new Error("No se recibió la URL final");
+
+                                                setProgreso(100);
+                                                setUrlFinal(url);
+                                            } catch (error) {
+                                                console.error("❌ Error al actualizar la invitación:", error);
+                                                alert("Ocurrió un error al actualizar la invitación.");
+                                                setPublicando(false);
+                                            }
+                                        }}
+                                        className="px-4 py-2 rounded-lg text-xs text-white bg-[#773dbe] hover:bg-purple-700 transition-all"
+                                    >
+                                        Actualizar publicación
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+
+                            <>
+                                <h3 className="text-base font-semibold mb-2 text-gray-800">
+                                    🌐 Elegí tu dirección web
+                                </h3>
+                                <p className="text-xs text-gray-500 mb-4">
+                                    Tu invitación se publicará en el siguiente enlace:
+                                </p>
+
+                                {/* Campo URL */}
+                                <div className="flex items-center border rounded-lg overflow-hidden mb-3">
+                                    <span className="bg-gray-100 text-gray-600 text-xs px-2 py-2 select-none">
+                                        https://reservaeldia.com.ar/i/
+                                    </span>
+                                    <input
+                                        type="text"
+                                        className="flex-1 px-2 py-2 text-xs focus:outline-none"
+                                        placeholder="nombre-de-tu-invitacion"
+                                        value={slugPersonalizado}
+                                        onChange={(e) => {
+                                            let valor = e.target.value.toLowerCase();
+                                            valor = valor.replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+                                            setSlugPersonalizado(valor);
+                                            verificarDisponibilidadSlug(valor);
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Feedback visual */}
+                                <div className="h-4 mb-4">
+                                    {verificandoSlug && (
+                                        <span className="text-xs text-gray-400">Verificando...</span>
+                                    )}
+                                    {slugDisponible === true && (
+                                        <span className="text-xs text-green-600">✅ Disponible</span>
+                                    )}
+                                    {slugDisponible === false && (
+                                        <span className="text-xs text-red-500">❌ Ya está en uso</span>
+                                    )}
+                                </div>
+
+                                {/* Botones */}
+                                <div className="flex justify-center gap-3 mt-2">
+                                    <button
+                                        onClick={() => setMostrarModalURL(false)}
+                                        className="text-xs text-gray-500 hover:text-gray-700 transition"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        disabled={!slugDisponible || !slugPersonalizado}
+                                        onClick={async () => {
+                                            setMostrarModalURL(false);
+                                            setPublicando(true);
+                                            setProgreso(10);
+                                            setUrlFinal(null);
+
+                                            try {
+                                                const functions = getFunctions();
+                                                const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
+
+                                                const result = await publicarInvitacion({
+                                                    slug: slugInvitacion,
+                                                    slugPublico: slugPersonalizado,
+                                                });
+
+                                                const url = result.data?.url;
+                                                if (!url) throw new Error("No se recibió la URL final");
+
+                                                setProgreso(100);
+                                                setUrlFinal(url);
+                                            } catch (error) {
+                                                console.error("❌ Error al publicar la invitación:", error);
+                                                alert("Ocurrió un error al publicar la invitación.");
+                                                setPublicando(false);
+                                            }
+                                        }}
+                                        className={`px-4 py-2 rounded-lg text-xs text-white transition-all ${slugDisponible
+                                            ? "bg-[#773dbe] hover:bg-purple-700"
+                                            : "bg-gray-300 cursor-not-allowed"
+                                            }`}
+                                    >
+                                        Publicar invitación
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
                     </div>
                 </div>
             )}

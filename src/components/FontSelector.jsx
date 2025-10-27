@@ -50,18 +50,18 @@ const FontSelector = memo(({
 
 
   // 📦 Cerrar si el usuario hace click fuera del panel
-useEffect(() => {
-  if (!isOpen) return;
+  useEffect(() => {
+    if (!isOpen) return;
 
-  const handleClickOutside = (e) => {
-    if (containerRef.current && !containerRef.current.contains(e.target)) {
-      onClose();
-    }
-  };
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        onClose();
+      }
+    };
 
-  document.addEventListener('mousedown', handleClickOutside);
-  return () => document.removeEventListener('mousedown', handleClickOutside);
-}, [isOpen, onClose]);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, onClose]);
 
 
   return (
@@ -70,7 +70,7 @@ useEffect(() => {
       className={`absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl p-4 w-80 max-h-[500px] overflow-hidden popup-fuente z-50 ${isOpen ? "block" : "hidden"
         }`}
     >
-      
+
       {/* Búsqueda */}
       <input
         type="text"
@@ -122,21 +122,32 @@ const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
     logFont(`#${debugIndex} mount`, { familia: font.valor, available });
   }, [font.valor]);
 
-  // 2) Observador de visibilidad (solo logs por ahora)
+  // 2) Cargar la fuente automáticamente cuando entra en pantalla
   useEffect(() => {
     if (!itemRef.current) return;
 
-    const obs = new IntersectionObserver((entries) => {
-      const e = entries[0];
-      logFont(
-        `#${debugIndex} intersect`,
-        { familia: font.valor, isIntersecting: e.isIntersecting, ratio: e.intersectionRatio }
-      );
+    const observer = new IntersectionObserver(async (entries) => {
+      const entry = entries[0];
+
+      if (entry.isIntersecting && !isLoaded && !isLoading) {
+        setIsLoading(true);
+        try {
+          logFont(`#${debugIndex} autoLoad(start)`, font.valor);
+          await fontManager.loadFonts([font.valor]);
+          setIsLoaded(true);
+          logFont(`#${debugIndex} autoLoad(done)`, font.valor);
+        } catch (error) {
+          console.error("[FontDBG] autoLoad(error)", font.valor, error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
     }, { threshold: 0.1 });
 
-    obs.observe(itemRef.current);
-    return () => obs.disconnect();
-  }, [font.valor, debugIndex]);
+    observer.observe(itemRef.current);
+    return () => observer.disconnect();
+  }, [isLoaded, isLoading, font.valor, debugIndex]);
+
 
   // 3) Click: si no está cargada, log + carga, si está, log directo
   const handleClick = async () => {
@@ -194,7 +205,7 @@ const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
           <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
         )}
 
-        
+
       </div>
     </div>
   );

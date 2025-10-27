@@ -2,7 +2,7 @@
 
 // Este archivo puede ir en src/models/estructuraInicial.js
 
-export const crearSeccion = ({ tipo = "custom", altura = 100, fondo = "#ffffff" }, seccionesExistentes = []) => {
+export const crearSeccion = ({ tipo = "custom", altura = 300, fondo = "#ffffff" }, seccionesExistentes = []) => {
   const maxOrden = Math.max(-1, ...seccionesExistentes.map(s => s.orden ?? 0));
 
   return {

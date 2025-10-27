@@ -62,6 +62,32 @@ export default function DashboardHeader({
 
 
     useEffect(() => {
+        const cargarDatosBorrador = async () => {
+            if (!slugInvitacion) return;
+
+            const ref = doc(db, "borradores", slugInvitacion);
+            const snap = await getDoc(ref);
+
+            if (snap.exists()) {
+                const data = snap.data();
+                // Si no tiene slugPublico asociado, asegurate de limpiarlo
+                if (data.slugPublico) {
+                    setSlugPublicoExistente(data.slugPublico);
+                } else {
+                    setSlugPublicoExistente(null);
+                }
+            }
+        };
+
+        cargarDatosBorrador();
+    }, [slugInvitacion]);
+
+    useEffect(() => {
+        return () => setSlugPublicoExistente(null);
+    }, [slugInvitacion]);
+
+
+    useEffect(() => {
         const interval = setInterval(() => {
             if (window.canvasEditor?.seccionActivaId && window.canvasEditor?.secciones) {
                 const activa = window.canvasEditor.secciones.find(
@@ -193,7 +219,9 @@ export default function DashboardHeader({
             // Completa la barra y muestra éxito
             setProgreso(100);
             setUrlFinal(url);
-            setSlugPublicoExistente(slugPersonalizado);
+            setSlugPublicoExistente(slugPublico || slugPublicoExistente || slugPersonalizado);
+
+
 
 
         } catch (error) {
@@ -382,10 +410,17 @@ export default function DashboardHeader({
                         </button>
                         <button
                             onClick={() => setMostrarModalURL(true)}
-                            className="px-3 py-1 bg-[#773dbe] text-white rounded hover:bg-purple-700 transition text-xs"
+                            className={`px-3 py-1 text-white rounded transition text-xs ${slugPublicoExistente
+                                ? "bg-green-600 hover:bg-green-700"
+                                : "bg-[#773dbe] hover:bg-purple-700"
+                                }`}
                         >
-                            Publicar
+                            {slugPublicoExistente
+                                ? "Ver o actualizar invitación"
+                                : "Publicar invitación"}
                         </button>
+
+
 
                     </div>
                 </div>
@@ -548,11 +583,14 @@ export default function DashboardHeader({
                                     🌐 Tu invitación ya está publicada
                                 </h3>
                                 <p className="text-xs text-gray-500 mb-4">
-                                    Podés ver tu invitación o volver a publicar los últimos cambios.
+                                    Tenés una versión pública online. Podés <strong>verla en el enlace</strong> o <strong>actualizarla</strong> para reemplazarla con los últimos cambios.
                                 </p>
 
-                                {/* 🔹 Link clickeable */}
-                                <div className="mb-4">
+                                {/* 🔹 Caja con URL claramente identificada */}
+                                <div className="mb-4 text-left">
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Enlace público:
+                                    </label>
                                     <a
                                         href={`https://reservaeldia.com.ar/i/${slugPublicoExistente}`}
                                         target="_blank"
@@ -561,7 +599,13 @@ export default function DashboardHeader({
                                     >
                                         https://reservaeldia.com.ar/i/{slugPublicoExistente}
                                     </a>
+                                    <p className="text-[11px] text-gray-400 mt-1">
+                                        (Click en el enlace para visitar la invitación publicada)
+                                    </p>
                                 </div>
+
+                                {/* 🔹 Línea divisoria visual */}
+                                <hr className="border-gray-200 mb-4" />
 
                                 {/* 🔹 Botones */}
                                 <div className="flex justify-center gap-3 mt-2">
@@ -583,7 +627,6 @@ export default function DashboardHeader({
                                                 const functions = getFunctions();
                                                 const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
 
-                                                // 🟣 Re-publicar usando el mismo slug público
                                                 const result = await publicarInvitacion({
                                                     slug: slugInvitacion,
                                                     slugPublico: slugPublicoExistente,
@@ -594,6 +637,10 @@ export default function DashboardHeader({
 
                                                 setProgreso(100);
                                                 setUrlFinal(url);
+
+                                                // ✅ Forzar re-render inmediato del botón “Ver o actualizar invitación”
+                                                setSlugPublicoExistente(slugPublicoExistente);
+
                                             } catch (error) {
                                                 console.error("❌ Error al actualizar la invitación:", error);
                                                 alert("Ocurrió un error al actualizar la invitación.");
@@ -602,12 +649,16 @@ export default function DashboardHeader({
                                         }}
                                         className="px-4 py-2 rounded-lg text-xs text-white bg-[#773dbe] hover:bg-purple-700 transition-all"
                                     >
-                                        Actualizar publicación
+                                        🔄 Actualizar invitación publicada
                                     </button>
+
                                 </div>
+
+                                <p className="text-[11px] text-gray-400 mt-3">
+                                    Este botón sobrescribe la versión publicada con los últimos cambios del editor.
+                                </p>
                             </>
                         ) : (
-
                             <>
                                 <h3 className="text-base font-semibold mb-2 text-gray-800">
                                     🌐 Elegí tu dirección web
@@ -678,6 +729,7 @@ export default function DashboardHeader({
 
                                                 setProgreso(100);
                                                 setUrlFinal(url);
+                                                setSlugPublicoExistente(slugPersonalizado);
                                             } catch (error) {
                                                 console.error("❌ Error al publicar la invitación:", error);
                                                 alert("Ocurrió un error al publicar la invitación.");
@@ -694,6 +746,7 @@ export default function DashboardHeader({
                                 </div>
                             </>
                         )}
+
 
                     </div>
                 </div>

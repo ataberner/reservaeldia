@@ -975,41 +975,41 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
 
 
-useEffect(() => {
-  if (!controlandoAltura) return;
-  const end = () => finalizarControlAltura();
+  useEffect(() => {
+    if (!controlandoAltura) return;
+    const end = () => finalizarControlAltura();
 
-  const handlePointerUp = end;
-  const handlePointerCancel = end;
-  const handleMouseLeave = (ev) => { if (ev.relatedTarget === null) end(); };
-  const handleBlur = end;
-  const handleVisibility = () => { if (document.visibilityState !== 'visible') end(); };
-  const handleKeyDown = (e) => { if (e.key === 'Escape') end(); };
+    const handlePointerUp = end;
+    const handlePointerCancel = end;
+    const handleMouseLeave = (ev) => { if (ev.relatedTarget === null) end(); };
+    const handleBlur = end;
+    const handleVisibility = () => { if (document.visibilityState !== 'visible') end(); };
+    const handleKeyDown = (e) => { if (e.key === 'Escape') end(); };
 
-  window.addEventListener('pointerup', handlePointerUp, { capture: true });
-  window.addEventListener('pointercancel', handlePointerCancel, { capture: true });
-  window.addEventListener('mouseleave', handleMouseLeave, { capture: true });
-  window.addEventListener('blur', handleBlur, { capture: true });
-  document.addEventListener('visibilitychange', handleVisibility, { capture: true });
-  document.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('pointerup', handlePointerUp, { capture: true });
+    window.addEventListener('pointercancel', handlePointerCancel, { capture: true });
+    window.addEventListener('mouseleave', handleMouseLeave, { capture: true });
+    window.addEventListener('blur', handleBlur, { capture: true });
+    document.addEventListener('visibilitychange', handleVisibility, { capture: true });
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
 
-  return () => {
-    window.removeEventListener('pointerup', handlePointerUp, { capture: true });
-    window.removeEventListener('pointercancel', handlePointerCancel, { capture: true });
-    window.removeEventListener('mouseleave', handleMouseLeave, { capture: true });
-    window.removeEventListener('blur', handleBlur, { capture: true });
-    document.removeEventListener('visibilitychange', handleVisibility, { capture: true });
-    document.removeEventListener('keydown', handleKeyDown, { capture: true });
-  };
-}, [controlandoAltura, finalizarControlAltura]);
+    return () => {
+      window.removeEventListener('pointerup', handlePointerUp, { capture: true });
+      window.removeEventListener('pointercancel', handlePointerCancel, { capture: true });
+      window.removeEventListener('mouseleave', handleMouseLeave, { capture: true });
+      window.removeEventListener('blur', handleBlur, { capture: true });
+      document.removeEventListener('visibilitychange', handleVisibility, { capture: true });
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, [controlandoAltura, finalizarControlAltura]);
 
 
-useEffect(() => {
-  if (!controlandoAltura) {
-    clearGlobalCursor(stageRef);
-    try { document.body.style.userSelect = ''; } catch {}
-  }
-}, [controlandoAltura]);
+  useEffect(() => {
+    if (!controlandoAltura) {
+      clearGlobalCursor(stageRef);
+      try { document.body.style.userSelect = ''; } catch { }
+    }
+  }, [controlandoAltura]);
 
 
   useEffect(() => {
@@ -1686,6 +1686,22 @@ useEffect(() => {
                   >
                     ↓ Bajar
                   </button>
+
+                  {/* Botón Añadir sección */}
+                  <button
+                    onClick={handleCrearSeccion}
+                    disabled={estaAnimando}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200
+    ${estaAnimando
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed animate-pulse shadow-xl'
+                        : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
+                      }`}
+                    title="Añadir una nueva sección debajo"
+                  >
+                    Añadir sección
+                  </button>
+
+
                 </div>
               );
             })}
@@ -2768,14 +2784,6 @@ useEffect(() => {
 
           </div>
 
-
-          {/* ➕ Botón para añadir nueva sección */}
-          <button
-            onClick={handleCrearSeccion}
-            className="fixed bottom-6 right-6 z-50 bg-[#773dbe] text-white px-4 py-2 rounded-full shadow-lg hover:bg-purple-700 transition"
-          >
-            + Añadir sección
-          </button>
 
         </div>
 

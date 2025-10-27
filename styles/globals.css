@@ -39,6 +39,21 @@ textarea[style*="position: absolute"] {
     transition: opacity 0.25s ease, transform 0.25s ease;
   }
 
+  @keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease-out forwards;
+}
+
   /* 🔓 Cuando menuOpen = true y se agrega la clase .show */
   .navbar-collapse.show {
     display: block;

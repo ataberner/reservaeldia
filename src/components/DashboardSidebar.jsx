@@ -1,5 +1,5 @@
 // src/components/DashboardSidebar.jsx
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import GaleriaDeImagenes from "./GaleriaDeImagenes";
@@ -67,6 +67,32 @@ export default function DashboardSidebar({
         document.addEventListener("mousedown", handleClickFuera);
         return () => document.removeEventListener("mousedown", handleClickFuera);
     }, [fijadoSidebar]);
+
+
+    const closeTimerRef = useRef(null);
+
+    // Helpers para mostrar/ocultar con pequeño delay seguro
+    const openPanel = (tipo) => {
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        if (tipo) setBotonActivo(tipo);
+        setHoverSidebar(true);
+    };
+
+    const scheduleClosePanel = () => {
+        if (fijadoSidebar) return;
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        // ⏳ delay más generoso
+        closeTimerRef.current = setTimeout(() => setHoverSidebar(false), 250);
+    };
+
+    const cancelClosePanel = () => {
+        if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    };
+
+
 
     // --------------------------
     // 🔹 Crear nueva plantilla
@@ -272,236 +298,318 @@ export default function DashboardSidebar({
                 React.cloneElement(componenteInput, {
                     onChange: async (e) => {
                         await handleSeleccion(e);
-                        // ✅ Solo sube la imagen y actualiza la galería
-                        // ❌ Ya no la inserta automáticamente en el canvas
                     },
                 })}
 
             <aside
-                className="bg-purple-900 text-white w-16 flex flex-col items-center py-2"
-                style={{
-                    position: "fixed",
-                    top: "50px",
-                    left: 0,
-                    height: "calc(100vh - 50px)",
-                    zIndex: 50,
-                }}
+                className="
+    bg-purple-900 text-white flex items-center justify-around
+    md:flex-col md:items-center md:w-16 md:justify-start
+    py-2 fixed
+    bottom-0 left-0 w-full h-[60px]
+    md:top-[52px] md:bottom-0 md:h-[calc(100vh-52px)] md:w-16 md:flex-col
+  "
+                style={{ zIndex: 50 }}
             >
+                <div
+                    onClick={() => alternarSidebarConBoton("menu")}
+                    onMouseEnter={() => {
+                        setHoverSidebar(true);
+                        setBotonActivo("menu");
+                    }}
+
+                    className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "menu" ? 'bg-purple-800' : 'hover:bg-purple-700'
+                        }`}
+                    title="Menú"
+                >
+                    <FaBars className="text-white text-xl" />
+                </div>
+                
+                {/* 🖥️ Escritorio: barra vertical a la izquierda */}
+                <div className="hidden md:flex flex-col items-center gap-4 mt-4">
+                    <button
+                        onMouseEnter={() => openPanel("texto")}
+                        onMouseLeave={(e) => {
+                            const panel = document.getElementById("sidebar-panel");
+                            // Si el mouse se mueve hacia el panel, no cierres
+                            if (panel && panel.contains(e.relatedTarget)) return;
+                            scheduleClosePanel();
+                        }}
+                        onClick={() => alternarSidebarConBoton("texto")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Añadir texto"
+                    >
+                        <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
+                    </button>
+
+
+                    <button
+                        onMouseEnter={() => openPanel("forma")}
+                        onMouseLeave={(e) => {
+                            const panel = document.getElementById("sidebar-panel");
+                            // Si el mouse se mueve hacia el panel, no cierres
+                            if (panel && panel.contains(e.relatedTarget)) return;
+                            scheduleClosePanel();
+                        }}
+                        onClick={() => alternarSidebarConBoton("forma")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Añadir forma"
+                    >
+                        <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
+                    </button>
+
+                    <button
+                        onMouseEnter={() => openPanel("imagen")}
+                        onMouseLeave={(e) => {
+                            const panel = document.getElementById("sidebar-panel");
+                            // Si el mouse se mueve hacia el panel, no cierres
+                            if (panel && panel.contains(e.relatedTarget)) return;
+                            scheduleClosePanel();
+                        }}
+                        onClick={() => alternarSidebarConBoton("imagen")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Abrir galería"
+                    >
+                        <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
+                    </button>
+
+                    <button
+                        onMouseEnter={() => openPanel("contador")}
+                        onMouseLeave={(e) => {
+                            const panel = document.getElementById("sidebar-panel");
+                            // Si el mouse se mueve hacia el panel, no cierres
+                            if (panel && panel.contains(e.relatedTarget)) return;
+                            scheduleClosePanel();
+                        }}
+                        onClick={() => alternarSidebarConBoton("contador")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Cuenta regresiva"
+                    >
+                        <span className="text-xl">⏱️</span>
+                    </button>
+                </div>
+
+                {/* 📱 Móvil: barra horizontal inferior */}
+                <div className="flex md:hidden flex-row justify-around items-center w-full px-4">
+                    <button
+                        onClick={() => alternarSidebarConBoton("texto")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Añadir texto"
+                    >
+                        <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
+                    </button>
+
+                    <button
+                        onClick={() => alternarSidebarConBoton("forma")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Añadir forma"
+                    >
+                        <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
+                    </button>
+
+                    <button
+                        onClick={() => alternarSidebarConBoton("imagen")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Abrir galería"
+                    >
+                        <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
+                    </button>
+
+                    <button
+                        onClick={() => alternarSidebarConBoton("contador")}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        title="Cuenta regresiva"
+                    >
+                        <span className="text-xl">⏱️</span>
+                    </button>
+                </div>
+            </aside>
 
 
 
-                {/* 🔹 Panel flotante al hacer hover */}
-                {(hoverSidebar || fijadoSidebar) && (
-                    <div className="absolute left-16 top-4 h-[calc(100%-2rem)] w-72 bg-white border border-purple-300 shadow-2xl rounded-2xl z-40 overflow-y-auto transition-all duration-200"
-                        onMouseEnter={() => setHoverSidebar(true)}
-                        onMouseLeave={() => setHoverSidebar(false)}>
-                        <div className="relative pt-10 px-3 pb-4 flex flex-col gap-5 text-gray-800 w-full h-full min-h-0f">
+            {(hoverSidebar || fijadoSidebar) && (
+                <div
+                    id="sidebar-panel"
+                    className="
+      absolute bg-white border border-purple-300 shadow-2xl 
+      rounded-t-2xl md:rounded-2xl z-40 
+      transition-all duration-300 animate-slideUp
+    "
+                    onMouseEnter={() => {
+                        cancelClosePanel(); // 🚫 cancela el cierre programado
+                        if (!fijadoSidebar) setHoverSidebar(true);
+                    }}
+                    onMouseLeave={(e) => {
+                        const aside = document.querySelector("aside");
+                        // Si el mouse se va hacia la barra lateral, no cierres
+                        if (aside && aside.contains(e.relatedTarget)) return;
+                        scheduleClosePanel(); // ⏳ programa cierre
+                    }}
 
-                            {/* 🔹 Botón para desfijar */}
-                            {fijadoSidebar && (
-                                <button
-                                    onClick={() => {
-                                        setFijadoSidebar(false);
-                                        setHoverSidebar(false);
-                                        setBotonActivo(null);
-                                    }}
-                                    className="absolute top-2 right-2 z-[60] w-8 h-8 flex items-center justify-center 
-               bg-purple-100 text-purple-700 hover:bg-purple-200 
-               rounded-full shadow transition pointer-events-auto"
-                                    title="Cerrar panel"
-                                >
-                                    ←
-                                </button>
-                            )}
-                            {botonActivo === "forma" && (
-                                <PanelDeFormas
-                                    abierto={true}
-                                    onCerrar={() => setModoFormasCompleto(false)}
-                                    sidebarAbierta={sidebarAbierta}
-                                    seccionActivaId={seccionActivaId}
-                                />
-                            )}
+                    onMouseDown={(e) => {
+                        // 🧠 importante: si el usuario clickea dentro del panel, no cerramos
+                        e.stopPropagation();
+                        if (!fijadoSidebar) setHoverSidebar(true);
+                    }}
+                    style={
+                        typeof window !== "undefined" && window.innerWidth < 768
+                            ? {
+                                left: "0",
+                                right: "0",
+                                bottom: "70px",
+                                width: "100%",
+                                maxHeight: "60vh", // 🔹 ocupa más alto en móvil
+                                overflowY: "auto", // 🔹 scroll vertical
+                                WebkitOverflowScrolling: "touch", // 🔹 scroll suave en iOS
+                            }
+                            : {
+                                left: "4rem",
+                                top: "69px", // 🔹 justo debajo del header
+                                height: "calc(100vh - 56px - 2rem)",
+                                width: "18rem",
+                                overflowY: "auto",
+                            }
+                    }
+                >
+                    <div className="relative pt-10 px-3 pb-4 flex flex-col gap-5 text-gray-800 w-full h-full min-h-0">
+                        {/* 🔹 Botón para cerrar el panel */}
+                        {fijadoSidebar && (
+                            <button
+                                onClick={() => {
+                                    setFijadoSidebar(false);
+                                    setHoverSidebar(false);
+                                    setBotonActivo(null);
+                                }}
+                                className="
+            absolute top-2 right-2 z-[60] w-8 h-8 flex items-center justify-center 
+            bg-purple-100 text-purple-700 hover:bg-purple-200 
+            rounded-full shadow transition pointer-events-auto
+          "
+                                title="Cerrar panel"
+                            >
+                                ←
+                            </button>
+                        )}
 
-                            <MiniToolbar
-                                botonActivo={botonActivo}
-                                onAgregarTitulo={() => {
-                                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                        {/* 🔹 Panel de Formas */}
+                        {botonActivo === "forma" && (
+                            <PanelDeFormas
+                                abierto={true}
+                                onCerrar={() => setModoFormasCompleto(false)}
+                                sidebarAbierta={sidebarAbierta}
+                                seccionActivaId={seccionActivaId}
+                            />
+                        )}
+
+                        {/* 🔹 MiniToolbar con todas las acciones */}
+                        <MiniToolbar
+                            botonActivo={botonActivo}
+                            onAgregarTitulo={() => {
+                                window.dispatchEvent(
+                                    new CustomEvent("insertar-elemento", {
                                         detail: {
                                             id: `titulo-${Date.now()}`,
                                             tipo: "texto",
                                             texto: "Título",
-                                            x: 100, y: 100,
+                                            x: 100,
+                                            y: 100,
                                             fontSize: 36,
                                             color: "#000000",
                                             fontFamily: "sans-serif",
                                             fontWeight: "bold",
                                             fontStyle: "normal",
                                             textDecoration: "none",
-                                            rotation: 0, scaleX: 1, scaleY: 1,
-                                        }
-                                    }));
-                                }}
-                                onAgregarSubtitulo={() => {
-                                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                                            rotation: 0,
+                                            scaleX: 1,
+                                            scaleY: 1,
+                                        },
+                                    })
+                                );
+                            }}
+                            onAgregarSubtitulo={() => {
+                                window.dispatchEvent(
+                                    new CustomEvent("insertar-elemento", {
                                         detail: {
                                             id: `subtitulo-${Date.now()}`,
                                             tipo: "texto",
                                             texto: "Subtítulo",
-                                            x: 100, y: 160,
+                                            x: 100,
+                                            y: 160,
                                             fontSize: 24,
                                             color: "#333333",
                                             fontFamily: "sans-serif",
                                             fontWeight: "normal",
                                             fontStyle: "italic",
                                             textDecoration: "none",
-                                            rotation: 0, scaleX: 1, scaleY: 1,
-                                        }
-                                    }));
-                                }}
-                                onAgregarParrafo={() => {
-                                    window.dispatchEvent(new CustomEvent("insertar-elemento", {
+                                            rotation: 0,
+                                            scaleX: 1,
+                                            scaleY: 1,
+                                        },
+                                    })
+                                );
+                            }}
+                            onAgregarParrafo={() => {
+                                window.dispatchEvent(
+                                    new CustomEvent("insertar-elemento", {
                                         detail: {
                                             id: `parrafo-${Date.now()}`,
                                             tipo: "texto",
                                             texto: "Texto del párrafo...",
-                                            x: 100, y: 220,
+                                            x: 100,
+                                            y: 220,
                                             fontSize: 18,
                                             color: "#444444",
                                             fontFamily: "sans-serif",
                                             fontWeight: "normal",
                                             fontStyle: "normal",
                                             textDecoration: "none",
-                                            rotation: 0, scaleX: 1, scaleY: 1,
-                                        }
-                                    }));
-                                }}
-                                onAgregarForma={() => setModoFormasCompleto(true)}
-                                onAgregarImagen={() => setMostrarGaleria(prev => !prev)}
-                                onAgregarCuentaRegresiva={onAgregarCuentaRegresiva}
-                                mostrarGaleria={mostrarGaleria}
-                                setMostrarGaleria={setMostrarGaleria}
-                                imagenes={imagenes}
-                                imagenesEnProceso={imagenesEnProceso}
-                                cargarImagenes={cargarImagenes}
-                                borrarImagen={borrarImagen}
-                                hayMas={hayMas}
-                                cargando={cargando}
-                                seccionActivaId={seccionActivaId}
-                                setImagenesSeleccionadas={setImagenesSeleccionadas}
-                                abrirSelector={abrirSelector}
-                                onCrearPlantilla={ejecutarCrearPlantilla}
-                                onBorrarTodos={async () => {
-                                    const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
-                                    if (!confirmar) return;
-                                    try {
-                                        const functions = (await import("firebase/functions")).getFunctions();
-                                        const borrarTodos = (await import("firebase/functions")).httpsCallable(
-                                            functions,
-                                            "borrarTodosLosBorradores"
-                                        );
-                                        await borrarTodos();
-                                        alert("✅ Todos los borradores fueron eliminados.");
-                                        window.location.reload();
-                                    } catch (error) {
-                                        console.error("❌ Error al borrar todos los borradores", error);
-                                        alert("No se pudieron borrar los borradores.");
-                                    }
-                                }}
-                                onAbrirModalSeccion={modalCrear.abrir}
-                                onInsertarGaleria={insertarGaleria}
-                            />
-
-
-
-
-                        </div>
-                    </div>
-                )}
-
-
-                <div className="p-4 border-purple-700 flex flex-col gap-4">
-                    {/* 🔹 Menú principal */}
-                    <div
-                        onClick={() => alternarSidebarConBoton("menu")}
-                        onMouseEnter={() => {
-                            setHoverSidebar(true);
-                            setBotonActivo("menu");
-                        }}
-
-                        className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "menu" ? 'bg-purple-800' : 'hover:bg-purple-700'
-                            }`}
-                        title="Menú"
-                    >
-                        <FaBars className="text-white text-xl" />
-                    </div>
-
-
-
-
-
-                    {/* 🔹 Íconos con control de hover individual */}
-                    <div
-                        onMouseEnter={() => setHoverSidebar(true)}
-                        className="flex flex-col gap-4 mt-4 items-center"
-                    >
-                        <button
-                            onClick={() => alternarSidebarConBoton("texto")}
-                            onMouseEnter={() => {
-                                setHoverSidebar(true);
-                                setBotonActivo("texto");
+                                            rotation: 0,
+                                            scaleX: 1,
+                                            scaleY: 1,
+                                        },
+                                    })
+                                );
                             }}
-
-                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "texto" ? 'bg-purple-800' : 'hover:bg-purple-700'
-                                }`}
-                            title="Añadir texto"
-                        >
-                            <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
-                        </button>
-
-
-                        <button
-                            onClick={() => alternarSidebarConBoton("forma")}
-                            onMouseEnter={() => {
-                                setHoverSidebar(true);
-                                setBotonActivo("forma");
+                            onAgregarForma={() => setModoFormasCompleto(true)}
+                            onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
+                            onAgregarCuentaRegresiva={onAgregarCuentaRegresiva}
+                            mostrarGaleria={mostrarGaleria}
+                            setMostrarGaleria={setMostrarGaleria}
+                            imagenes={imagenes}
+                            imagenesEnProceso={imagenesEnProceso}
+                            cargarImagenes={cargarImagenes}
+                            borrarImagen={borrarImagen}
+                            hayMas={hayMas}
+                            cargando={cargando}
+                            seccionActivaId={seccionActivaId}
+                            setImagenesSeleccionadas={setImagenesSeleccionadas}
+                            abrirSelector={abrirSelector}
+                            onCrearPlantilla={ejecutarCrearPlantilla}
+                            onBorrarTodos={async () => {
+                                const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
+                                if (!confirmar) return;
+                                try {
+                                    const functions = (await import("firebase/functions")).getFunctions();
+                                    const borrarTodos = (await import("firebase/functions")).httpsCallable(
+                                        functions,
+                                        "borrarTodosLosBorradores"
+                                    );
+                                    await borrarTodos();
+                                    alert("✅ Todos los borradores fueron eliminados.");
+                                    window.location.reload();
+                                } catch (error) {
+                                    console.error("❌ Error al borrar todos los borradores", error);
+                                    alert("No se pudieron borrar los borradores.");
+                                }
                             }}
-
-                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "forma" ? 'bg-purple-800' : 'hover:bg-purple-700'
-                                }`}
-                            title="Añadir forma"
-                        >
-                            <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
-                        </button>
-
-
-                        <button
-                            onClick={() => alternarSidebarConBoton("imagen")}
-                            onMouseEnter={() => {
-                                setHoverSidebar(true);
-                                setBotonActivo("imagen");
-                            }}
-
-                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "imagen" ? 'bg-purple-800' : 'hover:bg-purple-700'
-                                }`}
-                            title="Abrir galería"
-                        >
-                            <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
-                        </button>
-
-                        {/* 🆕 Cuenta regresiva */}
-                        <button
-                            onClick={() => alternarSidebarConBoton("contador")}
-                            onMouseEnter={() => { setHoverSidebar(true); setBotonActivo("contador"); }}
-                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "contador" ? 'bg-purple-800' : 'hover:bg-purple-700'}`}
-                            title="Cuenta regresiva"
-                        >
-                            <span className="text-xl">⏱️</span>
-                        </button>
-
+                            onAbrirModalSeccion={modalCrear.abrir}
+                            onInsertarGaleria={insertarGaleria}
+                        />
                     </div>
-
                 </div>
-            </aside>
+            )}
+
+
 
             <ModalCrearSeccion
                 visible={modalCrear.visible}

@@ -21,7 +21,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
       console.warn("Error obteniendo propiedades del nodo:", error);
       return {
         fontSize: 24,
-        fontFamily: "sans-serif", 
+        fontFamily: "sans-serif",
         fontWeight: "normal",
         fontStyle: "normal",
         fill: "#000",
@@ -30,7 +30,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     }
   }, [node, value]);
 
-  const fontSizeEdit = nodeProps.fontSize - 3;
+  const fontSizeEdit = nodeProps.fontSize;
 
 
   // 🔥 CALCULAR DIMENSIONES SIN ESCALA ADICIONAL
@@ -43,7 +43,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     tempDiv.style.visibility = 'hidden';
     tempDiv.style.whiteSpace = 'pre';
     const fontSizeEdit = nodeProps.fontSize - 3;
-tempDiv.style.fontSize = `${fontSizeEdit}px`;
+    tempDiv.style.fontSize = `${fontSizeEdit}px`;
     tempDiv.style.fontFamily = nodeProps.fontFamily;
     tempDiv.style.fontWeight = nodeProps.fontWeight;
     tempDiv.style.fontStyle = nodeProps.fontStyle;
@@ -59,34 +59,29 @@ tempDiv.style.fontSize = `${fontSizeEdit}px`;
     document.body.removeChild(tempDiv);
 
     return {
-      width: Math.max(20, width * scaleVisual +12),
-      height: Math.max(fontSizeEdit * scaleVisual * 1.2, height * scaleVisual +6)
-
+      width: Math.max(20, width + 10),
+      height: Math.max(fontSizeEdit * 1.2, height + 4)
     };
+
   }, [value, nodeProps.fontSize, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle]);
 
-  // 🔥 CALCULAR POSICIÓN USANDO LA ESCALA UNIFICADA
+  // ✅ Posicionar según la esquina superior-izquierda del texto real
   const { left, top } = useMemo(() => {
     try {
-      const rect = node.getClientRect({ relativeTo: node.getStage() });
+      const textPos = node.absolutePosition();
       const stage = node.getStage();
       const stageBox = stage.container().getBoundingClientRect();
 
-      const width = node.width?.() || 100;
-      const height = node.height?.() || 100;
-
-      const centerX = rect.x + width / 2;
-      const centerY = rect.y + height / 2;
-
       return {
-        left: stageBox.left + centerX * scaleVisual - contentDimensions.width / 2 + window.scrollX,
-        top: stageBox.top + centerY * scaleVisual - contentDimensions.height / 2 + window.scrollY
+        left: stageBox.left + textPos.x * scaleVisual + window.scrollX,
+        top: stageBox.top + textPos.y * scaleVisual + window.scrollY
       };
     } catch (error) {
-      console.warn("Error calculando posición:", error);
+      console.warn("Error calculando posición del textarea:", error);
       return { left: 0, top: 0 };
     }
-  }, [node, contentDimensions, scaleVisual]);
+  }, [node, scaleVisual]);
+
 
   // 🔥 AUTO-FOCUS Y POSICIONAMIENTO DEL CURSOR
   useEffect(() => {
@@ -108,9 +103,9 @@ tempDiv.style.fontSize = `${fontSizeEdit}px`;
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    textarea.style.width = `${contentDimensions.width}px`;
+    textarea.style.width = `${contentDimensions.width +1}px`;
     textarea.style.height = `${contentDimensions.height}px`;
-    
+
     textarea.scrollLeft = 0;
     textarea.scrollTop = 0;
   }, [contentDimensions.width, contentDimensions.height]);
@@ -121,66 +116,51 @@ tempDiv.style.fontSize = `${fontSizeEdit}px`;
       autoFocus
       value={value}
       style={{
-  position: "fixed",
-  left: `${left}px`,
-  top: `${top}px`,
-  width: `${contentDimensions.width}px`,
-  height: `${contentDimensions.height}px`,
+        position: "fixed",
+        left: `${left -1}px`,
+        top: `${top - (contentDimensions.height - fontSizeEdit * 1.2) / 2 - fontSizeEdit * 0.065}px`,
+        width: `${contentDimensions.width}px`,
+        height: `${contentDimensions.height}px`,
 
- fontSize: `${fontSizeEdit * scaleVisual +4}px`,
-  fontFamily: nodeProps.fontFamily,
-  fontWeight: nodeProps.fontWeight,
-  fontStyle: nodeProps.fontStyle,
-  lineHeight: 1,
+        fontSize: `${fontSizeEdit}px`,
+        fontFamily: nodeProps.fontFamily,
+        fontWeight: nodeProps.fontWeight,
+        fontStyle: nodeProps.fontStyle,
+        lineHeight: 1.2,
 
-  color: "#000",
-  caretColor: "#000",
-  textAlign: textAlign || "center",
+        color: nodeProps.fill,
+        caretColor: nodeProps.fill,
+        textAlign: textAlign || "left",
 
-  
-  whiteSpace: "pre",
-  overflow: "hidden",
-  wordWrap: "normal",
-  overflowWrap: "normal",
+        whiteSpace: "pre-wrap",
+        background: "transparent",
+        border: "none",
+        outline: "none",
+        resize: "none",
+        padding: "0",
+        margin: "0",
+        boxSizing: "border-box",
+        overflow: "hidden",
+        zIndex: 9999,
+        
 
-  background: "rgba(255, 0, 0, 0.3)",
-  border: "none",
-  outline: "none",
-  resize: "none",
-  paddingTop:"0",
-  margin: "0",
-  boxSizing: "border-box",
+        transformOrigin: "top left",
+        transform: `scale(${scaleVisual})`,
+      }}
 
-  textDecoration: "none",
-  letterSpacing: "normal",
-  wordSpacing: "normal",
-  textIndent: "0",
-  textShadow: "none",
-  boxShadow: "none",
-
-  transform: "none",
-  transition: "none",
-
-  overflowX: "hidden",
-  overflowY: "hidden",
-  scrollbarWidth: "none",
-  msOverflowStyle: "none",
-
-  zIndex: 9999,
-}}
 
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
           return;
         }
-        
+
         if (e.key === "Enter" && e.shiftKey) {
           e.preventDefault();
           onFinish();
           return;
         }
-        
+
         if (e.key === "Escape") {
           e.preventDefault();
           onFinish();

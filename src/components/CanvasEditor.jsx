@@ -153,26 +153,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setHoverId(null);
   }, []);
 
-  // 🔍 DEBUG: Monitorear cambios en selección
-  useEffect(() => {
-    console.log("🎯 [CANVAS EDITOR] Selección cambió:", {
-      elementos: elementosSeleccionados,
-      cantidad: elementosSeleccionados.length,
-      detalles: elementosSeleccionados.map(id => {
-        const obj = objetos.find(o => o.id === id);
-        return {
-          id,
-          tipo: obj?.tipo,
-          figura: obj?.figura
-        };
-      })
-    });
-
-    // Exponer globalmente para debug
-    window._elementosSeleccionados = elementosSeleccionados;
-    window._objetosActuales = objetos;
-
-  }, [elementosSeleccionados, objetos]);
+  
 
   // 🆕 Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
@@ -1850,11 +1831,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               }}
 
               onMouseUp={(e) => {
-                console.log("🖱️ [STAGE] Mouse up:", {
-                  target: e.target?.getClassName ? e.target.getClassName() : 'unknown',
-                  seleccionActual: elementosSeleccionados,
-                  grupoLider: window._grupoLider
-                });
+                
                 const stage = e.target.getStage();
 
 
@@ -1904,7 +1881,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   }
                 });
 
-                console.log("🎯 [SELECCIÓN ÁREA] Elementos seleccionados:", nuevaSeleccion.map(o => o.id));
 
                 setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
                 setElementosPreSeleccionados([]);
@@ -2295,6 +2271,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
+                  
+
                   return (
                     <ElementoCanvas
                       key={obj.id}
@@ -2338,10 +2316,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         e?.evt && (e.evt.cancelBubble = true);
 
                         const esShift = e?.evt?.shiftKey;
-                        console.log("⌨️ [CANVAS EDITOR] ¿Es Shift+Click?", esShift);
 
                         setElementosSeleccionados((prev) => {
-                          console.log("📋 [CANVAS EDITOR] Selección anterior:", prev);
 
                           if (esShift) {
                             console.log("➕ [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
@@ -2352,11 +2328,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                               return nueva;
                             } else {
                               const nueva = [...prev, id];
-                              console.log("➕ [CANVAS EDITOR] Elemento agregado. Nueva selección:", nueva);
                               return nueva;
                             }
                           } else {
-                            console.log("🎯 [CANVAS EDITOR] Modo normal: selección única");
                             return [id];
                           }
                         });
@@ -2692,7 +2666,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     const index = objetos.findIndex(o => o.id === editing.id);
                     const objeto = objetos[index];
 
-                    console.log("🧪 DEBUG al salir de edición:", { textoNuevo, index, objeto });
 
                     if (index === -1) {
                       console.warn("❌ El objeto ya no existe. Cancelando guardado.");

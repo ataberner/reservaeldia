@@ -5,16 +5,8 @@ import { fontManager } from '../utils/fontManager';
 import { ALL_FONTS } from '../config/fonts';
 
 
-console.log("✅ FontSelector file loaded");
 
 
-// DEBUG: logger controlado por bandera
-const DEBUG_FONTS = true;
-function logFont(...args) {
-  if (!DEBUG_FONTS) return;
-  // Prefijo corto para buscar fácil en consola
-  console.log('%c[FontDBG]', 'color:#773dbe;font-weight:bold', ...args);
-}
 
 
 const FontSelector = memo(({
@@ -33,20 +25,7 @@ const FontSelector = memo(({
     return matchesSearch && matchesCategory;
   });
 
-  logFont('🔍 isOpen?', isOpen, 'currentFont:', currentFont);
 
-
-
-  useEffect(() => {
-    logFont('FontSelector mounted. isOpen=', isOpen, 'currentFont=', currentFont);
-    // sanity check de listado recibido
-    logFont('ALL_FONTS length=', ALL_FONTS?.length, 'first 5=', ALL_FONTS?.slice(0, 5));
-  }, [isOpen, currentFont]);
-
-  // log filtrado actual
-  useEffect(() => {
-    logFont('Filtro aplicado => term:', searchTerm, 'cat:', selectedCategory, 'resultados:', filteredFonts.length);
-  }, [searchTerm, selectedCategory, filteredFonts.length]);
 
 
   // 📦 Cerrar si el usuario hace click fuera del panel
@@ -119,7 +98,6 @@ const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
   useEffect(() => {
     const available = fontManager.isFontAvailable(font.valor);
     setIsLoaded(available);
-    logFont(`#${debugIndex} mount`, { familia: font.valor, available });
   }, [font.valor]);
 
   // 2) Cargar la fuente automáticamente cuando entra en pantalla
@@ -132,12 +110,9 @@ const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
       if (entry.isIntersecting && !isLoaded && !isLoading) {
         setIsLoading(true);
         try {
-          logFont(`#${debugIndex} autoLoad(start)`, font.valor);
           await fontManager.loadFonts([font.valor]);
           setIsLoaded(true);
-          logFont(`#${debugIndex} autoLoad(done)`, font.valor);
         } catch (error) {
-          console.error("[FontDBG] autoLoad(error)", font.valor, error);
         } finally {
           setIsLoading(false);
         }
@@ -151,17 +126,13 @@ const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
 
   // 3) Click: si no está cargada, log + carga, si está, log directo
   const handleClick = async () => {
-    logFont(`#${debugIndex} click`, { familia: font.valor, isLoaded, isLoading });
 
     if (!isLoaded && !isLoading) {
       setIsLoading(true);
       try {
-        logFont(`#${debugIndex} loadFonts(start)`, font.valor);
         await fontManager.loadFonts([font.valor]);
         setIsLoaded(true);
-        logFont(`#${debugIndex} loadFonts(done)`, font.valor);
       } catch (error) {
-        console.error("[FontDBG] loadFonts(error)", font.valor, error);
       } finally {
         setIsLoading(false);
       }

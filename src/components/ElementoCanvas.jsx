@@ -6,6 +6,8 @@ import { LINE_CONSTANTS } from '@/models/lineConstants';
 import { fontManager } from '../utils/fontManager';
 import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
+import { getTextMetrics } from "@/utils/getTextMetrics";
+
 
 
 export default function ElementoCanvas({
@@ -97,7 +99,7 @@ export default function ElementoCanvas({
 
     onDragStart: (e) => {
 
-      
+
       window._dragCount = 0;
       window._lastMouse = null;
       window._lastElement = null;
@@ -183,7 +185,7 @@ export default function ElementoCanvas({
       window._isDragging = false;
       setIsDragging(false);
 
-      const node = e.currentTarget; 
+      const node = e.currentTarget;
 
       // 🔥 Intentar drag grupal
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
@@ -277,24 +279,24 @@ export default function ElementoCanvas({
 
 
 
-// 🔒 Nueva versión: solo corrige width en casos especiales (no por align)
-useEffect(() => {
-  if (obj.tipo !== "texto") return;
-  if (obj.__groupAlign) return;
-  if (obj.width || obj.__autoWidth === false) return;
+  // 🔒 Nueva versión: solo corrige width en casos especiales (no por align)
+  useEffect(() => {
+    if (obj.tipo !== "texto") return;
+    if (obj.__groupAlign) return;
+    if (obj.width || obj.__autoWidth === false) return;
 
-  const node = textNodeRef.current;
-  if (!node || typeof onChange !== "function") return;
+    const node = textNodeRef.current;
+    if (!node || typeof onChange !== "function") return;
 
-  // Solo si el texto recién se creó y no tiene width (por ejemplo, texto vacío que ahora tiene contenido)
-  if ((obj.texto?.length || 0) > 0 && !obj.width) {
-    const w = Math.ceil(node.getTextWidth?.() || 0);
-    if (Number.isFinite(w) && w > 0) {
-      onChange(obj.id, { width: undefined, __autoWidth: false });
+    // Solo si el texto recién se creó y no tiene width (por ejemplo, texto vacío que ahora tiene contenido)
+    if ((obj.texto?.length || 0) > 0 && !obj.width) {
+      const w = Math.ceil(node.getTextWidth?.() || 0);
+      if (Number.isFinite(w) && w > 0) {
+        onChange(obj.id, { width: undefined, __autoWidth: false });
+      }
     }
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [obj.id, obj.texto]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obj.id, obj.texto]);
 
 
   const groupRef = useRef(null);
@@ -373,24 +375,41 @@ useEffect(() => {
   }
 
 
-  if (obj.tipo === "texto") {
-    // Verificar si la fuente está cargada
-    const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
-      ? obj.fontFamily
-      : "sans-serif";
+ if (obj.tipo === "texto") {
+  const isEditing = window._currentEditingId === obj.id; // ✅ Definir acá
 
-    // 🔥 NUEVO: Detectar si está en modo edición
-    const isEditing = window._currentEditingId === obj.id;
-
-    const align = (obj.align || "left").toLowerCase();        // "left" | "center" | "right" | "justify"
-    const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";  // 👈 prioridad a colorTexto
-    const lineHeight =
-      (typeof obj.lineHeight === "number" && obj.lineHeight > 0) ? obj.lineHeight : 1.2;
-    // 🔒 Mantener el comportamiento anterior: solo usar width si el objeto ya lo tiene
-    const width = obj.width || undefined;
+  const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
+    ? obj.fontFamily
+    : "sans-serif";
 
 
-    return (
+  const align = (obj.align || "left").toLowerCase();
+  const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";
+  const lineHeight =
+    typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
+
+  // Métricas base (solo si querés afinar verticalmente)
+  const { height } = getTextMetrics({
+    fontSize: obj.fontSize || 24,
+    fontFamily,
+    fontWeight: obj.fontWeight || "normal",
+    fontStyle: obj.fontStyle || "normal",
+    text: "Hg",
+  });
+
+  const baselineOffset = 10; // constante estable
+
+  // Cálculo de ancho/alto
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = `${obj.fontWeight || "normal"} ${obj.fontStyle || "normal"} ${obj.fontSize || 24}px ${fontFamily}`;
+  const lines = (obj.texto || "").split(/\r?\n/);
+  const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 20);
+  const numLines = lines.length;
+  const textHeight = (obj.fontSize ?? 24) * lineHeight * numLines * 1.05;
+  const textWidth = Math.ceil(maxLineWidth + (obj.fontSize ?? 24) * 0.3);
+
+  return (
+    <>
       <Text
         {...commonProps}
         ref={(node) => {
@@ -398,24 +417,30 @@ useEffect(() => {
           registerRef?.(obj.id, node);
         }}
         text={obj.texto}
+        x={obj.x}
+        y={(obj.y ?? 0) + baselineOffset}
+        width={isEditing ? undefined : textWidth}
+        height={isEditing ? undefined : textHeight}
+        wrap="word"
+        align={align}
+        verticalAlign="middle"
         fontSize={obj.fontSize || 24}
         fontFamily={fontFamily}
         fontWeight={obj.fontWeight || "normal"}
         fontStyle={obj.fontStyle || "normal"}
-        align={align}
-        verticalAlign="top"
-        wrap="word"
-        width={width}
-        textDecoration={obj.textDecoration || "none"}
-        fill={fillColor}
         lineHeight={lineHeight}
+        fill={fillColor}
+        opacity={isEditing ? 0 : 1}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        opacity={isInEditMode ? 0 : 1}
       />
+    </>
+  );
+}
 
-    );
-  }
+
+
+
 
 
   if (obj.tipo === "rsvp-boton") {
@@ -559,75 +584,75 @@ useEffect(() => {
   }
 
 
-/* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
-if (obj.tipo === "icono" && obj.formato === "png") {
-  const [img] = useImage(obj.url, "anonymous");
+  /* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
+  if (obj.tipo === "icono" && obj.formato === "png") {
+    const [img] = useImage(obj.url, "anonymous");
 
-  return (
-    <KonvaImage
-      {...commonProps}
-      image={img}
-      crossOrigin="anonymous"
-      width={obj.width || (img?.width ?? 120)}
-      height={obj.height || (img?.height ?? 120)}
-      listening={true}
+    return (
+      <KonvaImage
+        {...commonProps}
+        image={img}
+        crossOrigin="anonymous"
+        width={obj.width || (img?.width ?? 120)}
+        height={obj.height || (img?.height ?? 120)}
+        listening={true}
 
-      // UX cursor (si ya lo manejás en commonProps, podés omitir estos dos)
-      onMouseEnter={(e) => {
-        const stage = e.currentTarget.getStage();
-        if (stage) stage.container().style.cursor = "grab";
-        handleMouseEnter?.(e);
-      }}
-      onMouseLeave={(e) => {
-        const stage = e.currentTarget.getStage();
-        if (stage) stage.container().style.cursor = "default";
-        handleMouseLeave?.(e);
-      }}
+        // UX cursor (si ya lo manejás en commonProps, podés omitir estos dos)
+        onMouseEnter={(e) => {
+          const stage = e.currentTarget.getStage();
+          if (stage) stage.container().style.cursor = "grab";
+          handleMouseEnter?.(e);
+        }}
+        onMouseLeave={(e) => {
+          const stage = e.currentTarget.getStage();
+          if (stage) stage.container().style.cursor = "default";
+          handleMouseLeave?.(e);
+        }}
 
-      // Selección por click/tap
-      onClick={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
-      onTap={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
+        // Selección por click/tap
+        onClick={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
+        onTap={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
 
-      // ✅ Persistimos SIEMPRE la posición del contenedor top-level
-      onDragEnd={(e) => {
-        const node = e.currentTarget;
-        const patch = {
-          id: obj.id,
-          tipo: obj.tipo,
-          formato: obj.formato,
-          x: node.x(),
-          y: node.y(),
-          isDragPreview: false,
-          isFinal: true,
-        };
-        const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
-        onChange?.(patch, meta);
+        // ✅ Persistimos SIEMPRE la posición del contenedor top-level
+        onDragEnd={(e) => {
+          const node = e.currentTarget;
+          const patch = {
+            id: obj.id,
+            tipo: obj.tipo,
+            formato: obj.formato,
+            x: node.x(),
+            y: node.y(),
+            isDragPreview: false,
+            isFinal: true,
+          };
+          const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
+          onChange?.(patch, meta);
 
-        // limpiar cursor
-        const stage = node.getStage();
-        if (stage) stage.container().style.cursor = "default";
-      }}
+          // limpiar cursor
+          const stage = node.getStage();
+          if (stage) stage.container().style.cursor = "default";
+        }}
 
-      onTransformEnd={(e) => {
-        const node = e.currentTarget;
-        const patch = {
-          id: obj.id,
-          tipo: obj.tipo,
-          formato: obj.formato,
-          x: node.x(),
-          y: node.y(),
-          rotation: node.rotation() || 0,
-          scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
-          scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
-          isDragPreview: false,
-          isFinal: true,
-        };
-        const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
-        onChange?.(patch, meta);
-      }}
-    />
-  );
-}
+        onTransformEnd={(e) => {
+          const node = e.currentTarget;
+          const patch = {
+            id: obj.id,
+            tipo: obj.tipo,
+            formato: obj.formato,
+            x: node.x(),
+            y: node.y(),
+            rotation: node.rotation() || 0,
+            scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
+            scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
+            isDragPreview: false,
+            isFinal: true,
+          };
+          const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
+          onChange?.(patch, meta);
+        }}
+      />
+    );
+  }
 
 
 

@@ -31,6 +31,8 @@ export default function ElementoCanvas({
   const [isDragging, setIsDragging] = useState(false);
 
   const textNodeRef = useRef(null);
+  const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
+
 
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
   const handleChange = useCallback((id, newData) => {
@@ -400,8 +402,8 @@ export default function ElementoCanvas({
   const textWidth = Math.ceil(maxLineWidth + 6);
   const textHeight = validFontSize * lineHeight * numLines;
 
-  // 🔹 PASO 2: Ahora sí calcular posición (con textHeight ya definido)
-  const position = getCenteredTextPosition({
+// 🔹 PASO 2: Calcular posición solo una vez y congelar el centro
+  let positionRaw = getCenteredTextPosition({
     rectY: validY,
     rectHeight: textHeight,
     fontSize: validFontSize,
@@ -409,6 +411,31 @@ export default function ElementoCanvas({
     fontWeight: obj.fontWeight || "normal",
     fontStyle: obj.fontStyle || "normal",
   });
+
+  // Inicializar layout base solo la PRIMERA vez
+  if (!baseTextLayoutRef.current) {
+    baseTextLayoutRef.current = {
+      // centro vertical "ideal" que queremos conservar
+      rectCenter: positionRaw.rectCenter,
+      // offset desde el centro al baseline (depende solo de la fuente/tamaño)
+      baselineToCenter: positionRaw.baseline - positionRaw.rectCenter,
+      ascent: positionRaw.ascent,
+      descent: positionRaw.descent,
+    };
+  }
+
+  const base = baseTextLayoutRef.current;
+  const rectCenterFixed = base.rectCenter;
+  const baselineY = rectCenterFixed + base.baselineToCenter;
+  const textTopFixed = baselineY - base.ascent;
+
+  const position = {
+    baseline: baselineY,
+    textTop: textTopFixed,
+    ascent: base.ascent,
+    descent: base.descent,
+    rectCenter: rectCenterFixed,
+  };
 
   // 🔍 Debug: información completa de posición y centrado
   console.log("📐 [Konva Text Position]", {

@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useMemo, useEffect, useRef } from "react";
-import { getTextMetrics, getNormalizedTextMetrics } from "@/utils/getTextMetrics";
+import { getTextMetrics} from "@/utils/getTextMetrics";
 
 
 export default function InlineTextEditor({ node, value, onChange, onFinish, textAlign, scaleVisual = 1 }) {
@@ -100,9 +100,10 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
   const top = stageBox.top + rect.y * totalScaleY + window.scrollY;
   const left = stageBox.left + rect.x * totalScaleX + window.scrollX;
 
-  // ✅ Tamaños del textarea = bounding box del texto Konva
-  const textareaWidth = Math.max(20, rect.width * totalScaleX);
-  const textareaHeight = rect.height * totalScaleY;
+  // ✅ Ancho base del textarea = bounding box del texto Konva
+const textareaWidth = Math.max(20, rect.width * totalScaleX);
+// El alto lo vamos a manejar dinámicamente con scrollHeight
+
 
 
   if (DEBUG_MODE) {
@@ -116,7 +117,6 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
       top,
       left,
       textareaWidth,
-      textareaHeight,
       konvaAbsPos: node.getAbsolutePosition(),
     });
   }
@@ -146,42 +146,96 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     textarea.scrollTop = 0;
   }, [contentDimensions.width, contentDimensions.height]);
 
-
-  // ✅ Ajustar ancho automáticamente mientras se escribe (con expansión real)
+    // 🔄 Ajustar altura del textarea al contenido (profesional)
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
 
-    // Crear elemento temporal para medir el texto real
-    const temp = document.createElement("span");
-    temp.style.visibility = "hidden";
-    temp.style.position = "absolute";
-    temp.style.whiteSpace = "pre";
-    temp.style.fontSize = `${nodeProps.fontSize * totalScaleX}px`;
-    temp.style.fontFamily = nodeProps.fontFamily;
-    temp.style.fontWeight = nodeProps.fontWeight;
-    temp.style.fontStyle = nodeProps.fontStyle;
-    temp.textContent = el.value || "Hg";
+    
+    // Paso 1: dejar que "se encoja"
+    el.style.height = "auto";
 
-    document.body.appendChild(temp);
-    const measuredWidth = temp.offsetWidth;
-    document.body.removeChild(temp);
+    // Paso 2: ajustarlo al contenido real
+    const newHeight = el.scrollHeight;
+    el.style.height = `${newHeight}px`;
 
-    // 🔹 Ancho dinámico con margen de 6 px
-    const newWidth = measuredWidth + 6;
-    el.style.width = `${newWidth}px`;
-
-    // 🧠 Si el texto supera el ancho original del nodo, notificamos a Konva
-    const nodeWidth = node.width?.() || rect.width;
-    if (measuredWidth > nodeWidth) {
-      try {
-        node.width(measuredWidth);
-        node.getLayer()?.batchDraw();
-      } catch (err) {
-        console.warn("Error actualizando ancho del nodo:", err);
-      }
+    if (DEBUG_MODE) {
+      console.log("📏 [Inline AutoHeight]", {
+        value,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        computedHeight: newHeight,
+        konvaRectHeight: rect.height * totalScaleY,
+      });
     }
-  }, [value, node, rect.width, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, nodeProps.fontSize, totalScaleX]);
+}, [value, rect.height, nodeProps.fontSize, konvaLineHeight, totalScaleY]);
+
+
+// 🟦 Ajustar ANCHO del textarea según el contenido (expande hacia la derecha)
+useEffect(() => {
+  const el = textareaRef.current;
+  if (!el) return;
+
+  // Medir contenido real en DOM
+  const temp = document.createElement("span");
+  temp.style.visibility = "hidden";
+  temp.style.position = "absolute";
+  temp.style.whiteSpace = "pre";
+  temp.style.fontSize = `${nodeProps.fontSize * totalScaleX}px`;
+  temp.style.fontFamily = nodeProps.fontFamily;
+  temp.style.fontWeight = nodeProps.fontWeight;
+  temp.style.fontStyle = nodeProps.fontStyle;
+  temp.style.lineHeight = konvaLineHeight;
+  temp.textContent = el.value || "Hg";
+
+  document.body.appendChild(temp);
+  const measuredWidth = temp.offsetWidth;
+  document.body.removeChild(temp);
+
+  // Width de Konva en DOM para comparar
+  const baseWidthDom = textareaWidth;            // rect.width * totalScaleX
+  let finalWidthDom = baseWidthDom;
+
+  if (measuredWidth > baseWidthDom) {
+    // 👉 Expande hacia la derecha si el texto lo necesita
+    finalWidthDom = measuredWidth + 8;
+  }
+
+  // Aplicar al textarea (DOM)
+  el.style.width = `${finalWidthDom}px`;
+
+  // Opcional: actualizar también la width del nodo Konva,
+  // para que el rect verde crezca igual que el rojo.
+  const finalWidthKonva = finalWidthDom / totalScaleX;
+  try {
+    if (typeof node.width === "function") {
+      node.width(finalWidthKonva);
+      node.getLayer()?.batchDraw();
+    }
+  } catch (err) {
+    console.warn("Error ajustando width de nodo Konva:", err);
+  }
+
+  if (DEBUG_MODE) {
+    console.log("📏 [Inline AutoWidth]", {
+      value,
+      measuredWidth,
+      baseWidthDom,
+      finalWidthDom,
+      finalWidthKonva,
+    });
+  }
+}, [
+  value,
+  textareaWidth,
+  node,
+  nodeProps.fontSize,
+  nodeProps.fontFamily,
+  nodeProps.fontWeight,
+  nodeProps.fontStyle,
+  konvaLineHeight,
+  totalScaleX,
+]);
 
 
 
@@ -198,7 +252,6 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
           left: `${left}px`,
           top: `${top}px`,
           width: `${textareaWidth}px`,
-          height: `${textareaHeight}px`,
           fontSize: `${nodeProps.fontSize * totalScaleY}px`,
           fontFamily: nodeProps.fontFamily,
           fontWeight: nodeProps.fontWeight,
@@ -210,8 +263,10 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
           border: "1px solid red",
           padding: 0,
           margin: 0,
-          whiteSpace: "pre",
-          overflow: "hidden",
+          whiteSpace: "pre-wrap",
+         overflowWrap: "break-word",
+         wordBreak: "break-word",
+         overflow: "hidden",
           outline: "none",
           resize: "none",
           zIndex: 9999,

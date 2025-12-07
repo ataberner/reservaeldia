@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useMemo, useEffect, useRef } from "react";
-import { getTextMetrics } from "@/utils/getTextMetrics";
+import { getTextMetrics, getNormalizedTextMetrics } from "@/utils/getTextMetrics";
+
 
 export default function InlineTextEditor({ node, value, onChange, onFinish, textAlign, scaleVisual = 1 }) {
   if (!node) return null;
@@ -50,10 +51,6 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     text: value?.trim() ? value : "Hg",
   });
 
-   // 🧮 Cantidad de líneas del texto actual
-  const lines = (value || "").split(/\r?\n/).length || 1;
-
-  const textBlockHeightCanvas = (m.height /* ascent+descent */) * lines * konvaLineHeight;
 
 
   // 2️⃣ Calcular dimensiones base del texto
@@ -83,52 +80,46 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
   }, [value, nodeProps.fontSize, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, fontSizeEdit]);
 
 
-  const rect = node.getClientRect({
-    relativeTo: node.getStage(),
-    skipShadow: true,
-    skipStroke: true,
-  });
-
-  // ✅ Calcular el offset vertical real del texto respecto al rectángulo
-  let baselineOffset = 0;
-  try {
-    const metrics = getTextMetrics({
-      fontSize: nodeProps.fontSize,
-      fontFamily: nodeProps.fontFamily,
-      fontWeight: nodeProps.fontWeight,
-      fontStyle: nodeProps.fontStyle,
-      text: "Hg",
-    });
-    baselineOffset = metrics.ascent - metrics.height / 2; // mismo cálculo que usa Konva
-  } catch (err) {
-    console.warn("Error calculando baselineOffset:", err);
-  }
-
-  // ✅ Alineamos al inicio del texto real
-  const padTop = 0;
-
-
-
-  // 4️⃣ Posición y escala finales
+  // 🧩 Bounding box REAL del nodo Konva
   const stage = node.getStage();
-  const stageBox = node.getStage().container().getBoundingClientRect();
+  if (!stage) return null;
+  const stageBox = stage.container().getBoundingClientRect();
 
-  // 🔧 NUEVO: tamaño real del nodo Konva (sin expandir)
-  const nodeBox = node.getClientRect({ skipShadow: true, skipStroke: true });
+  // Escala real del stage (por si hacés zoom)
+  const stageScaleX = typeof stage.scaleX === "function" ? stage.scaleX() : stage.scaleX || 1;
+  const stageScaleY = typeof stage.scaleY === "function" ? stage.scaleY() : stage.scaleY || 1;
 
- 
+  // Escala total (zoom visual + escala del stage)
+  const totalScaleX = (scaleVisual || 1) * (stageScaleX || 1);
+  const totalScaleY = (scaleVisual || 1) * (stageScaleY || 1);
 
-  // 🔥 Ancho y alto del textarea basados en el texto visible
-  const textareaWidth = Math.max(20, nodeBox.width * scaleVisual);
-  const textareaHeight = nodeProps.fontSize * konvaLineHeight * lines * scaleVisual;
+  // 📦 Rectángulo de dibujo del texto (mismas coordenadas que el rect verde)
+  const rect = node.getClientRect({ relativeTo: stage, skipStroke: true });
 
-  // 🔥 Ajuste fino: centramos verticalmente según métricas
-  const verticalCorrection = nodeProps.fontSize * 0.08; // pequeño lift (~8% del fontSize)
+  // ✅ Posición del textarea alineada al TOP-LEFT del texto Konva
+  const top = stageBox.top + rect.y * totalScaleY + window.scrollY;
+  const left = stageBox.left + rect.x * totalScaleX + window.scrollX;
 
-  // Posición absoluta en pantalla
-  const left = stageBox.left + nodeBox.x * scaleVisual + window.scrollX;
-  const top = stageBox.top + nodeBox.y * scaleVisual + window.scrollY - verticalCorrection;
+  // ✅ Tamaños del textarea = bounding box del texto Konva
+  const textareaWidth = Math.max(20, rect.width * totalScaleX);
+  const textareaHeight = rect.height * totalScaleY;
 
+
+  if (DEBUG_MODE) {
+    console.log("🧮 [Inline Textarea Position]", {
+      fontFamily: nodeProps.fontFamily,
+      fontSize: nodeProps.fontSize,
+      rectKonva: rect,
+      stageBox,
+      totalScaleX,
+      totalScaleY,
+      top,
+      left,
+      textareaWidth,
+      textareaHeight,
+      konvaAbsPos: node.getAbsolutePosition(),
+    });
+  }
 
 
   // 🔥 AUTO-FOCUS Y POSICIONAMIENTO DEL CURSOR
@@ -166,7 +157,7 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
     temp.style.visibility = "hidden";
     temp.style.position = "absolute";
     temp.style.whiteSpace = "pre";
-    temp.style.fontSize = `${nodeProps.fontSize * scaleVisual}px`;
+    temp.style.fontSize = `${nodeProps.fontSize * totalScaleX}px`;
     temp.style.fontFamily = nodeProps.fontFamily;
     temp.style.fontWeight = nodeProps.fontWeight;
     temp.style.fontStyle = nodeProps.fontStyle;
@@ -190,29 +181,17 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
         console.warn("Error actualizando ancho del nodo:", err);
       }
     }
-  }, [value, node, rect.width, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, nodeProps.fontSize, scaleVisual]);
+  }, [value, node, rect.width, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, nodeProps.fontSize, totalScaleX]);
 
 
 
-  // ✅ Ajuste de altura más exacto (una línea base + expansión)
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
 
-    // Calcular número de líneas reales
-    const numLines = (el.value.match(/\n/g)?.length || 0) + 1;
-    const newHeight = nodeProps.fontSize * konvaLineHeight * numLines * scaleVisual;
-
-    el.style.height = `${newHeight}px`;
-  }, [value, nodeProps.fontSize, konvaLineHeight, scaleVisual]);
-
-
+  // 🧩 Pequeña corrección para alinear baseline con Konva
 
   return createPortal(
     <>
       <textarea
         ref={textareaRef}
-        autoFocus
         value={value}
         style={{
           position: "fixed",
@@ -220,68 +199,27 @@ export default function InlineTextEditor({ node, value, onChange, onFinish, text
           top: `${top}px`,
           width: `${textareaWidth}px`,
           height: `${textareaHeight}px`,
-          overflowY: "hidden",
-          overflowX: "visible",
-
-
-          paddingTop: `${padTop * scaleVisual}px`,
-          lineHeight: konvaLineHeight,        // numérico (no “px”)
-          fontSize: `${nodeProps.fontSize * scaleVisual}px`,
+          fontSize: `${nodeProps.fontSize * totalScaleY}px`,
           fontFamily: nodeProps.fontFamily,
           fontWeight: nodeProps.fontWeight,
           fontStyle: nodeProps.fontStyle,
-
+          lineHeight: konvaLineHeight,
           color: nodeProps.fill,
           caretColor: nodeProps.fill,
-          textAlign: textAlign || "left",
-
-          whiteSpace: "pre",
-          resize: "none",
-          boxSizing: "border-box",
           background: "transparent",
-          border: "none",
+          border: "1px solid red",
+          padding: 0,
+          margin: 0,
+          whiteSpace: "pre",
+          overflow: "hidden",
           outline: "none",
           resize: "none",
-          padding: "0",
-          margin: "0",
-          boxSizing: "border-box",
-          overflow: "hidden",
           zIndex: 9999,
-          border: "1px solid red",
-
-          transform: "none",
-
         }}
-
-
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-            return;
-          }
+        onBlur={() => setTimeout(onFinish, 100)}
+      />
 
-          if (e.key === "Enter" && e.shiftKey) {
-            e.preventDefault();
-            onFinish();
-            return;
-          }
-
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onFinish();
-            return;
-          }
-        }}
-        onBlur={() => {
-          setTimeout(() => {
-            onFinish();
-          }, 100);
-        }}
-        onScroll={(e) => {
-          e.target.scrollLeft = 0;
-          e.target.scrollTop = 0;
-        }}
-      />,
     </>,
     document.body
   );

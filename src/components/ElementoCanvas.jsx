@@ -6,7 +6,7 @@ import { LINE_CONSTANTS } from '@/models/lineConstants';
 import { fontManager } from '../utils/fontManager';
 import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
-import { getTextMetrics } from "@/utils/getTextMetrics";
+import { getCenteredTextPosition } from "@/utils/getTextMetrics";
 
 
 
@@ -375,38 +375,70 @@ export default function ElementoCanvas({
   }
 
 
- if (obj.tipo === "texto") {
-  const isEditing = window._currentEditingId === obj.id; // ✅ Definir acá
-
+  if (obj.tipo === "texto") {
+  const isEditing = window._currentEditingId === obj.id;
   const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
     ? obj.fontFamily
     : "sans-serif";
-
-
   const align = (obj.align || "left").toLowerCase();
   const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";
-  const lineHeight =
+  const baseLineHeight =
     typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
+  const lineHeight = baseLineHeight * 0.92;
 
-  // Métricas base (solo si querés afinar verticalmente)
-  const { height } = getTextMetrics({
-    fontSize: obj.fontSize || 24,
-    fontFamily,
-    fontWeight: obj.fontWeight || "normal",
-    fontStyle: obj.fontStyle || "normal",
-    text: "Hg",
-  });
+  // ✅ VALIDACIÓN: Asegurar valores numéricos válidos
+  const validX = typeof obj.x === "number" && !isNaN(obj.x) ? obj.x : 0;
+  const validY = typeof obj.y === "number" && !isNaN(obj.y) ? obj.y : 0;
+  const validFontSize = typeof obj.fontSize === "number" && !isNaN(obj.fontSize) && obj.fontSize > 0 ? obj.fontSize : 24;
 
-  const baselineOffset = 10; // constante estable
-
-  // Cálculo de ancho/alto
+  // 🔹 PASO 1: Calcular dimensiones del texto PRIMERO
   const ctx = document.createElement("canvas").getContext("2d");
-  ctx.font = `${obj.fontWeight || "normal"} ${obj.fontStyle || "normal"} ${obj.fontSize || 24}px ${fontFamily}`;
+  ctx.font = `${obj.fontWeight || "normal"} ${obj.fontStyle || "normal"} ${validFontSize}px ${fontFamily}`;
   const lines = (obj.texto || "").split(/\r?\n/);
   const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 20);
   const numLines = lines.length;
-  const textHeight = (obj.fontSize ?? 24) * lineHeight * numLines * 1.05;
-  const textWidth = Math.ceil(maxLineWidth + (obj.fontSize ?? 24) * 0.3);
+  const textWidth = Math.ceil(maxLineWidth + 6);
+  const textHeight = validFontSize * lineHeight * numLines;
+
+  // 🔹 PASO 2: Ahora sí calcular posición (con textHeight ya definido)
+  const position = getCenteredTextPosition({
+    rectY: validY,
+    rectHeight: textHeight,
+    fontSize: validFontSize,
+    fontFamily,
+    fontWeight: obj.fontWeight || "normal",
+    fontStyle: obj.fontStyle || "normal",
+  });
+
+  // 🔍 Debug: información completa de posición y centrado
+  console.log("📐 [Konva Text Position]", {
+    objId: obj.id,
+    originalX: obj.x,
+    originalY: obj.y,
+    validX,
+    validY,
+    fontFamily,
+    fontSize: validFontSize,
+    textWidth,
+    textHeight: textHeight.toFixed(2),
+    textTop: position.textTop.toFixed(2),
+    baseline: position.baseline.toFixed(2),
+    ascent: position.ascent.toFixed(2),
+    descent: position.descent.toFixed(2),
+    konvaNodeY: textNodeRef.current?.y() ?? null,
+    konvaAbsoluteY: textNodeRef.current?.getAbsolutePosition?.().y ?? null,
+  });
+
+  // ⚠️ Warning si hay valores inválidos
+  if (obj.x !== validX || obj.y !== validY || obj.fontSize !== validFontSize) {
+    console.warn("⚠️ Objeto de texto tiene valores inválidos:", {
+      id: obj.id,
+      x: obj.x,
+      y: obj.y,
+      fontSize: obj.fontSize,
+    });
+  }
+  
 
   return (
     <>
@@ -417,31 +449,61 @@ export default function ElementoCanvas({
           registerRef?.(obj.id, node);
         }}
         text={obj.texto}
-        x={obj.x}
-        y={(obj.y ?? 0) + baselineOffset}
-        width={isEditing ? undefined : textWidth}
-        height={isEditing ? undefined : textHeight}
+        x={validX}
+        y={position.textTop}
+        width={textWidth}
+        height={textHeight}
         wrap="word"
         align={align}
-        verticalAlign="middle"
-        fontSize={obj.fontSize || 24}
+        fontSize={validFontSize}
         fontFamily={fontFamily}
         fontWeight={obj.fontWeight || "normal"}
         fontStyle={obj.fontStyle || "normal"}
         lineHeight={lineHeight}
         fill={fillColor}
         opacity={isEditing ? 0 : 1}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        verticalAlign="top"
+      />
+
+      {/* 🔴 Rect de depuración */}
+      <Rect
+        x={validX}
+        y={position.textTop} 
+        width={textWidth}
+        height={textHeight}
+        stroke="green"
+        strokeWidth={1}
+        listening={false}
+      />
+
+      {/* 🔵 Línea central del rectángulo */}
+      <Line
+        points={[
+          validX,
+          position.textTop + textHeight / 2,
+          validX + textWidth,
+          position.textTop + textHeight / 2
+        ]}
+        stroke="blue"
+        strokeWidth={1}
+        listening={false}
+      />
+
+      {/* 🔴 Línea central del texto */}
+      <Line
+        points={[
+          validX,
+          position.rectCenter,
+          validX + textWidth,
+          position.rectCenter
+        ]}
+        stroke="red"
+        strokeWidth={1}
+        listening={false}
       />
     </>
   );
 }
-
-
-
-
-
 
   if (obj.tipo === "rsvp-boton") {
     const fontFamily = fontManager.isFontAvailable(obj.fontFamily)

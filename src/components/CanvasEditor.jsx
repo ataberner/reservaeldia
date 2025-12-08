@@ -153,7 +153,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setHoverId(null);
   }, []);
 
-  
+
 
   // 🆕 Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
@@ -1831,7 +1831,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               }}
 
               onMouseUp={(e) => {
-                
+
                 const stage = e.target.getStage();
 
 
@@ -2271,7 +2271,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-                  
+
 
                   return (
                     <ElementoCanvas
@@ -2491,7 +2491,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 )}
 
 
-                {elementosSeleccionados.length > 0 && (() => {
+                {elementosSeleccionados.length > 0 && !editing.id && (() => {
                   // 🔒 Si la selección incluye al menos una galería, no mostramos Transformer
                   const hayGaleriaSeleccionada = elementosSeleccionados.some(id => {
                     const o = objetos.find(x => x.id === id);
@@ -2766,7 +2766,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
       {/* ✅ Botón de opciones PEGADO a la esquina superior derecha del elemento */}
-      {elementosSeleccionados.length === 1 && (() => {
+      {elementosSeleccionados.length === 1 && !editing.id && (() => {
         const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
         const nodeRef = elementRefs.current[elementosSeleccionados[0]];
 

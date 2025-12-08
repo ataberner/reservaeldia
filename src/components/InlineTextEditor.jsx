@@ -1,280 +1,290 @@
 import { createPortal } from "react-dom";
 import { useMemo, useEffect, useRef } from "react";
-import { getTextMetrics} from "@/utils/getTextMetrics";
 
-
-export default function InlineTextEditor({ node, value, onChange, onFinish, textAlign, scaleVisual = 1 }) {
+export default function InlineTextEditor({
+  node,
+  value,
+  onChange,
+  onFinish,
+  textAlign,
+  scaleVisual = 1,
+}) {
   if (!node) return null;
 
+  // 🔒 Bloquea scroll mientras se edita
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, []);
 
-
-  const textareaRef = useRef();
+  const editorRef = useRef(null);
   const DEBUG_MODE = true;
 
+  // 🧩 Stage (lo necesitamos para rects y posiciones)
+  const stage = node.getStage();
+  if (!stage) return null;
 
-  // 1️⃣ Obtener propiedades reales del nodo Konva
+  const stageBox = stage.container().getBoundingClientRect();
+
+  const stageScaleX =
+    typeof stage.scaleX === "function" ? stage.scaleX() : stage.scaleX || 1;
+  const stageScaleY =
+    typeof stage.scaleY === "function" ? stage.scaleY() : stage.scaleY || 1;
+
+  const totalScaleX = (scaleVisual || 1) * (stageScaleX || 1);
+  const totalScaleY = (scaleVisual || 1) * (stageScaleY || 1);
+
+  // 🧠 Detectar el nodo de texto real para estilo (color, fuente, etc.)
+  const textNode = useMemo(() => {
+    try {
+      if (typeof node.getClassName === "function") {
+        const cls = node.getClassName();
+        if (cls === "Text") {
+          return node;
+        }
+      }
+
+      // Si el node es un Group/Layer/Stage u otro Container → buscar un hijo Text
+      if (typeof node.findOne === "function") {
+        const found = node.findOne((n) => n.getClassName() === "Text");
+        if (found) return found;
+      }
+
+      // Si el node es un Rect u otra cosa → buscar ancestro Text por las dudas
+      if (typeof node.findAncestor === "function") {
+        const ancestorText = node.findAncestor(
+          (n) => n.getClassName && n.getClassName() === "Text"
+        );
+        if (ancestorText) return ancestorText;
+      }
+
+      return node; // fallback
+    } catch (e) {
+      console.warn("Error buscando textNode para InlineTextEditor:", e);
+      return node;
+    }
+  }, [node]);
+
+  if (DEBUG_MODE) {
+    console.log("🔍 [InlineTextEditor textNode detection]", {
+      nodeClass: node.getClassName?.(),
+      textNodeClass: textNode?.getClassName?.(),
+    });
+  }
+
+  // 1️⃣ Props tipográficas reales desde el textNode (NO desde el rect/recuadro)
   const nodeProps = useMemo(() => {
     try {
+      const getProp = (n, getterName, fallback) => {
+        if (!n) return fallback;
+        const fn = n[getterName];
+        if (typeof fn === "function") return fn.call(n);
+        return n[getterName] || fallback;
+      };
+
+      const fontSize = getProp(textNode, "fontSize", 24);
+      const fontFamily = getProp(textNode, "fontFamily", "sans-serif");
+      const fontWeight = getProp(textNode, "fontWeight", "normal");
+      const fontStyle = getProp(textNode, "fontStyle", "normal");
+      const fill = getProp(textNode, "fill", "#000");
+      const lineHeightKonva = getProp(textNode, "lineHeight", 1.2);
+
+      if (DEBUG_MODE) {
+        console.log("🧾 [InlineTextEditor nodeProps]", {
+          fontSize,
+          fontFamily,
+          fontWeight,
+          fontStyle,
+          fill,
+          lineHeightKonva,
+        });
+      }
+
       return {
-        fontSize: typeof node.fontSize === "function" ? node.fontSize() : (node.fontSize || 24),
-        fontFamily: typeof node.fontFamily === "function" ? node.fontFamily() : (node.fontFamily || "sans-serif"),
-        fontWeight: typeof node.fontWeight === "function" ? node.fontWeight() : (node.fontWeight || "normal"),
-        fontStyle: typeof node.fontStyle === "function" ? node.fontStyle() : (node.fontStyle || "normal"),
-        fill: typeof node.fill === "function" ? node.fill() : (node.fill || "#000"),
+        fontSize,
+        fontFamily,
+        fontWeight,
+        fontStyle,
+        fill,
+        lineHeightKonva,
       };
     } catch (error) {
-      console.warn("Error obteniendo propiedades del nodo:", error);
+      console.warn("Error obteniendo propiedades del textNode:", error);
       return {
         fontSize: 24,
         fontFamily: "sans-serif",
         fontWeight: "normal",
         fontStyle: "normal",
         fill: "#000",
+        lineHeightKonva: 1.2,
       };
     }
-  }, [node]);
+  }, [textNode]);
 
-  const fontSizeEdit = nodeProps.fontSize;
-  const konvaLineHeight =
-    typeof node.lineHeight === "function" ? node.lineHeight() : (node.lineHeight ?? 1.2);
+  const konvaLineHeight = nodeProps.lineHeightKonva;
 
-
-  const m = getTextMetrics({
-    fontSize: nodeProps.fontSize,
-    fontFamily: nodeProps.fontFamily,
-    fontWeight: nodeProps.fontWeight,
-    fontStyle: nodeProps.fontStyle,
-    text: value?.trim() ? value : "Hg",
-  });
-
-
-
-  // 2️⃣ Calcular dimensiones base del texto
-  const contentDimensions = useMemo(() => {
-    if (!value) return { width: 20, height: nodeProps.fontSize * 1.2 };
-
-    const tempDiv = document.createElement("div");
-    tempDiv.style.position = "absolute";
-    tempDiv.style.visibility = "hidden";
-    tempDiv.style.whiteSpace = "pre";
-    tempDiv.style.fontSize = `${fontSizeEdit}px`;
-    tempDiv.style.fontFamily = nodeProps.fontFamily;
-    tempDiv.style.fontWeight = nodeProps.fontWeight;
-    tempDiv.style.fontStyle = nodeProps.fontStyle;
-    tempDiv.style.lineHeight = "1.2";
-    tempDiv.textContent = value;
-    document.body.appendChild(tempDiv);
-
-    const width = tempDiv.offsetWidth;
-    const height = tempDiv.offsetHeight;
-    document.body.removeChild(tempDiv);
-
-    return {
-      width: Math.max(20, width + 10),
-      height: Math.max(fontSizeEdit * 1.2, height + 4),
-    };
-  }, [value, nodeProps.fontSize, nodeProps.fontFamily, nodeProps.fontWeight, nodeProps.fontStyle, fontSizeEdit]);
-
-
-  // 🧩 Bounding box REAL del nodo Konva
-  const stage = node.getStage();
-  if (!stage) return null;
-  const stageBox = stage.container().getBoundingClientRect();
-
-  // Escala real del stage (por si hacés zoom)
-  const stageScaleX = typeof stage.scaleX === "function" ? stage.scaleX() : stage.scaleX || 1;
-  const stageScaleY = typeof stage.scaleY === "function" ? stage.scaleY() : stage.scaleY || 1;
-
-  // Escala total (zoom visual + escala del stage)
-  const totalScaleX = (scaleVisual || 1) * (stageScaleX || 1);
-  const totalScaleY = (scaleVisual || 1) * (stageScaleY || 1);
-
-  // 📦 Rectángulo de dibujo del texto (mismas coordenadas que el rect verde)
+  // 📦 Bounding box que usamos para posicionar el editor
+  // 👉 Para texto suelto: será el rect del texto
+  // 👉 Para recuadros: será el rect del elemento contenedor
   const rect = node.getClientRect({ relativeTo: stage, skipStroke: true });
 
-  // ✅ Posición del textarea alineada al TOP-LEFT del texto Konva
-  const top = stageBox.top + rect.y * totalScaleY + window.scrollY;
-  const left = stageBox.left + rect.x * totalScaleX + window.scrollX;
+  // 🔢 Padding del recuadro visual del editor
+  const PADDING_X = 12;
+  const PADDING_Y = 8;
 
-  // ✅ Ancho base del textarea = bounding box del texto Konva
-const textareaWidth = Math.max(20, rect.width * totalScaleX);
-// El alto lo vamos a manejar dinámicamente con scrollHeight
+  // Detectar clase del nodo principal para saber si es texto suelto o recuadro
+  const className =
+    typeof node.getClassName === "function" ? node.getClassName() : "Text";
 
+  const isTextNode = className === "Text";
 
+  // Ancho base según el rect (mínimo)
+  const baseTextWidth = Math.max(20, rect.width * totalScaleX);
+
+  let left;
+  let top;
+
+  if (isTextNode) {
+    // 📝 Texto suelto → recuadro pegado al texto (top-left)
+    top = stageBox.top + rect.y * totalScaleY + window.scrollY - PADDING_Y;
+    left = stageBox.left + rect.x * totalScaleX + window.scrollX - PADDING_X;
+  } else {
+    // 🟥 Texto dentro de un recuadro → centrar el editor en el elemento
+    const centerXCanvas = rect.x + rect.width / 2;
+    const centerYCanvas = rect.y + rect.height / 2;
+
+    const centerXDom =
+      stageBox.left + centerXCanvas * totalScaleX + window.scrollX;
+    const centerYDom =
+      stageBox.top + centerYCanvas * totalScaleY + window.scrollY;
+
+    const cardWidth = baseTextWidth + PADDING_X * 2;
+    const approxHeight =
+      nodeProps.fontSize * konvaLineHeight * totalScaleY + PADDING_Y * 2;
+
+    left = centerXDom - cardWidth / 2;
+    top = centerYDom - approxHeight / 2;
+  }
 
   if (DEBUG_MODE) {
-    console.log("🧮 [Inline Textarea Position]", {
-      fontFamily: nodeProps.fontFamily,
-      fontSize: nodeProps.fontSize,
+    console.log("🧮 [Inline Position]", {
+      className,
+      isTextNode,
       rectKonva: rect,
       stageBox,
+      stageScaleX,
+      stageScaleY,
       totalScaleX,
       totalScaleY,
-      top,
+      baseTextWidth,
       left,
-      textareaWidth,
+      top,
+      textColor: nodeProps.fill,
+      textFont: nodeProps.fontFamily,
       konvaAbsPos: node.getAbsolutePosition(),
     });
   }
 
-
-  // 🔥 AUTO-FOCUS Y POSICIONAMIENTO DEL CURSOR
+  // 🔥 Inicializar contenido + foco + caret
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+    const el = editorRef.current;
+    if (!el) return;
 
+    let initialText = value || "";
+
+    // Si venimos de una tecla rápida (ej: escribir directamente)
     if (window._preFillChar) {
-      const nuevoValor = value + window._preFillChar;
-      onChange(nuevoValor);
+      initialText = (initialText || "") + window._preFillChar;
+      onChange(initialText);
       window._preFillChar = null;
     }
 
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-  }, []);
+    // Setear contenido solo al montar
+    el.innerText = initialText;
 
+    // Foco + caret al final
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 🔥 ACTUALIZAR DIMENSIONES CUANDO CAMBIA EL CONTENIDO
+  // Mantener scroll interno limpio (por las dudas)
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.scrollLeft = 0;
-    textarea.scrollTop = 0;
-  }, [contentDimensions.width, contentDimensions.height]);
-
-    // 🔄 Ajustar altura del textarea al contenido (profesional)
-  useEffect(() => {
-    const el = textareaRef.current;
+    const el = editorRef.current;
     if (!el) return;
-
-    
-    // Paso 1: dejar que "se encoja"
-    el.style.height = "auto";
-
-    // Paso 2: ajustarlo al contenido real
-    const newHeight = el.scrollHeight;
-    el.style.height = `${newHeight}px`;
-
-    if (DEBUG_MODE) {
-      console.log("📏 [Inline AutoHeight]", {
-        value,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-        computedHeight: newHeight,
-        konvaRectHeight: rect.height * totalScaleY,
-      });
-    }
-}, [value, rect.height, nodeProps.fontSize, konvaLineHeight, totalScaleY]);
-
-
-// 🟦 Ajustar ANCHO del textarea según el contenido (expande hacia la derecha)
-useEffect(() => {
-  const el = textareaRef.current;
-  if (!el) return;
-
-  // Medir contenido real en DOM
-  const temp = document.createElement("span");
-  temp.style.visibility = "hidden";
-  temp.style.position = "absolute";
-  temp.style.whiteSpace = "pre";
-  temp.style.fontSize = `${nodeProps.fontSize * totalScaleX}px`;
-  temp.style.fontFamily = nodeProps.fontFamily;
-  temp.style.fontWeight = nodeProps.fontWeight;
-  temp.style.fontStyle = nodeProps.fontStyle;
-  temp.style.lineHeight = konvaLineHeight;
-  temp.textContent = el.value || "Hg";
-
-  document.body.appendChild(temp);
-  const measuredWidth = temp.offsetWidth;
-  document.body.removeChild(temp);
-
-  // Width de Konva en DOM para comparar
-  const baseWidthDom = textareaWidth;            // rect.width * totalScaleX
-  let finalWidthDom = baseWidthDom;
-
-  if (measuredWidth > baseWidthDom) {
-    // 👉 Expande hacia la derecha si el texto lo necesita
-    finalWidthDom = measuredWidth + 8;
-  }
-
-  // Aplicar al textarea (DOM)
-  el.style.width = `${finalWidthDom}px`;
-
-  // Opcional: actualizar también la width del nodo Konva,
-  // para que el rect verde crezca igual que el rojo.
-  const finalWidthKonva = finalWidthDom / totalScaleX;
-  try {
-    if (typeof node.width === "function") {
-      node.width(finalWidthKonva);
-      node.getLayer()?.batchDraw();
-    }
-  } catch (err) {
-    console.warn("Error ajustando width de nodo Konva:", err);
-  }
-
-  if (DEBUG_MODE) {
-    console.log("📏 [Inline AutoWidth]", {
-      value,
-      measuredWidth,
-      baseWidthDom,
-      finalWidthDom,
-      finalWidthKonva,
-    });
-  }
-}, [
-  value,
-  textareaWidth,
-  node,
-  nodeProps.fontSize,
-  nodeProps.fontFamily,
-  nodeProps.fontWeight,
-  nodeProps.fontStyle,
-  konvaLineHeight,
-  totalScaleX,
-]);
-
-
-
-
-  // 🧩 Pequeña corrección para alinear baseline con Konva
+    el.scrollLeft = 0;
+    el.scrollTop = 0;
+  }, []);
 
   return createPortal(
     <>
-      <textarea
-        ref={textareaRef}
-        value={value}
+      {/* 🪟 Recuadro flotante que tapa el texto y crece horizontalmente */}
+      <div
         style={{
           position: "fixed",
           left: `${left}px`,
           top: `${top}px`,
-          width: `${textareaWidth}px`,
-          fontSize: `${nodeProps.fontSize * totalScaleY}px`,
-          fontFamily: nodeProps.fontFamily,
-          fontWeight: nodeProps.fontWeight,
-          fontStyle: nodeProps.fontStyle,
-          lineHeight: konvaLineHeight,
-          color: nodeProps.fill,
-          caretColor: nodeProps.fill,
-          background: "transparent",
-          border: "1px solid red",
-          padding: 0,
-          margin: 0,
-          whiteSpace: "pre-wrap",
-         overflowWrap: "break-word",
-         wordBreak: "break-word",
-         overflow: "hidden",
-          outline: "none",
-          resize: "none",
+          display: "inline-block",
+          width: "fit-content",
+          minWidth: `${baseTextWidth + PADDING_X * 2}px`,
+          maxWidth: "min(100vw - 40px, 1200px)",
+          background: "rgba(248, 250, 252, 0.98)", // gris muy claro
+          borderRadius: "10px",
+          boxShadow:
+            "0 18px 45px rgba(15, 23, 42, 0.35), 0 4px 12px rgba(15, 23, 42, 0.18)",
+          border: "1px solid rgba(148, 163, 184, 0.45)",
+          padding: `${PADDING_Y}px ${PADDING_X}px`,
           zIndex: 9999,
+          boxSizing: "border-box",
         }}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={() => setTimeout(onFinish, 100)}
-      />
-
+      >
+        {/* Área editable que tapa completamente el texto */}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          style={{
+            display: "inline-block",
+            minWidth: `${baseTextWidth}px`,
+            whiteSpace: "pre", // crece en una sola línea
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            overflow: "visible",
+            fontSize: `${nodeProps.fontSize * totalScaleY}px`,
+            fontFamily: nodeProps.fontFamily,
+            fontWeight: nodeProps.fontWeight,
+            fontStyle: nodeProps.fontStyle,
+            lineHeight: konvaLineHeight,
+            color: nodeProps.fill,       // ✅ color del texto Konva
+            caretColor: nodeProps.fill,  // ✅ caret del mismo color
+            background: "transparent",
+            borderRadius: "6px",
+            padding: "2px 2px 4px 2px",
+            margin: 0,
+            outline: "none",
+            textAlign: textAlign || "left",
+          }}
+          onInput={(e) => {
+            const newText = e.currentTarget.innerText;
+            if (DEBUG_MODE) {
+              console.log("⌨️ [Inline onInput]", { newText });
+            }
+            onChange(newText);
+          }}
+          onBlur={() => {
+            if (DEBUG_MODE) {
+              console.log("✅ [Inline onBlur] Finalizar edición");
+            }
+            setTimeout(onFinish, 100);
+          }}
+        />
+      </div>
     </>,
     document.body
   );

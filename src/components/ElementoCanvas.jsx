@@ -492,42 +492,7 @@ export default function ElementoCanvas({
         verticalAlign="top"
       />
 
-      {/* 🔴 Rect de depuración */}
-      <Rect
-        x={validX}
-        y={position.textTop} 
-        width={textWidth}
-        height={textHeight}
-        stroke="green"
-        strokeWidth={1}
-        listening={false}
-      />
-
-      {/* 🔵 Línea central del rectángulo */}
-      <Line
-        points={[
-          validX,
-          position.textTop + textHeight / 2,
-          validX + textWidth,
-          position.textTop + textHeight / 2
-        ]}
-        stroke="blue"
-        strokeWidth={1}
-        listening={false}
-      />
-
-      {/* 🔴 Línea central del texto */}
-      <Line
-        points={[
-          validX,
-          position.rectCenter,
-          validX + textWidth,
-          position.rectCenter
-        ]}
-        stroke="red"
-        strokeWidth={1}
-        listening={false}
-      />
+  
     </>
   );
 }

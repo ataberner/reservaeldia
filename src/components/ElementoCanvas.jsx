@@ -41,165 +41,195 @@ export default function ElementoCanvas({
   }, [onChange]);
 
   const handleRef = useCallback((node) => {
+    if (node) {
+      console.log("[ElementoCanvas] handleRef llamado", {
+        id: obj.id,
+        tipo: obj.tipo,
+        tieneNode: true,
+      });
+    }
+
     if (node && registerRef) {
       registerRef(obj.id, node);
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent("element-ref-registrado", {
+            detail: { id: obj.id },
+          })
+        );
+      } catch (e) {
+        console.warn("[ElementoCanvas] Error al despachar element-ref-registrado", e);
+      }
     }
-  }, [obj.id, registerRef]);
+  }, [obj.id, obj.tipo, registerRef]);
 
-  // 🔥 MEMOIZAR PROPIEDADES COMUNES
-  const commonProps = useMemo(() => ({
-    x: obj.x ?? 0,
-    y: obj.y ?? 0,
-    rotation: obj.rotation || 0,
-    scaleX: obj.scaleX || 1,
-    scaleY: obj.scaleY || 1,
-    draggable: !editingMode,
-    ref: handleRef,
-    listening: !isInEditMode,
 
-    onMouseDown: (e) => {
-      e.cancelBubble = true;
-      hasDragged.current = false;
 
-      e.currentTarget?.draggable(true);
-    },
+  const commonProps = useMemo(
+    () => ({
+      x: obj.x ?? 0,
+      y: obj.y ?? 0,
+      rotation: obj.rotation || 0,
+      scaleX: obj.scaleX || 1,
+      scaleY: obj.scaleY || 1,
+      draggable: !editingMode,
+      listening: !isInEditMode,
+      ref: handleRef,   // 👈 todas las figuras pasan por acá
 
-    onMouseUp: (e) => {
-      if (e.currentTarget?.draggable && !hasDragged.current) {
-        e.currentTarget.draggable(false);
-      }
-    },
+      onMouseDown: (e) => {
+        e.cancelBubble = true;
+        hasDragged.current = false;
 
-    onClick: (e) => {
-      e.cancelBubble = true;
+        e.currentTarget?.draggable(true);
+      },
 
-      if (!hasDragged.current) {
-        // 🧠 Si es texto, mismo comportamiento actual
-        if (obj.tipo === "texto") {
-          if (isSelected) {
-            onStartTextEdit?.(obj.id, obj.texto);
-          } else {
-            onSelect(obj.id, obj, e);
-          }
+      onMouseUp: (e) => {
+        if (e.currentTarget?.draggable && !hasDragged.current) {
+          e.currentTarget.draggable(false);
         }
+      },
 
-        // 🆕 Si es forma con texto, comportamiento similar
-        else if (obj.tipo === "forma" && obj.figura === "rect") {
-          if (isSelected) {
-            onStartTextEdit?.(obj.id, obj.texto || "");
-          } else {
-            onSelect(obj.id, obj, e);
-          }
-        }
+      onClick: (e) => {
+        e.cancelBubble = true;
 
-        // 🧱 Para todo lo demás
-        else {
-          onSelect(obj.id, obj, e);
-        }
-      }
-    },
-
-    onDragStart: (e) => {
-
-
-      window._dragCount = 0;
-      window._lastMouse = null;
-      window._lastElement = null;
-
-      hasDragged.current = true;
-      window._isDragging = true;
-      setIsDragging(true);
-
-      // 🔥 Intentar drag grupal
-      const fueGrupal = startDragGrupalLider(e, obj);
-      if (!fueGrupal) {
-        startDragIndividual(e, dragStartPos);
-      }
-    },
-
-
-    onDragMove: (e) => {
-      hasDragged.current = true;
-
-      const stage = e.target.getStage();
-      const mousePos = stage.getPointerPosition();
-      const elementPos = { x: e.target.x(), y: e.target.y() };
-
-      window._lastMouse = mousePos;
-      window._lastElement = elementPos;
-
-      // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
-      if (window._grupoLider && obj.id === window._grupoLider) {
-        // Preview visual para drag grupal
-        const stage = e.target.getStage();
-        const currentPos = stage.getPointerPosition();
-        const startPos = window._dragStartPos;
-
-        if (currentPos && startPos && window._dragInicial) {
-          const deltaX = currentPos.x - startPos.x;
-          const deltaY = currentPos.y - startPos.y;
-          const seleccion = window._elementosSeleccionados || [];
-
-          // Actualizar visualmente todos los seguidores
-          seleccion.forEach((elementId) => {
-            if (elementId === obj.id) return; // El líder ya se mueve automáticamente
-
-            const node = window._elementRefs?.[elementId];
-            const posInicial = window._dragInicial[elementId];
-
-            if (node && posInicial) {
-              node.x(posInicial.x + deltaX);
-              node.y(posInicial.y + deltaY);
+        if (!hasDragged.current) {
+          // 🧠 Si es texto, mismo comportamiento actual
+          if (obj.tipo === "texto") {
+            if (isSelected) {
+              onStartTextEdit?.(obj.id, obj.texto);
+            } else {
+              onSelect(obj.id, obj, e);
             }
-          });
+          }
 
-          // Redibujar para mostrar cambios
-          if (e.target.getLayer) {
-            e.target.getLayer().batchDraw();
+          // 🆕 Si es forma con texto, comportamiento similar
+          else if (obj.tipo === "forma" && obj.figura === "rect") {
+            if (isSelected) {
+              onStartTextEdit?.(obj.id, obj.texto || "");
+            } else {
+              onSelect(obj.id, obj, e);
+            }
+          }
+
+          // 🧱 Para todo lo demás
+          else {
+            onSelect(obj.id, obj, e);
           }
         }
+      },
 
-        // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
-        // El preview individual ya no es necesario porque manejamos todo aquí
+      onDragStart: (e) => {
 
-        return;
-      }
 
-      // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
-      if (window._grupoLider) {
-        const elementosSeleccionados = window._elementosSeleccionados || [];
-        if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
+        window._dragCount = 0;
+        window._lastMouse = null;
+        window._lastElement = null;
+
+        hasDragged.current = true;
+        window._isDragging = true;
+        setIsDragging(true);
+
+        // 🔥 Intentar drag grupal
+        const fueGrupal = startDragGrupalLider(e, obj);
+        if (!fueGrupal) {
+          startDragIndividual(e, dragStartPos);
+        }
+      },
+
+
+      onDragMove: (e) => {
+        hasDragged.current = true;
+
+        const stage = e.target.getStage();
+        const mousePos = stage.getPointerPosition();
+        const elementPos = { x: e.target.x(), y: e.target.y() };
+
+        window._lastMouse = mousePos;
+        window._lastElement = elementPos;
+
+        // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
+        if (window._grupoLider && obj.id === window._grupoLider) {
+          // Preview visual para drag grupal
+          const stage = e.target.getStage();
+          const currentPos = stage.getPointerPosition();
+          const startPos = window._dragStartPos;
+
+          if (currentPos && startPos && window._dragInicial) {
+            const deltaX = currentPos.x - startPos.x;
+            const deltaY = currentPos.y - startPos.y;
+            const seleccion = window._elementosSeleccionados || [];
+
+            // Actualizar visualmente todos los seguidores
+            seleccion.forEach((elementId) => {
+              if (elementId === obj.id) return; // El líder ya se mueve automáticamente
+
+              const node = window._elementRefs?.[elementId];
+              const posInicial = window._dragInicial[elementId];
+
+              if (node && posInicial) {
+                node.x(posInicial.x + deltaX);
+                node.y(posInicial.y + deltaY);
+              }
+            });
+
+            // Redibujar para mostrar cambios
+            if (e.target.getLayer) {
+              e.target.getLayer().batchDraw();
+            }
+          }
+
+          // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
+          // El preview individual ya no es necesario porque manejamos todo aquí
+
           return;
         }
-      }
 
-      // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
-      if (!window._grupoLider) {
-        previewDragIndividual(e, obj, onDragMovePersonalizado);
-      }
-    },
+        // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
+        if (window._grupoLider) {
+          const elementosSeleccionados = window._elementosSeleccionados || [];
+          if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
+            return;
+          }
+        }
 
-
-
-
-    onDragEnd: (e) => {
-
-      window._isDragging = false;
-      setIsDragging(false);
-
-      const node = e.currentTarget;
-
-      // 🔥 Intentar drag grupal
-      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
-      if (fueGrupal) return;
-
-      // 🔄 DRAG INDIVIDUAL (no cambió)
-      endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
-    },
+        // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
+        if (!window._grupoLider) {
+          previewDragIndividual(e, obj, onDragMovePersonalizado);
+        }
+      },
 
 
-  }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange, isInEditMode]);
 
+
+      onDragEnd: (e) => {
+
+        window._isDragging = false;
+        setIsDragging(false);
+
+        const node = e.currentTarget;
+
+        // 🔥 Intentar drag grupal
+        const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
+        if (fueGrupal) return;
+
+        // 🔄 DRAG INDIVIDUAL (no cambió)
+        endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+      },
+
+
+    }),
+    [
+      obj.x,
+      obj.y,
+      obj.rotation,
+      obj.scaleX,
+      obj.scaleY,
+      editingMode,
+      isInEditMode,
+      handleRef,
+    ]
+  );
 
   // 🔥 MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {
@@ -378,124 +408,124 @@ export default function ElementoCanvas({
 
 
   if (obj.tipo === "texto") {
-  const isEditing = window._currentEditingId === obj.id;
-  const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
-    ? obj.fontFamily
-    : "sans-serif";
-  const align = (obj.align || "left").toLowerCase();
-  const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";
-  const baseLineHeight =
-    typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
-  const lineHeight = baseLineHeight * 0.92;
+    const isEditing = window._currentEditingId === obj.id;
+    const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
+      ? obj.fontFamily
+      : "sans-serif";
+    const align = (obj.align || "left").toLowerCase();
+    const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";
+    const baseLineHeight =
+      typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
+    const lineHeight = baseLineHeight * 0.92;
 
-  // ✅ VALIDACIÓN: Asegurar valores numéricos válidos
-  const validX = typeof obj.x === "number" && !isNaN(obj.x) ? obj.x : 0;
-  const validY = typeof obj.y === "number" && !isNaN(obj.y) ? obj.y : 0;
-  const validFontSize = typeof obj.fontSize === "number" && !isNaN(obj.fontSize) && obj.fontSize > 0 ? obj.fontSize : 24;
+    // ✅ VALIDACIÓN: Asegurar valores numéricos válidos
+    const validX = typeof obj.x === "number" && !isNaN(obj.x) ? obj.x : 0;
+    const validY = typeof obj.y === "number" && !isNaN(obj.y) ? obj.y : 0;
+    const validFontSize = typeof obj.fontSize === "number" && !isNaN(obj.fontSize) && obj.fontSize > 0 ? obj.fontSize : 24;
 
-  // 🔹 PASO 1: Calcular dimensiones del texto PRIMERO
-  const ctx = document.createElement("canvas").getContext("2d");
-  ctx.font = `${obj.fontWeight || "normal"} ${obj.fontStyle || "normal"} ${validFontSize}px ${fontFamily}`;
-  const lines = (obj.texto || "").split(/\r?\n/);
-  const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 20);
-  const numLines = lines.length;
-  const textWidth = Math.ceil(maxLineWidth + 6);
-  const textHeight = validFontSize * lineHeight * numLines;
+    // 🔹 PASO 1: Calcular dimensiones del texto PRIMERO
+    const ctx = document.createElement("canvas").getContext("2d");
+    ctx.font = `${obj.fontWeight || "normal"} ${obj.fontStyle || "normal"} ${validFontSize}px ${fontFamily}`;
+    const lines = (obj.texto || "").split(/\r?\n/);
+    const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 20);
+    const numLines = lines.length;
+    const textWidth = Math.ceil(maxLineWidth + 6);
+    const textHeight = validFontSize * lineHeight * numLines;
 
-// 🔹 PASO 2: Calcular posición solo una vez y congelar el centro
-  let positionRaw = getCenteredTextPosition({
-    rectY: validY,
-    rectHeight: textHeight,
-    fontSize: validFontSize,
-    fontFamily,
-    fontWeight: obj.fontWeight || "normal",
-    fontStyle: obj.fontStyle || "normal",
-  });
-
-  // Inicializar layout base solo la PRIMERA vez
-  if (!baseTextLayoutRef.current) {
-    baseTextLayoutRef.current = {
-      // centro vertical "ideal" que queremos conservar
-      rectCenter: positionRaw.rectCenter,
-      // offset desde el centro al baseline (depende solo de la fuente/tamaño)
-      baselineToCenter: positionRaw.baseline - positionRaw.rectCenter,
-      ascent: positionRaw.ascent,
-      descent: positionRaw.descent,
-    };
-  }
-
-  const base = baseTextLayoutRef.current;
-  const rectCenterFixed = base.rectCenter;
-  const baselineY = rectCenterFixed + base.baselineToCenter;
-  const textTopFixed = baselineY - base.ascent;
-
-  const position = {
-    baseline: baselineY,
-    textTop: textTopFixed,
-    ascent: base.ascent,
-    descent: base.descent,
-    rectCenter: rectCenterFixed,
-  };
-
-  // 🔍 Debug: información completa de posición y centrado
-  console.log("📐 [Konva Text Position]", {
-    objId: obj.id,
-    originalX: obj.x,
-    originalY: obj.y,
-    validX,
-    validY,
-    fontFamily,
-    fontSize: validFontSize,
-    textWidth,
-    textHeight: textHeight.toFixed(2),
-    textTop: position.textTop.toFixed(2),
-    baseline: position.baseline.toFixed(2),
-    ascent: position.ascent.toFixed(2),
-    descent: position.descent.toFixed(2),
-    konvaNodeY: textNodeRef.current?.y() ?? null,
-    konvaAbsoluteY: textNodeRef.current?.getAbsolutePosition?.().y ?? null,
-  });
-
-  // ⚠️ Warning si hay valores inválidos
-  if (obj.x !== validX || obj.y !== validY || obj.fontSize !== validFontSize) {
-    console.warn("⚠️ Objeto de texto tiene valores inválidos:", {
-      id: obj.id,
-      x: obj.x,
-      y: obj.y,
-      fontSize: obj.fontSize,
+    // 🔹 PASO 2: Calcular posición solo una vez y congelar el centro
+    let positionRaw = getCenteredTextPosition({
+      rectY: validY,
+      rectHeight: textHeight,
+      fontSize: validFontSize,
+      fontFamily,
+      fontWeight: obj.fontWeight || "normal",
+      fontStyle: obj.fontStyle || "normal",
     });
+
+    // Inicializar layout base solo la PRIMERA vez
+    if (!baseTextLayoutRef.current) {
+      baseTextLayoutRef.current = {
+        // centro vertical "ideal" que queremos conservar
+        rectCenter: positionRaw.rectCenter,
+        // offset desde el centro al baseline (depende solo de la fuente/tamaño)
+        baselineToCenter: positionRaw.baseline - positionRaw.rectCenter,
+        ascent: positionRaw.ascent,
+        descent: positionRaw.descent,
+      };
+    }
+
+    const base = baseTextLayoutRef.current;
+    const rectCenterFixed = base.rectCenter;
+    const baselineY = rectCenterFixed + base.baselineToCenter;
+    const textTopFixed = baselineY - base.ascent;
+
+    const position = {
+      baseline: baselineY,
+      textTop: textTopFixed,
+      ascent: base.ascent,
+      descent: base.descent,
+      rectCenter: rectCenterFixed,
+    };
+
+    // 🔍 Debug: información completa de posición y centrado
+    console.log("📐 [Konva Text Position]", {
+      objId: obj.id,
+      originalX: obj.x,
+      originalY: obj.y,
+      validX,
+      validY,
+      fontFamily,
+      fontSize: validFontSize,
+      textWidth,
+      textHeight: textHeight.toFixed(2),
+      textTop: position.textTop.toFixed(2),
+      baseline: position.baseline.toFixed(2),
+      ascent: position.ascent.toFixed(2),
+      descent: position.descent.toFixed(2),
+      konvaNodeY: textNodeRef.current?.y() ?? null,
+      konvaAbsoluteY: textNodeRef.current?.getAbsolutePosition?.().y ?? null,
+    });
+
+    // ⚠️ Warning si hay valores inválidos
+    if (obj.x !== validX || obj.y !== validY || obj.fontSize !== validFontSize) {
+      console.warn("⚠️ Objeto de texto tiene valores inválidos:", {
+        id: obj.id,
+        x: obj.x,
+        y: obj.y,
+        fontSize: obj.fontSize,
+      });
+    }
+
+
+    return (
+      <>
+        <Text
+          {...commonProps}
+          ref={(node) => {
+            textNodeRef.current = node;
+            registerRef?.(obj.id, node);
+          }}
+          text={obj.texto}
+          x={validX}
+          y={position.textTop}
+          width={textWidth}
+          height={textHeight}
+          wrap="word"
+          align={align}
+          fontSize={validFontSize}
+          fontFamily={fontFamily}
+          fontWeight={obj.fontWeight || "normal"}
+          fontStyle={obj.fontStyle || "normal"}
+          lineHeight={lineHeight}
+          fill={fillColor}
+          opacity={isEditing ? 0 : 1}
+          verticalAlign="top"
+        />
+
+
+      </>
+    );
   }
-  
-
-  return (
-    <>
-      <Text
-        {...commonProps}
-        ref={(node) => {
-          textNodeRef.current = node;
-          registerRef?.(obj.id, node);
-        }}
-        text={obj.texto}
-        x={validX}
-        y={position.textTop}
-        width={textWidth}
-        height={textHeight}
-        wrap="word"
-        align={align}
-        fontSize={validFontSize}
-        fontFamily={fontFamily}
-        fontWeight={obj.fontWeight || "normal"}
-        fontStyle={obj.fontStyle || "normal"}
-        lineHeight={lineHeight}
-        fill={fillColor}
-        opacity={isEditing ? 0 : 1}
-        verticalAlign="top"
-      />
-
-  
-    </>
-  );
-}
 
   if (obj.tipo === "rsvp-boton") {
     const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
@@ -564,6 +594,7 @@ export default function ElementoCanvas({
     return (
       <KonvaImage
         {...commonProps}
+        id={obj.id}
         image={img}
         crossOrigin="anonymous"
         width={obj.width || img.width}
@@ -794,45 +825,95 @@ export default function ElementoCanvas({
 
     switch (obj.figura) {
       case "rect":
-        return (
-          <>
-            {/* 🟪 Forma */}
-            <Rect
-              {...propsForma}
-              width={Math.abs(obj.width || 100)}
-              height={Math.abs(obj.height || 100)}
-              cornerRadius={obj.cornerRadius || 0}
-              stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-              strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-            />
+  // Opcional: normalizamos width/height para usar en ambos nodos
+  const width = Math.abs(obj.width || 100);
+  const height = Math.abs(obj.height || 100);
 
-            {/* ✏️ Texto encima de la forma */}
-            {obj.texto && (
-              <Text
-                ref={(node) => {
-                  if (node && registerRef) {
-                    registerRef(`${obj.id}-text`, node); // clave única para el texto
-                  }
-                }}
-                x={obj.x}
-                y={obj.y}
-                width={obj.width}
-                height={obj.height}
-                text={obj.texto}
-                fontSize={obj.fontSize || 24}
-                fontFamily={obj.fontFamily || "sans-serif"}
-                fontWeight={obj.fontWeight || "normal"}
-                fontStyle={obj.fontStyle || "normal"}
-                fill={obj.colorTexto || "#000000"}
-                align={obj.align || "center"}
-                verticalAlign="middle"
-                listening={false}
-                opacity={isInEditMode ? 0 : 1}
-              />
-            )}
+  return (
+    <>
+      {/* 🟪 Forma */}
+      <Rect
+        {...propsForma}
+        width={width}
+        height={height}
+        cornerRadius={obj.cornerRadius || 0}
+        stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
+        strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+        // 🖱️ Doble click para entrar en edición inline
+        onDblClick={(e) => {
+          e.cancelBubble = true;
+          if (onStartTextEdit) {
+            onStartTextEdit(obj.id, obj.texto || "");
+          }
+        }}
+        onDblTap={(e) => {
+          e.cancelBubble = true;
+          if (onStartTextEdit) {
+            onStartTextEdit(obj.id, obj.texto || "");
+          }
+        }}
+        // 🚚 Sincronizar el texto mientras se arrastra la forma
+        onDragMove={(e) => {
+          // Mantener cualquier lógica de drag original que venga de commonProps
+          if (typeof propsForma.onDragMove === "function") {
+            propsForma.onDragMove(e);
+          }
 
-          </>
-        );
+          const { x, y } = e.target.position();
+          const stage = e.target.getStage();
+          const textoNode = stage?.findOne(`#${obj.id}-text`);
+
+          if (textoNode) {
+            textoNode.x(x);
+            textoNode.y(y);
+            textoNode.getLayer()?.batchDraw();
+          }
+        }}
+        onDragEnd={(e) => {
+          // Mantener lógica original de dragEnd (guardar posición, drag grupal, etc.)
+          if (typeof propsForma.onDragEnd === "function") {
+            propsForma.onDragEnd(e);
+          }
+
+          const { x, y } = e.target.position();
+          const stage = e.target.getStage();
+          const textoNode = stage?.findOne(`#${obj.id}-text`);
+
+          if (textoNode) {
+            textoNode.x(x);
+            textoNode.y(y);
+            textoNode.getLayer()?.batchDraw();
+          }
+        }}
+      />
+
+      {/* ✏️ Texto encima de la forma */}
+      {obj.texto && (
+        <Text
+          id={`${obj.id}-text`}          // 👈 id para poder encontrarlo desde el Rect
+          ref={(node) => {
+            if (node && registerRef) {
+              registerRef(`${obj.id}-text`, node); // seguís usando tu sistema de refs
+            }
+          }}
+          x={obj.x}
+          y={obj.y}
+          width={width}
+          height={height}
+          text={obj.texto}
+          fontSize={obj.fontSize || 24}
+          fontFamily={obj.fontFamily || "sans-serif"}
+          fontWeight={obj.fontWeight || "normal"}
+          fontStyle={obj.fontStyle || "normal"}
+          fill={obj.colorTexto || "#000000"}
+          align={obj.align || "center"}
+          verticalAlign="middle"
+          listening={false}              // 👈 el texto no roba eventos, los recibe el Rect
+          opacity={isInEditMode ? 0 : 1}
+        />
+      )}
+    </>
+  );
 
 
       case "circle":

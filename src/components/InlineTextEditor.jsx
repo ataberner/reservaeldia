@@ -261,8 +261,9 @@ export default function InlineTextEditor({
             fontWeight: nodeProps.fontWeight,
             fontStyle: nodeProps.fontStyle,
             lineHeight: konvaLineHeight,
-            color: nodeProps.fill,       // ✅ color del texto Konva
-            caretColor: nodeProps.fill,  // ✅ caret del mismo color
+            color: "#111827", 
+            caretColor: "#111827",
+            WebkitTextFillColor: "#111827",
             background: "transparent",
             borderRadius: "6px",
             padding: "2px 2px 4px 2px",

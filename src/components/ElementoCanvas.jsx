@@ -65,171 +65,194 @@ export default function ElementoCanvas({
   }, [obj.id, obj.tipo, registerRef]);
 
 
+    // ✅ Click con estado fresco (evita stale closures del useMemo)
+  const handleClick = useCallback(
+    (e) => {
+      e.cancelBubble = true;
 
-  const commonProps = useMemo(
-    () => ({
-      x: obj.x ?? 0,
-      y: obj.y ?? 0,
-      rotation: obj.rotation || 0,
-      scaleX: obj.scaleX || 1,
-      scaleY: obj.scaleY || 1,
-      draggable: !editingMode,
-      listening: !isInEditMode,
-      ref: handleRef,   // 👈 todas las figuras pasan por acá
-
-      onMouseDown: (e) => {
-        e.cancelBubble = true;
-        hasDragged.current = false;
-
-        e.currentTarget?.draggable(true);
-      },
-
-      onMouseUp: (e) => {
-        if (e.currentTarget?.draggable && !hasDragged.current) {
-          e.currentTarget.draggable(false);
-        }
-      },
-
-      onClick: (e) => {
-        e.cancelBubble = true;
-
-        if (!hasDragged.current) {
-          // 🧠 Si es texto, mismo comportamiento actual
-          if (obj.tipo === "texto") {
-            if (isSelected) {
-              onStartTextEdit?.(obj.id, obj.texto);
-            } else {
-              onSelect(obj.id, obj, e);
-            }
-          }
-
-          // 🆕 Si es forma con texto, comportamiento similar
-          else if (obj.tipo === "forma" && obj.figura === "rect") {
-            if (isSelected) {
-              onStartTextEdit?.(obj.id, obj.texto || "");
-            } else {
-              onSelect(obj.id, obj, e);
-            }
-          }
-
-          // 🧱 Para todo lo demás
-          else {
+      if (!hasDragged.current) {
+        // 🧠 Texto normal
+        if (obj.tipo === "texto") {
+          if (isSelected) {
+            onStartTextEdit?.(obj.id, obj.texto);
+          } else {
             onSelect(obj.id, obj, e);
           }
         }
-      },
 
-      onDragStart: (e) => {
-
-
-        window._dragCount = 0;
-        window._lastMouse = null;
-        window._lastElement = null;
-
-        hasDragged.current = true;
-        window._isDragging = true;
-        setIsDragging(true);
-
-        // 🔥 Intentar drag grupal
-        const fueGrupal = startDragGrupalLider(e, obj);
-        if (!fueGrupal) {
-          startDragIndividual(e, dragStartPos);
-        }
-      },
-
-
-      onDragMove: (e) => {
-        hasDragged.current = true;
-
-        const stage = e.target.getStage();
-        const mousePos = stage.getPointerPosition();
-        const elementPos = { x: e.target.x(), y: e.target.y() };
-
-        window._lastMouse = mousePos;
-        window._lastElement = elementPos;
-
-        // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
-        if (window._grupoLider && obj.id === window._grupoLider) {
-          // Preview visual para drag grupal
-          const stage = e.target.getStage();
-          const currentPos = stage.getPointerPosition();
-          const startPos = window._dragStartPos;
-
-          if (currentPos && startPos && window._dragInicial) {
-            const deltaX = currentPos.x - startPos.x;
-            const deltaY = currentPos.y - startPos.y;
-            const seleccion = window._elementosSeleccionados || [];
-
-            // Actualizar visualmente todos los seguidores
-            seleccion.forEach((elementId) => {
-              if (elementId === obj.id) return; // El líder ya se mueve automáticamente
-
-              const node = window._elementRefs?.[elementId];
-              const posInicial = window._dragInicial[elementId];
-
-              if (node && posInicial) {
-                node.x(posInicial.x + deltaX);
-                node.y(posInicial.y + deltaY);
-              }
-            });
-
-            // Redibujar para mostrar cambios
-            if (e.target.getLayer) {
-              e.target.getLayer().batchDraw();
-            }
+        // 🆕 Forma con texto (rect)
+        else if (obj.tipo === "forma" && obj.figura === "rect") {
+          if (isSelected) {
+            onStartTextEdit?.(obj.id, obj.texto || "");
+          } else {
+            onSelect(obj.id, obj, e);
           }
+        }
 
-          // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
-          // El preview individual ya no es necesario porque manejamos todo aquí
+        // 🧱 Para todo lo demás
+        else {
+          onSelect(obj.id, obj, e);
+        }
+      }
+    },
+    [obj, isSelected, onSelect, onStartTextEdit]
+  );
 
+
+  
+ // 🔥 MEMOIZAR PROPIEDADES COMUNES
+  const commonProps = useMemo(() => ({
+    x: obj.x ?? 0,
+    y: obj.y ?? 0,
+    rotation: obj.rotation || 0,
+    scaleX: obj.scaleX || 1,
+    scaleY: obj.scaleY || 1,
+    draggable: !editingMode,
+    ref: handleRef,
+    listening: !isInEditMode,
+
+    onMouseDown: (e) => {
+      e.cancelBubble = true;
+      hasDragged.current = false;
+
+      e.currentTarget?.draggable(true);
+    },
+
+    onMouseUp: (e) => {
+      if (e.currentTarget?.draggable && !hasDragged.current) {
+        e.currentTarget.draggable(false);
+      }
+    },
+
+    onClick: (e) => {
+      e.cancelBubble = true;
+
+      if (!hasDragged.current) {
+        // 🧠 Si es texto, mismo comportamiento actual
+        if (obj.tipo === "texto") {
+          if (isSelected) {
+            onStartTextEdit?.(obj.id, obj.texto);
+          } else {
+            onSelect(obj.id, obj, e);
+          }
+        }
+
+        // 🆕 Si es forma con texto, comportamiento similar
+        else if (obj.tipo === "forma" && obj.figura === "rect") {
+          if (isSelected) {
+            onStartTextEdit?.(obj.id, obj.texto || "");
+          } else {
+            onSelect(obj.id, obj, e);
+          }
+        }
+
+        // 🧱 Para todo lo demás
+        else {
+          onSelect(obj.id, obj, e);
+        }
+      }
+    },
+
+    onDragStart: (e) => {
+
+
+      window._dragCount = 0;
+      window._lastMouse = null;
+      window._lastElement = null;
+
+      hasDragged.current = true;
+      window._isDragging = true;
+      setIsDragging(true);
+
+      // 🔥 Intentar drag grupal
+      const fueGrupal = startDragGrupalLider(e, obj);
+      if (!fueGrupal) {
+        startDragIndividual(e, dragStartPos);
+      }
+    },
+
+
+    onDragMove: (e) => {
+      hasDragged.current = true;
+
+      const stage = e.target.getStage();
+      const mousePos = stage.getPointerPosition();
+      const elementPos = { x: e.target.x(), y: e.target.y() };
+
+      window._lastMouse = mousePos;
+      window._lastElement = elementPos;
+
+      // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
+      if (window._grupoLider && obj.id === window._grupoLider) {
+        // Preview visual para drag grupal
+        const stage = e.target.getStage();
+        const currentPos = stage.getPointerPosition();
+        const startPos = window._dragStartPos;
+
+        if (currentPos && startPos && window._dragInicial) {
+          const deltaX = currentPos.x - startPos.x;
+          const deltaY = currentPos.y - startPos.y;
+          const seleccion = window._elementosSeleccionados || [];
+
+          // Actualizar visualmente todos los seguidores
+          seleccion.forEach((elementId) => {
+            if (elementId === obj.id) return; // El líder ya se mueve automáticamente
+
+            const node = window._elementRefs?.[elementId];
+            const posInicial = window._dragInicial[elementId];
+
+            if (node && posInicial) {
+              node.x(posInicial.x + deltaX);
+              node.y(posInicial.y + deltaY);
+            }
+          });
+
+          // Redibujar para mostrar cambios
+          if (e.target.getLayer) {
+            e.target.getLayer().batchDraw();
+          }
+        }
+
+        // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
+        // El preview individual ya no es necesario porque manejamos todo aquí
+
+        return;
+      }
+
+      // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
+      if (window._grupoLider) {
+        const elementosSeleccionados = window._elementosSeleccionados || [];
+        if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
           return;
         }
+      }
 
-        // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
-        if (window._grupoLider) {
-          const elementosSeleccionados = window._elementosSeleccionados || [];
-          if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
-            return;
-          }
-        }
-
-        // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
-        if (!window._grupoLider) {
-          previewDragIndividual(e, obj, onDragMovePersonalizado);
-        }
-      },
+      // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
+      if (!window._grupoLider) {
+        previewDragIndividual(e, obj, onDragMovePersonalizado);
+      }
+    },
 
 
 
 
-      onDragEnd: (e) => {
+    onDragEnd: (e) => {
 
-        window._isDragging = false;
-        setIsDragging(false);
+      window._isDragging = false;
+      setIsDragging(false);
 
-        const node = e.currentTarget;
+      const node = e.currentTarget;
 
-        // 🔥 Intentar drag grupal
-        const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
-        if (fueGrupal) return;
+      // 🔥 Intentar drag grupal
+      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
+      if (fueGrupal) return;
 
-        // 🔄 DRAG INDIVIDUAL (no cambió)
-        endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
-      },
+      // 🔄 DRAG INDIVIDUAL (no cambió)
+      endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+    },
 
 
-    }),
-    [
-      obj.x,
-      obj.y,
-      obj.rotation,
-      obj.scaleX,
-      obj.scaleY,
-      editingMode,
-      isInEditMode,
-      handleRef,
-    ]
-  );
+  }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange, isInEditMode]);
 
   // 🔥 MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {

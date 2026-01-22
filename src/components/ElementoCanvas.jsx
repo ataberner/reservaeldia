@@ -530,7 +530,7 @@ export default function ElementoCanvas({
           }}
           text={obj.texto}
           x={validX}
-          y={position.textTop}
+          y={obj.y}
           width={textWidth}
           height={textHeight}
           wrap="word"

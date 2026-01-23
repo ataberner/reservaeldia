@@ -11,6 +11,19 @@ import useMisImagenes from "@/hooks/useMisImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
 
 
+/**
+ * Evita el error: "parameter 1 is not of type 'Node'"
+ * En mouseleave, relatedTarget puede ser null o un objeto que no es Node.
+ */
+function safeContains(container, maybeNode) {
+    if (!container) return false;
+    if (!maybeNode) return false;
+    // En algunos casos relatedTarget puede ser Window/Document/etc.
+    if (!(maybeNode instanceof Node)) return false;
+    return container.contains(maybeNode);
+}
+
+
 const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
 
 
@@ -206,15 +219,15 @@ export default function DashboardSidebar({
         window.dispatchEvent(new CustomEvent("insertar-elemento", {
             detail: {
                 id,
-                tipo: "cuenta-regresiva",
+                tipo: "countdown",          // ✅ unificamos tipo
                 x, y, width, height,
                 rotation: 0,
                 scaleX: 1,
                 scaleY: 1,
-                targetISO,            // 🎯 fecha configurada en el panel
-                // 🔁 aplicamos el preset (sin duplicar render)
+
+                fechaObjetivo: targetISO,   // ✅ nombre que usa CountdownKonva
                 ...((preset && preset.props) || {}),
-                presetId: preset?.id, // opcional: por si tu renderer usa un switch por id
+                presetId: preset?.id,
             }
         }));
     }, [seccionActivaId]);
@@ -324,7 +337,7 @@ export default function DashboardSidebar({
                 >
                     <FaBars className="text-white text-xl" />
                 </div>
-                
+
                 {/* 🖥️ Escritorio: barra vertical a la izquierda */}
                 <div className="hidden md:flex flex-col items-center gap-4 mt-4">
                     <button
@@ -332,7 +345,7 @@ export default function DashboardSidebar({
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
                             // Si el mouse se mueve hacia el panel, no cierres
-                            if (panel && panel.contains(e.relatedTarget)) return;
+                            if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("texto")}
@@ -348,7 +361,7 @@ export default function DashboardSidebar({
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
                             // Si el mouse se mueve hacia el panel, no cierres
-                            if (panel && panel.contains(e.relatedTarget)) return;
+                            if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("forma")}
@@ -363,7 +376,7 @@ export default function DashboardSidebar({
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
                             // Si el mouse se mueve hacia el panel, no cierres
-                            if (panel && panel.contains(e.relatedTarget)) return;
+                            if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("imagen")}
@@ -378,7 +391,7 @@ export default function DashboardSidebar({
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
                             // Si el mouse se mueve hacia el panel, no cierres
-                            if (panel && panel.contains(e.relatedTarget)) return;
+                            if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("contador")}
@@ -442,7 +455,7 @@ export default function DashboardSidebar({
                     onMouseLeave={(e) => {
                         const aside = document.querySelector("aside");
                         // Si el mouse se va hacia la barra lateral, no cierres
-                        if (aside && aside.contains(e.relatedTarget)) return;
+                        if (safeContains(aside, e.relatedTarget)) return;
                         scheduleClosePanel(); // ⏳ programa cierre
                     }}
 

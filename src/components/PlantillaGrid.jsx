@@ -1,6 +1,8 @@
 // src/components/PlantillaGrid.jsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { useAuthClaims } from "@/hooks/useAuthClaims";
+
 
 // 🔹 Genera slug limpio para Firebase/URLs
 const generarSlug = (texto) => {
@@ -14,8 +16,33 @@ const generarSlug = (texto) => {
     .replace(/\s+/g, "-");
 };
 
-export default function PlantillaGrid({ plantillas, onSeleccionarPlantilla }) {
+export default function PlantillaGrid({
+  plantillas,
+  onSeleccionarPlantilla,
+  onPlantillaBorrada,
+}) {
   const [loadingId, setLoadingId] = useState(null);
+  const { esAdmin } = useAuthClaims();
+  const [deletingId, setDeletingId] = useState(null);
+
+  
+  
+  const borrarPlantilla = async (plantillaId) => {
+    const confirmar = confirm("¿Seguro que querés borrar esta plantilla? Esta acción no se puede deshacer.");
+    if (!confirmar) return;
+    setDeletingId(plantillaId);
+    try {
+      const functions = getFunctions();
+      const borrar = httpsCallable(functions, "borrarPlantilla");
+      await borrar({ plantillaId });
+      onPlantillaBorrada?.(plantillaId);
+    } catch (error) {
+      console.error("❌ Error borrando plantilla:", error);
+      alert("No se pudo borrar la plantilla. Mirá la consola.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const crearCopia = async (plantilla) => {
     setLoadingId(plantilla.id);
@@ -41,8 +68,24 @@ return (
     {plantillas.map((p) => (
       <div
         key={p.id}
-        className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-      >
+        className="relative bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+       >
+        {/* 🗑️ Borrar plantilla (solo admin) */}
+        {esAdmin && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              borrarPlantilla(p.id);
+            }}
+            disabled={deletingId === p.id}
+            title="Borrar plantilla"
+            className="absolute top-2 right-2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-red-600 border border-gray-200 rounded-full w-8 h-8 flex items-center justify-center shadow-sm"
+          >
+            {deletingId === p.id ? "…" : "🗑️"}
+          </button>
+        )}
+
         {/* Imagen cuadrada exacta */}
         <div className="aspect-square bg-gray-100 overflow-hidden">
           <img

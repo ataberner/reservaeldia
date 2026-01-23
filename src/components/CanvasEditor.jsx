@@ -39,6 +39,7 @@ import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar
 import SelectorColorSeccion from "./SelectorColorSeccion";
 import Konva from "konva";
 import { ALL_FONTS } from '../config/fonts';
+import { useAuthClaims } from "@/hooks/useAuthClaims";
 import {
   Check,
   RotateCcw,
@@ -136,6 +137,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
+  const { esAdmin, loadingClaims } = useAuthClaims();
+
 
   const {
     editing,      // { id, value }
@@ -1584,6 +1587,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   </button>
 
                   {/* Botón Guardar como plantilla */}
+                  {!loadingClaims && esAdmin && (
                   <button
                     onClick={() =>
                       guardarSeccionComoPlantilla({
@@ -1602,6 +1606,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   >
                     💾 Plantilla
                   </button>
+                  )}
 
 
                   {/* Botón Desanclar fondo (solo si tiene imagen de fondo) */}

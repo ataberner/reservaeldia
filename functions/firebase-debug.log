@@ -1,0 +1,133 @@
+[debug] [2026-01-22T23:47:13.439Z] ----------------------------------------------------------------------
+[debug] [2026-01-22T23:47:13.442Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Manuel Lagos\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2026-01-22T23:47:13.442Z] CLI Version:   14.4.0
+[debug] [2026-01-22T23:47:13.442Z] Platform:      win32
+[debug] [2026-01-22T23:47:13.442Z] Node Version:  v22.13.1
+[debug] [2026-01-22T23:47:13.443Z] Time:          Thu Jan 22 2026 20:47:13 GMT-0300 (hora estándar de Argentina)
+[debug] [2026-01-22T23:47:13.443Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-01-22T23:47:13.673Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-22T23:47:13.674Z] > authorizing via signed-in user (reservaeldia.invitaciones@gmail.com)
+[debug] [2026-01-22T23:47:13.674Z] [iam] checking project reservaeldia-7a440 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-01-22T23:47:13.675Z] Checked if tokens are valid: false, expires at: 1769122543348
+[debug] [2026-01-22T23:47:13.675Z] Checked if tokens are valid: false, expires at: 1769122543348
+[debug] [2026-01-22T23:47:13.675Z] > refreshing access token with scopes: []
+[debug] [2026-01-22T23:47:13.677Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-01-22T23:47:13.677Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-01-22T23:47:14.015Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-01-22T23:47:14.015Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-01-22T23:47:14.034Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440:testIamPermissions [none]
+[debug] [2026-01-22T23:47:14.034Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440:testIamPermissions x-goog-quota-user=projects/reservaeldia-7a440
+[debug] [2026-01-22T23:47:14.034Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-01-22T23:47:14.894Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440:testIamPermissions 200
+[debug] [2026-01-22T23:47:14.895Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-01-22T23:47:14.895Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:14.895Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:14.895Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/reservaeldia-7a440/serviceAccounts/reservaeldia-7a440@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-01-22T23:47:14.895Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/reservaeldia-7a440/serviceAccounts/reservaeldia-7a440@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-01-22T23:47:15.812Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/reservaeldia-7a440/serviceAccounts/reservaeldia-7a440@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2026-01-22T23:47:15.813Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/reservaeldia-7a440/serviceAccounts/reservaeldia-7a440@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[info] 
+[info] === Deploying to 'reservaeldia-7a440'...
+[info] 
+[info] i  deploying functions 
+[info] Running command: npm --prefix functions run build
+[info] +  functions: Finished running predeploy script. 
+[debug] [2026-01-22T23:47:20.332Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:20.332Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:20.332Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudresourcemanager.googleapis.com [none]
+[debug] [2026-01-22T23:47:20.332Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudresourcemanager.googleapis.com x-goog-quota-user=projects/reservaeldia-7a440
+[debug] [2026-01-22T23:47:21.552Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudresourcemanager.googleapis.com 200
+[debug] [2026-01-22T23:47:21.553Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudresourcemanager.googleapis.com [omitted]
+[debug] [2026-01-22T23:47:21.553Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:21.553Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:21.553Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440 [none]
+[debug] [2026-01-22T23:47:22.568Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440 200
+[debug] [2026-01-22T23:47:22.569Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/reservaeldia-7a440 {"projectNumber":"860495975406","projectId":"reservaeldia-7a440","lifecycleState":"ACTIVE","name":"reservaeldia","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2025-05-13T16:59:45.366548Z"}
+[info] i  functions: preparing codebase default for deployment 
+[info] i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[debug] [2026-01-22T23:47:22.572Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:22.573Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:22.573Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:22.573Z] Checked if tokens are valid: true, expires at: 1769129233016
+[info] i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[debug] [2026-01-22T23:47:22.574Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:22.574Z] Checked if tokens are valid: true, expires at: 1769129233016
+[info] i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[debug] [2026-01-22T23:47:22.575Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:22.575Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:22.575Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-01-22T23:47:22.576Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudfunctions.googleapis.com x-goog-quota-user=projects/reservaeldia-7a440
+[debug] [2026-01-22T23:47:22.577Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/runtimeconfig.googleapis.com [none]
+[debug] [2026-01-22T23:47:22.577Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/runtimeconfig.googleapis.com x-goog-quota-user=projects/reservaeldia-7a440
+[debug] [2026-01-22T23:47:22.581Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudbuild.googleapis.com [none]
+[debug] [2026-01-22T23:47:22.581Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudbuild.googleapis.com x-goog-quota-user=projects/reservaeldia-7a440
+[debug] [2026-01-22T23:47:22.584Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/artifactregistry.googleapis.com [none]
+[debug] [2026-01-22T23:47:22.584Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/artifactregistry.googleapis.com x-goog-quota-user=projects/reservaeldia-7a440
+[debug] [2026-01-22T23:47:23.575Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/runtimeconfig.googleapis.com 200
+[debug] [2026-01-22T23:47:23.575Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/runtimeconfig.googleapis.com [omitted]
+[debug] [2026-01-22T23:47:23.577Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudfunctions.googleapis.com 200
+[debug] [2026-01-22T23:47:23.577Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudfunctions.googleapis.com [omitted]
+[info] +  functions: required API cloudfunctions.googleapis.com is enabled 
+[debug] [2026-01-22T23:47:23.578Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudbuild.googleapis.com 200
+[debug] [2026-01-22T23:47:23.578Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/cloudbuild.googleapis.com [omitted]
+[info] +  functions: required API cloudbuild.googleapis.com is enabled 
+[debug] [2026-01-22T23:47:23.589Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/artifactregistry.googleapis.com 200
+[debug] [2026-01-22T23:47:23.590Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/reservaeldia-7a440/services/artifactregistry.googleapis.com [omitted]
+[info] +  artifactregistry: required API artifactregistry.googleapis.com is enabled 
+[debug] [2026-01-22T23:47:23.591Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:23.591Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:23.591Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/reservaeldia-7a440/adminSdkConfig [none]
+[debug] [2026-01-22T23:47:24.006Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/reservaeldia-7a440/adminSdkConfig 200
+[debug] [2026-01-22T23:47:24.006Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/reservaeldia-7a440/adminSdkConfig {"projectId":"reservaeldia-7a440","storageBucket":"reservaeldia-7a440.firebasestorage.app"}
+[debug] [2026-01-22T23:47:24.007Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:24.007Z] Checked if tokens are valid: true, expires at: 1769129233016
+[debug] [2026-01-22T23:47:24.007Z] >>> [apiv2][query] GET https://runtimeconfig.googleapis.com/v1beta1/projects/reservaeldia-7a440/configs [none]
+[debug] [2026-01-22T23:47:25.025Z] <<< [apiv2][status] GET https://runtimeconfig.googleapis.com/v1beta1/projects/reservaeldia-7a440/configs 200
+[debug] [2026-01-22T23:47:25.025Z] <<< [apiv2][body] GET https://runtimeconfig.googleapis.com/v1beta1/projects/reservaeldia-7a440/configs {}
+[debug] [2026-01-22T23:47:25.027Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-01-22T23:47:27.297Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-01-22T23:47:27.297Z] Building nodejs source
+[info] i  functions: Loading and analyzing source code for codebase default to determine what to deploy 
+[debug] [2026-01-22T23:47:27.300Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-01-22T23:47:27.322Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8955
+
+[error] (node:25604) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-01-22T23:47:30.227Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}

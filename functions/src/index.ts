@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import express, { Request, Response } from "express";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import { type RSVPConfig as ModalConfig } from "./utils/generarModalRSVP";
+import { requireAdmin, requireSuperAdmin } from "./auth/adminAuth";
 
 import * as logger from "firebase-functions/logger";
 
@@ -362,7 +363,18 @@ export const copiarPlantilla = onCall(
 );
 
 export const crearPlantilla = onCall(
+  {
+    region: "us-central1",
+    cors: [
+      "https://reservaeldia.com.ar",
+      "http://localhost:3000"
+    ],
+  },
   async (request: CallableRequest<{ id: string; datos: any }>) => {
+    // 🔒 Seguridad real: solo admins pueden crear plantillas base
+    // La UI puede ocultar el botón, pero acá se valida de verdad.
+    requireAdmin(request);
+
     const { id, datos } = request.data;
     if (!id || !datos) throw new Error("Faltan datos");
 
@@ -405,6 +417,43 @@ export const crearPlantilla = onCall(
   }
 );
 
+
+/**
+ * ================================
+ * Admin: borrar plantilla
+ * ================================
+ *
+ * Solo ADMIN (claim) puede borrar una plantilla base.
+ * La seguridad real se aplica acá (no solo en la UI).
+ */
+export const borrarPlantilla = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<{ plantillaId: string }>) => {
+    // 🔒 Seguridad real: solo admins pueden borrar plantillas base
+    requireAdmin(request);
+
+    const { plantillaId } = request.data || ({} as any);
+
+    if (!plantillaId || typeof plantillaId !== "string") {
+      throw new HttpsError("invalid-argument", "Falta plantillaId");
+    }
+
+    // Borrar doc principal
+    await db.collection("plantillas").doc(plantillaId).delete();
+
+    // (Opcional a futuro) limpiar assets en Storage / subdocs relacionados
+    // Por ahora: minimalista y seguro.
+
+    logger.info(`🗑️ Plantilla '${plantillaId}' borrada por admin`);
+    return { success: true, plantillaId };
+  }
+);
+
+
+
 function escapeHTML(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -413,6 +462,38 @@ function escapeHTML(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+
+/**
+ * ================================
+ * Claims: asignar/quitar admin
+ * ================================
+ *
+ * Solo SUPERADMIN (env var) puede ejecutarla.
+ * Setea custom claims { admin: true/false } al usuario objetivo.
+ */
+export const setAdminClaim = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<{ uidTarget: string; admin: boolean }>) => {
+    // 🔒 Solo superadmin puede asignar claims
+    requireSuperAdmin(request);
+
+    const { uidTarget, admin: adminFlag } = request.data || ({} as any);
+
+    if (!uidTarget || typeof uidTarget !== "string") {
+      throw new HttpsError("invalid-argument", "Falta uidTarget");
+    }
+    if (typeof adminFlag !== "boolean") {
+      throw new HttpsError("invalid-argument", "Falta admin (boolean)");
+    }
+
+    await admin.auth().setCustomUserClaims(uidTarget, { admin: adminFlag });
+    return { success: true, uidTarget, admin: adminFlag };
+  }
+);
 
 
 

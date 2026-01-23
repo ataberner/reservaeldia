@@ -37,6 +37,7 @@ export default function Dashboard() {
   const menuRef = useRef(null);
   const [vista, setVista] = useState("home");
   const router = useRouter();
+  const [esAdmin, setEsAdmin] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -111,6 +112,7 @@ export default function Dashboard() {
     }
   };
 
+  
 
   // 🔄 Cargar plantillas por tipo
   useEffect(() => {
@@ -179,9 +181,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUsuario(user);
+
+        // ✅ DEBUG TEMPORAL: ver claims del usuario logueado
+        try {
+          const token = await user.getIdTokenResult(true); // fuerza refresh
+          setEsAdmin(token.claims?.admin === true);
+          } catch (e) {
+          console.log("❌ Error leyendo claims:", e);
+        }
       } else {
         setUsuario(null);
       }
@@ -190,6 +200,7 @@ export default function Dashboard() {
 
     return () => unsubscribe();
   }, []);
+
 
   if (checkingAuth) return <p>Cargando...</p>;
   if (!usuario) return null; // Seguridad por si no se redirige
@@ -212,6 +223,7 @@ export default function Dashboard() {
       onCambiarVista={setVista}
       ocultarSidebar={vista === "publicadas"}
     >
+   
 
       {/* 🔹 Vista HOME (selector, plantillas, borradores) */}
       {!slugInvitacion && vista === "home" && (
@@ -224,6 +236,9 @@ export default function Dashboard() {
               ) : (
                 <PlantillaGrid
                   plantillas={plantillas}
+                  onPlantillaBorrada={(plantillaId) => {
+                    setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
+                  }}
                   onSeleccionarPlantilla={async (slug, plantilla) => {
                     try {
                       const functions = getFunctions();

@@ -5,6 +5,7 @@ import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import SelectorColorSeccion from "./SelectorColorSeccion";
+import { useAuthClaims } from "@/hooks/useAuthClaims";
 
 
 
@@ -27,6 +28,7 @@ export default function DashboardHeader({
     const router = useRouter();
     const [colorFondo, setColorFondo] = useState("#ffffff");
     const [seccionActiva, setSeccionActiva] = useState(null);
+    const { esAdmin, loadingClaims } = useAuthClaims();
 
 
     const [publicando, setPublicando] = useState(false);
@@ -375,12 +377,14 @@ export default function DashboardHeader({
 
 
                     {/* Guardar plantilla */}
+                    {!loadingClaims && esAdmin && (
                     <button
                         onClick={guardarPlantilla}
                         className="px-3 py-1 bg-yellow-400 text-gray-800 rounded hover:bg-yellow-500 transition text-xs"
                     >
                         Guardar plantilla
                     </button>
+                    )}
 
 
 

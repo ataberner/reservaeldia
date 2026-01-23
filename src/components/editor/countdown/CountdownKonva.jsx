@@ -30,6 +30,17 @@ export default function CountdownKonva({
   dragStartPos,                 // ref
   hasDragged,                   // ref
 }) {
+
+  const rootRef = useRef(null);
+  const DEBUG_COUNTDOWN = true; // ⬅️ ponelo en false cuando termines
+
+  const dlog = (...args) => {
+    if (!DEBUG_COUNTDOWN) return;
+    // agrupamos para que no ensucie tanto
+    console.log("[CD]", ...args);
+  };
+
+
   // 1) Tick cada 1s (no re-render si estamos arrastrando)
   const [tick, setTick] = useState(0);
   const draggingRef = useRef(false);
@@ -48,6 +59,15 @@ export default function CountdownKonva({
     [obj.id, registerRef]
   );
 
+  // Combinar ref interno + registerRef para SelectionBounds/guías
+  const setRefs = useCallback(
+    (node) => {
+      rootRef.current = node;
+      handleRef(node);
+    },
+    [handleRef]
+  );
+
   // 3) y absoluta = y relativa + offset de sección
   const yAbs = useMemo(() => {
     const idx = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
@@ -57,7 +77,7 @@ export default function CountdownKonva({
   }, [obj.y, obj.seccionId, seccionesOrdenadas, altoCanvas]);
 
   // 4) Partes del tiempo
-  const state = getRemainingParts(obj.fechaObjetivo);
+  const state = useMemo(() => getRemainingParts(obj.fechaObjetivo), [obj.fechaObjetivo, tick]);
   const parts = [
     { key: "d", value: fmt(state.d, obj.padZero), label: "Días" },
     { key: "h", value: fmt(state.h, obj.padZero), label: "Horas" },
@@ -80,9 +100,56 @@ export default function CountdownKonva({
 
   const totalChipsW = n * chipW + gap * (n - 1);
   const containerW = obj.width ?? totalChipsW;
-  const containerH = chipH;
+
+  // ✅ Si el usuario redimensiona, el alto tiene que reflejarse visualmente
+  const containerH = Math.max(obj.height ?? chipH, chipH);
+
+  // ✅ centrado vertical: si el contenedor es más alto que el contenido real
+  const contentOffsetY = (containerH - chipH) / 2;
+
 
   const startX = (containerW - totalChipsW) / 2;
+
+  useEffect(() => {
+    if (!DEBUG_COUNTDOWN) return;
+
+    // Medida real del nodo en Konva (incluye lo dibujado)
+    const node = rootRef.current;
+    const clientRect = node ? node.getClientRect({ skipShadow: true, skipStroke: false }) : null;
+
+    dlog("render", {
+      id: obj.id,
+      pos: { x: obj.x, y: obj.y, r: obj.rotation },
+      model: {
+        w: obj.width,
+        h: obj.height,
+        scaleX: obj.scaleX,
+        scaleY: obj.scaleY,
+      },
+      computed: {
+        chipW,
+        chipH,
+        totalChipsW,
+        containerW,
+        containerH,
+        contentOffsetY,
+        gap,
+        paddingX,
+        paddingY,
+        valueSize,
+        labelSize,
+        showLabels,
+      },
+      clientRect, // 👈 el dato clave
+    });
+  }, [
+    obj.id,
+    obj.x, obj.y, obj.rotation,
+    obj.width, obj.height, obj.scaleX, obj.scaleY,
+    chipW, chipH, totalChipsW, containerW, containerH, contentOffsetY,
+    gap, paddingX, paddingY, valueSize, labelSize, showLabels
+  ]);
+
 
   // 6) Handlers de drag
   const commonProps = useMemo(
@@ -114,7 +181,7 @@ export default function CountdownKonva({
           node.cache({ pixelRatio: 1 });
           node.drawHitFromCache();
           node.getLayer()?.batchDraw();
-        } catch {}
+        } catch { }
 
         const esGrupal = startDragGrupalLider(e, obj);
         if (!esGrupal) startDragIndividual(e, dragStartPos);
@@ -140,10 +207,10 @@ export default function CountdownKonva({
           const node = e.target;
           node.clearCache();
           node.getLayer()?.batchDraw();
-        } catch {}
+        } catch { }
 
         // Cerrar drag grupal primero
-        const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});
+        const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => { });
         if (fueGrupal) {
           onDragEndPersonalizado?.();
           return;
@@ -167,9 +234,17 @@ export default function CountdownKonva({
     ]
   );
 
+
   // 7) Render (dejamos UN hijo con listening=true para hit)
   return (
-    <Group {...commonProps}>
+
+    <Group
+      {...commonProps}
+      ref={setRefs}
+      rotation={obj.rotation || 0}
+      scaleX={obj.scaleX || 1}
+      scaleY={obj.scaleY || 1}
+    >
       {/* Fondo del bloque: DEBE participar del hit */}
       <Rect
         width={containerW}
@@ -191,7 +266,7 @@ export default function CountdownKonva({
             const sepText = obj.separator || "";
 
             return (
-              <Group key={it.key} x={x} y={0} listening={false}>
+              <Group key={it.key} x={x} y={contentOffsetY} listening={false}>
                 {/* Chip */}
                 {obj.layout !== "minimal" && (
                   <Rect

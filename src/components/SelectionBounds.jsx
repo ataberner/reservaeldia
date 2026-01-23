@@ -2,6 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Transformer, Rect } from "react-konva";
 
+const DEBUG_SB = true;
+const slog = (...args) => DEBUG_SB && console.log("[SB]", ...args);
+
 // 🎨 Componente para mostrar bounds sin transformer (líneas, etc.)
 const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
   const [forceUpdate, setForceUpdate] = useState(0);
@@ -65,6 +68,14 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
         maxY = Math.max(maxY, y1 + linePadding, y2 + linePadding);
       } else {
         const box = node.getClientRect({ skipTransform: false });
+        slog("BoundsIndicator node rect", {
+          id: obj.id,
+          tipo: obj.tipo,
+          figura: obj.figura,
+          box,
+          nodeAttrs: node?.attrs,
+          nodeScale: { sx: node?.scaleX?.(), sy: node?.scaleY?.() },
+        });
         const realX = box.x;
         const realY = box.y;
         let width = box.width;
@@ -159,7 +170,7 @@ export default function SelectionBounds({
   // 🔥 Efecto principal del Transformer (con retry)
   useEffect(() => {
     const applyTransformer = (label = "now") => {
-      console.log("[SelectionBounds] applyTransformer:", label, {
+      slog("applyTransformer", label, {
         selectedElements,
         elementosTransformables: elementosTransformables.map((o) => ({
           id: o.id,
@@ -198,7 +209,7 @@ export default function SelectionBounds({
         nodosTransformables.length === 0 &&
         elementosTransformables.length > 0
       ) {
-        console.log(
+        slog(
           "[SelectionBounds] ⚠️ No hay nodos transformables aún (posible imagen sin terminar de cargar)",
           { ids: elementosTransformables.map((o) => o.id) }
         );
@@ -244,10 +255,7 @@ export default function SelectionBounds({
       if (!id) return;
       if (!selectedElements.includes(id)) return;
 
-      console.log(
-        "[SelectionBounds] element-ref-registrado para id seleccionado:",
-        id
-      );
+      slog("element-ref-registrado para id seleccionado:", id);
       setTransformTick((t) => t + 1);
     };
 
@@ -376,14 +384,30 @@ export default function SelectionBounds({
       }}
       onTransformStart={() => {
         window._resizeData = { isResizing: true };
+        try {
+          const tr = transformerRef.current;
+          const nodes = tr?.nodes?.() || [];
+          const n = nodes[0];
+          slog("TR start", {
+            selectedElements,
+            nodesCount: nodes.length,
+            firstNode: n ? {
+              id: typeof n.id === "function" ? n.id() : n.attrs?.id,
+              x: n.x?.(),
+              y: n.y?.(),
+              scaleX: n.scaleX?.(),
+              scaleY: n.scaleY?.(),
+              clientRect: n.getClientRect?.({ skipTransform: false }),
+            } : null,
+          });
+        } catch { }
       }}
       onTransform={(e) => {
         if (!onTransform || !transformerRef.current) return;
-
-        const node = e.target;
-        if (!node || !node.getStage || !node.getStage()) return;
-        if (typeof node.x !== "function" || typeof node.y !== "function")
-          return;
+        const tr = transformerRef.current;
+        const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
+        const node = nodes[0]; // ✅ el nodo transformado real (cuando hay 1)
+        if (!node) return;
 
         try {
           const transformData = {
@@ -430,6 +454,15 @@ export default function SelectionBounds({
           }
 
           onTransform(transformData);
+
+          slog("TR live", {
+            id: (typeof node.id === "function" ? node.id() : node.attrs?.id) || null,
+            tipo: primerElemento?.tipo,
+            x: node.x?.(), y: node.y?.(),
+            sx: node.scaleX?.(), sy: node.scaleY?.(),
+            clientRect: node.getClientRect?.({ skipTransform: false }),
+            transformData,
+          });
         } catch (error) {
           console.warn("Error en onTransform:", error);
         }
@@ -501,14 +534,14 @@ export default function SelectionBounds({
                   obj.width != null
                     ? obj.width
                     : typeof n.width === "function"
-                    ? n.width()
-                    : 100;
+                      ? n.width()
+                      : 100;
                 const baseH =
                   obj.height != null
                     ? obj.height
                     : typeof n.height === "function"
-                    ? n.height()
-                    : 100;
+                      ? n.height()
+                      : 100;
 
                 upd.width = Math.abs(baseW * tScaleX);
                 upd.height = Math.abs(baseH * tScaleY);
@@ -542,10 +575,8 @@ export default function SelectionBounds({
           }
         }
 
-        const node = e.target;
-        if (!node || !node.getStage || !node.getStage()) return;
-        if (typeof node.x !== "function" || typeof node.y !== "function")
-          return;
+        const node = nodes[0]; // ✅ nodo real (single select)
+        if (!node) return;
 
         try {
           const finalData = {
@@ -637,6 +668,15 @@ export default function SelectionBounds({
           }
 
           onTransform(finalData);
+
+          slog("TR end", {
+            id: (typeof node.id === "function" ? node.id() : node.attrs?.id) || null,
+            tipo: primerElemento?.tipo,
+            x: node.x?.(), y: node.y?.(),
+            sx: node.scaleX?.(), sy: node.scaleY?.(),
+            clientRect: node.getClientRect?.({ skipTransform: false }),
+            finalData,
+          });
 
           if (transformerRef.current) {
             transformerRef.current.getLayer().listening(true);

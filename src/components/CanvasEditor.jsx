@@ -174,7 +174,15 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const registerRef = useCallback((id, node) => {
     elementRefs.current[id] = node;
     imperativeObjects.registerObject(id, node);
+
+    // ✅ Avisar a SelectionBounds que el ref está listo/actualizado
+    try {
+      window.dispatchEvent(
+        new CustomEvent("element-ref-registrado", { detail: { id } })
+      );
+    } catch { }
   }, [imperativeObjects]);
+
 
 
 
@@ -354,7 +362,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   useEffect(() => {
     const handler = (e) => {
       const nuevo = e.detail;
-      console.log("[Canvas] insertar-elemento recibido:", nuevo);
 
       const fallbackId =
         window._lastSeccionActivaId ||
@@ -362,7 +369,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         null;
 
       const targetSeccionId = seccionActivaId || fallbackId;
-      console.log("[Canvas] seccionActivaId:", seccionActivaId, "fallbackId:", fallbackId, "→ targetSeccionId:", targetSeccionId);
 
       if (!targetSeccionId) {
         alert("⚠️ No hay secciones aún. Creá una sección para insertar el elemento.");
@@ -373,7 +379,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
       setObjetos((prev) => {
         const next = [...prev, nuevoConSeccion];
-        console.log("[Canvas] Insertado tipo:", nuevoConSeccion.tipo, "id:", nuevoConSeccion.id, "objs:", prev.length, "→", next.length);
         return next;
       });
 
@@ -1305,16 +1310,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const detectarInterseccionLinea = useMemo(() => {
     return (lineObj, area, stage) => {
       try {
-        console.log("🔍 [DETECCIÓN LÍNEA] Analizando:", {
-          lineId: lineObj.id,
-          area,
-          lineObj: {
-            x: lineObj.x,
-            y: lineObj.y,
-            points: lineObj.points
-          }
-        });
-
         if (!lineObj || !area || !lineObj.points) return false;
 
         let points = lineObj.points;
@@ -1340,11 +1335,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         const endX = lineX + puntosLimpios[2];
         const endY = lineY + puntosLimpios[3];
 
-        console.log("📏 [DETECCIÓN LÍNEA] Coordenadas calculadas:", {
-          linePos: { x: lineX, y: lineY },
-          puntos: { startX, startY, endX, endY },
-          area
-        });
+
 
         // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
         const startDentro = (
@@ -1357,10 +1348,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           endY >= area.y && endY <= area.y + area.height
         );
 
-        console.log("🎯 [DETECCIÓN LÍNEA] Puntos dentro:", { startDentro, endDentro });
 
         if (startDentro || endDentro) {
-          console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por punto dentro");
           return true;
         }
 
@@ -1370,18 +1359,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           area.x, area.y, area.x + area.width, area.y + area.height
         );
 
-        console.log("🔄 [DETECCIÓN LÍNEA] ¿Intersecta con área?", intersecta);
 
         if (intersecta) {
-          console.log("✅ [DETECCIÓN LÍNEA] Línea seleccionada por intersección");
           return true;
         }
 
-        console.log("❌ [DETECCIÓN LÍNEA] Línea NO seleccionada");
         return false;
 
       } catch (error) {
-        console.error("❌ [DETECCIÓN LÍNEA] Error:", error);
         return false;
       }
     };
@@ -1559,7 +1544,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   key={`orden-${seccion.id}`}
                   className="absolute flex flex-col gap-2"
                   style={{
-                    top: offsetY * zoom + 50,
+                    top: offsetY + 20,
                     right: -150,
                     zIndex: 25,
                   }}
@@ -1583,29 +1568,29 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esPrimera ? 'Ya es la primera sección' : 'Subir sección'}
                   >
-                    ↑ Subir
+                    ↑ Subir sección
                   </button>
 
                   {/* Botón Guardar como plantilla */}
                   {!loadingClaims && esAdmin && (
-                  <button
-                    onClick={() =>
-                      guardarSeccionComoPlantilla({
-                        seccionId: seccion.id,
-                        secciones,
-                        objetos,
-                        refrescarPlantillasDeSeccion,
-                      })
-                    }
-                    disabled={estaAnimando}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 shadow-md hover:shadow-lg'
-                      } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
-                    title="Guardar esta sección como plantilla"
-                  >
-                    💾 Plantilla
-                  </button>
+                    <button
+                      onClick={() =>
+                        guardarSeccionComoPlantilla({
+                          seccionId: seccion.id,
+                          secciones,
+                          objetos,
+                          refrescarPlantillasDeSeccion,
+                        })
+                      }
+                      disabled={estaAnimando}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 shadow-md hover:shadow-lg'
+                        } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
+                      title="Guardar esta sección como plantilla"
+                    >
+                      💾 Plantilla
+                    </button>
                   )}
 
 
@@ -1647,7 +1632,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title="Borrar esta sección y todos sus elementos"
                   >
-                    🗑️ Borrar
+                    🗑️ Borrar sección
                   </button>
 
 
@@ -1670,7 +1655,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esUltima ? 'Ya es la última sección' : 'Bajar sección'}
                   >
-                    ↓ Bajar
+                    ↓ Bajar sección
                   </button>
 
                   {/* Botón Añadir sección */}
@@ -1709,11 +1694,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
               onMouseDown={(e) => {
-                console.log("🖱️ [STAGE] Mouse down:", {
-                  target: e.target?.getClassName ? e.target.getClassName() : 'unknown',
-                  shiftKey: e.evt?.shiftKey,
-                  seleccionActual: elementosSeleccionados
-                });
                 const stage = e.target.getStage();
                 if (!stage) return;
 
@@ -1874,11 +1854,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       box.y + box.height >= areaSeleccion.y &&
                       box.y <= areaSeleccion.y + areaSeleccion.height
                     );
-                    if (intersecta) {
-                      console.log(`✅ [SELECCIÓN ÁREA] Elemento ${obj.id} intersecta con área`);
-                    }
 
-                    return intersecta;
                   } catch (error) {
                     console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
 
@@ -2545,11 +2521,25 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   updatedElement.scaleX = 1;
                                   updatedElement.scaleY = 1;
                                 } else {
-                                  if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
-                                  if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
-                                  if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
-                                  updatedElement.scaleX = 1;
-                                  updatedElement.scaleY = 1;
+                                  // ✅ Caso especial: COUNTDOWN (evita resize errático por recentrado)
+                                  // ✅ COUNTDOWN: NO tocar width/chipWidth durante preview (evita “doble resize”)
+                                  if (elemento.tipo === "countdown") {
+                                    // opcional: solo guardar rotación si querés que rote en vivo
+                                    updatedElement.rotation = newAttrs.rotation || elemento.rotation || 0;
+
+                                    // (si querés ver el targetW en consola sin ensuciar)
+                                    // if (window.DEBUG_RESIZE) console.log("[CE] preview countdown", newAttrs.width);
+
+                                    nuevos[objIndex] = updatedElement;
+                                    return nuevos;
+                                  } else {
+
+                                    if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
+                                    if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
+                                    if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
+                                    updatedElement.scaleX = 1;
+                                    updatedElement.scaleY = 1;
+                                  }
                                 }
 
                                 nuevos[objIndex] = updatedElement;
@@ -2572,22 +2562,52 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                               // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
                               const objOriginal = objetos[objIndex];
-                              const finalAttrs = {
+                              let finalAttrs = {
                                 ...cleanAttrs,
                                 y: convertirAbsARel(cleanAttrs.y, objOriginal.seccionId, seccionesOrdenadas),
                                 fromTransform: true
                               };
 
+                              // ✅ Caso especial: COUNTDOWN (persistir chipWidth según width final)
+                              if (objOriginal.tipo === "countdown" && cleanAttrs.width != null) {
+                                const n = 4;
+                                const gap = objOriginal.gap ?? 8;
+                                const paddingX = objOriginal.paddingX ?? 8;
+                                const targetW = Math.max(120, cleanAttrs.width);
+                                const chipWTotal = (targetW - gap * (n - 1)) / n;
+                                const nextChipWidth = Math.max(10, Math.round(chipWTotal - paddingX * 2));
+
+                                finalAttrs = {
+                                  ...finalAttrs,
+                                  width: targetW,
+                                  chipWidth: nextChipWidth,
+                                  scaleX: 1,
+                                  scaleY: 1,
+                                };
+                              }
+
+                              // ✅ offsetY solo para debug (evita ReferenceError)
+                              let offsetY = 0;
+                              try {
+                                const idx = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
+                                const safe = idx >= 0 ? idx : 0;
+                                // Nota: en tu código lo llamás a veces con 2 params, a veces con 3.
+                                // Acá usamos 3, consistente con otras partes del archivo.
+                                offsetY = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
+                              } catch {
+                                offsetY = 0;
+                              }
 
                               console.log("🔧 Convirtiendo coordenadas:", {
                                 yAbsoluta: cleanAttrs.y,
-                                offsetY: offsetY,
+                                offsetY,
                                 yRelativa: finalAttrs.y
                               });
 
-                              setTimeout(() => {
+                              requestAnimationFrame(() => {
                                 actualizarObjeto(objIndex, finalAttrs);
-                              }, 50);
+                              });
+
                             }
                           }
                         }

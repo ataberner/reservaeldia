@@ -17,6 +17,18 @@ function fechaStrToISO(str) {
   return d.toISOString();
 }
 
+// ✅ Calcular ancho inicial real del countdown según defaults + preset
+function calcCountdownInitialWidth(presetProps = {}) {
+  const n = 4; // d, h, m, s
+  const gap = presetProps.gap ?? 8;
+  const paddingX = presetProps.paddingX ?? 8;
+  const chipWidth = presetProps.chipWidth ?? 46;
+  const chipW = chipWidth + paddingX * 2;
+  const totalW = n * chipW + gap * (n - 1);
+  return Math.max(120, Math.round(totalW));
+}
+
+
 export default function MiniToolbarTabContador() {
   // valor inicial: +30 días, formateado como "YYYY-MM-DDTHH:mm" (misma lógica)
   const ahoraMas30d = (() => {
@@ -55,13 +67,45 @@ export default function MiniToolbarTabContador() {
                     alert("⚠️ La fecha/hora no es válida. Elegí una fecha.");
                     return;
                   }
+
+                  const rawPresetProps = p?.props || {};
+                  // ✅ No permitir que el preset pise geometría/fecha/tipo/id
+                  const {
+                    x: _px,
+                    y: _py,
+                    width: _pw,
+                    height: _ph,
+                    fechaObjetivo: _pFecha,
+                    fechaISO: _pFechaISO,
+                    targetISO: _pTargetISO,
+                    tipo: _ptipo,
+                    id: _pid,
+                    ...presetPropsSafe
+                  } = rawPresetProps;
+
+                  const width = calcCountdownInitialWidth(rawPresetProps);
+                  const height = 90;
+                  const anchoBase = 800;
+                  const x = (anchoBase - width) / 2;
+                  const y = 140;
+
                   window.dispatchEvent(new CustomEvent("insertar-elemento", {
                     detail: {
                       id: `count-${Date.now().toString(36)}`,
                       tipo: "countdown",
-                      x: 100, y: 140, width: 600, height: 90,
-                      fechaObjetivo: iso, fechaISO: iso, targetISO: iso,
-                      ...(p.props),
+                      x, y, width, height,
+                      rotation: 0,
+                      scaleX: 1,
+                      scaleY: 1,
+
+                      // ✅ usar solo el campo que lee CountdownKonva
+                      fechaObjetivo: iso,
+
+                      // (si querés conservar compatibilidad, podés dejarlos, pero no es necesario)
+                      // fechaISO: iso,
+                      // targetISO: iso,
+
+                      ...presetPropsSafe,
                       presetId: p.id,
                     }
                   }));

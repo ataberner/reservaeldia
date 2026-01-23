@@ -211,22 +211,51 @@ export default function DashboardSidebar({
 
         const id = `count-${Date.now().toString(36)}`;
         const anchoBase = 800;
-        const width = 600;
         const height = 90;
-        const x = (anchoBase - width) / 2;
         const y = 140;
+
+        // ✅ Calcular ancho real según defaults del CountdownKonva + preset
+        // Defaults CountdownKonva:
+        // chipWidth=46, paddingX=8, gap=8, n=4
+        const presetProps = (preset && preset.props) ? preset.props : {};
+        const n = 4;
+        const gap = presetProps.gap ?? 8;
+        const paddingX = presetProps.paddingX ?? 8;
+        const chipWidth = presetProps.chipWidth ?? 46;
+
+        const chipW = chipWidth + paddingX * 2;
+        const totalW = n * chipW + gap * (n - 1);
+        const width = Math.max(120, Math.round(totalW));
+        const x = (anchoBase - width) / 2;
+
+        const rawPresetProps = (preset && preset.props) ? preset.props : {};
+        // ✅ No permitir que el preset pise geometría/fecha
+        const {
+            x: _px,
+            y: _py,
+            width: _pw,
+            height: _ph,
+            fechaObjetivo: _pFecha,
+            targetISO: _pTargetISO,
+            tipo: _ptipo,
+            id: _pid,
+            ...presetPropsSafe
+        } = rawPresetProps;
+        // 🧪 Marker único para verificar qué dispatch llega a CanvasEditor
+        const marker = `sidebar-countdown-${Date.now()}`;
+        console.log("[Sidebar] dispatch insertar-elemento", { marker, id, x, y, width, height });
 
         window.dispatchEvent(new CustomEvent("insertar-elemento", {
             detail: {
+                marker,
                 id,
-                tipo: "countdown",          // ✅ unificamos tipo
+                tipo: "countdown",
                 x, y, width, height,
                 rotation: 0,
                 scaleX: 1,
                 scaleY: 1,
-
-                fechaObjetivo: targetISO,   // ✅ nombre que usa CountdownKonva
-                ...((preset && preset.props) || {}),
+                fechaObjetivo: targetISO,
+                ...presetPropsSafe,
                 presetId: preset?.id,
             }
         }));

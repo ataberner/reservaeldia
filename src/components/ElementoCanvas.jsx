@@ -42,11 +42,6 @@ export default function ElementoCanvas({
 
   const handleRef = useCallback((node) => {
     if (node) {
-      console.log("[ElementoCanvas] handleRef llamado", {
-        id: obj.id,
-        tipo: obj.tipo,
-        tieneNode: true,
-      });
     }
 
     if (node && registerRef) {
@@ -491,23 +486,7 @@ export default function ElementoCanvas({
     };
 
     // 🔍 Debug: información completa de posición y centrado
-    console.log("📐 [Konva Text Position]", {
-      objId: obj.id,
-      originalX: obj.x,
-      originalY: obj.y,
-      validX,
-      validY,
-      fontFamily,
-      fontSize: validFontSize,
-      textWidth,
-      textHeight: textHeight.toFixed(2),
-      textTop: position.textTop.toFixed(2),
-      baseline: position.baseline.toFixed(2),
-      ascent: position.ascent.toFixed(2),
-      descent: position.descent.toFixed(2),
-      konvaNodeY: textNodeRef.current?.y() ?? null,
-      konvaAbsoluteY: textNodeRef.current?.getAbsolutePosition?.().y ?? null,
-    });
+   
 
     // ⚠️ Warning si hay valores inválidos
     if (obj.x !== validX || obj.y !== validY || obj.fontSize !== validFontSize) {

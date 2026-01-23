@@ -73,6 +73,7 @@ export default function Dashboard() {
   const toggleZoom = () => {
     setZoom((prev) => (prev === 1 ? 0.8 : 1));
   };
+  
 
   const generarVistaPrevia = async () => {
     try {

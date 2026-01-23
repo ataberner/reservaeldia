@@ -108,47 +108,42 @@ export default function CountdownKonva({
   const contentOffsetY = (containerH - chipH) / 2;
 
 
-  const startX = (containerW - totalChipsW) / 2;
+  // ✅ Evitar "saltos" por recentrado durante resize:
+  // con chipWidth ajustado desde CanvasEditor, el contenido ya llena el ancho.
+  const startX = 0;
+
+  const DEBUG_CD = true;
 
   useEffect(() => {
-    if (!DEBUG_COUNTDOWN) return;
+    if (!DEBUG_CD) return;
 
-    // Medida real del nodo en Konva (incluye lo dibujado)
     const node = rootRef.current;
-    const clientRect = node ? node.getClientRect({ skipShadow: true, skipStroke: false }) : null;
+    const r = node ? node.getClientRect({ skipShadow: true, skipStroke: true }) : null;
 
-    dlog("render", {
-      id: obj.id,
-      pos: { x: obj.x, y: obj.y, r: obj.rotation },
-      model: {
-        w: obj.width,
-        h: obj.height,
-        scaleX: obj.scaleX,
-        scaleY: obj.scaleY,
-      },
-      computed: {
-        chipW,
-        chipH,
-        totalChipsW,
-        containerW,
-        containerH,
-        contentOffsetY,
-        gap,
-        paddingX,
-        paddingY,
-        valueSize,
-        labelSize,
-        showLabels,
-      },
-      clientRect, // 👈 el dato clave
-    });
+    // 1 línea, todo “clave”
+    console.log(
+      `[CD] ${obj.id}`,
+      `model(w=${(obj.width ?? "∅")},h=${(obj.height ?? "∅")},sx=${(obj.scaleX ?? 1).toFixed?.(3) ?? obj.scaleX},sy=${(obj.scaleY ?? 1).toFixed?.(3) ?? obj.scaleY})`,
+      `chips(n=${parts.length},chipW=${chipW.toFixed(1)},chipH=${chipH.toFixed(1)},totalW=${totalChipsW.toFixed(1)})`,
+      `container(W=${containerW.toFixed(1)},H=${containerH.toFixed(1)},startX=${startX.toFixed(1)})`,
+      r ? `rect(x=${r.x.toFixed(1)},y=${r.y.toFixed(1)},w=${r.width.toFixed(1)},h=${r.height.toFixed(1)})` : "rect(null)"
+    );
   }, [
     obj.id,
-    obj.x, obj.y, obj.rotation,
-    obj.width, obj.height, obj.scaleX, obj.scaleY,
-    chipW, chipH, totalChipsW, containerW, containerH, contentOffsetY,
-    gap, paddingX, paddingY, valueSize, labelSize, showLabels
+    tick,
+    obj.width,
+    obj.height,
+    obj.scaleX,
+    obj.scaleY,
+    chipW,
+    chipH,
+    totalChipsW,
+    containerW,
+    containerH,
+    startX,
+    parts.length,
   ]);
+
 
 
   // 6) Handlers de drag
@@ -241,6 +236,7 @@ export default function CountdownKonva({
     <Group
       {...commonProps}
       ref={setRefs}
+      id={obj.id}
       rotation={obj.rotation || 0}
       scaleX={obj.scaleX || 1}
       scaleY={obj.scaleY || 1}

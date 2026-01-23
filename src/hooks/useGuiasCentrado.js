@@ -11,11 +11,19 @@ export default function useGuiasCentrado({
     anchoCanvas = 800,
     altoCanvas = 800,
     magnetRadius = 16,       // distancia para activar el snap
+    elementMagnetRadius = null,   // null => magnetRadius
+    sectionMagnetRadius = null,   // null => magnetRadius
     sectionShowRadius = 18,  // distancia para MOSTRAR las líneas de sección (puede ser = o > magnetRadius)
+    sectionPriorityBias = 4,      // ventaja extra para que gane sección vs elementos
     snapStrength = 1,        // 1 = pegado exacto; 0.4-0.6 = tracción suave
     seccionesOrdenadas = []
 }) {
     const [guiaLineas, setGuiaLineas] = useState([]);
+
+
+    const effElementMagnetRadius = elementMagnetRadius ?? magnetRadius;
+    const effSectionMagnetRadius = sectionMagnetRadius ?? magnetRadius;
+
 
     // ---- Utilidades de secciones ----
     const calcularOffsetSeccion = useCallback((seccionId) => {
@@ -85,6 +93,28 @@ export default function useGuiasCentrado({
             ].sort((a, b) => a.dist - b.dist)[0];
             return opts.delta;
         }
+    };
+
+    // Misma heurística que deltaForGuide, pero devuelve distancia mínima
+    const distForGuide = (axis, guideValue, box) => {
+        if (axis === "x") {
+            const center = box.x + box.width / 2;
+            const left = box.x;
+            const right = box.x + box.width;
+            return Math.min(
+                Math.abs(center - guideValue),
+                Math.abs(left - guideValue),
+                Math.abs(right - guideValue)
+            );
+        }
+        const center = box.y + box.height / 2;
+        const top = box.y;
+        const bottom = box.y + box.height;
+        return Math.min(
+            Math.abs(center - guideValue),
+            Math.abs(top - guideValue),
+            Math.abs(bottom - guideValue)
+        );
     };
 
     // ---- Candidatos de la MISMA sección (centros + bordes) ----
@@ -166,11 +196,8 @@ export default function useGuiasCentrado({
                     style: "solid",
                     points: [secCx, offY, secCx, offY + seccion.altura] // línea vertical solo dentro de la sección
                 });
-                // (opcional snap al centro de sección si querés)
-                if (distSecX <= magnetRadius) {
-                    const delta = deltaForGuide("x", secCx, selfBoxBefore);
-                    node.x(node.x() + delta * snapStrength);
-                }
+
+
             }
             if (distSecY <= sectionShowRadius) {
                 lines.push({
@@ -179,58 +206,85 @@ export default function useGuiasCentrado({
                     style: "solid",
                     points: [0, secCy, anchoCanvas, secCy] // la sección ocupa todo el ancho
                 });
-                if (distSecY <= magnetRadius) {
-                    const delta = deltaForGuide("y", secCy, selfBoxBefore);
-                    node.y(node.y() + delta * snapStrength);
-                }
+
             }
 
-            // 2) ELEMENTOS (MISMA SECCIÓN): elegimos mejor candidato por eje y, si hay snap, dibujamos reach punteada
+            // 2) ELEMENTOS (MISMA SECCIÓN): elegir mejor candidato por eje
             const elementGuides = buildSameSectionGuides(node, stage, objetos, elementRefs, idActual, seccion.id);
 
-            const nearX = elementGuides
+            const bestElX = elementGuides
                 .filter(g => g.axis === "x")
-                .map(g => ({ g, dist: Math.abs(selfCx - g.value) }))
+                .map(g => ({ g, dist: distForGuide("x", g.value, selfBoxBefore) }))
                 .sort((a, b) => a.dist - b.dist)[0];
 
-            const nearY = elementGuides
+            const bestElY = elementGuides
                 .filter(g => g.axis === "y")
-                .map(g => ({ g, dist: Math.abs(selfCy - g.value) }))
+                .map(g => ({ g, dist: distForGuide("y", g.value, selfBoxBefore) }))
                 .sort((a, b) => a.dist - b.dist)[0];
 
-            // aplicar snap sólo si está dentro del magnetRadius (para reducir ruido)
-            const trySnapAxis = (axis, near) => {
-                if (!near) return false;
-                if (near.dist > magnetRadius) return false;
-                const fresh = node.getClientRect({ relativeTo: stage });
-                const delta = deltaForGuide(axis, near.g.value, fresh);
-                if (axis === "x") node.x(node.x() + delta * snapStrength);
-                else node.y(node.y() + delta * snapStrength);
-                return true;
+            // Decidir qué guía “gana” por eje (sección vs elemento)
+            const decidirSnap = (secDistCenter, bestEl) => {
+                const secOk = secDistCenter <= effSectionMagnetRadius;
+                const elOk = !!bestEl && bestEl.dist <= effElementMagnetRadius;
+                if (!secOk && !elOk) return null;
+                if (secOk && !elOk) return { source: "seccion" };
+                if (!secOk && elOk) return { source: "elemento", near: bestEl };
+
+                // ambos aplican: la sección tiene ventaja (bias)
+                const elBeatsSection = (bestEl.dist + sectionPriorityBias) < secDistCenter;
+                return elBeatsSection
+                    ? { source: "elemento", near: bestEl }
+                    : { source: "seccion" };
             };
 
-            const snappedX = trySnapAxis("x", nearX);
-            const snappedY = trySnapAxis("y", nearY);
+            const decisionX = decidirSnap(distSecX, bestElX);
+            const decisionY = decidirSnap(distSecY, bestElY);
+
+
+            const applySnap = (axis, decision) => {
+                if (!decision) return { snapped: false };
+                const fresh = node.getClientRect({ relativeTo: stage });
+
+                if (decision.source === "seccion") {
+                    if (axis === "x") {
+                        const cx = fresh.x + fresh.width / 2;
+                        node.x(node.x() + (secCx - cx) * snapStrength);
+                    } else {
+                        const cy = fresh.y + fresh.height / 2;
+                        node.y(node.y() + (secCy - cy) * snapStrength);
+                    }
+                    return { snapped: true, source: "seccion" };
+                }
+
+                const delta = deltaForGuide(axis, decision.near.g.value, fresh);
+                if (axis === "x") node.x(node.x() + delta * snapStrength);
+                else node.y(node.y() + delta * snapStrength);
+                return { snapped: true, source: "elemento", near: decision.near };
+            };
+
+            const snapResX = applySnap("x", decisionX);
+            const snapResY = applySnap("y", decisionY);
 
             // Recalcular box luego del snap para dibujar reach exacta
             const selfBoxAfter = node.getClientRect({ relativeTo: stage });
 
-            if (snappedX && nearX?.g?.targetBox) {
+            if (snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
                 lines.push({
                     type: "reach-x",
                     priority: "elemento",
-                    style: "dashed", // 🔴 punteada
-                    points: reachVertical(nearX.g.value, selfBoxAfter, nearX.g.targetBox)
+                    style: "dashed",
+                    points: reachVertical(snapResX.near.g.value, selfBoxAfter, snapResX.near.g.targetBox)
                 });
             }
-            if (snappedY && nearY?.g?.targetBox) {
+            if (snapResY.snapped && snapResY.source === "elemento" && snapResY.near?.g?.targetBox) {
                 lines.push({
                     type: "reach-y",
                     priority: "elemento",
-                    style: "dashed", // 🔴 punteada
-                    points: reachHorizontal(nearY.g.value, selfBoxAfter, nearY.g.targetBox)
+                    style: "dashed",
+                    points: reachHorizontal(snapResY.near.g.value, selfBoxAfter, snapResY.near.g.targetBox)
                 });
             }
+
 
             setGuiaLineas(lines);
         } catch (e) {
@@ -240,7 +294,8 @@ export default function useGuiasCentrado({
         anchoCanvas, altoCanvas,
         magnetRadius, sectionShowRadius, snapStrength,
         seccionesOrdenadas,
-        obtenerSeccionElemento, calcularOffsetSeccion
+        obtenerSeccionElemento, calcularOffsetSeccion,
+        elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias
     ]);
 
     const limpiarGuias = useCallback(() => setGuiaLineas([]), []);

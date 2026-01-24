@@ -1,5 +1,5 @@
 // components/MiniToolbarTabContador.jsx
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { COUNTDOWN_PRESETS } from "@/config/countdownPresets";
 
@@ -28,22 +28,167 @@ function calcCountdownInitialWidth(presetProps = {}) {
   return Math.max(120, Math.round(totalW));
 }
 
-
 export default function MiniToolbarTabContador() {
   // valor inicial: +30 días, formateado como "YYYY-MM-DDTHH:mm" (misma lógica)
   const ahoraMas30d = (() => {
     const d = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
     const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate()
+    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   })();
 
   const [fechaEventoStr, setFechaEventoStr] = useState(ahoraMas30d);
 
+  // ✅ Estado del countdown seleccionado (si hay uno)
+  const [countdownSel, setCountdownSel] = useState(null);
+
+  // Lee selección desde los globals que ya expone CanvasEditor:
+  // window._elementosSeleccionados y window._objetosActuales
+  useEffect(() => {
+    const tick = () => {
+      try {
+        const ids = window._elementosSeleccionados || [];
+        const objs = window._objetosActuales || [];
+
+        if (!Array.isArray(ids) || !Array.isArray(objs) || ids.length !== 1) {
+          setCountdownSel(null);
+          return;
+        }
+
+        const obj = objs.find((o) => o.id === ids[0]);
+        if (!obj || obj.tipo !== "countdown") {
+          setCountdownSel(null);
+          return;
+        }
+
+        setCountdownSel(obj);
+      } catch (err) {
+        setCountdownSel(null);
+      }
+    };
+
+    tick();
+    const t = setInterval(tick, 200);
+    return () => clearInterval(t);
+  }, []);
+
+  const selectedUI = useMemo(() => {
+    if (!countdownSel) return null;
+    return {
+      id: countdownSel.id,
+      color: countdownSel.color ?? "#111827",            // números
+      labelColor: countdownSel.labelColor ?? "#6b7280",  // labels
+      boxBg: countdownSel.boxBg ?? "#ffffff",            // fondo chip
+      boxBorder: countdownSel.boxBorder ?? "#e5e7eb",    // borde chip
+      showLabels: !!countdownSel.showLabels,
+    };
+
+  }, [countdownSel]);
+
+  const patchSelectedCountdown = (cambios) => {
+    const id = selectedUI?.id;
+    if (!id) return;
+
+    window.dispatchEvent(
+      new CustomEvent("actualizar-elemento", {
+        detail: { id, cambios },
+      })
+    );
+  };
+
   return (
     <div className="flex flex-col gap-3">
+      {/* ✅ Edición rápida (solo si hay countdown seleccionado) */}
+      {selectedUI && (
+        <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/40">
+          <div className="text-xs font-semibold text-purple-800 mb-2">
+            Colores del countdown seleccionado
+          </div>
+
+
+          <label className="text-xs font-medium text-zinc-700 col-span-2">
+            Separación entre chips
+            <input
+              type="range"
+              min={0}
+              max={40}
+              step={1}
+              value={countdownSel.gap ?? 8}
+              onChange={(e) =>
+                patchSelectedCountdown({ gap: Number(e.target.value) })
+              }
+              className="mt-2 w-full"
+            />
+            <div className="mt-1 text-[11px] text-zinc-500">
+              Gap actual: {countdownSel.gap ?? 8}px
+            </div>
+          </label>
+
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs font-medium text-zinc-700">
+              Números
+              <input
+                type="color"
+                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
+                value={selectedUI.color}
+                onChange={(e) => patchSelectedCountdown({ color: e.target.value })}
+              />
+            </label>
+
+            <label className="text-xs font-medium text-zinc-700">
+              Etiquetas
+              <input
+                type="color"
+                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white disabled:opacity-50"
+                value={selectedUI.labelColor}
+                onChange={(e) => patchSelectedCountdown({ labelColor: e.target.value })}
+                disabled={!selectedUI.showLabels}
+                title={
+                  !selectedUI.showLabels
+                    ? "Este preset no muestra labels (showLabels=false)"
+                    : ""
+                }
+              />
+              {!selectedUI.showLabels && (
+                <div className="mt-1 text-[11px] text-zinc-600">
+                  Este preset no muestra labels, por eso está deshabilitado.
+                </div>
+              )}
+            </label>
+
+
+            <label className="text-xs font-medium text-zinc-700">
+              Fondo del chip
+              <input
+                type="color"
+                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
+                value={selectedUI.boxBg}
+                onChange={(e) => patchSelectedCountdown({ boxBg: e.target.value })}
+              />
+            </label>
+
+            <label className="text-xs font-medium text-zinc-700">
+              Borde del chip
+              <input
+                type="color"
+                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
+                value={selectedUI.boxBorder}
+                onChange={(e) => patchSelectedCountdown({ boxBorder: e.target.value })}
+              />
+            </label>
+
+
+          </div>
+        </div>
+      )}
+
       {/* Selector de fecha/hora */}
       <div className="p-3 rounded-xl border border-zinc-200">
-        <label className="text-xs font-medium text-zinc-700">Fecha y hora del evento</label>
+        <label className="text-xs font-medium text-zinc-700">
+          Fecha y hora del evento
+        </label>
         <input
           type="datetime-local"
           value={fechaEventoStr}
@@ -58,6 +203,7 @@ export default function MiniToolbarTabContador() {
         <div className="flex flex-col gap-3">
           {COUNTDOWN_PRESETS.map((p) => {
             const isoPreview = fechaStrToISO(fechaEventoStr) || new Date().toISOString();
+
             return (
               <button
                 key={p.id}
@@ -89,30 +235,33 @@ export default function MiniToolbarTabContador() {
                   const x = (anchoBase - width) / 2;
                   const y = 140;
 
-                  window.dispatchEvent(new CustomEvent("insertar-elemento", {
-                    detail: {
-                      id: `count-${Date.now().toString(36)}`,
-                      tipo: "countdown",
-                      x, y, width, height,
-                      rotation: 0,
-                      scaleX: 1,
-                      scaleY: 1,
+                  window.dispatchEvent(
+                    new CustomEvent("insertar-elemento", {
+                      detail: {
+                        id: `count-${Date.now().toString(36)}`,
+                        tipo: "countdown",
+                        x,
+                        y,
+                        width,
+                        height,
+                        rotation: 0,
+                        scaleX: 1,
+                        scaleY: 1,
 
-                      // ✅ usar solo el campo que lee CountdownKonva
-                      fechaObjetivo: iso,
+                        // ✅ usar solo el campo que lee CountdownKonva
+                        fechaObjetivo: iso,
 
-                      // (si querés conservar compatibilidad, podés dejarlos, pero no es necesario)
-                      // fechaISO: iso,
-                      // targetISO: iso,
-
-                      ...presetPropsSafe,
-                      presetId: p.id,
-                    }
-                  }));
+                        ...presetPropsSafe,
+                        presetId: p.id,
+                      },
+                    })
+                  );
                 }}
                 className="w-full group rounded-xl border border-zinc-200 hover:border-purple-300 hover:shadow-sm text-left flex flex-col px-2 py-3"
               >
-                <div className="text-sm font-semibold text-zinc-800 mb-2">{p.nombre}</div>
+                <div className="text-sm font-semibold text-zinc-800 mb-2">
+                  {p.nombre}
+                </div>
                 <div className="w-full">
                   <CountdownPreview targetISO={isoPreview} preset={p.props} size="sm" />
                 </div>

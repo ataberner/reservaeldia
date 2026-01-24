@@ -4,46 +4,39 @@ import { Group, Rect, Text } from "react-konva";
 import { getRemainingParts, fmt } from "./countdownUtils";
 import { calcularOffsetY } from "@/utils/layout";
 
-import {
-  startDragGrupalLider,
-  previewDragGrupal,
-  endDragGrupal,
-} from "@/drag/dragGrupal";
-import {
-  startDragIndividual,
-  previewDragIndividual,
-  endDragIndividual,
-} from "@/drag/dragIndividual";
+import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
+import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
 
+/**
+ * ✅ Comportamiento correcto:
+ * - Click simple: SOLO selecciona (0 movimiento)
+ * - Drag: SOLO si mantiene apretado + mueve más de THRESHOLD_PX
+ *
+ * ✅ Implementación pro:
+ * - El nodo está draggable=false siempre.
+ * - En mousedown/touchstart: empezamos un "press".
+ * - En mousemove/touchmove global: si supera umbral => habilitamos draggable y llamamos startDrag()
+ * - En mouseup/touchend global: si no llegó a umbral => no hubo drag; si hubo => cerramos y deshabilitamos.
+ */
 export default function CountdownKonva({
   obj,
-  registerRef,                 // (id, node) => void
+  registerRef,
   isSelected,
   seccionesOrdenadas,
   altoCanvas,
-  onSelect,                     // (id, e) => void
-  onChange,                     // (id, cambios) => void
-
-  // opcionales
-  onDragMovePersonalizado,      // (pos, id) => void
-  onDragEndPersonalizado,       // () => void
-  dragStartPos,                 // ref
-  hasDragged,                   // ref
+  onSelect,
+  onChange,
+  onDragMovePersonalizado,
+  onDragEndPersonalizado,
+  dragStartPos,
+  hasDragged,
 }) {
-
   const rootRef = useRef(null);
-  const DEBUG_COUNTDOWN = true; // ⬅️ ponelo en false cuando termines
 
-  const dlog = (...args) => {
-    if (!DEBUG_COUNTDOWN) return;
-    // agrupamos para que no ensucie tanto
-    console.log("[CD]", ...args);
-  };
-
-
-  // 1) Tick cada 1s (no re-render si estamos arrastrando)
+  // Tick cada 1s (no re-render si estamos arrastrando)
   const [tick, setTick] = useState(0);
   const draggingRef = useRef(false);
+
   useEffect(() => {
     const t = setInterval(() => {
       if (!draggingRef.current) setTick((n) => (n + 1) % 60);
@@ -51,24 +44,16 @@ export default function CountdownKonva({
     return () => clearInterval(t);
   }, []);
 
-  // 2) Registrar nodo raíz para SelectionBounds/guías
-  const handleRef = useCallback(
+  // Registrar nodo raíz
+  const setRefs = useCallback(
     (node) => {
+      rootRef.current = node;
       if (node && typeof registerRef === "function") registerRef(obj.id, node);
     },
     [obj.id, registerRef]
   );
 
-  // Combinar ref interno + registerRef para SelectionBounds/guías
-  const setRefs = useCallback(
-    (node) => {
-      rootRef.current = node;
-      handleRef(node);
-    },
-    [handleRef]
-  );
-
-  // 3) y absoluta = y relativa + offset de sección
+  // y absoluta = y relativa + offset de sección
   const yAbs = useMemo(() => {
     const idx = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
     const safe = idx >= 0 ? idx : 0;
@@ -76,16 +61,20 @@ export default function CountdownKonva({
     return (obj.y ?? 0) + off;
   }, [obj.y, obj.seccionId, seccionesOrdenadas, altoCanvas]);
 
-  // 4) Partes del tiempo
+  // Tiempo restante
   const state = useMemo(() => getRemainingParts(obj.fechaObjetivo), [obj.fechaObjetivo, tick]);
-  const parts = [
-    { key: "d", value: fmt(state.d, obj.padZero), label: "Días" },
-    { key: "h", value: fmt(state.h, obj.padZero), label: "Horas" },
-    { key: "m", value: fmt(state.m, obj.padZero), label: "Min" },
-    { key: "s", value: fmt(state.s, obj.padZero), label: "Seg" },
-  ];
 
-  // 5) Layout
+  const parts = useMemo(
+    () => [
+      { key: "d", value: fmt(state.d, obj.padZero), label: "Días" },
+      { key: "h", value: fmt(state.h, obj.padZero), label: "Horas" },
+      { key: "m", value: fmt(state.m, obj.padZero), label: "Min" },
+      { key: "s", value: fmt(state.s, obj.padZero), label: "Seg" },
+    ],
+    [state.d, state.h, state.m, state.s, obj.padZero]
+  );
+
+  // Layout
   const n = parts.length;
   const gap = obj.gap ?? 8;
   const paddingY = obj.paddingY ?? 6;
@@ -99,149 +88,280 @@ export default function CountdownKonva({
   const chipH = paddingY * 2 + valueSize + (showLabels ? labelSize : 0);
 
   const totalChipsW = n * chipW + gap * (n - 1);
-  const containerW = obj.width ?? totalChipsW;
-
-  // ✅ Si el usuario redimensiona, el alto tiene que reflejarse visualmente
+  const containerW = Math.max(obj.width ?? 0, totalChipsW);
   const containerH = Math.max(obj.height ?? chipH, chipH);
-
-  // ✅ centrado vertical: si el contenedor es más alto que el contenido real
   const contentOffsetY = (containerH - chipH) / 2;
-
-
-  // ✅ Evitar "saltos" por recentrado durante resize:
-  // con chipWidth ajustado desde CanvasEditor, el contenido ya llena el ancho.
   const startX = 0;
 
-  const DEBUG_CD = true;
+  // ---------------------------
+  // Drag gating (la clave)
+  // ---------------------------
+  const THRESHOLD_PX = 10; // 10-14 suele ser ideal. Si querés 0 micro-jitter, subilo a 12/14.
 
-  useEffect(() => {
-    if (!DEBUG_CD) return;
+  const pressRef = useRef({
+    active: false,
+    movedEnough: false,
+    startedDrag: false,
+    startClientX: 0,
+    startClientY: 0,
+    startNodeX: 0,
+    startNodeY: 0,
+    // para ignorar click si se convirtió en drag
+    suppressClick: false,
+  });
 
-    const node = rootRef.current;
-    const r = node ? node.getClientRect({ skipShadow: true, skipStroke: true }) : null;
+  const cleanupGlobalRef = useRef(null);
 
-    // 1 línea, todo “clave”
-    console.log(
-      `[CD] ${obj.id}`,
-      `model(w=${(obj.width ?? "∅")},h=${(obj.height ?? "∅")},sx=${(obj.scaleX ?? 1).toFixed?.(3) ?? obj.scaleX},sy=${(obj.scaleY ?? 1).toFixed?.(3) ?? obj.scaleY})`,
-      `chips(n=${parts.length},chipW=${chipW.toFixed(1)},chipH=${chipH.toFixed(1)},totalW=${totalChipsW.toFixed(1)})`,
-      `container(W=${containerW.toFixed(1)},H=${containerH.toFixed(1)},startX=${startX.toFixed(1)})`,
-      r ? `rect(x=${r.x.toFixed(1)},y=${r.y.toFixed(1)},w=${r.width.toFixed(1)},h=${r.height.toFixed(1)})` : "rect(null)"
-    );
-  }, [
-    obj.id,
-    tick,
-    obj.width,
-    obj.height,
-    obj.scaleX,
-    obj.scaleY,
-    chipW,
-    chipH,
-    totalChipsW,
-    containerW,
-    containerH,
-    startX,
-    parts.length,
-  ]);
+  const cleanupGlobal = useCallback(() => {
+    if (cleanupGlobalRef.current) {
+      try { cleanupGlobalRef.current(); } catch {}
+      cleanupGlobalRef.current = null;
+    }
+  }, []);
 
+  const attachGlobalListeners = useCallback(() => {
+    cleanupGlobal();
 
+    const onMove = (ev) => {
+      if (!pressRef.current.active) return;
+      if (pressRef.current.startedDrag) return;
 
-  // 6) Handlers de drag
-  const commonProps = useMemo(
-    () => ({
-      x: obj.x ?? 0,
-      y: yAbs,
-      draggable: true,
-      listening: true,
-      ref: handleRef,
+      const cx = ev.clientX ?? (ev.touches && ev.touches[0]?.clientX) ?? null;
+      const cy = ev.clientY ?? (ev.touches && ev.touches[0]?.clientY) ?? null;
+      if (cx == null || cy == null) return;
 
-      onMouseDown: (e) => {
-        e.cancelBubble = true;
+      const dx = cx - pressRef.current.startClientX;
+      const dy = cy - pressRef.current.startClientY;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < THRESHOLD_PX) return;
+
+      // ✅ Se convirtió en drag intencional
+      pressRef.current.movedEnough = true;
+      pressRef.current.startedDrag = true;
+      pressRef.current.suppressClick = true;
+
+      const node = rootRef.current;
+      if (!node) return;
+
+      // Asegurar que empiece desde la posición exacta del press (evita saltitos)
+      try {
+        node.position({ x: pressRef.current.startNodeX, y: pressRef.current.startNodeY });
+        node.getLayer()?.batchDraw();
+      } catch {}
+
+      // Habilitar drag solo ahora
+      try { node.draggable(true); } catch {}
+
+      // Bloquear re-render por tick durante drag
+      draggingRef.current = true;
+      window._isDragging = true;
+      if (hasDragged?.current != null) hasDragged.current = true;
+
+      // Necesario para que tu motor individual tenga un startPos coherente incluso si CanvasEditor no lo setea
+      try {
+        const stage = node.getStage();
+        const p = stage?.getPointerPosition?.();
+        if (dragStartPos && p) dragStartPos.current = { x: p.x, y: p.y };
+      } catch {}
+
+      // Iniciar drag nativo de Konva (esto dispara dragstart/dragmove/dragend)
+      try { node.startDrag(); } catch {}
+    };
+
+    const onUp = () => {
+      // Siempre cerramos el press
+      pressRef.current.active = false;
+
+      const node = rootRef.current;
+      if (!node) {
+        cleanupGlobal();
+        return;
+      }
+
+      // Si NO se convirtió en drag, garantizamos 0 movimiento
+      if (!pressRef.current.movedEnough) {
+        try {
+          node.position({ x: pressRef.current.startNodeX, y: pressRef.current.startNodeY });
+          node.getLayer()?.batchDraw();
+        } catch {}
+        // click permitido
+      } else {
+        // Si fue drag, aseguramos que termine
+        try {
+          if (node.isDragging?.()) node.stopDrag();
+        } catch {}
+      }
+
+      // Reset flags
+      pressRef.current.movedEnough = false;
+      pressRef.current.startedDrag = false;
+
+      // Volver a modo "no draggable" siempre (clave para que el click nunca dispare drag)
+      try { node.draggable(false); } catch {}
+
+      draggingRef.current = false;
+      window._isDragging = false;
+
+      // Permitimos clicks futuros
+      setTimeout(() => {
+        pressRef.current.suppressClick = false;
         if (hasDragged?.current != null) hasDragged.current = false;
-      },
+      }, 0);
 
-      onClick: (e) => {
-        e.cancelBubble = true;
-        onSelect?.(obj.id, e);
-      },
+      cleanupGlobal();
+    };
 
-      onDragStart: (e) => {
-        draggingRef.current = true;
-        window._isDragging = true;
-        if (hasDragged?.current != null) hasDragged.current = true;
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("touchmove", onMove, { capture: true, passive: true });
+    window.addEventListener("mouseup", onUp, true);
+    window.addEventListener("touchend", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    window.addEventListener("blur", onUp, true);
 
-        // Cachear el grupo para acelerar drag
-        try {
-          const node = e.target;         // ← será el Group (nodo draggable)
-          node.cache({ pixelRatio: 1 });
-          node.drawHitFromCache();
-          node.getLayer()?.batchDraw();
-        } catch { }
+    cleanupGlobalRef.current = () => {
+      window.removeEventListener("mousemove", onMove, true);
+      window.removeEventListener("touchmove", onMove, true);
+      window.removeEventListener("mouseup", onUp, true);
+      window.removeEventListener("touchend", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("blur", onUp, true);
+    };
+  }, [THRESHOLD_PX, cleanupGlobal, dragStartPos, hasDragged]);
 
-        const esGrupal = startDragGrupalLider(e, obj);
-        if (!esGrupal) startDragIndividual(e, dragStartPos);
-      },
+  // ---------------------------
+  // Handlers del nodo
+  // ---------------------------
+  const handleDown = useCallback(
+    (e) => {
+      e.cancelBubble = true;
 
-      onDragMove: (e) => {
-        if (window._grupoLider) {
-          if (obj.id === window._grupoLider) previewDragGrupal(e, obj, onChange);
-          return;
-        }
-        // Individual: no tocar estado, preview liviano
-        previewDragIndividual(e, obj, (pos) => {
-          onDragMovePersonalizado?.(pos, obj.id);
-        });
-      },
+      const node = e.currentTarget;
+      const ev = e.evt;
 
-      onDragEnd: (e) => {
-        draggingRef.current = false;
-        window._isDragging = false;
+      // Iniciar press
+      pressRef.current.active = true;
+      pressRef.current.movedEnough = false;
+      pressRef.current.startedDrag = false;
+      pressRef.current.suppressClick = false;
 
-        // Limpiar cache
-        try {
-          const node = e.target;
-          node.clearCache();
-          node.getLayer()?.batchDraw();
-        } catch { }
+      // Guardar posición inicial del nodo
+      pressRef.current.startNodeX = node.x();
+      pressRef.current.startNodeY = node.y();
 
-        // Cerrar drag grupal primero
-        const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => { });
-        if (fueGrupal) {
-          onDragEndPersonalizado?.();
-          return;
-        }
-        // Cerrar drag individual
-        const node = e.target;
-        endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
-      },
-    }),
-    [
-      obj.id,
-      obj.x,
-      yAbs,
-      handleRef,
-      onSelect,
-      onChange,
-      onDragMovePersonalizado,
-      onDragEndPersonalizado,
-      dragStartPos,
-      hasDragged,
-    ]
+      // Guardar punto inicial del puntero (en px reales)
+      const cx = ev?.clientX ?? (ev?.touches && ev.touches[0]?.clientX) ?? 0;
+      const cy = ev?.clientY ?? (ev?.touches && ev.touches[0]?.clientY) ?? 0;
+      pressRef.current.startClientX = cx;
+      pressRef.current.startClientY = cy;
+
+      // Por defecto NO draggable en press (clave)
+      try { node.draggable(false); } catch {}
+
+      if (hasDragged?.current != null) hasDragged.current = false;
+
+      attachGlobalListeners();
+    },
+    [attachGlobalListeners, hasDragged]
   );
 
+  const handleClick = useCallback(
+    (e) => {
+      e.cancelBubble = true;
 
-  // 7) Render (dejamos UN hijo con listening=true para hit)
+      // Si este click se convirtió en drag, no seleccionar “de vuelta”
+      if (pressRef.current.suppressClick) return;
+
+      onSelect?.(obj.id, e);
+    },
+    [obj.id, onSelect]
+  );
+
+  // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
+  const handleDragStart = useCallback(
+    (e) => {
+      // Arranque de tu lógica grupal/individual
+      const esGrupal = startDragGrupalLider(e, obj);
+      if (!esGrupal) startDragIndividual(e, dragStartPos);
+    },
+    [obj, dragStartPos]
+  );
+
+  const handleDragMove = useCallback(
+    (e) => {
+      if (window._grupoLider) {
+        if (obj.id === window._grupoLider) previewDragGrupal(e, obj, onChange);
+        return;
+      }
+      previewDragIndividual(e, obj, (pos) => {
+        onDragMovePersonalizado?.(pos, obj.id);
+      });
+    },
+    [obj, onChange, onDragMovePersonalizado]
+  );
+
+  const handleDragEnd = useCallback(
+    (e) => {
+      const node = e.currentTarget;
+
+      // Commit final
+      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});
+      if (fueGrupal) {
+        onDragEndPersonalizado?.();
+      } else {
+        endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+      }
+
+      // Volver a no-draggable (clave)
+      try { node.draggable(false); } catch {}
+
+      draggingRef.current = false;
+      window._isDragging = false;
+
+      // Limpieza del press
+      pressRef.current.active = false;
+      pressRef.current.movedEnough = false;
+      pressRef.current.startedDrag = false;
+
+      // permitir click futuro
+      setTimeout(() => {
+        pressRef.current.suppressClick = false;
+        if (hasDragged?.current != null) hasDragged.current = false;
+      }, 0);
+
+      cleanupGlobal();
+    },
+    [obj, onChange, hasDragged, onDragEndPersonalizado, cleanupGlobal]
+  );
+
+  // Cleanup global por si el componente se desmonta en pleno press
+  useEffect(() => cleanupGlobal, [cleanupGlobal]);
+
   return (
-
     <Group
-      {...commonProps}
       ref={setRefs}
       id={obj.id}
+      x={obj.x ?? 0}
+      y={yAbs}
       rotation={obj.rotation || 0}
       scaleX={obj.scaleX || 1}
       scaleY={obj.scaleY || 1}
+
+      // ✅ SIEMPRE false: el drag se habilita imperativamente solo si hubo intención
+      draggable={false}
+      listening={true}
+
+      onMouseDown={handleDown}
+      onTouchStart={handleDown}
+
+      onClick={handleClick}
+      onTap={handleClick}
+
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
     >
-      {/* Fondo del bloque: DEBE participar del hit */}
+      {/* Hitbox */}
       <Rect
         width={containerW}
         height={containerH}
@@ -249,12 +369,10 @@ export default function CountdownKonva({
         stroke={isSelected ? "#773dbe" : "transparent"}
         strokeWidth={isSelected ? 2 : 0}
         cornerRadius={8}
-        // 👇 importante: dejarlo en true (o quitar la prop) para que haya hit
         listening={true}
         perfectDrawEnabled={false}
       />
 
-      {/* Contenido */}
       {!state.invalid && !state.ended && (
         <Group listening={false}>
           {parts.map((it, i) => {
@@ -263,7 +381,6 @@ export default function CountdownKonva({
 
             return (
               <Group key={it.key} x={x} y={contentOffsetY} listening={false}>
-                {/* Chip */}
                 {obj.layout !== "minimal" && (
                   <Rect
                     width={chipW}
@@ -279,7 +396,6 @@ export default function CountdownKonva({
                   />
                 )}
 
-                {/* Valor */}
                 <Text
                   text={it.value}
                   fill={obj.color || "#111827"}
@@ -294,7 +410,6 @@ export default function CountdownKonva({
                   perfectDrawEnabled={false}
                 />
 
-                {/* Etiqueta */}
                 {showLabels && (
                   <Text
                     text={it.label}
@@ -310,7 +425,6 @@ export default function CountdownKonva({
                   />
                 )}
 
-                {/* Separador textual */}
                 {!!sepText && i < parts.length - 1 && (
                   <Text
                     x={chipW + gap * 0.25}

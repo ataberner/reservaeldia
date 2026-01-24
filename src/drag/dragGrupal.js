@@ -117,6 +117,16 @@ export function startDragGrupalLider(e, obj) {
     }
     return true;
   }
+  // 🔍 DEBUG CLAVE: si NO se inicia drag grupal, NO deberíamos tocar estado global
+  console.log("🧪 [DRAG GRUPAL] NO-START snapshot", {
+    objId: obj.id,
+    seleccion,
+    grupoLider: window._grupoLider,
+    isDragging: window._isDragging,
+    skipIndividualEndSize: window._skipIndividualEnd ? window._skipIndividualEnd.size : null,
+    skipUntil: window._skipUntil,
+    dragStartPos: window._dragStartPos,
+  });
 
   console.log("❌ [DRAG GRUPAL] Condiciones no cumplidas para drag grupal");
   return false;
@@ -132,8 +142,12 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
   console.log("🏁 [DRAG GRUPAL] endDragGrupal llamado:", {
     objId: obj.id,
     esLider: obj.id === window._grupoLider,
-    grupoLider: window._grupoLider
+    grupoLider: window._grupoLider,
+    isDragging: window._isDragging,
+    skipIndividualEndSize: window._skipIndividualEnd ? window._skipIndividualEnd.size : null,
+    skipUntil: window._skipUntil,
   });
+
 
   // Solo procesa el líder
   if (window._grupoLider && obj.id === window._grupoLider) {
@@ -217,12 +231,20 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     const seleccion = window._elementosSeleccionados || [];
     seleccion.forEach((id) => {
       const elNode = window._elementRefs?.[id];
-      if (elNode) {
-        setTimeout(() => {
-          try { elNode.draggable(true); } catch { }
-        }, 24);
-      }
+      if (!elNode) return;
+
+      setTimeout(() => {
+        try {
+          const before = elNode.draggable();
+          elNode.draggable(true);
+          const after = elNode.draggable();
+          console.log("🧩 [DRAG GRUPAL] restore draggable", { id, before, after });
+        } catch (err) {
+          console.warn("❌ [DRAG GRUPAL] restore draggable error", { id, err });
+        }
+      }, 24);
     });
+
 
     window._grupoLider = null;
     window._dragStartPos = null;

@@ -63,6 +63,35 @@ export default function DashboardHeader({
     };
 
 
+
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const mq = window.matchMedia("(max-width: 640px)");
+        const update = () => setIsMobile(mq.matches);
+
+        update();
+        mq.addEventListener?.("change", update);
+        window.addEventListener("resize", update);
+
+        return () => {
+            mq.removeEventListener?.("change", update);
+            window.removeEventListener("resize", update);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isMobile) return;
+
+        // Si en mobile quedó en 50%, lo volvemos a 100%
+        if (zoom !== 1) {
+            toggleZoom?.();
+        }
+    }, [isMobile, zoom, toggleZoom]);
+
+
     useEffect(() => {
         const cargarDatosBorrador = async () => {
             if (!slugInvitacion) return;
@@ -295,19 +324,22 @@ export default function DashboardHeader({
                         ← Volver
                     </button>
 
-                    {/* Zoom */}
-                    <div className="relative group">
-                        <button
-                            onClick={toggleZoom}
-                            className="flex items-center gap-1 px-2 py-1 text-xs bg-white text-gray-800 border border-gray-300 rounded shadow hover:bg-gray-100 transition"
-                        >
-                            <span>{zoom === 1 ? "➖" : "➕"}</span>
-                            <span>{zoom === 1 ? "100%" : "50%"}</span>
-                        </button>
-                        <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
-                            {zoom === 1 ? "Alejar 50%" : "Acercar 100%"}
+                    {/* Zoom (solo desktop / tablet) */}
+                    {!isMobile && (
+                        <div className="relative group">
+                            <button
+                                onClick={toggleZoom}
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-white text-gray-800 border border-gray-300 rounded shadow hover:bg-gray-100 transition"
+                            >
+                                <span>{zoom === 1 ? "➖" : "➕"}</span>
+                                <span>{zoom === 1 ? "100%" : "50%"}</span>
+                            </button>
+                            <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
+                                {zoom === 1 ? "Alejar 50%" : "Acercar 100%"}
+                            </div>
                         </div>
-                    </div>
+                    )}
+
 
                     {/* Botón Deshacer */}
                     <div className="relative group">

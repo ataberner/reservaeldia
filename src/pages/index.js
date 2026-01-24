@@ -123,15 +123,15 @@ export default function Home() {
               <div className="d-flex gap-4">
                 {/* Item 2*/}
                 <div className="text-center">
-                  <Link href="invitaciones/Clasica/index.html">
-                    <img src="#" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy" />
+                  <Link href="#">
+                    <img src="/assets/img/celu2.png" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy" />
                     
                   </Link>
                 </div>
                 {/* Item 3 */}
                 <div className="text-center">
-                  <Link href="invitaciones/foto-premium/index.html">
-                    <img src="#" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy" />
+                  <Link href="#">
+                    <img src="/assets/img/celu3.png" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy" />
                     
                   </Link>
                 </div>

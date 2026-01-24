@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 
 
-Konva.dragDistance = 4;
+Konva.dragDistance = 24;
 
 // 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
@@ -139,6 +139,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
+  const [anchoContenedor, setAnchoContenedor] = useState(0);
+
 
 
   const {
@@ -450,6 +452,40 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, [seccionActivaId]);
 
 
+  // ✅ Permite que la toolbar actualice props del elemento seleccionado (texto, countdown, etc.)
+  useEffect(() => {
+    const handler = (e) => {
+      const { id, cambios } = e.detail || {};
+      if (!cambios) return;
+
+      const targetId = id || (window._elementosSeleccionados?.[0] ?? null);
+      if (!targetId) return;
+
+      setObjetos((prev) => {
+        const i = prev.findIndex((o) => o.id === targetId);
+        if (i === -1) return prev;
+
+        const next = [...prev];
+        next[i] = { ...next[i], ...cambios };
+        return next;
+      });
+
+      // ✅ NUEVO: avisar a SelectionBounds que reattach el transformer
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.dispatchEvent(
+            new CustomEvent("element-ref-registrado", {
+              detail: { id: targetId },
+            })
+          );
+        });
+      });
+    };
+
+    window.addEventListener("actualizar-elemento", handler);
+    return () => window.removeEventListener("actualizar-elemento", handler);
+  }, []);
+
 
 
 
@@ -589,6 +625,22 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       observer.disconnect();
     };
   }, [zoom, isMobilePortrait]);
+
+
+  useEffect(() => {
+    if (!contenedorRef.current) return;
+
+    const actualizar = () => {
+      setAnchoContenedor(contenedorRef.current.offsetWidth || 0);
+    };
+
+    actualizar();
+
+    const observer = new ResizeObserver(actualizar);
+    observer.observe(contenedorRef.current);
+
+    return () => observer.disconnect();
+  }, []);
 
 
 
@@ -1182,8 +1234,28 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+
+  // Mantengo tu lógica para escalaActiva (no tocamos el comportamiento general)
   const escalaActiva = zoom === 1 ? scale : zoom;
-  const escalaVisual = zoom === 1 ? scale : (zoom * 1.15);
+
+  // 🔥 ANCHO REAL DEL WRAPPER QUE VOS ESCALÁS
+  // (esto es lo que hoy tenés como width: 1000px o 1220px)
+  const wrapperBaseWidth = zoom === 0.8 ? 1220 : 1000;
+
+  // 🔥 ESCALA FIT SOLO PARA MOBILE PORTRAIT
+  const escalaFitMobilePortrait =
+    anchoContenedor > 0
+      ? (anchoContenedor / wrapperBaseWidth) * 1.2
+      : 1;
+
+
+  // ✅ ESTA ES LA CLAVE:
+  // - En mobile portrait: forzamos fit del wrapper real (1000/1220)
+  // - En el resto: tu comportamiento actual (no rompemos desktop)
+  const escalaVisual = isMobilePortrait
+    ? escalaFitMobilePortrait
+    : (zoom === 1 ? scale : (zoom * 1.15));
+
   const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
   // 1) Exponer info de secciones (top/height) para centrar correctamente
@@ -1199,6 +1271,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     };
     return () => { delete window.__getSeccionInfo; };
   }, [seccionesOrdenadas]);
+
+  
 
   // 2) Exponer un getter de objetos por id (fallback cuando hay elementos seleccionados)
   useEffect(() => {

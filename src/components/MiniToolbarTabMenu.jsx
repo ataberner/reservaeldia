@@ -1,11 +1,17 @@
 // components/MiniToolbarTabMenu.jsx
 import React from "react";
+import { useAuthClaims } from "@/hooks/useAuthClaims";
+
 
 export default function MiniToolbarTabMenu({
   onAbrirModalSeccion,
   onCrearPlantilla,
   onBorrarTodos,
 }) {
+  const { esAdmin, loadingClaims } = useAuthClaims();
+
+  if (loadingClaims) return null;
+
   return (
     <>
       <button
@@ -41,21 +47,24 @@ export default function MiniToolbarTabMenu({
         <span>Añadir RSVP</span>
       </button>
 
-      <button
-        onClick={onCrearPlantilla}
-        className="flex items-center gap-2 w-full bg-blue-100 hover:bg-blue-200 text-blue-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
-      >
-        <span className="text-lg">✨</span>
-        <span>Crear plantilla</span>
-      </button>
-
-      <button
-        onClick={onBorrarTodos}
-        className="flex items-center gap-2 w-full bg-red-100 hover:bg-red-200 text-red-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
-      >
-        <span className="text-lg">🗑️</span>
-        <span>Borrar todos los borradores</span>
-      </button>
+      {esAdmin && (
+        <button
+          onClick={onCrearPlantilla}
+          className="flex items-center gap-2 w-full bg-blue-100 hover:bg-blue-200 text-blue-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
+        >
+          <span className="text-lg">✨</span>
+          <span>Crear plantilla</span>
+        </button>
+      )}
+      {esAdmin && (
+        <button
+          onClick={onBorrarTodos}
+          className="flex items-center gap-2 w-full bg-red-100 hover:bg-red-200 text-red-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
+        >
+          <span className="text-lg">🗑️</span>
+          <span>Borrar todos los borradores</span>
+        </button>
+      )}
     </>
   );
 }

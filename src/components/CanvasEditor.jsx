@@ -102,6 +102,7 @@ function clearGlobalCursor(stageRef = null) {
 
 
 
+
 export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
@@ -155,6 +156,19 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setMostrarSelectorTamaño(false);
     setHoverId(null);
   }, []);
+
+
+  const touchGestureRef = useRef({
+    startX: 0,
+    startY: 0,
+    moved: false,
+    // guardamos el id de sección tocada (si aplica)
+    tappedSectionId: null,
+    clickedOnStage: false,
+  });
+
+  const TOUCH_MOVE_PX = 10;
+
 
 
 
@@ -349,6 +363,47 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   useEffect(() => {
+    const stage = stageRef.current?.getStage?.();
+    if (!stage) return;
+
+    const content = stage.content;
+    if (!content) return;
+
+    // ✅ Estado base: scroll vertical permitido sobre canvas vacío
+    const setScrollMode = () => {
+      content.style.touchAction = "pan-y";
+    };
+
+    // ✅ Durante drag: bloquear scroll para editar fino
+    const setEditMode = () => {
+      content.style.touchAction = "none";
+    };
+
+    // Inicial
+    setScrollMode();
+    content.style.WebkitUserSelect = "none";
+    content.style.WebkitTouchCallout = "none";
+
+    // Konva events
+    stage.on("dragstart", setEditMode);
+    stage.on("dragend", setScrollMode);
+
+    // Failsafes (si el drag termina raro)
+    stage.on("touchend", setScrollMode);
+    stage.on("pointerup", setScrollMode);
+    stage.on("mouseup", setScrollMode);
+
+    return () => {
+      stage.off("dragstart", setEditMode);
+      stage.off("dragend", setScrollMode);
+      stage.off("touchend", setScrollMode);
+      stage.off("pointerup", setScrollMode);
+      stage.off("mouseup", setScrollMode);
+    };
+  }, []);
+
+
+  useEffect(() => {
     const handler = (e) => {
       handleCrearSeccion(e.detail);
     };
@@ -479,15 +534,49 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
+  const isMobile = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 640px)").matches;
+  }, []);
+
+  const [isMobilePortrait, setIsMobilePortrait] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 640px) and (orientation: portrait)");
+
+    const update = () => setIsMobilePortrait(mq.matches);
+    update();
+
+    // Safari iOS a veces no dispara 'change' perfecto, por eso sumo resize/orientationchange
+    mq.addEventListener?.("change", update);
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+
+    return () => {
+      mq.removeEventListener?.("change", update);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
 
 
   useEffect(() => {
     if (!contenedorRef.current || zoom !== 1) return;
 
+    let raf = null;
+
     const actualizarEscala = () => {
-      const anchoContenedor = contenedorRef.current.offsetWidth;
-      const escala = anchoContenedor / 800;
-      setScale(escala);
+      if (!contenedorRef.current) return;
+
+      // medimos en el próximo frame para evitar valores intermedios (iOS)
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const anchoContenedor = contenedorRef.current.offsetWidth;
+        const base = isMobilePortrait ? 1000 : 800;
+        setScale(anchoContenedor / base);
+      });
     };
 
     actualizarEscala();
@@ -495,8 +584,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const observer = new ResizeObserver(actualizarEscala);
     observer.observe(contenedorRef.current);
 
-    return () => observer.disconnect();
-  }, [zoom]);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [zoom, isMobilePortrait]);
 
 
 
@@ -836,6 +928,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       document.removeEventListener("keydown", handleKeyDown, false);
     };
   }, [elementosSeleccionados]);
+
 
 
 
@@ -1488,16 +1581,31 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, []);
 
 
+  const esTouch = (evt) => {
+    const t = evt?.evt;
+    return !!(t && (t.type?.includes("touch") || t.pointerType === "touch"));
+  };
+
+
+
   return (
     <div
       className="flex justify-center"
       style={{
-        marginTop: "50px", // ✅ MÁS ESPACIO PARA LA BARRA SUPERIOR
-        height: "calc(100vh - 100px)", // ✅ AJUSTAR ALTURA
-        overflowY: "auto",
-        overflowX: "hidden", // ✅ EVITAR SCROLL HORIZONTAL
+        // ✅ Dejamos que el scroll lo maneje el <main> del DashboardLayout (un solo scroll)
+        marginTop: 0,
+        overflowX: "hidden",
+
+        // ✅ UX mobile: permitir scroll vertical natural alrededor del canvas
+        touchAction: "pan-y",
+        WebkitOverflowScrolling: "touch",
+
+        // ✅ espacio para que no “choque” con header / barras
+        paddingTop: 12,
+        paddingBottom: 96,
       }}
     >
+
 
       <div
         ref={contenedorRef}
@@ -1684,6 +1792,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               perfectDrawEnabled={false}
               listening={true}
               imageSmoothingEnabled={false}
+              preventDefault={false}
               hitGraphEnabled={true}
               style={{
                 background: "white",
@@ -1760,6 +1869,92 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   setSeleccionActiva(true);
                 }
               }}
+
+
+              onTouchStart={(e) => {
+                const stage = e.target.getStage();
+                if (!stage) return;
+
+                const pos = stage.getPointerPosition();
+                if (!pos) return;
+
+                const roots = Object.values(elementRefs.current || {});
+                const rootHit = e.target.findAncestor((n) => roots.includes(n), true);
+
+                touchGestureRef.current = {
+                  startX: pos.x,
+                  startY: pos.y,
+                  moved: false,
+                  tappedSectionId,
+                  clickedOnStage,
+                  startedOnElement: !!rootHit,   // ✅ NUEVO
+                };
+
+                if (rootHit) {
+                  // ✅ Si tocaste un elemento, NO hagas lógica de sección.
+                  // Dejamos que ElementoCanvas / GaleriaKonva / Countdown manejen selección/drag.
+                  return;
+                }
+
+
+                const clickedOnStage = e.target === stage;
+
+                // ¿tocaste una sección?
+                const tappedSectionId =
+                  e.target.attrs?.id && secciones.some((s) => s.id === e.target.attrs?.id)
+                    ? e.target.attrs.id
+                    : (secciones.find((s) => s.id === e.target.parent?.attrs?.id)?.id || null);
+
+                // Guardar gesto (NO seleccionar todavía)
+                touchGestureRef.current = {
+                  startX: pos.x,
+                  startY: pos.y,
+                  moved: false,
+                  tappedSectionId,
+                  clickedOnStage,
+                };
+              }}
+
+              onTouchMove={(e) => {
+                const stage = e.target.getStage();
+                if (!stage) return;
+
+                const pos = stage.getPointerPosition();
+                if (!pos) return;
+
+                const dx = Math.abs(pos.x - touchGestureRef.current.startX);
+                const dy = Math.abs(pos.y - touchGestureRef.current.startY);
+
+                // Si se movió, es scroll (o pan), NO seleccionar sección
+                if (dx > TOUCH_MOVE_PX || dy > TOUCH_MOVE_PX) {
+                  touchGestureRef.current.moved = true;
+                }
+              }}
+
+              onTouchEnd={() => {
+                const g = touchGestureRef.current;
+
+                // Scroll: no hacer nada
+                if (g.moved) return;
+
+                // ✅ Si el gesto arrancó sobre un elemento, NO limpies selección.
+                // Ese tap lo tiene que procesar el propio elemento (onClick/onTap en ElementoCanvas).
+                if (g.startedOnElement) return;
+
+                // Tap en vacío: acá sí aplicamos la lógica “canvas”
+                setElementosSeleccionados([]);
+                cerrarMenusFlotantes?.();
+
+                if (g.clickedOnStage) {
+                  setSeccionActivaId(null);
+                  return;
+                }
+
+                if (g.tappedSectionId) {
+                  setSeccionActivaId(g.tappedSectionId);
+                }
+              }}
+
 
               onMouseMove={(e) => {
 
@@ -1900,6 +2095,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         alturaPx={alturaPx}
                         onSelect={() => setSeccionActivaId(seccion.id)}
                         onUpdateFondoOffset={actualizarOffsetFondo}
+                        isMobile={isMobile}
                       />
                     ) : (
                       <Rect
@@ -1912,8 +2108,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         fill={seccion.fondo || "#ffffff"}
                         stroke="transparent"
                         strokeWidth={0}
-                        listening={true}
-                        onClick={() => setSeccionActivaId(seccion.id)}
+                        listening={!isMobile}
+                        // ✅ desktop: click para seleccionar sección
+                        onClick={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
+                        onTap={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
                       />
                     )
                   ];

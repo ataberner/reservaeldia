@@ -48,11 +48,11 @@ export default function DashboardLayout({
 
       {/* 🔹 Sidebar */}
       {!ocultarSidebar && (
-      <DashboardSidebar
-        modoSelector={modoSelector}
-        mostrarMiniToolbar={mostrarMiniToolbar}
-        seccionActivaId={seccionActivaId}
-      />
+        <DashboardSidebar
+          modoSelector={modoSelector}
+          mostrarMiniToolbar={mostrarMiniToolbar}
+          seccionActivaId={seccionActivaId}
+        />
       )}
 
       {/* 🔹 Área principal */}
@@ -60,7 +60,7 @@ export default function DashboardLayout({
         className={
           modoSelector
             ? "absolute left-0 right-0 overflow-y-auto bg-gray-50"
-            : "flex-1 overflow-y-auto p-4 pt-10"
+            : "flex-1 overflow-y-auto p-2 sm:p-4 pt-12 sm:pt-10"
         }
         style={
           modoSelector

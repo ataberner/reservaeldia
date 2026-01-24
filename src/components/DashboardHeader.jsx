@@ -29,7 +29,7 @@ export default function DashboardHeader({
     const [colorFondo, setColorFondo] = useState("#ffffff");
     const [seccionActiva, setSeccionActiva] = useState(null);
     const { esAdmin, loadingClaims } = useAuthClaims();
-
+    const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
 
     const [publicando, setPublicando] = useState(false);
     const [progreso, setProgreso] = useState(0);
@@ -135,6 +135,8 @@ export default function DashboardHeader({
             if (menuRef.current && !menuRef.current.contains(e.target)) {
                 setMenuAbierto(false);
             }
+            setAccionesMobileAbiertas(false);
+
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -378,25 +380,24 @@ export default function DashboardHeader({
 
                     {/* Guardar plantilla */}
                     {!loadingClaims && esAdmin && (
-                    <button
-                        onClick={guardarPlantilla}
-                        className="px-3 py-1 bg-yellow-400 text-gray-800 rounded hover:bg-yellow-500 transition text-xs"
-                    >
-                        Guardar plantilla
-                    </button>
+                        <button
+                            onClick={guardarPlantilla}
+                            className="px-3 py-1 bg-yellow-400 text-gray-800 rounded hover:bg-yellow-500 transition text-xs"
+                        >
+                            Guardar plantilla
+                        </button>
                     )}
 
 
 
-                    {/* Botones Vista previa / Generar */}
-                    <div className="flex gap-2 ml-auto">
-                        {/* 🔹 Input editable con nombre del borrador */}
+                    {/* ----------------- ACCIONES (desktop) ----------------- */}
+                    <div className="hidden sm:flex gap-2 ml-auto">
+                        {/* Input editable con nombre del borrador */}
                         <input
                             type="text"
                             value={nombreBorrador}
                             onChange={(e) => setNombreBorrador(e.target.value)}
                             onBlur={async () => {
-                                // Guardar en Firestore cuando se pierde el foco
                                 if (!slugInvitacion) return;
                                 const ref = doc(db, "borradores", slugInvitacion);
                                 await (await import("firebase/firestore")).updateDoc(ref, {
@@ -406,27 +407,89 @@ export default function DashboardHeader({
                             className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-purple-400"
                             title="Editar nombre del borrador"
                         />
+
                         <button
                             onClick={generarVistaPrevia}
                             className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs flex items-center gap-1"
                         >
                             Vista previa
                         </button>
+
                         <button
                             onClick={() => setMostrarModalURL(true)}
-                            className={`px-3 py-1 text-white rounded transition text-xs ${slugPublicoExistente
-                                ? "bg-green-600 hover:bg-green-700"
-                                : "bg-[#773dbe] hover:bg-purple-700"
+                            className={`px-3 py-1 text-white rounded transition text-xs ${slugPublicoExistente ? "bg-green-600 hover:bg-green-700" : "bg-[#773dbe] hover:bg-purple-700"
                                 }`}
                         >
-                            {slugPublicoExistente
-                                ? "Ver o actualizar invitación"
-                                : "Publicar invitación"}
+                            {slugPublicoExistente ? "Ver o actualizar invitación" : "Publicar invitación"}
+                        </button>
+                    </div>
+
+                    {/* ----------------- ACCIONES (mobile) ----------------- */}
+                    <div className="sm:hidden ml-auto relative">
+                        <button
+                            onClick={() => setAccionesMobileAbiertas((v) => !v)}
+                            className="px-2 py-1 rounded-full border text-gray-700 bg-white hover:bg-gray-50 text-xs"
+                            title="Más opciones"
+                        >
+                            ⋯
                         </button>
 
+                        {accionesMobileAbiertas && (
+                            <div className="absolute right-0 mt-2 w-72 bg-white border rounded-xl shadow-lg p-3 z-50">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="text-xs font-semibold text-gray-700">Opciones</div>
+                                    <button
+                                        onClick={() => setAccionesMobileAbiertas(false)}
+                                        className="text-gray-400 hover:text-gray-600 text-sm"
+                                        title="Cerrar"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
 
+                                <label className="block text-[11px] text-gray-500 mb-1">Nombre del borrador</label>
+                                <input
+                                    type="text"
+                                    value={nombreBorrador}
+                                    onChange={(e) => setNombreBorrador(e.target.value)}
+                                    onBlur={async () => {
+                                        if (!slugInvitacion) return;
+                                        const ref = doc(db, "borradores", slugInvitacion);
+                                        await (await import("firebase/firestore")).updateDoc(ref, {
+                                            nombre: nombreBorrador,
+                                        });
+                                    }}
+                                    className="w-full border border-gray-300 rounded px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                    placeholder="Sin nombre"
+                                />
 
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setAccionesMobileAbiertas(false);
+                                            generarVistaPrevia();
+                                        }}
+                                        className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs"
+                                    >
+                                        Vista previa
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setAccionesMobileAbiertas(false);
+                                            setMostrarModalURL(true);
+                                        }}
+                                        className={`flex-1 px-3 py-2 text-white rounded-lg transition text-xs ${slugPublicoExistente ? "bg-green-600 hover:bg-green-700" : "bg-[#773dbe] hover:bg-purple-700"
+                                            }`}
+                                    >
+                                        {slugPublicoExistente ? "Ver / Actualizar" : "Publicar"}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
+
+
                 </div>
             ) : (
                 /* ----------------- 🟢 Vista dashboard ----------------- */

@@ -7,13 +7,10 @@ import RegisterModal from '@/lib/components/RegisterModal';
 import Link from 'next/link';
 
 
-
-
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
-
 
 
   return (
@@ -100,9 +97,15 @@ export default function Home() {
       <section className="hero" style={{ backgroundImage: "url(/assets/img/portada1.webp)", backgroundSize: 'cover', height: '100vh', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div className="hero-content">
           <h1>Invitaciones Digitales para Bodas</h1>
-          <h3>Tu boda comienza con la invitación perfecta.</h3>
-          <p>Crea invitaciones digitales únicas y personalizadas en segundos.<br />Envía tu enlace y comparte la emoción con tus seres queridos.<br />¡Conocé nuestros modelos ahora!</p>
-          <Link href="#invitaciones" className="btn btn-primary">Ver Invitaciones</Link>
+          <p>Tu invitación perfecta, diseñada a tu manera. En minutos.</p>
+          <p>Creá una invitación digital única para tu evento.<br />Elegí una plantilla, personalizala visualmente y compartila con un solo click.<br />¡Conocé nuestros modelos ahora!</p>
+          <button onClick={() => {
+            setShowRegister(true);
+            setMenuOpen(false);
+          }}
+            className="btn btn-primary">
+            Crear mi invitación
+          </button>
         </div>
       </section>
 
@@ -121,15 +124,15 @@ export default function Home() {
                 {/* Item 2*/}
                 <div className="text-center">
                   <Link href="invitaciones/Clasica/index.html">
-                    <img src="assets/img/celu2.png" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy" />
-                    <p>Clásica</p>
+                    <img src="#" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy" />
+                    
                   </Link>
                 </div>
                 {/* Item 3 */}
                 <div className="text-center">
                   <Link href="invitaciones/foto-premium/index.html">
-                    <img src="assets/img/celu3.png" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy" />
-                    <p>Premium</p>
+                    <img src="#" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy" />
+                    
                   </Link>
                 </div>
               </div>
@@ -225,18 +228,18 @@ export default function Home() {
         <div className="steps-container">
           <div className="step">
             <div className="icon">🎨</div>
-            <h3>1. Elige tu Diseño</h3>
-            <p>Selecciona una de nuestras invitaciones digitales personalizadas según el estilo de tu evento.</p>
+            <h3>1. Elegís una plantilla</h3>
+            <p>Seleccioná un diseño base según tu evento (boda, cumpleaños, bautismo, etc.).</p>
           </div>
           <div className="step">
             <div className="icon">🖌️</div>
-            <h3>2. Personaliza tu Estilo</h3>
-            <p>Modifica la paleta de colores, cambia las fotos y ajusta el texto a tu gusto.</p>
+            <h3>2. La personalizás visualmente</h3>
+            <p>Editá textos, colores, imágenes y todo el diseño.</p>
           </div>
           <div className="step">
             <div className="icon">⚙️</div>
             <h3>3. Selecciona Funcionalidades</h3>
-            <p>Elige qué funciones deseas incluir, como RSVP, mapa de ubicación o lista de regalos.</p>
+            <p>Agregá la opcion para tus invitacods confirmen, vean la ubicación del evento o la lista de regalos.</p>
           </div>
           <div className="step">
             <div className="icon">📩</div>
@@ -246,10 +249,10 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="precios" className="pricing">
+      {/*      <section id="precios" className="pricing">
         <h2>Nuestros Planes</h2>
         <div className="pricing-container">
-          {/* Plan Estándar */}
+          {/* Plan Estándar 
           <div className="pricing-card">
             <h3>Plan Estándar</h3>
             <p className="price">$24,900</p>
@@ -271,7 +274,7 @@ export default function Home() {
             </a>
           </div>
 
-          {/* Plan Premium */}
+          {/* Plan Premium 
           <div className="pricing-card premium">
             <h3>Plan Premium</h3>
             <p className="price">$29,900</p>
@@ -294,16 +297,22 @@ export default function Home() {
             </a>
           </div>
         </div>
-      </section>
+      </section>*/}
 
 
       <section id="crear-invitacion" className="py-5 bg-light">
         <div className="container text-center">
           <h2>Creá tu invitación ahora</h2>
-          <p>Completá los datos y generá tu invitación antes de pagar</p>
-          <Link href="/crear.html" className="btn btn-success btn-lg mt-3">
-            Comenzar
-          </Link>
+
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setShowRegister(true);
+              setMenuOpen(false);
+            }}
+          >
+            Registrarme
+          </button>
         </div>
       </section>
 
@@ -312,8 +321,26 @@ export default function Home() {
         <p>&copy; 2025 Reserva el Día - Todos los derechos reservados</p>
       </footer>
 
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
-      {showRegister && <RegisterModal onClose={() => setShowRegister(false)} />}
+      {showLogin && (
+  <LoginModal
+    onClose={() => setShowLogin(false)}
+    onGoToRegister={() => {
+      setShowLogin(false);
+      setShowRegister(true);
+    }}
+  />
+)}
+
+{showRegister && (
+  <RegisterModal
+    onClose={() => setShowRegister(false)}
+    onGoToLogin={() => {
+      setShowRegister(false);
+      setShowLogin(true);
+    }}
+  />
+)}
+
 
 
     </>

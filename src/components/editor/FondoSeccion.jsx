@@ -2,10 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
 import useImage from "use-image";
 
-export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset }) {
+export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset, isMobile = false }) {
   const [fondoImage] = useImage(seccion.fondoImagen, "anonymous");
   const [modoMoverFondo, setModoMoverFondo] = useState(false);
   const imagenRef = useRef(null);
+  const allowBackgroundInteraction = !isMobile; // ✅ mobile: no capturar eventos
 
   // 🔹 Click global para salir del modo mover fondo
   useEffect(() => {
@@ -34,8 +35,9 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
         width={800}
         height={alturaPx}
         fill={seccion.fondo || "#f0f0f0"}
-        listening={true}
-        onClick={onSelect}
+        listening={allowBackgroundInteraction}
+        onClick={allowBackgroundInteraction ? onSelect : undefined}
+        onTap={allowBackgroundInteraction ? onSelect : undefined}
       />
     );
   }
@@ -69,8 +71,9 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
         width={800}
         height={alturaPx}
         fill={seccion.fondo || "#f0f0f0"}
-        listening={true}
-        onClick={onSelect}
+        listening={allowBackgroundInteraction}
+        onClick={allowBackgroundInteraction ? onSelect : undefined}
+        onTap={allowBackgroundInteraction ? onSelect : undefined}
       />
 
       {/* Sombreado en modo mover fondo */}
@@ -93,66 +96,53 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
         clipHeight={modoMoverFondo ? undefined : alturaPx}
       >
         <KonvaImage
-  ref={imagenRef}
-  image={fondoImage}
-  x={offsetXFinal}
-  y={offsetY + offsetYFinal}
-  width={scaledWidth}
-  height={scaledHeight}
-  draggable={modoMoverFondo}
-  opacity={modoMoverFondo ? 0.9 : 1}
-  shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
-  shadowBlur={modoMoverFondo ? 10 : 0}
-  listening={true} // ✅ Siempre escucha
+          ref={imagenRef}
+          image={fondoImage}
+          x={offsetXFinal}
+          y={offsetY + offsetYFinal}
+          width={scaledWidth}
+          height={scaledHeight}
+          draggable={allowBackgroundInteraction && modoMoverFondo}
+          opacity={modoMoverFondo ? 0.9 : 1}
+          shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
+          shadowBlur={modoMoverFondo ? 10 : 0}
+          listening={allowBackgroundInteraction} // ✅ en mobile NO escucha
 
-  // 🔹 Mousedown: solo bloquea si estamos moviendo el fondo
-  onMouseDown={(e) => {
-        console.log("🐛 MOUSEDOWN en imagen. modoMoverFondo:", modoMoverFondo, "cancelBubble?", e.cancelBubble);
+          onMouseDown={allowBackgroundInteraction ? (e) => {
+            if (modoMoverFondo) e.cancelBubble = true;
+          } : undefined}
 
-    if (modoMoverFondo) {
-      e.cancelBubble = true; // Bloquea drag del Stage
-    } else {
-      // Si no estamos moviendo, dejamos pasar el evento para selección múltiple
-      // No cancelamos aquí
-    }
-  }}
+          onDblClick={allowBackgroundInteraction ? (e) => {
+            e.cancelBubble = true;
+            setModoMoverFondo(true);
+            document.body.style.cursor = "move";
+          } : undefined}
 
-  // 🔹 Doble click: activa modo mover y cancela propagación
-  onDblClick={(e) => {
-        console.log("🐛 DBLCLICK en imagen. modoMoverFondo:", modoMoverFondo);
+          onDragMove={(e) => {
+            const node = e.target;
+            const nuevaX = node.x();
+            const nuevaY = node.y() - offsetY;
+            const nuevoOffsetX = nuevaX - offsetXCentrado;
+            const nuevoOffsetY = nuevaY - offsetYCentrado;
+            onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, true);
+          }}
 
-     
+          onDragEnd={(e) => {
+            const node = e.target;
+            const nuevaX = node.x();
+            const nuevaY = node.y() - offsetY;
+            const nuevoOffsetX = nuevaX - offsetXCentrado;
+            const nuevoOffsetY = nuevaY - offsetYCentrado;
+            onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
 
-    e.cancelBubble = true; // Evita que inicie selección múltiple
-    setModoMoverFondo(true);
-    document.body.style.cursor = "move";
-  }}
-
-  onDragMove={(e) => {
-    const node = e.target;
-    const nuevaX = node.x();
-    const nuevaY = node.y() - offsetY;
-    const nuevoOffsetX = nuevaX - offsetXCentrado;
-    const nuevoOffsetY = nuevaY - offsetYCentrado;
-    onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, true);
-  }}
-
-  onDragEnd={(e) => {
-    const node = e.target;
-    const nuevaX = node.x();
-    const nuevaY = node.y() - offsetY;
-    const nuevoOffsetX = nuevaX - offsetXCentrado;
-    const nuevoOffsetY = nuevaY - offsetYCentrado;
-    onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
-
-    setModoMoverFondo(false);
-    document.body.style.cursor = "default";
-  }}
-/>
+            setModoMoverFondo(false);
+            document.body.style.cursor = "default";
+          }}
+        />
 
 
         {/* Transformer solo cuando está en modo mover */}
-        {modoMoverFondo && (
+        {allowBackgroundInteraction && modoMoverFondo && (
           <Transformer
             nodes={[imagenRef.current]}
             enabledAnchors={['bottom-right']}

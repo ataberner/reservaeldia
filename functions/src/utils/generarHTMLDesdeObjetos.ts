@@ -1,5 +1,47 @@
 import { LINE_CONSTANTS } from '../models/lineConstants';
 import { generarCountdownHTML } from "./generarCountdownHTML";
+// ✅ Escapar strings para meterlos en atributos/HTML
+function escHTML(str: any = ""): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// ✅ Render SVG nuevo (tipo:"icono", formato:"svg") a SVG inline
+function renderIconoSvgNuevoInline(
+  obj: any,
+  style: string,
+  left: number,
+  top: number,
+  width: string,
+  height: string,
+  rotacion: number,
+  scaleX: number,
+  scaleY: number
+) {
+  const viewBox = obj.viewBox || "0 0 24 24";
+  const color = obj.color || "#000";
+  const paths = Array.isArray(obj.paths) ? obj.paths : [];
+  if (!paths.length) return "";
+
+  const pathsHtml = paths
+    .map((p: any) => (p?.d ? `<path d="${escHTML(p.d)}" fill="${escHTML(color)}"></path>` : ""))
+    .join("");
+
+  return `<svg class="objeto" xmlns="http://www.w3.org/2000/svg" viewBox="${escHTML(viewBox)}" style="
+  top: ${top}%;
+  left: ${left}%;
+  width: ${width};
+  height: ${height};
+  transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+">
+  ${pathsHtml}
+</svg>`;
+}
+
 
 
 function escapeAttr(str: string = ""): string {
@@ -150,73 +192,123 @@ export function generarHTMLDesdeObjetos(
 
 
 
-    if (obj.tipo === "imagen" || obj.tipo === "icono") {
-      return envolverSiEnlace(`<img class="objeto" src="${obj.src}" style="
+
+    // ✅ IMAGEN (solo imagen)
+    if (obj.tipo === "imagen") {
+      const src = obj.src || obj.url || "";
+      if (!src) return "";
+
+      return envolverSiEnlace(
+        `<img class="objeto" src="${escapeAttr(src)}" style="
   top: ${top}%;
   left: ${left}%;
   width: ${width};
   height: ${height};
   transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
   object-fit: contain;
-" />`, obj);
+" />`,
+        obj
+      );
     }
 
-    if (obj.tipo === "icono-svg" && obj.d) {
-      return envolverSiEnlace(`<svg class="objeto" viewBox="0 0 100 100" style="
+    // ✅ ICONO (nuevo)
+    if (obj.tipo === "icono") {
+      // 1) SVG nuevo: inline desde paths/viewBox
+      if (obj.formato === "svg") {
+        const svgHtml = renderIconoSvgNuevoInline(
+          obj,
+          "",
+          left,
+          top,
+          width,
+          height,
+          rotacion,
+          scaleX,
+          scaleY
+        );
+        if (!svgHtml) return "";
+        return envolverSiEnlace(svgHtml, obj);
+      }
+
+      // 2) Raster: usar url o src (🔥 tu bug actual era usar solo src)
+      const src = obj.url || obj.src || "";
+      if (!src) return "";
+
+      return envolverSiEnlace(
+        `<img class="objeto" src="${escapeAttr(src)}" style="
   top: ${top}%;
   left: ${left}%;
   width: ${width};
   height: ${height};
   transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
-  fill: ${obj.color || "#000"};
+  object-fit: contain;
+" />`,
+        obj
+      );
+    }
+
+    // ✅ ICONO LEGACY (icono-svg)
+    if (obj.tipo === "icono-svg" && obj.d) {
+      const vb = obj.viewBox || "0 0 100 100";
+      const fill = obj.color || "#000";
+
+      return envolverSiEnlace(
+        `<svg class="objeto" xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttr(vb)}" style="
+  top: ${top}%;
+  left: ${left}%;
+  width: ${width};
+  height: ${height};
+  transform: rotate(${rotacion}deg) scale(${scaleX}, ${scaleY});
+  fill: ${escapeAttr(fill)};
 ">
-  <path d="${obj.d}" />
-</svg>`, obj);
-
-
+  <path d="${escHTML(obj.d)}" />
+</svg>`,
+        obj
+      );
     }
 
 
-if (obj.tipo === "countdown") {
-  // --- DATOS ---
-  const targetISO =
-    obj.targetISO || obj.fechaObjetivo || obj.fechaISO || "";
 
-  const textColor = obj.colorTexto ?? obj.color ?? "#111";
-  const fontFamily = obj.fontFamily || "Inter, system-ui, sans-serif";
-  const valueSize = Number.isFinite(obj.fontSize) ? obj.fontSize : 16;
-  const labelSize = Number.isFinite(obj.labelSize) ? obj.labelSize : 10;
-  const labelColor = obj.labelColor ?? "#6b7280";
-  const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
-  const letterSpacing = Number.isFinite(obj.letterSpacing) ? obj.letterSpacing : 0;
+    if (obj.tipo === "countdown") {
+      // --- DATOS ---
+      const targetISO =
+        obj.targetISO || obj.fechaObjetivo || obj.fechaISO || "";
 
-  const preset = obj.presetId || obj.layout || "pills";
-  const isMinimal = String(preset).toLowerCase().includes("minimal");
+      const textColor = obj.colorTexto ?? obj.color ?? "#111";
+      const fontFamily = obj.fontFamily || "Inter, system-ui, sans-serif";
+      const valueSize = Number.isFinite(obj.fontSize) ? obj.fontSize : 16;
+      const labelSize = Number.isFinite(obj.labelSize) ? obj.labelSize : 10;
+      const labelColor = obj.labelColor ?? "#6b7280";
+      const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
+      const letterSpacing = Number.isFinite(obj.letterSpacing) ? obj.letterSpacing : 0;
 
-  const gap = (Number.isFinite(obj.gap) ? obj.gap :
-              (Number.isFinite(obj.spacing) ? obj.spacing : 8));
-  const padding = Number.isFinite(obj.padding) ? obj.padding : 0;
+      const preset = obj.presetId || obj.layout || "pills";
+      const isMinimal = String(preset).toLowerCase().includes("minimal");
 
-  // Fondo SOLO en chips, no en contenedor
-  const containerBgFinal = "transparent";
+      const gap = (Number.isFinite(obj.gap) ? obj.gap :
+        (Number.isFinite(obj.spacing) ? obj.spacing : 8));
+      const padding = Number.isFinite(obj.padding) ? obj.padding : 0;
 
-  const chipBgFinal =
-    (isMinimal ? "transparent" : (obj.chipBackground ?? obj.boxBg ?? "transparent"));
+      // Fondo SOLO en chips, no en contenedor
+      const containerBgFinal = "transparent";
 
-  const chipBorderColorFinal =
-    (isMinimal ? "transparent" : (obj.chipBorder ?? obj.boxBorder ?? "transparent"));
+      const chipBgFinal =
+        (isMinimal ? "transparent" : (obj.chipBackground ?? obj.boxBg ?? "transparent"));
 
-  const containerRadius =
-    (Number.isFinite(obj.boxRadius) ? obj.boxRadius :
-    (Number.isFinite(obj.radius) ? obj.radius : 8));
+      const chipBorderColorFinal =
+        (isMinimal ? "transparent" : (obj.chipBorder ?? obj.boxBorder ?? "transparent"));
 
-  const chipRadiusFinal =
-    (Number.isFinite(obj.chipRadius) ? obj.chipRadius : containerRadius);
+      const containerRadius =
+        (Number.isFinite(obj.boxRadius) ? obj.boxRadius :
+          (Number.isFinite(obj.radius) ? obj.radius : 8));
 
-  const zIndex = Number.isFinite(obj.zIndex) ? obj.zIndex : undefined;
+      const chipRadiusFinal =
+        (Number.isFinite(obj.chipRadius) ? obj.chipRadius : containerRadius);
 
-  // --- STYLES CONTENEDOR (transparente) ---
-  const containerStyle = `
+      const zIndex = Number.isFinite(obj.zIndex) ? obj.zIndex : undefined;
+
+      // --- STYLES CONTENEDOR (transparente) ---
+      const containerStyle = `
     position: absolute;
     left: ${left}%;
     top: ${top}%;
@@ -237,8 +329,8 @@ if (obj.tipo === "countdown") {
     ${zIndex !== undefined ? `z-index:${zIndex};` : ""}
   `.trim();
 
-  // --- STYLES CHIP (aquí va el color) ---
-  const chipStyle = `
+      // --- STYLES CHIP (aquí va el color) ---
+      const chipStyle = `
     min-width: 46px;
     padding: 6px 8px;
     border: ${isMinimal ? "0" : `1px solid ${chipBorderColorFinal}`};
@@ -250,22 +342,22 @@ if (obj.tipo === "countdown") {
     background: ${chipBgFinal};
   `.trim();
 
-  const valueStyle = `
+      const valueStyle = `
     font-weight: ${fontWeight};
     font-size: ${valueSize}px;
     line-height: 1;
   `.trim();
 
-  const labelStyle = `
+      const labelStyle = `
     font-size: ${labelSize}px;
     color: ${labelColor};
     line-height: 1;
   `.trim();
 
-  const showLabels = obj.showLabels !== false;
-  const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
+      const showLabels = obj.showLabels !== false;
+      const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
 
-  return `
+      return `
     <div
       data-countdown
       data-target="${escapeAttr(targetISO)}"
@@ -290,7 +382,7 @@ if (obj.tipo === "countdown") {
       </div>
     </div>
   `;
-}
+    }
 
 
 

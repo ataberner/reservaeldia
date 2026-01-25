@@ -10,6 +10,33 @@ function escHTML(str: any = ""): string {
     .replace(/'/g, "&#039;");
 }
 
+// ✅ Medir el ancho de una caja de texto como lo hace tu canvas:
+// - divide por \n
+// - mide cada línea
+// - toma la más larga
+// - suma un margen (igual que tu +6px del canvas)
+function medirAnchoTextoComoCanvas(obj: any): number | null {
+  if (typeof document === "undefined") return null;
+
+  const fontFamily = obj.fontFamily || "sans-serif";
+  const fontSize = Number(obj.fontSize || 24);
+  const fontWeight = obj.fontWeight || "normal";
+  const fontStyle = obj.fontStyle || "normal";
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.font = `${fontWeight} ${fontStyle} ${fontSize}px ${fontFamily}`;
+
+  const lines = String(obj.texto || "").split(/\r?\n/);
+  const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 20);
+
+  // Igual que tu canvas: +6px
+  return Math.ceil(maxLineWidth + 6);
+}
+
+
 // ✅ Render SVG nuevo (tipo:"icono", formato:"svg") a SVG inline
 function renderIconoSvgNuevoInline(
   obj: any,
@@ -126,69 +153,65 @@ export function generarHTMLDesdeObjetos(
     const scaleY = obj.scaleY ?? 1;
 
     if (obj.tipo === "texto") {
-      const {
-        x = 0,
-        y = 0,
-        width,
-        fontSize = 24,
-        fontFamily = "sans-serif",
-        fontWeight = "normal",
-        fontStyle = "normal",
-        textDecoration = "none",
-        align = "left",
-        texto = "",
-        lineHeight = 1.2,
-        rotation = 0,
-        stroke = "",            // Color del borde del texto
-        strokeWidth = 0,        // Grosor del borde
-        shadowColor = "",       // Color de sombra opcional
-        shadowBlur = 0,         // Intensidad del blur
-        shadowOffsetX = 0,
-        shadowOffsetY = 0,
-      } = obj;
+      // 1) Align real (por compatibilidad con tu DB: align o textAlign)
+      const align = String(obj.align || obj.textAlign || "left").toLowerCase();
 
-      // Color principal (fill)
+      // 2) Color (misma prioridad que venís usando)
       const color = obj.colorTexto || obj.color || obj.fill || "#000";
 
-      // Generar sombra si existe
-      const textShadow = shadowColor
-        ? `${shadowOffsetX}px ${shadowOffsetY}px ${shadowBlur}px ${shadowColor}`
-        : "none";
+      // 3) Line-height: en tu canvas aplicás un factor 0.92 (ElementoCanvas)
+      //    Si no existe obj.lineHeight, usamos 1.2 (igual que tu default)
+      const baseLineHeight =
+        typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
+      const lineHeightFinal = baseLineHeight * 0.92;
 
-      // Generar stroke si existe
-      const textStroke =
-        stroke && strokeWidth > 0
-          ? `-webkit-text-stroke: ${strokeWidth}px ${stroke};`
-          : "";
+      // 4) Ancho real de la caja (pixel perfect con canvas)
+      //    - si obj.width existe, lo usamos
+      //    - si no, lo medimos como hace el canvas (por \n)
+      const widthPxReal =
+        typeof obj.width === "number" && isFinite(obj.width) && obj.width > 0
+          ? obj.width
+          : (medirAnchoTextoComoCanvas(obj) ?? null);
 
-      const safeTexto = texto
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+      // 5) Convertir width px -> % del ancho base 800 (igual que el resto del HTML)
+      const widthStyle =
+        widthPxReal != null ? `width: ${(widthPxReal / 800) * 100}%;` : "";
 
+      // 6) Escapar texto y preservar saltos de línea
+      const safeTexto = escHTML(obj.texto || "");
+
+      // 7) Transform igual que el resto (rotación + escala)
+      const rot = obj.rotation ?? 0;
+      const sx = obj.scaleX ?? 1;
+      const sy = obj.scaleY ?? 1;
+
+      // 8) Estilo: usamos left/top en % (como imagen/icono/forma)
       const style = `
     position: absolute;
-    left: ${x}px;
-    top: ${y}px;
-    ${width ? `width: ${width}px;` : ""}
-    font-size: ${fontSize}px;
-    font-family: ${fontFamily};
-    font-weight: ${fontWeight};
-    font-style: ${fontStyle};
-    text-decoration: ${textDecoration};
+    left: ${left}%;
+    top: ${top}%;
+    ${widthStyle}
+    font-size: ${obj.fontSize ?? 24}px;
+    font-family: ${obj.fontFamily || "sans-serif"};
+    font-weight: ${obj.fontWeight || "normal"};
+    font-style: ${obj.fontStyle || "normal"};
+    text-decoration: ${obj.textDecoration || "none"};
     color: ${color};
     text-align: ${align};
     white-space: pre-wrap;
-    line-height: ${lineHeight};
-    transform: rotate(${rotation}deg);
+    line-height: ${lineHeightFinal};
+    padding: 0;
+    margin: 0;
+    box-sizing: content-box;
+    transform: rotate(${rot}deg) scale(${sx}, ${sy});
     transform-origin: top left;
-    ${textStroke}
-    text-shadow: ${textShadow};
+    ${obj.stroke && obj.strokeWidth > 0 ? `-webkit-text-stroke: ${obj.strokeWidth}px ${obj.stroke};` : ""}
+    ${obj.shadowColor ? `text-shadow: ${obj.shadowOffsetX || 0}px ${obj.shadowOffsetY || 0}px ${obj.shadowBlur || 0}px ${obj.shadowColor};` : "text-shadow: none;"}
   `;
 
-      return envolverSiEnlace(`<div style="${style}">${safeTexto}</div>`, obj);
+      return envolverSiEnlace(`<div class="objeto" style="${style}">${safeTexto}</div>`, obj);
     }
+
 
 
 

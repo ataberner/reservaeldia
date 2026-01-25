@@ -60,7 +60,7 @@ export default function ElementoCanvas({
   }, [obj.id, obj.tipo, registerRef]);
 
 
-    // ✅ Click con estado fresco (evita stale closures del useMemo)
+  // ✅ Click con estado fresco (evita stale closures del useMemo)
   const handleClick = useCallback(
     (e) => {
       e.cancelBubble = true;
@@ -94,8 +94,8 @@ export default function ElementoCanvas({
   );
 
 
-  
- // 🔥 MEMOIZAR PROPIEDADES COMUNES
+
+  // 🔥 MEMOIZAR PROPIEDADES COMUNES
   const commonProps = useMemo(() => ({
     x: obj.x ?? 0,
     y: obj.y ?? 0,
@@ -486,7 +486,7 @@ export default function ElementoCanvas({
     };
 
     // 🔍 Debug: información completa de posición y centrado
-   
+
 
     // ⚠️ Warning si hay valores inválidos
     if (obj.x !== validX || obj.y !== validY || obj.fontSize !== validFontSize) {
@@ -672,7 +672,7 @@ export default function ElementoCanvas({
 
 
   /* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
-  if (obj.tipo === "icono" && obj.formato === "png") {
+  if (obj.tipo === "icono" && (obj.formato === "png" || obj.formato === "jpg" || obj.formato === "webp")) {
     const [img] = useImage(obj.url, "anonymous");
 
     return (
@@ -684,7 +684,7 @@ export default function ElementoCanvas({
         height={obj.height || (img?.height ?? 120)}
         listening={true}
 
-        // UX cursor (si ya lo manejás en commonProps, podés omitir estos dos)
+        // UX cursor (sin romper tu hover)
         onMouseEnter={(e) => {
           const stage = e.currentTarget.getStage();
           if (stage) stage.container().style.cursor = "grab";
@@ -696,50 +696,31 @@ export default function ElementoCanvas({
           handleMouseLeave?.(e);
         }}
 
-        // Selección por click/tap
-        onClick={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
-        onTap={(e) => { e.cancelBubble = true; if (obj) onSelect?.(obj, e); }}
-
-        // ✅ Persistimos SIEMPRE la posición del contenedor top-level
-        onDragEnd={(e) => {
-          const node = e.currentTarget;
-          const patch = {
-            id: obj.id,
-            tipo: obj.tipo,
-            formato: obj.formato,
-            x: node.x(),
-            y: node.y(),
-            isDragPreview: false,
-            isFinal: true,
-          };
-          const meta = { isDragPreview: false, isFinal: true, source: "dragEnd" };
-          onChange?.(patch, meta);
-
-          // limpiar cursor
-          const stage = node.getStage();
-          if (stage) stage.container().style.cursor = "default";
+        // ✅ CLAVE: NO pisar el onClick/onTap ni el onDragEnd "real" del sistema
+        // Si querés mantener un comportamiento extra en click, hacelo sin cambiar la firma:
+        onClick={(e) => {
+          // delega al commonProps.onClick (selección consistente)
+          commonProps.onClick?.(e);
+        }}
+        onTap={(e) => {
+          // en Konva, tap suele mapear a click; si querés, delegalo igual
+          commonProps.onClick?.(e);
         }}
 
-        onTransformEnd={(e) => {
-          const node = e.currentTarget;
-          const patch = {
-            id: obj.id,
-            tipo: obj.tipo,
-            formato: obj.formato,
-            x: node.x(),
-            y: node.y(),
-            rotation: node.rotation() || 0,
-            scaleX: typeof node.scaleX === "function" ? node.scaleX() : (node.scaleX ?? 1),
-            scaleY: typeof node.scaleY === "function" ? node.scaleY() : (node.scaleY ?? 1),
-            isDragPreview: false,
-            isFinal: true,
-          };
-          const meta = { isDragPreview: false, isFinal: true, source: "transformEnd" };
-          onChange?.(patch, meta);
+        // ✅ CLAVE: delegar a commonProps.onDragEnd para que:
+        // - se limpien guías (onDragEndPersonalizado)
+        // - se haga finalizoDrag + ABS→REL
+        onDragEnd={(e) => {
+          commonProps.onDragEnd?.(e);
+
+          // limpieza de cursor (extra)
+          const stage = e.currentTarget.getStage();
+          if (stage) stage.container().style.cursor = "default";
         }}
       />
     );
   }
+
 
 
 
@@ -827,95 +808,95 @@ export default function ElementoCanvas({
 
     switch (obj.figura) {
       case "rect":
-  // Opcional: normalizamos width/height para usar en ambos nodos
-  const width = Math.abs(obj.width || 100);
-  const height = Math.abs(obj.height || 100);
+        // Opcional: normalizamos width/height para usar en ambos nodos
+        const width = Math.abs(obj.width || 100);
+        const height = Math.abs(obj.height || 100);
 
-  return (
-    <>
-      {/* 🟪 Forma */}
-      <Rect
-        {...propsForma}
-        width={width}
-        height={height}
-        cornerRadius={obj.cornerRadius || 0}
-        stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-        strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-        // 🖱️ Doble click para entrar en edición inline
-        onDblClick={(e) => {
-          e.cancelBubble = true;
-          if (onStartTextEdit) {
-            onStartTextEdit(obj.id, obj.texto || "");
-          }
-        }}
-        onDblTap={(e) => {
-          e.cancelBubble = true;
-          if (onStartTextEdit) {
-            onStartTextEdit(obj.id, obj.texto || "");
-          }
-        }}
-        // 🚚 Sincronizar el texto mientras se arrastra la forma
-        onDragMove={(e) => {
-          // Mantener cualquier lógica de drag original que venga de commonProps
-          if (typeof propsForma.onDragMove === "function") {
-            propsForma.onDragMove(e);
-          }
+        return (
+          <>
+            {/* 🟪 Forma */}
+            <Rect
+              {...propsForma}
+              width={width}
+              height={height}
+              cornerRadius={obj.cornerRadius || 0}
+              stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
+              strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+              // 🖱️ Doble click para entrar en edición inline
+              onDblClick={(e) => {
+                e.cancelBubble = true;
+                if (onStartTextEdit) {
+                  onStartTextEdit(obj.id, obj.texto || "");
+                }
+              }}
+              onDblTap={(e) => {
+                e.cancelBubble = true;
+                if (onStartTextEdit) {
+                  onStartTextEdit(obj.id, obj.texto || "");
+                }
+              }}
+              // 🚚 Sincronizar el texto mientras se arrastra la forma
+              onDragMove={(e) => {
+                // Mantener cualquier lógica de drag original que venga de commonProps
+                if (typeof propsForma.onDragMove === "function") {
+                  propsForma.onDragMove(e);
+                }
 
-          const { x, y } = e.target.position();
-          const stage = e.target.getStage();
-          const textoNode = stage?.findOne(`#${obj.id}-text`);
+                const { x, y } = e.target.position();
+                const stage = e.target.getStage();
+                const textoNode = stage?.findOne(`#${obj.id}-text`);
 
-          if (textoNode) {
-            textoNode.x(x);
-            textoNode.y(y);
-            textoNode.getLayer()?.batchDraw();
-          }
-        }}
-        onDragEnd={(e) => {
-          // Mantener lógica original de dragEnd (guardar posición, drag grupal, etc.)
-          if (typeof propsForma.onDragEnd === "function") {
-            propsForma.onDragEnd(e);
-          }
+                if (textoNode) {
+                  textoNode.x(x);
+                  textoNode.y(y);
+                  textoNode.getLayer()?.batchDraw();
+                }
+              }}
+              onDragEnd={(e) => {
+                // Mantener lógica original de dragEnd (guardar posición, drag grupal, etc.)
+                if (typeof propsForma.onDragEnd === "function") {
+                  propsForma.onDragEnd(e);
+                }
 
-          const { x, y } = e.target.position();
-          const stage = e.target.getStage();
-          const textoNode = stage?.findOne(`#${obj.id}-text`);
+                const { x, y } = e.target.position();
+                const stage = e.target.getStage();
+                const textoNode = stage?.findOne(`#${obj.id}-text`);
 
-          if (textoNode) {
-            textoNode.x(x);
-            textoNode.y(y);
-            textoNode.getLayer()?.batchDraw();
-          }
-        }}
-      />
+                if (textoNode) {
+                  textoNode.x(x);
+                  textoNode.y(y);
+                  textoNode.getLayer()?.batchDraw();
+                }
+              }}
+            />
 
-      {/* ✏️ Texto encima de la forma */}
-      {obj.texto && (
-        <Text
-          id={`${obj.id}-text`}          // 👈 id para poder encontrarlo desde el Rect
-          ref={(node) => {
-            if (node && registerRef) {
-              registerRef(`${obj.id}-text`, node); // seguís usando tu sistema de refs
-            }
-          }}
-          x={obj.x}
-          y={obj.y}
-          width={width}
-          height={height}
-          text={obj.texto}
-          fontSize={obj.fontSize || 24}
-          fontFamily={obj.fontFamily || "sans-serif"}
-          fontWeight={obj.fontWeight || "normal"}
-          fontStyle={obj.fontStyle || "normal"}
-          fill={obj.colorTexto || "#000000"}
-          align={obj.align || "center"}
-          verticalAlign="middle"
-          listening={false}              // 👈 el texto no roba eventos, los recibe el Rect
-          opacity={isInEditMode ? 0 : 1}
-        />
-      )}
-    </>
-  );
+            {/* ✏️ Texto encima de la forma */}
+            {obj.texto && (
+              <Text
+                id={`${obj.id}-text`}          // 👈 id para poder encontrarlo desde el Rect
+                ref={(node) => {
+                  if (node && registerRef) {
+                    registerRef(`${obj.id}-text`, node); // seguís usando tu sistema de refs
+                  }
+                }}
+                x={obj.x}
+                y={obj.y}
+                width={width}
+                height={height}
+                text={obj.texto}
+                fontSize={obj.fontSize || 24}
+                fontFamily={obj.fontFamily || "sans-serif"}
+                fontWeight={obj.fontWeight || "normal"}
+                fontStyle={obj.fontStyle || "normal"}
+                fill={obj.colorTexto || "#000000"}
+                align={obj.align || "center"}
+                verticalAlign="middle"
+                listening={false}              // 👈 el texto no roba eventos, los recibe el Rect
+                opacity={isInEditMode ? 0 : 1}
+              />
+            )}
+          </>
+        );
 
 
       case "circle":

@@ -628,19 +628,27 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   useEffect(() => {
-    if (!contenedorRef.current) return;
+    const el = contenedorRef.current;
+    if (!el) return;
 
     const actualizar = () => {
+      // ⚠️ el ref puede ser null cuando el observer dispara
+      if (!contenedorRef.current) return;
+
       setAnchoContenedor(contenedorRef.current.offsetWidth || 0);
     };
 
-    actualizar();
+    // 🟢 Medimos en el próximo frame (layout estable)
+    requestAnimationFrame(actualizar);
 
     const observer = new ResizeObserver(actualizar);
-    observer.observe(contenedorRef.current);
+    observer.observe(el);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, []);
+
 
 
 
@@ -1272,7 +1280,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     return () => { delete window.__getSeccionInfo; };
   }, [seccionesOrdenadas]);
 
-  
+
 
   // 2) Exponer un getter de objetos por id (fallback cuando hay elementos seleccionados)
   useEffect(() => {

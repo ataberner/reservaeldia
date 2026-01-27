@@ -57,6 +57,16 @@ import {
 
 Konva.dragDistance = 24;
 
+const ALTURA_REFERENCIA_PANTALLA = 500;
+const ALTURA_PANTALLA_EDITOR = 500;
+
+
+function normalizarAltoModo(modo) {
+  const m = String(modo || "fijo").toLowerCase();
+  return (m === "pantalla") ? "pantalla" : "fijo";
+}
+
+
 // 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {
@@ -434,6 +444,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
       const nuevoConSeccion = { ...nuevo, seccionId: targetSeccionId };
 
+      const sec = secciones.find(s => s.id === targetSeccionId);
+      if (normalizarAltoModo(sec?.altoModo) === "pantalla") {
+        const yPx = Number.isFinite(nuevoConSeccion.y) ? nuevoConSeccion.y : 0;
+        nuevoConSeccion.yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
+      }
+
       setObjetos((prev) => {
         const next = [...prev, nuevoConSeccion];
         return next;
@@ -496,7 +512,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         return;
       }
 
-
       const nuevo = {
         id: `texto-${Date.now()}`,
         tipo: "texto",
@@ -516,14 +531,24 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         seccionId: seccionActivaId
       };
 
+      // ✅ Si la sección activa es pantalla, inicializamos yNorm
+      const secActiva = secciones.find(s => s.id === seccionActivaId);
+      if (normalizarAltoModo(secActiva?.altoModo) === "pantalla") {
+        nuevo.yNorm = Math.max(0, Math.min(1, (Number(nuevo.y) || 0) / ALTURA_PANTALLA_EDITOR));
+        // (opcional) no guardes y en px para pantalla
+        // delete nuevo.y;
+      }
+
       nuevoTextoRef.current = nuevo.id;
       setObjetos((prev) => [...prev, nuevo]);
     };
 
     window.addEventListener("agregar-cuadro-texto", handler);
     return () => window.removeEventListener("agregar-cuadro-texto", handler);
-  }, [seccionActivaId]);
+  }, [seccionActivaId, secciones]);
 
+
+  
 
 
 
@@ -695,7 +720,29 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data();
-        setObjetos(data.objetos || []);
+        const seccionesData = data.secciones || [];
+        const objetosData = data.objetos || [];
+
+        const objsMigrados = objetosData.map(o => {
+          if (!o?.seccionId) return o;
+
+          const sec = seccionesData.find(s => s.id === o.seccionId);
+          const modo = normalizarAltoModo(sec?.altoModo);
+
+          if (modo === "pantalla") {
+            // Si no existe yNorm, lo creamos desde y(px) usando el alto editor (500)
+            if (!Number.isFinite(o.yNorm)) {
+              const yPx = Number.isFinite(o.y) ? o.y : 0;
+              const yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
+              return { ...o, yNorm };
+            }
+          }
+          return o;
+        });
+
+        setObjetos(objsMigrados);
+        setSecciones(seccionesData);
+
         setSecciones(data.secciones || []);
 
         // ✅ Setea la primera sección como activa si hay
@@ -1172,6 +1219,84 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     );
   };
 
+  const togglePantallaCompletaSeccion = useCallback(async (seccionId) => {
+    if (!seccionId) return;
+
+    // 1) Actualizar estado local (con backup/restauración de altura)
+    setSecciones((prev) => {
+      const next = prev.map((s) => {
+        if (s.id !== seccionId) return s;
+
+        const modoActual = normalizarAltoModo(s.altoModo);
+        const modoNuevo = (modoActual === "pantalla") ? "fijo" : "pantalla";
+
+        // Si pasa a pantalla: guardo backup de altura fija y seteo 900
+        if (modoNuevo === "pantalla") {
+          return {
+            ...s,
+            altoModo: "pantalla",
+            alturaFijoBackup: Number.isFinite(s.altura) ? s.altura : 600,
+            altura: ALTURA_REFERENCIA_PANTALLA,
+          };
+        }
+
+        // Si vuelve a fijo: restauro backup si existe
+        const backup = Number.isFinite(s.alturaFijoBackup) ? s.alturaFijoBackup : s.altura;
+
+        // Limpio el backup para no ensuciar data (opcional)
+        const { alturaFijoBackup, ...rest } = s;
+
+        return {
+          ...rest,
+          altoModo: "fijo",
+          altura: Number.isFinite(backup) ? backup : 600,
+        };
+      });
+
+      return next;
+    });
+
+    // 2) Persistir en Firestore (sin esperar a que se actualice el state)
+    try {
+      const ref = doc(db, "borradores", slug);
+
+      // Leemos snapshot de secciones actuales y aplicamos el mismo toggle
+      const seccionesActuales = secciones;
+      const seccionesNext = seccionesActuales.map((s) => {
+        if (s.id !== seccionId) return s;
+
+        const modoActual = normalizarAltoModo(s.altoModo);
+        const modoNuevo = (modoActual === "pantalla") ? "fijo" : "pantalla";
+
+        if (modoNuevo === "pantalla") {
+          return {
+            ...s,
+            altoModo: "pantalla",
+            alturaFijoBackup: Number.isFinite(s.altura) ? s.altura : 600,
+            altura: ALTURA_REFERENCIA_PANTALLA,
+          };
+        }
+
+        const backup = Number.isFinite(s.alturaFijoBackup) ? s.alturaFijoBackup : s.altura;
+        const { alturaFijoBackup, ...rest } = s;
+
+        return {
+          ...rest,
+          altoModo: "fijo",
+          altura: Number.isFinite(backup) ? backup : 600,
+        };
+      });
+
+      await updateDoc(ref, {
+        secciones: seccionesNext,
+        ultimaEdicion: serverTimestamp(),
+      });
+
+      console.log("✅ altoModo actualizado:", seccionId);
+    } catch (e) {
+      console.error("❌ Error guardando altoModo:", e);
+    }
+  }, [slug, secciones]);
 
 
 
@@ -1242,6 +1367,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+
+  const esSeccionPantallaById = useCallback((seccionId) => {
+    const s = seccionesOrdenadas.find(x => x.id === seccionId);
+    return s && normalizarAltoModo(s.altoModo) === "pantalla";
+  }, [seccionesOrdenadas]);
+
 
   // Mantengo tu lógica para escalaActiva (no tocamos el comportamiento general)
   const escalaActiva = zoom === 1 ? scale : zoom;
@@ -1784,23 +1915,47 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   )}
 
 
-                  {/* Botón Desanclar fondo (solo si tiene imagen de fondo) */}
-                  {seccion.fondoTipo === "imagen" && (
-                    <button
-                      onClick={() =>
-                        desanclarFondo({
-                          seccionId: seccion.id,
-                          secciones,
-                          objetos,
-                          setSecciones,
-                          setObjetos,
-                          setElementosSeleccionados,
-                        })
-                      }
-                    >
-                      🔄 Desanclar fondo
-                    </button>
-                  )}
+                  {(() => {
+                    const modoSeccion = normalizarAltoModo(seccion.altoModo);
+                    const esPantalla = modoSeccion === "pantalla";
+
+                    return (
+                      <div className="flex items-center gap-2">
+                        {/* Botón Desanclar fondo */}
+                        {seccion.fondoTipo === "imagen" && (
+                          <button
+                            onClick={() =>
+                              desanclarFondo({
+                                seccionId: seccion.id,
+                                secciones,
+                                objetos,
+                                setSecciones,
+                                setObjetos,
+                                setElementosSeleccionados,
+                              })
+                            }
+                            className="px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 shadow-sm"
+                            title="Desanclar imagen de fondo"
+                          >
+                            🔄 Desanclar fondo
+                          </button>
+                        )}
+
+                        {/* Toggle Pantalla completa */}
+                        <button
+                          onClick={() => togglePantallaCompletaSeccion(seccion.id)}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${esPantalla
+                            ? "bg-purple-600 text-white hover:bg-purple-700 shadow-md"
+                            : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 shadow-sm"
+                            }`}
+                          title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
+                        >
+                          {esPantalla ? "📺 Pantalla: ON" : "📺 Pantalla: OFF"}
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                   {/* Botón Borrar sección */}
                   <button
                     onClick={() =>
@@ -2230,6 +2385,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
                   const controlY = offsetY + seccion.altura - 5; // 5px antes del final
 
+                  const modoSeccion = normalizarAltoModo(seccion.altoModo);
+                  const permiteResizeAltura = (modoSeccion !== "pantalla");
+
+
                   return (
                     <Group key={`control-altura-${seccion.id}`}>
                       {/* Línea indicadora */}
@@ -2245,18 +2404,19 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       <Group
                         x={400}
                         y={controlY}
-                        onMouseDown={(e) => iniciarControlAltura(e, seccion.id)}
+                        listening={permiteResizeAltura}                 // ✅ clave: si es false, no captura eventos
+                        opacity={permiteResizeAltura ? 1 : 0.25}        // ✅ visual deshabilitado
+                        onMouseDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
                         onMouseEnter={() => {
-                          // solo mostrar ns-resize si no estás arrastrando
-                          if (!controlandoAltura) setGlobalCursor('ns-resize', stageRef);
+                          if (!controlandoAltura && permiteResizeAltura) setGlobalCursor("ns-resize", stageRef);
                         }}
                         onMouseLeave={() => {
-                          // no limpies el cursor si estás arrastrando (lo limpia finalizarControlAltura)
-                          if (!controlandoAltura) clearGlobalCursor(stageRef);
+                          if (!controlandoAltura && permiteResizeAltura) clearGlobalCursor(stageRef);
                         }}
-
                         draggable={false}
                       >
+
+
                         {/* Área de detección */}
                         <Rect
                           x={-35}
@@ -2360,6 +2520,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     {/* Indicador de la sección que se está modificando */}
                     {seccionesOrdenadas.map((seccion, index) => {
                       const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+
+                      const modoSeccion = normalizarAltoModo(seccion.altoModo);
+                      const permiteResizeAltura = (modoSeccion !== "pantalla");
 
                       return (
                         <Group key={seccion.id}>
@@ -2539,10 +2702,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       key={obj.id}
                       obj={{
                         ...obj,
-                        y: obj.y + calcularOffsetY(
-                          seccionesOrdenadas,
-                          seccionesOrdenadas.findIndex(s => s.id === obj.seccionId)
-                        ),
+                        // 🔥 yLocal: en sección pantalla usamos yNorm * 500
+                        // fallback legacy: si no hay yNorm, usamos obj.y
+                        y: (() => {
+                          const idxSec = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
+                          const offsetY = calcularOffsetY(seccionesOrdenadas, idxSec);
+
+                          const yLocal = esSeccionPantallaById(obj.seccionId)
+                            ? (Number.isFinite(obj.yNorm) ? (obj.yNorm * ALTURA_PANTALLA_EDITOR) : obj.y)
+                            : obj.y;
+
+                          return yLocal + offsetY;
+                        })(),
                       }}
                       anchoCanvas={800}
                       isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
@@ -2673,6 +2844,32 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                               seccionesOrdenadas
                             );
                           }
+
+                          // 1) Determinar sección final
+                          const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
+
+                          // 2) Obtener yRelPx (y relativa dentro de la sección en px)
+                          let yRelPx;
+
+                          if (nuevaSeccion) {
+                            // coordenadasAjustadas normalmente ya trae y relativa
+                            yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
+                          } else {
+                            // si no cambió de sección, convertimos desde y absoluta
+                            yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
+                          }
+
+                          // 3) Aplicar política pantalla: guardar yNorm
+                          if (esSeccionPantallaById(seccionFinalId)) {
+                            const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
+                            coordenadasFinales.yNorm = yNorm;
+                            delete coordenadasFinales.y; // ✅ clave: evitamos mezclar sistemas
+                          } else {
+                            // fijo: guardar y en px
+                            coordenadasFinales.y = yRelPx;
+                            delete coordenadasFinales.yNorm;
+                          }
+
 
 
                           // Actualizar inmediatamente

@@ -226,6 +226,15 @@ async function resolverURLsDeObjetos(objetos: any[]): Promise<any[]> {
   return procesados;
 }
 
+function safeServerTimestamp() {
+  try {
+    const fv = (admin as any)?.firestore?.FieldValue;
+    if (fv?.serverTimestamp) return fv.serverTimestamp();
+  } catch {}
+  // Fallback seguro (solo se usa si falta FieldValue en emulador)
+  return new Date();
+}
+
 
 export const publicarInvitacion = onCall(
   { region: "us-central1", memory: "512MiB" },
@@ -282,7 +291,7 @@ export const publicarInvitacion = onCall(
         tipo: data.tipo || data.plantillaTipo || "desconocido",
         portada: data.thumbnailUrl || null,
         invitadosCount: data.invitadosCount || 0,
-        publicadaEn: admin.firestore.FieldValue.serverTimestamp(),
+        publicadaEn: safeServerTimestamp(),
       },
       { merge: true }
     );

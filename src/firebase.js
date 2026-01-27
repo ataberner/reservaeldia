@@ -1,10 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { getFunctions } from "firebase/functions";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { getStorage } from "firebase/storage";
-
-
 
 const firebaseConfig = {
   apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
@@ -19,5 +17,26 @@ const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const functions = getFunctions(app);
 export const storage = getStorage(app);
+
+// 🔹 Functions
+export const functions = getFunctions(app, "us-central1");
+
+const isLocalhost =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
+
+const USE_EMULATORS =
+  isLocalhost && process.env.NEXT_PUBLIC_USE_EMULATORS === "true";
+
+// ✅ SOLO en localhost + flag true
+if (USE_EMULATORS) {
+  console.log("[Firebase] Functions → EMULATOR");
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+} else {
+  console.log("[Firebase] Functions → CLOUD");
+}
+
+
+export default app;

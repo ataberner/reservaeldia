@@ -100,9 +100,7 @@ export default function Dashboard() {
       // 👇 DEBUG: ver qué props tiene cada countdown
       try {
         const cds = (objetosBase || []).filter(o => o?.tipo === "countdown");
-        console.log("🔎 DEBUG COUNTDOWNS >>>", JSON.stringify(cds, null, 2));
       } catch (e) {
-        console.log("❌ DEBUG COUNTDOWNS ERROR:", e);
       }
 
       setHtmlVistaPrevia(htmlGenerado);

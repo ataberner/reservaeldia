@@ -110,14 +110,14 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
   // ===========================
   const ALTURA_EDITOR_PANTALLA = 500;
 
-  // ✅ Offsets SOLO para texto en secciones Pantalla: ON
+  // ✅ Offsets en secciones Pantalla: ON
   // ⚠️ IMPORTANTE: este archivo SOLO genera objetos.
   // El valor DESKTOP/MOBILE real se controla vía CSS global con:
-  //   :root { --pantalla-texto-y-offset: Xpx }
-  //   @media (max-width: 640px) { :root { --pantalla-texto-y-offset: Ypx } }
+  //   :root { --pantalla-y-offset: Xpx }
+  //   @media (max-width: 640px) { :root { --pantalla-y-offset: Ypx } }
   //
   // Acá dejamos fallback (desktop) por si la variable CSS no existe.
-  const PANTALLA_TEXTO_Y_OFFSET_DESKTOP_PX = 0;
+  const PANTALLA_Y_OFFSET_DESKTOP_PX = -28;
 
   function clamp01(n: any): number | null {
     const x = Number(n);
@@ -148,14 +148,13 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
       const yPxEditor = getYPxEditor(obj);
       const yn = clamp01(yPxEditor / ALTURA_EDITOR_PANTALLA) ?? 0;
 
-      // ✅ SOLO TEXTO: offset en px (distinto desktop/mobile via CSS)
-      if (obj?.tipo === "texto") {
-        return `calc((var(--vh-logical) * ${yn}) + (${sContenidoVar(
-          obj
-        )} * var(--pantalla-texto-y-offset, ${PANTALLA_TEXTO_Y_OFFSET_DESKTOP_PX}px)))`;
-      }
 
-      return `calc(var(--vh-logical) * ${yn})`;
+      return `calc((var(--vh-logical) * ${yn}) + (${sContenidoVar(
+        obj
+      )} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px)))`;
+
+
+
     }
 
     const y = Number(obj?.y || 0);
@@ -169,13 +168,11 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
     if (esSeccionPantalla(obj)) {
       const yn = clamp01(yPx / ALTURA_EDITOR_PANTALLA) ?? 0;
 
-      if (obj?.tipo === "texto") {
-        return `calc((var(--vh-logical) * ${yn}) + (${sContenidoVar(
-          obj
-        )} * var(--pantalla-texto-y-offset, ${PANTALLA_TEXTO_Y_OFFSET_DESKTOP_PX}px)))`;
-      }
 
-      return `calc(var(--vh-logical) * ${yn})`;
+      return `calc((var(--vh-logical) * ${yn}) + (${sContenidoVar(
+        obj
+      )} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px)))`;
+
     }
 
     return pxY(obj, yPx);
@@ -269,8 +266,27 @@ pointer-events: auto;
         // ⚠️ texto fullBleed NO hace fit => escala con var(--sx)
         const sFont = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
 
+        const rot = obj?.rotation ?? 0;
+        const scaleX = obj?.scaleX ?? 1;
+        const scaleY = obj?.scaleY ?? 1;
+
+        const origin =
+          align === "center" ? "top center" :
+            (align === "right" ? "top right" : "top left");
+
+        const xComp =
+          align === "left" ? "calc((1 - var(--text-zoom, 1)) * 50%)" :
+            align === "right" ? "calc((var(--text-zoom, 1) - 1) * 50%)" :
+              "0px";
+
+
+
         const style = `
 ${baseStyle}
+/* ✅ para que el zoom no “empuje” a la derecha */
+transform-origin: ${origin};
+/* ✅ compensa el corrimiento por scale */
+transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY}) translateX(${xComp}) scale(var(--text-zoom, 1));
 ${w !== undefined ? `width: ${pxX(obj, w)};` : ""}
 font-size: calc(${sFont} * ${fs}px);
 font-family: ${obj.fontFamily || "sans-serif"};
@@ -284,22 +300,22 @@ line-height: ${lineHeightFinal};
 padding: 0;
 margin: 0;
 box-sizing: content-box;
-${
-  obj.stroke && obj.strokeWidth > 0
-    ? `-webkit-text-stroke: ${obj.strokeWidth}px ${obj.stroke};`
-    : ""
-}
-${
-  obj.shadowColor
-    ? `text-shadow: ${obj.shadowOffsetX || 0}px ${obj.shadowOffsetY || 0}px ${
-        obj.shadowBlur || 0
-      }px ${obj.shadowColor};`
-    : "text-shadow: none;"
-}
+${obj.stroke && obj.strokeWidth > 0
+            ? `-webkit-text-stroke: ${obj.strokeWidth}px ${obj.stroke};`
+            : ""
+          }
+${obj.shadowColor
+            ? `text-shadow: ${obj.shadowOffsetX || 0}px ${obj.shadowOffsetY || 0}px ${obj.shadowBlur || 0}px ${obj.shadowColor};`
+            : "text-shadow: none;"
+          }
 `.trim();
 
-        return envolverSiEnlace(`<div class="objeto" style="${style}">${safeTexto}</div>`, obj);
+        return envolverSiEnlace(
+          `<div class="objeto" data-debug-texto="1" style="${style}">${safeTexto}</div>`,
+          obj
+        );
       }
+
 
       // ---------------- IMAGEN ----------------
       if (tipo === "imagen") {
@@ -374,51 +390,78 @@ fill: ${escapeAttr(fill)};
 
         const textColor = obj.colorTexto ?? obj.color ?? "#111";
         const fontFamily = obj.fontFamily || "Inter, system-ui, sans-serif";
-        const valueSize = Number.isFinite(obj.fontSize) ? obj.fontSize : 16;
-        const labelSize = Number.isFinite(obj.labelSize) ? obj.labelSize : 10;
-        const labelColor = obj.labelColor ?? "#6b7280";
-        const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
-        const letterSpacing = Number.isFinite(obj.letterSpacing) ? obj.letterSpacing : 0;
 
         const preset = obj.presetId || obj.layout || "pills";
         const isMinimal = String(preset).toLowerCase().includes("minimal");
 
+        // ✅ ancho/alto del objeto (si existen)
+        const wObj = Number.isFinite(obj?.width) ? Number(obj.width) : null;
+        const hObj = Number.isFinite(obj?.height) ? Number(obj.height) : null;
+
+        // ✅ gap: si viene de Konva, respetarlo
         const gap = Number.isFinite(obj.gap)
-          ? obj.gap
+          ? Number(obj.gap)
           : Number.isFinite(obj.spacing)
-          ? obj.spacing
-          : 8;
+            ? Number(obj.spacing)
+            : 8;
 
-        const padding = Number.isFinite(obj.padding) ? obj.padding : 0;
+        // ✅ Si tu Konva guarda chipWidth / paddingX, respetalos
+        // chipWidth: ancho interno del texto (sin padding)
+        const chipWidthProp = Number.isFinite(obj.chipWidth) ? Number(obj.chipWidth) : null;
+        const paddingXProp = Number.isFinite(obj.paddingX) ? Number(obj.paddingX) : null;
 
+        // ✅ Derivación raíz (cuando no hay props)
+        const n = 4;
+
+        // chipWTotal: ancho total de cada chip (incluye padding)
+        let chipWTotal = 56; // fallback razonable
+        if (wObj && wObj > 0) {
+          chipWTotal = Math.max(40, (wObj - gap * (n - 1)) / n);
+        }
+
+        // paddingX derivado del chipWTotal (si no vino)
+        const paddingX = paddingXProp ?? Math.max(6, Math.round(chipWTotal * 0.18)); // ~18%
+        const paddingY = Math.max(5, Math.round(paddingX * 0.65));
+
+        // chipWidth (texto) derivado si no vino
+        const chipWidth = chipWidthProp ?? Math.max(10, Math.round(chipWTotal - paddingX * 2));
+
+        // ✅ font sizes: si vienen, respetar; si no, derivar desde chipWTotal
+        const valueSize =
+          Number.isFinite(obj.fontSize) ? Number(obj.fontSize) : Math.max(14, Math.round(chipWTotal * 0.34));
+        const labelSize =
+          Number.isFinite(obj.labelSize) ? Number(obj.labelSize) : Math.max(9, Math.round(valueSize * 0.62));
+
+        const labelColor = obj.labelColor ?? "#6b7280";
+        const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
+        const letterSpacing = Number.isFinite(obj.letterSpacing) ? obj.letterSpacing : 0;
+
+        // ✅ estilos de chip
         const containerBgFinal = "transparent";
-        const chipBgFinal = isMinimal ? "transparent" : obj.chipBackground ?? obj.boxBg ?? "transparent";
-        const chipBorderColorFinal = isMinimal
-          ? "transparent"
-          : obj.chipBorder ?? obj.boxBorder ?? "transparent";
+        const chipBgFinal = isMinimal ? "transparent" : obj.chipBackground ?? obj.boxBg ?? "rgba(255,255,255,.75)";
+        const chipBorderColorFinal = isMinimal ? "transparent" : obj.chipBorder ?? obj.boxBorder ?? "rgba(0,0,0,.08)";
 
         const containerRadius = Number.isFinite(obj.boxRadius)
           ? obj.boxRadius
           : Number.isFinite(obj.radius)
-          ? obj.radius
-          : 8;
+            ? obj.radius
+            : 10;
 
         const chipRadiusFinal = Number.isFinite(obj.chipRadius) ? obj.chipRadius : containerRadius;
 
         const baseStyle = stylePosBase(obj);
-        const w = Number.isFinite(obj?.width) ? obj.width : undefined;
-        const h = Number.isFinite(obj?.height) ? obj.height : undefined;
 
+        // ✅ Escala correcta (respeta pantalla y bleed)
         const sChip = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
 
         const containerStyle = `
 ${baseStyle}
-${styleSize(obj, w, h)}
+${wObj ? `width: ${pxX(obj, wObj)};` : ""}
+${hObj ? `height: ${pxY(obj, hObj)};` : ""}
 display: flex;
 align-items: center;
 justify-content: center;
 gap: calc(${sChip} * ${gap}px);
-padding: calc(${sChip} * ${padding}px);
 font-family: ${fontFamily};
 color: ${textColor};
 background: ${containerBgFinal};
@@ -427,8 +470,8 @@ letter-spacing: calc(${sChip} * ${letterSpacing}px);
 `.trim();
 
         const chipStyle = `
-min-width: calc(${sChip} * 46px);
-padding: calc(${sChip} * 6px) calc(${sChip} * 8px);
+width: calc(${sChip} * ${Math.round(chipWTotal)}px);
+padding: calc(${sChip} * ${paddingY}px) calc(${sChip} * ${paddingX}px);
 border: ${isMinimal ? "0" : `calc(${sChip} * 1px) solid ${chipBorderColorFinal}`};
 border-radius: calc(${sChip} * ${chipRadiusFinal}px);
 display: flex;
@@ -436,6 +479,7 @@ flex-direction: column;
 align-items: center;
 justify-content: center;
 background: ${chipBgFinal};
+box-sizing: border-box;
 `.trim();
 
         const valueStyle = `
@@ -447,7 +491,7 @@ line-height: 1;
         const labelStyle = `
 font-size: calc(${sChip} * ${labelSize}px);
 color: ${labelColor};
-line-height: 1;
+line-height: 1.05;
 `.trim();
 
         const showLabels = obj.showLabels !== false;
@@ -476,6 +520,7 @@ line-height: 1;
 </div>
 `.trim();
       }
+
 
       // ---------------- GALERÍA ----------------
       if (tipo === "galeria") {
@@ -622,9 +667,8 @@ background: ${fill};
 border-radius: calc(${sRectText} * ${cornerRadius}px);
 display: flex;
 align-items: center;
-justify-content: ${
-            align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center"
-          };
+justify-content: ${align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center"
+            };
 text-align: ${align};
 padding: calc(${sRectText} * 4px);
 box-sizing: border-box;

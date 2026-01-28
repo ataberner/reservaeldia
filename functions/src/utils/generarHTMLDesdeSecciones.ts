@@ -23,8 +23,8 @@ const ALTURA_REFERENCIA_PANTALLA = 500;
 // - Desktop: aplica cuando vw > 640px
 // - Mobile: aplica cuando vw <= 640px
 // (Estos valores se vuelcan a CSS variables en :root)
-const PANTALLA_TEXTO_Y_OFFSET_DESKTOP_PX = -28;
-const PANTALLA_TEXTO_Y_OFFSET_MOBILE_PX = 100;
+const PANTALLA_Y_OFFSET_DESKTOP_PX = -28;
+const PANTALLA_Y_OFFSET_MOBILE_PX = 0;
 
 function buildGoogleFontsLink(fonts: string[]): string {
   const familias = fonts
@@ -179,7 +179,12 @@ export function generarHTMLDesdeSecciones(
 `.trim()
     : "";
 
-  const htmlSecciones = secciones
+  const seccionesOrdenadas = [...(secciones || [])].sort(
+    (a, b) => (Number(a?.orden) || 0) - (Number(b?.orden) || 0)
+  );
+
+
+  const htmlSecciones = seccionesOrdenadas
     .map((seccion) => {
       const modo = String(seccion?.altoModo || "fijo").toLowerCase();
       const hbase = Number.isFinite(seccion?.altura) ? Number(seccion.altura) : 600;
@@ -195,8 +200,9 @@ export function generarHTMLDesdeSecciones(
 
       const fondoStyle = buildFondoStyle(seccion);
 
-      const htmlBleed = generarHTMLDesdeObjetos(objsBleed, secciones);
-      const htmlContenido = generarHTMLDesdeObjetos(objsContenido, secciones);
+      const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas);
+      const htmlContenido = generarHTMLDesdeObjetos(objsContenido, seccionesOrdenadas);
+
 
       return `
 <section class="sec" data-modo="${escapeAttr(modo)}" style="--hbase:${hbase}">
@@ -235,6 +241,8 @@ export function generarHTMLDesdeSecciones(
         -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
       }
+      
+        :root{ --text-zoom: 1.25; } /* probá 1.10–1.25 */
     }
 
     :root{
@@ -242,6 +250,8 @@ export function generarHTMLDesdeSecciones(
       --safe-right: env(safe-area-inset-right, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --safe-left: env(safe-area-inset-left, 0px);
+      :root{ --text-zoom: 1; }
+
 
       /* Global scales */
       --content-w: ${CANVAS_BASE.ANCHO}px;
@@ -253,13 +263,13 @@ export function generarHTMLDesdeSecciones(
       --vh-logical: var(--vh-safe);
 
       /* ✅ Offset SOLO para texto en Pantalla: ON (desktop default) */
-      --pantalla-texto-y-offset: ${PANTALLA_TEXTO_Y_OFFSET_DESKTOP_PX}px;
+      --pantalla-y-offset: ${PANTALLA_Y_OFFSET_DESKTOP_PX}px;
     }
 
     /* ✅ Mobile: offset distinto SOLO para texto en Pantalla: ON */
     @media (max-width: 640px){
       :root{
-        --pantalla-texto-y-offset: ${PANTALLA_TEXTO_Y_OFFSET_MOBILE_PX}px;
+        --pantalla-y-offset: ${PANTALLA_Y_OFFSET_MOBILE_PX}px;
       }
     }
 
@@ -419,6 +429,19 @@ export function generarHTMLDesdeSecciones(
           zoomExtra = clamp(1 + (k - 1) * 0.18, 1, 1.35);
         }
 
+        // 🔧 Ajuste fino: cuánto acompaña el fondo al zoom hero (0..1.2)
+        // 0   => el fondo NO agrega zoom extra propio (solo el zoom del wrapper)
+        // 1   => comportamiento actual (fondo queda zoomExtra²)
+        // 0.3 => recomendado para empezar (sutil)
+        var BG_ZOOM_FACTOR = 0.3;
+
+        // 🔧 Ajuste fino: cuánto acompaña el CONTENIDO (texto/objetos) al zoom hero
+        // 0   => comportamiento actual
+        // 0.3 => recomendado
+        // 1   => texto escala igual que el hero (no aconsejado)
+        var TEXT_ZOOM_FACTOR = 0;
+
+
         secs.forEach(function(sec){
           var modo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
 
@@ -450,7 +473,10 @@ export function generarHTMLDesdeSecciones(
             // ✅ Mobile: mantenemos tu comportamiento actual (zoom hero suave)
             if (isMobile){
               zoom = zoomExtra;
-              bgzoom = zoomExtra;
+              bgzoom = 1 + (zoomExtra - 1) * BG_ZOOM_FACTOR;
+
+              // 🔥 NUEVO: el contenido acompaña parcialmente el zoom
+              sfinal = sx * (1 + (zoomExtra - 1) * TEXT_ZOOM_FACTOR);
             }
           }
 
@@ -467,6 +493,8 @@ export function generarHTMLDesdeSecciones(
             sec.style.setProperty("--vh-logical", "var(--vh-safe)");
           }
         });
+
+
       }
 
       window.addEventListener("load", compute);
@@ -485,6 +513,8 @@ export function generarHTMLDesdeSecciones(
       compute();
     })();
   </script>
+ 
+ 
 </body>
 </html>
 `;

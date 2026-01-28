@@ -548,7 +548,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, [seccionActivaId, secciones]);
 
 
-  
+
 
 
 
@@ -631,14 +631,21 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const actualizarEscala = () => {
       if (!contenedorRef.current) return;
 
-      // medimos en el próximo frame para evitar valores intermedios (iOS)
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const anchoContenedor = contenedorRef.current.offsetWidth;
+        const ancho = contenedorRef.current?.offsetWidth || 0;
         const base = isMobilePortrait ? 1000 : 800;
-        setScale(anchoContenedor / base);
+        const scale = base > 0 ? ancho / base : 1;
+
+        setScale(scale);
+
+        console.log("[EDITOR] anchoContenedor=", ancho, "base=", base, "scale=", scale.toFixed(3));
       });
     };
+
+    actualizarEscala();
+
+
 
     actualizarEscala();
 

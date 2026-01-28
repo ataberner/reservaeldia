@@ -20,8 +20,8 @@ const EXCLUDE_FONTS = new Set([
 const ALTURA_REFERENCIA_PANTALLA = 500;
 
 // ✅ Offsets SOLO para texto en secciones Pantalla: ON
-// - Desktop: aplica cuando vw > 640px
-// - Mobile: aplica cuando vw <= 640px
+// - Desktop: aplica cuando vw > 767px
+// - Mobile: aplica cuando vw <= 767px
 // (Estos valores se vuelcan a CSS variables en :root)
 const PANTALLA_Y_OFFSET_DESKTOP_PX = -28;
 const PANTALLA_Y_OFFSET_MOBILE_PX = 0;
@@ -250,7 +250,8 @@ export function generarHTMLDesdeSecciones(
       --safe-right: env(safe-area-inset-right, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --safe-left: env(safe-area-inset-left, 0px);
-      :root{ --text-zoom: 1; }
+      --bp-mobile: 767px;
+      
 
 
       /* Global scales */
@@ -267,7 +268,7 @@ export function generarHTMLDesdeSecciones(
     }
 
     /* ✅ Mobile: offset distinto SOLO para texto en Pantalla: ON */
-    @media (max-width: 640px){
+    @media (max-width: 767px){
       :root{
         --pantalla-y-offset: ${PANTALLA_Y_OFFSET_MOBILE_PX}px;
       }
@@ -433,7 +434,7 @@ export function generarHTMLDesdeSecciones(
         // 0   => el fondo NO agrega zoom extra propio (solo el zoom del wrapper)
         // 1   => comportamiento actual (fondo queda zoomExtra²)
         // 0.3 => recomendado para empezar (sutil)
-        var BG_ZOOM_FACTOR = 0.3;
+        var BG_ZOOM_FACTOR = 0;
 
         // 🔧 Ajuste fino: cuánto acompaña el CONTENIDO (texto/objetos) al zoom hero
         // 0   => comportamiento actual
@@ -513,6 +514,7 @@ export function generarHTMLDesdeSecciones(
       compute();
     })();
   </script>
+
  
  
 </body>

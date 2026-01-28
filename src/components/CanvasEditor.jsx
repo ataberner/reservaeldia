@@ -212,6 +212,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
+  const [fontsReady, setFontsReady] = useState(false);
+
+  const fuentesNecesarias = useMemo(() => {
+    // fuentes usadas en textos + countdown (si aplica) + formas con texto (rect)
+    const fonts = (objetos || [])
+      .filter(o => (o.tipo === "texto" || o.tipo === "countdown" || (o.tipo === "forma" && o.figura === "rect")) && o.fontFamily)
+      .map(o => String(o.fontFamily).replace(/['"]/g, "").split(",")[0].trim())
+      .filter(Boolean);
+
+    return [...new Set(fonts)];
+  }, [objetos]);
+
 
   useEffect(() => {
     // ✅ EXPONER ESTADO DE EDICIÓN GLOBALMENTE
@@ -702,18 +714,58 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     };
   }, []);
 
-  // Cargar fuentes usadas en objetos existentes
   useEffect(() => {
-    const fuentesUsadas = objetos
-      .filter(obj => obj.tipo === 'texto' && obj.fontFamily)
-      .map(obj => obj.fontFamily);
+    let alive = true;
 
-    const fuentesUnicas = [...new Set(fuentesUsadas)];
+    async function precargar() {
+      // Si no hay fuentes custom, listo
+      if (!fuentesNecesarias.length) {
+        if (alive) setFontsReady(true);
+        return;
+      }
 
-    if (fuentesUnicas.length > 0) {
-      fontManager.loadFonts(fuentesUnicas);
+      setFontsReady(false);
+
+      try {
+        // ✅ Ideal: que fontManager.loadFonts devuelva Promise
+        // Si hoy no devuelve, igual lo resolvemos con document.fonts más abajo.
+        const maybePromise = fontManager.loadFonts?.(fuentesNecesarias);
+
+        // Si devuelve promise, esperamos
+        if (maybePromise && typeof maybePromise.then === "function") {
+          await maybePromise;
+        }
+
+        // ✅ Segundo seguro: esperar a que el browser confirme
+        // (esto garantiza que no haya fallback)
+        if (document?.fonts?.load) {
+          await Promise.all(
+            fuentesNecesarias.map(f =>
+              document.fonts.load(`16px "${f}"`)
+            )
+          );
+        }
+
+        if (alive) setFontsReady(true);
+
+        // Redraw por si acaso
+        requestAnimationFrame(() => {
+          stageRef.current?.batchDraw?.();
+        });
+      } catch (e) {
+        console.warn("⚠️ Error precargando fuentes:", e);
+        // Si falla, igual liberamos para no “bloquear” infinito.
+        // (Si querés, podés dejarlo bloqueado con botón “Reintentar”.)
+        if (alive) setFontsReady(true);
+      }
     }
-  }, [objetos]);
+
+    // Solo precargar cuando ya cargaste el borrador (para evitar overlay raro)
+    if (cargado) precargar();
+
+    return () => { alive = false; };
+  }, [cargado, fuentesNecesarias]);
+
 
 
 
@@ -2029,1137 +2081,1212 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               );
             })}
 
-            <Stage
-              ref={stageRef}
-              width={800}
-              height={altoCanvasDinamico}
-              perfectDrawEnabled={false}
-              listening={true}
-              imageSmoothingEnabled={false}
-              preventDefault={false}
-              hitGraphEnabled={true}
+
+            <div
               style={{
-                background: "white",
-                overflow: "visible",
                 position: "relative",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-              }}
-
-
-              onMouseDown={(e) => {
-                const stage = e.target.getStage();
-                if (!stage) return;
-
-                // ⛔️ NO usar comparaciones directas contra e.target
-                // const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
-
-                // ✅ Usar findAncestor: ¿el target pertenece a algún "nodo raíz" registrado?
-                const roots = Object.values(elementRefs.current || {});
-                const rootHit = e.target.findAncestor((n) => roots.includes(n), true); // includeSelf=true
-
-                if (rootHit) {
-                  // Clic adentro de un elemento: NO inicies selección por lazo
-                  // Dejá que el drag del elemento maneje el movimiento
-                  return;
-                }
-
-
-
-                const clickedOnStage = e.target === stage;
-
-                // Salir de modo mover fondo si no clickeaste una imagen de fondo
-                if (!clickedOnStage && e.target.getClassName() !== "Image") {
-                  window.dispatchEvent(new Event("salir-modo-mover-fondo"));
-                }
-
-                const esStage = clickedOnStage;
-                const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
-
-                dragStartPos.current = stage.getPointerPosition();
-                hasDragged.current = false;
-
-                // Ignorar Transformer/anchors
-                const esTransformer = e.target.getClassName?.() === 'Transformer' ||
-                  e.target.parent?.getClassName?.() === 'Transformer' ||
-                  e.target.attrs?.name?.includes('_anchor');
-                if (esTransformer) return;
-
-                // Si clic en un elemento registrado, no arrancar selección
-                const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
-                if (clickEnElemento) return;
-
-                const esImagenFondo = e.target.getClassName() === "Image";
-
-                if (esStage || esSeccion || esImagenFondo) {
-                  setElementosSeleccionados([]);
-                  setMostrarPanelZ(false);
-                  setMostrarSubmenuCapa(false);
-                  setMostrarSelectorFuente(false);   // 👈 extra
-                  setMostrarSelectorTamaño(false);   // 👈 extra
-                  setHoverId(null);                  // 👈 extra
-
-                  if (esStage) {
-                    setSeccionActivaId(null);
-                  } else {
-                    const idSeccion = e.target.attrs?.id
-                      || secciones.find(s => s.id === e.target.parent?.attrs?.id)?.id
-                      || secciones[0]?.id;
-                    if (idSeccion) setSeccionActivaId(idSeccion);
-                  }
-
-                  const pos = stage.getPointerPosition();
-                  setInicioSeleccion({ x: pos.x, y: pos.y });
-                  setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
-                  setSeleccionActiva(true);
-                }
-              }}
-
-
-              onTouchStart={(e) => {
-                const stage = e.target.getStage();
-                if (!stage) return;
-
-                const pos = stage.getPointerPosition();
-                if (!pos) return;
-
-                const roots = Object.values(elementRefs.current || {});
-                const rootHit = e.target.findAncestor((n) => roots.includes(n), true);
-
-                touchGestureRef.current = {
-                  startX: pos.x,
-                  startY: pos.y,
-                  moved: false,
-                  tappedSectionId,
-                  clickedOnStage,
-                  startedOnElement: !!rootHit,   // ✅ NUEVO
-                };
-
-                if (rootHit) {
-                  // ✅ Si tocaste un elemento, NO hagas lógica de sección.
-                  // Dejamos que ElementoCanvas / GaleriaKonva / Countdown manejen selección/drag.
-                  return;
-                }
-
-
-                const clickedOnStage = e.target === stage;
-
-                // ¿tocaste una sección?
-                const tappedSectionId =
-                  e.target.attrs?.id && secciones.some((s) => s.id === e.target.attrs?.id)
-                    ? e.target.attrs.id
-                    : (secciones.find((s) => s.id === e.target.parent?.attrs?.id)?.id || null);
-
-                // Guardar gesto (NO seleccionar todavía)
-                touchGestureRef.current = {
-                  startX: pos.x,
-                  startY: pos.y,
-                  moved: false,
-                  tappedSectionId,
-                  clickedOnStage,
-                };
-              }}
-
-              onTouchMove={(e) => {
-                const stage = e.target.getStage();
-                if (!stage) return;
-
-                const pos = stage.getPointerPosition();
-                if (!pos) return;
-
-                const dx = Math.abs(pos.x - touchGestureRef.current.startX);
-                const dy = Math.abs(pos.y - touchGestureRef.current.startY);
-
-                // Si se movió, es scroll (o pan), NO seleccionar sección
-                if (dx > TOUCH_MOVE_PX || dy > TOUCH_MOVE_PX) {
-                  touchGestureRef.current.moved = true;
-                }
-              }}
-
-              onTouchEnd={() => {
-                const g = touchGestureRef.current;
-
-                // Scroll: no hacer nada
-                if (g.moved) return;
-
-                // ✅ Si el gesto arrancó sobre un elemento, NO limpies selección.
-                // Ese tap lo tiene que procesar el propio elemento (onClick/onTap en ElementoCanvas).
-                if (g.startedOnElement) return;
-
-                // Tap en vacío: acá sí aplicamos la lógica “canvas”
-                setElementosSeleccionados([]);
-                cerrarMenusFlotantes?.();
-
-                if (g.clickedOnStage) {
-                  setSeccionActivaId(null);
-                  return;
-                }
-
-                if (g.tappedSectionId) {
-                  setSeccionActivaId(g.tappedSectionId);
-                }
-              }}
-
-
-              onMouseMove={(e) => {
-
-
-                // 🔥 RESTO DE LA LÓGICA (selección de área)
-                if (!seleccionActiva || !inicioSeleccion) return;
-
-                if (window._mouseMoveThrottle) return;
-                window._mouseMoveThrottle = true;
-
-                requestAnimationFrame(() => {
-                  window._mouseMoveThrottle = false;
-
-                  const stage = e.target.getStage();
-                  const pos = stage.getPointerPosition();
-                  if (!pos) return;
-
-                  const area = {
-                    x: Math.min(inicioSeleccion.x, pos.x),
-                    y: Math.min(inicioSeleccion.y, pos.y),
-                    width: Math.abs(pos.x - inicioSeleccion.x),
-                    height: Math.abs(pos.y - inicioSeleccion.y),
-                  };
-
-                  setAreaSeleccion(area);
-
-                  if (Math.abs(area.width) > 5 || Math.abs(area.height) > 5) {
-                    if (window._selectionThrottle) return;
-                    window._selectionThrottle = true;
-
-                    requestAnimationFrame(() => {
-                      const ids = objetos.filter((obj) => {
-                        const node = elementRefs.current[obj.id];
-                        if (!node) return false;
-
-                        if (obj.tipo === 'forma' && obj.figura === 'line') {
-                          return detectarInterseccionLinea(obj, area, stage);
-                        }
-
-                        const box = node.getClientRect({ relativeTo: stage });
-                        return (
-                          box.x + box.width >= area.x &&
-                          box.x <= area.x + area.width &&
-                          box.y + box.height >= area.y &&
-                          box.y <= area.y + area.height
-                        );
-                      }).map((obj) => obj.id);
-
-                      setElementosPreSeleccionados(ids);
-                      window._selectionThrottle = false;
-                    });
-                  }
-                });
-              }}
-
-              onMouseUp={(e) => {
-
-                const stage = e.target.getStage();
-
-
-                // Solo verificar si hay drag grupal activo para no procesar selección
-                if (window._grupoLider) {
-                  console.log("🎯 Drag grupal activo, esperando onDragEnd...");
-                  return; // No hacer nada más, dejar que ElementoCanvas maneje todo
-                }
-
-                // El resto del código de selección por área continúa igual...
-                if (!seleccionActiva || !areaSeleccion) return;
-
-                const nuevaSeleccion = objetos.filter((obj) => {
-                  const node = elementRefs.current[obj.id];
-                  if (!node) {
-                    console.log(`⚠️ [SELECCIÓN ÁREA] No se encontró node para ${obj.id}`);
-
-                    return false;
-                  }
-
-                  // 🔥 MANEJO ESPECIAL PARA LÍNEAS
-                  if (obj.tipo === 'forma' && obj.figura === 'line') {
-                    console.log(`📏 [SELECCIÓN ÁREA] Detectando línea ${obj.id} en área`);
-
-                    return detectarInterseccionLinea(obj, areaSeleccion, stage);
-                  }
-
-
-                  // 🔄 LÓGICA PARA ELEMENTOS NORMALES
-                  try {
-                    const box = node.getClientRect();
-                    return (
-                      box.x + box.width >= areaSeleccion.x &&
-                      box.x <= areaSeleccion.x + areaSeleccion.width &&
-                      box.y + box.height >= areaSeleccion.y &&
-                      box.y <= areaSeleccion.y + areaSeleccion.height
-                    );
-
-                  } catch (error) {
-                    console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
-
-                    return false;
-                  }
-                });
-
-
-                setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
-                setElementosPreSeleccionados([]);
-                setSeleccionActiva(false);
-                setAreaSeleccion(null);
-
-                // 🔥 LIMPIAR THROTTLES Y CACHE
-                if (window._selectionThrottle) {
-                  window._selectionThrottle = false;
-                }
-                if (window._boundsUpdateThrottle) {
-                  window._boundsUpdateThrottle = false;
-                }
-                window._lineIntersectionCache = {};
+                width: 800,
+                height: altoCanvasDinamico,
               }}
             >
-              <Layer>
+              {!fontsReady && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 100,
+                    backgroundColor: "rgba(255,255,255,0.96)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    transition: "opacity 0.25s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      maxWidth: 420,
+                      padding: "32px 24px",
+                      borderRadius: 16,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 600,
+                        color: "#1f2937",
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      Estamos preparando tu invitación
+                    </div>
 
-                {seccionesOrdenadas.flatMap((seccion, index) => {
-                  const alturaPx = seccion.altura;
-                  const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
-                  const esActiva = seccion.id === seccionActivaId;
-                  const estaAnimando = seccionesAnimando.includes(seccion.id);
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: "#6b7280",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Ajustando cada detalle para que se vea perfecta
+                    </div>
 
-                  if (estaAnimando) {
-                    console.log("🎭 SECCIÓN ANIMANDO:", seccion.id);
-                  }
+                    <div
+                      style={{
+                        marginTop: 16,
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        border: "2px solid #e5e7eb",
+                        borderTopColor: "#773dbe",
+                        animation: "spin 1s linear infinite",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
-                  const elementos = [
-                    // Fondo de sección - puede ser color o imagen
-                    seccion.fondoTipo === "imagen" ? (
-                      <FondoSeccion
-                        key={`fondo-${seccion.id}`}
-                        seccion={seccion}
-                        offsetY={offsetY}
-                        alturaPx={alturaPx}
-                        onSelect={() => setSeccionActivaId(seccion.id)}
-                        onUpdateFondoOffset={actualizarOffsetFondo}
-                        isMobile={isMobile}
-                      />
-                    ) : (
-                      <Rect
-                        key={`seccion-${seccion.id}`}
-                        id={seccion.id}
-                        x={0}
-                        y={offsetY}
-                        width={800}
-                        height={alturaPx}
-                        fill={seccion.fondo || "#ffffff"}
-                        stroke="transparent"
-                        strokeWidth={0}
-                        listening={!isMobile}
-                        // ✅ desktop: click para seleccionar sección
-                        onClick={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
-                        onTap={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
-                      />
-                    )
-                  ];
-
-                  if (esActiva) {
-                    elementos.push(
-                      // Borde principal - justo en el margen de la sección, sin bordes redondeados
-                      <Rect
-                        key={`border-principal-${seccion.id}`}
-                        x={0}
-                        y={offsetY}
-                        width={800}
-                        height={alturaPx}
-                        fill="transparent"
-                        stroke="#773dbe"
-                        strokeWidth={estaAnimando ? 4 : 3}
-                        cornerRadius={0} // ✅ SIN BORDES REDONDEADOS
-                        shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
-                        shadowBlur={estaAnimando ? 16 : 12}
-                        shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
-                        listening={false}
-                      />
-                    );
-                  }
-
-                  return elementos;
-                })}
+              {fontsReady && (
 
 
-                {/* Control de altura para sección activa */}
-                {seccionActivaId && seccionesOrdenadas.map((seccion, index) => {
-                  if (seccion.id !== seccionActivaId) return null;
-
-                  const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
-                  const controlY = offsetY + seccion.altura - 5; // 5px antes del final
-
-                  const modoSeccion = normalizarAltoModo(seccion.altoModo);
-                  const permiteResizeAltura = (modoSeccion !== "pantalla");
-
-
-                  return (
-                    <Group key={`control-altura-${seccion.id}`}>
-                      {/* Línea indicadora */}
-                      <Line
-                        points={[50, controlY, 750, controlY]}
-                        stroke="#773dbe"
-                        strokeWidth={2}
-                        dash={[5, 5]}
-                        listening={false}
-                      />
-
-                      {/* Control central mejorado */}
-                      <Group
-                        x={400}
-                        y={controlY}
-                        listening={permiteResizeAltura}                 // ✅ clave: si es false, no captura eventos
-                        opacity={permiteResizeAltura ? 1 : 0.25}        // ✅ visual deshabilitado
-                        onMouseDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
-                        onMouseEnter={() => {
-                          if (!controlandoAltura && permiteResizeAltura) setGlobalCursor("ns-resize", stageRef);
-                        }}
-                        onMouseLeave={() => {
-                          if (!controlandoAltura && permiteResizeAltura) clearGlobalCursor(stageRef);
-                        }}
-                        draggable={false}
-                      >
+                <Stage
+                  ref={stageRef}
+                  width={800}
+                  height={altoCanvasDinamico}
+                  perfectDrawEnabled={false}
+                  listening={true}
+                  imageSmoothingEnabled={false}
+                  preventDefault={false}
+                  hitGraphEnabled={true}
+                  style={{
+                    background: "white",
+                    overflow: "visible",
+                    position: "relative",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                  }}
 
 
-                        {/* Área de detección */}
-                        <Rect
-                          x={-35}
-                          y={-12}
-                          width={70}
-                          height={24}
-                          fill="transparent"
-                          listening={true}
-                        />
+                  onMouseDown={(e) => {
+                    const stage = e.target.getStage();
+                    if (!stage) return;
 
-                        {/* Fondo del control con estado activo */}
-                        <Rect
-                          x={-25}
-                          y={-6}
-                          width={50}
-                          height={12}
-                          fill={controlandoAltura === seccion.id ? "#773dbe" : "rgba(119, 61, 190, 0.9)"}
-                          cornerRadius={6}
-                          shadowColor="rgba(0,0,0,0.3)"
-                          shadowBlur={controlandoAltura === seccion.id ? 8 : 6}
-                          shadowOffset={{ x: 0, y: controlandoAltura === seccion.id ? 4 : 3 }}
-                          listening={false}
-                        />
+                    // ⛔️ NO usar comparaciones directas contra e.target
+                    // const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
 
-                        {/* Animación de pulso durante el control */}
-                        {controlandoAltura === seccion.id && (
+                    // ✅ Usar findAncestor: ¿el target pertenece a algún "nodo raíz" registrado?
+                    const roots = Object.values(elementRefs.current || {});
+                    const rootHit = e.target.findAncestor((n) => roots.includes(n), true); // includeSelf=true
+
+                    if (rootHit) {
+                      // Clic adentro de un elemento: NO inicies selección por lazo
+                      // Dejá que el drag del elemento maneje el movimiento
+                      return;
+                    }
+
+
+
+                    const clickedOnStage = e.target === stage;
+
+                    // Salir de modo mover fondo si no clickeaste una imagen de fondo
+                    if (!clickedOnStage && e.target.getClassName() !== "Image") {
+                      window.dispatchEvent(new Event("salir-modo-mover-fondo"));
+                    }
+
+                    const esStage = clickedOnStage;
+                    const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
+
+                    dragStartPos.current = stage.getPointerPosition();
+                    hasDragged.current = false;
+
+                    // Ignorar Transformer/anchors
+                    const esTransformer = e.target.getClassName?.() === 'Transformer' ||
+                      e.target.parent?.getClassName?.() === 'Transformer' ||
+                      e.target.attrs?.name?.includes('_anchor');
+                    if (esTransformer) return;
+
+                    // Si clic en un elemento registrado, no arrancar selección
+                    const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
+                    if (clickEnElemento) return;
+
+                    const esImagenFondo = e.target.getClassName() === "Image";
+
+                    if (esStage || esSeccion || esImagenFondo) {
+                      setElementosSeleccionados([]);
+                      setMostrarPanelZ(false);
+                      setMostrarSubmenuCapa(false);
+                      setMostrarSelectorFuente(false);   // 👈 extra
+                      setMostrarSelectorTamaño(false);   // 👈 extra
+                      setHoverId(null);                  // 👈 extra
+
+                      if (esStage) {
+                        setSeccionActivaId(null);
+                      } else {
+                        const idSeccion = e.target.attrs?.id
+                          || secciones.find(s => s.id === e.target.parent?.attrs?.id)?.id
+                          || secciones[0]?.id;
+                        if (idSeccion) setSeccionActivaId(idSeccion);
+                      }
+
+                      const pos = stage.getPointerPosition();
+                      setInicioSeleccion({ x: pos.x, y: pos.y });
+                      setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
+                      setSeleccionActiva(true);
+                    }
+                  }}
+
+
+                  onTouchStart={(e) => {
+                    const stage = e.target.getStage();
+                    if (!stage) return;
+
+                    const pos = stage.getPointerPosition();
+                    if (!pos) return;
+
+                    const roots = Object.values(elementRefs.current || {});
+                    const rootHit = e.target.findAncestor((n) => roots.includes(n), true);
+
+                    touchGestureRef.current = {
+                      startX: pos.x,
+                      startY: pos.y,
+                      moved: false,
+                      tappedSectionId,
+                      clickedOnStage,
+                      startedOnElement: !!rootHit,   // ✅ NUEVO
+                    };
+
+                    if (rootHit) {
+                      // ✅ Si tocaste un elemento, NO hagas lógica de sección.
+                      // Dejamos que ElementoCanvas / GaleriaKonva / Countdown manejen selección/drag.
+                      return;
+                    }
+
+
+                    const clickedOnStage = e.target === stage;
+
+                    // ¿tocaste una sección?
+                    const tappedSectionId =
+                      e.target.attrs?.id && secciones.some((s) => s.id === e.target.attrs?.id)
+                        ? e.target.attrs.id
+                        : (secciones.find((s) => s.id === e.target.parent?.attrs?.id)?.id || null);
+
+                    // Guardar gesto (NO seleccionar todavía)
+                    touchGestureRef.current = {
+                      startX: pos.x,
+                      startY: pos.y,
+                      moved: false,
+                      tappedSectionId,
+                      clickedOnStage,
+                    };
+                  }}
+
+                  onTouchMove={(e) => {
+                    const stage = e.target.getStage();
+                    if (!stage) return;
+
+                    const pos = stage.getPointerPosition();
+                    if (!pos) return;
+
+                    const dx = Math.abs(pos.x - touchGestureRef.current.startX);
+                    const dy = Math.abs(pos.y - touchGestureRef.current.startY);
+
+                    // Si se movió, es scroll (o pan), NO seleccionar sección
+                    if (dx > TOUCH_MOVE_PX || dy > TOUCH_MOVE_PX) {
+                      touchGestureRef.current.moved = true;
+                    }
+                  }}
+
+                  onTouchEnd={() => {
+                    const g = touchGestureRef.current;
+
+                    // Scroll: no hacer nada
+                    if (g.moved) return;
+
+                    // ✅ Si el gesto arrancó sobre un elemento, NO limpies selección.
+                    // Ese tap lo tiene que procesar el propio elemento (onClick/onTap en ElementoCanvas).
+                    if (g.startedOnElement) return;
+
+                    // Tap en vacío: acá sí aplicamos la lógica “canvas”
+                    setElementosSeleccionados([]);
+                    cerrarMenusFlotantes?.();
+
+                    if (g.clickedOnStage) {
+                      setSeccionActivaId(null);
+                      return;
+                    }
+
+                    if (g.tappedSectionId) {
+                      setSeccionActivaId(g.tappedSectionId);
+                    }
+                  }}
+
+
+                  onMouseMove={(e) => {
+
+
+                    // 🔥 RESTO DE LA LÓGICA (selección de área)
+                    if (!seleccionActiva || !inicioSeleccion) return;
+
+                    if (window._mouseMoveThrottle) return;
+                    window._mouseMoveThrottle = true;
+
+                    requestAnimationFrame(() => {
+                      window._mouseMoveThrottle = false;
+
+                      const stage = e.target.getStage();
+                      const pos = stage.getPointerPosition();
+                      if (!pos) return;
+
+                      const area = {
+                        x: Math.min(inicioSeleccion.x, pos.x),
+                        y: Math.min(inicioSeleccion.y, pos.y),
+                        width: Math.abs(pos.x - inicioSeleccion.x),
+                        height: Math.abs(pos.y - inicioSeleccion.y),
+                      };
+
+                      setAreaSeleccion(area);
+
+                      if (Math.abs(area.width) > 5 || Math.abs(area.height) > 5) {
+                        if (window._selectionThrottle) return;
+                        window._selectionThrottle = true;
+
+                        requestAnimationFrame(() => {
+                          const ids = objetos.filter((obj) => {
+                            const node = elementRefs.current[obj.id];
+                            if (!node) return false;
+
+                            if (obj.tipo === 'forma' && obj.figura === 'line') {
+                              return detectarInterseccionLinea(obj, area, stage);
+                            }
+
+                            const box = node.getClientRect({ relativeTo: stage });
+                            return (
+                              box.x + box.width >= area.x &&
+                              box.x <= area.x + area.width &&
+                              box.y + box.height >= area.y &&
+                              box.y <= area.y + area.height
+                            );
+                          }).map((obj) => obj.id);
+
+                          setElementosPreSeleccionados(ids);
+                          window._selectionThrottle = false;
+                        });
+                      }
+                    });
+                  }}
+
+                  onMouseUp={(e) => {
+
+                    const stage = e.target.getStage();
+
+
+                    // Solo verificar si hay drag grupal activo para no procesar selección
+                    if (window._grupoLider) {
+                      console.log("🎯 Drag grupal activo, esperando onDragEnd...");
+                      return; // No hacer nada más, dejar que ElementoCanvas maneje todo
+                    }
+
+                    // El resto del código de selección por área continúa igual...
+                    if (!seleccionActiva || !areaSeleccion) return;
+
+                    const nuevaSeleccion = objetos.filter((obj) => {
+                      const node = elementRefs.current[obj.id];
+                      if (!node) {
+                        console.log(`⚠️ [SELECCIÓN ÁREA] No se encontró node para ${obj.id}`);
+
+                        return false;
+                      }
+
+                      // 🔥 MANEJO ESPECIAL PARA LÍNEAS
+                      if (obj.tipo === 'forma' && obj.figura === 'line') {
+                        console.log(`📏 [SELECCIÓN ÁREA] Detectando línea ${obj.id} en área`);
+
+                        return detectarInterseccionLinea(obj, areaSeleccion, stage);
+                      }
+
+
+                      // 🔄 LÓGICA PARA ELEMENTOS NORMALES
+                      try {
+                        const box = node.getClientRect();
+                        return (
+                          box.x + box.width >= areaSeleccion.x &&
+                          box.x <= areaSeleccion.x + areaSeleccion.width &&
+                          box.y + box.height >= areaSeleccion.y &&
+                          box.y <= areaSeleccion.y + areaSeleccion.height
+                        );
+
+                      } catch (error) {
+                        console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
+
+                        return false;
+                      }
+                    });
+
+
+                    setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
+                    setElementosPreSeleccionados([]);
+                    setSeleccionActiva(false);
+                    setAreaSeleccion(null);
+
+                    // 🔥 LIMPIAR THROTTLES Y CACHE
+                    if (window._selectionThrottle) {
+                      window._selectionThrottle = false;
+                    }
+                    if (window._boundsUpdateThrottle) {
+                      window._boundsUpdateThrottle = false;
+                    }
+                    window._lineIntersectionCache = {};
+                  }}
+                >
+                  <Layer>
+
+                    {seccionesOrdenadas.flatMap((seccion, index) => {
+                      const alturaPx = seccion.altura;
+                      const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+                      const esActiva = seccion.id === seccionActivaId;
+                      const estaAnimando = seccionesAnimando.includes(seccion.id);
+
+                      if (estaAnimando) {
+                        console.log("🎭 SECCIÓN ANIMANDO:", seccion.id);
+                      }
+
+                      const elementos = [
+                        // Fondo de sección - puede ser color o imagen
+                        seccion.fondoTipo === "imagen" ? (
+                          <FondoSeccion
+                            key={`fondo-${seccion.id}`}
+                            seccion={seccion}
+                            offsetY={offsetY}
+                            alturaPx={alturaPx}
+                            onSelect={() => setSeccionActivaId(seccion.id)}
+                            onUpdateFondoOffset={actualizarOffsetFondo}
+                            isMobile={isMobile}
+                          />
+                        ) : (
                           <Rect
-                            x={-30}
-                            y={-8}
-                            width={60}
-                            height={16}
+                            key={`seccion-${seccion.id}`}
+                            id={seccion.id}
+                            x={0}
+                            y={offsetY}
+                            width={800}
+                            height={alturaPx}
+                            fill={seccion.fondo || "#ffffff"}
+                            stroke="transparent"
+                            strokeWidth={0}
+                            listening={!isMobile}
+                            // ✅ desktop: click para seleccionar sección
+                            onClick={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
+                            onTap={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
+                          />
+                        )
+                      ];
+
+                      if (esActiva) {
+                        elementos.push(
+                          // Borde principal - justo en el margen de la sección, sin bordes redondeados
+                          <Rect
+                            key={`border-principal-${seccion.id}`}
+                            x={0}
+                            y={offsetY}
+                            width={800}
+                            height={alturaPx}
                             fill="transparent"
                             stroke="#773dbe"
-                            strokeWidth={2}
-                            cornerRadius={8}
-                            opacity={0.6}
+                            strokeWidth={estaAnimando ? 4 : 3}
+                            cornerRadius={0} // ✅ SIN BORDES REDONDEADOS
+                            shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
+                            shadowBlur={estaAnimando ? 16 : 12}
+                            shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
                             listening={false}
                           />
-                        )}
+                        );
+                      }
 
-                        {/* Indicador visual */}
-                        <Text
-                          x={-6}
-                          y={-3}
-                          text="⋮⋮"
-                          fontSize={10}
-                          fill="white"
-                          fontFamily="Arial"
-                          listening={false}
-                        />
-
-                        {/* Puntos de agarre */}
-                        <Circle x={-15} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
-                        <Circle x={-10} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
-                        <Circle x={10} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
-                        <Circle x={15} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
-                      </Group>
+                      return elementos;
+                    })}
 
 
-                      {/* Fondo del indicador */}
-                      <Rect
-                        x={755}
-                        y={controlY - 10}
-                        width={40}
-                        height={20}
-                        fill="rgba(119, 61, 190, 0.1)"
-                        stroke="rgba(119, 61, 190, 0.3)"
-                        strokeWidth={1}
-                        cornerRadius={4}
-                        listening={false}
-                      />
+                    {/* Control de altura para sección activa */}
+                    {seccionActivaId && seccionesOrdenadas.map((seccion, index) => {
+                      if (seccion.id !== seccionActivaId) return null;
 
-                      {/* Texto del indicador */}
-                      <Text
-                        x={760}
-                        y={controlY - 6}
-                        text={`${Math.round(seccion.altura)}px`}
-                        fontSize={11}
-                        fill="#773dbe"
-                        fontFamily="Arial"
-                        fontWeight="bold"
-                        listening={false}
-                      />
-                    </Group>
-                  );
-                })}
-
-                {/* Overlay mejorado durante control de altura */}
-                {controlandoAltura && (
-                  <Group>
-                    {/* Overlay sutil */}
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={800}
-                      height={altoCanvasDinamico}
-                      fill="rgba(119, 61, 190, 0.05)"
-                      listening={false}
-                    />
-
-                    {/* Indicador de la sección que se está modificando */}
-                    {seccionesOrdenadas.map((seccion, index) => {
                       const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+                      const controlY = offsetY + seccion.altura - 5; // 5px antes del final
 
                       const modoSeccion = normalizarAltoModo(seccion.altoModo);
                       const permiteResizeAltura = (modoSeccion !== "pantalla");
 
+
                       return (
-                        <Group key={seccion.id}>
-                          {/* Rect “fondo” clickeable */}
-                          <Rect
-                            x={0}
-                            y={offsetY}
-                            width={800}
-                            height={seccion.altura}
-                            fill={seccion.fondo || "transparent"} // podés poner blanco u otro color
-                            onClick={() => onSelectSeccion(seccion.id)}   // 👈 dispara el evento
+                        <Group key={`control-altura-${seccion.id}`}>
+                          {/* Línea indicadora */}
+                          <Line
+                            points={[50, controlY, 750, controlY]}
+                            stroke="#773dbe"
+                            strokeWidth={2}
+                            dash={[5, 5]}
+                            listening={false}
                           />
 
-                          {/* Rect highlight si estás controlando la altura */}
-                          {seccion.id === controlandoAltura && (
+                          {/* Control central mejorado */}
+                          <Group
+                            x={400}
+                            y={controlY}
+                            listening={permiteResizeAltura}                 // ✅ clave: si es false, no captura eventos
+                            opacity={permiteResizeAltura ? 1 : 0.25}        // ✅ visual deshabilitado
+                            onMouseDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
+                            onMouseEnter={() => {
+                              if (!controlandoAltura && permiteResizeAltura) setGlobalCursor("ns-resize", stageRef);
+                            }}
+                            onMouseLeave={() => {
+                              if (!controlandoAltura && permiteResizeAltura) clearGlobalCursor(stageRef);
+                            }}
+                            draggable={false}
+                          >
+
+
+                            {/* Área de detección */}
                             <Rect
-                              x={0}
-                              y={offsetY}
-                              width={800}
-                              height={seccion.altura}
+                              x={-35}
+                              y={-12}
+                              width={70}
+                              height={24}
                               fill="transparent"
-                              stroke="#773dbe"
-                              strokeWidth={3}
-                              dash={[8, 4]}
+                              listening={true}
+                            />
+
+                            {/* Fondo del control con estado activo */}
+                            <Rect
+                              x={-25}
+                              y={-6}
+                              width={50}
+                              height={12}
+                              fill={controlandoAltura === seccion.id ? "#773dbe" : "rgba(119, 61, 190, 0.9)"}
+                              cornerRadius={6}
+                              shadowColor="rgba(0,0,0,0.3)"
+                              shadowBlur={controlandoAltura === seccion.id ? 8 : 6}
+                              shadowOffset={{ x: 0, y: controlandoAltura === seccion.id ? 4 : 3 }}
                               listening={false}
                             />
-                          )}
+
+                            {/* Animación de pulso durante el control */}
+                            {controlandoAltura === seccion.id && (
+                              <Rect
+                                x={-30}
+                                y={-8}
+                                width={60}
+                                height={16}
+                                fill="transparent"
+                                stroke="#773dbe"
+                                strokeWidth={2}
+                                cornerRadius={8}
+                                opacity={0.6}
+                                listening={false}
+                              />
+                            )}
+
+                            {/* Indicador visual */}
+                            <Text
+                              x={-6}
+                              y={-3}
+                              text="⋮⋮"
+                              fontSize={10}
+                              fill="white"
+                              fontFamily="Arial"
+                              listening={false}
+                            />
+
+                            {/* Puntos de agarre */}
+                            <Circle x={-15} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+                            <Circle x={-10} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+                            <Circle x={10} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+                            <Circle x={15} y={0} radius={1.5} fill="rgba(255,255,255,0.8)" listening={false} />
+                          </Group>
+
+
+                          {/* Fondo del indicador */}
+                          <Rect
+                            x={755}
+                            y={controlY - 10}
+                            width={40}
+                            height={20}
+                            fill="rgba(119, 61, 190, 0.1)"
+                            stroke="rgba(119, 61, 190, 0.3)"
+                            strokeWidth={1}
+                            cornerRadius={4}
+                            listening={false}
+                          />
+
+                          {/* Texto del indicador */}
+                          <Text
+                            x={760}
+                            y={controlY - 6}
+                            text={`${Math.round(seccion.altura)}px`}
+                            fontSize={11}
+                            fill="#773dbe"
+                            fontFamily="Arial"
+                            fontWeight="bold"
+                            listening={false}
+                          />
                         </Group>
                       );
                     })}
 
-                  </Group>
-                )}
+                    {/* Overlay mejorado durante control de altura */}
+                    {controlandoAltura && (
+                      <Group>
+                        {/* Overlay sutil */}
+                        <Rect
+                          x={0}
+                          y={0}
+                          width={800}
+                          height={altoCanvasDinamico}
+                          fill="rgba(119, 61, 190, 0.05)"
+                          listening={false}
+                        />
 
+                        {/* Indicador de la sección que se está modificando */}
+                        {seccionesOrdenadas.map((seccion, index) => {
+                          const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
 
+                          const modoSeccion = normalizarAltoModo(seccion.altoModo);
+                          const permiteResizeAltura = (modoSeccion !== "pantalla");
 
-                {objetos.map((obj, i) => {
-                  // 🎯 Determinar si está en modo edición
-                  const isInEditMode = editing.id === obj.id && elementosSeleccionados[0] === obj.id;
+                          return (
+                            <Group key={seccion.id}>
+                              {/* Rect “fondo” clickeable */}
+                              <Rect
+                                x={0}
+                                y={offsetY}
+                                width={800}
+                                height={seccion.altura}
+                                fill={seccion.fondo || "transparent"} // podés poner blanco u otro color
+                                onClick={() => onSelectSeccion(seccion.id)}   // 👈 dispara el evento
+                              />
 
-                  // 🖼️ Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
-                  if (obj.tipo === "galeria") {
-
-                    return (
-                      <GaleriaKonva
-                        key={obj.id}
-                        obj={obj}
-                        registerRef={registerRef}
-                        isSelected={elementosSeleccionados.includes(obj.id)}
-                        celdaGaleriaActiva={celdaGaleriaActiva}
-                        onPickCell={(info) => setCeldaGaleriaActiva(info)}
-                        seccionesOrdenadas={seccionesOrdenadas}
-                        altoCanvas={altoCanvas}
-                        onSelect={(id, e) => {
-                          e?.evt && (e.evt.cancelBubble = true);
-                          setElementosSeleccionados([id]);
-                        }}
-                        onDragMovePersonalizado={(pos, id) => {
-                          window._isDragging = true;
-                          requestAnimationFrame(() => {
-                            if (typeof actualizarPosicionBotonOpciones === "function") {
-                              actualizarPosicionBotonOpciones();
-                            }
-                          });
-                        }}
-                        onDragStartPersonalizado={() => {
-                          window._isDragging = true;
-                        }}
-                        onDragEndPersonalizado={() => {
-                          window._isDragging = false;
-                          limpiarGuias();
-                          if (typeof actualizarPosicionBotonOpciones === "function") {
-                            actualizarPosicionBotonOpciones();
-                          }
-                        }}
-                        onChange={(id, nuevo) => {
-                          setObjetos((prev) => {
-                            const i = prev.findIndex((o) => o.id === id);
-                            if (i === -1) return prev;
-                            const updated = [...prev];
-                            updated[i] = { ...updated[i], ...nuevo };
-                            return updated;
-                          });
-                        }}
-                      />
-
-                    );
-                  }
-
-
-                  if (obj.tipo === "countdown") {
-                    return (
-                      <CountdownKonva
-                        key={obj.id}
-                        obj={obj}
-                        registerRef={registerRef}
-                        isSelected={elementosSeleccionados.includes(obj.id)}
-                        seccionesOrdenadas={seccionesOrdenadas}
-                        altoCanvas={altoCanvas}
-
-                        // ✅ selección
-                        onSelect={(id, e) => {
-                          e?.evt && (e.evt.cancelBubble = true);
-                          setElementosSeleccionados([id]);
-                        }}
-
-                        // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
-                        onDragMovePersonalizado={(pos, id) => {
-                          window._isDragging = true;
-                          requestAnimationFrame(() => {
-                            if (typeof actualizarPosicionBotonOpciones === "function") {
-                              actualizarPosicionBotonOpciones();
-                            }
-                          });
-                        }}
-
-                        // ✅ FIN de drag: limpiar guías / UI auxiliar
-                        onDragEndPersonalizado={() => {
-                          window._isDragging = false;
-                          limpiarGuias();
-                          if (typeof actualizarPosicionBotonOpciones === "function") {
-                            actualizarPosicionBotonOpciones();
-                          }
-                        }}
-
-                        // ✅ refs para el motor de drag
-                        dragStartPos={dragStartPos}
-                        hasDragged={hasDragged}
-
-                        // ✅ ¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
-                        onChange={(id, cambios) => {
-                          setObjetos(prev => {
-                            const i = prev.findIndex(o => o.id === id);
-                            if (i === -1) return prev;
-
-                            const objOriginal = prev[i];
-
-                            // 🟣 Si no es final de drag, mergeamos sin más (no tocar coords)
-                            if (!cambios.finalizoDrag) {
-                              const updated = [...prev];
-                              updated[i] = { ...updated[i], ...cambios };
-                              return updated;
-                            }
-
-                            // 🟣 Final de drag: 'cambios.y' viene ABSOLUTA (Stage coords)
-                            const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-                              cambios.y,
-                              objOriginal.seccionId,
-                              seccionesOrdenadas
-                            );
-
-                            let next = { ...cambios };
-                            delete next.finalizoDrag;
-
-                            if (nuevaSeccion) {
-                              next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
-                            } else {
-                              // convertir y absoluta → y relativa a la sección actual
-                              next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
-                            }
-
-                            const updated = [...prev];
-                            updated[i] = { ...updated[i], ...next };
-                            return updated;
-                          });
-                        }}
-                      />
-                    );
-                  }
-
-
-
-
-
-                  return (
-                    <ElementoCanvas
-                      key={obj.id}
-                      obj={{
-                        ...obj,
-                        // 🔥 yLocal: en sección pantalla usamos yNorm * 500
-                        // fallback legacy: si no hay yNorm, usamos obj.y
-                        y: (() => {
-                          const idxSec = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
-                          const offsetY = calcularOffsetY(seccionesOrdenadas, idxSec);
-
-                          const yLocal = esSeccionPantallaById(obj.seccionId)
-                            ? (Number.isFinite(obj.yNorm) ? (obj.yNorm * ALTURA_PANTALLA_EDITOR) : obj.y)
-                            : obj.y;
-
-                          return yLocal + offsetY;
-                        })(),
-                      }}
-                      anchoCanvas={800}
-                      isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
-                      preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
-                      isInEditMode={isInEditMode} // 🔥 NUEVA PROP
-                      onHover={isInEditMode ? null : setHoverId}
-                      registerRef={registerRef}
-                      onStartTextEdit={isInEditMode ? null : (id, texto) => {
-                        startEdit(id, texto);
-                        const node = elementRefs.current[id];
-                        node?.draggable(false);
-                      }}
-                      finishInlineEdit={finishEdit}
-                      onSelect={isInEditMode ? null : (id, obj, e) => {
-                        console.log("🎯 [CANVAS EDITOR] onSelect disparado:", {
-                          id,
-                          tipo: obj?.tipo,
-                          figura: obj?.figura,
-                          shiftKey: e?.evt?.shiftKey,
-                          seleccionActual: elementosSeleccionados
-                        });
-
-                        if (obj.tipo === "rsvp-boton") {
-                          console.log("🟣 Click en botón RSVP");
-                          return;
-                        }
-
-                        if (editing.id && editing.id !== id) {
-                          finishEdit();
-                        }
-
-                        e?.evt && (e.evt.cancelBubble = true);
-
-                        const esShift = e?.evt?.shiftKey;
-
-                        setElementosSeleccionados((prev) => {
-
-                          if (esShift) {
-                            console.log("➕ [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
-
-                            if (prev.includes(id)) {
-                              const nueva = prev.filter((x) => x !== id);
-                              console.log("➖ [CANVAS EDITOR] Elemento removido. Nueva selección:", nueva);
-                              return nueva;
-                            } else {
-                              const nueva = [...prev, id];
-                              return nueva;
-                            }
-                          } else {
-                            return [id];
-                          }
-                        });
-                      }}
-
-
-                      onChange={(id, nuevo) => {
-
-
-                        // 🔥 NUEVO: Manejar preview inmediato de drag grupal
-                        if (nuevo.isDragPreview) {
-
-                          setObjetos(prev => {
-                            const index = prev.findIndex(o => o.id === id);
-                            if (index === -1) return prev;
-
-                            const updated = [...prev];
-                            const { isDragPreview, skipHistorial, ...cleanNuevo } = nuevo;
-                            updated[index] = { ...updated[index], ...cleanNuevo };
-                            return updated;
-                          });
-                          return;
-                        }
-
-                        // 🔥 MANEJAR SOLO batch update final de drag grupal
-                        if (nuevo.isBatchUpdateFinal && id === 'BATCH_UPDATE_GROUP_FINAL') {
-
-                          const { elementos, dragInicial, deltaX, deltaY } = nuevo;
-
-                          setObjetos(prev => {
-                            return prev.map(objeto => {
-                              if (elementos.includes(objeto.id)) {
-                                if (dragInicial && dragInicial[objeto.id]) {
-                                  const posInicial = dragInicial[objeto.id];
-                                  return {
-                                    ...objeto,
-                                    x: posInicial.x + deltaX,
-                                    y: posInicial.y + deltaY
-                                  };
-                                }
-                              }
-                              return objeto;
-                            });
-                          });
-                          return;
-                        }
-
-                        // 🔥 NO procesar si viene del Transform
-                        if (nuevo.fromTransform) {
-
-                          return;
-                        }
-
-                        const objOriginal = objetos.find((o) => o.id === id);
-                        if (!objOriginal) return;
-
-                        // 🔥 Para drag final, procesar inmediatamente
-                        if (nuevo.finalizoDrag) {
-
-                          const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-                            nuevo.y,
-                            objOriginal.seccionId,
-                            seccionesOrdenadas
+                              {/* Rect highlight si estás controlando la altura */}
+                              {seccion.id === controlandoAltura && (
+                                <Rect
+                                  x={0}
+                                  y={offsetY}
+                                  width={800}
+                                  height={seccion.altura}
+                                  fill="transparent"
+                                  stroke="#773dbe"
+                                  strokeWidth={3}
+                                  dash={[8, 4]}
+                                  listening={false}
+                                />
+                              )}
+                            </Group>
                           );
+                        })}
 
-                          let coordenadasFinales = { ...nuevo };
-                          delete coordenadasFinales.finalizoDrag;
-
-                          if (nuevaSeccion) {
-                            coordenadasFinales = {
-                              ...coordenadasFinales,
-                              ...coordenadasAjustadas,
-                              seccionId: nuevaSeccion
-                            };
-                          } else {
-                            coordenadasFinales.y = convertirAbsARel(
-                              nuevo.y,
-                              objOriginal.seccionId,
-                              seccionesOrdenadas
-                            );
-                          }
-
-                          // 1) Determinar sección final
-                          const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
-
-                          // 2) Obtener yRelPx (y relativa dentro de la sección en px)
-                          let yRelPx;
-
-                          if (nuevaSeccion) {
-                            // coordenadasAjustadas normalmente ya trae y relativa
-                            yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
-                          } else {
-                            // si no cambió de sección, convertimos desde y absoluta
-                            yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
-                          }
-
-                          // 3) Aplicar política pantalla: guardar yNorm
-                          if (esSeccionPantallaById(seccionFinalId)) {
-                            const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
-                            coordenadasFinales.yNorm = yNorm;
-                            delete coordenadasFinales.y; // ✅ clave: evitamos mezclar sistemas
-                          } else {
-                            // fijo: guardar y en px
-                            coordenadasFinales.y = yRelPx;
-                            delete coordenadasFinales.yNorm;
-                          }
+                      </Group>
+                    )}
 
 
 
-                          // Actualizar inmediatamente
-                          setObjetos(prev => {
-                            const index = prev.findIndex(o => o.id === id);
-                            if (index === -1) return prev;
+                    {objetos.map((obj, i) => {
+                      // 🎯 Determinar si está en modo edición
+                      const isInEditMode = editing.id === obj.id && elementosSeleccionados[0] === obj.id;
 
-                            const updated = [...prev];
-                            updated[index] = { ...updated[index], ...coordenadasFinales };
-                            return updated;
-                          });
+                      // 🖼️ Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
+                      if (obj.tipo === "galeria") {
 
-                          return;
-                        }
+                        return (
+                          <GaleriaKonva
+                            key={obj.id}
+                            obj={obj}
+                            registerRef={registerRef}
+                            isSelected={elementosSeleccionados.includes(obj.id)}
+                            celdaGaleriaActiva={celdaGaleriaActiva}
+                            onPickCell={(info) => setCeldaGaleriaActiva(info)}
+                            seccionesOrdenadas={seccionesOrdenadas}
+                            altoCanvas={altoCanvas}
+                            onSelect={(id, e) => {
+                              e?.evt && (e.evt.cancelBubble = true);
+                              setElementosSeleccionados([id]);
+                            }}
+                            onDragMovePersonalizado={(pos, id) => {
+                              window._isDragging = true;
+                              requestAnimationFrame(() => {
+                                if (typeof actualizarPosicionBotonOpciones === "function") {
+                                  actualizarPosicionBotonOpciones();
+                                }
+                              });
+                            }}
+                            onDragStartPersonalizado={() => {
+                              window._isDragging = true;
+                            }}
+                            onDragEndPersonalizado={() => {
+                              window._isDragging = false;
+                              limpiarGuias();
+                              if (typeof actualizarPosicionBotonOpciones === "function") {
+                                actualizarPosicionBotonOpciones();
+                              }
+                            }}
+                            onChange={(id, nuevo) => {
+                              setObjetos((prev) => {
+                                const i = prev.findIndex((o) => o.id === id);
+                                if (i === -1) return prev;
+                                const updated = [...prev];
+                                updated[i] = { ...updated[i], ...nuevo };
+                                return updated;
+                              });
+                            }}
+                          />
 
-                        // 🔥 Para otros cambios (transform, etc.)
-                        const hayDiferencias = Object.keys(nuevo).some(key => {
-                          const valorAnterior = objOriginal[key];
-                          const valorNuevo = nuevo[key];
-
-                          if (typeof valorAnterior === 'number' && typeof valorNuevo === 'number') {
-                            return Math.abs(valorAnterior - valorNuevo) > 0.01;
-                          }
-
-                          return valorAnterior !== valorNuevo;
-                        });
-
-                        if (!hayDiferencias) return;
-
-                        const seccionId = nuevo.seccionId || objOriginal.seccionId;
-                        const seccion = seccionesOrdenadas.find((s) => s.id === seccionId);
-                        if (!seccion) return;
-
-                        setObjetos(prev => {
-                          const index = prev.findIndex(o => o.id === id);
-                          if (index === -1) return prev;
-
-                          const updated = [...prev];
-                          updated[index] = { ...updated[index], ...nuevo };
-                          return updated;
-                        });
-                      }}
-
-                      onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                        // 🔥 NO mostrar guías durante drag grupal
-                        if (!window._grupoLider) {
-                          mostrarGuias(pos, elementId, objetos, elementRefs);
-                        }
-                        if (elementosSeleccionados.includes(elementId)) {
-                          requestAnimationFrame(() => {
-                            if (typeof actualizarPosicionBotonOpciones === 'function') {
-                              actualizarPosicionBotonOpciones();
-                            }
-                          });
-                        }
-                      }}
-                      onDragEndPersonalizado={isInEditMode ? null : () => configurarDragEnd([])}
-                      dragStartPos={dragStartPos}
-                      hasDragged={hasDragged}
-                    />
-                  );
-                })}
+                        );
+                      }
 
 
+                      if (obj.tipo === "countdown") {
+                        return (
+                          <CountdownKonva
+                            key={obj.id}
+                            obj={obj}
+                            registerRef={registerRef}
+                            isSelected={elementosSeleccionados.includes(obj.id)}
+                            seccionesOrdenadas={seccionesOrdenadas}
+                            altoCanvas={altoCanvas}
 
-                {seleccionActiva && areaSeleccion && (
-                  <Rect
-                    x={areaSeleccion.x}
-                    y={areaSeleccion.y}
-                    width={areaSeleccion.width}
-                    height={areaSeleccion.height}
-                    fill="rgba(119, 61, 190, 0.1)" // violeta claro
-                    stroke="#773dbe"
-                    strokeWidth={1}
-                    dash={[4, 4]}
-                  />
-                )}
+                            // ✅ selección
+                            onSelect={(id, e) => {
+                              e?.evt && (e.evt.cancelBubble = true);
+                              setElementosSeleccionados([id]);
+                            }}
 
+                            // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
+                            onDragMovePersonalizado={(pos, id) => {
+                              window._isDragging = true;
+                              requestAnimationFrame(() => {
+                                if (typeof actualizarPosicionBotonOpciones === "function") {
+                                  actualizarPosicionBotonOpciones();
+                                }
+                              });
+                            }}
 
-                {elementosSeleccionados.length > 0 && !editing.id && (() => {
-                  // 🔒 Si la selección incluye al menos una galería, no mostramos Transformer
-                  const hayGaleriaSeleccionada = elementosSeleccionados.some(id => {
-                    const o = objetos.find(x => x.id === id);
-                    return o?.tipo === "galeria";
-                  });
-                  if (hayGaleriaSeleccionada) return null;
+                            // ✅ FIN de drag: limpiar guías / UI auxiliar
+                            onDragEndPersonalizado={() => {
+                              window._isDragging = false;
+                              limpiarGuias();
+                              if (typeof actualizarPosicionBotonOpciones === "function") {
+                                actualizarPosicionBotonOpciones();
+                              }
+                            }}
 
-                  return (
-                    <SelectionBounds
-                      key={`selection-${elementosSeleccionados.join('-')}`}
-                      selectedElements={elementosSeleccionados}
-                      elementRefs={elementRefs}
-                      objetos={objetos}
-                      onTransform={(newAttrs) => {
-                        console.log("🔧 Transform detectado:", newAttrs);
+                            // ✅ refs para el motor de drag
+                            dragStartPos={dragStartPos}
+                            hasDragged={hasDragged}
 
-                        if (elementosSeleccionados.length === 1) {
-                          const id = elementosSeleccionados[0];
-                          const objIndex = objetos.findIndex(o => o.id === id); // 🔥 DEFINIR PRIMERO
-
-                          // 🔥 MOVER EL LOG AQUÍ (después de definir objIndex)
-                          if (newAttrs.isFinal) {
-                            console.log("🎯 FINAL TRANSFORM:", {
-                              originalY: newAttrs.y,
-                              elementIndex: objIndex,
-                              elementId: elementosSeleccionados[0]
-                            });
-                          }
-
-                          if (objIndex !== -1) {
-
-                            if (newAttrs.isPreview) {
-                              // Preview: actualización sin historial
+                            // ✅ ¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
+                            onChange={(id, cambios) => {
                               setObjetos(prev => {
-                                const nuevos = [...prev];
-                                const elemento = nuevos[objIndex];
+                                const i = prev.findIndex(o => o.id === id);
+                                if (i === -1) return prev;
 
-                                const updatedElement = {
-                                  ...elemento,
-                                  // 🔥 NO actualizar X,Y durante preview - solo dimensiones
-                                  rotation: newAttrs.rotation || elemento.rotation || 0
-                                };
+                                const objOriginal = prev[i];
 
-                                if (elemento.tipo === 'texto' && newAttrs.fontSize) {
-                                  updatedElement.fontSize = newAttrs.fontSize;
-                                  updatedElement.scaleX = 1;
-                                  updatedElement.scaleY = 1;
-                                } else {
-                                  // ✅ Caso especial: COUNTDOWN (evita resize errático por recentrado)
-                                  // ✅ COUNTDOWN: NO tocar width/chipWidth durante preview (evita “doble resize”)
-                                  if (elemento.tipo === "countdown") {
-                                    // opcional: solo guardar rotación si querés que rote en vivo
-                                    updatedElement.rotation = newAttrs.rotation || elemento.rotation || 0;
-
-                                    // (si querés ver el targetW en consola sin ensuciar)
-                                    // if (window.DEBUG_RESIZE) console.log("[CE] preview countdown", newAttrs.width);
-
-                                    nuevos[objIndex] = updatedElement;
-                                    return nuevos;
-                                  } else {
-
-                                    if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
-                                    if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
-                                    if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
-                                    updatedElement.scaleX = 1;
-                                    updatedElement.scaleY = 1;
-                                  }
+                                // 🟣 Si no es final de drag, mergeamos sin más (no tocar coords)
+                                if (!cambios.finalizoDrag) {
+                                  const updated = [...prev];
+                                  updated[i] = { ...updated[i], ...cambios };
+                                  return updated;
                                 }
 
-                                nuevos[objIndex] = updatedElement;
-                                return nuevos;
+                                // 🟣 Final de drag: 'cambios.y' viene ABSOLUTA (Stage coords)
+                                const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+                                  cambios.y,
+                                  objOriginal.seccionId,
+                                  seccionesOrdenadas
+                                );
+
+                                let next = { ...cambios };
+                                delete next.finalizoDrag;
+
+                                if (nuevaSeccion) {
+                                  next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
+                                } else {
+                                  // convertir y absoluta → y relativa a la sección actual
+                                  next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
+                                }
+
+                                const updated = [...prev];
+                                updated[i] = { ...updated[i], ...next };
+                                return updated;
+                              });
+                            }}
+                          />
+                        );
+                      }
+
+
+
+
+
+                      return (
+                        <ElementoCanvas
+                          key={obj.id}
+                          obj={{
+                            ...obj,
+                            // 🔥 yLocal: en sección pantalla usamos yNorm * 500
+                            // fallback legacy: si no hay yNorm, usamos obj.y
+                            y: (() => {
+                              const idxSec = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
+                              const offsetY = calcularOffsetY(seccionesOrdenadas, idxSec);
+
+                              const yLocal = esSeccionPantallaById(obj.seccionId)
+                                ? (Number.isFinite(obj.yNorm) ? (obj.yNorm * ALTURA_PANTALLA_EDITOR) : obj.y)
+                                : obj.y;
+
+                              return yLocal + offsetY;
+                            })(),
+                          }}
+                          anchoCanvas={800}
+                          isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
+                          preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
+                          isInEditMode={isInEditMode} // 🔥 NUEVA PROP
+                          onHover={isInEditMode ? null : setHoverId}
+                          registerRef={registerRef}
+                          onStartTextEdit={isInEditMode ? null : (id, texto) => {
+                            startEdit(id, texto);
+                            const node = elementRefs.current[id];
+                            node?.draggable(false);
+                          }}
+                          finishInlineEdit={finishEdit}
+                          onSelect={isInEditMode ? null : (id, obj, e) => {
+                            console.log("🎯 [CANVAS EDITOR] onSelect disparado:", {
+                              id,
+                              tipo: obj?.tipo,
+                              figura: obj?.figura,
+                              shiftKey: e?.evt?.shiftKey,
+                              seleccionActual: elementosSeleccionados
+                            });
+
+                            if (obj.tipo === "rsvp-boton") {
+                              console.log("🟣 Click en botón RSVP");
+                              return;
+                            }
+
+                            if (editing.id && editing.id !== id) {
+                              finishEdit();
+                            }
+
+                            e?.evt && (e.evt.cancelBubble = true);
+
+                            const esShift = e?.evt?.shiftKey;
+
+                            setElementosSeleccionados((prev) => {
+
+                              if (esShift) {
+                                console.log("➕ [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
+
+                                if (prev.includes(id)) {
+                                  const nueva = prev.filter((x) => x !== id);
+                                  console.log("➖ [CANVAS EDITOR] Elemento removido. Nueva selección:", nueva);
+                                  return nueva;
+                                } else {
+                                  const nueva = [...prev, id];
+                                  return nueva;
+                                }
+                              } else {
+                                return [id];
+                              }
+                            });
+                          }}
+
+
+                          onChange={(id, nuevo) => {
+
+
+                            // 🔥 NUEVO: Manejar preview inmediato de drag grupal
+                            if (nuevo.isDragPreview) {
+
+                              setObjetos(prev => {
+                                const index = prev.findIndex(o => o.id === id);
+                                if (index === -1) return prev;
+
+                                const updated = [...prev];
+                                const { isDragPreview, skipHistorial, ...cleanNuevo } = nuevo;
+                                updated[index] = { ...updated[index], ...cleanNuevo };
+                                return updated;
+                              });
+                              return;
+                            }
+
+                            // 🔥 MANEJAR SOLO batch update final de drag grupal
+                            if (nuevo.isBatchUpdateFinal && id === 'BATCH_UPDATE_GROUP_FINAL') {
+
+                              const { elementos, dragInicial, deltaX, deltaY } = nuevo;
+
+                              setObjetos(prev => {
+                                return prev.map(objeto => {
+                                  if (elementos.includes(objeto.id)) {
+                                    if (dragInicial && dragInicial[objeto.id]) {
+                                      const posInicial = dragInicial[objeto.id];
+                                      return {
+                                        ...objeto,
+                                        x: posInicial.x + deltaX,
+                                        y: posInicial.y + deltaY
+                                      };
+                                    }
+                                  }
+                                  return objeto;
+                                });
+                              });
+                              return;
+                            }
+
+                            // 🔥 NO procesar si viene del Transform
+                            if (nuevo.fromTransform) {
+
+                              return;
+                            }
+
+                            const objOriginal = objetos.find((o) => o.id === id);
+                            if (!objOriginal) return;
+
+                            // 🔥 Para drag final, procesar inmediatamente
+                            if (nuevo.finalizoDrag) {
+
+                              const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+                                nuevo.y,
+                                objOriginal.seccionId,
+                                seccionesOrdenadas
+                              );
+
+                              let coordenadasFinales = { ...nuevo };
+                              delete coordenadasFinales.finalizoDrag;
+
+                              if (nuevaSeccion) {
+                                coordenadasFinales = {
+                                  ...coordenadasFinales,
+                                  ...coordenadasAjustadas,
+                                  seccionId: nuevaSeccion
+                                };
+                              } else {
+                                coordenadasFinales.y = convertirAbsARel(
+                                  nuevo.y,
+                                  objOriginal.seccionId,
+                                  seccionesOrdenadas
+                                );
+                              }
+
+                              // 1) Determinar sección final
+                              const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
+
+                              // 2) Obtener yRelPx (y relativa dentro de la sección en px)
+                              let yRelPx;
+
+                              if (nuevaSeccion) {
+                                // coordenadasAjustadas normalmente ya trae y relativa
+                                yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
+                              } else {
+                                // si no cambió de sección, convertimos desde y absoluta
+                                yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
+                              }
+
+                              // 3) Aplicar política pantalla: guardar yNorm
+                              if (esSeccionPantallaById(seccionFinalId)) {
+                                const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
+                                coordenadasFinales.yNorm = yNorm;
+                                delete coordenadasFinales.y; // ✅ clave: evitamos mezclar sistemas
+                              } else {
+                                // fijo: guardar y en px
+                                coordenadasFinales.y = yRelPx;
+                                delete coordenadasFinales.yNorm;
+                              }
+
+
+
+                              // Actualizar inmediatamente
+                              setObjetos(prev => {
+                                const index = prev.findIndex(o => o.id === id);
+                                if (index === -1) return prev;
+
+                                const updated = [...prev];
+                                updated[index] = { ...updated[index], ...coordenadasFinales };
+                                return updated;
                               });
 
-                              // 🔥 ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
+                              return;
+                            }
+
+                            // 🔥 Para otros cambios (transform, etc.)
+                            const hayDiferencias = Object.keys(nuevo).some(key => {
+                              const valorAnterior = objOriginal[key];
+                              const valorNuevo = nuevo[key];
+
+                              if (typeof valorAnterior === 'number' && typeof valorNuevo === 'number') {
+                                return Math.abs(valorAnterior - valorNuevo) > 0.01;
+                              }
+
+                              return valorAnterior !== valorNuevo;
+                            });
+
+                            if (!hayDiferencias) return;
+
+                            const seccionId = nuevo.seccionId || objOriginal.seccionId;
+                            const seccion = seccionesOrdenadas.find((s) => s.id === seccionId);
+                            if (!seccion) return;
+
+                            setObjetos(prev => {
+                              const index = prev.findIndex(o => o.id === id);
+                              if (index === -1) return prev;
+
+                              const updated = [...prev];
+                              updated[index] = { ...updated[index], ...nuevo };
+                              return updated;
+                            });
+                          }}
+
+                          onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
+                            // 🔥 NO mostrar guías durante drag grupal
+                            if (!window._grupoLider) {
+                              mostrarGuias(pos, elementId, objetos, elementRefs);
+                            }
+                            if (elementosSeleccionados.includes(elementId)) {
                               requestAnimationFrame(() => {
                                 if (typeof actualizarPosicionBotonOpciones === 'function') {
                                   actualizarPosicionBotonOpciones();
                                 }
                               });
-
-                            } else if (newAttrs.isFinal) {
-                              // Final: actualización completa
-                              console.log('🎯 Guardando estado final para historial');
-                              window._resizeData = { isResizing: false };
-
-                              const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
-
-                              // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
-                              const objOriginal = objetos[objIndex];
-                              let finalAttrs = {
-                                ...cleanAttrs,
-                                y: convertirAbsARel(cleanAttrs.y, objOriginal.seccionId, seccionesOrdenadas),
-                                fromTransform: true
-                              };
-
-                              // ✅ Caso especial: COUNTDOWN (persistir chipWidth según width final)
-                              if (objOriginal.tipo === "countdown" && cleanAttrs.width != null) {
-                                const n = 4;
-                                const gap = objOriginal.gap ?? 8;
-                                const paddingX = objOriginal.paddingX ?? 8;
-                                const targetW = Math.max(120, cleanAttrs.width);
-                                const chipWTotal = (targetW - gap * (n - 1)) / n;
-                                const nextChipWidth = Math.max(10, Math.round(chipWTotal - paddingX * 2));
-
-                                finalAttrs = {
-                                  ...finalAttrs,
-                                  width: targetW,
-                                  chipWidth: nextChipWidth,
-                                  scaleX: 1,
-                                  scaleY: 1,
-                                };
-                              }
-
-                              // ✅ offsetY solo para debug (evita ReferenceError)
-                              let offsetY = 0;
-                              try {
-                                const idx = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
-                                const safe = idx >= 0 ? idx : 0;
-                                // Nota: en tu código lo llamás a veces con 2 params, a veces con 3.
-                                // Acá usamos 3, consistente con otras partes del archivo.
-                                offsetY = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
-                              } catch {
-                                offsetY = 0;
-                              }
-
-                              console.log("🔧 Convirtiendo coordenadas:", {
-                                yAbsoluta: cleanAttrs.y,
-                                offsetY,
-                                yRelativa: finalAttrs.y
-                              });
-
-                              requestAnimationFrame(() => {
-                                actualizarObjeto(objIndex, finalAttrs);
-                              });
-
                             }
-                          }
-                        }
-                      }}
-                    />
-                  );
-                })()}
-
-
-                {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
-                {!window._resizeData?.isResizing && !window._isDragging && !window._grupoLider && !editing.id && (
-                  <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} />
-                )}
+                          }}
+                          onDragEndPersonalizado={isInEditMode ? null : () => configurarDragEnd([])}
+                          dragStartPos={dragStartPos}
+                          hasDragged={hasDragged}
+                        />
+                      );
+                    })}
 
 
 
-                {/* 🎯 Controles especiales para líneas seleccionadas */}
-                {elementosSeleccionados.length === 1 && (() => {
-                  const elementoSeleccionado = objetos.find(obj => obj.id === elementosSeleccionados[0]);
-                  if (elementoSeleccionado?.tipo === 'forma' && elementoSeleccionado?.figura === 'line') {
-                    return (
-                      <LineControls
-                        key={`line-controls-${elementoSeleccionado.id}-${JSON.stringify(elementoSeleccionado.points)}`}
-                        lineElement={elementoSeleccionado}
-                        elementRefs={elementRefs}
-                        onUpdateLine={actualizarLinea}
-                        altoCanvas={altoCanvasDinamico}
-                        // 🔥 NUEVA PROP: Pasar información sobre drag grupal
-                        isDragGrupalActive={window._grupoLider !== null}
-                        elementosSeleccionados={elementosSeleccionados}
+                    {seleccionActiva && areaSeleccion && (
+                      <Rect
+                        x={areaSeleccion.x}
+                        y={areaSeleccion.y}
+                        width={areaSeleccion.width}
+                        height={areaSeleccion.height}
+                        fill="rgba(119, 61, 190, 0.1)" // violeta claro
+                        stroke="#773dbe"
+                        strokeWidth={1}
+                        dash={[4, 4]}
                       />
-                    );
-                  }
-                  return null;
-                })()}
+                    )}
+
+
+                    {elementosSeleccionados.length > 0 && !editing.id && (() => {
+                      // 🔒 Si la selección incluye al menos una galería, no mostramos Transformer
+                      const hayGaleriaSeleccionada = elementosSeleccionados.some(id => {
+                        const o = objetos.find(x => x.id === id);
+                        return o?.tipo === "galeria";
+                      });
+                      if (hayGaleriaSeleccionada) return null;
+
+                      return (
+                        <SelectionBounds
+                          key={`selection-${elementosSeleccionados.join('-')}`}
+                          selectedElements={elementosSeleccionados}
+                          elementRefs={elementRefs}
+                          objetos={objetos}
+                          onTransform={(newAttrs) => {
+                            console.log("🔧 Transform detectado:", newAttrs);
+
+                            if (elementosSeleccionados.length === 1) {
+                              const id = elementosSeleccionados[0];
+                              const objIndex = objetos.findIndex(o => o.id === id); // 🔥 DEFINIR PRIMERO
+
+                              // 🔥 MOVER EL LOG AQUÍ (después de definir objIndex)
+                              if (newAttrs.isFinal) {
+                                console.log("🎯 FINAL TRANSFORM:", {
+                                  originalY: newAttrs.y,
+                                  elementIndex: objIndex,
+                                  elementId: elementosSeleccionados[0]
+                                });
+                              }
+
+                              if (objIndex !== -1) {
+
+                                if (newAttrs.isPreview) {
+                                  // Preview: actualización sin historial
+                                  setObjetos(prev => {
+                                    const nuevos = [...prev];
+                                    const elemento = nuevos[objIndex];
+
+                                    const updatedElement = {
+                                      ...elemento,
+                                      // 🔥 NO actualizar X,Y durante preview - solo dimensiones
+                                      rotation: newAttrs.rotation || elemento.rotation || 0
+                                    };
+
+                                    if (elemento.tipo === 'texto' && newAttrs.fontSize) {
+                                      updatedElement.fontSize = newAttrs.fontSize;
+                                      updatedElement.scaleX = 1;
+                                      updatedElement.scaleY = 1;
+                                    } else {
+                                      // ✅ Caso especial: COUNTDOWN (evita resize errático por recentrado)
+                                      // ✅ COUNTDOWN: NO tocar width/chipWidth durante preview (evita “doble resize”)
+                                      if (elemento.tipo === "countdown") {
+                                        // opcional: solo guardar rotación si querés que rote en vivo
+                                        updatedElement.rotation = newAttrs.rotation || elemento.rotation || 0;
+
+                                        // (si querés ver el targetW en consola sin ensuciar)
+                                        // if (window.DEBUG_RESIZE) console.log("[CE] preview countdown", newAttrs.width);
+
+                                        nuevos[objIndex] = updatedElement;
+                                        return nuevos;
+                                      } else {
+
+                                        if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
+                                        if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
+                                        if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
+                                        updatedElement.scaleX = 1;
+                                        updatedElement.scaleY = 1;
+                                      }
+                                    }
+
+                                    nuevos[objIndex] = updatedElement;
+                                    return nuevos;
+                                  });
+
+                                  // 🔥 ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
+                                  requestAnimationFrame(() => {
+                                    if (typeof actualizarPosicionBotonOpciones === 'function') {
+                                      actualizarPosicionBotonOpciones();
+                                    }
+                                  });
+
+                                } else if (newAttrs.isFinal) {
+                                  // Final: actualización completa
+                                  console.log('🎯 Guardando estado final para historial');
+                                  window._resizeData = { isResizing: false };
+
+                                  const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
+
+                                  // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
+                                  const objOriginal = objetos[objIndex];
+                                  let finalAttrs = {
+                                    ...cleanAttrs,
+                                    y: convertirAbsARel(cleanAttrs.y, objOriginal.seccionId, seccionesOrdenadas),
+                                    fromTransform: true
+                                  };
+
+                                  // ✅ Caso especial: COUNTDOWN (persistir chipWidth según width final)
+                                  if (objOriginal.tipo === "countdown" && cleanAttrs.width != null) {
+                                    const n = 4;
+                                    const gap = objOriginal.gap ?? 8;
+                                    const paddingX = objOriginal.paddingX ?? 8;
+                                    const targetW = Math.max(120, cleanAttrs.width);
+                                    const chipWTotal = (targetW - gap * (n - 1)) / n;
+                                    const nextChipWidth = Math.max(10, Math.round(chipWTotal - paddingX * 2));
+
+                                    finalAttrs = {
+                                      ...finalAttrs,
+                                      width: targetW,
+                                      chipWidth: nextChipWidth,
+                                      scaleX: 1,
+                                      scaleY: 1,
+                                    };
+                                  }
+
+                                  // ✅ offsetY solo para debug (evita ReferenceError)
+                                  let offsetY = 0;
+                                  try {
+                                    const idx = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
+                                    const safe = idx >= 0 ? idx : 0;
+                                    // Nota: en tu código lo llamás a veces con 2 params, a veces con 3.
+                                    // Acá usamos 3, consistente con otras partes del archivo.
+                                    offsetY = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
+                                  } catch {
+                                    offsetY = 0;
+                                  }
+
+                                  console.log("🔧 Convirtiendo coordenadas:", {
+                                    yAbsoluta: cleanAttrs.y,
+                                    offsetY,
+                                    yRelativa: finalAttrs.y
+                                  });
+
+                                  requestAnimationFrame(() => {
+                                    actualizarObjeto(objIndex, finalAttrs);
+                                  });
+
+                                }
+                              }
+                            }
+                          }}
+                        />
+                      );
+                    })()}
+
+
+                    {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
+                    {!window._resizeData?.isResizing && !window._isDragging && !window._grupoLider && !editing.id && (
+                      <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} />
+                    )}
+
+
+
+                    {/* 🎯 Controles especiales para líneas seleccionadas */}
+                    {elementosSeleccionados.length === 1 && (() => {
+                      const elementoSeleccionado = objetos.find(obj => obj.id === elementosSeleccionados[0]);
+                      if (elementoSeleccionado?.tipo === 'forma' && elementoSeleccionado?.figura === 'line') {
+                        return (
+                          <LineControls
+                            key={`line-controls-${elementoSeleccionado.id}-${JSON.stringify(elementoSeleccionado.points)}`}
+                            lineElement={elementoSeleccionado}
+                            elementRefs={elementRefs}
+                            onUpdateLine={actualizarLinea}
+                            altoCanvas={altoCanvasDinamico}
+                            // 🔥 NUEVA PROP: Pasar información sobre drag grupal
+                            isDragGrupalActive={window._grupoLider !== null}
+                            elementosSeleccionados={elementosSeleccionados}
+                          />
+                        );
+                      }
+                      return null;
+                    })()}
 
 
 
 
 
-                {/* Líneas de guía dinámicas mejoradas */}
-                {guiaLineas.map((linea, i) => {
-                  // Determinar el estilo visual según el tipo
-                  const esLineaSeccion = linea.priority === 'seccion';
+                    {/* Líneas de guía dinámicas mejoradas */}
+                    {guiaLineas.map((linea, i) => {
+                      // Determinar el estilo visual según el tipo
+                      const esLineaSeccion = linea.priority === 'seccion';
 
-                  return (
-                    <Line
-                      key={`${linea.type}-${i}`}
-                      points={linea.points}
-                      stroke={esLineaSeccion ? "#773dbe" : "#9333ea"} // Violeta más intenso para sección
-                      strokeWidth={esLineaSeccion ? 2 : 1} // Líneas de sección más gruesas
-                      dash={linea.style === 'dashed' ? [8, 6] : undefined} // Punteado para elementos
-                      opacity={esLineaSeccion ? 0.9 : 0.7} // Líneas de sección más opacas
-                      listening={false}
-                      perfectDrawEnabled={false}
-                      // Efecto sutil de resplandor para líneas de sección
-                      shadowColor={esLineaSeccion ? "rgba(119, 61, 190, 0.3)" : undefined}
-                      shadowBlur={esLineaSeccion ? 4 : 0}
-                      shadowEnabled={esLineaSeccion}
-                    />
-                  );
-                })}
+                      return (
+                        <Line
+                          key={`${linea.type}-${i}`}
+                          points={linea.points}
+                          stroke={esLineaSeccion ? "#773dbe" : "#9333ea"} // Violeta más intenso para sección
+                          strokeWidth={esLineaSeccion ? 2 : 1} // Líneas de sección más gruesas
+                          dash={linea.style === 'dashed' ? [8, 6] : undefined} // Punteado para elementos
+                          opacity={esLineaSeccion ? 0.9 : 0.7} // Líneas de sección más opacas
+                          listening={false}
+                          perfectDrawEnabled={false}
+                          // Efecto sutil de resplandor para líneas de sección
+                          shadowColor={esLineaSeccion ? "rgba(119, 61, 190, 0.3)" : undefined}
+                          shadowBlur={esLineaSeccion ? 4 : 0}
+                          shadowEnabled={esLineaSeccion}
+                        />
+                      );
+                    })}
 
 
-              </Layer>
+                  </Layer>
 
-            </Stage>
+                </Stage>
 
+
+              )}
+            </div>
 
             {editing.id && elementRefs.current[editing.id] && (() => {
               const objetoEnEdicion = objetos.find(o => o.id === editing.id);

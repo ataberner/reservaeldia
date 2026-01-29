@@ -150,6 +150,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
   const [anchoContenedor, setAnchoContenedor] = useState(0);
+  // ✅ NUEVO: loading fino (data + fonts + images)
+  const [dataReady, setDataReady] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
+  const [imagesReady, setImagesReady] = useState(false);
 
 
 
@@ -211,9 +215,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-
-  const [fontsReady, setFontsReady] = useState(false);
-
   const fuentesNecesarias = useMemo(() => {
     // fuentes usadas en textos + countdown (si aplica) + formas con texto (rect)
     const fonts = (objetos || [])
@@ -223,6 +224,46 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
     return [...new Set(fonts)];
   }, [objetos]);
+
+  const imagenesNecesarias = useMemo(() => {
+    const urls = [];
+
+    // 1) Objetos (imagen/icono/galería)
+    for (const o of (objetos || [])) {
+      if (o?.tipo === "imagen" && o?.src) urls.push(o.src);
+
+      // íconos raster (si tenés svg, también lo podés precargar, pero no suele ser necesario)
+      if (o?.tipo === "icono" && o?.url) urls.push(o.url);
+
+      if (o?.tipo === "galeria" && Array.isArray(o?.cells)) {
+        for (const c of o.cells) {
+          if (c?.mediaUrl) urls.push(c.mediaUrl);
+        }
+      }
+    }
+
+    // 2) Fondos por sección (ajustá keys según tu modelo real)
+    for (const s of (secciones || [])) {
+      const u =
+        s?.fondoImagenUrl ||
+        s?.fondoUrl ||
+        s?.imagenUrl ||
+        s?.fondoImagen ||
+        s?.fondoSrc ||
+        null;
+
+      // Si querés ser estricto, dejalo condicionado a fondoTipo === "imagen"
+      if (u) urls.push(u);
+    }
+
+    // limpiar, deduplicar y filtrar vacíos
+    const clean = urls
+      .map(u => String(u).trim())
+      .filter(Boolean);
+
+    return [...new Set(clean)];
+  }, [objetos, secciones]);
+
 
 
   useEffect(() => {
@@ -765,6 +806,71 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
     return () => { alive = false; };
   }, [cargado, fuentesNecesarias]);
+
+
+  useEffect(() => {
+    let alive = true;
+
+    function preloadOne(url, timeoutMs = 12000) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        let done = false;
+
+        const finish = (status) => {
+          if (done) return;
+          done = true;
+          resolve({ url, status });
+        };
+
+        const t = setTimeout(() => finish("timeout"), timeoutMs);
+
+        img.onload = () => { clearTimeout(t); finish("loaded"); };
+        img.onerror = () => { clearTimeout(t); finish("error"); };
+
+        // útil si servís desde CDNs / Storage con CORS ok
+        img.crossOrigin = "anonymous";
+        img.decoding = "async";
+        img.loading = "eager";
+
+        img.src = url;
+      });
+    }
+
+    async function precargarImagenes() {
+      // Si no hay imágenes, listo
+      if (!imagenesNecesarias.length) {
+        if (alive) setImagesReady(true);
+        return;
+      }
+
+      setImagesReady(false);
+
+      try {
+        // Precarga paralela (con timeout por imagen)
+        await Promise.allSettled(imagenesNecesarias.map((u) => preloadOne(u, 12000)));
+
+        if (alive) setImagesReady(true);
+
+        // Redraw por si acaso
+        requestAnimationFrame(() => {
+          stageRef.current?.batchDraw?.();
+        });
+      } catch (e) {
+        console.warn("⚠️ Error precargando imágenes:", e);
+        // No bloqueamos infinito
+        if (alive) setImagesReady(true);
+      }
+    }
+
+    // Igual que fuentes: precargar sólo cuando el borrador ya está cargado
+    if (cargado) precargarImagenes();
+    else {
+      // si cambia slug y vuelve a "no cargado", reseteamos
+      setImagesReady(false);
+    }
+
+    return () => { alive = false; };
+  }, [cargado, imagenesNecesarias]);
 
 
 
@@ -1858,6 +1964,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     return !!(t && (t.type?.includes("touch") || t.pointerType === "touch"));
   };
 
+  const assetsReady = cargado && fontsReady && imagesReady;
 
 
   return (
@@ -2089,7 +2196,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 height: altoCanvasDinamico,
               }}
             >
-              {!fontsReady && (
+              {!assetsReady && (
                 <div
                   style={{
                     position: "absolute",
@@ -2150,7 +2257,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 </div>
               )}
 
-              {fontsReady && (
+              {assetsReady && (
 
 
                 <Stage

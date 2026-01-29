@@ -255,7 +255,7 @@ export default function SelectionBounds({
         transformerRef.current.nodes(nodosTransformables);
 
         // ✅ Fuerza recalculo interno del transformer (borde punteado)
-        transformerRef.current.forceUpdate?.();
+        try { transformerRef.current.forceUpdate(); } catch { }
         transformerRef.current.getLayer()?.batchDraw();
 
         // ✅ Auto-retry si el transformer se enganchó antes de que el nodo tome el size final
@@ -334,12 +334,6 @@ export default function SelectionBounds({
 
         // batchDraw extra en el próximo frame (por si Konva ajusta métricas después)
         const layer = transformerRef.current.getLayer();
-        if (layer) {
-          requestAnimationFrame(() => {
-            transformerRef.current?.forceUpdate?.();
-            layer.batchDraw();
-          });
-        }
       }
 
       return nodosTransformables.length;
@@ -773,36 +767,29 @@ export default function SelectionBounds({
 
           onTransform(finalData);
 
-          // ✅ Detach + Attach (borra cache interno del transformer)
+
+          // ✅ Reatachar 1 vez, con ref fresco, en el próximo frame
           try {
             const tr2 = transformerRef.current;
-            if (tr2) {
-              const reattach = () => {
-                tr2.nodes([]);
-                tr2.forceUpdate();
+            if (!tr2) return;
 
-                tr2.nodes([node]);
-                tr2.forceUpdate();
-                tr2.getLayer()?.batchDraw();
-              };
-
-              reattach();
-              requestAnimationFrame(() => {
-                reattach();
-                requestAnimationFrame(() => reattach());
-              });
-            }
-          } catch { }
-
-          // ✅ Re-aplicar transformer DESPUÉS de que React/Konva re-rendericen el tamaño final
-          requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              // 1) dispara el effect applyTransformer en el momento correcto
-              setTransformTick((t) => t + 1);
+              const idSel = selectedElements?.[0];
+              const freshNode = idSel ? elementRefs.current?.[idSel] : null;
 
+              // Si el nodo no está listo, despegar y salir
+              if (!freshNode || freshNode._destroyed || !freshNode.getStage?.()) {
+                try { tr2.nodes([]); tr2.getLayer?.()?.batchDraw(); } catch { }
+                return;
+              }
 
+              try {
+                tr2.nodes([freshNode]);
+                tr2.forceUpdate();
+                tr2.getLayer?.()?.batchDraw();
+              } catch { }
             });
-          });
+          } catch { }
 
 
         } catch (error) {

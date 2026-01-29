@@ -60,7 +60,8 @@ export default function DashboardLayout({
         className={
           modoSelector
             ? "absolute left-0 right-0 overflow-y-auto bg-gray-50"
-            : "flex-1 overflow-y-auto p-2 sm:p-4 pt-12 sm:pt-10"
+            : "flex-1 overflow-y-auto px-2 pb-2 sm:px-4 sm:pb-4 pt-14 sm:pt-8"
+
         }
         style={
           modoSelector

@@ -149,9 +149,18 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
       const yn = clamp01(yPxEditor / ALTURA_EDITOR_PANTALLA) ?? 0;
 
 
-      return `calc((var(--vh-logical) * ${yn}) + (${sContenidoVar(
-        obj
-      )} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px)))`;
+      // ✅ Altura “de diseño” escalada por el mismo factor que usan tamaños (sfinal)
+      const designScaledH = `(${sContenidoVar(obj)} * ${ALTURA_EDITOR_PANTALLA}px)`;
+
+      // ✅ Centrado vertical: si el viewport lógico es más alto que el diseño escalado,
+      // agregamos un offset constante. (En desktop suele dar ~0 porque sfinal = vh/500)
+      const centerOffset = `max(0px, calc((var(--vh-logical) - ${designScaledH}) / 2))`;
+
+      return `calc(
+  ${centerOffset}
+  + (${designScaledH} * ${yn})
+  + (${sContenidoVar(obj)} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px))
+)`;
 
 
 

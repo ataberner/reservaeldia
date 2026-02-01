@@ -1,6 +1,9 @@
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
 import { generarModalRSVPHTML, type RSVPConfig as ModalConfig } from "./generarModalRSVP";
+import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
+
+const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
 const EXCLUDE_FONTS = new Set([
   "serif",
@@ -215,6 +218,14 @@ export function generarHTMLDesdeSecciones(
 `.trim();
     })
     .join("\n");
+
+    const scriptMobileSmart = buildMobileSmartSectionLayoutScript({
+    enabled: ENABLE_MOBILE_SMART_LAYOUT,
+    minGapPx: 1,
+    paddingTopPx: 0,
+    paddingBottomPx: 2,
+    onlyFixedSections: true,
+  });
 
   return `
 <!DOCTYPE html>
@@ -515,7 +526,10 @@ export function generarHTMLDesdeSecciones(
     })();
   </script>
 
- 
+    
+
+
+   ${scriptMobileSmart}
  
 </body>
 </html>

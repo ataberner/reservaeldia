@@ -1,9 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, RotateCcw, Home, Lock, Star, MoreHorizontal } from 'lucide-react';
+
 
 export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }) {
   const [dispositivoActual, setDispositivoActual] = useState('desktop'); // 'desktop' o 'mobile'
   
+  const iframeRef = useRef(null);
+
+  useEffect(() => {
+  if (!visible) return;
+
+  // Espera 2 frames para que el layout del modal/iframe esté estable
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "RED_RECOMPUTE_LAYOUT" },
+          "*"
+        );
+      } catch {}
+    });
+  });
+}, [dispositivoActual, visible]);
+
+
   // 🔥 NUEVO: Manejar tecla ESC
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -67,12 +87,13 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }
 
       {/* Ventana del navegador */}
       <div 
-        className={`bg-white rounded-xl shadow-2xl overflow-hidden transition-all duration-300 ${
-          dispositivoActual === 'desktop' 
-            ? 'w-full max-w-6xl h-[85vh]' 
-            : 'w-full max-w-sm h-[85vh]'
-        }`}
-      >
+  className={`bg-white rounded-xl shadow-2xl overflow-hidden transition-[opacity,transform] duration-200 ${
+    dispositivoActual === 'desktop' 
+      ? 'w-full max-w-6xl h-[85vh]' 
+      : 'w-full max-w-sm h-[85vh]'
+  }`}
+>
+
         {/* Barra de título del navegador */}
         <div className={`bg-gray-100 border-b border-gray-200 transition-all ${
           dispositivoActual === 'mobile' ? 'px-2 py-2' : 'px-4 py-3'
@@ -157,6 +178,7 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }
         }}>
           {htmlContent ? (
             <iframe
+              ref={iframeRef}
               srcDoc={htmlContent}
               className="w-full h-full border-none"
               style={{

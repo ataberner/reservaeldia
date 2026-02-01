@@ -1,4 +1,3 @@
-// components/RegisterModal.js
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -17,6 +16,7 @@ function mapAuthError(code) {
     case "auth/weak-password":
       return "La contraseña es muy débil. Usá al menos 6 caracteres.";
     case "auth/popup-closed-by-user":
+      // Ya no debería ocurrir con redirect, pero lo dejamos por compatibilidad
       return "Se cerró la ventana de Google.";
     default:
       return "No se pudo completar el registro. Intentá de nuevo.";
@@ -28,8 +28,8 @@ export default function RegisterModal({ onClose, onGoToLogin }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
-
   const router = useRouter();
+
 
   const handleGoogleRegister = async () => {
     setError("");
@@ -44,6 +44,8 @@ export default function RegisterModal({ onClose, onGoToLogin }) {
     }
   };
 
+
+  // ✅ Registro con email / password
   const handleRegister = async (e) => {
     e.preventDefault();
     setError("");
@@ -56,25 +58,28 @@ export default function RegisterModal({ onClose, onGoToLogin }) {
     try {
       await createUserWithEmailAndPassword(auth, email, password);
       onClose?.();
-      router.push("/dashboard");
+      // El redirect a /dashboard lo hacés donde ya lo tengas
+      // (por ejemplo, por estado de auth o en index.js)
     } catch (err) {
-      // Mensaje claro + si es mail ya usado, ofrecemos pasar al login
       const msg = mapAuthError(err?.code);
       setError(msg + (err?.code ? ` (${err.code})` : ""));
     }
   };
 
   const wantsLogin =
-    error?.includes("ya está registrado") || error?.includes("email-already-in-use");
+    error?.includes("ya está registrado") ||
+    error?.includes("email-already-in-use");
 
   return (
     <div className="modal-backdrop">
       <div className="modal-content">
-        <button className="close-btn" onClick={onClose}>×</button>
+        <button className="close-btn" onClick={onClose}>
+          ×
+        </button>
 
         <h2>Crear Cuenta</h2>
 
-        {/* ✅ Registro con email/pass */}
+        {/* Registro con email / password */}
         <form onSubmit={handleRegister}>
           <input
             type="email"
@@ -120,7 +125,7 @@ export default function RegisterModal({ onClose, onGoToLogin }) {
           </button>
         </form>
 
-        {/* ✅ Registro con Google */}
+        {/* Registro con Google */}
         <button
           type="button"
           className="btn btn-outline-dark position-relative w-100 mt-3"
@@ -141,7 +146,7 @@ export default function RegisterModal({ onClose, onGoToLogin }) {
           Usar Google
         </button>
 
-        {/* Link suave para alternar aunque no haya error */}
+        {/* Link para alternar manualmente */}
         <div style={{ marginTop: 12, textAlign: "center" }}>
           <button
             type="button"

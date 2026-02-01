@@ -38,11 +38,14 @@ export default function useKeyboardShortcuts({
       }
 
       if ((e.ctrlKey || e.metaKey) && key === "d") {
+        if (!tieneSeleccion) return;
         e.preventDefault();
         onDuplicar?.();
       }
 
+
       if ((e.ctrlKey || e.metaKey) && key === "c") {
+        if (!tieneSeleccion) return;
         e.preventDefault();
         onCopiar?.();
       }

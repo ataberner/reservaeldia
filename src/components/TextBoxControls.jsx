@@ -40,6 +40,7 @@ export default function TextBoxControls({ textElement, elementRefs, onUpdateText
 
       {/* Línea guía */}
       <Line
+        name="ui"
         points={[box.x + box.width, box.y, box.x + box.width, box.y + box.height]}
         stroke="#773dbe"
         strokeWidth={1}

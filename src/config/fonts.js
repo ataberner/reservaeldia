@@ -27,6 +27,10 @@ export const GOOGLE_FONTS = [
   { nombre: "Lora", valor: "Lora", categoria: "Serif" },
   { nombre: "PT Serif", valor: "'PT Serif'", categoria: "Serif" },
   { nombre: "Crimson Text", valor: "'Crimson Text'", categoria: "Serif" },
+  { nombre: "Libre Bodoni", valor: "'Libre Bodoni'", categoria: "Serif" },
+  { nombre: "Bodoni Moda", valor: "'Bodoni Moda'", categoria: "Serif" },
+
+
   
   // Display
   { nombre: "Lobster", valor: "Lobster", categoria: "Display" },

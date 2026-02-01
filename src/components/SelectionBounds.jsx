@@ -150,6 +150,7 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
 
   return (
     <Rect
+      name="ui"
       x={finalX}
       y={finalY}
       width={finalWidth}
@@ -424,6 +425,7 @@ export default function SelectionBounds({
 
   return (
     <Transformer
+      name="ui"
       ref={transformerRef}
       borderStroke="rgba(59, 130, 246, 0.7)"
       borderStrokeWidth={1}

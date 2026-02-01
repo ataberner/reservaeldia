@@ -108,6 +108,24 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
           shadowBlur={modoMoverFondo ? 10 : 0}
           listening={allowBackgroundInteraction} // ✅ en mobile NO escucha
 
+          // ✅ NUEVO: la imagen tapa al Rect, así que el click simple debe seleccionar la sección
+          onClick={allowBackgroundInteraction ? (e) => {
+            // Si estoy ajustando el fondo, no quiero que un click seleccione sección accidentalmente
+            if (modoMoverFondo) {
+              e.cancelBubble = true;
+              return;
+            }
+            onSelect?.();
+          } : undefined}
+
+          onTap={allowBackgroundInteraction ? (e) => {
+            if (modoMoverFondo) {
+              e.cancelBubble = true;
+              return;
+            }
+            onSelect?.();
+          } : undefined}
+
           onMouseDown={allowBackgroundInteraction ? (e) => {
             if (modoMoverFondo) e.cancelBubble = true;
           } : undefined}
@@ -117,6 +135,13 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
             setModoMoverFondo(true);
             document.body.style.cursor = "move";
           } : undefined}
+
+          onDblTap={allowBackgroundInteraction ? (e) => {
+            e.cancelBubble = true;
+            setModoMoverFondo(true);
+            document.body.style.cursor = "move";
+          } : undefined}
+
 
           onDragMove={(e) => {
             const node = e.target;

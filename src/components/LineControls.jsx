@@ -242,7 +242,7 @@ export default function LineControls({
   }, [draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, onUpdateLine, lineElement.id]);
 
   return (
-    <Group>
+    <Group name="ui">
       {/* 🔥 OCULTAR CONTROLES DURANTE DRAG INDIVIDUAL O GRUPAL */}
       {!lineBeingDragged && !isGroupDrag && (
         <>
@@ -307,6 +307,7 @@ export default function LineControls({
           {/* 📏 Línea de guía durante drag de puntos - OPTIMIZADA */}
           {draggingPoint && (
             <Line
+              name="ui"
               points={[startAbsoluteX, startAbsoluteY, endAbsoluteX, endAbsoluteY]}
               stroke="rgba(119, 61, 190, 0.4)"
               strokeWidth={1}

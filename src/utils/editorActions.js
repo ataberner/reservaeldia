@@ -14,14 +14,19 @@ export function ejecutarDeshacer({
     setElementosSeleccionados([]);
     setMostrarPanelZ(false);
 
+    ignoreNextUpdateRef.current = (ignoreNextUpdateRef.current || 0) + 1;
+
+
     setHistorial((prev) => {
       const nuevoHistorial = [...prev];
       const estadoActual = nuevoHistorial.pop();
       const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
 
-      ignoreNextUpdateRef.current = true;
+      // Aplicar estado anterior
       setObjetos(estadoAnterior.objetos || []);
       setSecciones(estadoAnterior.secciones || []);
+
+      // Guardar para rehacer (push al frente, igual que tu lógica actual)
       setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
 
       return nuevoHistorial;
@@ -45,7 +50,8 @@ export function ejecutarRehacer({
 
     const siguienteEstado = futuros[0];
 
-    ignoreNextUpdateRef.current = true;
+    ignoreNextUpdateRef.current = (ignoreNextUpdateRef.current || 0) + 1;
+
     setObjetos(siguienteEstado.objetos || []);
     setSecciones(siguienteEstado.secciones || []);
 
@@ -53,6 +59,7 @@ export function ejecutarRehacer({
     setHistorial((h) => [...h, siguienteEstado]);
   }
 }
+
 
 export function duplicarElemento({ objetos, elementosSeleccionados, setObjetos, setElementosSeleccionados }) {
   const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));

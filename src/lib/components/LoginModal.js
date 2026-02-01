@@ -4,7 +4,7 @@ import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
-} from 'firebase/auth';
+} from "firebase/auth";
 import { auth } from '@/firebase';
 
 function mapAuthError(code) {
@@ -29,6 +29,7 @@ export default function LoginModal({ onClose, onGoToRegister }) {
 
   const router = useRouter();
 
+
   const handleGoogleLogin = async () => {
     setError('');
     const provider = new GoogleAuthProvider();
@@ -41,6 +42,8 @@ export default function LoginModal({ onClose, onGoToRegister }) {
       setError(mapAuthError(err?.code));
     }
   };
+
+
 
   const handleLogin = async (e) => {
     e.preventDefault();

@@ -1,16 +1,47 @@
 // pages/index.js (Next.js + JSX adaptado)
 
 import Head from 'next/head';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
 import Link from 'next/link';
+import { } from "react";
+import { getRedirectResult } from "firebase/auth";
+import { auth } from "@/firebase";
+import { useRouter } from "next/navigation";
+
+
 
 
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const router = useRouter();
+
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const result = await getRedirectResult(auth);
+
+        // Si volvimos de Google y ya hay usuario, cerramos modales y vamos al dashboard
+        if (result?.user && mounted) {
+          setShowLogin(false);
+          setShowRegister(false);
+          router.push("/dashboard");
+        }
+      } catch (err) {
+        console.error("Error en redirect Google:", err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
 
   return (
@@ -125,14 +156,14 @@ export default function Home() {
                 <div className="text-center">
                   <Link href="#">
                     <img src="/assets/img/celu2.png" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy" />
-                    
+
                   </Link>
                 </div>
                 {/* Item 3 */}
                 <div className="text-center">
                   <Link href="#">
                     <img src="/assets/img/celu3.png" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy" />
-                    
+
                   </Link>
                 </div>
               </div>
@@ -322,24 +353,24 @@ export default function Home() {
       </footer>
 
       {showLogin && (
-  <LoginModal
-    onClose={() => setShowLogin(false)}
-    onGoToRegister={() => {
-      setShowLogin(false);
-      setShowRegister(true);
-    }}
-  />
-)}
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onGoToRegister={() => {
+            setShowLogin(false);
+            setShowRegister(true);
+          }}
+        />
+      )}
 
-{showRegister && (
-  <RegisterModal
-    onClose={() => setShowRegister(false)}
-    onGoToLogin={() => {
-      setShowRegister(false);
-      setShowLogin(true);
-    }}
-  />
-)}
+      {showRegister && (
+        <RegisterModal
+          onClose={() => setShowRegister(false)}
+          onGoToLogin={() => {
+            setShowRegister(false);
+            setShowLogin(true);
+          }}
+        />
+      )}
 
 
 

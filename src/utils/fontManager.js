@@ -46,7 +46,7 @@ class FontManager {
     const loadPromise = new Promise((resolve, reject) => {
       WebFont.load({
         google: {
-          families: [`${fontName}:300,400,500,600,700,800,900`]
+          families: [`${fontName}:ital,wght@0,400;0,700;1,400;1,700`]
         },
         active: () => {
           this.loadedFonts.add(fontName);
@@ -111,9 +111,7 @@ async loadFonts(fontFamilies = []) {
   const lotePromise = new Promise((resolve, reject) => {
     WebFont.load({
       google: {
-        families: familiasPendientes.map(
-          (n) => `${n}:300,400,500,600,700,800,900`
-        ),
+        families: familiasPendientes.map((n) => `${n}:ital,wght@0,400;0,700;1,400;1,700`)
       },
       active: () => {
         // Marcamos todas como cargadas
@@ -149,7 +147,8 @@ async loadFonts(fontFamilies = []) {
   async preloadPopularFonts() {
     const popularFonts = [
       'Poppins', 'Roboto', 'Open Sans', 'Montserrat', 
-      'Raleway', 'Lato', 'Playfair Display', 'Oswald'
+      'Raleway', 'Lato', 'Playfair Display', 'Oswald', 'Libre Bodoni',
+      'Bodoni Moda',
     ];
     
     return this.loadFonts(popularFonts);
@@ -181,7 +180,7 @@ async loadFonts(fontFamilies = []) {
     const familias = fontFamilies
       .map(f => f.replace(/['"]/g, "").split(",")[0].trim())   // "Poppins"
       .filter(n => this.googleFontSet.has(n))                  // ✅ solo Google Fonts reales
-      .map(n => `family=${encodeURIComponent(n.replace(/ /g, "+"))}`)
+      .map(n => `family=${encodeURIComponent(n.replace(/ /g, "+") + ":ital,wght@0,400;0,700;1,400;1,700")}`)
       .join("&");
 
     if (!familias) return "";

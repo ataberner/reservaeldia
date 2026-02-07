@@ -4,24 +4,43 @@ import { X, RotateCcw, Home, Lock, Star, MoreHorizontal } from 'lucide-react';
 
 export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }) {
   const [dispositivoActual, setDispositivoActual] = useState('desktop'); // 'desktop' o 'mobile'
-  
+  const [iframeKey, setIframeKey] = useState(0);
+  const prevDeviceRef = useRef(dispositivoActual);
+
+  useEffect(() => {
+    const prev = prevDeviceRef.current;
+
+    // ✅ Solo recargar cuando volvés a escritorio desde móvil
+    if (prev === "mobile" && dispositivoActual === "desktop") {
+      setIframeKey((k) => k + 1);
+    }
+
+    prevDeviceRef.current = dispositivoActual;
+  }, [dispositivoActual]);
+
+
+
   const iframeRef = useRef(null);
 
   useEffect(() => {
-  if (!visible) return;
+    if (!visible) return;
 
-  // Espera 2 frames para que el layout del modal/iframe esté estable
-  requestAnimationFrame(() => {
+    // Espera 2 frames para que el layout del modal/iframe esté estable
     requestAnimationFrame(() => {
-      try {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "RED_RECOMPUTE_LAYOUT" },
-          "*"
-        );
-      } catch {}
+      requestAnimationFrame(() => {
+        try {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "RED_RECOMPUTE_LAYOUT" },
+            "*"
+          );
+        } catch { }
+      });
     });
-  });
-}, [dispositivoActual, visible]);
+  }, [dispositivoActual, visible]);
+
+  useEffect(() => {
+    if (visible) setIframeKey((k) => k + 1);
+  }, [visible]);
 
 
   // 🔥 NUEVO: Manejar tecla ESC
@@ -65,58 +84,49 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }
       <div className="absolute top-6 right-6 z-[10000] flex gap-2">
         <button
           onClick={() => setDispositivoActual('desktop')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            dispositivoActual === 'desktop'
-              ? 'bg-white text-gray-900 shadow-lg'
-              : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur-md'
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${dispositivoActual === 'desktop'
+            ? 'bg-white text-gray-900 shadow-lg'
+            : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur-md'
+            }`}
         >
           🖥️ Escritorio
         </button>
         <button
           onClick={() => setDispositivoActual('mobile')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            dispositivoActual === 'mobile'
-              ? 'bg-white text-gray-900 shadow-lg'
-              : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur-md'
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${dispositivoActual === 'mobile'
+            ? 'bg-white text-gray-900 shadow-lg'
+            : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur-md'
+            }`}
         >
           📱 Móvil
         </button>
       </div>
 
       {/* Ventana del navegador */}
-      <div 
-  className={`bg-white rounded-xl shadow-2xl overflow-hidden transition-[opacity,transform] duration-200 ${
-    dispositivoActual === 'desktop' 
-      ? 'w-full max-w-6xl h-[85vh]' 
-      : 'w-full max-w-sm h-[85vh]'
-  }`}
->
+      <div
+        className={`bg-white rounded-xl shadow-2xl overflow-hidden transition-[opacity,transform] duration-200 ${dispositivoActual === 'desktop'
+          ? 'w-full max-w-6xl h-[85vh]'
+          : 'w-full max-w-sm h-[85vh]'
+          }`}
+      >
 
         {/* Barra de título del navegador */}
-        <div className={`bg-gray-100 border-b border-gray-200 transition-all ${
-          dispositivoActual === 'mobile' ? 'px-2 py-2' : 'px-4 py-3'
-        }`}>
-          {/* Botones de control (semáforo) */}
-          <div className={`flex items-center gap-2 ${
-            dispositivoActual === 'mobile' ? 'mb-2' : 'mb-3'
+        <div className={`bg-gray-100 border-b border-gray-200 transition-all ${dispositivoActual === 'mobile' ? 'px-2 py-2' : 'px-4 py-3'
           }`}>
-            <div className={`rounded-full bg-red-500 ${
-              dispositivoActual === 'mobile' ? 'w-2.5 h-2.5' : 'w-3 h-3'
-            }`}></div>
-            <div className={`rounded-full bg-yellow-500 ${
-              dispositivoActual === 'mobile' ? 'w-2.5 h-2.5' : 'w-3 h-3'
-            }`}></div>
-            <div className={`rounded-full bg-green-500 ${
-              dispositivoActual === 'mobile' ? 'w-2.5 h-2.5' : 'w-3 h-3'
-            }`}></div>
+          {/* Botones de control (semáforo) */}
+          <div className={`flex items-center gap-2 ${dispositivoActual === 'mobile' ? 'mb-2' : 'mb-3'
+            }`}>
+            <div className={`rounded-full bg-red-500 ${dispositivoActual === 'mobile' ? 'w-2.5 h-2.5' : 'w-3 h-3'
+              }`}></div>
+            <div className={`rounded-full bg-yellow-500 ${dispositivoActual === 'mobile' ? 'w-2.5 h-2.5' : 'w-3 h-3'
+              }`}></div>
+            <div className={`rounded-full bg-green-500 ${dispositivoActual === 'mobile' ? 'w-2.5 h-2.5' : 'w-3 h-3'
+              }`}></div>
           </div>
 
           {/* Barra de navegación */}
-          <div className={`flex items-center ${
-            dispositivoActual === 'mobile' ? 'gap-1' : 'gap-3'
-          }`}>
+          <div className={`flex items-center ${dispositivoActual === 'mobile' ? 'gap-1' : 'gap-3'
+            }`}>
             {/* Botones de navegación - Ocultos en móvil */}
             {dispositivoActual === 'desktop' && (
               <div className="flex gap-1">
@@ -144,16 +154,13 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }
             )}
 
             {/* Barra de URL */}
-            <div className={`flex-1 bg-white rounded-lg flex items-center gap-1 border ${
-              dispositivoActual === 'mobile' ? 'px-2 py-1' : 'px-4 py-2'
-            }`}>
-              <Lock className={`text-green-600 ${
-                dispositivoActual === 'mobile' ? 'w-3 h-3' : 'w-4 h-4'
-              }`} />
-              <span className={`text-gray-700 truncate flex-1 ${
-                dispositivoActual === 'mobile' ? 'text-xs' : 'text-sm'
+            <div className={`flex-1 bg-white rounded-lg flex items-center gap-1 border ${dispositivoActual === 'mobile' ? 'px-2 py-1' : 'px-4 py-2'
               }`}>
-                {dispositivoActual === 'mobile' 
+              <Lock className={`text-green-600 ${dispositivoActual === 'mobile' ? 'w-3 h-3' : 'w-4 h-4'
+                }`} />
+              <span className={`text-gray-700 truncate flex-1 ${dispositivoActual === 'mobile' ? 'text-xs' : 'text-sm'
+                }`}>
+                {dispositivoActual === 'mobile'
                   ? 'reservaeldia.com.ar/i/...'  // URL acortada para móvil
                   : urlSimulada
                 }
@@ -173,11 +180,12 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, slug }
         </div>
 
         {/* Área de contenido del navegador */}
-        <div className="bg-white flex-1 relative overflow-hidden" style={{ 
-          height: dispositivoActual === 'mobile' ? 'calc(100% - 60px)' : 'calc(100% - 80px)' 
+        <div className="bg-white flex-1 relative overflow-hidden" style={{
+          height: dispositivoActual === 'mobile' ? 'calc(100% - 60px)' : 'calc(100% - 80px)'
         }}>
           {htmlContent ? (
             <iframe
+              key={iframeKey}
               ref={iframeRef}
               srcDoc={htmlContent}
               className="w-full h-full border-none"

@@ -507,7 +507,12 @@ line-height: 1.05;
         const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
 
         return `
-<div class="objeto" data-countdown data-target="${escapeAttr(targetISO)}" data-preset="${escapeAttr(
+<div class="objeto"
+  data-mobile-cluster="isolated"
+  data-mobile-center="force"
+  data-countdown
+  data-target="${escapeAttr(targetISO)}"
+  data-preset="${escapeAttr(
           preset
         )}" style="${containerStyle}">
   <div class="cd-chip" style="${chipStyle}">

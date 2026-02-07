@@ -69,7 +69,21 @@ export function jsDomHelpersBlock(): string {
 
     for (var i=0;i<n;i++){
       for (var j=i+1;j<n;j++){
-        if (rectsOverlap(items[i], items[j], TOL)) union(i,j);
+        var a = items[i], b = items[j];
+
+    var aIso = (a.node.getAttribute("data-mobile-cluster") || "") === "isolated";
+    var bIso = (b.node.getAttribute("data-mobile-cluster") || "") === "isolated";
+
+    // si cualquiera es isolated, no lo unimos con nadie
+    if (aIso || bIso) continue;
+
+    // opcional: cluster-id manual (si querés agrupar solo algunos)
+    var aKey = a.node.getAttribute("data-mobile-cluster-id") || "";
+    var bKey = b.node.getAttribute("data-mobile-cluster-id") || "";
+    if (aKey && bKey && aKey !== bKey) continue;
+
+    if (rectsOverlap(a, b, TOL)) union(i,j);
+
       }
     }
 

@@ -144,6 +144,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
+  const [isDragging, setIsDragging] = useState(false);
+
 
 
 
@@ -254,18 +256,26 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [icono] = useImage(urlData);
   const botonOpcionesRef = useRef(null);
 
+  const _refEventQueued = useRef(new Set());
 
   const registerRef = useCallback((id, node) => {
     elementRefs.current[id] = node;
     imperativeObjects.registerObject(id, node);
 
-    // ✅ Avisar a SelectionBounds que el ref está listo/actualizado
-    try {
-      window.dispatchEvent(
-        new CustomEvent("element-ref-registrado", { detail: { id } })
-      );
-    } catch { }
+    // ✅ Debounce por frame para evitar ráfagas de re-attach del Transformer
+    if (_refEventQueued.current.has(id)) return;
+    _refEventQueued.current.add(id);
+
+    requestAnimationFrame(() => {
+      _refEventQueued.current.delete(id);
+      try {
+        window.dispatchEvent(
+          new CustomEvent("element-ref-registrado", { detail: { id } })
+        );
+      } catch { }
+    });
   }, [imperativeObjects]);
+
 
 
 
@@ -452,8 +462,24 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       content.style.touchAction = "none";
     };
 
+    // ✅ NUEVO: estado React confiable para UI (Transformer/hover/etc.)
+    const onDragStart = () => {
+      setIsDragging(true);
+    };
+
+    const onDragEnd = () => {
+      setIsDragging(false);
+    };
+
+    // ✅ Failsafe: por si termina “raro” (touch cancel, pointer up, etc.)
+    const stopDragging = () => {
+      setIsDragging(false);
+      setScrollMode();
+    };
+
     // Inicial
     setScrollMode();
+    setIsDragging(false); // 🔒 por las dudas, al montar
     content.style.WebkitUserSelect = "none";
     content.style.WebkitTouchCallout = "none";
 
@@ -461,19 +487,30 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     stage.on("dragstart", setEditMode);
     stage.on("dragend", setScrollMode);
 
+    // ✅ NUEVO (UI state)
+    stage.on("dragstart", onDragStart);
+    stage.on("dragend", onDragEnd);
+
     // Failsafes (si el drag termina raro)
-    stage.on("touchend", setScrollMode);
-    stage.on("pointerup", setScrollMode);
-    stage.on("mouseup", setScrollMode);
+    stage.on("touchend", stopDragging);
+    stage.on("pointerup", stopDragging);
+    stage.on("mouseup", stopDragging);
+    stage.on("touchcancel", stopDragging);
 
     return () => {
       stage.off("dragstart", setEditMode);
       stage.off("dragend", setScrollMode);
-      stage.off("touchend", setScrollMode);
-      stage.off("pointerup", setScrollMode);
-      stage.off("mouseup", setScrollMode);
+
+      stage.off("dragstart", onDragStart);
+      stage.off("dragend", onDragEnd);
+
+      stage.off("touchend", stopDragging);
+      stage.off("pointerup", stopDragging);
+      stage.off("mouseup", stopDragging);
+      stage.off("touchcancel", stopDragging);
     };
-  }, []);
+  }, [setIsDragging]);
+
 
 
 
@@ -1668,27 +1705,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       )
                     ];
 
-                    if (esActiva) {
-                      elementos.push(
-                        // Borde principal - justo en el margen de la sección, sin bordes redondeados
-                        <Rect
-                          name="ui"
-                          key={`border-principal-${seccion.id}`}
-                          x={0}
-                          y={offsetY}
-                          width={800}
-                          height={alturaPx}
-                          fill="transparent"
-                          stroke="#773dbe"
-                          strokeWidth={estaAnimando ? 4 : 3}
-                          cornerRadius={0} // ✅ SIN BORDES REDONDEADOS
-                          shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
-                          shadowBlur={estaAnimando ? 16 : 12}
-                          shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
-                          listening={false}
-                        />
-                      );
-                    }
 
                     return elementos;
                   })}
@@ -1906,10 +1922,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             });
                           }}
                           onDragStartPersonalizado={() => {
-                            window._isDragging = true;
+                            setIsDragging(true);
                           }}
                           onDragEndPersonalizado={() => {
-                            window._isDragging = false;
+                            setIsDragging(false);
                             limpiarGuias();
                             if (typeof actualizarPosicionBotonOpciones === "function") {
                               actualizarPosicionBotonOpciones();
@@ -1948,7 +1964,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                           // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
                           onDragMovePersonalizado={(pos, id) => {
-                            window._isDragging = true;
+                            setIsDragging(true);
                             requestAnimationFrame(() => {
                               if (typeof actualizarPosicionBotonOpciones === "function") {
                                 actualizarPosicionBotonOpciones();
@@ -1958,7 +1974,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                           // ✅ FIN de drag: limpiar guías / UI auxiliar
                           onDragEndPersonalizado={() => {
-                            window._isDragging = false;
+                            setIsDragging(false);
                             limpiarGuias();
                             if (typeof actualizarPosicionBotonOpciones === "function") {
                               actualizarPosicionBotonOpciones();
@@ -2229,7 +2245,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             return updated;
                           });
                         }}
-
+                        onDragStartPersonalizado={isInEditMode ? null : () => setIsDragging(true)}
+                        onDragEndPersonalizado={isInEditMode ? null : () => {
+                          setIsDragging(false);
+                          configurarDragEnd([]);
+                        }}
                         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
                           // 🔥 NO mostrar guías durante drag grupal
                           if (!window._grupoLider) {
@@ -2243,7 +2263,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             });
                           }
                         }}
-                        onDragEndPersonalizado={isInEditMode ? null : () => configurarDragEnd([])}
                         dragStartPos={dragStartPos}
                         hasDragged={hasDragged}
                       />
@@ -2277,10 +2296,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                     return (
                       <SelectionBounds
-                        key={`selection-${elementosSeleccionados.join('-')}`}
                         selectedElements={elementosSeleccionados}
                         elementRefs={elementRefs}
                         objetos={objetos}
+                        isDragging={isDragging}
                         onTransform={(newAttrs) => {
                           console.log("🔧 Transform detectado:", newAttrs);
 
@@ -2413,7 +2432,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
                   {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
-                  {!window._resizeData?.isResizing && !window._isDragging && !window._grupoLider && !editing.id && (
+                  {!window._resizeData?.isResizing && !isDragging && !window._grupoLider && !editing.id && (
                     <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} />
                   )}
 
@@ -2469,6 +2488,38 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   })}
 
 
+                </CanvasElementsLayer>
+
+                {/* ✅ Overlay superior: borde de sección activa SIEMPRE arriba de todo */}
+                <CanvasElementsLayer>
+                  {(() => {
+                    if (!seccionActivaId) return null;
+
+                    const index = seccionesOrdenadas.findIndex(s => s.id === seccionActivaId);
+                    if (index === -1) return null;
+
+                    const seccion = seccionesOrdenadas[index];
+                    const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+                    const estaAnimando = seccionesAnimando.includes(seccion.id);
+
+                    return (
+                      <Rect
+                        key={`overlay-border-seccion-${seccion.id}`}
+                        x={0}
+                        y={offsetY}
+                        width={800}
+                        height={seccion.altura}
+                        fill="transparent"
+                        stroke="#773dbe"
+                        strokeWidth={estaAnimando ? 4 : 3}
+                        cornerRadius={0}
+                        shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
+                        shadowBlur={estaAnimando ? 16 : 12}
+                        shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
+                        listening={false}
+                      />
+                    );
+                  })()}
                 </CanvasElementsLayer>
 
               </Stage>

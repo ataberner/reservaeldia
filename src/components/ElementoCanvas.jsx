@@ -21,6 +21,7 @@ export default function ElementoCanvas({
   onHover,
   preSeleccionado,
   onDragMovePersonalizado,
+  onDragStartPersonalizado,
   onDragEndPersonalizado,
   dragStartPos,
   hasDragged,
@@ -28,7 +29,7 @@ export default function ElementoCanvas({
   editingMode = false
 }) {
   const [img] = useImage(obj.src || null, "anonymous");
-  const [isDragging, setIsDragging] = useState(false);
+  const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
 
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
@@ -41,23 +42,13 @@ export default function ElementoCanvas({
   }, [onChange]);
 
   const handleRef = useCallback((node) => {
-    if (node) {
-    }
-
     if (node && registerRef) {
       registerRef(obj.id, node);
-
-      try {
-        window.dispatchEvent(
-          new CustomEvent("element-ref-registrado", {
-            detail: { id: obj.id },
-          })
-        );
-      } catch (e) {
-        console.warn("[ElementoCanvas] Error al despachar element-ref-registrado", e);
-      }
+      // ❌ NO despachar "element-ref-registrado" acá
+      // CanvasEditor.registerRef ya lo hace.
     }
-  }, [obj.id, obj.tipo, registerRef]);
+  }, [obj.id, registerRef]);
+
 
 
   // ✅ Click con estado fresco (evita stale closures del useMemo)
@@ -103,7 +94,6 @@ export default function ElementoCanvas({
     scaleX: obj.scaleX || 1,
     scaleY: obj.scaleY || 1,
     draggable: !editingMode,
-    ref: handleRef,
     listening: !isInEditMode,
 
     onMouseDown: (e) => {
@@ -150,6 +140,7 @@ export default function ElementoCanvas({
 
     onDragStart: (e) => {
 
+      onDragStartPersonalizado?.();
 
       window._dragCount = 0;
       window._lastMouse = null;
@@ -157,7 +148,7 @@ export default function ElementoCanvas({
 
       hasDragged.current = true;
       window._isDragging = true;
-      setIsDragging(true);
+
 
       // 🔥 Intentar drag grupal
       const fueGrupal = startDragGrupalLider(e, obj);
@@ -202,10 +193,14 @@ export default function ElementoCanvas({
             }
           });
 
-          // Redibujar para mostrar cambios
-          if (e.target.getLayer) {
-            e.target.getLayer().batchDraw();
+          // ✅ Redibujo throttled a 1 por frame (evita “blink” de UI)
+          if (!window._groupPreviewRaf) {
+            window._groupPreviewRaf = requestAnimationFrame(() => {
+              window._groupPreviewRaf = null;
+              stage.batchDraw();
+            });
           }
+
         }
 
         // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
@@ -234,26 +229,41 @@ export default function ElementoCanvas({
     onDragEnd: (e) => {
 
       window._isDragging = false;
-      setIsDragging(false);
 
       const node = e.currentTarget;
 
       // 🔥 Intentar drag grupal
-      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, setIsDragging);
+      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged);
       if (fueGrupal) return;
 
       // 🔄 DRAG INDIVIDUAL (no cambió)
       endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+
+
     },
 
 
-  }), [obj.x, obj.y, obj.rotation, obj.scaleX, obj.scaleY, handleRef, onChange, isInEditMode]);
+  }), [
+    obj,
+    editingMode,
+    isInEditMode,
+    isSelected,
+    onSelect,
+    onStartTextEdit,
+    onDragMovePersonalizado,
+    onDragStartPersonalizado,
+    onDragEndPersonalizado,
+    dragStartPos,
+    hasDragged,
+    onChange,
+  ]);
 
   // 🔥 MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {
-    if (!onHover || isDragging || window._isDragging || isInEditMode) return;
-    onHover(obj.id);
-  }, [onHover, obj.id, isDragging, isInEditMode]);
+  if (!onHover || window._isDragging || isInEditMode) return;
+  onHover(obj.id);
+}, [onHover, obj.id, isInEditMode]);
+
 
   const handleMouseLeave = useCallback(() => {
     if (!onHover || isInEditMode) return;
@@ -315,38 +325,50 @@ export default function ElementoCanvas({
 
 
   useEffect(() => {
-    const handler = (e) => {
-      const wanted = e?.detail?.groupId;
-      if (!obj.__groupId) return;
-      if (!wanted || wanted === obj.__groupId) {
-        recalcGroupAlign();
-      }
-    };
-    window.addEventListener("alinear-grupo", handler);
-    return () => window.removeEventListener("alinear-grupo", handler);
-  }, [obj.__groupId, recalcGroupAlign]);
-
-
-
-
-  // 🔒 Nueva versión: solo corrige width en casos especiales (no por align)
-  useEffect(() => {
-    if (obj.tipo !== "texto") return;
+    if (!obj || obj.tipo !== "texto") return;
     if (obj.__groupAlign) return;
-    if (obj.width || obj.__autoWidth === false) return;
 
-    const node = textNodeRef.current;
-    if (!node || typeof onChange !== "function") return;
+    const isAutoWidth = !obj.width && obj.__autoWidth !== false;
+    if (!isAutoWidth) return;
 
-    // Solo si el texto recién se creó y no tiene width (por ejemplo, texto vacío que ahora tiene contenido)
-    if ((obj.texto?.length || 0) > 0 && !obj.width) {
-      const w = Math.ceil(node.getTextWidth?.() || 0);
-      if (Number.isFinite(w) && w > 0) {
-        onChange(obj.id, { width: undefined, __autoWidth: false });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [obj.id, obj.texto]);
+    let raf1 = null;
+    let raf2 = null;
+
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const node = textNodeRef.current;
+        if (!node || typeof node.getTextWidth !== "function") return;
+
+        const wReal = Math.ceil(node.getTextWidth() || 0);
+        if (wReal > 0) setMeasuredTextWidth(wReal);
+      });
+    });
+
+    return () => {
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [
+    obj?.id,
+    obj?.texto,
+    obj?.fontFamily,
+    obj?.fontSize,
+    obj?.fontStyle,
+    obj?.fontWeight,
+    obj?.lineHeight,
+    obj?.width,
+    obj?.__autoWidth,
+    obj?.__groupAlign,
+  ]);
+
+
+
+  useEffect(() => {
+    setMeasuredTextWidth(null);
+    // también conviene resetear el layout base cuando cambia de texto
+    if (obj?.tipo === "texto") baseTextLayoutRef.current = null;
+  }, [obj?.id]);
+
 
 
   const groupRef = useRef(null);
@@ -405,6 +427,7 @@ export default function ElementoCanvas({
     return (
       <Line
         {...commonProps}
+        ref={handleRef}
         points={linePoints}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -436,6 +459,12 @@ export default function ElementoCanvas({
       typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
     const lineHeight = baseLineHeight * 0.92;
 
+
+    // ✅ Evita bbox sobrado a la derecha por espacios/tabs invisibles al final de línea
+    const rawText = String(obj.texto ?? "");
+    const safeText = rawText.replace(/[ \t]+$/gm, "");
+
+
     // ✅ VALIDACIÓN: Asegurar valores numéricos válidos
     const validX = typeof obj.x === "number" && !isNaN(obj.x) ? obj.x : 0;
     const validY = typeof obj.y === "number" && !isNaN(obj.y) ? obj.y : 0;
@@ -443,11 +472,21 @@ export default function ElementoCanvas({
 
     // 🔹 PASO 1: Calcular dimensiones del texto PRIMERO
     const ctx = document.createElement("canvas").getContext("2d");
-    ctx.font = `${obj.fontWeight || "normal"} ${obj.fontStyle || "normal"} ${validFontSize}px ${fontFamily}`;
-    const lines = (obj.texto || "").split(/\r?\n/);
+    const style = obj.fontStyle || "normal";
+    const weight = obj.fontWeight || "normal";
+
+    // ✅ si la fuente tiene espacios, envolverla en comillas para que canvas no caiga a fallback
+    const fontForCanvas = fontFamily.includes(",")
+      ? fontFamily
+      : (/\s/.test(fontFamily) ? `"${fontFamily}"` : fontFamily);
+
+    // ✅ orden correcto: style -> weight -> size -> family
+    ctx.font = `${style} ${weight} ${validFontSize}px ${fontForCanvas}`;
+
+    const lines = safeText.split(/\r?\n/);
     const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 20);
     const numLines = lines.length;
-    const textWidth = Math.ceil(maxLineWidth + 6);
+    const textWidth = Math.ceil(maxLineWidth);
     const textHeight = validFontSize * lineHeight * numLines;
 
     // 🔹 PASO 2: Calcular posición solo una vez y congelar el centro
@@ -498,6 +537,8 @@ export default function ElementoCanvas({
       });
     }
 
+    const isAutoWidth = !obj.width && obj.__autoWidth !== false;
+    const widthToUse = isAutoWidth ? (measuredTextWidth ?? textWidth) : obj.width;
 
     return (
       <>
@@ -505,12 +546,12 @@ export default function ElementoCanvas({
           {...commonProps}
           ref={(node) => {
             textNodeRef.current = node;
-            registerRef?.(obj.id, node);
+            handleRef(node); // registra + dispara "element-ref-registrado"
           }}
-          text={obj.texto}
+          text={safeText}
           x={validX}
           y={obj.y}
-          width={textWidth}
+          width={widthToUse}
           height={textHeight}
           wrap="word"
           align={align}
@@ -596,6 +637,7 @@ export default function ElementoCanvas({
     return (
       <KonvaImage
         {...commonProps}
+        ref={handleRef}
         id={obj.id}
         image={img}
         crossOrigin="anonymous"
@@ -621,6 +663,7 @@ export default function ElementoCanvas({
     return (
       <Group
         {...commonProps}
+        ref={handleRef}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         width={W}
@@ -678,6 +721,7 @@ export default function ElementoCanvas({
     return (
       <KonvaImage
         {...commonProps}
+        ref={handleRef}
         image={img}
         crossOrigin="anonymous"
         width={obj.width || (img?.width ?? 120)}
@@ -736,6 +780,7 @@ export default function ElementoCanvas({
     return (
       <Group
         {...commonProps}
+        ref={handleRef}
         draggable={true}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -817,6 +862,7 @@ export default function ElementoCanvas({
             {/* 🟪 Forma */}
             <Rect
               {...propsForma}
+              ref={handleRef}
               width={width}
               height={height}
               cornerRadius={obj.cornerRadius || 0}
@@ -903,6 +949,7 @@ export default function ElementoCanvas({
         return (
           <Circle
             {...propsForma}
+            ref={handleRef}
             radius={obj.radius || 50}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
@@ -915,6 +962,7 @@ export default function ElementoCanvas({
         return (
           <RegularPolygon
             {...propsForma}
+            ref={handleRef}
             sides={3}
             radius={obj.radius || 60}
             onMouseEnter={handleMouseEnter}

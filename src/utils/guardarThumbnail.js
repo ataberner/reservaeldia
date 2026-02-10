@@ -1,7 +1,17 @@
+// src/utils/guardarThumbnail.js
 import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
+import Konva from "konva";
 
+/**
+ * Genera y guarda un thumbnail del Stage SIN hacer parpadear la UI del editor.
+ * Estrategia:
+ * - Clona el Stage en un contenedor offscreen (fuera de pantalla).
+ * - Oculta los nodos `.ui` SOLO en el clon (Transformer, guías, handles, etc.).
+ * - Exporta el thumbnail desde el clon.
+ * - Destruye clon + contenedor.
+ */
 export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
   const stage = stageRef?.current;
 
@@ -10,64 +20,55 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
     return;
   }
 
-  // ✅ Buscar nodos marcados como UI
-  const uiNodes = stage.find(".ui");
-  const prev = uiNodes.map((n) => ({ node: n, visible: n.visible() }));
-
-  // 🔍 DEBUG TEMPORAL (borralo cuando termines)
-  // Te dice qué cosas se están exportando SIN estar marcadas como "ui"
-  try {
-    const transformers = stage.find("Transformer");
-    console.log(
-      "Transformers SIN ui:",
-      transformers
-        .filter((t) => !(t.name?.() || "").includes("ui"))
-        .map((t) => ({ name: t.name?.(), visible: t.visible?.() }))
-    );
-
-    const rects = stage.find("Rect");
-    const dashed = rects.filter((r) => Array.isArray(r.dash?.()) && r.dash().length);
-    console.log(
-      "Rects con dash SIN ui:",
-      dashed
-        .filter((r) => !((r.name?.() || "").includes("ui")))
-        .map((r) => ({
-          name: r.name?.(),
-          stroke: r.stroke?.(),
-          dash: r.dash?.(),
-          visible: r.visible?.(),
-        }))
-    );
-
-    const lines = stage.find("Line");
-    console.log(
-      "Lines SIN ui:",
-      lines
-        .filter((l) => !((l.name?.() || "").includes("ui")))
-        .map((l) => ({
-          name: l.name?.(),
-          dash: l.dash?.(),
-          stroke: l.stroke?.(),
-          visible: l.visible?.(),
-        }))
-    );
-
-    console.log("uiNodes encontrados:", uiNodes.length);
-  } catch (e) {
-    // Si algo falla en logs, no frenamos el guardado
-    console.warn("⚠️ Debug de Konva falló (no bloqueante):", e);
+  // ✅ (Opcional pero recomendable) no generar en medio de drag/resize
+  if (window._isDragging || window._grupoLider || window._resizeData?.isResizing) {
+    return;
   }
 
-  try {
-    // ✅ 1) Ocultar UI
-    uiNodes.forEach((n) => n.visible(false));
-    stage.draw();
+  // ✅ Contenedor offscreen (NO afecta el canvas visible)
+  const off = document.createElement("div");
+  off.style.position = "fixed";
+  off.style.left = "-10000px";
+  off.style.top = "-10000px";
+  off.style.width = `${stage.width()}px`;
+  off.style.height = `${stage.height()}px`;
+  off.style.opacity = "0";
+  off.style.pointerEvents = "none";
+  document.body.appendChild(off);
 
-    // ✅ 2) Esperar 1 frame para asegurar render consistente
+  // ✅ Stage clon (offscreen)
+  const stageClone = new Konva.Stage({
+    container: off,
+    width: stage.width(),
+    height: stage.height(),
+    listening: false,
+  });
+
+  try {
+    // ✅ Clonar layers completos (contenido + UI) al stageClone
+    stage.getChildren().forEach((layer) => {
+      // clone profundo del layer + children
+      const layerClone = layer.clone({ listening: false });
+      stageClone.add(layerClone);
+    });
+
+    // ✅ Ocultar SOLO en el clon los nodos marcados como UI
+    const uiNodes = stageClone.find(".ui");
+    uiNodes.forEach((n) => n.visible(false));
+
+    // (Opcional) logs de debug si querés comprobar qué se oculta
+    if (window.__DBG_TR) {
+      console.log("[THUMB] uiNodes ocultos en CLON:", uiNodes.length);
+    }
+
+    // Dibujar el clon
+    stageClone.draw();
+
+    // ✅ Esperar 1 frame para asegurar render consistente del clon
     await new Promise((r) => requestAnimationFrame(r));
 
-    // ✅ 3) Exportar thumbnail
-    const dataUrl = stage.toDataURL({
+    // ✅ Exportar thumbnail desde el clon
+    const dataUrl = stageClone.toDataURL({
       pixelRatio: 1,
       mimeType: "image/webp",
       quality: 0.9,
@@ -78,7 +79,7 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
       return;
     }
 
-    // ✅ 4) Subir a Storage
+    // ✅ Subir a Storage
     const storage = getStorage();
     const nombreArchivo = `thumbnails_borradores/${uid}/${slug}.webp`;
     const archivoRef = ref(storage, nombreArchivo);
@@ -87,7 +88,7 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
       contentType: "image/webp",
     });
 
-    // ✅ 5) Obtener URL y guardar en Firestore
+    // ✅ Guardar URL en Firestore
     const urlFinal = await getDownloadURL(archivoRef);
 
     const refDoc = doc(db, "borradores", slug);
@@ -95,8 +96,12 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
   } catch (error) {
     console.error("❌ Error al generar o subir thumbnail:", error);
   } finally {
-    // ✅ Restaurar UI sí o sí
-    prev.forEach(({ node, visible }) => node.visible(visible));
-    stage.draw();
+    // ✅ Limpieza total
+    try {
+      stageClone.destroy();
+    } catch {}
+    try {
+      off.remove();
+    } catch {}
   }
 };

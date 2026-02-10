@@ -12,6 +12,12 @@ const sbLog = (...args) => {
 };
 const slog = sbLog;
 
+const TRDBG = (...args) => {
+  if (!window.__DBG_TR) return;
+  console.log("[TRDBG]", ...args);
+};
+
+
 function rectFromNodes(nodes) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -170,10 +176,11 @@ export default function SelectionBounds({
   elementRefs,
   objetos,
   onTransform,
+  isDragging,
 }) {
   const transformerRef = useRef(null);
   const [transformTick, setTransformTick] = useState(0);
-
+  const lastNodesRef = useRef([]);
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -196,197 +203,111 @@ export default function SelectionBounds({
   const deberiaUsarTransformer =
     elementosTransformables.length > 0 && !hasGallery;
 
-  // 🔥 Efecto principal del Transformer (con retry)
+
+  // 🔥 Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
-    const applyTransformer = (label = "now") => {
-      slog("applyTransformer", label, {
-        selectedElements,
-        elementosTransformables: elementosTransformables.map((o) => ({
-          id: o.id,
-          tipo: o.tipo,
-        })),
-      });
+    const tr = transformerRef.current;
+    if (!tr) return;
 
-      if (hasGallery) {
-        transformerRef.current?.nodes([]);
-        transformerRef.current?.getLayer()?.batchDraw();
-        return 0;
-      }
+    const selKey = selectedElements.join(",");
+    TRDBG("EFFECT start", {
+      selKey,
+      isDragging,
+      deberiaUsarTransformer,
+      hasGallery,
+      elementosTransformablesLen: elementosTransformables.length,
+      transformTick,
+      editingId: window.editing?.id || null,
+    });
 
-      const editing = window.editing || {};
-      if (editing.id && selectedElements.includes(editing.id)) {
-        if (transformerRef.current) {
-          transformerRef.current.nodes([]);
-          transformerRef.current.getLayer()?.batchDraw();
-        }
-        return 0;
-      }
-
-      if (!transformerRef.current || !deberiaUsarTransformer) {
-        if (transformerRef.current) {
-          transformerRef.current.nodes([]);
-          transformerRef.current.getLayer()?.batchDraw();
-        }
-        return 0;
-      }
-
-      // 1) Resolver nodes desde refs (fuente de verdad)
-      let nodosTransformables = elementosTransformables
-        .map((obj) => elementRefs.current?.[obj.id])
-        .filter(Boolean);
-
-      // 2) ✅ Single-select: usar SIEMPRE el ref actual (evita node stale del transformer)
-      if (selectedElements.length === 1) {
-        const idSel = selectedElements[0];
-        const refNode = elementRefs.current?.[idSel] || null;
-        if (refNode && typeof refNode.getClientRect === "function") {
-          nodosTransformables = [refNode];
-        }
-      }
-
-
-      if (nodosTransformables.length === 0 && elementosTransformables.length > 0) {
-        slog(
-          "[SelectionBounds] ⚠️ No hay nodos transformables aún (posible imagen sin terminar de cargar)",
-          { ids: elementosTransformables.map((o) => o.id) }
-        );
-      }
-
-      if (nodosTransformables.length > 0) {
-        transformerRef.current.nodes(nodosTransformables);
-
-        // ✅ Fuerza recalculo interno del transformer (borde punteado)
-        try { transformerRef.current.forceUpdate(); } catch { }
-        transformerRef.current.getLayer()?.batchDraw();
-
-        // ✅ Auto-retry si el transformer se enganchó antes de que el nodo tome el size final
-        if (selectedElements.length === 1 && nodosTransformables[0]) {
-          const idSel = selectedElements[0];
-          const objSel = (objetos || []).find(o => o.id === idSel) || null;
-
-          const n = nodosTransformables[0];
-          const nr = n.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
-
-          const expectedW = objSel?.width ?? null;
-          const expectedH = objSel?.height ?? null;
-
-          // tolerancia (px)
-          const eps = 3;
-
-          const wMismatch = expectedW != null ? Math.abs(nr.width - expectedW) > eps : false;
-          const hMismatch = expectedH != null ? Math.abs(nr.height - expectedH) > eps : false;
-
-          if (wMismatch || hMismatch) {
-            // Reintento 2 frames después (cuando React-Konva ya aplicó el nuevo layout)
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                try {
-                  if (!transformerRef.current) return;
-                  const freshNode = elementRefs.current?.[idSel];
-                  if (!freshNode) return;
-
-                  transformerRef.current.nodes([freshNode]);
-                  transformerRef.current.forceUpdate?.();
-                  transformerRef.current.getLayer()?.batchDraw();
-
-                  const nr2 = freshNode.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
-                  sbLog("[TR] retry-attach",
-                    `expected(w=${expectedW ?? "∅"},h=${expectedH ?? "∅"})`,
-                    `before(w=${nr.width.toFixed(1)},h=${nr.height.toFixed(1)})`,
-                    `after(w=${nr2.width.toFixed(1)},h=${nr2.height.toFixed(1)})`
-                  );
-                } catch { }
-              });
-            });
-          }
-        }
-
-
-        if (DEBUG_SELECTION_BOUNDS && selectedElements.length === 1) {
-          const n = nodosTransformables[0];
-          const nr = n.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
-          const trRect = transformerRef.current.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
-          sbLog("[TR] attached-check",
-            `node(w=${nr.width.toFixed(1)},h=${nr.height.toFixed(1)})`,
-            `trRect(w=${trRect.width.toFixed(1)},h=${trRect.height.toFixed(1)})`
-          );
-        }
-
-
-        if (DEBUG_SELECTION_BOUNDS) {
-          nodosTransformables.forEach((n) => {
-            const rect = n.getClientRect({
-              skipTransform: false,
-              skipShadow: true,
-              skipStroke: true,
-            });
-
-            sbLog("attach node", {
-              id: typeof n.id === "function" ? n.id() : n.attrs?.id,
-              tipo: n.attrs?.tipo,
-              rect,
-              scale: {
-                sx: n.scaleX?.(),
-                sy: n.scaleY?.(),
-              },
-            });
-          });
-        }
-
-        // batchDraw extra en el próximo frame (por si Konva ajusta métricas después)
-        const layer = transformerRef.current.getLayer();
-      }
-
-      return nodosTransformables.length;
-    };
-
-    const countNow = applyTransformer("now");
-
-    let retryId;
-    if (countNow === 0 && elementosTransformables.length > 0) {
-      retryId = setTimeout(() => {
-        applyTransformer("retry");
-      }, 60);
+    // Si no corresponde transformer, no hagas detach agresivo (evita flicker)
+    if (!deberiaUsarTransformer || hasGallery) {
+      TRDBG("EFFECT exit: no transformer or gallery", { selKey });
+      return;
     }
 
-    return () => {
-      if (retryId) clearTimeout(retryId);
-    };
+
+    const editing = window.editing || {};
+    if (editing.id && selectedElements.includes(editing.id)) {
+      TRDBG("EFFECT exit: editing selected", { selKey, editingId: editing.id });
+      return;
+    }
+
+
+    // Resolver nodes desde refs (fuente de verdad)
+    let nodosTransformables = elementosTransformables
+      .map((o) => elementRefs.current?.[o.id])
+      .filter(Boolean);
+
+    // Single select: usar ref fresco SIEMPRE
+    if (selectedElements.length === 1) {
+      const idSel = selectedElements[0];
+      const refNode = elementRefs.current?.[idSel] || null;
+      if (refNode && typeof refNode.getClientRect === "function") {
+        nodosTransformables = [refNode];
+      }
+    }
+
+    // Si aún no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
+    if (nodosTransformables.length === 0) {
+      TRDBG("EFFECT exit: no nodes yet", {
+        selKey,
+        wantedIds: elementosTransformables.map(o => o.id),
+        refsPresent: elementosTransformables.map(o => !!elementRefs.current?.[o.id]),
+      });
+      return;
+    }
+
+
+    // Attach estable
+    TRDBG("ATTACH try", {
+      selKey,
+      nodesCount: nodosTransformables.length,
+      nodeIds: nodosTransformables.map(n => (typeof n.id === "function" ? n.id() : n.attrs?.id)),
+    });
+
+    tr.nodes(nodosTransformables);
+
+    TRDBG("ATTACH done", {
+      selKey,
+      trNodesCount: tr.nodes?.()?.length || 0,
+    });
+
+    try { tr.forceUpdate?.(); } catch { }
+    tr.getLayer()?.batchDraw();
+
   }, [
-    selectedElements.length,
+    // Dependencias mínimas reales
     selectedElements.join(","),
     deberiaUsarTransformer,
+    hasGallery,
     elementosTransformables.length,
     transformTick,
-    hasGallery,
     elementRefs,
   ]);
 
 
-  // 📡 Cuando un elemento seleccionado registra su ref Konva, reintentamos
+
   useEffect(() => {
     const handler = (e) => {
       const id = e?.detail?.id;
       if (!id) return;
-      if (!selectedElements.includes(id)) return;
 
-      // 1) ahora
-      setTransformTick((t) => t + 1);
-
-      // 2) 1 frame después
-      requestAnimationFrame(() => {
-        setTransformTick((t) => t + 1);
-
-        // 3) 2 frames después (opcional, pero ayuda en casos raros)
-        requestAnimationFrame(() => {
-          setTransformTick((t) => t + 1);
-        });
+      TRDBG("REF event", {
+        id,
+        isSelected: selectedElements.includes(id),
+        selKey: selectedElements.join(","),
       });
+
+      if (!selectedElements.includes(id)) return;
+      setTransformTick(t => t + 1);
     };
 
     window.addEventListener("element-ref-registrado", handler);
     return () => window.removeEventListener("element-ref-registrado", handler);
   }, [selectedElements.join(",")]);
+
+
 
 
   // 🔥 Render
@@ -427,8 +348,19 @@ export default function SelectionBounds({
     <Transformer
       name="ui"
       ref={transformerRef}
+
+      // 🔵 borde siempre visible
+      borderEnabled={true}
+
       borderStroke="rgba(59, 130, 246, 0.7)"
+
+
       borderStrokeWidth={1}
+
+      // ❌ nodos y rotación OFF durante drag
+      enabledAnchors={isDragging ? [] : ["bottom-right"]}
+      rotateEnabled={!isDragging}
+
       borderDash={[6, 3]}
       anchorFill="#3b82f6"
       anchorStroke="#ffffff"
@@ -438,12 +370,10 @@ export default function SelectionBounds({
       anchorShadowColor="rgba(59, 130, 246, 0.3)"
       anchorShadowBlur={6}
       anchorShadowOffset={{ x: 0, y: 3 }}
-      enabledAnchors={["bottom-right"]}
       keepRatio={false}
       centeredScaling={false}
-      rotateEnabled={true}
       flipEnabled={false}
-      resizeEnabled={true}
+      resizeEnabled={!isDragging}
       rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
       rotateAnchorOffset={30}
       rotationSnapTolerance={5}
@@ -775,17 +705,31 @@ export default function SelectionBounds({
             const tr2 = transformerRef.current;
             if (!tr2) return;
 
+            TRDBG("onTransformEnd -> schedule RAF reattach", {
+              selKey: selectedElements.join(","),
+              idSel: selectedElements?.[0] || null
+            });
+
             requestAnimationFrame(() => {
               const idSel = selectedElements?.[0];
               const freshNode = idSel ? elementRefs.current?.[idSel] : null;
 
+              TRDBG("onTransformEnd RAF", {
+                idSel,
+                hasFresh: !!freshNode,
+                destroyed: !!freshNode?._destroyed,
+                hasStage: !!freshNode?.getStage?.(),
+              });
+
               // Si el nodo no está listo, despegar y salir
               if (!freshNode || freshNode._destroyed || !freshNode.getStage?.()) {
+                TRDBG("onTransformEnd RAF -> DETACH nodes([])", { idSel });
                 try { tr2.nodes([]); tr2.getLayer?.()?.batchDraw(); } catch { }
                 return;
               }
 
               try {
+                TRDBG("onTransformEnd RAF -> DETACH nodes([])", { idSel });
                 tr2.nodes([freshNode]);
                 tr2.forceUpdate();
                 tr2.getLayer?.()?.batchDraw();

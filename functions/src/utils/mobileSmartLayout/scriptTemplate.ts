@@ -67,12 +67,15 @@ export function buildScript(cfg: NormalizedConfig): string {
       var content = sec.querySelector(".sec-content");
       if(!content) return;
 
-      var nodes = getObjNodes(sec);
-      if(nodes.length < 2) return;
-      
+            var nodesAll = getObjNodes(sec);
+      if(nodesAll.length < 2) return;
 
-      // items (rects) en coordenadas del content
-      var items = nodes.map(function(node){
+      // ✅ Armamos items de TODOS para poder decidir qué es "anchor" con métricas reales
+      var contentRect = content.getBoundingClientRect();
+      var contentW = contentRect.width || 0;
+
+      // items (rects) en coordenadas del content (TODOS)
+      var itemsAll = nodesAll.map(function(node){
         var rc = relRect(node, content);
         return {
           node: node,
@@ -82,6 +85,64 @@ export function buildScript(cfg: NormalizedConfig): string {
           width: rc.width
         };
       });
+
+      // Si todo mide 0 (fonts no listas), reintentamos luego
+      var anyValidAll = itemsAll.some(function(it){ return it.height > 0.5; });
+      if(!anyValidAll) return;
+
+      // ✅ Determinar qué nodos son "ANCHOR" (no se reflowean)
+      // Regla: texto centrado + casi full-width => es título/hero, no mover.
+      function isAnchorNode(it){
+        var node = it.node;
+
+        // opt-out explícito
+        var keepLayout = (node.getAttribute("data-mobile-layout") || "") === "keep";
+        if (keepLayout) return true;
+
+        // anchor explícito (si lo usás)
+        var role = (node.getAttribute("data-mobile-role") || "");
+        if (role === "anchor") return true;
+
+        // heurística para textos
+        var isText = (node.getAttribute("data-debug-texto") || "") === "1";
+        if (!isText) return false;
+
+        var ta = (node.style && node.style.textAlign) ? String(node.style.textAlign).toLowerCase() : "";
+        if (ta !== "center") return false;
+
+        // solo si realmente ocupa casi todo el ancho usable
+        // (esto evita romper textos centrados dentro de columnas)
+        if (contentW > 0 && it.width >= contentW * 0.78) return true;
+
+        return false;
+      }
+
+      // ✅ Flow = todo lo que NO es anchor
+      var itemsFlow = itemsAll.filter(function(it){ return !isAnchorNode(it); });
+
+      // Si no hay suficientes elementos reflowables, no hacemos nada
+      if(itemsFlow.length < 2) return;
+
+      // ✅ 1) agrupar por solape → clusters (SOLO FLOW)
+      var clusters = buildOverlapClusters(itemsFlow);
+
+      // ✅ 2) Detectar columnas/rows (SOLO FLOW)
+      var rootW = content.getBoundingClientRect().width || 0;
+      var ord = orderClustersForMobile(clusters, rootW, CFG);
+      var groups = ord.groups;
+      var mode = ord.mode;
+
+      // ✅ 3) Gate: si entra todo, no reflow (SOLO FLOW)
+      var fits = clustersFitInMobile(clusters, content);
+      if (fits) return;
+
+      // ✅ 4) Reflow solo sobre FLOW (preserva solapes dentro de cada cluster)
+      var res = applyClusterStack(groups, content, CFG);
+
+      if (res.changed) {
+        expandFixedSection(sec, res.neededHeight);
+      }
+
 
       // Si todo mide 0 (fonts no listas), reintentamos luego
       var anyValid = items.some(function(it){ return it.height > 0.5; });

@@ -10,6 +10,8 @@ import { getCenteredTextPosition } from "@/utils/getTextMetrics";
 
 
 
+
+
 export default function ElementoCanvas({
   obj,
   isSelected,
@@ -260,9 +262,9 @@ export default function ElementoCanvas({
 
   // 🔥 MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {
-  if (!onHover || window._isDragging || isInEditMode) return;
-  onHover(obj.id);
-}, [onHover, obj.id, isInEditMode]);
+    if (!onHover || window._isDragging || isInEditMode) return;
+    onHover(obj.id);
+  }, [onHover, obj.id, isInEditMode]);
 
 
   const handleMouseLeave = useCallback(() => {
@@ -537,8 +539,20 @@ export default function ElementoCanvas({
       });
     }
 
-    const isAutoWidth = !obj.width && obj.__autoWidth !== false;
-    const widthToUse = isAutoWidth ? (measuredTextWidth ?? textWidth) : obj.width;
+        const ANCHO_CANVAS = 800;
+    const availableWidth = Math.max(1, ANCHO_CANVAS - validX);
+
+    // ancho real del texto (máxima línea, según tu cálculo actual)
+    const realTextWidth = Math.max(1, textWidth);
+
+    // ✅ Si entra, NO usamos width (bounds ajustado)
+    // ✅ Si no entra, usamos width=available y wrap por caracteres para cortar en el borde
+    const shouldWrapToCanvasEdge = realTextWidth > availableWidth;
+
+    const wrapToUse = shouldWrapToCanvasEdge ? "char" : "none";
+    const widthToUse = shouldWrapToCanvasEdge ? availableWidth : undefined;
+
+
 
     return (
       <>
@@ -551,9 +565,8 @@ export default function ElementoCanvas({
           text={safeText}
           x={validX}
           y={obj.y}
+          wrap={wrapToUse}
           width={widthToUse}
-          height={textHeight}
-          wrap="word"
           align={align}
           fontSize={validFontSize}
           fontFamily={fontFamily}

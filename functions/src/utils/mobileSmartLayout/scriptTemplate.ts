@@ -69,6 +69,7 @@ export function buildScript(cfg: NormalizedConfig): string {
 
       var nodes = getObjNodes(sec);
       if(nodes.length < 2) return;
+      
 
       // items (rects) en coordenadas del content
       var items = nodes.map(function(node){

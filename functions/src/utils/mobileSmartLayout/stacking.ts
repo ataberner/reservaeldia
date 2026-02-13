@@ -3,19 +3,23 @@ export function jsStackingBlock(): string {
   return `
   // Centro real del área usable (compensa padding safe-left/right)
   function computeCenterX(rootEl){
-  var rootRect = rootEl.getBoundingClientRect();
-  var rootW = rootRect.width || 0;
+    var rootRect = rootEl.getBoundingClientRect();
+    var rootW = rootRect.width || 0;
 
-  var cs = getComputedStyle(rootEl);
-  var padL = parseFloat(cs.paddingLeft) || 0;
-  var padR = parseFloat(cs.paddingRight) || 0;
+    var cs = getComputedStyle(rootEl);
+    var padL = parseFloat(cs.paddingLeft) || 0;
+    var padR = parseFloat(cs.paddingRight) || 0;
 
-  var usableW = Math.max(0, rootW - padL - padR);
-  var centerX = padL + usableW / 2; // centro del área usable
+    var usableW = Math.max(0, rootW - padL - padR);
+    var centerX = padL + usableW / 2; // centro del área usable
 
-  return { rootW: rootW, usableW: usableW, centerX: centerX, padL: padL, padR: padR };
-}
+    return { rootW: rootW, usableW: usableW, centerX: centerX, padL: padL, padR: padR };
+  }
 
+  function clamp(n, a, b){
+    if (!isFinite(n)) return a;
+    return Math.max(a, Math.min(b, n));
+  }
 
   /**
    * Apila CLUSTERS por groups (columnas/filas) y:
@@ -25,36 +29,30 @@ export function jsStackingBlock(): string {
    *
    * Devuelve changed + neededHeight (para expandir sección)
    */
-  
   function applyClusterStack(groups, rootEl, CFG){
     var info = computeCenterX(rootEl);
-    var rootW = info.rootW;
     var centerX = info.centerX;
 
     var changed = false;
 
     // --- Anchor global: dónde estaba “el bloque” originalmente ---
-    // Usamos el top mínimo del primer grupo para no pegar todo arriba.
     var firstGroup = groups[0] || [];
     var anchor = Infinity;
     for (var i=0;i<firstGroup.length;i++){
       anchor = Math.min(anchor, firstGroup[i].top);
-      }
+    }
     if (!isFinite(anchor)) anchor = CFG.PAD_TOP;
     anchor = Math.max(CFG.PAD_TOP, anchor);
 
-    // Cursor global: marca dónde termina el contenido apilado hasta ahora
+    // Cursor global: dónde termina el contenido apilado hasta ahora
     var globalCursor = anchor;
 
-    // Separación entre columnas apiladas (izquierda completa, luego derecha, etc.)
+    // Separación entre columnas apiladas (izq, centro, der)
     var GROUP_GAP = 14;
 
     for (var g=0; g<groups.length; g++){
       var col = groups[g] || [];
       if (!col.length) continue;
-
-      // NO reordenar aquí. El orden ya viene decidido desde orderClustersForMobile.
-      // col.sort(...)  // ❌ NO
 
       // Offset vertical original de esta columna respecto del anchor
       var colMinTop = Infinity;
@@ -63,96 +61,85 @@ export function jsStackingBlock(): string {
       }
       if (!isFinite(colMinTop)) colMinTop = anchor;
 
-      var colOffset = colMinTop - anchor; // puede ser 0 o positivo
-
-      // Inicio real de la columna dentro del flujo mobile
-      // - g>0: agregamos separación entre columnas
-      // - + colOffset: respeta si esa columna arrancaba más abajo en canvas
+      var colOffset = colMinTop - anchor;
       var colStart = globalCursor + (g === 0 ? 0 : GROUP_GAP) + Math.max(0, colOffset);
 
-      // Cursor local de esta columna (acá es donde se conserva el espaciado interno)
+      // Cursor local de esta columna
       var colCursor = colStart;
 
-    for (var j=0; j<col.length; j++){
-      var c = col[j];
+      for (var j=0; j<col.length; j++){
+        var c = col[j];
 
-      if (j === 0) {
-        // Primer cluster de la columna: arranca en colCursor
-      } else {
-        var prevC = col[j-1];
+        // Top del cluster en el flujo mobile
+        var clusterTop;
 
-        // ✅ Gap ORIGINAL exacto dentro de ESTA columna (canvas)
-        var gapOrig = c.top - (prevC.top + prevC.height);
-        if (!isFinite(gapOrig)) gapOrig = 0;
+        if (j === 0) {
+          clusterTop = colCursor;
+        } else {
+          var prevC = col[j-1];
+          var prevBottom = (clusterTopPrev + prevC.height);
 
-        // Si el canvas tenía clusters separados, gapOrig debería ser >= 0.
-        // Lo dejamos tal cual (mantener separación interna), evitando negativos.
-        gapOrig = Math.max(0, gapOrig);
+          // ✅ Gap original entre clusters (canvas)
+          var gapOrig = c.top - (prevC.top + prevC.height);
+          if (!isFinite(gapOrig)) gapOrig = 0;
 
-        colCursor += gapOrig;
-      }
+          // ✅ Gap “mobile-friendly”: escalado + clamp
+          var gapWanted = clamp(gapOrig * (CFG.GAP_SCALE || 1), CFG.MIN_GAP, CFG.MAX_GAP);
 
-      var clusterTop = colCursor;
-
-      var forceCenter = false;
-      for (var t=0; t<c.items.length; t++){
-        if ((c.items[t].node.getAttribute("data-mobile-center") || "") === "force") {
-          forceCenter = true; break;
+          // ✅ Anti-solape definitivo:
+          //   el próximo cluster SIEMPRE empieza después del bottom real del anterior + gapWanted
+          clusterTop = prevBottom + gapWanted;
         }
-      }
-        // ✅ Si algún item pide centrado forzado, centramos el CLUSTER
-      var forceCenter = false;
-      for (var t=0; t<c.items.length; t++){
-        if ((c.items[t].node.getAttribute("data-mobile-center") || "") === "force") {
-          forceCenter = true;
-          break;
+
+        // Guardamos para el próximo loop
+        var clusterTopPrev = clusterTop;
+
+        // ¿centrar este cluster?
+        var forceCenter = false;
+        for (var t=0; t<c.items.length; t++){
+          if ((c.items[t].node.getAttribute("data-mobile-center") || "") === "force") {
+            forceCenter = true;
+            break;
+          }
         }
+
+        // Centrado del cluster como bloque (salvo casi full-width)
+        var keepCenter = forceCenter ? true : (c.width < (info.usableW * 0.95));
+        var clusterLeft = keepCenter ? (centerX - c.width / 2) : c.left;
+
+        // Aplicar a cada item preservando offsets relativos (solape intacto)
+        for (var ii=0; ii<c.items.length; ii++){
+          var it = c.items[ii];
+
+          // Opt-out total del layout (decoraciones, etc.)
+          var keepLayout = (it.node.getAttribute("data-mobile-layout") || "") === "keep";
+          if (keepLayout) continue;
+
+          var newTop = clusterTop + (it._relTop || 0);
+          var newLeft = clusterLeft + (it._relLeft || 0);
+
+          // Opt-out de centrado (mantener left original del item)
+          var keepAlign = (it.node.getAttribute("data-mobile-align") || "") === "keep";
+          if (keepAlign) newLeft = it.left;
+
+          if (Math.abs(newTop - it.top) > 0.5 || Math.abs(newLeft - it.left) > 0.5) changed = true;
+
+          it.node.style.top = newTop + "px";
+          it.node.style.left = newLeft + "px";
+          it.node.style.right = "auto";
+          it.node.style.marginLeft = "0px";
+        }
+
+        // Avanza el cursor local al final del cluster
+        colCursor = clusterTop + c.height;
       }
 
-
-      var keepCenter = forceCenter ? true : (c.width < (info.usableW * 0.95));
-
-
-      // Centrado del cluster como bloque (salvo casi full-width)
-      var keepCenter = forceCenter ? true : (c.width < (info.usableW * 0.95));
-      var clusterLeft = keepCenter ? (centerX - c.width / 2) : c.left;
-
-
-      // Aplicar a cada item preservando offsets relativos (solape intacto)
-      for (var ii=0; ii<c.items.length; ii++){
-        var it = c.items[ii];
-
-        // Opt-out total del layout (decoraciones, etc.)
-        var keepLayout = (it.node.getAttribute("data-mobile-layout") || "") === "keep";
-        if (keepLayout) continue;
-
-        var newTop = clusterTop + (it._relTop || 0);
-        var newLeft = clusterLeft + (it._relLeft || 0);
-
-        // Opt-out de centrado (mantener left original del item)
-        var keepAlign = (it.node.getAttribute("data-mobile-align") || "") === "keep";
-        if (keepAlign) newLeft = it.left;
-
-        if (Math.abs(newTop - it.top) > 0.5) changed = true;
-
-        it.node.style.top = newTop + "px";
-        it.node.style.left = newLeft + "px";
-        it.node.style.right = "auto";
-        it.node.style.marginLeft = "0px";
-      }
-
-      // Avanza el cursor local al final de este cluster
-      colCursor = clusterTop + c.height;
+      // Al terminar la columna, el cursor global baja hasta donde llegó esta columna
+      globalCursor = Math.max(globalCursor, colCursor);
     }
 
-    // Al terminar la columna, el cursor global baja hasta donde llegó esta columna
-    globalCursor = Math.max(globalCursor, colCursor);
+    var needed = globalCursor + CFG.PAD_BOT;
+    return { changed: changed, neededHeight: needed };
   }
-
-  var needed = globalCursor + CFG.PAD_BOT;
-  return { changed: changed, neededHeight: needed };
-}
-
-
 `.trim();
 }

@@ -67,10 +67,10 @@ export function buildScript(cfg: NormalizedConfig): string {
       var content = sec.querySelector(".sec-content");
       if(!content) return;
 
-            var nodesAll = getObjNodes(sec);
+      var nodesAll = getObjNodes(sec);
       if(nodesAll.length < 2) return;
 
-      // ✅ Armamos items de TODOS para poder decidir qué es "anchor" con métricas reales
+      // Rect del content (métricas reales)
       var contentRect = content.getBoundingClientRect();
       var contentW = contentRect.width || 0;
 
@@ -91,7 +91,7 @@ export function buildScript(cfg: NormalizedConfig): string {
       if(!anyValidAll) return;
 
       // ✅ Determinar qué nodos son "ANCHOR" (no se reflowean)
-      // Regla: texto centrado + casi full-width => es título/hero, no mover.
+      // Regla: texto centrado + casi full-width => título/hero, no mover.
       function isAnchorNode(it){
         var node = it.node;
 
@@ -123,56 +123,46 @@ export function buildScript(cfg: NormalizedConfig): string {
       // Si no hay suficientes elementos reflowables, no hacemos nada
       if(itemsFlow.length < 2) return;
 
+      // ✅ Para que "altura necesaria" no quede corta,
+      // medimos el bottom máximo de anchors (en coords del content)
+      var maxAnchorBottom = 0;
+      itemsAll.forEach(function(it){
+        if (!isAnchorNode(it)) return;
+        var b = (it.top || 0) + (it.height || 0);
+        if (b > maxAnchorBottom) maxAnchorBottom = b;
+      });
+
       // ✅ 1) agrupar por solape → clusters (SOLO FLOW)
       var clusters = buildOverlapClusters(itemsFlow);
 
       // ✅ 2) Detectar columnas/rows (SOLO FLOW)
-      var rootW = content.getBoundingClientRect().width || 0;
+      var rootW = contentW || 0;
       var ord = orderClustersForMobile(clusters, rootW, CFG);
       var groups = ord.groups;
       var mode = ord.mode;
 
-      // ✅ 3) Gate: si entra todo, no reflow (SOLO FLOW)
+      // ✅ 3) Gate "mejor de ambos mundos":
+      // - Si es "one" (layout ya natural) Y además entra, NO hacemos reflow.
+      // - En cualquier otro caso (two/three/rows), hacemos reflow para lectura mobile,
+      //   incluso aunque "entre".
       var fits = clustersFitInMobile(clusters, content);
-      if (fits) return;
+      if (mode === "one" && fits) {
+        return;
+      }
 
       // ✅ 4) Reflow solo sobre FLOW (preserva solapes dentro de cada cluster)
       var res = applyClusterStack(groups, content, CFG);
 
-      if (res.changed) {
-        expandFixedSection(sec, res.neededHeight);
+      if (res && res.changed) {
+        // Evitar que la sección quede chica si hay anchors más abajo
+        var needed = Number(res.neededHeight || 0);
+        if (Number(maxAnchorBottom) > 0) {
+          // sumamos padding bottom para que no quede pegado
+          var anchorNeeded = Math.ceil(maxAnchorBottom + (CFG.PAD_BOT || 0));
+          if (anchorNeeded > needed) needed = anchorNeeded;
+        }
+        if (needed > 0) expandFixedSection(sec, needed);
       }
-
-
-      // Si todo mide 0 (fonts no listas), reintentamos luego
-      var anyValid = items.some(function(it){ return it.height > 0.5; });
-      if(!anyValid) return;
-
-      // ✅ 1) agrupar por solape → clusters
-      var clusters = buildOverlapClusters(items);
-
-      // ✅ 2) Detectar si es 1-col / 2-col / 3-col / rows (con clusters)
-        var rootW = content.getBoundingClientRect().width || 0;
-        var ord = orderClustersForMobile(clusters, rootW, CFG);
-        var groups = ord.groups;
-        var mode = ord.mode;
-
-        // ✅ 3) Gate correcto:
-        // - Si es "one" (layout ya natural) Y además entra, no hacemos reflow.
-        // - En cualquier otro caso (two/three/rows), hacemos reflow para lectura mobile.
-        var fits = clustersFitInMobile(clusters, content);
-
-        if (mode === "one" && fits) {
-        return; // mantiene layout y solapes tal cual
-        }
-
-        // ✅ 4) Reflow (preserva solapes dentro de cada cluster)
-        var res = applyClusterStack(groups, content, CFG);
-
-        if (res.changed) {
-        expandFixedSection(sec, res.neededHeight);
-        }
-
     });
   }
 

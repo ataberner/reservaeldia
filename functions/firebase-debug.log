@@ -3407,3 +3407,173 @@ Issues? Report them at https://github.com/firebase/firebase-tools/issues and att
 
 [debug] [2026-02-16T18:29:25.074Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
 [info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T18:44:43.316Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\stacking.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\stacking.ts changed, reloading triggers"}}
+[debug] [2026-02-16T18:44:44.423Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T18:44:50.001Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T18:44:50.001Z] Building nodejs source
+[debug] [2026-02-16T18:44:50.002Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T18:44:50.008Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T18:44:50.051Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[debug] [2026-02-16T18:44:50.085Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\stacking.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\stacking.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:44:51.088Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T18:44:54.315Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T18:44:54.316Z] Building nodejs source
+[debug] [2026-02-16T18:44:54.316Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T18:44:54.321Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T18:44:54.336Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8806
+
+[info] Serving at port 8175
+
+[error] (node:24068) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[error] (node:16748) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T18:45:00.652Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[error] !!  functions: Failed to load function definition from source: FirebaseError: User code failed to load. Cannot determine backend specification. Timeout after 10000. See https://firebase.google.com/docs/functions/tips#avoid_deployment_timeouts_during_initialization' {"metadata":{"emulator":{"name":"functions"},"message":"Failed to load function definition from source: FirebaseError: User code failed to load. Cannot determine backend specification. Timeout after 10000. See https://firebase.google.com/docs/functions/tips#avoid_deployment_timeouts_during_initialization'"}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T18:46:03.346Z] File C:\Reservaeldia\functions\lib\backupindex.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\backupindex.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.352Z] File C:\Reservaeldia\functions\lib\models\lineConstants.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\models\\lineConstants.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.392Z] File C:\Reservaeldia\functions\lib\utils\generarHTMLDesdeObjetos.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarHTMLDesdeObjetos.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.399Z] File C:\Reservaeldia\functions\lib\models\dimensionesBase.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\models\\dimensionesBase.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.409Z] File C:\Reservaeldia\functions\lib\utils\generarModalRSVP.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarModalRSVP.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.412Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\types.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\types.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.416Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\config.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\config.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.420Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\dom.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\dom.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.427Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\ordering.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\ordering.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.433Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\stacking.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\stacking.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.437Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.444Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\index.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\index.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.447Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartSectionLayout.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartSectionLayout.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.459Z] File C:\Reservaeldia\functions\lib\utils\generarHTMLDesdeSecciones.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarHTMLDesdeSecciones.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.464Z] File C:\Reservaeldia\functions\lib\auth\adminAuth.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\auth\\adminAuth.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.483Z] File C:\Reservaeldia\functions\lib\index.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\index.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.487Z] File C:\Reservaeldia\functions\lib\utils\calcularTopPorSeccion.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\calcularTopPorSeccion.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.493Z] File C:\Reservaeldia\functions\lib\utils\generarCountdownHTML fuera de uso.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarCountdownHTML fuera de uso.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:03.496Z] File C:\Reservaeldia\functions\lib\utils\layout.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\layout.js changed, reloading triggers"}}
+[debug] [2026-02-16T18:46:04.505Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T18:46:05.674Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T18:46:05.675Z] Building nodejs source
+[debug] [2026-02-16T18:46:05.675Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T18:46:05.676Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T18:46:05.682Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8763
+
+[error] (node:24636) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T18:46:08.727Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}

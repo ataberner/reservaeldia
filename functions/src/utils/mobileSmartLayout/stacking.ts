@@ -81,6 +81,7 @@ export function jsStackingBlock(): string {
       var col = groups[g] || [];
       if (!col.length) continue;
       var colReferenceCenterX = NaN;
+      var colSourceReferenceCenterX = NaN;
       var colShiftX = NaN;
 
       // Métricas por grupo solo para debug.
@@ -211,10 +212,13 @@ export function jsStackingBlock(): string {
               ntMinRel = Math.min(ntMinRel, (ntIt._relLeft || 0));
               ntMaxRel = Math.max(ntMaxRel, (ntIt._relLeft || 0) + (ntIt.width || 0));
             }
+            var sourceClusterRefCenterX = NaN;
             if (isFinite(ntMinRel) && isFinite(ntMaxRel) && ntMaxRel > ntMinRel) {
               clusterRefCenterX = clusterLeft + ((ntMinRel + ntMaxRel) / 2);
+              sourceClusterRefCenterX = (c.left || 0) + ((ntMinRel + ntMaxRel) / 2);
             } else {
               clusterRefCenterX = clusterLeft + c.width / 2;
+              sourceClusterRefCenterX = (c.left || 0) + c.width / 2;
             }
 
             // Shift horizontal comun por columna basado en la primera forma.
@@ -225,16 +229,19 @@ export function jsStackingBlock(): string {
               clusterRefCenterX += colShiftX;
             }
             colReferenceCenterX = clusterRefCenterX;
+            colSourceReferenceCenterX = sourceClusterRefCenterX;
           } else {
             if (isFinite(colShiftX)) clusterLeft += colShiftX;
           }
 
           if (isTextOnlyCluster && isFinite(colReferenceCenterX)) {
             var maxSnapDelta = Math.min(120, info.usableW * 0.35);
-            var clusterCenter = clusterLeft + c.width / 2;
-            var driftX = clusterCenter - colReferenceCenterX;
-            if (Math.abs(driftX) <= maxSnapDelta) {
-              clusterLeft = colReferenceCenterX - c.width / 2;
+            var sourceClusterCenterX = (c.left || 0) + c.width / 2;
+            var sourceDriftX = isFinite(colSourceReferenceCenterX)
+              ? (sourceClusterCenterX - colSourceReferenceCenterX)
+              : NaN;
+            if (isFinite(sourceDriftX) && Math.abs(sourceDriftX) <= maxSnapDelta) {
+              clusterLeft = (colReferenceCenterX + sourceDriftX) - c.width / 2;
             }
             // Para labels cortos, centrar el contenido textual dentro del box.
             shouldCenterTextWithinCluster = c.width <= (info.usableW * 0.65);
@@ -406,6 +413,7 @@ export function jsStackingBlock(): string {
           var isShortTextBox = false;
           var shouldRecenterTextItem = false;
           var centerByAlign = false;
+          var targetTextCenterX = NaN;
           if (isTextNode && isMultiColLayout) {
             var tf = it.node.style.transform || "";
             if (tf.indexOf("translateX(") !== -1) {
@@ -422,7 +430,16 @@ export function jsStackingBlock(): string {
               isFinite(colReferenceCenterX);
             if (shouldRecenterTextItem) {
               var prevLeftTxt = newLeft;
-              newLeft = colReferenceCenterX - (it.width || 0) / 2;
+              var sourceItemCenterX = (it.left || 0) + (it.width || 0) / 2;
+              var sourceDriftItemX = isFinite(colSourceReferenceCenterX)
+                ? (sourceItemCenterX - colSourceReferenceCenterX)
+                : NaN;
+              var targetCenterX = colReferenceCenterX;
+              if (isFinite(sourceDriftItemX)) {
+                targetCenterX += sourceDriftItemX;
+              }
+              targetTextCenterX = targetCenterX;
+              newLeft = targetCenterX - (it.width || 0) / 2;
               if (Math.abs(newLeft - prevLeftTxt) > 0.5) {
                 mslLog("stack:item:textRecenter", {
                   g: g,
@@ -432,6 +449,8 @@ export function jsStackingBlock(): string {
                   newLeft: +newLeft.toFixed(1),
                   itemW: +(it.width || 0).toFixed(1),
                   refCenterX: +colReferenceCenterX.toFixed(1),
+                  sourceRefCenterX: (typeof colSourceReferenceCenterX === "number" && isFinite(colSourceReferenceCenterX)) ? +colSourceReferenceCenterX.toFixed(1) : null,
+                  sourceDriftX: isFinite(sourceDriftItemX) ? +sourceDriftItemX.toFixed(1) : null,
                   shortBox: isShortTextBox,
                   centerByAlign: centerByAlign
                 });
@@ -455,7 +474,8 @@ export function jsStackingBlock(): string {
           if (isTextNode && isMultiColLayout && shouldRecenterTextItem) {
             var rrTxt = relRect(it.node, rootEl);
             var renderedCenterX = (rrTxt.left || 0) + (rrTxt.width || 0) / 2;
-            var renderDelta = renderedCenterX - colReferenceCenterX;
+            var targetRenderCenterX = isFinite(targetTextCenterX) ? targetTextCenterX : colReferenceCenterX;
+            var renderDelta = renderedCenterX - targetRenderCenterX;
             if (isFinite(renderDelta) && Math.abs(renderDelta) > 0.6) {
               var correctedLeft = newLeft - renderDelta;
               if (isFinite(correctedLeft)) {
@@ -466,7 +486,7 @@ export function jsStackingBlock(): string {
                   prevLeft: +newLeft.toFixed(1),
                   correctedLeft: +correctedLeft.toFixed(1),
                   renderedCenterX: +renderedCenterX.toFixed(1),
-                  refCenterX: +colReferenceCenterX.toFixed(1),
+                  refCenterX: +targetRenderCenterX.toFixed(1),
                   delta: +renderDelta.toFixed(2)
                 });
                 newLeft = correctedLeft;

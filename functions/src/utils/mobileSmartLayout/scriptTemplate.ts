@@ -16,16 +16,7 @@ export function buildScript(cfg: NormalizedConfig): string {
     try {
       var search = (window.location && window.location.search) ? window.location.search : "";
       var qp = new URLSearchParams(search);
-      var force = qp.get("mslDebug");
-      if (force === "1") {
-        try { localStorage.setItem("mslDebug", "1"); } catch(_e1) {}
-        return true;
-      }
-      if (force === "0") {
-        try { localStorage.removeItem("mslDebug"); } catch(_e2) {}
-        return false;
-      }
-      return localStorage.getItem("mslDebug") === "1";
+      return qp.get("mslDebug") === "1";
     } catch(_e) {
       return false;
     }
@@ -34,16 +25,7 @@ export function buildScript(cfg: NormalizedConfig): string {
     try {
       var search = (window.location && window.location.search) ? window.location.search : "";
       var qp = new URLSearchParams(search);
-      var force = qp.get("mslVerbose");
-      if (force === "1") {
-        try { localStorage.setItem("mslVerbose", "1"); } catch(_e1) {}
-        return true;
-      }
-      if (force === "0") {
-        try { localStorage.removeItem("mslVerbose"); } catch(_e2) {}
-        return false;
-      }
-      return localStorage.getItem("mslVerbose") === "1";
+      return qp.get("mslVerbose") === "1";
     } catch(_e) {
       return false;
     }
@@ -174,17 +156,35 @@ export function buildScript(cfg: NormalizedConfig): string {
       resetSectionFitScale(sec, content, bleed);
       var nodesAll = getObjNodes(sec);
 
-      function finalizeSection(minNeededHeight){
-        var fit = applySectionFitScale(sec, content, bleed, nodesAll, secModo, CFG, { secIndex: secIndex });
+      function finalizeSection(minNeededHeight, preserveBottomGap){
+        var gap = Number.isFinite(preserveBottomGap) ? Math.max(0, Number(preserveBottomGap)) : 0;
+        var fit = applySectionFitScale(
+          sec,
+          content,
+          bleed,
+          nodesAll,
+          secModo,
+          CFG,
+          { secIndex: secIndex },
+          { preserveBottomGap: gap }
+        );
         var fitNeeded = (fit && Number.isFinite(fit.neededHeight)) ? Number(fit.neededHeight) : 0;
         var neededHeight = Math.max(Number(minNeededHeight || 0), fitNeeded);
+        mslLog("section:heightFinal", {
+          secIndex: secIndex,
+          mode: secModo,
+          minNeededHeight: +Number(minNeededHeight || 0).toFixed(1),
+          fitNeededHeight: +fitNeeded.toFixed(1),
+          preserveBottomGap: +gap.toFixed(1),
+          finalNeededHeight: +neededHeight.toFixed(1)
+        });
         if (secModo === "fijo" && neededHeight > 0) {
           expandFixedSection(sec, neededHeight);
         }
       }
 
       if(!nodesAll.length) {
-        finalizeSection(0);
+        finalizeSection(0, 0);
         return;
       }
 
@@ -319,12 +319,12 @@ export function buildScript(cfg: NormalizedConfig): string {
       // Si todo mide 0 (fonts no listas), reintentamos luego
       var anyValidAll = itemsAll.some(function(it){ return it.height > 0.5; });
       if(!anyValidAll) {
-        finalizeSection(0);
+        finalizeSection(0, baseBottomGap);
         return;
       }
 
       if (!allowReflow || nodesAll.length < 2) {
-        finalizeSection(0);
+        finalizeSection(0, baseBottomGap);
         return;
       }
 
@@ -376,7 +376,7 @@ export function buildScript(cfg: NormalizedConfig): string {
 
       // Si no hay suficientes elementos reflowables, no hacemos nada
       if(itemsFlow.length < 2) {
-        finalizeSection(0);
+        finalizeSection(0, baseBottomGap);
         return;
       }
 
@@ -438,7 +438,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         willSkip: (mode === "one" && fits)
       });
       if (mode === "one" && fits) {
-        finalizeSection(0);
+        finalizeSection(0, baseBottomGap);
         return;
       }
 
@@ -466,7 +466,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         }
         if (needed > 0) neededAfterReflow = needed;
       }
-      finalizeSection(neededAfterReflow);
+      finalizeSection(neededAfterReflow, baseBottomGap);
     });
   }
 

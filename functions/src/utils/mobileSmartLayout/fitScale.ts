@@ -176,13 +176,17 @@ export function jsFitScaleBlock(): string {
     };
   }
 
-  function applySectionFitScale(sec, content, bleed, nodesAll, secModo, CFG, meta){
+  function applySectionFitScale(sec, content, bleed, nodesAll, secModo, CFG, meta, opts){
     if (!sec || !content) {
       return { scale: 1, neededHeight: 0, bounds: null };
     }
 
     ensureFitScaleBaseline(content);
     ensureFitScaleBaseline(bleed);
+    var preserveBottomGap = 0;
+    if (opts && Number.isFinite(opts.preserveBottomGap)) {
+      preserveBottomGap = Math.max(0, Number(opts.preserveBottomGap));
+    }
 
     var fitNodes = (nodesAll || []).filter(function(node){
       if (!node) return false;
@@ -211,7 +215,8 @@ export function jsFitScaleBlock(): string {
 
     var neededHeight = 0;
     if (secModo !== "pantalla") {
-      neededHeight = Math.ceil((bounds.maxBottom || 0) * scale + (CFG.PAD_BOT || 0));
+      var maxBottomWithGap = Number(bounds.maxBottom || 0) + preserveBottomGap;
+      neededHeight = Math.ceil(maxBottomWithGap * scale + (CFG.PAD_BOT || 0));
     }
 
     if (secModo === "pantalla") {
@@ -381,6 +386,7 @@ export function jsFitScaleBlock(): string {
           coarsePointer: coarsePointer,
           touchPoints: touchPoints
         },
+        preserveBottomGap: +preserveBottomGap.toFixed(1),
         totalNodes: totalNodes,
         fitNodes: fitNodesCount,
         textNodesAll: textAll,
@@ -426,6 +432,8 @@ export function jsFitScaleBlock(): string {
       boxW: +bounds.width.toFixed(1),
       boxH: +bounds.height.toFixed(1),
       scale: +scale.toFixed(3),
+      preserveBottomGap: +preserveBottomGap.toFixed(1),
+      scaledBottomGap: +((preserveBottomGap || 0) * scale).toFixed(1),
       neededHeight: neededHeight
     });
 

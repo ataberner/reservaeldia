@@ -3894,3 +3894,1475 @@ Issues? Report them at https://github.com/firebase/firebase-tools/issues and att
 [debug] [2026-02-16T19:18:13.181Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=finish"}}
 [debug] [2026-02-16T19:18:13.181Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=close"}}
 [debug] [2026-02-16T19:18:13.181Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-02-16T19:27:46.361Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\types.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\types.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:27:47.217Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\types.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\types.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:27:47.234Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\index.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\index.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:27:47.235Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\config.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\config.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:27:47.235Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:27:48.252Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:27:49.608Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:27:49.609Z] Building nodejs source
+[debug] [2026-02-16T19:27:49.609Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:27:49.611Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:27:49.621Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8298
+
+[error] (node:27224) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:27:51.243Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:27:55.303Z] [worker-pool] Shutting down IDLE worker (us-central1-publicarInvitacion) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Shutting down IDLE worker (us-central1-publicarInvitacion)"}}
+[debug] [2026-02-16T19:27:55.303Z] [worker-us-central1-publicarInvitacion-cc1f08ce-7081-47f3-a7f4-0b6b5776e14c]: FINISHING {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-cc1f08ce-7081-47f3-a7f4-0b6b5776e14c]: FINISHING"}}
+[debug] [2026-02-16T19:27:55.303Z] [worker-pool] Shutting down IDLE worker (us-central1-borrarBorrador) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Shutting down IDLE worker (us-central1-borrarBorrador)"}}
+[debug] [2026-02-16T19:27:55.303Z] [worker-us-central1-borrarBorrador-3b00a67c-d8b8-4151-80e9-7be5dea2e2e3]: FINISHING {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-borrarBorrador"},"extension":{},"message":"[worker-us-central1-borrarBorrador-3b00a67c-d8b8-4151-80e9-7be5dea2e2e3]: FINISHING"}}
+[debug] [2026-02-16T19:27:55.303Z] [worker-pool] Shutting down IDLE worker (us-central1-copiarPlantilla) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Shutting down IDLE worker (us-central1-copiarPlantilla)"}}
+[debug] [2026-02-16T19:27:55.303Z] [worker-us-central1-copiarPlantilla-3504851b-e0e1-4c34-b01f-69b9eba3cac4]: FINISHING {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-copiarPlantilla"},"extension":{},"message":"[worker-us-central1-copiarPlantilla-3504851b-e0e1-4c34-b01f-69b9eba3cac4]: FINISHING"}}
+[debug] [2026-02-16T19:27:55.317Z] [worker-us-central1-copiarPlantilla-3504851b-e0e1-4c34-b01f-69b9eba3cac4]: exited {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-copiarPlantilla"},"extension":{},"message":"[worker-us-central1-copiarPlantilla-3504851b-e0e1-4c34-b01f-69b9eba3cac4]: exited"}}
+[debug] [2026-02-16T19:27:55.318Z] [worker-us-central1-copiarPlantilla-3504851b-e0e1-4c34-b01f-69b9eba3cac4]: FINISHED {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-copiarPlantilla"},"extension":{},"message":"[worker-us-central1-copiarPlantilla-3504851b-e0e1-4c34-b01f-69b9eba3cac4]: FINISHED"}}
+[debug] [2026-02-16T19:27:55.318Z] [worker-us-central1-borrarBorrador-3b00a67c-d8b8-4151-80e9-7be5dea2e2e3]: exited {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-borrarBorrador"},"extension":{},"message":"[worker-us-central1-borrarBorrador-3b00a67c-d8b8-4151-80e9-7be5dea2e2e3]: exited"}}
+[debug] [2026-02-16T19:27:55.318Z] [worker-us-central1-borrarBorrador-3b00a67c-d8b8-4151-80e9-7be5dea2e2e3]: FINISHED {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-borrarBorrador"},"extension":{},"message":"[worker-us-central1-borrarBorrador-3b00a67c-d8b8-4151-80e9-7be5dea2e2e3]: FINISHED"}}
+[debug] [2026-02-16T19:27:55.320Z] [worker-us-central1-publicarInvitacion-cc1f08ce-7081-47f3-a7f4-0b6b5776e14c]: exited {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-cc1f08ce-7081-47f3-a7f4-0b6b5776e14c]: exited"}}
+[debug] [2026-02-16T19:27:55.320Z] [worker-us-central1-publicarInvitacion-cc1f08ce-7081-47f3-a7f4-0b6b5776e14c]: FINISHED {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-cc1f08ce-7081-47f3-a7f4-0b6b5776e14c]: FINISHED"}}
+[debug] [2026-02-16T19:29:12.147Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\config.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\config.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:29:12.506Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\config.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\config.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:29:13.514Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:29:14.558Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:29:14.558Z] Building nodejs source
+[debug] [2026-02-16T19:29:14.558Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:29:14.562Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:29:14.575Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8835
+
+[error] (node:20820) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:29:16.191Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:30:13.627Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:30:14.263Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:30:15.280Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:30:19.687Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:30:19.688Z] Building nodejs source
+[debug] [2026-02-16T19:30:19.688Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:30:19.691Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:30:19.708Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8681
+
+[error] (node:4336) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:30:24.376Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:31:20.857Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:31:21.249Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:31:22.258Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:31:23.600Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:31:23.600Z] Building nodejs source
+[debug] [2026-02-16T19:31:23.601Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:31:23.601Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:31:23.608Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8919
+
+[error] (node:5476) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:31:25.294Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:31:59.146Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:31:59.501Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:32:00.507Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:32:02.137Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:32:02.138Z] Building nodejs source
+[debug] [2026-02-16T19:32:02.138Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:32:02.139Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:32:02.145Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8718
+
+[error] (node:11208) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:32:03.728Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:32:18.995Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:32:19.369Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:32:20.372Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:32:21.619Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:32:21.619Z] Building nodejs source
+[debug] [2026-02-16T19:32:21.619Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:32:21.621Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:32:21.627Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8896
+
+[error] (node:25852) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:32:23.643Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:34:06.808Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:34:07.174Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:34:08.177Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:34:09.107Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:34:09.107Z] Building nodejs source
+[debug] [2026-02-16T19:34:09.107Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:34:09.109Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:34:09.117Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8395
+
+[error] (node:26516) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:34:10.503Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:34:20.075Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:34:20.443Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:34:21.446Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:34:22.390Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:34:22.391Z] Building nodejs source
+[debug] [2026-02-16T19:34:22.391Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:34:22.392Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:34:22.397Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8730
+
+[error] (node:26956) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:34:23.784Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:34:32.817Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:34:33.171Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:34:34.184Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:34:35.233Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:34:35.233Z] Building nodejs source
+[debug] [2026-02-16T19:34:35.233Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:34:35.234Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:34:35.239Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8368
+
+[error] (node:22836) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:34:36.818Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:35:31.985Z] File C:\Reservaeldia\functions\src\utils\generarHTMLDesdeSecciones.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\generarHTMLDesdeSecciones.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:35:33.003Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:35:33.977Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:35:33.977Z] Building nodejs source
+[debug] [2026-02-16T19:35:33.977Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:35:33.982Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:35:33.991Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[debug] [2026-02-16T19:35:33.996Z] File C:\Reservaeldia\functions\lib\utils\generarHTMLDesdeSecciones.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarHTMLDesdeSecciones.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:35:33.997Z] File C:\Reservaeldia\functions\lib\index.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\index.js changed, reloading triggers"}}
+[info] Serving at port 8083
+
+[debug] [2026-02-16T19:35:35.001Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:35:36.111Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:35:36.112Z] Building nodejs source
+[debug] [2026-02-16T19:35:36.112Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:35:36.113Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:35:36.124Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[error] (node:26348) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:35:36.132Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] Serving at port 8609
+
+[error] (node:24464) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:35:37.818Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:36:17.117Z] File C:\Reservaeldia\functions\src\utils\generarHTMLDesdeSecciones.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\generarHTMLDesdeSecciones.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:36:17.460Z] File C:\Reservaeldia\functions\lib\utils\generarHTMLDesdeSecciones.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarHTMLDesdeSecciones.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:36:18.465Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:36:19.463Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:36:19.463Z] Building nodejs source
+[debug] [2026-02-16T19:36:19.463Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:36:19.464Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:36:19.469Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8793
+
+[error] (node:26108) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:36:21.585Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:37:28.039Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:37:28.361Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:37:29.371Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:37:30.357Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:37:30.357Z] Building nodejs source
+[debug] [2026-02-16T19:37:30.357Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:37:30.357Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:37:30.364Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8278
+
+[error] (node:17948) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:37:31.861Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:38:20.595Z] File C:\Reservaeldia\functions\src\utils\generarHTMLDesdeSecciones.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\generarHTMLDesdeSecciones.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:38:21.013Z] File C:\Reservaeldia\functions\lib\utils\generarHTMLDesdeSecciones.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\generarHTMLDesdeSecciones.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:38:22.025Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:38:22.931Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:38:22.931Z] Building nodejs source
+[debug] [2026-02-16T19:38:22.931Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:38:22.932Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:38:22.937Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8374
+
+[error] (node:26832) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:38:24.626Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:39:39.526Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:39:39.863Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:39:40.865Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:39:41.899Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:39:41.899Z] Building nodejs source
+[debug] [2026-02-16T19:39:41.899Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:39:41.900Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:39:41.907Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8343
+
+[error] (node:4528) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:39:43.408Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:45:04.941Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:45:05.963Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:45:08.517Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:45:08.517Z] Building nodejs source
+[debug] [2026-02-16T19:45:08.517Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:45:08.519Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:45:08.528Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[debug] [2026-02-16T19:45:08.538Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[info] Serving at port 8088
+
+[debug] [2026-02-16T19:45:09.549Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:45:12.515Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:45:12.516Z] Building nodejs source
+[debug] [2026-02-16T19:45:12.516Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:45:12.614Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:45:12.621Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8446
+
+[error] (node:26600) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:45:14.326Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[error] (node:23632) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:45:17.817Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:53:54.188Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:53:54.970Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:53:55.996Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:53:57.990Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:53:57.992Z] Building nodejs source
+[debug] [2026-02-16T19:53:57.993Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:53:58.003Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:53:58.017Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8399
+
+[error] (node:27220) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:54:03.656Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T19:58:05.298Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T19:58:05.884Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[debug] [2026-02-16T19:58:06.891Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T19:58:08.741Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T19:58:08.742Z] Building nodejs source
+[debug] [2026-02-16T19:58:08.742Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T19:58:08.745Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T19:58:08.755Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8747
+
+[error] (node:26808) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T19:58:11.519Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:04:28.710Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:04:29.745Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:04:31.930Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:04:31.931Z] Building nodejs source
+[debug] [2026-02-16T20:04:31.931Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:04:31.940Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:04:31.955Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[debug] [2026-02-16T20:04:31.994Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[info] Serving at port 8201
+
+[debug] [2026-02-16T20:04:32.998Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:04:34.379Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:04:34.380Z] Building nodejs source
+[debug] [2026-02-16T20:04:34.380Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:04:34.381Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:04:34.388Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8176
+
+[error] (node:20960) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:04:34.920Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[error] (node:27876) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:04:36.036Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:06:28.340Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:06:29.342Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:06:30.875Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:06:30.875Z] Building nodejs source
+[debug] [2026-02-16T20:06:30.875Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:06:30.876Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:06:30.882Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8528
+
+[error] (node:26808) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:06:33.018Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:06:44.164Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:06:44.498Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[debug] [2026-02-16T20:06:45.513Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:06:46.688Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:06:46.688Z] Building nodejs source
+[debug] [2026-02-16T20:06:46.688Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:06:46.689Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:06:46.697Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8317
+
+[error] (node:24416) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:06:49.741Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:08:19.119Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\scriptTemplate.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\scriptTemplate.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:08:19.495Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\scriptTemplate.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\scriptTemplate.js changed, reloading triggers"}}
+[debug] [2026-02-16T20:08:20.499Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:08:21.622Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:08:21.622Z] Building nodejs source
+[debug] [2026-02-16T20:08:21.622Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:08:21.624Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:08:21.629Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8353
+
+[error] (node:23212) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:08:23.027Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:12:13.519Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:12:14.135Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[debug] [2026-02-16T20:12:15.140Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:12:16.994Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:12:16.994Z] Building nodejs source
+[debug] [2026-02-16T20:12:16.994Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:12:16.997Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:12:17.009Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8321
+
+[error] (node:13848) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:12:21.439Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:12:30.852Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:12:31.223Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[debug] [2026-02-16T20:12:32.230Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:12:33.163Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:12:33.163Z] Building nodejs source
+[debug] [2026-02-16T20:12:33.163Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:12:33.164Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:12:33.169Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8324
+
+[error] (node:28608) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:12:34.535Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:12:52.091Z] File C:\Reservaeldia\functions\src\utils\mobileSmartLayout\fitScale.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\src\\utils\\mobileSmartLayout\\fitScale.ts changed, reloading triggers"}}
+[debug] [2026-02-16T20:12:52.443Z] File C:\Reservaeldia\functions\lib\utils\mobileSmartLayout\fitScale.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Reservaeldia\\functions\\lib\\utils\\mobileSmartLayout\\fitScale.js changed, reloading triggers"}}
+[debug] [2026-02-16T20:12:53.456Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-16T20:12:54.391Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-16T20:12:54.391Z] Building nodejs source
+[debug] [2026-02-16T20:12:54.391Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-16T20:12:54.392Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-16T20:12:54.399Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8530
+
+[error] (node:9732) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-16T20:12:55.954Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[debug] [2026-02-16T20:15:38.089Z] [work-queue] {"queuedWork":["/reservaeldia-7a440/us-central1/publicarInvitacion-2026-02-16T20:15:38.089Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-02-16T20:15:38.090Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/reservaeldia-7a440/us-central1/publicarInvitacion-2026-02-16T20:15:38.089Z"],"workRunningCount":1}
+[debug] [2026-02-16T20:15:38.090Z] Accepted request OPTIONS /reservaeldia-7a440/us-central1/publicarInvitacion --> us-central1-publicarInvitacion
+[debug] [2026-02-16T20:15:38.094Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-02-16T20:15:38.097Z] [functions] Got req.url=/reservaeldia-7a440/us-central1/publicarInvitacion, mapping to path=/ {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/reservaeldia-7a440/us-central1/publicarInvitacion, mapping to path=/"}}
+[debug] [2026-02-16T20:15:38.098Z] [worker-pool] Cleaned up workers for us-central1-publicarInvitacion: 1 --> 0 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Cleaned up workers for us-central1-publicarInvitacion: 1 --> 0"}}
+[debug] [2026-02-16T20:15:38.099Z] [worker-pool] Cleaned up workers for us-central1-borrarBorrador: 1 --> 0 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Cleaned up workers for us-central1-borrarBorrador: 1 --> 0"}}
+[debug] [2026-02-16T20:15:38.099Z] [worker-pool] Cleaned up workers for us-central1-copiarPlantilla: 1 --> 0 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Cleaned up workers for us-central1-copiarPlantilla: 1 --> 0"}}
+[debug] [2026-02-16T20:15:38.125Z] [worker-pool] addWorker(us-central1-publicarInvitacion) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] addWorker(us-central1-publicarInvitacion)"}}
+[debug] [2026-02-16T20:15:38.127Z] [worker-pool] Adding worker with key us-central1-publicarInvitacion, total=1 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Adding worker with key us-central1-publicarInvitacion, total=1"}}
+[info] >  (node:9460) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead. {"user":"(node:9460) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.","metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"\u001b[90m> \u001b[39m (node:9460) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead."}}
+[info] >  (Use `node --trace-deprecation ...` to show where the warning was created) {"user":"(Use `node --trace-deprecation ...` to show where the warning was created)","metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"\u001b[90m> \u001b[39m (Use `node --trace-deprecation ...` to show where the warning was created)"}}
+[debug] [2026-02-16T20:15:40.221Z] [runtime-status] [9460] Resolved module firebase-admin {"declared":true,"installed":true,"version":"13.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-admin\\lib\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"13.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-admin\\\\lib\\\\index.js\"}"}}
+[debug] [2026-02-16T20:15:40.223Z] [runtime-status] [9460] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-02-16T20:15:40.223Z] [runtime-status] [9460] Outgoing network have been stubbed. [{"name":"http","status":"mocked"},{"name":"http","status":"mocked"},{"name":"https","status":"mocked"},{"name":"https","status":"mocked"},{"name":"net","status":"mocked"}] {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Outgoing network have been stubbed. [{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"net\",\"status\":\"mocked\"}]"}}
+[debug] [2026-02-16T20:15:40.224Z] [runtime-status] [9460] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-02-16T20:15:40.943Z] [runtime-status] [9460] Checked functions.config() {"config":{}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Checked functions.config() {\"config\":{}}"}}
+[debug] [2026-02-16T20:15:40.943Z] [runtime-status] [9460] firebase-functions has been stubbed. {"functionsResolution":{"declared":true,"installed":true,"version":"6.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] firebase-functions has been stubbed. {\"functionsResolution\":{\"declared\":true,\"installed\":true,\"version\":\"6.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}}"}}
+[debug] [2026-02-16T20:15:40.945Z] [runtime-status] [9460] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-02-16T20:15:40.977Z] [runtime-status] [9460] Resolved module firebase-admin {"declared":true,"installed":true,"version":"13.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-admin\\lib\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"13.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-admin\\\\lib\\\\index.js\"}"}}
+[debug] [2026-02-16T20:15:40.989Z] [runtime-status] [9460] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-02-16T20:15:40.990Z] [runtime-status] [9460] firebase-admin has been stubbed. {"adminResolution":{"declared":true,"installed":true,"version":"13.4.0","resolution":"C:\\Reservaeldia\\functions\\node_modules\\firebase-admin\\lib\\index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] firebase-admin has been stubbed. {\"adminResolution\":{\"declared\":true,\"installed\":true,\"version\":\"13.4.0\",\"resolution\":\"C:\\\\Reservaeldia\\\\functions\\\\node_modules\\\\firebase-admin\\\\lib\\\\index.js\"}}"}}
+[debug] [2026-02-16T20:15:42.464Z] [runtime-status] [9460] initializeApp(DEFAULT) {"credential":{"googleAuth":{"jsonContent":null,"cachedCredential":null,"clientOptions":{"transporterOptions":{}},"_cachedProjectId":null,"scopes":["https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/firebase.database","https://www.googleapis.com/auth/firebase.messaging","https://www.googleapis.com/auth/identitytoolkit","https://www.googleapis.com/auth/userinfo.email"],"apiKey":null}},"storageBucket":"reservaeldia-7a440.firebasestorage.app"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] initializeApp(DEFAULT) {\"credential\":{\"googleAuth\":{\"jsonContent\":null,\"cachedCredential\":null,\"clientOptions\":{\"transporterOptions\":{}},\"_cachedProjectId\":null,\"scopes\":[\"https://www.googleapis.com/auth/cloud-platform\",\"https://www.googleapis.com/auth/firebase.database\",\"https://www.googleapis.com/auth/firebase.messaging\",\"https://www.googleapis.com/auth/identitytoolkit\",\"https://www.googleapis.com/auth/userinfo.email\"],\"apiKey\":null}},\"storageBucket\":\"reservaeldia-7a440.firebasestorage.app\"}"}}
+[debug] [2026-02-16T20:15:42.637Z] [runtime-status] [9460] Functions runtime initialized. {"cwd":"C:\\Reservaeldia\\functions","node_version":"22.13.1"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Functions runtime initialized. {\"cwd\":\"C:\\\\Reservaeldia\\\\functions\",\"node_version\":\"22.13.1\"}"}}
+[debug] [2026-02-16T20:15:42.638Z] [runtime-status] [9460] Listening to port: \\?\pipe\fire_emu_11a1a426a465f1ba {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[runtime-status] [9460] Listening to port: \\\\?\\pipe\\fire_emu_11a1a426a465f1ba"}}
+[debug] [2026-02-16T20:15:42.701Z] [worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: IDLE"}}
+[debug] [2026-02-16T20:15:42.702Z] [worker-pool] submitRequest(triggerId=us-central1-publicarInvitacion) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-publicarInvitacion)"}}
+[info] i  functions: Beginning execution of "us-central1-publicarInvitacion" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Beginning execution of \"us-central1-publicarInvitacion\""}}
+[debug] [2026-02-16T20:15:42.704Z] [worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: BUSY"}}
+[debug] [2026-02-16T20:15:42.716Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-publicarInvitacion" in 13.3357ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finished \"us-central1-publicarInvitacion\" in 13.3357ms"}}
+[debug] [2026-02-16T20:15:42.718Z] [worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: IDLE"}}
+[debug] [2026-02-16T20:15:42.718Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-02-16T20:15:42.718Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-02-16T20:15:42.719Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-02-16T20:15:42.721Z] [work-queue] {"queuedWork":["/reservaeldia-7a440/us-central1/publicarInvitacion-2026-02-16T20:15:42.721Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-02-16T20:15:42.722Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/reservaeldia-7a440/us-central1/publicarInvitacion-2026-02-16T20:15:42.721Z"],"workRunningCount":1}
+[debug] [2026-02-16T20:15:42.722Z] Accepted request POST /reservaeldia-7a440/us-central1/publicarInvitacion --> us-central1-publicarInvitacion
+[debug] [2026-02-16T20:15:42.723Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-02-16T20:15:42.724Z] [functions] Got req.url=/reservaeldia-7a440/us-central1/publicarInvitacion, mapping to path=/ {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/reservaeldia-7a440/us-central1/publicarInvitacion, mapping to path=/"}}
+[debug] [2026-02-16T20:15:42.724Z] [worker-pool] submitRequest(triggerId=us-central1-publicarInvitacion) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-publicarInvitacion)"}}
+[info] i  functions: Beginning execution of "us-central1-publicarInvitacion" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Beginning execution of \"us-central1-publicarInvitacion\""}}
+[debug] [2026-02-16T20:15:42.725Z] [worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: BUSY"}}
+[info] >  {"verifications":{"app":"MISSING","auth":"VALID"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"} {"user":{"verifications":{"app":"MISSING","auth":"VALID"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"},"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"\u001b[90m> \u001b[39m {\"verifications\":{\"app\":\"MISSING\",\"auth\":\"VALID\"},\"logging.googleapis.com/labels\":{\"firebase-log-type\":\"callable-request-verification\"},\"severity\":\"DEBUG\",\"message\":\"Callable request verification passed\"}"}}
+[warn] !  Google API requested!
+   - URL: "https://oauth2.googleapis.com/token"
+   - Be careful, this may be a production service. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Google API requested!\n   - URL: \"https://oauth2.googleapis.com/token\"\n   - Be careful, this may be a production service."}}
+[warn] !  Google API requested!
+   - URL: "https://storage.googleapis.com/upload/storage/v1/b/reservaeldia-7a440.firebasestorage.app/o?name=publicadas%2F4%2Findex.html&uploadType=resumable&predefinedAcl=publicRead"
+   - Be careful, this may be a production service. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Google API requested!\n   - URL: \"https://storage.googleapis.com/upload/storage/v1/b/reservaeldia-7a440.firebasestorage.app/o?name=publicadas%2F4%2Findex.html&uploadType=resumable&predefinedAcl=publicRead\"\n   - Be careful, this may be a production service."}}
+[warn] !  Google API requested!
+   - URL: "https://storage.googleapis.com/upload/storage/v1/b/reservaeldia-7a440.firebasestorage.app/o?name=publicadas%2F4%2Findex.html&uploadType=resumable&predefinedAcl=publicRead&upload_id=AJRbA5VCSbtBWVzQknxPNyPjZYGp-Q2Dm1q_n2GYevwGYMs0DvuajSBXTa0Da5xS74f2WfpM0cwEuTkHNj1Qk0Jp9FtwsuymUDbQV77xdIiYyt8"
+   - Be careful, this may be a production service. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Google API requested!\n   - URL: \"https://storage.googleapis.com/upload/storage/v1/b/reservaeldia-7a440.firebasestorage.app/o?name=publicadas%2F4%2Findex.html&uploadType=resumable&predefinedAcl=publicRead&upload_id=AJRbA5VCSbtBWVzQknxPNyPjZYGp-Q2Dm1q_n2GYevwGYMs0DvuajSBXTa0Da5xS74f2WfpM0cwEuTkHNj1Qk0Jp9FtwsuymUDbQV77xdIiYyt8\"\n   - Be careful, this may be a production service."}}
+[debug] [2026-02-16T20:15:46.382Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-publicarInvitacion" in 3657.3161ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finished \"us-central1-publicarInvitacion\" in 3657.3161ms"}}
+[debug] [2026-02-16T20:15:46.383Z] [worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"[worker-us-central1-publicarInvitacion-fdac53a4-44cc-4890-9105-bbce8c998999]: IDLE"}}
+[debug] [2026-02-16T20:15:46.383Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-02-16T20:15:46.383Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-publicarInvitacion"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-02-16T20:15:46.383Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}

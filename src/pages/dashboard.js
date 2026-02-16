@@ -92,6 +92,14 @@ export default function Dashboard() {
       const data = snap.data();
       const objetosBase = data?.objetos || [];
       const secciones = data?.secciones || [];
+      const previewDebug = (() => {
+        try {
+          const qp = new URLSearchParams(window.location.search || "");
+          return qp.get("previewDebug") === "1";
+        } catch (_e) {
+          return false;
+        }
+      })();
 
       // Debug de distribución real de objetos por sección/tipo en el borrador
       try {
@@ -133,9 +141,13 @@ export default function Dashboard() {
           `mobileViewport=${mobileViewport} desktopMobilePreview=${desktopMobilePreview} mobileUA=${mobileUA}\n` +
           `secciones=${Object.keys(resumen).length} objetos=${objetosBase.length}`;
 
-        console.log(`${header}\n${filas.join("\n")}`);
+        if (previewDebug) {
+          console.log(`${header}\n${filas.join("\n")}`);
+        }
       } catch (e) {
-        console.warn("[PREVIEW] no se pudo armar resumen de objetos", e);
+        if (previewDebug) {
+          console.warn("[PREVIEW] no se pudo armar resumen de objetos", e);
+        }
       }
 
       // Importar función de generación HTML

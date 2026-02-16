@@ -145,22 +145,29 @@ export function jsDomHelpersBlock(): string {
     var bKey = b.node.getAttribute("data-mobile-cluster-id") || "";
     if (aKey && bKey && aKey !== bKey) continue;
 
+    var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
+    var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
+    var involvesText = aIsText || bIsText;
+    var cxDist = Math.abs(cx(a) - cx(b));
+
     if (rectsOverlap(a, b, TOL)) {
-      union(i,j);
+      // Evita pegar columnas distintas por cajas de texto anchas.
+      // Si hay texto, exigimos cercania por eje X del centro.
+      if (!involvesText || cxDist <= MAX_CX_DIST) union(i,j);
       continue;
     }
 
     // Si no se solapan pero están muy cerca en vertical y comparten columna,
-    // también los unimos para mantener bloque (ej: ícono + texto debajo).
+    // también los unimos para mantener bloque (ej: icono + texto debajo).
     var hov = horizontalOverlapPx(a, b);
     var minW = Math.max(1, Math.min(a.width || 0, b.width || 0));
     var hovRatio = hov / minW;
-    var cxDist = Math.abs(cx(a) - cx(b));
-    var sameVisualColumn = (hovRatio >= MIN_H_OVERLAP_RATIO) || (cxDist <= MAX_CX_DIST);
+    // Con texto, usamos criterio más estricto para no cruzar columnas.
+    var sameVisualColumn = involvesText
+      ? (cxDist <= MAX_CX_DIST)
+      : ((hovRatio >= MIN_H_OVERLAP_RATIO) || (cxDist <= MAX_CX_DIST));
     var vGap = verticalGapPx(a, b);
     var nearVertical = vGap >= 0 && vGap <= PROX_Y;
-    var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
-    var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
     var bothText = aIsText && bIsText;
 
     // Evitar "pegar" párrafos entre sí solo por cercanía vertical.

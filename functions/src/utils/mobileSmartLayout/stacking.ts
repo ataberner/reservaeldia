@@ -80,6 +80,8 @@ export function jsStackingBlock(): string {
     for (var g=0; g<groups.length; g++){
       var col = groups[g] || [];
       if (!col.length) continue;
+      var colReferenceCenterX = NaN;
+      var colShiftX = NaN;
 
       // Métricas por grupo solo para debug.
       var groupMinLeft = Infinity;
@@ -149,10 +151,14 @@ export function jsStackingBlock(): string {
 
         // ¿centrar este cluster?
         var forceCenter = false;
+        var hasTextInCluster = false;
+        var hasNonTextInCluster = false;
         for (var t=0; t<c.items.length; t++){
+          var isTextT = (c.items[t].node.getAttribute("data-debug-texto") || "") === "1";
+          if (isTextT) hasTextInCluster = true;
+          else hasNonTextInCluster = true;
           if ((c.items[t].node.getAttribute("data-mobile-center") || "") === "force") {
             forceCenter = true;
-            break;
           }
         }
 
@@ -161,10 +167,63 @@ export function jsStackingBlock(): string {
         // preservando offsets internos de esa columna.
         var keepCenter = forceCenter ? true : (c.width < (info.usableW * 0.95));
         var clusterLeft = keepCenter ? (centerX - c.width / 2) : c.left;
+        var isTextOnlyCluster = hasTextInCluster && !hasNonTextInCluster;
+        var shouldCenterTextWithinCluster = false;
         if (isMultiColLayout) {
-          // Modo lectura mobile: una sola columna vertical y cada cluster
-          // centrado en pantalla.
-          clusterLeft = centerX - c.width / 2;
+          // Modo lectura mobile multi-col:
+          // usar una misma referencia X para toda la columna apilada y
+          // preservar el offset horizontal original de cada cluster.
+          // Esto mantiene alineado texto/forma cuando la columna se parte
+          // en varios clusters.
+          var relClusterLeft = (c.left || 0) - (groupMinLeft || 0);
+          clusterLeft = stackColLeft + relClusterLeft;
+
+          // Permite forzar centrado por cluster si el nodo lo pide.
+          if (forceCenter) clusterLeft = centerX - c.width / 2;
+
+          // Si esta columna tiene un cluster con forma (o mixto), usamos su
+          // centro como referencia para alinear clusters solo-texto debajo.
+          var clusterRefCenterX = NaN;
+          if (hasNonTextInCluster) {
+            // Referencia basada en items no-texto (forma/icono), no en todo el
+            // cluster, para que textos largos no desplacen el centro de columna.
+            var ntMinRel = Infinity;
+            var ntMaxRel = -Infinity;
+            for (var nti=0; nti<c.items.length; nti++){
+              var ntIt = c.items[nti];
+              var ntIsText = (ntIt.node.getAttribute("data-debug-texto") || "") === "1";
+              if (ntIsText) continue;
+              ntMinRel = Math.min(ntMinRel, (ntIt._relLeft || 0));
+              ntMaxRel = Math.max(ntMaxRel, (ntIt._relLeft || 0) + (ntIt.width || 0));
+            }
+            if (isFinite(ntMinRel) && isFinite(ntMaxRel) && ntMaxRel > ntMinRel) {
+              clusterRefCenterX = clusterLeft + ((ntMinRel + ntMaxRel) / 2);
+            } else {
+              clusterRefCenterX = clusterLeft + c.width / 2;
+            }
+
+            // Shift horizontal comun por columna basado en la primera forma.
+            // Asi, el centro real de la forma queda en centerX.
+            if (!isFinite(colShiftX)) colShiftX = centerX - clusterRefCenterX;
+            if (isFinite(colShiftX)) {
+              clusterLeft += colShiftX;
+              clusterRefCenterX += colShiftX;
+            }
+            colReferenceCenterX = clusterRefCenterX;
+          } else {
+            if (isFinite(colShiftX)) clusterLeft += colShiftX;
+          }
+
+          if (isTextOnlyCluster && isFinite(colReferenceCenterX)) {
+            var maxSnapDelta = Math.min(120, info.usableW * 0.35);
+            var clusterCenter = clusterLeft + c.width / 2;
+            var driftX = clusterCenter - colReferenceCenterX;
+            if (Math.abs(driftX) <= maxSnapDelta) {
+              clusterLeft = colReferenceCenterX - c.width / 2;
+            }
+            // Para labels cortos, centrar el contenido textual dentro del box.
+            shouldCenterTextWithinCluster = c.width <= (info.usableW * 0.65);
+          }
         }
         mslLog("stack:cluster", {
           g: g,
@@ -177,7 +236,11 @@ export function jsStackingBlock(): string {
           w: +c.width.toFixed(1),
           forceCenter: forceCenter,
           keepCenter: keepCenter,
-          items: c.items.length
+          items: c.items.length,
+          colShiftX: (typeof colShiftX === "number" && isFinite(colShiftX)) ? +colShiftX.toFixed(1) : null,
+          colReferenceCenterX: (typeof colReferenceCenterX === "number" && isFinite(colReferenceCenterX)) ? +colReferenceCenterX.toFixed(1) : null,
+          isTextOnlyCluster: isTextOnlyCluster,
+          centerShortText: shouldCenterTextWithinCluster
         });
 
         var textCount = 0;
@@ -322,19 +385,48 @@ export function jsStackingBlock(): string {
           var keepAlign = (it.node.getAttribute("data-mobile-align") || "") === "keep";
           if (keepAlign) newLeft = it.left;
 
-          if (Math.abs(newTop - it.top) > 0.5 || Math.abs(newLeft - it.left) > 0.5) changed = true;
-
-          // En textos, neutralizamos el corrimiento horizontal propio del
-          // align original (translateX(...)) para que el centrado mobile sea real.
+          // En multi-col, neutralizamos SIEMPRE translateX(...) de textos
+          // para que la posición left calculada sea la referencia visual real.
           var isTextNode = (it.node.getAttribute("data-debug-texto") || "") === "1";
+          var isShortTextBox = false;
+          var shouldRecenterTextItem = false;
+          var centerByAlign = false;
           if (isTextNode && isMultiColLayout) {
-            var taMc = ((it.node.style && it.node.style.textAlign) || "").toLowerCase();
-            var isCenteredText = taMc === "center";
-            if (isCenteredText) {
-              var tf = it.node.style.transform || "";
-              if (tf.indexOf("translateX(") !== -1) {
-                it.node.style.transform = tf.replace(/translateX\([^)]*\)/, "translateX(0px)");
+            var tf = it.node.style.transform || "";
+            if (tf.indexOf("translateX(") !== -1) {
+              it.node.style.transform = tf.replace(/translateX\([^)]*\)/, "translateX(0px)");
+            }
+            isShortTextBox = (it.width || 0) <= (info.usableW * 0.5) && (it.height || 0) <= 42;
+            var taCurrent = ((it.node.style && it.node.style.textAlign) || "").toLowerCase();
+            centerByAlign = taCurrent === "center";
+            var shouldCenterVisualText =
+              (shouldCenterTextWithinCluster || isShortTextBox || centerByAlign) &&
+              !keepAlign;
+            shouldRecenterTextItem =
+              shouldCenterVisualText &&
+              isFinite(colReferenceCenterX);
+            if (shouldRecenterTextItem) {
+              var prevLeftTxt = newLeft;
+              newLeft = colReferenceCenterX - (it.width || 0) / 2;
+              if (Math.abs(newLeft - prevLeftTxt) > 0.5) {
+                mslLog("stack:item:textRecenter", {
+                  g: g,
+                  j: j,
+                  ii: ii,
+                  prevLeft: +prevLeftTxt.toFixed(1),
+                  newLeft: +newLeft.toFixed(1),
+                  itemW: +(it.width || 0).toFixed(1),
+                  refCenterX: +colReferenceCenterX.toFixed(1),
+                  shortBox: isShortTextBox,
+                  centerByAlign: centerByAlign
+                });
               }
+            }
+            if (shouldCenterVisualText) {
+              it.node.style.textAlign = "center";
+              it.node.style.transformOrigin = "top center";
+              // Evita encogimiento horizontal heredado que desplaza el centro visual.
+              it.node.style.setProperty("--text-zoom", "1");
             }
           }
 
@@ -342,6 +434,34 @@ export function jsStackingBlock(): string {
           it.node.style.left = newLeft + "px";
           it.node.style.right = "auto";
           it.node.style.marginLeft = "0px";
+
+          // Corrección final por posición renderizada real del texto
+          // (fuentes/transform pueden introducir desvíos visuales sub-píxel).
+          if (isTextNode && isMultiColLayout && shouldRecenterTextItem) {
+            var rrTxt = relRect(it.node, rootEl);
+            var renderedCenterX = (rrTxt.left || 0) + (rrTxt.width || 0) / 2;
+            var renderDelta = renderedCenterX - colReferenceCenterX;
+            if (isFinite(renderDelta) && Math.abs(renderDelta) > 0.6) {
+              var correctedLeft = newLeft - renderDelta;
+              if (isFinite(correctedLeft)) {
+                mslLog("stack:item:textRenderAdjust", {
+                  g: g,
+                  j: j,
+                  ii: ii,
+                  prevLeft: +newLeft.toFixed(1),
+                  correctedLeft: +correctedLeft.toFixed(1),
+                  renderedCenterX: +renderedCenterX.toFixed(1),
+                  refCenterX: +colReferenceCenterX.toFixed(1),
+                  delta: +renderDelta.toFixed(2)
+                });
+                newLeft = correctedLeft;
+                it.node.style.left = newLeft + "px";
+              }
+            }
+          }
+
+          if (Math.abs(newTop - it.top) > 0.5 || Math.abs(newLeft - it.left) > 0.5) changed = true;
+
           var itemBottom = newTop + (it.height || 0);
           if (itemBottom > clusterBottomUsed) clusterBottomUsed = itemBottom;
         }

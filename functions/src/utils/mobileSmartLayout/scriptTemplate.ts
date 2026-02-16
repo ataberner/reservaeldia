@@ -12,11 +12,54 @@ export function buildScript(cfg: NormalizedConfig): string {
 (function(){
   var ENABLED = true;
   var MSL_DEBUG = true;
+  var MSL_VERBOSE = false;
+  function dbg(label, payload){
+    if (!MSL_DEBUG) return;
+    if (arguments.length <= 1) {
+      console.log("[MSL] " + label);
+      return;
+    }
+    if (typeof payload === "string") {
+      console.log("[MSL] " + label + " " + payload);
+      return;
+    }
+    var pretty = "";
+    try {
+      pretty = JSON.stringify(payload, null, 2);
+    } catch(e) {
+      try { pretty = String(payload); } catch(_) { pretty = "[unserializable]"; }
+    }
+    console.log("[MSL] " + label + "\\n" + pretty);
+  }
   function mslLog(){
     if (!MSL_DEBUG) return;
     var args = Array.prototype.slice.call(arguments);
-    args.unshift("[MSL]");
-    console.log.apply(console, args);
+    if (!args.length) return;
+    var label = String(args[0]);
+    if (!MSL_VERBOSE) {
+      var noisy = {
+        "section:nodeSources": 1,
+        "section:baselineRestore": 1,
+        "section:anchorSplit": 1,
+        "section:clusters": 1,
+        "order:three:candidates": 1,
+        "order:three:spread": 1,
+        "order:two:candidates": 1,
+        "order:two:spread": 1,
+        "order:one:candidates": 1,
+        "order:rows:fallback": 1
+      };
+      if (noisy[label]) return;
+    }
+    if (args.length === 1) {
+      dbg(label);
+      return;
+    }
+    if (args.length === 2) {
+      dbg(label, args[1]);
+      return;
+    }
+    dbg(label, args.slice(1));
   }
 
   var CFG = {
@@ -92,40 +135,42 @@ export function buildScript(cfg: NormalizedConfig): string {
 
       var nodesAll = getObjNodes(sec);
       if(nodesAll.length < 2) return;
-      mslLog("section:nodesAll:raw", {
-        secIndex: secIndex,
-        total: nodesAll.length,
-        nodes: nodesAll.map(function(n, i){
-          var cls = (n.className && typeof n.className === "string") ? n.className : "";
-          var parentCls = (n.parentElement && n.parentElement.className && typeof n.parentElement.className === "string")
-            ? n.parentElement.className
-            : "";
-          return {
-            i: i,
-            tag: (n.tagName || "").toLowerCase(),
-            cls: cls,
-            parentCls: parentCls,
-            top: n.style ? n.style.top : "",
-            left: n.style ? n.style.left : "",
-            pos: n.style ? n.style.position : "",
-            text: ((n.textContent || "").trim()).slice(0, 40)
-          };
-        })
-      });
-      try {
-        var flat = nodesAll.map(function(n, i){
-          var cls = (n.className && typeof n.className === "string") ? n.className : "";
-          var txt = ((n.textContent || "").trim()).replace(/\s+/g, " ").slice(0, 60);
-          return "#" + i
-            + " tag=" + String((n.tagName || "").toLowerCase())
-            + " cls=" + cls
-            + " pos=" + (n.style ? n.style.position : "")
-            + " top=" + (n.style ? n.style.top : "")
-            + " left=" + (n.style ? n.style.left : "")
-            + " text=" + txt;
+      if (MSL_VERBOSE) {
+        mslLog("section:nodesAll:raw", {
+          secIndex: secIndex,
+          total: nodesAll.length,
+          nodes: nodesAll.map(function(n, i){
+            var cls = (n.className && typeof n.className === "string") ? n.className : "";
+            var parentCls = (n.parentElement && n.parentElement.className && typeof n.parentElement.className === "string")
+              ? n.parentElement.className
+              : "";
+            return {
+              i: i,
+              tag: (n.tagName || "").toLowerCase(),
+              cls: cls,
+              parentCls: parentCls,
+              top: n.style ? n.style.top : "",
+              left: n.style ? n.style.left : "",
+              pos: n.style ? n.style.position : "",
+              text: ((n.textContent || "").trim()).slice(0, 40)
+            };
+          })
         });
-        mslLog("section:nodesAll:flat", "sec=" + secIndex + " total=" + nodesAll.length + " :: " + flat.join(" | "));
-      } catch(e) {}
+        try {
+          var flat = nodesAll.map(function(n, i){
+            var cls = (n.className && typeof n.className === "string") ? n.className : "";
+            var txt = ((n.textContent || "").trim()).replace(/\s+/g, " ").slice(0, 60);
+            return "#" + i
+              + " tag=" + String((n.tagName || "").toLowerCase())
+              + " cls=" + cls
+              + " pos=" + (n.style ? n.style.position : "")
+              + " top=" + (n.style ? n.style.top : "")
+              + " left=" + (n.style ? n.style.left : "")
+              + " text=" + txt;
+          });
+          mslLog("section:nodesAll:flat", "sec=" + secIndex + " total=" + nodesAll.length + " :: " + flat.join(" | "));
+        } catch(e) {}
+      }
       var restoredCount = 0;
       nodesAll.forEach(function(node){
         var hasOrigTop = node.hasAttribute("data-msl-orig-top");
@@ -159,6 +204,13 @@ export function buildScript(cfg: NormalizedConfig): string {
       // Rect del content (métricas reales)
       var contentRect = content.getBoundingClientRect();
       var contentW = contentRect.width || 0;
+      var secCurrentH = sec.getBoundingClientRect().height || 0;
+      var baseHeightAttr = "data-msl-base-height";
+      if (!sec.hasAttribute(baseHeightAttr)) {
+        sec.setAttribute(baseHeightAttr, String(secCurrentH));
+      }
+      var baseSecHeight = parseFloat(sec.getAttribute(baseHeightAttr) || "");
+      if (!isFinite(baseSecHeight) || baseSecHeight <= 0) baseSecHeight = secCurrentH;
 
       // items (rects) en coordenadas del content (TODOS)
       var itemsAll = nodesAll.map(function(node){
@@ -171,21 +223,32 @@ export function buildScript(cfg: NormalizedConfig): string {
           width: rc.width
         };
       });
-      mslLog("section:itemsAll", {
-        secIndex: secIndex,
-        total: itemsAll.length,
-        items: itemsAll.map(function(it, idx){
-          return {
-            i: idx,
-            kind: (it.node.getAttribute("data-debug-texto") || "") === "1" ? "texto" : (it.node.tagName || "").toLowerCase(),
-            top: +it.top.toFixed(1),
-            left: +it.left.toFixed(1),
-            w: +it.width.toFixed(1),
-            h: +it.height.toFixed(1),
-            textAlign: (it.node.style && it.node.style.textAlign) ? it.node.style.textAlign : ""
-          };
-        })
-      });
+      if (MSL_VERBOSE) {
+        mslLog("section:itemsAll", {
+          secIndex: secIndex,
+          total: itemsAll.length,
+          items: itemsAll.map(function(it, idx){
+            return {
+              i: idx,
+              kind: (it.node.getAttribute("data-debug-texto") || "") === "1" ? "texto" : (it.node.tagName || "").toLowerCase(),
+              top: +it.top.toFixed(1),
+              left: +it.left.toFixed(1),
+              w: +it.width.toFixed(1),
+              h: +it.height.toFixed(1),
+              textAlign: (it.node.style && it.node.style.textAlign) ? it.node.style.textAlign : ""
+            };
+          })
+        });
+      }
+
+      // Preservar el "aire" inferior original de la seccion tras el reflow.
+      var maxOriginalBottom = 0;
+      for (var ib=0; ib<itemsAll.length; ib++){
+        var itb = itemsAll[ib];
+        var btm = (itb.top || 0) + (itb.height || 0);
+        if (btm > maxOriginalBottom) maxOriginalBottom = btm;
+      }
+      var baseBottomGap = Math.max(0, baseSecHeight - maxOriginalBottom);
 
       // Si todo mide 0 (fonts no listas), reintentamos luego
       var anyValidAll = itemsAll.some(function(it){ return it.height > 0.5; });
@@ -307,7 +370,8 @@ export function buildScript(cfg: NormalizedConfig): string {
         secIndex: secIndex,
         changed: !!(res && res.changed),
         neededHeight: res ? res.neededHeight : null,
-        maxAnchorBottom: +maxAnchorBottom.toFixed(1)
+        maxAnchorBottom: +maxAnchorBottom.toFixed(1),
+        baseBottomGap: +baseBottomGap.toFixed(1)
       });
 
       if (res && res.changed) {
@@ -317,6 +381,9 @@ export function buildScript(cfg: NormalizedConfig): string {
           // sumamos padding bottom para que no quede pegado
           var anchorNeeded = Math.ceil(maxAnchorBottom + (CFG.PAD_BOT || 0));
           if (anchorNeeded > needed) needed = anchorNeeded;
+        }
+        if (baseBottomGap > 0) {
+          needed = Math.ceil(needed + baseBottomGap);
         }
         if (needed > 0) expandFixedSection(sec, needed);
       }

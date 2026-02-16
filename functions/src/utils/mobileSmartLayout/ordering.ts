@@ -118,8 +118,14 @@ export function jsOrderingBlock(): string {
 
       var anyForceCenter = (sA.force > 0 || sB.force > 0);
       var bothMixed = (sA.text > 0 && sA.non > 0 && sB.text > 0 && sB.non > 0);
+      // Señal robusta de "par de columnas":
+      // - están lado a lado y pasan split left/right
+      // - y además no son simplemente 2 textos sueltos en una fila
+      var hasColumnSignal =
+        (sA.non > 0 || sB.non > 0) ||
+        ((cA.items && cA.items.length > 1) || (cB.items && cB.items.length > 1));
 
-      if (looksTwo && sideBySide && bothMixed && !anyForceCenter) {
+      if (looksTwo && sideBySide && hasColumnSignal) {
         var leftPair = (cA.cx <= cB.cx) ? [cA] : [cB];
         var rightPair = (cA.cx <= cB.cx) ? [cB] : [cA];
         mslLog("order:two:pairPolicy", {
@@ -127,6 +133,7 @@ export function jsOrderingBlock(): string {
           reason: "pairColumns",
           topDelta: +topDelta.toFixed(1),
           xOverlapRatio: +xOverlapRatio.toFixed(3),
+          hasColumnSignal: hasColumnSignal,
           bothMixed: bothMixed,
           anyForceCenter: anyForceCenter,
           lefts: [+(cA.left || 0).toFixed(1), +(cB.left || 0).toFixed(1)]

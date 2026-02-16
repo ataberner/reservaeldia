@@ -42,25 +42,8 @@ export function jsStackingBlock(): string {
     var changed = false;
     var isMultiColLayout = (mode === "two" || mode === "three");
 
-    // En multi-columna: apilar columnas una debajo de otra en una misma
-    // "columna visual" centrada.
-    var stackColWidth = 0;
-    if (isMultiColLayout){
-      for (var g0=0; g0<groups.length; g0++){
-        var grp0 = groups[g0] || [];
-        if (!grp0.length) continue;
-        var gMin = Infinity;
-        var gMax = -Infinity;
-        for (var c0=0; c0<grp0.length; c0++){
-          var cl0 = grp0[c0];
-          gMin = Math.min(gMin, cl0.left);
-          gMax = Math.max(gMax, cl0.left + cl0.width);
-        }
-        var gWidth = Math.max(0, gMax - gMin);
-        if (gWidth > stackColWidth) stackColWidth = gWidth;
-      }
-    }
-    var stackColLeft = isMultiColLayout ? (centerX - stackColWidth / 2) : 0;
+    // En multi-columna: cada columna apilada se centra por su propio bbox.
+    // Así, el centro de cada columna coincide con el centro de pantalla.
 
     // --- Anchor global: dónde estaba “el bloque” originalmente ---
     var firstGroup = groups[0] || [];
@@ -82,7 +65,6 @@ export function jsStackingBlock(): string {
       if (!col.length) continue;
       var colReferenceCenterX = NaN;
       var colSourceReferenceCenterX = NaN;
-      var colShiftX = NaN;
 
       // Métricas por grupo solo para debug.
       var groupMinLeft = Infinity;
@@ -113,8 +95,6 @@ export function jsStackingBlock(): string {
         colStart: +colStart.toFixed(1),
         globalCursor: +globalCursor.toFixed(1),
         mode: mode,
-        stackColWidth: isMultiColLayout ? +stackColWidth.toFixed(1) : null,
-        stackColLeft: isMultiColLayout ? +stackColLeft.toFixed(1) : null,
         groupMinLeft: isMultiColLayout ? +groupMinLeft.toFixed(1) : null,
         groupWidth: isMultiColLayout ? +groupWidth.toFixed(1) : null,
         groupBaseLeft: isMultiColLayout ? +groupBaseLeft.toFixed(1) : null
@@ -192,7 +172,7 @@ export function jsStackingBlock(): string {
           // Esto mantiene alineado texto/forma cuando la columna se parte
           // en varios clusters.
           var relClusterLeft = (c.left || 0) - (groupMinLeft || 0);
-          clusterLeft = stackColLeft + relClusterLeft;
+          clusterLeft = groupBaseLeft + relClusterLeft;
 
           // Permite forzar centrado por cluster si el nodo lo pide.
           if (forceCenter) clusterLeft = centerX - c.width / 2;
@@ -221,17 +201,8 @@ export function jsStackingBlock(): string {
               sourceClusterRefCenterX = (c.left || 0) + c.width / 2;
             }
 
-            // Shift horizontal comun por columna basado en la primera forma.
-            // Asi, el centro real de la forma queda en centerX.
-            if (!isFinite(colShiftX)) colShiftX = centerX - clusterRefCenterX;
-            if (isFinite(colShiftX)) {
-              clusterLeft += colShiftX;
-              clusterRefCenterX += colShiftX;
-            }
             colReferenceCenterX = clusterRefCenterX;
             colSourceReferenceCenterX = sourceClusterRefCenterX;
-          } else {
-            if (isFinite(colShiftX)) clusterLeft += colShiftX;
           }
 
           if (isTextOnlyCluster && isFinite(colReferenceCenterX)) {
@@ -259,7 +230,6 @@ export function jsStackingBlock(): string {
           forceCenter: forceCenter,
           keepCenter: keepCenter,
           items: c.items.length,
-          colShiftX: (typeof colShiftX === "number" && isFinite(colShiftX)) ? +colShiftX.toFixed(1) : null,
           colReferenceCenterX: (typeof colReferenceCenterX === "number" && isFinite(colReferenceCenterX)) ? +colReferenceCenterX.toFixed(1) : null,
           isTextOnlyCluster: isTextOnlyCluster,
           centerShortText: shouldCenterTextWithinCluster

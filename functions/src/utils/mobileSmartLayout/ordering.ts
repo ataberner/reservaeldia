@@ -16,6 +16,48 @@ export function jsOrderingBlock(): string {
       return { groups: [o], mode: "one" };
     }
 
+    function clusterHasText(c){
+      if (!c || !c.items || !c.items.length) return false;
+      for (var iTxt=0; iTxt<c.items.length; iTxt++){
+        if ((c.items[iTxt].node.getAttribute("data-debug-texto") || "") === "1") return true;
+      }
+      return false;
+    }
+
+    function columnHasText(col){
+      if (!col || !col.length) return false;
+      for (var iCol=0; iCol<col.length; iCol++){
+        if (clusterHasText(col[iCol])) return true;
+      }
+      return false;
+    }
+
+    // Un cluster "invade" una frontera si queda partido de forma significativa
+    // entre ambos lados de la linea divisoria.
+    function clusterInvadesDivider(c, dividerX){
+      if (!c) return false;
+      var left = Number(c.left || 0);
+      var width = Math.max(0, Number(c.width || 0));
+      var right = left + width;
+      if (width <= 1) return false;
+      if (right <= dividerX || left >= dividerX) return false;
+
+      var partLeft = dividerX - left;
+      var partRight = right - dividerX;
+      var minPart = Math.min(partLeft, partRight);
+      var minRequired = Math.max(22, width * 0.22);
+      return minPart >= minRequired;
+    }
+
+    function dividerInvasionRatio(list, dividerX){
+      if (!list || !list.length) return 0;
+      var invaded = 0;
+      for (var iInv=0; iInv<list.length; iInv++){
+        if (clusterInvadesDivider(list[iInv], dividerX)) invaded++;
+      }
+      return invaded / Math.max(1, list.length);
+    }
+
     // -------- 0) Intentar 3 columnas claras --------
     var t1 = rootW / 3;
     var t2 = (2 * rootW) / 3;
@@ -34,13 +76,20 @@ export function jsOrderingBlock(): string {
 
     var looksThree =
       (colL.length >= CFG.MIN_PER_COL_3 && colC.length >= CFG.MIN_PER_COL_3 && colR.length >= CFG.MIN_PER_COL_3);
+    var textColsThree =
+      (columnHasText(colL) ? 1 : 0) +
+      (columnHasText(colC) ? 1 : 0) +
+      (columnHasText(colR) ? 1 : 0);
+    var hasTextSignalThree = textColsThree >= 2;
     mslLog("order:three:candidates", {
       rootW: rootW,
       total: clusters.length,
       colL: colL.length,
       colC: colC.length,
       colR: colR.length,
-      minPerCol3: CFG.MIN_PER_COL_3
+      minPerCol3: CFG.MIN_PER_COL_3,
+      textColsThree: textColsThree,
+      hasTextSignalThree: hasTextSignalThree
     });
 
     if (looksThree) {
@@ -58,6 +107,24 @@ export function jsOrderingBlock(): string {
         pass: spread >= rootW * CFG.THREE_COL_SPREAD_RATIO
       });
       if (spread < rootW * CFG.THREE_COL_SPREAD_RATIO) looksThree = false;
+    }
+
+    if (looksThree) {
+      var invadeT1 = dividerInvasionRatio(clusters, t1);
+      var invadeT2 = dividerInvasionRatio(clusters, t2);
+      var invadeThree = Math.max(invadeT1, invadeT2);
+      var invasionLimitThree = hasTextSignalThree ? 0.46 : 0.34;
+      mslLog("order:three:invasion", {
+        t1: +t1.toFixed(1),
+        t2: +t2.toFixed(1),
+        invadeT1: +invadeT1.toFixed(3),
+        invadeT2: +invadeT2.toFixed(3),
+        invadeThree: +invadeThree.toFixed(3),
+        limit: +invasionLimitThree.toFixed(3),
+        hasTextSignalThree: hasTextSignalThree,
+        pass: invadeThree <= invasionLimitThree
+      });
+      if (invadeThree > invasionLimitThree) looksThree = false;
     }
 
     if (looksThree) {
@@ -79,12 +146,14 @@ export function jsOrderingBlock(): string {
     }
 
     var looksTwo = (left.length >= CFG.MIN_PER_COL_2 && right.length >= CFG.MIN_PER_COL_2);
+    var hasTextSignalTwo = columnHasText(left) && columnHasText(right);
     mslLog("order:two:candidates", {
       rootW: rootW,
       total: clusters.length,
       left: left.length,
       right: right.length,
-      minPerCol2: CFG.MIN_PER_COL_2
+      minPerCol2: CFG.MIN_PER_COL_2,
+      hasTextSignalTwo: hasTextSignalTwo
     });
 
     // Politica para pares (2 clusters):
@@ -115,6 +184,8 @@ export function jsOrderingBlock(): string {
       var minWPair = Math.max(1, Math.min((cA.width || 0), (cB.width || 0)));
       var xOverlapRatio = xOverlap / minWPair;
       var sideBySide = topDelta <= (CFG.ROW_TOL * 1.5) && xOverlapRatio < 0.25;
+      var pairInvasion = dividerInvasionRatio([cA, cB], mid);
+      var pairInvasionLimit = hasTextSignalTwo ? 0.5 : 0.34;
 
       var anyForceCenter = (sA.force > 0 || sB.force > 0);
       var bothMixed = (sA.text > 0 && sA.non > 0 && sB.text > 0 && sB.non > 0);
@@ -125,7 +196,7 @@ export function jsOrderingBlock(): string {
         (sA.non > 0 || sB.non > 0) ||
         ((cA.items && cA.items.length > 1) || (cB.items && cB.items.length > 1));
 
-      if (looksTwo && sideBySide && hasColumnSignal) {
+      if (looksTwo && sideBySide && hasColumnSignal && pairInvasion <= pairInvasionLimit) {
         var leftPair = (cA.cx <= cB.cx) ? [cA] : [cB];
         var rightPair = (cA.cx <= cB.cx) ? [cB] : [cA];
         mslLog("order:two:pairPolicy", {
@@ -136,6 +207,8 @@ export function jsOrderingBlock(): string {
           hasColumnSignal: hasColumnSignal,
           bothMixed: bothMixed,
           anyForceCenter: anyForceCenter,
+          pairInvasion: +pairInvasion.toFixed(3),
+          pairInvasionLimit: +pairInvasionLimit.toFixed(3),
           lefts: [+(cA.left || 0).toFixed(1), +(cB.left || 0).toFixed(1)]
         });
         return { groups: [leftPair, rightPair], mode: "two" };
@@ -153,6 +226,8 @@ export function jsOrderingBlock(): string {
         sideBySide: sideBySide,
         bothMixed: bothMixed,
         anyForceCenter: anyForceCenter,
+        pairInvasion: +pairInvasion.toFixed(3),
+        pairInvasionLimit: +pairInvasionLimit.toFixed(3),
         tops: pair.map(function(c){ return +c.top.toFixed(1); }),
         lefts: pair.map(function(c){ return +c.left.toFixed(1); })
       });
@@ -173,6 +248,19 @@ export function jsOrderingBlock(): string {
         pass: spread2 >= rootW * CFG.TWO_COL_SPREAD_RATIO
       });
       if (spread2 < rootW * CFG.TWO_COL_SPREAD_RATIO) looksTwo = false;
+    }
+
+    if (looksTwo) {
+      var invadeMid = dividerInvasionRatio(clusters, mid);
+      var invasionLimitTwo = hasTextSignalTwo ? 0.48 : 0.34;
+      mslLog("order:two:invasion", {
+        mid: +mid.toFixed(1),
+        invadeMid: +invadeMid.toFixed(3),
+        limit: +invasionLimitTwo.toFixed(3),
+        hasTextSignalTwo: hasTextSignalTwo,
+        pass: invadeMid <= invasionLimitTwo
+      });
+      if (invadeMid > invasionLimitTwo) looksTwo = false;
     }
 
     if (looksTwo) {

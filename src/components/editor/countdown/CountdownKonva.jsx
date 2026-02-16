@@ -21,7 +21,6 @@ import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@
 export default function CountdownKonva({
   obj,
   registerRef,
-  isSelected,
   seccionesOrdenadas,
   altoCanvas,
   onSelect,
@@ -363,11 +362,14 @@ export default function CountdownKonva({
     >
       {/* Hitbox */}
       <Rect
+        name="countdown-hitbox"
         width={containerW}
         height={containerH}
         fill={obj.background || "transparent"}
-        stroke={isSelected ? "#773dbe" : "transparent"}
-        strokeWidth={isSelected ? 2 : 0}
+        // El borde de selección lo dibuja SelectionBounds (Transformer).
+        // Evita doble recuadro (violeta + celeste punteado) en countdown.
+        stroke="transparent"
+        strokeWidth={0}
         cornerRadius={8}
         listening={true}
         perfectDrawEnabled={false}

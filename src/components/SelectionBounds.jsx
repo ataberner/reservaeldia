@@ -34,6 +34,30 @@ function rectFromNodes(nodes) {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+function getCountdownScaledSize(node) {
+  try {
+    const hitbox = node?.findOne?.(".countdown-hitbox");
+    const baseW = typeof hitbox?.width === "function" ? hitbox.width() : NaN;
+    const baseH = typeof hitbox?.height === "function" ? hitbox.height() : NaN;
+    const sx = Math.abs(typeof node?.scaleX === "function" ? (node.scaleX() || 1) : 1);
+    const sy = Math.abs(typeof node?.scaleY === "function" ? (node.scaleY() || 1) : 1);
+
+    if (Number.isFinite(baseW) && Number.isFinite(baseH) && baseW > 0 && baseH > 0) {
+      return {
+        width: Math.abs(baseW * sx),
+        height: Math.abs(baseH * sy),
+      };
+    }
+  } catch {}
+
+  try {
+    const r = node.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
+    return { width: Math.abs(r.width), height: Math.abs(r.height) };
+  } catch {}
+
+  return { width: 100, height: 50 };
+}
+
 
 // 🎨 Componente para mostrar bounds sin transformer (líneas, etc.)
 const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
@@ -187,6 +211,8 @@ export default function SelectionBounds({
 
   const primerElemento = elementosSeleccionadosData[0] || null;
   const esTexto = primerElemento?.tipo === "texto";
+  const esCountdown = primerElemento?.tipo === "countdown";
+  const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
 
   const hasGallery = elementosSeleccionadosData.some(
     (o) => o.tipo === "galeria"
@@ -202,6 +228,25 @@ export default function SelectionBounds({
 
   const deberiaUsarTransformer =
     elementosTransformables.length > 0 && !hasGallery;
+
+  const selectedGeomKey = elementosSeleccionadosData
+    .map((o) =>
+      [
+        o.id,
+        o.x ?? 0,
+        o.y ?? 0,
+        o.width ?? "",
+        o.height ?? "",
+        o.scaleX ?? 1,
+        o.scaleY ?? 1,
+        o.rotation ?? 0,
+        o.chipWidth ?? "",
+        o.gap ?? "",
+        o.paddingX ?? "",
+        o.paddingY ?? "",
+      ].join(":")
+    )
+    .join("|");
 
 
   // 🔥 Efecto principal del Transformer (SIN retry / SIN flicker)
@@ -282,6 +327,7 @@ export default function SelectionBounds({
     deberiaUsarTransformer,
     hasGallery,
     elementosTransformables.length,
+    selectedGeomKey,
     transformTick,
     elementRefs,
   ]);
@@ -370,7 +416,7 @@ export default function SelectionBounds({
       anchorShadowColor="rgba(59, 130, 246, 0.3)"
       anchorShadowBlur={6}
       anchorShadowOffset={{ x: 0, y: 3 }}
-      keepRatio={false}
+      keepRatio={lockAspectCountdown}
       centeredScaling={false}
       flipEnabled={false}
       resizeEnabled={!isDragging}
@@ -383,6 +429,30 @@ export default function SelectionBounds({
 
         if (newBox.width < minSize || newBox.height < minSize) {
           return oldBox;
+        }
+
+        if (lockAspectCountdown) {
+          const baseW = Math.max(1, oldBox.width);
+          const baseH = Math.max(1, oldBox.height);
+          const ratio = baseW / baseH;
+
+          const dw = Math.abs(newBox.width - oldBox.width) / baseW;
+          const dh = Math.abs(newBox.height - oldBox.height) / baseH;
+
+          let width = newBox.width;
+          let height = newBox.height;
+
+          if (dh > dw) {
+            width = height * ratio;
+          } else {
+            height = width / ratio;
+          }
+
+          return {
+            ...newBox,
+            width: Math.min(Math.max(width, minSize), maxSize),
+            height: Math.min(Math.max(height, minSize), maxSize),
+          };
         }
 
         if (esTexto) {
@@ -498,11 +568,16 @@ export default function SelectionBounds({
             transformData.scaleX = scaleX;
             transformData.scaleY = scaleY;
 
-            const originalWidth = primerElemento.width || 100;
-            const originalHeight = primerElemento.height || 100;
-
-            transformData.width = Math.abs(originalWidth * scaleX);
-            transformData.height = Math.abs(originalHeight * scaleY);
+            if (primerElemento?.tipo === "countdown") {
+              const countdownSize = getCountdownScaledSize(node);
+              transformData.width = countdownSize.width;
+              transformData.height = countdownSize.height;
+            } else {
+              const originalWidth = primerElemento.width || 100;
+              const originalHeight = primerElemento.height || 100;
+              transformData.width = Math.abs(originalWidth * scaleX);
+              transformData.height = Math.abs(originalHeight * scaleY);
+            }
 
             if (primerElemento?.figura === "circle") {
               const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
@@ -586,6 +661,13 @@ export default function SelectionBounds({
                   return upd;
                 }
 
+                if (obj.tipo === "countdown") {
+                  const countdownSize = getCountdownScaledSize(n);
+                  upd.width = countdownSize.width;
+                  upd.height = countdownSize.height;
+                  return upd;
+                }
+
                 const baseW =
                   obj.width != null ? obj.width : (typeof n.width === "function" ? n.width() : 100);
                 const baseH =
@@ -656,44 +738,53 @@ export default function SelectionBounds({
               console.warn("Error aplanando escalas de texto (sync):", err);
             }
           } else {
-            const originalWidth = primerElemento.width || 100;
-            const originalHeight = primerElemento.height || 100;
-
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
+            if (primerElemento?.tipo === "countdown") {
+              // Countdown: persistir escala real para que el resultado final
+              // sea exactamente el mismo que se ve al soltar.
+              finalData.scaleX = scaleX;
+              finalData.scaleY = scaleY;
+              const countdownSize = getCountdownScaledSize(node);
+              finalData.width = countdownSize.width;
+              finalData.height = countdownSize.height;
+            } else {
+              finalData.scaleX = 1;
+              finalData.scaleY = 1;
+              const originalWidth = primerElemento.width || 100;
+              const originalHeight = primerElemento.height || 100;
 
-            finalData.width = Math.abs(originalWidth * scaleX);
-            finalData.height = Math.abs(originalHeight * scaleY);
-            finalData.scaleX = 1;
-            finalData.scaleY = 1;
+              finalData.width = Math.abs(originalWidth * scaleX);
+              finalData.height = Math.abs(originalHeight * scaleY);
 
-            if (primerElemento?.figura === "circle") {
-              const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
-              finalData.radius = (primerElemento.radius || 50) * avgScale;
-            }
-
-            // ✅ Aplanar escala INMEDIATO
-            try {
-              const fw = finalData.width;
-              const fh = finalData.height;
-
-              node.scaleX(1);
-              node.scaleY(1);
-
-              if (fw != null && typeof node.width === "function") node.width(fw);
-              if (fh != null && typeof node.height === "function") node.height(fh);
-
-              if (
-                primerElemento?.figura === "circle" &&
-                finalData.radius != null &&
-                typeof node.radius === "function"
-              ) {
-                node.radius(finalData.radius);
+              if (primerElemento?.figura === "circle") {
+                const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+                finalData.radius = (primerElemento.radius || 50) * avgScale;
               }
 
-              node.getLayer()?.batchDraw();
-            } catch (err) {
-              console.warn("Error aplanando escalas (sync):", err);
+              // ✅ Aplanar escala INMEDIATO
+              try {
+                const fw = finalData.width;
+                const fh = finalData.height;
+
+                node.scaleX(1);
+                node.scaleY(1);
+
+                if (fw != null && typeof node.width === "function") node.width(fw);
+                if (fh != null && typeof node.height === "function") node.height(fh);
+
+                if (
+                  primerElemento?.figura === "circle" &&
+                  finalData.radius != null &&
+                  typeof node.radius === "function"
+                ) {
+                  node.radius(finalData.radius);
+                }
+
+                node.getLayer()?.batchDraw();
+              } catch (err) {
+                console.warn("Error aplanando escalas (sync):", err);
+              }
             }
           }
 

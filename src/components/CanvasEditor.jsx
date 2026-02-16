@@ -2323,6 +2323,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                 setObjetos(prev => {
                                   const nuevos = [...prev];
                                   const elemento = nuevos[objIndex];
+                                  // Countdown: durante preview dejamos que Konva escale el nodo
+                                  // sin tocar estado React para evitar desincronización con Transformer.
+                                  if (elemento.tipo === "countdown") {
+                                    return prev;
+                                  }
 
                                   const updatedElement = {
                                     ...elemento,
@@ -2335,25 +2340,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                     updatedElement.scaleX = 1;
                                     updatedElement.scaleY = 1;
                                   } else {
-                                    // ✅ Caso especial: COUNTDOWN (evita resize errático por recentrado)
-                                    // ✅ COUNTDOWN: NO tocar width/chipWidth durante preview (evita “doble resize”)
-                                    if (elemento.tipo === "countdown") {
-                                      // opcional: solo guardar rotación si querés que rote en vivo
-                                      updatedElement.rotation = newAttrs.rotation || elemento.rotation || 0;
-
-                                      // (si querés ver el targetW en consola sin ensuciar)
-                                      // if (window.DEBUG_RESIZE) console.log("[CE] preview countdown", newAttrs.width);
-
-                                      nuevos[objIndex] = updatedElement;
-                                      return nuevos;
-                                    } else {
-
-                                      if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
-                                      if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
-                                      if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
-                                      updatedElement.scaleX = 1;
-                                      updatedElement.scaleY = 1;
-                                    }
+                                    if (newAttrs.width !== undefined) updatedElement.width = newAttrs.width;
+                                    if (newAttrs.height !== undefined) updatedElement.height = newAttrs.height;
+                                    if (newAttrs.radius !== undefined) updatedElement.radius = newAttrs.radius;
+                                    updatedElement.scaleX = 1;
+                                    updatedElement.scaleY = 1;
                                   }
 
                                   nuevos[objIndex] = updatedElement;
@@ -2382,22 +2373,16 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   fromTransform: true
                                 };
 
-                                // ✅ Caso especial: COUNTDOWN (persistir chipWidth según width final)
-                                if (objOriginal.tipo === "countdown" && cleanAttrs.width != null) {
-                                  const n = 4;
-                                  const gap = objOriginal.gap ?? 8;
-                                  const paddingX = objOriginal.paddingX ?? 8;
-                                  const targetW = Math.max(120, cleanAttrs.width);
-                                  const chipWTotal = (targetW - gap * (n - 1)) / n;
-                                  const nextChipWidth = Math.max(10, Math.round(chipWTotal - paddingX * 2));
-
+                                // ✅ COUNTDOWN: conservar escala final del drag (sin reconversión a chipWidth)
+                                // para que el tamaño final coincida exactamente con lo soltado.
+                                if (objOriginal.tipo === "countdown") {
                                   finalAttrs = {
                                     ...finalAttrs,
-                                    width: targetW,
-                                    chipWidth: nextChipWidth,
-                                    scaleX: 1,
-                                    scaleY: 1,
+                                    scaleX: Number.isFinite(cleanAttrs.scaleX) ? cleanAttrs.scaleX : (objOriginal.scaleX ?? 1),
+                                    scaleY: Number.isFinite(cleanAttrs.scaleY) ? cleanAttrs.scaleY : (objOriginal.scaleY ?? 1),
                                   };
+                                  delete finalAttrs.width;
+                                  delete finalAttrs.height;
                                 }
 
                                 // ✅ offsetY solo para debug (evita ReferenceError)
@@ -2418,9 +2403,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   yRelativa: finalAttrs.y
                                 });
 
-                                requestAnimationFrame(() => {
+                                if (objOriginal.tipo === "countdown") {
                                   actualizarObjeto(objIndex, finalAttrs);
-                                });
+                                } else {
+                                  requestAnimationFrame(() => {
+                                    actualizarObjeto(objIndex, finalAttrs);
+                                  });
+                                }
 
                               }
                             }

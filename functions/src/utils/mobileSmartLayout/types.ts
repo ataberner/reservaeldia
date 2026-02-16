@@ -19,4 +19,9 @@ export type MobileSmartLayoutOptions = {
   minPerColumn3?: number;
 
   gapScale?: number;
+
+  fitMinScale?: number;
+  fitMaxScale?: number;
+  fitTargetWidthRatio?: number;
+  fitMinFillRatio?: number;
 };

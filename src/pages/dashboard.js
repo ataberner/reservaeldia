@@ -103,7 +103,37 @@ export default function Dashboard() {
           const t = String(o?.tipo || "sin-tipo");
           resumen[sec].tipos[t] = (resumen[sec].tipos[t] || 0) + 1;
         });
-        console.log("[PREVIEW] objetos por sección:", resumen);
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const dpr = window.devicePixelRatio || 1;
+        const ua = navigator.userAgent || "";
+        const mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+        const mobileViewport = vw <= 767;
+        const desktopMobilePreview = mobileViewport && !mobileUA;
+
+        const filas = Object.keys(resumen)
+          .sort((a, b) => {
+            const ta = resumen[a]?.total || 0;
+            const tb = resumen[b]?.total || 0;
+            if (tb !== ta) return tb - ta;
+            return a.localeCompare(b);
+          })
+          .map((secId) => {
+            const item = resumen[secId] || { total: 0, tipos: {} };
+            const tiposTxt = Object.keys(item.tipos || {})
+              .sort()
+              .map((tipo) => `${tipo}:${item.tipos[tipo]}`)
+              .join(", ");
+            return `${secId} | total=${item.total} | tipos=${tiposTxt || "-"}`;
+          });
+
+        const header =
+          `[PREVIEW] objetos por seccion (abierto)\n` +
+          `viewport=${vw}x${vh} dpr=${Number(dpr).toFixed(2)} ` +
+          `mobileViewport=${mobileViewport} desktopMobilePreview=${desktopMobilePreview} mobileUA=${mobileUA}\n` +
+          `secciones=${Object.keys(resumen).length} objetos=${objetosBase.length}`;
+
+        console.log(`${header}\n${filas.join("\n")}`);
       } catch (e) {
         console.warn("[PREVIEW] no se pudo armar resumen de objetos", e);
       }

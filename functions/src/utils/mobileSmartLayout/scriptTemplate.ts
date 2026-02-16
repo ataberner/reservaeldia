@@ -1,6 +1,7 @@
 // functions/src/utils/mobileSmartLayout/scriptTemplate.ts
 import { NormalizedConfig } from "./config";
 import { jsDomHelpersBlock } from "./dom";
+import { jsFitScaleBlock } from "./fitScale";
 import { jsOrderingBlock } from "./ordering";
 import { jsStackingBlock } from "./stacking";
 
@@ -11,8 +12,42 @@ export function buildScript(cfg: NormalizedConfig): string {
 <script>
 (function(){
   var ENABLED = true;
-  var MSL_DEBUG = true;
-  var MSL_VERBOSE = false;
+  var MSL_DEBUG = (function(){
+    try {
+      var search = (window.location && window.location.search) ? window.location.search : "";
+      var qp = new URLSearchParams(search);
+      var force = qp.get("mslDebug");
+      if (force === "1") {
+        try { localStorage.setItem("mslDebug", "1"); } catch(_e1) {}
+        return true;
+      }
+      if (force === "0") {
+        try { localStorage.removeItem("mslDebug"); } catch(_e2) {}
+        return false;
+      }
+      return localStorage.getItem("mslDebug") === "1";
+    } catch(_e) {
+      return false;
+    }
+  })();
+  var MSL_VERBOSE = (function(){
+    try {
+      var search = (window.location && window.location.search) ? window.location.search : "";
+      var qp = new URLSearchParams(search);
+      var force = qp.get("mslVerbose");
+      if (force === "1") {
+        try { localStorage.setItem("mslVerbose", "1"); } catch(_e1) {}
+        return true;
+      }
+      if (force === "0") {
+        try { localStorage.removeItem("mslVerbose"); } catch(_e2) {}
+        return false;
+      }
+      return localStorage.getItem("mslVerbose") === "1";
+    } catch(_e) {
+      return false;
+    }
+  })();
   function dbg(label, payload){
     if (!MSL_DEBUG) return;
     if (arguments.length <= 1) {
@@ -79,7 +114,12 @@ export function buildScript(cfg: NormalizedConfig): string {
     MIN_PER_COL_2: ${cfg.minPerColumn2},
 
     THREE_COL_SPREAD_RATIO: ${cfg.threeColSpreadRatio},
-    MIN_PER_COL_3: ${cfg.minPerColumn3}
+    MIN_PER_COL_3: ${cfg.minPerColumn3},
+
+    FIT_MIN_SCALE: ${cfg.fitMinScale},
+    FIT_MAX_SCALE: ${cfg.fitMaxScale},
+    FIT_TARGET_WIDTH_RATIO: ${cfg.fitTargetWidthRatio},
+    FIT_MIN_FILL_RATIO: ${cfg.fitMinFillRatio}
   };
 
   ${jsDomHelpersBlock()}
@@ -87,6 +127,8 @@ export function buildScript(cfg: NormalizedConfig): string {
   ${jsOrderingBlock()}
 
   ${jsStackingBlock()}
+
+  ${jsFitScaleBlock()}
 
   function expandFixedSection(sec, neededHeight){
     var currentH = sec.getBoundingClientRect().height || 0;
@@ -106,20 +148,46 @@ export function buildScript(cfg: NormalizedConfig): string {
 
   function runOnce(){
     if(!ENABLED) return;
-    if(!isMobile()) return;
+    if(!isMobile()) {
+      Array.from(document.querySelectorAll(".sec")).forEach(function(sec){
+        var content = sec.querySelector(".sec-content");
+        if(!content) return;
+        var bleed = sec.querySelector(".sec-bleed");
+        resetSectionFitScale(sec, content, bleed);
+        sec.setAttribute("data-msl-fit-scale", "1");
+      });
+      return;
+    }
 
     var secs = Array.from(document.querySelectorAll(".sec"));
     if(!secs.length) return;
 
     secs.forEach(function(sec){
-      if(!shouldProcessSection(sec)) return;
       var secIndex = secs.indexOf(sec);
       var secModo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
-      mslLog("section:start", { secIndex: secIndex, modo: secModo });
+      var allowReflow = shouldProcessSection(sec);
+      mslLog("section:start", { secIndex: secIndex, modo: secModo, allowReflow: allowReflow });
 
       var content = sec.querySelector(".sec-content");
       if(!content) return;
       var bleed = sec.querySelector(".sec-bleed");
+      resetSectionFitScale(sec, content, bleed);
+      var nodesAll = getObjNodes(sec);
+
+      function finalizeSection(minNeededHeight){
+        var fit = applySectionFitScale(sec, content, bleed, nodesAll, secModo, CFG, { secIndex: secIndex });
+        var fitNeeded = (fit && Number.isFinite(fit.neededHeight)) ? Number(fit.neededHeight) : 0;
+        var neededHeight = Math.max(Number(minNeededHeight || 0), fitNeeded);
+        if (secModo === "fijo" && neededHeight > 0) {
+          expandFixedSection(sec, neededHeight);
+        }
+      }
+
+      if(!nodesAll.length) {
+        finalizeSection(0);
+        return;
+      }
+
       var debugCounts = {
         secIndex: secIndex,
         contentObj: content ? content.querySelectorAll(".objeto").length : 0,
@@ -133,8 +201,6 @@ export function buildScript(cfg: NormalizedConfig): string {
       };
       mslLog("section:nodeSources", debugCounts);
 
-      var nodesAll = getObjNodes(sec);
-      if(nodesAll.length < 2) return;
       if (MSL_VERBOSE) {
         mslLog("section:nodesAll:raw", {
           secIndex: secIndex,
@@ -159,7 +225,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         try {
           var flat = nodesAll.map(function(n, i){
             var cls = (n.className && typeof n.className === "string") ? n.className : "";
-            var txt = ((n.textContent || "").trim()).replace(/\s+/g, " ").slice(0, 60);
+            var txt = ((n.textContent || "").trim()).replace(/\\s+/g, " ").slice(0, 60);
             return "#" + i
               + " tag=" + String((n.tagName || "").toLowerCase())
               + " cls=" + cls
@@ -252,7 +318,15 @@ export function buildScript(cfg: NormalizedConfig): string {
 
       // Si todo mide 0 (fonts no listas), reintentamos luego
       var anyValidAll = itemsAll.some(function(it){ return it.height > 0.5; });
-      if(!anyValidAll) return;
+      if(!anyValidAll) {
+        finalizeSection(0);
+        return;
+      }
+
+      if (!allowReflow || nodesAll.length < 2) {
+        finalizeSection(0);
+        return;
+      }
 
       // ✅ Determinar qué nodos son "ANCHOR" (no se reflowean)
       // Regla: texto centrado + casi full-width => título/hero, no mover.
@@ -301,7 +375,10 @@ export function buildScript(cfg: NormalizedConfig): string {
       });
 
       // Si no hay suficientes elementos reflowables, no hacemos nada
-      if(itemsFlow.length < 2) return;
+      if(itemsFlow.length < 2) {
+        finalizeSection(0);
+        return;
+      }
 
       // ✅ Para que "altura necesaria" no quede corta,
       // medimos el bottom máximo de anchors (en coords del content)
@@ -361,6 +438,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         willSkip: (mode === "one" && fits)
       });
       if (mode === "one" && fits) {
+        finalizeSection(0);
         return;
       }
 
@@ -374,6 +452,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         baseBottomGap: +baseBottomGap.toFixed(1)
       });
 
+      var neededAfterReflow = 0;
       if (res && res.changed) {
         // Evitar que la sección quede chica si hay anchors más abajo
         var needed = Number(res.neededHeight || 0);
@@ -385,8 +464,9 @@ export function buildScript(cfg: NormalizedConfig): string {
         if (baseBottomGap > 0) {
           needed = Math.ceil(needed + baseBottomGap);
         }
-        if (needed > 0) expandFixedSection(sec, needed);
+        if (needed > 0) neededAfterReflow = needed;
       }
+      finalizeSection(neededAfterReflow);
     });
   }
 

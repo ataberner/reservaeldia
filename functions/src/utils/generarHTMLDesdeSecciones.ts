@@ -219,13 +219,17 @@ export function generarHTMLDesdeSecciones(
     })
     .join("\n");
 
-    const scriptMobileSmart = buildMobileSmartSectionLayoutScript({
+  const scriptMobileSmart = buildMobileSmartSectionLayoutScript({
     enabled: ENABLE_MOBILE_SMART_LAYOUT,
     minGapPx: 1,
     paddingTopPx: 0,
     paddingBottomPx: 2,
     onlyFixedSections: true,
     minPerColumn2: 1,
+    fitMinScale: 0.88,
+    fitMaxScale: 1.16,
+    fitTargetWidthRatio: 0.94,
+    fitMinFillRatio: 0.9,
   });
 
   return `

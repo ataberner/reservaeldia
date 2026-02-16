@@ -6,6 +6,19 @@ export type NormalizedConfig = Required<Omit<MobileSmartLayoutOptions, "enabled"
 };
 
 export function normalizeConfig(opts: MobileSmartLayoutOptions): NormalizedConfig {
+  const fitMinScaleRaw = Number.isFinite(opts.fitMinScale) ? Number(opts.fitMinScale) : 0.88;
+  const fitMaxScaleRaw = Number.isFinite(opts.fitMaxScale) ? Number(opts.fitMaxScale) : 1.16;
+  const fitMinScale = Math.max(0.7, Math.min(1, fitMinScaleRaw));
+  const fitMaxScale = Math.max(1, fitMaxScaleRaw);
+  const fitTargetWidthRatioRaw = Number.isFinite(opts.fitTargetWidthRatio)
+    ? Number(opts.fitTargetWidthRatio)
+    : 0.94;
+  const fitTargetWidthRatio = Math.max(0.75, Math.min(0.99, fitTargetWidthRatioRaw));
+  const fitMinFillRatioRaw = Number.isFinite(opts.fitMinFillRatio)
+    ? Number(opts.fitMinFillRatio)
+    : 0.9;
+  const fitMinFillRatio = Math.max(0.6, Math.min(fitTargetWidthRatio, fitMinFillRatioRaw));
+
   return {
     enabled: !!opts.enabled,
 
@@ -26,5 +39,9 @@ export function normalizeConfig(opts: MobileSmartLayoutOptions): NormalizedConfi
     minPerColumn3: Number.isFinite(opts.minPerColumn3) ? Number(opts.minPerColumn3) : 2,
 
     gapScale: Number.isFinite(opts.gapScale) ? Number(opts.gapScale) : 0.6,
+    fitMinScale,
+    fitMaxScale,
+    fitTargetWidthRatio,
+    fitMinFillRatio,
   };
 }

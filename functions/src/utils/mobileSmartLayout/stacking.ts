@@ -328,9 +328,13 @@ export function jsStackingBlock(): string {
           // align original (translateX(...)) para que el centrado mobile sea real.
           var isTextNode = (it.node.getAttribute("data-debug-texto") || "") === "1";
           if (isTextNode && isMultiColLayout) {
-            var tf = it.node.style.transform || "";
-            if (tf.indexOf("translateX(") !== -1) {
-              it.node.style.transform = tf.replace(/translateX\([^)]*\)/, "translateX(0px)");
+            var taMc = ((it.node.style && it.node.style.textAlign) || "").toLowerCase();
+            var isCenteredText = taMc === "center";
+            if (isCenteredText) {
+              var tf = it.node.style.transform || "";
+              if (tf.indexOf("translateX(") !== -1) {
+                it.node.style.transform = tf.replace(/translateX\([^)]*\)/, "translateX(0px)");
+              }
             }
           }
 

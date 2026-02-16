@@ -16,7 +16,7 @@ export function jsOrderingBlock(): string {
       return { groups: [o], mode: "one" };
     }
 
-    // -------- 1) Intentar 3 columnas claras --------
+    // -------- 0) Intentar 3 columnas claras --------
     var t1 = rootW / 3;
     var t2 = (2 * rootW) / 3;
 
@@ -67,7 +67,7 @@ export function jsOrderingBlock(): string {
       return { groups: [colL, colC, colR], mode: "three" };
     }
 
-    // -------- 2) Intentar 2 columnas claras --------
+    // -------- 1) Intentar 2 columnas claras --------
     var mid = rootW / 2;
     var left = [];
     var right = [];
@@ -87,6 +87,70 @@ export function jsOrderingBlock(): string {
       minPerCol2: CFG.MIN_PER_COL_2
     });
 
+    // Politica para pares (2 clusters):
+    // - par de columnas reales => mode "two"
+    // - resto de casos => mode "one" (fitCheck decide si reflowea)
+    if (clusters.length === 2) {
+      var cA = clusters[0];
+      var cB = clusters[1];
+
+      function pairStats(c){
+        var text = 0;
+        var non = 0;
+        var force = 0;
+        for (var q=0; q<c.items.length; q++) {
+          var n = c.items[q].node;
+          if ((n.getAttribute("data-mobile-center") || "") === "force") force++;
+          if ((n.getAttribute("data-debug-texto") || "") === "1") text++;
+          else non++;
+        }
+        return { text: text, non: non, force: force };
+      }
+
+      var sA = pairStats(cA);
+      var sB = pairStats(cB);
+
+      var topDelta = Math.abs((cA.top || 0) - (cB.top || 0));
+      var xOverlap = Math.max(0, Math.min((cA.left + cA.width), (cB.left + cB.width)) - Math.max(cA.left, cB.left));
+      var minWPair = Math.max(1, Math.min((cA.width || 0), (cB.width || 0)));
+      var xOverlapRatio = xOverlap / minWPair;
+      var sideBySide = topDelta <= (CFG.ROW_TOL * 1.5) && xOverlapRatio < 0.25;
+
+      var anyForceCenter = (sA.force > 0 || sB.force > 0);
+      var bothMixed = (sA.text > 0 && sA.non > 0 && sB.text > 0 && sB.non > 0);
+
+      if (looksTwo && sideBySide && bothMixed && !anyForceCenter) {
+        var leftPair = (cA.cx <= cB.cx) ? [cA] : [cB];
+        var rightPair = (cA.cx <= cB.cx) ? [cB] : [cA];
+        mslLog("order:two:pairPolicy", {
+          mode: "two",
+          reason: "pairColumns",
+          topDelta: +topDelta.toFixed(1),
+          xOverlapRatio: +xOverlapRatio.toFixed(3),
+          bothMixed: bothMixed,
+          anyForceCenter: anyForceCenter,
+          lefts: [+(cA.left || 0).toFixed(1), +(cB.left || 0).toFixed(1)]
+        });
+        return { groups: [leftPair, rightPair], mode: "two" };
+      }
+
+      var pair = clusters.slice().sort(function(a,b){
+        if (Math.abs(a.top - b.top) > 0.5) return a.top - b.top;
+        return a.left - b.left;
+      });
+      mslLog("order:two:pairPolicy", {
+        mode: "one",
+        reason: anyForceCenter ? "forceCenterPair" : "pairDefault",
+        topDelta: +topDelta.toFixed(1),
+        xOverlapRatio: +xOverlapRatio.toFixed(3),
+        sideBySide: sideBySide,
+        bothMixed: bothMixed,
+        anyForceCenter: anyForceCenter,
+        tops: pair.map(function(c){ return +c.top.toFixed(1); }),
+        lefts: pair.map(function(c){ return +c.left.toFixed(1); })
+      });
+      return { groups: [pair], mode: "one" };
+    }
     if (looksTwo) {
       var cxs2 = [];
       for (var m=0;m<clusters.length;m++) cxs2.push(clusters[m].cx);
@@ -108,6 +172,36 @@ export function jsOrderingBlock(): string {
       left.sort(function(a,b){ return a.top - b.top; });
       right.sort(function(a,b){ return a.top - b.top; });
       return { groups: [left, right], mode: "two" };
+    }
+
+    // -------- 2) Guard tardio: una sola columna visual --------
+    // Se evalua despues de two/three para evitar falsos "one" cuando hay
+    // dos columnas reales con varios clusters.
+    if (clusters.length >= 2) {
+      var cxsOne = clusters.map(function(c){ return c.cx; }).sort(function(a,b){ return a-b; });
+      var medianCx = percentile(cxsOne, 0.50);
+      var maxDevCx = 0;
+      for (var s=0; s<clusters.length; s++) {
+        var dev = Math.abs((clusters[s].cx || 0) - medianCx);
+        if (dev > maxDevCx) maxDevCx = dev;
+      }
+
+      var singleColMaxDev = rootW * 0.18;
+      var looksOneCol = maxDevCx <= singleColMaxDev;
+      mslLog("order:one:candidates", {
+        rootW: rootW,
+        total: clusters.length,
+        medianCx: +medianCx.toFixed(1),
+        maxDevCx: +maxDevCx.toFixed(1),
+        maxAllowed: +singleColMaxDev.toFixed(1),
+        pass: looksOneCol,
+        stage: "postTwoThree"
+      });
+
+      if (looksOneCol) {
+        var oneCol = clusters.slice().sort(function(a,b){ return a.top - b.top; });
+        return { groups: [oneCol], mode: "one" };
+      }
     }
 
     // -------- 3) Fallback: filas (top) y dentro por left --------
@@ -146,7 +240,7 @@ export function jsOrderingBlock(): string {
 
     var out = [];
     var didInterleave = false;
-    // Caso especial: dos filas simétricas (ej. íconos arriba y textos abajo).
+    // Caso especial: dos filas simetricas (ej. iconos arriba y textos abajo).
     // Reordenamos por columna: top1,bottom1,top2,bottom2,...
     if (rows.length === 2 && rows[0].items.length === rows[1].items.length && rows[0].items.length >= 2) {
       var topRow = rows[0].items.slice();

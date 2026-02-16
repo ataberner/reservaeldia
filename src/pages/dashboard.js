@@ -93,6 +93,21 @@ export default function Dashboard() {
       const objetosBase = data?.objetos || [];
       const secciones = data?.secciones || [];
 
+      // Debug de distribución real de objetos por sección/tipo en el borrador
+      try {
+        const resumen = {};
+        objetosBase.forEach((o) => {
+          const sec = String(o?.seccionId || "sin-seccion");
+          if (!resumen[sec]) resumen[sec] = { total: 0, tipos: {} };
+          resumen[sec].total += 1;
+          const t = String(o?.tipo || "sin-tipo");
+          resumen[sec].tipos[t] = (resumen[sec].tipos[t] || 0) + 1;
+        });
+        console.log("[PREVIEW] objetos por sección:", resumen);
+      } catch (e) {
+        console.warn("[PREVIEW] no se pudo armar resumen de objetos", e);
+      }
+
       // Importar función de generación HTML
       const { generarHTMLDesdeSecciones } = await import("../../functions/src/utils/generarHTMLDesdeSecciones");
       const htmlGenerado = generarHTMLDesdeSecciones(secciones, objetosBase);

@@ -225,6 +225,7 @@ export function generarHTMLDesdeSecciones(
     paddingTopPx: 0,
     paddingBottomPx: 2,
     onlyFixedSections: true,
+    minPerColumn2: 1,
   });
 
   return `

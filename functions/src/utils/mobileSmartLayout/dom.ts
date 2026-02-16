@@ -8,9 +8,56 @@ export function jsDomHelpersBlock(): string {
   }
 
   function getObjNodes(sec){
+    if(!sec) return [];
+    var nodes = [];
     var content = sec.querySelector(".sec-content");
-    if(!content) return [];
-    return Array.from(content.querySelectorAll(".objeto"));
+    var bleed = sec.querySelector(".sec-bleed");
+
+    if (content) nodes = nodes.concat(Array.from(content.querySelectorAll(".objeto")));
+    if (bleed) nodes = nodes.concat(Array.from(bleed.querySelectorAll(".objeto")));
+
+    // Fallback: algunos elementos exportados pueden no traer clase ".objeto"
+    // pero sí estar posicionados como objetos absolutos.
+    function collectAbsoluteCandidates(root){
+      if (!root) return [];
+      return Array.from(root.querySelectorAll("*")).filter(function(el){
+        if (!el) return false;
+        var cs = getComputedStyle(el);
+        var pos = (cs.position || "").toLowerCase();
+        if (pos !== "absolute") return false;
+
+        var rr = el.getBoundingClientRect();
+        if (!rr || rr.width < 1 || rr.height < 1) return false;
+
+        // Evitar ruido estructural del layout de sección
+        if (el.classList && (
+          el.classList.contains("sec") ||
+          el.classList.contains("sec-zoom") ||
+          el.classList.contains("sec-bg") ||
+          el.classList.contains("sec-content") ||
+          el.classList.contains("sec-bleed")
+        )) return false;
+
+        // Si ya está dentro de un ".objeto", no lo contamos aparte.
+        var p = el.parentElement;
+        while (p){
+          if (p.classList && p.classList.contains("objeto")) return false;
+          p = p.parentElement;
+        }
+        return true;
+      });
+    }
+
+    nodes = nodes.concat(collectAbsoluteCandidates(content));
+    nodes = nodes.concat(collectAbsoluteCandidates(bleed));
+
+    // Deduplicar preservando orden de aparición.
+    var seen = new Set();
+    return nodes.filter(function(n){
+      if (seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    });
   }
 
   function relRect(el, root){
@@ -46,6 +93,18 @@ export function jsDomHelpersBlock(): string {
     );
   }
 
+  function horizontalOverlapPx(a, b){
+    var l = Math.max(a.left, b.left);
+    var r = Math.min(a.left + a.width, b.left + b.width);
+    return Math.max(0, r - l);
+  }
+
+  function verticalGapPx(a, b){
+    var topAfter = Math.max(a.top, b.top);
+    var bottomBefore = Math.min(a.top + a.height, b.top + b.height);
+    return topAfter - bottomBefore;
+  }
+
   function buildOverlapClusters(items){
     var n = items.length;
     var parent = new Array(n);
@@ -66,6 +125,10 @@ export function jsDomHelpersBlock(): string {
 
     // tol pequeño para considerar “encimado” aunque sea apenas
     var TOL = 1;
+    // unión por cercanía vertical dentro de una misma "columna visual"
+    var PROX_Y = 34;
+    var MIN_H_OVERLAP_RATIO = 0.35;
+    var MAX_CX_DIST = 42;
 
     for (var i=0;i<n;i++){
       for (var j=i+1;j<n;j++){
@@ -82,7 +145,28 @@ export function jsDomHelpersBlock(): string {
     var bKey = b.node.getAttribute("data-mobile-cluster-id") || "";
     if (aKey && bKey && aKey !== bKey) continue;
 
-    if (rectsOverlap(a, b, TOL)) union(i,j);
+    if (rectsOverlap(a, b, TOL)) {
+      union(i,j);
+      continue;
+    }
+
+    // Si no se solapan pero están muy cerca en vertical y comparten columna,
+    // también los unimos para mantener bloque (ej: ícono + texto debajo).
+    var hov = horizontalOverlapPx(a, b);
+    var minW = Math.max(1, Math.min(a.width || 0, b.width || 0));
+    var hovRatio = hov / minW;
+    var cxDist = Math.abs(cx(a) - cx(b));
+    var sameVisualColumn = (hovRatio >= MIN_H_OVERLAP_RATIO) || (cxDist <= MAX_CX_DIST);
+    var vGap = verticalGapPx(a, b);
+    var nearVertical = vGap >= 0 && vGap <= PROX_Y;
+    var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
+    var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
+    var bothText = aIsText && bIsText;
+
+    // Evitar "pegar" párrafos entre sí solo por cercanía vertical.
+    // La unión por proximidad queda para pares mixtos (texto + no-texto),
+    // manteniendo el caso icono/forma + texto.
+    if (sameVisualColumn && nearVertical && !bothText) union(i,j);
 
       }
     }

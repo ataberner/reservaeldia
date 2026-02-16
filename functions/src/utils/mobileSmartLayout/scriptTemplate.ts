@@ -11,6 +11,13 @@ export function buildScript(cfg: NormalizedConfig): string {
 <script>
 (function(){
   var ENABLED = true;
+  var MSL_DEBUG = true;
+  function mslLog(){
+    if (!MSL_DEBUG) return;
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift("[MSL]");
+    console.log.apply(console, args);
+  }
 
   var CFG = {
     MIN_GAP: ${cfg.minGapPx},
@@ -63,12 +70,91 @@ export function buildScript(cfg: NormalizedConfig): string {
 
     secs.forEach(function(sec){
       if(!shouldProcessSection(sec)) return;
+      var secIndex = secs.indexOf(sec);
+      var secModo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
+      mslLog("section:start", { secIndex: secIndex, modo: secModo });
 
       var content = sec.querySelector(".sec-content");
       if(!content) return;
+      var bleed = sec.querySelector(".sec-bleed");
+      var debugCounts = {
+        secIndex: secIndex,
+        contentObj: content ? content.querySelectorAll(".objeto").length : 0,
+        bleedObj: bleed ? bleed.querySelectorAll(".objeto").length : 0,
+        contentAbs: content ? Array.from(content.querySelectorAll("*")).filter(function(el){
+          return !!(el && el.style && (el.style.position || "").toLowerCase() === "absolute" && el.style.top && el.style.left);
+        }).length : 0,
+        bleedAbs: bleed ? Array.from(bleed.querySelectorAll("*")).filter(function(el){
+          return !!(el && el.style && (el.style.position || "").toLowerCase() === "absolute" && el.style.top && el.style.left);
+        }).length : 0
+      };
+      mslLog("section:nodeSources", debugCounts);
 
       var nodesAll = getObjNodes(sec);
       if(nodesAll.length < 2) return;
+      mslLog("section:nodesAll:raw", {
+        secIndex: secIndex,
+        total: nodesAll.length,
+        nodes: nodesAll.map(function(n, i){
+          var cls = (n.className && typeof n.className === "string") ? n.className : "";
+          var parentCls = (n.parentElement && n.parentElement.className && typeof n.parentElement.className === "string")
+            ? n.parentElement.className
+            : "";
+          return {
+            i: i,
+            tag: (n.tagName || "").toLowerCase(),
+            cls: cls,
+            parentCls: parentCls,
+            top: n.style ? n.style.top : "",
+            left: n.style ? n.style.left : "",
+            pos: n.style ? n.style.position : "",
+            text: ((n.textContent || "").trim()).slice(0, 40)
+          };
+        })
+      });
+      try {
+        var flat = nodesAll.map(function(n, i){
+          var cls = (n.className && typeof n.className === "string") ? n.className : "";
+          var txt = ((n.textContent || "").trim()).replace(/\s+/g, " ").slice(0, 60);
+          return "#" + i
+            + " tag=" + String((n.tagName || "").toLowerCase())
+            + " cls=" + cls
+            + " pos=" + (n.style ? n.style.position : "")
+            + " top=" + (n.style ? n.style.top : "")
+            + " left=" + (n.style ? n.style.left : "")
+            + " text=" + txt;
+        });
+        mslLog("section:nodesAll:flat", "sec=" + secIndex + " total=" + nodesAll.length + " :: " + flat.join(" | "));
+      } catch(e) {}
+      var restoredCount = 0;
+      nodesAll.forEach(function(node){
+        var hasOrigTop = node.hasAttribute("data-msl-orig-top");
+        var hasOrigLeft = node.hasAttribute("data-msl-orig-left");
+        var hasOrigTransform = node.hasAttribute("data-msl-orig-transform");
+        if (!hasOrigTop) node.setAttribute("data-msl-orig-top", node.style.top || "");
+        if (!hasOrigLeft) node.setAttribute("data-msl-orig-left", node.style.left || "");
+        if (!hasOrigTransform) node.setAttribute("data-msl-orig-transform", node.style.transform || "");
+
+        var origTop = node.getAttribute("data-msl-orig-top");
+        var origLeft = node.getAttribute("data-msl-orig-left");
+        var origTransform = node.getAttribute("data-msl-orig-transform");
+
+        if (origTop != null && node.style.top !== origTop) {
+          node.style.top = origTop;
+          restoredCount++;
+        }
+        if (origLeft != null && node.style.left !== origLeft) {
+          node.style.left = origLeft;
+          restoredCount++;
+        }
+        if (origTransform != null && node.style.transform !== origTransform) {
+          node.style.transform = origTransform;
+          restoredCount++;
+        }
+        node.style.right = "auto";
+        node.style.marginLeft = "0px";
+      });
+      mslLog("section:baselineRestore", { secIndex: secIndex, nodes: nodesAll.length, restored: restoredCount });
 
       // Rect del content (métricas reales)
       var contentRect = content.getBoundingClientRect();
@@ -84,6 +170,21 @@ export function buildScript(cfg: NormalizedConfig): string {
           height: rc.height,
           width: rc.width
         };
+      });
+      mslLog("section:itemsAll", {
+        secIndex: secIndex,
+        total: itemsAll.length,
+        items: itemsAll.map(function(it, idx){
+          return {
+            i: idx,
+            kind: (it.node.getAttribute("data-debug-texto") || "") === "1" ? "texto" : (it.node.tagName || "").toLowerCase(),
+            top: +it.top.toFixed(1),
+            left: +it.left.toFixed(1),
+            w: +it.width.toFixed(1),
+            h: +it.height.toFixed(1),
+            textAlign: (it.node.style && it.node.style.textAlign) ? it.node.style.textAlign : ""
+          };
+        })
       });
 
       // Si todo mide 0 (fonts no listas), reintentamos luego
@@ -119,6 +220,22 @@ export function buildScript(cfg: NormalizedConfig): string {
 
       // ✅ Flow = todo lo que NO es anchor
       var itemsFlow = itemsAll.filter(function(it){ return !isAnchorNode(it); });
+      var itemsAnchor = itemsAll.filter(function(it){ return isAnchorNode(it); });
+      mslLog("section:anchorSplit", {
+        secIndex: secIndex,
+        anchors: itemsAnchor.length,
+        flow: itemsFlow.length,
+        anchorsDetail: itemsAnchor.map(function(it){
+          return {
+            kind: (it.node.getAttribute("data-debug-texto") || "") === "1" ? "texto" : (it.node.tagName || "").toLowerCase(),
+            top: +it.top.toFixed(1),
+            left: +it.left.toFixed(1),
+            w: +it.width.toFixed(1),
+            h: +it.height.toFixed(1),
+            textAlign: (it.node.style && it.node.style.textAlign) ? it.node.style.textAlign : ""
+          };
+        })
+      });
 
       // Si no hay suficientes elementos reflowables, no hacemos nada
       if(itemsFlow.length < 2) return;
@@ -134,24 +251,64 @@ export function buildScript(cfg: NormalizedConfig): string {
 
       // ✅ 1) agrupar por solape → clusters (SOLO FLOW)
       var clusters = buildOverlapClusters(itemsFlow);
+      mslLog("section:clusters", {
+        secIndex: secIndex,
+        count: clusters.length,
+        clusters: clusters.map(function(c, idx){
+          return {
+            i: idx,
+            top: +c.top.toFixed(1),
+            left: +c.left.toFixed(1),
+            w: +c.width.toFixed(1),
+            h: +c.height.toFixed(1),
+            cx: +c.cx.toFixed(1),
+            items: c.items.length
+          };
+        })
+      });
 
       // ✅ 2) Detectar columnas/rows (SOLO FLOW)
       var rootW = contentW || 0;
       var ord = orderClustersForMobile(clusters, rootW, CFG);
       var groups = ord.groups;
       var mode = ord.mode;
+      mslLog("section:ordering", {
+        secIndex: secIndex,
+        mode: mode,
+        rootW: rootW,
+        groups: groups.map(function(grp, gi){
+          return {
+            g: gi,
+            count: grp.length,
+            tops: grp.map(function(c){ return +c.top.toFixed(1); }),
+            lefts: grp.map(function(c){ return +c.left.toFixed(1); })
+          };
+        })
+      });
 
       // ✅ 3) Gate "mejor de ambos mundos":
       // - Si es "one" (layout ya natural) Y además entra, NO hacemos reflow.
       // - En cualquier otro caso (two/three/rows), hacemos reflow para lectura mobile,
       //   incluso aunque "entre".
       var fits = clustersFitInMobile(clusters, content);
+      mslLog("section:fitCheck", {
+        secIndex: secIndex,
+        mode: mode,
+        fits: fits,
+        willSkip: (mode === "one" && fits)
+      });
       if (mode === "one" && fits) {
         return;
       }
 
       // ✅ 4) Reflow solo sobre FLOW (preserva solapes dentro de cada cluster)
-      var res = applyClusterStack(groups, content, CFG);
+      var res = applyClusterStack(groups, content, CFG, mode);
+      mslLog("section:applyResult", {
+        secIndex: secIndex,
+        changed: !!(res && res.changed),
+        neededHeight: res ? res.neededHeight : null,
+        maxAnchorBottom: +maxAnchorBottom.toFixed(1)
+      });
 
       if (res && res.changed) {
         // Evitar que la sección quede chica si hay anchors más abajo
@@ -167,6 +324,7 @@ export function buildScript(cfg: NormalizedConfig): string {
   }
 
   function boot(){
+    mslLog("boot", { cfg: CFG });
     runOnce();
     setTimeout(runOnce, 150);
     setTimeout(runOnce, 600);

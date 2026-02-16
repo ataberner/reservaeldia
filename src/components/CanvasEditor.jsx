@@ -857,9 +857,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     altoCanvas: altoCanvasDinamico,
     // 👇 Tweaks de experiencia
     margenSensibilidad: 8,   // dibuja líneas cercanas
-    magnetRadius: 18,        // 🔥 captura más fuerte
+    magnetRadius: 10,        // captura menos agresiva
     hysteresis: 10,          // 🔥 suelta recién lejos
-    snapStrength: 1,         // 1 = fijación exacta (probalo en 0.5 si querés “tracción suave”)
+    snapStrength: 0.8,      // mantiene imán pero permite ajuste fino. De 1 a 0.55 (cuando entra, tira menos fuerte).
     snapToEdges: true,
     snapToCenters: true,
     seccionesOrdenadas

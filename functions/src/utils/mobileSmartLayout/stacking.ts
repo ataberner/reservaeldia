@@ -135,15 +135,30 @@ export function jsStackingBlock(): string {
           var prevBottom = (clusterTopPrev + prevC.height);
 
           // ✅ Gap original entre clusters (canvas)
-          var gapOrig = c.top - (prevC.top + prevC.height);
+          var prevBottomOrig = (prevC.top + prevC.height);
+          var gapOrig = c.top - prevBottomOrig;
           if (!isFinite(gapOrig)) gapOrig = 0;
 
-          // ✅ Gap “mobile-friendly”: escalado + clamp
-          var gapWanted = clamp(gapOrig * (CFG.GAP_SCALE || 1), CFG.MIN_GAP, CFG.MAX_GAP);
+          var overlapInSource = gapOrig < 0;
+          if ((mode === "two" || mode === "three") && overlapInSource) {
+            // Si en el original este cluster cae dentro del anterior, respetamos
+            // su top relativo para no mandarlo al final de la columna.
+            var relTopInCol = c.top - colMinTop;
+            if (!isFinite(relTopInCol)) relTopInCol = 0;
+            clusterTop = colStart + Math.max(0, relTopInCol);
+          } else {
+            // ✅ Gap “mobile-friendly”: escalado + clamp
+            var gapWanted = clamp(gapOrig * (CFG.GAP_SCALE || 1), CFG.MIN_GAP, CFG.MAX_GAP);
 
-          // ✅ Anti-solape definitivo:
-          //   el próximo cluster SIEMPRE empieza después del bottom real del anterior + gapWanted
-          clusterTop = prevBottom + gapWanted;
+            // ✅ Anti-solape definitivo:
+            //   el próximo cluster SIEMPRE empieza después del bottom real del anterior + gapWanted
+            clusterTop = prevBottom + gapWanted;
+
+            // En multi-columna nunca avanzamos hacia arriba respecto al flujo ya consumido.
+            if ((mode === "two" || mode === "three") && clusterTop < colCursor) {
+              clusterTop = colCursor;
+            }
+          }
         }
 
         // Guardamos para el próximo loop

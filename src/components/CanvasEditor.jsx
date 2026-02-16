@@ -855,11 +855,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   } = useGuiasCentrado({
     anchoCanvas: 800,
     altoCanvas: altoCanvasDinamico,
-    // 👇 Tweaks de experiencia
-    margenSensibilidad: 8,   // dibuja líneas cercanas
-    magnetRadius: 10,        // captura menos agresiva
-    hysteresis: 10,          // 🔥 suelta recién lejos
-    snapStrength: 0.8,      // mantiene imán pero permite ajuste fino. De 1 a 0.55 (cuando entra, tira menos fuerte).
+    // UX: guía de sección solo al centrar, con imán sutil.
+    margenSensibilidad: 8,
+    magnetRadius: 10,
+    sectionMagnetRadius: 6,
+    snapStrength: 0.8,
+    sectionSnapStrength: 1,
+    sectionLineTolerance: 0.75,
     snapToEdges: true,
     snapToCenters: true,
     seccionesOrdenadas
@@ -1965,6 +1967,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
                           onDragMovePersonalizado={(pos, id) => {
                             setIsDragging(true);
+                            if (!window._grupoLider) {
+                              mostrarGuias(pos, id, objetos, elementRefs);
+                            }
                             requestAnimationFrame(() => {
                               if (typeof actualizarPosicionBotonOpciones === "function") {
                                 actualizarPosicionBotonOpciones();

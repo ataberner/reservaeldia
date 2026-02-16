@@ -3,7 +3,7 @@ import { useState, useCallback } from "react";
 
 /**
  * Guías con:
- * - Sección: muestra CX/CY SOLO si estás cerca (no siempre).
+ * - Sección: muestra CX/CY solo cuando el elemento quedó centrado.
  * - Elementos: SOLO misma sección, líneas punteadas tipo "reach" hasta el otro elemento.
  * - Nada de otras secciones.
  */
@@ -13,9 +13,12 @@ export default function useGuiasCentrado({
     magnetRadius = 16,       // distancia para activar el snap
     elementMagnetRadius = null,   // null => magnetRadius
     sectionMagnetRadius = null,   // null => magnetRadius
-    sectionShowRadius = 18,  // distancia para MOSTRAR las líneas de sección (puede ser = o > magnetRadius)
+    sectionShowRadius = 18,  // legado (no usado para mostrar líneas de sección)
     sectionPriorityBias = 4,      // ventaja extra para que gane sección vs elementos
     snapStrength = 1,        // 1 = pegado exacto; 0.4-0.6 = tracción suave
+    sectionSnapStrength = null,   // null => snapStrength
+    elementSnapStrength = null,   // null => snapStrength
+    sectionLineTolerance = 0.75,  // solo mostrar guía de sección cuando está realmente centrado
     seccionesOrdenadas = []
 }) {
     const [guiaLineas, setGuiaLineas] = useState([]);
@@ -23,6 +26,8 @@ export default function useGuiasCentrado({
 
     const effElementMagnetRadius = elementMagnetRadius ?? magnetRadius;
     const effSectionMagnetRadius = sectionMagnetRadius ?? magnetRadius;
+    const effSectionSnapStrength = sectionSnapStrength ?? snapStrength;
+    const effElementSnapStrength = elementSnapStrength ?? snapStrength;
 
 
     // ---- Utilidades de secciones ----
@@ -185,29 +190,9 @@ export default function useGuiasCentrado({
 
             const lines = [];
 
-            // 1) SECCIÓN: mostrar CX/CY SOLO si está cerca
+            // 1) SECCIÓN: el snap evalúa el centro de la sección.
             const distSecX = Math.abs(selfCx - secCx);
             const distSecY = Math.abs(selfCy - secCy);
-
-            if (distSecX <= sectionShowRadius) {
-                lines.push({
-                    type: "seccion-cx",
-                    priority: "seccion",
-                    style: "solid",
-                    points: [secCx, offY, secCx, offY + seccion.altura] // línea vertical solo dentro de la sección
-                });
-
-
-            }
-            if (distSecY <= sectionShowRadius) {
-                lines.push({
-                    type: "seccion-cy",
-                    priority: "seccion",
-                    style: "solid",
-                    points: [0, secCy, anchoCanvas, secCy] // la sección ocupa todo el ancho
-                });
-
-            }
 
             // 2) ELEMENTOS (MISMA SECCIÓN): elegir mejor candidato por eje
             const elementGuides = buildSameSectionGuides(node, stage, objetos, elementRefs, idActual, seccion.id);
@@ -248,17 +233,17 @@ export default function useGuiasCentrado({
                 if (decision.source === "seccion") {
                     if (axis === "x") {
                         const cx = fresh.x + fresh.width / 2;
-                        node.x(node.x() + (secCx - cx) * snapStrength);
+                        node.x(node.x() + (secCx - cx) * effSectionSnapStrength);
                     } else {
                         const cy = fresh.y + fresh.height / 2;
-                        node.y(node.y() + (secCy - cy) * snapStrength);
+                        node.y(node.y() + (secCy - cy) * effSectionSnapStrength);
                     }
                     return { snapped: true, source: "seccion" };
                 }
 
                 const delta = deltaForGuide(axis, decision.near.g.value, fresh);
-                if (axis === "x") node.x(node.x() + delta * snapStrength);
-                else node.y(node.y() + delta * snapStrength);
+                if (axis === "x") node.x(node.x() + delta * effElementSnapStrength);
+                else node.y(node.y() + delta * effElementSnapStrength);
                 return { snapped: true, source: "elemento", near: decision.near };
             };
 
@@ -267,6 +252,34 @@ export default function useGuiasCentrado({
 
             // Recalcular box luego del snap para dibujar reach exacta
             const selfBoxAfter = node.getClientRect({ relativeTo: stage });
+            const selfCxAfter = selfBoxAfter.x + selfBoxAfter.width / 2;
+            const selfCyAfter = selfBoxAfter.y + selfBoxAfter.height / 2;
+
+            // 2) SECCIÓN: mostrar guía SOLO cuando quedó efectivamente alineado.
+            if (
+                snapResX.snapped &&
+                snapResX.source === "seccion" &&
+                Math.abs(selfCxAfter - secCx) <= sectionLineTolerance
+            ) {
+                lines.push({
+                    type: "seccion-cx",
+                    priority: "seccion",
+                    style: "solid",
+                    points: [secCx, offY, secCx, offY + seccion.altura]
+                });
+            }
+            if (
+                snapResY.snapped &&
+                snapResY.source === "seccion" &&
+                Math.abs(selfCyAfter - secCy) <= sectionLineTolerance
+            ) {
+                lines.push({
+                    type: "seccion-cy",
+                    priority: "seccion",
+                    style: "solid",
+                    points: [0, secCy, anchoCanvas, secCy]
+                });
+            }
 
             if (snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
                 lines.push({
@@ -295,7 +308,8 @@ export default function useGuiasCentrado({
         magnetRadius, sectionShowRadius, snapStrength,
         seccionesOrdenadas,
         obtenerSeccionElemento, calcularOffsetSeccion,
-        elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias
+        elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias,
+        sectionSnapStrength, elementSnapStrength, sectionLineTolerance
     ]);
 
     const limpiarGuias = useCallback(() => setGuiaLineas([]), []);

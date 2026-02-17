@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import useBorradorSync from "./editor/persistence/useBorradorSync";
 import useSectionsManager from "./editor/sections/useSectionsManager";
+import ConfirmDeleteSectionModal from "@/components/editor/sections/ConfirmDeleteSectionModal";
 import useEditorEvents from "./editor/events/useEditorEvents";
 import useEditorWindowBridge from "./editor/window/useEditorWindowBridge";
 import useHistoryManager from "./editor/history/useHistoryManager";
@@ -224,6 +225,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
   const [isDragging, setIsDragging] = useState(false);
+  const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
+  const [isDeletingSection, setIsDeletingSection] = useState(false);
 
 
 
@@ -292,6 +295,16 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   });
 
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+
+  const seccionPendienteEliminar = useMemo(
+    () => secciones.find((seccion) => seccion.id === deleteSectionModal.sectionId) || null,
+    [secciones, deleteSectionModal.sectionId]
+  );
+
+  const cantidadElementosSeccionPendiente = useMemo(() => {
+    if (!seccionPendienteEliminar?.id) return 0;
+    return objetos.filter((obj) => obj.seccionId === seccionPendienteEliminar.id).length;
+  }, [objetos, seccionPendienteEliminar]);
 
   const {
     editing,      // { id, value }
@@ -1420,6 +1433,48 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
   const altoCanvasDinamico = seccionesOrdenadas.reduce((acc, s) => acc + s.altura, 0) || 800;
 
+  const abrirModalBorrarSeccion = useCallback((seccionId) => {
+    if (!seccionId || isDeletingSection) return;
+    setDeleteSectionModal({ isOpen: true, sectionId: seccionId });
+  }, [isDeletingSection]);
+
+  const cerrarModalBorrarSeccion = useCallback(() => {
+    if (isDeletingSection) return;
+    setDeleteSectionModal({ isOpen: false, sectionId: null });
+  }, [isDeletingSection]);
+
+  const confirmarBorrarSeccion = useCallback(async () => {
+    const seccionId = deleteSectionModal.sectionId;
+    if (!seccionId || isDeletingSection) return;
+
+    setIsDeletingSection(true);
+    try {
+      await borrarSeccionExternal({
+        seccionId,
+        secciones,
+        objetos,
+        slug,
+        seccionActivaId,
+        setSecciones,
+        setObjetos,
+        setSeccionActivaId,
+      });
+      setDeleteSectionModal({ isOpen: false, sectionId: null });
+    } finally {
+      setIsDeletingSection(false);
+    }
+  }, [
+    deleteSectionModal.sectionId,
+    isDeletingSection,
+    secciones,
+    objetos,
+    slug,
+    seccionActivaId,
+    setSecciones,
+    setObjetos,
+    setSeccionActivaId,
+  ]);
+
 
   // 3) Cada vez que el usuario selecciona una sección, actualizamos global y notificamos
   const onSelectSeccion = (id) => {
@@ -2001,23 +2056,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                   {/* Botón Borrar sección */}
                   <button
-                    onClick={() =>
-                      borrarSeccionExternal({
-                        seccionId: seccion.id,
-                        secciones,
-                        objetos,
-                        slug,
-                        seccionActivaId,
-                        setSecciones,
-                        setObjetos,
-                        setSeccionActivaId,
-                      })
-                    }
-                    disabled={estaAnimando}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando
+                    onClick={() => abrirModalBorrarSeccion(seccion.id)}
+                    disabled={estaAnimando || isDeletingSection}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando || isDeletingSection
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : 'bg-red-600 text-white hover:bg-red-700 hover:scale-105 shadow-md hover:shadow-lg'
-                      } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
+                      } ${estaAnimando || isDeletingSection ? 'animate-pulse shadow-xl' : ''}`}
                     title="Borrar esta sección y todos sus elementos"
                   >
                     🗑️ Borrar sección
@@ -3719,6 +3763,15 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         fontManager={fontManager}
         tamaniosDisponibles={tamaniosDisponibles}
         onCambiarAlineacion={onCambiarAlineacion}
+      />
+
+      <ConfirmDeleteSectionModal
+        isOpen={deleteSectionModal.isOpen}
+        sectionName={seccionPendienteEliminar?.tipo}
+        itemCount={cantidadElementosSeccionPendiente}
+        isDeleting={isDeletingSection}
+        onCancel={cerrarModalBorrarSeccion}
+        onConfirm={confirmarBorrarSeccion}
       />
 
 

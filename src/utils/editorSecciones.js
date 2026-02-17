@@ -4,7 +4,8 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase";
 
 /**
- * 🗑️ Borrar sección y sus objetos asociados
+ * Borrar una seccion y sus objetos asociados.
+ * La confirmacion de UX se resuelve en la capa de UI.
  */
 export const borrarSeccion = async ({
   seccionId,
@@ -18,14 +19,6 @@ export const borrarSeccion = async ({
 }) => {
   const seccion = secciones.find((s) => s.id === seccionId);
   if (!seccion) return;
-
-  const confirmar = confirm(
-    `¿Estás seguro de que querés borrar la sección "${seccion.tipo || 'sin nombre'}"?
-Se eliminarán todos los elementos que contiene.
-Esta acción no se puede deshacer.`
-  );
-
-  if (!confirmar) return;
 
   try {
     const objetosFiltrados = objetos.filter((obj) => obj.seccionId !== seccionId);
@@ -45,18 +38,15 @@ Esta acción no se puede deshacer.`
       ultimaEdicion: serverTimestamp(),
     });
 
-    console.log("✅ Sección borrada correctamente:", seccionId);
+    console.log("Seccion borrada correctamente:", seccionId);
   } catch (error) {
-    console.error("❌ Error al borrar sección:", error);
-    alert("Ocurrió un error al borrar la sección. Inténtalo de nuevo.");
+    console.error("Error al borrar seccion:", error);
+    alert("Ocurrio un error al borrar la seccion. Intentalo de nuevo.");
   }
 };
 
-
-
-
 /**
- * 🔁 Mover una sección hacia arriba o abajo en el orden
+ * Mover una seccion hacia arriba o abajo en el orden.
  */
 export const moverSeccion = async ({
   seccionId,
@@ -70,12 +60,12 @@ export const moverSeccion = async ({
   const indiceActual = seccionesOrdenadas.findIndex((s) => s.id === seccionId);
 
   if (direccion === "subir" && indiceActual === 0) {
-    console.warn("❌ Ya es la primera sección");
+    console.warn("Ya es la primera seccion");
     return;
   }
 
   if (direccion === "bajar" && indiceActual === seccionesOrdenadas.length - 1) {
-    console.warn("❌ Ya es la última sección");
+    console.warn("Ya es la ultima seccion");
     return;
   }
 
@@ -95,7 +85,7 @@ export const moverSeccion = async ({
 
   setSecciones(nuevasSecciones);
 
-  // Fin de la animación
+  // Fin de la animacion
   setTimeout(() => {
     setSeccionesAnimando([]);
   }, 500);
@@ -108,6 +98,6 @@ export const moverSeccion = async ({
       ultimaEdicion: serverTimestamp(),
     });
   } catch (error) {
-    console.error("❌ Error guardando orden de secciones:", error);
+    console.error("Error guardando orden de secciones:", error);
   }
 };

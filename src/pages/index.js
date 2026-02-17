@@ -5,11 +5,21 @@ import { useState, useEffect } from 'react';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
 import Link from 'next/link';
-import { } from "react";
 import { getRedirectResult } from "firebase/auth";
 import { auth } from "@/firebase";
 import { useRouter } from "next/navigation";
 
+function getAuthNoticeMessage(code) {
+  if (code === "email-not-verified") {
+    return "Necesitas verificar tu correo antes de entrar al dashboard.";
+  }
+
+  if (code === "profile-check-failed") {
+    return "No pudimos validar tu perfil. Intenta iniciar sesion nuevamente.";
+  }
+
+  return "";
+}
 
 
 
@@ -17,7 +27,29 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [authNotice, setAuthNotice] = useState("");
   const router = useRouter();
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search || "");
+    const noticeCode = params.get("authNotice");
+    const noticeMessage = getAuthNoticeMessage(noticeCode);
+
+    if (!noticeMessage) return;
+
+    setAuthNotice(noticeMessage);
+    if (noticeCode === "email-not-verified") {
+      setShowLogin(true);
+    }
+
+    params.delete("authNotice");
+    const cleanQuery = params.toString();
+    const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+  }, []);
 
 
   useEffect(() => {
@@ -123,6 +155,20 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {authNotice && (
+        <div className="auth-notice-banner">
+          <span>{authNotice}</span>
+          <button
+            type="button"
+            className="auth-notice-close"
+            onClick={() => setAuthNotice("")}
+            aria-label="Cerrar aviso"
+          >
+            x
+          </button>
+        </div>
+      )}
 
       {/* Hero principal */}
       <section className="hero" style={{ backgroundImage: "url(/assets/img/portada1.webp)", backgroundSize: 'cover', height: '100vh', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
@@ -355,6 +401,7 @@ export default function Home() {
       {showLogin && (
         <LoginModal
           onClose={() => setShowLogin(false)}
+          onAuthNotice={(message) => setAuthNotice(message)}
           onGoToRegister={() => {
             setShowLogin(false);
             setShowRegister(true);
@@ -365,6 +412,7 @@ export default function Home() {
       {showRegister && (
         <RegisterModal
           onClose={() => setShowRegister(false)}
+          onAuthNotice={(message) => setAuthNotice(message)}
           onGoToLogin={() => {
             setShowRegister(false);
             setShowLogin(true);

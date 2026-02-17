@@ -1,148 +1,434 @@
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  signInWithEmailAndPassword,
   GoogleAuthProvider,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
   signInWithPopup,
+  signOut,
 } from "firebase/auth";
-import { auth } from '@/firebase';
+import { httpsCallable } from "firebase/functions";
+import { auth, functions } from "@/firebase";
+import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function mapAuthError(code) {
   switch (code) {
-    case 'auth/user-not-found':
-      return 'El usuario no existe. Probá registrarte.';
-    case 'auth/wrong-password':
-      return 'La contraseña es incorrecta.';
-    case 'auth/invalid-email':
-      return 'El correo no es válido.';
-    case 'auth/popup-closed-by-user':
-      return 'Se cerró la ventana de Google.';
+    case "auth/user-not-found":
+      return "El usuario no existe. Prueba registrarte.";
+    case "auth/wrong-password":
+      return "La contrasena es incorrecta.";
+    case "auth/invalid-email":
+      return "El correo no es valido.";
+    case "auth/popup-closed-by-user":
+      return "Se cerro la ventana de Google.";
+    case "auth/too-many-requests":
+      return "Demasiados intentos. Espera unos minutos.";
+    case "auth/network-request-failed":
+      return "Error de red. Verifica tu conexion.";
     default:
-      return 'No se pudo iniciar sesión. Intentá de nuevo.';
+      return "No se pudo iniciar sesion. Intenta de nuevo.";
   }
 }
 
-export default function LoginModal({ onClose, onGoToRegister }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+function mapCallableError(error, fallback) {
+  const message =
+    error?.message ||
+    error?.details?.message ||
+    error?.details ||
+    fallback;
+
+  return typeof message === "string" ? message : fallback;
+}
+
+function splitDisplayName(displayName) {
+  const clean = typeof displayName === "string"
+    ? displayName.trim().replace(/\s+/g, " ")
+    : "";
+
+  if (!clean) return { nombre: "", apellido: "" };
+
+  const parts = clean.split(" ");
+  if (parts.length === 1) return { nombre: parts[0], apellido: "" };
+
+  return {
+    nombre: parts[0],
+    apellido: parts.slice(1).join(" "),
+  };
+}
+
+export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [loadingEmail, setLoadingEmail] = useState(false);
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [sendingVerification, setSendingVerification] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+
+  const [showProfileCompletion, setShowProfileCompletion] = useState(false);
+  const [profileInitialValues, setProfileInitialValues] = useState({
+    nombre: "",
+    apellido: "",
+    fechaNacimiento: "",
+  });
+  const [profileSource, setProfileSource] = useState("profile-completion");
 
   const router = useRouter();
 
+  const getMyProfileStatusCallable = httpsCallable(functions, "getMyProfileStatus");
+  const upsertUserProfileCallable = httpsCallable(functions, "upsertUserProfile");
+
+  const openProfileModal = (statusData, user, source) => {
+    const fallbackNames = splitDisplayName(
+      statusData?.profile?.nombreCompleto || user?.displayName || ""
+    );
+
+    setProfileInitialValues({
+      nombre: statusData?.profile?.nombre || fallbackNames.nombre || "",
+      apellido: statusData?.profile?.apellido || fallbackNames.apellido || "",
+      fechaNacimiento: statusData?.profile?.fechaNacimiento || "",
+      nombreCompleto:
+        statusData?.profile?.nombreCompleto || user?.displayName || "",
+    });
+    setProfileSource(source);
+    setShowProfileCompletion(true);
+  };
+
+  const continueAfterAuth = async (user, source) => {
+    const statusResult = await getMyProfileStatusCallable({});
+    const statusData = statusResult?.data || {};
+
+    if (statusData.profileComplete === true) {
+      onClose?.();
+      router.push("/dashboard");
+      return;
+    }
+
+    openProfileModal(statusData, user, source);
+  };
+
+  const validateLogin = () => {
+    const nextErrors = {};
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      nextErrors.email = "Ingresa tu correo.";
+    } else if (!EMAIL_REGEX.test(cleanEmail)) {
+      nextErrors.email = "Correo invalido.";
+    }
+
+    if (!password) {
+      nextErrors.password = "Ingresa tu contrasena.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const handleGoogleLogin = async () => {
-    setError('');
+    setError("");
+    setInfo("");
+    setNeedsVerification(false);
+    setLoadingGoogle(true);
+
     const provider = new GoogleAuthProvider();
 
     try {
-      await signInWithPopup(auth, provider);
-      onClose?.();
-      router.push('/dashboard');
+      const credentials = await signInWithPopup(auth, provider);
+      await continueAfterAuth(credentials.user, "google-login");
     } catch (err) {
       setError(mapAuthError(err?.code));
+    } finally {
+      setLoadingGoogle(false);
     }
   };
 
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    setError("");
+    setInfo("");
+    setNeedsVerification(false);
 
+    if (!validateLogin()) return;
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
+    setLoadingEmail(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      onClose?.();
-      router.push('/dashboard');
+      const cleanEmail = email.trim().toLowerCase();
+      const credentials = await signInWithEmailAndPassword(auth, cleanEmail, password);
+
+      if (!credentials.user.emailVerified) {
+        try {
+          await sendEmailVerification(credentials.user);
+        } catch (verificationError) {
+          console.error("No se pudo enviar verificacion inicial:", verificationError);
+        }
+
+        await signOut(auth);
+        const verificationMessage =
+          "Tu correo aun no esta verificado. Revisalo y vuelve a iniciar sesion.";
+        setNeedsVerification(true);
+        setInfo(verificationMessage);
+        onAuthNotice?.(verificationMessage);
+        return;
+      }
+
+      await continueAfterAuth(credentials.user, "profile-completion");
     } catch (err) {
       setError(mapAuthError(err?.code));
+    } finally {
+      setLoadingEmail(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError("");
+    setInfo("");
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setFieldErrors((prev) => ({ ...prev, email: "Ingresa tu correo." }));
+      setError("Ingresa tu correo para recuperar la contrasena.");
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      setFieldErrors((prev) => ({ ...prev, email: "Correo invalido." }));
+      setError("El correo no tiene formato valido.");
+      return;
+    }
+
+    setSendingReset(true);
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setInfo("Te enviamos un correo para recuperar la contrasena.");
+    } catch (err) {
+      setError(mapAuthError(err?.code));
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setError("");
+    setInfo("");
+
+    if (!validateLogin()) return;
+
+    setSendingVerification(true);
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const credentials = await signInWithEmailAndPassword(auth, cleanEmail, password);
+
+      if (credentials.user.emailVerified) {
+        await signOut(auth);
+        const alreadyVerifiedMessage =
+          "Tu correo ya esta verificado. Puedes ingresar nuevamente.";
+        setNeedsVerification(false);
+        setInfo(alreadyVerifiedMessage);
+        onAuthNotice?.(alreadyVerifiedMessage);
+        return;
+      }
+
+      await sendEmailVerification(credentials.user);
+      await signOut(auth);
+
+      const resendMessage = "Te reenviamos el correo de verificacion.";
+      setNeedsVerification(true);
+      setInfo(resendMessage);
+      onAuthNotice?.(resendMessage);
+    } catch (err) {
+      setError(mapAuthError(err?.code));
+    } finally {
+      setSendingVerification(false);
+    }
+  };
+
+  const handleProfileSubmit = async (payload) => {
+    try {
+      await upsertUserProfileCallable({
+        ...payload,
+        source: profileSource,
+      });
+      setShowProfileCompletion(false);
+      onClose?.();
+      router.push("/dashboard");
+    } catch (submitError) {
+      throw new Error(
+        mapCallableError(submitError, "No se pudo completar tu perfil.")
+      );
     }
   };
 
   const shouldSuggestRegister =
-    error?.includes('registrarte') || error?.includes('no existe');
+    error?.includes("registrarte") || error?.includes("no existe");
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content">
-        <button className="close-btn" onClick={onClose}>
-          ×
-        </button>
+    <>
+      <div className="modal-backdrop">
+        <div className="modal-content auth-modal">
+          <button className="close-btn" onClick={onClose} type="button">
+            x
+          </button>
 
-        <h2>Iniciar Sesión</h2>
+          <h2>Iniciar sesion</h2>
+          <p className="auth-modal-subtitle">
+            Ingresa con tu correo o con Google.
+          </p>
 
-        {/* Login con email / password */}
-        <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            placeholder="Correo"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <form onSubmit={handleLogin} className="auth-form">
+            <div className="auth-input-group">
+              <label htmlFor="login-email">Correo</label>
+              <input
+                id="login-email"
+                type="email"
+                placeholder="tu@email.com"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setFieldErrors((prev) => ({ ...prev, email: "" }));
+                }}
+                autoComplete="email"
+                className={fieldErrors.email ? "auth-input-error" : ""}
+                required
+              />
+              {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
+            </div>
 
-          <input
-            type="password"
-            placeholder="Contraseña"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+            <div className="auth-input-group">
+              <label htmlFor="login-password">Contrasena</label>
+              <div className="auth-password-wrap">
+                <input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Tu contrasena"
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setFieldErrors((prev) => ({ ...prev, password: "" }));
+                  }}
+                  autoComplete="current-password"
+                  className={fieldErrors.password ? "auth-input-error" : ""}
+                  required
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                >
+                  {showPassword ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
+              {fieldErrors.password && (
+                <p className="field-error">{fieldErrors.password}</p>
+              )}
+            </div>
 
-          {error && <p className="error">{error}</p>}
+            <div className="auth-inline-actions">
+              <button
+                type="button"
+                className="btn btn-link p-0 auth-link-btn"
+                onClick={handleForgotPassword}
+                disabled={sendingReset}
+              >
+                {sendingReset ? "Enviando..." : "Olvide mi contrasena"}
+              </button>
+            </div>
 
-          {shouldSuggestRegister && (
+            {error && <p className="error">{error}</p>}
+            {info && (
+              <p className={`auth-status ${needsVerification ? "warning" : "success"}`}>
+                {info}
+              </p>
+            )}
+
+            {needsVerification && (
+              <button
+                type="button"
+                className="btn btn-outline-dark w-100 mt-2 auth-secondary-btn"
+                onClick={handleResendVerification}
+                disabled={sendingVerification}
+              >
+                {sendingVerification ? "Reenviando..." : "Reenviar verificacion"}
+              </button>
+            )}
+
+            {shouldSuggestRegister && (
+              <button
+                type="button"
+                className="btn btn-outline-dark w-100 mt-2 auth-secondary-btn"
+                onClick={() => {
+                  onClose?.();
+                  onGoToRegister?.();
+                }}
+              >
+                Registrarme
+              </button>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary w-100 mt-2 auth-primary-btn"
+              disabled={loadingEmail}
+            >
+              {loadingEmail ? "Ingresando..." : "Ingresar"}
+            </button>
+          </form>
+
+          <div className="auth-separator">o</div>
+
+          <button
+            type="button"
+            className="btn btn-outline-dark position-relative w-100 auth-google-btn"
+            onClick={handleGoogleLogin}
+            disabled={loadingGoogle}
+          >
+            <img
+              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+              alt="Google"
+              style={{
+                position: "absolute",
+                left: "0.75rem",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: "20px",
+                height: "20px",
+              }}
+            />
+            {loadingGoogle ? "Conectando..." : "Usar Google"}
+          </button>
+
+          <div style={{ marginTop: 12, textAlign: "center" }}>
             <button
               type="button"
-              className="btn btn-outline-dark w-100 mt-2"
+              className="btn btn-link auth-link-btn"
               onClick={() => {
                 onClose?.();
                 onGoToRegister?.();
               }}
             >
-              Registrarme
+              No tengo cuenta - Registrarme
             </button>
-          )}
-
-          <button type="submit" className="btn btn-primary w-100 mt-2">
-            Ingresar
-          </button>
-        </form>
-
-        {/* Login con Google */}
-        <button
-          type="button"
-          className="btn btn-outline-dark position-relative w-100 mt-3"
-          onClick={handleGoogleLogin}
-        >
-          <img
-            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-            alt="Google"
-            style={{
-              position: 'absolute',
-              left: '0.75rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: '20px',
-              height: '20px',
-            }}
-          />
-          Usar Google
-        </button>
-
-        {/* Switch manual */}
-        <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <button
-            type="button"
-            className="btn btn-link"
-            onClick={() => {
-              onClose?.();
-              onGoToRegister?.();
-            }}
-          >
-            No tengo cuenta → Registrarme
-          </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      <ProfileCompletionModal
+        visible={showProfileCompletion}
+        mandatory
+        title="Completa tu perfil"
+        subtitle="Antes de continuar necesitamos nombre, apellido y fecha de nacimiento."
+        initialValues={profileInitialValues}
+        submitLabel="Guardar y continuar"
+        onSubmit={handleProfileSubmit}
+      />
+    </>
   );
 }

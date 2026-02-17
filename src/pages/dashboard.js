@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collection, query, where, doc, getDoc, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { db, functions as cloudFunctions } from '../firebase';
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
 import TipoSelector from '../components/TipoSelector';
@@ -9,13 +9,40 @@ import PlantillaGrid from '../components/PlantillaGrid';
 import BorradoresGrid from '@/components/BorradoresGrid';
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
 import PublicadasGrid from "@/components/PublicadasGrid";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
 import dynamic from "next/dynamic";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
+import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // 💡 desactiva server-side rendering
 });
+
+function splitDisplayName(displayName) {
+  const clean = typeof displayName === "string"
+    ? displayName.trim().replace(/\s+/g, " ")
+    : "";
+
+  if (!clean) return { nombre: "", apellido: "" };
+
+  const parts = clean.split(" ");
+  if (parts.length === 1) return { nombre: parts[0], apellido: "" };
+
+  return {
+    nombre: parts[0],
+    apellido: parts.slice(1).join(" "),
+  };
+}
+
+function getErrorMessage(error, fallback) {
+  const message =
+    error?.message ||
+    error?.details?.message ||
+    error?.details ||
+    fallback;
+
+  return typeof message === "string" ? message : fallback;
+}
 
 
 
@@ -36,6 +63,12 @@ export default function Dashboard() {
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
   const [vista, setVista] = useState("home");
+  const [showProfileCompletion, setShowProfileCompletion] = useState(false);
+  const [profileInitialValues, setProfileInitialValues] = useState({
+    nombre: "",
+    apellido: "",
+    fechaNacimiento: "",
+  });
   const router = useRouter();
   const { loadingAdminAccess, isSuperAdmin, canManageSite } =
     useAdminAccess(usuario);
@@ -159,6 +192,28 @@ export default function Dashboard() {
     }
   };
 
+  const handleCompleteProfile = async (payload) => {
+    const upsertUserProfileCallable = httpsCallable(cloudFunctions, "upsertUserProfile");
+
+    try {
+      await upsertUserProfileCallable({
+        ...payload,
+        source: "profile-completion",
+      });
+
+      const auth = getAuth();
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+      }
+
+      setShowProfileCompletion(false);
+    } catch (error) {
+      throw new Error(
+        getErrorMessage(error, "No se pudo actualizar tu perfil.")
+      );
+    }
+  };
+
   
 
   // 🔄 Cargar plantillas por tipo
@@ -228,18 +283,82 @@ export default function Dashboard() {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUsuario(user);
+    const getMyProfileStatusCallable = httpsCallable(
+      cloudFunctions,
+      "getMyProfileStatus"
+    );
+    let mounted = true;
 
-      } else {
-        setUsuario(null);
-      }
-      setCheckingAuth(false);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      (async () => {
+        if (!mounted) return;
+        setCheckingAuth(true);
+
+        if (!user) {
+          if (!mounted) return;
+          setShowProfileCompletion(false);
+          setUsuario(null);
+          setCheckingAuth(false);
+          return;
+        }
+
+        const providerIds = (user.providerData || [])
+          .map((provider) => provider?.providerId)
+          .filter(Boolean);
+        const hasPasswordProvider = providerIds.includes("password");
+
+        if (hasPasswordProvider && user.emailVerified !== true) {
+          await signOut(auth);
+          if (!mounted) return;
+          setShowProfileCompletion(false);
+          setUsuario(null);
+          setCheckingAuth(false);
+          router.replace("/?authNotice=email-not-verified");
+          return;
+        }
+
+        try {
+          const result = await getMyProfileStatusCallable({});
+          const statusData = result?.data || {};
+
+          if (statusData.profileComplete !== true) {
+            const fallbackNames = splitDisplayName(
+              statusData?.profile?.nombreCompleto || user.displayName || ""
+            );
+
+            setProfileInitialValues({
+              nombre: statusData?.profile?.nombre || fallbackNames.nombre || "",
+              apellido: statusData?.profile?.apellido || fallbackNames.apellido || "",
+              fechaNacimiento: statusData?.profile?.fechaNacimiento || "",
+              nombreCompleto:
+                statusData?.profile?.nombreCompleto || user.displayName || "",
+            });
+            setShowProfileCompletion(true);
+          } else {
+            setShowProfileCompletion(false);
+          }
+
+          setUsuario(user);
+        } catch (error) {
+          console.error("Error validando estado de perfil:", error);
+          await signOut(auth);
+          if (!mounted) return;
+          setShowProfileCompletion(false);
+          setUsuario(null);
+          router.replace("/?authNotice=profile-check-failed");
+        } finally {
+          if (mounted) {
+            setCheckingAuth(false);
+          }
+        }
+      })();
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [router]);
 
   useEffect(() => {
     if (checkingAuth || slugInvitacion) return;
@@ -262,7 +381,8 @@ export default function Dashboard() {
   if (!usuario) return null; // Seguridad por si no se redirige
 
   return (
-    <DashboardLayout
+    <>
+      <DashboardLayout
       mostrarMiniToolbar={!!slugInvitacion}
       seccionActivaId={seccionActivaId}
       modoSelector={!slugInvitacion && vista === "home"}
@@ -300,8 +420,10 @@ export default function Dashboard() {
                   }}
                   onSeleccionarPlantilla={async (slug, plantilla) => {
                     try {
-                      const functions = getFunctions();
-                      const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
+                      const copiarPlantilla = httpsCallable(
+                        cloudFunctions,
+                        "copiarPlantilla"
+                      );
                       const res = await copiarPlantilla({ plantillaId: plantilla.id, slug });
 
                       if (plantilla.editor === "konva") {
@@ -408,6 +530,17 @@ export default function Dashboard() {
       />
 
 
-    </DashboardLayout>
+      </DashboardLayout>
+
+      <ProfileCompletionModal
+        visible={showProfileCompletion}
+        mandatory
+        title="Completa tu perfil"
+        subtitle="Para seguir usando la app necesitamos nombre, apellido y fecha de nacimiento."
+        initialValues={profileInitialValues}
+        submitLabel="Guardar y continuar"
+        onSubmit={handleCompleteProfile}
+      />
+    </>
   );
 }

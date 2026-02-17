@@ -14,6 +14,30 @@ function getErrorMessage(error, fallback) {
   return typeof message === "string" ? message : fallback;
 }
 
+function formatBirthDate(value) {
+  if (typeof value !== "string" || !value.trim()) return "Sin fecha";
+  const parts = value.split("-");
+  if (parts.length !== 3) return value;
+  const [year, month, day] = parts;
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
+function getFullName(item) {
+  const nombreCompleto = (item?.nombreCompleto || "").trim();
+  if (nombreCompleto) return nombreCompleto;
+
+  const nombre = (item?.nombre || "").trim();
+  const apellido = (item?.apellido || "").trim();
+  const builtName = [nombre, apellido].filter(Boolean).join(" ").trim();
+  if (builtName) return builtName;
+
+  const displayName = (item?.displayName || "").trim();
+  if (displayName) return displayName;
+
+  return "Sin nombre";
+}
+
 function RoleBadge({ isSuperAdmin, adminClaim }) {
   if (isSuperAdmin) {
     return (
@@ -120,7 +144,17 @@ export default function UsersDirectoryManager() {
       const email = (item.email || "").toLowerCase();
       const uid = (item.uid || "").toLowerCase();
       const name = (item.displayName || "").toLowerCase();
-      return email.includes(q) || uid.includes(q) || name.includes(q);
+      const nombre = (item.nombre || "").toLowerCase();
+      const apellido = (item.apellido || "").toLowerCase();
+      const nombreCompleto = (item.nombreCompleto || "").toLowerCase();
+      return (
+        email.includes(q) ||
+        uid.includes(q) ||
+        name.includes(q) ||
+        nombre.includes(q) ||
+        apellido.includes(q) ||
+        nombreCompleto.includes(q)
+      );
     });
   }, [search, users]);
 
@@ -187,7 +221,7 @@ export default function UsersDirectoryManager() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por email, nombre o UID"
+            placeholder="Buscar por email, nombre, apellido o UID"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none sm:w-80"
           />
         </div>
@@ -215,11 +249,21 @@ export default function UsersDirectoryManager() {
                       {item.email || "(sin email)"}
                     </p>
                     <p className="truncate text-xs text-gray-500">
-                      {item.displayName || "Sin nombre"} · UID: {item.uid}
+                      {getFullName(item)}
                     </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                      <span>Apellido: {item.apellido || "-"}</span>
+                      <span>Fecha nacimiento: {formatBirthDate(item.fechaNacimiento)}</span>
+                      <span>UID: {item.uid}</span>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {item.profileComplete !== true && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                        Perfil incompleto
+                      </span>
+                    )}
                     <RoleBadge
                       isSuperAdmin={item.isSuperAdmin}
                       adminClaim={item.adminClaim}

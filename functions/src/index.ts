@@ -32,6 +32,18 @@ const DEFAULT_USERS_PAGE_SIZE = 100;
 const MAX_USERS_PAGE_SIZE = 200;
 
 type CustomClaimsMap = Record<string, unknown>;
+type UserProfileSource =
+  | "email-register"
+  | "google-login"
+  | "profile-completion";
+
+type UserProfileData = {
+  nombre: string | null;
+  apellido: string | null;
+  nombreCompleto: string | null;
+  fechaNacimiento: string | null;
+  profileComplete: boolean;
+};
 
 type AdminUserSummary = {
   uid: string;
@@ -48,12 +60,206 @@ type UserDirectoryItem = {
   uid: string;
   email: string | null;
   displayName: string | null;
+  nombre: string | null;
+  apellido: string | null;
+  nombreCompleto: string | null;
+  fechaNacimiento: string | null;
+  profileComplete: boolean;
   adminClaim: boolean;
   isSuperAdmin: boolean;
   disabled: boolean;
   lastSignInTime: string | null;
   creationTime: string | null;
 };
+
+const USER_PROFILE_SOURCE_SET = new Set<UserProfileSource>([
+  "email-register",
+  "google-login",
+  "profile-completion",
+]);
+
+const BIRTHDATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function normalizeSpaces(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeRequiredName(raw: unknown, field: string): string {
+  if (typeof raw !== "string") {
+    throw new HttpsError("invalid-argument", `Falta ${field}`);
+  }
+
+  const value = normalizeSpaces(raw);
+  if (value.length < 2 || value.length > 60) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${field} debe tener entre 2 y 60 caracteres`
+    );
+  }
+
+  return value;
+}
+
+function isValidDateParts(year: number, month: number, day: number): boolean {
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(candidate.getTime())) return false;
+
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month - 1 &&
+    candidate.getUTCDate() === day
+  );
+}
+
+function normalizeBirthDate(raw: unknown): string {
+  if (typeof raw !== "string") {
+    throw new HttpsError("invalid-argument", "Falta fechaNacimiento");
+  }
+
+  const value = raw.trim();
+  if (!BIRTHDATE_REGEX.test(value)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "fechaNacimiento debe tener formato YYYY-MM-DD"
+    );
+  }
+
+  const [year, month, day] = value.split("-").map((item) => Number(item));
+  if (!isValidDateParts(year, month, day)) {
+    throw new HttpsError("invalid-argument", "fechaNacimiento no es valida");
+  }
+
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  const now = new Date();
+  const today = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+
+  if (candidate.getTime() > today.getTime()) {
+    throw new HttpsError(
+      "invalid-argument",
+      "fechaNacimiento no puede ser futura"
+    );
+  }
+
+  return value;
+}
+
+function normalizeProfileSource(raw: unknown): UserProfileSource {
+  if (typeof raw === "undefined") return "profile-completion";
+  if (typeof raw !== "string") {
+    throw new HttpsError("invalid-argument", "source invalido");
+  }
+
+  if (!USER_PROFILE_SOURCE_SET.has(raw as UserProfileSource)) {
+    throw new HttpsError("invalid-argument", "source invalido");
+  }
+
+  return raw as UserProfileSource;
+}
+
+function normalizeOptionalText(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = normalizeSpaces(raw);
+  return value.length > 0 ? value : null;
+}
+
+function isValidBirthDateString(value: string | null): boolean {
+  if (!value || !BIRTHDATE_REGEX.test(value)) return false;
+  const [year, month, day] = value.split("-").map((item) => Number(item));
+  if (!isValidDateParts(year, month, day)) return false;
+
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  const now = new Date();
+  const today = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+
+  return candidate.getTime() <= today.getTime();
+}
+
+function isProfileCompleteFromFields(
+  nombre: string | null,
+  apellido: string | null,
+  fechaNacimiento: string | null
+): boolean {
+  return Boolean(nombre && apellido && isValidBirthDateString(fechaNacimiento));
+}
+
+function buildNombreCompleto(nombre: string, apellido: string): string {
+  return normalizeSpaces(`${nombre} ${apellido}`);
+}
+
+function extractProfileFromDocData(data: unknown): UserProfileData {
+  const raw = (data && typeof data === "object"
+    ? (data as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+
+  const nombre = normalizeOptionalText(raw.nombre);
+  const apellido = normalizeOptionalText(raw.apellido);
+  const fechaNacimiento = normalizeOptionalText(raw.fechaNacimiento);
+  const computedFullName =
+    nombre && apellido ? buildNombreCompleto(nombre, apellido) : null;
+  const storedFullName = normalizeOptionalText(raw.nombreCompleto);
+  const nombreCompleto = storedFullName || computedFullName;
+
+  return {
+    nombre,
+    apellido,
+    nombreCompleto,
+    fechaNacimiento: isValidBirthDateString(fechaNacimiento)
+      ? fechaNacimiento
+      : null,
+    profileComplete: isProfileCompleteFromFields(
+      nombre,
+      apellido,
+      fechaNacimiento
+    ),
+  };
+}
+
+type TimestampLike = {
+  toDate: () => Date;
+};
+
+function isTimestampLike(value: unknown): value is TimestampLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as TimestampLike).toDate === "function"
+  );
+}
+
+function toISODateTime(value: unknown): string | null {
+  if (isTimestampLike(value)) {
+    return value.toDate().toISOString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return null;
+}
+
+async function getProfileMapByUid(uids: string[]): Promise<Map<string, UserProfileData>> {
+  const uniqueUids = Array.from(new Set(uids.filter(Boolean)));
+  if (uniqueUids.length === 0) {
+    return new Map();
+  }
+
+  const refs = uniqueUids.map((uid) => db.collection("usuarios").doc(uid));
+  const snaps = await db.getAll(...refs);
+  const map = new Map<string, UserProfileData>();
+
+  for (const snap of snaps) {
+    if (!snap.exists) continue;
+    map.set(snap.id, extractProfileFromDocData(snap.data()));
+  }
+
+  return map;
+}
 
 function toAdminUserSummary(
   userRecord: admin.auth.UserRecord,
@@ -77,14 +283,33 @@ function toAdminUserSummary(
 
 function toUserDirectoryItem(
   userRecord: admin.auth.UserRecord,
-  superAdminSet: Set<string>
+  superAdminSet: Set<string>,
+  profile: UserProfileData | null = null
 ): UserDirectoryItem {
   const claims = (userRecord.customClaims || {}) as CustomClaimsMap;
+  const profileData = profile || {
+    nombre: null,
+    apellido: null,
+    nombreCompleto: null,
+    fechaNacimiento: null,
+    profileComplete: false,
+  };
+  const nombreCompleto = profileData.nombreCompleto || userRecord.displayName || null;
+  const profileComplete = isProfileCompleteFromFields(
+    profileData.nombre,
+    profileData.apellido,
+    profileData.fechaNacimiento
+  );
 
   return {
     uid: userRecord.uid,
     email: userRecord.email || null,
     displayName: userRecord.displayName || null,
+    nombre: profileData.nombre,
+    apellido: profileData.apellido,
+    nombreCompleto,
+    fechaNacimiento: profileData.fechaNacimiento,
+    profileComplete,
     adminClaim: claims.admin === true,
     isSuperAdmin: superAdminSet.has(userRecord.uid),
     disabled: userRecord.disabled === true,
@@ -745,6 +970,144 @@ export const getUsersStats = onCall(
 
 /**
  * ================================
+ * Perfil: guardar/actualizar datos obligatorios
+ * ================================
+ */
+export const upsertUserProfile = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (
+    request: CallableRequest<{
+      nombre: string;
+      apellido: string;
+      fechaNacimiento: string;
+      source?: UserProfileSource;
+    }>
+  ) => {
+    const uid = requireAuth(request);
+    const nombre = normalizeRequiredName(request.data?.nombre, "nombre");
+    const apellido = normalizeRequiredName(request.data?.apellido, "apellido");
+    const fechaNacimiento = normalizeBirthDate(request.data?.fechaNacimiento);
+    const source = normalizeProfileSource(request.data?.source);
+    const nombreCompleto = buildNombreCompleto(nombre, apellido);
+
+    let userRecord: admin.auth.UserRecord;
+    try {
+      userRecord = await admin.auth().getUser(uid);
+    } catch (error: any) {
+      logger.error("❌ Error obteniendo usuario autenticado para perfil", {
+        uid,
+        error,
+      });
+      throw new HttpsError("internal", "No se pudo obtener el usuario");
+    }
+
+    const email = userRecord.email || null;
+    const profileRef = db.collection("usuarios").doc(uid);
+    const existingSnap = await profileRef.get();
+
+    const payload: Record<string, unknown> = {
+      uid,
+      email,
+      nombre,
+      apellido,
+      nombreCompleto,
+      fechaNacimiento,
+      profileComplete: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedFrom: source,
+    };
+
+    if (!existingSnap.exists) {
+      payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    await profileRef.set(payload, { merge: true });
+
+    const currentDisplayName = normalizeSpaces(userRecord.displayName || "");
+    if (currentDisplayName !== nombreCompleto) {
+      await admin.auth().updateUser(uid, { displayName: nombreCompleto });
+    }
+
+    const updatedSnap = await profileRef.get();
+    const updatedData = updatedSnap.data() || {};
+
+    return {
+      success: true,
+      profile: {
+        uid,
+        email,
+        nombre,
+        apellido,
+        nombreCompleto,
+        fechaNacimiento,
+        profileComplete: true,
+        updatedAt: toISODateTime(updatedData.updatedAt),
+      },
+    };
+  }
+);
+
+
+/**
+ * ================================
+ * Perfil: estado del usuario autenticado
+ * ================================
+ */
+export const getMyProfileStatus = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = requireAuth(request);
+
+    let userRecord: admin.auth.UserRecord;
+    try {
+      userRecord = await admin.auth().getUser(uid);
+    } catch (error: any) {
+      logger.error("❌ Error obteniendo estado de auth del perfil", { uid, error });
+      throw new HttpsError("internal", "No se pudo obtener el usuario");
+    }
+
+    const profileSnap = await db.collection("usuarios").doc(uid).get();
+    const profileData = extractProfileFromDocData(
+      profileSnap.exists ? profileSnap.data() : null
+    );
+
+    const providerIds = (userRecord.providerData || [])
+      .map((provider) => provider.providerId)
+      .filter((providerId): providerId is string => typeof providerId === "string");
+
+    const nombreCompleto =
+      profileData.nombreCompleto || normalizeOptionalText(userRecord.displayName);
+    const profileComplete = isProfileCompleteFromFields(
+      profileData.nombre,
+      profileData.apellido,
+      profileData.fechaNacimiento
+    );
+
+    return {
+      uid,
+      email: userRecord.email || null,
+      emailVerified: userRecord.emailVerified === true,
+      providerIds,
+      profile: {
+        nombre: profileData.nombre,
+        apellido: profileData.apellido,
+        nombreCompleto,
+        fechaNacimiento: profileData.fechaNacimiento,
+      },
+      profileComplete,
+    };
+  }
+);
+
+
+/**
+ * ================================
  * Superadmin: listado paginado de usuarios
  * ================================
  */
@@ -770,9 +1133,14 @@ export const listUsersDirectory = onCall(
 
     const superAdminSet = new Set(getSuperAdminUids());
     const page = await admin.auth().listUsers(pageSize, pageToken);
+    const profileMap = await getProfileMapByUid(page.users.map((user) => user.uid));
 
     const items = page.users.map((userRecord) =>
-      toUserDirectoryItem(userRecord, superAdminSet)
+      toUserDirectoryItem(
+        userRecord,
+        superAdminSet,
+        profileMap.get(userRecord.uid) || null
+      )
     );
 
     return {

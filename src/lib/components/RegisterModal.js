@@ -3,7 +3,6 @@ import { useRouter } from "next/navigation";
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -11,6 +10,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { auth, functions } from "@/firebase";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
+import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -230,7 +230,7 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
         source: "email-register",
       });
 
-      await sendEmailVerification(credentials.user);
+      await sendVerificationEmailLocalized(auth, credentials.user);
       await signOut(auth);
 
       const successMessage =
@@ -269,7 +269,7 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
         return;
       }
 
-      await sendEmailVerification(credentials.user);
+      await sendVerificationEmailLocalized(auth, credentials.user);
       await signOut(auth);
 
       const resendMessage = "Te reenviamos el correo de verificacion.";

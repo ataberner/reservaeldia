@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   GoogleAuthProvider,
-  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -11,6 +10,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { auth, functions } from "@/firebase";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
+import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -166,7 +166,7 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
 
       if (!credentials.user.emailVerified) {
         try {
-          await sendEmailVerification(credentials.user);
+          await sendVerificationEmailLocalized(auth, credentials.user);
         } catch (verificationError) {
           console.error("No se pudo enviar verificacion inicial:", verificationError);
         }
@@ -237,7 +237,7 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
         return;
       }
 
-      await sendEmailVerification(credentials.user);
+      await sendVerificationEmailLocalized(auth, credentials.user);
       await signOut(auth);
 
       const resendMessage = "Te reenviamos el correo de verificacion.";

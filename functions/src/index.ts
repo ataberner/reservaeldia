@@ -27,10 +27,24 @@ const db = admin.firestore();
 const bucket = getStorage().bucket();
 
 const MAX_ADMIN_SCAN = 10000;
+const MAX_USERS_STATS_SCAN = 100000;
+const DEFAULT_USERS_PAGE_SIZE = 100;
+const MAX_USERS_PAGE_SIZE = 200;
 
 type CustomClaimsMap = Record<string, unknown>;
 
 type AdminUserSummary = {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  adminClaim: boolean;
+  isSuperAdmin: boolean;
+  disabled: boolean;
+  lastSignInTime: string | null;
+  creationTime: string | null;
+};
+
+type UserDirectoryItem = {
   uid: string;
   email: string | null;
   displayName: string | null;
@@ -55,6 +69,24 @@ function toAdminUserSummary(
     displayName: userRecord.displayName || null,
     adminClaim,
     isSuperAdmin: userIsSuperAdmin,
+    disabled: userRecord.disabled === true,
+    lastSignInTime: userRecord.metadata?.lastSignInTime || null,
+    creationTime: userRecord.metadata?.creationTime || null,
+  };
+}
+
+function toUserDirectoryItem(
+  userRecord: admin.auth.UserRecord,
+  superAdminSet: Set<string>
+): UserDirectoryItem {
+  const claims = (userRecord.customClaims || {}) as CustomClaimsMap;
+
+  return {
+    uid: userRecord.uid,
+    email: userRecord.email || null,
+    displayName: userRecord.displayName || null,
+    adminClaim: claims.admin === true,
+    isSuperAdmin: superAdminSet.has(userRecord.uid),
     disabled: userRecord.disabled === true,
     lastSignInTime: userRecord.metadata?.lastSignInTime || null,
     creationTime: userRecord.metadata?.creationTime || null,
@@ -641,6 +673,113 @@ export const getAdminUserByEmail = onCall(
       logger.error("❌ Error buscando usuario por email", { email, error });
       throw new HttpsError("internal", "No se pudo buscar el usuario");
     }
+  }
+);
+
+
+/**
+ * ================================
+ * Superadmin: estadísticas de usuarios
+ * ================================
+ */
+export const getUsersStats = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    requireSuperAdmin(request);
+
+    const superAdminSet = new Set(getSuperAdminUids());
+
+    let totalUsers = 0;
+    let totalAdmins = 0;
+    let totalSuperAdmins = 0;
+    let totalDisabled = 0;
+    let truncated = false;
+    let nextPageToken: string | undefined = undefined;
+
+    do {
+      const remaining = MAX_USERS_STATS_SCAN - totalUsers;
+      if (remaining <= 0) {
+        truncated = true;
+        break;
+      }
+
+      const batchSize = Math.min(1000, remaining);
+      const page = await admin.auth().listUsers(batchSize, nextPageToken);
+
+      for (const userRecord of page.users) {
+        totalUsers += 1;
+
+        const claims = (userRecord.customClaims || {}) as CustomClaimsMap;
+        const adminClaim = claims.admin === true;
+        const userIsSuperAdmin = superAdminSet.has(userRecord.uid);
+
+        if (adminClaim) totalAdmins += 1;
+        if (userIsSuperAdmin) totalSuperAdmins += 1;
+        if (userRecord.disabled === true) totalDisabled += 1;
+
+        if (totalUsers >= MAX_USERS_STATS_SCAN) break;
+      }
+
+      if (totalUsers >= MAX_USERS_STATS_SCAN) {
+        truncated = Boolean(page.pageToken);
+        break;
+      }
+
+      nextPageToken = page.pageToken;
+    } while (nextPageToken);
+
+    return {
+      totalUsers,
+      totalAdmins,
+      totalSuperAdmins,
+      totalDisabled,
+      scannedUsers: totalUsers,
+      truncated,
+    };
+  }
+);
+
+
+/**
+ * ================================
+ * Superadmin: listado paginado de usuarios
+ * ================================
+ */
+export const listUsersDirectory = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (
+    request: CallableRequest<{ pageSize?: number; pageToken?: string | null }>
+  ) => {
+    requireSuperAdmin(request);
+
+    const requestedSize = Number(request.data?.pageSize);
+    const pageSize = Number.isFinite(requestedSize)
+      ? Math.max(20, Math.min(MAX_USERS_PAGE_SIZE, Math.floor(requestedSize)))
+      : DEFAULT_USERS_PAGE_SIZE;
+
+    const pageToken =
+      typeof request.data?.pageToken === "string" && request.data?.pageToken.trim()
+        ? request.data.pageToken.trim()
+        : undefined;
+
+    const superAdminSet = new Set(getSuperAdminUids());
+    const page = await admin.auth().listUsers(pageSize, pageToken);
+
+    const items = page.users.map((userRecord) =>
+      toUserDirectoryItem(userRecord, superAdminSet)
+    );
+
+    return {
+      items,
+      nextPageToken: page.pageToken || null,
+      pageSize,
+    };
   }
 );
 

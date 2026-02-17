@@ -1,16 +1,26 @@
+import { useState } from "react";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
+import UsersDirectoryManager from "@/components/admin/UsersDirectoryManager";
 
 export default function SiteManagementBoard({
   canManageSite,
   isSuperAdmin,
   loadingAdminAccess,
 }) {
+  const [openPanel, setOpenPanel] = useState(null);
+  const isAdminsOpen = openPanel === "admins";
+  const isUsersOpen = openPanel === "users";
+
+  const togglePanel = (panelKey) => {
+    setOpenPanel((prev) => (prev === panelKey ? null : panelKey));
+  };
+
   return (
     <section className="mx-auto w-full max-w-6xl py-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Tablero de gestión</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Tablero de gestion</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Espacio de administración interna del sitio.
+          Espacio de administracion interna del sitio.
         </p>
       </header>
 
@@ -22,20 +32,121 @@ export default function SiteManagementBoard({
 
       {!loadingAdminAccess && !canManageSite && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
-          No tenés permisos para acceder a este tablero.
+          No tenes permisos para acceder a este tablero.
         </div>
       )}
 
       {!loadingAdminAccess && canManageSite && !isSuperAdmin && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          Gestión de admins: solo disponible para superadmin.
+          Gestion de admins: solo disponible para superadmin.
         </div>
       )}
 
       {!loadingAdminAccess && canManageSite && isSuperAdmin && (
-        <AdminUsersManager />
+        <div className="space-y-4">
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isAdminsOpen
+                ? "bg-gradient-to-r from-purple-500 to-indigo-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("admins")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isAdminsOpen
+                  ? "bg-gradient-to-r from-purple-50 to-indigo-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div>
+                <h2
+                  className={`text-lg font-semibold ${
+                    isAdminsOpen ? "text-purple-900" : "text-gray-800"
+                  }`}
+                >
+                  Administrar admins
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isAdminsOpen ? "text-purple-700" : "text-gray-600"
+                  }`}
+                >
+                  Alta, baja y control de permisos administrativos.
+                </p>
+                {isAdminsOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-purple-700">
+                    Seccion abierta
+                  </span>
+                )}
+              </div>
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
+                  isAdminsOpen
+                    ? "bg-purple-600 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {isAdminsOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
+
+          {isAdminsOpen && <AdminUsersManager />}
+
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isUsersOpen
+                ? "bg-gradient-to-r from-emerald-500 to-cyan-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("users")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isUsersOpen
+                  ? "bg-gradient-to-r from-emerald-50 to-cyan-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div>
+                <h2
+                  className={`text-lg font-semibold ${
+                    isUsersOpen ? "text-emerald-900" : "text-gray-800"
+                  }`}
+                >
+                  Administrar usuarios
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isUsersOpen ? "text-emerald-700" : "text-gray-600"
+                  }`}
+                >
+                  Estadisticas globales y listado paginado de usuarios.
+                </p>
+                {isUsersOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    Seccion abierta
+                  </span>
+                )}
+              </div>
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
+                  isUsersOpen
+                    ? "bg-emerald-600 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {isUsersOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
+
+          {isUsersOpen && <UsersDirectoryManager />}
+        </div>
       )}
     </section>
   );
 }
-

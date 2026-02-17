@@ -50,7 +50,7 @@ export default function AdminUsersManager() {
   const [items, setItems] = useState([]);
   const [scannedUsers, setScannedUsers] = useState(0);
   const [truncated, setTruncated] = useState(false);
-  const [loadingList, setLoadingList] = useState(true);
+  const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState("");
 
   const [email, setEmail] = useState("");
@@ -84,10 +84,8 @@ export default function AdminUsersManager() {
       setScannedUsers(Number.isFinite(data.scannedUsers) ? data.scannedUsers : 0);
       setTruncated(data.truncated === true);
     } catch (error) {
-      console.error("❌ Error listando admins:", error);
-      setListError(
-        getErrorMessage(error, "No se pudo cargar la lista de admins")
-      );
+      console.error("Error listando admins:", error);
+      setListError(getErrorMessage(error, "No se pudo cargar la lista de admins"));
     } finally {
       setLoadingList(false);
     }
@@ -124,7 +122,7 @@ export default function AdminUsersManager() {
             : "Permiso admin removido correctamente."
         );
       } catch (error) {
-        console.error("❌ Error actualizando claim admin:", error);
+        console.error("Error actualizando claim admin:", error);
         setActionError(
           getErrorMessage(error, "No se pudo actualizar el permiso admin")
         );
@@ -140,7 +138,7 @@ export default function AdminUsersManager() {
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
-      setSearchError("Ingresá un email válido.");
+      setSearchError("Ingresa un email valido.");
       setSearchResult(null);
       setSearched(false);
       return;
@@ -163,7 +161,7 @@ export default function AdminUsersManager() {
       }
       setSearched(true);
     } catch (error) {
-      console.error("❌ Error buscando usuario:", error);
+      console.error("Error buscando usuario:", error);
       setSearchResult(null);
       setSearchError(getErrorMessage(error, "No se pudo buscar el usuario"));
       setSearched(true);
@@ -173,14 +171,13 @@ export default function AdminUsersManager() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-800">Administrar admins</h2>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="text-sm text-gray-600">
           Buscar usuarios por email y asignar o quitar permisos admin.
         </p>
-        <p className="mt-2 text-xs text-gray-500">
-          Superadmins detectados por UID están protegidos y no son revocables.
+        <p className="mt-1 text-xs text-gray-500">
+          Los superadmins detectados por UID estan protegidos y no son revocables.
         </p>
       </div>
 
@@ -202,9 +199,7 @@ export default function AdminUsersManager() {
           </button>
         </form>
 
-        {searchError && (
-          <p className="mt-3 text-sm text-red-600">{searchError}</p>
-        )}
+        {searchError && <p className="mt-3 text-sm text-red-600">{searchError}</p>}
 
         {searched && searchResult && (
           <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -247,9 +242,7 @@ export default function AdminUsersManager() {
           </div>
         )}
 
-        {actionError && (
-          <p className="mt-3 text-sm text-red-600">{actionError}</p>
-        )}
+        {actionError && <p className="mt-3 text-sm text-red-600">{actionError}</p>}
         {actionMessage && (
           <p className="mt-3 text-sm text-green-700">{actionMessage}</p>
         )}
@@ -266,15 +259,12 @@ export default function AdminUsersManager() {
 
         {truncated && (
           <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            La lista es parcial por límite de escaneo ({scannedUsers} usuarios).
+            La lista es parcial por limite de escaneo ({scannedUsers} usuarios).
           </p>
         )}
 
         {listError && <p className="text-sm text-red-600">{listError}</p>}
-
-        {loadingList && (
-          <p className="text-sm text-gray-500">Cargando admins...</p>
-        )}
+        {loadingList && <p className="text-sm text-gray-500">Cargando admins...</p>}
 
         {!loadingList && !listError && items.length === 0 && (
           <p className="text-sm text-gray-500">No hay admins configurados.</p>
@@ -307,9 +297,7 @@ export default function AdminUsersManager() {
 
                 <div className="sm:text-right">
                   {item.isSuperAdmin ? (
-                    <span className="text-xs font-medium text-indigo-700">
-                      Protegido
-                    </span>
+                    <span className="text-xs font-medium text-indigo-700">Protegido</span>
                   ) : (
                     <button
                       onClick={() => applyAdminClaim(item, !item.adminClaim)}

@@ -1,0 +1,103 @@
+[debug] [2026-02-17T13:01:58.086Z] ----------------------------------------------------------------------
+[debug] [2026-02-17T13:01:58.090Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Manuel Lagos\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --only functions
+[debug] [2026-02-17T13:01:58.090Z] CLI Version:   14.4.0
+[debug] [2026-02-17T13:01:58.090Z] Platform:      win32
+[debug] [2026-02-17T13:01:58.090Z] Node Version:  v22.13.1
+[debug] [2026-02-17T13:01:58.091Z] Time:          Tue Feb 17 2026 10:01:58 GMT-0300 (hora estándar de Argentina)
+[debug] [2026-02-17T13:01:58.092Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-02-17T13:01:58.646Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-02-17T13:01:58.647Z] > authorizing via signed-in user (reservaeldia.invitaciones@gmail.com)
+[info] i  emulators: Starting emulators: functions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: functions"}}
+[debug] [2026-02-17T13:01:58.678Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-02-17T13:01:58.679Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-02-17T13:01:58.690Z] [hub] writing locator at C:\Users\MANUEL~1\AppData\Local\Temp\hub-reservaeldia-7a440.json
+[debug] [2026-02-17T13:01:58.740Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-02-17T13:01:58.741Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-02-17T13:01:58.741Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-02-17T13:01:58.741Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[warn] !  functions: The following emulators are not running, calls to these services from the Functions emulator will affect production: apphosting, auth, firestore, database, hosting, pubsub, storage, dataconnect {"metadata":{"emulator":{"name":"functions"},"message":"The following emulators are not running, calls to these services from the Functions emulator will affect production: \u001b[1mapphosting, auth, firestore, database, hosting, pubsub, storage, dataconnect\u001b[22m"}}
+[warn] !  functions: Application Default Credentials detected. Non-emulated services will access production using these credentials. Be careful! {"metadata":{"emulator":{"name":"functions"},"message":"Application Default Credentials detected. Non-emulated services will access production using these credentials. Be careful!"}}
+[debug] [2026-02-17T13:02:04.531Z] Checked if tokens are valid: true, expires at: 1771336497337
+[debug] [2026-02-17T13:02:04.531Z] Checked if tokens are valid: true, expires at: 1771336497337
+[debug] [2026-02-17T13:02:04.532Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/reservaeldia-7a440/adminSdkConfig [none]
+[debug] [2026-02-17T13:02:05.044Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/reservaeldia-7a440/adminSdkConfig 200
+[debug] [2026-02-17T13:02:05.044Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/reservaeldia-7a440/adminSdkConfig {"projectId":"reservaeldia-7a440","storageBucket":"reservaeldia-7a440.firebasestorage.app"}
+[info] i  functions: Watching "C:\Reservaeldia\functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"C:\\Reservaeldia\\functions\" for Cloud Functions..."}}
+[debug] [2026-02-17T13:02:05.081Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-02-17T13:02:06.746Z] > [functions] package.json contents: {
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
+[debug] [2026-02-17T13:02:06.747Z] Building nodejs source
+[debug] [2026-02-17T13:02:06.747Z] Failed to find version of module node: reached end of search path C:\Reservaeldia\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-02-17T13:02:06.750Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-02-17T13:02:06.760Z] Found firebase-functions binary at 'C:\Reservaeldia\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8112
+
+[error] (node:17892) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[debug] [2026-02-17T13:02:09.144Z] Got response from /__/functions.yaml {"endpoints":{"verInvitacionPublicada":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacionPublicada"},"verInvitacion":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"httpsTrigger":{},"entryPoint":"verInvitacion"},"copiarPlantillaHTML":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantillaHTML"},"borrarBorrador":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarBorrador"},"publicarInvitacion":{"availableMemoryMb":512,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"publicarInvitacion"},"borrarTodosLosBorradores":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"borrarTodosLosBorradores"},"copiarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"copiarPlantilla"},"crearPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"crearPlantilla"},"borrarPlantilla":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"borrarPlantilla"},"setAdminClaim":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"setAdminClaim"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] +  functions: Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: verInvitacionPublicada, verInvitacion, copiarPlantillaHTML, borrarBorrador, publicarInvitacion, borrarTodosLosBorradores, copiarPlantilla, crearPlantilla, borrarPlantilla, setAdminClaim."}}
+[info] +  functions[us-central1-verInvitacionPublicada]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/verInvitacionPublicada). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/verInvitacionPublicada)."}}
+[info] +  functions[us-central1-verInvitacion]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/verInvitacion). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/verInvitacion)."}}
+[info] +  functions[us-central1-copiarPlantillaHTML]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/copiarPlantillaHTML). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/copiarPlantillaHTML)."}}
+[info] +  functions[us-central1-borrarBorrador]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/borrarBorrador). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/borrarBorrador)."}}
+[info] +  functions[us-central1-publicarInvitacion]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/publicarInvitacion). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/publicarInvitacion)."}}
+[info] +  functions[us-central1-borrarTodosLosBorradores]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/borrarTodosLosBorradores). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/borrarTodosLosBorradores)."}}
+[info] +  functions[us-central1-copiarPlantilla]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/copiarPlantilla). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/copiarPlantilla)."}}
+[info] +  functions[us-central1-crearPlantilla]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/crearPlantilla). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/crearPlantilla)."}}
+[info] +  functions[us-central1-borrarPlantilla]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/borrarPlantilla). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/borrarPlantilla)."}}
+[info] +  functions[us-central1-setAdminClaim]: http function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/setAdminClaim). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/reservaeldia-7a440/us-central1/setAdminClaim)."}}
+[debug] [2026-02-17T13:02:13.212Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
+[info] 
+┌─────────────────────────────────────────────────────────────┐
+│ ✔  All emulators ready! It is now safe to connect your app. │
+│ i  View Emulator UI at http://127.0.0.1:4000/               │
+└─────────────────────────────────────────────────────────────┘
+
+┌───────────┬────────────────┬─────────────────────────────────┐
+│ Emulator  │ Host:Port      │ View in Emulator UI             │
+├───────────┼────────────────┼─────────────────────────────────┤
+│ Functions │ 127.0.0.1:5001 │ http://127.0.0.1:4000/functions │
+└───────────┴────────────────┴─────────────────────────────────┘
+  Emulator Hub host: 127.0.0.1 port: 4400
+  Other reserved ports: 4500
+
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+ 

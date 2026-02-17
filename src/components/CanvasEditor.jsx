@@ -1141,6 +1141,40 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
+  const normalizarMedidasGaleria = useCallback((galeria, widthCandidate, xCandidate) => {
+    const canvasWidth = 800;
+    const rows = Math.max(1, Number(galeria?.rows) || 1);
+    const cols = Math.max(1, Number(galeria?.cols) || 1);
+    const gap = Math.max(0, Number(galeria?.gap) || 0);
+    const cellRatio =
+      galeria?.ratio === "4:3"
+        ? 3 / 4
+        : galeria?.ratio === "16:9"
+          ? 9 / 16
+          : 1;
+
+    const minGridWidth = gap * (cols - 1) + cols;
+    let widthPct = (Number(widthCandidate) / canvasWidth) * 100;
+    if (!Number.isFinite(widthPct)) widthPct = Number(galeria?.widthPct);
+    if (!Number.isFinite(widthPct)) widthPct = 70;
+    widthPct = Math.max(10, Math.min(100, widthPct));
+
+    let width = (canvasWidth * widthPct) / 100;
+    width = Math.min(canvasWidth, Math.max(minGridWidth, width));
+    widthPct = Math.max(10, Math.min(100, (width / canvasWidth) * 100));
+
+    const maxX = Math.max(0, canvasWidth - width);
+    const fallbackX = Number.isFinite(Number(galeria?.x)) ? Number(galeria.x) : 0;
+    const rawX = Number.isFinite(Number(xCandidate)) ? Number(xCandidate) : fallbackX;
+    const x = Math.max(0, Math.min(rawX, maxX));
+
+    const cellW = Math.max(1, (width - gap * (cols - 1)) / cols);
+    const cellH = cellW * cellRatio;
+    const height = rows * cellH + gap * (rows - 1);
+
+    return { width, height, widthPct, x };
+  }, []);
+
   const actualizarLinea = (lineId, nuevaData) => {
     const index = objetos.findIndex(obj => obj.id === lineId);
 
@@ -2578,6 +2612,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           }}
                           onDragMovePersonalizado={(pos, id) => {
                             window._isDragging = true;
+                            if (!window._grupoLider) {
+                              mostrarGuias(pos, id, objetos, elementRefs);
+                            }
                             requestAnimationFrame(() => {
                               if (typeof actualizarPosicionBotonOpciones === "function") {
                                 actualizarPosicionBotonOpciones();
@@ -3004,13 +3041,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
                   {elementosSeleccionados.length > 0 && (() => {
-                    // 🔒 Si la selección incluye al menos una galería, no mostramos Transformer
-                    const hayGaleriaSeleccionada = elementosSeleccionados.some(id => {
-                      const o = objetos.find(x => x.id === id);
-                      return o?.tipo === "galeria";
-                    });
-                    if (hayGaleriaSeleccionada) return null;
-
                     return (
                       <SelectionBounds
                         selectedElements={elementosSeleccionados}
@@ -3054,6 +3084,19 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                                   if (elemento.tipo === 'texto' && newAttrs.fontSize) {
                                     updatedElement.fontSize = newAttrs.fontSize;
+                                    updatedElement.scaleX = 1;
+                                    updatedElement.scaleY = 1;
+                                  } else if (elemento.tipo === "galeria") {
+                                    const galleryMetrics = normalizarMedidasGaleria(
+                                      elemento,
+                                      newAttrs.width,
+                                      newAttrs.x
+                                    );
+                                    updatedElement.width = galleryMetrics.width;
+                                    updatedElement.height = galleryMetrics.height;
+                                    updatedElement.widthPct = galleryMetrics.widthPct;
+                                    updatedElement.x = galleryMetrics.x;
+                                    updatedElement.rotation = elemento.rotation || 0;
                                     updatedElement.scaleX = 1;
                                     updatedElement.scaleY = 1;
                                   } else {
@@ -3100,6 +3143,22 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   };
                                   delete finalAttrs.width;
                                   delete finalAttrs.height;
+                                } else if (objOriginal.tipo === "galeria") {
+                                  const galleryMetrics = normalizarMedidasGaleria(
+                                    objOriginal,
+                                    cleanAttrs.width,
+                                    cleanAttrs.x
+                                  );
+                                  finalAttrs = {
+                                    ...finalAttrs,
+                                    x: galleryMetrics.x,
+                                    width: galleryMetrics.width,
+                                    height: galleryMetrics.height,
+                                    widthPct: galleryMetrics.widthPct,
+                                    rotation: objOriginal.rotation || 0,
+                                    scaleX: 1,
+                                    scaleY: 1,
+                                  };
                                 }
 
                                 // ✅ offsetY solo para debug (evita ReferenceError)
@@ -3139,7 +3198,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                   {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
                   {!window._resizeData?.isResizing && !isDragging && !window._grupoLider && !editing.id && (
-                    <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} />
+                    <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} objetos={objetos} />
                   )}
 
 
@@ -3481,7 +3540,27 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         if (!contenedor || !stage) return null;
 
         // 🔥 OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE
-        const box = nodeRef.getClientRect();
+        let box = nodeRef.getClientRect();
+        if (
+          elementoSeleccionado?.tipo === "galeria" &&
+          Number.isFinite(Number(elementoSeleccionado.width)) &&
+          Number.isFinite(Number(elementoSeleccionado.height))
+        ) {
+          const absPos =
+            typeof nodeRef.getAbsolutePosition === "function"
+              ? nodeRef.getAbsolutePosition()
+              : {
+                x: typeof nodeRef.x === "function" ? nodeRef.x() : 0,
+                y: typeof nodeRef.y === "function" ? nodeRef.y() : 0,
+              };
+
+          box = {
+            x: absPos.x,
+            y: absPos.y,
+            width: Number(elementoSeleccionado.width),
+            height: Number(elementoSeleccionado.height),
+          };
+        }
 
         // 🔥 OBTENER COORDENADAS DEL STAGE RELATIVAS AL VIEWPORT
         const stageContainer = stage.container();

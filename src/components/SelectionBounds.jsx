@@ -211,6 +211,7 @@ export default function SelectionBounds({
   const primerElemento = elementosSeleccionadosData[0] || null;
   const esTexto = primerElemento?.tipo === "texto";
   const esCountdown = primerElemento?.tipo === "countdown";
+  const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
 
   const hasGallery = elementosSeleccionadosData.some(
@@ -226,7 +227,7 @@ export default function SelectionBounds({
   );
 
   const deberiaUsarTransformer =
-    elementosTransformables.length > 0 && !hasGallery;
+    elementosTransformables.length > 0;
 
   const selectedGeomKey = elementosSeleccionadosData
     .map((o) =>
@@ -247,6 +248,27 @@ export default function SelectionBounds({
     )
     .join("|");
 
+  const getTransformPose = (node) => {
+    if (!node) return { x: 0, y: 0, rotation: 0 };
+
+    if (esGaleria && typeof node.getParent === "function") {
+      const parent = node.getParent();
+      if (parent) {
+        return {
+          x: typeof parent.x === "function" ? parent.x() : 0,
+          y: typeof parent.y === "function" ? parent.y() : 0,
+          rotation: typeof parent.rotation === "function" ? parent.rotation() || 0 : 0,
+        };
+      }
+    }
+
+    return {
+      x: typeof node.x === "function" ? node.x() : 0,
+      y: typeof node.y === "function" ? node.y() : 0,
+      rotation: typeof node.rotation === "function" ? node.rotation() || 0 : 0,
+    };
+  };
+
 
   // 🔥 Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
@@ -265,7 +287,7 @@ export default function SelectionBounds({
     });
 
     // Si no corresponde transformer, no hagas detach agresivo (evita flicker)
-    if (!deberiaUsarTransformer || hasGallery) {
+    if (!deberiaUsarTransformer) {
       TRDBG("EFFECT exit: no transformer or gallery", { selKey });
       return;
     }
@@ -281,7 +303,16 @@ export default function SelectionBounds({
       const idSel = selectedElements[0];
       const refNode = elementRefs.current?.[idSel] || null;
       if (refNode && typeof refNode.getClientRect === "function") {
-        nodosTransformables = [refNode];
+        if (esGaleria && typeof refNode.findOne === "function") {
+          const galleryFrame = refNode.findOne(".gallery-transform-frame");
+          if (galleryFrame && typeof galleryFrame.getClientRect === "function") {
+            nodosTransformables = [galleryFrame];
+          } else {
+            nodosTransformables = [refNode];
+          }
+        } else {
+          nodosTransformables = [refNode];
+        }
       }
     }
 
@@ -372,16 +403,6 @@ export default function SelectionBounds({
     );
   }
 
-  if (hasGallery) {
-    return (
-      <BoundsIndicator
-        selectedElements={selectedElements}
-        elementRefs={elementRefs}
-        objetos={objetos}
-      />
-    );
-  }
-
   return (
     <Transformer
       name="ui"
@@ -397,7 +418,7 @@ export default function SelectionBounds({
 
       // ❌ nodos y rotación OFF durante drag
       enabledAnchors={isDragging ? [] : ["bottom-right"]}
-      rotateEnabled={!isDragging}
+      rotateEnabled={!isDragging && !esGaleria}
 
       anchorFill="#9333EA"
       anchorStroke="#ffffff"
@@ -407,7 +428,7 @@ export default function SelectionBounds({
       anchorShadowColor="rgba(147, 51, 234, 0.3)"
       anchorShadowBlur={6}
       anchorShadowOffset={{ x: 0, y: 3 }}
-      keepRatio={lockAspectCountdown}
+      keepRatio={lockAspectCountdown || esGaleria}
       centeredScaling={false}
       flipEnabled={false}
       resizeEnabled={!isDragging}
@@ -417,6 +438,32 @@ export default function SelectionBounds({
       boundBoxFunc={(oldBox, newBox) => {
         const minSize = esTexto ? 20 : 10;
         const maxSize = 800;
+        if (esGaleria) {
+          const rows = Math.max(1, Number(primerElemento?.rows) || 1);
+          const cols = Math.max(1, Number(primerElemento?.cols) || 1);
+          const gap = Math.max(0, Number(primerElemento?.gap) || 0);
+          const cellRatio =
+            primerElemento?.ratio === "4:3"
+              ? 3 / 4
+              : primerElemento?.ratio === "16:9"
+                ? 9 / 16
+                : 1;
+
+          const minGridWidth = gap * (cols - 1) + cols;
+          const nextWidth = Math.min(
+            maxSize,
+            Math.max(minSize, minGridWidth, Math.abs(newBox.width))
+          );
+          const cellW = Math.max(1, (nextWidth - gap * (cols - 1)) / cols);
+          const cellH = cellW * cellRatio;
+          const nextHeight = rows * cellH + gap * (rows - 1);
+
+          return {
+            ...newBox,
+            width: nextWidth,
+            height: Math.max(minSize, nextHeight),
+          };
+        }
 
         if (newBox.width < minSize || newBox.height < minSize) {
           return oldBox;
@@ -536,10 +583,11 @@ export default function SelectionBounds({
         if (!node) return;
 
         try {
+          const pose = getTransformPose(node);
           const transformData = {
-            x: node.x(),
-            y: node.y(),
-            rotation: node.rotation() || 0,
+            x: pose.x,
+            y: pose.y,
+            rotation: pose.rotation,
             isPreview: true,
           };
 
@@ -703,10 +751,11 @@ export default function SelectionBounds({
         if (!node) return;
 
         try {
+          const pose = getTransformPose(node);
           const finalData = {
-            x: node.x(),
-            y: node.y(),
-            rotation: node.rotation() || 0,
+            x: pose.x,
+            y: pose.y,
+            rotation: pose.rotation,
             isFinal: true,
           };
 

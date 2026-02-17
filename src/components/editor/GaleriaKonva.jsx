@@ -96,6 +96,10 @@ export default function GaleriaKonva({
       x={toNum(obj.x, 0)}
       y={toNum(obj.y, 0) + offsetY}
       id={obj.id}
+      clipX={0}
+      clipY={0}
+      clipWidth={width}
+      clipHeight={safeTotalHeight}
       draggable={false}
       ref={(node) => registerRef?.(obj.id, node)}
       onMouseEnter={() => {
@@ -150,7 +154,16 @@ export default function GaleriaKonva({
         e.target.draggable(false);
       }}
     >
-
+      <Rect
+        name="gallery-transform-frame"
+        x={0}
+        y={0}
+        width={width}
+        height={safeTotalHeight}
+        fill="transparent"
+        strokeEnabled={false}
+        listening={false}
+      />
 
       {rects.map((r, i) => {
         const cell = obj.cells?.[i] || {};

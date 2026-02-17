@@ -204,6 +204,7 @@ export default function SelectionBounds({
   const transformerRef = useRef(null);
   const [transformTick, setTransformTick] = useState(0);
   const lastNodesRef = useRef([]);
+  const circleAnchorRef = useRef(null);
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -550,6 +551,22 @@ export default function SelectionBounds({
         try {
           const tr = transformerRef.current;
           const nodes = tr?.nodes?.() || [];
+          circleAnchorRef.current = null;
+
+          if (
+            nodes.length === 1 &&
+            primerElemento?.tipo === "forma" &&
+            primerElemento?.figura === "circle"
+          ) {
+            try {
+              const r0 = nodes[0].getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              });
+              circleAnchorRef.current = { left: r0.x, top: r0.y };
+            } catch {}
+          }
 
           const union = rectFromNodes(nodes);
 
@@ -619,8 +636,23 @@ export default function SelectionBounds({
             }
 
             if (primerElemento?.figura === "circle") {
-              const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
-              transformData.radius = (primerElemento.radius || 50) * avgScale;
+              try {
+                const liveRect = node.getClientRect({
+                  skipTransform: false,
+                  skipShadow: true,
+                  skipStroke: true,
+                });
+                const diameter = Math.max(1, Math.max(liveRect.width, liveRect.height));
+                transformData.radius = diameter / 2;
+                const anchor = circleAnchorRef.current;
+                if (anchor) {
+                  transformData.x = anchor.left + transformData.radius;
+                  transformData.y = anchor.top + transformData.radius;
+                } else {
+                  transformData.x = liveRect.x + transformData.radius;
+                  transformData.y = liveRect.y + transformData.radius;
+                }
+              } catch {}
             }
           }
 
@@ -798,8 +830,23 @@ export default function SelectionBounds({
               finalData.height = Math.abs(originalHeight * scaleY);
 
               if (primerElemento?.figura === "circle") {
-                const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
-                finalData.radius = (primerElemento.radius || 50) * avgScale;
+                try {
+                  const liveRect = node.getClientRect({
+                    skipTransform: false,
+                    skipShadow: true,
+                    skipStroke: true,
+                  });
+                  const diameter = Math.max(1, Math.max(liveRect.width, liveRect.height));
+                  finalData.radius = diameter / 2;
+                  const anchor = circleAnchorRef.current;
+                  if (anchor) {
+                    finalData.x = anchor.left + finalData.radius;
+                    finalData.y = anchor.top + finalData.radius;
+                  } else {
+                    finalData.x = liveRect.x + finalData.radius;
+                    finalData.y = liveRect.y + finalData.radius;
+                  }
+                } catch {}
               }
 
               // ✅ Aplanar escala INMEDIATO
@@ -829,6 +876,7 @@ export default function SelectionBounds({
           }
 
           onTransform(finalData);
+          circleAnchorRef.current = null;
 
 
           // ✅ Reatachar 1 vez, con ref fresco, en el próximo frame

@@ -3181,7 +3181,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   // sin tocar estado React para evitar desincronización con Transformer.
                                   if (
                                     elemento.tipo === "countdown" ||
-                                    (elemento.tipo === "forma" && elemento.figura === "circle")
+                                    (
+                                      elemento.tipo === "forma" &&
+                                      (elemento.figura === "circle" || elemento.figura === "triangle")
+                                    )
                                   ) {
                                     return prev;
                                   }
@@ -3260,6 +3263,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                     radius: Number.isFinite(cleanAttrs.radius)
                                       ? cleanAttrs.radius
                                       : (objOriginal.radius || 50),
+                                    scaleX: 1,
+                                    scaleY: 1,
+                                  };
+                                  delete finalAttrs.width;
+                                  delete finalAttrs.height;
+                                } else if (objOriginal.tipo === "forma" && objOriginal.figura === "triangle") {
+                                  finalAttrs = {
+                                    ...finalAttrs,
+                                    x: Number.isFinite(cleanAttrs.x) ? cleanAttrs.x : (objOriginal.x || 0),
+                                    radius: Number.isFinite(cleanAttrs.radius)
+                                      ? cleanAttrs.radius
+                                      : (objOriginal.radius || 60),
                                     scaleX: 1,
                                     scaleY: 1,
                                   };

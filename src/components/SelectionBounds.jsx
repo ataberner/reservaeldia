@@ -214,6 +214,9 @@ export default function SelectionBounds({
   const esCountdown = primerElemento?.tipo === "countdown";
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
+  const esTriangulo =
+    primerElemento?.tipo === "forma" &&
+    primerElemento?.figura === "triangle";
 
   const hasGallery = elementosSeleccionadosData.some(
     (o) => o.tipo === "galeria"
@@ -552,6 +555,23 @@ export default function SelectionBounds({
           };
         }
 
+        if (esTriangulo) {
+          const safeOldW = Math.max(1, Math.abs(oldBox.width || minSize));
+          const safeOldH = Math.max(1, Math.abs(oldBox.height || minSize));
+          const scaleX = Math.abs(newBox.width) / safeOldW;
+          const scaleY = Math.abs(newBox.height) / safeOldH;
+          const uniformScale = Math.max(0.05, Math.min(scaleX, scaleY));
+
+          const width = Math.min(Math.max(safeOldW * uniformScale, minSize), maxSize);
+          const height = Math.min(Math.max(safeOldH * uniformScale, minSize), maxSize);
+
+          return {
+            ...newBox,
+            width,
+            height,
+          };
+        }
+
         if (
           primerElemento?.tipo === "imagen" ||
           primerElemento?.tipo === "icono"
@@ -658,6 +678,12 @@ export default function SelectionBounds({
               const countdownSize = getCountdownScaledSize(node);
               transformData.width = countdownSize.width;
               transformData.height = countdownSize.height;
+            } else if (esTriangulo) {
+              const baseRadius = Number.isFinite(primerElemento?.radius)
+                ? primerElemento.radius
+                : 60;
+              const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+              transformData.radius = Math.max(1, baseRadius * avgScale);
             } else {
               const originalWidth = primerElemento.width || 100;
               const originalHeight = primerElemento.height || 100;
@@ -762,6 +788,16 @@ export default function SelectionBounds({
                   return upd;
                 }
 
+                if (obj.tipo === "forma" && obj.figura === "triangle") {
+                  const baseR = obj.radius || 60;
+                  upd.radius = Math.max(1, baseR * avg);
+                  if (typeof n.scaleX === "function") {
+                    n.scaleX(1);
+                    n.scaleY(1);
+                  }
+                  return upd;
+                }
+
                 if (obj.tipo === "countdown") {
                   const countdownSize = getCountdownScaledSize(n);
                   upd.width = countdownSize.width;
@@ -850,6 +886,23 @@ export default function SelectionBounds({
               const countdownSize = getCountdownScaledSize(node);
               finalData.width = countdownSize.width;
               finalData.height = countdownSize.height;
+            } else if (esTriangulo) {
+              const baseRadius = Number.isFinite(primerElemento?.radius)
+                ? primerElemento.radius
+                : 60;
+              const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+              finalData.scaleX = 1;
+              finalData.scaleY = 1;
+              finalData.radius = Math.max(1, baseRadius * avgScale);
+
+              try {
+                node.scaleX(1);
+                node.scaleY(1);
+                if (typeof node.radius === "function") node.radius(finalData.radius);
+                node.getLayer()?.batchDraw();
+              } catch (err) {
+                console.warn("Error aplanando escala de triángulo (sync):", err);
+              }
             } else {
               finalData.scaleX = 1;
               finalData.scaleY = 1;

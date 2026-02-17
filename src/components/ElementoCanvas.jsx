@@ -8,32 +8,6 @@ import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/d
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
 import { getCenteredTextPosition } from "@/utils/getTextMetrics";
 
-function isInlineDebugEnabled() {
-  return typeof window !== "undefined" && window.__INLINE_DEBUG !== false;
-}
-
-function formatInlineLogPayload(payload = {}) {
-  try {
-    return JSON.stringify(payload, null, 2);
-  } catch (error) {
-    return String(error || payload);
-  }
-}
-
-function nextInlineFrameMeta() {
-  if (typeof window === "undefined") {
-    return { frame: null, perfMs: null };
-  }
-  const prev = Number(window.__INLINE_FRAME_SEQ || 0);
-  const next = prev + 1;
-  window.__INLINE_FRAME_SEQ = next;
-  const perfMs =
-    typeof window.performance?.now === "function"
-      ? Number(window.performance.now().toFixed(3))
-      : null;
-  return { frame: next, perfMs };
-}
-
 
 
 
@@ -63,7 +37,6 @@ export default function ElementoCanvas({
 
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
-  const lastVisibilityLogRef = useRef(null);
 
 
   // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
@@ -598,62 +571,6 @@ export default function ElementoCanvas({
     const inlineCaretOnlyMode = true;
     const appliedOpacity =
       isEditing && !inlineCaretOnlyMode ? 0 : 1;
-
-    const editingTargetId = editingId || inlineOverlayMountedId || window._currentEditingId || null;
-    const visibilitySnapshot = {
-      isEditingByWindow,
-      isEditingByReactive,
-      isEditingByOverlay,
-      overlayDomPresent,
-      overlayDomPresentLoose,
-      isEditing,
-      isInEditMode,
-      appliedOpacity,
-    };
-    const prevVisibilitySnapshot = lastVisibilityLogRef.current;
-    const visibilityChanged =
-      !prevVisibilitySnapshot ||
-      prevVisibilitySnapshot.isEditingByWindow !== visibilitySnapshot.isEditingByWindow ||
-      prevVisibilitySnapshot.isEditingByReactive !== visibilitySnapshot.isEditingByReactive ||
-      prevVisibilitySnapshot.isEditingByOverlay !== visibilitySnapshot.isEditingByOverlay ||
-      prevVisibilitySnapshot.overlayDomPresent !== visibilitySnapshot.overlayDomPresent ||
-      prevVisibilitySnapshot.overlayDomPresentLoose !== visibilitySnapshot.overlayDomPresentLoose ||
-      prevVisibilitySnapshot.isEditing !== visibilitySnapshot.isEditing ||
-      prevVisibilitySnapshot.isInEditMode !== visibilitySnapshot.isInEditMode ||
-      prevVisibilitySnapshot.appliedOpacity !== visibilitySnapshot.appliedOpacity;
-
-    if (isInlineDebugEnabled() && editingTargetId === obj.id && visibilityChanged) {
-      const ts = new Date().toISOString();
-      const frameMeta = nextInlineFrameMeta();
-      const payload = {
-        ...frameMeta,
-        id: obj.id,
-        editingId: editingId || null,
-        currentEditingId: window._currentEditingId || null,
-        overlayMountedId: inlineOverlayMountedId || null,
-        visibilityMode,
-        isEditingByWindow,
-        isEditingByReactive,
-        isEditingByOverlay,
-        overlayDomPresent,
-        overlayDomPresentLoose,
-        isEditing,
-        isInEditMode,
-        appliedOpacity,
-        inlineCaretOnlyMode,
-        x: validX,
-        y: validY,
-        textLength: safeText.length,
-        fontFamily,
-        fontSize: validFontSize,
-        lineHeight,
-      };
-      const body = formatInlineLogPayload(payload);
-      console.log(`[INLINE][${ts}] konva-text-visibility\n${body}`);
-    }
-    lastVisibilityLogRef.current = visibilitySnapshot;
-
-
 
     return (
       <>

@@ -127,17 +127,9 @@ function formatInlineLogPayload(payload = {}) {
 function inlineDebugLog(event, payload = {}) {
   if (!isInlineDebugEnabled()) return;
   const essentialEvents = new Set([
-    "debug-enabled",
     "start-inline-edit",
-    "overlay-mounted-state",
-    "sync-global-editing",
-    "sync-global-editing-cleanup",
-    "finish-start",
-    "finish-visibility-check",
-    "finish-apply-patch",
-    "finish-post-commit",
-    "finish-abort-missing-object",
-    "finish-abort-empty",
+    "linebreak-model-sync",
+    "linebreak-transformer",
   ]);
   if (!essentialEvents.has(event)) return;
   const ts = new Date().toISOString();
@@ -157,6 +149,17 @@ function nextInlineFrameMeta() {
       ? Number(window.performance.now().toFixed(3))
       : null;
   return { frame: next, perfMs };
+}
+
+function getInlineLineStats(value) {
+  const normalized = String(value ?? "").replace(/\r\n/g, "\n");
+  const trailing = normalized.match(/\n+$/)?.[0];
+  return {
+    normalized,
+    length: normalized.length,
+    lineCount: normalized === "" ? 1 : normalized.split("\n").length,
+    trailingNewlines: trailing ? trailing.length : 0,
+  };
 }
 
 function normalizeInlineDebugAB(rawConfig) {
@@ -603,6 +606,84 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const prev = inlineRenderValueRef.current;
 
     if (currentId && prev.id === currentId && prev.value !== currentValue) {
+      const prevStats = getInlineLineStats(prev.value);
+      const nextStats = getInlineLineStats(currentValue);
+      const linebreakChanged =
+        prevStats.lineCount !== nextStats.lineCount ||
+        prevStats.trailingNewlines !== nextStats.trailingNewlines;
+
+      if (linebreakChanged) {
+        const frameMeta = nextInlineFrameMeta();
+        const node = elementRefs.current[currentId] || null;
+        const nodeMetrics = obtenerMetricasNodoInline(node);
+
+        const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+        let transformerRect = null;
+        try {
+          const transformer = stage?.findOne?.("Transformer");
+          if (transformer) {
+            const trRect = transformer.getClientRect({
+              skipTransform: false,
+              skipShadow: true,
+              skipStroke: true,
+            });
+            const nodes = transformer.nodes?.() || [];
+            transformerRect = trRect
+              ? {
+                  x: trRect.x,
+                  y: trRect.y,
+                  width: trRect.width,
+                  height: trRect.height,
+                  nodesCount: nodes.length,
+                  includesEditingNode: !!(node && nodes.includes(node)),
+                }
+              : null;
+          }
+        } catch {
+          transformerRect = null;
+        }
+
+        let overlayRect = null;
+        let contentRect = null;
+        const safeId = String(currentId).replace(/"/g, '\\"');
+        const overlayEl = document.querySelector(`[data-inline-editor-id="${safeId}"]`);
+        if (overlayEl) {
+          const r = overlayEl.getBoundingClientRect();
+          overlayRect = {
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+          };
+          const contentEl = overlayEl.querySelector('[contenteditable="true"]');
+          const cr = contentEl?.getBoundingClientRect?.();
+          if (cr) {
+            contentRect = {
+              x: cr.x,
+              y: cr.y,
+              width: cr.width,
+              height: cr.height,
+            };
+          }
+        }
+
+        inlineDebugLog("linebreak-transformer", {
+          ...frameMeta,
+          id: currentId,
+          prevLength: prevStats.length,
+          nextLength: nextStats.length,
+          prevLineCount: prevStats.lineCount,
+          nextLineCount: nextStats.lineCount,
+          prevTrailingNewlines: prevStats.trailingNewlines,
+          nextTrailingNewlines: nextStats.trailingNewlines,
+          overlayMountedId: inlineOverlayMountedId ?? null,
+          overlayRect,
+          contentRect,
+          nodeMetrics,
+          transformerRect,
+        });
+      }
+
       captureInlineSnapshot("input: after-render", {
         id: currentId,
         previousLength: prev.value.length,
@@ -614,7 +695,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       id: currentId,
       value: currentValue,
     };
-  }, [editing.id, editing.value, captureInlineSnapshot]);
+  }, [
+    editing.id,
+    editing.value,
+    captureInlineSnapshot,
+    inlineOverlayMountedId,
+    obtenerMetricasNodoInline,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3134,6 +3221,22 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   onOverlayMountChange={handleInlineOverlayMountChange}
                   onChange={(nextValue) => {
                     const nextText = String(nextValue ?? "");
+                    const prevStats = getInlineLineStats(editing.value);
+                    const nextStats = getInlineLineStats(nextText);
+                    if (
+                      prevStats.lineCount !== nextStats.lineCount ||
+                      prevStats.trailingNewlines !== nextStats.trailingNewlines
+                    ) {
+                      inlineDebugLog("linebreak-model-sync", {
+                        id: editing.id || window._currentEditingId || null,
+                        prevLength: prevStats.length,
+                        nextLength: nextStats.length,
+                        prevLineCount: prevStats.lineCount,
+                        nextLineCount: nextStats.lineCount,
+                        prevTrailingNewlines: prevStats.trailingNewlines,
+                        nextTrailingNewlines: nextStats.trailingNewlines,
+                      });
+                    }
                     captureInlineSnapshot("input: before-render", {
                       id: editing.id || window._currentEditingId || null,
                       valueLength: nextText.length,

@@ -49,6 +49,17 @@ function normalizeEditorText(rawText, { trimPhantomTrailingNewline = true } = {}
   return normalized;
 }
 
+function countLines(text) {
+  const normalized = String(text ?? "").replace(/\r\n/g, "\n");
+  return normalized === "" ? 1 : normalized.split("\n").length;
+}
+
+function countTrailingNewlines(text) {
+  const normalized = String(text ?? "").replace(/\r\n/g, "\n");
+  const trailing = normalized.match(/\n+$/)?.[0];
+  return trailing ? trailing.length : 0;
+}
+
 function rectToPayload(rect) {
   if (!rect) return null;
   return {
@@ -265,7 +276,7 @@ function measureDomInkProbe({
   }
 }
 
-const INLINE_LAYOUT_VERSION = "linebreak-normalized-v8";
+const INLINE_LAYOUT_VERSION = "linebreak-unified-editor-v9";
 
 export default function InlineTextEditor({
   editingId = null,
@@ -463,11 +474,8 @@ export default function InlineTextEditor({
   const emitDebug = useCallback((eventName, extra = {}) => {
     if (!DEBUG_MODE) return;
     const essentialEvents = new Set([
-      "overlay: before-focus",
       "overlay: after-focus",
-      "overlay: before-unmount",
-      "overlay: after-unmount-raf",
-      "finish: blur",
+      "input: linebreak",
     ]);
     if (!essentialEvents.has(eventName)) return;
     const ts = new Date().toISOString();
@@ -653,13 +661,7 @@ export default function InlineTextEditor({
     const el = editorRef.current;
     if (!el) return;
 
-    let initialText = isSingleLine
-      ? normalizedValueForSingleLine
-      : String(value ?? "");
-
-    if (isSingleLine && initialText !== String(value ?? "")) {
-      onChange(initialText);
-    }
+    let initialText = normalizedValue;
 
     if (window._preFillChar) {
       initialText = (initialText || "") + window._preFillChar;
@@ -712,7 +714,7 @@ export default function InlineTextEditor({
         onOverlayMountChange(editingId, false);
       }
     };
-  }, [editingId, isSingleLine]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = editorRef.current;
@@ -768,119 +770,89 @@ export default function InlineTextEditor({
           boxSizing: "border-box",
         }}
       >
-        {isSingleLine ? (
-          <div
-            style={{
-              position: "relative",
-              width:
-                normalizedWidthMode === "measured"
-                  ? `${effectiveTextWidth}px`
-                  : undefined,
-              minWidth: `${minWidthPx}px`,
-              height: `${lineHeightPx}px`,
-            }}
-          >
-            <div
-              ref={editorRef}
-              contentEditable
-              suppressContentEditableWarning
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: 0,
-                display: "block",
-                verticalAlign: "top",
-                width:
-                  normalizedWidthMode === "measured"
-                    ? `${effectiveTextWidth}px`
-                    : undefined,
-                minWidth: `${minWidthPx}px`,
-                height: `${lineHeightPx}px`,
-                whiteSpace: "pre",
-                overflow: "hidden",
-                textOverflow: "clip",
-                fontSize: `${fontSizePx}px`,
-                fontFamily: nodeProps.fontFamily,
-                fontWeight: nodeProps.fontWeight,
-                fontStyle: nodeProps.fontStyle,
-                lineHeight: `${editableLineHeightPx}px`,
-                color: "transparent",
-                caretColor: nodeProps.fill,
-                WebkitTextFillColor: "transparent",
-                background: "transparent",
-                border: "none",
-                borderRadius: 0,
-                paddingTop: `${verticalInsetPx}px`,
-                paddingBottom: `${verticalInsetPx}px`,
-                paddingLeft: 0,
-                paddingRight: 0,
-                margin: 0,
-                outline: "none",
-                boxSizing: "border-box",
-                textAlign: textAlign || "left",
-              }}
-              onInput={(e) => {
-                const el = e.currentTarget;
-                const raw = normalizeEditorText(el.innerText || "");
-                onChange(raw);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.isComposing) {
-                  e.stopPropagation();
-                }
-              }}
-              onBlur={() => {
-                triggerFinish("blur");
-              }}
-            />
-          </div>
-        ) : (
-          <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
-            style={{
-              display: "block",
-              verticalAlign: "top",
-              width:
-                normalizedWidthMode === "measured"
-                  ? `${effectiveTextWidth}px`
-                  : undefined,
-              minWidth: `${minWidthPx}px`,
-              whiteSpace: "pre",
-              overflowWrap: "normal",
-              wordBreak: "normal",
-              overflow: "visible",
-              fontSize: `${fontSizePx}px`,
-              fontFamily: nodeProps.fontFamily,
-              fontWeight: nodeProps.fontWeight,
-              fontStyle: nodeProps.fontStyle,
-              lineHeight: `${editableLineHeightPx}px`,
-              minHeight: `${lineHeightPx}px`,
-              color: "transparent",
-              caretColor: nodeProps.fill,
-              WebkitTextFillColor: "transparent",
-              background: "transparent",
-              borderRadius: 0,
-              paddingTop: `${verticalInsetPx}px`,
-              paddingBottom: `${verticalInsetPx}px`,
-              paddingLeft: 0,
-              paddingRight: 0,
-              margin: 0,
-              outline: "none",
-              boxSizing: "border-box",
-              textAlign: textAlign || "left",
-            }}
-            onInput={(e) => {
-              const newText = normalizeEditorText(e.currentTarget.innerText);
-              onChange(newText);
-            }}
-            onBlur={() => {
-              triggerFinish("blur");
-            }}
-          />
-        )}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          style={{
+            display: "block",
+            verticalAlign: "top",
+            width:
+              normalizedWidthMode === "measured"
+                ? `${effectiveTextWidth}px`
+                : undefined,
+            minWidth: `${minWidthPx}px`,
+            whiteSpace: "pre",
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            overflow: "visible",
+            fontSize: `${fontSizePx}px`,
+            fontFamily: nodeProps.fontFamily,
+            fontWeight: nodeProps.fontWeight,
+            fontStyle: nodeProps.fontStyle,
+            lineHeight: `${editableLineHeightPx}px`,
+            minHeight: `${lineHeightPx}px`,
+            color: "transparent",
+            caretColor: nodeProps.fill,
+            WebkitTextFillColor: "transparent",
+            background: "transparent",
+            borderRadius: 0,
+            paddingTop: `${verticalInsetPx}px`,
+            paddingBottom: `${verticalInsetPx}px`,
+            paddingLeft: 0,
+            paddingRight: 0,
+            margin: 0,
+            outline: "none",
+            boxSizing: "border-box",
+            textAlign: textAlign || "left",
+          }}
+          onInput={(e) => {
+            const domRaw = String(e.currentTarget.innerText || "");
+            const domNormalized = domRaw
+              .replace(/\r\n/g, "\n")
+              .replace(/\u200B/g, "");
+            const nextValue = normalizeEditorText(domRaw);
+            const prevValue = normalizedValue;
+
+            const prevLineCount = countLines(prevValue);
+            const nextLineCount = countLines(nextValue);
+            const prevTrailingNewlines = countTrailingNewlines(prevValue);
+            const nextTrailingNewlines = countTrailingNewlines(nextValue);
+            const domLineCount = countLines(domNormalized);
+            const domTrailingNewlines = countTrailingNewlines(domNormalized);
+            const normalizationChanged = domNormalized !== nextValue;
+
+            onChange(nextValue);
+
+            if (
+              prevLineCount !== nextLineCount ||
+              prevTrailingNewlines !== nextTrailingNewlines ||
+              normalizationChanged
+            ) {
+              emitDebug("input: linebreak", {
+                source: "unified-contentEditable",
+                prevLength: prevValue.length,
+                nextLength: nextValue.length,
+                prevLineCount,
+                nextLineCount,
+                prevTrailingNewlines,
+                nextTrailingNewlines,
+                domLength: domNormalized.length,
+                domLineCount,
+                domTrailingNewlines,
+                normalizationChanged,
+              });
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.isComposing) {
+              e.stopPropagation();
+            }
+          }}
+          onBlur={() => {
+            triggerFinish("blur");
+          }}
+        />
       </div>
     </>,
     document.body

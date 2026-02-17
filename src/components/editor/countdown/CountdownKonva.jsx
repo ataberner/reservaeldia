@@ -48,7 +48,7 @@ export default function CountdownKonva({
   const setRefs = useCallback(
     (node) => {
       rootRef.current = node;
-      if (node && typeof registerRef === "function") registerRef(obj.id, node);
+      if (typeof registerRef === "function") registerRef(obj.id, node || null);
     },
     [obj.id, registerRef]
   );

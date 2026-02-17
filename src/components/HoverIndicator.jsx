@@ -4,6 +4,7 @@ export default function HoverIndicator({ hoveredElement, elementRefs }) {
   if (!hoveredElement || !elementRefs?.current?.[hoveredElement]) return null;
 
   const node = elementRefs.current[hoveredElement];
+  if (!node?.getStage?.()) return null;
   const box = node.getClientRect();
 
   // Validar que el box tiene valores válidos

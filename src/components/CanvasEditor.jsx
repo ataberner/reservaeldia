@@ -374,6 +374,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const _refEventQueued = useRef(new Set());
 
   const registerRef = useCallback((id, node) => {
+    if (!node) {
+      delete elementRefs.current[id];
+      imperativeObjects.registerObject(id, null);
+      return;
+    }
+
     elementRefs.current[id] = node;
     imperativeObjects.registerObject(id, node);
 
@@ -1766,6 +1772,22 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     window._seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
     window._altoCanvas = altoCanvas;
   }, [elementosSeleccionados, objetos, secciones, altoCanvas]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    window.setHoverIdGlobal = setHoverId;
+    return () => {
+      if (window.setHoverIdGlobal === setHoverId) {
+        delete window.setHoverIdGlobal;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hoverId) return;
+    const exists = objetos.some((o) => o.id === hoverId);
+    if (!exists) setHoverId(null);
+  }, [hoverId, objetos]);
 
 
 

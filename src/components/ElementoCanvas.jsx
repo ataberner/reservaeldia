@@ -46,8 +46,8 @@ export default function ElementoCanvas({
   }, [onChange]);
 
   const handleRef = useCallback((node) => {
-    if (node && registerRef) {
-      registerRef(obj.id, node);
+    if (registerRef) {
+      registerRef(obj.id, node || null);
       // ❌ NO despachar "element-ref-registrado" acá
       // CanvasEditor.registerRef ya lo hace.
     }
@@ -640,8 +640,8 @@ export default function ElementoCanvas({
         {/* 🔤 Texto encima del botón */}
         <Text
           ref={(node) => {
-            if (node && registerRef) {
-              registerRef(`${obj.id}-text`, node); // si querés manipular el texto aparte
+            if (registerRef) {
+              registerRef(`${obj.id}-text`, node || null); // si querés manipular el texto aparte
             }
           }}
           x={obj.x}
@@ -956,8 +956,8 @@ export default function ElementoCanvas({
               <Text
                 id={`${obj.id}-text`}          // 👈 id para poder encontrarlo desde el Rect
                 ref={(node) => {
-                  if (node && registerRef) {
-                    registerRef(`${obj.id}-text`, node); // seguís usando tu sistema de refs
+                  if (registerRef) {
+                    registerRef(`${obj.id}-text`, node || null); // seguís usando tu sistema de refs
                   }
                 }}
                 x={obj.x}

@@ -414,7 +414,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  const [fontsReady, setFontsReady] = useState(false);
+  const loadedFontFamiliesRef = useRef(new Set());
 
 
   const {
@@ -1063,18 +1063,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     let alive = true;
 
     async function precargar() {
-      // Si no hay fuentes custom, listo
-      if (!fuentesNecesarias.length) {
-        if (alive) setFontsReady(true);
-        return;
-      }
-
-      setFontsReady(false);
+      // Solo precargar fuentes nuevas para evitar re-renders globales del stage
+      if (!fuentesNecesarias.length) return;
+      const pendientes = fuentesNecesarias.filter(
+        (fontName) => !loadedFontFamiliesRef.current.has(fontName)
+      );
+      if (!pendientes.length) return;
 
       try {
         // ✅ Ideal: que fontManager.loadFonts devuelva Promise
         // Si hoy no devuelve, igual lo resolvemos con document.fonts más abajo.
-        const maybePromise = fontManager.loadFonts?.(fuentesNecesarias);
+        const maybePromise = fontManager.loadFonts?.(pendientes);
 
         // Si devuelve promise, esperamos
         if (maybePromise && typeof maybePromise.then === "function") {
@@ -1085,13 +1084,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         // (esto garantiza que no haya fallback)
         if (document?.fonts?.load) {
           await Promise.all(
-            fuentesNecesarias.map(f =>
+            pendientes.map(f =>
               document.fonts.load(`16px "${f}"`)
             )
           );
         }
-
-        if (alive) setFontsReady(true);
+        if (!alive) return;
+        pendientes.forEach((fontName) => loadedFontFamiliesRef.current.add(fontName));
 
         // Redraw por si acaso
         requestAnimationFrame(() => {
@@ -1099,9 +1098,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         });
       } catch (e) {
         console.warn("⚠️ Error precargando fuentes:", e);
-        // Si falla, igual liberamos para no “bloquear” infinito.
-        // (Si querés, podés dejarlo bloqueado con botón “Reintentar”.)
-        if (alive) setFontsReady(true);
       }
     }
 
@@ -1636,29 +1632,35 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
   // 🔥 OPTIMIZACIÓN: Forzar actualización de líneas después de drag grupal
   useEffect(() => {
-    if (!window._grupoLider && elementosSeleccionados.length > 0) {
-      // Verificar si hay líneas seleccionadas
-      const hayLineas = objetos.some(obj =>
-        elementosSeleccionados.includes(obj.id) &&
-        obj.tipo === 'forma' &&
-        obj.figura === 'line'
-      );
+    if (window._grupoLider || elementosSeleccionados.length === 0) return;
 
-      if (hayLineas) {
-        // Forzar re-render de las líneas
-        const timer = setTimeout(() => {
-          elementosSeleccionados.forEach(id => {
-            const node = elementRefs.current[id];
-            if (node && node.getLayer) {
-              node.getLayer()?.batchDraw();
-            }
-          });
-        }, 50);
+    // Solo correr esta optimización cuando acaba de finalizar un drag grupal.
+    const now =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const recentlyEndedGroupDrag =
+      Number.isFinite(window._skipUntil) && window._skipUntil > now;
+    if (!recentlyEndedGroupDrag) return;
 
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [window._grupoLider, elementosSeleccionados, objetos]);
+    const hayLineas = objetos.some(obj =>
+      elementosSeleccionados.includes(obj.id) &&
+      obj.tipo === 'forma' &&
+      obj.figura === 'line'
+    );
+    if (!hayLineas) return;
+
+    const timer = setTimeout(() => {
+      elementosSeleccionados.forEach(id => {
+        const node = elementRefs.current[id];
+        if (node && node.getLayer) {
+          node.getLayer()?.batchDraw();
+        }
+      });
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [elementosSeleccionados, objetos]);
 
 
   const detectarInterseccionLinea = useMemo(() => {

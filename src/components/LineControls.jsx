@@ -20,24 +20,23 @@ export default function LineControls({
   const [lineBeingDragged, setLineBeingDragged] = useState(false);
   const [isGroupDrag, setIsGroupDrag] = useState(false);
   const [nodePos, setNodePos] = useState({
-    x: lineElement.x || 0,
-    y: lineElement.y || 0,
+    x: lineElement?.x || 0,
+    y: lineElement?.y || 0,
   });
 
   // 🔥 CACHE PARA EVITAR RECÁLCULOS INNECESARIOS
   const pointsCache = useRef(null);
   const lastUpdateTime = useRef(0);
-
-  if (!lineElement || lineElement.tipo !== 'forma' || lineElement.figura !== 'line') {
-    return null;
-  }
-
-  const nodeRef = elementRefs.current?.[lineElement.id];
-  if (!nodeRef) return null;
+  const isValidLine =
+    !!lineElement &&
+    lineElement.tipo === "forma" &&
+    lineElement.figura === "line";
+  const lineId = lineElement?.id ?? null;
+  const nodeRef = lineId ? elementRefs.current?.[lineId] : null;
 
   // 🔥 SYNC OPTIMIZADO CON THROTTLE
   useEffect(() => {
-    if (!nodeRef) return;
+    if (!isValidLine || !nodeRef) return;
 
     const syncPos = () => {
       // 🚀 THROTTLE: Solo actualizar cada 8ms (120fps máximo)
@@ -54,35 +53,40 @@ export default function LineControls({
     return () => {
       nodeRef.off('dragmove', syncPos);
     };
-  }, [nodeRef]);
+  }, [isValidLine, nodeRef]);
 
 
 
   // 🔥 DETECTAR DRAG GRUPAL MEJORADO
   useEffect(() => {
+    if (!isValidLine || !lineId) {
+      setIsGroupDrag(false);
+      return;
+    }
+
     const isPartOfMultipleSelection = elementosSeleccionados.length > 1;
-    const isThisLineSelected = elementosSeleccionados.includes(lineElement.id);
+    const isThisLineSelected = elementosSeleccionados.includes(lineId);
 
     setIsGroupDrag(isDragGrupalActive && isPartOfMultipleSelection && isThisLineSelected);
-  }, [isDragGrupalActive, elementosSeleccionados, lineElement.id]);
+  }, [isValidLine, isDragGrupalActive, elementosSeleccionados, lineId]);
 
 
 
   // 🔥 DETECTAR DRAG DE LÍNEA Y COORDINACIÓN CON DRAG GRUPAL
   useEffect(() => {
-    if (!nodeRef) return;
+    if (!isValidLine || !nodeRef || !lineId) return;
 
     const handleDragStart = (e) => {
-      console.log("🎬 [LINE CONTROLS] Drag start para línea:", lineElement.id);
+      console.log("🎬 [LINE CONTROLS] Drag start para línea:", lineId);
       setLineBeingDragged(true);
 
       // 🎯 COORDINACIÓN CON DRAG GRUPAL
       const elementosSeleccionados = window._elementosSeleccionados || [];
       console.log("📋 [LINE CONTROLS] Elementos seleccionados:", elementosSeleccionados);
-      console.log("📏 [LINE CONTROLS] ¿Esta línea está en selección?", elementosSeleccionados.includes(lineElement.id));
+      console.log("📏 [LINE CONTROLS] ¿Esta línea está en selección?", elementosSeleccionados.includes(lineId));
       console.log("🔢 [LINE CONTROLS] ¿Múltiples elementos?", elementosSeleccionados.length > 1);
 
-      if (elementosSeleccionados.length > 1 && elementosSeleccionados.includes(lineElement.id)) {
+      if (elementosSeleccionados.length > 1 && elementosSeleccionados.includes(lineId)) {
         console.log("🎯 [LINE CONTROLS] Intentando iniciar drag grupal desde línea...");
 
         try {
@@ -95,7 +99,7 @@ export default function LineControls({
               if (nodeRef && nodeRef.draggable) {
                 const wasDraggable = nodeRef.draggable();
                 nodeRef.draggable(false);
-                console.log(`🔒 [LINE CONTROLS] Drag deshabilitado para línea ${lineElement.id} (era: ${wasDraggable})`);
+                console.log(`🔒 [LINE CONTROLS] Drag deshabilitado para línea ${lineId} (era: ${wasDraggable})`);
               }
             }, 0);
           } else {
@@ -110,7 +114,7 @@ export default function LineControls({
     };
 
     const handleDragEnd = () => {
-      console.log("🏁 [LINE CONTROLS] Drag end para línea:", lineElement.id);
+      console.log("🏁 [LINE CONTROLS] Drag end para línea:", lineId);
       setLineBeingDragged(false);
 
       // Reactivar drag después de un breve delay
@@ -118,7 +122,7 @@ export default function LineControls({
         if (nodeRef && nodeRef.draggable) {
           const wasDraggable = nodeRef.draggable();
           nodeRef.draggable(true);
-          console.log(`🔓 [LINE CONTROLS] Drag reactivado para línea ${lineElement.id} (era: ${wasDraggable})`);
+          console.log(`🔓 [LINE CONTROLS] Drag reactivado para línea ${lineId} (era: ${wasDraggable})`);
         }
       }, 100);
     };
@@ -130,12 +134,14 @@ export default function LineControls({
       nodeRef.off('dragstart', handleDragStart);
       nodeRef.off('dragend', handleDragEnd);
     };
-  }, [nodeRef, lineElement.id, lineElement]);
+  }, [isValidLine, nodeRef, lineId, lineElement]);
 
 
 
   // 🔥 CÁLCULOS MEMOIZADOS
-  const points = lineElement.points || [0, 0, 100, 0];
+  const points = (isValidLine && Array.isArray(lineElement.points))
+    ? lineElement.points
+    : [0, 0, 100, 0];
   const puntosValidados = points.slice(0, 4).map((p, i) => {
     const punto = parseFloat(p || 0);
     return isNaN(punto) ? (i === 2 ? 100 : 0) : punto;
@@ -160,6 +166,7 @@ export default function LineControls({
 
   // 🔥 HANDLER ULTRA-OPTIMIZADO PARA DRAG MOVE
   const handlePointDragMove = useCallback((pointType, e) => {
+    if (!isValidLine || !nodeRef || !lineId) return;
     if (draggingPoint !== pointType) return;
 
     const stage = e.target.getStage();
@@ -185,7 +192,7 @@ export default function LineControls({
     }
 
     // 🚀 ACTUALIZACIÓN DIRECTA SIN REACT RE-RENDER
-    const lineNode = elementRefs.current?.[lineElement.id];
+    const lineNode = elementRefs.current?.[lineId];
     if (lineNode) {
       // 🔥 SOLO ACTUALIZAR SI LOS PUNTOS CAMBIARON SIGNIFICATIVAMENTE
       const pointsStr = newPoints.join(',');
@@ -205,10 +212,11 @@ export default function LineControls({
         }
       }
     }
-  }, [draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, elementRefs, lineElement.id]);
+  }, [isValidLine, lineId, draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, elementRefs]);
 
   // 🔥 HANDLER OPTIMIZADO PARA DRAG END
   const handlePointDragEnd = useCallback((pointType, e) => {
+    if (!isValidLine || !nodeRef || !lineId) return;
     if (draggingPoint !== pointType) return;
 
     const stage = e.target.getStage();
@@ -230,7 +238,7 @@ export default function LineControls({
 
     // 🔥 ACTUALIZACIÓN FINAL CON DEBOUNCE
     if (onUpdateLine) {
-      onUpdateLine(lineElement.id, {
+      onUpdateLine(lineId, {
         points: newPoints,
         isFinal: true
       });
@@ -239,7 +247,9 @@ export default function LineControls({
     setDraggingPoint(null);
     dragStartPos.current = null;
     pointsCache.current = null; // 🔥 LIMPIAR CACHE
-  }, [draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, onUpdateLine, lineElement.id]);
+  }, [isValidLine, lineId, draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, onUpdateLine]);
+
+  if (!isValidLine || !nodeRef) return null;
 
   return (
     <Group name="ui">

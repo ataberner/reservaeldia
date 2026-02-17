@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { collection, query, where, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -11,6 +11,8 @@ import ModalVistaPrevia from '@/components/ModalVistaPrevia';
 import PublicadasGrid from "@/components/PublicadasGrid";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import dynamic from "next/dynamic";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
+import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // 💡 desactiva server-side rendering
 });
@@ -33,21 +35,10 @@ export default function Dashboard() {
   const [futurosExternos, setFuturosExternos] = useState([]);
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
-  const [menuAbierto, setMenuAbierto] = useState(false);
-  const menuRef = useRef(null);
   const [vista, setVista] = useState("home");
   const router = useRouter();
-  const [esAdmin, setEsAdmin] = useState(false);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuAbierto(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const { loadingAdminAccess, isSuperAdmin, canManageSite } =
+    useAdminAccess(usuario);
 
 
   // 🔗 Sincronizar ?slug=... con el estado (siempre usar Konva)
@@ -237,17 +228,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUsuario(user);
 
-        // ✅ DEBUG TEMPORAL: ver claims del usuario logueado
-        try {
-          const token = await user.getIdTokenResult(true); // fuerza refresh
-          setEsAdmin(token.claims?.admin === true);
-          } catch (e) {
-          console.log("❌ Error leyendo claims:", e);
-        }
       } else {
         setUsuario(null);
       }
@@ -256,6 +240,22 @@ export default function Dashboard() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (checkingAuth || slugInvitacion) return;
+    if (vista !== "gestion") return;
+    if (loadingAdminAccess) return;
+    if (canManageSite) return;
+
+    setVista("home");
+    alert("No tenés permisos para acceder al tablero de gestión.");
+  }, [
+    canManageSite,
+    checkingAuth,
+    loadingAdminAccess,
+    slugInvitacion,
+    vista,
+  ]);
 
 
   if (checkingAuth) return <p>Cargando...</p>;
@@ -277,7 +277,10 @@ export default function Dashboard() {
       usuario={usuario}
       vista={vista}
       onCambiarVista={setVista}
-      ocultarSidebar={vista === "publicadas"}
+      ocultarSidebar={vista === "publicadas" || vista === "gestion"}
+      canManageSite={canManageSite}
+      isSuperAdmin={isSuperAdmin}
+      loadingAdminAccess={loadingAdminAccess}
     >
    
 
@@ -335,6 +338,16 @@ export default function Dashboard() {
 
 
       {/* Editor de invitación */}
+      {!slugInvitacion && vista === "gestion" && (
+        <div className="w-full px-4 pb-8">
+          <SiteManagementBoard
+            canManageSite={canManageSite}
+            isSuperAdmin={isSuperAdmin}
+            loadingAdminAccess={loadingAdminAccess}
+          />
+        </div>
+      )}
+
       {slugInvitacion && (
         <>
           {modoEditor === "konva" && (

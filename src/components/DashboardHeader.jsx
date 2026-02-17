@@ -5,7 +5,6 @@ import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import SelectorColorSeccion from "./SelectorColorSeccion";
-import { useAuthClaims } from "@/hooks/useAuthClaims";
 
 
 
@@ -21,6 +20,9 @@ export default function DashboardHeader({
     generarVistaPrevia,
     vistaActual,
     onCambiarVista,
+    canManageSite = false,
+    isSuperAdmin = false,
+    loadingAdminAccess = false,
 }) {
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
@@ -28,7 +30,6 @@ export default function DashboardHeader({
     const router = useRouter();
     const [colorFondo, setColorFondo] = useState("#ffffff");
     const [seccionActiva, setSeccionActiva] = useState(null);
-    const { esAdmin, loadingClaims } = useAuthClaims();
     const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
 
     const [publicando, setPublicando] = useState(false);
@@ -411,7 +412,7 @@ export default function DashboardHeader({
 
 
                     {/* Guardar plantilla */}
-                    {!loadingClaims && esAdmin && (
+                    {!loadingAdminAccess && canManageSite && (
                         <button
                             onClick={guardarPlantilla}
                             className="px-3 py-1 bg-yellow-400 text-gray-800 rounded hover:bg-yellow-500 transition text-xs"
@@ -532,21 +533,43 @@ export default function DashboardHeader({
                     </div>
 
                     <div className="flex items-center gap-2 mr-2">
-                        {vistaActual === "publicadas" ? (
+                        <button
+                            onClick={() =>
+                                onCambiarVista(
+                                    vistaActual === "publicadas" ? "home" : "publicadas"
+                                )
+                            }
+                            className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+                            title={
+                                vistaActual === "publicadas"
+                                    ? "Volver al inicio del dashboard"
+                                    : "Ver tus invitaciones publicadas"
+                            }
+                        >
+                            {vistaActual === "publicadas"
+                                ? "← Volver al dashboard"
+                                : "Mis invitaciones publicadas"}
+                        </button>
+
+                        {!loadingAdminAccess && canManageSite && (
                             <button
-                                onClick={() => onCambiarVista("home")}
+                                onClick={() =>
+                                    onCambiarVista(
+                                        vistaActual === "gestion" ? "home" : "gestion"
+                                    )
+                                }
                                 className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
-                                title="Volver al inicio del dashboard"
+                                title={
+                                    vistaActual === "gestion"
+                                        ? "Volver al inicio del dashboard"
+                                        : isSuperAdmin
+                                        ? "Abrir tablero de gestión (superadmin)"
+                                        : "Abrir tablero de gestión"
+                                }
                             >
-                                ← Volver al dashboard
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => onCambiarVista("publicadas")}
-                                className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
-                                title="Ver tus invitaciones publicadas"
-                            >
-                                Mis invitaciones publicadas
+                                {vistaActual === "gestion"
+                                    ? "← Volver al dashboard"
+                                    : "Gestión del sitio"}
                             </button>
                         )}
                     </div>

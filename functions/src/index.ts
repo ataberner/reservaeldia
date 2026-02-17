@@ -5,7 +5,13 @@ import { JSDOM } from "jsdom";
 import express, { Request, Response } from "express";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import { type RSVPConfig as ModalConfig } from "./utils/generarModalRSVP";
-import { requireAdmin, requireSuperAdmin } from "./auth/adminAuth";
+import {
+  requireAdmin,
+  requireAuth,
+  requireSuperAdmin,
+  isSuperAdmin,
+  getSuperAdminUids,
+} from "./auth/adminAuth";
 
 import * as logger from "firebase-functions/logger";
 
@@ -19,6 +25,41 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const bucket = getStorage().bucket();
+
+const MAX_ADMIN_SCAN = 10000;
+
+type CustomClaimsMap = Record<string, unknown>;
+
+type AdminUserSummary = {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  adminClaim: boolean;
+  isSuperAdmin: boolean;
+  disabled: boolean;
+  lastSignInTime: string | null;
+  creationTime: string | null;
+};
+
+function toAdminUserSummary(
+  userRecord: admin.auth.UserRecord,
+  superAdminSet: Set<string>
+): AdminUserSummary {
+  const claims = (userRecord.customClaims || {}) as CustomClaimsMap;
+  const adminClaim = claims.admin === true;
+  const userIsSuperAdmin = superAdminSet.has(userRecord.uid);
+
+  return {
+    uid: userRecord.uid,
+    email: userRecord.email || null,
+    displayName: userRecord.displayName || null,
+    adminClaim,
+    isSuperAdmin: userIsSuperAdmin,
+    disabled: userRecord.disabled === true,
+    lastSignInTime: userRecord.metadata?.lastSignInTime || null,
+    creationTime: userRecord.metadata?.creationTime || null,
+  };
+}
 
 const app = express();
 
@@ -462,6 +503,148 @@ export const borrarPlantilla = onCall(
 );
 
 
+/**
+ * ================================
+ * Access: admin / superadmin
+ * ================================
+ */
+export const getAdminAccess = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = requireAuth(request);
+    const token = (request.auth?.token || {}) as CustomClaimsMap;
+
+    const adminClaim = token.admin === true;
+    const email = typeof token.email === "string" ? token.email : null;
+    const userIsSuperAdmin = isSuperAdmin(uid);
+    const userIsAdmin = adminClaim || userIsSuperAdmin;
+
+    return {
+      uid,
+      email,
+      adminClaim,
+      isSuperAdmin: userIsSuperAdmin,
+      isAdmin: userIsAdmin,
+    };
+  }
+);
+
+
+/**
+ * ================================
+ * Superadmin: listar admins
+ * ================================
+ */
+export const listAdminUsers = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    requireSuperAdmin(request);
+
+    const superAdminSet = new Set(getSuperAdminUids());
+    const items: AdminUserSummary[] = [];
+
+    let scannedUsers = 0;
+    let truncated = false;
+    let nextPageToken: string | undefined = undefined;
+
+    do {
+      const remaining = MAX_ADMIN_SCAN - scannedUsers;
+      if (remaining <= 0) {
+        truncated = true;
+        break;
+      }
+
+      const batchSize = Math.min(1000, remaining);
+      const page = await admin.auth().listUsers(batchSize, nextPageToken);
+
+      for (const userRecord of page.users) {
+        scannedUsers += 1;
+
+        const summary = toAdminUserSummary(userRecord, superAdminSet);
+        if (summary.adminClaim || summary.isSuperAdmin) {
+          items.push(summary);
+        }
+
+        if (scannedUsers >= MAX_ADMIN_SCAN) {
+          break;
+        }
+      }
+
+      if (scannedUsers >= MAX_ADMIN_SCAN) {
+        truncated = Boolean(page.pageToken);
+        break;
+      }
+
+      nextPageToken = page.pageToken;
+    } while (nextPageToken);
+
+    items.sort((a, b) => {
+      if (a.isSuperAdmin !== b.isSuperAdmin) {
+        return a.isSuperAdmin ? -1 : 1;
+      }
+
+      const aEmail = (a.email || "").toLowerCase();
+      const bEmail = (b.email || "").toLowerCase();
+
+      if (aEmail !== bEmail) {
+        if (!aEmail) return 1;
+        if (!bEmail) return -1;
+        return aEmail.localeCompare(bEmail);
+      }
+
+      return a.uid.localeCompare(b.uid);
+    });
+
+    return { items, scannedUsers, truncated };
+  }
+);
+
+
+/**
+ * ================================
+ * Superadmin: buscar usuario por email
+ * ================================
+ */
+export const getAdminUserByEmail = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<{ email: string }>) => {
+    requireSuperAdmin(request);
+
+    const rawEmail = request.data?.email;
+    if (typeof rawEmail !== "string" || !rawEmail.trim()) {
+      throw new HttpsError("invalid-argument", "Falta email");
+    }
+
+    const email = rawEmail.trim().toLowerCase();
+    const superAdminSet = new Set(getSuperAdminUids());
+
+    try {
+      const userRecord = await admin.auth().getUserByEmail(email);
+      return {
+        found: true,
+        user: toAdminUserSummary(userRecord, superAdminSet),
+      };
+    } catch (error: any) {
+      if (error?.code === "auth/user-not-found") {
+        return { found: false, user: null };
+      }
+
+      logger.error("❌ Error buscando usuario por email", { email, error });
+      throw new HttpsError("internal", "No se pudo buscar el usuario");
+    }
+  }
+);
+
+
 
 function escapeHTML(text: string): string {
   return text
@@ -499,8 +682,52 @@ export const setAdminClaim = onCall(
       throw new HttpsError("invalid-argument", "Falta admin (boolean)");
     }
 
-    await admin.auth().setCustomUserClaims(uidTarget, { admin: adminFlag });
-    return { success: true, uidTarget, admin: adminFlag };
+    let targetUser: admin.auth.UserRecord;
+    try {
+      targetUser = await admin.auth().getUser(uidTarget);
+    } catch (error: any) {
+      if (error?.code === "auth/user-not-found") {
+        throw new HttpsError("not-found", "No existe el usuario objetivo");
+      }
+      logger.error("❌ Error obteniendo usuario objetivo", { uidTarget, error });
+      throw new HttpsError("internal", "No se pudo obtener el usuario objetivo");
+    }
+
+    const targetIsSuperAdmin = isSuperAdmin(uidTarget);
+    if (!adminFlag && targetIsSuperAdmin) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No se puede quitar admin a un superadmin"
+      );
+    }
+
+    const currentClaims = (targetUser.customClaims || {}) as CustomClaimsMap;
+    let nextClaims: CustomClaimsMap;
+
+    if (adminFlag) {
+      nextClaims = { ...currentClaims, admin: true };
+    } else {
+      const { admin: _currentAdmin, ...restClaims } = currentClaims;
+      nextClaims = restClaims;
+    }
+
+    await admin
+      .auth()
+      .setCustomUserClaims(
+        uidTarget,
+        Object.keys(nextClaims).length > 0 ? nextClaims : null
+      );
+
+    const finalAdminClaim = adminFlag === true;
+
+    return {
+      success: true,
+      uidTarget,
+      admin: finalAdminClaim,
+      isSuperAdmin: targetIsSuperAdmin,
+      isAdmin: finalAdminClaim || targetIsSuperAdmin,
+      email: targetUser.email || null,
+    };
   }
 );
 

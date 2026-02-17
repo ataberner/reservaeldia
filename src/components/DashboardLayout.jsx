@@ -21,7 +21,9 @@ export default function DashboardLayout({
   vista,
   onCambiarVista,
   ocultarSidebar = false,
-  esAdmin,
+  canManageSite,
+  isSuperAdmin,
+  loadingAdminAccess,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // 🔧 Corrige URLs inválidas al entrar
@@ -43,7 +45,9 @@ export default function DashboardLayout({
         usuario={usuario}
         vistaActual={vista}
         onCambiarVista={onCambiarVista}
-        esAdmin={esAdmin}
+        canManageSite={canManageSite}
+        isSuperAdmin={isSuperAdmin}
+        loadingAdminAccess={loadingAdminAccess}
       />
 
       {/* 🔹 Sidebar */}

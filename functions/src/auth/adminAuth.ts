@@ -13,11 +13,32 @@ import { HttpsError, CallableRequest } from "firebase-functions/v2/https";
  * firebase functions:config:set superadmins.uids="AAA,BBB,CCC"
  * o usando process.env en producción.
  */
-function parseSuperAdminsEnv(): string[] {
-    return (process.env.SUPERADMINS_UIDS || "")
+function parseUidList(raw: unknown): string[] {
+    if (typeof raw !== "string") return [];
+
+    return raw
         .split(",")
         .map((uid) => uid.trim())
         .filter(Boolean);
+}
+
+function getSuperAdminsFromCloudRuntimeConfig(): string[] {
+    const rawConfig = process.env.CLOUD_RUNTIME_CONFIG;
+    if (!rawConfig) return [];
+
+    try {
+        const parsed = JSON.parse(rawConfig) as any;
+        return parseUidList(parsed?.superadmins?.uids);
+    } catch {
+        return [];
+    }
+}
+
+export function getSuperAdminUids(): string[] {
+    const fromEnv = parseUidList(process.env.SUPERADMINS_UIDS);
+    const fromRuntimeConfig = getSuperAdminsFromCloudRuntimeConfig();
+
+    return Array.from(new Set([...fromEnv, ...fromRuntimeConfig]));
 }
 
 /**
@@ -44,7 +65,7 @@ export function requireAuth(request: CallableRequest<any>): string {
  */
 
 export function isSuperAdmin(uid: string): boolean {
-    const SUPERADMINS = parseSuperAdminsEnv();
+    const SUPERADMINS = getSuperAdminUids();
     return SUPERADMINS.includes(uid);
 }
 

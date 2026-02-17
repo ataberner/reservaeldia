@@ -1,5 +1,6 @@
 // components/CanvasEditor.jsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Image as KonvaImage, Group, Circle } from "react-konva";
 import ElementoCanvas from "./ElementoCanvas";
 import LineControls from "./LineControls";
@@ -111,6 +112,76 @@ function clearGlobalCursor(stageRef = null) {
   setGlobalCursor('', stageRef);
 }
 
+function isInlineDebugEnabled() {
+  return typeof window !== "undefined" && window.__INLINE_DEBUG !== false;
+}
+
+function formatInlineLogPayload(payload = {}) {
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch (error) {
+    return String(error || payload);
+  }
+}
+
+function inlineDebugLog(event, payload = {}) {
+  if (!isInlineDebugEnabled()) return;
+  const essentialEvents = new Set([
+    "debug-enabled",
+    "start-inline-edit",
+    "overlay-mounted-state",
+    "sync-global-editing",
+    "sync-global-editing-cleanup",
+    "finish-start",
+    "finish-visibility-check",
+    "finish-apply-patch",
+    "finish-post-commit",
+    "finish-abort-missing-object",
+    "finish-abort-empty",
+  ]);
+  if (!essentialEvents.has(event)) return;
+  const ts = new Date().toISOString();
+  const body = formatInlineLogPayload(payload);
+  console.log(`[INLINE][${ts}] ${event}\n${body}`);
+}
+
+function nextInlineFrameMeta() {
+  if (typeof window === "undefined") {
+    return { frame: null, perfMs: null };
+  }
+  const prev = Number(window.__INLINE_FRAME_SEQ || 0);
+  const next = prev + 1;
+  window.__INLINE_FRAME_SEQ = next;
+  const perfMs =
+    typeof window.performance?.now === "function"
+      ? Number(window.performance.now().toFixed(3))
+      : null;
+  return { frame: next, perfMs };
+}
+
+function normalizeInlineDebugAB(rawConfig) {
+  const raw = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+
+  const visibilitySource =
+    raw.visibilitySource === "window" ? "window" : "reactive";
+
+  const finishMode =
+    raw.finishMode === "immediate" ||
+    raw.finishMode === "raf" ||
+    raw.finishMode === "timeout100"
+      ? raw.finishMode
+      : "raf";
+
+  const overlayWidthMode =
+    raw.overlayWidthMode === "fit-content" ? "fit-content" : "measured";
+
+  return {
+    visibilitySource,
+    finishMode,
+    overlayWidthMode,
+  };
+}
+
 
 export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
   const [objetos, setObjetos] = useState([]);
@@ -137,6 +208,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const { refrescar: refrescarPlantillasDeSeccion } = usePlantillasDeSeccion();
   const [elementoCopiado, setElementoCopiado] = useState(null);
   const elementRefs = useRef({});
+  const inlineEditPreviewRef = useRef({ id: null, centerX: null });
+  const inlineCommitDebugRef = useRef({ id: null });
+  const prevEditingIdRef = useRef(null);
+  const inlineRenderValueRef = useRef({ id: null, value: "" });
+  const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
   const contenedorRef = useRef(null);
   const ignoreNextUpdateRef = useRef(0);
   const [anchoStage, setAnchoStage] = useState(800);
@@ -221,6 +297,42 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     finishEdit    // () => void
   } = useInlineEditor();
 
+  const obtenerMetricasNodoInline = useCallback((node) => {
+    if (!node) return null;
+    try {
+      const className = node.getClassName?.() || null;
+      const x = typeof node.x === "function" ? node.x() : null;
+      const y = typeof node.y === "function" ? node.y() : null;
+      const textWidth =
+        className === "Text" && typeof node.getTextWidth === "function"
+          ? Math.ceil(node.getTextWidth() || 0)
+          : null;
+      const rect =
+        typeof node.getClientRect === "function"
+          ? node.getClientRect({
+              skipTransform: false,
+              skipShadow: true,
+              skipStroke: true,
+            })
+          : null;
+      return {
+        className,
+        x,
+        y,
+        textWidth,
+        rect: rect
+          ? {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            }
+          : null,
+      };
+    } catch (error) {
+      return { error: String(error) };
+    }
+  }, []);
 
   const cerrarMenusFlotantes = useCallback(() => {
     setMostrarPanelZ(false);
@@ -310,6 +422,243 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     debug: false,
   });
 
+  const inlineDebugAB = useMemo(() => {
+    if (typeof window === "undefined") {
+      return normalizeInlineDebugAB(null);
+    }
+    return normalizeInlineDebugAB(window.__INLINE_AB);
+  }, [editing.id, editing.value]);
+
+  const handleInlineOverlayMountChange = useCallback((id, mounted) => {
+    const safeId = id || null;
+    if (!safeId) return;
+
+    setInlineOverlayMountedId((previous) => {
+      const next = mounted ? safeId : (previous === safeId ? null : previous);
+      inlineDebugLog("overlay-mounted-state", {
+        id: safeId,
+        mounted,
+        previousOverlayMountedId: previous,
+        nextOverlayMountedId: next,
+      });
+      return next;
+    });
+  }, []);
+
+  const captureInlineSnapshot = useCallback((eventName, extra = {}) => {
+    if (typeof window === "undefined") return;
+    if (!isInlineDebugEnabled()) return;
+    if (window.__INLINE_SNAPSHOT !== true) return;
+
+    const snapshotAllowlist = new Set([
+      "enter: pre-start",
+      "enter: after-start-sync",
+      "finish: blur",
+      "finish: after-finishEdit",
+      "exit: immediate",
+    ]);
+    if (!snapshotAllowlist.has(eventName)) return;
+
+    const frameMeta = nextInlineFrameMeta();
+    const snapshotId =
+      extra.id ||
+      editing.id ||
+      inlineCommitDebugRef.current?.id ||
+      prevEditingIdRef.current ||
+      null;
+
+    const node = snapshotId ? elementRefs.current[snapshotId] : null;
+    const nodeMetrics = obtenerMetricasNodoInline(node);
+    const objMetrics = snapshotId
+      ? (() => {
+          const obj = objetos.find((o) => o.id === snapshotId);
+          if (!obj) return null;
+          return {
+            id: obj.id,
+            tipo: obj.tipo || null,
+            x: Number.isFinite(obj.x) ? obj.x : null,
+            y: Number.isFinite(obj.y) ? obj.y : null,
+            textoLength: String(obj.texto ?? "").length,
+            fontSize: Number.isFinite(obj.fontSize) ? obj.fontSize : null,
+            lineHeight:
+              Number.isFinite(obj.lineHeight) && obj.lineHeight > 0
+                ? obj.lineHeight
+                : null,
+          };
+        })()
+      : null;
+
+    const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+    let stageRect = null;
+    try {
+      const r = stage?.container?.()?.getBoundingClientRect?.();
+      if (r) {
+        stageRect = {
+          x: r.x,
+          y: r.y,
+          width: r.width,
+          height: r.height,
+        };
+      }
+    } catch {
+      stageRect = null;
+    }
+
+    let inlineRect = null;
+    let inlineStyle = null;
+    let inlineContentRect = null;
+    let inlineContentMetrics = null;
+    if (snapshotId) {
+      const safeId = String(snapshotId).replace(/"/g, '\\"');
+      const overlayEl = document.querySelector(`[data-inline-editor-id="${safeId}"]`);
+      if (overlayEl) {
+        const r = overlayEl.getBoundingClientRect();
+        inlineRect = {
+          x: r.x,
+          y: r.y,
+          width: r.width,
+          height: r.height,
+        };
+        inlineStyle = {
+          left: overlayEl.style.left,
+          top: overlayEl.style.top,
+          minWidth: overlayEl.style.minWidth,
+          maxWidth: overlayEl.style.maxWidth,
+          width: overlayEl.style.width,
+        };
+
+        const contentEl = overlayEl.querySelector('[contenteditable="true"]');
+        const contentRect = contentEl?.getBoundingClientRect?.();
+        if (contentRect) {
+          inlineContentRect = {
+            x: contentRect.x,
+            y: contentRect.y,
+            width: contentRect.width,
+            height: contentRect.height,
+          };
+        }
+        inlineContentMetrics = contentEl
+          ? {
+              scrollWidth: contentEl.scrollWidth,
+              clientWidth: contentEl.clientWidth,
+              isFocused: document.activeElement === contentEl,
+            }
+          : null;
+      }
+    }
+
+    let transformerRect = null;
+    try {
+      const transformer = stage?.findOne?.("Transformer");
+      if (transformer) {
+        const trRect = transformer.getClientRect({
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        });
+        const nodes = transformer.nodes?.() || [];
+        transformerRect = trRect
+          ? {
+              x: trRect.x,
+              y: trRect.y,
+              width: trRect.width,
+              height: trRect.height,
+              nodesCount: nodes.length,
+              includesSnapshotNode: !!(node && nodes.includes(node)),
+            }
+          : null;
+      }
+    } catch {
+      transformerRect = null;
+    }
+
+    inlineDebugLog(`snapshot-${eventName}`, {
+      ...frameMeta,
+      ...extra,
+      id: snapshotId,
+      eventName,
+      editingId: editing.id ?? null,
+      currentEditingId: window._currentEditingId ?? null,
+      overlayMountedId: inlineOverlayMountedId ?? null,
+      inlineAB: inlineDebugAB,
+      escalaVisual,
+      stageRect,
+      nodeMetrics,
+      objMetrics,
+      transformerRect,
+      inlineRect,
+      inlineStyle,
+      inlineContentRect,
+      inlineContentMetrics,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+    });
+  }, [editing.id, escalaVisual, inlineDebugAB, inlineOverlayMountedId, objetos, obtenerMetricasNodoInline]);
+
+  useEffect(() => {
+    const currentId = editing.id || null;
+    const currentValue = String(editing.value ?? "");
+    const prev = inlineRenderValueRef.current;
+
+    if (currentId && prev.id === currentId && prev.value !== currentValue) {
+      captureInlineSnapshot("input: after-render", {
+        id: currentId,
+        previousLength: prev.value.length,
+        valueLength: currentValue.length,
+      });
+    }
+
+    inlineRenderValueRef.current = {
+      id: currentId,
+      value: currentValue,
+    };
+  }, [editing.id, editing.value, captureInlineSnapshot]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.__INLINE_DEBUG === undefined) {
+      window.__INLINE_DEBUG = true;
+    }
+    if (window.__INLINE_FRAME_SEQ === undefined) {
+      window.__INLINE_FRAME_SEQ = 0;
+    }
+    const normalizedAB = normalizeInlineDebugAB(window.__INLINE_AB);
+    window.__INLINE_AB = { ...normalizedAB };
+    inlineDebugLog("debug-enabled", {
+      enabled: window.__INLINE_DEBUG,
+      inlineAB: window.__INLINE_AB,
+      frameSeq: window.__INLINE_FRAME_SEQ,
+    });
+  }, []);
+
+  useEffect(() => {
+    const currentId = editing.id || null;
+    const previousId = prevEditingIdRef.current;
+
+    if (currentId && currentId !== previousId) {
+      requestAnimationFrame(() => {
+        captureInlineSnapshot("enter: raf1", { id: currentId, previousId });
+        requestAnimationFrame(() => {
+          captureInlineSnapshot("enter: raf2", { id: currentId, previousId });
+        });
+      });
+    }
+
+    if (!currentId && previousId) {
+      captureInlineSnapshot("exit: immediate", { id: previousId });
+      requestAnimationFrame(() => {
+        captureInlineSnapshot("exit: raf1", { id: previousId });
+        requestAnimationFrame(() => {
+          captureInlineSnapshot("exit: raf2", { id: previousId });
+        });
+      });
+    }
+
+    prevEditingIdRef.current = currentId;
+  }, [editing.id, captureInlineSnapshot]);
+
   const fuentesNecesarias = useMemo(() => {
     // fuentes usadas en textos + countdown (si aplica) + formas con texto (rect)
     const fonts = (objetos || [])
@@ -322,15 +671,36 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
   useEffect(() => {
-    // ✅ EXPONER ESTADO DE EDICIÓN GLOBALMENTE
+    if (typeof window === "undefined") return;
     window.editing = editing;
+  }, [editing.id, editing.value]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const previousCurrentEditingId = window._currentEditingId ?? null;
+    window._currentEditingId = editing?.id || null;
+
+    inlineDebugLog("sync-global-editing", {
+      editingId: editing?.id || null,
+      valueLength: String(editing?.value ?? "").length,
+      previousCurrentEditingId,
+      nextCurrentEditingId: window._currentEditingId,
+    });
 
     return () => {
+      inlineDebugLog("sync-global-editing-cleanup", {
+        editingId: editing?.id || null,
+        currentEditingId: window._currentEditingId ?? null,
+      });
       if (window.editing && window.editing.id === editing.id) {
         delete window.editing;
       }
+      if (window._currentEditingId === editing.id) {
+        window._currentEditingId = null;
+      }
     };
-  }, [editing.id, editing.value]);
+  }, [editing.id]);
 
 
   // 🎨 Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
@@ -730,20 +1100,118 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  // 🔥 Helper para obtener métricas precisas del texto
-  const obtenerMetricasTexto = (texto, fontSize, fontFamily) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.font = `${fontSize}px ${fontFamily}`;
+  // 🔥 Métricas de texto consistentes con el render de ElementoCanvas
+  const obtenerMetricasTexto = (texto, {
+    fontSize = 24,
+    fontFamily = "sans-serif",
+    fontWeight = "normal",
+    fontStyle = "normal",
+    lineHeight = 1.2,
+  } = {}) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      const fallbackSize = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 24;
+      return { width: Math.max(20, String(texto ?? "").length * (fallbackSize * 0.55)), height: fallbackSize * lineHeight };
+    }
 
-    const metrics = ctx.measureText(texto);
+    const safeFontSize = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 24;
+    const safeLineHeight = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 1.2;
+    const safeFamily = String(fontFamily || "sans-serif");
+    const fontForCanvas = safeFamily.includes(",")
+      ? safeFamily
+      : (/\s/.test(safeFamily) ? `"${safeFamily}"` : safeFamily);
+
+    ctx.font = `${fontStyle || "normal"} ${fontWeight || "normal"} ${safeFontSize}px ${fontForCanvas}`;
+
+    const rawText = String(texto ?? "");
+    const safeText = rawText.replace(/[ \t]+$/gm, "");
+    const lines = safeText.split(/\r?\n/);
+    const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 20);
+
     return {
-      width: metrics.width,
-      height: fontSize * 1.2, // Aproximación de altura basada en line-height
-      actualBoundingBoxAscent: metrics.actualBoundingBoxAscent || fontSize * 0.8,
-      actualBoundingBoxDescent: metrics.actualBoundingBoxDescent || fontSize * 0.2
+      width: maxLineWidth,
+      height: safeFontSize * safeLineHeight * Math.max(lines.length, 1),
     };
   };
+
+  const medirAnchoTextoKonva = useCallback((objTexto, textoObjetivo) => {
+    if (!objTexto || typeof window === "undefined") return null;
+
+    try {
+      const safeText = String(textoObjetivo ?? "").replace(/[ \t]+$/gm, "");
+      const safeFontFamily = fontManager.isFontAvailable(objTexto.fontFamily)
+        ? objTexto.fontFamily
+        : "sans-serif";
+      const safeFontSize =
+        Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0
+          ? objTexto.fontSize
+          : 24;
+      const baseLineHeight =
+        Number.isFinite(objTexto.lineHeight) && objTexto.lineHeight > 0
+          ? objTexto.lineHeight
+          : 1.2;
+
+      const probe = new Konva.Text({
+        text: safeText,
+        fontSize: safeFontSize,
+        fontFamily: safeFontFamily,
+        fontWeight: objTexto.fontWeight || "normal",
+        fontStyle: objTexto.fontStyle || "normal",
+        lineHeight: baseLineHeight * 0.92,
+        padding: 0,
+        wrap: "none",
+      });
+
+      const width = Number(probe.getTextWidth?.() || 0);
+      probe.destroy();
+
+      return Number.isFinite(width) && width > 0 ? width : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const calcularXTextoCentrado = useCallback((objTexto, textoObjetivo) => {
+    if (!objTexto || objTexto.tipo !== "texto") return Number.isFinite(objTexto?.x) ? objTexto.x : 0;
+
+    const baseLineHeight =
+      typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
+        ? objTexto.lineHeight
+        : 1.2;
+
+    const previousMetrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: objTexto.fontSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+
+    const nextMetrics = obtenerMetricasTexto(textoObjetivo, {
+      fontSize: objTexto.fontSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+
+    const previousWidthFromKonva = medirAnchoTextoKonva(objTexto, objTexto.texto);
+    const nextWidthFromKonva = medirAnchoTextoKonva(objTexto, textoObjetivo);
+
+    const previousWidth =
+      Number.isFinite(previousWidthFromKonva) && previousWidthFromKonva > 0
+        ? previousWidthFromKonva
+        : previousMetrics.width;
+    const nextWidth =
+      Number.isFinite(nextWidthFromKonva) && nextWidthFromKonva > 0
+        ? nextWidthFromKonva
+        : nextMetrics.width;
+
+    const currentX = Number.isFinite(objTexto.x) ? objTexto.x : 0;
+    const centerX = currentX + (previousWidth / 2);
+    return centerX - (nextWidth / 2);
+  }, [obtenerMetricasTexto, medirAnchoTextoKonva]);
 
 
   useEffect(() => {
@@ -1100,20 +1568,103 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     if (!editing.id || !elementRefs.current[editing.id]) return;
 
     const node = elementRefs.current[editing.id];
+    const objetoEnEdicion = objetos.find((o) => o.id === editing.id);
+    if (!objetoEnEdicion) return;
+    const nodeClass = node.getClassName?.();
+    const beforeMetrics = obtenerMetricasNodoInline(node);
+    const editingValue = String(editing.value ?? "");
 
-    // ✅ Solo actualizamos el contenido si es un nodo de texto
-    if (node.getClassName && node.getClassName() === "Text") {
-      node.text(editing.value); // 🔁 Actualizar el contenido en tiempo real
-      node.getLayer()?.batchDraw(); // 🔁 Forzar re-render del nodo
-    }
+    const shouldKeepCenterPreview =
+      objetoEnEdicion.tipo === "texto" &&
+      !objetoEnEdicion.__groupAlign &&
+      !Number.isFinite(objetoEnEdicion.width) &&
+      objetoEnEdicion.__autoWidth !== false;
+
+    const expectedX = shouldKeepCenterPreview
+      ? calcularXTextoCentrado(objetoEnEdicion, editingValue)
+      : (Number.isFinite(objetoEnEdicion.x) ? objetoEnEdicion.x : null);
+
+    inlineDebugLog("preview-effect-start", {
+      id: editing.id,
+      valueLength: editingValue.length,
+      nodeClass,
+      objX: objetoEnEdicion.x ?? null,
+      objY: objetoEnEdicion.y ?? null,
+      shouldKeepCenterPreview,
+      expectedX,
+      beforeMetrics,
+    });
 
     // 🔁 Actualizar el transformer si está presente
     const transformer = node.getStage()?.findOne('Transformer');
     if (transformer && transformer.nodes && transformer.nodes().includes(node)) {
       transformer.forceUpdate(); // Actualiza manualmente el transformer
       transformer.getLayer()?.batchDraw(); // Redibuja
+
+      let transformerRect = null;
+      try {
+        transformerRect = transformer.getClientRect({
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        });
+      } catch {
+        transformerRect = null;
+      }
+
+      inlineDebugLog("preview-transformer-updated", {
+        id: editing.id,
+        transformerRect: transformerRect
+          ? {
+              x: transformerRect.x,
+              y: transformerRect.y,
+              width: transformerRect.width,
+              height: transformerRect.height,
+            }
+          : null,
+      });
     }
-  }, [editing.value]);
+
+    const afterMetrics = obtenerMetricasNodoInline(node);
+    const afterX =
+      typeof node.x === "function" ? node.x() : afterMetrics?.x ?? null;
+    inlineDebugLog("preview-props-sync", {
+      id: editing.id,
+      valueLength: editingValue.length,
+      expectedX,
+      afterX,
+      deltaX:
+        Number.isFinite(afterX) && Number.isFinite(expectedX)
+          ? afterX - expectedX
+          : null,
+      beforeMetrics,
+      afterMetrics,
+    });
+  }, [editing.id, editing.value, objetos, obtenerMetricasNodoInline, calcularXTextoCentrado]);
+
+  useEffect(() => {
+    const pending = inlineCommitDebugRef.current;
+    if (!pending?.id) return;
+    if (editing.id) return;
+
+    const finalObj = objetos.find((o) => o.id === pending.id);
+    const finalNode = elementRefs.current[pending.id];
+    const finalNodeMetrics = obtenerMetricasNodoInline(finalNode);
+    const finalX = Number.isFinite(finalObj?.x) ? finalObj.x : null;
+    const deltaFinalVsExpected =
+      Number.isFinite(finalX) && Number.isFinite(pending.expectedX)
+        ? finalX - pending.expectedX
+        : null;
+
+    inlineDebugLog("finish-post-commit", {
+      ...pending,
+      finalX,
+      deltaFinalVsExpected,
+      finalNodeMetrics,
+    });
+
+    inlineCommitDebugRef.current = { id: null };
+  }, [editing.id, objetos, obtenerMetricasNodoInline]);
 
 
 
@@ -2035,20 +2586,41 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
+                    const objPreview =
+                      editing.id === obj.id && obj.tipo === "texto"
+                        ? (() => {
+                          const textoPreview = String(editing.value ?? "");
+                          const previewObj = { ...obj, texto: textoPreview };
+                          const shouldKeepCenterPreview =
+                            !obj.__groupAlign &&
+                            !Number.isFinite(obj.width) &&
+                            obj.__autoWidth !== false;
+
+                          if (shouldKeepCenterPreview) {
+                            const previewX = calcularXTextoCentrado(obj, textoPreview);
+                            if (Number.isFinite(previewX)) {
+                              previewObj.x = previewX;
+                            }
+                          }
+
+                          return previewObj;
+                        })()
+                        : obj;
+
                     return (
                       <ElementoCanvas
                         key={obj.id}
                         obj={{
-                          ...obj,
+                          ...objPreview,
                           // 🔥 yLocal: en sección pantalla usamos yNorm * 500
                           // fallback legacy: si no hay yNorm, usamos obj.y
                           y: (() => {
-                            const idxSec = seccionesOrdenadas.findIndex(s => s.id === obj.seccionId);
+                            const idxSec = seccionesOrdenadas.findIndex(s => s.id === objPreview.seccionId);
                             const offsetY = calcularOffsetY(seccionesOrdenadas, idxSec);
 
-                            const yLocal = esSeccionPantallaById(obj.seccionId)
-                              ? (Number.isFinite(obj.yNorm) ? (obj.yNorm * ALTURA_PANTALLA_EDITOR) : obj.y)
-                              : obj.y;
+                            const yLocal = esSeccionPantallaById(objPreview.seccionId)
+                              ? (Number.isFinite(objPreview.yNorm) ? (objPreview.yNorm * ALTURA_PANTALLA_EDITOR) : objPreview.y)
+                              : objPreview.y;
 
                             return yLocal + offsetY;
                           })(),
@@ -2060,10 +2632,39 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         onHover={isInEditMode ? null : setHoverId}
                         registerRef={registerRef}
                         onStartTextEdit={isInEditMode ? null : (id, texto) => {
-                          startEdit(id, texto);
                           const node = elementRefs.current[id];
+                          const nodeMetrics = obtenerMetricasNodoInline(node);
+                          const previousCurrentEditingId = window._currentEditingId ?? null;
+                          setInlineOverlayMountedId(null);
+                          captureInlineSnapshot("enter: pre-start", {
+                            id,
+                            previousId: previousCurrentEditingId,
+                            textoLength: String(texto ?? "").length,
+                          });
+                          window._currentEditingId = id;
+                          inlineEditPreviewRef.current = { id: null, centerX: null };
+                          inlineDebugLog("start-inline-edit", {
+                            id,
+                            textoLength: String(texto ?? "").length,
+                            objectX: obj?.x ?? null,
+                            objectY: obj?.y ?? null,
+                            previousCurrentEditingId,
+                            nextCurrentEditingId: window._currentEditingId,
+                            nodeMetrics,
+                          });
+
+                          startEdit(id, texto);
                           node?.draggable(false);
+                          node?.getLayer?.()?.batchDraw?.();
+                          captureInlineSnapshot("enter: after-start-sync", {
+                            id,
+                            previousId: previousCurrentEditingId,
+                            nextCurrentEditingId: window._currentEditingId ?? null,
+                          });
                         }}
+                        editingId={editing.id}
+                        inlineOverlayMountedId={inlineOverlayMountedId}
+                        inlineVisibilityMode={inlineDebugAB.visibilitySource}
                         finishInlineEdit={finishEdit}
                         onSelect={isInEditMode ? null : (id, obj, e) => {
                           console.log("🎯 [CANVAS EDITOR] onSelect disparado:", {
@@ -2291,7 +2892,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   )}
 
 
-                  {elementosSeleccionados.length > 0 && !editing.id && (() => {
+                  {elementosSeleccionados.length > 0 && (() => {
                     // 🔒 Si la selección incluye al menos una galería, no mostramos Transformer
                     const hayGaleriaSeleccionada = elementosSeleccionados.some(id => {
                       const o = objetos.find(x => x.id === id);
@@ -2526,40 +3127,197 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
               return (
                 <InlineTextEditor
+                  editingId={editing.id}
                   node={elementRefs.current[editing.id]}
                   value={editing.value}
                   textAlign={objetoEnEdicion?.align || 'left'} // 🆕 Solo pasar alineación
-                  onChange={updateEdit}
+                  onOverlayMountChange={handleInlineOverlayMountChange}
+                  onChange={(nextValue) => {
+                    const nextText = String(nextValue ?? "");
+                    captureInlineSnapshot("input: before-render", {
+                      id: editing.id || window._currentEditingId || null,
+                      valueLength: nextText.length,
+                    });
+                    updateEdit(nextValue);
+                  }}
+                  onDebugEvent={(eventName, payload = {}) => {
+                    captureInlineSnapshot(eventName, {
+                      id: payload?.id || editing.id || null,
+                      ...payload,
+                    });
+                  }}
                   onFinish={() => {
-                    const textoNuevo = editing.value.trim();
-                    const index = objetos.findIndex(o => o.id === editing.id);
+                    const finishId = editing.id;
+                    captureInlineSnapshot("finish: blur", {
+                      id: finishId,
+                      valueLength: String(editing.value ?? "").length,
+                    });
+                    const textoNuevoRaw = String(editing.value ?? "");
+                    const textoNuevoValidado = textoNuevoRaw.trim();
+                    const index = objetos.findIndex(o => o.id === finishId);
                     const objeto = objetos[index];
+                    const liveNodeAtFinish = elementRefs.current[finishId];
+                    const liveMetricsAtFinish = obtenerMetricasNodoInline(liveNodeAtFinish);
 
+                    inlineDebugLog("finish-start", {
+                      id: finishId,
+                      rawLength: textoNuevoRaw.length,
+                      trimmedLength: textoNuevoValidado.length,
+                      objectX: objeto?.x ?? null,
+                      objectY: objeto?.y ?? null,
+                      previewRef: { ...inlineEditPreviewRef.current },
+                      liveMetricsAtFinish,
+                    });
 
                     if (index === -1) {
                       console.warn("❌ El objeto ya no existe. Cancelando guardado.");
+                      inlineDebugLog("finish-abort-missing-object", { id: finishId });
+                      inlineCommitDebugRef.current = { id: null };
                       finishEdit();
                       return;
                     }
 
                     // ⚠️ Podés permitir texto vacío en formas si querés (yo lo permitiría)
-                    if (textoNuevo === "" && objeto.tipo === "texto") {
+                    if (textoNuevoValidado === "" && objeto.tipo === "texto") {
                       console.warn("⚠️ El texto está vacío. No se actualiza.");
+                      inlineDebugLog("finish-abort-empty", {
+                        id: finishId,
+                        rawLength: textoNuevoRaw.length,
+                        trimmedLength: textoNuevoValidado.length,
+                      });
+                      inlineCommitDebugRef.current = { id: null };
+                      inlineEditPreviewRef.current = { id: null, centerX: null };
                       finishEdit();
                       return;
                     }
 
                     const actualizado = [...objetos];
+                    const patch = { texto: textoNuevoRaw };
+
+                    const shouldKeepCenterX =
+                      objeto.tipo === "texto" &&
+                      !objeto.__groupAlign &&
+                      !Number.isFinite(objeto.width) &&
+                      objeto.__autoWidth !== false;
+
+                    if (shouldKeepCenterX) {
+                      const nextX = calcularXTextoCentrado(objeto, textoNuevoRaw);
+                      const currentX = Number.isFinite(objeto.x) ? objeto.x : 0;
+                      if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
+                        patch.x = nextX;
+                      }
+
+                      inlineDebugLog("finish-center-computed", {
+                        id: finishId,
+                        shouldKeepCenterX,
+                        currentX,
+                        nextX,
+                        patchX: patch.x ?? null,
+                      });
+                    }
 
                     actualizado[index] = {
                       ...actualizado[index],
-                      texto: textoNuevo
+                      ...patch
                     };
 
-                    setObjetos(actualizado);
-                    finishEdit();
+                    const expectedX = Number.isFinite(patch.x)
+                      ? patch.x
+                      : (Number.isFinite(objeto.x) ? objeto.x : null);
+                    inlineCommitDebugRef.current = {
+                      id: finishId,
+                      expectedX,
+                      objectXBeforeCommit: Number.isFinite(objeto.x) ? objeto.x : null,
+                      liveNodeXAtFinish: Number.isFinite(liveMetricsAtFinish?.x)
+                        ? liveMetricsAtFinish.x
+                        : null,
+                      previewCenterX: null,
+                      textLength: textoNuevoRaw.length,
+                    };
+
+                    inlineDebugLog("finish-apply-patch", {
+                      id: finishId,
+                      patch,
+                      expectedX,
+                    });
+                    const logFinishVisibilityCheck = (phase) => {
+                      const safeId = String(finishId || "").replace(/"/g, '\\"');
+                      const overlayDomPresent = safeId
+                        ? Boolean(document.querySelector(`[data-inline-editor-id="${safeId}"]`))
+                        : false;
+                      const liveNode = elementRefs.current[finishId];
+                      inlineDebugLog("finish-visibility-check", {
+                        phase,
+                        id: finishId,
+                        reactiveEditingId: editing.id || null,
+                        globalEditingId: window.editing?.id ?? null,
+                        currentEditingId: window._currentEditingId ?? null,
+                        overlayMountedId: inlineOverlayMountedId ?? null,
+                        overlayDomPresent,
+                        nodeOpacity:
+                          typeof liveNode?.opacity === "function"
+                            ? liveNode.opacity()
+                            : null,
+                        nodeVisible:
+                          typeof liveNode?.visible === "function"
+                            ? liveNode.visible()
+                            : null,
+                        nodeMetrics: obtenerMetricasNodoInline(liveNode),
+                      });
+                    };
+                    logFinishVisibilityCheck("before-commit");
+
+                    captureInlineSnapshot("finish: before-flush", {
+                      id: finishId,
+                      expectedX,
+                      patchX: patch.x ?? null,
+                    });
+                    flushSync(() => {
+                      setObjetos(actualizado);
+                    });
+                    captureInlineSnapshot("finish: after-flush", {
+                      id: finishId,
+                      expectedX,
+                      patchX: patch.x ?? null,
+                    });
+                    logFinishVisibilityCheck("after-commit-before-finishEdit");
+                    inlineEditPreviewRef.current = { id: null, centerX: null };
+                    flushSync(() => {
+                      finishEdit();
+                    });
+                    const stageAfterFinishEdit =
+                      stageRef.current?.getStage?.() || stageRef.current || null;
+                    if (typeof stageAfterFinishEdit?.batchDraw === "function") {
+                      stageAfterFinishEdit.batchDraw();
+                    }
+                    logFinishVisibilityCheck("after-finishEdit-sync");
+                    if (window._currentEditingId === finishId) {
+                      window._currentEditingId = null;
+                    }
+                    captureInlineSnapshot("finish: after-finishEdit", {
+                      id: finishId,
+                      expectedX,
+                      patchX: patch.x ?? null,
+                    });
+                    requestAnimationFrame(() => {
+                      logFinishVisibilityCheck("after-finishEdit-raf1");
+                      captureInlineSnapshot("finish: raf1", {
+                        id: finishId,
+                        expectedX,
+                        patchX: patch.x ?? null,
+                      });
+                      requestAnimationFrame(() => {
+                        captureInlineSnapshot("finish: raf2", {
+                          id: finishId,
+                          expectedX,
+                          patchX: patch.x ?? null,
+                        });
+                      });
+                    });
                   }}
                   scaleVisual={escalaVisual}
+                  finishMode={inlineDebugAB.finishMode}
+                  widthMode={inlineDebugAB.overlayWidthMode}
 
                 />
               );

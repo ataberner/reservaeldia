@@ -272,13 +272,6 @@ export default function SelectionBounds({
     }
 
 
-    const editing = window.editing || {};
-    if (editing.id && selectedElements.includes(editing.id)) {
-      TRDBG("EFFECT exit: editing selected", { selKey, editingId: editing.id });
-      return;
-    }
-
-
     // Resolver nodes desde refs (fuente de verdad)
     let nodosTransformables = elementosTransformables
       .map((o) => elementRefs.current?.[o.id])

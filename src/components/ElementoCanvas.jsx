@@ -144,7 +144,7 @@ export default function ElementoCanvas({
 
     onDragStart: (e) => {
 
-      onDragStartPersonalizado?.();
+      onDragStartPersonalizado?.(obj.id, e);
 
       window._dragCount = 0;
       window._lastMouse = null;

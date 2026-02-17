@@ -377,6 +377,36 @@ export default function SelectionBounds({
     return () => window.removeEventListener("element-ref-registrado", handler);
   }, [selectedElements.join(",")]);
 
+  useEffect(() => {
+    const firstId = selectedElements?.[0];
+    if (!firstId) return;
+
+    const firstNode = elementRefs.current?.[firstId];
+    const stage = firstNode?.getStage?.();
+    if (!stage) return;
+
+    let rafId = null;
+    const syncTransformer = () => {
+      if (rafId != null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const tr = transformerRef.current;
+        if (!tr) return;
+        try { tr.forceUpdate?.(); } catch { }
+        tr.getLayer?.()?.batchDraw?.();
+      });
+    };
+
+    stage.on("dragmove", syncTransformer);
+    stage.on("dragend", syncTransformer);
+
+    return () => {
+      stage.off("dragmove", syncTransformer);
+      stage.off("dragend", syncTransformer);
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [selectedElements.join(","), elementRefs]);
+
 
 
 

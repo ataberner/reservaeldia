@@ -2621,7 +2621,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                               }
                             });
                           }}
-                          onDragStartPersonalizado={() => {
+                          onDragStartPersonalizado={(dragId = obj.id) => {
+                            if (!elementosSeleccionados.includes(dragId)) {
+                              setElementosSeleccionados([dragId]);
+                            }
+                            setHoverId(null);
                             setIsDragging(true);
                           }}
                           onDragEndPersonalizado={() => {
@@ -2664,8 +2668,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           }}
 
                           // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
-                          onDragMovePersonalizado={(pos, id) => {
+                          onDragStartPersonalizado={(dragId = obj.id) => {
+                            if (!elementosSeleccionados.includes(dragId)) {
+                              setElementosSeleccionados([dragId]);
+                            }
+                            setHoverId(null);
                             setIsDragging(true);
+                          }}
+                          onDragMovePersonalizado={(pos, id) => {
                             if (!window._grupoLider) {
                               mostrarGuias(pos, id, objetos, elementRefs);
                             }
@@ -2999,7 +3009,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             return updated;
                           });
                         }}
-                        onDragStartPersonalizado={isInEditMode ? null : () => setIsDragging(true)}
+                        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id) => {
+                          if (!elementosSeleccionados.includes(dragId)) {
+                            setElementosSeleccionados([dragId]);
+                          }
+                          setHoverId(null);
+                          setIsDragging(true);
+                        }}
                         onDragEndPersonalizado={isInEditMode ? null : () => {
                           setIsDragging(false);
                           configurarDragEnd([]);

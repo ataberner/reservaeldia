@@ -26,12 +26,15 @@ export default function CountdownKonva({
   altoCanvas,
   onSelect,
   onChange,
+  onDragStartPersonalizado,
   onDragMovePersonalizado,
   onDragEndPersonalizado,
   dragStartPos,
   hasDragged,
 }) {
   const rootRef = useRef(null);
+  const dragMoveRafRef = useRef(null);
+  const lastDragMovePosRef = useRef(null);
 
   // Tick cada 1s (no re-render si estamos arrastrando)
   const [tick, setTick] = useState(0);
@@ -96,7 +99,7 @@ export default function CountdownKonva({
   // ---------------------------
   // Drag gating (la clave)
   // ---------------------------
-  const THRESHOLD_PX = 10; // 10-14 suele ser ideal. Si querés 0 micro-jitter, subilo a 12/14.
+  const THRESHOLD_PX = 4; // más responsivo para que el elemento no se sienta "atrasado" al iniciar drag.
 
   const pressRef = useRef({
     active: false,
@@ -289,11 +292,17 @@ export default function CountdownKonva({
   // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
   const handleDragStart = useCallback(
     (e) => {
+      if (dragMoveRafRef.current != null) {
+        cancelAnimationFrame(dragMoveRafRef.current);
+        dragMoveRafRef.current = null;
+      }
+      lastDragMovePosRef.current = null;
+      onDragStartPersonalizado?.(obj.id, e);
       // Arranque de tu lógica grupal/individual
       const esGrupal = startDragGrupalLider(e, obj);
       if (!esGrupal) startDragIndividual(e, dragStartPos);
     },
-    [obj, dragStartPos]
+    [obj, dragStartPos, onDragStartPersonalizado]
   );
 
   const handleDragMove = useCallback(
@@ -303,7 +312,17 @@ export default function CountdownKonva({
         return;
       }
       previewDragIndividual(e, obj, (pos) => {
-        onDragMovePersonalizado?.(pos, obj.id);
+        if (!onDragMovePersonalizado) return;
+        lastDragMovePosRef.current = pos;
+
+        // Evita saturar React/UI en dragmove; máximo 1 actualización por frame.
+        if (dragMoveRafRef.current != null) return;
+        dragMoveRafRef.current = requestAnimationFrame(() => {
+          dragMoveRafRef.current = null;
+          const latestPos = lastDragMovePosRef.current;
+          if (!latestPos) return;
+          onDragMovePersonalizado(latestPos, obj.id);
+        });
       });
     },
     [obj, onChange, onDragMovePersonalizado]
@@ -312,6 +331,12 @@ export default function CountdownKonva({
   const handleDragEnd = useCallback(
     (e) => {
       const node = e.currentTarget;
+
+      if (dragMoveRafRef.current != null) {
+        cancelAnimationFrame(dragMoveRafRef.current);
+        dragMoveRafRef.current = null;
+      }
+      lastDragMovePosRef.current = null;
 
       // Commit final
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});
@@ -344,7 +369,16 @@ export default function CountdownKonva({
   );
 
   // Cleanup global por si el componente se desmonta en pleno press
-  useEffect(() => cleanupGlobal, [cleanupGlobal]);
+  useEffect(() => {
+    return () => {
+      cleanupGlobal();
+      if (dragMoveRafRef.current != null) {
+        cancelAnimationFrame(dragMoveRafRef.current);
+        dragMoveRafRef.current = null;
+      }
+      lastDragMovePosRef.current = null;
+    };
+  }, [cleanupGlobal]);
 
   return (
     <Group

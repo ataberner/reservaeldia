@@ -137,12 +137,12 @@ export default function GaleriaDeImagenes({
                   event.stopPropagation();
                   toggleSeleccion(img.id);
                 }}
-                className={`absolute top-1 left-1 w-5 h-5 rounded-sm border border-white text-xs font-bold flex items-center justify-center z-10
-                  transition-opacity duration-200
+                className={`absolute top-1 left-1 w-5 h-5 rounded-sm border text-xs font-bold flex items-center justify-center z-10 shadow-sm
+                  transition-colors duration-200
                   ${
                     estaSeleccionada
-                      ? "bg-purple-600 text-white opacity-100"
-                      : "bg-yellow-300 text-black opacity-0 group-hover:opacity-100 hover:opacity-100"
+                      ? "bg-purple-600 border-purple-600 text-white"
+                      : "bg-white/95 border-slate-500 text-transparent"
                   }
                 `}
               >

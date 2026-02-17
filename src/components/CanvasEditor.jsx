@@ -1548,8 +1548,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
   useEffect(() => {
     const onDragStartGlobal = () => {
-      // limpiar hover inmediatamente para que no quede “pegado”
-      setHoverId(null);
+      // limpiar hover/preselección inmediatamente para evitar "flash" visual
+      flushSync(() => {
+        setHoverId(null);
+        setElementosPreSeleccionados([]);
+        setIsDragging(true);
+      });
     };
     const onDragEndGlobal = () => {
       // nada por ahora; si quisieras, podrías recalcular algo acá
@@ -3009,12 +3013,53 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             return updated;
                           });
                         }}
-                        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id) => {
-                          if (!elementosSeleccionados.includes(dragId)) {
+                        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id, e) => {
+                          const seleccionActual = Array.isArray(window._elementosSeleccionados)
+                            ? window._elementosSeleccionados
+                            : elementosSeleccionados;
+                          const isGroupCandidate =
+                            seleccionActual.length > 1 && seleccionActual.includes(dragId);
+                          const stage = e?.target?.getStage?.();
+                          const hoverCountBefore = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
+
+                          if (!seleccionActual.includes(dragId)) {
                             setElementosSeleccionados([dragId]);
                           }
-                          setHoverId(null);
-                          setIsDragging(true);
+
+                          flushSync(() => {
+                            setHoverId(null);
+                            setElementosPreSeleccionados([]);
+                            setIsDragging(true);
+                          });
+
+                          if (isGroupCandidate) {
+                            const now =
+                              typeof performance !== "undefined" && performance.now
+                                ? Number(performance.now().toFixed(2))
+                                : Date.now();
+                            const hoverCountAfterSync = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
+                            console.log("🧪 [HOVER][GROUP-DRAG-START]", {
+                              t: now,
+                              dragId,
+                              seleccionSize: seleccionActual.length,
+                              hoverIdBefore: hoverId,
+                              preSeleccionadosBefore: elementosPreSeleccionados.length,
+                              hoverCountBefore,
+                              hoverCountAfterSync,
+                              windowIsDragging: window._isDragging,
+                              isDraggingState: isDragging,
+                              grupoLider: window._grupoLider || null,
+                            });
+                            requestAnimationFrame(() => {
+                              const hoverCountRaf = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
+                              console.log("🧪 [HOVER][GROUP-DRAG-START][RAF]", {
+                                dragId,
+                                hoverCountRaf,
+                                windowIsDragging: window._isDragging,
+                                grupoLider: window._grupoLider || null,
+                              });
+                            });
+                          }
                         }}
                         onDragEndPersonalizado={isInEditMode ? null : () => {
                           setIsDragging(false);
@@ -3228,7 +3273,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
                   {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
-                  {!window._resizeData?.isResizing && !isDragging && !window._grupoLider && !editing.id && (
+                  {!window._resizeData?.isResizing && !isDragging && !window._isDragging && !window._grupoLider && !editing.id && (
                     <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} objetos={objetos} />
                   )}
 

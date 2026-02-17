@@ -174,38 +174,7 @@ export default function ElementoCanvas({
 
       // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
-        // Preview visual para drag grupal
-        const stage = e.target.getStage();
-        const currentPos = stage.getPointerPosition();
-        const startPos = window._dragStartPos;
-
-        if (currentPos && startPos && window._dragInicial) {
-          const deltaX = currentPos.x - startPos.x;
-          const deltaY = currentPos.y - startPos.y;
-          const seleccion = window._elementosSeleccionados || [];
-
-          // Actualizar visualmente todos los seguidores
-          seleccion.forEach((elementId) => {
-            if (elementId === obj.id) return; // El líder ya se mueve automáticamente
-
-            const node = window._elementRefs?.[elementId];
-            const posInicial = window._dragInicial[elementId];
-
-            if (node && posInicial) {
-              node.x(posInicial.x + deltaX);
-              node.y(posInicial.y + deltaY);
-            }
-          });
-
-          // ✅ Redibujo throttled a 1 por frame (evita “blink” de UI)
-          if (!window._groupPreviewRaf) {
-            window._groupPreviewRaf = requestAnimationFrame(() => {
-              window._groupPreviewRaf = null;
-              stage.batchDraw();
-            });
-          }
-
-        }
+        previewDragGrupal(e, obj, onChange);
 
         // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
         // El preview individual ya no es necesario porque manejamos todo aquí

@@ -39,7 +39,7 @@ export default function HoverIndicator({ hoveredElement, elementRefs, objetos = 
   }
 
   return (
-    <Group>
+    <Group name="ui-hover-indicator">
       <Rect
         x={box.x - 2}
         y={box.y - 2}

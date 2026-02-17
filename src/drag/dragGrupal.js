@@ -1,6 +1,80 @@
 // C:\Reservaeldia\src\drag\dragGrupal.js
 import { determinarNuevaSeccion } from "@/utils/layout";
 
+function getGrupoElementos() {
+  if (Array.isArray(window._grupoElementos) && window._grupoElementos.length > 0) {
+    return window._grupoElementos;
+  }
+  return window._elementosSeleccionados || [];
+}
+
+function calcularDeltaGrupal(stage) {
+  const leaderId = window._grupoLider;
+  const dragInicial = window._dragInicial || null;
+  const posInicialLider = leaderId && dragInicial ? dragInicial[leaderId] : null;
+  const leaderNode = leaderId ? window._elementRefs?.[leaderId] : null;
+
+  if (
+    leaderNode &&
+    posInicialLider &&
+    typeof leaderNode.x === "function" &&
+    typeof leaderNode.y === "function"
+  ) {
+    return {
+      deltaX: leaderNode.x() - posInicialLider.x,
+      deltaY: leaderNode.y() - posInicialLider.y,
+      source: "leader-node"
+    };
+  }
+
+  const currentPos = stage?.getPointerPosition?.();
+  const startPos = window._dragStartPos;
+  if (currentPos && startPos) {
+    return {
+      deltaX: currentPos.x - startPos.x,
+      deltaY: currentPos.y - startPos.y,
+      source: "pointer"
+    };
+  }
+
+  return null;
+}
+
+function applyPreviewDragGrupal(stage, leaderId, deltaX, deltaY) {
+  if (!stage || !window._dragInicial) return;
+
+  const last = window._groupPreviewLastDelta;
+  if (
+    last &&
+    Math.abs(last.deltaX - deltaX) < 0.01 &&
+    Math.abs(last.deltaY - deltaY) < 0.01
+  ) {
+    return;
+  }
+  window._groupPreviewLastDelta = { deltaX, deltaY };
+
+  const seguidores = Array.isArray(window._grupoSeguidores)
+    ? window._grupoSeguidores
+    : getGrupoElementos().filter((id) => id !== leaderId);
+
+  seguidores.forEach((elementId) => {
+    const node = window._elementRefs?.[elementId];
+    const posInicial = window._dragInicial[elementId];
+    if (!node || !posInicial) return;
+    node.position({
+      x: posInicial.x + deltaX,
+      y: posInicial.y + deltaY
+    });
+  });
+
+  if (!window._groupPreviewRaf) {
+    window._groupPreviewRaf = requestAnimationFrame(() => {
+      window._groupPreviewRaf = null;
+      stage.batchDraw();
+    });
+  }
+}
+
 export function startDragGrupalLider(e, obj) {
   console.log("🚀 [DRAG GRUPAL] Iniciando drag grupal - Objeto:", {
     id: obj.id,
@@ -13,6 +87,15 @@ export function startDragGrupalLider(e, obj) {
 
   if (seleccion.length > 1 && seleccion.includes(obj.id)) {
     console.log("✅ [DRAG GRUPAL] Condiciones cumplidas para drag grupal");
+    const stage = e?.target?.getStage?.();
+    const hoverCountBeforeStart = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
+    console.log("🧪 [HOVER][GROUP-CANDIDATE]", {
+      leaderCandidate: obj.id,
+      seleccionSize: seleccion.length,
+      hoverCountBeforeStart,
+      windowIsDragging: window._isDragging,
+      grupoLider: window._grupoLider || null,
+    });
 
     // 🔥 DETECTAR LÍNEAS EN LA SELECCIÓN
     const elementosDetallados = seleccion.map(id => {
@@ -59,7 +142,14 @@ export function startDragGrupalLider(e, obj) {
 
     if (!window._grupoLider) {
       console.log("👑 [DRAG GRUPAL] Estableciendo líder:", obj.id);
+      if (window._groupPreviewRaf) {
+        cancelAnimationFrame(window._groupPreviewRaf);
+        window._groupPreviewRaf = null;
+      }
+      window._groupPreviewLastDelta = null;
       window._grupoLider = obj.id;
+      window._grupoElementos = [...seleccion];
+      window._grupoSeguidores = seleccion.filter((id) => id !== obj.id);
       window._dragStartPos = e.target.getStage().getPointerPosition();
       window._dragInicial = {};
       window._skipIndividualEnd = new Set(seleccion);
@@ -70,6 +160,24 @@ export function startDragGrupalLider(e, obj) {
         document.body.style.cursor = "grabbing";
       } catch { }
       window.dispatchEvent(new Event("dragging-start"));
+      const hoverCountAfterGlobalStart = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
+      console.log("🧪 [HOVER][GROUP-START-DISPATCH]", {
+        leader: obj.id,
+        hoverCountAfterGlobalStart,
+        windowIsDragging: window._isDragging,
+        grupoLider: window._grupoLider || null,
+      });
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          const hoverCountRaf = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
+          console.log("🧪 [HOVER][GROUP-START-DISPATCH][RAF]", {
+            leader: obj.id,
+            hoverCountRaf,
+            windowIsDragging: window._isDragging,
+            grupoLider: window._grupoLider || null,
+          });
+        });
+      }
 
       // Bloqueo de drag individual en seguidores + snapshot inicial
       seleccion.forEach((id) => {
@@ -135,7 +243,17 @@ export function startDragGrupalLider(e, obj) {
 
 
 export function previewDragGrupal(e, obj, onChange) {
-  // tu lógica actual de preview (si la hay) queda igual
+  // Solo el líder debe mover visualmente al resto durante el preview.
+  if (!window._grupoLider || obj?.id !== window._grupoLider) return;
+
+  const stage = e?.target?.getStage?.();
+  if (!stage || !window._dragInicial) return;
+
+  const deltaData = calcularDeltaGrupal(stage);
+  if (!deltaData) return;
+
+  const { deltaX, deltaY } = deltaData;
+  applyPreviewDragGrupal(stage, obj.id, deltaX, deltaY);
 }
 
 export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
@@ -154,39 +272,22 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     console.log("👑 [DRAG GRUPAL] Procesando como líder...");
 
     const stage = e.target.getStage();
-    const currentPos = stage.getPointerPosition();
-    const startPos = window._dragStartPos;
+    const deltaData = window._dragInicial ? calcularDeltaGrupal(stage) : null;
 
-    console.log("📍 [DRAG GRUPAL] Posiciones:", {
-      inicial: startPos,
-      actual: currentPos
-    });
+    if (deltaData && window._dragInicial) {
+      if (window._groupPreviewRaf) {
+        cancelAnimationFrame(window._groupPreviewRaf);
+        window._groupPreviewRaf = null;
+      }
+      window._groupPreviewLastDelta = null;
 
-    if (currentPos && startPos && window._dragInicial) {
-      // 🔥 CALCULAR EL DELTA DEL MOVIMIENTO
-      const deltaX = currentPos.x - startPos.x;
-      const deltaY = currentPos.y - startPos.y;
+      const { deltaX, deltaY, source } = deltaData;
+      console.log("📏 [DRAG GRUPAL] Delta calculado:", { deltaX, deltaY, source });
 
-      console.log("📏 [DRAG GRUPAL] Delta calculado:", { deltaX, deltaY });
+      const elementosGrupo = getGrupoElementos();
 
-      const seleccion = window._elementosSeleccionados || [];
-
-      // 🔥 APLICAR EL DELTA A CADA ELEMENTO
-      seleccion.forEach((elementId) => {
-        // 🔥 SKIP: No procesar al líder aquí - ya está en su posición correcta
-        if (elementId === window._grupoLider) {
-          console.log(`👑 [DRAG GRUPAL] Saltando líder ${elementId} - ya procesado por Konva`);
-
-          // Solo mutear para evitar procesamiento individual
-          const node = window._elementRefs?.[elementId];
-          try {
-            node?.setAttr && node.setAttr("_muteNextEnd", true);
-          } catch { }
-
-          return;
-        }
-
-        // Procesar seguidores normalmente
+      // 🔥 APLICAR EL DELTA A CADA ELEMENTO (incluyendo al líder)
+      elementosGrupo.forEach((elementId) => {
         const objeto = window._objetosActuales?.find(o => o.id === elementId);
         if (!objeto) return;
 
@@ -196,7 +297,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
         const nuevaX = posInicial.x + deltaX;
         const nuevaY = posInicial.y + deltaY;
 
-        console.log(`👥 [DRAG GRUPAL] Seguidor ${elementId}:`, {
+        console.log(`👥 [DRAG GRUPAL] Elemento ${elementId}:`, {
           posInicial,
           delta: { deltaX, deltaY },
           nuevaPos: { x: nuevaX, y: nuevaY }
@@ -223,12 +324,14 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
 
         onChange(elementId, cambios);
       });
+    } else {
+      console.warn("⚠️ [DRAG GRUPAL] No se pudo calcular delta final del grupo");
     }
 
     // Cleanup
     window._skipUntil = performance.now() + 400;
 
-    const seleccion = window._elementosSeleccionados || [];
+    const seleccion = getGrupoElementos();
     seleccion.forEach((id) => {
       const elNode = window._elementRefs?.[id];
       if (!elNode) return;
@@ -247,6 +350,8 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
 
 
     window._grupoLider = null;
+    window._grupoElementos = null;
+    window._grupoSeguidores = null;
     window._dragStartPos = null;
     window._dragInicial = null;
 

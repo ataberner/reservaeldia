@@ -87,6 +87,7 @@ export default function DashboardSidebar({
     // Helpers para mostrar/ocultar con pequeño delay seguro
     const openPanel = (tipo) => {
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        if (fijadoSidebar) return;
         if (tipo) setBotonActivo(tipo);
         setHoverSidebar(true);
     };
@@ -326,6 +327,14 @@ export default function DashboardSidebar({
         });
     };
 
+    const getIconButtonClass = (boton) => {
+        const isActive = fijadoSidebar && botonActivo === boton;
+        return `w-10 h-10 flex items-center justify-center rounded-xl cursor-pointer transition-all duration-150 ${isActive
+            ? "bg-purple-700 ring-2 ring-purple-300 shadow-inner scale-95"
+            : "hover:bg-purple-700"
+            }`;
+    };
+
 
 
 
@@ -355,13 +364,9 @@ export default function DashboardSidebar({
             >
                 <div
                     onClick={() => alternarSidebarConBoton("menu")}
-                    onMouseEnter={() => {
-                        setHoverSidebar(true);
-                        setBotonActivo("menu");
-                    }}
+                    onMouseEnter={() => openPanel("menu")}
 
-                    className={`w-10 h-10 flex items-center justify-center rounded-xl transition ${fijadoSidebar && botonActivo === "menu" ? 'bg-purple-800' : 'hover:bg-purple-700'
-                        }`}
+                    className={getIconButtonClass("menu")}
                     title="Menú"
                 >
                     <FaBars className="text-white text-xl" />
@@ -378,7 +383,7 @@ export default function DashboardSidebar({
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("texto")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("texto")}
                         title="Añadir texto"
                     >
                         <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
@@ -394,7 +399,7 @@ export default function DashboardSidebar({
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("forma")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("forma")}
                         title="Añadir forma"
                     >
                         <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
@@ -409,7 +414,7 @@ export default function DashboardSidebar({
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("imagen")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("imagen")}
                         title="Abrir galería"
                     >
                         <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
@@ -424,7 +429,7 @@ export default function DashboardSidebar({
                             scheduleClosePanel();
                         }}
                         onClick={() => alternarSidebarConBoton("contador")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("contador")}
                         title="Cuenta regresiva"
                     >
                         <span className="text-xl">⏱️</span>
@@ -435,7 +440,7 @@ export default function DashboardSidebar({
                 <div className="flex md:hidden flex-row justify-around items-center w-full px-4">
                     <button
                         onClick={() => alternarSidebarConBoton("texto")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("texto")}
                         title="Añadir texto"
                     >
                         <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
@@ -443,7 +448,7 @@ export default function DashboardSidebar({
 
                     <button
                         onClick={() => alternarSidebarConBoton("forma")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("forma")}
                         title="Añadir forma"
                     >
                         <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
@@ -451,7 +456,7 @@ export default function DashboardSidebar({
 
                     <button
                         onClick={() => alternarSidebarConBoton("imagen")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("imagen")}
                         title="Abrir galería"
                     >
                         <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
@@ -459,7 +464,7 @@ export default function DashboardSidebar({
 
                     <button
                         onClick={() => alternarSidebarConBoton("contador")}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-purple-700"
+                        className={getIconButtonClass("contador")}
                         title="Cuenta regresiva"
                     >
                         <span className="text-xl">⏱️</span>

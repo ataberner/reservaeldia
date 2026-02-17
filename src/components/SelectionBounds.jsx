@@ -186,9 +186,8 @@ const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
       width={finalWidth}
       height={finalHeight}
       fill="transparent"
-      stroke="rgba(59, 130, 246, 0.7)"
+      stroke="#9333EA"
       strokeWidth={1}
-      dash={[6, 3]}
       listening={false}
       opacity={0.7}
     />
@@ -391,7 +390,7 @@ export default function SelectionBounds({
       // 🔵 borde siempre visible
       borderEnabled={true}
 
-      borderStroke="rgba(59, 130, 246, 0.7)"
+      borderStroke="#9333EA"
 
 
       borderStrokeWidth={1}
@@ -400,13 +399,12 @@ export default function SelectionBounds({
       enabledAnchors={isDragging ? [] : ["bottom-right"]}
       rotateEnabled={!isDragging}
 
-      borderDash={[6, 3]}
-      anchorFill="#3b82f6"
+      anchorFill="#9333EA"
       anchorStroke="#ffffff"
       anchorStrokeWidth={2.5}
       anchorSize={12}
       anchorCornerRadius={6}
-      anchorShadowColor="rgba(59, 130, 246, 0.3)"
+      anchorShadowColor="rgba(147, 51, 234, 0.3)"
       anchorShadowBlur={6}
       anchorShadowOffset={{ x: 0, y: 3 }}
       keepRatio={lockAspectCountdown}

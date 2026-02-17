@@ -2544,6 +2544,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           key={obj.id}
                           obj={obj}
                           registerRef={registerRef}
+                          onHover={setHoverId}
                           isSelected={elementosSeleccionados.includes(obj.id)}
                           celdaGaleriaActiva={celdaGaleriaActiva}
                           onPickCell={(info) => setCeldaGaleriaActiva(info)}
@@ -2592,6 +2593,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           key={obj.id}
                           obj={obj}
                           registerRef={registerRef}
+                          onHover={setHoverId}
                           isSelected={elementosSeleccionados.includes(obj.id)}
                           seccionesOrdenadas={seccionesOrdenadas}
                           altoCanvas={altoCanvas}

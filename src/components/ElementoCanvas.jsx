@@ -580,6 +580,8 @@ export default function ElementoCanvas({
             textNodeRef.current = node;
             handleRef(node); // registra + dispara "element-ref-registrado"
           }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           text={safeText}
           x={validX}
           y={obj.y}
@@ -894,6 +896,8 @@ export default function ElementoCanvas({
             <Rect
               {...propsForma}
               ref={handleRef}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
               width={width}
               height={height}
               cornerRadius={obj.cornerRadius || 0}

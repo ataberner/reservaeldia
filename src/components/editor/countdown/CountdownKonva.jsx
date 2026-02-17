@@ -21,6 +21,7 @@ import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@
 export default function CountdownKonva({
   obj,
   registerRef,
+  onHover,
   seccionesOrdenadas,
   altoCanvas,
   onSelect,
@@ -276,6 +277,15 @@ export default function CountdownKonva({
     [obj.id, onSelect]
   );
 
+  const handleMouseEnter = useCallback(() => {
+    if (window._isDragging) return;
+    onHover?.(obj.id);
+  }, [onHover, obj.id]);
+
+  const handleMouseLeave = useCallback(() => {
+    onHover?.(null);
+  }, [onHover]);
+
   // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
   const handleDragStart = useCallback(
     (e) => {
@@ -355,6 +365,8 @@ export default function CountdownKonva({
 
       onClick={handleClick}
       onTap={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
 
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}

@@ -44,6 +44,7 @@ function ImagenCelda({ src, fit = "cover", w, h }) {
 export default function GaleriaKonva({
   obj,
   registerRef,
+  onHover,
   isSelected, // (hoy no lo usamos, pero lo dejamos por compatibilidad)
   onSelect,
   onChange,
@@ -97,7 +98,13 @@ export default function GaleriaKonva({
       id={obj.id}
       draggable={false}
       ref={(node) => registerRef?.(obj.id, node)}
-      onMouseLeave={() => setHoveredCell(null)}
+      onMouseEnter={() => {
+        if (!window._isDragging) onHover?.(obj.id);
+      }}
+      onMouseLeave={() => {
+        setHoveredCell(null);
+        onHover?.(null);
+      }}
       onClick={(e) => {
         if (e && e.evt) e.evt.cancelBubble = true;
         onSelect?.(obj.id, e);

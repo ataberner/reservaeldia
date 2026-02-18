@@ -698,11 +698,6 @@ export default function Dashboard() {
                     }}
                     onSeleccionarPlantilla={async (slug, plantilla) => {
                       try {
-                        const copiarPlantilla = httpsCallable(
-                          cloudFunctions,
-                          "copiarPlantilla"
-                        );
-                        await copiarPlantilla({ plantillaId: plantilla.id, slug });
                         pushEditorBreadcrumb("abrir-plantilla", {
                           slug,
                           plantillaId: plantilla?.id || null,

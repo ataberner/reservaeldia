@@ -13,7 +13,6 @@ export default function GaleriaDeImagenes({
   onSeleccionadasChange,
 }) {
   const [seleccionadas, setSeleccionadas] = useState([]);
-  const [modoSeleccion, setModoSeleccion] = useState(false);
   const [mostrarModalBorrado, setMostrarModalBorrado] = useState(false);
   const [borrandoSeleccionadas, setBorrandoSeleccionadas] = useState(false);
   const galeriaRef = useRef(null);
@@ -50,7 +49,6 @@ export default function GaleriaDeImagenes({
     setSeleccionadas((prev) =>
       prev.includes(id) ? prev.filter((imgId) => imgId !== id) : [...prev, id]
     );
-    setModoSeleccion(true);
   };
 
   const borrarSeleccionadas = async () => {
@@ -65,7 +63,6 @@ export default function GaleriaDeImagenes({
         if (img) await borrarImagen(img);
       }
       setSeleccionadas([]);
-      setModoSeleccion(false);
       setMostrarModalBorrado(false);
     } finally {
       setBorrandoSeleccionadas(false);
@@ -74,7 +71,6 @@ export default function GaleriaDeImagenes({
 
   const cancelarSeleccion = () => {
     setSeleccionadas([]);
-    setModoSeleccion(false);
     setMostrarModalBorrado(false);
   };
 
@@ -101,20 +97,16 @@ export default function GaleriaDeImagenes({
               key={img.id}
               className="relative bg-white rounded shadow overflow-hidden cursor-pointer hover:scale-105 transition w-full aspect-square group"
               onClick={() => {
-                if (modoSeleccion) {
-                  toggleSeleccion(img.id);
-                } else {
-                  if (typeof img.url !== "string") return;
+                if (typeof img.url !== "string") return;
 
-                  onInsertar({
-                    id: `img-${Date.now()}`,
-                    tipo: "imagen",
-                    src: img.url,
-                    ancho: Number.isFinite(img.ancho) ? img.ancho : undefined,
-                    alto: Number.isFinite(img.alto) ? img.alto : undefined,
-                    seccionId: seccionActivaId,
-                  });
-                }
+                onInsertar({
+                  id: `img-${Date.now()}`,
+                  tipo: "imagen",
+                  src: img.url,
+                  ancho: Number.isFinite(img.ancho) ? img.ancho : undefined,
+                  alto: Number.isFinite(img.alto) ? img.alto : undefined,
+                  seccionId: seccionActivaId,
+                });
               }}
             >
               <img

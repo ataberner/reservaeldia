@@ -1,4 +1,4 @@
-// components/MiniToolbarTabContador.jsx
+﻿// components/MiniToolbarTabContador.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { COUNTDOWN_PRESETS } from "@/config/countdownPresets";
@@ -11,25 +11,14 @@ function fechaStrToISO(str) {
   const d = new Date(s);
   const ms = d.getTime();
   if (Number.isNaN(ms)) {
-    console.warn("[Countdown] fecha/hora inválida →", str);
+    console.warn("[Countdown] fecha/hora invÃ¡lida â†’", str);
     return null;
   }
   return d.toISOString();
 }
 
-// ✅ Calcular ancho inicial real del countdown según defaults + preset
-function calcCountdownInitialWidth(presetProps = {}) {
-  const n = 4; // d, h, m, s
-  const gap = presetProps.gap ?? 8;
-  const paddingX = presetProps.paddingX ?? 8;
-  const chipWidth = presetProps.chipWidth ?? 46;
-  const chipW = chipWidth + paddingX * 2;
-  const totalW = n * chipW + gap * (n - 1);
-  return Math.max(120, Math.round(totalW));
-}
-
 export default function MiniToolbarTabContador() {
-  // valor inicial: +30 días, formateado como "YYYY-MM-DDTHH:mm" (misma lógica)
+  // valor inicial: +30 dÃ­as, formateado como "YYYY-MM-DDTHH:mm" (misma lÃ³gica)
   const ahoraMas30d = (() => {
     const d = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
     const pad = (n) => String(n).padStart(2, "0");
@@ -40,13 +29,13 @@ export default function MiniToolbarTabContador() {
 
   const [fechaEventoStr, setFechaEventoStr] = useState(ahoraMas30d);
 
-  // ✅ Estado del countdown seleccionado (si hay uno)
+  // âœ… Estado del countdown seleccionado (si hay uno)
   const [countdownSel, setCountdownSel] = useState(null);
 
-  // Lee selección desde los globals que ya expone CanvasEditor:
+  // Lee selecciÃ³n desde los globals que ya expone CanvasEditor:
   // window._elementosSeleccionados y window._objetosActuales
   useEffect(() => {
-    const tick = () => {
+    const syncSelectedCountdown = () => {
       try {
         const ids = window._elementosSeleccionados || [];
         const objs = window._objetosActuales || [];
@@ -63,21 +52,24 @@ export default function MiniToolbarTabContador() {
         }
 
         setCountdownSel(obj);
-      } catch (err) {
+      } catch {
         setCountdownSel(null);
       }
     };
 
-    tick();
-    const t = setInterval(tick, 200);
-    return () => clearInterval(t);
+    syncSelectedCountdown();
+    window.addEventListener("editor-selection-change", syncSelectedCountdown);
+
+    return () => {
+      window.removeEventListener("editor-selection-change", syncSelectedCountdown);
+    };
   }, []);
 
   const selectedUI = useMemo(() => {
     if (!countdownSel) return null;
     return {
       id: countdownSel.id,
-      color: countdownSel.color ?? "#111827",            // números
+      color: countdownSel.color ?? "#111827",            // nÃºmeros
       labelColor: countdownSel.labelColor ?? "#6b7280",  // labels
       boxBg: countdownSel.boxBg ?? "#ffffff",            // fondo chip
       boxBorder: countdownSel.boxBorder ?? "#e5e7eb",    // borde chip
@@ -99,7 +91,7 @@ export default function MiniToolbarTabContador() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* ✅ Edición rápida (solo si hay countdown seleccionado) */}
+      {/* âœ… EdiciÃ³n rÃ¡pida (solo si hay countdown seleccionado) */}
       {selectedUI && (
         <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/40">
           <div className="text-xs font-semibold text-purple-800 mb-2">
@@ -108,7 +100,7 @@ export default function MiniToolbarTabContador() {
 
 
           <label className="text-xs font-medium text-zinc-700 col-span-2">
-            Separación entre chips
+            SeparaciÃ³n entre chips
             <input
               type="range"
               min={0}
@@ -128,7 +120,7 @@ export default function MiniToolbarTabContador() {
 
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-medium text-zinc-700">
-              Números
+              NÃºmeros
               <input
                 type="color"
                 className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
@@ -153,7 +145,7 @@ export default function MiniToolbarTabContador() {
               />
               {!selectedUI.showLabels && (
                 <div className="mt-1 text-[11px] text-zinc-600">
-                  Este preset no muestra labels, por eso está deshabilitado.
+                  Este preset no muestra labels, por eso estÃ¡ deshabilitado.
                 </div>
               )}
             </label>
@@ -197,9 +189,9 @@ export default function MiniToolbarTabContador() {
         />
       </div>
 
-      {/* Diseños */}
+      {/* DiseÃ±os */}
       <div>
-        <div className="text-xs font-medium text-zinc-700 mb-2">Diseños</div>
+        <div className="text-xs font-medium text-zinc-700 mb-2">DiseÃ±os</div>
         <div className="flex flex-col gap-3">
           {COUNTDOWN_PRESETS.map((p) => {
             const isoPreview = fechaStrToISO(fechaEventoStr) || new Date().toISOString();
@@ -210,12 +202,12 @@ export default function MiniToolbarTabContador() {
                 onClick={() => {
                   const iso = fechaStrToISO(fechaEventoStr);
                   if (!iso) {
-                    alert("⚠️ La fecha/hora no es válida. Elegí una fecha.");
+                    alert("âš ï¸ La fecha/hora no es vÃ¡lida. ElegÃ­ una fecha.");
                     return;
                   }
 
                   const rawPresetProps = p?.props || {};
-                  // ✅ No permitir que el preset pise geometría/fecha/tipo/id
+                  // âœ… No permitir que el preset pise geometrÃ­a/fecha/tipo/id
                   const {
                     x: _px,
                     y: _py,
@@ -229,30 +221,14 @@ export default function MiniToolbarTabContador() {
                     ...presetPropsSafe
                   } = rawPresetProps;
 
-                  const width = calcCountdownInitialWidth(rawPresetProps);
-                  const height = 90;
-                  const anchoBase = 800;
-                  const x = (anchoBase - width) / 2;
-                  const y = 140;
-
-                  window.dispatchEvent(
+                                    window.dispatchEvent(
                     new CustomEvent("insertar-elemento", {
                       detail: {
                         id: `count-${Date.now().toString(36)}`,
                         tipo: "countdown",
-                        x,
-                        y,
-                        width,
-                        height,
-                        rotation: 0,
-                        scaleX: 1,
-                        scaleY: 1,
-
-                        // ✅ usar solo el campo que lee CountdownKonva
                         fechaObjetivo: iso,
-
-                        ...presetPropsSafe,
                         presetId: p.id,
+                        presetProps: presetPropsSafe,
                       },
                     })
                   );
@@ -273,3 +249,8 @@ export default function MiniToolbarTabContador() {
     </div>
   );
 }
+
+
+
+
+

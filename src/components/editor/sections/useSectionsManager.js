@@ -1,13 +1,13 @@
-// src/components/editor/sections/useSectionsManager.js
+﻿// src/components/editor/sections/useSectionsManager.js
 import { useCallback, useEffect, useState } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
+import { db } from "../../../firebase"; // âœ… ajustado a tu estructura real
 
 /**
  * Maneja todo lo relacionado a secciones:
  * - resize de altura (drag)
  * - toggle Pantalla ON/OFF
- * - crear sección (y persistir)
+ * - crear secciÃ³n (y persistir)
  */
 export default function useSectionsManager({
     slug,
@@ -28,8 +28,20 @@ export default function useSectionsManager({
 
     ALTURA_REFERENCIA_PANTALLA,
 }) {
+    const getClientYFromEvent = useCallback((event) => {
+        if (!event) return null;
+        if (Number.isFinite(event.clientY)) return event.clientY;
+        if (event.touches?.[0] && Number.isFinite(event.touches[0].clientY)) {
+            return event.touches[0].clientY;
+        }
+        if (event.changedTouches?.[0] && Number.isFinite(event.changedTouches[0].clientY)) {
+            return event.changedTouches[0].clientY;
+        }
+        return null;
+    }, []);
+
     // ------------------------------------------
-    // A) Resize altura de sección
+    // A) Resize altura de secciÃ³n
     // ------------------------------------------
     const [controlandoAltura, setControlandoAltura] = useState(false);
     const [alturaInicial, setAlturaInicial] = useState(0);
@@ -39,15 +51,20 @@ export default function useSectionsManager({
         (e, seccionId) => {
             setGlobalCursor?.("ns-resize", stageRef);
             e.evt.stopPropagation();
+            if (e?.evt?.cancelable) e.evt.preventDefault();
 
             const seccion = secciones.find((s) => s.id === seccionId);
             if (!seccion) return;
 
+            const pointerY = getClientYFromEvent(e?.evt);
+            if (!Number.isFinite(pointerY)) return;
+
             setControlandoAltura(seccionId);
             setAlturaInicial(seccion.altura);
-            setPosicionInicialMouse(e.evt.clientY);
+            setPosicionInicialMouse(pointerY);
 
             try { document.body.style.userSelect = "none"; } catch { }
+            try { document.body.style.touchAction = "none"; } catch { }
 
             const target =
                 e.target?.getStage?.()?.content || e.target?.getStage?.()?.container?.();
@@ -56,20 +73,21 @@ export default function useSectionsManager({
                 try { target.setPointerCapture(e.evt.pointerId); } catch { }
             }
         },
-        [secciones, setGlobalCursor, stageRef]
+        [secciones, setGlobalCursor, stageRef, getClientYFromEvent]
     );
 
 
     const manejarControlAltura = useCallback(
         (e) => {
             if (!controlandoAltura) return;
+            if (e?.cancelable) e.preventDefault();
+            const posicionActualMouse = getClientYFromEvent(e);
+            if (!Number.isFinite(posicionActualMouse)) return;
 
-            // throttle (igual a tu lógica)
             if (window._alturaResizeThrottle) return;
             window._alturaResizeThrottle = true;
 
             requestAnimationFrame(() => {
-                const posicionActualMouse = e.clientY;
                 const deltaY = posicionActualMouse - posicionInicialMouse;
                 const nuevaAltura = Math.max(50, Math.round(alturaInicial + deltaY));
 
@@ -84,7 +102,7 @@ export default function useSectionsManager({
                 }, 8);
             });
         },
-        [controlandoAltura, posicionInicialMouse, alturaInicial, setSecciones]
+        [controlandoAltura, posicionInicialMouse, alturaInicial, setSecciones, getClientYFromEvent]
     );
 
     const finalizarControlAltura = useCallback(async () => {
@@ -93,6 +111,7 @@ export default function useSectionsManager({
         clearGlobalCursor?.(stageRef);
 
         try { document.body.style.userSelect = ""; } catch { }
+        try { document.body.style.touchAction = ""; } catch { }
 
         if (window._alturaResizeThrottle) window._alturaResizeThrottle = false;
 
@@ -113,24 +132,36 @@ export default function useSectionsManager({
                 });
 
                 clearGlobalCursor?.(stageRef);
-                console.log("✅ Altura guardada:", seccionId);
+                console.log("âœ… Altura guardada:", seccionId);
             } catch (error) {
-                console.error("❌ Error guardando altura:", error);
+                console.error("âŒ Error guardando altura:", error);
             }
         }, 300);
     }, [controlandoAltura, secciones, slug, clearGlobalCursor, stageRef]);
 
 
-    // listeners globales (mousemove/mouseup)
+    // listeners globales (mouse/touch/pointer)
     useEffect(() => {
         if (!controlandoAltura) return;
 
         document.addEventListener("mousemove", manejarControlAltura, { passive: true });
+        document.addEventListener("touchmove", manejarControlAltura, { passive: false });
+        window.addEventListener("pointermove", manejarControlAltura, { passive: false });
         document.addEventListener("mouseup", finalizarControlAltura);
+        document.addEventListener("touchend", finalizarControlAltura, { passive: true });
+        document.addEventListener("touchcancel", finalizarControlAltura, { passive: true });
+        window.addEventListener("pointerup", finalizarControlAltura, { passive: true });
+        window.addEventListener("pointercancel", finalizarControlAltura, { passive: true });
 
         return () => {
             document.removeEventListener("mousemove", manejarControlAltura);
+            document.removeEventListener("touchmove", manejarControlAltura);
+            window.removeEventListener("pointermove", manejarControlAltura);
             document.removeEventListener("mouseup", finalizarControlAltura);
+            document.removeEventListener("touchend", finalizarControlAltura);
+            document.removeEventListener("touchcancel", finalizarControlAltura);
+            window.removeEventListener("pointerup", finalizarControlAltura);
+            window.removeEventListener("pointercancel", finalizarControlAltura);
             if (window._alturaResizeThrottle) window._alturaResizeThrottle = false;
         };
     }, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
@@ -249,16 +280,16 @@ export default function useSectionsManager({
                     ultimaEdicion: serverTimestamp(),
                 });
 
-                console.log("✅ altoModo actualizado:", seccionId);
+                console.log("âœ… altoModo actualizado:", seccionId);
             } catch (e) {
-                console.error("❌ Error guardando altoModo:", e);
+                console.error("âŒ Error guardando altoModo:", e);
             }
         },
         [slug, secciones, setSecciones, normalizarAltoModo, ALTURA_REFERENCIA_PANTALLA]
     );
 
     // ------------------------------------------
-    // C) Crear sección (y persistir)
+    // C) Crear secciÃ³n (y persistir)
     // ------------------------------------------
     const handleCrearSeccion = useCallback(
         async (datos) => {
@@ -291,8 +322,8 @@ export default function useSectionsManager({
                         secciones: seccionesLimpias,
                         objetos: objetosLimpios,
                     })
-                        .then(() => console.log("✅ Sección agregada:", nueva))
-                        .catch((error) => console.error("❌ Error al guardar sección", error));
+                        .then(() => console.log("âœ… SecciÃ³n agregada:", nueva))
+                        .catch((error) => console.error("âŒ Error al guardar secciÃ³n", error));
 
                     return nuevosObjetos;
                 });
@@ -321,7 +352,10 @@ export default function useSectionsManager({
         // toggle pantalla
         togglePantallaCompletaSeccion,
 
-        // crear sección
+        // crear secciÃ³n
         handleCrearSeccion,
     };
 }
+
+
+

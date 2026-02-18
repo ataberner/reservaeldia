@@ -1,4 +1,4 @@
-// components/CanvasEditor.jsx
+﻿// components/CanvasEditor.jsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Image as KonvaImage, Group, Circle } from "react-konva";
@@ -56,13 +56,16 @@ import ConfirmDeleteSectionModal from "@/components/editor/sections/ConfirmDelet
 import useEditorEvents from "./editor/events/useEditorEvents";
 import useEditorWindowBridge from "./editor/window/useEditorWindowBridge";
 import useHistoryManager from "./editor/history/useHistoryManager";
-import useViewportScale from "@/hooks/useViewportScale";
+import useCanvasScaleLayout from "@/components/editor/mobile/useCanvasScaleLayout";
+import useCanvasInteractionState from "@/components/editor/mobile/useCanvasInteractionState";
+import useStageGestures from "./editor/mobile/useStageGestures";
+import useOptionButtonPosition from "@/components/editor/overlays/useOptionButtonPosition";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
 
 
 
-Konva.dragDistance = 24;
+Konva.dragDistance = 8;
 
 const ALTURA_REFERENCIA_PANTALLA = 500;
 const ALTURA_PANTALLA_EDITOR = 500;
@@ -72,7 +75,7 @@ function normalizarAltoModo(modo) {
   return (m === "pantalla") ? "pantalla" : "fijo";
 }
 
-// 🛠️ FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
+// ??? FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {
     return obj.map(limpiarObjetoUndefined);
@@ -100,7 +103,7 @@ const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
 function setGlobalCursor(cursor = '', stageRef = null) {
   try {
     document.body.style.cursor = cursor || '';
-    // 💡 limpiamos también el contenedor del Stage si existe
+    // ?? limpiamos también el contenedor del Stage si existe
     const stage = stageRef?.current?.container?.() || null;
     if (stage) stage.style.cursor = cursor || '';
     // fallback: canvas principal
@@ -196,8 +199,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
   const [cargado, setCargado] = useState(false);
   const stageRef = useRef(null);
-  const dragStartPos = useRef(null);
-  const hasDragged = useRef(false);
+  const { dragStartPos, hasDragged, isDragging, setIsDragging } = useCanvasInteractionState();
   const imperativeObjects = useImperativeObjects();
   const [animandoSeccion, setAnimandoSeccion] = useState(null);
   const [seccionActivaId, setSeccionActivaId] = useState(null);
@@ -224,7 +226,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
-  const [isDragging, setIsDragging] = useState(false);
+  const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
 
@@ -354,32 +356,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     setMostrarPanelZ(false);
     setMostrarSubmenuCapa(false);
     setMostrarSelectorFuente(false);
-    setMostrarSelectorTamaño(false);
+    setMostrarSelectorTamano(false);
     setHoverId(null);
   }, []);
 
-
-  const touchGestureRef = useRef({
-    startX: 0,
-    startY: 0,
-    moved: false,
-    // guardamos el id de sección tocada (si aplica)
-    tappedSectionId: null,
-    clickedOnStage: false,
-  });
-
-  const TOUCH_MOVE_PX = 10;
-
-
-
-
-  // 🆕 Elemento actualmente seleccionado (o null)
+  // ???Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
     elementosSeleccionados.length === 1
       ? objetos.find(o => o.id === elementosSeleccionados[0])
       : null;
 
-  const [mostrarSelectorTamaño, setMostrarSelectorTamaño] = useState(false);
+  const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
   const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
   const [icono] = useImage(urlData);
   const botonOpcionesRef = useRef(null);
@@ -396,7 +383,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     elementRefs.current[id] = node;
     imperativeObjects.registerObject(id, node);
 
-    // ✅ Debounce por frame para evitar ráfagas de re-attach del Transformer
+    // ? Debounce por frame para evitar ráfagas de re-attach del Transformer
     if (_refEventQueued.current.has(id)) return;
     _refEventQueued.current.add(id);
 
@@ -426,22 +413,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     escalaVisual,
     wrapperBaseWidth,
     escalaFitMobilePortrait,
-  } = useViewportScale({
+  } = useCanvasScaleLayout({
     contenedorRef,
     zoom,
-
-    // respeta tu lógica actual
-    baseDesktop: 800,
-    baseMobilePortrait: 1000,
-
-    wrapperBaseWidthZoom1: 1000,
-    wrapperBaseWidthZoom08: 1220,
-
-    fitBoost: 1.2,
-    zoomVisualBoost: 1.15,
-
-    // logs (ponelo en true solo cuando estés debuggeando)
-    debug: false,
   });
 
   const inlineDebugAB = useMemo(() => {
@@ -809,16 +783,16 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }, [editing.id]);
 
 
-  // 🎨 Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
+  // ?? Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
   const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
     setSecciones(prev =>
       prev.map(s => {
         if (s.id !== seccionId) return s;
 
-        // 🔥 CREAR OBJETO LIMPIO
+        // ?? CREAR OBJETO LIMPIO
         const seccionActualizada = { ...s };
 
-        // 🔥 SOLO AGREGAR CAMPOS SI TIENEN VALORES VÁLIDOS
+        // ?? SOLO AGREGAR CAMPOS SI TIENEN VALORES VÁLIDOS
         if (nuevosOffsets.offsetX !== undefined && nuevosOffsets.offsetX !== null) {
           seccionActualizada.fondoImagenOffsetX = nuevosOffsets.offsetX;
         }
@@ -928,17 +902,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     const content = stage.content;
     if (!content) return;
 
-    // ✅ Estado base: scroll vertical permitido sobre canvas vacío
+    // ? Estado base: scroll vertical permitido sobre canvas vacío
     const setScrollMode = () => {
       content.style.touchAction = "pan-y";
     };
 
-    // ✅ Durante drag: bloquear scroll para editar fino
+    // ? Durante drag: bloquear scroll para editar fino
     const setEditMode = () => {
       content.style.touchAction = "none";
     };
 
-    // ✅ NUEVO: estado React confiable para UI (Transformer/hover/etc.)
+    // ? NUEVO: estado React confiable para UI (Transformer/hover/etc.)
     const onDragStart = () => {
       setIsDragging(true);
     };
@@ -947,7 +921,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       setIsDragging(false);
     };
 
-    // ✅ Failsafe: por si termina “raro” (touch cancel, pointer up, etc.)
+    // ? Failsafe: por si termina “raro” (touch cancel, pointer up, etc.)
     const stopDragging = () => {
       setIsDragging(false);
       setScrollMode();
@@ -955,7 +929,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
     // Inicial
     setScrollMode();
-    setIsDragging(false); // 🔒 por las dudas, al montar
+    setIsDragging(false); // ?? por las dudas, al montar
     content.style.WebkitUserSelect = "none";
     content.style.WebkitTouchCallout = "none";
 
@@ -963,7 +937,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     stage.on("dragstart", setEditMode);
     stage.on("dragend", setScrollMode);
 
-    // ✅ NUEVO (UI state)
+    // ? NUEVO (UI state)
     stage.on("dragstart", onDragStart);
     stage.on("dragend", onDragEnd);
 
@@ -987,6 +961,36 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     };
   }, [setIsDragging]);
 
+  useEffect(() => {
+    const stage = stageRef.current?.getStage?.() || stageRef.current;
+    const content = stage?.content || stage?.container?.();
+    if (!content) return;
+
+    const setDragDistanceForInput = (pointerType) => {
+      const isTouchLike =
+        pointerType === "touch" ||
+        pointerType === "pen" ||
+        (typeof pointerType !== "string" && isMobile);
+      Konva.dragDistance = isTouchLike ? 14 : 5;
+    };
+
+    const onPointerDown = (event) => setDragDistanceForInput(event.pointerType);
+    const onTouchStart = () => setDragDistanceForInput("touch");
+    const onMouseDown = () => setDragDistanceForInput("mouse");
+
+    setDragDistanceForInput(isMobile ? "touch" : "mouse");
+
+    content.addEventListener("pointerdown", onPointerDown, { passive: true });
+    content.addEventListener("touchstart", onTouchStart, { passive: true });
+    content.addEventListener("mousedown", onMouseDown, { passive: true });
+
+    return () => {
+      content.removeEventListener("pointerdown", onPointerDown);
+      content.removeEventListener("touchstart", onTouchStart);
+      content.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [isMobile]);
+
 
 
 
@@ -994,6 +998,19 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   useEffect(() => {
     if (seccionActivaId) window._lastSeccionActivaId = seccionActivaId;
   }, [seccionActivaId]);
+
+  useEffect(() => {
+    if (!mobileBackgroundEditSectionId) {
+      window.dispatchEvent(new Event("salir-modo-mover-fondo"));
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("activar-modo-mover-fondo", {
+        detail: { sectionId: mobileBackgroundEditSectionId },
+      })
+    );
+  }, [mobileBackgroundEditSectionId]);
 
 
 
@@ -1071,7 +1088,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       if (!pendientes.length) return;
 
       try {
-        // ✅ Ideal: que fontManager.loadFonts devuelva Promise
+        // ? Ideal: que fontManager.loadFonts devuelva Promise
         // Si hoy no devuelve, igual lo resolvemos con document.fonts más abajo.
         const maybePromise = fontManager.loadFonts?.(pendientes);
 
@@ -1080,7 +1097,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           await maybePromise;
         }
 
-        // ✅ Segundo seguro: esperar a que el browser confirme
+        // ? Segundo seguro: esperar a que el browser confirme
         // (esto garantiza que no haya fallback)
         if (document?.fonts?.load) {
           await Promise.all(
@@ -1097,7 +1114,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           stageRef.current?.batchDraw?.();
         });
       } catch (e) {
-        console.warn("⚠️ Error precargando fuentes:", e);
+        console.warn("?? Error precargando fuentes:", e);
       }
     }
 
@@ -1143,7 +1160,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
   const actualizarObjetoPorId = (id, cambios) => {
     const index = objetos.findIndex((o) => o.id === id);
-    if (index === -1) return console.warn("❌ No se encontró el objeto con ID:", id);
+    if (index === -1) return console.warn("? No se encontró el objeto con ID:", id);
     actualizarObjeto(index, cambios);
   };
 
@@ -1202,7 +1219,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           cleanData.points = cleanData.points.map(p => parseFloat(p) || 0);
         }
 
-        // 🔥 PRESERVAR strokeWidth si existe
+        // ?? PRESERVAR strokeWidth si existe
         if (cleanData.strokeWidth !== undefined) {
           cleanData.strokeWidth = parseInt(cleanData.strokeWidth) || 2;
         }
@@ -1221,7 +1238,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           cleanData.points = cleanData.points.map(p => parseFloat(p) || 0);
         }
 
-        // 🔥 PRESERVAR strokeWidth si existe
+        // ?? PRESERVAR strokeWidth si existe
         if (cleanData.strokeWidth !== undefined) {
           cleanData.strokeWidth = parseInt(cleanData.strokeWidth) || 2;
         }
@@ -1236,7 +1253,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  // 🔥 Métricas de texto consistentes con el render de ElementoCanvas
+  // ?? Métricas de texto consistentes con el render de ElementoCanvas
   const obtenerMetricasTexto = (texto, {
     fontSize = 24,
     fontFamily = "sans-serif",
@@ -1379,7 +1396,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         setMostrarPanelZ(false);
         setMostrarSubmenuCapa(false);
         setMostrarSelectorFuente(false);
-        setMostrarSelectorTamaño(false);
+        setMostrarSelectorTamano(false);
         setHoverId(null);
       }
     },
@@ -1492,7 +1509,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  // 🆕 NUEVO HOOK PARA GUÍAS
+  // ?? NUEVO HOOK PARA GUÍAS
   const {
     guiaLineas,
     mostrarGuias,
@@ -1513,87 +1530,15 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     seccionesOrdenadas
   });
 
-  // 🚀 Función para actualizar posición del botón SIN re-render
-  const actualizarPosicionBotonOpciones = useCallback(() => {
-    if (!botonOpcionesRef.current || elementosSeleccionados.length !== 1) return;
-
-    const nodeRef = elementRefs.current[elementosSeleccionados[0]];
-    const stage = stageRef.current;
-    const contenedor = contenedorRef.current;
-
-    if (!nodeRef || !stage || !contenedor) return;
-
-    try {
-      // 🔥 OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE (coordenadas locales)
-      const box = nodeRef.getClientRect();
-
-      // 🔥 OBTENER POSICIÓN DEL STAGE EN EL VIEWPORT
-      const stageContainer = stage.container();
-      const stageRect = stageContainer.getBoundingClientRect();
-
-      // 🔥 OBTENER SCROLL Y OFFSET DEL CONTENEDOR PRINCIPAL
-      const contenedorRect = contenedor.getBoundingClientRect();
-      const scrollTop = contenedor.scrollTop || 0;
-      const scrollLeft = contenedor.scrollLeft || 0;
-
-      // 🎯 CÁLCULO CORRECTO: Posición absoluta en viewport
-      const elementoX = stageRect.left + (box.x * escalaVisual);
-      const elementoY = stageRect.top + (box.y * escalaVisual);
-      const anchoElemento = box.width * escalaVisual;
-
-      // 🔥 POSICIÓN FINAL: Esquina superior derecha del elemento
-      const botonX = elementoX + anchoElemento; // -12px (mitad del botón)
-      const botonY = elementoY - 24; // -12px (mitad del botón)
-
-      // 🔥 VALIDACIÓN: Solo mostrar si está dentro del viewport visible
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      if (botonX >= 0 && botonX <= viewportWidth && botonY >= 0 && botonY <= viewportHeight) {
-        botonOpcionesRef.current.style.left = `${botonX}px`;
-        botonOpcionesRef.current.style.top = `${botonY}px`;
-        botonOpcionesRef.current.style.display = 'flex';
-      } else {
-        // Ocultar si está fuera del viewport
-        botonOpcionesRef.current.style.display = 'none';
-      }
-
-    } catch (error) {
-      console.warn("Error actualizando posición del botón:", error);
-      // En caso de error, ocultar el botón
-      if (botonOpcionesRef.current) {
-        botonOpcionesRef.current.style.display = 'none';
-      }
-    }
-  }, [elementosSeleccionados, escalaVisual, elementRefs]);
-
-
-  // 🔄 Actualizar posición del botón cuando cambia la selección o escala
-  useEffect(() => {
-    if (elementosSeleccionados.length === 1) {
-      // Pequeño delay para que el elemento esté renderizado
-      setTimeout(() => {
-        actualizarPosicionBotonOpciones();
-      }, 50);
-    }
-  }, [elementosSeleccionados, escalaActiva, actualizarPosicionBotonOpciones]);
-
-  // 🔄 Actualizar posición en scroll/resize
-  useEffect(() => {
-    const handleScrollResize = () => {
-      if (elementosSeleccionados.length === 1) {
-        actualizarPosicionBotonOpciones();
-      }
-    };
-
-    window.addEventListener('scroll', handleScrollResize, true);
-    window.addEventListener('resize', handleScrollResize);
-
-    return () => {
-      window.removeEventListener('scroll', handleScrollResize, true);
-      window.removeEventListener('resize', handleScrollResize);
-    };
-  }, [elementosSeleccionados, actualizarPosicionBotonOpciones]);
+  // ?? Función para actualizar posición del botón SIN re-render
+  const { actualizarPosicionBotonOpciones } = useOptionButtonPosition({
+    botonOpcionesRef,
+    elementRefs,
+    elementosSeleccionados,
+    stageRef,
+    escalaVisual,
+    escalaActiva,
+  });
 
 
 
@@ -1622,7 +1567,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-  // 🔥 OPTIMIZACIÓN: Limpiar cache de intersección al cambiar selección
+  // ?? OPTIMIZACIÓN: Limpiar cache de intersección al cambiar selección
   useEffect(() => {
     // Limpiar cache cuando cambia la selección
     if (window._lineIntersectionCache) {
@@ -1630,7 +1575,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     }
   }, [elementosSeleccionados.length]);
 
-  // 🔥 OPTIMIZACIÓN: Forzar actualización de líneas después de drag grupal
+  // ?? OPTIMIZACIÓN: Forzar actualización de líneas después de drag grupal
   useEffect(() => {
     if (window._grupoLider || elementosSeleccionados.length === 0) return;
 
@@ -1680,7 +1625,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           parseFloat(points[3]) || 0
         ];
 
-        // 🔥 USAR LA POSICIÓN DEL NODO REAL EN EL STAGE
+        // ?? USAR LA POSICIÓN DEL NODO REAL EN EL STAGE
         const node = window._elementRefs?.[lineObj.id];
         const lineX = node ? node.x() : (lineObj.x || 0);
         const lineY = node ? node.y() : (lineObj.y || 0);
@@ -1693,7 +1638,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-        // 🔥 MÉTODO 1: Verificar si algún punto está dentro del área
+        // ?? MÉTODO 1: Verificar si algún punto está dentro del área
         const startDentro = (
           startX >= area.x && startX <= area.x + area.width &&
           startY >= area.y && startY <= area.y + area.height
@@ -1709,7 +1654,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           return true;
         }
 
-        // 🔥 MÉTODO 2: Verificar intersección línea-rectángulo
+        // ?? MÉTODO 2: Verificar intersección línea-rectángulo
         const intersecta = lineIntersectsRect(
           startX, startY, endX, endY,
           area.x, area.y, area.x + area.width, area.y + area.height
@@ -1751,7 +1696,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   }
 
 
-  // 🔄 Ajustar el transformer cuando cambia el texto inline
+  // ?? Ajustar el transformer cuando cambia el texto inline
   useEffect(() => {
     if (!editing.id || !elementRefs.current[editing.id]) return;
 
@@ -1783,7 +1728,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       beforeMetrics,
     });
 
-    // 🔁 Actualizar el transformer si está presente
+    // ?? Actualizar el transformer si está presente
     const transformer = node.getStage()?.findOne('Transformer');
     if (transformer && transformer.nodes && transformer.nodes().includes(node)) {
       transformer.forceUpdate(); // Actualiza manualmente el transformer
@@ -1860,13 +1805,26 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   useEffect(() => {
     window._elementosSeleccionados = elementosSeleccionados;
     window._objetosActuales = objetos;
-    // 🔥 NUEVO: Exponer elementRefs para actualización directa
     window._elementRefs = elementRefs.current;
-
-    // 🔥 NUEVO: Exponer secciones y altura total
     window._seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
     window._altoCanvas = altoCanvas;
-  }, [elementosSeleccionados, objetos, secciones, altoCanvas]);
+    window.dispatchEvent(
+      new CustomEvent("editor-selection-change", {
+        detail: {
+          ids: [...elementosSeleccionados],
+          activeSectionId: seccionActivaId || null,
+        },
+      })
+    );
+  }, [elementosSeleccionados, objetos, secciones, altoCanvas, seccionActivaId]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("seccion-activa", {
+        detail: { id: seccionActivaId || null },
+      })
+    );
+  }, [seccionActivaId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1892,12 +1850,24 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
       imperativeObjects.cleanup();
     };
   }, []);
-
-
-  const esTouch = (evt) => {
-    const t = evt?.evt;
-    return !!(t && (t.type?.includes("touch") || t.pointerType === "touch"));
-  };
+  const stageGestures = useStageGestures({
+    secciones,
+    objetos,
+    elementRefs,
+    dragStartPos,
+    hasDragged,
+    seleccionActiva,
+    inicioSeleccion,
+    areaSeleccion,
+    detectarInterseccionLinea,
+    setElementosSeleccionados,
+    setElementosPreSeleccionados,
+    setSeleccionActiva,
+    setInicioSeleccion,
+    setAreaSeleccion,
+    onSelectSeccion,
+    cerrarMenusFlotantes,
+  });
 
 
 
@@ -1905,17 +1875,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     <div
       className="flex justify-center"
       style={{
-        // ✅ Dejamos que el scroll lo maneje el <main> del DashboardLayout (un solo scroll)
+        // ? Dejamos que el scroll lo maneje el <main> del DashboardLayout (un solo scroll)
         marginTop: 0,
         overflowX: "hidden",
 
-        // ✅ UX mobile: permitir scroll vertical natural alrededor del canvas
+        // ? UX mobile: permitir scroll vertical natural alrededor del canvas
         touchAction: "pan-y",
         WebkitOverflowScrolling: "touch",
 
-        // ✅ espacio para que no “choque” con header / barras
+        // ? espacio para que no “choque” con header / barras
         paddingTop: 12,
-        paddingBottom: 96,
+        paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
       }}
     >
 
@@ -1928,8 +1898,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           backgroundColor: "#f5f5f5",
           display: "flex",
           justifyContent: "center",
-          paddingTop: "20px", // ✅ MENOS PADDING INTERNO
-          paddingBottom: "40px", // ✅ ESPACIO INFERIOR
+          paddingTop: "20px", // ? MENOS PADDING INTERNO
+          paddingBottom: "calc(40px + env(safe-area-inset-bottom, 0px))", // ? ESPACIO INFERIOR
         }}
       >
 
@@ -1937,7 +1907,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           style={{
             transform: `scale(${escalaVisual})`,
             transformOrigin: 'top center',
-            width: zoom === 0.8 ? "1220px" : "1000px", // ✅ 920px canvas + 150px cada lado
+            width: zoom === 0.8 ? "1220px" : "1000px", // ? 920px canvas + 150px cada lado
             position: "relative",
           }}
         >
@@ -1945,7 +1915,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           <div
             className="relative"
             style={{
-              width: zoom === 0.8 ? "1220px" : "1000px", // ✅ AJUSTAR SEGÚN ZOOM
+              width: zoom === 0.8 ? "1220px" : "1000px", // ? AJUSTAR SEGÚN ZOOM
               display: "flex",
               justifyContent: "center",
             }}
@@ -1965,9 +1935,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   key={`orden-${seccion.id}`}
                   className="absolute flex flex-col gap-2"
                   style={{
-                    top: offsetY + 20,
-                    right: -150,
+                    top: isMobile ? Math.max(8, offsetY + 8) : offsetY + 20,
+                    right: isMobile ? 8 : -150,
                     zIndex: 25,
+                    maxWidth: isMobile ? 190 : 260,
                   }}
                 >
                   {/* Botón Subir */}
@@ -1989,7 +1960,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esPrimera ? 'Ya es la primera sección' : 'Subir sección'}
                   >
-                    ↑ Subir sección
+                    ? Subir sección
                   </button>
 
                   {/* Botón Guardar como plantilla */}
@@ -2010,7 +1981,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                       title="Guardar esta sección como plantilla"
                     >
-                      💾 Plantilla
+                      ?? Plantilla
                     </button>
                   )}
 
@@ -2037,7 +2008,27 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             className="px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 shadow-sm"
                             title="Desanclar imagen de fondo"
                           >
-                            🔄 Desanclar fondo
+                            ?? Desanclar fondo
+                          </button>
+                        )}
+
+                        {seccion.fondoTipo === "imagen" && isMobile && (
+                          <button
+                            onClick={() => {
+                              setMobileBackgroundEditSectionId((prev) =>
+                                prev === seccion.id ? null : seccion.id
+                              );
+                            }}
+                            className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                              mobileBackgroundEditSectionId === seccion.id
+                                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                                : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
+                            }`}
+                            title="Modo mover fondo en mobile"
+                          >
+                            {mobileBackgroundEditSectionId === seccion.id
+                              ? "Mover fondo: ON"
+                              : "Mover fondo"}
                           </button>
                         )}
 
@@ -2050,7 +2041,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             }`}
                           title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
                         >
-                          {esPantalla ? "📺 Pantalla: ON" : "📺 Pantalla: OFF"}
+                          {esPantalla ? "?? Pantalla: ON" : "?? Pantalla: OFF"}
                         </button>
                       </div>
                     );
@@ -2066,7 +2057,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando || isDeletingSection ? 'animate-pulse shadow-xl' : ''}`}
                     title="Borrar esta sección y todos sus elementos"
                   >
-                    🗑️ Borrar sección
+                    ??? Borrar sección
                   </button>
 
 
@@ -2089,7 +2080,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esUltima ? 'Ya es la última sección' : 'Bajar sección'}
                   >
-                    ↓ Bajar sección
+                    ? Bajar sección
                   </button>
 
                   {/* Botón Añadir sección */}
@@ -2137,276 +2128,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                 }}
 
 
-                onMouseDown={(e) => {
-                  const stage = e.target.getStage();
-                  if (!stage) return;
+                onMouseDown={stageGestures.onMouseDown}
 
-                  // ⛔️ NO usar comparaciones directas contra e.target
-                  // const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
+                onTouchStart={stageGestures.onTouchStart}
 
-                  // ✅ Usar findAncestor: ¿el target pertenece a algún "nodo raíz" registrado?
-                  const roots = Object.values(elementRefs.current || {});
-                  const rootHit = e.target.findAncestor((n) => roots.includes(n), true); // includeSelf=true
+                onTouchMove={stageGestures.onTouchMove}
 
-                  if (rootHit) {
-                    // Clic adentro de un elemento: NO inicies selección por lazo
-                    // Dejá que el drag del elemento maneje el movimiento
-                    return;
-                  }
+                onTouchEnd={stageGestures.onTouchEnd}
 
+                onMouseMove={stageGestures.onMouseMove}
 
-
-                  const clickedOnStage = e.target === stage;
-
-                  // Salir de modo mover fondo si no clickeaste una imagen de fondo
-                  if (!clickedOnStage && e.target.getClassName() !== "Image") {
-                    window.dispatchEvent(new Event("salir-modo-mover-fondo"));
-                  }
-
-                  const esStage = clickedOnStage;
-                  const esSeccion = e.target.attrs?.id && secciones.some(s => s.id === e.target.attrs?.id);
-
-                  dragStartPos.current = stage.getPointerPosition();
-                  hasDragged.current = false;
-
-                  // Ignorar Transformer/anchors
-                  const esTransformer = e.target.getClassName?.() === 'Transformer' ||
-                    e.target.parent?.getClassName?.() === 'Transformer' ||
-                    e.target.attrs?.name?.includes('_anchor');
-                  if (esTransformer) return;
-
-                  // Si clic en un elemento registrado, no arrancar selección
-                  const clickEnElemento = Object.values(elementRefs.current).some(node => node === e.target);
-                  if (clickEnElemento) return;
-
-                  const esImagenFondo = e.target.getClassName() === "Image";
-
-                  if (esStage || esSeccion || esImagenFondo) {
-                    setElementosSeleccionados([]);
-                    setMostrarPanelZ(false);
-                    setMostrarSubmenuCapa(false);
-                    setMostrarSelectorFuente(false);   // 👈 extra
-                    setMostrarSelectorTamaño(false);   // 👈 extra
-                    setHoverId(null);                  // 👈 extra
-
-                    if (esStage) {
-                      setSeccionActivaId(null);
-                    } else {
-                      const idSeccion = e.target.attrs?.id
-                        || secciones.find(s => s.id === e.target.parent?.attrs?.id)?.id
-                        || secciones[0]?.id;
-                      if (idSeccion) setSeccionActivaId(idSeccion);
-                    }
-
-                    const pos = stage.getPointerPosition();
-                    setInicioSeleccion({ x: pos.x, y: pos.y });
-                    setAreaSeleccion({ x: pos.x, y: pos.y, width: 0, height: 0 });
-                    setSeleccionActiva(true);
-                  }
-                }}
-
-
-                onTouchStart={(e) => {
-                  const stage = e.target.getStage();
-                  if (!stage) return;
-
-                  const pos = stage.getPointerPosition();
-                  if (!pos) return;
-
-                  const roots = Object.values(elementRefs.current || {});
-                  const rootHit = e.target.findAncestor((n) => roots.includes(n), true);
-
-                  touchGestureRef.current = {
-                    startX: pos.x,
-                    startY: pos.y,
-                    moved: false,
-                    tappedSectionId,
-                    clickedOnStage,
-                    startedOnElement: !!rootHit,   // ✅ NUEVO
-                  };
-
-                  if (rootHit) {
-                    // ✅ Si tocaste un elemento, NO hagas lógica de sección.
-                    // Dejamos que ElementoCanvas / GaleriaKonva / Countdown manejen selección/drag.
-                    return;
-                  }
-
-
-                  const clickedOnStage = e.target === stage;
-
-                  // ¿tocaste una sección?
-                  const tappedSectionId =
-                    e.target.attrs?.id && secciones.some((s) => s.id === e.target.attrs?.id)
-                      ? e.target.attrs.id
-                      : (secciones.find((s) => s.id === e.target.parent?.attrs?.id)?.id || null);
-
-                  // Guardar gesto (NO seleccionar todavía)
-                  touchGestureRef.current = {
-                    startX: pos.x,
-                    startY: pos.y,
-                    moved: false,
-                    tappedSectionId,
-                    clickedOnStage,
-                  };
-                }}
-
-                onTouchMove={(e) => {
-                  const stage = e.target.getStage();
-                  if (!stage) return;
-
-                  const pos = stage.getPointerPosition();
-                  if (!pos) return;
-
-                  const dx = Math.abs(pos.x - touchGestureRef.current.startX);
-                  const dy = Math.abs(pos.y - touchGestureRef.current.startY);
-
-                  // Si se movió, es scroll (o pan), NO seleccionar sección
-                  if (dx > TOUCH_MOVE_PX || dy > TOUCH_MOVE_PX) {
-                    touchGestureRef.current.moved = true;
-                  }
-                }}
-
-                onTouchEnd={() => {
-                  const g = touchGestureRef.current;
-
-                  // Scroll: no hacer nada
-                  if (g.moved) return;
-
-                  // ✅ Si el gesto arrancó sobre un elemento, NO limpies selección.
-                  // Ese tap lo tiene que procesar el propio elemento (onClick/onTap en ElementoCanvas).
-                  if (g.startedOnElement) return;
-
-                  // Tap en vacío: acá sí aplicamos la lógica “canvas”
-                  setElementosSeleccionados([]);
-                  cerrarMenusFlotantes?.();
-
-                  if (g.clickedOnStage) {
-                    setSeccionActivaId(null);
-                    return;
-                  }
-
-                  if (g.tappedSectionId) {
-                    setSeccionActivaId(g.tappedSectionId);
-                  }
-                }}
-
-
-                onMouseMove={(e) => {
-
-
-                  // 🔥 RESTO DE LA LÓGICA (selección de área)
-                  if (!seleccionActiva || !inicioSeleccion) return;
-
-                  if (window._mouseMoveThrottle) return;
-                  window._mouseMoveThrottle = true;
-
-                  requestAnimationFrame(() => {
-                    window._mouseMoveThrottle = false;
-
-                    const stage = e.target.getStage();
-                    const pos = stage.getPointerPosition();
-                    if (!pos) return;
-
-                    const area = {
-                      x: Math.min(inicioSeleccion.x, pos.x),
-                      y: Math.min(inicioSeleccion.y, pos.y),
-                      width: Math.abs(pos.x - inicioSeleccion.x),
-                      height: Math.abs(pos.y - inicioSeleccion.y),
-                    };
-
-                    setAreaSeleccion(area);
-
-                    if (Math.abs(area.width) > 5 || Math.abs(area.height) > 5) {
-                      if (window._selectionThrottle) return;
-                      window._selectionThrottle = true;
-
-                      requestAnimationFrame(() => {
-                        const ids = objetos.filter((obj) => {
-                          const node = elementRefs.current[obj.id];
-                          if (!node) return false;
-
-                          if (obj.tipo === 'forma' && obj.figura === 'line') {
-                            return detectarInterseccionLinea(obj, area, stage);
-                          }
-
-                          const box = node.getClientRect({ relativeTo: stage });
-                          return (
-                            box.x + box.width >= area.x &&
-                            box.x <= area.x + area.width &&
-                            box.y + box.height >= area.y &&
-                            box.y <= area.y + area.height
-                          );
-                        }).map((obj) => obj.id);
-
-                        setElementosPreSeleccionados(ids);
-                        window._selectionThrottle = false;
-                      });
-                    }
-                  });
-                }}
-
-                onMouseUp={(e) => {
-
-                  const stage = e.target.getStage();
-
-
-                  // Solo verificar si hay drag grupal activo para no procesar selección
-                  if (window._grupoLider) {
-                    console.log("🎯 Drag grupal activo, esperando onDragEnd...");
-                    return; // No hacer nada más, dejar que ElementoCanvas maneje todo
-                  }
-
-                  // El resto del código de selección por área continúa igual...
-                  if (!seleccionActiva || !areaSeleccion) return;
-
-                  const nuevaSeleccion = objetos.filter((obj) => {
-                    const node = elementRefs.current[obj.id];
-                    if (!node) {
-                      console.log(`⚠️ [SELECCIÓN ÁREA] No se encontró node para ${obj.id}`);
-
-                      return false;
-                    }
-
-                    // 🔥 MANEJO ESPECIAL PARA LÍNEAS
-                    if (obj.tipo === 'forma' && obj.figura === 'line') {
-                      console.log(`📏 [SELECCIÓN ÁREA] Detectando línea ${obj.id} en área`);
-
-                      return detectarInterseccionLinea(obj, areaSeleccion, stage);
-                    }
-
-
-                    // 🔄 LÓGICA PARA ELEMENTOS NORMALES
-                    try {
-                      const box = node.getClientRect();
-                      return (
-                        box.x + box.width >= areaSeleccion.x &&
-                        box.x <= areaSeleccion.x + areaSeleccion.width &&
-                        box.y + box.height >= areaSeleccion.y &&
-                        box.y <= areaSeleccion.y + areaSeleccion.height
-                      );
-
-                    } catch (error) {
-                      console.warn(`❌ [SELECCIÓN ÁREA] Error detectando ${obj.id}:`, error);
-
-                      return false;
-                    }
-                  });
-
-
-                  setElementosSeleccionados(nuevaSeleccion.map(obj => obj.id));
-                  setElementosPreSeleccionados([]);
-                  setSeleccionActiva(false);
-                  setAreaSeleccion(null);
-
-                  // 🔥 LIMPIAR THROTTLES Y CACHE
-                  if (window._selectionThrottle) {
-                    window._selectionThrottle = false;
-                  }
-                  if (window._boundsUpdateThrottle) {
-                    window._boundsUpdateThrottle = false;
-                  }
-                  window._lineIntersectionCache = {};
-                }}
+                onMouseUp={stageGestures.onMouseUp}
               >
                 <CanvasElementsLayer>
 
@@ -2417,7 +2149,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     const estaAnimando = seccionesAnimando.includes(seccion.id);
 
                     if (estaAnimando) {
-                      console.log("🎭 SECCIÓN ANIMANDO:", seccion.id);
+                      console.log("?? SECCIÓN ANIMANDO:", seccion.id);
                     }
 
                     const elementos = [
@@ -2428,9 +2160,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           seccion={seccion}
                           offsetY={offsetY}
                           alturaPx={alturaPx}
-                          onSelect={() => setSeccionActivaId(seccion.id)}
+                          onSelect={() => onSelectSeccion(seccion.id)}
                           onUpdateFondoOffset={actualizarOffsetFondo}
                           isMobile={isMobile}
+                          mobileBackgroundEditEnabled={mobileBackgroundEditSectionId === seccion.id}
                         />
                       ) : (
                         <Rect
@@ -2443,10 +2176,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           fill={seccion.fondo || "#ffffff"}
                           stroke="transparent"
                           strokeWidth={0}
-                          listening={!isMobile}
-                          // ✅ desktop: click para seleccionar sección
-                          onClick={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
-                          onTap={!isMobile ? () => setSeccionActivaId(seccion.id) : undefined}
+                          listening={true}
+                          onClick={() => onSelectSeccion(seccion.id)}
+                          onTap={() => onSelectSeccion(seccion.id)}
                         />
                       )
                     ];
@@ -2483,9 +2215,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         <Group
                           x={400}
                           y={controlY}
-                          listening={permiteResizeAltura}                 // ✅ clave: si es false, no captura eventos
-                          opacity={permiteResizeAltura ? 1 : 0.25}        // ✅ visual deshabilitado
+                          listening={permiteResizeAltura}                 // ? clave: si es false, no captura eventos
+                          opacity={permiteResizeAltura ? 1 : 0.25}        // ? visual deshabilitado
                           onMouseDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
+                          onTouchStart={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
+                          onPointerDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
                           onMouseEnter={() => {
                             if (!controlandoAltura && permiteResizeAltura) setGlobalCursor("ns-resize", stageRef);
                           }}
@@ -2498,10 +2232,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                           {/* Área de detección */}
                           <Rect
-                            x={-35}
-                            y={-12}
-                            width={70}
-                            height={24}
+                            x={-45}
+                            y={-22}
+                            width={90}
+                            height={44}
                             fill="transparent"
                             listening={true}
                           />
@@ -2540,7 +2274,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           <Text
                             x={-6}
                             y={-3}
-                            text="⋮⋮"
+                            text="??"
                             fontSize={10}
                             fill="white"
                             fontFamily="Arial"
@@ -2612,7 +2346,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                               width={800}
                               height={seccion.altura}
                               fill={seccion.fondo || "transparent"} // podés poner blanco u otro color
-                              onClick={() => onSelectSeccion(seccion.id)}   // 👈 dispara el evento
+                              onClick={() => onSelectSeccion(seccion.id)}   // ?? dispara el evento
                             />
 
                             {/* Rect highlight si estás controlando la altura */}
@@ -2639,10 +2373,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
                   {objetos.map((obj, i) => {
-                    // 🎯 Determinar si está en modo edición
+                    // ?? Determinar si está en modo edición
                     const isInEditMode = editing.id === obj.id && elementosSeleccionados[0] === obj.id;
 
-                    // 🖼️ Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
+                    // ??? Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
                     if (obj.tipo === "galeria") {
 
                       return (
@@ -2711,13 +2445,13 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           seccionesOrdenadas={seccionesOrdenadas}
                           altoCanvas={altoCanvas}
 
-                          // ✅ selección
+                          // ? selección
                           onSelect={(id, e) => {
                             e?.evt && (e.evt.cancelBubble = true);
                             setElementosSeleccionados([id]);
                           }}
 
-                          // ✅ PREVIEW liviano (no tocar estado del objeto para que no haya lag)
+                          // ? PREVIEW liviano (no tocar estado del objeto para que no haya lag)
                           onDragStartPersonalizado={(dragId = obj.id) => {
                             if (!elementosSeleccionados.includes(dragId)) {
                               setElementosSeleccionados([dragId]);
@@ -2736,7 +2470,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             });
                           }}
 
-                          // ✅ FIN de drag: limpiar guías / UI auxiliar
+                          // ? FIN de drag: limpiar guías / UI auxiliar
                           onDragEndPersonalizado={() => {
                             setIsDragging(false);
                             limpiarGuias();
@@ -2745,11 +2479,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             }
                           }}
 
-                          // ✅ refs para el motor de drag
+                          // ? refs para el motor de drag
                           dragStartPos={dragStartPos}
                           hasDragged={hasDragged}
 
-                          // ✅ ¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
+                          // ? ¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
                           onChange={(id, cambios) => {
                             setObjetos(prev => {
                               const i = prev.findIndex(o => o.id === id);
@@ -2757,14 +2491,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                               const objOriginal = prev[i];
 
-                              // 🟣 Si no es final de drag, mergeamos sin más (no tocar coords)
+                              // ?? Si no es final de drag, mergeamos sin más (no tocar coords)
                               if (!cambios.finalizoDrag) {
                                 const updated = [...prev];
                                 updated[i] = { ...updated[i], ...cambios };
                                 return updated;
                               }
 
-                              // 🟣 Final de drag: 'cambios.y' viene ABSOLUTA (Stage coords)
+                              // ?? Final de drag: 'cambios.y' viene ABSOLUTA (Stage coords)
                               const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
                                 cambios.y,
                                 objOriginal.seccionId,
@@ -2777,7 +2511,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                               if (nuevaSeccion) {
                                 next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
                               } else {
-                                // convertir y absoluta → y relativa a la sección actual
+                                // convertir y absoluta ? y relativa a la sección actual
                                 next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
                               }
 
@@ -2820,7 +2554,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         key={obj.id}
                         obj={{
                           ...objPreview,
-                          // 🔥 yLocal: en sección pantalla usamos yNorm * 500
+                          // ?? yLocal: en sección pantalla usamos yNorm * 500
                           // fallback legacy: si no hay yNorm, usamos obj.y
                           y: (() => {
                             const idxSec = seccionesOrdenadas.findIndex(s => s.id === objPreview.seccionId);
@@ -2836,7 +2570,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         anchoCanvas={800}
                         isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
                         preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
-                        isInEditMode={isInEditMode} // 🔥 NUEVA PROP
+                        isInEditMode={isInEditMode} // ?? NUEVA PROP
                         onHover={isInEditMode ? null : setHoverId}
                         registerRef={registerRef}
                         onStartTextEdit={isInEditMode ? null : (id, texto) => {
@@ -2875,7 +2609,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         inlineVisibilityMode={inlineDebugAB.visibilitySource}
                         finishInlineEdit={finishEdit}
                         onSelect={isInEditMode ? null : (id, obj, e) => {
-                          console.log("🎯 [CANVAS EDITOR] onSelect disparado:", {
+                          console.log("?? [CANVAS EDITOR] onSelect disparado:", {
                             id,
                             tipo: obj?.tipo,
                             figura: obj?.figura,
@@ -2884,7 +2618,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           });
 
                           if (obj.tipo === "rsvp-boton") {
-                            console.log("🟣 Click en botón RSVP");
+                            console.log("?? Click en botón RSVP");
                             return;
                           }
 
@@ -2899,11 +2633,11 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           setElementosSeleccionados((prev) => {
 
                             if (esShift) {
-                              console.log("➕ [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
+                              console.log("? [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
 
                               if (prev.includes(id)) {
                                 const nueva = prev.filter((x) => x !== id);
-                                console.log("➖ [CANVAS EDITOR] Elemento removido. Nueva selección:", nueva);
+                                console.log("? [CANVAS EDITOR] Elemento removido. Nueva selección:", nueva);
                                 return nueva;
                               } else {
                                 const nueva = [...prev, id];
@@ -2919,7 +2653,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         onChange={(id, nuevo) => {
 
 
-                          // 🔥 NUEVO: Manejar preview inmediato de drag grupal
+                          // ?? NUEVO: Manejar preview inmediato de drag grupal
                           if (nuevo.isDragPreview) {
 
                             setObjetos(prev => {
@@ -2934,7 +2668,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             return;
                           }
 
-                          // 🔥 MANEJAR SOLO batch update final de drag grupal
+                          // ?? MANEJAR SOLO batch update final de drag grupal
                           if (nuevo.isBatchUpdateFinal && id === 'BATCH_UPDATE_GROUP_FINAL') {
 
                             const { elementos, dragInicial, deltaX, deltaY } = nuevo;
@@ -2957,7 +2691,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             return;
                           }
 
-                          // 🔥 NO procesar si viene del Transform
+                          // ?? NO procesar si viene del Transform
                           if (nuevo.fromTransform) {
 
                             return;
@@ -2966,7 +2700,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           const objOriginal = objetos.find((o) => o.id === id);
                           if (!objOriginal) return;
 
-                          // 🔥 Para drag final, procesar inmediatamente
+                          // ?? Para drag final, procesar inmediatamente
                           if (nuevo.finalizoDrag) {
 
                             const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
@@ -3010,7 +2744,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             if (esSeccionPantallaById(seccionFinalId)) {
                               const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
                               coordenadasFinales.yNorm = yNorm;
-                              delete coordenadasFinales.y; // ✅ clave: evitamos mezclar sistemas
+                              delete coordenadasFinales.y; // ? clave: evitamos mezclar sistemas
                             } else {
                               // fijo: guardar y en px
                               coordenadasFinales.y = yRelPx;
@@ -3032,7 +2766,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             return;
                           }
 
-                          // 🔥 Para otros cambios (transform, etc.)
+                          // ?? Para otros cambios (transform, etc.)
                           const hayDiferencias = Object.keys(nuevo).some(key => {
                             const valorAnterior = objOriginal[key];
                             const valorNuevo = nuevo[key];
@@ -3084,7 +2818,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                 ? Number(performance.now().toFixed(2))
                                 : Date.now();
                             const hoverCountAfterSync = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-                            console.log("🧪 [HOVER][GROUP-DRAG-START]", {
+                            console.log("?? [HOVER][GROUP-DRAG-START]", {
                               t: now,
                               dragId,
                               seleccionSize: seleccionActual.length,
@@ -3098,7 +2832,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             });
                             requestAnimationFrame(() => {
                               const hoverCountRaf = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-                              console.log("🧪 [HOVER][GROUP-DRAG-START][RAF]", {
+                              console.log("?? [HOVER][GROUP-DRAG-START][RAF]", {
                                 dragId,
                                 hoverCountRaf,
                                 windowIsDragging: window._isDragging,
@@ -3112,7 +2846,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           configurarDragEnd([]);
                         }}
                         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                          // 🔥 NO mostrar guías durante drag grupal
+                          // ?? NO mostrar guías durante drag grupal
                           if (!window._grupoLider) {
                             mostrarGuias(pos, elementId, objetos, elementRefs);
                           }
@@ -3153,17 +2887,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         selectedElements={elementosSeleccionados}
                         elementRefs={elementRefs}
                         objetos={objetos}
+                        isMobile={isMobile}
                         isDragging={isDragging}
                         onTransform={(newAttrs) => {
-                          console.log("🔧 Transform detectado:", newAttrs);
+                          console.log("?? Transform detectado:", newAttrs);
 
                           if (elementosSeleccionados.length === 1) {
                             const id = elementosSeleccionados[0];
-                            const objIndex = objetos.findIndex(o => o.id === id); // 🔥 DEFINIR PRIMERO
+                            const objIndex = objetos.findIndex(o => o.id === id); // ?? DEFINIR PRIMERO
 
-                            // 🔥 MOVER EL LOG AQUÍ (después de definir objIndex)
+                            // ?? MOVER EL LOG AQUÍ (después de definir objIndex)
                             if (newAttrs.isFinal) {
-                              console.log("🎯 FINAL TRANSFORM:", {
+                              console.log("?? FINAL TRANSFORM:", {
                                 originalY: newAttrs.y,
                                 elementIndex: objIndex,
                                 elementId: elementosSeleccionados[0]
@@ -3191,7 +2926,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                                   const updatedElement = {
                                     ...elemento,
-                                    // 🔥 NO actualizar X,Y durante preview - solo dimensiones
+                                    // ?? NO actualizar X,Y durante preview - solo dimensiones
                                     rotation: newAttrs.rotation || elemento.rotation || 0
                                   };
 
@@ -3224,7 +2959,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   return nuevos;
                                 });
 
-                                // 🔥 ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
+                                // ?? ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
                                 requestAnimationFrame(() => {
                                   if (typeof actualizarPosicionBotonOpciones === 'function') {
                                     actualizarPosicionBotonOpciones();
@@ -3233,12 +2968,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                               } else if (newAttrs.isFinal) {
                                 // Final: actualización completa
-                                console.log('🎯 Guardando estado final para historial');
+                                console.log('?? Guardando estado final para historial');
                                 window._resizeData = { isResizing: false };
 
                                 const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
 
-                                // 🔥 CONVERTIR coordenadas absolutas a relativas ANTES de guardar
+                                // ?? CONVERTIR coordenadas absolutas a relativas ANTES de guardar
                                 const objOriginal = objetos[objIndex];
                                 let finalAttrs = {
                                   ...cleanAttrs,
@@ -3246,7 +2981,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   fromTransform: true
                                 };
 
-                                // ✅ COUNTDOWN: conservar escala final del drag (sin reconversión a chipWidth)
+                                // ? COUNTDOWN: conservar escala final del drag (sin reconversión a chipWidth)
                                 // para que el tamaño final coincida exactamente con lo soltado.
                                 if (objOriginal.tipo === "countdown") {
                                   finalAttrs = {
@@ -3298,7 +3033,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   };
                                 }
 
-                                // ✅ offsetY solo para debug (evita ReferenceError)
+                                // ? offsetY solo para debug (evita ReferenceError)
                                 let offsetY = 0;
                                 try {
                                   const idx = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
@@ -3310,7 +3045,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                   offsetY = 0;
                                 }
 
-                                console.log("🔧 Convirtiendo coordenadas:", {
+                                console.log("?? Convirtiendo coordenadas:", {
                                   yAbsoluta: cleanAttrs.y,
                                   offsetY,
                                   yRelativa: finalAttrs.y
@@ -3340,7 +3075,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-                  {/* 🎯 Controles especiales para líneas seleccionadas */}
+                  {/* ?? Controles especiales para líneas seleccionadas */}
                   {elementosSeleccionados.length === 1 && (() => {
                     const elementoSeleccionado = objetos.find(obj => obj.id === elementosSeleccionados[0]);
                     if (elementoSeleccionado?.tipo === 'forma' && elementoSeleccionado?.figura === 'line') {
@@ -3352,7 +3087,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           elementRefs={elementRefs}
                           onUpdateLine={actualizarLinea}
                           altoCanvas={altoCanvasDinamico}
-                          // 🔥 NUEVA PROP: Pasar información sobre drag grupal
+                          isMobile={isMobile}
+                          // ?? NUEVA PROP: Pasar información sobre drag grupal
                           isDragGrupalActive={window._grupoLider !== null}
                           elementosSeleccionados={elementosSeleccionados}
                         />
@@ -3392,7 +3128,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                 </CanvasElementsLayer>
 
-                {/* ✅ Overlay superior: borde de sección activa SIEMPRE arriba de todo */}
+                {/* ? Overlay superior: borde de sección activa SIEMPRE arriba de todo */}
                 <CanvasElementsLayer>
                   {(() => {
                     if (!seccionActivaId) return null;
@@ -3437,7 +3173,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   editingId={editing.id}
                   node={elementRefs.current[editing.id]}
                   value={editing.value}
-                  textAlign={objetoEnEdicion?.align || 'left'} // 🆕 Solo pasar alineación
+                  textAlign={objetoEnEdicion?.align || 'left'} // ?? Solo pasar alineación
                   onOverlayMountChange={handleInlineOverlayMountChange}
                   onChange={(nextValue) => {
                     const nextText = String(nextValue ?? "");
@@ -3493,16 +3229,16 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     });
 
                     if (index === -1) {
-                      console.warn("❌ El objeto ya no existe. Cancelando guardado.");
+                      console.warn("? El objeto ya no existe. Cancelando guardado.");
                       inlineDebugLog("finish-abort-missing-object", { id: finishId });
                       inlineCommitDebugRef.current = { id: null };
                       finishEdit();
                       return;
                     }
 
-                    // ⚠️ Podés permitir texto vacío en formas si querés (yo lo permitiría)
+                    // ?? Podés permitir texto vacío en formas si querés (yo lo permitiría)
                     if (textoNuevoValidado === "" && objeto.tipo === "texto") {
-                      console.warn("⚠️ El texto está vacío. No se actualiza.");
+                      console.warn("?? El texto está vacío. No se actualiza.");
                       inlineDebugLog("finish-abort-empty", {
                         id: finishId,
                         rawLength: textoNuevoRaw.length,
@@ -3647,7 +3383,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
             })()}
 
 
-            {/* 🔥 STAGE ADICIONAL SOLO PARA LÍNEAS DIVISORIAS */}
+            {/* ?? STAGE ADICIONAL SOLO PARA LÍNEAS DIVISORIAS */}
             <DividersOverlayStage
               zoom={zoom}
               altoCanvasDinamico={altoCanvasDinamico}
@@ -3665,7 +3401,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
 
 
-      {/* ✅ Botón de opciones PEGADO a la esquina superior derecha del elemento */}
+      {/* ? Botón de opciones PEGADO a la esquina superior derecha del elemento */}
       {elementosSeleccionados.length === 1 && !editing.id && (() => {
         const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
         const nodeRef = elementRefs.current[elementosSeleccionados[0]];
@@ -3676,7 +3412,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         const stage = stageRef.current;
         if (!contenedor || !stage) return null;
 
-        // 🔥 OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE
+        // ?? OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE
         let box = nodeRef.getClientRect();
         if (
           elementoSeleccionado?.tipo === "galeria" &&
@@ -3699,16 +3435,16 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
           };
         }
 
-        // 🔥 OBTENER COORDENADAS DEL STAGE RELATIVAS AL VIEWPORT
+        // ?? OBTENER COORDENADAS DEL STAGE RELATIVAS AL VIEWPORT
         const stageContainer = stage.container();
         const stageRect = stageContainer.getBoundingClientRect();
 
-        // 🔥 CALCULAR POSICIÓN EXACTA DEL ELEMENTO EN PANTALLA
+        // ?? CALCULAR POSICIÓN EXACTA DEL ELEMENTO EN PANTALLA
         const elementoEnPantallaX = stageRect.left + (box.x * escalaActiva);
         const elementoEnPantallaY = stageRect.top + (box.y * escalaActiva);
         const anchoElemento = box.width * escalaActiva;
 
-        // 🎯 POSICIÓN MUY CERCA: Esquina superior derecha pegada al elemento
+        // ?? POSICIÓN MUY CERCA: Esquina superior derecha pegada al elemento
         const botonX = elementoEnPantallaX + anchoElemento - 8; // Solo -8px para que se superponga un poco
         const botonY = elementoEnPantallaY - 8; // -8px arriba del elemento
 
@@ -3717,7 +3453,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
             ref={botonOpcionesRef}
             className="fixed z-50 bg-white border-2 border-purple-500 rounded-full shadow-lg hover:shadow-xl transition-shadow duration-200"
             style={{
-              left: "0px", // 🔥 POSICIÓN INICIAL - será actualizada por la función
+              left: "0px", // ?? POSICIÓN INICIAL - será actualizada por la función
               top: "0px",
               width: "24px",
               height: "24px",
@@ -3739,7 +3475,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors text-xs"
               title="Opciones del elemento"
             >
-              ⚙️
+              ??
             </button>
           </div>
         );
@@ -3774,8 +3510,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         elementosSeleccionados={elementosSeleccionados}
         mostrarSelectorFuente={mostrarSelectorFuente}
         setMostrarSelectorFuente={setMostrarSelectorFuente}
-        mostrarSelectorTamaño={mostrarSelectorTamaño}
-        setMostrarSelectorTamaño={setMostrarSelectorTamaño}
+        mostrarSelectorTamano={mostrarSelectorTamano}
+        setMostrarSelectorTamano={setMostrarSelectorTamano}
         ALL_FONTS={ALL_FONTS}
         fontManager={fontManager}
         tamaniosDisponibles={tamaniosDisponibles}
@@ -3797,3 +3533,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   );
 
 }
+
+
+

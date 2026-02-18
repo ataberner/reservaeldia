@@ -1,14 +1,22 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
 import useImage from "use-image";
 
-export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onUpdateFondoOffset, isMobile = false }) {
+export default function FondoSeccion({
+  seccion,
+  offsetY,
+  alturaPx,
+  onSelect,
+  onUpdateFondoOffset,
+  isMobile = false,
+  mobileBackgroundEditEnabled = false,
+}) {
   const [fondoImage] = useImage(seccion.fondoImagen, "anonymous");
   const [modoMoverFondo, setModoMoverFondo] = useState(false);
   const imagenRef = useRef(null);
-  const allowBackgroundInteraction = !isMobile; // ✅ mobile: no capturar eventos
 
-  // 🔹 Click global para salir del modo mover fondo
+  const allowBackgroundEdit = !isMobile || mobileBackgroundEditEnabled;
+
   useEffect(() => {
     if (!modoMoverFondo) return;
 
@@ -23,8 +31,44 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
     };
 
     window.addEventListener("mousedown", handleClickGlobal);
-    return () => window.removeEventListener("mousedown", handleClickGlobal);
+    window.addEventListener("touchstart", handleClickGlobal, { passive: true });
+    return () => {
+      window.removeEventListener("mousedown", handleClickGlobal);
+      window.removeEventListener("touchstart", handleClickGlobal);
+    };
   }, [modoMoverFondo]);
+
+  useEffect(() => {
+    const onActivate = (e) => {
+      if (e?.detail?.sectionId !== seccion.id) return;
+      setModoMoverFondo(true);
+      try {
+        document.body.style.cursor = "move";
+      } catch {}
+    };
+
+    const onExit = (e) => {
+      const targetSectionId = e?.detail?.sectionId;
+      if (targetSectionId && targetSectionId !== seccion.id) return;
+      setModoMoverFondo(false);
+      try {
+        document.body.style.cursor = "default";
+      } catch {}
+    };
+
+    window.addEventListener("activar-modo-mover-fondo", onActivate);
+    window.addEventListener("salir-modo-mover-fondo", onExit);
+    return () => {
+      window.removeEventListener("activar-modo-mover-fondo", onActivate);
+      window.removeEventListener("salir-modo-mover-fondo", onExit);
+    };
+  }, [seccion.id]);
+
+  useEffect(() => {
+    if (allowBackgroundEdit) return;
+    if (!modoMoverFondo) return;
+    setModoMoverFondo(false);
+  }, [allowBackgroundEdit, modoMoverFondo]);
 
   if (!seccion.fondoImagen || !fondoImage) {
     return (
@@ -35,14 +79,13 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
         width={800}
         height={alturaPx}
         fill={seccion.fondo || "#f0f0f0"}
-        listening={allowBackgroundInteraction}
-        onClick={allowBackgroundInteraction ? onSelect : undefined}
-        onTap={allowBackgroundInteraction ? onSelect : undefined}
+        listening={true}
+        onClick={onSelect}
+        onTap={onSelect}
       />
     );
   }
 
-  // 🎯 Dimensiones del canvas e imagen
   const canvasWidth = 800;
   const canvasHeight = alturaPx;
   const imageWidth = fondoImage.width;
@@ -63,7 +106,6 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
 
   return (
     <Group>
-      {/* Fondo base */}
       <Rect
         id={seccion.id}
         x={0}
@@ -71,12 +113,11 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
         width={800}
         height={alturaPx}
         fill={seccion.fondo || "#f0f0f0"}
-        listening={allowBackgroundInteraction}
-        onClick={allowBackgroundInteraction ? onSelect : undefined}
-        onTap={allowBackgroundInteraction ? onSelect : undefined}
+        listening={true}
+        onClick={onSelect}
+        onTap={onSelect}
       />
 
-      {/* Sombreado en modo mover fondo */}
       {modoMoverFondo && (
         <Rect
           x={-200}
@@ -88,7 +129,6 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
         />
       )}
 
-      {/* Imagen de fondo */}
       <Group
         clipX={modoMoverFondo ? undefined : 0}
         clipY={modoMoverFondo ? undefined : offsetY}
@@ -102,47 +142,38 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
           y={offsetY + offsetYFinal}
           width={scaledWidth}
           height={scaledHeight}
-          draggable={allowBackgroundInteraction && modoMoverFondo}
+          draggable={allowBackgroundEdit && modoMoverFondo}
           opacity={modoMoverFondo ? 0.9 : 1}
           shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
           shadowBlur={modoMoverFondo ? 10 : 0}
-          listening={allowBackgroundInteraction} // ✅ en mobile NO escucha
-
-          // ✅ NUEVO: la imagen tapa al Rect, así que el click simple debe seleccionar la sección
-          onClick={allowBackgroundInteraction ? (e) => {
-            // Si estoy ajustando el fondo, no quiero que un click seleccione sección accidentalmente
+          listening={true}
+          onClick={(e) => {
             if (modoMoverFondo) {
               e.cancelBubble = true;
               return;
             }
             onSelect?.();
-          } : undefined}
-
-          onTap={allowBackgroundInteraction ? (e) => {
+          }}
+          onTap={(e) => {
             if (modoMoverFondo) {
               e.cancelBubble = true;
               return;
             }
             onSelect?.();
-          } : undefined}
-
-          onMouseDown={allowBackgroundInteraction ? (e) => {
+          }}
+          onMouseDown={(e) => {
             if (modoMoverFondo) e.cancelBubble = true;
-          } : undefined}
-
-          onDblClick={allowBackgroundInteraction ? (e) => {
+          }}
+          onDblClick={allowBackgroundEdit ? (e) => {
             e.cancelBubble = true;
             setModoMoverFondo(true);
             document.body.style.cursor = "move";
           } : undefined}
-
-          onDblTap={allowBackgroundInteraction ? (e) => {
+          onDblTap={allowBackgroundEdit ? (e) => {
             e.cancelBubble = true;
             setModoMoverFondo(true);
             document.body.style.cursor = "move";
           } : undefined}
-
-
           onDragMove={(e) => {
             const node = e.target;
             const nuevaX = node.x();
@@ -151,7 +182,6 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
             const nuevoOffsetY = nuevaY - offsetYCentrado;
             onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, true);
           }}
-
           onDragEnd={(e) => {
             const node = e.target;
             const nuevaX = node.x();
@@ -165,27 +195,25 @@ export default function FondoSeccion({ seccion, offsetY, alturaPx, onSelect, onU
           }}
         />
 
-
-        {/* Transformer solo cuando está en modo mover */}
-        {allowBackgroundInteraction && modoMoverFondo && (
+        {allowBackgroundEdit && modoMoverFondo && (
           <Transformer
             nodes={[imagenRef.current]}
-            enabledAnchors={['bottom-right']}
+            enabledAnchors={["bottom-right"]}
             borderStroke="#773dbe"
             anchorFill="#773dbe"
-            anchorSize={12}
+            anchorSize={22}
             keepRatio={true}
-            onTransform={(e) => {
+            onTransform={() => {
               const node = imagenRef.current;
               if (!node) return;
-              const scaleX = node.scaleX();
-              const scaleY = node.scaleY();
-              node.width(node.width() * scaleX);
-              node.height(node.height() * scaleY);
+              const sx = node.scaleX();
+              const sy = node.scaleY();
+              node.width(node.width() * sx);
+              node.height(node.height() * sy);
               node.scaleX(1);
               node.scaleY(1);
             }}
-            onTransformEnd={(e) => {
+            onTransformEnd={() => {
               const node = imagenRef.current;
               if (!node) return;
               const nuevaX = node.x();

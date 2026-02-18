@@ -1,11 +1,12 @@
-// src/components/editor/toolbar/FloatingTextToolbar.jsx
+﻿// src/components/editor/toolbar/FloatingTextToolbar.jsx
 import React from "react";
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react"; // mismo icono que usabas
 import FontSelector from "@/components/FontSelector";
 
 
 export default function FloatingTextToolbar({
-  // 🔧 Datos y handlers que YA existen en CanvasEditor (los pasamos por props)
+  // ðŸ”§ Datos y handlers que YA existen en CanvasEditor (los pasamos por props)
   objetoSeleccionado,
   setObjetos,
   elementosSeleccionados,
@@ -13,8 +14,8 @@ export default function FloatingTextToolbar({
   mostrarSelectorFuente,
   setMostrarSelectorFuente,
 
-  mostrarSelectorTamaño,
-  setMostrarSelectorTamaño,
+  mostrarSelectorTamano,
+  setMostrarSelectorTamano,
 
   ALL_FONTS,
   fontManager,
@@ -22,7 +23,31 @@ export default function FloatingTextToolbar({
 
   onCambiarAlineacion,
 }) {
-  // 👉 mantenemos exactamente las mismas condiciones/variables auxiliares
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+
+  const toolbarContainerClass =
+    "fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center";
+
+  const toolbarContainerStyle = {
+    top: isMobile ? "calc(56px + env(safe-area-inset-top, 0px))" : "60px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    width: isMobile ? "calc(100vw - 16px)" : "auto",
+    maxWidth: isMobile ? "calc(100vw - 16px)" : "800px",
+    overflowX: isMobile ? "auto" : "visible",
+    WebkitOverflowScrolling: isMobile ? "touch" : "auto",
+    whiteSpace: isMobile ? "nowrap" : "normal",
+  };
+  // ðŸ‘‰ mantenemos exactamente las mismas condiciones/variables auxiliares
   const esTexto = objetoSeleccionado?.tipo === "texto";
   const esFormaConTexto =
     objetoSeleccionado?.tipo === "forma" && objetoSeleccionado?.texto;
@@ -36,14 +61,8 @@ export default function FloatingTextToolbar({
   if (objetoSeleccionado?.tipo === "icono") {
     return (
       <div
-        className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
-        style={{
-          top: "60px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "auto",
-          maxWidth: "200px",
-        }}
+        className={toolbarContainerClass}
+        style={{ ...toolbarContainerStyle, maxWidth: isMobile ? toolbarContainerStyle.maxWidth : "220px" }}
       >
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-600">Color</label>
@@ -52,7 +71,7 @@ export default function FloatingTextToolbar({
             value={objetoSeleccionado.color || "#000000"}
             onChange={(e) => {
               const nuevoColor = e.target.value;
-              console.log("🎨 [TOOLBAR] Cambiando color de ícono:", {
+              console.log("ðŸŽ¨ [TOOLBAR] Cambiando color de Ã­cono:", {
                 elementoId: elementosSeleccionados[0],
                 colorAnterior: objetoSeleccionado.color,
                 colorNuevo: nuevoColor,
@@ -60,11 +79,11 @@ export default function FloatingTextToolbar({
               });
 
               setObjetos((prev) => {
-                console.log("🔍 [TOOLBAR] Objetos antes del cambio:", prev.length);
+                console.log("ðŸ” [TOOLBAR] Objetos antes del cambio:", prev.length);
 
                 const nuevosObjetos = prev.map((o) => {
                   if (elementosSeleccionados.includes(o.id)) {
-                    console.log("✅ [TOOLBAR] Actualizando objeto:", {
+                    console.log("âœ… [TOOLBAR] Actualizando objeto:", {
                       id: o.id,
                       tipo: o.tipo,
                       colorAnterior: o.color,
@@ -75,12 +94,12 @@ export default function FloatingTextToolbar({
                   return o;
                 });
 
-                console.log("🔍 [TOOLBAR] Objetos después del cambio:", nuevosObjetos.length);
+                console.log("ðŸ” [TOOLBAR] Objetos despuÃ©s del cambio:", nuevosObjetos.length);
                 return nuevosObjetos;
               });
             }}
             className="w-8 h-6 rounded cursor-pointer"
-            title="Color del ícono"
+            title="Color del Ã­cono"
           />
         </div>
       </div>
@@ -89,17 +108,11 @@ export default function FloatingTextToolbar({
 
   return (
     <div
-      className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center"
-      style={{
-        top: "60px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "auto",
-        maxWidth: "800px",
-      }}
+      className={toolbarContainerClass}
+      style={toolbarContainerStyle}
 
     >
-      {/* 🎨 Color de fondo (solo formas) */}
+      {/* ðŸŽ¨ Color de fondo (solo formas) */}
       {objetoSeleccionado?.tipo === "forma" && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-600">Fondo</label>
@@ -120,7 +133,7 @@ export default function FloatingTextToolbar({
         </div>
       )}
 
-      {/* 🟣 Radio esquinas (solo rectángulos) */}
+      {/* ðŸŸ£ Radio esquinas (solo rectÃ¡ngulos) */}
       {objetoSeleccionado?.tipo === "forma" && esRect && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-600">Esquinas</label>
@@ -151,7 +164,7 @@ export default function FloatingTextToolbar({
           }`}
         style={{
           fontFamily: objetoSeleccionado?.fontFamily || "sans-serif",
-          width: "180px", // 👈 ancho fijo del botón de fuente
+          width: "180px", // ðŸ‘ˆ ancho fijo del botÃ³n de fuente
           textAlign: "left",
         }}
         title={objetoSeleccionado?.fontFamily || "sans-serif"}
@@ -161,7 +174,7 @@ export default function FloatingTextToolbar({
       </div>
 
 
-      {/* 🪄 FontSelector separado (fuera del botón) */}
+      {/* ðŸª„ FontSelector separado (fuera del botÃ³n) */}
       <FontSelector
         currentFont={objetoSeleccionado?.fontFamily || "sans-serif"}
         onFontChange={async (nuevaFuente) => {
@@ -179,7 +192,7 @@ export default function FloatingTextToolbar({
       />
 
 
-      {/* Control de tamaño */}
+      {/* Control de tamaÃ±o */}
       <div className="relative flex items-center bg-white border rounded-lg">
         <button
           className="px-2 py-1 hover:bg-gray-100 transition"
@@ -194,16 +207,16 @@ export default function FloatingTextToolbar({
             );
           }}
         >
-          −
+          âˆ’
         </button>
 
         <div
-          className={`px-2 py-1 text-sm cursor-pointer transition-all ${mostrarSelectorTamaño ? "bg-gray-200" : "hover:bg-gray-100"
+          className={`px-2 py-1 text-sm cursor-pointer transition-all ${mostrarSelectorTamano ? "bg-gray-200" : "hover:bg-gray-100"
             }`}
-          onClick={() => setMostrarSelectorTamaño(!mostrarSelectorTamaño)}
+          onClick={() => setMostrarSelectorTamano(!mostrarSelectorTamano)}
         >
           {objetoSeleccionado?.fontSize || 24}
-          {mostrarSelectorTamaño && (
+          {mostrarSelectorTamano && (
             <div
               className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
               style={{ top: "40px", left: "-10px" }}
@@ -221,7 +234,7 @@ export default function FloatingTextToolbar({
                           : o
                       )
                     );
-                    setMostrarSelectorTamaño(false);
+                    setMostrarSelectorTamano(false);
                   }}
                 >
                   {tam}
@@ -249,7 +262,7 @@ export default function FloatingTextToolbar({
         </button>
       </div>
 
-      {/* 🎨 Color de texto */}
+      {/* ðŸŽ¨ Color de texto */}
       <input
         type="color"
         value={objetoSeleccionado?.colorTexto || "#000000"}
@@ -329,28 +342,30 @@ export default function FloatingTextToolbar({
         S
       </button>
 
-      {/* Alineación */}
+      {/* AlineaciÃ³n */}
       <button
         className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
         onClick={onCambiarAlineacion}
-        title={`Alineación: ${objetoSeleccionado?.align || "izquierda"}`}
+        title={`AlineaciÃ³n: ${objetoSeleccionado?.align || "izquierda"}`}
       >
         {(() => {
           const align = objetoSeleccionado?.align || "left";
           switch (align) {
             case "left":
-              return "⬅️";
+              return "â¬…ï¸";
             case "center":
-              return "↔️";
+              return "â†”ï¸";
             case "right":
-              return "➡️";
+              return "âž¡ï¸";
             case "justify":
-              return "⚌";
+              return "âšŒ";
             default:
-              return "⬅️";
+              return "â¬…ï¸";
           }
         })()}
       </button>
     </div>
   );
 }
+
+

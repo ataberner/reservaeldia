@@ -1,5 +1,6 @@
-// src/components/editor/events/useEditorEvents.js
+﻿// src/components/editor/events/useEditorEvents.js
 import { useEffect } from "react";
+import computeInsertDefaults from "./computeInsertDefaults";
 
 /**
  * Hook que concentra los eventos globales del editor y utilidades expuestas en window:
@@ -7,9 +8,9 @@ import { useEffect } from "react";
  * - window.addEventListener("insertar-elemento")
  * - window.addEventListener("actualizar-elemento")
  * - window.addEventListener("agregar-cuadro-texto")
- * - window.addEventListener("crear-seccion")  (NO acá: ya está en useSectionsManager)
+ * - window.addEventListener("crear-seccion")  (NO acÃ¡: ya estÃ¡ en useSectionsManager)
  *
- * ⚠️ Importante: no cambia lógica, solo mueve lo que ya existía en CanvasEditor.
+ * âš ï¸ Importante: no cambia lÃ³gica, solo mueve lo que ya existÃ­a en CanvasEditor.
  */
 export default function useEditorEvents({
   // estado/props necesarios
@@ -28,10 +29,10 @@ export default function useEditorEvents({
   // refs existentes
   nuevoTextoRef,
 
-  // setSeccionActivaId NO lo usamos acá (solo lo usa el canvas en otros handlers)
+  // setSeccionActivaId NO lo usamos acÃ¡ (solo lo usa el canvas en otros handlers)
 }) {
   // ------------------------------------------------------------
-  // 1) Exponer función global: asignar imagen a la celda activa
+  // 1) Exponer funciÃ³n global: asignar imagen a la celda activa
   // ------------------------------------------------------------
   useEffect(() => {
     window.asignarImagenACelda = (mediaUrl, fit = "cover", bg) => {
@@ -59,7 +60,7 @@ export default function useEditorEvents({
         return next;
       });
 
-      // opcional: desactivar el slot activo después de asignar
+      // opcional: desactivar el slot activo despuÃ©s de asignar
       setCeldaGaleriaActiva(null);
       return true;
     };
@@ -74,7 +75,7 @@ export default function useEditorEvents({
   // ------------------------------------------------------------
   useEffect(() => {
     const handler = (e) => {
-      const nuevo = e.detail;
+      const nuevo = e.detail || {};
 
       const fallbackId =
         window._lastSeccionActivaId ||
@@ -84,17 +85,17 @@ export default function useEditorEvents({
       const targetSeccionId = seccionActivaId || fallbackId;
 
       if (!targetSeccionId) {
-        alert("⚠️ No hay secciones aún. Creá una sección para insertar el elemento.");
+        alert("âš ï¸ No hay secciones aÃºn. CreÃ¡ una secciÃ³n para insertar el elemento.");
         return;
       }
 
-      const nuevoConSeccion = { ...nuevo, seccionId: targetSeccionId };
-
-      const sec = secciones.find((s) => s.id === targetSeccionId);
-      if (normalizarAltoModo(sec?.altoModo) === "pantalla") {
-        const yPx = Number.isFinite(nuevoConSeccion.y) ? nuevoConSeccion.y : 0;
-        nuevoConSeccion.yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
-      }
+      const nuevoConSeccion = computeInsertDefaults({
+        payload: nuevo,
+        targetSeccionId,
+        secciones,
+        normalizarAltoModo,
+        ALTURA_PANTALLA_EDITOR,
+      });
 
       setObjetos((prev) => {
         const next = [...prev, nuevoConSeccion];
@@ -135,7 +136,7 @@ export default function useEditorEvents({
         return next;
       });
 
-      // ✅ NUEVO: avisar a SelectionBounds que reattach el transformer
+      // âœ… NUEVO: avisar a SelectionBounds que reattach el transformer
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           window.dispatchEvent(
@@ -157,7 +158,7 @@ export default function useEditorEvents({
   useEffect(() => {
     const handler = () => {
       if (!seccionActivaId) {
-        alert("Seleccioná una sección antes de agregar un cuadro de texto.");
+        alert("SeleccionÃ¡ una secciÃ³n antes de agregar un cuadro de texto.");
         return;
       }
 
@@ -180,7 +181,7 @@ export default function useEditorEvents({
         seccionId: seccionActivaId,
       };
 
-      // ✅ Si la sección activa es pantalla, inicializamos yNorm
+      // âœ… Si la secciÃ³n activa es pantalla, inicializamos yNorm
       const secActiva = secciones.find((s) => s.id === seccionActivaId);
       if (normalizarAltoModo(secActiva?.altoModo) === "pantalla") {
         nuevo.yNorm = Math.max(
@@ -189,7 +190,7 @@ export default function useEditorEvents({
         );
       }
 
-      // ✅ respeta el comportamiento original
+      // âœ… respeta el comportamiento original
       if (nuevoTextoRef?.current != null) {
         nuevoTextoRef.current = nuevo.id;
       }
@@ -208,3 +209,4 @@ export default function useEditorEvents({
     nuevoTextoRef,
   ]);
 }
+

@@ -1,63 +1,74 @@
-// src/hooks/useViewportScale.js
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿// src/hooks/useViewportScale.js
+import { useEffect, useState } from "react";
 
 /**
- * Centraliza toda la lógica de:
+ * Centraliza toda la logica de:
  * - isMobile / isMobilePortrait
  * - ResizeObserver del contenedor
- * - cálculo de scale, anchoContenedor
+ * - calculo de scale, anchoContenedor
  * - escalaActiva / escalaVisual / wrapperBaseWidth / fit mobile portrait
  */
 export default function useViewportScale({
   contenedorRef,
   zoom,
-  // base widths (tu lógica actual)
+  // base widths (tu logica actual)
   baseDesktop = 800,
   baseMobilePortrait = 1000,
 
-  // wrapper real que escalás visualmente (tu lógica actual)
+  // wrapper real que escalas visualmente (tu logica actual)
   wrapperBaseWidthZoom1 = 1000,
   wrapperBaseWidthZoom08 = 1220,
 
-  // boosts (tu lógica actual)
+  // boosts (tu logica actual)
   fitBoost = 1.2,
   zoomVisualBoost = 1.15,
 
   // debug
   debug = false,
 } = {}) {
+  const [isMobile, setIsMobile] = useState(false);
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
   const [scale, setScale] = useState(1);
   const [anchoContenedor, setAnchoContenedor] = useState(0);
 
-  // ✅ isMobile (simple y estable). Si querés que se actualice en resize,
-  // lo convertimos a state + listener, pero por ahora respeta tu implementación actual.
-  const isMobile = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(max-width: 640px)").matches;
-  }, []);
-
-  // ✅ isMobilePortrait con listeners (idéntico a tu enfoque actual)
+  // isMobile + isMobilePortrait reactivo con coarse pointer
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const mq = window.matchMedia("(max-width: 640px) and (orientation: portrait)");
-    const update = () => setIsMobilePortrait(mq.matches);
+    const mqMobile = window.matchMedia("(max-width: 640px)");
+    const mqTablet = window.matchMedia("(max-width: 1024px)");
+    const mqPortrait = window.matchMedia("(max-width: 1024px) and (orientation: portrait)");
+    const mqCoarse = window.matchMedia("(pointer: coarse)");
+
+    const update = () => {
+      const compactWidth = mqMobile.matches;
+      const tabletWidth = mqTablet.matches;
+      const coarsePointer = mqCoarse.matches;
+      const nextIsMobile = compactWidth || (coarsePointer && tabletWidth);
+      setIsMobile(nextIsMobile);
+      setIsMobilePortrait(mqPortrait.matches && (compactWidth || coarsePointer));
+    };
 
     update();
 
-    mq.addEventListener?.("change", update);
+    mqMobile.addEventListener?.("change", update);
+    mqTablet.addEventListener?.("change", update);
+    mqPortrait.addEventListener?.("change", update);
+    mqCoarse.addEventListener?.("change", update);
     window.addEventListener("resize", update);
     window.addEventListener("orientationchange", update);
 
     return () => {
-      mq.removeEventListener?.("change", update);
+      mqMobile.removeEventListener?.("change", update);
+      mqTablet.removeEventListener?.("change", update);
+      mqPortrait.removeEventListener?.("change", update);
+      mqCoarse.removeEventListener?.("change", update);
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
     };
   }, []);
 
-  // ✅ scale: solo cuando zoom === 1 (igual que hoy)
+  // scale: solo cuando zoom === 1 (igual que hoy)
   useEffect(() => {
     if (!contenedorRef?.current || zoom !== 1) return;
 
@@ -98,7 +109,7 @@ export default function useViewportScale({
     };
   }, [contenedorRef, zoom, isMobilePortrait, baseDesktop, baseMobilePortrait, debug]);
 
-  // ✅ anchoContenedor: siempre (igual que hoy)
+  // anchoContenedor: siempre (igual que hoy)
   useEffect(() => {
     const el = contenedorRef?.current;
     if (!el) return;
@@ -116,7 +127,7 @@ export default function useViewportScale({
     return () => observer.disconnect();
   }, [contenedorRef]);
 
-  // ✅ Derivados (idénticos a tu lógica actual)
+  // Derivados (identicos a tu logica actual)
   const escalaActiva = zoom === 1 ? scale : zoom;
 
   const wrapperBaseWidth = zoom === 0.8 ? wrapperBaseWidthZoom08 : wrapperBaseWidthZoom1;
@@ -144,3 +155,4 @@ export default function useViewportScale({
     escalaFitMobilePortrait,
   };
 }
+

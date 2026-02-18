@@ -1,4 +1,4 @@
-// src/components/DashboardHeader.jsx
+﻿// src/components/DashboardHeader.jsx
 import { useState, useRef, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
@@ -43,7 +43,7 @@ export default function DashboardHeader({
     const [slugPublicoExistente, setSlugPublicoExistente] = useState(null);
 
 
-    // 🧠 Función para verificar si existe el slug en Firestore
+    // ðŸ§  FunciÃ³n para verificar si existe el slug en Firestore
     const verificarDisponibilidadSlug = async (slug) => {
         if (!slug) {
             setSlugDisponible(null);
@@ -86,7 +86,7 @@ export default function DashboardHeader({
     useEffect(() => {
         if (!isMobile) return;
 
-        // Si en mobile quedó en 50%, lo volvemos a 100%
+        // Si en mobile quedÃ³ en 50%, lo volvemos a 100%
         if (zoom !== 1) {
             toggleZoom?.();
         }
@@ -120,18 +120,25 @@ export default function DashboardHeader({
 
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            if (window.canvasEditor?.seccionActivaId && window.canvasEditor?.secciones) {
-                const activa = window.canvasEditor.secciones.find(
-                    (s) => s.id === window.canvasEditor.seccionActivaId
-                );
-                if (activa) {
-                    setSeccionActiva(activa);
-                    setColorFondo(activa.fondo || "#ffffff");
-                }
-            }
-        }, 300); // chequeo cada 300ms
-        return () => clearInterval(interval);
+        const syncSeccionActiva = () => {
+            const activaId = window.canvasEditor?.seccionActivaId ?? null;
+            const secciones = Array.isArray(window.canvasEditor?.secciones)
+                ? window.canvasEditor.secciones
+                : [];
+            const activa = activaId ? secciones.find((s) => s.id === activaId) || null : null;
+
+            setSeccionActiva(activa);
+            setColorFondo(activa?.fondo || "#ffffff");
+        };
+
+        syncSeccionActiva();
+        window.addEventListener("seccion-activa", syncSeccionActiva);
+        window.addEventListener("editor-selection-change", syncSeccionActiva);
+
+        return () => {
+            window.removeEventListener("seccion-activa", syncSeccionActiva);
+            window.removeEventListener("editor-selection-change", syncSeccionActiva);
+        };
     }, []);
 
 
@@ -151,7 +158,7 @@ export default function DashboardHeader({
                     setNombreBorrador(data.nombre || "Sin nombre");
                 }
             } catch (error) {
-                console.error("❌ Error cargando nombre del borrador:", error);
+                console.error("âŒ Error cargando nombre del borrador:", error);
             }
         };
 
@@ -159,7 +166,7 @@ export default function DashboardHeader({
     }, [slugInvitacion]);
 
 
-    // Cerrar menú si clic afuera
+    // Cerrar menÃº si clic afuera
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -172,23 +179,23 @@ export default function DashboardHeader({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // 🔹 Función para guardar plantilla
+    // ðŸ”¹ FunciÃ³n para guardar plantilla
     const guardarPlantilla = async () => {
-        const nombre = prompt("¿Qué nombre querés darle a la nueva plantilla?");
+        const nombre = prompt("Â¿QuÃ© nombre querÃ©s darle a la nueva plantilla?");
         if (!nombre) return;
 
         try {
             const ref = doc(db, "borradores", slugInvitacion);
             const snap = await getDoc(ref);
-            if (!snap.exists) throw new Error("No se encontró el borrador");
+            if (!snap.exists) throw new Error("No se encontrÃ³ el borrador");
 
             const data = snap.data();
             const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
 
-            // ✅ Capturar imagen del canvas
+            // âœ… Capturar imagen del canvas
             const stage = window.canvasEditor?.stageRef;
             if (!stage) {
-                alert("❌ El editor no está listo todavía.");
+                alert("âŒ El editor no estÃ¡ listo todavÃ­a.");
                 return;
             }
 
@@ -196,7 +203,7 @@ export default function DashboardHeader({
             const res = await fetch(dataURL);
             const blob = await res.blob();
 
-            // ✅ Subir imagen a Firebase Storage
+            // âœ… Subir imagen a Firebase Storage
             const storage = (await import("firebase/storage")).getStorage();
             const storageRef = (await import("firebase/storage")).ref(
                 storage,
@@ -206,7 +213,7 @@ export default function DashboardHeader({
 
             const portada = await (await import("firebase/storage")).getDownloadURL(storageRef);
 
-            // ✅ Crear plantilla en Firestore
+            // âœ… Crear plantilla en Firestore
             const functions = getFunctions();
             const crearPlantilla = httpsCallable(functions, "crearPlantilla");
 
@@ -222,14 +229,14 @@ export default function DashboardHeader({
                 },
             });
 
-            alert("✅ La plantilla se guardó correctamente.");
+            alert("âœ… La plantilla se guardÃ³ correctamente.");
         } catch (error) {
-            console.error("❌ Error al guardar plantilla:", error);
-            alert("Ocurrió un error al guardar la plantilla.");
+            console.error("âŒ Error al guardar plantilla:", error);
+            alert("OcurriÃ³ un error al guardar la plantilla.");
         }
     };
 
-    // 🔹 Función para publicar invitación
+    // ðŸ”¹ FunciÃ³n para publicar invitaciÃ³n
     const publicarInvitacion = async () => {
         setPublicando(true);
         setProgreso(10);
@@ -248,9 +255,9 @@ export default function DashboardHeader({
             clearInterval(fakeProgress);
 
             const url = result.data?.url;
-            if (!url) throw new Error("No se recibió la URL final");
+            if (!url) throw new Error("No se recibiÃ³ la URL final");
 
-            // Completa la barra y muestra éxito
+            // Completa la barra y muestra Ã©xito
             setProgreso(100);
             setUrlFinal(url);
             setSlugPublicoExistente(slugPublico || slugPublicoExistente || slugPersonalizado);
@@ -259,30 +266,30 @@ export default function DashboardHeader({
 
 
         } catch (error) {
-            console.error("❌ Error al publicar la invitación:", error);
-            alert("Ocurrió un error al publicar la invitación.");
+            console.error("âŒ Error al publicar la invitaciÃ³n:", error);
+            alert("OcurriÃ³ un error al publicar la invitaciÃ³n.");
         }
     };
 
     useEffect(() => {
         const cargarSlugPublico = async () => {
-            // 🧠 Solo se ejecuta cuando abrís el modal y hay un slugInvitacion cargado
+            // ðŸ§  Solo se ejecuta cuando abrÃ­s el modal y hay un slugInvitacion cargado
             if (!mostrarModalURL || !slugInvitacion) return;
 
             try {
-                // 🔍 Buscar si el borrador ya tiene guardado un slugPublico
+                // ðŸ” Buscar si el borrador ya tiene guardado un slugPublico
                 const ref = doc(db, "borradores", slugInvitacion);
                 const snap = await getDoc(ref);
 
                 if (snap.exists()) {
                     const data = snap.data();
 
-                    // ✅ Si el borrador ya tiene un slugPublico, lo guardamos en estado
+                    // âœ… Si el borrador ya tiene un slugPublico, lo guardamos en estado
                     if (data.slugPublico) {
                         setSlugPublicoExistente(data.slugPublico);
                         setSlugDisponible(true);
                     } else {
-                        // ❌ Si no tiene slugPublico, reseteamos estado
+                        // âŒ Si no tiene slugPublico, reseteamos estado
                         setSlugPublicoExistente(null);
                         setSlugDisponible(null);
                     }
@@ -307,22 +314,22 @@ export default function DashboardHeader({
     return (
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
             {slugInvitacion ? (
-                /* ----------------- 🟣 Modo edición ----------------- */
+                /* ----------------- ðŸŸ£ Modo ediciÃ³n ----------------- */
                 <div className="flex items-center gap-2 flex-1">
-                    {/* Botón volver */}
+                    {/* BotÃ³n volver */}
                     <button
                         onClick={async () => {
                             // 1) Limpiar la URL (saca ?slug=...) sin agregar historial nuevo
                             await router.replace("/dashboard", undefined, { shallow: true });
 
-                            // 2) Recién ahora reseteamos estado y vista
+                            // 2) ReciÃ©n ahora reseteamos estado y vista
                             setSlugInvitacion(null);
                             setModoEditor(null);
                             onCambiarVista?.("home");
                         }}
                         className="flex items-center gap-2 px-2 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition"
                     >
-                        ← Volver
+                        â† Volver
                     </button>
 
                     {/* Zoom (solo desktop / tablet) */}
@@ -332,7 +339,7 @@ export default function DashboardHeader({
                                 onClick={toggleZoom}
                                 className="flex items-center gap-1 px-2 py-1 text-xs bg-white text-gray-800 border border-gray-300 rounded shadow hover:bg-gray-100 transition"
                             >
-                                <span>{zoom === 1 ? "➖" : "➕"}</span>
+                                <span>{zoom === 1 ? "âž–" : "âž•"}</span>
                                 <span>{zoom === 1 ? "100%" : "50%"}</span>
                             </button>
                             <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
@@ -342,7 +349,7 @@ export default function DashboardHeader({
                     )}
 
 
-                    {/* Botón Deshacer */}
+                    {/* BotÃ³n Deshacer */}
                     <div className="relative group">
                         <button
                             onClick={() => {
@@ -359,7 +366,7 @@ export default function DashboardHeader({
                                 : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
                                 }`}
                         >
-                            ⟲
+                            âŸ²
                             {historialExternos.length > 1 && (
                                 <span className="text-[10px] bg-purple-100 text-purple-600 px-1 rounded-full min-w-[14px] text-center">
                                     {historialExternos.length - 1}
@@ -368,7 +375,7 @@ export default function DashboardHeader({
                         </button>
                     </div>
 
-                    {/* Botón Rehacer */}
+                    {/* BotÃ³n Rehacer */}
                     <div className="relative group">
                         <button
                             onClick={() => {
@@ -385,7 +392,7 @@ export default function DashboardHeader({
                                 : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
                                 }`}
                         >
-                            ⟳
+                            âŸ³
                             {futurosExternos.length > 0 && (
                                 <span className="text-[10px] bg-green-100 text-green-600 px-1 rounded-full min-w-[14px] text-center">
                                     {futurosExternos.length}
@@ -394,7 +401,7 @@ export default function DashboardHeader({
                         </button>
                     </div>
 
-                    {/* Botón cuadrado para elegir color */}
+                    {/* BotÃ³n cuadrado para elegir color */}
                     {seccionActiva && (
                         <SelectorColorSeccion
                             seccion={seccionActiva}
@@ -453,7 +460,7 @@ export default function DashboardHeader({
                             className={`px-3 py-1 text-white rounded transition text-xs ${slugPublicoExistente ? "bg-green-600 hover:bg-green-700" : "bg-[#773dbe] hover:bg-purple-700"
                                 }`}
                         >
-                            {slugPublicoExistente ? "Ver o actualizar invitación" : "Publicar invitación"}
+                            {slugPublicoExistente ? "Ver o actualizar invitaciÃ³n" : "Publicar invitaciÃ³n"}
                         </button>
                     </div>
 
@@ -462,9 +469,9 @@ export default function DashboardHeader({
                         <button
                             onClick={() => setAccionesMobileAbiertas((v) => !v)}
                             className="px-2 py-1 rounded-full border text-gray-700 bg-white hover:bg-gray-50 text-xs"
-                            title="Más opciones"
+                            title="MÃ¡s opciones"
                         >
-                            ⋯
+                            â‹¯
                         </button>
 
                         {accionesMobileAbiertas && (
@@ -476,7 +483,7 @@ export default function DashboardHeader({
                                         className="text-gray-400 hover:text-gray-600 text-sm"
                                         title="Cerrar"
                                     >
-                                        ✕
+                                        âœ•
                                     </button>
                                 </div>
 
@@ -525,7 +532,7 @@ export default function DashboardHeader({
 
                 </div>
             ) : (
-                /* ----------------- 🟢 Vista dashboard ----------------- */
+                /* ----------------- ðŸŸ¢ Vista dashboard ----------------- */
                 <div className="flex items-center gap-2 flex-1 justify-between">
                     <div className="flex items-center gap-2">
                         <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
@@ -547,7 +554,7 @@ export default function DashboardHeader({
                             }
                         >
                             {vistaActual === "publicadas"
-                                ? "← Volver al dashboard"
+                                ? "â† Volver al dashboard"
                                 : "Mis invitaciones publicadas"}
                         </button>
 
@@ -563,13 +570,13 @@ export default function DashboardHeader({
                                     vistaActual === "gestion"
                                         ? "Volver al inicio del dashboard"
                                         : isSuperAdmin
-                                        ? "Abrir tablero de gestión (superadmin)"
-                                        : "Abrir tablero de gestión"
+                                        ? "Abrir tablero de gestiÃ³n (superadmin)"
+                                        : "Abrir tablero de gestiÃ³n"
                                 }
                             >
                                 {vistaActual === "gestion"
-                                    ? "← Volver al dashboard"
-                                    : "Gestión del sitio"}
+                                    ? "â† Volver al dashboard"
+                                    : "GestiÃ³n del sitio"}
                             </button>
                         )}
                     </div>
@@ -578,7 +585,7 @@ export default function DashboardHeader({
 
             )}
 
-            {/* 🔹 Menú usuario siempre visible */}
+            {/* ðŸ”¹ MenÃº usuario siempre visible */}
             <div className="relative ml-2" ref={menuRef}>
                 <div
                     className="flex items-center gap-1 cursor-pointer rounded-full px-1 py-1 transition-all duration-200 hover:bg-gray-100"
@@ -600,7 +607,7 @@ export default function DashboardHeader({
                             {usuario?.email?.[0]?.toUpperCase() || "U"}
                         </div>
                     )}
-                    <span className="text-gray-600 text-xs">▼</span>
+                    <span className="text-gray-600 text-xs">â–¼</span>
                 </div>
 
                 {menuAbierto && (
@@ -614,7 +621,7 @@ export default function DashboardHeader({
                             }}
                             className="w-full text-left px-3 py-1 hover:bg-gray-100 transition-colors"
                         >
-                            Cerrar sesión
+                            Cerrar sesiÃ³n
                         </button>
                     </div>
                 )}
@@ -626,7 +633,7 @@ export default function DashboardHeader({
                         {!urlFinal ? (
                             <>
                                 <h3 className="text-sm font-medium mb-3 text-gray-700">
-                                    Publicando invitación...
+                                    Publicando invitaciÃ³n...
                                 </h3>
                                 <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden mb-2">
                                     <div
@@ -639,13 +646,13 @@ export default function DashboardHeader({
                         ) : (
                             <>
                                 <h3 className="text-base font-semibold mb-2 text-gray-800">
-                                    🎉 ¡Invitación publicada!
+                                    ðŸŽ‰ Â¡InvitaciÃ³n publicada!
                                 </h3>
                                 <p className="text-xs text-gray-500 mb-4">
-                                    Tu invitación ya está lista para compartir.
+                                    Tu invitaciÃ³n ya estÃ¡ lista para compartir.
                                 </p>
 
-                                {/* 🔹 Caja con URL y botón Copiar */}
+                                {/* ðŸ”¹ Caja con URL y botÃ³n Copiar */}
                                 <div className="relative mb-4 flex items-center">
                                     <input
                                         type="text"
@@ -654,11 +661,11 @@ export default function DashboardHeader({
                                         className="flex-1 border border-gray-300 rounded-l-lg text-xs px-3 py-2 text-gray-700 bg-gray-50 select-all focus:outline-none"
                                     />
 
-                                    {/* Estado interno del botón Copiar */}
+                                    {/* Estado interno del botÃ³n Copiar */}
                                     <button
                                         onClick={(e) => {
                                             navigator.clipboard.writeText(urlFinal);
-                                            e.target.textContent = "Copiado ✓";
+                                            e.target.textContent = "Copiado âœ“";
                                             e.target.classList.add("bg-green-500", "hover:bg-green-600");
                                             setTimeout(() => {
                                                 e.target.textContent = "Copiar";
@@ -672,7 +679,7 @@ export default function DashboardHeader({
                                     </button>
                                 </div>
 
-                                {/* 🔹 Botones de acción */}
+                                {/* ðŸ”¹ Botones de acciÃ³n */}
                                 <div className="flex justify-center gap-3">
                                     <a
                                         href={urlFinal}
@@ -680,7 +687,7 @@ export default function DashboardHeader({
                                         rel="noopener noreferrer"
                                         className="bg-[#773dbe] text-white px-4 py-2 rounded-lg text-xs hover:bg-purple-700 transition"
                                     >
-                                        Ver invitación
+                                        Ver invitaciÃ³n
                                     </a>
                                     <button
                                         onClick={() => setPublicando(false)}
@@ -702,16 +709,16 @@ export default function DashboardHeader({
                         {slugPublicoExistente ? (
                             <>
                                 <h3 className="text-base font-semibold mb-2 text-gray-800">
-                                    🌐 Tu invitación ya está publicada
+                                    ðŸŒ Tu invitaciÃ³n ya estÃ¡ publicada
                                 </h3>
                                 <p className="text-xs text-gray-500 mb-4">
-                                    Tenés una versión pública online. Podés <strong>verla en el enlace</strong> o <strong>actualizarla</strong> para reemplazarla con los últimos cambios.
+                                    TenÃ©s una versiÃ³n pÃºblica online. PodÃ©s <strong>verla en el enlace</strong> o <strong>actualizarla</strong> para reemplazarla con los Ãºltimos cambios.
                                 </p>
 
-                                {/* 🔹 Caja con URL claramente identificada */}
+                                {/* ðŸ”¹ Caja con URL claramente identificada */}
                                 <div className="mb-4 text-left">
                                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                                        Enlace público:
+                                        Enlace pÃºblico:
                                     </label>
                                     <a
                                         href={`https://reservaeldia.com.ar/i/${slugPublicoExistente}`}
@@ -722,14 +729,14 @@ export default function DashboardHeader({
                                         https://reservaeldia.com.ar/i/{slugPublicoExistente}
                                     </a>
                                     <p className="text-[11px] text-gray-400 mt-1">
-                                        (Click en el enlace para visitar la invitación publicada)
+                                        (Click en el enlace para visitar la invitaciÃ³n publicada)
                                     </p>
                                 </div>
 
-                                {/* 🔹 Línea divisoria visual */}
+                                {/* ðŸ”¹ LÃ­nea divisoria visual */}
                                 <hr className="border-gray-200 mb-4" />
 
-                                {/* 🔹 Botones */}
+                                {/* ðŸ”¹ Botones */}
                                 <div className="flex justify-center gap-3 mt-2">
                                     <button
                                         onClick={() => setMostrarModalURL(false)}
@@ -755,38 +762,38 @@ export default function DashboardHeader({
                                                 });
 
                                                 const url = result.data?.url;
-                                                if (!url) throw new Error("No se recibió la URL final");
+                                                if (!url) throw new Error("No se recibiÃ³ la URL final");
 
                                                 setProgreso(100);
                                                 setUrlFinal(url);
 
-                                                // ✅ Forzar re-render inmediato del botón “Ver o actualizar invitación”
+                                                // âœ… Forzar re-render inmediato del botÃ³n â€œVer o actualizar invitaciÃ³nâ€
                                                 setSlugPublicoExistente(slugPublicoExistente);
 
                                             } catch (error) {
-                                                console.error("❌ Error al actualizar la invitación:", error);
-                                                alert("Ocurrió un error al actualizar la invitación.");
+                                                console.error("âŒ Error al actualizar la invitaciÃ³n:", error);
+                                                alert("OcurriÃ³ un error al actualizar la invitaciÃ³n.");
                                                 setPublicando(false);
                                             }
                                         }}
                                         className="px-4 py-2 rounded-lg text-xs text-white bg-[#773dbe] hover:bg-purple-700 transition-all"
                                     >
-                                        🔄 Actualizar invitación publicada
+                                        ðŸ”„ Actualizar invitaciÃ³n publicada
                                     </button>
 
                                 </div>
 
                                 <p className="text-[11px] text-gray-400 mt-3">
-                                    Este botón sobrescribe la versión publicada con los últimos cambios del editor.
+                                    Este botÃ³n sobrescribe la versiÃ³n publicada con los Ãºltimos cambios del editor.
                                 </p>
                             </>
                         ) : (
                             <>
                                 <h3 className="text-base font-semibold mb-2 text-gray-800">
-                                    🌐 Elegí tu dirección web
+                                    ðŸŒ ElegÃ­ tu direcciÃ³n web
                                 </h3>
                                 <p className="text-xs text-gray-500 mb-4">
-                                    Tu invitación se publicará en el siguiente enlace:
+                                    Tu invitaciÃ³n se publicarÃ¡ en el siguiente enlace:
                                 </p>
 
                                 {/* Campo URL */}
@@ -814,10 +821,10 @@ export default function DashboardHeader({
                                         <span className="text-xs text-gray-400">Verificando...</span>
                                     )}
                                     {slugDisponible === true && (
-                                        <span className="text-xs text-green-600">✅ Disponible</span>
+                                        <span className="text-xs text-green-600">âœ… Disponible</span>
                                     )}
                                     {slugDisponible === false && (
-                                        <span className="text-xs text-red-500">❌ Ya está en uso</span>
+                                        <span className="text-xs text-red-500">âŒ Ya estÃ¡ en uso</span>
                                     )}
                                 </div>
 
@@ -847,14 +854,14 @@ export default function DashboardHeader({
                                                 });
 
                                                 const url = result.data?.url;
-                                                if (!url) throw new Error("No se recibió la URL final");
+                                                if (!url) throw new Error("No se recibiÃ³ la URL final");
 
                                                 setProgreso(100);
                                                 setUrlFinal(url);
                                                 setSlugPublicoExistente(slugPersonalizado);
                                             } catch (error) {
-                                                console.error("❌ Error al publicar la invitación:", error);
-                                                alert("Ocurrió un error al publicar la invitación.");
+                                                console.error("âŒ Error al publicar la invitaciÃ³n:", error);
+                                                alert("OcurriÃ³ un error al publicar la invitaciÃ³n.");
                                                 setPublicando(false);
                                             }
                                         }}
@@ -863,7 +870,7 @@ export default function DashboardHeader({
                                             : "bg-gray-300 cursor-not-allowed"
                                             }`}
                                     >
-                                        Publicar invitación
+                                        Publicar invitaciÃ³n
                                     </button>
                                 </div>
                             </>
@@ -883,3 +890,4 @@ export default function DashboardHeader({
 
     );
 }
+

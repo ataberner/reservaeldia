@@ -1,4 +1,4 @@
-// src/components/PanelDeFormas.jsx
+﻿// src/components/PanelDeFormas.jsx
 import { useState, useEffect, useRef } from "react";
 import useIconosPublicos from "@/hooks/useIconosPublicos";
 import { ChevronRight, ChevronLeft } from "lucide-react";
@@ -11,7 +11,7 @@ function FlechaScroll({ direccion = "right" }) {
 
   const startScroll = (targetEl) => {
     if (!targetEl) return;
-    const speed = 12; // px por frame (~60fps)
+    const speed = 12;
 
     const tick = () => {
       if (!hovering.current) return;
@@ -37,12 +37,11 @@ function FlechaScroll({ direccion = "right" }) {
 
   return (
     <div
-      className={`absolute ${direccion === "right" ? "right-1" : "left-1"} top-[30%] 
-                  z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm cursor-pointer select-none`}
+      className={`absolute ${direccion === "right" ? "right-1" : "left-1"} top-[30%] z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm cursor-pointer select-none`}
       onMouseEnter={(e) => {
         const cont = e.currentTarget.closest(".relative")?.querySelector(".scroll-horizontal");
         if (!cont) return;
-        if (cont.scrollWidth <= cont.clientWidth + 1) return; // nada para scrollear
+        if (cont.scrollWidth <= cont.clientWidth + 1) return;
         hovering.current = true;
         startScroll(cont);
       }}
@@ -73,7 +72,7 @@ function getExtensionFromUrl(url) {
   }
 }
 
-export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId }) {
+export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   const [verTodo, setVerTodo] = useState(null);
   const { iconos, populares, cargarMas, cargando, hayMas, cargarPorCategoria } = useIconosPublicos();
 
@@ -89,31 +88,21 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
 
   const formas = [
     { id: "cuadrado", tipo: "forma", figura: "rect", color: "#000000" },
-    { id: "circulo",  tipo: "forma", figura: "circle", color: "#000000" },
-    { id: "linea",    tipo: "forma", figura: "line", color: "#000000" },
-    { id: "triangulo",tipo: "forma", figura: "triangle", color: "#000000" },
+    { id: "circulo", tipo: "forma", figura: "circle", color: "#000000" },
+    { id: "linea", tipo: "forma", figura: "line", color: "#000000" },
+    { id: "triangulo", tipo: "forma", figura: "triangle", color: "#000000" },
   ];
 
-  /* ----------------------- Insertar desde el panel (event) ---------------------- */
   const dispatchInsert = (detail) => {
     window.dispatchEvent(new CustomEvent("insertar-elemento", { detail }));
   };
 
-  /* ---------------------------- Insertar una forma ---------------------------- */
   const insertarForma = (forma) => {
     const base = {
       id: `forma-${Date.now()}`,
       tipo: "forma",
       figura: forma.figura,
       color: forma.color,
-      x: 100,
-      y: 100,
-      width: 100,
-      height: 100,
-      scaleX: 1,
-      scaleY: 1,
-      rotation: 0,
-      seccionId: seccionActivaId,
       texto: "",
       fontSize: 24,
       fontFamily: "sans-serif",
@@ -132,46 +121,29 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
       base.radius = 60;
     }
 
-    console.log("🔷 [PanelDeFormas] Insertar forma →", base);
     dispatchInsert(base);
   };
 
-  /* ------------------------- Insertar ícono (SVG o PNG) ------------------------ */
   const insertarIcono = async (src) => {
     if (!src) return;
 
-    // Detección básica (http/data url/extension)
     const info = {
       srcOriginal: src,
-      esURL: src?.startsWith("http"),
-      esDataURL: src?.startsWith("data:"),
       extension: getExtensionFromUrl(src),
-      contieneSVG: src?.includes("svg"),
-      longitud: src?.length,
-      primeros100chars: src?.substring(0, 100) + (src?.length > 100 ? "..." : ""),
     };
-    console.log("🆕 [PanelDeFormas] Click ícono →", info);
 
     try {
-      // SVG → parsear paths, icono colorizable
       if (info.extension === "svg") {
-        const { paths, viewBox, width, height } = await fetchSvgPaths(src);
+        const { paths, viewBox } = await fetchSvgPaths(src);
 
         if (!paths || paths.length === 0) {
-          console.warn("⚠️ SVG sin <path>; fallback a raster (no colorizable).");
           const payload = {
             id: `icono-${Date.now()}`,
             tipo: "icono",
-            formato: "png",           // lo tratamos como raster
+            formato: "png",
             colorizable: false,
-            url: src,                 // guardamos la URL para Konva.Image
-            x: 100, y: 100,
-            width: 128, height: 128,
-            scaleX: 1, scaleY: 1,
-            rotation: 0,
-            seccionId: seccionActivaId,
+            url: src,
           };
-          console.log("📦 [PanelDeFormas] Fallback raster →", payload);
           return dispatchInsert(payload);
         }
 
@@ -180,53 +152,38 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
           tipo: "icono",
           formato: "svg",
           colorizable: true,
-          color: "#773dbe",          // color inicial
-          paths,                     // array de { d }
-          url: src,                  // referencial (opcional)
-          viewBox: viewBox || null,  // opcional para escalas
-          x: 100, y: 100,
-          width: 128, height: 128,   // tamaño lógico inicial (ajustalo a tu 800px base si querés)
-          scaleX: 1, scaleY: 1,
-          rotation: 0,
-          seccionId: seccionActivaId,
+          color: "#773dbe",
+          paths,
+          url: src,
+          viewBox: viewBox || null,
         };
 
-        console.log("✅ [PanelDeFormas] Insertar SVG colorizable →", payload);
         return dispatchInsert(payload);
       }
 
-      // PNG / raster por defecto → no colorizable
       const payload = {
         id: `icono-${Date.now()}`,
         tipo: "icono",
         formato: "png",
         colorizable: false,
         url: src,
-        x: 100, y: 100,
-        width: 128, height: 128,
-        scaleX: 1, scaleY: 1,
-        rotation: 0,
-        seccionId: seccionActivaId,
       };
-      console.log("🖼️ [PanelDeFormas] Insertar raster (png/jpg/webp) →", payload);
       dispatchInsert(payload);
     } catch (err) {
-      console.error("❌ [PanelDeFormas] Error insertando icono:", err);
+      console.error("Error insertando icono:", err);
     }
   };
 
-  /* ------------------------------ Item: Icono card ----------------------------- */
   const ItemIcono = ({ src, id }) => (
     <div
       key={id}
-      className="w-14 h-14 rounded-xl bg-white border border-gray-200 
-                 hover:bg-purple-50 flex items-center justify-center shadow-sm 
-                 cursor-pointer select-none transition-colors"
-      onMouseDown={async (e) => {
-        e.preventDefault(); // evita que robe foco o selección de texto
+      className="w-14 h-14 rounded-xl bg-white border border-gray-200 hover:bg-purple-50 flex items-center justify-center shadow-sm cursor-pointer select-none transition-colors"
+      onPointerDown={async (e) => {
+        e.preventDefault();
+        if (e.pointerType === "mouse" && e.button !== 0) return;
         await insertarIcono(src);
       }}
-      title="Insertar ícono"
+      title="Insertar icono"
     >
       <div
         className="w-10 h-10 bg-center bg-no-repeat bg-contain"
@@ -235,20 +192,17 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
     </div>
   );
 
-  /* ------------------------------ Item: Forma card ----------------------------- */
   const ItemForma = ({ forma }) => (
     <div
       key={forma.id}
-      className="w-14 h-14 rounded-xl bg-white border border-gray-200 
-                 hover:bg-purple-50 flex items-center justify-center shadow-sm 
-                 cursor-pointer select-none transition-colors"
-      onMouseDown={(e) => {
+      className="w-14 h-14 rounded-xl bg-white border border-gray-200 hover:bg-purple-50 flex items-center justify-center shadow-sm cursor-pointer select-none transition-colors"
+      onPointerDown={(e) => {
         e.preventDefault();
+        if (e.pointerType === "mouse" && e.button !== 0) return;
         insertarForma(forma);
       }}
       title={`Insertar ${forma.figura}`}
     >
-      {/* Preview visual simple */}
       {forma.figura === "rect" && <div className="w-8 h-8 bg-black" />}
       {forma.figura === "circle" && <div className="w-8 h-8 rounded-full bg-black" />}
       {forma.figura === "line" && <div className="w-8 h-[2px] bg-black" />}
@@ -265,7 +219,6 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
     </div>
   );
 
-  /* ---------------------------- Infinite scroll (ver todo) --------------------------- */
   useEffect(() => {
     if (verTodo !== "iconos") return;
     if (!loadMoreRef.current) return;
@@ -274,7 +227,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
 
     const obs = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !cargando && hayMas) {
+        if (entries.some((entry) => entry.isIntersecting) && !cargando && hayMas) {
           cargarMas();
         }
       },
@@ -284,14 +237,12 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
     return () => obs.disconnect();
   }, [verTodo, cargando, hayMas, cargarMas]);
 
-  /* ---------------------------------- Ver todo --------------------------------- */
   if (verTodo) {
     const lista = verTodo === "populares" ? populares : iconos;
-    const tituloCategoria = verTodo === "populares" ? "Íconos populares" : "Íconos & GIFs";
+    const tituloCategoria = verTodo === "populares" ? "Iconos populares" : "Iconos y GIFs";
 
     return (
       <div className="flex flex-col h-full px-2 pt-1 -mt-1">
-        {/* Header fijo */}
         <div className="flex items-center gap-2 flex-none sticky top-0 z-10 bg-white/80 backdrop-blur-sm py-1">
           <button
             className="p-1 rounded-lg hover:bg-zinc-100 transition"
@@ -303,7 +254,6 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
           <div className="text-sm font-semibold text-purple-700">{tituloCategoria}</div>
         </div>
 
-        {/* Cuerpo scrollable */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1">
           <div className="grid grid-cols-3 gap-2">
             {lista.map((it) => {
@@ -328,14 +278,12 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
     );
   }
 
-  /* --------------------------------- Vista principal -------------------------------- */
   return (
     <div className="flex flex-col gap-4 px-2 pt-1 h-full">
-      {/* 🟪 Formas básicas */}
       <div>
         <div className="flex justify-between items-center px-1">
           <span className="text-xs text-purple-700 uppercase tracking-wider font-semibold">
-            Formas básicas
+            Formas basicas
           </span>
         </div>
         <div className="flex gap-2 px-1 overflow-x-auto py-2 scroll-horizontal">
@@ -347,10 +295,9 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
 
       <hr className="border-purple-700/20 my-1 mx-2" />
 
-      {/* ⭐ Íconos populares */}
       <div>
         <div className="flex justify-between items-center px-1">
-          <span className="text-sm text-purple-700 font-semibold mb-1">Íconos populares</span>
+          <span className="text-sm text-purple-700 font-semibold mb-1">Iconos populares</span>
           <button
             className="text-xs underline text-purple-700 hover:text-purple-800"
             onClick={() => setVerTodo("populares")}
@@ -378,10 +325,9 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
 
       <hr className="border-purple-700/20 my-1 mx-2" />
 
-      {/* 🟣 Íconos & GIFs */}
       <div>
         <div className="flex justify-between items-center px-1">
-          <span className="text-sm text-purple-700 font-semibold mb-1">Íconos & GIFs</span>
+          <span className="text-sm text-purple-700 font-semibold mb-1">Iconos y GIFs</span>
           <button
             className="text-xs underline text-purple-700 hover:text-purple-800"
             onClick={() => setVerTodo("iconos")}
@@ -407,3 +353,4 @@ export default function PanelDeFormas({ abierto, sidebarAbierta, seccionActivaId
     </div>
   );
 }
+

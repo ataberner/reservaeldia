@@ -66,9 +66,19 @@ export default function MenuOpcionesElemento({
     // Posición del flyout
     const [submenuPos, setSubmenuPos] = useState({ x: -9999, y: -9999 });
     const [submenuReady, setSubmenuReady] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
 
 
     const esImagen = elementoSeleccionado?.tipo === "imagen";
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const mq = window.matchMedia("(max-width: 768px)");
+        const update = () => setIsMobile(mq.matches);
+        update();
+        mq.addEventListener?.("change", update);
+        return () => mq.removeEventListener?.("change", update);
+    }, []);
 
     // --- Helper: calcula la posición final del menú desde el rect del botón ⚙️
     const calcularPosDesdeRect = (r) => {
@@ -205,6 +215,10 @@ export default function MenuOpcionesElemento({
             setPos({ x: -9999, y: -9999 });
             return;
         }
+        if (isMobile) {
+            setReady(true);
+            return;
+        }
         const btn = botonOpcionesRef?.current;
         if (!btn) return;
 
@@ -212,7 +226,7 @@ export default function MenuOpcionesElemento({
         const p = calcularPosDesdeRect(r);
         setPos(p);
         setReady(true); // ya tenemos posición; mostrar menú
-    }, [isOpen, botonOpcionesRef]);
+    }, [isOpen, botonOpcionesRef, isMobile]);
 
     useLayoutEffect(() => {
         if (!mostrarSubmenuCapa) {
@@ -293,17 +307,32 @@ export default function MenuOpcionesElemento({
     return (
         <div
             ref={menuRootRef}
-            className="fixed z-50 bg-white border rounded-lg shadow-xl p-3 text-sm space-y-1 menu-z-index w-64"
-            style={{
-                left: `${pos.x}px`,
-                top: `${pos.y}px`,
-                borderColor: "#773dbe",
-                borderWidth: "1px",
-                maxHeight: "400px",
-                overflowY: "auto",
-                animation: "fadeInScale 0.15s ease-out",
-                visibility: ready ? "visible" : "hidden", // 🔑 evita flash
-            }}
+            className={`fixed z-50 bg-white border shadow-xl p-3 text-sm space-y-1 menu-z-index ${isMobile ? "rounded-2xl w-auto" : "rounded-lg w-64"}`}
+            style={
+                isMobile
+                    ? {
+                        left: "8px",
+                        right: "8px",
+                        bottom: "calc(8px + env(safe-area-inset-bottom, 0px))",
+                        top: "auto",
+                        borderColor: "#773dbe",
+                        borderWidth: "1px",
+                        maxHeight: "70vh",
+                        overflowY: "auto",
+                        animation: "fadeInScale 0.15s ease-out",
+                        visibility: ready ? "visible" : "hidden",
+                    }
+                    : {
+                        left: `${pos.x}px`,
+                        top: `${pos.y}px`,
+                        borderColor: "#773dbe",
+                        borderWidth: "1px",
+                        maxHeight: "400px",
+                        overflowY: "auto",
+                        animation: "fadeInScale 0.15s ease-out",
+                        visibility: ready ? "visible" : "hidden",
+                    }
+            }
             // Evitar que se propague el click al body (click-outside)
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}

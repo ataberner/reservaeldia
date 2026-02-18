@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import ConfirmDeleteImagesModal from "@/components/ConfirmDeleteImagesModal";
 
 export default function GaleriaDeImagenes({
@@ -104,24 +104,15 @@ export default function GaleriaDeImagenes({
                 if (modoSeleccion) {
                   toggleSeleccion(img.id);
                 } else {
-                  console.log("🧪 imagen completa:", img);
-                  console.log("🧪 typeof img.url:", typeof img.url);
-                  console.log("🧪 valor img.url:", img.url);
-
-                  if (typeof img.url !== "string") {
-                    alert("❌ img.url no es string, es: " + typeof img.url);
-                    return;
-                  }
+                  if (typeof img.url !== "string") return;
 
                   onInsertar({
                     id: `img-${Date.now()}`,
                     tipo: "imagen",
                     src: img.url,
-                    x: 100,
-                    y: 100,
+                    ancho: Number.isFinite(img.ancho) ? img.ancho : undefined,
+                    alto: Number.isFinite(img.alto) ? img.alto : undefined,
                     seccionId: seccionActivaId,
-                    width: Math.min(300, img.ancho),
-                    height: (Math.min(300, img.ancho) * img.alto) / img.ancho,
                   });
                 }
               }}
@@ -137,16 +128,13 @@ export default function GaleriaDeImagenes({
                   event.stopPropagation();
                   toggleSeleccion(img.id);
                 }}
-                className={`absolute top-1 left-1 w-5 h-5 rounded-sm border text-xs font-bold flex items-center justify-center z-10 shadow-sm
-                  transition-colors duration-200
-                  ${
-                    estaSeleccionada
-                      ? "bg-purple-600 border-purple-600 text-white"
-                      : "bg-white/95 border-slate-500 text-transparent"
-                  }
-                `}
+                className={`absolute top-1 left-1 w-5 h-5 rounded-sm border text-xs font-bold flex items-center justify-center z-10 shadow-sm transition-colors duration-200 ${
+                  estaSeleccionada
+                    ? "bg-purple-600 border-purple-600 text-white"
+                    : "bg-white/95 border-slate-500 text-transparent"
+                }`}
               >
-                {estaSeleccionada && "✔"}
+                {estaSeleccionada && "?"}
               </div>
             </div>
           );
@@ -160,14 +148,14 @@ export default function GaleriaDeImagenes({
             className="text-red-600 font-semibold hover:underline"
             disabled={borrandoSeleccionadas}
           >
-            🗑️ Eliminar
+            Eliminar
           </button>
           <button
             onClick={cancelarSeleccion}
             className="text-gray-500 hover:underline"
             disabled={borrandoSeleccionadas}
           >
-            ❌ Cancelar
+            Cancelar
           </button>
         </div>
       )}
@@ -185,3 +173,4 @@ export default function GaleriaDeImagenes({
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { collection, query, where, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, getDocs, limit } from 'firebase/firestore';
 import { db, functions as cloudFunctions } from '../firebase';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { useRouter } from "next/router";
@@ -122,6 +122,7 @@ export default function Dashboard() {
   const [futurosExternos, setFuturosExternos] = useState([]);
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
+  const [urlPublicaVistaPrevia, setUrlPublicaVistaPrevia] = useState(null);
   const [vista, setVista] = useState("home");
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [profileInitialValues, setProfileInitialValues] = useState({
@@ -295,6 +296,7 @@ export default function Dashboard() {
   const generarVistaPrevia = async () => {
     try {
       setHtmlVistaPrevia(null); // Reset del contenido
+      setUrlPublicaVistaPrevia(null); // Reset del enlace publico
       setMostrarVistaPrevia(true); // Abrir modal primero
 
       // Generar HTML para vista previa
@@ -309,6 +311,53 @@ export default function Dashboard() {
       const data = snap.data();
       const objetosBase = data?.objetos || [];
       const secciones = data?.secciones || [];
+      let urlPublicaDetectada = "";
+      const slugPublicoBorrador = String(data?.slugPublico || "").trim();
+
+      if (slugPublicoBorrador) {
+        try {
+          const snapPublicoPorSlug = await getDoc(doc(db, "publicadas", slugPublicoBorrador));
+          if (snapPublicoPorSlug.exists()) {
+            const dataPublicada = snapPublicoPorSlug.data() || {};
+            urlPublicaDetectada =
+              String(dataPublicada?.urlPublica || "").trim() ||
+              `https://reservaeldia.com.ar/i/${slugPublicoBorrador}`;
+          }
+        } catch (_e) {}
+      }
+
+      if (!urlPublicaDetectada && slugInvitacion) {
+        try {
+          const snapPublicoDirecto = await getDoc(doc(db, "publicadas", slugInvitacion));
+          if (snapPublicoDirecto.exists()) {
+            const dataPublicada = snapPublicoDirecto.data() || {};
+            urlPublicaDetectada =
+              String(dataPublicada?.urlPublica || "").trim() ||
+              `https://reservaeldia.com.ar/i/${slugInvitacion}`;
+          }
+        } catch (_e) {}
+      }
+
+      if (!urlPublicaDetectada && slugInvitacion) {
+        try {
+          const qPublicadaPorOriginal = query(
+            collection(db, "publicadas"),
+            where("slugOriginal", "==", slugInvitacion),
+            limit(1)
+          );
+          const snapPublicadaPorOriginal = await getDocs(qPublicadaPorOriginal);
+          if (!snapPublicadaPorOriginal.empty) {
+            const docPublicada = snapPublicadaPorOriginal.docs[0];
+            const dataPublicada = docPublicada?.data() || {};
+            const slugPublicado = String(dataPublicada?.slug || docPublicada?.id || "").trim();
+            urlPublicaDetectada =
+              String(dataPublicada?.urlPublica || "").trim() ||
+              (slugPublicado ? `https://reservaeldia.com.ar/i/${slugPublicado}` : "");
+          }
+        } catch (_e) {}
+      }
+
+      setUrlPublicaVistaPrevia(urlPublicaDetectada || null);
       const previewDebug = (() => {
         try {
           const qp = new URLSearchParams(window.location.search || "");
@@ -807,9 +856,10 @@ export default function Dashboard() {
         onClose={() => {
           setMostrarVistaPrevia(false);
           setHtmlVistaPrevia(null);
+          setUrlPublicaVistaPrevia(null);
         }}
         htmlContent={htmlVistaPrevia}
-        slug={slugInvitacion}
+        publicUrl={urlPublicaVistaPrevia}
       />
 
 

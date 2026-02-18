@@ -564,7 +564,7 @@ export default function DashboardHeader({
                                 : "Mis invitaciones publicadas"}
                         </button>
 
-                        {!loadingAdminAccess && canManageSite && (
+                        {!loadingAdminAccess && isSuperAdmin && (
                             <button
                                 onClick={() =>
                                     onCambiarVista(

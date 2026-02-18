@@ -3,13 +3,13 @@ import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import UsersDirectoryManager from "@/components/admin/UsersDirectoryManager";
 
 export default function SiteManagementBoard({
-  canManageSite,
   isSuperAdmin,
   loadingAdminAccess,
 }) {
   const [openPanel, setOpenPanel] = useState(null);
   const isAdminsOpen = openPanel === "admins";
   const isUsersOpen = openPanel === "users";
+  const canAccessSiteManagement = isSuperAdmin === true;
 
   const togglePanel = (panelKey) => {
     setOpenPanel((prev) => (prev === panelKey ? null : panelKey));
@@ -30,19 +30,13 @@ export default function SiteManagementBoard({
         </div>
       )}
 
-      {!loadingAdminAccess && !canManageSite && (
+      {!loadingAdminAccess && !canAccessSiteManagement && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
           No tenes permisos para acceder a este tablero.
         </div>
       )}
 
-      {!loadingAdminAccess && canManageSite && !isSuperAdmin && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          Gestion de admins: solo disponible para superadmin.
-        </div>
-      )}
-
-      {!loadingAdminAccess && canManageSite && isSuperAdmin && (
+      {!loadingAdminAccess && canAccessSiteManagement && (
         <div className="space-y-4">
           <div
             className={`rounded-xl p-[1px] transition-all ${

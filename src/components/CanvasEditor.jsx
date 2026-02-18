@@ -88,6 +88,26 @@ function normalizarAltoModo(modo) {
   return (m === "pantalla") ? "pantalla" : "fijo";
 }
 
+function isBoldFontWeight(weight) {
+  const normalized = String(weight || "normal").toLowerCase();
+  return (
+    normalized === "bold" ||
+    normalized === "bolder" ||
+    ["500", "600", "700", "800", "900"].includes(normalized)
+  );
+}
+
+function resolveKonvaFontStyle(fontStyle, fontWeight) {
+  const style = String(fontStyle || "normal").toLowerCase();
+  const isItalic = style.includes("italic") || style.includes("oblique");
+  const isBold = style.includes("bold") || isBoldFontWeight(fontWeight);
+
+  if (isBold && isItalic) return "bold italic";
+  if (isBold) return "bold";
+  if (isItalic) return "italic";
+  return "normal";
+}
+
 // ??? FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {
@@ -1338,7 +1358,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         fontSize: safeFontSize,
         fontFamily: safeFontFamily,
         fontWeight: objTexto.fontWeight || "normal",
-        fontStyle: objTexto.fontStyle || "normal",
+        fontStyle: resolveKonvaFontStyle(
+          objTexto.fontStyle || "normal",
+          objTexto.fontWeight || "normal"
+        ),
         lineHeight: baseLineHeight * 0.92,
         padding: 0,
         wrap: "none",

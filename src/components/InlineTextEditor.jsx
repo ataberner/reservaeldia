@@ -36,6 +36,30 @@ function normalizeWidthMode(mode) {
   return mode === "fit-content" ? "fit-content" : "measured";
 }
 
+function isBoldFontWeight(weight) {
+  const normalized = String(weight || "normal").toLowerCase();
+  return (
+    normalized === "bold" ||
+    normalized === "bolder" ||
+    ["500", "600", "700", "800", "900"].includes(normalized)
+  );
+}
+
+function normalizeInlineFontProps(rawFontStyle, rawFontWeight) {
+  const styleToken = String(rawFontStyle || "normal").toLowerCase();
+  const weightToken = String(rawFontWeight || "").toLowerCase();
+
+  const italic = styleToken.includes("italic") || styleToken.includes("oblique");
+  const boldFromStyle = styleToken.includes("bold");
+  const boldFromWeight = isBoldFontWeight(weightToken);
+  const bold = boldFromStyle || boldFromWeight;
+
+  return {
+    fontStyle: italic ? "italic" : "normal",
+    fontWeight: bold ? "bold" : "normal",
+  };
+}
+
 function normalizeEditorText(rawText, { trimPhantomTrailingNewline = true } = {}) {
   const normalized = String(rawText ?? "")
     .replace(/\r\n/g, "\n")
@@ -356,16 +380,31 @@ export default function InlineTextEditor({
     try {
       const getProp = (n, getterName, fallback) => {
         if (!n) return fallback;
+
+        if (typeof n.getAttr === "function") {
+          const attrValue = n.getAttr(getterName);
+          if (typeof attrValue !== "undefined" && attrValue !== null && attrValue !== "") {
+            return attrValue;
+          }
+        }
+
         const fn = n[getterName];
         if (typeof fn === "function") return fn.call(n);
-        return n[getterName] || fallback;
+        if (typeof n[getterName] !== "undefined" && n[getterName] !== null && n[getterName] !== "") {
+          return n[getterName];
+        }
+        return fallback;
       };
+
+      const rawFontStyle = getProp(textNode, "fontStyle", "normal");
+      const rawFontWeight = getProp(textNode, "fontWeight", "normal");
+      const normalizedFont = normalizeInlineFontProps(rawFontStyle, rawFontWeight);
 
       return {
         fontSize: getProp(textNode, "fontSize", 24),
         fontFamily: getProp(textNode, "fontFamily", "sans-serif"),
-        fontWeight: getProp(textNode, "fontWeight", "normal"),
-        fontStyle: getProp(textNode, "fontStyle", "normal"),
+        fontWeight: normalizedFont.fontWeight,
+        fontStyle: normalizedFont.fontStyle,
         fill: getProp(textNode, "fill", "#000"),
         lineHeightKonva: getProp(textNode, "lineHeight", 1.2),
       };

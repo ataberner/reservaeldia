@@ -8,6 +8,31 @@ import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/d
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
 import { getCenteredTextPosition } from "@/utils/getTextMetrics";
 
+function normalizeFontSize(value, fallback = 24) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isBoldFontWeight(weight) {
+  const normalized = String(weight || "normal").toLowerCase();
+  return (
+    normalized === "bold" ||
+    normalized === "bolder" ||
+    ["500", "600", "700", "800", "900"].includes(normalized)
+  );
+}
+
+function resolveKonvaFontStyle(fontStyle, fontWeight) {
+  const style = String(fontStyle || "normal").toLowerCase();
+  const isItalic = style.includes("italic") || style.includes("oblique");
+  const isBold = style.includes("bold") || isBoldFontWeight(fontWeight);
+
+  if (isBold && isItalic) return "bold italic";
+  if (isBold) return "bold";
+  if (isItalic) return "italic";
+  return "normal";
+}
+
 
 
 
@@ -428,12 +453,17 @@ export default function ElementoCanvas({
     // ✅ VALIDACIÓN: Asegurar valores numéricos válidos
     const validX = typeof obj.x === "number" && !isNaN(obj.x) ? obj.x : 0;
     const validY = typeof obj.y === "number" && !isNaN(obj.y) ? obj.y : 0;
-    const validFontSize = typeof obj.fontSize === "number" && !isNaN(obj.fontSize) && obj.fontSize > 0 ? obj.fontSize : 24;
+    const validFontSize = normalizeFontSize(obj.fontSize, 24);
+    const textDecoration =
+      typeof obj.textDecoration === "string" && obj.textDecoration.trim().length > 0
+        ? obj.textDecoration
+        : "none";
 
     // 🔹 PASO 1: Calcular dimensiones del texto PRIMERO
     const ctx = document.createElement("canvas").getContext("2d");
     const style = obj.fontStyle || "normal";
     const weight = obj.fontWeight || "normal";
+    const konvaFontStyle = resolveKonvaFontStyle(style, weight);
 
     // ✅ si la fuente tiene espacios, envolverla en comillas para que canvas no caiga a fallback
     const fontForCanvas = fontFamily.includes(",")
@@ -532,7 +562,8 @@ export default function ElementoCanvas({
           fontSize={validFontSize}
           fontFamily={fontFamily}
           fontWeight={obj.fontWeight || "normal"}
-          fontStyle={obj.fontStyle || "normal"}
+          fontStyle={konvaFontStyle}
+          textDecoration={textDecoration}
           lineHeight={lineHeight}
           fill={fillColor}
           opacity={appliedOpacity}
@@ -590,10 +621,11 @@ export default function ElementoCanvas({
           width={width}
           height={height}
           text={obj.texto || "Confirmar asistencia"}
-          fontSize={obj.fontSize || 18}
+          fontSize={normalizeFontSize(obj.fontSize, 18)}
           fontFamily={fontFamily}
-          fontStyle={obj.fontStyle || "normal"}
+          fontStyle={resolveKonvaFontStyle(obj.fontStyle || "normal", obj.fontWeight || "bold")}
           fontWeight={obj.fontWeight || "bold"}
+          textDecoration={obj.textDecoration || "none"}
           fill={obj.colorTexto || "#ffffff"}
           align={obj.align || "center"}
           verticalAlign="middle"
@@ -899,10 +931,11 @@ export default function ElementoCanvas({
                 width={width}
                 height={height}
                 text={obj.texto}
-                fontSize={obj.fontSize || 24}
+                fontSize={normalizeFontSize(obj.fontSize, 24)}
                 fontFamily={obj.fontFamily || "sans-serif"}
                 fontWeight={obj.fontWeight || "normal"}
-                fontStyle={obj.fontStyle || "normal"}
+                fontStyle={resolveKonvaFontStyle(obj.fontStyle || "normal", obj.fontWeight || "normal")}
+                textDecoration={obj.textDecoration || "none"}
                 fill={obj.colorTexto || "#000000"}
                 align={obj.align || "center"}
                 verticalAlign="middle"
@@ -949,6 +982,3 @@ export default function ElementoCanvas({
 
   return null;
 }
-
-
-

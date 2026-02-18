@@ -113,7 +113,15 @@ export function cambiarAlineacionTexto({ objetos, elementosSeleccionados, setObj
 
   setObjetos((prev) =>
     prev.map((o) => {
-      if (!elementosSeleccionados.includes(o.id) || o.tipo !== 'texto') return o;
+      const esTexto = o.tipo === 'texto';
+      const esRectConTexto =
+        o.tipo === 'forma' &&
+        o.figura === 'rect' &&
+        typeof o.texto === 'string';
+
+      if (!elementosSeleccionados.includes(o.id) || (!esTexto && !esRectConTexto)) {
+        return o;
+      }
 
       const currentIndex = alineaciones.indexOf(o.align || 'left');
       const nextIndex = (currentIndex + 1) % alineaciones.length;

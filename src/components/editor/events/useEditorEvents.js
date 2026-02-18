@@ -1,4 +1,4 @@
-﻿// src/components/editor/events/useEditorEvents.js
+// src/components/editor/events/useEditorEvents.js
 import { useEffect } from "react";
 import computeInsertDefaults from "./computeInsertDefaults";
 
@@ -8,9 +8,9 @@ import computeInsertDefaults from "./computeInsertDefaults";
  * - window.addEventListener("insertar-elemento")
  * - window.addEventListener("actualizar-elemento")
  * - window.addEventListener("agregar-cuadro-texto")
- * - window.addEventListener("crear-seccion")  (NO acÃ¡: ya estÃ¡ en useSectionsManager)
+ * - window.addEventListener("crear-seccion")  (NO acá: ya está en useSectionsManager)
  *
- * âš ï¸ Importante: no cambia lÃ³gica, solo mueve lo que ya existÃ­a en CanvasEditor.
+ * ⚠️ Importante: no cambia lógica, solo mueve lo que ya existía en CanvasEditor.
  */
 export default function useEditorEvents({
   // estado/props necesarios
@@ -29,10 +29,10 @@ export default function useEditorEvents({
   // refs existentes
   nuevoTextoRef,
 
-  // setSeccionActivaId NO lo usamos acÃ¡ (solo lo usa el canvas en otros handlers)
+  // setSeccionActivaId NO lo usamos acá (solo lo usa el canvas en otros handlers)
 }) {
   // ------------------------------------------------------------
-  // 1) Exponer funciÃ³n global: asignar imagen a la celda activa
+  // 1) Exponer función global: asignar imagen a la celda activa
   // ------------------------------------------------------------
   useEffect(() => {
     window.asignarImagenACelda = (mediaUrl, fit = "cover", bg) => {
@@ -60,7 +60,7 @@ export default function useEditorEvents({
         return next;
       });
 
-      // opcional: desactivar el slot activo despuÃ©s de asignar
+      // opcional: desactivar el slot activo después de asignar
       setCeldaGaleriaActiva(null);
       return true;
     };
@@ -85,7 +85,7 @@ export default function useEditorEvents({
       const targetSeccionId = seccionActivaId || fallbackId;
 
       if (!targetSeccionId) {
-        alert("âš ï¸ No hay secciones aÃºn. CreÃ¡ una secciÃ³n para insertar el elemento.");
+        alert("⚠️ No hay secciones aún. Creá una sección para insertar el elemento.");
         return;
       }
 
@@ -136,7 +136,7 @@ export default function useEditorEvents({
         return next;
       });
 
-      // âœ… NUEVO: avisar a SelectionBounds que reattach el transformer
+      // ✅ NUEVO: avisar a SelectionBounds que reattach el transformer
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           window.dispatchEvent(
@@ -158,7 +158,7 @@ export default function useEditorEvents({
   useEffect(() => {
     const handler = () => {
       if (!seccionActivaId) {
-        alert("SeleccionÃ¡ una secciÃ³n antes de agregar un cuadro de texto.");
+        alert("Seleccioná una sección antes de agregar un cuadro de texto.");
         return;
       }
 
@@ -181,7 +181,7 @@ export default function useEditorEvents({
         seccionId: seccionActivaId,
       };
 
-      // âœ… Si la secciÃ³n activa es pantalla, inicializamos yNorm
+      // ✅ Si la sección activa es pantalla, inicializamos yNorm
       const secActiva = secciones.find((s) => s.id === seccionActivaId);
       if (normalizarAltoModo(secActiva?.altoModo) === "pantalla") {
         nuevo.yNorm = Math.max(
@@ -190,7 +190,7 @@ export default function useEditorEvents({
         );
       }
 
-      // âœ… respeta el comportamiento original
+      // ✅ respeta el comportamiento original
       if (nuevoTextoRef?.current != null) {
         nuevoTextoRef.current = nuevo.id;
       }

@@ -9,6 +9,8 @@ import { getRedirectResult } from "firebase/auth";
 import { auth } from "@/firebase";
 import { useRouter } from "next/navigation";
 
+const GOOGLE_REDIRECT_PENDING_KEY = "google_auth_redirect_pending";
+
 function getAuthNoticeMessage(code) {
   if (code === "email-not-verified") {
     return "Necesitas verificar tu correo antes de entrar al dashboard.";
@@ -56,17 +58,38 @@ export default function Home() {
     let mounted = true;
 
     (async () => {
+      let hadPendingRedirect = false;
       try {
+        if (typeof window !== "undefined") {
+          hadPendingRedirect =
+            window.sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY) === "1";
+        }
+
         const result = await getRedirectResult(auth);
+        const user = result?.user || (hadPendingRedirect ? auth.currentUser : null);
 
         // Si volvimos de Google y ya hay usuario, cerramos modales y vamos al dashboard
-        if (result?.user && mounted) {
+        if (user && mounted) {
           setShowLogin(false);
           setShowRegister(false);
           router.push("/dashboard");
+          return;
+        }
+
+        if (hadPendingRedirect && mounted) {
+          setAuthNotice("No pudimos completar el ingreso con Google. Intenta nuevamente.");
+          setShowLogin(true);
         }
       } catch (err) {
         console.error("Error en redirect Google:", err);
+        if (mounted && hadPendingRedirect) {
+          setAuthNotice("No pudimos completar el ingreso con Google. Intenta nuevamente.");
+          setShowLogin(true);
+        }
+      } finally {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        }
       }
     })();
 

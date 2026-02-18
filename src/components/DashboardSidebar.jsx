@@ -1,4 +1,4 @@
-﻿// src/components/DashboardSidebar.jsx
+// src/components/DashboardSidebar.jsx
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
@@ -33,7 +33,7 @@ export default function DashboardSidebar({
     seccionActivaId,
 }) {
     // --------------------------
-    // ðŸ”¹ Estados internos del sidebar
+    // 🔹 Estados internos del sidebar
     // --------------------------
     const [hoverSidebar, setHoverSidebar] = useState(false);
     const [fijadoSidebar, setFijadoSidebar] = useState(false);
@@ -55,7 +55,7 @@ export default function DashboardSidebar({
     const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
     // --------------------------
-    // ðŸ”¹ Reset de paneles al cerrar sidebar
+    // 🔹 Reset de paneles al cerrar sidebar
     // --------------------------
     useEffect(() => {
         if (!sidebarAbierta) {
@@ -65,7 +65,7 @@ export default function DashboardSidebar({
     }, [sidebarAbierta]);
 
     // --------------------------
-    // ðŸ”¹ Cierra hover al hacer clic fuera
+    // 🔹 Cierra hover al hacer clic fuera
     // --------------------------
     useEffect(() => {
         const handleClickFuera = (e) => {
@@ -84,7 +84,7 @@ export default function DashboardSidebar({
 
     const closeTimerRef = useRef(null);
 
-    // Helpers para mostrar/ocultar con pequeÃ±o delay seguro
+    // Helpers para mostrar/ocultar con pequeño delay seguro
     const openPanel = (tipo) => {
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
         if (fijadoSidebar) return;
@@ -95,7 +95,7 @@ export default function DashboardSidebar({
     const scheduleClosePanel = () => {
         if (fijadoSidebar) return;
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-        // â³ delay mÃ¡s generoso
+        // ⏳ delay más generoso
         closeTimerRef.current = setTimeout(() => setHoverSidebar(false), 250);
     };
 
@@ -109,10 +109,10 @@ export default function DashboardSidebar({
 
 
     // --------------------------
-    // ðŸ”¹ Crear nueva plantilla
+    // 🔹 Crear nueva plantilla
     // --------------------------
     const ejecutarCrearPlantilla = async () => {
-        const confirmar = confirm("Â¿QuerÃ©s crear la plantilla?");
+        const confirmar = confirm("¿Querés crear la plantilla?");
         if (!confirmar) return;
 
         const urlFondo =
@@ -149,7 +149,7 @@ export default function DashboardSidebar({
                             {
                                 id: "titulo1",
                                 tipo: "texto",
-                                texto: "Â¡Nos Casamos!",
+                                texto: "¡Nos Casamos!",
                                 x: 100,
                                 y: 200,
                                 fontSize: 20,
@@ -192,18 +192,18 @@ export default function DashboardSidebar({
                     },
                 });
 
-                console.log("âœ… Plantilla creada:", res.data);
-                alert("âœ… Plantilla creada con Ã©xito");
+                console.log("✅ Plantilla creada:", res.data);
+                alert("✅ Plantilla creada con éxito");
             } catch (error) {
-                console.error("âŒ Error al crear la plantilla:", error);
-                alert("OcurriÃ³ un error al crear la plantilla");
+                console.error("❌ Error al crear la plantilla:", error);
+                alert("Ocurrió un error al crear la plantilla");
             }
         };
     };
 
 
 
-    // ðŸ‘‡ handler para insertar el contador con defaults
+    // 👇 handler para insertar el contador con defaults
     const onAgregarCuentaRegresiva = useCallback(({ targetISO, preset }) => {
         if (!seccionActivaId) {
             alert("Selecciona una seccion antes de agregar la cuenta regresiva.");
@@ -267,14 +267,14 @@ export default function DashboardSidebar({
         setFijadoSidebar((prevFijado) => {
             const mismoBoton = botonActivo === boton;
 
-            // Si ya estaba fijado y vuelvo a hacer click en el mismo botÃ³n => cierro
+            // Si ya estaba fijado y vuelvo a hacer click en el mismo botón => cierro
             if (prevFijado && mismoBoton) {
                 setHoverSidebar(false);
                 setBotonActivo(null);
                 return false;
             }
 
-            // Si clic en otro botÃ³n => cambio el botÃ³n y dejo fijado
+            // Si clic en otro botón => cambio el botón y dejo fijado
             setHoverSidebar(true);
             setBotonActivo(boton);
             return true;
@@ -293,7 +293,7 @@ export default function DashboardSidebar({
 
 
     // --------------------------
-    // ðŸ”¹ No renderizar en modo selector
+    // 🔹 No renderizar en modo selector
     // --------------------------
     if (modoSelector) return null;
 
@@ -321,12 +321,12 @@ export default function DashboardSidebar({
                     onMouseEnter={() => openPanel("menu")}
 
                     className={getIconButtonClass("menu")}
-                    title="MenÃº"
+                    title="Menú"
                 >
                     <FaBars className="text-white text-xl" />
                 </div>
 
-                {/* ðŸ–¥ï¸ Escritorio: barra vertical a la izquierda */}
+                {/* 🖥️ Escritorio: barra vertical a la izquierda */}
                 <div className="hidden md:flex flex-col items-center gap-4 mt-4">
                     <button
                         onMouseEnter={() => openPanel("texto")}
@@ -338,7 +338,7 @@ export default function DashboardSidebar({
                         }}
                         onClick={() => alternarSidebarConBoton("texto")}
                         className={getIconButtonClass("texto")}
-                        title="AÃ±adir texto"
+                        title="Añadir texto"
                     >
                         <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
                     </button>
@@ -354,7 +354,7 @@ export default function DashboardSidebar({
                         }}
                         onClick={() => alternarSidebarConBoton("forma")}
                         className={getIconButtonClass("forma")}
-                        title="AÃ±adir forma"
+                        title="Añadir forma"
                     >
                         <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
                     </button>
@@ -369,7 +369,7 @@ export default function DashboardSidebar({
                         }}
                         onClick={() => alternarSidebarConBoton("imagen")}
                         className={getIconButtonClass("imagen")}
-                        title="Abrir galerÃ­a"
+                        title="Abrir galería"
                     >
                         <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
                     </button>
@@ -386,16 +386,16 @@ export default function DashboardSidebar({
                         className={getIconButtonClass("contador")}
                         title="Cuenta regresiva"
                     >
-                        <span className="text-xl">â±ï¸</span>
+                        <span className="text-xl">⏱️</span>
                     </button>
                 </div>
 
-                {/* ðŸ“± MÃ³vil: barra horizontal inferior */}
+                {/* 📱 Móvil: barra horizontal inferior */}
                 <div className="flex md:hidden flex-row justify-around items-center w-full px-4">
                     <button
                         onClick={() => alternarSidebarConBoton("texto")}
                         className={getIconButtonClass("texto")}
-                        title="AÃ±adir texto"
+                        title="Añadir texto"
                     >
                         <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
                     </button>
@@ -403,7 +403,7 @@ export default function DashboardSidebar({
                     <button
                         onClick={() => alternarSidebarConBoton("forma")}
                         className={getIconButtonClass("forma")}
-                        title="AÃ±adir forma"
+                        title="Añadir forma"
                     >
                         <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
                     </button>
@@ -411,7 +411,7 @@ export default function DashboardSidebar({
                     <button
                         onClick={() => alternarSidebarConBoton("imagen")}
                         className={getIconButtonClass("imagen")}
-                        title="Abrir galerÃ­a"
+                        title="Abrir galería"
                     >
                         <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
                     </button>
@@ -421,7 +421,7 @@ export default function DashboardSidebar({
                         className={getIconButtonClass("contador")}
                         title="Cuenta regresiva"
                     >
-                        <span className="text-xl">â±ï¸</span>
+                        <span className="text-xl">⏱️</span>
                     </button>
                 </div>
             </aside>
@@ -437,18 +437,18 @@ export default function DashboardSidebar({
       transition-all duration-300 animate-slideUp
     "
                     onMouseEnter={() => {
-                        cancelClosePanel(); // ðŸš« cancela el cierre programado
+                        cancelClosePanel(); // 🚫 cancela el cierre programado
                         if (!fijadoSidebar) setHoverSidebar(true);
                     }}
                     onMouseLeave={(e) => {
                         const aside = document.querySelector("aside");
                         // Si el mouse se va hacia la barra lateral, no cierres
                         if (safeContains(aside, e.relatedTarget)) return;
-                        scheduleClosePanel(); // â³ programa cierre
+                        scheduleClosePanel(); // ⏳ programa cierre
                     }}
 
                     onMouseDown={(e) => {
-                        // ðŸ§  importante: si el usuario clickea dentro del panel, no cerramos
+                        // 🧠 importante: si el usuario clickea dentro del panel, no cerramos
                         e.stopPropagation();
                         if (!fijadoSidebar) setHoverSidebar(true);
                     }}
@@ -459,13 +459,13 @@ export default function DashboardSidebar({
                                 right: "0",
                                 bottom: "calc(70px + env(safe-area-inset-bottom, 0px))",
                                 width: "100%",
-                                maxHeight: "60vh", // ðŸ”¹ ocupa mÃ¡s alto en mÃ³vil
-                                overflowY: "auto", // ðŸ”¹ scroll vertical
-                                WebkitOverflowScrolling: "touch", // ðŸ”¹ scroll suave en iOS
+                                maxHeight: "60vh", // 🔹 ocupa más alto en móvil
+                                overflowY: "auto", // 🔹 scroll vertical
+                                WebkitOverflowScrolling: "touch", // 🔹 scroll suave en iOS
                             }
                             : {
                                 left: "4rem",
-                                top: "69px", // ðŸ”¹ justo debajo del header
+                                top: "69px", // 🔹 justo debajo del header
                                 height: "calc(100vh - 56px - 2rem)",
                                 width: "18rem",
                                 overflowY: "auto",
@@ -473,7 +473,7 @@ export default function DashboardSidebar({
                     }
                 >
                     <div className="relative pt-10 px-3 pb-4 flex flex-col gap-5 text-gray-800 w-full h-full min-h-0">
-                        {/* ðŸ”¹ BotÃ³n para cerrar el panel */}
+                        {/* 🔹 Botón para cerrar el panel */}
                         {fijadoSidebar && (
                             <button
                                 onClick={() => {
@@ -488,11 +488,11 @@ export default function DashboardSidebar({
           "
                                 title="Cerrar panel"
                             >
-                                â†
+                                ←
                             </button>
                         )}
 
-                        {/* ðŸ”¹ Panel de Formas */}
+                        {/* 🔹 Panel de Formas */}
                         {botonActivo === "forma" && (
                             <PanelDeFormas
                                 abierto={true}
@@ -502,7 +502,7 @@ export default function DashboardSidebar({
                             />
                         )}
 
-                        {/* ðŸ”¹ MiniToolbar con todas las acciones */}
+                        {/* 🔹 MiniToolbar con todas las acciones */}
                         <MiniToolbar
                             botonActivo={botonActivo}
                             onAgregarTitulo={() => {
@@ -572,7 +572,7 @@ export default function DashboardSidebar({
                             abrirSelector={abrirSelector}
                             onCrearPlantilla={ejecutarCrearPlantilla}
                             onBorrarTodos={async () => {
-                                const confirmar = confirm("Â¿Seguro que querÃ©s borrar TODOS tus borradores?");
+                                const confirmar = confirm("¿Seguro que querés borrar TODOS tus borradores?");
                                 if (!confirmar) return;
                                 try {
                                     const functions = (await import("firebase/functions")).getFunctions();
@@ -581,10 +581,10 @@ export default function DashboardSidebar({
                                         "borrarTodosLosBorradores"
                                     );
                                     await borrarTodos();
-                                    alert("âœ… Todos los borradores fueron eliminados.");
+                                    alert("✅ Todos los borradores fueron eliminados.");
                                     window.location.reload();
                                 } catch (error) {
-                                    console.error("âŒ Error al borrar todos los borradores", error);
+                                    console.error("❌ Error al borrar todos los borradores", error);
                                     alert("No se pudieron borrar los borradores.");
                                 }
                             }}

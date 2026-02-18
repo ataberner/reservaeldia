@@ -1,7 +1,6 @@
-﻿// SelectionBounds.jsx
+// SelectionBounds.jsx
 import { useEffect, useRef, useState } from "react";
 import { Transformer, Rect } from "react-konva";
-import useIsTouchLike from "@/components/editor/mobile/useIsTouchLike";
 
 
 
@@ -60,7 +59,7 @@ function getCountdownScaledSize(node) {
 }
 
 
-// ðŸŽ¨ Componente para mostrar bounds sin transformer (lÃ­neas, etc.)
+// 🎨 Componente para mostrar bounds sin transformer (líneas, etc.)
 const BoundsIndicator = ({ selectedElements, elementRefs, objetos }) => {
   const [forceUpdate, setForceUpdate] = useState(0);
 
@@ -201,7 +200,6 @@ export default function SelectionBounds({
   objetos,
   onTransform,
   isDragging,
-  isMobile = false,
 }) {
   const transformerRef = useRef(null);
   const [transformTick, setTransformTick] = useState(0);
@@ -216,10 +214,9 @@ export default function SelectionBounds({
   const esCountdown = primerElemento?.tipo === "countdown";
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
-  const isTouchLike = useIsTouchLike(isMobile);
-  const transformerAnchorSize = isTouchLike ? 44 : 28;
-  const transformerRotateOffset = isTouchLike ? 44 : 30;
-  const transformerAnchorRadius = isTouchLike ? 10 : 6;
+  const transformerAnchorSize = 14;
+  const transformerRotateOffset = 24;
+  const transformerAnchorRadius = 999;
   const esTriangulo =
     primerElemento?.tipo === "forma" &&
     primerElemento?.figura === "triangle";
@@ -280,7 +277,7 @@ export default function SelectionBounds({
   };
 
 
-  // ðŸ”¥ Efecto principal del Transformer (SIN retry / SIN flicker)
+  // 🔥 Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -326,7 +323,7 @@ export default function SelectionBounds({
       }
     }
 
-    // Si aÃºn no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
+    // Si aún no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
     if (nodosTransformables.length === 0) {
       TRDBG("EFFECT exit: no nodes yet", {
         selKey,
@@ -355,7 +352,7 @@ export default function SelectionBounds({
     tr.getLayer()?.batchDraw();
 
   }, [
-    // Dependencias mÃ­nimas reales
+    // Dependencias mínimas reales
     selectedElements.join(","),
     deberiaUsarTransformer,
     hasGallery,
@@ -419,7 +416,7 @@ export default function SelectionBounds({
 
 
 
-  // ðŸ”¥ Render
+  // 🔥 Render
 
   if (selectedElements.length === 0) return null;
 
@@ -448,7 +445,7 @@ export default function SelectionBounds({
       name="ui"
       ref={transformerRef}
 
-      // ðŸ”µ borde siempre visible
+      // 🔵 borde siempre visible
       borderEnabled={true}
 
       borderStroke="#9333EA"
@@ -456,7 +453,7 @@ export default function SelectionBounds({
 
       borderStrokeWidth={1}
 
-      // âŒ nodos y rotaciÃ³n OFF durante drag
+      // ❌ nodos y rotación OFF durante drag
       enabledAnchors={isDragging ? [] : ["bottom-right"]}
       rotateEnabled={!isDragging && !esGaleria}
 
@@ -632,7 +629,7 @@ export default function SelectionBounds({
             : null;
 
           const n = nodes[0];
-          const id = n ? (typeof n.id === "function" ? n.id() : n.attrs?.id) : "âˆ…";
+          const id = n ? (typeof n.id === "function" ? n.id() : n.attrs?.id) : "∅";
           const trRect = tr?.getClientRect?.({ skipTransform: false, skipShadow: true, skipStroke: true });
 
           slog(
@@ -652,7 +649,7 @@ export default function SelectionBounds({
 
         const tr = transformerRef.current;
         const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
-        const node = nodes[0]; // âœ… nodo real (single select)
+        const node = nodes[0]; // ✅ nodo real (single select)
         if (!node) return;
 
         try {
@@ -721,21 +718,21 @@ export default function SelectionBounds({
           onTransform(transformData);
 
           // --- LOG COMPACTO (opcional) ---
-          const id = (typeof node.id === "function" ? node.id() : node.attrs?.id) || "âˆ…";
+          const id = (typeof node.id === "function" ? node.id() : node.attrs?.id) || "∅";
           const sx = node.scaleX?.() ?? 1;
           const sy = node.scaleY?.() ?? 1;
           const r = node.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
           slog(
             "[TR] live",
             `id=${id}`,
-            `tipo=${primerElemento?.tipo || "âˆ…"}`,
+            `tipo=${primerElemento?.tipo || "∅"}`,
             `sx=${sx.toFixed(3)}`,
             `sy=${sy.toFixed(3)}`,
             `x=${(node.x?.() ?? 0).toFixed(1)}`,
             `y=${(node.y?.() ?? 0).toFixed(1)}`,
             `nodeRect(w=${r.width.toFixed(1)},h=${r.height.toFixed(1)})`,
-            `w=${transformData.width ?? "âˆ…"}`,
-            `h=${transformData.height ?? "âˆ…"}`
+            `w=${transformData.width ?? "∅"}`,
+            `h=${transformData.height ?? "∅"}`
           );
         } catch (error) {
           console.warn("Error en onTransform:", error);
@@ -748,7 +745,7 @@ export default function SelectionBounds({
         const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
 
         // -------------------------
-        // MULTI-SELECCIÃ“N
+        // MULTI-SELECCIÓN
         // -------------------------
         if (nodes.length > 1) {
           try {
@@ -849,7 +846,7 @@ export default function SelectionBounds({
         }
 
         // -------------------------
-        // SINGLE-SELECCIÃ“N
+        // SINGLE-SELECCIÓN
         // -------------------------
         const node = nodes[0];
         if (!node) return;
@@ -873,7 +870,7 @@ export default function SelectionBounds({
             finalData.scaleX = 1;
             finalData.scaleY = 1;
 
-            // âœ… Aplanado sync para texto (solo escala)
+            // ✅ Aplanado sync para texto (solo escala)
             try {
               node.scaleX(1);
               node.scaleY(1);
@@ -907,7 +904,7 @@ export default function SelectionBounds({
                 if (typeof node.radius === "function") node.radius(finalData.radius);
                 node.getLayer()?.batchDraw();
               } catch (err) {
-                console.warn("Error aplanando escala de triÃ¡ngulo (sync):", err);
+                console.warn("Error aplanando escala de triángulo (sync):", err);
               }
             } else {
               finalData.scaleX = 1;
@@ -938,7 +935,7 @@ export default function SelectionBounds({
                 } catch {}
               }
 
-              // âœ… Aplanar escala INMEDIATO
+              // ✅ Aplanar escala INMEDIATO
               try {
                 const fw = finalData.width;
                 const fh = finalData.height;
@@ -968,7 +965,7 @@ export default function SelectionBounds({
           circleAnchorRef.current = null;
 
 
-          // âœ… Reatachar 1 vez, con ref fresco, en el prÃ³ximo frame
+          // ✅ Reatachar 1 vez, con ref fresco, en el próximo frame
           try {
             const tr2 = transformerRef.current;
             if (!tr2) return;
@@ -989,7 +986,7 @@ export default function SelectionBounds({
                 hasStage: !!freshNode?.getStage?.(),
               });
 
-              // Si el nodo no estÃ¡ listo, despegar y salir
+              // Si el nodo no está listo, despegar y salir
               if (!freshNode || freshNode._destroyed || !freshNode.getStage?.()) {
                 TRDBG("onTransformEnd RAF -> DETACH nodes([])", { idSel });
                 try { tr2.nodes([]); tr2.getLayer?.()?.batchDraw(); } catch { }
@@ -1015,5 +1012,4 @@ export default function SelectionBounds({
     />
   );
 }
-
 

@@ -1,13 +1,13 @@
-﻿// src/components/editor/sections/useSectionsManager.js
+// src/components/editor/sections/useSectionsManager.js
 import { useCallback, useEffect, useState } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../../firebase"; // âœ… ajustado a tu estructura real
+import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
 
 /**
  * Maneja todo lo relacionado a secciones:
  * - resize de altura (drag)
  * - toggle Pantalla ON/OFF
- * - crear secciÃ³n (y persistir)
+ * - crear sección (y persistir)
  */
 export default function useSectionsManager({
     slug,
@@ -41,7 +41,7 @@ export default function useSectionsManager({
     }, []);
 
     // ------------------------------------------
-    // A) Resize altura de secciÃ³n
+    // A) Resize altura de sección
     // ------------------------------------------
     const [controlandoAltura, setControlandoAltura] = useState(false);
     const [alturaInicial, setAlturaInicial] = useState(0);
@@ -132,9 +132,9 @@ export default function useSectionsManager({
                 });
 
                 clearGlobalCursor?.(stageRef);
-                console.log("âœ… Altura guardada:", seccionId);
+                console.log("✅ Altura guardada:", seccionId);
             } catch (error) {
-                console.error("âŒ Error guardando altura:", error);
+                console.error("❌ Error guardando altura:", error);
             }
         }, 300);
     }, [controlandoAltura, secciones, slug, clearGlobalCursor, stageRef]);
@@ -280,16 +280,16 @@ export default function useSectionsManager({
                     ultimaEdicion: serverTimestamp(),
                 });
 
-                console.log("âœ… altoModo actualizado:", seccionId);
+                console.log("✅ altoModo actualizado:", seccionId);
             } catch (e) {
-                console.error("âŒ Error guardando altoModo:", e);
+                console.error("❌ Error guardando altoModo:", e);
             }
         },
         [slug, secciones, setSecciones, normalizarAltoModo, ALTURA_REFERENCIA_PANTALLA]
     );
 
     // ------------------------------------------
-    // C) Crear secciÃ³n (y persistir)
+    // C) Crear sección (y persistir)
     // ------------------------------------------
     const handleCrearSeccion = useCallback(
         async (datos) => {
@@ -322,8 +322,8 @@ export default function useSectionsManager({
                         secciones: seccionesLimpias,
                         objetos: objetosLimpios,
                     })
-                        .then(() => console.log("âœ… SecciÃ³n agregada:", nueva))
-                        .catch((error) => console.error("âŒ Error al guardar secciÃ³n", error));
+                        .then(() => console.log("✅ Sección agregada:", nueva))
+                        .catch((error) => console.error("❌ Error al guardar sección", error));
 
                     return nuevosObjetos;
                 });
@@ -352,7 +352,7 @@ export default function useSectionsManager({
         // toggle pantalla
         togglePantallaCompletaSeccion,
 
-        // crear secciÃ³n
+        // crear sección
         handleCrearSeccion,
     };
 }

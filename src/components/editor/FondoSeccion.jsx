@@ -201,7 +201,10 @@ export default function FondoSeccion({
             enabledAnchors={["bottom-right"]}
             borderStroke="#773dbe"
             anchorFill="#773dbe"
-            anchorSize={22}
+            anchorStroke="#ffffff"
+            anchorStrokeWidth={2}
+            anchorSize={14}
+            anchorCornerRadius={999}
             keepRatio={true}
             onTransform={() => {
               const node = imagenRef.current;

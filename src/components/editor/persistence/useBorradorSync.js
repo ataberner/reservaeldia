@@ -1,161 +1,236 @@
 // src/components/editor/persistence/useBorradorSync.js
 import { useEffect } from "react";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/firebase"; // ajustá si tu alias difiere
+import { getDownloadURL, ref as storageRef } from "firebase/storage";
+import { db, storage } from "@/firebase";
+
+const STORAGE_DOWNLOAD_URL_REGEX =
+  /^https?:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/.+/i;
+
+function parseStoragePathFromDownloadUrl(value) {
+  if (typeof value !== "string" || !STORAGE_DOWNLOAD_URL_REGEX.test(value)) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    const marker = "/o/";
+    const index = url.pathname.indexOf(marker);
+    if (index < 0) return null;
+
+    const encodedPath = url.pathname.slice(index + marker.length);
+    return encodedPath ? decodeURIComponent(encodedPath) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshStorageUrl(value, cache) {
+  const path = parseStoragePathFromDownloadUrl(value);
+  if (!path) return value;
+
+  if (cache.has(path)) {
+    return cache.get(path);
+  }
+
+  try {
+    const freshUrl = await getDownloadURL(storageRef(storage, path));
+    cache.set(path, freshUrl);
+    return freshUrl;
+  } catch (error) {
+    const code = String(error?.code || "");
+    const shouldDropUrl =
+      code.includes("storage/object-not-found") ||
+      code.includes("storage/unauthorized") ||
+      code.includes("storage/forbidden");
+
+    const fallbackValue = shouldDropUrl ? null : value;
+    cache.set(path, fallbackValue);
+    return fallbackValue;
+  }
+}
+
+async function refreshUrlsDeep(value, cache) {
+  if (typeof value === "string") {
+    return refreshStorageUrl(value, cache);
+  }
+
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => refreshUrlsDeep(item, cache)));
+  }
+
+  if (value && typeof value === "object") {
+    const pairs = await Promise.all(
+      Object.entries(value).map(async ([key, nested]) => {
+        const refreshed = await refreshUrlsDeep(nested, cache);
+        return [key, refreshed];
+      })
+    );
+    return Object.fromEntries(pairs);
+  }
+
+  return value;
+}
 
 /**
- * Hook de sincronización Firestore para el borrador (carga + guardado con debounce).
- * Mantiene la lógica EXACTA que hoy está en CanvasEditor, solo la mueve de lugar.
+ * Hook de sincronizacion Firestore para el borrador (carga + guardado con debounce).
+ * Mantiene la logica original de CanvasEditor.
  */
 export default function useBorradorSync({
-    slug,
-    userId,
+  slug,
+  userId,
 
-    // estado actual
-    objetos,
-    secciones,
-    cargado,
+  // estado actual
+  objetos,
+  secciones,
+  cargado,
 
-    // setters
-    setObjetos,
-    setSecciones,
-    setCargado,
-    setSeccionActivaId,
+  // setters
+  setObjetos,
+  setSecciones,
+  setCargado,
+  setSeccionActivaId,
 
-    // refs / helpers que ya existen en CanvasEditor
-    ignoreNextUpdateRef,
-    stageRef,
+  // refs / helpers que ya existen en CanvasEditor
+  ignoreNextUpdateRef,
+  stageRef,
 
-    // helpers de tu layout actual
-    normalizarAltoModo,
-    validarPuntosLinea,
+  // helpers de tu layout actual
+  normalizarAltoModo,
+  validarPuntosLinea,
 
-    // constantes
-    ALTURA_PANTALLA_EDITOR,
+  // constantes
+  ALTURA_PANTALLA_EDITOR,
 }) {
-    // 🔥 helper: limpiar undefined recursivo
-    const limpiarUndefined = (obj) => {
-        if (Array.isArray(obj)) return obj.map(limpiarUndefined);
+  // helper: limpiar undefined recursivo
+  const limpiarUndefined = (obj) => {
+    if (Array.isArray(obj)) return obj.map(limpiarUndefined);
 
-        if (obj !== null && typeof obj === "object") {
-            const objLimpio = {};
-            Object.keys(obj).forEach((key) => {
-                const valor = obj[key];
-                if (valor !== undefined) objLimpio[key] = limpiarUndefined(valor);
-            });
-            return objLimpio;
+    if (obj !== null && typeof obj === "object") {
+      const objLimpio = {};
+      Object.keys(obj).forEach((key) => {
+        const valor = obj[key];
+        if (valor !== undefined) objLimpio[key] = limpiarUndefined(valor);
+      });
+      return objLimpio;
+    }
+
+    return obj;
+  };
+
+  // 1) Cargar borrador desde Firestore
+  useEffect(() => {
+    if (!slug) return;
+
+    const cargar = async () => {
+      const ref = doc(db, "borradores", slug);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        const data = snap.data();
+        const seccionesData = data.secciones || [];
+        const objetosData = data.objetos || [];
+
+        // Refresca URLs de Firebase Storage por si hay tokens vencidos/revocados.
+        const refreshCache = new Map();
+        const [seccionesRefrescadas, objetosRefrescados] = await Promise.all([
+          refreshUrlsDeep(seccionesData, refreshCache),
+          refreshUrlsDeep(objetosData, refreshCache),
+        ]);
+
+        // Mantengo tu migracion de yNorm para secciones pantalla
+        const objsMigrados = objetosRefrescados.map((o) => {
+          if (!o?.seccionId) return o;
+
+          const sec = seccionesRefrescadas.find((s) => s.id === o.seccionId);
+          const modo = normalizarAltoModo(sec?.altoModo);
+
+          if (modo === "pantalla") {
+            if (!Number.isFinite(o.yNorm)) {
+              const yPx = Number.isFinite(o.y) ? o.y : 0;
+              const yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
+              return { ...o, yNorm };
+            }
+          }
+
+          return o;
+        });
+
+        setObjetos(objsMigrados);
+        setSecciones(seccionesRefrescadas);
+
+        // Setear primera seccion activa si no hay
+        if (typeof setSeccionActivaId === "function" && seccionesRefrescadas.length > 0) {
+          setSeccionActivaId((prev) => prev || seccionesRefrescadas[0].id);
         }
+      }
 
-        return obj;
+      setCargado(true);
     };
 
-    // ✅ 1) Cargar borrador desde Firestore
-    useEffect(() => {
-        if (!slug) return;
+    cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
-        const cargar = async () => {
-            const ref = doc(db, "borradores", slug);
-            const snap = await getDoc(ref);
+  // 2) Guardar en Firestore con debounce cuando cambian objetos/secciones
+  useEffect(() => {
+    if (!cargado) return;
+    if (!slug) return;
 
-            if (snap.exists()) {
-                const data = snap.data();
-                const seccionesData = data.secciones || [];
-                const objetosData = data.objetos || [];
+    if (ignoreNextUpdateRef?.current) {
+      requestAnimationFrame(() => {
+        ignoreNextUpdateRef.current = Math.max(0, (ignoreNextUpdateRef.current || 0) - 1);
+      });
+      return;
+    }
 
-                // ✅ Mantengo tu migración de yNorm para secciones pantalla
-                const objsMigrados = objetosData.map((o) => {
-                    if (!o?.seccionId) return o;
+    // No guardar durante resize (logica actual)
+    if (window._resizeData?.isResizing) return;
 
-                    const sec = seccionesData.find((s) => s.id === o.seccionId);
-                    const modo = normalizarAltoModo(sec?.altoModo);
+    const timeoutId = setTimeout(async () => {
+      try {
+        // Validacion: lineas + normalizacion de textos
+        const objetosValidados = (objetos || []).map((obj) => {
+          if (obj?.tipo === "forma" && obj?.figura === "line") {
+            return validarPuntosLinea(obj);
+          }
 
-                    if (modo === "pantalla") {
-                        if (!Number.isFinite(o.yNorm)) {
-                            const yPx = Number.isFinite(o.y) ? o.y : 0;
-                            const yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
-                            return { ...o, yNorm };
-                        }
-                    }
+          if (obj?.tipo === "texto") {
+            return {
+              ...obj,
+              color: obj.colorTexto || obj.color || obj.fill || "#000000",
+              stroke: obj.stroke || null,
+              strokeWidth: obj.strokeWidth || 0,
+              shadowColor: obj.shadowColor || null,
+              shadowBlur: obj.shadowBlur || 0,
+              shadowOffsetX: obj.shadowOffsetX || 0,
+              shadowOffsetY: obj.shadowOffsetY || 0,
+            };
+          }
 
-                    return o;
-                });
+          return obj;
+        });
 
-                setObjetos(objsMigrados);
-                setSecciones(seccionesData);
+        const seccionesLimpias = limpiarUndefined(secciones);
+        const objetosLimpios = limpiarUndefined(objetosValidados);
 
-                // ✅ Setear primera sección activa si no hay
-                if (typeof setSeccionActivaId === "function" && seccionesData.length > 0) {
-                    setSeccionActivaId((prev) => prev || seccionesData[0].id);
-                }
-            }
+        const ref = doc(db, "borradores", slug);
+        await updateDoc(ref, {
+          objetos: objetosLimpios,
+          secciones: seccionesLimpias,
+          ultimaEdicion: serverTimestamp(),
+        });
 
-            setCargado(true);
-        };
-
-        cargar();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [slug]);
-
-    // ✅ 2) Guardar en Firestore con debounce cuando cambian objetos/secciones
-    useEffect(() => {
-        if (!cargado) return;
-        if (!slug) return;
-
-        if (ignoreNextUpdateRef?.current) {
-            requestAnimationFrame(() => {
-                ignoreNextUpdateRef.current = Math.max(0, (ignoreNextUpdateRef.current || 0) - 1);
-            });
-            return;
+        // Thumbnail (mantengo tu logica con import dinamico)
+        if (stageRef?.current && userId && slug) {
+          const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
+          await guardarThumbnailDesdeStage({ stageRef, uid: userId, slug });
         }
+      } catch (error) {
+        console.error("Error guardando en Firebase:", error);
+      }
+    }, 500);
 
-
-        // 🎯 No guardar durante resize (tu lógica actual)
-        if (window._resizeData?.isResizing) return;
-
-        const timeoutId = setTimeout(async () => {
-            try {
-                // 🎯 Validación: asegurar líneas con puntos válidos + normalización de textos (tu lógica)
-                const objetosValidados = (objetos || []).map((obj) => {
-                    if (obj?.tipo === "forma" && obj?.figura === "line") {
-                        return validarPuntosLinea(obj);
-                    }
-
-                    if (obj?.tipo === "texto") {
-                        return {
-                            ...obj,
-                            color: obj.colorTexto || obj.color || obj.fill || "#000000",
-                            stroke: obj.stroke || null,
-                            strokeWidth: obj.strokeWidth || 0,
-                            shadowColor: obj.shadowColor || null,
-                            shadowBlur: obj.shadowBlur || 0,
-                            shadowOffsetX: obj.shadowOffsetX || 0,
-                            shadowOffsetY: obj.shadowOffsetY || 0,
-                        };
-                    }
-
-                    return obj;
-                });
-
-                const seccionesLimpias = limpiarUndefined(secciones);
-                const objetosLimpios = limpiarUndefined(objetosValidados);
-
-                const ref = doc(db, "borradores", slug);
-                await updateDoc(ref, {
-                    objetos: objetosLimpios,
-                    secciones: seccionesLimpias,
-                    ultimaEdicion: serverTimestamp(),
-                });
-
-                // ✅ Thumbnail (mantengo tu lógica con import dinámico)
-                if (stageRef?.current && userId && slug) {
-                    const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
-                    await guardarThumbnailDesdeStage({ stageRef, uid: userId, slug });
-                }
-            } catch (error) {
-                console.error("❌ Error guardando en Firebase:", error);
-            }
-        }, 500);
-
-        return () => clearTimeout(timeoutId);
-    }, [objetos, secciones, cargado, slug, userId, ignoreNextUpdateRef, stageRef, validarPuntosLinea]);
+    return () => clearTimeout(timeoutId);
+  }, [objetos, secciones, cargado, slug, userId, ignoreNextUpdateRef, stageRef, validarPuntosLinea]);
 }

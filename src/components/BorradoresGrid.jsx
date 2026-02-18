@@ -82,7 +82,8 @@ return (
                 onClick={() => {
                   const detalle = {
                     slug: b.slug || b.id,
-                    editor: b.editor || "iframe",
+                    // Los borradores del dashboard deben abrir en el editor Konva por defecto.
+                    editor: b.editor || "konva",
                   };
                   window.dispatchEvent(new CustomEvent("abrir-borrador", { detail: detalle }));
                 }}

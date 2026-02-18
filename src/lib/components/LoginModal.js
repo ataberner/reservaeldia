@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithRedirect,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
@@ -13,6 +14,36 @@ import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const POPUP_TO_REDIRECT_ERROR_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/web-storage-unsupported",
+]);
+const GOOGLE_REDIRECT_PENDING_KEY = "google_auth_redirect_pending";
+
+function isMobileBrowser() {
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+    return true;
+  }
+  const userAgent = String(window.navigator?.userAgent || "").toLowerCase();
+  return /(android|iphone|ipad|ipod|mobile|silk|kindle|opera mini|iemobile|webos)/i.test(userAgent);
+}
+
+function setGoogleRedirectPending() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, "1");
+  } catch {
+    // noop
+  }
+}
+
+function shouldUseGoogleRedirect() {
+  if (typeof window === "undefined") return false;
+  return LOCALHOST_HOSTS.has(window.location.hostname) || isMobileBrowser();
+}
 
 function mapAuthError(code) {
   switch (code) {
@@ -24,6 +55,12 @@ function mapAuthError(code) {
       return "El correo no es valido.";
     case "auth/popup-closed-by-user":
       return "Se cerro la ventana de Google.";
+    case "auth/popup-blocked":
+      return "El navegador bloqueo la ventana de Google. Intenta nuevamente.";
+    case "auth/operation-not-supported-in-this-environment":
+      return "Tu navegador no permite popup para Google. Intenta nuevamente.";
+    case "auth/web-storage-unsupported":
+      return "Tu navegador no permite almacenamiento local para autenticacion.";
     case "auth/too-many-requests":
       return "Demasiados intentos. Espera unos minutos.";
     case "auth/network-request-failed":
@@ -139,11 +176,30 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
     setLoadingGoogle(true);
 
     const provider = new GoogleAuthProvider();
+    const startRedirect = async () => {
+      setInfo("Redirigiendo a Google...");
+      setGoogleRedirectPending();
+      await signInWithRedirect(auth, provider);
+    };
 
     try {
+      if (shouldUseGoogleRedirect()) {
+        await startRedirect();
+        return;
+      }
+
       const credentials = await signInWithPopup(auth, provider);
       await continueAfterAuth(credentials.user, "google-login");
     } catch (err) {
+      if (POPUP_TO_REDIRECT_ERROR_CODES.has(err?.code)) {
+        try {
+          await startRedirect();
+          return;
+        } catch (redirectError) {
+          setError(mapAuthError(redirectError?.code));
+          return;
+        }
+      }
       setError(mapAuthError(err?.code));
     } finally {
       setLoadingGoogle(false);

@@ -4,7 +4,6 @@ import { flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Image as KonvaImage, Group, Circle } from "react-konva";
 import ElementoCanvas from "./ElementoCanvas";
 import LineControls from "./LineControls";
-import ReactDOMServer from "react-dom/server";
 import { calcularOffsetY, convertirAbsARel, determinarNuevaSeccion } from "@/utils/layout";
 import { crearSeccion } from "@/models/estructuraInicial";
 import usePlantillasDeSeccion from "@/hooks/usePlantillasDeSeccion";
@@ -12,7 +11,6 @@ import { useImperativeObjects } from '@/hooks/useImperativeObjects';
 import SelectionBounds from './SelectionBounds';
 import HoverIndicator from './HoverIndicator';
 import LineToolbar from "./LineToolbar";
-import useImage from "use-image";
 import useKeyboardShortcuts from '@/hooks/useKeyboardShortcuts';
 import { fontManager } from '../utils/fontManager';
 import useInlineEditor from "@/hooks/useInlineEditor";
@@ -38,17 +36,14 @@ import Konva from "konva";
 import { ALL_FONTS } from '../config/fonts';
 import { useAuthClaims } from "@/hooks/useAuthClaims";
 import {
-  Check,
-  RotateCcw,
-  Copy,
   Trash2,
   Layers,
-  ArrowDown,
-  ArrowUp,
   MoveUp,
   MoveDown,
   PlusCircle,
-  ClipboardPaste,
+  Settings,
+  Unlink2,
+  Monitor,
 } from "lucide-react";
 import useBorradorSync from "./editor/persistence/useBorradorSync";
 import useSectionsManager from "./editor/sections/useSectionsManager";
@@ -94,10 +89,6 @@ const limpiarObjetoUndefined = (obj) => {
 
   return obj;
 };
-
-const iconoRotacion = ReactDOMServer.renderToStaticMarkup(<RotateCcw color="black" />);
-const urlData = "data:image/svg+xml;base64," + btoa(iconoRotacion);
-
 
 // Utils de cursor global (arriba del componente)
 function setGlobalCursor(cursor = '', stageRef = null) {
@@ -368,7 +359,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
   const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
   const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
-  const [icono] = useImage(urlData);
   const botonOpcionesRef = useRef(null);
 
   const _refEventQueued = useRef(new Set());
@@ -1960,7 +1950,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esPrimera ? 'Ya es la primera sección' : 'Subir sección'}
                   >
-                    ? Subir sección
+                    <span className="inline-flex items-center gap-1.5">
+                      <MoveUp className="w-3.5 h-3.5" />
+                      Subir sección
+                    </span>
                   </button>
 
                   {/* Botón Guardar como plantilla */}
@@ -1981,7 +1974,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                       title="Guardar esta sección como plantilla"
                     >
-                      ?? Plantilla
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5" />
+                        Plantilla
+                      </span>
                     </button>
                   )}
 
@@ -2008,7 +2004,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             className="px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 shadow-sm"
                             title="Desanclar imagen de fondo"
                           >
-                            ?? Desanclar fondo
+                            <span className="inline-flex items-center gap-1.5">
+                              <Unlink2 className="w-3.5 h-3.5" />
+                              Desanclar fondo
+                            </span>
                           </button>
                         )}
 
@@ -2041,7 +2040,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             }`}
                           title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
                         >
-                          {esPantalla ? "?? Pantalla: ON" : "?? Pantalla: OFF"}
+                          <span className="inline-flex items-center gap-1.5">
+                            <Monitor className="w-3.5 h-3.5" />
+                            {esPantalla ? "Pantalla: ON" : "Pantalla: OFF"}
+                          </span>
                         </button>
                       </div>
                     );
@@ -2057,7 +2059,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando || isDeletingSection ? 'animate-pulse shadow-xl' : ''}`}
                     title="Borrar esta sección y todos sus elementos"
                   >
-                    ??? Borrar sección
+                    <span className="inline-flex items-center gap-1.5">
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Borrar sección
+                    </span>
                   </button>
 
 
@@ -2080,7 +2085,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
                     title={esUltima ? 'Ya es la última sección' : 'Bajar sección'}
                   >
-                    ? Bajar sección
+                    <span className="inline-flex items-center gap-1.5">
+                      <MoveDown className="w-3.5 h-3.5" />
+                      Bajar sección
+                    </span>
                   </button>
 
                   {/* Botón Añadir sección */}
@@ -2094,7 +2102,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       }`}
                     title="Añadir una nueva sección debajo"
                   >
-                    Añadir sección
+                    <span className="inline-flex items-center gap-1.5">
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      Añadir sección
+                    </span>
                   </button>
 
 
@@ -2887,7 +2898,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         selectedElements={elementosSeleccionados}
                         elementRefs={elementRefs}
                         objetos={objetos}
-                        isMobile={isMobile}
                         isDragging={isDragging}
                         onTransform={(newAttrs) => {
                           console.log("?? Transform detectado:", newAttrs);
@@ -3475,7 +3485,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors text-xs"
               title="Opciones del elemento"
             >
-              ??
+              <Settings className="w-3.5 h-3.5 text-purple-700" />
             </button>
           </div>
         );

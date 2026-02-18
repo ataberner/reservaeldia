@@ -1,11 +1,11 @@
-﻿// LineControls.jsx - VersiÃ³n optimizada para transformaciÃ³n fluida
+// LineControls.jsx - Versión optimizada para transformación fluida
 import { Circle, Group, Line } from "react-konva";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { startDragGrupalLider } from "@/drag/dragGrupal";
 import useIsTouchLike from "@/components/editor/mobile/useIsTouchLike";
 
 
-// ðŸš€ Utilidad para forzar repintado rÃ¡pido
+// 🚀 Utilidad para forzar repintado rápido
 const batchDraw = (node) => node.getLayer() && node.getLayer().batchDraw();
 const DEBUG_LINE_CONTROLS = false;
 const lcLog = (...args) => {
@@ -22,7 +22,7 @@ export default function LineControls({
   elementRefs,
   onUpdateLine,
   altoCanvas,
-  isDragGrupalActive = false,  // ðŸ”¥ NUEVA PROP
+  isDragGrupalActive = false,  // 🔥 NUEVA PROP
   elementosSeleccionados = [],
   isMobile = false,
 }) {
@@ -38,7 +38,7 @@ export default function LineControls({
     y: lineElement?.y || 0,
   });
 
-  // ðŸ”¥ CACHE PARA EVITAR RECÃLCULOS INNECESARIOS
+  // 🔥 CACHE PARA EVITAR RECÁLCULOS INNECESARIOS
   const pointsCache = useRef(null);
   const lastUpdateTime = useRef(0);
   const isValidLine =
@@ -48,12 +48,12 @@ export default function LineControls({
   const lineId = lineElement?.id ?? null;
   const nodeRef = lineId ? elementRefs.current?.[lineId] : null;
 
-  // ðŸ”¥ SYNC OPTIMIZADO CON THROTTLE
+  // 🔥 SYNC OPTIMIZADO CON THROTTLE
   useEffect(() => {
     if (!isValidLine || !nodeRef) return;
 
     const syncPos = () => {
-      // ðŸš€ THROTTLE: Solo actualizar cada 8ms (120fps mÃ¡ximo)
+      // 🚀 THROTTLE: Solo actualizar cada 8ms (120fps máximo)
       const now = performance.now();
       if (now - lastUpdateTime.current < 8) return;
       lastUpdateTime.current = now;
@@ -71,7 +71,7 @@ export default function LineControls({
 
 
 
-  // ðŸ”¥ DETECTAR DRAG GRUPAL MEJORADO
+  // 🔥 DETECTAR DRAG GRUPAL MEJORADO
   useEffect(() => {
     if (!isValidLine || !lineId) {
       setIsGroupDrag(false);
@@ -86,57 +86,57 @@ export default function LineControls({
 
 
 
-  // ðŸ”¥ DETECTAR DRAG DE LÃNEA Y COORDINACIÃ“N CON DRAG GRUPAL
+  // 🔥 DETECTAR DRAG DE LÍNEA Y COORDINACIÓN CON DRAG GRUPAL
   useEffect(() => {
     if (!isValidLine || !nodeRef || !lineId) return;
 
     const handleDragStart = (e) => {
-      lcLog("ðŸŽ¬ [LINE CONTROLS] Drag start para lÃ­nea:", lineId);
+      lcLog("🎬 [LINE CONTROLS] Drag start para línea:", lineId);
       setLineBeingDragged(true);
 
-      // ðŸŽ¯ COORDINACIÃ“N CON DRAG GRUPAL
+      // 🎯 COORDINACIÓN CON DRAG GRUPAL
       const elementosSeleccionados = window._elementosSeleccionados || [];
-      lcLog("ðŸ“‹ [LINE CONTROLS] Elementos seleccionados:", elementosSeleccionados);
-      lcLog("ðŸ“ [LINE CONTROLS] Â¿Esta lÃ­nea estÃ¡ en selecciÃ³n?", elementosSeleccionados.includes(lineId));
-      lcLog("ðŸ”¢ [LINE CONTROLS] Â¿MÃºltiples elementos?", elementosSeleccionados.length > 1);
+      lcLog("📋 [LINE CONTROLS] Elementos seleccionados:", elementosSeleccionados);
+      lcLog("📏 [LINE CONTROLS] ¿Esta línea está en selección?", elementosSeleccionados.includes(lineId));
+      lcLog("🔢 [LINE CONTROLS] ¿Múltiples elementos?", elementosSeleccionados.length > 1);
 
       if (elementosSeleccionados.length > 1 && elementosSeleccionados.includes(lineId)) {
-        lcLog("ðŸŽ¯ [LINE CONTROLS] Intentando iniciar drag grupal desde lÃ­nea...");
+        lcLog("🎯 [LINE CONTROLS] Intentando iniciar drag grupal desde línea...");
 
         try {
           const isGroupLeader = startDragGrupalLider(e, lineElement);
-          lcLog("ðŸ‘‘ [LINE CONTROLS] Â¿Es lÃ­der del grupo?", isGroupLeader);
+          lcLog("👑 [LINE CONTROLS] ¿Es líder del grupo?", isGroupLeader);
 
           if (!isGroupLeader) {
-            lcLog("ðŸš« [LINE CONTROLS] No es lÃ­der, deshabilitando drag individual...");
+            lcLog("🚫 [LINE CONTROLS] No es líder, deshabilitando drag individual...");
             setTimeout(() => {
               if (nodeRef && nodeRef.draggable) {
                 const wasDraggable = nodeRef.draggable();
                 nodeRef.draggable(false);
-                lcLog(`ðŸ”’ [LINE CONTROLS] Drag deshabilitado para lÃ­nea ${lineId} (era: ${wasDraggable})`);
+                lcLog(`🔒 [LINE CONTROLS] Drag deshabilitado para línea ${lineId} (era: ${wasDraggable})`);
               }
             }, 0);
           } else {
-            lcLog("ðŸ‘‘ [LINE CONTROLS] LÃ­nea es lÃ­der del drag grupal");
+            lcLog("👑 [LINE CONTROLS] Línea es líder del drag grupal");
           }
         } catch (error) {
-          lcError("âŒ [LINE CONTROLS] Error en drag grupal:", error);
+          lcError("❌ [LINE CONTROLS] Error en drag grupal:", error);
         }
       } else {
-        lcLog("ðŸ“ [LINE CONTROLS] Drag individual normal para lÃ­nea");
+        lcLog("📏 [LINE CONTROLS] Drag individual normal para línea");
       }
     };
 
     const handleDragEnd = () => {
-      lcLog("ðŸ [LINE CONTROLS] Drag end para lÃ­nea:", lineId);
+      lcLog("🏁 [LINE CONTROLS] Drag end para línea:", lineId);
       setLineBeingDragged(false);
 
-      // Reactivar drag despuÃ©s de un breve delay
+      // Reactivar drag después de un breve delay
       setTimeout(() => {
         if (nodeRef && nodeRef.draggable) {
           const wasDraggable = nodeRef.draggable();
           nodeRef.draggable(true);
-          lcLog(`ðŸ”“ [LINE CONTROLS] Drag reactivado para lÃ­nea ${lineId} (era: ${wasDraggable})`);
+          lcLog(`🔓 [LINE CONTROLS] Drag reactivado para línea ${lineId} (era: ${wasDraggable})`);
         }
       }, 100);
     };
@@ -152,7 +152,7 @@ export default function LineControls({
 
 
 
-  // ðŸ”¥ CÃLCULOS MEMOIZADOS
+  // 🔥 CÁLCULOS MEMOIZADOS
   const points = (isValidLine && Array.isArray(lineElement.points))
     ? lineElement.points
     : [0, 0, 100, 0];
@@ -168,17 +168,17 @@ export default function LineControls({
   const endAbsoluteX = nodePos.x + normalizedEndX;
   const endAbsoluteY = nodePos.y + normalizedEndY;
 
-  // ðŸ”¥ HANDLER OPTIMIZADO PARA DRAG START
+  // 🔥 HANDLER OPTIMIZADO PARA DRAG START
   const handlePointDragStart = useCallback((pointType, e) => {
     setDraggingPoint(pointType);
     dragStartPos.current = e.target.getStage().getPointerPosition();
     e.cancelBubble = true;
 
-    // ðŸ”¥ LIMPIAR CACHE AL INICIAR
+    // 🔥 LIMPIAR CACHE AL INICIAR
     pointsCache.current = null;
   }, []);
 
-  // ðŸ”¥ HANDLER ULTRA-OPTIMIZADO PARA DRAG MOVE
+  // 🔥 HANDLER ULTRA-OPTIMIZADO PARA DRAG MOVE
   const handlePointDragMove = useCallback((pointType, e) => {
     if (!isValidLine || !nodeRef || !lineId) return;
     if (draggingPoint !== pointType) return;
@@ -187,12 +187,12 @@ export default function LineControls({
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    // ðŸš€ THROTTLE AGRESIVO: Solo cada 4ms (250fps)
+    // 🚀 THROTTLE AGRESIVO: Solo cada 4ms (250fps)
     const now = performance.now();
     if (now - lastUpdateTime.current < 4) return;
     lastUpdateTime.current = now;
 
-    // ðŸ”¥ USAR POSICIÃ“N REAL DEL NODO EN TIEMPO REAL
+    // 🔥 USAR POSICIÓN REAL DEL NODO EN TIEMPO REAL
     const realNodeX = nodeRef.x();
     const realNodeY = nodeRef.y();
     const newPointX = pointerPos.x - realNodeX;
@@ -205,18 +205,18 @@ export default function LineControls({
       newPoints = [normalizedStartX, normalizedStartY, newPointX, newPointY];
     }
 
-    // ðŸš€ ACTUALIZACIÃ“N DIRECTA SIN REACT RE-RENDER
+    // 🚀 ACTUALIZACIÓN DIRECTA SIN REACT RE-RENDER
     const lineNode = elementRefs.current?.[lineId];
     if (lineNode) {
-      // ðŸ”¥ SOLO ACTUALIZAR SI LOS PUNTOS CAMBIARON SIGNIFICATIVAMENTE
+      // 🔥 SOLO ACTUALIZAR SI LOS PUNTOS CAMBIARON SIGNIFICATIVAMENTE
       const pointsStr = newPoints.join(',');
       if (pointsCache.current !== pointsStr) {
         pointsCache.current = pointsStr;
 
-        // ðŸš€ FEEDBACK INSTANTÃNEO
+        // 🚀 FEEDBACK INSTANTÁNEO
         lineNode.points(newPoints);
 
-        // ðŸ”¥ USAR requestAnimationFrame PARA BATCH DRAW Ã“PTIMO
+        // 🔥 USAR requestAnimationFrame PARA BATCH DRAW ÓPTIMO
         if (!window._lineDrawScheduled) {
           window._lineDrawScheduled = true;
           requestAnimationFrame(() => {
@@ -228,7 +228,7 @@ export default function LineControls({
     }
   }, [isValidLine, lineId, draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, elementRefs]);
 
-  // ðŸ”¥ HANDLER OPTIMIZADO PARA DRAG END
+  // 🔥 HANDLER OPTIMIZADO PARA DRAG END
   const handlePointDragEnd = useCallback((pointType, e) => {
     if (!isValidLine || !nodeRef || !lineId) return;
     if (draggingPoint !== pointType) return;
@@ -237,7 +237,7 @@ export default function LineControls({
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    // ðŸ”¥ USAR POSICIÃ“N REAL DEL NODO EN TIEMPO REAL
+    // 🔥 USAR POSICIÓN REAL DEL NODO EN TIEMPO REAL
     const realNodeX = nodeRef.x();
     const realNodeY = nodeRef.y();
     const newPointX = pointerPos.x - realNodeX;
@@ -250,7 +250,7 @@ export default function LineControls({
       newPoints = [normalizedStartX, normalizedStartY, newPointX, newPointY];
     }
 
-    // ðŸ”¥ ACTUALIZACIÃ“N FINAL CON DEBOUNCE
+    // 🔥 ACTUALIZACIÓN FINAL CON DEBOUNCE
     if (onUpdateLine) {
       onUpdateLine(lineId, {
         points: newPoints,
@@ -260,17 +260,17 @@ export default function LineControls({
 
     setDraggingPoint(null);
     dragStartPos.current = null;
-    pointsCache.current = null; // ðŸ”¥ LIMPIAR CACHE
+    pointsCache.current = null; // 🔥 LIMPIAR CACHE
   }, [isValidLine, lineId, draggingPoint, normalizedStartX, normalizedStartY, normalizedEndX, normalizedEndY, nodeRef, onUpdateLine]);
 
   if (!isValidLine || !nodeRef) return null;
 
   return (
     <Group name="ui">
-      {/* ðŸ”¥ OCULTAR CONTROLES DURANTE DRAG INDIVIDUAL O GRUPAL */}
+      {/* 🔥 OCULTAR CONTROLES DURANTE DRAG INDIVIDUAL O GRUPAL */}
       {!lineBeingDragged && !isGroupDrag && (
         <>
-          {/* ðŸ”´ Punto de control - INICIO */}
+          {/* 🔴 Punto de control - INICIO */}
           <Circle
             x={startAbsoluteX}
             y={startAbsoluteY}
@@ -293,13 +293,13 @@ export default function LineControls({
             shadowColor="rgba(59, 130, 246, 0.3)"
             shadowBlur={4}
             shadowOffset={{ x: 0, y: 3 }}
-            // ðŸš€ OPTIMIZACIONES DE RENDIMIENTO
+            // 🚀 OPTIMIZACIONES DE RENDIMIENTO
             perfectDrawEnabled={false}
             shadowForStrokeEnabled={false}
-            hitStrokeWidth={pointHitStrokeWidth} // Ãrea de click mÃ¡s grande
+            hitStrokeWidth={pointHitStrokeWidth} // Área de click más grande
           />
 
-          {/* ðŸ”´ Punto de control - FINAL */}
+          {/* 🔴 Punto de control - FINAL */}
           <Circle
             x={endAbsoluteX}
             y={endAbsoluteY}
@@ -322,13 +322,13 @@ export default function LineControls({
             shadowColor="rgba(59, 130, 246, 0.3)"
             shadowBlur={6}
             shadowOffset={{ x: 0, y: 3 }}
-            // ðŸš€ OPTIMIZACIONES DE RENDIMIENTO
+            // 🚀 OPTIMIZACIONES DE RENDIMIENTO
             perfectDrawEnabled={false}
             shadowForStrokeEnabled={false}
-            hitStrokeWidth={pointHitStrokeWidth} // Ãrea de click mÃ¡s grande
+            hitStrokeWidth={pointHitStrokeWidth} // Área de click más grande
           />
 
-          {/* ðŸ“ LÃ­nea de guÃ­a durante drag de puntos - OPTIMIZADA */}
+          {/* 📏 Línea de guía durante drag de puntos - OPTIMIZADA */}
           {draggingPoint && (
             <Line
               name="ui"

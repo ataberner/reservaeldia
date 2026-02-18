@@ -1,4 +1,4 @@
-﻿// ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
+// ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
 import { Text, Image as KonvaImage, Rect, Circle, Line, RegularPolygon, Path, Group } from "react-konva";
 import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
@@ -39,7 +39,7 @@ export default function ElementoCanvas({
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
 
 
-  // ðŸ”¥ PREVENIR onChange RECURSIVO PARA AUTOFIX
+  // 🔥 PREVENIR onChange RECURSIVO PARA AUTOFIX
   const handleChange = useCallback((id, newData) => {
     if (newData.fromAutoFix || !onChange) return;
     onChange(id, newData);
@@ -48,20 +48,20 @@ export default function ElementoCanvas({
   const handleRef = useCallback((node) => {
     if (registerRef) {
       registerRef(obj.id, node || null);
-      // âŒ NO despachar "element-ref-registrado" acÃ¡
+      // ❌ NO despachar "element-ref-registrado" acá
       // CanvasEditor.registerRef ya lo hace.
     }
   }, [obj.id, registerRef]);
 
 
 
-  // âœ… Click con estado fresco (evita stale closures del useMemo)
+  // ✅ Click con estado fresco (evita stale closures del useMemo)
   const handleClick = useCallback(
     (e) => {
       e.cancelBubble = true;
 
       if (!hasDragged.current) {
-        // ðŸ§  Texto normal
+        // 🧠 Texto normal
         if (obj.tipo === "texto") {
           if (isSelected) {
             onStartTextEdit?.(obj.id, obj.texto);
@@ -70,7 +70,7 @@ export default function ElementoCanvas({
           }
         }
 
-        // ðŸ†• Forma con texto (rect)
+        // 🆕 Forma con texto (rect)
         else if (obj.tipo === "forma" && obj.figura === "rect") {
           if (isSelected) {
             onStartTextEdit?.(obj.id, obj.texto || "");
@@ -79,7 +79,7 @@ export default function ElementoCanvas({
           }
         }
 
-        // ðŸ§± Para todo lo demÃ¡s
+        // 🧱 Para todo lo demás
         else {
           onSelect(obj.id, obj, e);
         }
@@ -90,7 +90,7 @@ export default function ElementoCanvas({
 
 
 
-  // ðŸ”¥ MEMOIZAR PROPIEDADES COMUNES
+  // 🔥 MEMOIZAR PROPIEDADES COMUNES
   const commonProps = useMemo(() => ({
     x: obj.x ?? 0,
     y: obj.y ?? 0,
@@ -128,7 +128,7 @@ export default function ElementoCanvas({
       window._isDragging = true;
 
 
-      // ðŸ”¥ Intentar drag grupal
+      // 🔥 Intentar drag grupal
       const fueGrupal = startDragGrupalLider(e, obj);
       if (!fueGrupal) {
         startDragIndividual(e, dragStartPos);
@@ -146,17 +146,17 @@ export default function ElementoCanvas({
       window._lastMouse = mousePos;
       window._lastElement = elementPos;
 
-      // ðŸ”¥ DRAG GRUPAL - SOLO EL LÃDER PROCESA
+      // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
         previewDragGrupal(e, obj, onChange);
 
-        // ðŸ”¥ NO llamar onDragMovePersonalizado durante drag grupal (evita guÃ­as)
-        // El preview individual ya no es necesario porque manejamos todo aquÃ­
+        // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
+        // El preview individual ya no es necesario porque manejamos todo aquí
 
         return;
       }
 
-      // ðŸ”¥ SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
+      // 🔥 SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
       if (window._grupoLider) {
         const elementosSeleccionados = window._elementosSeleccionados || [];
         if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
@@ -164,7 +164,7 @@ export default function ElementoCanvas({
         }
       }
 
-      // ðŸ”„ DRAG INDIVIDUAL - Solo si no hay drag grupal activo
+      // 🔄 DRAG INDIVIDUAL - Solo si no hay drag grupal activo
       if (!window._grupoLider) {
         previewDragIndividual(e, obj, onDragMovePersonalizado);
       }
@@ -179,11 +179,11 @@ export default function ElementoCanvas({
 
       const node = e.currentTarget;
 
-      // ðŸ”¥ Intentar drag grupal
+      // 🔥 Intentar drag grupal
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged);
       if (fueGrupal) return;
 
-      // ðŸ”„ DRAG INDIVIDUAL (no cambiÃ³)
+      // 🔄 DRAG INDIVIDUAL (no cambió)
       endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
 
 
@@ -203,7 +203,7 @@ export default function ElementoCanvas({
     onChange,
   ]);
 
-  // ðŸ”¥ MEMOIZAR HANDLERS HOVER
+  // 🔥 MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {
     if (!onHover || window._isDragging || isInEditMode) return;
     onHover(obj.id);
@@ -310,7 +310,7 @@ export default function ElementoCanvas({
 
   useEffect(() => {
     setMeasuredTextWidth(null);
-    // tambiÃ©n conviene resetear el layout base cuando cambia de texto
+    // también conviene resetear el layout base cuando cambia de texto
     if (obj?.tipo === "texto") baseTextLayoutRef.current = null;
   }, [obj?.id]);
 
@@ -327,7 +327,7 @@ export default function ElementoCanvas({
   }, [obj.color, obj.id]);
 
 
-  // Convierte "minX minY width height" -> nÃºmeros
+  // Convierte "minX minY width height" -> números
   function parseViewBox(vb) {
     if (!vb || typeof vb !== "string") return null;
     const parts = vb.trim().split(/\s+/).map(Number);
@@ -420,27 +420,27 @@ export default function ElementoCanvas({
     const lineHeight = baseLineHeight * 0.92;
 
 
-    // âœ… Evita bbox sobrado a la derecha por espacios/tabs invisibles al final de lÃ­nea
+    // ✅ Evita bbox sobrado a la derecha por espacios/tabs invisibles al final de línea
     const rawText = String(obj.texto ?? "");
     const safeText = rawText.replace(/[ \t]+$/gm, "");
 
 
-    // âœ… VALIDACIÃ“N: Asegurar valores numÃ©ricos vÃ¡lidos
+    // ✅ VALIDACIÓN: Asegurar valores numéricos válidos
     const validX = typeof obj.x === "number" && !isNaN(obj.x) ? obj.x : 0;
     const validY = typeof obj.y === "number" && !isNaN(obj.y) ? obj.y : 0;
     const validFontSize = typeof obj.fontSize === "number" && !isNaN(obj.fontSize) && obj.fontSize > 0 ? obj.fontSize : 24;
 
-    // ðŸ”¹ PASO 1: Calcular dimensiones del texto PRIMERO
+    // 🔹 PASO 1: Calcular dimensiones del texto PRIMERO
     const ctx = document.createElement("canvas").getContext("2d");
     const style = obj.fontStyle || "normal";
     const weight = obj.fontWeight || "normal";
 
-    // âœ… si la fuente tiene espacios, envolverla en comillas para que canvas no caiga a fallback
+    // ✅ si la fuente tiene espacios, envolverla en comillas para que canvas no caiga a fallback
     const fontForCanvas = fontFamily.includes(",")
       ? fontFamily
       : (/\s/.test(fontFamily) ? `"${fontFamily}"` : fontFamily);
 
-    // âœ… orden correcto: style -> weight -> size -> family
+    // ✅ orden correcto: style -> weight -> size -> family
     ctx.font = `${style} ${weight} ${validFontSize}px ${fontForCanvas}`;
 
     const lines = safeText.split(/\r?\n/);
@@ -449,7 +449,7 @@ export default function ElementoCanvas({
     const textWidth = Math.ceil(maxLineWidth);
     const textHeight = validFontSize * lineHeight * numLines;
 
-    // ðŸ”¹ PASO 2: Calcular posiciÃ³n solo una vez y congelar el centro
+    // 🔹 PASO 2: Calcular posición solo una vez y congelar el centro
     let positionRaw = getCenteredTextPosition({
       rectY: validY,
       rectHeight: textHeight,
@@ -464,7 +464,7 @@ export default function ElementoCanvas({
       baseTextLayoutRef.current = {
         // centro vertical "ideal" que queremos conservar
         rectCenter: positionRaw.rectCenter,
-        // offset desde el centro al baseline (depende solo de la fuente/tamaÃ±o)
+        // offset desde el centro al baseline (depende solo de la fuente/tamaño)
         baselineToCenter: positionRaw.baseline - positionRaw.rectCenter,
         ascent: positionRaw.ascent,
         descent: positionRaw.descent,
@@ -484,12 +484,12 @@ export default function ElementoCanvas({
       rectCenter: rectCenterFixed,
     };
 
-    // ðŸ” Debug: informaciÃ³n completa de posiciÃ³n y centrado
+    // 🔍 Debug: información completa de posición y centrado
 
 
-    // âš ï¸ Warning si hay valores invÃ¡lidos
+    // ⚠️ Warning si hay valores inválidos
     if (obj.x !== validX || obj.y !== validY || obj.fontSize !== validFontSize) {
-      console.warn("âš ï¸ Objeto de texto tiene valores invÃ¡lidos:", {
+      console.warn("⚠️ Objeto de texto tiene valores inválidos:", {
         id: obj.id,
         x: obj.x,
         y: obj.y,
@@ -500,11 +500,11 @@ export default function ElementoCanvas({
         const ANCHO_CANVAS = 800;
     const availableWidth = Math.max(1, ANCHO_CANVAS - validX);
 
-    // ancho real del texto (mÃ¡xima lÃ­nea, segÃºn tu cÃ¡lculo actual)
+    // ancho real del texto (máxima línea, según tu cálculo actual)
     const realTextWidth = Math.max(1, textWidth);
 
-    // âœ… Si entra, NO usamos width (bounds ajustado)
-    // âœ… Si no entra, usamos width=available y wrap por caracteres para cortar en el borde
+    // ✅ Si entra, NO usamos width (bounds ajustado)
+    // ✅ Si no entra, usamos width=available y wrap por caracteres para cortar en el borde
     const shouldWrapToCanvasEdge = realTextWidth > availableWidth;
 
     const wrapToUse = shouldWrapToCanvasEdge ? "char" : "none";
@@ -554,7 +554,7 @@ export default function ElementoCanvas({
 
     return (
       <>
-        {/* ðŸŸ£ BotÃ³n (fondo) */}
+        {/* 🟣 Botón (fondo) */}
         <Rect
           {...commonProps}
           width={width}
@@ -578,11 +578,11 @@ export default function ElementoCanvas({
           }}
         />
 
-        {/* ðŸ”¤ Texto encima del botÃ³n */}
+        {/* 🔤 Texto encima del botón */}
         <Text
           ref={(node) => {
             if (registerRef) {
-              registerRef(`${obj.id}-text`, node || null); // si querÃ©s manipular el texto aparte
+              registerRef(`${obj.id}-text`, node || null); // si querés manipular el texto aparte
             }
           }}
           x={obj.x}
@@ -626,7 +626,7 @@ export default function ElementoCanvas({
   }
 
 
-  /* ---------------- ICONO SVG (tipo:"icono", formato:"svg") â€” CON HITBOX FUNCIONAL ---------------- */
+  /* ---------------- ICONO SVG (tipo:"icono", formato:"svg") — CON HITBOX FUNCIONAL ---------------- */
   if (obj.tipo === "icono" && obj.formato === "svg") {
     const color = obj.color || "#000000";
     const paths = Array.isArray(obj.paths) ? obj.paths : [];
@@ -643,7 +643,7 @@ export default function ElementoCanvas({
         width={W}
         height={H}
       >
-        {/* ðŸ”¥ HITBOX INVISIBLE - SOLO para eventos de drag/click */}
+        {/* 🔥 HITBOX INVISIBLE - SOLO para eventos de drag/click */}
         <Rect
           x={0}
           y={0}
@@ -670,7 +670,7 @@ export default function ElementoCanvas({
           />
         ))}
 
-        {/* Marco de selecciÃ³n visual */}
+        {/* Marco de selección visual */}
         {(isSelected || preSeleccionado) && (
           <Rect
             x={0}
@@ -688,7 +688,7 @@ export default function ElementoCanvas({
   }
 
 
-  /* ---------------- ICONO RASTER (PNG/JPG/WEBP) â€“ sin recolor ---------------- */
+  /* ---------------- ICONO RASTER (PNG/JPG/WEBP) – sin recolor ---------------- */
   if (obj.tipo === "icono" && (obj.formato === "png" || obj.formato === "jpg" || obj.formato === "webp")) {
     const [img] = useImage(obj.url, "anonymous");
 
@@ -714,20 +714,20 @@ export default function ElementoCanvas({
           handleMouseLeave?.(e);
         }}
 
-        // âœ… CLAVE: NO pisar el onClick/onTap ni el onDragEnd "real" del sistema
-        // Si querÃ©s mantener un comportamiento extra en click, hacelo sin cambiar la firma:
+        // ✅ CLAVE: NO pisar el onClick/onTap ni el onDragEnd "real" del sistema
+        // Si querés mantener un comportamiento extra en click, hacelo sin cambiar la firma:
         onClick={(e) => {
-          // delega al commonProps.onClick (selecciÃ³n consistente)
+          // delega al commonProps.onClick (selección consistente)
           commonProps.onClick?.(e);
         }}
         onTap={(e) => {
-          // en Konva, tap suele mapear a click; si querÃ©s, delegalo igual
+          // en Konva, tap suele mapear a click; si querés, delegalo igual
           commonProps.onClick?.(e);
         }}
 
-        // âœ… CLAVE: delegar a commonProps.onDragEnd para que:
-        // - se limpien guÃ­as (onDragEndPersonalizado)
-        // - se haga finalizoDrag + ABSâ†’REL
+        // ✅ CLAVE: delegar a commonProps.onDragEnd para que:
+        // - se limpien guías (onDragEndPersonalizado)
+        // - se haga finalizoDrag + ABS→REL
         onDragEnd={(e) => {
           commonProps.onDragEnd?.(e);
 
@@ -826,7 +826,7 @@ export default function ElementoCanvas({
 
         return (
           <>
-            {/* ðŸŸª Forma */}
+            {/* 🟪 Forma */}
             <Rect
               {...propsForma}
               ref={handleRef}
@@ -837,7 +837,7 @@ export default function ElementoCanvas({
               cornerRadius={obj.cornerRadius || 0}
               stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
               strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-              // ðŸ–±ï¸ Doble click para entrar en ediciÃ³n inline
+              // 🖱️ Doble click para entrar en edición inline
               onDblClick={(e) => {
                 e.cancelBubble = true;
                 if (onStartTextEdit) {
@@ -850,9 +850,9 @@ export default function ElementoCanvas({
                   onStartTextEdit(obj.id, obj.texto || "");
                 }
               }}
-              // ðŸšš Sincronizar el texto mientras se arrastra la forma
+              // 🚚 Sincronizar el texto mientras se arrastra la forma
               onDragMove={(e) => {
-                // Mantener cualquier lÃ³gica de drag original que venga de commonProps
+                // Mantener cualquier lógica de drag original que venga de commonProps
                 if (typeof propsForma.onDragMove === "function") {
                   propsForma.onDragMove(e);
                 }
@@ -868,7 +868,7 @@ export default function ElementoCanvas({
                 }
               }}
               onDragEnd={(e) => {
-                // Mantener lÃ³gica original de dragEnd (guardar posiciÃ³n, drag grupal, etc.)
+                // Mantener lógica original de dragEnd (guardar posición, drag grupal, etc.)
                 if (typeof propsForma.onDragEnd === "function") {
                   propsForma.onDragEnd(e);
                 }
@@ -885,13 +885,13 @@ export default function ElementoCanvas({
               }}
             />
 
-            {/* âœï¸ Texto encima de la forma */}
+            {/* ✏️ Texto encima de la forma */}
             {obj.texto && (
               <Text
-                id={`${obj.id}-text`}          // ðŸ‘ˆ id para poder encontrarlo desde el Rect
+                id={`${obj.id}-text`}          // 👈 id para poder encontrarlo desde el Rect
                 ref={(node) => {
                   if (registerRef) {
-                    registerRef(`${obj.id}-text`, node || null); // seguÃ­s usando tu sistema de refs
+                    registerRef(`${obj.id}-text`, node || null); // seguís usando tu sistema de refs
                   }
                 }}
                 x={obj.x}
@@ -906,7 +906,7 @@ export default function ElementoCanvas({
                 fill={obj.colorTexto || "#000000"}
                 align={obj.align || "center"}
                 verticalAlign="middle"
-                listening={false}              // ðŸ‘ˆ el texto no roba eventos, los recibe el Rect
+                listening={false}              // 👈 el texto no roba eventos, los recibe el Rect
                 opacity={isInEditMode ? 0 : 1}
               />
             )}

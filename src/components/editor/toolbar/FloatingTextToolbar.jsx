@@ -1,4 +1,4 @@
-﻿// src/components/editor/toolbar/FloatingTextToolbar.jsx
+// src/components/editor/toolbar/FloatingTextToolbar.jsx
 import React from "react";
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react"; // mismo icono que usabas
@@ -6,7 +6,7 @@ import FontSelector from "@/components/FontSelector";
 
 
 export default function FloatingTextToolbar({
-  // ðŸ”§ Datos y handlers que YA existen en CanvasEditor (los pasamos por props)
+  // 🔧 Datos y handlers que YA existen en CanvasEditor (los pasamos por props)
   objetoSeleccionado,
   setObjetos,
   elementosSeleccionados,
@@ -47,7 +47,7 @@ export default function FloatingTextToolbar({
     WebkitOverflowScrolling: isMobile ? "touch" : "auto",
     whiteSpace: isMobile ? "nowrap" : "normal",
   };
-  // ðŸ‘‰ mantenemos exactamente las mismas condiciones/variables auxiliares
+  // 👉 mantenemos exactamente las mismas condiciones/variables auxiliares
   const esTexto = objetoSeleccionado?.tipo === "texto";
   const esFormaConTexto =
     objetoSeleccionado?.tipo === "forma" && objetoSeleccionado?.texto;
@@ -71,7 +71,7 @@ export default function FloatingTextToolbar({
             value={objetoSeleccionado.color || "#000000"}
             onChange={(e) => {
               const nuevoColor = e.target.value;
-              console.log("ðŸŽ¨ [TOOLBAR] Cambiando color de Ã­cono:", {
+              console.log("🎨 [TOOLBAR] Cambiando color de ícono:", {
                 elementoId: elementosSeleccionados[0],
                 colorAnterior: objetoSeleccionado.color,
                 colorNuevo: nuevoColor,
@@ -79,11 +79,11 @@ export default function FloatingTextToolbar({
               });
 
               setObjetos((prev) => {
-                console.log("ðŸ” [TOOLBAR] Objetos antes del cambio:", prev.length);
+                console.log("🔍 [TOOLBAR] Objetos antes del cambio:", prev.length);
 
                 const nuevosObjetos = prev.map((o) => {
                   if (elementosSeleccionados.includes(o.id)) {
-                    console.log("âœ… [TOOLBAR] Actualizando objeto:", {
+                    console.log("✅ [TOOLBAR] Actualizando objeto:", {
                       id: o.id,
                       tipo: o.tipo,
                       colorAnterior: o.color,
@@ -94,12 +94,12 @@ export default function FloatingTextToolbar({
                   return o;
                 });
 
-                console.log("ðŸ” [TOOLBAR] Objetos despuÃ©s del cambio:", nuevosObjetos.length);
+                console.log("🔍 [TOOLBAR] Objetos después del cambio:", nuevosObjetos.length);
                 return nuevosObjetos;
               });
             }}
             className="w-8 h-6 rounded cursor-pointer"
-            title="Color del Ã­cono"
+            title="Color del ícono"
           />
         </div>
       </div>
@@ -112,7 +112,7 @@ export default function FloatingTextToolbar({
       style={toolbarContainerStyle}
 
     >
-      {/* ðŸŽ¨ Color de fondo (solo formas) */}
+      {/* 🎨 Color de fondo (solo formas) */}
       {objetoSeleccionado?.tipo === "forma" && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-600">Fondo</label>
@@ -133,7 +133,7 @@ export default function FloatingTextToolbar({
         </div>
       )}
 
-      {/* ðŸŸ£ Radio esquinas (solo rectÃ¡ngulos) */}
+      {/* 🟣 Radio esquinas (solo rectángulos) */}
       {objetoSeleccionado?.tipo === "forma" && esRect && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-600">Esquinas</label>
@@ -164,7 +164,7 @@ export default function FloatingTextToolbar({
           }`}
         style={{
           fontFamily: objetoSeleccionado?.fontFamily || "sans-serif",
-          width: "180px", // ðŸ‘ˆ ancho fijo del botÃ³n de fuente
+          width: "180px", // 👈 ancho fijo del botón de fuente
           textAlign: "left",
         }}
         title={objetoSeleccionado?.fontFamily || "sans-serif"}
@@ -174,7 +174,7 @@ export default function FloatingTextToolbar({
       </div>
 
 
-      {/* ðŸª„ FontSelector separado (fuera del botÃ³n) */}
+      {/* 🪄 FontSelector separado (fuera del botón) */}
       <FontSelector
         currentFont={objetoSeleccionado?.fontFamily || "sans-serif"}
         onFontChange={async (nuevaFuente) => {
@@ -192,7 +192,7 @@ export default function FloatingTextToolbar({
       />
 
 
-      {/* Control de tamaÃ±o */}
+      {/* Control de tamaño */}
       <div className="relative flex items-center bg-white border rounded-lg">
         <button
           className="px-2 py-1 hover:bg-gray-100 transition"
@@ -207,7 +207,7 @@ export default function FloatingTextToolbar({
             );
           }}
         >
-          âˆ’
+          −
         </button>
 
         <div
@@ -262,7 +262,7 @@ export default function FloatingTextToolbar({
         </button>
       </div>
 
-      {/* ðŸŽ¨ Color de texto */}
+      {/* 🎨 Color de texto */}
       <input
         type="color"
         value={objetoSeleccionado?.colorTexto || "#000000"}
@@ -342,25 +342,25 @@ export default function FloatingTextToolbar({
         S
       </button>
 
-      {/* AlineaciÃ³n */}
+      {/* Alineación */}
       <button
         className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
         onClick={onCambiarAlineacion}
-        title={`AlineaciÃ³n: ${objetoSeleccionado?.align || "izquierda"}`}
+        title={`Alineación: ${objetoSeleccionado?.align || "izquierda"}`}
       >
         {(() => {
           const align = objetoSeleccionado?.align || "left";
           switch (align) {
             case "left":
-              return "â¬…ï¸";
+              return "⬅️";
             case "center":
-              return "â†”ï¸";
+              return "↔️";
             case "right":
-              return "âž¡ï¸";
+              return "➡️";
             case "justify":
-              return "âšŒ";
+              return "⚌";
             default:
-              return "â¬…ï¸";
+              return "⬅️";
           }
         })()}
       </button>

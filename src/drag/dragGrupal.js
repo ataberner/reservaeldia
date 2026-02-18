@@ -1,4 +1,4 @@
-﻿// C:\Reservaeldia\src\drag\dragGrupal.js
+// C:\Reservaeldia\src\drag\dragGrupal.js
 import { determinarNuevaSeccion } from "@/utils/layout";
 
 const isDragGrupalDebugEnabled = () =>
@@ -89,20 +89,20 @@ function applyPreviewDragGrupal(stage, leaderId, deltaX, deltaY) {
 }
 
 export function startDragGrupalLider(e, obj) {
-  dlog("ðŸš€ [DRAG GRUPAL] Iniciando drag grupal - Objeto:", {
+  dlog("🚀 [DRAG GRUPAL] Iniciando drag grupal - Objeto:", {
     id: obj.id,
     tipo: obj.tipo,
     figura: obj.figura
   });
 
   const seleccion = window._elementosSeleccionados || [];
-  dlog("ðŸ“‹ [DRAG GRUPAL] SelecciÃ³n actual:", seleccion);
+  dlog("📋 [DRAG GRUPAL] Selección actual:", seleccion);
 
   if (seleccion.length > 1 && seleccion.includes(obj.id)) {
-    dlog("âœ… [DRAG GRUPAL] Condiciones cumplidas para drag grupal");
+    dlog("✅ [DRAG GRUPAL] Condiciones cumplidas para drag grupal");
     const stage = e?.target?.getStage?.();
     const hoverCountBeforeStart = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-    dlog("ðŸ§ª [HOVER][GROUP-CANDIDATE]", {
+    dlog("🧪 [HOVER][GROUP-CANDIDATE]", {
       leaderCandidate: obj.id,
       seleccionSize: seleccion.length,
       hoverCountBeforeStart,
@@ -110,7 +110,7 @@ export function startDragGrupalLider(e, obj) {
       grupoLider: window._grupoLider || null,
     });
 
-    // ðŸ”¥ DETECTAR LÃNEAS EN LA SELECCIÃ“N
+    // 🔥 DETECTAR LÍNEAS EN LA SELECCIÓN
     const elementosDetallados = seleccion.map(id => {
       const objeto = window._objetosActuales?.find(o => o.id === id);
       const node = window._elementRefs?.[id];
@@ -125,36 +125,36 @@ export function startDragGrupalLider(e, obj) {
       };
     });
 
-    dlog("ðŸ“Š [DRAG GRUPAL] AnÃ¡lisis detallado de elementos:", elementosDetallados);
+    dlog("📊 [DRAG GRUPAL] Análisis detallado de elementos:", elementosDetallados);
 
     const hayLineas = seleccion.some(id => {
       const objeto = window._objetosActuales?.find(o => o.id === id);
       return objeto?.tipo === 'forma' && objeto?.figura === 'line';
     });
 
-    dlog("ðŸ“ [DRAG GRUPAL] Â¿Hay lÃ­neas en la selecciÃ³n?", hayLineas);
+    dlog("📏 [DRAG GRUPAL] ¿Hay líneas en la selección?", hayLineas);
 
     if (hayLineas) {
-      dlog("ðŸ”§ [DRAG GRUPAL] Preparando lÃ­neas para drag grupal...");
+      dlog("🔧 [DRAG GRUPAL] Preparando líneas para drag grupal...");
       seleccion.forEach(id => {
         const objeto = window._objetosActuales?.find(o => o.id === id);
         if (objeto?.tipo === 'forma' && objeto?.figura === 'line') {
           const node = window._elementRefs?.[id];
-          dlog(`ðŸ“ [DRAG GRUPAL] LÃ­nea ${id}:`, {
+          dlog(`📏 [DRAG GRUPAL] Línea ${id}:`, {
             nodeExists: !!node,
             draggableBefore: node ? node.draggable() : null
           });
 
           if (node && node.draggable) {
             node.draggable(true);
-            dlog(`âœ… [DRAG GRUPAL] LÃ­nea ${id} habilitada para drag`);
+            dlog(`✅ [DRAG GRUPAL] Línea ${id} habilitada para drag`);
           }
         }
       });
     }
 
     if (!window._grupoLider) {
-      dlog("ðŸ‘‘ [DRAG GRUPAL] Estableciendo lÃ­der:", obj.id);
+      dlog("👑 [DRAG GRUPAL] Estableciendo líder:", obj.id);
       if (window._groupPreviewRaf) {
         cancelAnimationFrame(window._groupPreviewRaf);
         window._groupPreviewRaf = null;
@@ -174,7 +174,7 @@ export function startDragGrupalLider(e, obj) {
       } catch { }
       window.dispatchEvent(new Event("dragging-start"));
       const hoverCountAfterGlobalStart = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-      dlog("ðŸ§ª [HOVER][GROUP-START-DISPATCH]", {
+      dlog("🧪 [HOVER][GROUP-START-DISPATCH]", {
         leader: obj.id,
         hoverCountAfterGlobalStart,
         windowIsDragging: window._isDragging,
@@ -183,7 +183,7 @@ export function startDragGrupalLider(e, obj) {
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
           const hoverCountRaf = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-          dlog("ðŸ§ª [HOVER][GROUP-START-DISPATCH][RAF]", {
+          dlog("🧪 [HOVER][GROUP-START-DISPATCH][RAF]", {
             leader: obj.id,
             hoverCountRaf,
             windowIsDragging: window._isDragging,
@@ -197,7 +197,7 @@ export function startDragGrupalLider(e, obj) {
         const objeto = window._objetosActuales?.find(o => o.id === id);
         const node = window._elementRefs?.[id];
 
-        dlog(`ðŸ”„ [DRAG GRUPAL] Procesando elemento ${id}:`, {
+        dlog(`🔄 [DRAG GRUPAL] Procesando elemento ${id}:`, {
           esLider: id === obj.id,
           nodeExists: !!node,
           objetoType: objeto?.tipo
@@ -207,9 +207,9 @@ export function startDragGrupalLider(e, obj) {
           const draggableBefore = node.draggable();
           try {
             node.draggable(false);
-            dlog(`ðŸš« [DRAG GRUPAL] Deshabilitado drag para seguidor ${id} (era: ${draggableBefore})`);
+            dlog(`🚫 [DRAG GRUPAL] Deshabilitado drag para seguidor ${id} (era: ${draggableBefore})`);
           } catch (err) {
-            console.error(`âŒ [DRAG GRUPAL] Error deshabilitando ${id}:`, err);
+            console.error(`❌ [DRAG GRUPAL] Error deshabilitando ${id}:`, err);
           }
         }
 
@@ -228,18 +228,18 @@ export function startDragGrupalLider(e, obj) {
             y: yAbsIni
           };
 
-          dlog(`ðŸ“ [DRAG GRUPAL] PosiciÃ³n inicial guardada para ${id}:`, window._dragInicial[id]);
+          dlog(`📍 [DRAG GRUPAL] Posición inicial guardada para ${id}:`, window._dragInicial[id]);
         }
       });
 
-      dlog("ðŸŽ¯ [DRAG GRUPAL] Drag grupal iniciado correctamente");
+      dlog("🎯 [DRAG GRUPAL] Drag grupal iniciado correctamente");
     } else {
-      dlog("âš ï¸ [DRAG GRUPAL] Ya hay un lÃ­der activo:", window._grupoLider);
+      dlog("⚠️ [DRAG GRUPAL] Ya hay un líder activo:", window._grupoLider);
     }
     return true;
   }
-  // ðŸ” DEBUG CLAVE: si NO se inicia drag grupal, NO deberÃ­amos tocar estado global
-  dlog("ðŸ§ª [DRAG GRUPAL] NO-START snapshot", {
+  // 🔍 DEBUG CLAVE: si NO se inicia drag grupal, NO deberíamos tocar estado global
+  dlog("🧪 [DRAG GRUPAL] NO-START snapshot", {
     objId: obj.id,
     seleccion,
     grupoLider: window._grupoLider,
@@ -249,14 +249,14 @@ export function startDragGrupalLider(e, obj) {
     dragStartPos: window._dragStartPos,
   });
 
-  dlog("âŒ [DRAG GRUPAL] Condiciones no cumplidas para drag grupal");
+  dlog("❌ [DRAG GRUPAL] Condiciones no cumplidas para drag grupal");
   return false;
 }
 
 
 
 export function previewDragGrupal(e, obj, onChange) {
-  // Solo el lÃ­der debe mover visualmente al resto durante el preview.
+  // Solo el líder debe mover visualmente al resto durante el preview.
   if (!window._grupoLider || obj?.id !== window._grupoLider) return;
 
   const stage = e?.target?.getStage?.();
@@ -270,7 +270,7 @@ export function previewDragGrupal(e, obj, onChange) {
 }
 
 export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
-  dlog("ðŸ [DRAG GRUPAL] endDragGrupal llamado:", {
+  dlog("🏁 [DRAG GRUPAL] endDragGrupal llamado:", {
     objId: obj.id,
     esLider: obj.id === window._grupoLider,
     grupoLider: window._grupoLider,
@@ -280,9 +280,9 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
   });
 
 
-  // Solo procesa el lÃ­der
+  // Solo procesa el líder
   if (window._grupoLider && obj.id === window._grupoLider) {
-    dlog("ðŸ‘‘ [DRAG GRUPAL] Procesando como lÃ­der...");
+    dlog("👑 [DRAG GRUPAL] Procesando como líder...");
 
     const stage = e.target.getStage();
     const deltaData = window._dragInicial ? calcularDeltaGrupal(stage) : null;
@@ -295,11 +295,11 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
       window._groupPreviewLastDelta = null;
 
       const { deltaX, deltaY, source } = deltaData;
-      dlog("ðŸ“ [DRAG GRUPAL] Delta calculado:", { deltaX, deltaY, source });
+      dlog("📏 [DRAG GRUPAL] Delta calculado:", { deltaX, deltaY, source });
 
       const elementosGrupo = getGrupoElementos();
 
-      // ðŸ”¥ APLICAR EL DELTA A CADA ELEMENTO (incluyendo al lÃ­der)
+      // 🔥 APLICAR EL DELTA A CADA ELEMENTO (incluyendo al líder)
       elementosGrupo.forEach((elementId) => {
         const objeto = window._objetosActuales?.find(o => o.id === elementId);
         if (!objeto) return;
@@ -310,7 +310,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
         const nuevaX = posInicial.x + deltaX;
         const nuevaY = posInicial.y + deltaY;
 
-        dlog(`ðŸ‘¥ [DRAG GRUPAL] Elemento ${elementId}:`, {
+        dlog(`👥 [DRAG GRUPAL] Elemento ${elementId}:`, {
           posInicial,
           delta: { deltaX, deltaY },
           nuevaPos: { x: nuevaX, y: nuevaY }
@@ -338,7 +338,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
         onChange(elementId, cambios);
       });
     } else {
-      dwarn("âš ï¸ [DRAG GRUPAL] No se pudo calcular delta final del grupo");
+      dwarn("⚠️ [DRAG GRUPAL] No se pudo calcular delta final del grupo");
     }
 
     // Cleanup
@@ -354,9 +354,9 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
           const before = elNode.draggable();
           elNode.draggable(true);
           const after = elNode.draggable();
-          dlog("ðŸ§© [DRAG GRUPAL] restore draggable", { id, before, after });
+          dlog("🧩 [DRAG GRUPAL] restore draggable", { id, before, after });
         } catch (err) {
-          dwarn("âŒ [DRAG GRUPAL] restore draggable error", { id, err });
+          dwarn("❌ [DRAG GRUPAL] restore draggable error", { id, err });
         }
       }, 24);
     });
@@ -368,7 +368,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     window._dragStartPos = null;
     window._dragInicial = null;
 
-    // ðŸ”¥ RESETEAR CURSOR AL FINALIZAR DRAG GRUPAL
+    // 🔥 RESETEAR CURSOR AL FINALIZAR DRAG GRUPAL
     try {
       document.body.style.cursor = "default";
     } catch { }

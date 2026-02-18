@@ -14,8 +14,10 @@ import dynamic from "next/dynamic";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
+import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // 💡 desactiva server-side rendering
+  loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
 });
 
 function splitDisplayName(displayName) {
@@ -250,10 +252,15 @@ export default function Dashboard() {
 
     const handleAbrirBorrador = (e) => {
       const { slug, editor } = e.detail;
+      if (!slug) return;
+
+      // Fallback seguro: salvo que venga explícitamente "iframe", abrimos Konva.
+      const editorNormalizado = editor === "iframe" ? "iframe" : "konva";
 
       setSlugInvitacion(slug);
 
-      if (editor === "konva") {
+      if (editorNormalizado === "konva") {
+        setUrlIframe(null);
         setModoEditor("konva");
       } else {
         const url = `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`;
@@ -472,15 +479,17 @@ export default function Dashboard() {
 
       {slugInvitacion && (
         <>
-          {modoEditor === "konva" && (
-            <CanvasEditor
-              slug={slugInvitacion}
-              zoom={zoom}
-              onHistorialChange={setHistorialExternos}
-              onFuturosChange={setFuturosExternos}
-              userId={usuario?.uid}
-              secciones={[]}
-            />
+          {modoEditor !== "iframe" && (
+            <ChunkErrorBoundary>
+              <CanvasEditor
+                slug={slugInvitacion}
+                zoom={zoom}
+                onHistorialChange={setHistorialExternos}
+                onFuturosChange={setFuturosExternos}
+                userId={usuario?.uid}
+                secciones={[]}
+              />
+            </ChunkErrorBoundary>
           )}
 
           {modoEditor === "iframe" && (

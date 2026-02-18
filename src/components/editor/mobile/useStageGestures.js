@@ -1,6 +1,19 @@
 ﻿import { useCallback, useRef } from "react";
 
-const TOUCH_MOVE_PX = 10;
+const TOUCH_MOVE_PX = 16;
+const TOUCH_SCROLL_PX = 2;
+
+function getClientPointFromNativeEvent(nativeEvent) {
+  if (!nativeEvent) return null;
+  const touch = nativeEvent.touches?.[0] || nativeEvent.changedTouches?.[0];
+  if (touch && Number.isFinite(touch.clientX) && Number.isFinite(touch.clientY)) {
+    return { x: touch.clientX, y: touch.clientY };
+  }
+  if (Number.isFinite(nativeEvent.clientX) && Number.isFinite(nativeEvent.clientY)) {
+    return { x: nativeEvent.clientX, y: nativeEvent.clientY };
+  }
+  return null;
+}
 
 function findRootHit(target, elementRefs) {
   if (!target || !elementRefs) return null;
@@ -30,6 +43,11 @@ export default function useStageGestures({
   const touchGestureRef = useRef({
     startX: 0,
     startY: 0,
+    startClientX: 0,
+    startClientY: 0,
+    startScrollX: 0,
+    startScrollY: 0,
+    startedAt: 0,
     moved: false,
     tappedSectionId: null,
     clickedOnStage: false,
@@ -39,10 +57,15 @@ export default function useStageGestures({
   const resolveSectionIdFromTarget = useCallback(
     (target) => {
       if (!target) return null;
-      if (target.attrs?.id && secciones.some((s) => s.id === target.attrs.id)) {
-        return target.attrs.id;
+      let node = target;
+      while (node) {
+        const nodeId = node.attrs?.id;
+        if (nodeId && secciones.some((s) => s.id === nodeId)) {
+          return nodeId;
+        }
+        node = node.parent;
       }
-      return secciones.find((s) => s.id === target.parent?.attrs?.id)?.id || null;
+      return null;
     },
     [secciones]
   );
@@ -120,10 +143,20 @@ export default function useStageGestures({
       const rootHit = findRootHit(e.target, elementRefs);
       const clickedOnStage = e.target === stage;
       const tappedSectionId = resolveSectionIdFromTarget(e.target);
+      const clientPoint = getClientPointFromNativeEvent(e.evt);
+      const startScrollX =
+        typeof window !== "undefined" ? window.scrollX || window.pageXOffset || 0 : 0;
+      const startScrollY =
+        typeof window !== "undefined" ? window.scrollY || window.pageYOffset || 0 : 0;
 
       touchGestureRef.current = {
         startX: pos.x,
         startY: pos.y,
+        startClientX: clientPoint?.x ?? pos.x,
+        startClientY: clientPoint?.y ?? pos.y,
+        startScrollX,
+        startScrollY,
+        startedAt: Date.now(),
         moved: false,
         tappedSectionId,
         clickedOnStage,
@@ -144,19 +177,44 @@ export default function useStageGestures({
     if (!stage) return;
 
     const pos = stage.getPointerPosition();
-    if (!pos) return;
+    const clientPoint = getClientPointFromNativeEvent(e.evt);
+    const pointX = clientPoint?.x ?? pos?.x;
+    const pointY = clientPoint?.y ?? pos?.y;
+    if (!Number.isFinite(pointX) || !Number.isFinite(pointY)) return;
 
-    const dx = Math.abs(pos.x - touchGestureRef.current.startX);
-    const dy = Math.abs(pos.y - touchGestureRef.current.startY);
+    const dx = Math.abs(pointX - touchGestureRef.current.startClientX);
+    const dy = Math.abs(pointY - touchGestureRef.current.startClientY);
 
     if (dx > TOUCH_MOVE_PX || dy > TOUCH_MOVE_PX) {
       touchGestureRef.current.moved = true;
     }
   }, []);
 
-  const onTouchEnd = useCallback(() => {
+  const onTouchEnd = useCallback((e) => {
     const g = touchGestureRef.current;
+    const clientPoint = getClientPointFromNativeEvent(e?.evt);
+    const endClientX = clientPoint?.x ?? g.startClientX;
+    const endClientY = clientPoint?.y ?? g.startClientY;
+    const currentScrollX =
+      typeof window !== "undefined" ? window.scrollX || window.pageXOffset || 0 : g.startScrollX;
+    const currentScrollY =
+      typeof window !== "undefined" ? window.scrollY || window.pageYOffset || 0 : g.startScrollY;
+
+    const movedByTouch =
+      Math.abs(endClientX - g.startClientX) > TOUCH_MOVE_PX ||
+      Math.abs(endClientY - g.startClientY) > TOUCH_MOVE_PX;
+    const movedByScroll =
+      Math.abs(currentScrollX - g.startScrollX) > TOUCH_SCROLL_PX ||
+      Math.abs(currentScrollY - g.startScrollY) > TOUCH_SCROLL_PX;
+    const elapsed = Date.now() - (g.startedAt || Date.now());
+    const longPress = elapsed > 450;
+
+    if (movedByTouch || movedByScroll) {
+      g.moved = true;
+    }
+
     if (g.moved) return;
+    if (longPress) return;
     if (g.startedOnElement) return;
 
     clearSelectionUI();

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import {
   GoogleAuthProvider,
   sendPasswordResetEmail,
@@ -12,38 +12,18 @@ import { httpsCallable } from "firebase/functions";
 import { auth, functions } from "@/firebase";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
+import {
+  setGoogleRedirectPending,
+  shouldUseGoogleRedirect,
+} from "@/lib/auth/googleRedirectFlow";
+import { getMyProfileStatusWithRetry } from "@/lib/auth/profileStatus";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const POPUP_TO_REDIRECT_ERROR_CODES = new Set([
   "auth/popup-blocked",
   "auth/operation-not-supported-in-this-environment",
   "auth/web-storage-unsupported",
 ]);
-const GOOGLE_REDIRECT_PENDING_KEY = "google_auth_redirect_pending";
-
-function isMobileBrowser() {
-  if (typeof window === "undefined") return false;
-  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
-    return true;
-  }
-  const userAgent = String(window.navigator?.userAgent || "").toLowerCase();
-  return /(android|iphone|ipad|ipod|mobile|silk|kindle|opera mini|iemobile|webos)/i.test(userAgent);
-}
-
-function setGoogleRedirectPending() {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, "1");
-  } catch {
-    // noop
-  }
-}
-
-function shouldUseGoogleRedirect() {
-  if (typeof window === "undefined") return false;
-  return LOCALHOST_HOSTS.has(window.location.hostname) || isMobileBrowser();
-}
 
 function mapAuthError(code) {
   switch (code) {
@@ -65,6 +45,8 @@ function mapAuthError(code) {
       return "Demasiados intentos. Espera unos minutos.";
     case "auth/network-request-failed":
       return "Error de red. Verifica tu conexion.";
+    case "auth/account-exists-with-different-credential":
+      return "Este correo ya esta asociado a otro metodo de acceso.";
     default:
       return "No se pudo iniciar sesion. Intenta de nuevo.";
   }
@@ -139,8 +121,10 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
   };
 
   const continueAfterAuth = async (user, source) => {
-    const statusResult = await getMyProfileStatusCallable({});
-    const statusData = statusResult?.data || {};
+    const statusData = await getMyProfileStatusWithRetry({
+      callable: getMyProfileStatusCallable,
+      user,
+    });
 
     if (statusData.profileComplete === true) {
       onClose?.();
@@ -176,8 +160,9 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
     setLoadingGoogle(true);
 
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
     const startRedirect = async () => {
-      setInfo("Redirigiendo a Google...");
+      setInfo("Abriendo Google...");
       setGoogleRedirectPending();
       await signInWithRedirect(auth, provider);
     };

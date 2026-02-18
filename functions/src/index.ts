@@ -243,6 +243,28 @@ function toISODateTime(value: unknown): string | null {
   return null;
 }
 
+function toLimitedString(value: unknown, maxLength = 500): string | null {
+  if (value === null || typeof value === "undefined") return null;
+  const asText = typeof value === "string" ? value : String(value);
+  const normalized = asText.trim();
+  if (!normalized) return null;
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength)}…`;
+}
+
+function toLimitedJson(value: unknown, maxLength = 4000): string | null {
+  if (value === null || typeof value === "undefined") return null;
+
+  try {
+    const asJson = JSON.stringify(value);
+    if (!asJson) return null;
+    if (asJson.length <= maxLength) return asJson;
+    return `${asJson.slice(0, maxLength)}…`;
+  } catch {
+    return toLimitedString(value, maxLength);
+  }
+}
+
 async function getProfileMapByUid(uids: string[]): Promise<Map<string, UserProfileData>> {
   const uniqueUids = Array.from(new Set(uids.filter(Boolean)));
   if (uniqueUids.length === 0) {
@@ -1101,6 +1123,71 @@ export const getMyProfileStatus = onCall(
         fechaNacimiento: profileData.fechaNacimiento,
       },
       profileComplete,
+    };
+  }
+);
+
+/**
+ * ================================
+ * Diagnostico: reporte de errores cliente
+ * ================================
+ */
+export const reportClientIssue = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<{ report?: Record<string, unknown> }>) => {
+    const uid = request.auth?.uid || null;
+    const report =
+      request.data?.report && typeof request.data.report === "object"
+        ? request.data.report
+        : {};
+
+    const source = toLimitedString(report.source, 180) || "unknown";
+    const message = toLimitedString(report.message, 2000) || "Sin mensaje";
+    const stack = toLimitedString(report.stack, 12000);
+    const severity = toLimitedString(report.severity, 40) || "error";
+    const fingerprint = toLimitedString(report.fingerprint, 180);
+    const slug = toLimitedString(report.slug, 180);
+    const occurredAt = toLimitedString(report.occurredAt, 80);
+    const detail = toLimitedString(report.detail, 12000);
+    const runtime = toLimitedJson(report.runtime, 12000);
+    const clientReportId = toLimitedString(report.id, 100);
+    const breadcrumbs = Array.isArray(report.breadcrumbs)
+      ? report.breadcrumbs.slice(-40).map((item) => toLimitedJson(item, 600))
+      : [];
+
+    const issueDoc = {
+      uid,
+      hasAuth: Boolean(uid),
+      source,
+      message,
+      stack,
+      severity,
+      fingerprint,
+      slug,
+      occurredAt,
+      detail,
+      runtime,
+      clientReportId,
+      breadcrumbs,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const created = await db.collection("clientIssues").add(issueDoc);
+
+    logger.info("Client issue report recibido", {
+      issueId: created.id,
+      uid,
+      hasAuth: Boolean(uid),
+      source,
+      fingerprint,
+    });
+
+    return {
+      success: true,
+      issueId: created.id,
     };
   }
 );

@@ -1,6 +1,6 @@
 ﻿// components/CanvasEditor.jsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Image as KonvaImage, Group, Circle } from "react-konva";
 import ElementoCanvas from "./ElementoCanvas";
 import LineControls from "./LineControls";
@@ -44,6 +44,8 @@ import {
   Settings,
   Unlink2,
   Monitor,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import useBorradorSync from "./editor/persistence/useBorradorSync";
 import useSectionsManager from "./editor/sections/useSectionsManager";
@@ -61,6 +63,22 @@ import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
 
 
 Konva.dragDistance = 8;
+
+function resolveKonvaPixelRatio() {
+  if (typeof window === "undefined") return 1;
+
+  const dpr = Number(window.devicePixelRatio || 1);
+  const coarsePointer =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+  const minSide = Math.min(Number(window.innerWidth || 0), Number(window.innerHeight || 0));
+  const mobileLike = coarsePointer || (minSide > 0 && minSide <= 1024);
+
+  if (mobileLike) return 1;
+  return Math.min(dpr, 2);
+}
+
+Konva.pixelRatio = resolveKonvaPixelRatio();
 
 const ALTURA_REFERENCIA_PANTALLA = 500;
 const ALTURA_PANTALLA_EDITOR = 500;
@@ -220,6 +238,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
+  const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
 
 
 
@@ -408,12 +427,31 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     zoom,
   });
 
+  useEffect(() => {
+    const desiredRatio = isMobile ? 1 : resolveKonvaPixelRatio();
+    if (Konva.pixelRatio !== desiredRatio) {
+      Konva.pixelRatio = desiredRatio;
+      stageRef.current?.getStage?.()?.batchDraw?.();
+    }
+  }, [isMobile]);
+
   const inlineDebugAB = useMemo(() => {
     if (typeof window === "undefined") {
       return normalizeInlineDebugAB(null);
     }
     return normalizeInlineDebugAB(window.__INLINE_AB);
   }, [editing.id, editing.value]);
+
+  useEffect(() => {
+    if (!isMobile && mobileSectionActionsOpen) {
+      setMobileSectionActionsOpen(false);
+    }
+  }, [isMobile, mobileSectionActionsOpen]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    setMobileSectionActionsOpen(false);
+  }, [seccionActivaId, isMobile]);
 
   const handleInlineOverlayMountChange = useCallback((id, mounted) => {
     const safeId = id || null;
@@ -689,7 +727,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.__INLINE_DEBUG === undefined) {
-      window.__INLINE_DEBUG = true;
+      window.__INLINE_DEBUG = false;
     }
     if (window.__INLINE_FRAME_SEQ === undefined) {
       window.__INLINE_FRAME_SEQ = 0;
@@ -1920,17 +1958,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               const esUltima = index === seccionesOrdenadas.length - 1;
               const estaAnimando = seccionesAnimando.includes(seccion.id);
 
-              return (
-                <div
-                  key={`orden-${seccion.id}`}
-                  className="absolute flex flex-col gap-2"
-                  style={{
-                    top: isMobile ? Math.max(8, offsetY + 8) : offsetY + 20,
-                    right: isMobile ? 8 : -150,
-                    zIndex: 25,
-                    maxWidth: isMobile ? 190 : 260,
-                  }}
-                >
+              const actionButtons = (
+                <>
                   {/* Botón Subir */}
                   <button
                     onClick={() =>
@@ -1981,13 +2010,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     </button>
                   )}
 
-
                   {(() => {
                     const modoSeccion = normalizarAltoModo(seccion.altoModo);
                     const esPantalla = modoSeccion === "pantalla";
 
                     return (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {/* Botón Desanclar fondo */}
                         {seccion.fondoTipo === "imagen" && (
                           <button
@@ -2051,7 +2079,12 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                   {/* Botón Borrar sección */}
                   <button
-                    onClick={() => abrirModalBorrarSeccion(seccion.id)}
+                    onClick={() => {
+                      if (isMobile) {
+                        setMobileSectionActionsOpen(false);
+                      }
+                      abrirModalBorrarSeccion(seccion.id);
+                    }}
                     disabled={estaAnimando || isDeletingSection}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando || isDeletingSection
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -2064,7 +2097,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       Borrar sección
                     </span>
                   </button>
-
 
                   {/* Botón Bajar */}
                   <button
@@ -2107,8 +2139,55 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       Añadir sección
                     </span>
                   </button>
+                </>
+              );
 
+              if (isMobile) {
+                if (typeof document === "undefined") return null;
+                return createPortal(
+                  <div
+                    className="fixed z-[90] flex flex-col items-end gap-2"
+                    style={{
+                      top: "calc(64px + env(safe-area-inset-top, 0px))",
+                      right: "max(8px, env(safe-area-inset-right, 0px))",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setMobileSectionActionsOpen((prev) => !prev)}
+                      className="h-9 w-9 rounded-full bg-purple-600 text-white shadow-lg hover:bg-purple-700 flex items-center justify-center"
+                      title="Acciones de sección"
+                    >
+                      {mobileSectionActionsOpen ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
 
+                    {mobileSectionActionsOpen && (
+                      <div className="w-[min(84vw,230px)] max-h-[62vh] overflow-y-auto rounded-xl border border-purple-200 bg-white/95 p-2 shadow-2xl backdrop-blur">
+                        <div className="flex flex-col gap-2">{actionButtons}</div>
+                      </div>
+                    )}
+                  </div>,
+                  document.body,
+                  `orden-mobile-${seccion.id}`
+                );
+              }
+
+              return (
+                <div
+                  key={`orden-${seccion.id}`}
+                  className="absolute flex flex-col gap-2"
+                  style={{
+                    top: offsetY + 20,
+                    right: -150,
+                    zIndex: 25,
+                    maxWidth: 260,
+                  }}
+                >
+                  {actionButtons}
                 </div>
               );
             })}
@@ -2159,10 +2238,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     const esActiva = seccion.id === seccionActivaId;
                     const estaAnimando = seccionesAnimando.includes(seccion.id);
 
-                    if (estaAnimando) {
-                      console.log("?? SECCIÓN ANIMANDO:", seccion.id);
-                    }
-
                     const elementos = [
                       // Fondo de sección - puede ser color o imagen
                       seccion.fondoTipo === "imagen" ? (
@@ -2188,6 +2263,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           stroke="transparent"
                           strokeWidth={0}
                           listening={true}
+                          preventDefault={false}
                           onClick={() => onSelectSeccion(seccion.id)}
                           onTap={() => onSelectSeccion(seccion.id)}
                         />
@@ -2620,16 +2696,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         inlineVisibilityMode={inlineDebugAB.visibilitySource}
                         finishInlineEdit={finishEdit}
                         onSelect={isInEditMode ? null : (id, obj, e) => {
-                          console.log("?? [CANVAS EDITOR] onSelect disparado:", {
-                            id,
-                            tipo: obj?.tipo,
-                            figura: obj?.figura,
-                            shiftKey: e?.evt?.shiftKey,
-                            seleccionActual: elementosSeleccionados
-                          });
-
                           if (obj.tipo === "rsvp-boton") {
-                            console.log("?? Click en botón RSVP");
                             return;
                           }
 
@@ -2644,15 +2711,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           setElementosSeleccionados((prev) => {
 
                             if (esShift) {
-                              console.log("? [CANVAS EDITOR] Modo Shift: agregando/quitando elemento");
-
                               if (prev.includes(id)) {
-                                const nueva = prev.filter((x) => x !== id);
-                                console.log("? [CANVAS EDITOR] Elemento removido. Nueva selección:", nueva);
-                                return nueva;
+                                return prev.filter((x) => x !== id);
                               } else {
-                                const nueva = [...prev, id];
-                                return nueva;
+                                return [...prev, id];
                               }
                             } else {
                               return [id];
@@ -2808,10 +2870,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           const seleccionActual = Array.isArray(window._elementosSeleccionados)
                             ? window._elementosSeleccionados
                             : elementosSeleccionados;
-                          const isGroupCandidate =
-                            seleccionActual.length > 1 && seleccionActual.includes(dragId);
-                          const stage = e?.target?.getStage?.();
-                          const hoverCountBefore = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
 
                           if (!seleccionActual.includes(dragId)) {
                             setElementosSeleccionados([dragId]);
@@ -2822,35 +2880,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                             setElementosPreSeleccionados([]);
                             setIsDragging(true);
                           });
-
-                          if (isGroupCandidate) {
-                            const now =
-                              typeof performance !== "undefined" && performance.now
-                                ? Number(performance.now().toFixed(2))
-                                : Date.now();
-                            const hoverCountAfterSync = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-                            console.log("?? [HOVER][GROUP-DRAG-START]", {
-                              t: now,
-                              dragId,
-                              seleccionSize: seleccionActual.length,
-                              hoverIdBefore: hoverId,
-                              preSeleccionadosBefore: elementosPreSeleccionados.length,
-                              hoverCountBefore,
-                              hoverCountAfterSync,
-                              windowIsDragging: window._isDragging,
-                              isDraggingState: isDragging,
-                              grupoLider: window._grupoLider || null,
-                            });
-                            requestAnimationFrame(() => {
-                              const hoverCountRaf = stage?.find?.(".ui-hover-indicator")?.length ?? 0;
-                              console.log("?? [HOVER][GROUP-DRAG-START][RAF]", {
-                                dragId,
-                                hoverCountRaf,
-                                windowIsDragging: window._isDragging,
-                                grupoLider: window._grupoLider || null,
-                              });
-                            });
-                          }
                         }}
                         onDragEndPersonalizado={isInEditMode ? null : () => {
                           setIsDragging(false);
@@ -2900,20 +2929,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         objetos={objetos}
                         isDragging={isDragging}
                         onTransform={(newAttrs) => {
-                          console.log("?? Transform detectado:", newAttrs);
-
                           if (elementosSeleccionados.length === 1) {
                             const id = elementosSeleccionados[0];
-                            const objIndex = objetos.findIndex(o => o.id === id); // ?? DEFINIR PRIMERO
-
-                            // ?? MOVER EL LOG AQUÍ (después de definir objIndex)
-                            if (newAttrs.isFinal) {
-                              console.log("?? FINAL TRANSFORM:", {
-                                originalY: newAttrs.y,
-                                elementIndex: objIndex,
-                                elementId: elementosSeleccionados[0]
-                              });
-                            }
+                            const objIndex = objetos.findIndex(o => o.id === id);
 
                             if (objIndex !== -1) {
 
@@ -2978,7 +2996,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
 
                               } else if (newAttrs.isFinal) {
                                 // Final: actualización completa
-                                console.log('?? Guardando estado final para historial');
                                 window._resizeData = { isResizing: false };
 
                                 const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
@@ -3054,12 +3071,6 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                 } catch {
                                   offsetY = 0;
                                 }
-
-                                console.log("?? Convirtiendo coordenadas:", {
-                                  yAbsoluta: cleanAttrs.y,
-                                  offsetY,
-                                  yRelativa: finalAttrs.y
-                                });
 
                                 if (objOriginal.tipo === "countdown") {
                                   actualizarObjeto(objIndex, finalAttrs);
@@ -3393,12 +3404,14 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
             })()}
 
 
-            {/* ?? STAGE ADICIONAL SOLO PARA LÍNEAS DIVISORIAS */}
-            <DividersOverlayStage
-              zoom={zoom}
-              altoCanvasDinamico={altoCanvasDinamico}
-              seccionesOrdenadas={seccionesOrdenadas}
-            />
+            {/* Stage extra solo en desktop para no duplicar memoria en mobile */}
+            {!isMobile && (
+              <DividersOverlayStage
+                zoom={zoom}
+                altoCanvasDinamico={altoCanvasDinamico}
+                seccionesOrdenadas={seccionesOrdenadas}
+              />
+            )}
 
 
           </div>

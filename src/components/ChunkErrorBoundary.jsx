@@ -1,4 +1,5 @@
 import React from "react";
+import { captureEditorIssue } from "@/lib/monitoring/editorIssueReporter";
 
 function isChunkLoadLike(error) {
   const message = String(error?.message || "");
@@ -28,9 +29,16 @@ class ChunkErrorBoundary extends React.Component {
     };
   }
 
-  componentDidCatch(error) {
-    // Deja rastro en consola para diagnóstico sin romper la UI.
-    console.error("Error cargando chunk dinámico:", error);
+  componentDidCatch(error, errorInfo) {
+    console.error("Error cargando chunk dinamico:", error);
+    captureEditorIssue({
+      source: "ChunkErrorBoundary",
+      error,
+      detail: {
+        componentStack: errorInfo?.componentStack || null,
+      },
+      severity: "fatal",
+    });
   }
 
   handleReload = () => {
@@ -54,11 +62,11 @@ class ChunkErrorBoundary extends React.Component {
 
     const title = this.state.isChunkError
       ? "No se pudo cargar el editor"
-      : "Ocurrió un error al cargar el editor";
+      : "Ocurrio un error al cargar el editor";
 
     const description = this.state.isChunkError
-      ? "Parece que el bundle cambió o quedó desactualizado. Recargá para continuar."
-      : "Hubo un problema inesperado. Podés intentar nuevamente.";
+      ? "Parece que el bundle cambio o quedo desactualizado. Recarga para continuar."
+      : "Hubo un problema inesperado. Podes intentar nuevamente.";
 
     return (
       <div className="mx-auto my-6 max-w-xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
@@ -71,7 +79,7 @@ class ChunkErrorBoundary extends React.Component {
             onClick={this.handleReload}
             className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
           >
-            Recargar página
+            Recargar pagina
           </button>
           <button
             type="button"

@@ -1,8 +1,12 @@
 // src/components/editor/persistence/useBorradorSync.js
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { db, storage } from "@/firebase";
+import {
+  captureEditorIssue,
+  pushEditorBreadcrumb,
+} from "@/lib/monitoring/editorIssueReporter";
 
 const STORAGE_DOWNLOAD_URL_REGEX =
   /^https?:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/.+/i;
@@ -72,6 +76,17 @@ async function refreshUrlsDeep(value, cache) {
   return value;
 }
 
+function isMobileRuntime() {
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+    return true;
+  }
+  const w = Number(window.innerWidth || 0);
+  const h = Number(window.innerHeight || 0);
+  const minSide = Math.min(w, h);
+  return minSide > 0 && minSide <= 1024;
+}
+
 /**
  * Hook de sincronizacion Firestore para el borrador (carga + guardado con debounce).
  * Mantiene la logica original de CanvasEditor.
@@ -102,6 +117,8 @@ export default function useBorradorSync({
   // constantes
   ALTURA_PANTALLA_EDITOR,
 }) {
+  const skipNextPersistRef = useRef(true);
+
   // helper: limpiar undefined recursivo
   const limpiarUndefined = (obj) => {
     if (Array.isArray(obj)) return obj.map(limpiarUndefined);
@@ -122,47 +139,69 @@ export default function useBorradorSync({
   useEffect(() => {
     if (!slug) return;
 
+    // Al cambiar de borrador, evitamos persistir inmediatamente tras hidratar estado.
+    skipNextPersistRef.current = true;
+
     const cargar = async () => {
-      const ref = doc(db, "borradores", slug);
-      const snap = await getDoc(ref);
+      pushEditorBreadcrumb("borrador-load-start", { slug });
 
-      if (snap.exists()) {
-        const data = snap.data();
-        const seccionesData = data.secciones || [];
-        const objetosData = data.objetos || [];
+      try {
+        const ref = doc(db, "borradores", slug);
+        const snap = await getDoc(ref);
 
-        // Refresca URLs de Firebase Storage por si hay tokens vencidos/revocados.
-        const refreshCache = new Map();
-        const [seccionesRefrescadas, objetosRefrescados] = await Promise.all([
-          refreshUrlsDeep(seccionesData, refreshCache),
-          refreshUrlsDeep(objetosData, refreshCache),
-        ]);
+        if (snap.exists()) {
+          const data = snap.data();
+          const seccionesData = data.secciones || [];
+          const objetosData = data.objetos || [];
 
-        // Mantengo tu migracion de yNorm para secciones pantalla
-        const objsMigrados = objetosRefrescados.map((o) => {
-          if (!o?.seccionId) return o;
+          // Refresca URLs de Firebase Storage por si hay tokens vencidos/revocados.
+          const refreshCache = new Map();
+          const [seccionesRefrescadas, objetosRefrescados] = await Promise.all([
+            refreshUrlsDeep(seccionesData, refreshCache),
+            refreshUrlsDeep(objetosData, refreshCache),
+          ]);
 
-          const sec = seccionesRefrescadas.find((s) => s.id === o.seccionId);
-          const modo = normalizarAltoModo(sec?.altoModo);
+          // Mantengo tu migracion de yNorm para secciones pantalla
+          const objsMigrados = objetosRefrescados.map((o) => {
+            if (!o?.seccionId) return o;
 
-          if (modo === "pantalla") {
-            if (!Number.isFinite(o.yNorm)) {
-              const yPx = Number.isFinite(o.y) ? o.y : 0;
-              const yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
-              return { ...o, yNorm };
+            const sec = seccionesRefrescadas.find((s) => s.id === o.seccionId);
+            const modo = normalizarAltoModo(sec?.altoModo);
+
+            if (modo === "pantalla") {
+              if (!Number.isFinite(o.yNorm)) {
+                const yPx = Number.isFinite(o.y) ? o.y : 0;
+                const yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
+                return { ...o, yNorm };
+              }
             }
+
+            return o;
+          });
+
+          setObjetos(objsMigrados);
+          setSecciones(seccionesRefrescadas);
+
+          pushEditorBreadcrumb("borrador-load-success", {
+            slug,
+            objetos: objsMigrados.length,
+            secciones: seccionesRefrescadas.length,
+          });
+
+          // Setear primera seccion activa si no hay
+          if (typeof setSeccionActivaId === "function" && seccionesRefrescadas.length > 0) {
+            setSeccionActivaId((prev) => prev || seccionesRefrescadas[0].id);
           }
-
-          return o;
-        });
-
-        setObjetos(objsMigrados);
-        setSecciones(seccionesRefrescadas);
-
-        // Setear primera seccion activa si no hay
-        if (typeof setSeccionActivaId === "function" && seccionesRefrescadas.length > 0) {
-          setSeccionActivaId((prev) => prev || seccionesRefrescadas[0].id);
+        } else {
+          pushEditorBreadcrumb("borrador-load-missing", { slug });
         }
+      } catch (error) {
+        captureEditorIssue({
+          source: "useBorradorSync.load",
+          error,
+          detail: { slug },
+          severity: "fatal",
+        });
       }
 
       setCargado(true);
@@ -176,6 +215,12 @@ export default function useBorradorSync({
   useEffect(() => {
     if (!cargado) return;
     if (!slug) return;
+
+    // Evita write + thumbnail justo al terminar la carga inicial (causa inestabilidad móvil en borradores pesados).
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
 
     if (ignoreNextUpdateRef?.current) {
       requestAnimationFrame(() => {
@@ -223,11 +268,23 @@ export default function useBorradorSync({
 
         // Thumbnail (mantengo tu logica con import dinamico)
         if (stageRef?.current && userId && slug) {
+          // En mobile pesado, generar thumbnail al vuelo puede tumbar la pestaña.
+          if (isMobileRuntime()) return;
           const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
           await guardarThumbnailDesdeStage({ stageRef, uid: userId, slug });
         }
       } catch (error) {
         console.error("Error guardando en Firebase:", error);
+        captureEditorIssue({
+          source: "useBorradorSync.save",
+          error,
+          detail: {
+            slug,
+            objetos: Array.isArray(objetos) ? objetos.length : null,
+            secciones: Array.isArray(secciones) ? secciones.length : null,
+          },
+          severity: "error",
+        });
       }
     }, 500);
 

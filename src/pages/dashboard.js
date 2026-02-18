@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { collection, query, where, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db, functions as cloudFunctions } from '../firebase';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -15,8 +15,17 @@ import { useAdminAccess } from "@/hooks/useAdminAccess";
 import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
+import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
+import {
+  consumeInterruptedEditorSession,
+  clearPendingEditorIssue,
+  installGlobalEditorIssueHandlers,
+  pushEditorBreadcrumb,
+  readPendingEditorIssue,
+  startEditorSessionWatchdog,
+} from "@/lib/monitoring/editorIssueReporter";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
-  ssr: false, // 💡 desactiva server-side rendering
+  ssr: false, // disable server-side rendering for editor
   loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
 });
 
@@ -46,6 +55,53 @@ function getErrorMessage(error, fallback) {
   return typeof message === "string" ? message : fallback;
 }
 
+function trimText(value, max = 1000) {
+  if (value === null || typeof value === "undefined") return null;
+  const text = String(value ?? "");
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+}
+
+function buildReportForTransport(report) {
+  if (!report || typeof report !== "object") return {};
+
+  const runtime = report.runtime && typeof report.runtime === "object"
+    ? {
+        href: report.runtime.href || null,
+        path: report.runtime.path || null,
+        query: report.runtime.query || null,
+        userAgent: trimText(report.runtime.userAgent, 400),
+        language: report.runtime.language || null,
+        platform: report.runtime.platform || null,
+        viewport: report.runtime.viewport || null,
+        memory: report.runtime.memory || null,
+      }
+    : null;
+
+  const breadcrumbs = Array.isArray(report.breadcrumbs)
+    ? report.breadcrumbs.slice(-30).map((item) => ({
+        at: item?.at || null,
+        event: trimText(item?.event, 120),
+        detail: trimText(item?.detail, 800),
+      }))
+    : [];
+
+  return {
+    id: trimText(report.id, 120),
+    occurredAt: trimText(report.occurredAt, 80),
+    source: trimText(report.source, 180),
+    severity: trimText(report.severity, 40),
+    slug: trimText(report.slug, 180),
+    name: trimText(report.name, 120),
+    message: trimText(report.message, 2000),
+    stack: trimText(report.stack, 12000),
+    detail: trimText(report.detail, 12000),
+    runtime,
+    breadcrumbs,
+    fingerprint: trimText(report.fingerprint, 180),
+  };
+}
+
 
 
 export default function Dashboard() {
@@ -71,29 +127,162 @@ export default function Dashboard() {
     apellido: "",
     fechaNacimiento: "",
   });
+  const [editorIssueReport, setEditorIssueReport] = useState(null);
+  const [sendingIssueReport, setSendingIssueReport] = useState(false);
+  const [issueSendError, setIssueSendError] = useState("");
+  const [sentIssueId, setSentIssueId] = useState(null);
+  const attemptedAutoSendRef = useRef(new Set());
   const router = useRouter();
   const { loadingAdminAccess, isSuperAdmin, canManageSite } =
     useAdminAccess(usuario);
 
 
-  // 🔗 Sincronizar ?slug=... con el estado (siempre usar Konva)
+  // Sync ?slug=... with local state (always Konva)
   useEffect(() => {
     if (!router.isReady) return;
 
-    const { slug } = router.query;
-    const slugURL = typeof slug === "string" ? slug : null;
+    const slugParam = router.query?.slug;
+    const slugURL = typeof slugParam === "string" ? slugParam : null;
 
     if (slugURL) {
-      setSlugInvitacion(slugURL);
-      setModoEditor("konva"); // Siempre Konva
-      setVista("editor");
-    } else {
-      // Si no hay slug y no estás editando nada, volvemos a "home"
-      if (!slugInvitacion) {
-        setVista("home");
+      if (slugInvitacion !== slugURL) {
+        setSlugInvitacion(slugURL);
       }
+      if (modoEditor !== "konva") {
+        setModoEditor("konva");
+      }
+      setVista((prev) => (prev === "editor" ? prev : "editor"));
+      return;
     }
-  }, [router.isReady, router.query, slugInvitacion]);
+
+    if (slugInvitacion) {
+      setSlugInvitacion(null);
+    }
+    if (modoEditor) {
+      setModoEditor(null);
+    }
+    setVista((prev) => (prev === "editor" ? "home" : prev));
+  }, [router.isReady, router.query?.slug]);
+
+  useEffect(() => {
+    pushEditorBreadcrumb("dashboard-mounted", {});
+
+    const teardownGlobal = installGlobalEditorIssueHandlers();
+    const onIssueCaptured = (event) => {
+      const report = event?.detail || null;
+      if (!report) return;
+      setEditorIssueReport(report);
+      setIssueSendError("");
+      setSentIssueId(null);
+    };
+
+    window.addEventListener("editor-issue-captured", onIssueCaptured);
+
+    const pending = readPendingEditorIssue();
+    if (pending) {
+      setEditorIssueReport(pending);
+    }
+
+    return () => {
+      teardownGlobal?.();
+      window.removeEventListener("editor-issue-captured", onIssueCaptured);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const slugQuery = typeof router.query?.slug === "string" ? router.query.slug : null;
+    consumeInterruptedEditorSession({ currentSlug: slugQuery });
+  }, [router.isReady, router.query?.slug]);
+
+  useEffect(() => {
+    if (!slugInvitacion) return;
+    pushEditorBreadcrumb("editor-open", {
+      slug: slugInvitacion,
+      vista,
+      modoEditor,
+    });
+  }, [slugInvitacion, vista, modoEditor]);
+
+  useEffect(() => {
+    if (!slugInvitacion) return undefined;
+    const stopWatchdog = startEditorSessionWatchdog({
+      slug: slugInvitacion,
+      context: {
+        vista,
+        modoEditor,
+      },
+    });
+    return () => {
+      stopWatchdog("editor-unmounted");
+    };
+  }, [slugInvitacion]);
+
+  const handleDismissEditorIssue = () => {
+    clearPendingEditorIssue();
+    setEditorIssueReport(null);
+    setIssueSendError("");
+    setSentIssueId(null);
+  };
+
+  const handleCopyEditorIssue = async () => {
+    if (!editorIssueReport) return;
+    const payload = JSON.stringify(editorIssueReport, null, 2);
+    try {
+      await navigator.clipboard.writeText(payload);
+      alert("Reporte copiado al portapapeles.");
+    } catch {
+      alert(payload);
+    }
+  };
+
+  const handleSendEditorIssue = async (reportOverride = null) => {
+    const reportToSend = reportOverride || editorIssueReport;
+    if (!reportToSend || sendingIssueReport) return;
+
+    setSendingIssueReport(true);
+    setIssueSendError("");
+
+    try {
+      const reportClientIssueCallable = httpsCallable(cloudFunctions, "reportClientIssue");
+      const transportReport = buildReportForTransport(reportToSend);
+      const result = await reportClientIssueCallable({
+        report: transportReport,
+      });
+      const issueId = result?.data?.issueId || null;
+      if (issueId) {
+        setSentIssueId(issueId);
+      }
+      if (!reportOverride || reportOverride === editorIssueReport) {
+        clearPendingEditorIssue();
+      }
+      pushEditorBreadcrumb("issue-report-sent", {
+        issueId: issueId || null,
+        source: reportToSend?.source || null,
+      });
+    } catch (error) {
+      setIssueSendError(getErrorMessage(error, "No se pudo enviar el reporte."));
+      pushEditorBreadcrumb("issue-report-send-error", {
+        source: reportToSend?.source || null,
+        message: getErrorMessage(error, "No se pudo enviar el reporte."),
+      });
+    } finally {
+      setSendingIssueReport(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!editorIssueReport) return;
+
+    const reportKey =
+      editorIssueReport.id ||
+      `${editorIssueReport.fingerprint || "no-fingerprint"}:${editorIssueReport.occurredAt || "no-time"}`;
+
+    if (attemptedAutoSendRef.current.has(reportKey)) return;
+    attemptedAutoSendRef.current.add(reportKey);
+
+    handleSendEditorIssue(editorIssueReport);
+  }, [editorIssueReport]);
 
 
   const toggleZoom = () => {
@@ -110,7 +299,7 @@ export default function Dashboard() {
       const ref = doc(db, "borradores", slugInvitacion);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        alert("❌ No se encontró el borrador");
+        alert("No se encontro el borrador");
         setMostrarVistaPrevia(false);
         return;
       }
@@ -127,7 +316,7 @@ export default function Dashboard() {
         }
       })();
 
-      // Debug de distribución real de objetos por sección/tipo en el borrador
+      // Debug summary of objects by section/type in the draft
       try {
         const resumen = {};
         objetosBase.forEach((o) => {
@@ -176,11 +365,11 @@ export default function Dashboard() {
         }
       }
 
-      // Importar función de generación HTML
+      // Import HTML generation function
       const { generarHTMLDesdeSecciones } = await import("../../functions/src/utils/generarHTMLDesdeSecciones");
       const htmlGenerado = generarHTMLDesdeSecciones(secciones, objetosBase);
 
-      // 👇 DEBUG: ver qué props tiene cada countdown
+      // DEBUG: inspect countdown props
       try {
         const cds = (objetosBase || []).filter(o => o?.tipo === "countdown");
       } catch (e) {
@@ -188,7 +377,7 @@ export default function Dashboard() {
 
       setHtmlVistaPrevia(htmlGenerado);
     } catch (error) {
-      console.error("❌ Error generando vista previa:", error);
+      console.error("Error generando vista previa:", error);
       alert("No se pudo generar la vista previa");
       setMostrarVistaPrevia(false);
     }
@@ -218,7 +407,7 @@ export default function Dashboard() {
 
   
 
-  // 🔄 Cargar plantillas por tipo
+  // Load templates by type
   useEffect(() => {
     const fetchPlantillas = async () => {
       if (!tipoSeleccionado) return;
@@ -247,15 +436,19 @@ export default function Dashboard() {
     fetchPlantillas();
   }, [tipoSeleccionado]);
 
-  // 👂 Escuchar evento personalizado para abrir un borrador
+  // Listen custom event to open a draft
   useEffect(() => {
 
     const handleAbrirBorrador = (e) => {
       const { slug, editor } = e.detail;
       if (!slug) return;
 
-      // Fallback seguro: salvo que venga explícitamente "iframe", abrimos Konva.
+      // Safe fallback: only "iframe" keeps iframe mode, otherwise Konva.
       const editorNormalizado = editor === "iframe" ? "iframe" : "konva";
+      pushEditorBreadcrumb("abrir-borrador-evento", {
+        slug,
+        editor: editorNormalizado,
+      });
 
       setSlugInvitacion(slug);
 
@@ -268,6 +461,11 @@ export default function Dashboard() {
         setModoEditor("iframe");
       }
       setVista("editor");
+      router.replace(
+        { pathname: "/dashboard", query: { slug } },
+        undefined,
+        { shallow: true }
+      );
     };
 
 
@@ -277,7 +475,7 @@ export default function Dashboard() {
     };
 
 
-  }, []);
+  }, [router]);
 
 
   // cuando hay cambios en secciones
@@ -313,8 +511,10 @@ export default function Dashboard() {
           .map((provider) => provider?.providerId)
           .filter(Boolean);
         const hasPasswordProvider = providerIds.includes("password");
+        const hasGoogleProvider = providerIds.includes("google.com");
+        const hasOnlyPasswordProvider = hasPasswordProvider && !hasGoogleProvider;
 
-        if (hasPasswordProvider && user.emailVerified !== true) {
+        if (hasOnlyPasswordProvider && user.emailVerified !== true) {
           await signOut(auth);
           if (!mounted) return;
           setShowProfileCompletion(false);
@@ -325,7 +525,15 @@ export default function Dashboard() {
         }
 
         try {
-          const result = await getMyProfileStatusCallable({});
+          await user.getIdToken();
+          let result;
+          try {
+            result = await getMyProfileStatusCallable({});
+          } catch {
+            await user.getIdToken(true);
+            await new Promise((resolve) => setTimeout(resolve, 700));
+            result = await getMyProfileStatusCallable({});
+          }
           const statusData = result?.data || {};
 
           if (statusData.profileComplete !== true) {
@@ -374,7 +582,7 @@ export default function Dashboard() {
     if (canManageSite) return;
 
     setVista("home");
-    alert("No tenés permisos para acceder al tablero de gestión.");
+    alert("No tenes permisos para acceder al tablero de gestion.");
   }, [
     canManageSite,
     checkingAuth,
@@ -409,9 +617,20 @@ export default function Dashboard() {
       isSuperAdmin={isSuperAdmin}
       loadingAdminAccess={loadingAdminAccess}
     >
+      {editorIssueReport && (
+        <EditorIssueBanner
+          report={editorIssueReport}
+          sending={sendingIssueReport}
+          sendError={issueSendError}
+          sentIssueId={sentIssueId}
+          onDismiss={handleDismissEditorIssue}
+          onCopy={handleCopyEditorIssue}
+          onSend={handleSendEditorIssue}
+        />
+      )}
    
 
-      {/* 🔹 Vista HOME (selector, plantillas, borradores) */}
+      {/* HOME view (selector, templates, drafts) */}
       {!slugInvitacion && vista === "home" && (
         <div className="w-full px-4 pb-8">
           <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
@@ -432,6 +651,11 @@ export default function Dashboard() {
                         "copiarPlantilla"
                       );
                       const res = await copiarPlantilla({ plantillaId: plantilla.id, slug });
+                      pushEditorBreadcrumb("abrir-plantilla", {
+                        slug,
+                        plantillaId: plantilla?.id || null,
+                        editor: plantilla?.editor || null,
+                      });
 
                       if (plantilla.editor === "konva") {
                         setModoEditor("konva");
@@ -443,8 +667,13 @@ export default function Dashboard() {
                         setUrlIframe(url);
                       }
                       setVista("editor");
+                      router.replace(
+                        { pathname: "/dashboard", query: { slug } },
+                        undefined,
+                        { shallow: true }
+                      );
                     } catch (error) {
-                      alert("❌ Error al copiar la plantilla");
+                      alert("Error al copiar la plantilla");
                       console.error(error);
                     }
                   }}
@@ -457,7 +686,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 🔹 Vista PUBLICADAS */}
+      {/* PUBLISHED view */}
       {!slugInvitacion && vista === "publicadas" && (
         <div className="w-full px-4 pb-8">
           <PublicadasGrid usuario={usuario} />
@@ -466,7 +695,7 @@ export default function Dashboard() {
 
 
 
-      {/* Editor de invitación */}
+      {/* Invitation editor */}
       {!slugInvitacion && vista === "gestion" && (
         <div className="w-full px-4 pb-8">
           <SiteManagementBoard
@@ -553,3 +782,4 @@ export default function Dashboard() {
     </>
   );
 }
+

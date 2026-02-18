@@ -6,6 +6,7 @@ import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import SelectorColorSeccion from "./SelectorColorSeccion";
+import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 
 
 
@@ -319,14 +320,18 @@ export default function DashboardHeader({
                 <div className="flex items-center gap-2 flex-1">
                     {/* Botón volver */}
                     <button
-                        onClick={async () => {
-                            // 1) Limpiar la URL (saca ?slug=...) sin agregar historial nuevo
-                            await router.replace("/dashboard", undefined, { shallow: true });
-
-                            // 2) Recién ahora reseteamos estado y vista
+                        onClick={() => {
+                            markEditorSessionIntentionalExit({
+                                slug: slugInvitacion || null,
+                                reason: "header-back-button",
+                            });
+                            // 1) Cerrar editor localmente primero (evita falsos positivos del watchdog)
                             setSlugInvitacion(null);
                             setModoEditor(null);
                             onCambiarVista?.("home");
+
+                            // 2) Limpiar URL sin agregar historial nuevo
+                            router.replace("/dashboard", undefined, { shallow: true });
                         }}
                         className="flex items-center gap-2 px-2 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition"
                     >

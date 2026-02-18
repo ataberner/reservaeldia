@@ -1,5 +1,5 @@
 // src/components/editor/history/useHistoryManager.js
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Maneja el historial (undo/redo) del editor:
@@ -19,6 +19,17 @@ export default function useHistoryManager({
 
     ignoreNextUpdateRef,
 }) {
+    const lastSnapshotRef = useRef("");
+
+    const isMobileRuntime = () => {
+        if (typeof window === "undefined") return false;
+        if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+            return true;
+        }
+        const width = Number(window.innerWidth || 0);
+        return width > 0 && width <= 1024;
+    };
+
     useEffect(() => {
         if (!cargado) return;
 
@@ -30,25 +41,21 @@ export default function useHistoryManager({
         }
 
 
-        // 🎯 No guardar historial durante transformaciones
-        if (window._resizeData?.isResizing) return;
+        // No guardar historial durante transformaciones o drag activo.
+        if (window._resizeData?.isResizing || window._isDragging || window._grupoLider) return;
 
+        const estadoComparable = { objetos, secciones };
+        const estadoStringified = JSON.stringify(estadoComparable);
+        if (estadoStringified === lastSnapshotRef.current) return;
+        lastSnapshotRef.current = estadoStringified;
+
+        const maxHistorial = isMobileRuntime() ? 12 : 20;
         const estadoCompleto = {
-            objetos,
-            secciones,
+            ...estadoComparable,
             timestamp: Date.now(),
         };
-
-        const estadoStringified = JSON.stringify(estadoCompleto);
-
         setHistorial((prev) => {
-            const ultimoStringified =
-                prev.length > 0 ? JSON.stringify(prev[prev.length - 1]) : null;
-
-            if (ultimoStringified !== estadoStringified) {
-                return [...prev.slice(-19), estadoCompleto]; // max 20
-            }
-            return prev;
+            return [...prev.slice(-(maxHistorial - 1)), estadoCompleto];
         });
 
         // Limpiar futuros cuando hay nuevos cambios

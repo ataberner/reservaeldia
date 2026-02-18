@@ -5,11 +5,62 @@ import { useState, useEffect } from 'react';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
 import Link from 'next/link';
-import { getRedirectResult } from "firebase/auth";
+import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
+import {
+  clearGoogleRedirectPending,
+  hasGoogleRedirectPending,
+  isLikelyGoogleReturnNavigation,
+} from "@/lib/auth/googleRedirectFlow";
 
-const GOOGLE_REDIRECT_PENDING_KEY = "google_auth_redirect_pending";
+async function waitForAuthUser(timeoutMs = 3500) {
+  if (auth.currentUser) return auth.currentUser;
+
+  if (typeof auth.authStateReady === "function") {
+    try {
+      await auth.authStateReady();
+      if (auth.currentUser) return auth.currentUser;
+    } catch {
+      // noop
+    }
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const finish = (user) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(user || null);
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        finish(user);
+      }
+    });
+
+    const timer = setTimeout(() => {
+      finish(auth.currentUser || null);
+    }, timeoutMs);
+  });
+}
+
+async function resolveRedirectUser() {
+  const firstResult = await getRedirectResult(auth);
+  if (firstResult?.user) return firstResult.user;
+
+  if (auth.currentUser) return auth.currentUser;
+
+  const delayedUser = await waitForAuthUser(8000);
+  if (delayedUser) return delayedUser;
+
+  const secondResult = await getRedirectResult(auth);
+  return secondResult?.user || auth.currentUser || null;
+}
 
 function getAuthNoticeMessage(code) {
   if (code === "email-not-verified") {
@@ -31,6 +82,19 @@ export default function Home() {
   const [showRegister, setShowRegister] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) return;
+      setShowLogin(false);
+      setShowRegister(false);
+      router.replace("/dashboard");
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [router]);
 
 
   useEffect(() => {
@@ -58,25 +122,25 @@ export default function Home() {
     let mounted = true;
 
     (async () => {
-      let hadPendingRedirect = false;
-      try {
-        if (typeof window !== "undefined") {
-          hadPendingRedirect =
-            window.sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY) === "1";
-        }
+      const hadPendingRedirect = hasGoogleRedirectPending();
+      const cameFromGoogleAuth = isLikelyGoogleReturnNavigation();
 
-        const result = await getRedirectResult(auth);
-        const user = result?.user || (hadPendingRedirect ? auth.currentUser : null);
+      if (!hadPendingRedirect && !cameFromGoogleAuth) {
+        return;
+      }
+
+      try {
+        const user = await resolveRedirectUser();
 
         // Si volvimos de Google y ya hay usuario, cerramos modales y vamos al dashboard
         if (user && mounted) {
           setShowLogin(false);
           setShowRegister(false);
-          router.push("/dashboard");
+          router.replace("/dashboard");
           return;
         }
 
-        if (hadPendingRedirect && mounted) {
+        if (mounted && hadPendingRedirect) {
           setAuthNotice("No pudimos completar el ingreso con Google. Intenta nuevamente.");
           setShowLogin(true);
         }
@@ -87,8 +151,8 @@ export default function Home() {
           setShowLogin(true);
         }
       } finally {
-        if (typeof window !== "undefined") {
-          window.sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        if (hadPendingRedirect || cameFromGoogleAuth) {
+          clearGoogleRedirectPending();
         }
       }
     })();
@@ -106,6 +170,12 @@ export default function Home() {
         <meta name="description" content="Crea y personaliza invitaciones digitales para bodas de manera fácil y rápida. ¡Diseños únicos y elegantes para tu casamiento!" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="robots" content="noindex, nofollow" /> {/* BORRAR ESTA LINEA CUANDO QUIERA MEJORAR EL SEO */}
+        <link rel="preconnect" href="https://accounts.google.com" />
+        <link rel="preconnect" href="https://apis.google.com" />
+        <link rel="preconnect" href="https://www.gstatic.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="//accounts.google.com" />
+        <link rel="dns-prefetch" href="//apis.google.com" />
+        <link rel="dns-prefetch" href="//www.gstatic.com" />
       </Head>
 
       <header className="navbar navbar-expand-lg navbar-light bg-light fixed-top py-3">

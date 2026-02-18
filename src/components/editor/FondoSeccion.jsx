@@ -80,6 +80,7 @@ export default function FondoSeccion({
         height={alturaPx}
         fill={seccion.fondo || "#f0f0f0"}
         listening={true}
+        preventDefault={false}
         onClick={onSelect}
         onTap={onSelect}
       />
@@ -105,7 +106,7 @@ export default function FondoSeccion({
   const offsetYFinal = offsetYCentrado + (seccion.fondoImagenOffsetY || 0);
 
   return (
-    <Group>
+    <Group id={seccion.id}>
       <Rect
         id={seccion.id}
         x={0}
@@ -114,6 +115,7 @@ export default function FondoSeccion({
         height={alturaPx}
         fill={seccion.fondo || "#f0f0f0"}
         listening={true}
+        preventDefault={false}
         onClick={onSelect}
         onTap={onSelect}
       />
@@ -147,6 +149,7 @@ export default function FondoSeccion({
           shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
           shadowBlur={modoMoverFondo ? 10 : 0}
           listening={true}
+          preventDefault={allowBackgroundEdit && modoMoverFondo}
           onClick={(e) => {
             if (modoMoverFondo) {
               e.cancelBubble = true;
@@ -157,9 +160,7 @@ export default function FondoSeccion({
           onTap={(e) => {
             if (modoMoverFondo) {
               e.cancelBubble = true;
-              return;
             }
-            onSelect?.();
           }}
           onMouseDown={(e) => {
             if (modoMoverFondo) e.cancelBubble = true;

@@ -1177,7 +1177,7 @@ export const reportClientIssue = onCall(
 
     const created = await db.collection("clientIssues").add(issueDoc);
 
-    logger.info("Client issue report recibido", {
+    logger.error("Client issue report recibido", {
       issueId: created.id,
       uid,
       hasAuth: Boolean(uid),

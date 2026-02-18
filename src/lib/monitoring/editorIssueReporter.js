@@ -485,15 +485,29 @@ export function consumeInterruptedEditorSession({
   const queryNow = window.location?.search || "";
   const isDashboardPath = pathNow.startsWith("/dashboard");
   const hasSlugInQuery = typeof queryNow === "string" && queryNow.includes("slug=");
-  const isRecentPageHide =
-    lastPageHideAtMs !== null && now - lastPageHideAtMs <= 1000 * 45;
+  const isDashboardWithoutActiveSlug =
+    !currentSlug && markerSlug && isDashboardPath && !hasSlugInQuery;
 
-  if (!currentSlug && markerSlug && isDashboardPath && !hasSlugInQuery && isRecentPageHide) {
+  // Si estamos en /dashboard sin slug activo y existe pagehide previo,
+  // asumimos salida normal del editor (evita falsos positivos tardíos).
+  if (isDashboardWithoutActiveSlug && lastPageHideAtMs !== null) {
     clearEditorSessionMarker();
     pushEditorBreadcrumb("editor-session-exit-ack", {
       source: "pagehide-navigation",
       slug: markerSlug,
       lastPageHideAt: marker.lastPageHideAt || null,
+      ageMs: ageMs ?? null,
+    });
+    return null;
+  }
+
+  // Fallback: markers antiguos sin slug activo suelen ser residuos de sesión.
+  if (isDashboardWithoutActiveSlug && ageMs !== null && ageMs > 1000 * 60 * 15) {
+    clearEditorSessionMarker();
+    pushEditorBreadcrumb("editor-session-exit-ack", {
+      source: "stale-marker-no-slug",
+      slug: markerSlug,
+      ageMs,
     });
     return null;
   }

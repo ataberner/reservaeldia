@@ -10,6 +10,8 @@ import { auth } from "@/firebase";
 import { useRouter } from "next/router";
 import {
   clearGoogleRedirectPending,
+  formatGoogleAuthDebugContext,
+  getGoogleAuthDebugContext,
   hasGoogleRedirectPending,
   isLikelyGoogleReturnNavigation,
 } from "@/lib/auth/googleRedirectFlow";
@@ -124,6 +126,10 @@ export default function Home() {
     (async () => {
       const hadPendingRedirect = hasGoogleRedirectPending();
       const cameFromGoogleAuth = isLikelyGoogleReturnNavigation();
+      const redirectDebugContext = getGoogleAuthDebugContext();
+      const redirectDebugLabel = formatGoogleAuthDebugContext(
+        redirectDebugContext
+      );
 
       if (!hadPendingRedirect && !cameFromGoogleAuth) {
         return;
@@ -134,6 +140,7 @@ export default function Home() {
 
         // Si volvimos de Google y ya hay usuario, cerramos modales y vamos al dashboard
         if (user && mounted) {
+          setAuthNotice("");
           setShowLogin(false);
           setShowRegister(false);
           router.replace("/dashboard");
@@ -141,13 +148,22 @@ export default function Home() {
         }
 
         if (mounted && hadPendingRedirect) {
-          setAuthNotice("No pudimos completar el ingreso con Google. Intenta nuevamente.");
+          setAuthNotice(
+            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: no-user; pending=1; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
+          );
           setShowLogin(true);
         }
       } catch (err) {
-        console.error("Error en redirect Google:", err);
+        console.error("Error en redirect Google:", {
+          error: err,
+          hadPendingRedirect,
+          cameFromGoogleAuth,
+          ...redirectDebugContext,
+        });
         if (mounted && hadPendingRedirect) {
-          setAuthNotice("No pudimos completar el ingreso con Google. Intenta nuevamente.");
+          setAuthNotice(
+            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: redirect-exception; pending=1; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
+          );
           setShowLogin(true);
         }
       } finally {

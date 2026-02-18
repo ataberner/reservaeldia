@@ -13,6 +13,9 @@ import { auth, functions } from "@/firebase";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
 import {
+  clearGoogleRedirectPending,
+  formatGoogleAuthDebugContext,
+  getGoogleAuthDebugContext,
   setGoogleRedirectPending,
   shouldUseGoogleRedirect,
 } from "@/lib/auth/googleRedirectFlow";
@@ -24,6 +27,10 @@ const POPUP_TO_REDIRECT_ERROR_CODES = new Set([
   "auth/operation-not-supported-in-this-environment",
   "auth/web-storage-unsupported",
 ]);
+const POPUP_TIMEOUT_CODE = "auth/popup-timeout";
+const REDIRECT_TIMEOUT_CODE = "auth/redirect-timeout";
+const POPUP_SIGNIN_TIMEOUT_MS = 8000;
+const REDIRECT_START_TIMEOUT_MS = 5000;
 
 function mapAuthError(code) {
   switch (code) {
@@ -47,6 +54,10 @@ function mapAuthError(code) {
       return "Error de red. Verifica tu conexion.";
     case "auth/account-exists-with-different-credential":
       return "Este correo ya esta asociado a otro metodo de acceso.";
+    case POPUP_TIMEOUT_CODE:
+      return "Google no respondio desde la ventana emergente.";
+    case REDIRECT_TIMEOUT_CODE:
+      return "No pudimos abrir Google en este navegador.";
     default:
       return "No se pudo iniciar sesion. Intenta de nuevo.";
   }
@@ -76,6 +87,56 @@ function splitDisplayName(displayName) {
     nombre: parts[0],
     apellido: parts.slice(1).join(" "),
   };
+}
+
+function signInWithPopupWithTimeout(timeoutMs, provider) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject({ code: POPUP_TIMEOUT_CODE });
+    }, timeoutMs);
+
+    signInWithPopup(auth, provider)
+      .then((result) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+function signInWithRedirectWithTimeout(timeoutMs, provider) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject({ code: REDIRECT_TIMEOUT_CODE });
+    }, timeoutMs);
+
+    signInWithRedirect(auth, provider)
+      .then((result) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
@@ -161,31 +222,77 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
 
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-    const startRedirect = async () => {
-      setInfo("Abriendo Google...");
+    const debugContext = getGoogleAuthDebugContext();
+    const debugLabel = formatGoogleAuthDebugContext(debugContext);
+    const prefersRedirect = shouldUseGoogleRedirect();
+
+    const canFallbackFromPopupTimeout =
+      debugContext.mobile && !debugContext.inApp && !debugContext.standalone;
+
+    const startRedirect = async (reason) => {
       setGoogleRedirectPending();
-      await signInWithRedirect(auth, provider);
+      try {
+        await signInWithRedirectWithTimeout(REDIRECT_START_TIMEOUT_MS, provider);
+      } catch (redirectStartError) {
+        clearGoogleRedirectPending();
+        throw redirectStartError;
+      }
     };
 
     try {
-      if (shouldUseGoogleRedirect()) {
-        await startRedirect();
+      if (prefersRedirect) {
+        await startRedirect("preferred");
         return;
       }
 
-      const credentials = await signInWithPopup(auth, provider);
+      const credentials = canFallbackFromPopupTimeout
+        ? await signInWithPopupWithTimeout(POPUP_SIGNIN_TIMEOUT_MS, provider)
+        : await signInWithPopup(auth, provider);
       await continueAfterAuth(credentials.user, "google-login");
     } catch (err) {
-      if (POPUP_TO_REDIRECT_ERROR_CODES.has(err?.code)) {
+      const code = err?.code || "unknown";
+      console.error("[GoogleAuth][Login] Error", {
+        code,
+        ...debugContext,
+      });
+
+      if (code === POPUP_TIMEOUT_CODE && canFallbackFromPopupTimeout) {
         try {
-          await startRedirect();
+          await startRedirect(`popup-timeout:${POPUP_SIGNIN_TIMEOUT_MS}`);
           return;
         } catch (redirectError) {
-          setError(mapAuthError(redirectError?.code));
+          const redirectCode = redirectError?.code || "unknown";
+          console.error("[GoogleAuth][Login] Redirect timeout fallback error", {
+            code: redirectCode,
+            ...debugContext,
+          });
+          setError(
+            `${mapAuthError(redirectError?.code)} [debug: popup-timeout->${redirectCode}; ${debugLabel}]`
+          );
+          setInfo(
+            "Si vuelve a pasar, intenta abrir en Chrome/Safari normal (no navegador interno)."
+          );
           return;
         }
       }
-      setError(mapAuthError(err?.code));
+
+      if (POPUP_TO_REDIRECT_ERROR_CODES.has(code)) {
+        try {
+          await startRedirect(`popup-fallback:${code}`);
+          return;
+        } catch (redirectError) {
+          const redirectCode = redirectError?.code || "unknown";
+          console.error("[GoogleAuth][Login] Redirect fallback error", {
+            code: redirectCode,
+            ...debugContext,
+          });
+          setError(
+            `${mapAuthError(redirectError?.code)} [debug: ${redirectCode}; ${debugLabel}]`
+          );
+          return;
+        }
+      }
+      setError(`${mapAuthError(err?.code)} [debug: ${code}; ${debugLabel}]`);
     } finally {
       setLoadingGoogle(false);
     }

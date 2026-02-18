@@ -1,111 +1,181 @@
-import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db } from '@/firebase';
+import { useEffect, useState } from "react";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { db } from "@/firebase";
 
-export default function BorradoresGrid() {
+function toMs(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    return value.seconds * 1000;
+  }
+  return 0;
+}
+
+function formatFecha(value) {
+  const ms = toMs(value);
+  if (!ms) return "";
+  const date = new Date(ms);
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+export default function BorradoresGrid({
+  mostrarTitulo = true,
+  emptyMessage = "Aun no tienes borradores.",
+}) {
   const [borradores, setBorradores] = useState([]);
-  const auth = getAuth();
+  const [cargando, setCargando] = useState(true);
 
-  // 🔄 Cargar borradores desde Firestore
   useEffect(() => {
+    let mounted = true;
+
     const fetchBorradores = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+      const user = getAuth().currentUser;
+      if (!user) {
+        if (mounted) setCargando(false);
+        return;
+      }
 
-      const q = query(
-        collection(db, 'borradores'),
-        where('userId', '==', user.uid)
-      );
+      try {
+        const q = query(collection(db, "borradores"), where("userId", "==", user.uid));
+        const snapshot = await getDocs(q);
 
-      const snapshot = await getDocs(q);
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+        const docs = snapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .sort((a, b) => {
+            const aTime = toMs(a.updatedAt || a.fechaActualizacion || a.creadoEn || a.createdAt);
+            const bTime = toMs(b.updatedAt || b.fechaActualizacion || b.creadoEn || b.createdAt);
+            return bTime - aTime;
+          });
 
-      setBorradores(docs);
+        if (mounted) setBorradores(docs);
+      } catch (error) {
+        console.error("Error cargando borradores:", error);
+        if (mounted) setBorradores([]);
+      } finally {
+        if (mounted) setCargando(false);
+      }
     };
 
     fetchBorradores();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // 🗑️ Borrar borrador desde función Cloud
   const borrarBorrador = async (slug) => {
-    const confirmado = window.confirm(`¿Seguro que querés borrar "${slug}"?`);
+    const confirmado = window.confirm(`Seguro que quieres borrar \"${slug}\"?`);
     if (!confirmado) return;
 
     try {
       const functions = getFunctions();
-      const borrar = httpsCallable(functions, 'borrarBorrador');
+      const borrar = httpsCallable(functions, "borrarBorrador");
       await borrar({ slug });
 
-      setBorradores((prev) => prev.filter((b) => b.slug !== slug));
-      alert('✅ Borrador eliminado correctamente');
+      setBorradores((prev) => prev.filter((b) => (b.slug || b.id) !== slug));
+      alert("Borrador eliminado correctamente.");
     } catch (error) {
-      console.error("❌ Error al borrar borrador:", error);
+      console.error("Error al borrar borrador:", error);
       alert("No se pudo borrar el borrador.");
     }
   };
 
-  if (!borradores.length) return <p className="text-gray-500">Aún no tenés borradores.</p>;
-
-return (
-  <div className="mt-12">
-    <h2 className="text-xl font-bold mb-6 text-center">Tus borradores</h2>
-
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-6 justify-center">
-      {borradores.map((b) => (
-        <div
-          key={b.slug}
-          className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-        >
-          {/* Imagen cuadrada */}
-          <div className="aspect-square bg-gray-100 overflow-hidden">
-            <img
-              src={b.thumbnailUrl || "/placeholder.jpg"}
-              alt={`Vista previa de ${b.nombre || b.slug}`}
-              className="w-full h-full object-cover object-top transition-transform duration-300 hover:scale-105"
-            />
-          </div>
-
-          {/* Nombre y botones */}
-          <div className="p-2 flex flex-col items-center text-center">
-            <h3 className="text-xs sm:text-sm font-medium text-gray-700 truncate w-full">
-              {b.nombre || b.slug}
-            </h3>
-
-            <div className="flex gap-2 mt-2">
-              <button
-                className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-full hover:bg-purple-700 transition"
-                onClick={() => {
-                  const detalle = {
-                    slug: b.slug || b.id,
-                    // Los borradores del dashboard deben abrir en el editor Konva por defecto.
-                    editor: b.editor || "konva",
-                  };
-                  window.dispatchEvent(new CustomEvent("abrir-borrador", { detail: detalle }));
-                }}
-              >
-                Editar
-              </button>
-
-              <button
-                className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-full hover:bg-red-200 transition"
-                onClick={() => borrarBorrador(b.slug)}
-              >
-                Borrar
-              </button>
+  if (cargando) {
+    return (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            key={`skeleton-draft-${index}`}
+            className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+          >
+            <div className="aspect-square animate-pulse bg-gray-100" />
+            <div className="space-y-2 p-3">
+              <div className="h-3 animate-pulse rounded bg-gray-100" />
+              <div className="h-8 animate-pulse rounded-full bg-gray-100" />
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+    );
+  }
+
+  if (!borradores.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/70 px-4 py-8 text-center text-sm text-gray-600">
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div className={mostrarTitulo ? "mt-2" : ""}>
+      {mostrarTitulo && (
+        <h2 className="mb-4 text-xl font-semibold text-gray-900">Tus borradores</h2>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+        {borradores.map((borrador) => {
+          const slug = borrador.slug || borrador.id;
+          const nombre = borrador.nombre || slug;
+          const fecha = formatFecha(
+            borrador.updatedAt || borrador.fechaActualizacion || borrador.creadoEn || borrador.createdAt
+          );
+
+          return (
+            <article
+              key={slug}
+              className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="relative aspect-square overflow-hidden bg-gray-100">
+                <img
+                  src={borrador.thumbnailUrl || "/placeholder.jpg"}
+                  alt={`Vista previa de ${nombre}`}
+                  className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+              </div>
+
+              <div className="p-3">
+                <h3 className="truncate text-sm font-semibold text-gray-800" title={nombre}>
+                  {nombre}
+                </h3>
+                {fecha && <p className="mt-1 text-[11px] text-gray-500">Actualizado: {fecha}</p>}
+
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    className="w-full rounded-full border border-[#6f3bc0] bg-gradient-to-r from-[#6f3bc0] via-[#7a44ce] to-[#6c57c8] px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:from-[#6232ae] hover:via-[#6f3bc0] hover:to-[#5f4ab5] sm:flex-1 sm:px-3 sm:py-2 sm:text-xs"
+                    onClick={() => {
+                      const detail = {
+                        slug,
+                        editor: borrador.editor || "konva",
+                      };
+                      window.dispatchEvent(new CustomEvent("abrir-borrador", { detail }));
+                    }}
+                  >
+                    Editar
+                  </button>
+
+                  <button
+                    className="w-full rounded-full border border-[#efd9e5] bg-gradient-to-r from-[#fff8fb] to-[#fff3f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#9b3b67] transition hover:from-[#fdeff6] hover:to-[#fce7f2] sm:w-auto sm:px-3 sm:py-2 sm:text-xs"
+                    onClick={() => borrarBorrador(slug)}
+                  >
+                    Borrar
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
-
-
-
-
+  );
 }

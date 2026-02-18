@@ -4,7 +4,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { ChevronDown, Minus, Plus } from "lucide-react";
+import { ChevronDown, LogOut, Minus, Plus } from "lucide-react";
 import SelectorColorSeccion from "./SelectorColorSeccion";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 
@@ -43,6 +43,20 @@ export default function DashboardHeader({
     const [slugDisponible, setSlugDisponible] = useState(null); // true / false / null
     const [verificandoSlug, setVerificandoSlug] = useState(false);
     const [slugPublicoExistente, setSlugPublicoExistente] = useState(null);
+    const emailNormalizado = String(usuario?.email || "").trim();
+    const nombreNormalizado = String(usuario?.displayName || "").trim();
+    const nombreDesdeEmail = emailNormalizado
+        .split("@")[0]
+        .replace(/[._-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const nombreCompletoUsuario = nombreNormalizado || nombreDesdeEmail || "Usuario";
+    const emailUsuario = emailNormalizado || "Sin email";
+    const inicialUsuario =
+        String(nombreCompletoUsuario || emailNormalizado || "U")
+            .trim()
+            .charAt(0)
+            .toUpperCase() || "U";
 
 
     // 🧠 Función para verificar si existe el slug en Firestore
@@ -594,8 +608,22 @@ export default function DashboardHeader({
             {/* 🔹 Menú usuario siempre visible */}
             <div className="relative ml-2" ref={menuRef}>
                 <div
-                    className="flex items-center gap-1 cursor-pointer rounded-full px-1 py-1 transition-all duration-200 hover:bg-gray-100"
+                    className={`flex items-center gap-1.5 cursor-pointer rounded-full border px-1.5 py-1 transition-all duration-200 ${menuAbierto
+                        ? "border-purple-300 bg-purple-50 shadow-sm ring-2 ring-purple-200"
+                        : "border-gray-200 bg-white hover:bg-gray-50 hover:shadow-sm"
+                        }`}
                     onClick={() => setMenuAbierto(!menuAbierto)}
+                    role="button"
+                    tabIndex={0}
+                    aria-haspopup="menu"
+                    aria-expanded={menuAbierto}
+                    aria-label="Abrir menu de usuario"
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setMenuAbierto((prev) => !prev);
+                        }
+                    }}
                 >
                     {usuario?.photoURL ? (
                         <img
@@ -610,14 +638,52 @@ export default function DashboardHeader({
                             style={{ backgroundColor: "#773dbe" }}
                             title={usuario?.displayName || usuario?.email || 'Usuario'}
                         >
-                            {usuario?.email?.[0]?.toUpperCase() || "U"}
+                            {inicialUsuario}
                         </div>
                     )}
-                    <ChevronDown className="text-gray-600" size={14} />
+                    <ChevronDown
+                        className={`text-gray-600 transition-transform duration-200 ${menuAbierto ? "rotate-180" : ""}`}
+                        size={14}
+                    />
                 </div>
 
                 {menuAbierto && (
-                    <div className="absolute right-0 mt-1 w-36 bg-white border rounded shadow-md py-1 z-50 origin-top-right animate-fade-slide text-xs">
+                    <div className="absolute right-0 mt-2 w-72 max-w-[88vw] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 text-xs shadow-xl z-50 origin-top-right animate-fade-slide">
+                        <div className="border-b border-gray-100 bg-gradient-to-r from-purple-50 via-white to-white px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                Cuenta
+                            </p>
+                            <div className="mt-1 flex items-center gap-2">
+                                {usuario?.photoURL ? (
+                                    <img
+                                        src={usuario.photoURL}
+                                        alt="Foto de perfil"
+                                        className="h-8 w-8 rounded-full object-cover"
+                                    />
+                                ) : (
+                                    <div
+                                        className="h-8 w-8 flex items-center justify-center rounded-full text-white text-xs font-semibold"
+                                        style={{ backgroundColor: "#773dbe" }}
+                                    >
+                                        {inicialUsuario}
+                                    </div>
+                                )}
+                                <div className="min-w-0">
+                                    <p
+                                        className="text-[12px] font-semibold text-gray-800 truncate"
+                                        title={nombreCompletoUsuario}
+                                    >
+                                        {nombreCompletoUsuario}
+                                    </p>
+                                    <p
+                                        className="text-[11px] text-gray-500 truncate"
+                                        title={emailUsuario}
+                                    >
+                                        {emailUsuario}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                         <button
                             onClick={async () => {
                                 const { getAuth, signOut } = await import("firebase/auth");
@@ -625,9 +691,10 @@ export default function DashboardHeader({
                                 await signOut(auth);
                                 window.location.href = "/";
                             }}
-                            className="w-full text-left px-3 py-1 hover:bg-gray-100 transition-colors"
+                            className="group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-left font-medium text-red-700 transition hover:border-red-200 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
                         >
-                            Cerrar sesión
+                            <LogOut size={14} className="shrink-0" />
+                            <span className="truncate">Cerrar sesion</span>
                         </button>
                     </div>
                 )}

@@ -28,6 +28,8 @@ const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // disable server-side rendering for editor
   loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
 });
+const SHOW_TIPO_SELECTOR = false;
+const DEFAULT_TIPO_INVITACION = "boda";
 
 function splitDisplayName(displayName) {
   const clean = typeof displayName === "string"
@@ -105,7 +107,7 @@ function buildReportForTransport(report) {
 
 
 export default function Dashboard() {
-  const [tipoSeleccionado, setTipoSeleccionado] = useState(null);
+  const [tipoSeleccionado, setTipoSeleccionado] = useState(DEFAULT_TIPO_INVITACION);
   const [slugInvitacion, setSlugInvitacion] = useState(null);
   const [plantillas, setPlantillas] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -418,7 +420,6 @@ export default function Dashboard() {
           collection(db, 'plantillas'),
           where('tipo', '==', tipoSeleccionado)
         );
-        console.log("Intentando cargar plantillas...");
         const snapshot = await getDocs(q);
         const datos = snapshot.docs.map(doc => ({
           id: doc.id,
@@ -630,59 +631,109 @@ export default function Dashboard() {
       )}
    
 
-      {/* HOME view (selector, templates, drafts) */}
+      {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
       {!slugInvitacion && vista === "home" && (
-        <div className="w-full px-4 pb-8">
-          <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
-          {tipoSeleccionado && (
-            <>
-              {loading ? (
-                <p className="text-gray-500">Cargando plantillas...</p>
-              ) : (
-                <PlantillaGrid
-                  plantillas={plantillas}
-                  onPlantillaBorrada={(plantillaId) => {
-                    setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
-                  }}
-                  onSeleccionarPlantilla={async (slug, plantilla) => {
-                    try {
-                      const copiarPlantilla = httpsCallable(
-                        cloudFunctions,
-                        "copiarPlantilla"
-                      );
-                      const res = await copiarPlantilla({ plantillaId: plantilla.id, slug });
-                      pushEditorBreadcrumb("abrir-plantilla", {
-                        slug,
-                        plantillaId: plantilla?.id || null,
-                        editor: plantilla?.editor || null,
-                      });
+        <div className="w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-7xl space-y-8">
+            {SHOW_TIPO_SELECTOR && (
+              <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
+            )}
 
-                      if (plantilla.editor === "konva") {
-                        setModoEditor("konva");
-                        setSlugInvitacion(slug);
-                      } else {
-                        const url = `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`;
-                        setModoEditor("iframe");
-                        setSlugInvitacion(slug);
-                        setUrlIframe(url);
-                      }
-                      setVista("editor");
-                      router.replace(
-                        { pathname: "/dashboard", query: { slug } },
-                        undefined,
-                        { shallow: true }
-                      );
-                    } catch (error) {
-                      alert("Error al copiar la plantilla");
-                      console.error(error);
-                    }
-                  }}
+            <section className="rounded-2xl border border-[#e9dcfb] bg-gradient-to-br from-white via-[#faf6ff] to-[#f5f9ff] p-4 sm:p-6">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">
+                Tu espacio
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold text-gray-900">Borradores</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Continua editando tus invitaciones donde las dejaste.
+              </p>
 
+              <div className="mt-5">
+                <BorradoresGrid
+                  mostrarTitulo={false}
+                  emptyMessage="Todavia no creaste borradores. Elige una plantilla para comenzar."
                 />
-              )}
-            </>
-          )}
-          <BorradoresGrid />
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-[#e6e6ef] bg-gradient-to-br from-white via-[#f9f8ff] to-[#f4f8ff] p-4 sm:p-6">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">
+                    Coleccion
+                  </p>
+                  <h2 className="mt-1 text-2xl font-semibold text-gray-900">
+                    Plantillas de boda
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Elige una tarjeta base para empezar tu diseno.
+                  </p>
+                </div>
+                <span className="rounded-full border border-[#ddd2f5] bg-white/80 px-3 py-1 text-xs font-medium text-[#6f3bc0]">
+                  Bodas
+                </span>
+              </div>
+
+              <div className="mt-5">
+                {loading ? (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div
+                        key={`skeleton-plantilla-${index}`}
+                        className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+                      >
+                        <div className="aspect-square animate-pulse bg-gray-100" />
+                        <div className="space-y-2 p-3">
+                          <div className="h-3 animate-pulse rounded bg-gray-100" />
+                          <div className="h-8 animate-pulse rounded-full bg-gray-100" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <PlantillaGrid
+                    plantillas={plantillas}
+                    onPlantillaBorrada={(plantillaId) => {
+                      setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
+                    }}
+                    onSeleccionarPlantilla={async (slug, plantilla) => {
+                      try {
+                        const copiarPlantilla = httpsCallable(
+                          cloudFunctions,
+                          "copiarPlantilla"
+                        );
+                        await copiarPlantilla({ plantillaId: plantilla.id, slug });
+                        pushEditorBreadcrumb("abrir-plantilla", {
+                          slug,
+                          plantillaId: plantilla?.id || null,
+                          editor: plantilla?.editor || null,
+                        });
+
+                        if (plantilla.editor === "konva") {
+                          setModoEditor("konva");
+                          setSlugInvitacion(slug);
+                        } else {
+                          const url = `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`;
+                          setModoEditor("iframe");
+                          setSlugInvitacion(slug);
+                          setUrlIframe(url);
+                        }
+                        setVista("editor");
+                        router.replace(
+                          { pathname: "/dashboard", query: { slug } },
+                          undefined,
+                          { shallow: true }
+                        );
+                      } catch (error) {
+                        alert("Error al copiar la plantilla");
+                        console.error(error);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       )}
 

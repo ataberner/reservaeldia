@@ -34,6 +34,47 @@ export function shouldUseGoogleRedirect() {
   return isMobileBrowser() && isStandaloneDisplayMode();
 }
 
+function toBinaryFlag(value) {
+  return value ? "1" : "0";
+}
+
+export function getGoogleAuthDebugContext() {
+  if (typeof window === "undefined") {
+    return {
+      mode: "popup",
+      mobile: false,
+      standalone: false,
+      inApp: false,
+      pending: false,
+      online: true,
+    };
+  }
+
+  const mobile = isMobileBrowser();
+  const standalone = isStandaloneDisplayMode();
+  const inApp = isInAppBrowser();
+  const pending = hasGoogleRedirectPending();
+  const online =
+    typeof window.navigator?.onLine === "boolean"
+      ? window.navigator.onLine
+      : true;
+
+  return {
+    mode: shouldUseGoogleRedirect() ? "redirect" : "popup",
+    mobile,
+    standalone,
+    inApp,
+    pending,
+    online,
+  };
+}
+
+export function formatGoogleAuthDebugContext(context) {
+  if (!context) return "ctx=none";
+
+  return `modo=${context.mode} mobile=${toBinaryFlag(context.mobile)} standalone=${toBinaryFlag(context.standalone)} inApp=${toBinaryFlag(context.inApp)} pending=${toBinaryFlag(context.pending)} online=${toBinaryFlag(context.online)}`;
+}
+
 function hasFreshTimestamp(rawValue) {
   if (!rawValue) return false;
   if (rawValue === "1") return true;

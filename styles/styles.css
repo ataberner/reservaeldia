@@ -460,6 +460,19 @@ html, body {
   border: 1px solid #fecdd3;
 }
 
+.auth-modal .error.google-auth-failure {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.google-auth-failure-logo {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 .auth-primary-btn {
   min-height: 41px;
   border-radius: 11px;
@@ -570,6 +583,20 @@ html, body {
   justify-content: space-between;
   gap: 0.75rem;
   font-size: 0.9rem;
+}
+
+.auth-notice-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  text-align: left;
+  flex: 1;
+}
+
+.google-auth-failure-banner {
+  border-color: #ef4444;
+  background: #fef2f2;
+  color: #991b1b;
 }
 
 .auth-notice-close {

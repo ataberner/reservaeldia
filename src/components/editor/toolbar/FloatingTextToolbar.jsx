@@ -1,6 +1,17 @@
 // src/components/editor/toolbar/FloatingTextToolbar.jsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import FontSelector from "@/components/FontSelector";
+
+const FONT_SELECTOR_GAP = 12;
+const FONT_SELECTOR_PADDING = 8;
+const FONT_SELECTOR_FIXED_WIDTH = 300;
+const FONT_SELECTOR_SIDEBAR_GAP = 4;
+
+const clamp = (value, min, max) => {
+  const safeMin = Number.isFinite(min) ? min : 0;
+  const safeMax = Number.isFinite(max) ? max : safeMin;
+  return Math.min(Math.max(value, safeMin), Math.max(safeMin, safeMax));
+};
 
 export default function FloatingTextToolbar({
   objetoSeleccionado,
@@ -15,6 +26,8 @@ export default function FloatingTextToolbar({
   onCambiarAlineacion,
 }) {
   const [isMobile, setIsMobile] = useState(false);
+  const [fontSelectorStyle, setFontSelectorStyle] = useState(null);
+  const botonFuenteRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -29,6 +42,38 @@ export default function FloatingTextToolbar({
     const next = Number(value);
     return Number.isFinite(next) && next > 0 ? next : fallback;
   };
+
+  const medirAnchoTexto = (obj, fontFamilyOverride) => {
+    if (!obj || obj.tipo !== "texto") return null;
+    if (typeof document === "undefined") return null;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const fontSize = normalizarFontSize(obj.fontSize, 24);
+    const fontStyle = obj.fontStyle || "normal";
+    const fontWeight = obj.fontWeight || "normal";
+    const fontFamily = String(fontFamilyOverride || obj.fontFamily || "sans-serif");
+    const fontForCanvas = fontFamily.includes(",")
+      ? fontFamily
+      : (/\s/.test(fontFamily) ? `"${fontFamily}"` : fontFamily);
+
+    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontForCanvas}`;
+
+    const rawText = String(obj.texto ?? "");
+    const safeText = rawText.replace(/[ \t]+$/gm, "");
+    const lines = safeText.split(/\r?\n/);
+    const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 20);
+
+    return Number.isFinite(maxLineWidth) ? maxLineWidth : null;
+  };
+
+  const debeMantenerCentroEnCambioDeFuente = (obj) =>
+    obj?.tipo === "texto" &&
+    !obj?.__groupAlign &&
+    !Number.isFinite(obj?.width) &&
+    obj?.__autoWidth !== false;
 
   const esObjetivoTipografia = (item) => {
     if (!item) return false;
@@ -71,6 +116,92 @@ export default function FloatingTextToolbar({
   const esRect = objetoSeleccionado?.figura === "rect";
   const mostrarControlesTipografia = esTexto || esFormaConTexto;
 
+  const fontSizeActual = normalizarFontSize(objetoSeleccionado?.fontSize, 24);
+  const fontWeightActual = String(objetoSeleccionado?.fontWeight || "normal").toLowerCase();
+  const fontStyleActual = String(objetoSeleccionado?.fontStyle || "normal").toLowerCase();
+  const textDecorationActual = String(objetoSeleccionado?.textDecoration || "none").toLowerCase();
+
+  const negritaActiva =
+    fontWeightActual === "bold" ||
+    fontWeightActual === "bolder" ||
+    ["500", "600", "700", "800", "900"].includes(fontWeightActual);
+  const cursivaActiva = fontStyleActual.includes("italic") || fontStyleActual.includes("oblique");
+  const subrayadoActivo = textDecorationActual.includes("underline");
+
+  const calcularEstiloSelectorFuente = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    const botonFuente = botonFuenteRef.current;
+    if (!botonFuente) return null;
+
+    const viewportWidth = Math.max(320, window.innerWidth || 0);
+    const viewportHeight = Math.max(320, window.innerHeight || 0);
+    const triggerRect = botonFuente.getBoundingClientRect();
+    const isDesktop = viewportWidth >= 768;
+    if (!isDesktop) return null;
+
+    const panelWidth = Math.min(
+      FONT_SELECTOR_FIXED_WIDTH,
+      viewportWidth - FONT_SELECTOR_PADDING * 2
+    );
+    const top = clamp(
+      triggerRect.bottom + FONT_SELECTOR_GAP,
+      FONT_SELECTOR_PADDING,
+      viewportHeight - 160
+    );
+
+    const sidebar = document.querySelector("aside");
+    const sidebarRect = sidebar?.getBoundingClientRect?.() || null;
+    const sidebarPanel = document.getElementById("sidebar-panel");
+    const sidebarPanelRect = sidebarPanel?.getBoundingClientRect?.() || null;
+
+    let anchorRight = FONT_SELECTOR_PADDING;
+    if (sidebarRect && sidebarRect.width > 0 && sidebarRect.height > 0) {
+      anchorRight = sidebarRect.right;
+    } else if (
+      sidebarPanelRect &&
+      sidebarPanelRect.width > 0 &&
+      sidebarPanelRect.height > 0
+    ) {
+      anchorRight = sidebarPanelRect.right;
+    }
+
+    const maxLeft = viewportWidth - panelWidth - FONT_SELECTOR_PADDING;
+    const left = clamp(
+      anchorRight + FONT_SELECTOR_SIDEBAR_GAP,
+      FONT_SELECTOR_PADDING,
+      maxLeft
+    );
+    const availableHeight = viewportHeight - top - FONT_SELECTOR_PADDING;
+
+    return {
+      position: "fixed",
+      left: `${Math.round(left)}px`,
+      top: `${Math.round(top)}px`,
+      width: `${Math.round(panelWidth)}px`,
+      maxHeight: `${Math.round(Math.max(140, availableHeight))}px`,
+      marginTop: "0px",
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mostrarSelectorFuente) {
+      setFontSelectorStyle(null);
+      return;
+    }
+
+    const updateStyle = () => {
+      setFontSelectorStyle(calcularEstiloSelectorFuente());
+    };
+
+    updateStyle();
+    window.addEventListener("resize", updateStyle);
+    window.addEventListener("scroll", updateStyle, true);
+    return () => {
+      window.removeEventListener("resize", updateStyle);
+      window.removeEventListener("scroll", updateStyle, true);
+    };
+  }, [mostrarSelectorFuente, calcularEstiloSelectorFuente]);
+
   if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma" || objetoSeleccionado?.tipo === "icono")) {
     return null;
   }
@@ -97,18 +228,6 @@ export default function FloatingTextToolbar({
       </div>
     );
   }
-
-  const fontSizeActual = normalizarFontSize(objetoSeleccionado?.fontSize, 24);
-  const fontWeightActual = String(objetoSeleccionado?.fontWeight || "normal").toLowerCase();
-  const fontStyleActual = String(objetoSeleccionado?.fontStyle || "normal").toLowerCase();
-  const textDecorationActual = String(objetoSeleccionado?.textDecoration || "none").toLowerCase();
-
-  const negritaActiva =
-    fontWeightActual === "bold" ||
-    fontWeightActual === "bolder" ||
-    ["500", "600", "700", "800", "900"].includes(fontWeightActual);
-  const cursivaActiva = fontStyleActual.includes("italic") || fontStyleActual.includes("oblique");
-  const subrayadoActivo = textDecorationActual.includes("underline");
 
   return (
     <div className={toolbarContainerClass} style={toolbarContainerStyle}>
@@ -147,6 +266,7 @@ export default function FloatingTextToolbar({
       {mostrarControlesTipografia && (
         <>
           <div
+            ref={botonFuenteRef}
             className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all truncate ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"}`}
             style={{
               fontFamily: objetoSeleccionado?.fontFamily || "sans-serif",
@@ -164,11 +284,37 @@ export default function FloatingTextToolbar({
             onFontChange={async (nuevaFuente) => {
               await fontManager.loadFonts([nuevaFuente]);
               actualizarSeleccionados(
-                (o) => ({ ...o, fontFamily: nuevaFuente }),
+                (o) => {
+                  const patch = { fontFamily: nuevaFuente };
+
+                  if (!debeMantenerCentroEnCambioDeFuente(o)) {
+                    return { ...o, ...patch };
+                  }
+
+                  const currentX = Number.isFinite(o.x) ? o.x : 0;
+                  const previousWidth = medirAnchoTexto(o, o.fontFamily);
+                  const nextWidth = medirAnchoTexto(o, nuevaFuente);
+
+                  if (
+                    Number.isFinite(previousWidth) &&
+                    previousWidth > 0 &&
+                    Number.isFinite(nextWidth) &&
+                    nextWidth > 0
+                  ) {
+                    const centerX = currentX + (previousWidth / 2);
+                    const nextX = centerX - (nextWidth / 2);
+                    if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
+                      patch.x = nextX;
+                    }
+                  }
+
+                  return { ...o, ...patch };
+                },
                 { soloTipografia: true }
               );
             }}
             isOpen={mostrarSelectorFuente}
+            panelStyle={fontSelectorStyle}
             onClose={() => setMostrarSelectorFuente(false)}
           />
 

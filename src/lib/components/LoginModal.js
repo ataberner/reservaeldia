@@ -417,6 +417,8 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
 
   const shouldSuggestRegister =
     error?.includes("registrarte") || error?.includes("no existe");
+  const isGoogleAuthDebugError =
+    typeof error === "string" && error.includes("[debug:");
 
   return (
     <>
@@ -490,7 +492,18 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
               </button>
             </div>
 
-            {error && <p className="error">{error}</p>}
+            {error && (
+              <p className={`error ${isGoogleAuthDebugError ? "google-auth-failure" : ""}`}>
+                {isGoogleAuthDebugError && (
+                  <img
+                    src="/assets/img/google-auth-fail-logo.svg"
+                    alt="Diagnostico Google"
+                    className="google-auth-failure-logo"
+                  />
+                )}
+                <span>{error}</span>
+              </p>
+            )}
             {info && (
               <p className={`auth-status ${needsVerification ? "warning" : "success"}`}>
                 {info}

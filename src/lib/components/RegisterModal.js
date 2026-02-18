@@ -451,6 +451,8 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
   const wantsLogin =
     error?.includes("ya esta registrado") ||
     error?.includes("email-already-in-use");
+  const isGoogleAuthDebugError =
+    typeof error === "string" && error.includes("[debug:");
 
   return (
     <>
@@ -598,7 +600,18 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
             </div>
             </div>
 
-            {error && <p className="error">{error}</p>}
+            {error && (
+              <p className={`error ${isGoogleAuthDebugError ? "google-auth-failure" : ""}`}>
+                {isGoogleAuthDebugError && (
+                  <img
+                    src="/assets/img/google-auth-fail-logo.svg"
+                    alt="Diagnostico Google"
+                    className="google-auth-failure-logo"
+                  />
+                )}
+                <span>{error}</span>
+              </p>
+            )}
             {info && (
               <p className={`auth-status ${verificationPending ? "warning" : "success"}`}>
                 {info}

@@ -1,39 +1,46 @@
-// components/FontSelector.jsx
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import { createPortal } from "react-dom";
 import { Check } from 'lucide-react';
 import { fontManager } from '../utils/fontManager';
 import { ALL_FONTS } from '../config/fonts';
 
-
-
-
-
+const INITIAL_PRELOAD_COUNT = 8;
 
 const FontSelector = memo(({
   currentFont,
   onFontChange,
   isOpen,
-  onClose
+  onClose,
+  panelStyle = null,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const selectedCategory = 'all';
+  const [applyingFont, setApplyingFont] = useState(null);
+  const [isClient, setIsClient] = useState(false);
   const containerRef = useRef(null);
 
-  const filteredFonts = ALL_FONTS.filter(font => {
-    const matchesSearch = font.nombre.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || font.categoria === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredFonts = useMemo(
+    () =>
+      ALL_FONTS.filter((font) => {
+        const matchesSearch = font.nombre
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase());
+        const matchesCategory =
+          selectedCategory === 'all' || font.categoria === selectedCategory;
+        return matchesSearch && matchesCategory;
+      }),
+    [searchTerm, selectedCategory]
+  );
 
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-
-
-  // 📦 Cerrar si el usuario hace click fuera del panel
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
         onClose();
       }
     };
@@ -42,119 +49,161 @@ const FontSelector = memo(({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen) return;
 
-  return (
+    const fontsToWarm = filteredFonts
+      .slice(0, INITIAL_PRELOAD_COUNT)
+      .map((font) => font.valor);
+
+    if (!fontsToWarm.length) return;
+    void fontManager.loadFonts(fontsToWarm);
+  }, [isOpen, filteredFonts]);
+
+  const handleSelect = useCallback(
+    async (fontValue) => {
+      if (!fontValue || applyingFont) return;
+
+      setApplyingFont(fontValue);
+      try {
+        await onFontChange(fontValue);
+      } finally {
+        setApplyingFont(null);
+      }
+    },
+    [applyingFont, onFontChange]
+  );
+
+  const panelNode = (
     <div
       ref={containerRef}
-      className={`absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl p-4 w-80 max-h-[500px] overflow-hidden popup-fuente z-50 ${isOpen ? "block" : "hidden"
-        }`}
+      className={`${panelStyle ? "fixed" : "absolute top-full left-0 mt-2"} bg-white border border-gray-200 rounded-2xl shadow-xl p-4 w-80 max-h-[500px] overflow-hidden popup-fuente z-50 ${
+        isOpen ? 'block' : 'hidden'
+      }`}
+      style={panelStyle || undefined}
     >
-
-      {/* Búsqueda */}
       <input
         type="text"
         placeholder="Buscar fuente..."
         value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+        onChange={(event) => setSearchTerm(event.target.value)}
         className="w-full px-3 py-2 border rounded-lg text-sm mb-3"
         autoFocus
       />
 
-
-      {/* Lista de fuentes */}
       <div className="overflow-y-auto max-h-[350px] -mx-2 px-2">
         {filteredFonts.length > 0 ? (
-          filteredFonts.map((fuente, idx) => (
+          filteredFonts.map((fuente) => (
             <FontItem
               key={fuente.valor}
-              debugIndex={idx}
               font={fuente}
               isActive={currentFont === fuente.valor}
-              onSelect={async () => {
-                await onFontChange(fuente.valor);
-              }}
-
+              isApplying={applyingFont === fuente.valor}
+              isDisabled={Boolean(applyingFont && applyingFont !== fuente.valor)}
+              onSelect={() => handleSelect(fuente.valor)}
             />
           ))
-
         ) : (
-          <p className="text-gray-500 text-center py-4">
-            No se encontraron fuentes
-          </p>
+          <p className="text-gray-500 text-center py-4">No se encontraron fuentes</p>
         )}
       </div>
     </div>
   );
+
+  if (panelStyle && isClient && typeof document !== "undefined") {
+    return createPortal(panelNode, document.body);
+  }
+
+  return panelNode;
 });
 
-
-
-const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
+const FontItem = memo(({ font, isActive, onSelect, isApplying, isDisabled }) => {
+  const [isLoaded, setIsLoaded] = useState(() =>
+    fontManager.isFontAvailable(font.valor)
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const itemRef = useRef(null);
 
-  // 1) Al montar, ver si ya está disponible en el documento
+  const loadPreviewFont = useCallback(async () => {
+    if (isLoaded || isLoading) return isLoaded;
+
+    setIsLoading(true);
+    setLoadFailed(false);
+
+    try {
+      const result = await fontManager.loadFonts([font.valor]);
+      const hasFailure = Array.isArray(result?.failed) && result.failed.length > 0;
+      const ready = fontManager.isFontAvailable(font.valor);
+      setIsLoaded(ready);
+      setLoadFailed(!ready && hasFailure);
+      return ready;
+    } catch {
+      setLoadFailed(true);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [font.valor, isLoaded, isLoading]);
+
   useEffect(() => {
-    const available = fontManager.isFontAvailable(font.valor);
-    setIsLoaded(available);
+    setIsLoaded(fontManager.isFontAvailable(font.valor));
+    setLoadFailed(false);
   }, [font.valor]);
 
-  // 2) Cargar la fuente automáticamente cuando entra en pantalla
   useEffect(() => {
-    if (!itemRef.current) return;
+    if (!itemRef.current || isLoaded) return;
 
-    const observer = new IntersectionObserver(async (entries) => {
-      const entry = entries[0];
+    if (typeof IntersectionObserver === 'undefined') {
+      void loadPreviewFont();
+      return;
+    }
 
-      if (entry.isIntersecting && !isLoaded && !isLoading) {
-        setIsLoading(true);
-        try {
-          await fontManager.loadFonts([font.valor]);
-          setIsLoaded(true);
-        } catch (error) {
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    }, { threshold: 0.1 });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+
+        void loadPreviewFont();
+        observer.disconnect();
+      },
+      { threshold: 0.15, rootMargin: '120px 0px' }
+    );
 
     observer.observe(itemRef.current);
     return () => observer.disconnect();
-  }, [isLoaded, isLoading, font.valor, debugIndex]);
+  }, [isLoaded, loadPreviewFont]);
 
-
-  // 3) Click: si no está cargada, log + carga, si está, log directo
   const handleClick = async () => {
+    if (isDisabled) return;
 
-    if (!isLoaded && !isLoading) {
-      setIsLoading(true);
-      try {
-        await fontManager.loadFonts([font.valor]);
-        setIsLoaded(true);
-      } catch (error) {
-      } finally {
-        setIsLoading(false);
-      }
+    if (!isLoaded) {
+      await loadPreviewFont();
     }
 
-    onSelect();
+    await onSelect();
   };
 
-  // 4) UI: agrego indicadores mínimos para ver estado
+  const showSpinner = isLoading || isApplying;
+
   return (
     <div
       ref={itemRef}
       onClick={handleClick}
-      className={`flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors duration-150 ${isActive ? "bg-purple-50" : "hover:bg-gray-50"
-        }`}
-      title={`${font.valor} — loaded:${isLoaded} loading:${isLoading}`}
+      onMouseEnter={() => {
+        if (!isLoaded && !isLoading) {
+          void loadPreviewFont();
+        }
+      }}
+      className={`flex items-center justify-between px-3 py-2 rounded-md transition-colors duration-150 ${
+        isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+      } ${isActive ? 'bg-purple-50' : 'hover:bg-gray-50'}`}
+      title={font.valor}
     >
-
       <div className="flex flex-col flex-1 min-w-0">
         <span
           className="text-sm text-gray-800 truncate"
-          style={{ fontFamily: isLoaded ? font.valor : "sans-serif" }}
+          style={{ fontFamily: font.valor }}
         >
           {font.nombre}
         </span>
@@ -165,25 +214,26 @@ const FontItem = memo(({ font, isActive, onSelect, debugIndex }) => {
         <span
           className="text-lg text-gray-400"
           style={{
-            fontFamily: isLoaded ? font.valor : "sans-serif",
+            fontFamily: font.valor,
             lineHeight: 1,
           }}
         >
           AaBbCc
         </span>
 
-        {isLoading && (
+        {showSpinner && (
           <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
         )}
 
+        {!showSpinner && isActive && <Check className="w-4 h-4 text-purple-600" />}
 
+        {!showSpinner && loadFailed && !isLoaded && (
+          <span className="text-[10px] text-amber-600">Lento</span>
+        )}
       </div>
     </div>
   );
-
 });
-
-
 
 FontItem.displayName = 'FontItem';
 FontSelector.displayName = 'FontSelector';

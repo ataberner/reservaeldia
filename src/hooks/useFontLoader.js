@@ -9,18 +9,29 @@ export function useFontLoader(fontFamily) {
 
   useEffect(() => {
     if (!fontFamily) return;
+    let alive = true;
 
     const loadFont = async () => {
+      if (!alive) return;
       setIsLoading(true);
       setError(null);
-      
+
       try {
-        await fontManager.loadFonts([fontFamily]);
-        setIsLoaded(true);
+        const result = await fontManager.loadFonts([fontFamily]);
+        const failed = Array.isArray(result?.failed) ? result.failed.length > 0 : false;
+        const available = fontManager.isFontAvailable(fontFamily);
+
+        if (!alive) return;
+        setIsLoaded(available);
+        if (!available && failed) {
+          setError(new Error(`No se pudo cargar la fuente: ${fontFamily}`));
+        }
       } catch (err) {
+        if (!alive) return;
         setError(err);
         setIsLoaded(false);
       } finally {
+        if (!alive) return;
         setIsLoading(false);
       }
     };
@@ -30,6 +41,10 @@ export function useFontLoader(fontFamily) {
     } else {
       setIsLoaded(true);
     }
+
+    return () => {
+      alive = false;
+    };
   }, [fontFamily]);
 
   return { isLoaded, isLoading, error };

@@ -51,14 +51,18 @@ async function waitForAuthUser(timeoutMs = 3500) {
   });
 }
 
-async function resolveRedirectUser() {
+async function resolveRedirectUser({ expectRedirect = false } = {}) {
   const firstResult = await getRedirectResult(auth);
   if (firstResult?.user) return firstResult.user;
 
   if (auth.currentUser) return auth.currentUser;
 
-  const delayedUser = await waitForAuthUser(8000);
+  const delayedUser = await waitForAuthUser(expectRedirect ? 8000 : 2000);
   if (delayedUser) return delayedUser;
+
+  if (!expectRedirect) {
+    return auth.currentUser || null;
+  }
 
   const secondResult = await getRedirectResult(auth);
   return secondResult?.user || auth.currentUser || null;
@@ -84,6 +88,8 @@ export default function Home() {
   const [showRegister, setShowRegister] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
   const router = useRouter();
+  const showGoogleAuthDebugLogo =
+    typeof authNotice === "string" && authNotice.includes("[debug:");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -126,19 +132,17 @@ export default function Home() {
     (async () => {
       const hadPendingRedirect = hasGoogleRedirectPending();
       const cameFromGoogleAuth = isLikelyGoogleReturnNavigation();
+      const shouldExpectRedirect = hadPendingRedirect || cameFromGoogleAuth;
       const redirectDebugContext = getGoogleAuthDebugContext();
       const redirectDebugLabel = formatGoogleAuthDebugContext(
         redirectDebugContext
       );
 
-      if (!hadPendingRedirect && !cameFromGoogleAuth) {
-        return;
-      }
-
       try {
-        const user = await resolveRedirectUser();
+        const user = await resolveRedirectUser({
+          expectRedirect: shouldExpectRedirect,
+        });
 
-        // Si volvimos de Google y ya hay usuario, cerramos modales y vamos al dashboard
         if (user && mounted) {
           setAuthNotice("");
           setShowLogin(false);
@@ -147,9 +151,9 @@ export default function Home() {
           return;
         }
 
-        if (mounted && hadPendingRedirect) {
+        if (mounted && shouldExpectRedirect) {
           setAuthNotice(
-            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: no-user; pending=1; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
+            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: no-user; pending=${hadPendingRedirect ? "1" : "0"}; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
           );
           setShowLogin(true);
         }
@@ -160,14 +164,14 @@ export default function Home() {
           cameFromGoogleAuth,
           ...redirectDebugContext,
         });
-        if (mounted && hadPendingRedirect) {
+        if (mounted && shouldExpectRedirect) {
           setAuthNotice(
-            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: redirect-exception; pending=1; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
+            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: redirect-exception; pending=${hadPendingRedirect ? "1" : "0"}; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
           );
           setShowLogin(true);
         }
       } finally {
-        if (hadPendingRedirect || cameFromGoogleAuth) {
+        if (shouldExpectRedirect) {
           clearGoogleRedirectPending();
         }
       }
@@ -266,8 +270,19 @@ export default function Home() {
       </header>
 
       {authNotice && (
-        <div className="auth-notice-banner">
-          <span>{authNotice}</span>
+        <div
+          className={`auth-notice-banner ${showGoogleAuthDebugLogo ? "google-auth-failure-banner" : ""}`}
+        >
+          <span className="auth-notice-text">
+            {showGoogleAuthDebugLogo && (
+              <img
+                src="/assets/img/google-auth-fail-logo.svg"
+                alt="Diagnostico Google"
+                className="google-auth-failure-logo"
+              />
+            )}
+            <span>{authNotice}</span>
+          </span>
           <button
             type="button"
             className="auth-notice-close"

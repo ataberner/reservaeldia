@@ -4,9 +4,15 @@ import { getAuth } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
+const firebaseAuthDomain =
+  process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ||
+  (process.env.NODE_ENV === "development"
+    ? "reservaeldia-7a440.firebaseapp.com"
+    : "reservaeldia.com.ar");
+
 const firebaseConfig = {
   apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
-  authDomain: "reservaeldia-7a440.firebaseapp.com",
+  authDomain: firebaseAuthDomain,
   projectId: "reservaeldia-7a440",
   storageBucket: "reservaeldia-7a440.firebasestorage.app",
   messagingSenderId: "860495975406",

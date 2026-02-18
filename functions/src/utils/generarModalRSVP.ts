@@ -240,7 +240,7 @@ if (sendBtn) {
       // ⚙️ Config mínima (apiKey y projectId son suficientes para el cliente)
       const firebaseConfig = {
         apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
-        authDomain: "reservaeldia-7a440.firebaseapp.com",
+        authDomain: "reservaeldia.com.ar",
         projectId: "reservaeldia-7a440",
         appId: "1:860495975406:web:3a49ad0cf55d60313534ff"
       };

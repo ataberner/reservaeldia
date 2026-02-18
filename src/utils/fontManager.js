@@ -1,210 +1,266 @@
-// src/utils/fontManager.js
 import WebFont from 'webfontloader';
 import { GOOGLE_FONTS } from '@/config/fonts';
 
+const SYSTEM_FONTS = new Set([
+  'arial',
+  'helvetica',
+  'verdana',
+  'tahoma',
+  'trebuchet ms',
+  'georgia',
+  'times new roman',
+  'courier new',
+  'lucida console',
+  'comic sans ms',
+  'impact',
+  'sans-serif',
+  'serif',
+  'monospace',
+]);
+
+const DEFAULT_TIMEOUT_MS = 12000;
 
 class FontManager {
   constructor() {
     this.loadedFonts = new Set();
     this.fontCache = new Map();
     this.loadingPromises = new Map();
-
-     // 🔑 lista de Google Fonts permitidas
-  this.googleFontSet = new Set(GOOGLE_FONTS.map(f => f.nombre));
+    this.failedFonts = new Set();
+    this.googleFontSet = new Set(
+      GOOGLE_FONTS.map((font) => this.normalizeFontName(font?.nombre))
+    );
   }
 
-  // Categorizar fuentes por tipo
+  normalizeFontName(fontFamily) {
+    if (!fontFamily) return '';
+    return String(fontFamily)
+      .replace(/['"]/g, '')
+      .split(',')[0]
+      .trim();
+  }
+
   categorizeFont(fontFamily) {
-    const systemFonts = [
-      'Arial', 'Helvetica', 'Verdana', 'Tahoma', 'Trebuchet MS',
-      'Georgia', 'Times New Roman', 'Courier New', 'Lucida Console',
-      'Comic Sans MS', 'Impact', 'sans-serif', 'serif', 'monospace'
-    ];
-    
-    const fontName = fontFamily.replace(/['"]/g, '').split(',')[0].trim();
-    
-    if (systemFonts.includes(fontName)) {
+    const fontName = this.normalizeFontName(fontFamily);
+
+    if (!fontName) {
+      return { type: 'system', name: 'sans-serif' };
+    }
+
+    if (SYSTEM_FONTS.has(fontName.toLowerCase())) {
       return { type: 'system', name: fontName };
     }
-    
-    return { type: 'google', name: fontName };
+
+    if (this.googleFontSet.has(fontName)) {
+      return { type: 'google', name: fontName };
+    }
+
+    return { type: 'custom', name: fontName };
   }
 
-  // Cargar fuente de Google Fonts
-  async loadGoogleFont(fontName) {
-    // Si ya está cargada, retornar inmediatamente
-    if (this.loadedFonts.has(fontName)) {
+  waitForDocumentFont(fontName, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    if (typeof document === 'undefined' || !document.fonts?.load) {
       return Promise.resolve();
     }
 
-    // Si ya está cargándose, retornar la promesa existente
-    if (this.loadingPromises.has(fontName)) {
-      return this.loadingPromises.get(fontName);
+    const loadPromise = document.fonts.load(`16px "${fontName}"`);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      return loadPromise.then(() => undefined);
     }
 
-    // Crear nueva promesa de carga
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(resolve, timeoutMs);
+    });
+
+    return Promise.race([loadPromise, timeoutPromise]).then(() => undefined);
+  }
+
+  async loadGoogleFont(fontName, options = {}) {
+    const normalizedName = this.normalizeFontName(fontName);
+    const timeoutMs =
+      Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DEFAULT_TIMEOUT_MS;
+
+    if (!normalizedName) return Promise.resolve();
+
+    if (this.loadedFonts.has(normalizedName)) {
+      this.loadedFonts.add(normalizedName);
+      this.failedFonts.delete(normalizedName);
+      return Promise.resolve();
+    }
+
+    if (this.loadingPromises.has(normalizedName)) {
+      return this.loadingPromises.get(normalizedName);
+    }
+
     const loadPromise = new Promise((resolve, reject) => {
       WebFont.load({
         google: {
-          families: [`${fontName}:ital,wght@0,400;0,700;1,400;1,700`]
+          families: [`${normalizedName}:400,700`],
         },
         active: () => {
-          this.loadedFonts.add(fontName);
-          this.loadingPromises.delete(fontName);
-          
-          // Forzar redibujado del canvas después de cargar la fuente
-          this.forceCanvasRedraw();
-          
-          resolve();
+          this.waitForDocumentFont(normalizedName, timeoutMs)
+            .finally(() => {
+              this.loadedFonts.add(normalizedName);
+              this.failedFonts.delete(normalizedName);
+              this.loadingPromises.delete(normalizedName);
+              this.forceCanvasRedraw();
+              resolve();
+            });
         },
         inactive: () => {
-          this.loadingPromises.delete(fontName);
-          reject(new Error(`No se pudo cargar la fuente: ${fontName}`));
+          this.loadingPromises.delete(normalizedName);
+          this.failedFonts.add(normalizedName);
+          reject(new Error(`No se pudo cargar la fuente: ${normalizedName}`));
         },
-        timeout: 5000
+        timeout: timeoutMs,
       });
     });
 
-    this.loadingPromises.set(fontName, loadPromise);
+    this.loadingPromises.set(normalizedName, loadPromise);
     return loadPromise;
   }
 
-  // src/utils/fontManager.js  ➜  sustituí todo el método loadFonts()
+  async loadFonts(fontFamilies = [], options = {}) {
+    const loaded = [];
+    const failed = [];
+    const uniqueFonts = [...new Set(fontFamilies.map((font) => String(font || '').trim()))].filter(Boolean);
 
-/**
- * Carga varias fuentes Google de una sola vez.
- * – Agrupa las que todavía no están cargadas.
- * – Si ya existe una promesa para alguna, la reutiliza.
- * – Devuelve una promesa que siempre se resuelve (Promise.allSettled).
- */
-async loadFonts(fontFamilies = []) {
-  const familiasPendientes   = [];
-  const promesasAEsperar     = [];
-
-  fontFamilies.forEach((ff) => {
-    const { type, name } = this.categorizeFont(ff);
-
-    // Fuentes de sistema: nada que hacer
-    if (type === "system") return;
-
-    // Ya cargada: nada que hacer
-    if (this.loadedFonts.has(name)) return;
-
-    // Ya se está cargando: reutilizar promesa existente
-    if (this.loadingPromises.has(name)) {
-      promesasAEsperar.push(this.loadingPromises.get(name));
-      return;
+    if (!uniqueFonts.length) {
+      return { loaded, failed };
     }
 
-    // Primera vez que se pide → la metemos al batch
-    familiasPendientes.push(name);
-  });
+    const pendingNames = [];
+    const pendingPromises = [];
 
-  /* ------------------------------------------------------------------ */
-  // Si no hay nada nuevo que pedir, simplemente esperamos las existentes
-  if (familiasPendientes.length === 0) {
-    return Promise.allSettled(promesasAEsperar);
+    uniqueFonts.forEach((fontFamily) => {
+      const { type, name } = this.categorizeFont(fontFamily);
+      if (!name) return;
+
+      if (type === 'system') {
+        this.loadedFonts.add(name);
+        this.failedFonts.delete(name);
+        loaded.push(name);
+        return;
+      }
+
+      if (this.loadedFonts.has(name)) {
+        this.loadedFonts.add(name);
+        this.failedFonts.delete(name);
+        loaded.push(name);
+        return;
+      }
+
+      if (type !== 'google') {
+        this.failedFonts.add(name);
+        failed.push(name);
+        return;
+      }
+
+      pendingNames.push(name);
+      pendingPromises.push(this.loadGoogleFont(name, options));
+    });
+
+    if (!pendingPromises.length) {
+      return {
+        loaded: [...new Set(loaded)],
+        failed: [...new Set(failed)],
+      };
+    }
+
+    const settled = await Promise.allSettled(pendingPromises);
+
+    settled.forEach((result, index) => {
+      const fontName = pendingNames[index];
+      const ready = this.isFontAvailable(fontName);
+
+      if (result.status === 'fulfilled' || ready) {
+        this.loadedFonts.add(fontName);
+        this.failedFonts.delete(fontName);
+        loaded.push(fontName);
+      } else {
+        this.failedFonts.add(fontName);
+        failed.push(fontName);
+      }
+    });
+
+    return {
+      loaded: [...new Set(loaded)],
+      failed: [...new Set(failed)],
+    };
   }
 
-  /* ------------------------------------------------------------------ */
-  // Creamos UNA sola promesa para todo el lote
-  const lotePromise = new Promise((resolve, reject) => {
-    WebFont.load({
-      google: {
-        families: familiasPendientes.map((n) => `${n}:ital,wght@0,400;0,700;1,400;1,700`)
-      },
-      active: () => {
-        // Marcamos todas como cargadas
-        familiasPendientes.forEach((n) => this.loadedFonts.add(n));
-        familiasPendientes.forEach((n) => this.loadingPromises.delete(n));
-
-        this.forceCanvasRedraw();
-        resolve();
-      },
-      inactive: () => {
-        familiasPendientes.forEach((n) => this.loadingPromises.delete(n));
-        reject(
-          new Error(
-            `No se pudieron cargar una o más fuentes: ${familiasPendientes.join(
-              ", "
-            )}`
-          )
-        );
-      },
-      timeout: 5000,
-    });
-  });
-
-  // Ponemos la misma promesa en el map para cada fuente del lote
-  familiasPendientes.forEach((n) => this.loadingPromises.set(n, lotePromise));
-  promesasAEsperar.push(lotePromise);
-
-  return Promise.allSettled(promesasAEsperar);
-}
-
-
-  // Pre-cargar fuentes populares
   async preloadPopularFonts() {
     const popularFonts = [
-      'Poppins', 'Roboto', 'Open Sans', 'Montserrat', 
-      'Raleway', 'Lato', 'Playfair Display', 'Oswald', 'Libre Bodoni',
+      'Poppins',
+      'Roboto',
+      'Open Sans',
+      'Montserrat',
+      'Raleway',
+      'Lato',
+      'Playfair Display',
+      'Oswald',
+      'Libre Bodoni',
       'Bodoni Moda',
     ];
-    
+
     return this.loadFonts(popularFonts);
   }
 
-  // Forzar redibujado del canvas
   forceCanvasRedraw() {
-    // Disparar evento personalizado
+    if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent('fonts-loaded'));
   }
 
-  // Verificar si una fuente está disponible
   isFontAvailable(fontFamily) {
     const { type, name } = this.categorizeFont(fontFamily);
-    
+
     if (type === 'system') return true;
-    
-    return this.loadedFonts.has(name);
+    if (!name) return false;
+    if (this.loadedFonts.has(name)) return true;
+    if (type === 'google') return false;
+
+    if (typeof document !== 'undefined' && document.fonts?.check) {
+      try {
+        const available = document.fonts.check(`16px "${name}"`);
+        if (available) {
+          this.loadedFonts.add(name);
+          this.failedFonts.delete(name);
+          return true;
+        }
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
   }
 
-  /**
-   * Devuelve un bloque <link> - listo para pegar en <head> - con las
-   * familias de Google Fonts usadas. Filtra genéricas y fuentes de sistema.
-   *
-   * @param {string[]} fontFamilies  Ej.: ["Poppins", "Great Vibes", "Georgia"]
-   * @returns {string} cadena HTML o '' si no hay nada que cargar
-   */
   getGoogleFontsLink(fontFamilies = []) {
-    const familias = fontFamilies
-      .map(f => f.replace(/['"]/g, "").split(",")[0].trim())   // "Poppins"
-      .filter(n => this.googleFontSet.has(n))                  // ✅ solo Google Fonts reales
-      .map(n => `family=${encodeURIComponent(n.replace(/ /g, "+") + ":ital,wght@0,400;0,700;1,400;1,700")}`)
-      .join("&");
+    const families = fontFamilies
+      .map((font) => this.normalizeFontName(font))
+      .filter((name) => this.googleFontSet.has(name))
+      .map((name) => `family=${encodeURIComponent(`${name}:wght@400;700`.replace(/ /g, '+'))}`)
+      .join('&');
 
-    if (!familias) return "";
+    if (!families) return '';
 
-    const url = `https://fonts.googleapis.com/css2?${familias}&display=swap`;
+    const url = `https://fonts.googleapis.com/css2?${families}&display=swap`;
     return `
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="${url}" rel="stylesheet">`.trim();
   }
 
-
-
-  // Obtener CSS para todas las fuentes cargadas
   getLoadedFontsCSS() {
     const googleFonts = Array.from(this.loadedFonts);
     if (googleFonts.length === 0) return '';
-    
-    const families = googleFonts.map(font => 
-      `${font.replace(' ', '+')}:300,400,500,600,700,800,900`
-    ).join('|');
-    
-    return `https://fonts.googleapis.com/css2?family=${families}&display=swap`;
+
+    const families = googleFonts
+      .map((font) => `family=${encodeURIComponent(`${font}:wght@300;400;500;600;700`.replace(/ /g, '+'))}`)
+      .join('&');
+
+    return `https://fonts.googleapis.com/css2?${families}&display=swap`;
   }
 }
 
-// Singleton
 export const fontManager = new FontManager();

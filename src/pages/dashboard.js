@@ -123,6 +123,11 @@ export default function Dashboard() {
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
   const [urlPublicaVistaPrevia, setUrlPublicaVistaPrevia] = useState(null);
+  const [slugPublicoVistaPrevia, setSlugPublicoVistaPrevia] = useState(null);
+  const [publicandoDesdeVistaPrevia, setPublicandoDesdeVistaPrevia] = useState(false);
+  const [publicacionVistaPreviaError, setPublicacionVistaPreviaError] = useState("");
+  const [publicacionVistaPreviaOk, setPublicacionVistaPreviaOk] = useState("");
+  const [urlPublicadaReciente, setUrlPublicadaReciente] = useState(null);
   const [vista, setVista] = useState("home");
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [profileInitialValues, setProfileInitialValues] = useState({
@@ -297,6 +302,10 @@ export default function Dashboard() {
     try {
       setHtmlVistaPrevia(null); // Reset del contenido
       setUrlPublicaVistaPrevia(null); // Reset del enlace publico
+      setSlugPublicoVistaPrevia(null);
+      setPublicacionVistaPreviaError("");
+      setPublicacionVistaPreviaOk("");
+      setUrlPublicadaReciente(null);
       setMostrarVistaPrevia(true); // Abrir modal primero
 
       // Generar HTML para vista previa
@@ -312,6 +321,7 @@ export default function Dashboard() {
       const objetosBase = data?.objetos || [];
       const secciones = data?.secciones || [];
       let urlPublicaDetectada = "";
+      let slugPublicoDetectado = "";
       const slugPublicoBorrador = String(data?.slugPublico || "").trim();
 
       if (slugPublicoBorrador) {
@@ -319,6 +329,7 @@ export default function Dashboard() {
           const snapPublicoPorSlug = await getDoc(doc(db, "publicadas", slugPublicoBorrador));
           if (snapPublicoPorSlug.exists()) {
             const dataPublicada = snapPublicoPorSlug.data() || {};
+            slugPublicoDetectado = slugPublicoBorrador;
             urlPublicaDetectada =
               String(dataPublicada?.urlPublica || "").trim() ||
               `https://reservaeldia.com.ar/i/${slugPublicoBorrador}`;
@@ -331,6 +342,7 @@ export default function Dashboard() {
           const snapPublicoDirecto = await getDoc(doc(db, "publicadas", slugInvitacion));
           if (snapPublicoDirecto.exists()) {
             const dataPublicada = snapPublicoDirecto.data() || {};
+            slugPublicoDetectado = slugInvitacion;
             urlPublicaDetectada =
               String(dataPublicada?.urlPublica || "").trim() ||
               `https://reservaeldia.com.ar/i/${slugInvitacion}`;
@@ -350,6 +362,7 @@ export default function Dashboard() {
             const docPublicada = snapPublicadaPorOriginal.docs[0];
             const dataPublicada = docPublicada?.data() || {};
             const slugPublicado = String(dataPublicada?.slug || docPublicada?.id || "").trim();
+            slugPublicoDetectado = slugPublicado || "";
             urlPublicaDetectada =
               String(dataPublicada?.urlPublica || "").trim() ||
               (slugPublicado ? `https://reservaeldia.com.ar/i/${slugPublicado}` : "");
@@ -358,6 +371,7 @@ export default function Dashboard() {
       }
 
       setUrlPublicaVistaPrevia(urlPublicaDetectada || null);
+      setSlugPublicoVistaPrevia(slugPublicoDetectado || null);
       const previewDebug = (() => {
         try {
           const qp = new URLSearchParams(window.location.search || "");
@@ -431,6 +445,60 @@ export default function Dashboard() {
       console.error("Error generando vista previa:", error);
       alert("No se pudo generar la vista previa");
       setMostrarVistaPrevia(false);
+    }
+  };
+
+  const parseSlugFromPublicUrl = (urlValue) => {
+    const raw = String(urlValue || "").trim();
+    if (!raw) return null;
+
+    try {
+      const parsed = new URL(raw);
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      const iIndex = segments.indexOf("i");
+      if (iIndex >= 0 && segments[iIndex + 1]) return segments[iIndex + 1];
+      return segments[segments.length - 1] || null;
+    } catch (_e) {
+      return null;
+    }
+  };
+
+  const publicarDesdeVistaPrevia = async () => {
+    if (!slugInvitacion || publicandoDesdeVistaPrevia) return;
+
+    setPublicandoDesdeVistaPrevia(true);
+    setPublicacionVistaPreviaError("");
+    setPublicacionVistaPreviaOk("");
+
+    try {
+      const publicarInvitacionCallable = httpsCallable(cloudFunctions, "publicarInvitacion");
+      const payload = slugPublicoVistaPrevia
+        ? { slug: slugInvitacion, slugPublico: slugPublicoVistaPrevia }
+        : { slug: slugInvitacion };
+
+      const result = await publicarInvitacionCallable(payload);
+      const url = String(result?.data?.url || "").trim();
+      if (!url) {
+        throw new Error("No se recibio la URL publica");
+      }
+
+      const slugPublicado = parseSlugFromPublicUrl(url) || slugPublicoVistaPrevia || null;
+
+      setUrlPublicaVistaPrevia(url);
+      setUrlPublicadaReciente(url);
+      setSlugPublicoVistaPrevia(slugPublicado);
+      setPublicacionVistaPreviaOk(
+        slugPublicoVistaPrevia
+          ? "Invitacion actualizada correctamente."
+          : "Invitacion publicada correctamente."
+      );
+    } catch (error) {
+      console.error("Error publicando desde vista previa:", error);
+      setPublicacionVistaPreviaError(
+        getErrorMessage(error, "No se pudo publicar la invitacion.")
+      );
+    } finally {
+      setPublicandoDesdeVistaPrevia(false);
     }
   };
 
@@ -858,9 +926,19 @@ export default function Dashboard() {
           setMostrarVistaPrevia(false);
           setHtmlVistaPrevia(null);
           setUrlPublicaVistaPrevia(null);
+          setSlugPublicoVistaPrevia(null);
+          setPublicandoDesdeVistaPrevia(false);
+          setPublicacionVistaPreviaError("");
+          setPublicacionVistaPreviaOk("");
+          setUrlPublicadaReciente(null);
         }}
         htmlContent={htmlVistaPrevia}
         publicUrl={urlPublicaVistaPrevia}
+        onPublish={publicarDesdeVistaPrevia}
+        publishing={publicandoDesdeVistaPrevia}
+        publishError={publicacionVistaPreviaError}
+        publishSuccess={publicacionVistaPreviaOk}
+        publishedUrl={urlPublicadaReciente}
       />
 
 

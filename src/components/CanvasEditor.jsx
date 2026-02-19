@@ -1982,6 +1982,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
               const esPrimera = index === 0;
               const esUltima = index === seccionesOrdenadas.length - 1;
               const estaAnimando = seccionesAnimando.includes(seccion.id);
+              const sectionButtonBase =
+                "px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-2 focus-visible:ring-[#dccaf7]";
+              const sectionButtonDisabled =
+                "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 shadow-none";
+              const sectionButtonPrimary =
+                "border-[#ccb6ef] bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6737b3] text-white shadow-[0_10px_22px_rgba(119,61,190,0.30)] hover:-translate-y-[1px] hover:from-[#7f4fc5] hover:via-[#6f3bbc] hover:to-[#5f31a8] hover:shadow-[0_14px_28px_rgba(119,61,190,0.38)]";
+              const sectionButtonNeutral =
+                "border-[#e4d7f6] bg-white/95 text-[#5f3596] shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#cdb9ee] hover:bg-[#faf6ff] hover:shadow-[0_12px_24px_rgba(119,61,190,0.16)]";
+              const sectionButtonSuccess =
+                "border-emerald-300 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-[0_10px_22px_rgba(5,150,105,0.28)] hover:-translate-y-[1px] hover:from-emerald-600 hover:to-emerald-700 hover:shadow-[0_14px_28px_rgba(5,150,105,0.36)]";
+              const sectionButtonDanger =
+                "border-rose-300 bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-[0_10px_22px_rgba(225,29,72,0.28)] hover:-translate-y-[1px] hover:from-rose-600 hover:to-red-700 hover:shadow-[0_14px_28px_rgba(225,29,72,0.36)]";
 
               const actionButtons = (
                 <>
@@ -1998,10 +2010,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       })
                     }
                     disabled={esPrimera || estaAnimando}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${esPrimera || estaAnimando
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
-                      } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
+                    className={`${sectionButtonBase} ${esPrimera || estaAnimando
+                      ? sectionButtonDisabled
+                      : sectionButtonPrimary
+                      } ${estaAnimando ? "animate-pulse" : ""}`}
                     title={esPrimera ? 'Ya es la primera sección' : 'Subir sección'}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -2022,10 +2034,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         })
                       }
                       disabled={estaAnimando}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 shadow-md hover:shadow-lg'
-                        } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
+                      className={`${sectionButtonBase} ${estaAnimando
+                        ? sectionButtonDisabled
+                        : sectionButtonSuccess
+                        } ${estaAnimando ? "animate-pulse" : ""}`}
                       title="Guardar esta sección como plantilla"
                     >
                       <span className="inline-flex items-center gap-1.5">
@@ -2054,7 +2066,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                 setElementosSeleccionados,
                               })
                             }
-                            className="px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 shadow-sm"
+                            className={`${sectionButtonBase} ${sectionButtonNeutral}`}
                             title="Desanclar imagen de fondo"
                           >
                             <span className="inline-flex items-center gap-1.5">
@@ -2071,10 +2083,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                                 prev === seccion.id ? null : seccion.id
                               );
                             }}
-                            className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                            className={`${sectionButtonBase} ${
                               mobileBackgroundEditSectionId === seccion.id
-                                ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                                : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
+                                ? "border-indigo-300 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-[0_10px_22px_rgba(79,70,229,0.28)] hover:-translate-y-[1px] hover:from-indigo-600 hover:to-indigo-700 hover:shadow-[0_14px_28px_rgba(79,70,229,0.36)]"
+                                : sectionButtonNeutral
                             }`}
                             title="Modo mover fondo en mobile"
                           >
@@ -2087,9 +2099,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                         {/* Toggle Pantalla completa */}
                         <button
                           onClick={() => togglePantallaCompletaSeccion(seccion.id)}
-                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${esPantalla
-                            ? "bg-purple-600 text-white hover:bg-purple-700 shadow-md"
-                            : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 shadow-sm"
+                          className={`${sectionButtonBase} ${esPantalla
+                            ? sectionButtonPrimary
+                            : sectionButtonNeutral
                             }`}
                           title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
                         >
@@ -2111,10 +2123,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       abrirModalBorrarSeccion(seccion.id);
                     }}
                     disabled={estaAnimando || isDeletingSection}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${estaAnimando || isDeletingSection
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-red-600 text-white hover:bg-red-700 hover:scale-105 shadow-md hover:shadow-lg'
-                      } ${estaAnimando || isDeletingSection ? 'animate-pulse shadow-xl' : ''}`}
+                    className={`${sectionButtonBase} ${estaAnimando || isDeletingSection
+                      ? sectionButtonDisabled
+                      : sectionButtonDanger
+                      } ${estaAnimando || isDeletingSection ? "animate-pulse" : ""}`}
                     title="Borrar esta sección y todos sus elementos"
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -2136,10 +2148,10 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                       })
                     }
                     disabled={esUltima || estaAnimando}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${esUltima || estaAnimando
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
-                      } ${estaAnimando ? 'animate-pulse shadow-xl' : ''}`}
+                    className={`${sectionButtonBase} ${esUltima || estaAnimando
+                      ? sectionButtonDisabled
+                      : sectionButtonPrimary
+                      } ${estaAnimando ? "animate-pulse" : ""}`}
                     title={esUltima ? 'Ya es la última sección' : 'Bajar sección'}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -2152,10 +2164,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   <button
                     onClick={handleCrearSeccion}
                     disabled={estaAnimando}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200
-    ${estaAnimando
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed animate-pulse shadow-xl'
-                        : 'bg-purple-600 text-white hover:bg-purple-700 hover:scale-105 shadow-md hover:shadow-lg'
+                    className={`${sectionButtonBase} ${estaAnimando
+                      ? `${sectionButtonDisabled} animate-pulse`
+                      : sectionButtonPrimary
                       }`}
                     title="Añadir una nueva sección debajo"
                   >
@@ -2180,7 +2191,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                     <button
                       type="button"
                       onClick={() => setMobileSectionActionsOpen((prev) => !prev)}
-                      className="h-9 w-9 rounded-full bg-purple-600 text-white shadow-lg hover:bg-purple-700 flex items-center justify-center"
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-[#ccb6ef] bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6737b3] text-white shadow-[0_10px_22px_rgba(119,61,190,0.35)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#7f4fc5] hover:via-[#6f3bbc] hover:to-[#5f31a8] hover:shadow-[0_14px_28px_rgba(119,61,190,0.42)]"
                       title="Acciones de sección"
                     >
                       {mobileSectionActionsOpen ? (

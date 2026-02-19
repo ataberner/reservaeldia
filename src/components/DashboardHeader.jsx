@@ -28,6 +28,7 @@ export default function DashboardHeader({
 }) {
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
+    const headerRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
     const router = useRouter();
     const [colorFondo, setColorFondo] = useState("#ffffff");
@@ -107,6 +108,31 @@ export default function DashboardHeader({
             toggleZoom?.();
         }
     }, [isMobile, zoom, toggleZoom]);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || typeof document === "undefined") return;
+        const node = headerRef.current;
+        if (!node) return;
+
+        const updateHeaderHeightVar = () => {
+            const nextHeight = Math.round(node.getBoundingClientRect().height || 52);
+            document.documentElement.style.setProperty(
+                "--dashboard-header-height",
+                `${nextHeight}px`
+            );
+        };
+
+        updateHeaderHeightVar();
+
+        if (typeof ResizeObserver !== "undefined") {
+            const observer = new ResizeObserver(() => updateHeaderHeightVar());
+            observer.observe(node);
+            return () => observer.disconnect();
+        }
+
+        window.addEventListener("resize", updateHeaderHeightVar);
+        return () => window.removeEventListener("resize", updateHeaderHeightVar);
+    }, []);
 
 
     useEffect(() => {
@@ -323,12 +349,25 @@ export default function DashboardHeader({
         cargarSlugPublico();
     }, [mostrarModalURL, slugInvitacion]);
 
+    const subtleHeaderButton =
+        "inline-flex items-center gap-1.5 rounded-xl border border-[#e6dbf8] bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_26px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
+    const primaryHeaderButton =
+        "inline-flex items-center gap-1.5 rounded-xl border border-[#7e4dc6]/40 bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6433b0] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_12px_26px_rgba(119,61,190,0.34)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#8050c8] hover:via-[#6f3bbc] hover:to-[#5b2ea6] hover:shadow-[0_16px_32px_rgba(119,61,190,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5]";
+    const templateHeaderButton =
+        "inline-flex items-center gap-1.5 rounded-xl border border-[#f3d37b] bg-gradient-to-r from-[#fff5cf] to-[#ffe5a8] px-3 py-1.5 text-xs font-semibold text-[#7a5103] shadow-[0_8px_18px_rgba(160,105,16,0.15)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#ffefc0] hover:to-[#ffdd92] hover:shadow-[0_12px_22px_rgba(160,105,16,0.22)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5db98]";
+    const historyActionEnabled =
+        "rounded-xl border border-[#e6dbf8] bg-white px-2.5 py-1.5 text-xs text-[#773dbe] shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d4c1f1] hover:bg-[#faf6ff] hover:shadow-[0_12px_24px_rgba(119,61,190,0.16)]";
+    const historyActionDisabled =
+        "cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-xs text-gray-400 shadow-none";
+    const dashboardModeButton =
+        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
+
 
 
 
 
     return (
-        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
+        <div ref={headerRef} className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
             {slugInvitacion ? (
                 /* ----------------- 🟣 Modo edición ----------------- */
                 <div className="flex items-center gap-2 flex-1">
@@ -347,7 +386,7 @@ export default function DashboardHeader({
                             // 2) Limpiar URL sin agregar historial nuevo
                             router.replace("/dashboard", undefined, { shallow: true });
                         }}
-                        className="flex items-center gap-2 px-2 py-1 text-sm bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition"
+                        className={`${subtleHeaderButton} text-sm`}
                     >
                         ← Volver
                     </button>
@@ -357,7 +396,7 @@ export default function DashboardHeader({
                         <div className="relative group">
                             <button
                                 onClick={toggleZoom}
-                                className="flex items-center gap-1 px-2 py-1 text-xs bg-white text-gray-800 border border-gray-300 rounded shadow hover:bg-gray-100 transition"
+                                className={`${subtleHeaderButton} px-2.5`}
                             >
                                 {zoom === 1 ? <Minus size={14} /> : <Plus size={14} />}
                                 <span>{zoom === 1 ? "100%" : "50%"}</span>
@@ -381,9 +420,9 @@ export default function DashboardHeader({
                                 }
                             }}
                             disabled={historialExternos.length <= 1}
-                            className={`px-2 py-1 rounded-full text-xs transition-all duration-200 flex items-center gap-1 ${historialExternos.length <= 1
-                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                                : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
+                            className={`flex items-center gap-1 ${historialExternos.length <= 1
+                                ? historyActionDisabled
+                                : historyActionEnabled
                                 }`}
                         >
                             ⟲
@@ -407,9 +446,9 @@ export default function DashboardHeader({
                                 }
                             }}
                             disabled={futurosExternos.length === 0}
-                            className={`px-2 py-1 rounded-full text-xs transition-all duration-200 flex items-center gap-1 ${futurosExternos.length === 0
-                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                                : "bg-white hover:bg-gray-100 text-purple-700 shadow hover:shadow-md"
+                            className={`flex items-center gap-1 ${futurosExternos.length === 0
+                                ? historyActionDisabled
+                                : historyActionEnabled
                                 }`}
                         >
                             ⟳
@@ -442,7 +481,7 @@ export default function DashboardHeader({
                     {!loadingAdminAccess && canManageSite && (
                         <button
                             onClick={guardarPlantilla}
-                            className="px-3 py-1 bg-yellow-400 text-gray-800 rounded hover:bg-yellow-500 transition text-xs"
+                            className={templateHeaderButton}
                         >
                             Guardar plantilla
                         </button>
@@ -470,17 +509,9 @@ export default function DashboardHeader({
 
                         <button
                             onClick={generarVistaPrevia}
-                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs flex items-center gap-1"
+                            className={primaryHeaderButton}
                         >
-                            Vista previa
-                        </button>
-
-                        <button
-                            onClick={() => setMostrarModalURL(true)}
-                            className={`px-3 py-1 text-white rounded transition text-xs ${slugPublicoExistente ? "bg-green-600 hover:bg-green-700" : "bg-[#773dbe] hover:bg-purple-700"
-                                }`}
-                        >
-                            {slugPublicoExistente ? "Ver o actualizar invitación" : "Publicar invitación"}
+                            Vista previa y publicar
                         </button>
                     </div>
 
@@ -488,7 +519,7 @@ export default function DashboardHeader({
                     <div className="sm:hidden ml-auto relative">
                         <button
                             onClick={() => setAccionesMobileAbiertas((v) => !v)}
-                            className="px-2 py-1 rounded-full border text-gray-700 bg-white hover:bg-gray-50 text-xs"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e6dbf8] bg-white/95 text-[#773dbe] shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:shadow-[0_12px_24px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]"
                             title="Más opciones"
                         >
                             ⋯
@@ -529,20 +560,9 @@ export default function DashboardHeader({
                                             setAccionesMobileAbiertas(false);
                                             generarVistaPrevia();
                                         }}
-                                        className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs"
+                                        className={`w-full justify-center ${primaryHeaderButton}`}
                                     >
-                                        Vista previa
-                                    </button>
-
-                                    <button
-                                        onClick={() => {
-                                            setAccionesMobileAbiertas(false);
-                                            setMostrarModalURL(true);
-                                        }}
-                                        className={`flex-1 px-3 py-2 text-white rounded-lg transition text-xs ${slugPublicoExistente ? "bg-green-600 hover:bg-green-700" : "bg-[#773dbe] hover:bg-purple-700"
-                                            }`}
-                                    >
-                                        {slugPublicoExistente ? "Ver / Actualizar" : "Publicar"}
+                                        Vista previa y publicar
                                     </button>
                                 </div>
                             </div>
@@ -566,7 +586,10 @@ export default function DashboardHeader({
                                     vistaActual === "publicadas" ? "home" : "publicadas"
                                 )
                             }
-                            className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+                            className={`${dashboardModeButton} ${vistaActual === "publicadas"
+                                ? "border-[#d9c5f6] bg-[#f7f1ff] text-[#6f3bc0] shadow-[0_10px_22px_rgba(119,61,190,0.18)] hover:bg-[#f3ebff]"
+                                : "border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]"
+                                }`}
                             title={
                                 vistaActual === "publicadas"
                                     ? "Volver al inicio del dashboard"
@@ -585,7 +608,10 @@ export default function DashboardHeader({
                                         vistaActual === "gestion" ? "home" : "gestion"
                                     )
                                 }
-                                className="px-3 py-1 border text-xs rounded-full hover:bg-gray-50 transition"
+                                className={`${dashboardModeButton} ${vistaActual === "gestion"
+                                    ? "border-[#d9c5f6] bg-[#f7f1ff] text-[#6f3bc0] shadow-[0_10px_22px_rgba(119,61,190,0.18)] hover:bg-[#f3ebff]"
+                                    : "border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]"
+                                    }`}
                                 title={
                                     vistaActual === "gestion"
                                         ? "Volver al inicio del dashboard"

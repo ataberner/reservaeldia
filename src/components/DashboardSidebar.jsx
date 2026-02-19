@@ -4,7 +4,7 @@ import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import GaleriaDeImagenes from "./GaleriaDeImagenes";
 import ModalCrearSeccion from "./ModalCrearSeccion";
-import { FaBars, FaLock, FaLockOpen } from "react-icons/fa";
+import { FaBars } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -281,11 +281,30 @@ export default function DashboardSidebar({
         });
     };
 
+    const sidebarShellClass = `
+    fixed bottom-0 left-0 z-50 h-[62px] w-full text-slate-700
+    md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-16
+    flex items-center justify-around md:flex-col md:items-center md:justify-start
+    border-t border-[#e6dbf8] md:border-t-0 md:border-r md:border-[#e6dbf8]
+    bg-white/95 backdrop-blur-sm
+    shadow-[0_-6px_18px_rgba(15,23,42,0.08)] md:shadow-[8px_0_24px_rgba(15,23,42,0.08)]
+    py-2
+  `;
+
+    const iconGradientByButton = {
+        menu: "from-[#7043bd] to-[#5c34a1]",
+        texto: "from-[#7c4cc9] to-[#6538af]",
+        forma: "from-[#3f74bf] to-[#345ea5]",
+        imagen: "from-[#2f9a8f] to-[#247e74]",
+        contador: "from-[#d27a47] to-[#b85b31]",
+    };
+
     const getIconButtonClass = (boton) => {
         const isActive = fijadoSidebar && botonActivo === boton;
-        return `w-10 h-10 flex items-center justify-center rounded-xl cursor-pointer transition-all duration-150 ${isActive
-            ? "bg-purple-700 ring-2 ring-purple-300 shadow-inner scale-95"
-            : "hover:bg-purple-700"
+        const gradient = iconGradientByButton[boton] || iconGradientByButton.menu;
+        return `group flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br ${gradient} cursor-pointer transition-all duration-200 ${isActive
+            ? "border-white/70 text-white ring-2 ring-white/55 shadow-[0_12px_24px_rgba(31,15,58,0.34)]"
+            : "border-white/25 text-white/95 opacity-90 hover:-translate-y-[1px] hover:opacity-100 hover:border-white/40 hover:shadow-[0_12px_24px_rgba(31,15,58,0.28)]"
             }`;
     };
 
@@ -307,14 +326,8 @@ export default function DashboardSidebar({
                 })}
 
             <aside
-                className="
-    bg-purple-900 text-white flex items-center justify-around
-    md:flex-col md:items-center md:w-16 md:justify-start
-    py-2 fixed
-    bottom-0 left-0 w-full h-[60px]
-    md:top-[52px] md:bottom-0 md:h-[calc(100vh-52px)] md:w-16 md:flex-col
-  "
-                style={{ zIndex: 50, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+                className={sidebarShellClass}
+                style={{ zIndex: 45, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
             >
                 <div
                     onClick={() => alternarSidebarConBoton("menu")}
@@ -323,11 +336,11 @@ export default function DashboardSidebar({
                     className={getIconButtonClass("menu")}
                     title="Menú"
                 >
-                    <FaBars className="text-white text-xl" />
+                    <FaBars className="text-lg" />
                 </div>
 
                 {/* 🖥️ Escritorio: barra vertical a la izquierda */}
-                <div className="hidden md:flex flex-col items-center gap-4 mt-4">
+                <div className="mt-4 hidden flex-col items-center gap-4 rounded-2xl border border-[#ede4fb] bg-gradient-to-b from-[#faf7ff] to-[#f4edff] px-2 py-3 md:flex">
                     <button
                         onMouseEnter={() => openPanel("texto")}
                         onMouseLeave={(e) => {
@@ -391,7 +404,7 @@ export default function DashboardSidebar({
                 </div>
 
                 {/* 📱 Móvil: barra horizontal inferior */}
-                <div className="flex md:hidden flex-row justify-around items-center w-full px-4">
+                <div className="flex w-full flex-row items-center justify-around rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-3 py-1.5 md:hidden">
                     <button
                         onClick={() => alternarSidebarConBoton("texto")}
                         className={getIconButtonClass("texto")}
@@ -432,9 +445,9 @@ export default function DashboardSidebar({
                 <div
                     id="sidebar-panel"
                     className="
-      absolute bg-white border border-purple-300 shadow-2xl 
-      rounded-t-2xl md:rounded-2xl z-40 
-      transition-all duration-300 animate-slideUp
+      absolute z-40 rounded-t-2xl border border-[#e6dbf8] bg-white
+      md:rounded-2xl shadow-[0_20px_40px_rgba(15,23,42,0.12)]
+      transition-all duration-200 animate-slideUp
     "
                     onMouseEnter={() => {
                         cancelClosePanel(); // 🚫 cancela el cierre programado
@@ -457,7 +470,7 @@ export default function DashboardSidebar({
                             ? {
                                 left: "0",
                                 right: "0",
-                                bottom: "calc(70px + env(safe-area-inset-bottom, 0px))",
+                                bottom: "calc(66px + env(safe-area-inset-bottom, 0px))",
                                 width: "100%",
                                 maxHeight: "60vh", // 🔹 ocupa más alto en móvil
                                 overflowY: "auto", // 🔹 scroll vertical
@@ -465,14 +478,14 @@ export default function DashboardSidebar({
                             }
                             : {
                                 left: "4rem",
-                                top: "69px", // 🔹 justo debajo del header
-                                height: "calc(100vh - 56px - 2rem)",
+                                top: "var(--dashboard-header-height, 52px)",
+                                height: "calc(100vh - var(--dashboard-header-height, 52px))",
                                 width: "18rem",
                                 overflowY: "auto",
                             }
                     }
                 >
-                    <div className="relative pt-10 px-3 pb-4 flex flex-col gap-5 text-gray-800 w-full h-full min-h-0">
+                    <div className="relative w-full h-full min-h-0 flex flex-col gap-5 px-3 pb-4 pt-11 text-slate-700">
                         {/* 🔹 Botón para cerrar el panel */}
                         {fijadoSidebar && (
                             <button
@@ -482,9 +495,11 @@ export default function DashboardSidebar({
                                     setBotonActivo(null);
                                 }}
                                 className="
-            absolute top-2 right-2 z-[60] w-8 h-8 flex items-center justify-center 
-            bg-purple-100 text-purple-700 hover:bg-purple-200 
-            rounded-full shadow transition pointer-events-auto
+            absolute top-2 right-2 z-[60] flex h-8 w-8 items-center justify-center rounded-full
+            border border-[#dbc9f6] bg-white text-[#6d3eb6]
+            shadow-[0_8px_18px_rgba(95,53,150,0.18)] transition-all duration-200
+            hover:-translate-y-[1px] hover:bg-[#f8f2ff] hover:shadow-[0_12px_24px_rgba(95,53,150,0.26)]
+            pointer-events-auto
           "
                                 title="Cerrar panel"
                             >
@@ -605,9 +620,3 @@ export default function DashboardSidebar({
         </>
     );
 }
-
-
-
-
-
-

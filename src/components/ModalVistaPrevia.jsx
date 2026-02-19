@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Monitor, Smartphone, X } from "lucide-react";
+import { Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 
 const MOBILE_VIEWPORT_WIDTH = 390;
 const MOBILE_VIEWPORT_HEIGHT = 844;
@@ -60,7 +60,17 @@ function PreviewFrame({
   );
 }
 
-export default function ModalVistaPrevia({ visible, onClose, htmlContent, publicUrl }) {
+export default function ModalVistaPrevia({
+  visible,
+  onClose,
+  htmlContent,
+  publicUrl,
+  onPublish,
+  publishing = false,
+  publishError = "",
+  publishSuccess = "",
+  publishedUrl = "",
+}) {
   const [iframeKey, setIframeKey] = useState(0);
   const [windowHeight, setWindowHeight] = useState(820);
   const [windowWidth, setWindowWidth] = useState(0);
@@ -114,6 +124,8 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
   }, [visible]);
 
   const previewUrl = String(publicUrl || "").trim() || "https://reservaeldia.com.ar/i/....";
+  const confirmedPublicUrl = String(publishedUrl || "").trim() || previewUrl;
+  const yaPublicada = Boolean(String(publicUrl || "").trim());
 
   const safeStageWidth = Math.max(stageWidth || windowWidth - 64, 320);
   const sideBySide = safeStageWidth >= 1020 || windowWidth >= 1240;
@@ -161,6 +173,19 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
   const overlayPhone = sideBySide && safeStageWidth >= 1220;
   const phoneOffsetX = overlayPhone ? Math.round(Math.min(120, desktopScaledWidth * 0.18)) : 0;
   const phoneOffsetY = overlayPhone ? Math.round(Math.min(120, desktopScaledHeight * 0.24)) : 0;
+
+  const confirmarPublicacion = () => {
+    if (typeof onPublish !== "function" || publishing) return;
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        yaPublicada
+          ? "¿Querés actualizar la invitacion publica con estos cambios?"
+          : "¿Querés publicar esta invitacion?"
+      );
+      if (!ok) return;
+    }
+    onPublish();
+  };
 
   if (!visible) return null;
 
@@ -279,8 +304,57 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
             </div>
           </div>
 
-          <div className="border-t border-[#e7dcf8] bg-white/80 px-3 py-2 text-[11px] text-[#6f3bc0]/80 sm:px-4 sm:text-xs">
-            Vista escritorio ({DESKTOP_VIEWPORT_WIDTH}px) y movil ({MOBILE_VIEWPORT_WIDTH}px)
+          <div className="border-t border-[#e7dcf8] bg-white/80 px-3 py-2 sm:px-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-[11px] text-[#6f3bc0]/80 sm:text-xs">
+                Vista escritorio ({DESKTOP_VIEWPORT_WIDTH}px) y movil ({MOBILE_VIEWPORT_WIDTH}px)
+              </div>
+
+              <div className="flex items-center gap-2">
+                {yaPublicada && confirmedPublicUrl && (
+                  <a
+                    href={confirmedPublicUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border border-[#ddd2f5] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6f3bc0] hover:bg-[#f4ecff] sm:text-xs"
+                    title="Abrir invitacion publicada"
+                  >
+                    Ver publicada
+                  </a>
+                )}
+                {!publishing && (
+                  <span className="hidden items-center gap-1 rounded-full border border-[#d8ccea] bg-[#f7f2ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] sm:inline-flex">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#773dbe]" />
+                    {yaPublicada ? "Lista para actualizar" : "Lista para publicar"}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={confirmarPublicacion}
+                  disabled={publishing || !htmlContent}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:text-xs ${
+                    publishing || !htmlContent
+                      ? "cursor-not-allowed bg-[#bda5e6]"
+                      : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_28px_rgba(111,59,192,0.34)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
+                  }`}
+                >
+                  {yaPublicada && !publishing ? <RefreshCw className="h-3.5 w-3.5" /> : null}
+                  {publishing
+                    ? yaPublicada
+                      ? "Actualizando..."
+                      : "Publicando..."
+                    : yaPublicada
+                    ? "Actualizar invitacion"
+                    : "Publicar invitacion"}
+                </button>
+              </div>
+            </div>
+            {publishError ? (
+              <p className="mt-1 text-[11px] text-red-600 sm:text-xs">{publishError}</p>
+            ) : null}
+            {publishSuccess ? (
+              <p className="mt-1 text-[11px] text-emerald-700 sm:text-xs">{publishSuccess}</p>
+            ) : null}
           </div>
         </div>
       </div>

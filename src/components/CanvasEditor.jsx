@@ -256,6 +256,9 @@ export default function CanvasEditor({
   const inlineRenderValueRef = useRef({ id: null, value: "" });
   const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
   const contenedorRef = useRef(null);
+  const autoSectionViewportRef = useRef(null);
+  const autoSectionScrollRafRef = useRef(0);
+  const seccionActivaIdRef = useRef(null);
   const ignoreNextUpdateRef = useRef(0);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
@@ -269,6 +272,14 @@ export default function CanvasEditor({
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+
+  const isTextResizeDebugEnabled = () =>
+    typeof window !== "undefined" && Boolean(window.__DBG_TEXT_RESIZE);
+
+  const textResizeDebug = (...args) => {
+    if (!isTextResizeDebugEnabled()) return;
+    console.log("[TEXT-COMMIT]", ...args);
+  };
 
 
 
@@ -336,7 +347,10 @@ export default function CanvasEditor({
     nuevoTextoRef,
   });
 
-  const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+  const seccionesOrdenadas = useMemo(
+    () => [...secciones].sort((a, b) => a.orden - b.orden),
+    [secciones]
+  );
 
   useEffect(() => {
     setBackgroundLoadBySection({});
@@ -1204,6 +1218,10 @@ export default function CanvasEditor({
 
   // Recordar última sección activa
   useEffect(() => {
+    seccionActivaIdRef.current = seccionActivaId;
+  }, [seccionActivaId]);
+
+  useEffect(() => {
     if (seccionActivaId) window._lastSeccionActivaId = seccionActivaId;
   }, [seccionActivaId]);
 
@@ -1496,7 +1514,7 @@ export default function CanvasEditor({
     };
   };
 
-  const medirAnchoTextoKonva = useCallback((objTexto, textoObjetivo) => {
+  const medirAnchoTextoKonva = useCallback((objTexto, textoObjetivo, fontSizeOverride = null) => {
     if (!objTexto || typeof window === "undefined") return null;
 
     try {
@@ -1505,9 +1523,11 @@ export default function CanvasEditor({
         ? objTexto.fontFamily
         : "sans-serif";
       const safeFontSize =
-        Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0
-          ? objTexto.fontSize
-          : 24;
+        Number.isFinite(fontSizeOverride) && fontSizeOverride > 0
+          ? fontSizeOverride
+          : (Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0
+            ? objTexto.fontSize
+            : 24);
       const baseLineHeight =
         Number.isFinite(objTexto.lineHeight) && objTexto.lineHeight > 0
           ? objTexto.lineHeight
@@ -1535,6 +1555,179 @@ export default function CanvasEditor({
       return null;
     }
   }, []);
+
+  const calcularXTextoCentradoPorTamano = useCallback((objTexto, nextFontSize) => {
+    if (!objTexto || objTexto.tipo !== "texto") return Number.isFinite(objTexto?.x) ? objTexto.x : 0;
+
+    const safeNextSize =
+      Number.isFinite(nextFontSize) && nextFontSize > 0
+        ? nextFontSize
+        : (Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0 ? objTexto.fontSize : 24);
+
+    const baseLineHeight =
+      typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
+        ? objTexto.lineHeight
+        : 1.2;
+
+    const previousMetrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: objTexto.fontSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+
+    const nextMetrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: safeNextSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+
+    const previousWidthFromKonva = medirAnchoTextoKonva(
+      objTexto,
+      objTexto.texto,
+      objTexto.fontSize
+    );
+    const nextWidthFromKonva = medirAnchoTextoKonva(
+      objTexto,
+      objTexto.texto,
+      safeNextSize
+    );
+
+    const previousWidth =
+      Number.isFinite(previousWidthFromKonva) && previousWidthFromKonva > 0
+        ? previousWidthFromKonva
+        : previousMetrics.width;
+    const nextWidth =
+      Number.isFinite(nextWidthFromKonva) && nextWidthFromKonva > 0
+        ? nextWidthFromKonva
+        : nextMetrics.width;
+
+    const currentX = Number.isFinite(objTexto.x) ? objTexto.x : 0;
+    const centerX = currentX + (previousWidth / 2);
+    return centerX - (nextWidth / 2);
+  }, [obtenerMetricasTexto, medirAnchoTextoKonva]);
+
+  const calcularXTextoDesdeCentro = useCallback((objTexto, nextFontSize, centerX) => {
+    if (!objTexto || objTexto.tipo !== "texto") {
+      return Number.isFinite(objTexto?.x) ? objTexto.x : 0;
+    }
+
+    const safeCenterX = Number(centerX);
+    if (!Number.isFinite(safeCenterX)) {
+      return calcularXTextoCentradoPorTamano(objTexto, nextFontSize);
+    }
+
+    const safeNextSize =
+      Number.isFinite(nextFontSize) && nextFontSize > 0
+        ? nextFontSize
+        : (Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0 ? objTexto.fontSize : 24);
+    const baseLineHeight =
+      typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
+        ? objTexto.lineHeight
+        : 1.2;
+
+    const nextMetrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: safeNextSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+    const nextWidthFromKonva = medirAnchoTextoKonva(
+      objTexto,
+      objTexto.texto,
+      safeNextSize
+    );
+    const nextWidth =
+      Number.isFinite(nextWidthFromKonva) && nextWidthFromKonva > 0
+        ? nextWidthFromKonva
+        : nextMetrics.width;
+
+    return safeCenterX - (nextWidth / 2);
+  }, [
+    calcularXTextoCentradoPorTamano,
+    obtenerMetricasTexto,
+    medirAnchoTextoKonva,
+  ]);
+
+  const ajustarFontSizeAAnchoVisual = useCallback((objTexto, proposedFontSize, targetVisualWidth) => {
+    const safeProposed = Number(proposedFontSize);
+    const safeTargetWidth = Number(targetVisualWidth);
+    textResizeDebug("fit-width:start", {
+      id: objTexto?.id ?? null,
+      proposedFontSize: safeProposed,
+      targetVisualWidth: safeTargetWidth,
+      currentFontSize: objTexto?.fontSize ?? null,
+    });
+    if (!objTexto || objTexto.tipo !== "texto") {
+      textResizeDebug("fit-width:skip-invalid-obj", { id: objTexto?.id ?? null });
+      return Number.isFinite(safeProposed) && safeProposed > 0 ? safeProposed : 24;
+    }
+    if (!Number.isFinite(safeProposed) || safeProposed <= 0) {
+      textResizeDebug("fit-width:skip-invalid-size", { id: objTexto?.id ?? null });
+      return Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0 ? objTexto.fontSize : 24;
+    }
+    if (!Number.isFinite(safeTargetWidth) || safeTargetWidth <= 0) {
+      textResizeDebug("fit-width:skip-invalid-width", { id: objTexto?.id ?? null });
+      return safeProposed;
+    }
+
+    let nextSize = Math.max(6, safeProposed);
+
+    // Dos iteraciones alcanzan para compensar el desajuste entre preview escalado y render final.
+    for (let i = 0; i < 2; i += 1) {
+      const measuredWidth = medirAnchoTextoKonva(
+        objTexto,
+        objTexto.texto,
+        nextSize
+      );
+      if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) {
+        textResizeDebug("fit-width:break-no-measure", {
+          id: objTexto?.id ?? null,
+          iteration: i,
+          measuredWidth,
+        });
+        break;
+      }
+
+      const ratio = safeTargetWidth / measuredWidth;
+      if (!Number.isFinite(ratio) || ratio <= 0) {
+        textResizeDebug("fit-width:break-invalid-ratio", {
+          id: objTexto?.id ?? null,
+          iteration: i,
+          ratio,
+          measuredWidth,
+          targetVisualWidth: safeTargetWidth,
+        });
+        break;
+      }
+
+      const candidate = Math.max(6, nextSize * ratio);
+      textResizeDebug("fit-width:iter", {
+        id: objTexto?.id ?? null,
+        iteration: i,
+        measuredWidth,
+        ratio,
+        prevSize: nextSize,
+        candidate,
+      });
+      if (Math.abs(candidate - nextSize) <= 0.01) {
+        nextSize = candidate;
+        break;
+      }
+      nextSize = candidate;
+    }
+    const finalSize = Number(nextSize.toFixed(3));
+    textResizeDebug("fit-width:end", {
+      id: objTexto?.id ?? null,
+      finalSize,
+      targetVisualWidth: safeTargetWidth,
+    });
+    return finalSize;
+  }, [medirAnchoTextoKonva, textResizeDebug]);
 
   const calcularXTextoCentrado = useCallback((objTexto, textoObjetivo) => {
     if (!objTexto || objTexto.tipo !== "texto") return Number.isFinite(objTexto?.x) ? objTexto.x : 0;
@@ -1701,20 +1894,161 @@ export default function CanvasEditor({
 
 
   // 3) Cada vez que el usuario selecciona una sección, actualizamos global y notificamos
-  const onSelectSeccion = (id) => {
+  const onSelectSeccion = useCallback((id) => {
     try {
-      // si ya tenés un setSeccionActivaId, llamalo acá:
       setSeccionActivaId(id);
-
       window._seccionActivaId = id;
       window.dispatchEvent(new CustomEvent("seccion-activa", { detail: { id } }));
     } catch (e) {
       console.warn("No pude emitir seccion-activa:", e);
     }
-  };
+  }, [setSeccionActivaId]);
 
-  // Ejemplo de uso: en el handler de click de la sección
-  // <Rect onClick={() => onSelectSeccion(seccion.id)} ... />
+  const resolverViewportScrollSecciones = useCallback(() => {
+    const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+    const stageContainer = stage?.container?.();
+    if (!stageContainer || typeof window === "undefined") return null;
+
+    const mainElement = stageContainer.closest?.("main");
+    if (mainElement) return mainElement;
+
+    let current = stageContainer.parentElement;
+    while (current && current !== document.body) {
+      const style = window.getComputedStyle(current);
+      const overflowY = String(style.overflowY || "").toLowerCase();
+      const overflow = String(style.overflow || "").toLowerCase();
+      const isScrollable =
+        overflowY === "auto" ||
+        overflowY === "scroll" ||
+        overflowY === "overlay" ||
+        overflow === "auto" ||
+        overflow === "scroll" ||
+        overflow === "overlay";
+
+      if (isScrollable && current.scrollHeight > current.clientHeight + 1) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return window;
+  }, []);
+
+  const sincronizarSeccionVisiblePorScroll = useCallback(() => {
+    if (!seccionesOrdenadas.length || typeof window === "undefined") return;
+
+    const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+    const stageContainer = stage?.container?.();
+    if (!stageContainer) return;
+
+    const stageRect = stageContainer.getBoundingClientRect?.();
+    if (!stageRect || !Number.isFinite(stageRect.top) || !Number.isFinite(stageRect.height)) {
+      return;
+    }
+
+    const viewport = autoSectionViewportRef.current || resolverViewportScrollSecciones();
+    if (!viewport) return;
+
+    let viewportTop = 0;
+    let viewportBottom = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    if (viewport !== window) {
+      const viewportRect = viewport.getBoundingClientRect?.();
+      if (!viewportRect) return;
+      viewportTop = viewportRect.top;
+      viewportBottom = viewportRect.bottom;
+    }
+
+    if (!Number.isFinite(viewportTop) || !Number.isFinite(viewportBottom) || viewportBottom <= viewportTop) {
+      return;
+    }
+
+    const alturaStagePx = Number(stageRect.height || 0);
+    const alturaCanvas = Math.max(1, Number(altoCanvasDinamico) || 1);
+    if (!(alturaStagePx > 0)) return;
+
+    const pxPorUnidad = alturaStagePx / alturaCanvas;
+    if (!(pxPorUnidad > 0)) return;
+
+    const centroViewport = (viewportTop + viewportBottom) / 2;
+    let mejorId = null;
+    let mejorVisible = 0;
+    let mejorRatio = -1;
+    let mejorDistanciaCentro = Number.POSITIVE_INFINITY;
+
+    seccionesOrdenadas.forEach((seccion, index) => {
+      const alturaSeccion = Math.max(1, Number(seccion.altura) || 1);
+      const offsetY = calcularOffsetY(seccionesOrdenadas, index);
+      const top = stageRect.top + offsetY * pxPorUnidad;
+      const bottom = top + alturaSeccion * pxPorUnidad;
+
+      const visible = Math.max(0, Math.min(bottom, viewportBottom) - Math.max(top, viewportTop));
+      if (visible <= 0) return;
+
+      const ratioVisible = visible / (alturaSeccion * pxPorUnidad);
+      const distanciaCentro = Math.abs((top + bottom) / 2 - centroViewport);
+
+      const mejoraPorVisible = visible > mejorVisible + 1;
+      const empateVisible = Math.abs(visible - mejorVisible) <= 1;
+      const mejoraPorRatio = empateVisible && ratioVisible > mejorRatio + 0.001;
+      const empateRatio = empateVisible && Math.abs(ratioVisible - mejorRatio) <= 0.001;
+      const mejoraPorCentro = empateRatio && distanciaCentro < mejorDistanciaCentro;
+
+      if (mejoraPorVisible || mejoraPorRatio || mejoraPorCentro) {
+        mejorId = seccion.id;
+        mejorVisible = visible;
+        mejorRatio = ratioVisible;
+        mejorDistanciaCentro = distanciaCentro;
+      }
+    });
+
+    if (!mejorId) return;
+    if (seccionActivaIdRef.current === mejorId) return;
+
+    onSelectSeccion(mejorId);
+  }, [altoCanvasDinamico, onSelectSeccion, resolverViewportScrollSecciones, seccionesOrdenadas]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (!seccionesOrdenadas.length) return undefined;
+
+    autoSectionViewportRef.current = resolverViewportScrollSecciones();
+    const scrollTarget = autoSectionViewportRef.current || window;
+
+    const scheduleSync = () => {
+      if (autoSectionScrollRafRef.current) return;
+      autoSectionScrollRafRef.current = window.requestAnimationFrame(() => {
+        autoSectionScrollRafRef.current = 0;
+        sincronizarSeccionVisiblePorScroll();
+      });
+    };
+
+    scheduleSync();
+
+    const eventTarget = scrollTarget === window ? window : scrollTarget;
+    eventTarget.addEventListener("scroll", scheduleSync, { passive: true });
+    window.addEventListener("resize", scheduleSync);
+    window.addEventListener("orientationchange", scheduleSync);
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("scroll", scheduleSync);
+      window.visualViewport.addEventListener("resize", scheduleSync);
+    }
+
+    return () => {
+      eventTarget.removeEventListener("scroll", scheduleSync);
+      window.removeEventListener("resize", scheduleSync);
+      window.removeEventListener("orientationchange", scheduleSync);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("scroll", scheduleSync);
+        window.visualViewport.removeEventListener("resize", scheduleSync);
+      }
+      if (autoSectionScrollRafRef.current) {
+        window.cancelAnimationFrame(autoSectionScrollRafRef.current);
+        autoSectionScrollRafRef.current = 0;
+      }
+    };
+  }, [resolverViewportScrollSecciones, seccionesOrdenadas.length, sincronizarSeccionVisiblePorScroll]);
 
 
 
@@ -3168,17 +3502,18 @@ export default function CanvasEditor({
                                     return prev;
                                   }
 
+                                  if (elemento.tipo === "texto" && Number.isFinite(newAttrs.fontSize)) {
+                                    // Para texto dejamos que Konva haga el preview de escala en vivo.
+                                    // Actualizar estado React en cada frame genera micro-jitter visual.
+                                    return prev;
+                                  }
+
                                   const updatedElement = {
                                     ...elemento,
-                                    // ?? NO actualizar X,Y durante preview - solo dimensiones
                                     rotation: newAttrs.rotation || elemento.rotation || 0
                                   };
 
-                                  if (elemento.tipo === 'texto' && newAttrs.fontSize) {
-                                    updatedElement.fontSize = newAttrs.fontSize;
-                                    updatedElement.scaleX = 1;
-                                    updatedElement.scaleY = 1;
-                                  } else if (elemento.tipo === "galeria") {
+                                  if (elemento.tipo === "galeria") {
                                     const galleryMetrics = normalizarMedidasGaleria(
                                       elemento,
                                       newAttrs.width,
@@ -3226,7 +3561,54 @@ export default function CanvasEditor({
 
                                 // ? COUNTDOWN: conservar escala final del drag (sin reconversión a chipWidth)
                                 // para que el tamaño final coincida exactamente con lo soltado.
-                                if (objOriginal.tipo === "countdown") {
+                                if (objOriginal.tipo === "texto" && Number.isFinite(cleanAttrs.fontSize)) {
+                                  const requestedFontSize = Math.max(6, Number(cleanAttrs.fontSize) || 6);
+                                  const shouldMatchVisualWidth =
+                                    objOriginal.__autoWidth !== false &&
+                                    !Number.isFinite(objOriginal.width);
+                                  const nextFontSize = shouldMatchVisualWidth
+                                    ? ajustarFontSizeAAnchoVisual(
+                                      objOriginal,
+                                      requestedFontSize,
+                                      cleanAttrs.textVisualWidth
+                                    )
+                                    : requestedFontSize;
+                                  const centeredX = calcularXTextoDesdeCentro(
+                                    objOriginal,
+                                    nextFontSize,
+                                    cleanAttrs.textCenterX
+                                  );
+                                  textResizeDebug("transform-final:text", {
+                                    id: objOriginal?.id ?? null,
+                                    requestedFontSize,
+                                    nextFontSize,
+                                    shouldMatchVisualWidth,
+                                    cleanFontSize: cleanAttrs.fontSize ?? null,
+                                    textVisualWidth: cleanAttrs.textVisualWidth ?? null,
+                                    textCenterX: cleanAttrs.textCenterX ?? null,
+                                    centeredX,
+                                    originalX: objOriginal?.x ?? null,
+                                    originalY: objOriginal?.y ?? null,
+                                  });
+                                  finalAttrs = {
+                                    ...finalAttrs,
+                                    fontSize: nextFontSize,
+                                    x: Number.isFinite(centeredX)
+                                      ? centeredX
+                                      : (Number.isFinite(objOriginal.x) ? objOriginal.x : 0),
+                                    y: Number.isFinite(objOriginal.y) ? objOriginal.y : 0,
+                                    scaleX: 1,
+                                    scaleY: 1,
+                                  };
+                                  delete finalAttrs.textCenterX;
+                                  delete finalAttrs.textVisualWidth;
+                                  textResizeDebug("transform-final:text-attrs", {
+                                    id: objOriginal?.id ?? null,
+                                    finalFontSize: finalAttrs.fontSize ?? null,
+                                    finalX: finalAttrs.x ?? null,
+                                    finalY: finalAttrs.y ?? null,
+                                  });
+                                } else if (objOriginal.tipo === "countdown") {
                                   finalAttrs = {
                                     ...finalAttrs,
                                     scaleX: Number.isFinite(cleanAttrs.scaleX) ? cleanAttrs.scaleX : (objOriginal.scaleX ?? 1),
@@ -3288,7 +3670,69 @@ export default function CanvasEditor({
                                   offsetY = 0;
                                 }
 
-                                if (objOriginal.tipo === "countdown") {
+                                if (objOriginal.tipo === "countdown" || objOriginal.tipo === "texto") {
+                                  if (objOriginal.tipo === "texto") {
+                                    const commitSnapshot = {
+                                      id: objOriginal?.id ?? null,
+                                      finalFontSize: finalAttrs.fontSize ?? null,
+                                      finalX: finalAttrs.x ?? null,
+                                      finalY: finalAttrs.y ?? null,
+                                      seccionId: objOriginal?.seccionId ?? null,
+                                    };
+                                    textResizeDebug("transform-final:commit", {
+                                      ...commitSnapshot,
+                                    });
+                                    if (isTextResizeDebugEnabled()) {
+                                      requestAnimationFrame(() => {
+                                        requestAnimationFrame(() => {
+                                          const nodeAfterCommit = elementRefs.current?.[commitSnapshot.id];
+                                          if (!nodeAfterCommit) {
+                                            textResizeDebug("transform-final:post-render:no-node", {
+                                              id: commitSnapshot.id,
+                                            });
+                                            return;
+                                          }
+                                          try {
+                                            const rectAfterCommit = nodeAfterCommit.getClientRect({
+                                              skipTransform: false,
+                                              skipShadow: true,
+                                              skipStroke: true,
+                                            });
+                                            textResizeDebug("transform-final:post-render", {
+                                              ...commitSnapshot,
+                                              nodeX: typeof nodeAfterCommit.x === "function" ? nodeAfterCommit.x() : null,
+                                              nodeY: typeof nodeAfterCommit.y === "function" ? nodeAfterCommit.y() : null,
+                                              nodeScaleX:
+                                                typeof nodeAfterCommit.scaleX === "function"
+                                                  ? nodeAfterCommit.scaleX()
+                                                  : null,
+                                              nodeScaleY:
+                                                typeof nodeAfterCommit.scaleY === "function"
+                                                  ? nodeAfterCommit.scaleY()
+                                                  : null,
+                                              nodeFontSize:
+                                                typeof nodeAfterCommit.fontSize === "function"
+                                                  ? nodeAfterCommit.fontSize()
+                                                  : null,
+                                              nodeRectWidth:
+                                                Number.isFinite(rectAfterCommit?.width)
+                                                  ? rectAfterCommit.width
+                                                  : null,
+                                              nodeRectHeight:
+                                                Number.isFinite(rectAfterCommit?.height)
+                                                  ? rectAfterCommit.height
+                                                  : null,
+                                            });
+                                          } catch (err) {
+                                            textResizeDebug("transform-final:post-render:error", {
+                                              id: commitSnapshot.id,
+                                              message: err?.message || String(err),
+                                            });
+                                          }
+                                        });
+                                      });
+                                    }
+                                  }
                                   actualizarObjeto(objIndex, finalAttrs);
                                 } else {
                                   requestAnimationFrame(() => {

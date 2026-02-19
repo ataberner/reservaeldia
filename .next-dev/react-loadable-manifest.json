@@ -44,5 +44,11 @@
     "files": [
       "static/chunks/_pages-dir-browser_src_components_CanvasEditor_jsx.js"
     ]
+  },
+  "pages\\dashboard.js -> @/utils/fontManager": {
+    "id": "pages\\dashboard.js -> @/utils/fontManager",
+    "files": [
+      "static/chunks/_pages-dir-browser_src_utils_fontManager_js.js"
+    ]
   }
 }

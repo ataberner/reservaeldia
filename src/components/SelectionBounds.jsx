@@ -17,6 +17,12 @@ const TRDBG = (...args) => {
   console.log("[TRDBG]", ...args);
 };
 
+const TXTDBG = (...args) => {
+  if (typeof window === "undefined") return;
+  if (!window.__DBG_TEXT_RESIZE) return;
+  console.log("[TEXT-TR]", ...args);
+};
+
 
 function rectFromNodes(nodes) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -205,6 +211,7 @@ export default function SelectionBounds({
   const [transformTick, setTransformTick] = useState(0);
   const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
+  const textTransformAnchorRef = useRef(null);
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -466,7 +473,7 @@ export default function SelectionBounds({
       anchorShadowBlur={6}
       anchorShadowOffset={{ x: 0, y: 3 }}
       keepRatio={lockAspectCountdown || esGaleria}
-      centeredScaling={false}
+      centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
       resizeEnabled={!isDragging}
       rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
@@ -605,6 +612,7 @@ export default function SelectionBounds({
           const tr = transformerRef.current;
           const nodes = tr?.nodes?.() || [];
           circleAnchorRef.current = null;
+          textTransformAnchorRef.current = null;
 
           if (
             nodes.length === 1 &&
@@ -619,6 +627,57 @@ export default function SelectionBounds({
               });
               circleAnchorRef.current = { left: r0.x, top: r0.y };
             } catch {}
+          }
+
+          if (nodes.length === 1 && esTexto) {
+            const node = nodes[0];
+            let centerX = null;
+            let baseWidth = null;
+            let baseHeight = null;
+            let baseVisualWidth = null;
+            try {
+              const rect = node.getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              });
+              if (Number.isFinite(rect?.x) && Number.isFinite(rect?.width)) {
+                centerX = rect.x + (rect.width / 2);
+              }
+              if (Number.isFinite(rect?.width) && rect.width > 0) {
+                baseWidth = rect.width;
+                baseVisualWidth = rect.width;
+              }
+              if (Number.isFinite(rect?.height) && rect.height > 0) {
+                baseHeight = rect.height;
+              }
+            } catch {}
+            const safeBaseFontSize =
+              Number.isFinite(primerElemento?.fontSize) && primerElemento.fontSize > 0
+                ? primerElemento.fontSize
+                : 24;
+            textTransformAnchorRef.current = {
+              y: typeof node?.y === "function" ? node.y() : 0,
+              centerX,
+              baseWidth,
+              baseHeight,
+              baseFontSize: safeBaseFontSize,
+              lastPreviewFontSize: safeBaseFontSize,
+              lastPreviewCenterX: centerX,
+              lastPreviewVisualWidth: baseVisualWidth,
+              previewTick: 0,
+            };
+            TXTDBG("start", {
+              id: primerElemento?.id ?? null,
+              baseFontSize: safeBaseFontSize,
+              baseWidth,
+              baseHeight,
+              centerX,
+              nodeX: typeof node?.x === "function" ? node.x() : null,
+              nodeY: typeof node?.y === "function" ? node.y() : null,
+              nodeScaleX: typeof node?.scaleX === "function" ? node.scaleX() : null,
+              nodeScaleY: typeof node?.scaleY === "function" ? node.scaleY() : null,
+            });
           }
 
           const union = rectFromNodes(nodes);
@@ -665,11 +724,107 @@ export default function SelectionBounds({
             const originalFontSize = primerElemento.fontSize || 24;
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
+            const anchorData = textTransformAnchorRef.current || null;
+            const baseFontSize =
+              Number.isFinite(anchorData?.baseFontSize) &&
+              anchorData.baseFontSize > 0
+                ? anchorData.baseFontSize
+                : originalFontSize;
 
             const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
-            transformData.fontSize = Math.max(6, Math.round(originalFontSize * avgScale));
+            let scaleFromRect = null;
+            let liveRectWidth = null;
+            try {
+              const rect = node.getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              });
+              if (Number.isFinite(rect?.width) && rect.width > 0) {
+                liveRectWidth = rect.width;
+              }
+              const baseWidth = Number(anchorData?.baseWidth);
+              if (
+                Number.isFinite(baseWidth) &&
+                baseWidth > 0 &&
+                Number.isFinite(rect?.width) &&
+                rect.width > 0
+              ) {
+                scaleFromRect = rect.width / baseWidth;
+              }
+            } catch {}
+            const effectiveScale =
+              Number.isFinite(scaleFromRect) && scaleFromRect > 0
+                ? scaleFromRect
+                : avgScale;
+            transformData.fontSize = Math.max(
+              6,
+              Number((baseFontSize * effectiveScale).toFixed(3))
+            );
+            if (textTransformAnchorRef.current) {
+              const tick = Number(textTransformAnchorRef.current.previewTick || 0) + 1;
+              textTransformAnchorRef.current.previewTick = tick;
+              textTransformAnchorRef.current.lastPreviewFontSize = transformData.fontSize;
+              if (Number.isFinite(liveRectWidth) && liveRectWidth > 0) {
+                textTransformAnchorRef.current.lastPreviewVisualWidth = liveRectWidth;
+              }
+              if (tick <= 2 || tick % 5 === 0) {
+                TXTDBG("preview", {
+                  id: primerElemento?.id ?? null,
+                  tick,
+                  scaleX,
+                  scaleY,
+                  avgScale,
+                  scaleFromRect,
+                  effectiveScale,
+                  baseFontSize,
+                  fontSize: transformData.fontSize,
+                  liveRectWidth,
+                  centerXTarget: textTransformAnchorRef.current?.centerX ?? null,
+                  nodeX: typeof node?.x === "function" ? node.x() : null,
+                  nodeY: typeof node?.y === "function" ? node.y() : null,
+                });
+              }
+            }
             transformData.scaleX = 1;
             transformData.scaleY = 1;
+            if (Number.isFinite(textTransformAnchorRef.current?.y)) {
+              transformData.y = textTransformAnchorRef.current.y;
+              if (typeof node.y === "function") {
+                node.y(textTransformAnchorRef.current.y);
+              }
+            }
+            if (Number.isFinite(textTransformAnchorRef.current?.centerX)) {
+              transformData.textCenterX = textTransformAnchorRef.current.centerX;
+              if (textTransformAnchorRef.current) {
+                textTransformAnchorRef.current.lastPreviewCenterX =
+                  textTransformAnchorRef.current.centerX;
+              }
+              try {
+                const rect = node.getClientRect({
+                  skipTransform: false,
+                  skipShadow: true,
+                  skipStroke: true,
+                });
+                const currentCenterX =
+                  Number.isFinite(rect?.x) && Number.isFinite(rect?.width)
+                    ? rect.x + (rect.width / 2)
+                    : null;
+                const deltaX =
+                  Number.isFinite(currentCenterX)
+                    ? (textTransformAnchorRef.current.centerX - currentCenterX)
+                    : null;
+                if (Number.isFinite(deltaX) && Math.abs(deltaX) > 0.01 && typeof node.x === "function") {
+                  TXTDBG("preview-center-correction", {
+                    id: primerElemento?.id ?? null,
+                    currentCenterX,
+                    targetCenterX: textTransformAnchorRef.current.centerX,
+                    deltaX,
+                  });
+                  node.x(node.x() + deltaX);
+                }
+              } catch {}
+            }
           } else {
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
@@ -859,25 +1014,158 @@ export default function SelectionBounds({
             rotation: pose.rotation,
             isFinal: true,
           };
+          let textPreviewEndSnapshot = null;
 
           if (esTexto) {
             const originalFontSize = primerElemento.fontSize || 24;
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
+            const anchorData = textTransformAnchorRef.current || null;
+            const baseFontSize =
+              Number.isFinite(anchorData?.baseFontSize) &&
+              anchorData.baseFontSize > 0
+                ? anchorData.baseFontSize
+                : originalFontSize;
             const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+            let scaleFromRect = null;
+            let visualWidthFromRect = null;
+            try {
+              const rect = node.getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              });
+              if (Number.isFinite(rect?.width) && rect.width > 0) {
+                visualWidthFromRect = rect.width;
+              }
+              const baseWidth = Number(anchorData?.baseWidth);
+              if (
+                Number.isFinite(baseWidth) &&
+                baseWidth > 0 &&
+                Number.isFinite(rect?.width) &&
+                rect.width > 0
+              ) {
+                scaleFromRect = rect.width / baseWidth;
+              }
+            } catch {}
+            const effectiveScale =
+              Number.isFinite(scaleFromRect) && scaleFromRect > 0
+                ? scaleFromRect
+                : avgScale;
 
-            finalData.fontSize = Math.max(6, Math.round(originalFontSize * avgScale));
+            const computedFontSize = Math.max(
+              6,
+              Number((baseFontSize * effectiveScale).toFixed(3))
+            );
+            finalData.fontSize = Math.max(
+              6,
+              Number(
+                Number.isFinite(anchorData?.lastPreviewFontSize) &&
+                  anchorData.lastPreviewFontSize > 0
+                  ? anchorData.lastPreviewFontSize
+                  : computedFontSize
+              )
+            );
             finalData.scaleX = 1;
             finalData.scaleY = 1;
-
-            // ✅ Aplanado sync para texto (solo escala)
+            if (Number.isFinite(anchorData?.y)) {
+              finalData.y = anchorData.y;
+            }
+            if (Number.isFinite(anchorData?.lastPreviewCenterX)) {
+              finalData.textCenterX = anchorData.lastPreviewCenterX;
+            } else if (Number.isFinite(anchorData?.centerX)) {
+              finalData.textCenterX = anchorData.centerX;
+            }
+            const visualWidth =
+              Number.isFinite(anchorData?.lastPreviewVisualWidth) &&
+              anchorData.lastPreviewVisualWidth > 0
+                ? anchorData.lastPreviewVisualWidth
+                : visualWidthFromRect;
+            if (Number.isFinite(visualWidth) && visualWidth > 0) {
+              finalData.textVisualWidth = visualWidth;
+            }
+            textPreviewEndSnapshot = {
+              id: primerElemento?.id ?? null,
+              x: typeof node?.x === "function" ? node.x() : null,
+              y: typeof node?.y === "function" ? node.y() : null,
+              scaleX,
+              scaleY,
+              fontSize: typeof node?.fontSize === "function" ? node.fontSize() : null,
+              rectWidth: Number.isFinite(visualWidthFromRect) ? visualWidthFromRect : null,
+              rectHeight: null,
+            };
             try {
-              node.scaleX(1);
-              node.scaleY(1);
+              const rectForSnapshot = node.getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              });
+              if (Number.isFinite(rectForSnapshot?.height)) {
+                textPreviewEndSnapshot.rectHeight = rectForSnapshot.height;
+              }
+            } catch {}
+            TXTDBG("end", {
+              id: primerElemento?.id ?? null,
+              scaleX,
+              scaleY,
+              avgScale,
+              scaleFromRect,
+              effectiveScale,
+              computedFontSize,
+              finalFontSize: finalData.fontSize,
+              textCenterX: finalData.textCenterX ?? null,
+              textVisualWidth: finalData.textVisualWidth ?? null,
+              nodeRectWidth: visualWidthFromRect,
+              nodeX: typeof node?.x === "function" ? node.x() : null,
+              nodeY: typeof node?.y === "function" ? node.y() : null,
+            });
+
+            // Aplanar escala del texto en el release para evitar doble escalado
+            // (escala del nodo + fontSize persistido).
+            try {
+              if (typeof node.scaleX === "function") node.scaleX(1);
+              if (typeof node.scaleY === "function") node.scaleY(1);
+
+              if (
+                Number.isFinite(finalData.fontSize) &&
+                typeof node.fontSize === "function"
+              ) {
+                node.fontSize(finalData.fontSize);
+              }
+              if (
+                Number.isFinite(finalData.y) &&
+                typeof node.y === "function"
+              ) {
+                node.y(finalData.y);
+              }
+
+              const targetCenterX = Number(finalData.textCenterX);
+              if (Number.isFinite(targetCenterX) && typeof node.x === "function") {
+                try {
+                  const flattenedRect = node.getClientRect({
+                    skipTransform: false,
+                    skipShadow: true,
+                    skipStroke: true,
+                  });
+                  const flattenedCenterX =
+                    Number.isFinite(flattenedRect?.x) &&
+                    Number.isFinite(flattenedRect?.width)
+                      ? flattenedRect.x + (flattenedRect.width / 2)
+                      : null;
+                  if (Number.isFinite(flattenedCenterX)) {
+                    node.x(node.x() + (targetCenterX - flattenedCenterX));
+                  }
+                } catch {}
+              }
+
               node.getLayer()?.batchDraw();
             } catch (err) {
-              console.warn("Error aplanando escalas de texto (sync):", err);
+              console.warn("Error aplanando escala de texto (sync):", err);
             }
+
+            // Para texto evitamos aplanar antes del commit en React,
+            // así no aparece un frame intermedio con tamaño "saltado".
+            textTransformAnchorRef.current = null;
           } else {
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
@@ -998,6 +1286,76 @@ export default function SelectionBounds({
                 tr2.nodes([freshNode]);
                 tr2.forceUpdate();
                 tr2.getLayer?.()?.batchDraw();
+
+                if (textPreviewEndSnapshot && freshNode) {
+                  try {
+                    const postRect = freshNode.getClientRect({
+                      skipTransform: false,
+                      skipShadow: true,
+                      skipStroke: true,
+                    });
+                    TXTDBG("post-commit:raf1", {
+                      id: idSel,
+                      pre: textPreviewEndSnapshot,
+                      post: {
+                        x: typeof freshNode?.x === "function" ? freshNode.x() : null,
+                        y: typeof freshNode?.y === "function" ? freshNode.y() : null,
+                        scaleX: typeof freshNode?.scaleX === "function" ? freshNode.scaleX() : null,
+                        scaleY: typeof freshNode?.scaleY === "function" ? freshNode.scaleY() : null,
+                        fontSize: typeof freshNode?.fontSize === "function" ? freshNode.fontSize() : null,
+                        rectWidth: Number.isFinite(postRect?.width) ? postRect.width : null,
+                        rectHeight: Number.isFinite(postRect?.height) ? postRect.height : null,
+                      },
+                      delta: {
+                        width:
+                          Number.isFinite(postRect?.width) &&
+                          Number.isFinite(textPreviewEndSnapshot.rectWidth)
+                            ? (postRect.width - textPreviewEndSnapshot.rectWidth)
+                            : null,
+                        height:
+                          Number.isFinite(postRect?.height) &&
+                          Number.isFinite(textPreviewEndSnapshot.rectHeight)
+                            ? (postRect.height - textPreviewEndSnapshot.rectHeight)
+                            : null,
+                      },
+                    });
+                  } catch {}
+                  requestAnimationFrame(() => {
+                    const freshNode2 = idSel ? elementRefs.current?.[idSel] : null;
+                    if (!freshNode2) return;
+                    try {
+                      const postRect2 = freshNode2.getClientRect({
+                        skipTransform: false,
+                        skipShadow: true,
+                        skipStroke: true,
+                      });
+                      TXTDBG("post-commit:raf2", {
+                        id: idSel,
+                        post: {
+                          x: typeof freshNode2?.x === "function" ? freshNode2.x() : null,
+                          y: typeof freshNode2?.y === "function" ? freshNode2.y() : null,
+                          scaleX: typeof freshNode2?.scaleX === "function" ? freshNode2.scaleX() : null,
+                          scaleY: typeof freshNode2?.scaleY === "function" ? freshNode2.scaleY() : null,
+                          fontSize: typeof freshNode2?.fontSize === "function" ? freshNode2.fontSize() : null,
+                          rectWidth: Number.isFinite(postRect2?.width) ? postRect2.width : null,
+                          rectHeight: Number.isFinite(postRect2?.height) ? postRect2.height : null,
+                        },
+                        deltaFromPre: {
+                          width:
+                            Number.isFinite(postRect2?.width) &&
+                            Number.isFinite(textPreviewEndSnapshot.rectWidth)
+                              ? (postRect2.width - textPreviewEndSnapshot.rectWidth)
+                              : null,
+                          height:
+                            Number.isFinite(postRect2?.height) &&
+                            Number.isFinite(textPreviewEndSnapshot.rectHeight)
+                              ? (postRect2.height - textPreviewEndSnapshot.rectHeight)
+                              : null,
+                        },
+                      });
+                    } catch {}
+                  });
+                }
               } catch { }
             });
           } catch { }
@@ -1012,4 +1370,3 @@ export default function SelectionBounds({
     />
   );
 }
-

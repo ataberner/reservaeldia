@@ -1,6 +1,7 @@
 // src/components/editor/toolbar/FloatingTextToolbar.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FontSelector from "@/components/FontSelector";
+import Konva from "konva";
 
 const FONT_SELECTOR_GAP = 12;
 const FONT_SELECTOR_PADDING = 8;
@@ -8,11 +9,34 @@ const FONT_SELECTOR_FIXED_WIDTH = 300;
 const FONT_SELECTOR_SIDEBAR_GAP = 4;
 const MOBILE_FONT_STRIP_GAP = 6;
 const MOBILE_FONT_WARM_COUNT = 12;
+const CANVAS_WIDTH = 800;
+const SECTION_CENTER_X = CANVAS_WIDTH / 2;
+const SECTION_CENTER_EPSILON = 2;
 
 const clamp = (value, min, max) => {
   const safeMin = Number.isFinite(min) ? min : 0;
   const safeMax = Number.isFinite(max) ? max : safeMin;
   return Math.min(Math.max(value, safeMin), Math.max(safeMin, safeMax));
+};
+
+const isBoldFontWeight = (weight) => {
+  const normalized = String(weight || "normal").toLowerCase();
+  return (
+    normalized === "bold" ||
+    normalized === "bolder" ||
+    ["500", "600", "700", "800", "900"].includes(normalized)
+  );
+};
+
+const resolveKonvaFontStyle = (fontStyle, fontWeight) => {
+  const style = String(fontStyle || "normal").toLowerCase();
+  const isItalic = style.includes("italic") || style.includes("oblique");
+  const isBold = style.includes("bold") || isBoldFontWeight(fontWeight);
+
+  if (isBold && isItalic) return "bold italic";
+  if (isBold) return "bold";
+  if (isItalic) return "italic";
+  return "normal";
 };
 
 export default function FloatingTextToolbar({
@@ -34,6 +58,7 @@ export default function FloatingTextToolbar({
   const toolbarRef = useRef(null);
   const botonFuenteRef = useRef(null);
   const latestFontChangeRef = useRef(0);
+  const latestFontSizeChangeRef = useRef(0);
   const lastTypographyTargetsRef = useRef([]);
 
   useEffect(() => {
@@ -49,38 +74,126 @@ export default function FloatingTextToolbar({
     const next = Number(value);
     return Number.isFinite(next) && next > 0 ? next : fallback;
   };
+  const normalizarFontSizeEntero = (value, fallback = 24) =>
+    Math.max(6, Math.round(normalizarFontSize(value, fallback)));
 
-  const medirAnchoTexto = (obj, fontFamilyOverride) => {
+  const normalizarEscalaX = (value) => {
+    const next = Number(value);
+    return Number.isFinite(next) && Math.abs(next) > 0 ? next : 1;
+  };
+
+  const medirAnchoTexto = (obj, overrides = {}) => {
     if (!obj || obj.tipo !== "texto") return null;
-    if (typeof document === "undefined") return null;
 
+    const options =
+      typeof overrides === "string"
+        ? { fontFamilyOverride: overrides }
+        : (overrides || {});
+    const { fontFamilyOverride, fontSizeOverride } = options;
+
+    const fontSize = normalizarFontSize(fontSizeOverride ?? obj.fontSize, 24);
+    const fontWeight = obj.fontWeight || "normal";
+    const fontStyle = obj.fontStyle || "normal";
+    const fontFamily = String(fontFamilyOverride || obj.fontFamily || "sans-serif");
+    const baseLineHeight =
+      Number.isFinite(obj.lineHeight) && obj.lineHeight > 0
+        ? obj.lineHeight
+        : 1.2;
+    const rawText = String(obj.texto ?? "");
+    const safeText = rawText.replace(/[ \t]+$/gm, "");
+
+    try {
+      const probe = new Konva.Text({
+        text: safeText,
+        fontSize,
+        fontFamily,
+        fontWeight,
+        fontStyle: resolveKonvaFontStyle(fontStyle, fontWeight),
+        lineHeight: baseLineHeight * 0.92,
+        padding: 0,
+        wrap: "none",
+      });
+      const width = Number(probe.getTextWidth?.() || 0);
+      probe.destroy();
+      if (Number.isFinite(width) && width > 0) return width;
+    } catch {
+      // fallback a canvas
+    }
+
+    if (typeof document === "undefined") return null;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-
-    const fontSize = normalizarFontSize(obj.fontSize, 24);
-    const fontStyle = obj.fontStyle || "normal";
-    const fontWeight = obj.fontWeight || "normal";
-    const fontFamily = String(fontFamilyOverride || obj.fontFamily || "sans-serif");
     const fontForCanvas = fontFamily.includes(",")
       ? fontFamily
       : (/\s/.test(fontFamily) ? `"${fontFamily}"` : fontFamily);
-
     ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontForCanvas}`;
-
-    const rawText = String(obj.texto ?? "");
-    const safeText = rawText.replace(/[ \t]+$/gm, "");
     const lines = safeText.split(/\r?\n/);
     const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 20);
-
     return Number.isFinite(maxLineWidth) ? maxLineWidth : null;
+  };
+
+  const obtenerCentroVisualXDesdeNodo = (id) => {
+    if (typeof window === "undefined") return null;
+    const refs = window._elementRefs || null;
+    const node = refs?.[id];
+    if (!node || typeof node.getClientRect !== "function") return null;
+
+    try {
+      const rect = node.getClientRect({
+        skipTransform: false,
+        skipShadow: true,
+        skipStroke: true,
+      });
+      if (!rect || !Number.isFinite(rect.x) || !Number.isFinite(rect.width)) {
+        return null;
+      }
+      return rect.x + rect.width / 2;
+    } catch {
+      return null;
+    }
+  };
+
+  const obtenerCentroFallbackDesdeObjeto = (obj, fontFamilyOverride) => {
+    if (!obj || obj.tipo !== "texto") return null;
+    const width = medirAnchoTexto(obj, fontFamilyOverride);
+    if (!Number.isFinite(width) || width <= 0) return null;
+
+    const currentX = Number.isFinite(obj.x) ? obj.x : 0;
+    const scaleX = normalizarEscalaX(obj.scaleX);
+    return currentX + (width * scaleX) / 2;
+  };
+
+  const resolverCentroObjetivoCambioFuente = (obj) => {
+    if (!obj || obj.tipo !== "texto") return null;
+
+    const centerDesdeNodo = obtenerCentroVisualXDesdeNodo(obj.id);
+    const centerFallback = obtenerCentroFallbackDesdeObjeto(obj, obj.fontFamily);
+    const centerActual = Number.isFinite(centerDesdeNodo)
+      ? centerDesdeNodo
+      : centerFallback;
+
+    if (!Number.isFinite(centerActual)) return null;
+
+    // Si ya está centrado en la sección, anclamos al centro exacto de sección.
+    if (Math.abs(centerActual - SECTION_CENTER_X) <= SECTION_CENTER_EPSILON) {
+      return SECTION_CENTER_X;
+    }
+
+    return centerActual;
   };
 
   const debeMantenerCentroEnCambioDeFuente = (obj) =>
     obj?.tipo === "texto" &&
+    !obj?.__groupAlign;
+  const debeAjustarCentroPredictivo = (obj) =>
+    obj?.tipo === "texto" &&
     !obj?.__groupAlign &&
     !Number.isFinite(obj?.width) &&
     obj?.__autoWidth !== false;
+  const debeAnclarCentroTexto = (obj) =>
+    obj?.tipo === "texto" &&
+    !obj?.__groupAlign;
 
   const esObjetivoTipografia = (item) => {
     if (!item) return false;
@@ -129,7 +242,7 @@ export default function FloatingTextToolbar({
   const mobileFontStripVisible =
     isMobile && mostrarControlesTipografia && mostrarSelectorFuente;
 
-  const fontSizeActual = normalizarFontSize(objetoSeleccionado?.fontSize, 24);
+  const fontSizeActual = normalizarFontSizeEntero(objetoSeleccionado?.fontSize, 24);
   const fontWeightActual = String(objetoSeleccionado?.fontWeight || "normal").toLowerCase();
   const fontStyleActual = String(objetoSeleccionado?.fontStyle || "normal").toLowerCase();
   const textDecorationActual = String(objetoSeleccionado?.textDecoration || "none").toLowerCase();
@@ -299,6 +412,143 @@ export default function FloatingTextToolbar({
     void fontManager.loadFonts(fuentesWarmupMobile);
   }, [fontManager, fuentesWarmupMobile]);
 
+  const aplicarTamanoFuenteSeleccionado = useCallback(
+    (resolverTamano) => {
+      const requestId = latestFontSizeChangeRef.current + 1;
+      latestFontSizeChangeRef.current = requestId;
+
+      const idsSeleccionados =
+        Array.isArray(elementosSeleccionados) && elementosSeleccionados.length
+          ? elementosSeleccionados
+          : lastTypographyTargetsRef.current;
+      const targetIds = new Set(
+        (idsSeleccionados || []).filter(
+          (id) => id !== null && typeof id !== "undefined"
+        )
+      );
+
+      if (!targetIds.size && objetoSeleccionado?.id) {
+        targetIds.add(objetoSeleccionado.id);
+      }
+      if (!targetIds.size) return;
+
+      const getObjById =
+        typeof window !== "undefined" && typeof window.__getObjById === "function"
+          ? window.__getObjById
+          : null;
+      const centerTargetById = new Map();
+
+      targetIds.forEach((id) => {
+        const targetObj =
+          getObjById?.(id) || (objetoSeleccionado?.id === id ? objetoSeleccionado : null);
+        if (!targetObj) return;
+        if (!debeAnclarCentroTexto(targetObj)) return;
+
+        const centerObjetivo = resolverCentroObjetivoCambioFuente(targetObj);
+        if (Number.isFinite(centerObjetivo)) {
+          centerTargetById.set(id, centerObjetivo);
+        }
+      });
+
+      const expectedFontSizeById = new Map();
+      setObjetos((prev) =>
+        prev.map((o) => {
+          if (!targetIds.has(o.id)) return o;
+          if (!esObjetivoTipografia(o)) return o;
+
+          const currentSize = normalizarFontSizeEntero(o.fontSize, 24);
+          const nextSizeRaw =
+            typeof resolverTamano === "function"
+              ? resolverTamano(o, currentSize)
+              : resolverTamano;
+          const nextSize = normalizarFontSizeEntero(nextSizeRaw, currentSize);
+          if (!Number.isFinite(nextSize)) return o;
+          if (Math.abs(nextSize - currentSize) <= 0) return o;
+
+          expectedFontSizeById.set(o.id, nextSize);
+          const patch = { fontSize: nextSize };
+
+          if (debeAnclarCentroTexto(o)) {
+            const centerObjetivo = centerTargetById.get(o.id);
+            const debeAjustarPredictivo =
+              !Number.isFinite(o.width) &&
+              o.__autoWidth !== false;
+            if (Number.isFinite(centerObjetivo) && debeAjustarPredictivo) {
+              const nextWidth = medirAnchoTexto(o, { fontSizeOverride: nextSize });
+              const scaleX = normalizarEscalaX(o.scaleX);
+              if (Number.isFinite(nextWidth) && nextWidth > 0) {
+                const currentX = Number.isFinite(o.x) ? o.x : 0;
+                const nextX = centerObjetivo - (nextWidth * scaleX) / 2;
+                if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.25) {
+                  patch.x = nextX;
+                }
+              }
+            }
+          }
+
+          return { ...o, ...patch };
+        })
+      );
+
+      if (!centerTargetById.size) return;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (latestFontSizeChangeRef.current !== requestId) return;
+
+          const deltaById = new Map();
+          centerTargetById.forEach((centerObjetivo, id) => {
+            if (!expectedFontSizeById.has(id)) return;
+            const centerActual = obtenerCentroVisualXDesdeNodo(id);
+            if (!Number.isFinite(centerActual)) return;
+
+            const delta = centerObjetivo - centerActual;
+            if (Number.isFinite(delta) && Math.abs(delta) > 0.25) {
+              deltaById.set(id, delta);
+            }
+          });
+
+          if (!deltaById.size) return;
+
+          setObjetos((prev) =>
+            prev.map((o) => {
+              const delta = deltaById.get(o.id);
+              if (!Number.isFinite(delta)) return o;
+              if (!esObjetivoTipografia(o)) return o;
+
+              const expectedSize = expectedFontSizeById.get(o.id);
+              const currentSize = normalizarFontSizeEntero(o.fontSize, 24);
+              if (Number.isFinite(expectedSize) && Math.abs(currentSize - expectedSize) > 0.01) {
+                return o;
+              }
+
+              const currentX = Number.isFinite(o.x) ? o.x : 0;
+              const nextX = currentX + delta;
+              if (!Number.isFinite(nextX) || Math.abs(nextX - currentX) <= 0.25) {
+                return o;
+              }
+
+              return { ...o, x: nextX };
+            })
+          );
+        });
+      });
+    },
+    [
+      elementosSeleccionados,
+      objetoSeleccionado?.id,
+      objetoSeleccionado,
+      setObjetos,
+      esObjetivoTipografia,
+      debeMantenerCentroEnCambioDeFuente,
+      debeAnclarCentroTexto,
+      resolverCentroObjetivoCambioFuente,
+      medirAnchoTexto,
+      normalizarEscalaX,
+      obtenerCentroVisualXDesdeNodo,
+      normalizarFontSizeEntero,
+    ]
+  );
+
   const aplicarFuenteSeleccionada = useCallback(
     (nuevaFuente) => {
       const fuenteObjetivo =
@@ -322,77 +572,127 @@ export default function FloatingTextToolbar({
       if (!targetIds.size) return;
 
       const centerTargetById = new Map();
+      const getObjById =
+        typeof window !== "undefined" && typeof window.__getObjById === "function"
+          ? window.__getObjById
+          : null;
 
-      // Aplicar de inmediato para que la UI responda al instante.
-      setObjetos((prev) =>
-        prev.map((o) => {
-          if (!targetIds.has(o.id)) return o;
-          if (!esObjetivoTipografia(o)) return o;
+      targetIds.forEach((id) => {
+        const targetObj =
+          getObjById?.(id) || (objetoSeleccionado?.id === id ? objetoSeleccionado : null);
+        if (!targetObj) return;
+        if (!debeMantenerCentroEnCambioDeFuente(targetObj)) return;
 
-          const patch = { fontFamily: fuenteObjetivo };
+        const centerObjetivo = resolverCentroObjetivoCambioFuente(targetObj);
+        if (Number.isFinite(centerObjetivo)) {
+          centerTargetById.set(id, centerObjetivo);
+        }
+      });
 
-          if (debeMantenerCentroEnCambioDeFuente(o)) {
-            const currentX = Number.isFinite(o.x) ? o.x : 0;
-            const previousWidth = medirAnchoTexto(o, o.fontFamily);
-            const nextWidth = medirAnchoTexto(o, fuenteObjetivo);
+      const fuenteYaDisponible =
+        typeof fontManager?.isFontAvailable === "function"
+          ? fontManager.isFontAvailable(fuenteObjetivo)
+          : false;
 
-            if (Number.isFinite(previousWidth) && previousWidth > 0) {
-              centerTargetById.set(o.id, currentX + previousWidth / 2);
-            }
+      const aplicarFuenteConCentro = () => {
+        setObjetos((prev) =>
+          prev.map((o) => {
+            if (!targetIds.has(o.id)) return o;
+            if (!esObjetivoTipografia(o)) return o;
 
-            if (
-              Number.isFinite(previousWidth) &&
-              previousWidth > 0 &&
-              Number.isFinite(nextWidth) &&
-              nextWidth > 0
-            ) {
-              const centerX = currentX + (previousWidth / 2);
-              const nextX = centerX - (nextWidth / 2);
-              if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
-                patch.x = nextX;
+            const patch = { fontFamily: fuenteObjetivo };
+
+            if (debeAjustarCentroPredictivo(o)) {
+              const centerObjetivo = centerTargetById.get(o.id);
+              if (Number.isFinite(centerObjetivo)) {
+                const nextWidth = medirAnchoTexto(o, fuenteObjetivo);
+                const scaleX = normalizarEscalaX(o.scaleX);
+
+                if (Number.isFinite(nextWidth) && nextWidth > 0) {
+                  const currentX = Number.isFinite(o.x) ? o.x : 0;
+                  const nextX = centerObjetivo - (nextWidth * scaleX) / 2;
+                  if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.25) {
+                    patch.x = nextX;
+                  }
+                }
               }
             }
-          }
 
-          return { ...o, ...patch };
-        })
-      );
+            return { ...o, ...patch };
+          })
+        );
+      };
+
+      const aplicarCorreccionCentro = () => {
+        if (!centerTargetById.size) return;
+
+        const deltaById = new Map();
+        centerTargetById.forEach((centerObjetivo, id) => {
+          if (!Number.isFinite(centerObjetivo)) return;
+          const centerActual = obtenerCentroVisualXDesdeNodo(id);
+          if (!Number.isFinite(centerActual)) return;
+
+          const delta = centerObjetivo - centerActual;
+          if (Number.isFinite(delta) && Math.abs(delta) > 1) {
+            deltaById.set(id, delta);
+          }
+        });
+
+        if (!deltaById.size) return;
+
+        setObjetos((prev) =>
+          prev.map((o) => {
+            const delta = deltaById.get(o.id);
+            if (!Number.isFinite(delta)) return o;
+            if (!esObjetivoTipografia(o)) return o;
+            if (String(o.fontFamily || "").trim() !== fuenteObjetivo) return o;
+
+            const currentX = Number.isFinite(o.x) ? o.x : 0;
+            const nextX = currentX + delta;
+            if (!Number.isFinite(nextX) || Math.abs(nextX - currentX) <= 1) {
+              return o;
+            }
+
+            return { ...o, x: nextX };
+          })
+        );
+      };
+
+      const programarCorreccionCentro = () => {
+        if (typeof window === "undefined") return;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (latestFontChangeRef.current !== requestId) return;
+            aplicarCorreccionCentro();
+          });
+        });
+      };
+
+      if (fuenteYaDisponible) {
+        aplicarFuenteConCentro();
+        return;
+      }
 
       void Promise.resolve(fontManager.loadFonts([fuenteObjetivo]))
         .catch(() => null)
         .finally(() => {
-          // Si el usuario eligio otra fuente mientras cargaba esta, no pisar el cambio nuevo.
           if (latestFontChangeRef.current !== requestId) return;
-          if (!centerTargetById.size) return;
-
-          setObjetos((prev) =>
-            prev.map((o) => {
-              const centerX = centerTargetById.get(o.id);
-              if (!Number.isFinite(centerX)) return o;
-              if (!esObjetivoTipografia(o)) return o;
-              if (String(o.fontFamily || "").trim() !== fuenteObjetivo) return o;
-
-              const nextWidth = medirAnchoTexto(o, fuenteObjetivo);
-              if (!Number.isFinite(nextWidth) || nextWidth <= 0) return o;
-
-              const currentX = Number.isFinite(o.x) ? o.x : 0;
-              const nextX = centerX - (nextWidth / 2);
-              if (!Number.isFinite(nextX) || Math.abs(nextX - currentX) <= 0.01) {
-                return o;
-              }
-
-              return { ...o, x: nextX };
-            })
-          );
+          aplicarFuenteConCentro();
+          programarCorreccionCentro();
         });
     },
     [
       elementosSeleccionados,
       objetoSeleccionado?.id,
+      objetoSeleccionado,
       fontManager,
       setObjetos,
       esObjetivoTipografia,
       debeMantenerCentroEnCambioDeFuente,
+      debeAjustarCentroPredictivo,
+      resolverCentroObjetivoCambioFuente,
+      normalizarEscalaX,
+      obtenerCentroVisualXDesdeNodo,
       medirAnchoTexto,
     ]
   );
@@ -495,13 +795,7 @@ export default function FloatingTextToolbar({
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  actualizarSeleccionados(
-                    (o) => {
-                      const actual = normalizarFontSize(o.fontSize, 24);
-                      return { ...o, fontSize: Math.max(6, actual - 2) };
-                    },
-                    { soloTipografia: true }
-                  );
+                  aplicarTamanoFuenteSeleccionado((o, actual) => Math.max(6, actual - 2));
                 }}
               >
                 -
@@ -529,11 +823,8 @@ export default function FloatingTextToolbar({
                         className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
                         onClick={(e) => {
                           e.stopPropagation();
-                          const nextSize = normalizarFontSize(tam, 24);
-                          actualizarSeleccionados(
-                            (o) => ({ ...o, fontSize: nextSize }),
-                            { soloTipografia: true }
-                          );
+                          const nextSize = normalizarFontSizeEntero(tam, 24);
+                          aplicarTamanoFuenteSeleccionado(nextSize);
                           setMostrarSelectorTamano(false);
                         }}
                       >
@@ -550,13 +841,7 @@ export default function FloatingTextToolbar({
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  actualizarSeleccionados(
-                    (o) => {
-                      const actual = normalizarFontSize(o.fontSize, 24);
-                      return { ...o, fontSize: Math.min(120, actual + 2) };
-                    },
-                    { soloTipografia: true }
-                  );
+                  aplicarTamanoFuenteSeleccionado((o, actual) => Math.min(120, actual + 2));
                 }}
               >
                 +

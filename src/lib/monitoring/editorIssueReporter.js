@@ -271,44 +271,110 @@ export function installGlobalEditorIssueHandlers() {
 }
 
 function readEditorSessionMarker() {
-  const storage = getStorage("local");
-  if (!storage) return null;
-  return readJson(storage, EDITOR_SESSION_KEY, null);
+  const sessionStorage = getStorage("session");
+  const localStorage = getStorage("local");
+
+  if (sessionStorage) {
+    const marker = readJson(sessionStorage, EDITOR_SESSION_KEY, null);
+    if (marker) return marker;
+  }
+
+  // Limpieza de marcador legacy en localStorage para evitar falsos positivos cruzados entre pestañas.
+  if (localStorage) {
+    try {
+      localStorage.removeItem(EDITOR_SESSION_KEY);
+    } catch {
+      // noop
+    }
+  }
+
+  return null;
 }
 
 function writeEditorSessionMarker(value) {
-  const storage = getStorage("local");
-  if (!storage) return;
-  writeJson(storage, EDITOR_SESSION_KEY, value);
+  const sessionStorage = getStorage("session");
+  if (sessionStorage) {
+    writeJson(sessionStorage, EDITOR_SESSION_KEY, value);
+  }
+
+  // Limpieza de legacy para evitar lecturas viejas en clientes desactualizados.
+  const localStorage = getStorage("local");
+  if (localStorage) {
+    try {
+      localStorage.removeItem(EDITOR_SESSION_KEY);
+    } catch {
+      // noop
+    }
+  }
 }
 
 function clearEditorSessionMarker() {
-  const storage = getStorage("local");
-  if (!storage) return;
+  const sessionStorage = getStorage("session");
+  const localStorage = getStorage("local");
+
   try {
-    storage.removeItem(EDITOR_SESSION_KEY);
+    sessionStorage?.removeItem(EDITOR_SESSION_KEY);
+  } catch {
+    // noop
+  }
+
+  try {
+    localStorage?.removeItem(EDITOR_SESSION_KEY);
   } catch {
     // noop
   }
 }
 
 function readEditorExitMarker() {
-  const storage = getStorage("local");
-  if (!storage) return null;
-  return readJson(storage, EDITOR_SESSION_EXIT_KEY, null);
+  const sessionStorage = getStorage("session");
+  const localStorage = getStorage("local");
+
+  if (sessionStorage) {
+    const marker = readJson(sessionStorage, EDITOR_SESSION_EXIT_KEY, null);
+    if (marker) return marker;
+  }
+
+  // Limpieza de marcador legacy en localStorage para evitar cruces entre pestañas.
+  if (localStorage) {
+    try {
+      localStorage.removeItem(EDITOR_SESSION_EXIT_KEY);
+    } catch {
+      // noop
+    }
+  }
+
+  return null;
 }
 
 function writeEditorExitMarker(value) {
-  const storage = getStorage("local");
-  if (!storage) return;
-  writeJson(storage, EDITOR_SESSION_EXIT_KEY, value);
+  const sessionStorage = getStorage("session");
+  if (sessionStorage) {
+    writeJson(sessionStorage, EDITOR_SESSION_EXIT_KEY, value);
+  }
+
+  // Limpieza de legacy para evitar lecturas viejas en clientes desactualizados.
+  const localStorage = getStorage("local");
+  if (localStorage) {
+    try {
+      localStorage.removeItem(EDITOR_SESSION_EXIT_KEY);
+    } catch {
+      // noop
+    }
+  }
 }
 
 function clearEditorExitMarker() {
-  const storage = getStorage("local");
-  if (!storage) return;
+  const sessionStorage = getStorage("session");
+  const localStorage = getStorage("local");
+
   try {
-    storage.removeItem(EDITOR_SESSION_EXIT_KEY);
+    sessionStorage?.removeItem(EDITOR_SESSION_EXIT_KEY);
+  } catch {
+    // noop
+  }
+
+  try {
+    localStorage?.removeItem(EDITOR_SESSION_EXIT_KEY);
   } catch {
     // noop
   }
@@ -466,7 +532,6 @@ export function consumeInterruptedEditorSession({
   if (currentSlug && markerSlug && currentSlug === markerSlug) {
     return null;
   }
-  const effectiveSlug = markerSlug || currentSlug || null;
 
   const now = Date.now();
   const lastHeartbeatAtMs = parseDateMs(marker.lastHeartbeatAt);
@@ -474,6 +539,21 @@ export function consumeInterruptedEditorSession({
   const ageMs =
     (lastHeartbeatAtMs !== null ? now - lastHeartbeatAtMs : null) ??
     (startedAtMs !== null ? now - startedAtMs : null);
+
+  // Si el usuario ya esta en otro borrador, lo tratamos como cambio de contexto
+  // y no como cierre inesperado del editor.
+  if (currentSlug && markerSlug && currentSlug !== markerSlug) {
+    clearEditorSessionMarker();
+    pushEditorBreadcrumb("editor-session-exit-ack", {
+      source: "slug-switch-navigation",
+      markerSlug,
+      currentSlug,
+      ageMs: ageMs ?? null,
+    });
+    return null;
+  }
+
+  const effectiveSlug = markerSlug || currentSlug || null;
 
   if (ageMs !== null && ageMs > maxAgeMs) {
     clearEditorSessionMarker();

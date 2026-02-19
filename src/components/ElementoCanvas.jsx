@@ -3,7 +3,6 @@ import { Text, Image as KonvaImage, Rect, Circle, Line, RegularPolygon, Path, Gr
 import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
-import { fontManager } from '../utils/fontManager';
 import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
 import { getCenteredTextPosition } from "@/utils/getTextMetrics";
@@ -435,9 +434,7 @@ export default function ElementoCanvas({
       visibilityMode === "reactive"
         ? (isEditingByReactive || isEditingByOverlay)
         : (isEditingByWindow || isEditingByReactive || isEditingByOverlay);
-    const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
-      ? obj.fontFamily
-      : "sans-serif";
+    const fontFamily = obj.fontFamily || "sans-serif";
     const align = (obj.align || "left").toLowerCase();
     const fillColor = obj.colorTexto ?? obj.fill ?? obj.color ?? "#000";
     const baseLineHeight =
@@ -576,9 +573,7 @@ export default function ElementoCanvas({
   }
 
   if (obj.tipo === "rsvp-boton") {
-    const fontFamily = fontManager.isFontAvailable(obj.fontFamily)
-      ? obj.fontFamily
-      : "sans-serif";
+    const fontFamily = obj.fontFamily || "sans-serif";
 
     const width = obj.ancho || 200;
     const height = obj.alto || 50;

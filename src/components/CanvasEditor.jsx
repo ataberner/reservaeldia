@@ -219,7 +219,14 @@ function normalizeInlineDebugAB(rawConfig) {
 }
 
 
-export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFuturosChange, userId }) {
+export default function CanvasEditor({
+  slug,
+  zoom = 1,
+  onHistorialChange,
+  onFuturosChange,
+  userId,
+  onStartupStatusChange,
+}) {
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
   const [secciones, setSecciones] = useState([]);
@@ -255,6 +262,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
+  const [backgroundLoadBySection, setBackgroundLoadBySection] = useState({});
   const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
@@ -329,6 +337,137 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   });
 
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+
+  useEffect(() => {
+    setBackgroundLoadBySection({});
+  }, [slug]);
+
+  const handleBackgroundImageStatusChange = useCallback((payload) => {
+    const sectionId = payload?.sectionId;
+    if (!sectionId) return;
+
+    const hasBackgroundImage = payload?.hasBackgroundImage === true;
+    const imageUrl = typeof payload?.imageUrl === "string" ? payload.imageUrl : "";
+    const incomingStatus = typeof payload?.status === "string" ? payload.status : "loading";
+    const status = hasBackgroundImage
+      ? (incomingStatus === "loaded" || incomingStatus === "failed"
+        ? incomingStatus
+        : "loading")
+      : "none";
+
+    setBackgroundLoadBySection((prev) => {
+      const current = prev[sectionId];
+      if (
+        current &&
+        current.status === status &&
+        current.hasBackgroundImage === hasBackgroundImage &&
+        current.imageUrl === imageUrl
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [sectionId]: {
+          status,
+          hasBackgroundImage,
+          imageUrl,
+        },
+      };
+    });
+  }, []);
+
+  const backgroundLoadSummary = useMemo(() => {
+    const sectionsWithBackgroundImage = (secciones || []).filter((seccion) => (
+      seccion?.fondoTipo === "imagen" &&
+      typeof seccion?.fondoImagen === "string" &&
+      seccion.fondoImagen.trim().length > 0
+    ));
+
+    let loaded = 0;
+    let failed = 0;
+    let pending = 0;
+
+    sectionsWithBackgroundImage.forEach((seccion) => {
+      const status = backgroundLoadBySection[seccion.id]?.status;
+
+      if (!status || status === "loading") {
+        pending += 1;
+        return;
+      }
+
+      if (status === "loaded") {
+        loaded += 1;
+        return;
+      }
+
+      if (status === "failed") {
+        failed += 1;
+        return;
+      }
+
+      pending += 1;
+    });
+
+    return {
+      total: sectionsWithBackgroundImage.length,
+      loaded,
+      failed,
+      pending,
+    };
+  }, [backgroundLoadBySection, secciones]);
+
+  const startupReady = cargado && backgroundLoadSummary.pending === 0;
+
+  useEffect(() => {
+    if (typeof onStartupStatusChange !== "function") return;
+
+    const payload = {
+      slug,
+      draftLoaded: cargado === true,
+      totalBackgrounds: backgroundLoadSummary.total,
+      loadedBackgrounds: backgroundLoadSummary.loaded,
+      failedBackgrounds: backgroundLoadSummary.failed,
+      pendingBackgrounds: backgroundLoadSummary.pending,
+    };
+
+    if (!startupReady) {
+      onStartupStatusChange({
+        ...payload,
+        status: "running",
+      });
+      return;
+    }
+
+    let cancelled = false;
+    let rafA = 0;
+    let rafB = 0;
+
+    rafA = requestAnimationFrame(() => {
+      rafB = requestAnimationFrame(() => {
+        if (cancelled) return;
+        onStartupStatusChange({
+          ...payload,
+          status: "ready",
+        });
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (rafA) cancelAnimationFrame(rafA);
+      if (rafB) cancelAnimationFrame(rafB);
+    };
+  }, [
+    backgroundLoadSummary.failed,
+    backgroundLoadSummary.loaded,
+    backgroundLoadSummary.pending,
+    backgroundLoadSummary.total,
+    cargado,
+    onStartupStatusChange,
+    slug,
+    startupReady,
+  ]);
 
   const seccionPendienteEliminar = useMemo(
     () => secciones.find((seccion) => seccion.id === deleteSectionModal.sectionId) || null,
@@ -2318,6 +2457,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           onUpdateFondoOffset={actualizarOffsetFondo}
                           isMobile={isMobile}
                           mobileBackgroundEditEnabled={mobileBackgroundEditSectionId === seccion.id}
+                          onBackgroundImageStatusChange={handleBackgroundImageStatusChange}
                         />
                       ) : (
                         <Rect

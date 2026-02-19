@@ -18,6 +18,7 @@ const FontSelector = memo(({
   const [applyingFont, setApplyingFont] = useState(null);
   const [isClient, setIsClient] = useState(false);
   const containerRef = useRef(null);
+  const applyRequestRef = useRef(0);
 
   const filteredFonts = useMemo(
     () =>
@@ -62,16 +63,20 @@ const FontSelector = memo(({
 
   const handleSelect = useCallback(
     async (fontValue) => {
-      if (!fontValue || applyingFont) return;
+      if (!fontValue) return;
 
+      const requestId = applyRequestRef.current + 1;
+      applyRequestRef.current = requestId;
       setApplyingFont(fontValue);
       try {
         await onFontChange(fontValue);
       } finally {
-        setApplyingFont(null);
+        if (applyRequestRef.current === requestId) {
+          setApplyingFont(null);
+        }
       }
     },
-    [applyingFont, onFontChange]
+    [onFontChange]
   );
 
   const panelNode = (
@@ -99,7 +104,7 @@ const FontSelector = memo(({
               font={fuente}
               isActive={currentFont === fuente.valor}
               isApplying={applyingFont === fuente.valor}
-              isDisabled={Boolean(applyingFont && applyingFont !== fuente.valor)}
+              isDisabled={applyingFont === fuente.valor}
               onSelect={() => handleSelect(fuente.valor)}
             />
           ))
@@ -177,8 +182,8 @@ const FontItem = memo(({ font, isActive, onSelect, isApplying, isDisabled }) => 
   const handleClick = async () => {
     if (isDisabled) return;
 
-    if (!isLoaded) {
-      await loadPreviewFont();
+    if (!isLoaded && !isLoading) {
+      void loadPreviewFont();
     }
 
     await onSelect();

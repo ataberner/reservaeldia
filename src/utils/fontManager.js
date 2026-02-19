@@ -1,5 +1,5 @@
 import WebFont from 'webfontloader';
-import { GOOGLE_FONTS } from '@/config/fonts';
+import { GOOGLE_FONTS, LEGACY_GOOGLE_FONT_NAMES } from '@/config/fonts';
 
 const SYSTEM_FONTS = new Set([
   'arial',
@@ -27,7 +27,10 @@ class FontManager {
     this.loadingPromises = new Map();
     this.failedFonts = new Set();
     this.googleFontSet = new Set(
-      GOOGLE_FONTS.map((font) => this.normalizeFontName(font?.nombre))
+      [
+        ...(GOOGLE_FONTS || []).map((font) => this.normalizeFontName(font?.nombre)),
+        ...(LEGACY_GOOGLE_FONT_NAMES || []).map((name) => this.normalizeFontName(name)),
+      ].filter(Boolean)
     );
   }
 
@@ -57,6 +60,23 @@ class FontManager {
     return { type: 'custom', name: fontName };
   }
 
+  isGoogleFontLoadedInDocument(fontName) {
+    if (typeof document === 'undefined' || !document.fonts) return false;
+
+    try {
+      for (const face of document.fonts.values()) {
+        const family = this.normalizeFontName(face?.family);
+        if (family === fontName && face?.status === 'loaded') {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+
+    return false;
+  }
+
   waitForDocumentFont(fontName, timeoutMs = DEFAULT_TIMEOUT_MS) {
     if (typeof document === 'undefined' || !document.fonts?.load) {
       return Promise.resolve();
@@ -82,6 +102,12 @@ class FontManager {
         : DEFAULT_TIMEOUT_MS;
 
     if (!normalizedName) return Promise.resolve();
+
+    if (this.isFontAvailable(normalizedName)) {
+      this.loadedFonts.add(normalizedName);
+      this.failedFonts.delete(normalizedName);
+      return Promise.resolve();
+    }
 
     if (this.loadedFonts.has(normalizedName)) {
       this.loadedFonts.add(normalizedName);
@@ -218,7 +244,16 @@ class FontManager {
     if (type === 'system') return true;
     if (!name) return false;
     if (this.loadedFonts.has(name)) return true;
-    if (type === 'google') return false;
+
+    if (type === 'google') {
+      const loadedInDocument = this.isGoogleFontLoadedInDocument(name);
+      if (loadedInDocument) {
+        this.loadedFonts.add(name);
+        this.failedFonts.delete(name);
+        return true;
+      }
+      return false;
+    }
 
     if (typeof document !== 'undefined' && document.fonts?.check) {
       try {
@@ -232,7 +267,6 @@ class FontManager {
         return false;
       }
     }
-
     return false;
   }
 

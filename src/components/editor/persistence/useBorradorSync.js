@@ -53,12 +53,29 @@ async function refreshStorageUrl(value, cache) {
     return cache.get(cacheKey);
   }
 
+  const hasTokenInUrl =
+    typeof value === "string" &&
+    /[?&]token=/.test(value);
+  const isUserPrivatePath = /^usuarios\//i.test(location.path || "");
+
+  // Evita ruido 404 al intentar "refrescar" URLs ya tokenizadas de uploads privados.
+  // Si el token sigue vigente, la URL funciona; si vencio, fallara al renderizar sin romper la carga.
+  if (isUserPrivatePath && hasTokenInUrl) {
+    cache.set(cacheKey, value);
+    return value;
+  }
+
   try {
     const gsUrl = `gs://${location.bucketName}/${location.path}`;
     const freshUrl = await getDownloadURL(storageRef(storage, gsUrl));
     cache.set(cacheKey, freshUrl);
     return freshUrl;
-  } catch {
+  } catch (error) {
+    pushEditorBreadcrumb("storage-url-refresh-failed", {
+      code: error?.code || null,
+      bucketName: location.bucketName,
+      path: location.path,
+    });
     // Mantener la URL original evita "romper" plantillas compartidas
     // cuando el SDK no puede refrescar el token por reglas/bucket.
     cache.set(cacheKey, value);

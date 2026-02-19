@@ -10,12 +10,41 @@ export default function FondoSeccion({
   onUpdateFondoOffset,
   isMobile = false,
   mobileBackgroundEditEnabled = false,
+  onBackgroundImageStatusChange,
 }) {
-  const [fondoImage] = useImage(seccion.fondoImagen, "anonymous");
+  const [fondoImage, fondoImageStatus] = useImage(seccion.fondoImagen, "anonymous");
   const [modoMoverFondo, setModoMoverFondo] = useState(false);
   const imagenRef = useRef(null);
 
   const allowBackgroundEdit = !isMobile || mobileBackgroundEditEnabled;
+
+  useEffect(() => {
+    if (typeof onBackgroundImageStatusChange !== "function") return;
+
+    const hasBackgroundImage =
+      typeof seccion?.fondoImagen === "string" && seccion.fondoImagen.trim().length > 0;
+
+    const status = !hasBackgroundImage
+      ? "none"
+      : fondoImageStatus === "loaded" || fondoImage
+        ? "loaded"
+        : fondoImageStatus === "failed"
+          ? "failed"
+          : "loading";
+
+    onBackgroundImageStatusChange({
+      sectionId: seccion.id,
+      imageUrl: hasBackgroundImage ? seccion.fondoImagen : "",
+      hasBackgroundImage,
+      status,
+    });
+  }, [
+    fondoImage,
+    fondoImageStatus,
+    onBackgroundImageStatusChange,
+    seccion?.fondoImagen,
+    seccion?.id,
+  ]);
 
   useEffect(() => {
     if (!modoMoverFondo) return;

@@ -7,6 +7,7 @@ const FONT_SELECTOR_PADDING = 8;
 const FONT_SELECTOR_FIXED_WIDTH = 300;
 const FONT_SELECTOR_SIDEBAR_GAP = 4;
 const MOBILE_FONT_STRIP_GAP = 6;
+const MOBILE_FONT_WARM_COUNT = 12;
 
 const clamp = (value, min, max) => {
   const safeMin = Number.isFinite(min) ? min : 0;
@@ -32,6 +33,8 @@ export default function FloatingTextToolbar({
   const [mobileFontStripTop, setMobileFontStripTop] = useState(null);
   const toolbarRef = useRef(null);
   const botonFuenteRef = useRef(null);
+  const latestFontChangeRef = useRef(0);
+  const lastTypographyTargetsRef = useRef([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -158,6 +161,42 @@ export default function FloatingTextToolbar({
     return normalized;
   }, [ALL_FONTS]);
 
+  const fuentesWarmupMobile = useMemo(() => {
+    if (!mobileFontStripVisible) return [];
+
+    const fuentes = [];
+    const fuenteActual =
+      typeof objetoSeleccionado?.fontFamily === "string"
+        ? objetoSeleccionado.fontFamily.trim()
+        : "";
+
+    if (fuenteActual) {
+      fuentes.push(fuenteActual);
+    }
+
+    for (const fuente of fuentesDisponiblesMobile) {
+      const valor = typeof fuente?.valor === "string" ? fuente.valor.trim() : "";
+      if (!valor || fuentes.includes(valor)) continue;
+      fuentes.push(valor);
+      if (fuentes.length >= MOBILE_FONT_WARM_COUNT) break;
+    }
+
+    return fuentes;
+  }, [fuentesDisponiblesMobile, mobileFontStripVisible, objetoSeleccionado?.fontFamily]);
+
+  useEffect(() => {
+    const idsFromSelection = Array.isArray(elementosSeleccionados)
+      ? elementosSeleccionados.filter((id) => id !== null && typeof id !== "undefined")
+      : [];
+
+    const nextIds = idsFromSelection.length
+      ? idsFromSelection
+      : (objetoSeleccionado?.id ? [objetoSeleccionado.id] : []);
+
+    if (!nextIds.length) return;
+    lastTypographyTargetsRef.current = nextIds;
+  }, [elementosSeleccionados, objetoSeleccionado?.id]);
+
   const calcularEstiloSelectorFuente = useCallback(() => {
     if (typeof window === "undefined") return null;
     const botonFuente = botonFuenteRef.current;
@@ -256,48 +295,106 @@ export default function FloatingTextToolbar({
   }, [mobileFontStripVisible]);
 
   useEffect(() => {
-    if (!mobileFontStripVisible) return;
-    const fuentes = fuentesDisponiblesMobile.map((fuente) => fuente.valor);
-    if (!fuentes.length) return;
-    void fontManager.loadFonts(fuentes);
-  }, [fontManager, fuentesDisponiblesMobile, mobileFontStripVisible]);
+    if (!fuentesWarmupMobile.length) return;
+    void fontManager.loadFonts(fuentesWarmupMobile);
+  }, [fontManager, fuentesWarmupMobile]);
 
   const aplicarFuenteSeleccionada = useCallback(
-    async (nuevaFuente) => {
-      if (!nuevaFuente) return;
+    (nuevaFuente) => {
+      const fuenteObjetivo =
+        typeof nuevaFuente === "string" ? nuevaFuente.trim() : "";
+      if (!fuenteObjetivo) return;
 
-      await fontManager.loadFonts([nuevaFuente]);
-      actualizarSeleccionados(
-        (o) => {
-          const patch = { fontFamily: nuevaFuente };
+      const requestId = latestFontChangeRef.current + 1;
+      latestFontChangeRef.current = requestId;
+      const idsSeleccionados =
+        Array.isArray(elementosSeleccionados) && elementosSeleccionados.length
+          ? elementosSeleccionados
+          : lastTypographyTargetsRef.current;
+      const targetIds = new Set(
+        (idsSeleccionados || []).filter(
+          (id) => id !== null && typeof id !== "undefined"
+        )
+      );
+      if (!targetIds.size && objetoSeleccionado?.id) {
+        targetIds.add(objetoSeleccionado.id);
+      }
+      if (!targetIds.size) return;
 
-          if (!debeMantenerCentroEnCambioDeFuente(o)) {
-            return { ...o, ...patch };
-          }
+      const centerTargetById = new Map();
 
-          const currentX = Number.isFinite(o.x) ? o.x : 0;
-          const previousWidth = medirAnchoTexto(o, o.fontFamily);
-          const nextWidth = medirAnchoTexto(o, nuevaFuente);
+      // Aplicar de inmediato para que la UI responda al instante.
+      setObjetos((prev) =>
+        prev.map((o) => {
+          if (!targetIds.has(o.id)) return o;
+          if (!esObjetivoTipografia(o)) return o;
 
-          if (
-            Number.isFinite(previousWidth) &&
-            previousWidth > 0 &&
-            Number.isFinite(nextWidth) &&
-            nextWidth > 0
-          ) {
-            const centerX = currentX + (previousWidth / 2);
-            const nextX = centerX - (nextWidth / 2);
-            if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
-              patch.x = nextX;
+          const patch = { fontFamily: fuenteObjetivo };
+
+          if (debeMantenerCentroEnCambioDeFuente(o)) {
+            const currentX = Number.isFinite(o.x) ? o.x : 0;
+            const previousWidth = medirAnchoTexto(o, o.fontFamily);
+            const nextWidth = medirAnchoTexto(o, fuenteObjetivo);
+
+            if (Number.isFinite(previousWidth) && previousWidth > 0) {
+              centerTargetById.set(o.id, currentX + previousWidth / 2);
+            }
+
+            if (
+              Number.isFinite(previousWidth) &&
+              previousWidth > 0 &&
+              Number.isFinite(nextWidth) &&
+              nextWidth > 0
+            ) {
+              const centerX = currentX + (previousWidth / 2);
+              const nextX = centerX - (nextWidth / 2);
+              if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
+                patch.x = nextX;
+              }
             }
           }
 
           return { ...o, ...patch };
-        },
-        { soloTipografia: true }
+        })
       );
+
+      void Promise.resolve(fontManager.loadFonts([fuenteObjetivo]))
+        .catch(() => null)
+        .finally(() => {
+          // Si el usuario eligio otra fuente mientras cargaba esta, no pisar el cambio nuevo.
+          if (latestFontChangeRef.current !== requestId) return;
+          if (!centerTargetById.size) return;
+
+          setObjetos((prev) =>
+            prev.map((o) => {
+              const centerX = centerTargetById.get(o.id);
+              if (!Number.isFinite(centerX)) return o;
+              if (!esObjetivoTipografia(o)) return o;
+              if (String(o.fontFamily || "").trim() !== fuenteObjetivo) return o;
+
+              const nextWidth = medirAnchoTexto(o, fuenteObjetivo);
+              if (!Number.isFinite(nextWidth) || nextWidth <= 0) return o;
+
+              const currentX = Number.isFinite(o.x) ? o.x : 0;
+              const nextX = centerX - (nextWidth / 2);
+              if (!Number.isFinite(nextX) || Math.abs(nextX - currentX) <= 0.01) {
+                return o;
+              }
+
+              return { ...o, x: nextX };
+            })
+          );
+        });
     },
-    [actualizarSeleccionados, fontManager]
+    [
+      elementosSeleccionados,
+      objetoSeleccionado?.id,
+      fontManager,
+      setObjetos,
+      esObjetivoTipografia,
+      debeMantenerCentroEnCambioDeFuente,
+      medirAnchoTexto,
+    ]
   );
 
   if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma" || objetoSeleccionado?.tipo === "icono")) {

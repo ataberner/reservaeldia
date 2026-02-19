@@ -1,11 +1,12 @@
 // src/components/editor/toolbar/FloatingTextToolbar.jsx
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FontSelector from "@/components/FontSelector";
 
 const FONT_SELECTOR_GAP = 12;
 const FONT_SELECTOR_PADDING = 8;
 const FONT_SELECTOR_FIXED_WIDTH = 300;
 const FONT_SELECTOR_SIDEBAR_GAP = 4;
+const MOBILE_FONT_STRIP_GAP = 6;
 
 const clamp = (value, min, max) => {
   const safeMin = Number.isFinite(min) ? min : 0;
@@ -22,11 +23,14 @@ export default function FloatingTextToolbar({
   mostrarSelectorTamano,
   setMostrarSelectorTamano,
   fontManager,
+  ALL_FONTS = [],
   tamaniosDisponibles = [],
   onCambiarAlineacion,
 }) {
   const [isMobile, setIsMobile] = useState(false);
   const [fontSelectorStyle, setFontSelectorStyle] = useState(null);
+  const [mobileFontStripTop, setMobileFontStripTop] = useState(null);
+  const toolbarRef = useRef(null);
   const botonFuenteRef = useRef(null);
 
   useEffect(() => {
@@ -94,16 +98,20 @@ export default function FloatingTextToolbar({
     );
   };
 
-  const toolbarContainerClass =
-    "fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center";
+  const toolbarContainerClass = `fixed z-50 bg-white border rounded shadow p-2 flex ${
+    isMobile
+      ? "flex-nowrap items-center justify-start gap-1"
+      : "gap-2 items-center"
+  }`;
 
   const toolbarContainerStyle = {
     top: isMobile ? "calc(56px + env(safe-area-inset-top, 0px))" : "60px",
     left: "50%",
     transform: "translateX(-50%)",
-    width: isMobile ? "calc(100vw - 16px)" : "auto",
-    maxWidth: isMobile ? "calc(100vw - 16px)" : "800px",
+    width: isMobile ? "calc(100vw - 8px)" : "auto",
+    maxWidth: isMobile ? "calc(100vw - 8px)" : "800px",
     overflowX: isMobile ? "auto" : "visible",
+    overflowY: "hidden",
     WebkitOverflowScrolling: isMobile ? "touch" : "auto",
     whiteSpace: isMobile ? "nowrap" : "normal",
   };
@@ -115,6 +123,8 @@ export default function FloatingTextToolbar({
     typeof objetoSeleccionado?.texto === "string";
   const esRect = objetoSeleccionado?.figura === "rect";
   const mostrarControlesTipografia = esTexto || esFormaConTexto;
+  const mobileFontStripVisible =
+    isMobile && mostrarControlesTipografia && mostrarSelectorFuente;
 
   const fontSizeActual = normalizarFontSize(objetoSeleccionado?.fontSize, 24);
   const fontWeightActual = String(objetoSeleccionado?.fontWeight || "normal").toLowerCase();
@@ -127,6 +137,26 @@ export default function FloatingTextToolbar({
     ["500", "600", "700", "800", "900"].includes(fontWeightActual);
   const cursivaActiva = fontStyleActual.includes("italic") || fontStyleActual.includes("oblique");
   const subrayadoActivo = textDecorationActual.includes("underline");
+  const fuentesDisponiblesMobile = useMemo(() => {
+    if (!Array.isArray(ALL_FONTS)) return [];
+
+    const seen = new Set();
+    const normalized = [];
+    for (const fuente of ALL_FONTS) {
+      if (!fuente || typeof fuente !== "object") continue;
+      const valor = typeof fuente.valor === "string" ? fuente.valor.trim() : "";
+      if (!valor || seen.has(valor)) continue;
+      seen.add(valor);
+      normalized.push({
+        valor,
+        nombre:
+          typeof fuente.nombre === "string" && fuente.nombre.trim()
+            ? fuente.nombre.trim()
+            : valor,
+      });
+    }
+    return normalized;
+  }, [ALL_FONTS]);
 
   const calcularEstiloSelectorFuente = useCallback(() => {
     if (typeof window === "undefined") return null;
@@ -202,6 +232,74 @@ export default function FloatingTextToolbar({
     };
   }, [mostrarSelectorFuente, calcularEstiloSelectorFuente]);
 
+  useEffect(() => {
+    if (!mobileFontStripVisible) {
+      setMobileFontStripTop(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const toolbarEl = toolbarRef.current;
+      if (!toolbarEl) return;
+      const rect = toolbarEl.getBoundingClientRect();
+      if (!Number.isFinite(rect.bottom)) return;
+      setMobileFontStripTop(Math.round(rect.bottom + MOBILE_FONT_STRIP_GAP));
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [mobileFontStripVisible]);
+
+  useEffect(() => {
+    if (!mobileFontStripVisible) return;
+    const fuentes = fuentesDisponiblesMobile.map((fuente) => fuente.valor);
+    if (!fuentes.length) return;
+    void fontManager.loadFonts(fuentes);
+  }, [fontManager, fuentesDisponiblesMobile, mobileFontStripVisible]);
+
+  const aplicarFuenteSeleccionada = useCallback(
+    async (nuevaFuente) => {
+      if (!nuevaFuente) return;
+
+      await fontManager.loadFonts([nuevaFuente]);
+      actualizarSeleccionados(
+        (o) => {
+          const patch = { fontFamily: nuevaFuente };
+
+          if (!debeMantenerCentroEnCambioDeFuente(o)) {
+            return { ...o, ...patch };
+          }
+
+          const currentX = Number.isFinite(o.x) ? o.x : 0;
+          const previousWidth = medirAnchoTexto(o, o.fontFamily);
+          const nextWidth = medirAnchoTexto(o, nuevaFuente);
+
+          if (
+            Number.isFinite(previousWidth) &&
+            previousWidth > 0 &&
+            Number.isFinite(nextWidth) &&
+            nextWidth > 0
+          ) {
+            const centerX = currentX + (previousWidth / 2);
+            const nextX = centerX - (nextWidth / 2);
+            if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
+              patch.x = nextX;
+            }
+          }
+
+          return { ...o, ...patch };
+        },
+        { soloTipografia: true }
+      );
+    },
+    [actualizarSeleccionados, fontManager]
+  );
+
   if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma" || objetoSeleccionado?.tipo === "icono")) {
     return null;
   }
@@ -209,6 +307,7 @@ export default function FloatingTextToolbar({
   if (objetoSeleccionado?.tipo === "icono") {
     return (
       <div
+        ref={toolbarRef}
         className={toolbarContainerClass}
         style={{ ...toolbarContainerStyle, maxWidth: isMobile ? toolbarContainerStyle.maxWidth : "220px" }}
       >
@@ -230,261 +329,294 @@ export default function FloatingTextToolbar({
   }
 
   return (
-    <div className={toolbarContainerClass} style={toolbarContainerStyle}>
-      {objetoSeleccionado?.tipo === "forma" && (
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600">Fondo</label>
-          <input
-            type="color"
-            value={objetoSeleccionado.color || "#ffffff"}
-            onChange={(e) => {
-              const nextColor = e.target.value;
-              actualizarSeleccionados((o) => ({ ...o, color: nextColor }));
-            }}
-            className="w-8 h-6 rounded"
-          />
-        </div>
-      )}
-
-      {objetoSeleccionado?.tipo === "forma" && esRect && (
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600">Esquinas</label>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={objetoSeleccionado.cornerRadius || 0}
-            onChange={(e) => {
-              const nextRadius = parseInt(e.target.value, 10) || 0;
-              actualizarSeleccionados((o) => ({ ...o, cornerRadius: nextRadius }));
-            }}
-          />
-          <span className="text-xs text-gray-700">{objetoSeleccionado.cornerRadius || 0}</span>
-        </div>
-      )}
-
-      {mostrarControlesTipografia && (
-        <>
-          <div
-            ref={botonFuenteRef}
-            className={`relative cursor-pointer px-3 py-1 rounded border text-sm transition-all truncate ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"}`}
-            style={{
-              fontFamily: objetoSeleccionado?.fontFamily || "sans-serif",
-              width: "180px",
-              textAlign: "left",
-            }}
-            title={objetoSeleccionado?.fontFamily || "sans-serif"}
-            onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
-          >
-            {objetoSeleccionado?.fontFamily || "sans-serif"}
-          </div>
-
-          <FontSelector
-            currentFont={objetoSeleccionado?.fontFamily || "sans-serif"}
-            onFontChange={async (nuevaFuente) => {
-              await fontManager.loadFonts([nuevaFuente]);
-              actualizarSeleccionados(
-                (o) => {
-                  const patch = { fontFamily: nuevaFuente };
-
-                  if (!debeMantenerCentroEnCambioDeFuente(o)) {
-                    return { ...o, ...patch };
-                  }
-
-                  const currentX = Number.isFinite(o.x) ? o.x : 0;
-                  const previousWidth = medirAnchoTexto(o, o.fontFamily);
-                  const nextWidth = medirAnchoTexto(o, nuevaFuente);
-
-                  if (
-                    Number.isFinite(previousWidth) &&
-                    previousWidth > 0 &&
-                    Number.isFinite(nextWidth) &&
-                    nextWidth > 0
-                  ) {
-                    const centerX = currentX + (previousWidth / 2);
-                    const nextX = centerX - (nextWidth / 2);
-                    if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
-                      patch.x = nextX;
-                    }
-                  }
-
-                  return { ...o, ...patch };
-                },
-                { soloTipografia: true }
-              );
-            }}
-            isOpen={mostrarSelectorFuente}
-            panelStyle={fontSelectorStyle}
-            onClose={() => setMostrarSelectorFuente(false)}
-          />
-
-          <div className="relative flex items-center bg-white border rounded-lg">
-            <button
-              className="px-2 py-1 hover:bg-gray-100 transition"
-              onClick={(e) => {
-                e.stopPropagation();
-                actualizarSeleccionados(
-                  (o) => {
-                    const actual = normalizarFontSize(o.fontSize, 24);
-                    return { ...o, fontSize: Math.max(6, actual - 2) };
-                  },
-                  { soloTipografia: true }
-                );
+    <>
+      <div ref={toolbarRef} className={toolbarContainerClass} style={toolbarContainerStyle}>
+        {objetoSeleccionado?.tipo === "forma" && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Fondo</label>
+            <input
+              type="color"
+              value={objetoSeleccionado.color || "#ffffff"}
+              onChange={(e) => {
+                const nextColor = e.target.value;
+                actualizarSeleccionados((o) => ({ ...o, color: nextColor }));
               }}
-            >
-              -
-            </button>
+              className="w-8 h-6 rounded"
+            />
+          </div>
+        )}
 
+        {objetoSeleccionado?.tipo === "forma" && esRect && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Esquinas</label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={objetoSeleccionado.cornerRadius || 0}
+              onChange={(e) => {
+                const nextRadius = parseInt(e.target.value, 10) || 0;
+                actualizarSeleccionados((o) => ({ ...o, cornerRadius: nextRadius }));
+              }}
+            />
+            <span className="text-xs text-gray-700">{objetoSeleccionado.cornerRadius || 0}</span>
+          </div>
+        )}
+
+        {mostrarControlesTipografia && (
+          <>
             <div
-              className={`px-2 py-1 text-sm cursor-pointer transition-all ${mostrarSelectorTamano ? "bg-gray-200" : "hover:bg-gray-100"}`}
-              onClick={() => setMostrarSelectorTamano(!mostrarSelectorTamano)}
+              ref={botonFuenteRef}
+              className={`relative cursor-pointer rounded border transition-all truncate ${
+                isMobile ? "px-2 py-1 text-[11px]" : "px-3 py-1 text-sm"
+              } ${mostrarSelectorFuente ? "bg-gray-200" : "hover:bg-gray-100"}`}
+              style={{
+                fontFamily: objetoSeleccionado?.fontFamily || "sans-serif",
+                width: isMobile ? "102px" : "180px",
+                textAlign: "left",
+              }}
+              title={objetoSeleccionado?.fontFamily || "sans-serif"}
+              onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
             >
-              {fontSizeActual}
-              {mostrarSelectorTamano && (
-                <div
-                  className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
-                  style={{ top: "40px", left: "-10px" }}
-                >
-                  {tamaniosDisponibles.map((tam) => (
-                    <div
-                      key={tam}
-                      className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const nextSize = normalizarFontSize(tam, 24);
-                        actualizarSeleccionados(
-                          (o) => ({ ...o, fontSize: nextSize }),
-                          { soloTipografia: true }
-                        );
-                        setMostrarSelectorTamano(false);
-                      }}
-                    >
-                      {tam}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {objetoSeleccionado?.fontFamily || "sans-serif"}
             </div>
 
-            <button
-              className="px-2 py-1 hover:bg-gray-100 transition"
-              onClick={(e) => {
-                e.stopPropagation();
+            {!isMobile && (
+              <FontSelector
+                currentFont={objetoSeleccionado?.fontFamily || "sans-serif"}
+                onFontChange={aplicarFuenteSeleccionada}
+                isOpen={mostrarSelectorFuente}
+                panelStyle={fontSelectorStyle}
+                onClose={() => setMostrarSelectorFuente(false)}
+              />
+            )}
+
+            <div className="relative flex items-center bg-white border rounded-lg">
+              <button
+                className={`hover:bg-gray-100 transition ${
+                  isMobile ? "h-7 min-w-7 px-1.5 text-xs" : "px-2 py-1"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actualizarSeleccionados(
+                    (o) => {
+                      const actual = normalizarFontSize(o.fontSize, 24);
+                      return { ...o, fontSize: Math.max(6, actual - 2) };
+                    },
+                    { soloTipografia: true }
+                  );
+                }}
+              >
+                -
+              </button>
+
+              <div
+                className={`cursor-pointer transition-all ${
+                  isMobile ? "h-7 px-1.5 text-[11px] flex items-center" : "px-2 py-1 text-sm"
+                } ${mostrarSelectorTamano ? "bg-gray-200" : "hover:bg-gray-100"}`}
+                onClick={() => setMostrarSelectorTamano(!mostrarSelectorTamano)}
+              >
+                {fontSizeActual}
+                {mostrarSelectorTamano && (
+                  <div
+                    className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
+                    style={
+                      isMobile
+                        ? { top: "32px", left: "50%", transform: "translateX(-50%)" }
+                        : { top: "40px", left: "-10px" }
+                    }
+                  >
+                    {tamaniosDisponibles.map((tam) => (
+                      <div
+                        key={tam}
+                        className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const nextSize = normalizarFontSize(tam, 24);
+                          actualizarSeleccionados(
+                            (o) => ({ ...o, fontSize: nextSize }),
+                            { soloTipografia: true }
+                          );
+                          setMostrarSelectorTamano(false);
+                        }}
+                      >
+                        {tam}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                className={`hover:bg-gray-100 transition ${
+                  isMobile ? "h-7 min-w-7 px-1.5 text-xs" : "px-2 py-1"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actualizarSeleccionados(
+                    (o) => {
+                      const actual = normalizarFontSize(o.fontSize, 24);
+                      return { ...o, fontSize: Math.min(120, actual + 2) };
+                    },
+                    { soloTipografia: true }
+                  );
+                }}
+              >
+                +
+              </button>
+            </div>
+
+            <input
+              type="color"
+              value={objetoSeleccionado?.colorTexto || "#000000"}
+              onChange={(e) => {
+                const nextColor = e.target.value;
                 actualizarSeleccionados(
-                  (o) => {
-                    const actual = normalizarFontSize(o.fontSize, 24);
-                    return { ...o, fontSize: Math.min(120, actual + 2) };
-                  },
+                  (o) => ({ ...o, colorTexto: nextColor }),
                   { soloTipografia: true }
                 );
               }}
-            >
-              +
-            </button>
-          </div>
+              className={isMobile ? "h-7 w-7 rounded border border-gray-300 p-0.5" : undefined}
+            />
 
-          <input
-            type="color"
-            value={objetoSeleccionado?.colorTexto || "#000000"}
-            onChange={(e) => {
-              const nextColor = e.target.value;
-              actualizarSeleccionados(
-                (o) => ({ ...o, colorTexto: nextColor }),
-                { soloTipografia: true }
-              );
-            }}
-          />
-
-          <button
-            className={`px-2 py-1 rounded border text-sm font-bold transition ${negritaActiva ? "bg-gray-200" : "hover:bg-gray-100"}`}
-            onClick={() =>
-              actualizarSeleccionados(
-                (o) => {
-                  const currentWeight = String(o.fontWeight || "normal").toLowerCase();
-                  const isBoldNow =
-                    currentWeight === "bold" ||
-                    currentWeight === "bolder" ||
-                    ["500", "600", "700", "800", "900"].includes(currentWeight);
-                  return { ...o, fontWeight: isBoldNow ? "normal" : "bold" };
-                },
-                { soloTipografia: true }
-              )
-            }
-          >
-            B
-          </button>
-
-          <button
-            className={`px-2 py-1 rounded border text-sm italic transition ${cursivaActiva ? "bg-gray-200" : "hover:bg-gray-100"}`}
-            onClick={() =>
-              actualizarSeleccionados(
-                (o) => {
-                  const currentStyle = String(o.fontStyle || "normal").toLowerCase();
-                  const isItalicNow =
-                    currentStyle.includes("italic") || currentStyle.includes("oblique");
-                  return { ...o, fontStyle: isItalicNow ? "normal" : "italic" };
-                },
-                { soloTipografia: true }
-              )
-            }
-          >
-            I
-          </button>
-
-          <button
-            className={`px-2 py-1 rounded border text-sm transition ${subrayadoActivo ? "bg-gray-200 underline" : "hover:bg-gray-100"}`}
-            onClick={() =>
-              actualizarSeleccionados(
-                (o) => {
-                  const currentDecoration = String(o.textDecoration || "none")
-                    .toLowerCase()
-                    .trim();
-                  const hasUnderline = currentDecoration.includes("underline");
-
-                  if (hasUnderline) {
-                    const withoutUnderline = currentDecoration
-                      .split(/\s+/)
-                      .filter((token) => token && token !== "underline")
-                      .join(" ");
-                    return { ...o, textDecoration: withoutUnderline || "none" };
-                  }
-
-                  const nextDecoration =
-                    currentDecoration === "none" || currentDecoration === ""
-                      ? "underline"
-                      : `${currentDecoration} underline`;
-                  return { ...o, textDecoration: nextDecoration.trim() };
-                },
-                { soloTipografia: true }
-              )
-            }
-          >
-            S
-          </button>
-
-          <button
-            className="px-2 py-1 rounded border text-sm transition hover:bg-gray-100 flex items-center justify-center"
-            onClick={onCambiarAlineacion}
-            title={`Alineacion: ${objetoSeleccionado?.align || "izquierda"}`}
-          >
-            {(() => {
-              const align = objetoSeleccionado?.align || "left";
-              switch (align) {
-                case "left":
-                  return "<-";
-                case "center":
-                  return "<->";
-                case "right":
-                  return "->";
-                case "justify":
-                  return "||";
-                default:
-                  return "<-";
+            <button
+              className={`rounded border font-bold transition ${
+                isMobile ? "h-7 min-w-7 px-1.5 text-[11px]" : "px-2 py-1 text-sm"
+              } ${negritaActiva ? "bg-gray-200" : "hover:bg-gray-100"}`}
+              onClick={() =>
+                actualizarSeleccionados(
+                  (o) => {
+                    const currentWeight = String(o.fontWeight || "normal").toLowerCase();
+                    const isBoldNow =
+                      currentWeight === "bold" ||
+                      currentWeight === "bolder" ||
+                      ["500", "600", "700", "800", "900"].includes(currentWeight);
+                    return { ...o, fontWeight: isBoldNow ? "normal" : "bold" };
+                  },
+                  { soloTipografia: true }
+                )
               }
-            })()}
-          </button>
-        </>
+            >
+              B
+            </button>
+
+            <button
+              className={`rounded border italic transition ${
+                isMobile ? "h-7 min-w-7 px-1.5 text-[11px]" : "px-2 py-1 text-sm"
+              } ${cursivaActiva ? "bg-gray-200" : "hover:bg-gray-100"}`}
+              onClick={() =>
+                actualizarSeleccionados(
+                  (o) => {
+                    const currentStyle = String(o.fontStyle || "normal").toLowerCase();
+                    const isItalicNow =
+                      currentStyle.includes("italic") || currentStyle.includes("oblique");
+                    return { ...o, fontStyle: isItalicNow ? "normal" : "italic" };
+                  },
+                  { soloTipografia: true }
+                )
+              }
+            >
+              I
+            </button>
+
+            <button
+              className={`rounded border transition ${
+                isMobile ? "h-7 min-w-7 px-1.5 text-[11px]" : "px-2 py-1 text-sm"
+              } ${subrayadoActivo ? "bg-gray-200 underline" : "hover:bg-gray-100"}`}
+              onClick={() =>
+                actualizarSeleccionados(
+                  (o) => {
+                    const currentDecoration = String(o.textDecoration || "none")
+                      .toLowerCase()
+                      .trim();
+                    const hasUnderline = currentDecoration.includes("underline");
+
+                    if (hasUnderline) {
+                      const withoutUnderline = currentDecoration
+                        .split(/\s+/)
+                        .filter((token) => token && token !== "underline")
+                        .join(" ");
+                      return { ...o, textDecoration: withoutUnderline || "none" };
+                    }
+
+                    const nextDecoration =
+                      currentDecoration === "none" || currentDecoration === ""
+                        ? "underline"
+                        : `${currentDecoration} underline`;
+                    return { ...o, textDecoration: nextDecoration.trim() };
+                  },
+                  { soloTipografia: true }
+                )
+              }
+            >
+              S
+            </button>
+
+            <button
+              className={`rounded border transition hover:bg-gray-100 flex items-center justify-center ${
+                isMobile ? "h-7 min-w-7 px-1.5 text-[11px]" : "px-2 py-1 text-sm"
+              }`}
+              onClick={onCambiarAlineacion}
+              title={`Alineacion: ${objetoSeleccionado?.align || "izquierda"}`}
+            >
+              {(() => {
+                const align = objetoSeleccionado?.align || "left";
+                switch (align) {
+                  case "left":
+                    return "<-";
+                  case "center":
+                    return "<->";
+                  case "right":
+                    return "->";
+                  case "justify":
+                    return "||";
+                  default:
+                    return "<-";
+                }
+              })()}
+            </button>
+          </>
+        )}
+      </div>
+
+      {mobileFontStripVisible && (
+        <div
+          className="popup-fuente fixed z-50 bg-white border rounded shadow px-1.5 py-1 flex items-center gap-1 overflow-x-auto"
+          style={{
+            top: `${mobileFontStripTop ?? 106}px`,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "calc(100vw - 8px)",
+            maxWidth: "calc(100vw - 8px)",
+            WebkitOverflowScrolling: "touch",
+            whiteSpace: "nowrap",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          {fuentesDisponiblesMobile.map((fuente) => {
+            const isActive = (objetoSeleccionado?.fontFamily || "sans-serif") === fuente.valor;
+            return (
+              <button
+                key={fuente.valor}
+                type="button"
+                className={`h-7 px-2 rounded border text-[11px] leading-none shrink-0 ${
+                  isActive
+                    ? "bg-gray-200 border-gray-400 text-gray-900"
+                    : "bg-white border-gray-300 text-gray-700"
+                }`}
+                style={{ fontFamily: fuente.valor }}
+                title={fuente.valor}
+                onClick={() => {
+                  void aplicarFuenteSeleccionada(fuente.valor);
+                }}
+              >
+                {fuente.nombre}
+              </button>
+            );
+          })}
+        </div>
       )}
-    </div>
+    </>
   );
 }

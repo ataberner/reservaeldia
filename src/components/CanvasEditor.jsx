@@ -449,6 +449,25 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     zoom,
   });
 
+  const mobileTypographyToolbarVisible = isMobile && Boolean(
+    objetoSeleccionado &&
+    (
+      objetoSeleccionado.tipo === "texto" ||
+      (
+        objetoSeleccionado.tipo === "forma" &&
+        objetoSeleccionado.figura === "rect" &&
+        typeof objetoSeleccionado.texto === "string"
+      )
+    )
+  );
+
+  const mobileTextToolbarVisible =
+    mobileTypographyToolbarVisible ||
+    (isMobile && objetoSeleccionado?.tipo === "icono");
+
+  const mobileFontStripVisible =
+    mobileTypographyToolbarVisible && mostrarSelectorFuente;
+
   useEffect(() => {
     const desiredRatio = isMobile ? 1 : resolveKonvaPixelRatio();
     if (Konva.pixelRatio !== desiredRatio) {
@@ -1922,6 +1941,18 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
     cerrarMenusFlotantes,
   });
 
+  const mobileCanvasToolbarOffset = mobileTextToolbarVisible
+    ? mobileFontStripVisible
+      ? 88
+      : 32
+    : 0;
+
+  const mobileSectionActionsTop = mobileFontStripVisible
+    ? "calc(172px + env(safe-area-inset-top, 0px))"
+    : mobileTextToolbarVisible
+      ? "calc(118px + env(safe-area-inset-top, 0px))"
+      : "calc(64px + env(safe-area-inset-top, 0px))";
+
 
 
   return (
@@ -1937,8 +1968,9 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
         WebkitOverflowScrolling: "touch",
 
         // ? espacio para que no “choque” con header / barras
-        paddingTop: 12,
+        paddingTop: 12 + mobileCanvasToolbarOffset,
         paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
+        transition: "padding-top 180ms ease",
       }}
     >
 
@@ -2184,7 +2216,7 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                   <div
                     className="fixed z-[90] flex flex-col items-end gap-2"
                     style={{
-                      top: "calc(64px + env(safe-area-inset-top, 0px))",
+                      top: mobileSectionActionsTop,
                       right: "max(8px, env(safe-area-inset-right, 0px))",
                     }}
                   >

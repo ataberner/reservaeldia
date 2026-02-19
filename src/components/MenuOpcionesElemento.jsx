@@ -1,5 +1,5 @@
 // C:\Reservaeldia\src\components\MenuOpcionesElemento.jsx
-import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
@@ -67,6 +67,7 @@ export default function MenuOpcionesElemento({
     const [submenuPos, setSubmenuPos] = useState({ x: -9999, y: -9999 });
     const [submenuReady, setSubmenuReady] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    const [mobileBottomOffset, setMobileBottomOffset] = useState(8);
 
 
     const esImagen = elementoSeleccionado?.tipo === "imagen";
@@ -78,6 +79,23 @@ export default function MenuOpcionesElemento({
         update();
         mq.addEventListener?.("change", update);
         return () => mq.removeEventListener?.("change", update);
+    }, []);
+
+    const calcularOffsetBottomMobile = useCallback(() => {
+        if (typeof window === "undefined") return 8;
+
+        const viewportHeight = Math.max(0, window.innerHeight || 0);
+        const sidebar = document.querySelector("aside");
+        if (!sidebar || typeof sidebar.getBoundingClientRect !== "function") {
+            return 8;
+        }
+
+        const rect = sidebar.getBoundingClientRect();
+        const overlapsBottom = rect.bottom >= viewportHeight - 1;
+        if (!overlapsBottom) return 8;
+
+        const obstructionHeight = Math.max(0, viewportHeight - rect.top);
+        return Math.max(8, Math.ceil(obstructionHeight + 8));
     }, []);
 
     // --- Helper: calcula la posición final del menú desde el rect del botón ⚙️
@@ -229,6 +247,27 @@ export default function MenuOpcionesElemento({
     }, [isOpen, botonOpcionesRef, isMobile]);
 
     useLayoutEffect(() => {
+        if (!isOpen || !isMobile) {
+            setMobileBottomOffset(8);
+            return;
+        }
+
+        const updateBottomOffset = () => {
+            setMobileBottomOffset(calcularOffsetBottomMobile());
+        };
+
+        updateBottomOffset();
+        window.addEventListener("resize", updateBottomOffset);
+        window.addEventListener("orientationchange", updateBottomOffset);
+        window.addEventListener("scroll", updateBottomOffset, true);
+        return () => {
+            window.removeEventListener("resize", updateBottomOffset);
+            window.removeEventListener("orientationchange", updateBottomOffset);
+            window.removeEventListener("scroll", updateBottomOffset, true);
+        };
+    }, [isOpen, isMobile, calcularOffsetBottomMobile]);
+
+    useLayoutEffect(() => {
         if (!mostrarSubmenuCapa) {
             setSubmenuReady(false);
             setSubmenuPos({ x: -9999, y: -9999 });
@@ -313,7 +352,7 @@ export default function MenuOpcionesElemento({
                     ? {
                         left: "8px",
                         right: "8px",
-                        bottom: "calc(8px + env(safe-area-inset-bottom, 0px))",
+                        bottom: `calc(${mobileBottomOffset}px + env(safe-area-inset-bottom, 0px))`,
                         top: "auto",
                         borderColor: "#773dbe",
                         borderWidth: "1px",

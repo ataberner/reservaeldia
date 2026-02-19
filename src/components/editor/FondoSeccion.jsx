@@ -17,6 +17,10 @@ export default function FondoSeccion({
   const imagenRef = useRef(null);
 
   const allowBackgroundEdit = !isMobile || mobileBackgroundEditEnabled;
+  const transformerAnchorSize = isMobile ? 24 : 14;
+  const transformerPadding = isMobile ? 10 : 4;
+  const transformerBorderStrokeWidth = isMobile ? 1.5 : 1;
+  const transformerAnchorStrokeWidth = isMobile ? 2.5 : 2;
 
   useEffect(() => {
     if (typeof onBackgroundImageStatusChange !== "function") return;
@@ -230,10 +234,12 @@ export default function FondoSeccion({
             nodes={[imagenRef.current]}
             enabledAnchors={["bottom-right"]}
             borderStroke="#773dbe"
+            borderStrokeWidth={transformerBorderStrokeWidth}
+            padding={transformerPadding}
             anchorFill="#773dbe"
             anchorStroke="#ffffff"
-            anchorStrokeWidth={2}
-            anchorSize={14}
+            anchorStrokeWidth={transformerAnchorStrokeWidth}
+            anchorSize={transformerAnchorSize}
             anchorCornerRadius={999}
             keepRatio={true}
             onTransform={() => {

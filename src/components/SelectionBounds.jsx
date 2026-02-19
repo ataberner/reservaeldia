@@ -206,6 +206,7 @@ export default function SelectionBounds({
   objetos,
   onTransform,
   isDragging,
+  isMobile = false,
 }) {
   const transformerRef = useRef(null);
   const [transformTick, setTransformTick] = useState(0);
@@ -222,9 +223,15 @@ export default function SelectionBounds({
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
-  const transformerAnchorSize = 14;
-  const transformerRotateOffset = 24;
+  const transformerAnchorSize = isMobile ? 24 : 14;
+  const transformerRotateOffset = isMobile ? 34 : 24;
   const transformerAnchorRadius = 999;
+  const transformerPadding = isMobile ? 10 : 4;
+  const transformerBorderStrokeWidth = isMobile ? 1.5 : 1;
+  const transformerAnchorStrokeWidth = isMobile ? 3 : 2.5;
+  const transformerAnchorShadowBlur = isMobile ? 9 : 6;
+  const transformerAnchorShadowOffsetY = isMobile ? 4 : 3;
+  const transformerRotationSnapTolerance = isMobile ? 8 : 5;
   const esTriangulo =
     primerElemento?.tipo === "forma" &&
     primerElemento?.figura === "triangle";
@@ -459,7 +466,8 @@ export default function SelectionBounds({
       borderStroke="#9333EA"
 
 
-      borderStrokeWidth={1}
+      borderStrokeWidth={transformerBorderStrokeWidth}
+      padding={transformerPadding}
 
       // ❌ nodos y rotación OFF durante drag
       enabledAnchors={isDragging ? [] : ["bottom-right"]}
@@ -467,19 +475,19 @@ export default function SelectionBounds({
 
       anchorFill="#9333EA"
       anchorStroke="#ffffff"
-      anchorStrokeWidth={2.5}
+      anchorStrokeWidth={transformerAnchorStrokeWidth}
       anchorSize={transformerAnchorSize}
       anchorCornerRadius={transformerAnchorRadius}
       anchorShadowColor="rgba(147, 51, 234, 0.3)"
-      anchorShadowBlur={6}
-      anchorShadowOffset={{ x: 0, y: 3 }}
+      anchorShadowBlur={transformerAnchorShadowBlur}
+      anchorShadowOffset={{ x: 0, y: transformerAnchorShadowOffsetY }}
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
       centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
       resizeEnabled={!isDragging}
       rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
       rotateAnchorOffset={transformerRotateOffset}
-      rotationSnapTolerance={5}
+      rotationSnapTolerance={transformerRotationSnapTolerance}
       boundBoxFunc={(oldBox, newBox) => {
         const minSize = esTexto ? 20 : 10;
         const maxSize = 800;

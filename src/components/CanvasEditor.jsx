@@ -552,7 +552,7 @@ export default function CanvasEditor({
       : null;
 
   const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
-  const tamaniosDisponibles = Array.from({ length: (120 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
+  const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
   const botonOpcionesRef = useRef(null);
 
   const _refEventQueued = useRef(new Set());
@@ -620,6 +620,10 @@ export default function CanvasEditor({
 
   const mobileFontStripVisible =
     mobileTypographyToolbarVisible && mostrarSelectorFuente;
+  const mobileSizeStripVisible =
+    mobileTypographyToolbarVisible && mostrarSelectorTamano;
+  const mobileBottomTypographyStripVisible =
+    mobileFontStripVisible || mobileSizeStripVisible;
 
   useEffect(() => {
     const desiredRatio = isMobile ? 1 : resolveKonvaPixelRatio();
@@ -1258,6 +1262,7 @@ export default function CanvasEditor({
     const handleClickFuera = (e) => {
       if (!e.target.closest(".popup-fuente")) {
         setMostrarSelectorFuente(false);
+        setMostrarSelectorTamano(false);
       }
     };
     document.addEventListener("mousedown", handleClickFuera);
@@ -2575,12 +2580,12 @@ export default function CanvasEditor({
   });
 
   const mobileCanvasToolbarOffset = mobileTextToolbarVisible
-    ? mobileFontStripVisible
+    ? mobileBottomTypographyStripVisible
       ? 88
       : 32
     : 0;
 
-  const mobileSectionActionsTop = mobileFontStripVisible
+  const mobileSectionActionsTop = mobileBottomTypographyStripVisible
     ? "calc(172px + env(safe-area-inset-top, 0px))"
     : mobileTextToolbarVisible
       ? "calc(118px + env(safe-area-inset-top, 0px))"
@@ -3638,6 +3643,7 @@ export default function CanvasEditor({
                         elementRefs={elementRefs}
                         objetos={objetos}
                         isDragging={isDragging}
+                        isMobile={isMobile}
                         onTransform={(newAttrs) => {
                           if (elementosSeleccionados.length === 1) {
                             const id = elementosSeleccionados[0];

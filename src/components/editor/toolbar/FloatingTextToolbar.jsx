@@ -241,6 +241,9 @@ export default function FloatingTextToolbar({
   const mostrarControlesTipografia = esTexto || esFormaConTexto;
   const mobileFontStripVisible =
     isMobile && mostrarControlesTipografia && mostrarSelectorFuente;
+  const mobileSizeStripVisible =
+    isMobile && mostrarControlesTipografia && mostrarSelectorTamano;
+  const mobileBottomStripVisible = mobileFontStripVisible || mobileSizeStripVisible;
 
   const fontSizeActual = normalizarFontSizeEntero(objetoSeleccionado?.fontSize, 24);
   const fontWeightActual = String(objetoSeleccionado?.fontWeight || "normal").toLowerCase();
@@ -385,7 +388,7 @@ export default function FloatingTextToolbar({
   }, [mostrarSelectorFuente, calcularEstiloSelectorFuente]);
 
   useEffect(() => {
-    if (!mobileFontStripVisible) {
+    if (!mobileBottomStripVisible) {
       setMobileFontStripTop(null);
       return;
     }
@@ -405,7 +408,7 @@ export default function FloatingTextToolbar({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [mobileFontStripVisible]);
+  }, [mobileBottomStripVisible]);
 
   useEffect(() => {
     if (!fuentesWarmupMobile.length) return;
@@ -451,6 +454,7 @@ export default function FloatingTextToolbar({
       });
 
       const expectedFontSizeById = new Map();
+      const metricCenterAnchoredIds = new Set();
       setObjetos((prev) =>
         prev.map((o) => {
           if (!targetIds.has(o.id)) return o;
@@ -470,13 +474,11 @@ export default function FloatingTextToolbar({
 
           if (debeAnclarCentroTexto(o)) {
             const centerObjetivo = centerTargetById.get(o.id);
-            const debeAjustarPredictivo =
-              !Number.isFinite(o.width) &&
-              o.__autoWidth !== false;
-            if (Number.isFinite(centerObjetivo) && debeAjustarPredictivo) {
+            if (Number.isFinite(centerObjetivo)) {
               const nextWidth = medirAnchoTexto(o, { fontSizeOverride: nextSize });
               const scaleX = normalizarEscalaX(o.scaleX);
               if (Number.isFinite(nextWidth) && nextWidth > 0) {
+                metricCenterAnchoredIds.add(o.id);
                 const currentX = Number.isFinite(o.x) ? o.x : 0;
                 const nextX = centerObjetivo - (nextWidth * scaleX) / 2;
                 if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.25) {
@@ -498,6 +500,9 @@ export default function FloatingTextToolbar({
           const deltaById = new Map();
           centerTargetById.forEach((centerObjetivo, id) => {
             if (!expectedFontSizeById.has(id)) return;
+            // Cuando anclamos por metrica (mismo enfoque del transformer),
+            // no corregimos por rect visual para no fijar el borde izquierdo.
+            if (metricCenterAnchoredIds.has(id)) return;
             const centerActual = obtenerCentroVisualXDesdeNodo(id);
             if (!Number.isFinite(centerActual)) return;
 
@@ -773,7 +778,13 @@ export default function FloatingTextToolbar({
                 textAlign: "left",
               }}
               title={objetoSeleccionado?.fontFamily || "sans-serif"}
-              onClick={() => setMostrarSelectorFuente(!mostrarSelectorFuente)}
+              onClick={() => {
+                const nextOpen = !mostrarSelectorFuente;
+                setMostrarSelectorFuente(nextOpen);
+                if (nextOpen && isMobile) {
+                  setMostrarSelectorTamano(false);
+                }
+              }}
             >
               {objetoSeleccionado?.fontFamily || "sans-serif"}
             </div>
@@ -788,65 +799,79 @@ export default function FloatingTextToolbar({
               />
             )}
 
-            <div className="relative flex items-center bg-white border rounded-lg">
+            {isMobile ? (
               <button
-                className={`hover:bg-gray-100 transition ${
-                  isMobile ? "h-7 min-w-7 px-1.5 text-xs" : "px-2 py-1"
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  aplicarTamanoFuenteSeleccionado((o, actual) => Math.max(6, actual - 2));
-                }}
-              >
-                -
-              </button>
-
-              <div
-                className={`cursor-pointer transition-all ${
-                  isMobile ? "h-7 px-1.5 text-[11px] flex items-center" : "px-2 py-1 text-sm"
+                type="button"
+                className={`rounded border transition ${
+                  isMobile ? "h-7 px-2 text-[11px]" : "px-2 py-1 text-sm"
                 } ${mostrarSelectorTamano ? "bg-gray-200" : "hover:bg-gray-100"}`}
-                onClick={() => setMostrarSelectorTamano(!mostrarSelectorTamano)}
-              >
-                {fontSizeActual}
-                {mostrarSelectorTamano && (
-                  <div
-                    className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
-                    style={
-                      isMobile
-                        ? { top: "32px", left: "50%", transform: "translateX(-50%)" }
-                        : { top: "40px", left: "-10px" }
-                    }
-                  >
-                    {tamaniosDisponibles.map((tam) => (
-                      <div
-                        key={tam}
-                        className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const nextSize = normalizarFontSizeEntero(tam, 24);
-                          aplicarTamanoFuenteSeleccionado(nextSize);
-                          setMostrarSelectorTamano(false);
-                        }}
-                      >
-                        {tam}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                className={`hover:bg-gray-100 transition ${
-                  isMobile ? "h-7 min-w-7 px-1.5 text-xs" : "px-2 py-1"
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  aplicarTamanoFuenteSeleccionado((o, actual) => Math.min(120, actual + 2));
+                onClick={() => {
+                  const nextOpen = !mostrarSelectorTamano;
+                  setMostrarSelectorTamano(nextOpen);
+                  if (nextOpen) {
+                    setMostrarSelectorFuente(false);
+                  }
                 }}
               >
-                +
+                Tamano {fontSizeActual}
               </button>
-            </div>
+            ) : (
+              <div className="relative flex items-center bg-white border rounded-lg">
+                <button
+                  className={`hover:bg-gray-100 transition ${
+                    isMobile ? "h-7 min-w-7 px-1.5 text-xs" : "px-2 py-1"
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    aplicarTamanoFuenteSeleccionado((o, actual) => Math.max(6, actual - 2));
+                  }}
+                >
+                  -
+                </button>
+
+                <div
+                  className={`cursor-pointer transition-all ${
+                    isMobile ? "h-7 px-1.5 text-[11px] flex items-center" : "px-2 py-1 text-sm"
+                  } ${mostrarSelectorTamano ? "bg-gray-200" : "hover:bg-gray-100"}`}
+                  onClick={() => setMostrarSelectorTamano(!mostrarSelectorTamano)}
+                >
+                  {fontSizeActual}
+                  {mostrarSelectorTamano && (
+                    <div
+                      className="absolute popup-fuente z-50 bg-white border rounded-2xl shadow-md p-2 w-24 max-h-[300px] overflow-auto"
+                      style={{ top: "40px", left: "-10px" }}
+                    >
+                      {tamaniosDisponibles.map((tam) => (
+                        <div
+                          key={tam}
+                          className="px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer text-center"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextSize = normalizarFontSizeEntero(tam, 24);
+                            aplicarTamanoFuenteSeleccionado(nextSize);
+                            setMostrarSelectorTamano(false);
+                          }}
+                        >
+                          {tam}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  className={`hover:bg-gray-100 transition ${
+                    isMobile ? "h-7 min-w-7 px-1.5 text-xs" : "px-2 py-1"
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    aplicarTamanoFuenteSeleccionado((o, actual) => Math.min(260, actual + 2));
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            )}
 
             <input
               type="color"
@@ -997,6 +1022,62 @@ export default function FloatingTextToolbar({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {mobileSizeStripVisible && (
+        <div
+          className="popup-fuente fixed z-50 bg-white border rounded shadow px-2 py-1.5 flex items-center gap-2"
+          style={{
+            top: `${mobileFontStripTop ?? 106}px`,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "calc(100vw - 8px)",
+            maxWidth: "calc(100vw - 8px)",
+            WebkitOverflowScrolling: "touch",
+            whiteSpace: "nowrap",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="h-7 min-w-7 px-1.5 text-xs rounded border hover:bg-gray-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              aplicarTamanoFuenteSeleccionado((o, actual) => Math.max(6, actual - 2));
+            }}
+          >
+            -
+          </button>
+
+          <div className="h-7 min-w-10 px-2 text-xs rounded border bg-gray-100 flex items-center justify-center">
+            {fontSizeActual}
+          </div>
+
+          <button
+            type="button"
+            className="h-7 min-w-7 px-1.5 text-xs rounded border hover:bg-gray-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              aplicarTamanoFuenteSeleccionado((o, actual) => Math.min(260, actual + 2));
+            }}
+          >
+            +
+          </button>
+
+          <input
+            type="range"
+            min={6}
+            max={260}
+            step={1}
+            value={fontSizeActual}
+            className="flex-1 min-w-0 accent-gray-700"
+            onChange={(e) => {
+              const nextSize = normalizarFontSizeEntero(e.target.value, fontSizeActual);
+              aplicarTamanoFuenteSeleccionado(nextSize);
+            }}
+          />
         </div>
       )}
     </>

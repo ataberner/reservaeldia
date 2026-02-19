@@ -1556,6 +1556,48 @@ export default function CanvasEditor({
     }
   }, []);
 
+  const medirAltoTextoKonva = useCallback((objTexto, textoObjetivo, fontSizeOverride = null) => {
+    if (!objTexto || typeof window === "undefined") return null;
+
+    try {
+      const safeText = String(textoObjetivo ?? "").replace(/[ \t]+$/gm, "");
+      const safeFontFamily = fontManager.isFontAvailable(objTexto.fontFamily)
+        ? objTexto.fontFamily
+        : "sans-serif";
+      const safeFontSize =
+        Number.isFinite(fontSizeOverride) && fontSizeOverride > 0
+          ? fontSizeOverride
+          : (Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0
+            ? objTexto.fontSize
+            : 24);
+      const baseLineHeight =
+        Number.isFinite(objTexto.lineHeight) && objTexto.lineHeight > 0
+          ? objTexto.lineHeight
+          : 1.2;
+
+      const probe = new Konva.Text({
+        text: safeText,
+        fontSize: safeFontSize,
+        fontFamily: safeFontFamily,
+        fontWeight: objTexto.fontWeight || "normal",
+        fontStyle: resolveKonvaFontStyle(
+          objTexto.fontStyle || "normal",
+          objTexto.fontWeight || "normal"
+        ),
+        lineHeight: baseLineHeight * 0.92,
+        padding: 0,
+        wrap: "none",
+      });
+
+      const height = Number(probe.height?.() || 0);
+      probe.destroy();
+
+      return Number.isFinite(height) && height > 0 ? height : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const calcularXTextoCentradoPorTamano = useCallback((objTexto, nextFontSize) => {
     if (!objTexto || objTexto.tipo !== "texto") return Number.isFinite(objTexto?.x) ? objTexto.x : 0;
 
@@ -1652,6 +1694,45 @@ export default function CanvasEditor({
     obtenerMetricasTexto,
     medirAnchoTextoKonva,
   ]);
+
+  const calcularYTextoDesdeCentro = useCallback((objTexto, nextFontSize, centerY) => {
+    if (!objTexto || objTexto.tipo !== "texto") {
+      return Number.isFinite(objTexto?.y) ? objTexto.y : 0;
+    }
+
+    const safeCenterY = Number(centerY);
+    if (!Number.isFinite(safeCenterY)) {
+      return Number.isFinite(objTexto.y) ? objTexto.y : 0;
+    }
+
+    const safeNextSize =
+      Number.isFinite(nextFontSize) && nextFontSize > 0
+        ? nextFontSize
+        : (Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0 ? objTexto.fontSize : 24);
+    const baseLineHeight =
+      typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
+        ? objTexto.lineHeight
+        : 1.2;
+
+    const nextMetrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: safeNextSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+    const nextHeightFromKonva = medirAltoTextoKonva(
+      objTexto,
+      objTexto.texto,
+      safeNextSize
+    );
+    const nextHeight =
+      Number.isFinite(nextHeightFromKonva) && nextHeightFromKonva > 0
+        ? nextHeightFromKonva
+        : nextMetrics.height;
+
+    return safeCenterY - (nextHeight / 2);
+  }, [obtenerMetricasTexto, medirAltoTextoKonva]);
 
   const ajustarFontSizeAAnchoVisual = useCallback((objTexto, proposedFontSize, targetVisualWidth) => {
     const safeProposed = Number(proposedFontSize);
@@ -3578,6 +3659,18 @@ export default function CanvasEditor({
                                     nextFontSize,
                                     cleanAttrs.textCenterX
                                   );
+                                  const centeredYAbs = calcularYTextoDesdeCentro(
+                                    objOriginal,
+                                    nextFontSize,
+                                    cleanAttrs.textCenterY
+                                  );
+                                  const centeredY = Number.isFinite(centeredYAbs)
+                                    ? convertirAbsARel(
+                                      centeredYAbs,
+                                      objOriginal.seccionId,
+                                      seccionesOrdenadas
+                                    )
+                                    : (Number.isFinite(objOriginal.y) ? objOriginal.y : 0);
                                   textResizeDebug("transform-final:text", {
                                     id: objOriginal?.id ?? null,
                                     requestedFontSize,
@@ -3586,7 +3679,10 @@ export default function CanvasEditor({
                                     cleanFontSize: cleanAttrs.fontSize ?? null,
                                     textVisualWidth: cleanAttrs.textVisualWidth ?? null,
                                     textCenterX: cleanAttrs.textCenterX ?? null,
+                                    textCenterY: cleanAttrs.textCenterY ?? null,
                                     centeredX,
+                                    centeredYAbs,
+                                    centeredY,
                                     originalX: objOriginal?.x ?? null,
                                     originalY: objOriginal?.y ?? null,
                                   });
@@ -3596,11 +3692,12 @@ export default function CanvasEditor({
                                     x: Number.isFinite(centeredX)
                                       ? centeredX
                                       : (Number.isFinite(objOriginal.x) ? objOriginal.x : 0),
-                                    y: Number.isFinite(objOriginal.y) ? objOriginal.y : 0,
+                                    y: centeredY,
                                     scaleX: 1,
                                     scaleY: 1,
                                   };
                                   delete finalAttrs.textCenterX;
+                                  delete finalAttrs.textCenterY;
                                   delete finalAttrs.textVisualWidth;
                                   textResizeDebug("transform-final:text-attrs", {
                                     id: objOriginal?.id ?? null,

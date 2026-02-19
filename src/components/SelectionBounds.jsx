@@ -221,6 +221,7 @@ export default function SelectionBounds({
   const esCountdown = primerElemento?.tipo === "countdown";
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
+  const lockAspectText = selectedElements.length === 1 && esTexto;
   const transformerAnchorSize = 14;
   const transformerRotateOffset = 24;
   const transformerAnchorRadius = 999;
@@ -472,7 +473,7 @@ export default function SelectionBounds({
       anchorShadowColor="rgba(147, 51, 234, 0.3)"
       anchorShadowBlur={6}
       anchorShadowOffset={{ x: 0, y: 3 }}
-      keepRatio={lockAspectCountdown || esGaleria}
+      keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
       centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
       resizeEnabled={!isDragging}
@@ -534,21 +535,6 @@ export default function SelectionBounds({
             ...newBox,
             width: Math.min(Math.max(width, minSize), maxSize),
             height: Math.min(Math.max(height, minSize), maxSize),
-          };
-        }
-
-        if (esTexto) {
-          const scaleX = newBox.width / oldBox.width;
-          const scaleY = newBox.height / oldBox.height;
-          const uniformScale = Math.min(scaleX, scaleY);
-
-          const newWidth = oldBox.width * uniformScale;
-          const newHeight = oldBox.height * uniformScale;
-
-          return {
-            ...newBox,
-            width: Math.min(Math.max(newWidth, minSize), maxSize),
-            height: Math.min(Math.max(newHeight, minSize), maxSize),
           };
         }
 
@@ -632,6 +618,7 @@ export default function SelectionBounds({
           if (nodes.length === 1 && esTexto) {
             const node = nodes[0];
             let centerX = null;
+            let centerY = null;
             let baseWidth = null;
             let baseHeight = null;
             let baseVisualWidth = null;
@@ -643,6 +630,9 @@ export default function SelectionBounds({
               });
               if (Number.isFinite(rect?.x) && Number.isFinite(rect?.width)) {
                 centerX = rect.x + (rect.width / 2);
+              }
+              if (Number.isFinite(rect?.y) && Number.isFinite(rect?.height)) {
+                centerY = rect.y + (rect.height / 2);
               }
               if (Number.isFinite(rect?.width) && rect.width > 0) {
                 baseWidth = rect.width;
@@ -659,11 +649,13 @@ export default function SelectionBounds({
             textTransformAnchorRef.current = {
               y: typeof node?.y === "function" ? node.y() : 0,
               centerX,
+              centerY,
               baseWidth,
               baseHeight,
               baseFontSize: safeBaseFontSize,
               lastPreviewFontSize: safeBaseFontSize,
               lastPreviewCenterX: centerX,
+              lastPreviewCenterY: centerY,
               lastPreviewVisualWidth: baseVisualWidth,
               previewTick: 0,
             };
@@ -673,6 +665,7 @@ export default function SelectionBounds({
               baseWidth,
               baseHeight,
               centerX,
+              centerY,
               nodeX: typeof node?.x === "function" ? node.x() : null,
               nodeY: typeof node?.y === "function" ? node.y() : null,
               nodeScaleX: typeof node?.scaleX === "function" ? node.scaleX() : null,
@@ -790,9 +783,6 @@ export default function SelectionBounds({
             transformData.scaleY = 1;
             if (Number.isFinite(textTransformAnchorRef.current?.y)) {
               transformData.y = textTransformAnchorRef.current.y;
-              if (typeof node.y === "function") {
-                node.y(textTransformAnchorRef.current.y);
-              }
             }
             if (Number.isFinite(textTransformAnchorRef.current?.centerX)) {
               transformData.textCenterX = textTransformAnchorRef.current.centerX;
@@ -800,30 +790,13 @@ export default function SelectionBounds({
                 textTransformAnchorRef.current.lastPreviewCenterX =
                   textTransformAnchorRef.current.centerX;
               }
-              try {
-                const rect = node.getClientRect({
-                  skipTransform: false,
-                  skipShadow: true,
-                  skipStroke: true,
-                });
-                const currentCenterX =
-                  Number.isFinite(rect?.x) && Number.isFinite(rect?.width)
-                    ? rect.x + (rect.width / 2)
-                    : null;
-                const deltaX =
-                  Number.isFinite(currentCenterX)
-                    ? (textTransformAnchorRef.current.centerX - currentCenterX)
-                    : null;
-                if (Number.isFinite(deltaX) && Math.abs(deltaX) > 0.01 && typeof node.x === "function") {
-                  TXTDBG("preview-center-correction", {
-                    id: primerElemento?.id ?? null,
-                    currentCenterX,
-                    targetCenterX: textTransformAnchorRef.current.centerX,
-                    deltaX,
-                  });
-                  node.x(node.x() + deltaX);
-                }
-              } catch {}
+            }
+            if (Number.isFinite(textTransformAnchorRef.current?.centerY)) {
+              transformData.textCenterY = textTransformAnchorRef.current.centerY;
+              if (textTransformAnchorRef.current) {
+                textTransformAnchorRef.current.lastPreviewCenterY =
+                  textTransformAnchorRef.current.centerY;
+              }
             }
           } else {
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
@@ -1076,6 +1049,11 @@ export default function SelectionBounds({
             } else if (Number.isFinite(anchorData?.centerX)) {
               finalData.textCenterX = anchorData.centerX;
             }
+            if (Number.isFinite(anchorData?.lastPreviewCenterY)) {
+              finalData.textCenterY = anchorData.lastPreviewCenterY;
+            } else if (Number.isFinite(anchorData?.centerY)) {
+              finalData.textCenterY = anchorData.centerY;
+            }
             const visualWidth =
               Number.isFinite(anchorData?.lastPreviewVisualWidth) &&
               anchorData.lastPreviewVisualWidth > 0
@@ -1114,6 +1092,7 @@ export default function SelectionBounds({
               computedFontSize,
               finalFontSize: finalData.fontSize,
               textCenterX: finalData.textCenterX ?? null,
+              textCenterY: finalData.textCenterY ?? null,
               textVisualWidth: finalData.textVisualWidth ?? null,
               nodeRectWidth: visualWidthFromRect,
               nodeX: typeof node?.x === "function" ? node.x() : null,
@@ -1132,15 +1111,13 @@ export default function SelectionBounds({
               ) {
                 node.fontSize(finalData.fontSize);
               }
+              const targetCenterX = Number(finalData.textCenterX);
+              const targetCenterY = Number(finalData.textCenterY);
               if (
-                Number.isFinite(finalData.y) &&
+                (Number.isFinite(targetCenterX) || Number.isFinite(targetCenterY)) &&
+                typeof node.x === "function" &&
                 typeof node.y === "function"
               ) {
-                node.y(finalData.y);
-              }
-
-              const targetCenterX = Number(finalData.textCenterX);
-              if (Number.isFinite(targetCenterX) && typeof node.x === "function") {
                 try {
                   const flattenedRect = node.getClientRect({
                     skipTransform: false,
@@ -1152,8 +1129,17 @@ export default function SelectionBounds({
                     Number.isFinite(flattenedRect?.width)
                       ? flattenedRect.x + (flattenedRect.width / 2)
                       : null;
-                  if (Number.isFinite(flattenedCenterX)) {
+                  const flattenedCenterY =
+                    Number.isFinite(flattenedRect?.y) &&
+                    Number.isFinite(flattenedRect?.height)
+                      ? flattenedRect.y + (flattenedRect.height / 2)
+                      : null;
+
+                  if (Number.isFinite(flattenedCenterX) && Number.isFinite(targetCenterX)) {
                     node.x(node.x() + (targetCenterX - flattenedCenterX));
+                  }
+                  if (Number.isFinite(flattenedCenterY) && Number.isFinite(targetCenterY)) {
+                    node.y(node.y() + (targetCenterY - flattenedCenterY));
                   }
                 } catch {}
               }

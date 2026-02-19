@@ -8,49 +8,61 @@ import {
   pushEditorBreadcrumb,
 } from "@/lib/monitoring/editorIssueReporter";
 
-const STORAGE_DOWNLOAD_URL_REGEX =
-  /^https?:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/.+/i;
-
-function parseStoragePathFromDownloadUrl(value) {
-  if (typeof value !== "string" || !STORAGE_DOWNLOAD_URL_REGEX.test(value)) {
-    return null;
-  }
+function parseStorageLocationFromUrl(value) {
+  if (typeof value !== "string" || !/^https?:\/\//i.test(value)) return null;
 
   try {
     const url = new URL(value);
-    const marker = "/o/";
-    const index = url.pathname.indexOf(marker);
-    if (index < 0) return null;
 
-    const encodedPath = url.pathname.slice(index + marker.length);
-    return encodedPath ? decodeURIComponent(encodedPath) : null;
+    if (
+      url.hostname === "firebasestorage.googleapis.com" ||
+      url.hostname.endsWith(".firebasestorage.app")
+    ) {
+      const match = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
+      if (!match) return null;
+
+      const bucketName = decodeURIComponent(match[1] || "");
+      const path = decodeURIComponent(match[2] || "");
+      if (!bucketName || !path) return null;
+      return { bucketName, path };
+    }
+
+    if (url.hostname === "storage.googleapis.com") {
+      const segments = url.pathname.split("/").filter(Boolean);
+      if (segments.length < 2) return null;
+
+      const bucketName = decodeURIComponent(segments[0] || "");
+      const path = decodeURIComponent(segments.slice(1).join("/"));
+      if (!bucketName || !path) return null;
+      return { bucketName, path };
+    }
+
+    return null;
   } catch {
     return null;
   }
 }
 
 async function refreshStorageUrl(value, cache) {
-  const path = parseStoragePathFromDownloadUrl(value);
-  if (!path) return value;
+  const location = parseStorageLocationFromUrl(value);
+  if (!location) return value;
 
-  if (cache.has(path)) {
-    return cache.get(path);
+  const cacheKey = `${location.bucketName}/${location.path}`;
+
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
   }
 
   try {
-    const freshUrl = await getDownloadURL(storageRef(storage, path));
-    cache.set(path, freshUrl);
+    const gsUrl = `gs://${location.bucketName}/${location.path}`;
+    const freshUrl = await getDownloadURL(storageRef(storage, gsUrl));
+    cache.set(cacheKey, freshUrl);
     return freshUrl;
-  } catch (error) {
-    const code = String(error?.code || "");
-    const shouldDropUrl =
-      code.includes("storage/object-not-found") ||
-      code.includes("storage/unauthorized") ||
-      code.includes("storage/forbidden");
-
-    const fallbackValue = shouldDropUrl ? null : value;
-    cache.set(path, fallbackValue);
-    return fallbackValue;
+  } catch {
+    // Mantener la URL original evita "romper" plantillas compartidas
+    // cuando el SDK no puede refrescar el token por reglas/bucket.
+    cache.set(cacheKey, value);
+    return value;
   }
 }
 

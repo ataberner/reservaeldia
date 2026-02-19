@@ -1,5 +1,5 @@
 // src/components/editor/sections/useSectionsManager.js
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
 
@@ -44,81 +44,154 @@ export default function useSectionsManager({
     // A) Resize altura de sección
     // ------------------------------------------
     const [controlandoAltura, setControlandoAltura] = useState(false);
-    const [alturaInicial, setAlturaInicial] = useState(0);
-    const [posicionInicialMouse, setPosicionInicialMouse] = useState(0);
+    const seccionesRef = useRef(secciones);
+    const resizeSessionRef = useRef({
+        isResizing: false,
+        seccionId: null,
+        alturaInicial: 0,
+        posicionInicialMouse: 0,
+        posicionActualMouse: 0,
+        ultimaAlturaAplicada: null,
+        rafId: null,
+        pointerId: null,
+        targetConCapture: null,
+    });
+    const lastStartRef = useRef({ type: "", at: 0 });
+
+    useEffect(() => {
+        seccionesRef.current = secciones;
+    }, [secciones]);
+
+    const aplicarResizeAltura = useCallback(() => {
+        const session = resizeSessionRef.current;
+        if (!session.isResizing || !session.seccionId) return;
+
+        const deltaY = session.posicionActualMouse - session.posicionInicialMouse;
+        const nuevaAltura = Math.max(50, Math.round(session.alturaInicial + deltaY));
+        if (session.ultimaAlturaAplicada === nuevaAltura) return;
+
+        session.ultimaAlturaAplicada = nuevaAltura;
+
+        setSecciones((prev) => {
+            const next = prev.map((s) =>
+                s.id === session.seccionId ? { ...s, altura: nuevaAltura } : s
+            );
+            seccionesRef.current = next;
+            return next;
+        });
+    }, [setSecciones]);
+
+    const scheduleResizeFrame = useCallback(() => {
+        const session = resizeSessionRef.current;
+        if (session.rafId != null) return;
+
+        session.rafId = requestAnimationFrame(() => {
+            resizeSessionRef.current.rafId = null;
+            aplicarResizeAltura();
+        });
+    }, [aplicarResizeAltura]);
 
     const iniciarControlAltura = useCallback(
         (e, seccionId) => {
-            setGlobalCursor?.("ns-resize", stageRef);
-            e.evt.stopPropagation();
-            if (e?.evt?.cancelable) e.evt.preventDefault();
+            const evt = e?.evt;
+            if (!evt) return;
 
-            const seccion = secciones.find((s) => s.id === seccionId);
+            const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+            const tipo = evt.type || "";
+            const last = lastStartRef.current;
+
+            const esFallbackDuplicado =
+                (tipo === "mousedown" || tipo === "touchstart") &&
+                last.type === "pointerdown" &&
+                now - last.at < 120;
+            if (esFallbackDuplicado) return;
+
+            lastStartRef.current = { type: tipo, at: now };
+
+            const session = resizeSessionRef.current;
+            if (session.isResizing) return;
+
+            const seccion = seccionesRef.current.find((s) => s.id === seccionId);
             if (!seccion) return;
 
-            const pointerY = getClientYFromEvent(e?.evt);
+            const pointerY = getClientYFromEvent(evt);
             if (!Number.isFinite(pointerY)) return;
 
+            setGlobalCursor?.("ns-resize", stageRef);
+            evt.stopPropagation();
+            if (evt.cancelable) evt.preventDefault();
+
             setControlandoAltura(seccionId);
-            setAlturaInicial(seccion.altura);
-            setPosicionInicialMouse(pointerY);
+
+            session.isResizing = true;
+            session.seccionId = seccionId;
+            session.alturaInicial = seccion.altura;
+            session.posicionInicialMouse = pointerY;
+            session.posicionActualMouse = pointerY;
+            session.ultimaAlturaAplicada = seccion.altura;
+            session.pointerId = Number.isFinite(evt.pointerId) ? evt.pointerId : null;
+            session.rafId = null;
 
             try { document.body.style.userSelect = "none"; } catch { }
             try { document.body.style.touchAction = "none"; } catch { }
 
             const target =
                 e.target?.getStage?.()?.content || e.target?.getStage?.()?.container?.();
+            session.targetConCapture = target || null;
 
-            if (target && target.setPointerCapture && e.evt.pointerId != null) {
-                try { target.setPointerCapture(e.evt.pointerId); } catch { }
+            if (target && target.setPointerCapture && session.pointerId != null) {
+                try { target.setPointerCapture(session.pointerId); } catch { }
             }
         },
-        [secciones, setGlobalCursor, stageRef, getClientYFromEvent]
+        [setGlobalCursor, stageRef, getClientYFromEvent]
     );
 
 
     const manejarControlAltura = useCallback(
         (e) => {
-            if (!controlandoAltura) return;
+            const session = resizeSessionRef.current;
+            if (!session.isResizing) return;
             if (e?.cancelable) e.preventDefault();
+
             const posicionActualMouse = getClientYFromEvent(e);
             if (!Number.isFinite(posicionActualMouse)) return;
 
-            if (window._alturaResizeThrottle) return;
-            window._alturaResizeThrottle = true;
-
-            requestAnimationFrame(() => {
-                const deltaY = posicionActualMouse - posicionInicialMouse;
-                const nuevaAltura = Math.max(50, Math.round(alturaInicial + deltaY));
-
-                setSecciones((prev) =>
-                    prev.map((s) =>
-                        s.id === controlandoAltura ? { ...s, altura: nuevaAltura } : s
-                    )
-                );
-
-                setTimeout(() => {
-                    window._alturaResizeThrottle = false;
-                }, 8);
-            });
+            session.posicionActualMouse = posicionActualMouse;
+            scheduleResizeFrame();
         },
-        [controlandoAltura, posicionInicialMouse, alturaInicial, setSecciones, getClientYFromEvent]
+        [getClientYFromEvent, scheduleResizeFrame]
     );
 
     const finalizarControlAltura = useCallback(async () => {
-        if (!controlandoAltura) return;
+        const session = resizeSessionRef.current;
+        if (!session.isResizing) return;
+
+        if (session.rafId != null) {
+            cancelAnimationFrame(session.rafId);
+            session.rafId = null;
+        }
+        aplicarResizeAltura();
 
         clearGlobalCursor?.(stageRef);
 
         try { document.body.style.userSelect = ""; } catch { }
         try { document.body.style.touchAction = ""; } catch { }
 
-        if (window._alturaResizeThrottle) window._alturaResizeThrottle = false;
+        if (session.targetConCapture?.releasePointerCapture && session.pointerId != null) {
+            try { session.targetConCapture.releasePointerCapture(session.pointerId); } catch { }
+        }
 
-        const seccionId = controlandoAltura;
+        const seccionId = session.seccionId;
+        session.isResizing = false;
+        session.seccionId = null;
+        session.alturaInicial = 0;
+        session.posicionInicialMouse = 0;
+        session.posicionActualMouse = 0;
+        session.ultimaAlturaAplicada = null;
+        session.pointerId = null;
+        session.targetConCapture = null;
+
         setControlandoAltura(false);
-        setAlturaInicial(0);
-        setPosicionInicialMouse(0);
 
         if (window._saveAlturaTimeout) clearTimeout(window._saveAlturaTimeout);
         window._saveAlturaTimeout = setTimeout(async () => {
@@ -127,7 +200,7 @@ export default function useSectionsManager({
 
                 const ref = doc(db, "borradores", slug);
                 await updateDoc(ref, {
-                    secciones,
+                    secciones: seccionesRef.current,
                     ultimaEdicion: serverTimestamp(),
                 });
 
@@ -136,33 +209,36 @@ export default function useSectionsManager({
             } catch (error) {
                 console.error("❌ Error guardando altura:", error);
             }
-        }, 300);
-    }, [controlandoAltura, secciones, slug, clearGlobalCursor, stageRef]);
+        }, 220);
+    }, [aplicarResizeAltura, slug, clearGlobalCursor, stageRef]);
 
 
     // listeners globales (mouse/touch/pointer)
     useEffect(() => {
         if (!controlandoAltura) return;
 
-        document.addEventListener("mousemove", manejarControlAltura, { passive: true });
-        document.addEventListener("touchmove", manejarControlAltura, { passive: false });
-        window.addEventListener("pointermove", manejarControlAltura, { passive: false });
-        document.addEventListener("mouseup", finalizarControlAltura);
-        document.addEventListener("touchend", finalizarControlAltura, { passive: true });
-        document.addEventListener("touchcancel", finalizarControlAltura, { passive: true });
-        window.addEventListener("pointerup", finalizarControlAltura, { passive: true });
-        window.addEventListener("pointercancel", finalizarControlAltura, { passive: true });
+        const hasPointerEvents = typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+        if (hasPointerEvents) {
+            window.addEventListener("pointermove", manejarControlAltura, { passive: false });
+            window.addEventListener("pointerup", finalizarControlAltura, { passive: true });
+            window.addEventListener("pointercancel", finalizarControlAltura, { passive: true });
+        } else {
+            document.addEventListener("mousemove", manejarControlAltura, { passive: false });
+            document.addEventListener("touchmove", manejarControlAltura, { passive: false });
+            document.addEventListener("mouseup", finalizarControlAltura);
+            document.addEventListener("touchend", finalizarControlAltura, { passive: true });
+            document.addEventListener("touchcancel", finalizarControlAltura, { passive: true });
+        }
 
         return () => {
-            document.removeEventListener("mousemove", manejarControlAltura);
-            document.removeEventListener("touchmove", manejarControlAltura);
-            window.removeEventListener("pointermove", manejarControlAltura);
-            document.removeEventListener("mouseup", finalizarControlAltura);
-            document.removeEventListener("touchend", finalizarControlAltura);
-            document.removeEventListener("touchcancel", finalizarControlAltura);
             window.removeEventListener("pointerup", finalizarControlAltura);
             window.removeEventListener("pointercancel", finalizarControlAltura);
-            if (window._alturaResizeThrottle) window._alturaResizeThrottle = false;
+            window.removeEventListener("pointermove", manejarControlAltura);
+            document.removeEventListener("mouseup", finalizarControlAltura);
+            document.removeEventListener("mousemove", manejarControlAltura);
+            document.removeEventListener("touchmove", manejarControlAltura);
+            document.removeEventListener("touchend", finalizarControlAltura);
+            document.removeEventListener("touchcancel", finalizarControlAltura);
         };
     }, [controlandoAltura, manejarControlAltura, finalizarControlAltura]);
 
@@ -356,6 +432,5 @@ export default function useSectionsManager({
         handleCrearSeccion,
     };
 }
-
 
 

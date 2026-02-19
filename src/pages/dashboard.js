@@ -742,6 +742,7 @@ export default function Dashboard() {
                 ) : (
                   <PlantillaGrid
                     plantillas={plantillas}
+                    isSuperAdmin={isSuperAdmin}
                     onPlantillaBorrada={(plantillaId) => {
                       setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
                     }}

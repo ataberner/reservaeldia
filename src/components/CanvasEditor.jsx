@@ -259,6 +259,8 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
+  const supportsPointerEvents =
+    typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
 
 
 
@@ -2327,9 +2329,17 @@ export default function CanvasEditor({ slug, zoom = 1, onHistorialChange, onFutu
                           y={controlY}
                           listening={permiteResizeAltura}                 // ? clave: si es false, no captura eventos
                           opacity={permiteResizeAltura ? 1 : 0.25}        // ? visual deshabilitado
-                          onMouseDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
-                          onTouchStart={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
                           onPointerDown={permiteResizeAltura ? (e) => iniciarControlAltura(e, seccion.id) : undefined}
+                          onMouseDown={
+                            permiteResizeAltura && !supportsPointerEvents
+                              ? (e) => iniciarControlAltura(e, seccion.id)
+                              : undefined
+                          }
+                          onTouchStart={
+                            permiteResizeAltura && !supportsPointerEvents
+                              ? (e) => iniciarControlAltura(e, seccion.id)
+                              : undefined
+                          }
                           onMouseEnter={() => {
                             if (!controlandoAltura && permiteResizeAltura) setGlobalCursor("ns-resize", stageRef);
                           }}

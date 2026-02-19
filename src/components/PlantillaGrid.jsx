@@ -1,7 +1,6 @@
 // src/components/PlantillaGrid.jsx
 import { useState } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { useAuthClaims } from "@/hooks/useAuthClaims";
 
 const generarSlug = (texto) => {
   return String(texto || "")
@@ -17,10 +16,10 @@ export default function PlantillaGrid({
   plantillas,
   onSeleccionarPlantilla,
   onPlantillaBorrada,
+  isSuperAdmin = false,
 }) {
   const [loadingId, setLoadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-  const { esAdmin } = useAuthClaims();
 
   const borrarPlantilla = async (plantillaId) => {
     const confirmar = confirm("Seguro que quieres borrar esta plantilla? Esta accion no se puede deshacer.");
@@ -72,7 +71,7 @@ export default function PlantillaGrid({
           key={plantilla.id}
           className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
         >
-          {esAdmin && (
+          {isSuperAdmin && (
             <button
               onClick={(event) => {
                 event.preventDefault();

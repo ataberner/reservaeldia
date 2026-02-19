@@ -342,6 +342,23 @@ function parseBucketAndPathFromStorageValue(
   return { bucketName: bucket.name, path: normalizedPath };
 }
 
+function getBucketProjectKey(bucketName: string): string {
+  const normalized = (bucketName || "").toLowerCase().trim();
+  if (normalized.endsWith(".firebasestorage.app")) {
+    return normalized.replace(/\.firebasestorage\.app$/, "");
+  }
+  if (normalized.endsWith(".appspot.com")) {
+    return normalized.replace(/\.appspot\.com$/, "");
+  }
+  return normalized;
+}
+
+function areEquivalentStorageBuckets(a: string, b: string): boolean {
+  const keyA = getBucketProjectKey(a);
+  const keyB = getBucketProjectKey(b);
+  return Boolean(keyA && keyB && keyA === keyB);
+}
+
 function shouldCloneTemplateStoragePath(path: string, plantillaId: string): boolean {
   const normalized = path.toLowerCase();
   const ownSharedPrefix = `plantillas/${plantillaId.toLowerCase()}/assets/`;
@@ -367,22 +384,26 @@ function buildStorageDownloadUrl(path: string, token: string): string {
 }
 
 async function cloneTemplateAssetToSharedPath(
+  sourceBucketName: string,
   sourcePath: string,
   rawValue: string,
   plantillaId: string,
   cache: TemplateAssetCopyCache
 ): Promise<string> {
-  if (cache.has(sourcePath)) {
-    return cache.get(sourcePath) as Promise<string>;
+  const cacheKey = `${sourceBucketName}/${sourcePath}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey) as Promise<string>;
   }
 
   const copyPromise = (async (): Promise<string> => {
     try {
-      const sourceFile = bucket.file(sourcePath);
+      const sourceBucket = getStorage().bucket(sourceBucketName);
+      const sourceFile = sourceBucket.file(sourcePath);
       const [exists] = await sourceFile.exists();
       if (!exists) {
         logger.warn("Recurso no encontrado al normalizar plantilla", {
           plantillaId,
+          sourceBucketName,
           sourcePath,
         });
         return rawValue;
@@ -409,6 +430,7 @@ async function cloneTemplateAssetToSharedPath(
     } catch (error) {
       logger.error("Error normalizando recurso de plantilla", {
         plantillaId,
+        sourceBucketName,
         sourcePath,
         error,
       });
@@ -416,7 +438,7 @@ async function cloneTemplateAssetToSharedPath(
     }
   })();
 
-  cache.set(sourcePath, copyPromise);
+  cache.set(cacheKey, copyPromise);
   return copyPromise;
 }
 
@@ -427,13 +449,14 @@ async function normalizeTemplateAssetValue(
 ): Promise<string> {
   const parsed = parseBucketAndPathFromStorageValue(rawValue);
   if (!parsed) return rawValue;
-  if (parsed.bucketName !== bucket.name) return rawValue;
+  if (!areEquivalentStorageBuckets(parsed.bucketName, bucket.name)) return rawValue;
 
   const normalizedPath = parsed.path.replace(/^\/+/, "");
   if (!normalizedPath) return rawValue;
   if (!shouldCloneTemplateStoragePath(normalizedPath, plantillaId)) return rawValue;
 
   return cloneTemplateAssetToSharedPath(
+    parsed.bucketName,
     normalizedPath,
     rawValue,
     plantillaId,
@@ -1017,7 +1040,7 @@ export const crearPlantilla = onCall(
  * Admin: borrar plantilla
  * ================================
  *
- * Solo ADMIN (claim) puede borrar una plantilla base.
+ * Solo SUPERADMIN puede borrar una plantilla base.
  * La seguridad real se aplica acá (no solo en la UI).
  */
 export const borrarPlantilla = onCall(
@@ -1026,8 +1049,8 @@ export const borrarPlantilla = onCall(
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
   },
   async (request: CallableRequest<{ plantillaId: string }>) => {
-    // 🔒 Seguridad real: solo admins pueden borrar plantillas base
-    requireAdmin(request);
+    // 🔒 Seguridad real: solo superadmins pueden borrar plantillas base
+    requireSuperAdmin(request);
 
     const { plantillaId } = request.data || ({} as any);
 

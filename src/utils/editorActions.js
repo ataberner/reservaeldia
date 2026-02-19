@@ -63,7 +63,11 @@ export function ejecutarRehacer({
 
 export function duplicarElemento({ objetos, elementosSeleccionados, setObjetos, setElementosSeleccionados }) {
   const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
-  const duplicados = seleccionados.map((original, i) => ({
+  const duplicables = seleccionados.filter((o) => o?.tipo !== "countdown");
+
+  if (duplicables.length === 0) return;
+
+  const duplicados = duplicables.map((original, i) => ({
     ...original,
     id: `obj-${Date.now()}-${i}`,
     x: original.x + 20,
@@ -93,16 +97,32 @@ export function copiarElemento({ objetos, elementosSeleccionados }) {
   }
 }
 
-export function pegarElemento({ setObjetos, setElementosSeleccionados }) {
+export function pegarElemento({ objetos, setObjetos, setElementosSeleccionados }) {
   const copiados = window._objetosCopiados || [];
   if (!window._objetosCopiados || window._objetosCopiados.length === 0) return;
   const offset = 30 + Math.random() * 20;
-  const nuevos = copiados.map((c, i) => ({
-    ...c,
-    id: `obj-${Date.now()}-${i}`,
-    x: (c.x || 100) + offset,
-    y: (c.y || 100) + offset,
-  }));
+  const alreadyHasCountdown = Array.isArray(objetos)
+    ? objetos.some((o) => o?.tipo === "countdown")
+    : false;
+
+  let pastedCountdown = false;
+  const nuevos = [];
+
+  copiados.forEach((c, i) => {
+    if (c?.tipo === "countdown") {
+      if (alreadyHasCountdown || pastedCountdown) return;
+      pastedCountdown = true;
+    }
+
+    nuevos.push({
+      ...c,
+      id: `obj-${Date.now()}-${i}`,
+      x: (c.x || 100) + offset,
+      y: (c.y || 100) + offset,
+    });
+  });
+
+  if (nuevos.length === 0) return;
 
   setObjetos((prev) => [...prev, ...nuevos]);
   setElementosSeleccionados(nuevos.map((n) => n.id));

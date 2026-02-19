@@ -648,6 +648,8 @@ export default function SelectionBounds({
                 : 24;
             textTransformAnchorRef.current = {
               y: typeof node?.y === "function" ? node.y() : 0,
+              baseRotation:
+                typeof node?.rotation === "function" ? (node.rotation() || 0) : 0,
               centerX,
               centerY,
               baseWidth,
@@ -727,6 +729,12 @@ export default function SelectionBounds({
             const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
             let scaleFromRect = null;
             let liveRectWidth = null;
+            const currentRotation =
+              typeof node.rotation === "function" ? (node.rotation() || 0) : 0;
+            const baseRotation = Number(anchorData?.baseRotation);
+            const rotationDelta = Number.isFinite(baseRotation)
+              ? Math.abs(currentRotation - baseRotation)
+              : 0;
             try {
               const rect = node.getClientRect({
                 skipTransform: false,
@@ -746,8 +754,9 @@ export default function SelectionBounds({
                 scaleFromRect = rect.width / baseWidth;
               }
             } catch {}
+            const canUseRectScale = rotationDelta < 0.1;
             const effectiveScale =
-              Number.isFinite(scaleFromRect) && scaleFromRect > 0
+              canUseRectScale && Number.isFinite(scaleFromRect) && scaleFromRect > 0
                 ? scaleFromRect
                 : avgScale;
             transformData.fontSize = Math.max(
@@ -781,7 +790,7 @@ export default function SelectionBounds({
             }
             transformData.scaleX = 1;
             transformData.scaleY = 1;
-            if (Number.isFinite(textTransformAnchorRef.current?.y)) {
+            if (canUseRectScale && Number.isFinite(textTransformAnchorRef.current?.y)) {
               transformData.y = textTransformAnchorRef.current.y;
             }
             if (Number.isFinite(textTransformAnchorRef.current?.centerX)) {
@@ -1002,6 +1011,12 @@ export default function SelectionBounds({
             const avgScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
             let scaleFromRect = null;
             let visualWidthFromRect = null;
+            const currentRotation =
+              typeof node.rotation === "function" ? (node.rotation() || 0) : 0;
+            const baseRotation = Number(anchorData?.baseRotation);
+            const rotationDelta = Number.isFinite(baseRotation)
+              ? Math.abs(currentRotation - baseRotation)
+              : 0;
             try {
               const rect = node.getClientRect({
                 skipTransform: false,
@@ -1021,8 +1036,9 @@ export default function SelectionBounds({
                 scaleFromRect = rect.width / baseWidth;
               }
             } catch {}
+            const canUseRectScale = rotationDelta < 0.1;
             const effectiveScale =
-              Number.isFinite(scaleFromRect) && scaleFromRect > 0
+              canUseRectScale && Number.isFinite(scaleFromRect) && scaleFromRect > 0
                 ? scaleFromRect
                 : avgScale;
 
@@ -1041,7 +1057,7 @@ export default function SelectionBounds({
             );
             finalData.scaleX = 1;
             finalData.scaleY = 1;
-            if (Number.isFinite(anchorData?.y)) {
+            if (canUseRectScale && Number.isFinite(anchorData?.y)) {
               finalData.y = anchorData.y;
             }
             if (Number.isFinite(anchorData?.lastPreviewCenterX)) {
@@ -1147,6 +1163,15 @@ export default function SelectionBounds({
               node.getLayer()?.batchDraw();
             } catch (err) {
               console.warn("Error aplanando escala de texto (sync):", err);
+            }
+
+            if (!canUseRectScale) {
+              if (typeof node?.x === "function") {
+                finalData.x = node.x();
+              }
+              if (typeof node?.y === "function") {
+                finalData.y = node.y();
+              }
             }
 
             // Para texto evitamos aplanar antes del commit en React,

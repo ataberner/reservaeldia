@@ -1734,6 +1734,85 @@ export default function CanvasEditor({
     return safeCenterY - (nextHeight / 2);
   }, [obtenerMetricasTexto, medirAltoTextoKonva]);
 
+  const calcularPosTextoDesdeCentro = useCallback((
+    objTexto,
+    nextFontSize,
+    centerX,
+    centerY,
+    rotationDeg = 0
+  ) => {
+    if (!objTexto || objTexto.tipo !== "texto") {
+      return {
+        x: Number.isFinite(objTexto?.x) ? objTexto.x : 0,
+        y: null,
+      };
+    }
+
+    const safeNextSize =
+      Number.isFinite(nextFontSize) && nextFontSize > 0
+        ? nextFontSize
+        : (Number.isFinite(objTexto.fontSize) && objTexto.fontSize > 0 ? objTexto.fontSize : 24);
+    const safeCenterX = Number(centerX);
+    const safeCenterY = Number(centerY);
+    const safeRotation = Number(rotationDeg);
+    const theta = (Number.isFinite(safeRotation) ? safeRotation : 0) * (Math.PI / 180);
+
+    const baseLineHeight =
+      typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
+        ? objTexto.lineHeight
+        : 1.2;
+
+    const metrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: safeNextSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+    });
+    const widthFromKonva = medirAnchoTextoKonva(
+      objTexto,
+      objTexto.texto,
+      safeNextSize
+    );
+    const heightFromKonva = medirAltoTextoKonva(
+      objTexto,
+      objTexto.texto,
+      safeNextSize
+    );
+    const width =
+      Number.isFinite(widthFromKonva) && widthFromKonva > 0
+        ? widthFromKonva
+        : metrics.width;
+    const height =
+      Number.isFinite(heightFromKonva) && heightFromKonva > 0
+        ? heightFromKonva
+        : metrics.height;
+
+    const halfW = width / 2;
+    const halfH = height / 2;
+    const centerOffsetX = (halfW * Math.cos(theta)) - (halfH * Math.sin(theta));
+    const centerOffsetY = (halfW * Math.sin(theta)) + (halfH * Math.cos(theta));
+    const fallbackX = calcularXTextoDesdeCentro(objTexto, safeNextSize, safeCenterX);
+    const fallbackY = calcularYTextoDesdeCentro(objTexto, safeNextSize, safeCenterY);
+
+    return {
+      x: Number.isFinite(safeCenterX)
+        ? safeCenterX - centerOffsetX
+        : fallbackX,
+      y: Number.isFinite(safeCenterY)
+        ? safeCenterY - centerOffsetY
+        : fallbackY,
+      width,
+      height,
+    };
+  }, [
+    obtenerMetricasTexto,
+    medirAnchoTextoKonva,
+    medirAltoTextoKonva,
+    calcularXTextoDesdeCentro,
+    calcularYTextoDesdeCentro,
+  ]);
+
   const ajustarFontSizeAAnchoVisual = useCallback((objTexto, proposedFontSize, targetVisualWidth) => {
     const safeProposed = Number(proposedFontSize);
     const safeTargetWidth = Number(targetVisualWidth);
@@ -3644,9 +3723,21 @@ export default function CanvasEditor({
                                 // para que el tamaño final coincida exactamente con lo soltado.
                                 if (objOriginal.tipo === "texto" && Number.isFinite(cleanAttrs.fontSize)) {
                                   const requestedFontSize = Math.max(6, Number(cleanAttrs.fontSize) || 6);
+                                  const originalFontSize = Number.isFinite(objOriginal.fontSize)
+                                    ? objOriginal.fontSize
+                                    : 24;
+                                  const rotationFinal = Number.isFinite(cleanAttrs.rotation)
+                                    ? cleanAttrs.rotation
+                                    : (Number.isFinite(objOriginal.rotation) ? objOriginal.rotation : 0);
+                                  const previousRotation = Number.isFinite(objOriginal.rotation)
+                                    ? objOriginal.rotation
+                                    : 0;
+                                  const rotationChanged = Math.abs(rotationFinal - previousRotation) > 0.1;
+                                  const fontSizeChanged = Math.abs(requestedFontSize - originalFontSize) > 0.05;
                                   const shouldMatchVisualWidth =
                                     objOriginal.__autoWidth !== false &&
-                                    !Number.isFinite(objOriginal.width);
+                                    !Number.isFinite(objOriginal.width) &&
+                                    !rotationChanged;
                                   const nextFontSize = shouldMatchVisualWidth
                                     ? ajustarFontSizeAAnchoVisual(
                                       objOriginal,
@@ -3654,16 +3745,22 @@ export default function CanvasEditor({
                                       cleanAttrs.textVisualWidth
                                     )
                                     : requestedFontSize;
-                                  const centeredX = calcularXTextoDesdeCentro(
-                                    objOriginal,
-                                    nextFontSize,
-                                    cleanAttrs.textCenterX
-                                  );
-                                  const centeredYAbs = calcularYTextoDesdeCentro(
-                                    objOriginal,
-                                    nextFontSize,
-                                    cleanAttrs.textCenterY
-                                  );
+                                  const shouldUseNodePose =
+                                    rotationChanged &&
+                                    !fontSizeChanged &&
+                                    Number.isFinite(cleanAttrs.x) &&
+                                    Number.isFinite(cleanAttrs.y);
+                                  const centeredPosAbs = shouldUseNodePose
+                                    ? { x: Number(cleanAttrs.x), y: Number(cleanAttrs.y) }
+                                    : calcularPosTextoDesdeCentro(
+                                      objOriginal,
+                                      nextFontSize,
+                                      cleanAttrs.textCenterX,
+                                      cleanAttrs.textCenterY,
+                                      rotationFinal
+                                    );
+                                  const centeredX = centeredPosAbs.x;
+                                  const centeredYAbs = centeredPosAbs.y;
                                   const centeredY = Number.isFinite(centeredYAbs)
                                     ? convertirAbsARel(
                                       centeredYAbs,
@@ -3680,6 +3777,10 @@ export default function CanvasEditor({
                                     textVisualWidth: cleanAttrs.textVisualWidth ?? null,
                                     textCenterX: cleanAttrs.textCenterX ?? null,
                                     textCenterY: cleanAttrs.textCenterY ?? null,
+                                    rotationFinal,
+                                    rotationChanged,
+                                    fontSizeChanged,
+                                    shouldUseNodePose,
                                     centeredX,
                                     centeredYAbs,
                                     centeredY,

@@ -81,9 +81,10 @@ const onEliminar = useCallback(() => {
   }), [objetos, elementosSeleccionados]);
 
   const onPegar = useCallback(() => pegarElemento({
+    objetos,
     setObjetos,
     setElementosSeleccionados
-  }), []);
+  }), [objetos, setObjetos, setElementosSeleccionados]);
 
   const onCambiarAlineacion = useCallback(() => cambiarAlineacionTexto({
     objetos,

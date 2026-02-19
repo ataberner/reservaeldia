@@ -2,6 +2,34 @@
 import { useEffect } from "react";
 import computeInsertDefaults from "./computeInsertDefaults";
 
+const COUNTDOWN_STYLE_KEYS = [
+  "fontFamily",
+  "fontSize",
+  "color",
+  "labelColor",
+  "showLabels",
+  "boxBg",
+  "boxBorder",
+  "boxRadius",
+  "boxShadow",
+  "separator",
+  "gap",
+  "paddingX",
+  "paddingY",
+  "chipWidth",
+  "labelSize",
+  "padZero",
+  "layout",
+  "background",
+];
+
+function pickCountdownStylePatch(source = {}) {
+  return COUNTDOWN_STYLE_KEYS.reduce((acc, key) => {
+    acc[key] = source[key];
+    return acc;
+  }, {});
+}
+
 /**
  * Hook que concentra los eventos globales del editor y utilidades expuestas en window:
  * - window.asignarImagenACelda
@@ -97,12 +125,47 @@ export default function useEditorEvents({
         ALTURA_PANTALLA_EDITOR,
       });
 
+      const existingCountdownId =
+        nuevoConSeccion?.tipo === "countdown"
+          ? (Array.isArray(window._objetosActuales)
+            ? window._objetosActuales.find((o) => o?.tipo === "countdown")?.id
+            : null)
+          : null;
+
       setObjetos((prev) => {
-        const next = [...prev, nuevoConSeccion];
+        if (nuevoConSeccion?.tipo !== "countdown") {
+          return [...prev, nuevoConSeccion];
+        }
+
+        const countdownIndexes = [];
+        for (let i = 0; i < prev.length; i += 1) {
+          if (prev[i]?.tipo === "countdown") countdownIndexes.push(i);
+        }
+
+        if (countdownIndexes.length === 0) {
+          return [...prev, nuevoConSeccion];
+        }
+
+        const primaryIndex = countdownIndexes[0];
+        const existingCountdown = prev[primaryIndex];
+        const stylePatch = pickCountdownStylePatch(nuevoConSeccion);
+
+        const nextCountdown = {
+          ...existingCountdown,
+          ...stylePatch,
+          fechaObjetivo: nuevoConSeccion.fechaObjetivo ?? existingCountdown.fechaObjetivo,
+          presetId: nuevoConSeccion.presetId,
+        };
+
+        // Enforce global uniqueness: mantenemos solo un countdown por borrador.
+        const next = prev.filter(
+          (obj, index) => obj?.tipo !== "countdown" || index === primaryIndex
+        );
+        next[primaryIndex] = nextCountdown;
         return next;
       });
 
-      setElementosSeleccionados([nuevoConSeccion.id]);
+      setElementosSeleccionados([existingCountdownId || nuevoConSeccion.id]);
     };
 
     window.addEventListener("insertar-elemento", handler);
@@ -133,6 +196,11 @@ export default function useEditorEvents({
 
         const next = [...prev];
         next[i] = { ...next[i], ...cambios };
+
+        if (next[i]?.tipo === "countdown") {
+          return next.filter((obj, index) => obj?.tipo !== "countdown" || index === i);
+        }
+
         return next;
       });
 
@@ -209,4 +277,3 @@ export default function useEditorEvents({
     nuevoTextoRef,
   ]);
 }
-

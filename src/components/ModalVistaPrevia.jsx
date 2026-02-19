@@ -50,7 +50,7 @@ function PreviewFrame({
         ) : (
           <div className="flex h-full items-center justify-center bg-slate-50">
             <div className="flex items-center gap-3 text-slate-600">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-fuchsia-600 border-t-transparent" />
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#773dbe] border-t-transparent" />
               <span className="text-sm">Generando vista previa...</span>
             </div>
           </div>
@@ -165,22 +165,22 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] bg-[#f7f4ff]/70 backdrop-blur-sm">
       <div className="flex h-full w-full items-center justify-center p-2 sm:p-5">
-        <div className="flex h-full w-full max-w-[1540px] flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950 text-white shadow-[0_40px_120px_rgba(2,6,23,0.75)]">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-700/80 bg-slate-950/90 px-3 py-3 sm:px-4">
+        <div className="flex h-full w-full max-w-[1540px] flex-col overflow-hidden rounded-2xl border border-[#e9dcfb] bg-white text-slate-800 shadow-[0_30px_84px_rgba(111,59,192,0.18)]">
+          <div className="flex items-center justify-between gap-3 border-b border-[#e7dcf8] bg-gradient-to-r from-white via-[#faf6ff] to-[#f4f8ff] px-3 py-3 sm:px-4">
             <div className="min-w-0">
-              <p className="text-sm font-semibold sm:text-base">Vista previa</p>
-              <p className="truncate text-[11px] text-slate-300 sm:text-xs">{previewUrl}</p>
+              <p className="text-sm font-semibold text-slate-800 sm:text-base">Vista previa</p>
+              <p className="truncate text-[11px] text-[#6f3bc0]/80 sm:text-xs">{previewUrl}</p>
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden items-center gap-2 text-[11px] text-slate-300 sm:flex">
-                <span className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900/80 px-2 py-1">
+              <div className="hidden items-center gap-2 text-[11px] text-[#6f3bc0]/80 sm:flex">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#ddd2f5] bg-[#faf6ff] px-2 py-1">
                   <Monitor className="h-3.5 w-3.5" />
                   Escritorio
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900/80 px-2 py-1">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#ddd2f5] bg-[#faf6ff] px-2 py-1">
                   <Smartphone className="h-3.5 w-3.5" />
                   Movil
                 </span>
@@ -189,7 +189,7 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-slate-600 p-2 text-slate-200 hover:bg-slate-800"
+                className="rounded-lg border border-[#ddd2f5] bg-white p-2 text-[#6f3bc0] hover:bg-[#f4ecff]"
                 aria-label="Cerrar vista previa"
               >
                 <X className="h-4 w-4" />
@@ -202,7 +202,7 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
             className="flex-1 overflow-auto px-2 py-4 sm:px-5 sm:py-8"
             style={{
               background:
-                "radial-gradient(circle at 12% 0%, rgba(56,189,248,0.18), rgba(2,6,23,0.96) 40%), radial-gradient(circle at 86% 90%, rgba(251,146,60,0.15), rgba(2,6,23,0.2) 42%)",
+                "radial-gradient(1000px 520px at 8% -5%, rgba(221,210,245,0.68), rgba(250,246,255,0.88) 46%, rgba(250,246,255,0.35) 78%), radial-gradient(920px 500px at 88% 92%, rgba(209,226,255,0.55), rgba(244,248,255,0.86) 52%, rgba(244,248,255,0.32) 82%), linear-gradient(135deg, #ffffff 0%, #faf6ff 46%, #f4f8ff 100%)",
             }}
           >
             <div
@@ -211,23 +211,23 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
               }`}
             >
               <div className="relative">
-                <div className="absolute -inset-5 rounded-[34px] bg-sky-400/20 blur-2xl" />
+                <div className="absolute -inset-5 rounded-[34px] bg-[#ddd2f5]/70 blur-2xl" />
 
-                <div className="relative rounded-[28px] border border-slate-600/70 bg-slate-900/90 p-4 shadow-[0_35px_85px_rgba(2,6,23,0.65)]">
+                <div className="relative rounded-[28px] border border-[#e3d8f6] bg-white/95 p-4 shadow-[0_24px_64px_rgba(111,59,192,0.14)]">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2 px-1">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400/90" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400/90" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/90" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#c8b0ef]" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#b9d4f9]" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#bfe7ed]" />
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900/80 px-2 py-1 text-[10px] text-slate-300">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-[#ddd2f5] bg-[#faf6ff] px-2 py-1 text-[10px] text-[#6f3bc0]">
                       <Monitor className="h-3 w-3" />
                       Escritorio
                     </span>
                   </div>
 
                   <div
-                    className="mx-auto overflow-hidden rounded-xl border border-slate-400/70 bg-white shadow-xl"
+                    className="mx-auto overflow-hidden rounded-xl border border-[#e2d7f4] bg-white shadow-[0_18px_44px_rgba(111,59,192,0.16)]"
                     style={{ width: desktopScaledWidth, height: desktopScaledHeight }}
                   >
                     <PreviewFrame
@@ -243,24 +243,24 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
                   </div>
                 </div>
 
-                <div className="mx-auto h-3 w-44 rounded-b-xl bg-slate-700/90" />
-                <div className="mx-auto mt-1 h-2 w-64 rounded-full bg-slate-800/90" />
+                <div className="mx-auto h-3 w-44 rounded-b-xl bg-[#d8ccea]" />
+                <div className="mx-auto mt-1 h-2 w-64 rounded-full bg-[#c7badf]" />
               </div>
 
               <div
                 className="relative"
                 style={overlayPhone ? { marginLeft: -phoneOffsetX, marginTop: phoneOffsetY } : undefined}
               >
-                <div className="absolute -inset-4 rounded-[42px] bg-fuchsia-400/20 blur-2xl" />
+                <div className="absolute -inset-4 rounded-[42px] bg-[#d7e7ff]/70 blur-2xl" />
 
-                <div className="relative rounded-[38px] border-[10px] border-slate-900 bg-slate-950 p-2.5 shadow-[0_30px_70px_rgba(2,6,23,0.7)]">
+                <div className="relative rounded-[38px] border-[10px] border-[#d9cbed] bg-[#f8f5ff] p-2.5 shadow-[0_24px_56px_rgba(111,59,192,0.2)]">
                   <div className="mb-2 flex items-center justify-center gap-2">
-                    <span className="h-1.5 w-14 rounded-full bg-slate-700" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
+                    <span className="h-1.5 w-14 rounded-full bg-[#baa8d8]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#ab98cb]" />
                   </div>
 
                   <div
-                    className="overflow-hidden rounded-[26px] border border-slate-700 bg-white"
+                    className="overflow-hidden rounded-[26px] border border-[#dfd4f1] bg-white"
                     style={{ width: mobileScaledWidth, height: mobileScaledHeight }}
                   >
                     <PreviewFrame
@@ -279,7 +279,7 @@ export default function ModalVistaPrevia({ visible, onClose, htmlContent, public
             </div>
           </div>
 
-          <div className="border-t border-slate-700 px-3 py-2 text-[11px] text-slate-300 sm:px-4 sm:text-xs">
+          <div className="border-t border-[#e7dcf8] bg-white/80 px-3 py-2 text-[11px] text-[#6f3bc0]/80 sm:px-4 sm:text-xs">
             Vista escritorio ({DESKTOP_VIEWPORT_WIDTH}px) y movil ({MOBILE_VIEWPORT_WIDTH}px)
           </div>
         </div>

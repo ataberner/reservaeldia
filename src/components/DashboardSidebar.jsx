@@ -25,6 +25,9 @@ function safeContains(container, maybeNode) {
 
 
 const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
+const MOBILE_BREAKPOINT = 768;
+const MOBILE_BAR_HEIGHT_PX = 74;
+const MOBILE_PANEL_GUTTER_PX = 8;
 
 
 export default function DashboardSidebar({
@@ -40,6 +43,9 @@ export default function DashboardSidebar({
     const [mostrarGaleria, setMostrarGaleria] = useState(false);
     const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
     const [modoFormasCompleto, setModoFormasCompleto] = useState(false);
+    const [isMobileViewport, setIsMobileViewport] = useState(
+        typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
+    );
     const modalCrear = useModalCrearSeccion();
     const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'menu' | null
     const {
@@ -81,6 +87,14 @@ export default function DashboardSidebar({
         return () => document.removeEventListener("mousedown", handleClickFuera);
     }, [fijadoSidebar]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const syncViewport = () => setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
+        syncViewport();
+        window.addEventListener("resize", syncViewport);
+        return () => window.removeEventListener("resize", syncViewport);
+    }, []);
+
 
     const closeTimerRef = useRef(null);
 
@@ -105,6 +119,26 @@ export default function DashboardSidebar({
             closeTimerRef.current = null;
         }
     };
+
+    const closeSidebarPanel = useCallback(() => {
+        setFijadoSidebar(false);
+        setHoverSidebar(false);
+        setBotonActivo(null);
+    }, []);
+
+    useEffect(() => {
+        if (!isMobileViewport) return;
+
+        const tabsConAutoCierre = new Set(["texto", "imagen", "contador", "menu"]);
+        const handleInsertElement = () => {
+            if (!fijadoSidebar) return;
+            if (!botonActivo || !tabsConAutoCierre.has(botonActivo)) return;
+            closeSidebarPanel();
+        };
+
+        window.addEventListener("insertar-elemento", handleInsertElement);
+        return () => window.removeEventListener("insertar-elemento", handleInsertElement);
+    }, [isMobileViewport, fijadoSidebar, botonActivo, closeSidebarPanel]);
 
 
 
@@ -282,13 +316,13 @@ export default function DashboardSidebar({
     };
 
     const sidebarShellClass = `
-    fixed bottom-0 left-0 z-50 h-[62px] w-full text-slate-700
+    fixed bottom-0 left-0 z-50 h-[74px] w-full text-slate-700
     md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-16
-    flex items-center justify-around md:flex-col md:items-center md:justify-start
+    flex items-center justify-center md:flex-col md:items-center md:justify-start
     border-t border-[#e6dbf8] md:border-t-0 md:border-r md:border-[#e6dbf8]
     bg-white/95 backdrop-blur-sm
     shadow-[0_-6px_18px_rgba(15,23,42,0.08)] md:shadow-[8px_0_24px_rgba(15,23,42,0.08)]
-    py-2
+    px-2 py-1.5 md:px-0 md:py-2
   `;
 
     const iconGradientByButton = {
@@ -299,10 +333,11 @@ export default function DashboardSidebar({
         contador: "from-[#d27a47] to-[#b85b31]",
     };
 
-    const getIconButtonClass = (boton) => {
+    const getIconButtonClass = (boton, { compact = false } = {}) => {
         const isActive = fijadoSidebar && botonActivo === boton;
         const gradient = iconGradientByButton[boton] || iconGradientByButton.menu;
-        return `group flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br ${gradient} cursor-pointer transition-all duration-200 ${isActive
+        const shapeClass = compact ? "h-9 w-9 rounded-lg" : "h-10 w-10 rounded-xl";
+        return `group flex ${shapeClass} items-center justify-center border bg-gradient-to-br ${gradient} cursor-pointer transition-all duration-200 ${isActive
             ? "border-white/70 text-white ring-2 ring-white/55 shadow-[0_12px_24px_rgba(31,15,58,0.34)]"
             : "border-white/25 text-white/95 opacity-90 hover:-translate-y-[1px] hover:opacity-100 hover:border-white/40 hover:shadow-[0_12px_24px_rgba(31,15,58,0.28)]"
             }`;
@@ -333,7 +368,7 @@ export default function DashboardSidebar({
                     onClick={() => alternarSidebarConBoton("menu")}
                     onMouseEnter={() => openPanel("menu")}
 
-                    className={getIconButtonClass("menu")}
+                    className={`hidden md:flex ${getIconButtonClass("menu")}`}
                     title="Menú"
                 >
                     <FaBars className="text-lg" />
@@ -404,37 +439,45 @@ export default function DashboardSidebar({
                 </div>
 
                 {/* 📱 Móvil: barra horizontal inferior */}
-                <div className="flex w-full flex-row items-center justify-around rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-3 py-1.5 md:hidden">
+                <div className="grid w-full grid-cols-5 items-center gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
+                    <button
+                        onClick={() => alternarSidebarConBoton("menu")}
+                        className={`${getIconButtonClass("menu", { compact: true })} justify-self-center`}
+                        title="Menu"
+                    >
+                        <FaBars className="text-base" />
+                    </button>
+
                     <button
                         onClick={() => alternarSidebarConBoton("texto")}
-                        className={getIconButtonClass("texto")}
+                        className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
                         title="Añadir texto"
                     >
-                        <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
+                        <img src="/icons/texto.png" alt="Texto" className="h-5 w-5" />
                     </button>
 
                     <button
                         onClick={() => alternarSidebarConBoton("forma")}
-                        className={getIconButtonClass("forma")}
+                        className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
                         title="Añadir forma"
                     >
-                        <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
+                        <img src="/icons/forma.png" alt="Forma" className="h-5 w-5" />
                     </button>
 
                     <button
                         onClick={() => alternarSidebarConBoton("imagen")}
-                        className={getIconButtonClass("imagen")}
+                        className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
                         title="Abrir galería"
                     >
-                        <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
+                        <img src="/icons/imagen.png" alt="Imagen" className="h-5 w-5" />
                     </button>
 
                     <button
                         onClick={() => alternarSidebarConBoton("contador")}
-                        className={getIconButtonClass("contador")}
+                        className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
                         title="Cuenta regresiva"
                     >
-                        <span className="text-xl">⏱️</span>
+                        <span className="text-lg">⏱️</span>
                     </button>
                 </div>
             </aside>
@@ -445,7 +488,7 @@ export default function DashboardSidebar({
                 <div
                     id="sidebar-panel"
                     className="
-      absolute z-40 rounded-t-2xl border border-[#e6dbf8] bg-white
+      absolute z-40 rounded-2xl border border-[#e6dbf8] bg-white
       md:rounded-2xl shadow-[0_20px_40px_rgba(15,23,42,0.12)]
       transition-all duration-200 animate-slideUp
     "
@@ -466,13 +509,13 @@ export default function DashboardSidebar({
                         if (!fijadoSidebar) setHoverSidebar(true);
                     }}
                     style={
-                        typeof window !== "undefined" && window.innerWidth < 768
+                        isMobileViewport
                             ? {
-                                left: "0",
-                                right: "0",
-                                bottom: "calc(66px + env(safe-area-inset-bottom, 0px))",
-                                width: "100%",
-                                maxHeight: "60vh", // 🔹 ocupa más alto en móvil
+                                left: `${MOBILE_PANEL_GUTTER_PX}px`,
+                                right: `${MOBILE_PANEL_GUTTER_PX}px`,
+                                bottom: `calc(${MOBILE_BAR_HEIGHT_PX + MOBILE_PANEL_GUTTER_PX}px + env(safe-area-inset-bottom, 0px))`,
+                                width: "auto",
+                                maxHeight: "min(52vh, 440px)", // 🔹 menos invasivo en móvil
                                 overflowY: "auto", // 🔹 scroll vertical
                                 WebkitOverflowScrolling: "touch", // 🔹 scroll suave en iOS
                             }
@@ -489,11 +532,7 @@ export default function DashboardSidebar({
                         {/* 🔹 Botón para cerrar el panel */}
                         {fijadoSidebar && (
                             <button
-                                onClick={() => {
-                                    setFijadoSidebar(false);
-                                    setHoverSidebar(false);
-                                    setBotonActivo(null);
-                                }}
+                                onClick={closeSidebarPanel}
                                 className="
             absolute top-2 right-2 z-[60] flex h-8 w-8 items-center justify-center rounded-full
             border border-[#dbc9f6] bg-white text-[#6d3eb6]

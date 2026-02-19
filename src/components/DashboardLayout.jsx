@@ -26,13 +26,14 @@ export default function DashboardLayout({
   loadingAdminAccess,
 }) {
   useEffect(() => {
-    corregirURLsInvalidas(); // 🔧 Corrige URLs inválidas al entrar
+    corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
   }, []);
 
-  return (
-    <div className="flex h-screen bg-gray-100 relative">
+  const headerHeight = "var(--dashboard-header-height, 52px)";
 
-      {/* 🔹 Barra superior */}
+  return (
+    <div className="relative flex h-screen bg-gray-100">
+      {/* Barra superior */}
       <DashboardHeader
         slugInvitacion={slugInvitacion}
         setSlugInvitacion={setSlugInvitacion}
@@ -50,7 +51,7 @@ export default function DashboardLayout({
         loadingAdminAccess={loadingAdminAccess}
       />
 
-      {/* 🔹 Sidebar */}
+      {/* Sidebar */}
       {!ocultarSidebar && (
         <DashboardSidebar
           modoSelector={modoSelector}
@@ -59,23 +60,25 @@ export default function DashboardLayout({
         />
       )}
 
-      {/* 🔹 Área principal */}
+      {/* Area principal */}
       <main
         className={
           modoSelector
             ? "absolute left-0 right-0 overflow-y-auto bg-gray-50"
-            : "flex-1 overflow-y-auto px-2 pb-2 sm:px-4 sm:pb-4 pt-14 sm:pt-8"
-
+            : "flex-1 overflow-y-auto px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3"
         }
         style={
           modoSelector
             ? {
-              top: "50px",
-              height: "calc(100vh - 50px)",
-              transform: "translateZ(0)",
-              zIndex: 0,
-            }
-            : {}
+                top: headerHeight,
+                height: `calc(100vh - ${headerHeight})`,
+                transform: "translateZ(0)",
+                zIndex: 0,
+              }
+            : {
+                marginTop: headerHeight,
+                height: `calc(100vh - ${headerHeight})`,
+              }
         }
       >
         {children}

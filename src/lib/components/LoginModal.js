@@ -321,7 +321,7 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
 
         await signOut(auth);
         const verificationMessage =
-          "Tu correo aun no esta verificado. Revisalo y vuelve a iniciar sesion.";
+          "Tu correo aun no esta verificado. Revisa tu bandeja (y spam) y luego vuelve a iniciar sesion.";
         setNeedsVerification(true);
         setInfo(verificationMessage);
         onAuthNotice?.(verificationMessage);

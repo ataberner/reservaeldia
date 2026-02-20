@@ -31,7 +31,7 @@ export function isInAppBrowser() {
 export function shouldUseGoogleRedirect() {
   if (typeof window === "undefined") return false;
   if (isInAppBrowser()) return true;
-  return isMobileBrowser() && isStandaloneDisplayMode();
+  return isMobileBrowser();
 }
 
 function toBinaryFlag(value) {

@@ -382,7 +382,7 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
       await signOut(auth);
 
       const successMessage =
-        "Cuenta creada. Te enviamos un correo de verificacion. Debes verificarlo antes de ingresar.";
+        "Cuenta creada. Te enviamos un correo de verificacion. Revisa tu bandeja (y spam) y verificalo antes de ingresar.";
       setVerificationPending(true);
       setInfo(successMessage);
       onAuthNotice?.(successMessage);

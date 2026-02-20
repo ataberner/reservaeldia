@@ -13,25 +13,28 @@ function getErrorMessage(error, fallback) {
 }
 
 export function useAdminAccess(user) {
+  const userUid = user?.uid || null;
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [loadingAdminAccess, setLoadingAdminAccess] = useState(false);
+  const [loadingAdminAccessRaw, setLoadingAdminAccessRaw] = useState(false);
+  const [resolvedUid, setResolvedUid] = useState(null);
   const [adminAccessError, setAdminAccessError] = useState(null);
 
   const reset = useCallback(() => {
     setIsAdmin(false);
     setIsSuperAdmin(false);
     setAdminAccessError(null);
-    setLoadingAdminAccess(false);
+    setLoadingAdminAccessRaw(false);
+    setResolvedUid(null);
   }, []);
 
   const refreshAdminAccess = useCallback(async () => {
-    if (!user) {
+    if (!userUid) {
       reset();
       return null;
     }
 
-    setLoadingAdminAccess(true);
+    setLoadingAdminAccessRaw(true);
     setAdminAccessError(null);
 
     try {
@@ -56,18 +59,23 @@ export function useAdminAccess(user) {
       );
       return null;
     } finally {
-      setLoadingAdminAccess(false);
+      setResolvedUid(userUid);
+      setLoadingAdminAccessRaw(false);
     }
-  }, [reset, user]);
+  }, [reset, userUid]);
 
   useEffect(() => {
-    if (!user) {
+    if (!userUid) {
       reset();
       return;
     }
 
+    setResolvedUid((prev) => (prev === userUid ? prev : null));
     refreshAdminAccess();
-  }, [refreshAdminAccess, reset, user]);
+  }, [refreshAdminAccess, reset, userUid]);
+
+  const hasResolvedCurrentUser = !userUid || resolvedUid === userUid;
+  const loadingAdminAccess = loadingAdminAccessRaw || !hasResolvedCurrentUser;
 
   return {
     loadingAdminAccess,
@@ -78,4 +86,3 @@ export function useAdminAccess(user) {
     refreshAdminAccess,
   };
 }
-

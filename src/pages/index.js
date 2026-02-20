@@ -70,7 +70,7 @@ async function resolveRedirectUser({ expectRedirect = false } = {}) {
 
 function getAuthNoticeMessage(code) {
   if (code === "email-not-verified") {
-    return "Necesitas verificar tu correo antes de entrar al dashboard.";
+    return "Necesitas verificar tu correo antes de entrar al dashboard. Revisa tu bandeja y spam.";
   }
 
   if (code === "profile-check-failed") {
@@ -87,13 +87,23 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
+  const [isAuthTransitioning, setIsAuthTransitioning] = useState(false);
   const router = useRouter();
   const showGoogleAuthDebugLogo =
     typeof authNotice === "string" && authNotice.includes("[debug:");
 
   useEffect(() => {
+    if (auth.currentUser) {
+      setIsAuthTransitioning(true);
+      setShowLogin(false);
+      setShowRegister(false);
+      router.replace("/dashboard");
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) return;
+      setIsAuthTransitioning(true);
       setShowLogin(false);
       setShowRegister(false);
       router.replace("/dashboard");
@@ -111,15 +121,28 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search || "");
     const noticeCode = params.get("authNotice");
     const noticeMessage = getAuthNoticeMessage(noticeCode);
+    const emailVerified = params.get("emailVerified");
 
-    if (!noticeMessage) return;
+    let shouldCleanUrl = false;
 
-    setAuthNotice(noticeMessage);
-    if (noticeCode === "email-not-verified") {
+    if (noticeMessage) {
+      setAuthNotice(noticeMessage);
+      shouldCleanUrl = true;
+    }
+
+    if (noticeCode === "email-not-verified" || emailVerified === "1") {
       setShowLogin(true);
     }
 
+    if (emailVerified === "1") {
+      setAuthNotice("Correo verificado. Ya puedes iniciar sesion.");
+      shouldCleanUrl = true;
+    }
+
+    if (!shouldCleanUrl) return;
+
     params.delete("authNotice");
+    params.delete("emailVerified");
     const cleanQuery = params.toString();
     const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash || ""}`;
     window.history.replaceState({}, "", cleanUrl);
@@ -133,6 +156,9 @@ export default function Home() {
       const hadPendingRedirect = hasGoogleRedirectPending();
       const cameFromGoogleAuth = isLikelyGoogleReturnNavigation();
       const shouldExpectRedirect = hadPendingRedirect || cameFromGoogleAuth;
+      if (shouldExpectRedirect) {
+        setIsAuthTransitioning(true);
+      }
       const redirectDebugContext = getGoogleAuthDebugContext();
       const redirectDebugLabel = formatGoogleAuthDebugContext(
         redirectDebugContext
@@ -147,6 +173,7 @@ export default function Home() {
           setAuthNotice("");
           setShowLogin(false);
           setShowRegister(false);
+          setIsAuthTransitioning(true);
           router.replace("/dashboard");
           return;
         }
@@ -156,6 +183,7 @@ export default function Home() {
             `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: no-user; pending=${hadPendingRedirect ? "1" : "0"}; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
           );
           setShowLogin(true);
+          setIsAuthTransitioning(false);
         }
       } catch (err) {
         console.error("Error en redirect Google:", {
@@ -169,6 +197,7 @@ export default function Home() {
             `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: redirect-exception; pending=${hadPendingRedirect ? "1" : "0"}; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
           );
           setShowLogin(true);
+          setIsAuthTransitioning(false);
         }
       } finally {
         if (shouldExpectRedirect) {
@@ -197,6 +226,15 @@ export default function Home() {
         <link rel="dns-prefetch" href="//apis.google.com" />
         <link rel="dns-prefetch" href="//www.gstatic.com" />
       </Head>
+
+      {isAuthTransitioning && (
+        <div className="auth-transition-overlay" role="status" aria-live="polite">
+          <div className="auth-transition-card">
+            <span className="auth-transition-spinner" aria-hidden="true" />
+            <p>Completando inicio de sesion...</p>
+          </div>
+        </div>
+      )}
 
       <header className="navbar navbar-expand-lg navbar-light bg-light fixed-top py-3">
         <div className="container">

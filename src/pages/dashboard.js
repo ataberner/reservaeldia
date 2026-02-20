@@ -38,6 +38,9 @@ const FONT_PRELOAD_TIMEOUT_MS = 40000;
 const TOTAL_PRELOAD_TIMEOUT_MS = 90000;
 const SELECTOR_FONT_WARMUP_TIMEOUT_MS = 35000;
 const MIN_EDITOR_STARTUP_LOADER_MS = 1800;
+const HOME_DASHBOARD_LOADER_MAX_MS = 12000;
+const HOME_DASHBOARD_LOADER_EXIT_MS = 520;
+const EDITOR_STARTUP_LOADER_EXIT_MS = 920;
 const IMAGE_SOURCE_KEYS = new Set([
   "src",
   "url",
@@ -317,6 +320,10 @@ export default function Dashboard() {
   const [slugInvitacion, setSlugInvitacion] = useState(null);
   const [plantillas, setPlantillas] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [homeDraftsReady, setHomeDraftsReady] = useState(false);
+  const [homeTemplatesReady, setHomeTemplatesReady] = useState(false);
+  const [homeLoaderForcedDone, setHomeLoaderForcedDone] = useState(false);
+  const [holdHomeStartupLoader, setHoldHomeStartupLoader] = useState(false);
   const [urlIframe, setUrlIframe] = useState(null);
   const [zoom, setZoom] = useState(0.8);
   const [secciones, setSecciones] = useState([]);
@@ -352,9 +359,13 @@ export default function Dashboard() {
     createEditorRuntimeState()
   );
   const [holdEditorStartupLoader, setHoldEditorStartupLoader] = useState(false);
+  const [renderEditorStartupLoader, setRenderEditorStartupLoader] = useState(false);
   const attemptedAutoSendRef = useRef(new Set());
   const editorLoaderStartedAtRef = useRef(0);
   const editorLoaderHideTimerRef = useRef(null);
+  const editorLoaderExitTimerRef = useRef(null);
+  const homeLoaderForceTimerRef = useRef(null);
+  const homeLoaderHideTimerRef = useRef(null);
   const router = useRouter();
   const { loadingAdminAccess, isSuperAdmin, canManageSite } =
     useAdminAccess(usuario);
@@ -364,6 +375,18 @@ export default function Dashboard() {
       if (editorLoaderHideTimerRef.current) {
         clearTimeout(editorLoaderHideTimerRef.current);
         editorLoaderHideTimerRef.current = null;
+      }
+      if (editorLoaderExitTimerRef.current) {
+        clearTimeout(editorLoaderExitTimerRef.current);
+        editorLoaderExitTimerRef.current = null;
+      }
+      if (homeLoaderForceTimerRef.current) {
+        clearTimeout(homeLoaderForceTimerRef.current);
+        homeLoaderForceTimerRef.current = null;
+      }
+      if (homeLoaderHideTimerRef.current) {
+        clearTimeout(homeLoaderHideTimerRef.current);
+        homeLoaderHideTimerRef.current = null;
       }
     };
   }, []);
@@ -1200,6 +1223,68 @@ export default function Dashboard() {
     fetchPlantillas();
   }, [tipoSeleccionado]);
 
+  const isHomeView = !slugInvitacion && vista === "home";
+
+  useEffect(() => {
+    if (!isHomeView) return;
+    setHomeDraftsReady(false);
+    setHomeTemplatesReady(false);
+    setHomeLoaderForcedDone(false);
+  }, [isHomeView, tipoSeleccionado]);
+
+  useEffect(() => {
+    if (!isHomeView) return;
+
+    if (loading) {
+      setHomeTemplatesReady(false);
+      return;
+    }
+
+    if (!Array.isArray(plantillas) || plantillas.length === 0) {
+      setHomeTemplatesReady(true);
+    }
+  }, [isHomeView, loading, plantillas]);
+
+  useEffect(() => {
+    if (!isHomeView) {
+      if (homeLoaderForceTimerRef.current) {
+        clearTimeout(homeLoaderForceTimerRef.current);
+        homeLoaderForceTimerRef.current = null;
+      }
+      setHomeLoaderForcedDone(false);
+      return;
+    }
+
+    const waitingForHome =
+      loading || !homeDraftsReady || !homeTemplatesReady;
+
+    if (!waitingForHome) {
+      if (homeLoaderForceTimerRef.current) {
+        clearTimeout(homeLoaderForceTimerRef.current);
+        homeLoaderForceTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (homeLoaderForcedDone || homeLoaderForceTimerRef.current) return;
+
+    homeLoaderForceTimerRef.current = setTimeout(() => {
+      homeLoaderForceTimerRef.current = null;
+      setHomeLoaderForcedDone(true);
+      console.warn("[dashboard-home-loader] Timeout forzado:", {
+        loading,
+        homeDraftsReady,
+        homeTemplatesReady,
+      });
+    }, HOME_DASHBOARD_LOADER_MAX_MS);
+  }, [
+    homeDraftsReady,
+    homeLoaderForcedDone,
+    homeTemplatesReady,
+    isHomeView,
+    loading,
+  ]);
+
   // Listen custom event to open a draft
   useEffect(() => {
 
@@ -1369,8 +1454,13 @@ export default function Dashboard() {
         clearTimeout(editorLoaderHideTimerRef.current);
         editorLoaderHideTimerRef.current = null;
       }
+      if (editorLoaderExitTimerRef.current) {
+        clearTimeout(editorLoaderExitTimerRef.current);
+        editorLoaderExitTimerRef.current = null;
+      }
       editorLoaderStartedAtRef.current = 0;
       setHoldEditorStartupLoader(false);
+      setRenderEditorStartupLoader(false);
       return;
     }
 
@@ -1385,6 +1475,7 @@ export default function Dashboard() {
       }
 
       setHoldEditorStartupLoader(true);
+      setRenderEditorStartupLoader(true);
       return;
     }
 
@@ -1418,9 +1509,83 @@ export default function Dashboard() {
   }, [holdEditorStartupLoader, modoEditor, showEditorStartupLoaderRaw, slugInvitacion]);
 
   const showEditorStartupLoader = showEditorStartupLoaderRaw || holdEditorStartupLoader;
+  const shouldRenderEditorStartupLoader =
+    showEditorStartupLoader || renderEditorStartupLoader;
+  const isEditorStartupLoaderExiting =
+    !showEditorStartupLoader && shouldRenderEditorStartupLoader;
+
+  useEffect(() => {
+    if (showEditorStartupLoader) {
+      if (editorLoaderExitTimerRef.current) {
+        clearTimeout(editorLoaderExitTimerRef.current);
+        editorLoaderExitTimerRef.current = null;
+      }
+      if (!renderEditorStartupLoader) {
+        setRenderEditorStartupLoader(true);
+      }
+      return;
+    }
+
+    if (!renderEditorStartupLoader) return;
+
+    if (editorLoaderExitTimerRef.current) {
+      clearTimeout(editorLoaderExitTimerRef.current);
+    }
+
+    editorLoaderExitTimerRef.current = setTimeout(() => {
+      editorLoaderExitTimerRef.current = null;
+      setRenderEditorStartupLoader(false);
+    }, EDITOR_STARTUP_LOADER_EXIT_MS);
+
+    return () => {
+      if (editorLoaderExitTimerRef.current) {
+        clearTimeout(editorLoaderExitTimerRef.current);
+        editorLoaderExitTimerRef.current = null;
+      }
+    };
+  }, [renderEditorStartupLoader, showEditorStartupLoader]);
+
+  const showHomeStartupLoader =
+    isHomeView &&
+    !homeLoaderForcedDone &&
+    (loading || !homeDraftsReady || !homeTemplatesReady);
+  const shouldRenderHomeStartupLoader = showHomeStartupLoader || holdHomeStartupLoader;
+  const isHomeStartupLoaderExiting =
+    !showHomeStartupLoader && holdHomeStartupLoader;
+
+  useEffect(() => {
+    if (showHomeStartupLoader) {
+      if (homeLoaderHideTimerRef.current) {
+        clearTimeout(homeLoaderHideTimerRef.current);
+        homeLoaderHideTimerRef.current = null;
+      }
+      if (!holdHomeStartupLoader) {
+        setHoldHomeStartupLoader(true);
+      }
+      return;
+    }
+
+    if (!holdHomeStartupLoader) return;
+
+    if (homeLoaderHideTimerRef.current) {
+      clearTimeout(homeLoaderHideTimerRef.current);
+    }
+
+    homeLoaderHideTimerRef.current = setTimeout(() => {
+      homeLoaderHideTimerRef.current = null;
+      setHoldHomeStartupLoader(false);
+    }, HOME_DASHBOARD_LOADER_EXIT_MS);
+
+    return () => {
+      if (homeLoaderHideTimerRef.current) {
+        clearTimeout(homeLoaderHideTimerRef.current);
+        homeLoaderHideTimerRef.current = null;
+      }
+    };
+  }, [holdHomeStartupLoader, showHomeStartupLoader]);
 
 
-  if (checkingAuth) return <p>Cargando...</p>;
+  if (checkingAuth) return null;
   if (!usuario) return null; // Seguridad por si no se redirige
 
   return (
@@ -1460,7 +1625,40 @@ export default function Dashboard() {
 
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
       {!slugInvitacion && vista === "home" && (
-        <div className="w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+        <div className="relative w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+          {shouldRenderHomeStartupLoader && (
+            <div
+              className={
+                "absolute inset-0 z-20 flex items-start justify-center rounded-2xl bg-gradient-to-b from-gray-50/80 via-gray-50/55 to-gray-50/30 pt-20 backdrop-blur-[1.5px] transition-all duration-500 ease-out " +
+                (isHomeStartupLoaderExiting
+                  ? "pointer-events-none opacity-0 backdrop-blur-0"
+                  : "opacity-100")
+              }
+            >
+              <div
+                className={
+                  "flex flex-col items-center gap-3 text-gray-600 transition-all duration-500 ease-out will-change-transform " +
+                  (isHomeStartupLoaderExiting
+                    ? "opacity-0 translate-y-7 scale-90 blur-[1.5px]"
+                    : "opacity-100 translate-y-0 scale-100 blur-0")
+                }
+              >
+                <div className="relative flex h-11 w-11 items-center justify-center">
+                  <span className="absolute inset-0 animate-ping rounded-full border border-[#6f3bc0]/25" />
+                  <span className="h-10 w-10 animate-spin rounded-full border-2 border-gray-300/80 border-t-[#6f3bc0]" />
+                </div>
+                <p className="text-sm font-medium tracking-[0.01em] text-gray-600/95">Afinando los detalles...</p>
+              </div>
+            </div>
+          )}
+
+          <div
+            className={
+              showHomeStartupLoader
+                ? "pointer-events-none opacity-0"
+                : "opacity-100 transition-opacity duration-200"
+            }
+          >
           <div className="mx-auto w-full max-w-7xl space-y-8">
             {SHOW_TIPO_SELECTOR && (
               <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
@@ -1479,6 +1677,7 @@ export default function Dashboard() {
                 <BorradoresGrid
                   mostrarTitulo={false}
                   emptyMessage="Todavia no creaste borradores. Elige una plantilla para comenzar."
+                  onReadyChange={setHomeDraftsReady}
                 />
               </div>
             </section>
@@ -1521,6 +1720,7 @@ export default function Dashboard() {
                   <PlantillaGrid
                     plantillas={plantillas}
                     isSuperAdmin={isSuperAdmin}
+                    onReadyChange={setHomeTemplatesReady}
                     onPlantillaBorrada={(plantillaId) => {
                       setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
                     }}
@@ -1541,6 +1741,7 @@ export default function Dashboard() {
                 )}
               </div>
             </section>
+          </div>
           </div>
         </div>
       )}
@@ -1571,9 +1772,12 @@ export default function Dashboard() {
               <div className={shouldMountCanvasEditor ? "relative" : ""}>
                 {shouldMountCanvasEditor && (
                   <div
-                    className={showEditorStartupLoader
-                      ? "pointer-events-none opacity-0"
-                      : "opacity-100 transition-opacity duration-300"}
+                    className={
+                      "transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+                      (showEditorStartupLoader
+                        ? "pointer-events-none opacity-0 scale-[0.985] blur-[3px]"
+                        : "opacity-100 scale-100 blur-0")
+                    }
                     aria-hidden={showEditorStartupLoader ? "true" : undefined}
                   >
                     <CanvasEditor
@@ -1588,12 +1792,21 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {showEditorStartupLoader && (
+                {shouldRenderEditorStartupLoader && (
                   <div className={shouldMountCanvasEditor ? "absolute inset-0 z-10" : ""}>
+                    <div
+                      className={
+                        "w-full transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+                        (isEditorStartupLoaderExiting
+                          ? "pointer-events-none opacity-0 translate-y-10 scale-[1.03] blur-[2.5px]"
+                          : "opacity-100 translate-y-0 scale-100 blur-0")
+                      }
+                    >
                     <EditorStartupLoader
                       preloadState={editorPreloadState}
                       runtimeState={editorRuntimeState}
                     />
+                    </div>
                   </div>
                 )}
               </div>

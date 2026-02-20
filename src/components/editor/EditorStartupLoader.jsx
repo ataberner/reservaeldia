@@ -22,6 +22,7 @@ function toProgress(total, processed) {
 export default function EditorStartupLoader({ preloadState = {}, runtimeState = {} }) {
   const [lineIndex, setLineIndex] = useState(0);
   const [lineVisible, setLineVisible] = useState(true);
+  const [introVisible, setIntroVisible] = useState(false);
   const [displayProgress, setDisplayProgress] = useState(12);
   const [maxSignalProgress, setMaxSignalProgress] = useState(12);
   const progressStartAtRef = useRef(Date.now());
@@ -100,6 +101,23 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
   }, [preloadState.slug]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      setIntroVisible(true);
+      return undefined;
+    }
+
+    setIntroVisible(false);
+    let rafId = 0;
+    rafId = window.requestAnimationFrame(() => {
+      setIntroVisible(true);
+    });
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [preloadState.slug]);
+
+  useEffect(() => {
     setMaxSignalProgress((prev) => Math.max(prev, signalProgress));
   }, [signalProgress]);
 
@@ -162,46 +180,75 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
 
   return (
     <div className="w-full px-4 py-10 sm:px-6 lg:px-8">
-      <div className="relative mx-auto w-full max-w-4xl overflow-hidden rounded-[28px] border border-[#e4d7fb] bg-gradient-to-br from-white via-[#f9f4ff] to-[#eff4ff] p-6 shadow-[0_24px_60px_-35px_rgba(68,39,122,0.45)] sm:p-8">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#a978e8]/24 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-14 -left-10 h-44 w-44 rounded-full bg-[#8ea9ff]/22 blur-2xl" />
-        <div className="pointer-events-none absolute right-10 top-10 h-2.5 w-2.5 animate-pulse rounded-full bg-[#7a44ce]/70" />
-        <div className="pointer-events-none absolute bottom-12 left-16 h-2 w-2 animate-pulse rounded-full bg-[#4f82d9]/65" />
+      <div
+        className={
+          "mx-auto w-full max-w-4xl transform-gpu transition-all duration-[1100ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+          (introVisible
+            ? "opacity-100 translate-y-0 scale-100 blur-0"
+            : "opacity-0 translate-y-10 scale-[0.96] blur-[5px]")
+        }
+      >
+        <div className="relative overflow-hidden rounded-[28px] border border-[#e4d7fb] bg-gradient-to-br from-white via-[#f9f4ff] to-[#eff4ff] p-6 shadow-[0_24px_60px_-35px_rgba(68,39,122,0.45)] sm:p-8">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#a978e8]/24 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-14 -left-10 h-44 w-44 rounded-full bg-[#8ea9ff]/22 blur-2xl" />
+          <div className="pointer-events-none absolute right-10 top-10 h-2.5 w-2.5 animate-pulse rounded-full bg-[#7a44ce]/70" />
+          <div className="pointer-events-none absolute bottom-12 left-16 h-2 w-2 animate-pulse rounded-full bg-[#4f82d9]/65" />
 
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7a44ce]">
-            Reserva el Dia
-          </p>
-          <h3 className="mt-2 text-3xl leading-tight text-[#3c2d61] [font-family:'Cormorant_Garamond','Times_New_Roman',serif] sm:text-4xl">
-            Estamos preparando tu invitacion
-          </h3>
-          <p className="mt-3 mx-auto max-w-3xl text-center text-sm text-[#5f5682] sm:text-base">
-            Ajustamos el ambiente para que cuando se abra, se sienta exactamente como ustedes.
-          </p>
-        </div>
-
-        <div className="relative mt-7 rounded-2xl border border-white/80 bg-white/70 p-4 backdrop-blur-sm sm:p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7a44ce]">
-            Mientras afinamos cada detalle
-          </p>
-          <p
-            className={`mt-3 min-h-[82px] text-lg leading-relaxed text-[#403562] transition-opacity duration-500 [font-family:'Cormorant_Garamond','Times_New_Roman',serif] sm:min-h-[70px] sm:text-2xl ${lineVisible ? "opacity-100" : "opacity-0"}`}
+          <div
+            className={
+              "relative transform-gpu transition-all duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] " +
+              (introVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5")
+            }
+            style={{ transitionDelay: introVisible ? "140ms" : "0ms" }}
           >
-            {WEDDING_SCENES[lineIndex]}
-          </p>
-        </div>
-
-        <div className="mt-7">
-          <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase tracking-[0.14em] text-[#6e5aa8]">
-            <span>Avance general</span>
-            <span>{displayProgressLabel}</span>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7a44ce]">
+              Reserva el Dia
+            </p>
+            <h3 className="mt-2 text-3xl leading-tight text-[#3c2d61] [font-family:'Cormorant_Garamond','Times_New_Roman',serif] sm:text-4xl">
+              Estamos preparando tu invitacion
+            </h3>
+            <p className="mt-3 mx-auto max-w-3xl text-center text-sm text-[#5f5682] sm:text-base">
+              Ajustamos el ambiente para que cuando se abra, se sienta exactamente como ustedes.
+            </p>
           </div>
-          <div className="relative h-3 overflow-hidden rounded-full bg-[#e9ddfb]">
-            <div
-              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#6f3bc0] via-[#773dbe] to-[#4f82d9] transition-all duration-200 ease-linear"
-              style={{ width: `${displayProgressValue}%` }}
-            />
-            <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,transparent_20%,rgba(255,255,255,0.35)_45%,transparent_70%)]" />
+
+          <div
+            className={
+              "relative mt-7 rounded-2xl border border-white/80 bg-white/70 p-4 backdrop-blur-sm transition-all duration-[950ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 " +
+              (introVisible
+                ? "opacity-100 translate-y-0 scale-100"
+                : "opacity-0 translate-y-7 scale-[0.985]")
+            }
+            style={{ transitionDelay: introVisible ? "230ms" : "0ms" }}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7a44ce]">
+              Mientras afinamos cada detalle
+            </p>
+            <p
+              className={`mt-3 min-h-[82px] text-lg leading-relaxed text-[#403562] transition-opacity duration-500 [font-family:'Cormorant_Garamond','Times_New_Roman',serif] sm:min-h-[70px] sm:text-2xl ${lineVisible ? "opacity-100" : "opacity-0"}`}
+            >
+              {WEDDING_SCENES[lineIndex]}
+            </p>
+          </div>
+
+          <div
+            className={
+              "mt-7 transition-all duration-[980ms] ease-[cubic-bezier(0.22,1,0.36,1)] " +
+              (introVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8")
+            }
+            style={{ transitionDelay: introVisible ? "310ms" : "0ms" }}
+          >
+            <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase tracking-[0.14em] text-[#6e5aa8]">
+              <span>Avance general</span>
+              <span>{displayProgressLabel}</span>
+            </div>
+            <div className="relative h-3 overflow-hidden rounded-full bg-[#e9ddfb]">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#6f3bc0] via-[#773dbe] to-[#4f82d9] transition-all duration-200 ease-linear"
+                style={{ width: `${displayProgressValue}%` }}
+              />
+              <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,transparent_20%,rgba(255,255,255,0.35)_45%,transparent_70%)]" />
+            </div>
           </div>
         </div>
       </div>

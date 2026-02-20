@@ -454,7 +454,6 @@ export default function FloatingTextToolbar({
       });
 
       const expectedFontSizeById = new Map();
-      const metricCenterAnchoredIds = new Set();
       setObjetos((prev) =>
         prev.map((o) => {
           if (!targetIds.has(o.id)) return o;
@@ -474,11 +473,13 @@ export default function FloatingTextToolbar({
 
           if (debeAnclarCentroTexto(o)) {
             const centerObjetivo = centerTargetById.get(o.id);
-            if (Number.isFinite(centerObjetivo)) {
+            const debeAjustarPredictivo =
+              !Number.isFinite(o.width) &&
+              o.__autoWidth !== false;
+            if (Number.isFinite(centerObjetivo) && debeAjustarPredictivo) {
               const nextWidth = medirAnchoTexto(o, { fontSizeOverride: nextSize });
               const scaleX = normalizarEscalaX(o.scaleX);
               if (Number.isFinite(nextWidth) && nextWidth > 0) {
-                metricCenterAnchoredIds.add(o.id);
                 const currentX = Number.isFinite(o.x) ? o.x : 0;
                 const nextX = centerObjetivo - (nextWidth * scaleX) / 2;
                 if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.25) {
@@ -500,9 +501,6 @@ export default function FloatingTextToolbar({
           const deltaById = new Map();
           centerTargetById.forEach((centerObjetivo, id) => {
             if (!expectedFontSizeById.has(id)) return;
-            // Cuando anclamos por metrica (mismo enfoque del transformer),
-            // no corregimos por rect visual para no fijar el borde izquierdo.
-            if (metricCenterAnchoredIds.has(id)) return;
             const centerActual = obtenerCentroVisualXDesdeNodo(id);
             if (!Number.isFinite(centerActual)) return;
 

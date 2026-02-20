@@ -4,6 +4,15 @@ import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
 
+const DRAFT_PREVIEW_KEYS = [
+  "thumbnailUrl",
+  "thumbnailurl",
+  "thumbnail_url",
+  "portada",
+  "previewUrl",
+  "previewurl",
+];
+
 function toMs(value) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -28,12 +37,46 @@ function formatFecha(value) {
   }).format(date);
 }
 
+function toNonEmptyString(value) {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function isImageSrc(value) {
+  if (!value) return false;
+  return (
+    /^https?:\/\//i.test(value) ||
+    /^data:image\//i.test(value) ||
+    /^blob:/i.test(value) ||
+    value.startsWith("/")
+  );
+}
+
+function getBorradorPreviewCandidates(borrador) {
+  const candidates = [];
+
+  for (const key of DRAFT_PREVIEW_KEYS) {
+    const candidate = toNonEmptyString(borrador?.[key]);
+    if (isImageSrc(candidate) && !candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
+  }
+
+  if (!candidates.includes("/placeholder.jpg")) {
+    candidates.push("/placeholder.jpg");
+  }
+
+  return candidates;
+}
+
 export default function BorradoresGrid({
   mostrarTitulo = true,
   emptyMessage = "Aun no tienes borradores.",
+  onReadyChange,
 }) {
   const [borradores, setBorradores] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [thumbnailsSettledBySlug, setThumbnailsSettledBySlug] = useState({});
 
   useEffect(() => {
     let mounted = true;
@@ -72,6 +115,19 @@ export default function BorradoresGrid({
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    setThumbnailsSettledBySlug({});
+  }, [borradores]);
+
+  useEffect(() => {
+    if (typeof onReadyChange !== "function") return;
+
+    const total = Array.isArray(borradores) ? borradores.length : 0;
+    const settled = Object.keys(thumbnailsSettledBySlug).length;
+    const ready = !cargando && (total === 0 || settled >= total);
+    onReadyChange(ready);
+  }, [borradores, cargando, onReadyChange, thumbnailsSettledBySlug]);
 
   const borrarBorrador = async (slug) => {
     const confirmado = window.confirm(`Seguro que quieres borrar \"${slug}\"?`);
@@ -127,6 +183,8 @@ export default function BorradoresGrid({
         {borradores.map((borrador) => {
           const slug = borrador.slug || borrador.id;
           const nombre = borrador.nombre || slug;
+          const previewCandidates = getBorradorPreviewCandidates(borrador);
+          const previewSrc = previewCandidates[0] || "/placeholder.jpg";
           const fecha = formatFecha(
             borrador.updatedAt || borrador.fechaActualizacion || borrador.creadoEn || borrador.createdAt
           );
@@ -138,9 +196,30 @@ export default function BorradoresGrid({
             >
               <div className="relative aspect-square overflow-hidden bg-gray-100">
                 <img
-                  src={borrador.thumbnailUrl || "/placeholder.jpg"}
+                  src={previewSrc}
                   alt={`Vista previa de ${nombre}`}
                   className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
+                  data-preview-index="0"
+                  onLoad={() => {
+                    setThumbnailsSettledBySlug((prev) => {
+                      if (prev[slug]) return prev;
+                      return { ...prev, [slug]: true };
+                    });
+                  }}
+                  onError={(event) => {
+                    const img = event.currentTarget;
+                    const currentIndex = Number.parseInt(img.dataset.previewIndex || "0", 10);
+                    const nextIndex = currentIndex + 1;
+                    if (nextIndex >= previewCandidates.length) {
+                      setThumbnailsSettledBySlug((prev) => {
+                        if (prev[slug]) return prev;
+                        return { ...prev, [slug]: true };
+                      });
+                      return;
+                    }
+                    img.dataset.previewIndex = String(nextIndex);
+                    img.src = previewCandidates[nextIndex];
+                  }}
                 />
               </div>
 

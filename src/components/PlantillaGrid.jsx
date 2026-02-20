@@ -1,5 +1,5 @@
 // src/components/PlantillaGrid.jsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 const generarSlug = (texto) => {
@@ -17,9 +17,22 @@ export default function PlantillaGrid({
   onSeleccionarPlantilla,
   onPlantillaBorrada,
   isSuperAdmin = false,
+  onReadyChange,
 }) {
   const [loadingId, setLoadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [thumbnailsSettledById, setThumbnailsSettledById] = useState({});
+
+  useEffect(() => {
+    setThumbnailsSettledById({});
+  }, [plantillas]);
+
+  useEffect(() => {
+    if (typeof onReadyChange !== "function") return;
+    const total = Array.isArray(plantillas) ? plantillas.length : 0;
+    const settled = Object.keys(thumbnailsSettledById).length;
+    onReadyChange(total === 0 || settled >= total);
+  }, [onReadyChange, plantillas, thumbnailsSettledById]);
 
   const borrarPlantilla = async (plantillaId) => {
     const confirmar = confirm("Seguro que quieres borrar esta plantilla? Esta accion no se puede deshacer.");
@@ -91,6 +104,24 @@ export default function PlantillaGrid({
               src={plantilla.portada || "/placeholder.jpg"}
               alt={`Vista previa de ${plantilla.nombre}`}
               className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
+              onLoad={() => {
+                setThumbnailsSettledById((prev) => {
+                  if (prev[plantilla.id]) return prev;
+                  return { ...prev, [plantilla.id]: true };
+                });
+              }}
+              onError={(event) => {
+                const img = event.currentTarget;
+                if (img.dataset.fallbackApplied === "1") {
+                  setThumbnailsSettledById((prev) => {
+                    if (prev[plantilla.id]) return prev;
+                    return { ...prev, [plantilla.id]: true };
+                  });
+                  return;
+                }
+                img.dataset.fallbackApplied = "1";
+                img.src = "/placeholder.jpg";
+              }}
             />
           </div>
 

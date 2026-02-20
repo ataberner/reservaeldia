@@ -586,7 +586,13 @@ background: ${cell.bg};
             }
 
             return `
-<div class="galeria-celda" data-index="${idx}" style="${celdaStyle}">
+<div class="galeria-celda galeria-celda--clickable"
+     data-index="${idx}"
+     data-gallery-image="1"
+     role="button"
+     tabindex="0"
+     aria-label="Ver imagen en pantalla completa"
+     style="${celdaStyle}">
   <img src="${safeSrc}" alt="" loading="lazy" decoding="async"
        style="width:100%;height:100%;object-fit:${cell.fit};display:block;" />
 </div>

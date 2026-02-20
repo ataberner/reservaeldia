@@ -1,6 +1,7 @@
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
 import { generarModalRSVPHTML, type RSVPConfig as ModalConfig } from "./generarModalRSVP";
+import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGaleria";
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
@@ -133,6 +134,7 @@ export function generarHTMLDesdeSecciones(
   const hayRSVPEnCanvas = objetos?.some((o) => o.tipo === "rsvp-boton");
   const botonRSVP = ""; // (si querés agregar un botón fijo fuera del canvas, hacelo acá)
   const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled ? generarModalRSVPHTML(rsvp) : "";
+  const modalGaleria = hayGaleriaConImagenes(objetos) ? generarModalGaleriaHTML() : "";
 
   function hayCountdown(objs: any[]) {
     return Array.isArray(objs) && objs.some((o) => o?.tipo === "countdown");
@@ -401,6 +403,7 @@ export function generarHTMLDesdeSecciones(
 
   ${botonRSVP}
   ${modalRSVP}
+  ${modalGaleria}
 
   ${scriptCountdown}
 

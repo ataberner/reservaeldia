@@ -123,15 +123,78 @@ export default function useGuiasCentrado({
     };
 
     // ---- Candidatos de la MISMA sección (centros + bordes) ----
-    const buildSameSectionGuides = (node, stage, objetos, elementRefs, idSelf, seccionId) => {
-        const selfBox = node.getClientRect({ relativeTo: stage });
+    const getNodeBox = (node, stage, obj = null) => {
+        if (!node || !stage || typeof node.getClientRect !== "function") return null;
+
+        const rectOpts = { relativeTo: stage };
+
+        if (
+            obj?.tipo === "galeria" &&
+            Number.isFinite(Number(obj?.width)) &&
+            Number.isFinite(Number(obj?.height))
+        ) {
+            const xFromNode = typeof node.x === "function" ? node.x() : null;
+            const yFromNode = typeof node.y === "function" ? node.y() : null;
+            const absPos =
+                typeof node.getAbsolutePosition === "function"
+                    ? node.getAbsolutePosition(stage)
+                    : null;
+            const x =
+                Number.isFinite(xFromNode)
+                    ? xFromNode
+                    : Number.isFinite(absPos?.x)
+                    ? absPos.x
+                    : (typeof node.x === "function" ? node.x() : 0);
+            const y =
+                Number.isFinite(yFromNode)
+                    ? yFromNode
+                    : Number.isFinite(absPos?.y)
+                    ? absPos.y
+                    : (typeof node.y === "function" ? node.y() : 0);
+
+            return {
+                x,
+                y,
+                width: Number(obj.width),
+                height: Number(obj.height),
+            };
+        }
+
+        // La galeria usa overlays por celda; medir su frame base evita offsets falsos.
+        if (obj?.tipo === "galeria" && typeof node.findOne === "function") {
+            const galleryFrame = node.findOne(".gallery-transform-frame");
+            if (galleryFrame && typeof galleryFrame.getClientRect === "function") {
+                try {
+                    return galleryFrame.getClientRect({
+                        relativeTo: stage,
+                        skipShadow: true,
+                        skipStroke: true,
+                    });
+                } catch {
+                    // fallback al rect completo
+                }
+            }
+        }
+
+        try {
+            return node.getClientRect(rectOpts);
+        } catch {
+            return null;
+        }
+    };
+
+    const buildSameSectionGuides = (node, stage, objetos, elementRefs, idSelf, seccionId, objById) => {
+        const selfObj = objById.get(idSelf) || null;
+        const selfBox = getNodeBox(node, stage, selfObj);
+        if (!selfBox) return [];
         const candidates = objetos
             .filter(o => o.id !== idSelf && o.seccionId === seccionId) // 🔒 MISMA SECCIÓN
             .map(o => {
                 const n = elementRefs.current?.[o.id];
                 if (!n) return null;
                 try {
-                    const b = n.getClientRect({ relativeTo: stage });
+                    const b = getNodeBox(n, stage, objById.get(o.id) || null);
+                    if (!b) return null;
                     const d = Math.abs((selfBox.x + selfBox.width / 2) - (b.x + b.width / 2))
                         + Math.abs((selfBox.y + selfBox.height / 2) - (b.y + b.height / 2));
                     return { box: b, d };
@@ -175,7 +238,10 @@ export default function useGuiasCentrado({
         if (!stage) return;
 
         try {
-            const selfBoxBefore = node.getClientRect({ relativeTo: stage });
+            const objById = new Map(objetos.map((o) => [o.id, o]));
+            const objActual = objById.get(idActual) || null;
+            const selfBoxBefore = getNodeBox(node, stage, objActual);
+            if (!selfBoxBefore) return;
             const selfCx = selfBoxBefore.x + selfBoxBefore.width / 2;
             const selfCy = selfBoxBefore.y + selfBoxBefore.height / 2;
 
@@ -195,7 +261,15 @@ export default function useGuiasCentrado({
             const distSecY = Math.abs(selfCy - secCy);
 
             // 2) ELEMENTOS (MISMA SECCIÓN): elegir mejor candidato por eje
-            const elementGuides = buildSameSectionGuides(node, stage, objetos, elementRefs, idActual, seccion.id);
+            const elementGuides = buildSameSectionGuides(
+                node,
+                stage,
+                objetos,
+                elementRefs,
+                idActual,
+                seccion.id,
+                objById
+            );
 
             const bestElX = elementGuides
                 .filter(g => g.axis === "x")
@@ -228,7 +302,8 @@ export default function useGuiasCentrado({
 
             const applySnap = (axis, decision) => {
                 if (!decision) return { snapped: false };
-                const fresh = node.getClientRect({ relativeTo: stage });
+                const fresh = getNodeBox(node, stage, objActual);
+                if (!fresh) return { snapped: false };
 
                 if (decision.source === "seccion") {
                     if (axis === "x") {
@@ -251,7 +326,8 @@ export default function useGuiasCentrado({
             const snapResY = applySnap("y", decisionY);
 
             // Recalcular box luego del snap para dibujar reach exacta
-            const selfBoxAfter = node.getClientRect({ relativeTo: stage });
+            const selfBoxAfter = getNodeBox(node, stage, objActual);
+            if (!selfBoxAfter) return;
             const selfCxAfter = selfBoxAfter.x + selfBoxAfter.width / 2;
             const selfCyAfter = selfBoxAfter.y + selfBoxAfter.height / 2;
 

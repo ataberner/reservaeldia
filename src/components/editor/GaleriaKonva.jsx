@@ -133,6 +133,9 @@ export default function GaleriaKonva({
         }
       }}
       onDragEnd={(e) => {
+        // Reaplica snap en el frame final antes de persistir la posicion.
+        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
+
         const finalX = e.target.x();
         const finalYAbs = e.target.y();
 

@@ -27,6 +27,7 @@ export default function DashboardHeader({
 }) {
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
+    const accionesMobileRef = useRef(null);
     const headerRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
     const router = useRouter();
@@ -184,15 +185,19 @@ export default function DashboardHeader({
 
     // Cerrar menú si clic afuera
     useEffect(() => {
-        const handleClickOutside = (e) => {
+        const handlePointerDownOutside = (e) => {
             if (menuRef.current && !menuRef.current.contains(e.target)) {
                 setMenuAbierto(false);
             }
-            setAccionesMobileAbiertas(false);
-
+            if (
+                accionesMobileRef.current &&
+                !accionesMobileRef.current.contains(e.target)
+            ) {
+                setAccionesMobileAbiertas(false);
+            }
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener("pointerdown", handlePointerDownOutside);
+        return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
     }, []);
 
     // 🔹 Función para guardar plantilla
@@ -473,7 +478,7 @@ export default function DashboardHeader({
                     </div>
 
                     {/* ----------------- ACCIONES (mobile) ----------------- */}
-                    <div className="sm:hidden ml-auto relative">
+                    <div ref={accionesMobileRef} className="sm:hidden ml-auto relative">
                         <button
                             onClick={() => setAccionesMobileAbiertas((v) => !v)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e6dbf8] bg-white/95 text-[#773dbe] shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:shadow-[0_12px_24px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]"
@@ -558,7 +563,7 @@ export default function DashboardHeader({
                                 : "Mis invitaciones publicadas"}
                         </button>
 
-                        {!loadingAdminAccess && isSuperAdmin && (
+                        {!loadingAdminAccess && canManageSite && (
                             <button
                                 onClick={() =>
                                     onCambiarVista(
@@ -574,7 +579,7 @@ export default function DashboardHeader({
                                         ? "Volver al inicio del dashboard"
                                         : isSuperAdmin
                                         ? "Abrir tablero de gestión (superadmin)"
-                                        : "Abrir tablero de gestión"
+                                        : "Abrir tablero de gestión (admin)"
                                 }
                             >
                                 {vistaActual === "gestion"

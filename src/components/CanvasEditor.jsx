@@ -2523,10 +2523,35 @@ export default function CanvasEditor({
         detail: {
           ids: [...elementosSeleccionados],
           activeSectionId: seccionActivaId || null,
+          galleryCell: celdaGaleriaActiva || null,
         },
       })
     );
-  }, [elementosSeleccionados, objetos, secciones, altoCanvas, seccionActivaId]);
+  }, [elementosSeleccionados, objetos, secciones, altoCanvas, seccionActivaId, celdaGaleriaActiva]);
+
+  useEffect(() => {
+    if (!celdaGaleriaActiva) return;
+
+    const { objId } = celdaGaleriaActiva;
+    const galeriaExiste = objetos.some((o) => o.id === objId && o.tipo === "galeria");
+    if (!galeriaExiste) {
+      setCeldaGaleriaActiva(null);
+      return;
+    }
+
+    if (elementosSeleccionados.length !== 1 || elementosSeleccionados[0] !== objId) {
+      setCeldaGaleriaActiva(null);
+    }
+  }, [celdaGaleriaActiva, elementosSeleccionados, objetos]);
+
+  useEffect(() => {
+    window._celdaGaleriaActiva = celdaGaleriaActiva || null;
+    window.dispatchEvent(
+      new CustomEvent("editor-gallery-cell-change", {
+        detail: { cell: celdaGaleriaActiva || null },
+      })
+    );
+  }, [celdaGaleriaActiva]);
 
   useEffect(() => {
     window.dispatchEvent(

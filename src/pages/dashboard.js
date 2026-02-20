@@ -1039,8 +1039,14 @@ export default function Dashboard() {
         } catch (_e) {}
       }
 
+      const slugPublicoNormalizado =
+        normalizarSlugPublico(slugPublicoDetectado) ||
+        normalizarSlugPublico(urlPublicaDetectada) ||
+        normalizarSlugPublico(slugPublicoBorrador) ||
+        null;
+
       setUrlPublicaVistaPrevia(urlPublicaDetectada || null);
-      setSlugPublicoVistaPrevia(slugPublicoDetectado || null);
+      setSlugPublicoVistaPrevia(slugPublicoNormalizado);
       const previewDebug = (() => {
         try {
           const qp = new URLSearchParams(window.location.search || "");
@@ -1117,20 +1123,47 @@ export default function Dashboard() {
     }
   };
 
-  const parseSlugFromPublicUrl = (urlValue) => {
-    const raw = String(urlValue || "").trim();
-    if (!raw) return null;
+  const extractSlugCandidate = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
 
     try {
       const parsed = new URL(raw);
       const segments = parsed.pathname.split("/").filter(Boolean);
       const iIndex = segments.indexOf("i");
       if (iIndex >= 0 && segments[iIndex + 1]) return segments[iIndex + 1];
-      return segments[segments.length - 1] || null;
+      return segments[segments.length - 1] || "";
     } catch (_e) {
-      return null;
+      const withoutQuery = raw.split(/[?#]/)[0] || raw;
+      const normalizedPath = withoutQuery.replace(/^\/+|\/+$/g, "");
+      if (!normalizedPath.includes("/")) return normalizedPath;
+      const segments = normalizedPath.split("/").filter(Boolean);
+      const iIndex = segments.indexOf("i");
+      if (iIndex >= 0 && segments[iIndex + 1]) return segments[iIndex + 1];
+      return segments[segments.length - 1] || "";
     }
   };
+
+  const normalizarSlugPublico = (value) => {
+    let candidate = extractSlugCandidate(value);
+    if (!candidate) return "";
+
+    try {
+      candidate = decodeURIComponent(candidate);
+    } catch (_e) {}
+
+    return candidate
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/g, "")
+      .replace(/-+/g, "-")
+      .replace(/_+/g, "_")
+      .replace(/^[-_]+|[-_]+$/g, "");
+  };
+
+  const parseSlugFromPublicUrl = (urlValue) => normalizarSlugPublico(urlValue) || null;
 
   const publicarDesdeVistaPrevia = async () => {
     if (!slugInvitacion || publicandoDesdeVistaPrevia) return;
@@ -1141,8 +1174,11 @@ export default function Dashboard() {
 
     try {
       const publicarInvitacionCallable = httpsCallable(cloudFunctions, "publicarInvitacion");
-      const payload = slugPublicoVistaPrevia
-        ? { slug: slugInvitacion, slugPublico: slugPublicoVistaPrevia }
+      const slugPublicoNormalizado =
+        normalizarSlugPublico(slugPublicoVistaPrevia) ||
+        normalizarSlugPublico(urlPublicaVistaPrevia);
+      const payload = slugPublicoNormalizado && slugPublicoNormalizado !== slugInvitacion
+        ? { slug: slugInvitacion, slugPublico: slugPublicoNormalizado }
         : { slug: slugInvitacion };
 
       const result = await publicarInvitacionCallable(payload);
@@ -1151,13 +1187,13 @@ export default function Dashboard() {
         throw new Error("No se recibio la URL publica");
       }
 
-      const slugPublicado = parseSlugFromPublicUrl(url) || slugPublicoVistaPrevia || null;
+      const slugPublicado = parseSlugFromPublicUrl(url) || slugPublicoNormalizado || null;
 
       setUrlPublicaVistaPrevia(url);
       setUrlPublicadaReciente(url);
       setSlugPublicoVistaPrevia(slugPublicado);
       setPublicacionVistaPreviaOk(
-        slugPublicoVistaPrevia
+        slugPublicoNormalizado || urlPublicaVistaPrevia
           ? "Invitacion actualizada correctamente."
           : "Invitacion publicada correctamente."
       );
@@ -1412,13 +1448,13 @@ export default function Dashboard() {
     if (checkingAuth || slugInvitacion) return;
     if (vista !== "gestion") return;
     if (loadingAdminAccess) return;
-    if (isSuperAdmin) return;
+    if (canManageSite) return;
 
     setVista("home");
     alert("No tenes permisos para acceder al tablero de gestion.");
   }, [
     checkingAuth,
-    isSuperAdmin,
+    canManageSite,
     loadingAdminAccess,
     slugInvitacion,
     vista,
@@ -1756,9 +1792,10 @@ export default function Dashboard() {
 
 
       {/* Invitation editor */}
-      {!slugInvitacion && vista === "gestion" && isSuperAdmin && (
+      {!slugInvitacion && vista === "gestion" && canManageSite && (
         <div className="w-full px-4 pb-8">
           <SiteManagementBoard
+            canManageSite={canManageSite}
             isSuperAdmin={isSuperAdmin}
             loadingAdminAccess={loadingAdminAccess}
           />

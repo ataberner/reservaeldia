@@ -841,21 +841,23 @@ export const publicarInvitacion = onCall(
 
     // 🔹 5. Guardar metadatos en Firestore
     const url = `https://reservaeldia.com.ar/i/${slugDestino}`;
-    await db.collection("publicadas").doc(slugDestino).set(
-      {
-        slug: slugDestino,
-        slugOriginal: slug !== slugDestino ? slug : undefined,
-        userId: data.userId,
-        plantillaId: data.plantillaId || null,
-        urlPublica: url,
-        nombre: data.nombre || slugDestino,
-        tipo: data.tipo || data.plantillaTipo || "desconocido",
-        portada: data.thumbnailUrl || null,
-        invitadosCount: data.invitadosCount || 0,
-        publicadaEn: safeServerTimestamp(),
-      },
-      { merge: true }
-    );
+    const publicacionData: Record<string, unknown> = {
+      slug: slugDestino,
+      userId: data.userId || null,
+      plantillaId: data.plantillaId || null,
+      urlPublica: url,
+      nombre: data.nombre || slugDestino,
+      tipo: data.tipo || data.plantillaTipo || "desconocido",
+      portada: data.thumbnailUrl || null,
+      invitadosCount: data.invitadosCount || 0,
+      publicadaEn: safeServerTimestamp(),
+    };
+
+    if (slug !== slugDestino) {
+      publicacionData.slugOriginal = slug;
+    }
+
+    await db.collection("publicadas").doc(slugDestino).set(publicacionData, { merge: true });
 
     // 🔁 6. Guardar también el slugPublico dentro del borrador original
     if (slugPublico && slugPublico !== slug) {

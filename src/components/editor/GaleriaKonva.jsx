@@ -1,10 +1,10 @@
 // src/components/editor/GaleriaKonva.jsx
 //
-// Galería de imágenes como UN solo objeto en Konva.
-// - Calcula su propio offset Y por sección (calcularOffsetY).
+// Galeria de imagenes como UN solo objeto en Konva.
+// - Calcula su propio offset Y por seccion (calcularOffsetY).
 // - Renderiza las celdas en base a calcGalleryLayout.
-// - Permite seleccionar la galería y una celda (onSelect + onPickCell/setCeldaGaleriaActiva).
-// - Arrastre del grupo actualiza sección/posición (determinarNuevaSeccion).
+// - Permite seleccionar la galeria y una celda (onSelect + onPickCell/setCeldaGaleriaActiva).
+// - Arrastre del grupo actualiza seccion/posicion (determinarNuevaSeccion).
 //
 // Dependencias de frontend: utils/layout (NO usar funciones de functions/).
 // ----------------------------------------------------------------------
@@ -15,7 +15,6 @@ import useImage from "use-image";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
 
-// Imagen dentro de la celda con fit cover/contain (memo no necesario si src cambia poco)
 function ImagenCelda({ src, fit = "cover", w, h }) {
   const [img] = useImage(src, "anonymous");
   if (!img) return null;
@@ -45,28 +44,23 @@ export default function GaleriaKonva({
   obj,
   registerRef,
   onHover,
-  isSelected, // (hoy no lo usamos, pero lo dejamos por compatibilidad)
+  isSelected,
   onSelect,
   onChange,
   onDragStartPersonalizado,
   onDragMovePersonalizado,
   onDragEndPersonalizado,
-  // celda activa / selección de celda
   celdaGaleriaActiva,
-  onPickCell,              // preferido
-  setCeldaGaleriaActiva,   // fallback
-  // secciones
+  onPickCell,
+  setCeldaGaleriaActiva,
   seccionesOrdenadas = [],
   altoCanvas = 0,
 }) {
   const [hoveredCell, setHoveredCell] = useState(null);
 
-  // 1) Sección y offset
   const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
   const offsetY = calcularOffsetY(seccionesOrdenadas, indexSeccion);
 
-
-  // 2) Normalizar números
   const toNum = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
   const radius = Math.max(0, toNum(obj.radius, 0));
   const gap = Math.max(0, toNum(obj.gap, 0));
@@ -74,13 +68,11 @@ export default function GaleriaKonva({
   const cols = Math.max(1, toNum(obj.cols, 1));
   const width = Math.max(1, toNum(obj.width, 400));
 
-  // 3) Ratio alto/ancho por celda
   const cellRatio =
     obj.ratio === "4:3" ? 3 / 4 :
       obj.ratio === "16:9" ? 9 / 16 :
         1;
 
-  // 4) Layout de celdas
   const { rects, totalHeight } = useMemo(() => {
     try {
       return calcGalleryLayout({ width, rows, cols, gap, cellRatio });
@@ -90,6 +82,21 @@ export default function GaleriaKonva({
   }, [width, rows, cols, gap, cellRatio]);
 
   const safeTotalHeight = Math.max(1, totalHeight);
+
+  const seleccionarCelda = (index, evt) => {
+    if (evt?.target?.id?.() === `btn-${obj.id}-${index}`) return;
+    if (evt) evt.cancelBubble = true;
+    const payload = { objId: obj.id, index };
+    onPickCell?.(payload);
+    setCeldaGaleriaActiva?.(payload);
+  };
+
+  const limpiarCelda = (index, evt) => {
+    if (evt) evt.cancelBubble = true;
+    const nuevasCells = [...(obj.cells || [])];
+    nuevasCells[index] = { ...(nuevasCells[index] || {}), mediaUrl: null };
+    onChange?.(obj.id, { cells: nuevasCells });
+  };
 
   return (
     <Group
@@ -113,9 +120,13 @@ export default function GaleriaKonva({
         if (e && e.evt) e.evt.cancelBubble = true;
         onSelect?.(obj.id, e);
       }}
+      onTap={(e) => {
+        if (e && e.evt) e.evt.cancelBubble = true;
+        onSelect?.(obj.id, e);
+      }}
       onDragStart={(e) => {
         if (!isSelected) {
-          e.target.stopDrag(); // 🔒 evita drag si no está seleccionado
+          e.target.stopDrag();
           return;
         }
         window._isDragging = true;
@@ -128,12 +139,11 @@ export default function GaleriaKonva({
         if (!isSelected) return;
         const node = e.target.getStage()?.findOne(`#${obj.id}`);
         if (node) {
-          node.draggable(true);   // habilitar
-          node.startDrag(e);      // iniciar drag real
+          node.draggable(true);
+          node.startDrag(e);
         }
       }}
       onDragEnd={(e) => {
-        // Reaplica snap en el frame final antes de persistir la posicion.
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
 
         const finalX = e.target.x();
@@ -195,81 +205,64 @@ export default function GaleriaKonva({
           ctx.closePath();
         };
 
+        const mostrarBotonQuitar = mediaUrl && (hoveredCell === i || esActiva);
+
         return (
-          // Reemplazá el retorno de cada celda dentro del map(rects) por esta estructura:
+          <Group
+            key={`${obj.id}-${i}`}
+            x={r.x}
+            y={r.y}
+            onMouseEnter={() => setHoveredCell(i)}
+            onMouseLeave={() => setHoveredCell(null)}
+            onMouseDown={(e) => seleccionarCelda(i, e)}
+            onTap={(e) => seleccionarCelda(i, e)}
+          >
+            <Rect x={0} y={0} width={r.width} height={r.height} fill="transparent" />
 
-<React.Fragment key={`${obj.id}-${i}`}>
-  {/* 🔲 WRAPPER: maneja hover de celda + botón X como una sola zona */}
-  <Group
-    x={r.x}
-    y={r.y}
-    // hover unificado
-    onMouseEnter={() => setHoveredCell(i)}
-    onMouseLeave={() => setHoveredCell(null)}
-    // click en el wrapper: si cae en la celda, selecciona
-    onMouseDown={(e) => {
-      // Evitamos que un click en la X (hijo) “pase” a la celda
-      if (e.target?.id?.() === `btn-${obj.id}-${i}`) return;
-      onPickCell?.({ objId: obj.id, index: i });
-      setCeldaGaleriaActiva?.({ objId: obj.id, index: i });
-    }}
-  >
-    {/* Base de hit para que el wrapper tenga área “clickeable/hovereable” */}
-    <Rect x={0} y={0} width={r.width} height={r.height} fill="transparent" />
+            <Group clipFunc={clipFunc} listening={true}>
+              <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
+              {mediaUrl && (
+                <ImagenCelda src={mediaUrl} fit={fit} w={r.width} h={r.height} />
+              )}
+              <Rect
+                x={0}
+                y={0}
+                width={r.width}
+                height={r.height}
+                cornerRadius={radius || 0}
+                stroke={esActiva ? "#773dbe" : "#ddd"}
+                strokeWidth={esActiva ? 2 : 1}
+                dash={esActiva ? [6, 4] : []}
+                listening={false}
+              />
+            </Group>
 
-    {/* 🖼️ CELDA con clip */}
-    <Group clipFunc={clipFunc} listening={true}>
-      <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
-      {mediaUrl && (
-        <ImagenCelda src={mediaUrl} fit={fit} w={r.width} h={r.height} />
-      )}
-      <Rect
-        x={0}
-        y={0}
-        width={r.width}
-        height={r.height}
-        cornerRadius={radius || 0}
-        stroke={esActiva ? "#773dbe" : "#ddd"}
-        strokeWidth={esActiva ? 2 : 1}
-        dash={esActiva ? [6, 4] : []}
-        listening={false}
-      />
-    </Group>
-
-    {/* ❌ Botón borrar (fuera del clip pero dentro del mismo wrapper) */}
-    {mediaUrl && hoveredCell === i && (
-      <Group
-        id={`btn-${obj.id}-${i}`}
-        x={r.width - 20}
-        y={0}
-        width={20}
-        height={20}
-        listening={true}
-        // mantener hover mientras esté sobre la X
-        onMouseEnter={() => setHoveredCell(i)}
-        onMouseDown={(e) => {
-          e.cancelBubble = true; // no seleccionar la celda
-          const nuevasCells = [...(obj.cells || [])];
-          nuevasCells[i] = { ...nuevasCells[i], mediaUrl: null };
-          onChange?.(obj.id, { cells: nuevasCells });
-        }}
-      >
-        <Rect width={20} height={20} fill="rgba(0,0,0,0.6)" cornerRadius={4} />
-        <KonvaText
-          text="×"
-          fontSize={16}
-          fill="#fff"
-          align="center"
-          verticalAlign="middle"
-          width={20}
-          height={20}
-          listening={false}
-        />
-      </Group>
-    )}
-  </Group>
-</React.Fragment>
-
+            {mostrarBotonQuitar && (
+              <Group
+                id={`btn-${obj.id}-${i}`}
+                x={r.width - 20}
+                y={0}
+                width={20}
+                height={20}
+                listening={true}
+                onMouseEnter={() => setHoveredCell(i)}
+                onMouseDown={(e) => limpiarCelda(i, e)}
+                onTap={(e) => limpiarCelda(i, e)}
+              >
+                <Rect width={20} height={20} fill="rgba(0,0,0,0.6)" cornerRadius={4} />
+                <KonvaText
+                  text="x"
+                  fontSize={14}
+                  fill="#fff"
+                  align="center"
+                  verticalAlign="middle"
+                  width={20}
+                  height={20}
+                  listening={false}
+                />
+              </Group>
+            )}
+          </Group>
         );
       })}
     </Group>

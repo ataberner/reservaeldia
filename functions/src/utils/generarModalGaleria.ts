@@ -177,14 +177,14 @@ export function generarModalGaleriaHTML(): string {
   @media (max-width: 900px) {
     .gallery-lightbox__stage {
       grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.8fr) minmax(0, 0.9fr);
-      padding: 78px 18px 80px;
+      padding: 64px 12px 66px;
       height: 100dvh;
       height: 100vh;
       gap: 12px;
     }
 
     .gallery-lightbox__slot {
-      height: min(68vh, 620px);
+      height: min(76vh, 700px);
       border-radius: 16px;
     }
 
@@ -201,13 +201,64 @@ export function generarModalGaleriaHTML(): string {
 
   @media (max-width: 640px) {
     .gallery-lightbox__stage {
-      grid-template-columns: minmax(0, 0.36fr) minmax(0, 1fr) minmax(0, 0.36fr);
+      width: 100vw;
+      max-width: 100vw;
+      height: 100dvh;
+      height: 100vh;
+      grid-template-columns: minmax(0, 1fr);
+      padding:
+        calc(env(safe-area-inset-top, 0px) + 8px)
+        calc(env(safe-area-inset-right, 0px) + 4px)
+        calc(env(safe-area-inset-bottom, 0px) + 50px)
+        calc(env(safe-area-inset-left, 0px) + 4px);
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .gallery-lightbox__slot {
+      height: 100%;
+      border-radius: 12px;
+    }
+
+    .gallery-lightbox__slot[data-gallery-slot="prev"],
+    .gallery-lightbox__slot[data-gallery-slot="next"] {
+      display: none;
+    }
+
+    .gallery-lightbox__slot[data-gallery-slot="current"] {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .gallery-lightbox__slot[data-gallery-slot="current"] img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
 
     .gallery-lightbox__nav {
-      width: 44px;
-      height: 44px;
+      width: 42px;
+      height: 42px;
       font-size: 24px;
+    }
+
+    .gallery-lightbox__nav--prev {
+      left: calc(env(safe-area-inset-left, 0px) + 6px);
+    }
+
+    .gallery-lightbox__nav--next {
+      right: calc(env(safe-area-inset-right, 0px) + 6px);
+    }
+
+    .gallery-lightbox__close {
+      top: calc(env(safe-area-inset-top, 0px) + 10px);
+      right: calc(env(safe-area-inset-right, 0px) + 10px);
+    }
+
+    .gallery-lightbox__counter {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
     }
   }
 </style>

@@ -66,6 +66,44 @@ export default function useEditorEvents({
     window.asignarImagenACelda = (mediaUrl, fit = "cover", bg) => {
       if (!celdaGaleriaActiva) return false; // no hay slot activo
       const { objId, index } = celdaGaleriaActiva;
+      const indexActual = Number(index);
+      let nextActiveCell = null;
+
+      const hayImagenNueva = typeof mediaUrl === "string" && mediaUrl.trim().length > 0;
+      if (hayImagenNueva && Number.isFinite(indexActual)) {
+        const objetosActuales = Array.isArray(window._objetosActuales)
+          ? window._objetosActuales
+          : [];
+        const galeriaActual = objetosActuales.find(
+          (o) => o?.id === objId && o?.tipo === "galeria"
+        );
+        const cellsActuales = Array.isArray(galeriaActual?.cells) ? galeriaActual.cells : [];
+
+        if (cellsActuales.length > 1) {
+          const projectedCells = [...cellsActuales];
+          projectedCells[indexActual] = {
+            ...(projectedCells[indexActual] || {}),
+            mediaUrl,
+          };
+
+          let siguienteVacia = -1;
+          for (let step = 1; step < projectedCells.length; step += 1) {
+            const candidate = (indexActual + step) % projectedCells.length;
+            if (!projectedCells[candidate]?.mediaUrl) {
+              siguienteVacia = candidate;
+              break;
+            }
+          }
+
+          if (siguienteVacia === -1) {
+            siguienteVacia = (indexActual + 1) % projectedCells.length;
+          }
+
+          if (siguienteVacia !== indexActual) {
+            nextActiveCell = { objId, index: siguienteVacia };
+          }
+        }
+      }
 
       setObjetos((prev) => {
         const i = prev.findIndex((o) => o.id === objId);
@@ -88,8 +126,7 @@ export default function useEditorEvents({
         return next;
       });
 
-      // opcional: desactivar el slot activo después de asignar
-      setCeldaGaleriaActiva(null);
+      setCeldaGaleriaActiva(nextActiveCell);
       return true;
     };
 
@@ -277,3 +314,4 @@ export default function useEditorEvents({
     nuevoTextoRef,
   ]);
 }
+

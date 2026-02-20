@@ -25,10 +25,6 @@ export default function MiniToolbar({
   seccionActivaId: seccionProp,
   setImagenesSeleccionadas,
   onInsertarGaleria,
-  objetoSeleccionado,
-  celdaGaleriaActiva,
-  onAsignarImagenGaleria,
-  onQuitarImagenGaleria,
 }) {
 
   // Estado interno sincronizado con 3 fuentes: prop -> evento global -> fallback por selección
@@ -76,10 +72,6 @@ export default function MiniToolbar({
           seccionActivaId={seccionActivaId}
           setMostrarGaleria={setMostrarGaleria}
           onInsertarGaleria={onInsertarGaleria}
-          objetoSeleccionado={objetoSeleccionado}
-          celdaGaleriaActiva={celdaGaleriaActiva}
-          onAsignarImagenGaleria={onAsignarImagenGaleria}
-          onQuitarImagenGaleria={onQuitarImagenGaleria}
           setImagenesSeleccionadas={setImagenesSeleccionadas}
         />
       )}
@@ -100,4 +92,3 @@ export default function MiniToolbar({
     </div>
   );
 }
-function clamp(n, min, max) { return Math.max(min, Math.min(max, isNaN(n) ? min : n)); }

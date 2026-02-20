@@ -356,7 +356,14 @@ export default function DashboardSidebar({
             {componenteInput &&
                 React.cloneElement(componenteInput, {
                     onChange: async (e) => {
-                        await handleSeleccion(e);
+                        const uploadedUrl = await handleSeleccion(e);
+                        if (
+                            typeof uploadedUrl === "string" &&
+                            uploadedUrl &&
+                            typeof window.asignarImagenACelda === "function"
+                        ) {
+                            window.asignarImagenACelda(uploadedUrl, "cover");
+                        }
                     },
                 })}
 

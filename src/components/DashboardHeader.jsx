@@ -5,7 +5,6 @@ import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronDown, LogOut, Minus, Plus } from "lucide-react";
-import SelectorColorSeccion from "./SelectorColorSeccion";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 
 
@@ -31,8 +30,6 @@ export default function DashboardHeader({
     const headerRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
     const router = useRouter();
-    const [colorFondo, setColorFondo] = useState("#ffffff");
-    const [seccionActiva, setSeccionActiva] = useState(null);
     const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
 
     const [publicando, setPublicando] = useState(false);
@@ -159,29 +156,6 @@ export default function DashboardHeader({
     useEffect(() => {
         return () => setSlugPublicoExistente(null);
     }, [slugInvitacion]);
-
-
-    useEffect(() => {
-        const syncSeccionActiva = () => {
-            const activaId = window.canvasEditor?.seccionActivaId ?? null;
-            const secciones = Array.isArray(window.canvasEditor?.secciones)
-                ? window.canvasEditor.secciones
-                : [];
-            const activa = activaId ? secciones.find((s) => s.id === activaId) || null : null;
-
-            setSeccionActiva(activa);
-            setColorFondo(activa?.fondo || "#ffffff");
-        };
-
-        syncSeccionActiva();
-        window.addEventListener("seccion-activa", syncSeccionActiva);
-        window.addEventListener("editor-selection-change", syncSeccionActiva);
-
-        return () => {
-            window.removeEventListener("seccion-activa", syncSeccionActiva);
-            window.removeEventListener("editor-selection-change", syncSeccionActiva);
-        };
-    }, []);
 
 
     // Cargar nombre del borrador al montar o cambiar slug
@@ -459,23 +433,6 @@ export default function DashboardHeader({
                             )}
                         </button>
                     </div>
-
-                    {/* Botón cuadrado para elegir color */}
-                    {seccionActiva && (
-                        <SelectorColorSeccion
-                            seccion={seccionActiva}
-                            onChange={(id, color) => {
-                                window.canvasEditor?.cambiarColorFondoSeccion?.(id, color);
-                                setColorFondo(color); // reflejar cambio inmediato en el cuadrado
-                            }}
-                        />
-                    )}
-
-
-
-
-
-
 
                     {/* Guardar plantilla */}
                     {!loadingAdminAccess && canManageSite && (

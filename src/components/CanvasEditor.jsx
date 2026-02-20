@@ -2684,38 +2684,72 @@ export default function CanvasEditor({
                       ? sectionButtonDisabled
                       : sectionButtonPrimary
                       } ${estaAnimando ? "animate-pulse" : ""}`}
-                    title={esPrimera ? 'Ya es la primera sección' : 'Subir sección'}
+                    title={esPrimera ? "Ya es la primera sección" : "Subir sección"}
+                  >
+                      <span className="inline-flex items-center gap-1.5">
+                        <MoveUp className="w-3.5 h-3.5" />
+                        Subir sección
+                      </span>
+                    </button>
+
+                  {/* Botón Bajar */}
+                  <button
+                    onClick={() =>
+                      moverSeccionExternal({
+                        seccionId: seccion.id,
+                        direccion: "bajar",
+                        secciones,
+                        slug,
+                        setSecciones,
+                        setSeccionesAnimando,
+                      })
+                    }
+                    disabled={esUltima || estaAnimando}
+                    className={`${sectionButtonBase} ${esUltima || estaAnimando
+                      ? sectionButtonDisabled
+                      : sectionButtonPrimary
+                      } ${estaAnimando ? "animate-pulse" : ""}`}
+                    title={esUltima ? "Ya es la última sección" : "Bajar sección"}
                   >
                     <span className="inline-flex items-center gap-1.5">
-                      <MoveUp className="w-3.5 h-3.5" />
-                      Subir sección
+                      <MoveDown className="w-3.5 h-3.5" />
+                      Bajar sección
                     </span>
                   </button>
 
-                  {/* Botón Guardar como plantilla */}
-                  {!loadingClaims && esAdmin && (
-                    <button
-                      onClick={() =>
-                        guardarSeccionComoPlantilla({
-                          seccionId: seccion.id,
-                          secciones,
-                          objetos,
-                          refrescarPlantillasDeSeccion,
-                        })
-                      }
-                      disabled={estaAnimando}
-                      className={`${sectionButtonBase} ${estaAnimando
-                        ? sectionButtonDisabled
-                        : sectionButtonSuccess
-                        } ${estaAnimando ? "animate-pulse" : ""}`}
-                      title="Guardar esta sección como plantilla"
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5" />
-                        Plantilla
-                      </span>
-                    </button>
-                  )}
+                  {/* Botón Añadir sección */}
+                  <button
+                    onClick={handleCrearSeccion}
+                    disabled={estaAnimando}
+                    className={`${sectionButtonBase} ${estaAnimando
+                      ? `${sectionButtonDisabled} animate-pulse`
+                      : sectionButtonPrimary
+                      }`}
+                    title="Añadir una nueva sección debajo"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      Añadir sección
+                    </span>
+                  </button>
+
+                  <div
+                    className={`${sectionButtonBase} ${sectionButtonNeutral} flex items-center justify-between gap-2`}
+                    title="Cambiar color de fondo de esta sección"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="h-3.5 w-3.5 rounded border border-white/80 shadow-sm"
+                        style={{ backgroundColor: seccion.fondo || "#ffffff" }}
+                      />
+                      Fondo sección
+                    </span>
+                    <SelectorColorSeccion
+                      seccion={seccion}
+                      disabled={estaAnimando || isDeletingSection}
+                      onChange={(id, color) => cambiarColorFondoSeccion(id, color)}
+                    />
+                  </div>
 
                   {(() => {
                     const modoSeccion = normalizarAltoModo(seccion.altoModo);
@@ -2723,6 +2757,21 @@ export default function CanvasEditor({
 
                     return (
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* Toggle Pantalla completa */}
+                        <button
+                          onClick={() => togglePantallaCompletaSeccion(seccion.id)}
+                          className={`${sectionButtonBase} ${esPantalla
+                            ? sectionButtonPrimary
+                            : sectionButtonNeutral
+                            }`}
+                          title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <Monitor className="w-3.5 h-3.5" />
+                            {esPantalla ? "Pantalla completa: ON" : "Pantalla completa: OFF"}
+                          </span>
+                        </button>
+
                         {/* Botón Desanclar fondo */}
                         {seccion.fondoTipo === "imagen" && (
                           <button
@@ -2765,24 +2814,34 @@ export default function CanvasEditor({
                               : "Mover fondo"}
                           </button>
                         )}
-
-                        {/* Toggle Pantalla completa */}
-                        <button
-                          onClick={() => togglePantallaCompletaSeccion(seccion.id)}
-                          className={`${sectionButtonBase} ${esPantalla
-                            ? sectionButtonPrimary
-                            : sectionButtonNeutral
-                            }`}
-                          title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
-                        >
-                          <span className="inline-flex items-center gap-1.5">
-                            <Monitor className="w-3.5 h-3.5" />
-                            {esPantalla ? "Pantalla: ON" : "Pantalla: OFF"}
-                          </span>
-                        </button>
                       </div>
                     );
                   })()}
+
+                  {/* Botón Guardar como plantilla */}
+                  {!loadingClaims && esAdmin && (
+                    <button
+                      onClick={() =>
+                        guardarSeccionComoPlantilla({
+                          seccionId: seccion.id,
+                          secciones,
+                          objetos,
+                          refrescarPlantillasDeSeccion,
+                        })
+                      }
+                      disabled={estaAnimando}
+                      className={`${sectionButtonBase} ${estaAnimando
+                        ? sectionButtonDisabled
+                        : sectionButtonSuccess
+                        } ${estaAnimando ? "animate-pulse" : ""}`}
+                      title="Guardar esta sección como plantilla"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5" />
+                        Plantilla
+                      </span>
+                    </button>
+                  )}
 
                   {/* Botón Borrar sección */}
                   <button
@@ -2802,47 +2861,6 @@ export default function CanvasEditor({
                     <span className="inline-flex items-center gap-1.5">
                       <Trash2 className="w-3.5 h-3.5" />
                       Borrar sección
-                    </span>
-                  </button>
-
-                  {/* Botón Bajar */}
-                  <button
-                    onClick={() =>
-                      moverSeccionExternal({
-                        seccionId: seccion.id,
-                        direccion: "bajar",
-                        secciones,
-                        slug,
-                        setSecciones,
-                        setSeccionesAnimando,
-                      })
-                    }
-                    disabled={esUltima || estaAnimando}
-                    className={`${sectionButtonBase} ${esUltima || estaAnimando
-                      ? sectionButtonDisabled
-                      : sectionButtonPrimary
-                      } ${estaAnimando ? "animate-pulse" : ""}`}
-                    title={esUltima ? 'Ya es la última sección' : 'Bajar sección'}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <MoveDown className="w-3.5 h-3.5" />
-                      Bajar sección
-                    </span>
-                  </button>
-
-                  {/* Botón Añadir sección */}
-                  <button
-                    onClick={handleCrearSeccion}
-                    disabled={estaAnimando}
-                    className={`${sectionButtonBase} ${estaAnimando
-                      ? `${sectionButtonDisabled} animate-pulse`
-                      : sectionButtonPrimary
-                      }`}
-                    title="Añadir una nueva sección debajo"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      Añadir sección
                     </span>
                   </button>
                 </>

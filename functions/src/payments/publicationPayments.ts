@@ -1,0 +1,2134 @@
+import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import type { Request, Response } from "express";
+import * as admin from "firebase-admin";
+import { getStorage } from "firebase-admin/storage";
+import * as logger from "firebase-functions/logger";
+import { type CallableRequest, HttpsError } from "firebase-functions/v2/https";
+import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
+import { type RSVPConfig as ModalConfig } from "../utils/generarModalRSVP";
+import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
+import {
+  type PublicSlugAvailabilityReason,
+  normalizePublicSlug,
+  validatePublicSlug,
+} from "../utils/publicSlug";
+import {
+  getMercadoPagoPaymentClient,
+  getMercadoPagoPreferenceClient,
+  getMercadoPagoPublicKey,
+  getMercadoPagoWebhookSecret,
+  getMercadoPagoWebhookUrl,
+} from "./mercadoPagoClient";
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    storageBucket: "reservaeldia-7a440.firebasestorage.app",
+  });
+}
+
+const db = admin.firestore();
+const bucket = getStorage().bucket();
+
+const CONFIG_DOC_PATH = "app_config/publicationPayments";
+const CHECKOUT_SESSIONS_COLLECTION = "publication_checkout_sessions";
+const SLUG_RESERVATIONS_COLLECTION = "public_slug_reservations";
+const DISCOUNT_CODES_COLLECTION = "publication_discount_codes";
+const DISCOUNT_USAGE_COLLECTION = "publication_discount_code_usage";
+
+const SESSION_TERMINAL_STATES = new Set<CheckoutSessionStatus>([
+  "published",
+  "payment_rejected",
+  "approved_slug_conflict",
+  "expired",
+]);
+
+export type CheckoutOperation = "new" | "update";
+export type CheckoutSessionStatus =
+  | "awaiting_payment"
+  | "payment_processing"
+  | "payment_rejected"
+  | "payment_approved"
+  | "publishing"
+  | "published"
+  | "approved_slug_conflict"
+  | "expired";
+
+type SlugReservationStatus = "active" | "consumed" | "released" | "expired";
+
+type PublicationPaymentConfig = {
+  enabled: boolean;
+  currency: "ARS";
+  publishAmountArs: number;
+  updateAmountArs: number;
+  slugReservationTtlMinutes: number;
+  enforcePayment: boolean;
+};
+
+type CheckoutSessionDoc = {
+  uid: string;
+  draftSlug: string;
+  operation: CheckoutOperation;
+  publicSlug: string;
+  amountBaseArs: number;
+  amountArs: number;
+  discountAmountArs: number;
+  discountCode: string | null;
+  discountDescription?: string | null;
+  currency: "ARS";
+  status: CheckoutSessionStatus;
+  expiresAt: admin.firestore.Timestamp;
+  mpPaymentId?: string;
+  mpPreferenceId?: string;
+  mpStatus?: string;
+  mpStatusDetail?: string;
+  publicUrl?: string;
+  receipt?: Record<string, unknown>;
+  lastError?: string;
+  createdAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
+  updatedAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
+};
+
+type SlugReservationDoc = {
+  slug: string;
+  uid: string;
+  draftSlug: string;
+  sessionId: string;
+  status: SlugReservationStatus;
+  expiresAt: admin.firestore.Timestamp;
+  createdAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
+  updatedAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
+};
+
+type PublishDraftParams = {
+  draftSlug: string;
+  publicSlug: string;
+  uid: string;
+  operation: CheckoutOperation;
+  paymentSessionId: string;
+};
+
+type PublishDraftResult = {
+  publicSlug: string;
+  publicUrl: string;
+};
+
+type CheckoutStatusResponse = {
+  sessionStatus: CheckoutSessionStatus;
+  publicUrl?: string;
+  receipt?: Record<string, unknown>;
+  errorMessage?: string;
+};
+
+type CheckoutPaymentResult = CheckoutStatusResponse & {
+  paymentId: string;
+  message?: string;
+};
+
+type DiscountDoc = {
+  active?: boolean;
+  code?: string;
+  description?: string;
+  type?: "percentage" | "fixed";
+  value?: number;
+  appliesTo?: "new" | "update" | "both";
+  startsAt?: admin.firestore.Timestamp;
+  endsAt?: admin.firestore.Timestamp;
+  maxRedemptions?: number;
+  redemptionsCount?: number;
+  createdAt?: admin.firestore.Timestamp;
+  updatedAt?: admin.firestore.Timestamp;
+};
+
+type DiscountResolution = {
+  amountBaseArs: number;
+  amountArs: number;
+  discountAmountArs: number;
+  discountCode: string | null;
+  discountDescription: string | null;
+};
+
+type DiscountType = "percentage" | "fixed";
+type DiscountAppliesTo = "new" | "update" | "both";
+
+type DiscountCodeAdminItem = {
+  code: string;
+  active: boolean;
+  type: DiscountType;
+  value: number;
+  appliesTo: DiscountAppliesTo;
+  description: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  maxRedemptions: number | null;
+  redemptionsCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+type DiscountUsageItem = {
+  sessionId: string;
+  code: string;
+  uid: string;
+  operation: CheckoutOperation;
+  draftSlug: string;
+  publicSlug: string;
+  amountBaseArs: number;
+  discountAmountArs: number;
+  amountArs: number;
+  paymentId: string;
+  createdAt: string | null;
+  approvedAt: string | null;
+};
+
+const DEFAULT_PAYMENT_CONFIG: PublicationPaymentConfig = {
+  enabled: true,
+  currency: "ARS",
+  publishAmountArs: 29900,
+  updateAmountArs: 1490,
+  slugReservationTtlMinutes: 20,
+  enforcePayment: true,
+};
+
+function serverTimestamp() {
+  return admin.firestore.FieldValue.serverTimestamp();
+}
+
+function getString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeDiscountCode(value: unknown): string {
+  const raw = getString(value).toUpperCase();
+  if (!raw) return "";
+  return raw.replace(/[^A-Z0-9_-]/g, "");
+}
+
+function mapMercadoPagoConfigError(error: unknown): HttpsError {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (message.includes("Falta variable de entorno requerida")) {
+    return new HttpsError(
+      "failed-precondition",
+      "Configuracion de pagos incompleta. Falta configurar Mercado Pago en backend."
+    );
+  }
+  return new HttpsError("internal", "No se pudo inicializar Mercado Pago.");
+}
+
+function mapMercadoPagoPaymentError(error: unknown): HttpsError {
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  if (message.includes("Falta variable de entorno requerida")) {
+    return mapMercadoPagoConfigError(error);
+  }
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes("payment type")) {
+    return new HttpsError("invalid-argument", "Selecciona un medio de pago para continuar.");
+  }
+
+  if (normalized.includes("token")) {
+    return new HttpsError("invalid-argument", "Completa los datos del medio de pago.");
+  }
+
+  return new HttpsError("failed-precondition", "No se pudo procesar el pago. Intenta nuevamente.");
+}
+
+function extractPaymentMethodId(brickData: Record<string, unknown>): string {
+  const fromSelected = brickData.selectedPaymentMethod;
+  const selectedId =
+    typeof fromSelected === "string"
+      ? getString(fromSelected)
+      : getString((fromSelected as Record<string, unknown> | undefined)?.id);
+
+  return (
+    getString(brickData.payment_method_id) ||
+    getString(brickData.paymentMethodId) ||
+    selectedId
+  );
+}
+
+function isAccountMoneyPaymentMethod(paymentMethodId: string): boolean {
+  return getString(paymentMethodId).toLowerCase() === "account_money";
+}
+
+function normalizeSessionId(value: unknown): string {
+  const sessionId = getString(value);
+  if (!sessionId) {
+    throw new HttpsError("invalid-argument", "Falta sessionId");
+  }
+  return sessionId;
+}
+
+function normalizeDraftSlug(value: unknown): string {
+  const draftSlug = getString(value);
+  if (!draftSlug) {
+    throw new HttpsError("invalid-argument", "Falta draftSlug");
+  }
+  return draftSlug;
+}
+
+function normalizeOperation(value: unknown): CheckoutOperation {
+  if (value === "new" || value === "update") return value;
+  throw new HttpsError("invalid-argument", "operation invalido");
+}
+
+function toSafeIsoDate(value: unknown): string {
+  const date = value instanceof Date ? value : new Date();
+  return date.toISOString();
+}
+
+function isExpiredAt(expiresAt: unknown): boolean {
+  const now = Date.now();
+
+  if (expiresAt && typeof (expiresAt as any).toMillis === "function") {
+    return (expiresAt as admin.firestore.Timestamp).toMillis() <= now;
+  }
+
+  if (expiresAt instanceof Date) {
+    return expiresAt.getTime() <= now;
+  }
+
+  return false;
+}
+
+function resolvePayerEmail(request: CallableRequest<unknown>, fallback = ""): string {
+  const emailFromToken = getString((request.auth?.token as Record<string, unknown> | undefined)?.email);
+  if (emailFromToken) return emailFromToken;
+  return getString(fallback);
+}
+
+function getNumber(value: unknown, fallback = 0): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return numeric;
+}
+
+function getPublicationConfigFromData(data: Record<string, unknown>): PublicationPaymentConfig {
+  const enabled = typeof data.enabled === "boolean" ? data.enabled : DEFAULT_PAYMENT_CONFIG.enabled;
+  const currency = data.currency === "ARS" ? "ARS" : DEFAULT_PAYMENT_CONFIG.currency;
+  const publishAmountArs = Number.isFinite(Number(data.publishAmountArs))
+    ? Math.max(0, Math.round(Number(data.publishAmountArs)))
+    : DEFAULT_PAYMENT_CONFIG.publishAmountArs;
+  const updateAmountArs = Number.isFinite(Number(data.updateAmountArs))
+    ? Math.max(0, Math.round(Number(data.updateAmountArs)))
+    : DEFAULT_PAYMENT_CONFIG.updateAmountArs;
+  const slugReservationTtlMinutes = Number.isFinite(Number(data.slugReservationTtlMinutes))
+    ? Math.max(5, Math.round(Number(data.slugReservationTtlMinutes)))
+    : DEFAULT_PAYMENT_CONFIG.slugReservationTtlMinutes;
+  const enforcePayment = typeof data.enforcePayment === "boolean"
+    ? data.enforcePayment
+    : DEFAULT_PAYMENT_CONFIG.enforcePayment;
+
+  return {
+    enabled,
+    currency,
+    publishAmountArs,
+    updateAmountArs,
+    slugReservationTtlMinutes,
+    enforcePayment,
+  };
+}
+
+async function getPublicationPaymentConfig(): Promise<PublicationPaymentConfig> {
+  const snap = await db.doc(CONFIG_DOC_PATH).get();
+  if (!snap.exists) return DEFAULT_PAYMENT_CONFIG;
+
+  const data = (snap.data() || {}) as Record<string, unknown>;
+  return getPublicationConfigFromData(data);
+}
+
+function getReservationRef(slug: string) {
+  return db.collection(SLUG_RESERVATIONS_COLLECTION).doc(slug);
+}
+
+function getSessionRef(sessionId: string) {
+  return db.collection(CHECKOUT_SESSIONS_COLLECTION).doc(sessionId);
+}
+
+function getDiscountCodeRef(code: string) {
+  return db.collection(DISCOUNT_CODES_COLLECTION).doc(code);
+}
+
+function getDiscountUsageRef(sessionId: string) {
+  return db.collection(DISCOUNT_USAGE_COLLECTION).doc(sessionId);
+}
+
+function toIsoFromTimestamp(value: unknown): string | null {
+  if (value && typeof (value as any).toDate === "function") {
+    return ((value as admin.firestore.Timestamp).toDate() || new Date()).toISOString();
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return null;
+}
+
+function parseOptionalDateString(value: unknown, fieldName: string): admin.firestore.Timestamp | null {
+  const raw = getString(value);
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new HttpsError("invalid-argument", `${fieldName} invalido`);
+  }
+  return admin.firestore.Timestamp.fromDate(parsed);
+}
+
+function normalizeDiscountType(value: unknown): DiscountType {
+  return value === "fixed" ? "fixed" : "percentage";
+}
+
+function normalizeDiscountAppliesTo(value: unknown): DiscountAppliesTo {
+  if (value === "new" || value === "update" || value === "both") return value;
+  return "both";
+}
+
+async function resolveDiscountForCheckout(params: {
+  operation: CheckoutOperation;
+  amountBaseArs: number;
+  rawDiscountCode?: unknown;
+}): Promise<DiscountResolution> {
+  const { operation, amountBaseArs, rawDiscountCode } = params;
+  const discountCode = normalizeDiscountCode(rawDiscountCode);
+
+  if (!discountCode) {
+    return {
+      amountBaseArs,
+      amountArs: amountBaseArs,
+      discountAmountArs: 0,
+      discountCode: null,
+      discountDescription: null,
+    };
+  }
+
+  const discountRef = db.collection(DISCOUNT_CODES_COLLECTION).doc(discountCode);
+  const discountSnap = await discountRef.get();
+  if (!discountSnap.exists) {
+    throw new HttpsError("invalid-argument", "El codigo de descuento no es valido.");
+  }
+
+  const data = (discountSnap.data() || {}) as DiscountDoc;
+  const active = data.active !== false;
+  if (!active) {
+    throw new HttpsError("failed-precondition", "Ese codigo de descuento no esta activo.");
+  }
+
+  const appliesTo = data.appliesTo || "both";
+  if (appliesTo !== "both" && appliesTo !== operation) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Ese codigo no aplica para esta operacion."
+    );
+  }
+
+  const nowMs = Date.now();
+  if (data.startsAt && data.startsAt.toMillis() > nowMs) {
+    throw new HttpsError("failed-precondition", "Ese codigo todavia no esta disponible.");
+  }
+
+  if (data.endsAt && data.endsAt.toMillis() < nowMs) {
+    throw new HttpsError("failed-precondition", "Ese codigo de descuento ya expiro.");
+  }
+
+  const maxRedemptions = Math.max(0, Math.floor(getNumber(data.maxRedemptions, 0)));
+  const redemptionsCount = Math.max(0, Math.floor(getNumber(data.redemptionsCount, 0)));
+  if (maxRedemptions > 0 && redemptionsCount >= maxRedemptions) {
+    throw new HttpsError("failed-precondition", "Ese codigo alcanzo su limite de usos.");
+  }
+
+  const discountType = data.type === "fixed" ? "fixed" : "percentage";
+  const discountValue = getNumber(data.value, 0);
+  if (discountValue <= 0) {
+    throw new HttpsError(
+      "failed-precondition",
+      "El codigo de descuento no esta configurado correctamente."
+    );
+  }
+
+  const rawDiscountAmount =
+    discountType === "percentage"
+      ? Math.round((amountBaseArs * discountValue) / 100)
+      : Math.round(discountValue);
+
+  const discountAmountArs = Math.max(0, Math.min(amountBaseArs, rawDiscountAmount));
+  if (discountAmountArs <= 0) {
+    throw new HttpsError(
+      "failed-precondition",
+      "El codigo no aplica descuento para este monto."
+    );
+  }
+
+  return {
+    amountBaseArs,
+    amountArs: amountBaseArs - discountAmountArs,
+    discountAmountArs,
+    discountCode,
+    discountDescription: getString(data.description) || null,
+  };
+}
+
+async function recordDiscountUsageIfNeeded(params: {
+  sessionId: string;
+  sessionPayload: Record<string, unknown>;
+  paymentId: string;
+  approvedAt?: string;
+}) {
+  const { sessionId, sessionPayload, paymentId, approvedAt } = params;
+  const discountCode = normalizeDiscountCode(sessionPayload.discountCode);
+  if (!discountCode) return;
+
+  const usageRef = getDiscountUsageRef(sessionId);
+  const codeRef = getDiscountCodeRef(discountCode);
+
+  const usagePayload = {
+    sessionId,
+    code: discountCode,
+    uid: getString(sessionPayload.uid),
+    operation: normalizeOperation(sessionPayload.operation),
+    draftSlug: getString(sessionPayload.draftSlug),
+    publicSlug: getString(sessionPayload.publicSlug),
+    amountBaseArs: toAmount(sessionPayload.amountBaseArs, toAmount(sessionPayload.amountArs, 0)),
+    discountAmountArs: toAmount(sessionPayload.discountAmountArs, 0),
+    amountArs: toAmount(sessionPayload.amountArs, 0),
+    paymentId: getString(paymentId),
+    approvedAt: approvedAt || null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await db.runTransaction(async (tx) => {
+    const [usageSnap, codeSnap] = await Promise.all([tx.get(usageRef), tx.get(codeRef)]);
+    if (usageSnap.exists) return;
+
+    tx.set(usageRef, usagePayload, { merge: true });
+
+    if (codeSnap.exists) {
+      tx.set(
+        codeRef,
+        {
+          redemptionsCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  });
+}
+
+function mapDiscountCodeDocToItem(code: string, data: Record<string, unknown>): DiscountCodeAdminItem {
+  return {
+    code,
+    active: data.active !== false,
+    type: normalizeDiscountType(data.type),
+    value: Math.max(0, Math.round(getNumber(data.value, 0))),
+    appliesTo: normalizeDiscountAppliesTo(data.appliesTo),
+    description: getString(data.description) || null,
+    startsAt: toIsoFromTimestamp(data.startsAt),
+    endsAt: toIsoFromTimestamp(data.endsAt),
+    maxRedemptions: Number.isFinite(getNumber(data.maxRedemptions, Number.NaN))
+      ? Math.max(0, Math.round(getNumber(data.maxRedemptions, 0)))
+      : null,
+    redemptionsCount: Math.max(0, Math.round(getNumber(data.redemptionsCount, 0))),
+    createdAt: toIsoFromTimestamp(data.createdAt),
+    updatedAt: toIsoFromTimestamp(data.updatedAt),
+  };
+}
+
+function mapDiscountUsageDocToItem(data: Record<string, unknown>): DiscountUsageItem {
+  const operationRaw = data.operation;
+  const operation: CheckoutOperation =
+    operationRaw === "new" || operationRaw === "update" ? operationRaw : "new";
+
+  return {
+    sessionId: getString(data.sessionId),
+    code: normalizeDiscountCode(data.code),
+    uid: getString(data.uid),
+    operation,
+    draftSlug: getString(data.draftSlug),
+    publicSlug: getString(data.publicSlug),
+    amountBaseArs: toAmount(data.amountBaseArs, toAmount(data.amountArs, 0)),
+    discountAmountArs: toAmount(data.discountAmountArs, 0),
+    amountArs: toAmount(data.amountArs, 0),
+    paymentId: getString(data.paymentId),
+    createdAt: toIsoFromTimestamp(data.createdAt),
+    approvedAt: toIsoFromTimestamp(data.approvedAt),
+  };
+}
+
+async function createMercadoPagoPreferenceForCheckout(params: {
+  sessionId: string;
+  operation: CheckoutOperation;
+  publicSlug: string;
+  amountArs: number;
+  payerEmail: string;
+}): Promise<string> {
+  const { sessionId, operation, publicSlug, amountArs, payerEmail } = params;
+  const preferenceClient = getMercadoPagoPreferenceClient();
+  const safeAmount = Math.max(0, Math.round(amountArs));
+
+  const preferenceBody = {
+    external_reference: sessionId,
+    notification_url: getMercadoPagoWebhookUrl(),
+    metadata: {
+      publication_session_id: sessionId,
+      operation,
+      public_slug: publicSlug,
+    },
+    items: [
+      {
+        id: `publication-${sessionId}`,
+        title:
+          operation === "new"
+            ? `Publicacion de invitacion (${publicSlug})`
+            : `Actualizacion de invitacion (${publicSlug})`,
+        quantity: 1,
+        currency_id: "ARS",
+        unit_price: safeAmount,
+      },
+    ],
+    payer: payerEmail ? { email: payerEmail } : undefined,
+  };
+
+  const preference = await preferenceClient.create({
+    body: preferenceBody as any,
+    requestOptions: {
+      idempotencyKey: `publication-preference-${sessionId}`,
+    },
+  });
+
+  const preferenceId = getString(preference?.id);
+  if (!preferenceId) {
+    throw new Error("Mercado Pago no devolvio preferenceId");
+  }
+
+  return preferenceId;
+}
+
+async function ensureDraftOwnership(uid: string, draftSlug: string) {
+  const draftRef = db.collection("borradores").doc(draftSlug);
+  const draftSnap = await draftRef.get();
+
+  if (!draftSnap.exists) {
+    throw new HttpsError("not-found", "No se encontro el borrador");
+  }
+
+  const data = draftSnap.data() as Record<string, unknown>;
+  const ownerUid = getString(data?.userId);
+  if (!ownerUid || ownerUid !== uid) {
+    throw new HttpsError("permission-denied", "No tenes permisos sobre este borrador");
+  }
+
+  return {
+    ref: draftRef,
+    data,
+  };
+}
+
+async function releaseReservationIfExpired(
+  slug: string,
+  reservationData: Record<string, unknown>
+): Promise<void> {
+  const status = getString(reservationData.status);
+  if (status !== "active") return;
+  const expiresAt = reservationData.expiresAt as admin.firestore.Timestamp;
+  if (!isExpiredAt(expiresAt)) return;
+
+  await getReservationRef(slug).set(
+    {
+      status: "expired",
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+type SlugAvailabilityResult = {
+  isAvailable: boolean;
+  reason: PublicSlugAvailabilityReason;
+};
+
+async function checkSlugAvailability(
+  slug: string,
+  uid: string,
+  draftSlug: string
+): Promise<SlugAvailabilityResult> {
+  const publishedSnap = await db.collection("publicadas").doc(slug).get();
+  if (publishedSnap.exists) {
+    return {
+      isAvailable: false,
+      reason: "already-published",
+    };
+  }
+
+  const reservationRef = getReservationRef(slug);
+  const reservationSnap = await reservationRef.get();
+  if (!reservationSnap.exists) {
+    return {
+      isAvailable: true,
+      reason: "ok",
+    };
+  }
+
+  const reservationData = (reservationSnap.data() || {}) as Record<string, unknown>;
+  const status = getString(reservationData.status);
+  const reservationExpiresAt = reservationData.expiresAt as admin.firestore.Timestamp;
+  const reservationExpired = status === "active" && isExpiredAt(reservationExpiresAt);
+
+  if (reservationExpired) {
+    await releaseReservationIfExpired(slug, reservationData);
+    return {
+      isAvailable: true,
+      reason: "ok",
+    };
+  }
+
+  if (status !== "active") {
+    return {
+      isAvailable: true,
+      reason: "ok",
+    };
+  }
+
+  const reservationUid = getString(reservationData.uid);
+  const reservationDraftSlug = getString(reservationData.draftSlug);
+
+  if (reservationUid === uid && reservationDraftSlug === draftSlug) {
+    return {
+      isAvailable: true,
+      reason: "ok",
+    };
+  }
+
+  return {
+    isAvailable: false,
+    reason: "temporarily-reserved",
+  };
+}
+
+async function reserveSlugForSession(params: {
+  slug: string;
+  uid: string;
+  draftSlug: string;
+  sessionId: string;
+  expiresAt: admin.firestore.Timestamp;
+}): Promise<void> {
+  const { slug, uid, draftSlug, sessionId, expiresAt } = params;
+  const reservationRef = getReservationRef(slug);
+  const publicRef = db.collection("publicadas").doc(slug);
+
+  await db.runTransaction(async (tx) => {
+    const [publishedSnap, reservationSnap] = await Promise.all([
+      tx.get(publicRef),
+      tx.get(reservationRef),
+    ]);
+
+    if (publishedSnap.exists) {
+      throw new HttpsError("already-exists", "El enlace elegido ya esta publicado.");
+    }
+
+    if (reservationSnap.exists) {
+      const data = (reservationSnap.data() || {}) as Record<string, unknown>;
+      const status = getString(data.status);
+      const reservationUid = getString(data.uid);
+      const reservationDraftSlug = getString(data.draftSlug);
+      const reservationExpiresAt = data.expiresAt as admin.firestore.Timestamp;
+      const expired = isExpiredAt(reservationExpiresAt);
+
+      if (
+        status === "active" &&
+        !expired &&
+        (reservationUid !== uid || reservationDraftSlug !== draftSlug)
+      ) {
+        throw new HttpsError(
+          "already-exists",
+          "El enlace elegido esta reservado temporalmente."
+        );
+      }
+    }
+
+    const reservationPayload: SlugReservationDoc = {
+      slug,
+      uid,
+      draftSlug,
+      sessionId,
+      status: "active",
+      expiresAt,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    tx.set(reservationRef, reservationPayload, { merge: true });
+  });
+}
+
+async function markReservationStatus(params: {
+  slug: string;
+  sessionId: string;
+  nextStatus: SlugReservationStatus;
+}): Promise<void> {
+  const { slug, sessionId, nextStatus } = params;
+  if (!slug) return;
+
+  const reservationRef = getReservationRef(slug);
+  const reservationSnap = await reservationRef.get();
+  if (!reservationSnap.exists) return;
+
+  const reservationData = (reservationSnap.data() || {}) as Record<string, unknown>;
+  if (getString(reservationData.sessionId) !== sessionId) return;
+
+  await reservationRef.set(
+    {
+      status: nextStatus,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function resolveExistingPublicSlug(draftSlug: string): Promise<string | null> {
+  const draftSnap = await db.collection("borradores").doc(draftSlug).get();
+  const draftData = (draftSnap.data() || {}) as Record<string, unknown>;
+  const fromDraft = normalizePublicSlug(draftData.slugPublico);
+  if (fromDraft) return fromDraft;
+
+  const sameSlugPublicSnap = await db.collection("publicadas").doc(draftSlug).get();
+  if (sameSlugPublicSnap.exists) return draftSlug;
+
+  const querySnap = await db
+    .collection("publicadas")
+    .where("slugOriginal", "==", draftSlug)
+    .limit(1)
+    .get();
+
+  if (querySnap.empty) return null;
+  return normalizePublicSlug(querySnap.docs[0].id) || null;
+}
+
+async function resolveUrlsInObjects(objetos: unknown[]): Promise<unknown[]> {
+  const list = Array.isArray(objetos) ? objetos : [];
+
+  return Promise.all(
+    list.map(async (obj: any) => {
+      if (!obj || typeof obj !== "object") return obj;
+
+      if (
+        (obj.tipo === "imagen" || obj.tipo === "icono") &&
+        typeof obj.src === "string" &&
+        obj.src &&
+        !obj.src.startsWith("http")
+      ) {
+        try {
+          const [url] = await bucket.file(obj.src).getSignedUrl({
+            action: "read",
+            expires: Date.now() + 1000 * 60 * 60 * 24 * 365,
+          });
+          return {
+            ...obj,
+            src: url,
+          };
+        } catch (error) {
+          logger.warn("No se pudo resolver URL de objeto en publicacion", {
+            src: obj.src,
+            error: error instanceof Error ? error.message : String(error || ""),
+          });
+          return obj;
+        }
+      }
+
+      return obj;
+    })
+  );
+}
+
+function createRsvpConfig(data: Record<string, any>): ModalConfig {
+  return {
+    enabled: data?.rsvp?.enabled !== false,
+    title: data?.rsvp?.title,
+    subtitle: data?.rsvp?.subtitle,
+    buttonText: data?.rsvp?.buttonText,
+    primaryColor: data?.rsvp?.primaryColor,
+    sheetUrl: data?.rsvp?.sheetUrl,
+  };
+}
+
+function createSlugConflictError(message: string): HttpsError {
+  return new HttpsError("already-exists", message);
+}
+
+function isSlugConflictError(error: unknown): boolean {
+  return error instanceof HttpsError && error.code === "already-exists";
+}
+
+export async function publishDraftToPublic(params: PublishDraftParams): Promise<PublishDraftResult> {
+  const { draftSlug, publicSlug, uid, operation, paymentSessionId } = params;
+
+  const draft = await ensureDraftOwnership(uid, draftSlug);
+  const draftData = draft.data;
+
+  const normalizedPublicSlug = normalizePublicSlug(publicSlug);
+  if (!normalizedPublicSlug) {
+    throw new HttpsError("invalid-argument", "enlace publico invalido");
+  }
+
+  const existingPublicSnap = await db.collection("publicadas").doc(normalizedPublicSlug).get();
+  if (existingPublicSnap.exists) {
+    const existingData = (existingPublicSnap.data() || {}) as Record<string, unknown>;
+    const existingUid = getString(existingData.userId);
+    const sameOwner = existingUid && existingUid === uid;
+    if (!sameOwner) {
+      throw createSlugConflictError("El enlace elegido ya pertenece a otro usuario.");
+    }
+  }
+
+  const objetos = Array.isArray(draftData.objetos) ? draftData.objetos : [];
+  const secciones = Array.isArray(draftData.secciones) ? draftData.secciones : [];
+  const objetosFinales = await resolveUrlsInObjects(objetos);
+  const rsvp = createRsvpConfig(draftData as Record<string, any>);
+
+  const htmlFinal = generarHTMLDesdeSecciones(secciones as any[], objetosFinales as any[], rsvp, {
+    slug: normalizedPublicSlug,
+  });
+
+  const filePath = `publicadas/${normalizedPublicSlug}/index.html`;
+  await bucket.file(filePath).save(htmlFinal, {
+    contentType: "text/html",
+    public: true,
+    metadata: {
+      cacheControl: "public,max-age=3600",
+    },
+  });
+
+  const publicUrl = `https://reservaeldia.com.ar/i/${normalizedPublicSlug}`;
+  const publicationData: Record<string, unknown> = {
+    slug: normalizedPublicSlug,
+    userId: uid,
+    plantillaId: draftData.plantillaId || null,
+    urlPublica: publicUrl,
+    nombre: draftData.nombre || normalizedPublicSlug,
+    tipo: draftData.tipo || draftData.plantillaTipo || "desconocido",
+    portada: draftData.thumbnailUrl || null,
+    invitadosCount: draftData.invitadosCount || 0,
+    publicadaEn: serverTimestamp(),
+    borradorSlug: draftSlug,
+    ultimaOperacion: operation,
+    lastPaymentSessionId: paymentSessionId,
+  };
+
+  if (draftSlug !== normalizedPublicSlug) {
+    publicationData.slugOriginal = draftSlug;
+  }
+
+  await db.collection("publicadas").doc(normalizedPublicSlug).set(publicationData, { merge: true });
+
+  await db.collection("borradores").doc(draftSlug).set(
+    {
+      slugPublico: normalizedPublicSlug,
+      ultimaPublicacion: serverTimestamp(),
+      ultimaOperacionPublicacion: operation,
+      lastPaymentSessionId: paymentSessionId,
+    },
+    { merge: true }
+  );
+
+  return {
+    publicSlug: normalizedPublicSlug,
+    publicUrl,
+  };
+}
+
+async function readSessionOwnedByUser(uid: string, sessionId: string) {
+  const ref = getSessionRef(sessionId);
+  const snap = await ref.get();
+
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Sesion de checkout no encontrada");
+  }
+
+  const data = (snap.data() || {}) as Record<string, unknown>;
+  if (getString(data.uid) !== uid) {
+    throw new HttpsError("permission-denied", "No tenes acceso a esta sesion");
+  }
+
+  return {
+    ref,
+    snap,
+    data,
+  };
+}
+
+function toAmount(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.round(numeric));
+}
+
+function isZeroAmount(value: unknown): boolean {
+  return toAmount(value, 0) <= 0;
+}
+
+function buildReceipt(params: {
+  operation: CheckoutOperation;
+  amountBaseArs: number;
+  amountArs: number;
+  discountAmountArs: number;
+  discountCode?: string | null;
+  discountDescription?: string | null;
+  paymentId: string;
+  publicSlug: string;
+  publicUrl?: string;
+  approvedAt?: string;
+}) {
+  return {
+    operation: params.operation,
+    amountBaseArs: params.amountBaseArs,
+    amountArs: params.amountArs,
+    discountAmountArs: params.discountAmountArs,
+    discountCode: params.discountCode || null,
+    discountDescription: params.discountDescription || null,
+    currency: "ARS",
+    approvedAt: params.approvedAt || toSafeIsoDate(new Date()),
+    paymentId: params.paymentId,
+    publicSlug: params.publicSlug,
+    publicUrl: params.publicUrl || null,
+  };
+}
+
+function buildPaymentResultFromSession(data: Record<string, unknown>, paymentId = ""): CheckoutPaymentResult {
+  return {
+    sessionStatus: (getString(data.status) as CheckoutSessionStatus) || "payment_processing",
+    paymentId,
+    publicUrl: getString(data.publicUrl) || undefined,
+    receipt: (data.receipt as Record<string, unknown> | undefined) || undefined,
+    errorMessage: getString(data.lastError) || undefined,
+  };
+}
+
+async function finalizeApprovedSession(params: {
+  sessionId: string;
+  fallbackPaymentId: string;
+  approvedAt?: string;
+}): Promise<CheckoutPaymentResult> {
+  const { sessionId, fallbackPaymentId, approvedAt } = params;
+  const sessionRef = getSessionRef(sessionId);
+
+  let sessionData: Record<string, unknown> | null = null;
+  let shouldPublish = false;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(sessionRef);
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Sesion no encontrada");
+    }
+
+    const data = (snap.data() || {}) as Record<string, unknown>;
+    const status = getString(data.status) as CheckoutSessionStatus;
+
+    sessionData = data;
+
+    if (status === "published") {
+      return;
+    }
+
+    if (status === "publishing") {
+      return;
+    }
+
+    if (status === "expired") {
+      return;
+    }
+
+    tx.set(
+      sessionRef,
+      {
+        status: "publishing",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    shouldPublish = true;
+  });
+
+  if (!sessionData) {
+    throw new HttpsError("not-found", "Sesion invalida");
+  }
+
+  const sessionPayload = sessionData as Record<string, unknown>;
+
+  if (!shouldPublish) {
+    const snap = await sessionRef.get();
+    return buildPaymentResultFromSession((snap.data() || {}) as Record<string, unknown>, fallbackPaymentId);
+  }
+
+  const draftSlug = getString(sessionPayload.draftSlug);
+  const publicSlug = getString(sessionPayload.publicSlug);
+  const uid = getString(sessionPayload.uid);
+  const operation = normalizeOperation(sessionPayload.operation);
+  const amountArs = toAmount(sessionPayload.amountArs, operation === "new" ? 29900 : 1490);
+  const amountBaseArs = toAmount(sessionPayload.amountBaseArs, amountArs);
+  const discountAmountArs = toAmount(sessionPayload.discountAmountArs, 0);
+  const discountCode = getString(sessionPayload.discountCode) || null;
+  const discountDescription = getString(sessionPayload.discountDescription) || null;
+
+  try {
+    const publication = await publishDraftToPublic({
+      draftSlug,
+      publicSlug,
+      uid,
+      operation,
+      paymentSessionId: sessionId,
+    });
+
+    const receipt = buildReceipt({
+      operation,
+      amountBaseArs,
+      amountArs,
+      discountAmountArs,
+      discountCode,
+      discountDescription,
+      paymentId: fallbackPaymentId,
+      publicSlug: publication.publicSlug,
+      publicUrl: publication.publicUrl,
+      approvedAt,
+    });
+
+    await sessionRef.set(
+      {
+        status: "published",
+        publicUrl: publication.publicUrl,
+        receipt,
+        lastError: null,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    if (operation === "new") {
+      await markReservationStatus({
+        slug: publication.publicSlug,
+        sessionId,
+        nextStatus: "consumed",
+      });
+    }
+
+    try {
+      await recordDiscountUsageIfNeeded({
+        sessionId,
+        sessionPayload: {
+          ...sessionPayload,
+          publicSlug: publication.publicSlug,
+        },
+        paymentId: fallbackPaymentId,
+        approvedAt,
+      });
+    } catch (usageError) {
+      logger.error("No se pudo registrar uso de codigo de descuento", {
+        sessionId,
+        error:
+          usageError instanceof Error ? usageError.message : String(usageError || ""),
+      });
+    }
+
+    return {
+      sessionStatus: "published",
+      paymentId: fallbackPaymentId,
+      publicUrl: publication.publicUrl,
+      receipt,
+    };
+  } catch (error) {
+    if (isSlugConflictError(error)) {
+      await sessionRef.set(
+        {
+          status: "approved_slug_conflict",
+          lastError: "El enlace ya no esta disponible. Elegi uno nuevo para completar la publicacion.",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await markReservationStatus({
+        slug: publicSlug,
+        sessionId,
+        nextStatus: "released",
+      });
+
+      return {
+        sessionStatus: "approved_slug_conflict",
+        paymentId: fallbackPaymentId,
+        message: "Pago aprobado. El enlace entro en conflicto, elegi otro para finalizar.",
+      };
+    }
+
+    logger.error("Error publicando sesion aprobada", {
+      sessionId,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+
+    await sessionRef.set(
+      {
+        status: "payment_approved",
+        lastError:
+          error instanceof Error
+            ? error.message
+            : "Pago aprobado, pero la publicacion no se pudo completar en este intento.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    throw error;
+  }
+}
+
+function statusFromMercadoPago(status: string): CheckoutSessionStatus {
+  switch (status) {
+    case "approved":
+      return "payment_approved";
+    case "rejected":
+    case "cancelled":
+      return "payment_rejected";
+    default:
+      return "payment_processing";
+  }
+}
+
+async function processMercadoPagoPayment(params: {
+  sessionId: string;
+  paymentId: string;
+  paymentStatus: string;
+  paymentStatusDetail?: string;
+  approvedAt?: string;
+}): Promise<CheckoutPaymentResult> {
+  const { sessionId, paymentId, paymentStatus, paymentStatusDetail, approvedAt } = params;
+  const sessionRef = getSessionRef(sessionId);
+
+  const mappedStatus = statusFromMercadoPago(paymentStatus);
+
+  if (mappedStatus === "payment_approved") {
+    await sessionRef.set(
+      {
+        mpPaymentId: paymentId,
+        mpStatus: paymentStatus,
+        mpStatusDetail: paymentStatusDetail || null,
+        status: "payment_approved",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return finalizeApprovedSession({
+      sessionId,
+      fallbackPaymentId: paymentId,
+      approvedAt,
+    });
+  }
+
+  if (mappedStatus === "payment_rejected") {
+    await sessionRef.set(
+      {
+        mpPaymentId: paymentId,
+        mpStatus: paymentStatus,
+        mpStatusDetail: paymentStatusDetail || null,
+        status: "payment_rejected",
+        lastError: "El pago fue rechazado. Intenta con otro medio de pago.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    const snap = await sessionRef.get();
+    return {
+      ...buildPaymentResultFromSession((snap.data() || {}) as Record<string, unknown>, paymentId),
+      sessionStatus: "payment_rejected",
+      paymentId,
+    };
+  }
+
+  await sessionRef.set(
+    {
+      mpPaymentId: paymentId,
+      mpStatus: paymentStatus,
+      mpStatusDetail: paymentStatusDetail || null,
+      status: "payment_processing",
+      lastError: null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return {
+    sessionStatus: "payment_processing",
+    paymentId,
+    message: "El pago esta siendo procesado.",
+  };
+}
+
+export async function checkPublicSlugAvailabilityHandler(
+  request: CallableRequest<{
+    draftSlug: string;
+    candidateSlug: string;
+  }>
+) {
+  const uid = requireAuth(request);
+  const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
+  await ensureDraftOwnership(uid, draftSlug);
+
+  const validation = validatePublicSlug(request.data?.candidateSlug);
+  if (!validation.isValid) {
+    return {
+      normalizedSlug: validation.normalizedSlug,
+      isValid: false,
+      isAvailable: false,
+      reason: validation.reason,
+    };
+  }
+
+  const availability = await checkSlugAvailability(validation.normalizedSlug, uid, draftSlug);
+
+  return {
+    normalizedSlug: validation.normalizedSlug,
+    isValid: true,
+    isAvailable: availability.isAvailable,
+    reason: availability.reason,
+  };
+}
+
+export async function upsertPublicationDiscountCodeHandler(
+  request: CallableRequest<{
+    code: string;
+    active?: boolean;
+    type?: DiscountType;
+    value: number;
+    appliesTo?: DiscountAppliesTo;
+    description?: string;
+    startsAt?: string | null;
+    endsAt?: string | null;
+    maxRedemptions?: number | null;
+  }>
+) {
+  requireSuperAdmin(request);
+
+  const code = normalizeDiscountCode(request.data?.code);
+  if (!code) {
+    throw new HttpsError("invalid-argument", "Falta codigo de descuento.");
+  }
+
+  const type = normalizeDiscountType(request.data?.type);
+  const value = getNumber(request.data?.value, 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new HttpsError("invalid-argument", "El valor del descuento debe ser mayor a 0.");
+  }
+
+  if (type === "percentage" && value > 100) {
+    throw new HttpsError(
+      "invalid-argument",
+      "El descuento porcentual no puede superar 100."
+    );
+  }
+
+  const appliesTo = normalizeDiscountAppliesTo(request.data?.appliesTo);
+  const startsAt = parseOptionalDateString(request.data?.startsAt, "startsAt");
+  const endsAt = parseOptionalDateString(request.data?.endsAt, "endsAt");
+  if (startsAt && endsAt && startsAt.toMillis() > endsAt.toMillis()) {
+    throw new HttpsError("invalid-argument", "El rango de fechas del codigo es invalido.");
+  }
+
+  const maxRedemptionsRaw = request.data?.maxRedemptions;
+  let maxRedemptions: number | null = null;
+  if (maxRedemptionsRaw !== null && typeof maxRedemptionsRaw !== "undefined") {
+    const parsed = Math.round(getNumber(maxRedemptionsRaw, Number.NaN));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "maxRedemptions debe ser un numero entero mayor o igual a 0."
+      );
+    }
+    maxRedemptions = parsed;
+  }
+
+  const ref = getDiscountCodeRef(code);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = (snap.data() || {}) as Record<string, unknown>;
+    const redemptionsCount = toAmount(prev.redemptionsCount, 0);
+
+    tx.set(
+      ref,
+      {
+        code,
+        active: request.data?.active !== false,
+        type,
+        value: Math.round(value),
+        appliesTo,
+        description: getString(request.data?.description) || null,
+        startsAt: startsAt || null,
+        endsAt: endsAt || null,
+        maxRedemptions,
+        redemptionsCount,
+        createdAt: snap.exists ? prev.createdAt || serverTimestamp() : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+
+  const created = await ref.get();
+  return {
+    code,
+    item: mapDiscountCodeDocToItem(code, (created.data() || {}) as Record<string, unknown>),
+  };
+}
+
+export async function listPublicationDiscountCodesHandler(
+  request: CallableRequest<Record<string, never>>
+): Promise<{
+  items: DiscountCodeAdminItem[];
+  summary: {
+    totalCodes: number;
+    activeCodes: number;
+    totalRedemptions: number;
+  };
+}> {
+  requireSuperAdmin(request);
+
+  const snap = await db.collection(DISCOUNT_CODES_COLLECTION).limit(300).get();
+  const items = snap.docs
+    .map((doc) => mapDiscountCodeDocToItem(doc.id, (doc.data() || {}) as Record<string, unknown>))
+    .sort((a, b) => {
+      const aTime = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      const bTime = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      return bTime - aTime;
+    });
+
+  const totalCodes = items.length;
+  const activeCodes = items.filter((item) => item.active).length;
+  const totalRedemptions = items.reduce(
+    (acc, item) => acc + Math.max(0, item.redemptionsCount || 0),
+    0
+  );
+
+  return {
+    items,
+    summary: {
+      totalCodes,
+      activeCodes,
+      totalRedemptions,
+    },
+  };
+}
+
+export async function listPublicationDiscountCodeUsageHandler(
+  request: CallableRequest<{ code: string; limit?: number }>
+): Promise<{
+  code: string;
+  totalUsed: number;
+  items: DiscountUsageItem[];
+}> {
+  requireSuperAdmin(request);
+
+  const code = normalizeDiscountCode(request.data?.code);
+  if (!code) {
+    throw new HttpsError("invalid-argument", "Falta codigo de descuento.");
+  }
+
+  const requestedLimit = Math.round(getNumber(request.data?.limit, 50));
+  const limit = Math.max(10, Math.min(200, requestedLimit));
+
+  const [codeSnap, usageSnap] = await Promise.all([
+    getDiscountCodeRef(code).get(),
+    db.collection(DISCOUNT_USAGE_COLLECTION).where("code", "==", code).get(),
+  ]);
+
+  const allItems = usageSnap.docs
+    .map((doc) => mapDiscountUsageDocToItem((doc.data() || {}) as Record<string, unknown>))
+    .sort((a, b) => {
+      const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return bTime - aTime;
+    });
+  const items = allItems.slice(0, limit);
+
+  const usageCount = allItems.length;
+  const storedCount = codeSnap.exists
+    ? toAmount((codeSnap.data() || {}).redemptionsCount, usageCount)
+    : usageCount;
+  const totalUsed = usageCount;
+
+  if (codeSnap.exists && storedCount !== usageCount) {
+    await getDiscountCodeRef(code).set(
+      {
+        redemptionsCount: usageCount,
+      },
+      { merge: true }
+    );
+  }
+
+  return {
+    code,
+    totalUsed,
+    items,
+  };
+}
+
+export async function createPublicationCheckoutSessionHandler(
+  request: CallableRequest<{
+    draftSlug: string;
+    operation: CheckoutOperation;
+    requestedPublicSlug?: string;
+    discountCode?: string;
+  }>
+) {
+  const uid = requireAuth(request);
+  const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
+  const operation = normalizeOperation(request.data?.operation);
+
+  await ensureDraftOwnership(uid, draftSlug);
+
+  const config = await getPublicationPaymentConfig();
+  if (!config.enabled) {
+    throw new HttpsError("failed-precondition", "La publicacion con pago esta deshabilitada");
+  }
+
+  const sessionId = randomUUID();
+  const expiresAtMs = Date.now() + config.slugReservationTtlMinutes * 60_000;
+  const expiresAt = admin.firestore.Timestamp.fromMillis(expiresAtMs);
+
+  let publicSlug = "";
+
+  if (operation === "new") {
+    const validation = validatePublicSlug(request.data?.requestedPublicSlug);
+    if (!validation.isValid) {
+      throw new HttpsError("invalid-argument", "El enlace no es valido.");
+    }
+
+    const availability = await checkSlugAvailability(validation.normalizedSlug, uid, draftSlug);
+    if (!availability.isAvailable) {
+      throw new HttpsError("already-exists", "El enlace no esta disponible.");
+    }
+
+    await reserveSlugForSession({
+      slug: validation.normalizedSlug,
+      uid,
+      draftSlug,
+      sessionId,
+      expiresAt,
+    });
+
+    publicSlug = validation.normalizedSlug;
+  } else {
+    const existingSlug = await resolveExistingPublicSlug(draftSlug);
+    if (!existingSlug) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No existe una publicacion previa para este borrador"
+      );
+    }
+    publicSlug = existingSlug;
+  }
+
+  const amountBaseArs = operation === "new" ? config.publishAmountArs : config.updateAmountArs;
+  const discount = await resolveDiscountForCheckout({
+    operation,
+    amountBaseArs,
+    rawDiscountCode: request.data?.discountCode,
+  });
+
+  const amountArs = discount.amountArs;
+  const payerEmail = resolvePayerEmail(request);
+  let mpPublicKey = "";
+  let mpPreferenceId = "";
+
+  if (!isZeroAmount(amountArs)) {
+    try {
+      mpPublicKey = getMercadoPagoPublicKey();
+      mpPreferenceId = await createMercadoPagoPreferenceForCheckout({
+        sessionId,
+        operation,
+        publicSlug,
+        amountArs,
+        payerEmail,
+      });
+    } catch (error) {
+      if (operation === "new") {
+        await markReservationStatus({
+          slug: publicSlug,
+          sessionId,
+          nextStatus: "released",
+        });
+      }
+      throw mapMercadoPagoConfigError(error);
+    }
+  }
+
+  const payload: CheckoutSessionDoc = {
+    uid,
+    draftSlug,
+    operation,
+    publicSlug,
+    amountBaseArs: discount.amountBaseArs,
+    amountArs,
+    discountAmountArs: discount.discountAmountArs,
+    discountCode: discount.discountCode,
+    discountDescription: discount.discountDescription,
+    currency: "ARS",
+    status: "awaiting_payment",
+    expiresAt,
+    mpPreferenceId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await getSessionRef(sessionId).set(payload);
+
+  return {
+    sessionId,
+    operation,
+    publicSlug,
+    amountBaseArs: discount.amountBaseArs,
+    amountArs,
+    discountAmountArs: discount.discountAmountArs,
+    discountCode: discount.discountCode,
+    discountDescription: discount.discountDescription,
+    currency: "ARS",
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    mpPublicKey,
+    mpPreferenceId,
+    payerEmail,
+  };
+}
+
+export async function createPublicationPaymentHandler(
+  request: CallableRequest<{
+    sessionId: string;
+    brickData: {
+      token?: string;
+      payment_method_id?: string;
+      paymentMethodId?: string;
+      selectedPaymentMethod?: { id?: string } | string;
+      issuer_id?: string;
+      installments?: number;
+      payer: {
+        email: string;
+        identification?: { type: string; number: string };
+      };
+    };
+  }>
+): Promise<CheckoutPaymentResult> {
+  const uid = requireAuth(request);
+  const sessionId = normalizeSessionId(request.data?.sessionId);
+  const { ref: sessionRef, data: sessionData } = await readSessionOwnedByUser(uid, sessionId);
+
+  const sessionStatus = getString(sessionData.status) as CheckoutSessionStatus;
+  const expiresAt = sessionData.expiresAt as admin.firestore.Timestamp;
+
+  if (isExpiredAt(expiresAt) && !SESSION_TERMINAL_STATES.has(sessionStatus)) {
+    await sessionRef.set(
+      {
+        status: "expired",
+        lastError: "La sesion de pago expiro. Inicia una nueva.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    if (getString(sessionData.operation) === "new") {
+      await markReservationStatus({
+        slug: getString(sessionData.publicSlug),
+        sessionId,
+        nextStatus: "expired",
+      });
+    }
+
+    return {
+      sessionStatus: "expired",
+      paymentId: "",
+      message: "La sesion expiro",
+      errorMessage: "La sesion de pago expiro. Inicia una nueva.",
+    };
+  }
+
+  if (sessionStatus === "published") {
+    return buildPaymentResultFromSession(sessionData, getString(sessionData.mpPaymentId));
+  }
+
+  const amountArs = toAmount(sessionData.amountArs, 0);
+  const operation = normalizeOperation(sessionData.operation);
+
+  if (isZeroAmount(amountArs)) {
+    const syntheticPaymentId =
+      getString(sessionData.mpPaymentId) || `discount-full-${sessionId}`;
+
+    await sessionRef.set(
+      {
+        mpPaymentId: syntheticPaymentId,
+        mpStatus: "approved",
+        mpStatusDetail: "discount_100_auto_approved",
+        status: "payment_approved",
+        lastError: null,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return finalizeApprovedSession({
+      sessionId,
+      fallbackPaymentId: syntheticPaymentId,
+      approvedAt: toSafeIsoDate(new Date()),
+    });
+  }
+
+  const brickData = (request.data?.brickData || {}) as Record<string, unknown>;
+  const token = getString(brickData.token);
+  const paymentMethodId = extractPaymentMethodId(brickData);
+  const installments = Math.max(1, Number(brickData.installments) || 1);
+  const isAccountMoney = isAccountMoneyPaymentMethod(paymentMethodId);
+
+  if (!paymentMethodId) {
+    throw new HttpsError("invalid-argument", "Selecciona un medio de pago para continuar.");
+  }
+
+  if (!token && !isAccountMoney) {
+    throw new HttpsError("invalid-argument", "Completa los datos del medio de pago.");
+  }
+
+  const payer = (brickData.payer || {}) as Record<string, unknown>;
+  const payerIdentification = (payer.identification || {}) as Record<string, unknown>;
+
+  const paymentBody: Record<string, unknown> = {
+    transaction_amount: amountArs,
+    description:
+      operation === "new"
+        ? `Publicacion nueva de invitacion (${getString(sessionData.publicSlug)})`
+        : `Actualizacion de invitacion (${getString(sessionData.publicSlug)})`,
+    payment_method_id: paymentMethodId,
+    payer: {
+      email: getString(payer.email) || resolvePayerEmail(request),
+    },
+    notification_url: getMercadoPagoWebhookUrl(),
+    external_reference: sessionId,
+    metadata: {
+      publication_session_id: sessionId,
+      uid,
+      draft_slug: getString(sessionData.draftSlug),
+      public_slug: getString(sessionData.publicSlug),
+      operation,
+      discount_code: getString(sessionData.discountCode) || null,
+    },
+  };
+
+  if (!isAccountMoney) {
+    paymentBody.token = token;
+    paymentBody.installments = installments;
+  }
+
+  const issuerId = getString(brickData.issuer_id);
+  if (issuerId && !isAccountMoney) {
+    paymentBody.issuer_id = issuerId;
+  }
+
+  const identificationType = getString(payerIdentification.type);
+  const identificationNumber = getString(payerIdentification.number);
+  if (identificationType && identificationNumber) {
+    (paymentBody.payer as Record<string, unknown>).identification = {
+      type: identificationType,
+      number: identificationNumber,
+    };
+  }
+
+  let paymentResponse: any;
+  try {
+    const paymentClient = getMercadoPagoPaymentClient();
+    paymentResponse = (await paymentClient.create({
+      body: paymentBody,
+      requestOptions: {
+        idempotencyKey: `publication-${sessionId}`,
+      },
+    })) as any;
+  } catch (error) {
+    throw mapMercadoPagoPaymentError(error);
+  }
+
+  const paymentId = String(paymentResponse?.id || "");
+  if (!paymentId) {
+    throw new HttpsError("internal", "Mercado Pago no devolvio paymentId");
+  }
+
+  const paymentStatus = getString(paymentResponse?.status) || "in_process";
+  const paymentStatusDetail = getString(paymentResponse?.status_detail);
+
+  return processMercadoPagoPayment({
+    sessionId,
+    paymentId,
+    paymentStatus,
+    paymentStatusDetail,
+    approvedAt: getString(paymentResponse?.date_approved) || undefined,
+  });
+}
+
+export async function getPublicationCheckoutStatusHandler(
+  request: CallableRequest<{ sessionId: string }>
+): Promise<CheckoutStatusResponse> {
+  const uid = requireAuth(request);
+  const sessionId = normalizeSessionId(request.data?.sessionId);
+
+  const { ref: sessionRef, data } = await readSessionOwnedByUser(uid, sessionId);
+  const status = getString(data.status) as CheckoutSessionStatus;
+  const expiresAt = data.expiresAt as admin.firestore.Timestamp;
+
+  if (isExpiredAt(expiresAt) && !SESSION_TERMINAL_STATES.has(status)) {
+    await sessionRef.set(
+      {
+        status: "expired",
+        lastError: "La sesion de pago expiro. Inicia una nueva.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    if (getString(data.operation) === "new") {
+      await markReservationStatus({
+        slug: getString(data.publicSlug),
+        sessionId,
+        nextStatus: "expired",
+      });
+    }
+
+    return {
+      sessionStatus: "expired",
+      errorMessage: "La sesion de pago expiro. Inicia una nueva.",
+    };
+  }
+
+  return {
+    sessionStatus: status || "awaiting_payment",
+    publicUrl: getString(data.publicUrl) || undefined,
+    receipt: (data.receipt as Record<string, unknown> | undefined) || undefined,
+    errorMessage: getString(data.lastError) || undefined,
+  };
+}
+
+export async function retryPaidPublicationWithNewSlugHandler(
+  request: CallableRequest<{ sessionId: string; newPublicSlug: string }>
+): Promise<{ sessionStatus: "published" | "awaiting_retry"; publicUrl?: string; message?: string }> {
+  const uid = requireAuth(request);
+  const sessionId = normalizeSessionId(request.data?.sessionId);
+
+  const { ref: sessionRef, data } = await readSessionOwnedByUser(uid, sessionId);
+  const status = getString(data.status) as CheckoutSessionStatus;
+
+  if (status === "published") {
+    return {
+      sessionStatus: "published",
+      publicUrl: getString(data.publicUrl) || undefined,
+    };
+  }
+
+  if (status !== "approved_slug_conflict") {
+    throw new HttpsError(
+      "failed-precondition",
+      "La sesion no esta en estado de conflicto de enlace"
+    );
+  }
+
+  const validation = validatePublicSlug(request.data?.newPublicSlug);
+  if (!validation.isValid) {
+    throw new HttpsError("invalid-argument", "El enlace no es valido.");
+  }
+
+  const draftSlug = getString(data.draftSlug);
+  const availability = await checkSlugAvailability(validation.normalizedSlug, uid, draftSlug);
+  if (!availability.isAvailable) {
+    return {
+      sessionStatus: "awaiting_retry",
+      message: "El enlace elegido no esta disponible.",
+    };
+  }
+
+  const config = await getPublicationPaymentConfig();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    Date.now() + config.slugReservationTtlMinutes * 60_000
+  );
+
+  await reserveSlugForSession({
+    slug: validation.normalizedSlug,
+    uid,
+    draftSlug,
+    sessionId,
+    expiresAt,
+  });
+
+  await markReservationStatus({
+    slug: getString(data.publicSlug),
+    sessionId,
+    nextStatus: "released",
+  });
+
+  await sessionRef.set(
+    {
+      publicSlug: validation.normalizedSlug,
+      status: "payment_approved",
+      lastError: null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const result = await finalizeApprovedSession({
+    sessionId,
+    fallbackPaymentId: getString(data.mpPaymentId) || "paid-session",
+  });
+
+  if (result.sessionStatus === "published") {
+    return {
+      sessionStatus: "published",
+      publicUrl: result.publicUrl,
+      message: "Invitacion publicada correctamente.",
+    };
+  }
+
+  return {
+    sessionStatus: "awaiting_retry",
+    message: result.message || "No se pudo publicar con ese enlace. Intenta con otro.",
+  };
+}
+
+export async function publishWithApprovedPaymentSession(params: {
+  uid: string;
+  draftSlug: string;
+  slugPublico?: string;
+  paymentSessionId: string;
+}): Promise<{ success: true; url: string }> {
+  const { uid, draftSlug, slugPublico, paymentSessionId } = params;
+
+  await ensureDraftOwnership(uid, draftSlug);
+
+  const session = await readSessionOwnedByUser(uid, paymentSessionId);
+  const data = session.data;
+
+  const sessionPublicSlug = getString(data.publicSlug);
+  const requestedSlug = normalizePublicSlug(slugPublico || sessionPublicSlug);
+
+  if (!requestedSlug) {
+    throw new HttpsError("invalid-argument", "enlace publico invalido");
+  }
+
+  if (requestedSlug !== sessionPublicSlug) {
+    throw new HttpsError(
+      "failed-precondition",
+      "El enlace solicitado no coincide con el enlace aprobado en la sesion"
+    );
+  }
+
+  const status = getString(data.status) as CheckoutSessionStatus;
+
+  if (status === "published") {
+    const existingUrl = getString(data.publicUrl);
+    if (!existingUrl) {
+      throw new HttpsError("internal", "La sesion publicada no tiene URL guardada");
+    }
+    return { success: true, url: existingUrl };
+  }
+
+  if (status !== "payment_approved") {
+    throw new HttpsError(
+      "failed-precondition",
+      "El pago aun no fue aprobado para esta sesion"
+    );
+  }
+
+  const result = await finalizeApprovedSession({
+    sessionId: paymentSessionId,
+    fallbackPaymentId: getString(data.mpPaymentId) || "approved-session",
+    approvedAt: undefined,
+  });
+
+  if (result.sessionStatus !== "published" || !result.publicUrl) {
+    throw new HttpsError(
+      "failed-precondition",
+      "No se pudo completar la publicacion con esta sesion"
+    );
+  }
+
+  return {
+    success: true,
+    url: result.publicUrl,
+  };
+}
+
+function parseSignatureHeader(rawHeader: string): { ts: string; v1: string } | null {
+  const parts = rawHeader
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.split("="));
+
+  const signatureMap = new Map<string, string>();
+  parts.forEach(([key, value]) => {
+    if (!key || !value) return;
+    signatureMap.set(key, value);
+  });
+
+  const ts = signatureMap.get("ts") || "";
+  const v1 = signatureMap.get("v1") || "";
+  if (!ts || !v1) return null;
+
+  return { ts, v1 };
+}
+
+function toQueryValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return getString(value[0]);
+  }
+  return getString(value);
+}
+
+function validateMercadoPagoSignature(params: {
+  signatureHeader: string;
+  requestId: string;
+  dataId: string;
+}): boolean {
+  let secret = "";
+  try {
+    secret = getMercadoPagoWebhookSecret();
+  } catch {
+    return false;
+  }
+  const parsed = parseSignatureHeader(params.signatureHeader);
+  if (!parsed) return false;
+
+  const manifest = `id:${params.dataId};request-id:${params.requestId};ts:${parsed.ts};`;
+  const digest = createHmac("sha256", secret).update(manifest).digest("hex");
+
+  try {
+    return timingSafeEqual(Buffer.from(digest), Buffer.from(parsed.v1));
+  } catch {
+    return false;
+  }
+}
+
+async function resolvePaymentById(paymentId: string): Promise<any> {
+  const numericId = Number(paymentId);
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    throw new HttpsError("invalid-argument", "paymentId invalido");
+  }
+
+  const paymentClient = getMercadoPagoPaymentClient();
+  const payment = (await paymentClient.get({ id: numericId })) as any;
+  return payment;
+}
+
+export async function processMercadoPagoWebhookRequest(req: Request, res: Response): Promise<void> {
+  try {
+    const signatureHeader = getString(req.headers["x-signature"]);
+    const requestId = getString(req.headers["x-request-id"]);
+    const action =
+      toQueryValue((req.query as Record<string, unknown>).action) ||
+      getString((req.body as Record<string, unknown>)?.action);
+
+    const dataIdFromQuery = toQueryValue((req.query as Record<string, unknown>)["data.id"]);
+    const dataIdFromBody = getString((req.body as Record<string, any>)?.data?.id);
+    const dataId = dataIdFromQuery || dataIdFromBody;
+
+    logger.info("Mercado Pago webhook recibido", {
+      action: action || "unknown",
+      requestId: requestId || null,
+      dataId: dataId || null,
+      hasSignature: Boolean(signatureHeader),
+    });
+
+    if (!signatureHeader || !requestId || !dataId) {
+      res.status(400).json({ ok: false, message: "Headers de firma incompletos" });
+      return;
+    }
+
+    const signatureValid = validateMercadoPagoSignature({
+      signatureHeader,
+      requestId,
+      dataId,
+    });
+
+    if (!signatureValid) {
+      res.status(401).json({ ok: false, message: "Firma invalida" });
+      return;
+    }
+
+    const topic =
+      toQueryValue((req.query as Record<string, unknown>).type) ||
+      getString((req.body as Record<string, unknown>)?.type) ||
+      toQueryValue((req.query as Record<string, unknown>).topic);
+
+    if (topic && topic !== "payment") {
+      logger.info("Mercado Pago webhook ignorado por topic", {
+        action: action || "unknown",
+        requestId,
+        dataId,
+        topic,
+      });
+      res.status(200).json({ ok: true, ignored: true, reason: `topic=${topic}` });
+      return;
+    }
+
+    const payment = await resolvePaymentById(dataId);
+    const paymentId = getString(payment?.id || dataId);
+    const paymentStatus = getString(payment?.status) || "in_process";
+    const paymentStatusDetail = getString(payment?.status_detail);
+
+    const metadata = (payment?.metadata || {}) as Record<string, unknown>;
+    const sessionId =
+      getString(metadata.publication_session_id) ||
+      getString(payment?.external_reference);
+
+    logger.info("Mercado Pago webhook pago resuelto por API", {
+      action: action || "unknown",
+      requestId,
+      dataId,
+      paymentId,
+      paymentStatus,
+      paymentStatusDetail: paymentStatusDetail || null,
+      sessionId: sessionId || null,
+    });
+
+    if (!sessionId) {
+      logger.warn("Mercado Pago webhook sin sessionId", {
+        action: action || "unknown",
+        requestId,
+        dataId,
+        paymentId,
+        paymentStatus,
+      });
+      res.status(200).json({ ok: true, ignored: true, reason: "sin-session-id" });
+      return;
+    }
+
+    const result = await processMercadoPagoPayment({
+      sessionId,
+      paymentId,
+      paymentStatus,
+      paymentStatusDetail,
+      approvedAt: getString(payment?.date_approved) || undefined,
+    });
+
+    res.status(200).json({
+      ok: true,
+      sessionId,
+      sessionStatus: result.sessionStatus,
+    });
+
+    logger.info("Mercado Pago webhook procesado", {
+      action: action || "unknown",
+      requestId,
+      dataId,
+      paymentId,
+      paymentStatus,
+      sessionId,
+      sessionStatus: result.sessionStatus,
+    });
+  } catch (error) {
+    logger.error("Error en webhook de Mercado Pago", {
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+    res.status(500).json({ ok: false, message: "Error procesando webhook" });
+  }
+}

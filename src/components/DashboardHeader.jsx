@@ -7,8 +7,6 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronDown, LogOut, Minus, Plus } from "lucide-react";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 
-
-
 export default function DashboardHeader({
     slugInvitacion,
     zoom,
@@ -32,16 +30,6 @@ export default function DashboardHeader({
     const [nombreBorrador, setNombreBorrador] = useState("");
     const router = useRouter();
     const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
-
-    const [publicando, setPublicando] = useState(false);
-    const [progreso, setProgreso] = useState(0);
-    const [urlFinal, setUrlFinal] = useState(null);
-
-    const [mostrarModalURL, setMostrarModalURL] = useState(false);
-    const [slugPersonalizado, setSlugPersonalizado] = useState("");
-    const [slugDisponible, setSlugDisponible] = useState(null); // true / false / null
-    const [verificandoSlug, setVerificandoSlug] = useState(false);
-    const [slugPublicoExistente, setSlugPublicoExistente] = useState(null);
     const emailNormalizado = String(usuario?.email || "").trim();
     const nombreNormalizado = String(usuario?.displayName || "").trim();
     const nombreDesdeEmail = emailNormalizado
@@ -56,30 +44,6 @@ export default function DashboardHeader({
             .trim()
             .charAt(0)
             .toUpperCase() || "U";
-
-
-    // 🧠 Función para verificar si existe el slug en Firestore
-    const verificarDisponibilidadSlug = async (slug) => {
-        if (!slug) {
-            setSlugDisponible(null);
-            return;
-        }
-
-        setVerificandoSlug(true);
-        try {
-            const ref = doc(db, "publicadas", slug);
-            const snap = await getDoc(ref);
-            setSlugDisponible(!snap.exists());
-        } catch (err) {
-            console.error("Error verificando slug:", err);
-            setSlugDisponible(null);
-        } finally {
-            setVerificandoSlug(false);
-        }
-    };
-
-
-
     const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
@@ -131,32 +95,6 @@ export default function DashboardHeader({
         window.addEventListener("resize", updateHeaderHeightVar);
         return () => window.removeEventListener("resize", updateHeaderHeightVar);
     }, []);
-
-
-    useEffect(() => {
-        const cargarDatosBorrador = async () => {
-            if (!slugInvitacion) return;
-
-            const ref = doc(db, "borradores", slugInvitacion);
-            const snap = await getDoc(ref);
-
-            if (snap.exists()) {
-                const data = snap.data();
-                // Si no tiene slugPublico asociado, asegurate de limpiarlo
-                if (data.slugPublico) {
-                    setSlugPublicoExistente(data.slugPublico);
-                } else {
-                    setSlugPublicoExistente(null);
-                }
-            }
-        };
-
-        cargarDatosBorrador();
-    }, [slugInvitacion]);
-
-    useEffect(() => {
-        return () => setSlugPublicoExistente(null);
-    }, [slugInvitacion]);
 
 
     // Cargar nombre del borrador al montar o cambiar slug
@@ -257,76 +195,6 @@ export default function DashboardHeader({
         }
     };
 
-    // 🔹 Función para publicar invitación
-    const publicarInvitacion = async () => {
-        setPublicando(true);
-        setProgreso(10);
-        setUrlFinal(null);
-
-        try {
-            const functions = getFunctions();
-            const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
-
-            // Simular progreso mientras se genera el HTML
-            const fakeProgress = setInterval(() => {
-                setProgreso((prev) => (prev < 90 ? prev + 5 : prev));
-            }, 400);
-
-            const result = await publicarInvitacion({ slug: slugInvitacion });
-            clearInterval(fakeProgress);
-
-            const url = result.data?.url;
-            if (!url) throw new Error("No se recibió la URL final");
-
-            // Completa la barra y muestra éxito
-            setProgreso(100);
-            setUrlFinal(url);
-            setSlugPublicoExistente(slugPublico || slugPublicoExistente || slugPersonalizado);
-
-
-
-
-        } catch (error) {
-            console.error("❌ Error al publicar la invitación:", error);
-            alert("Ocurrió un error al publicar la invitación.");
-        }
-    };
-
-    useEffect(() => {
-        const cargarSlugPublico = async () => {
-            // 🧠 Solo se ejecuta cuando abrís el modal y hay un slugInvitacion cargado
-            if (!mostrarModalURL || !slugInvitacion) return;
-
-            try {
-                // 🔍 Buscar si el borrador ya tiene guardado un slugPublico
-                const ref = doc(db, "borradores", slugInvitacion);
-                const snap = await getDoc(ref);
-
-                if (snap.exists()) {
-                    const data = snap.data();
-
-                    // ✅ Si el borrador ya tiene un slugPublico, lo guardamos en estado
-                    if (data.slugPublico) {
-                        setSlugPublicoExistente(data.slugPublico);
-                        setSlugDisponible(true);
-                    } else {
-                        // ❌ Si no tiene slugPublico, reseteamos estado
-                        setSlugPublicoExistente(null);
-                        setSlugDisponible(null);
-                    }
-                } else {
-                    setSlugPublicoExistente(null);
-                    setSlugDisponible(null);
-                }
-            } catch (err) {
-                console.error("Error cargando slugPublico:", err);
-                setSlugPublicoExistente(null);
-                setSlugDisponible(null);
-            }
-        };
-
-        cargarSlugPublico();
-    }, [mostrarModalURL, slugInvitacion]);
 
     const subtleHeaderButton =
         "inline-flex items-center gap-1.5 rounded-xl border border-[#e6dbf8] bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_26px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
@@ -340,10 +208,6 @@ export default function DashboardHeader({
         "cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-xs text-gray-400 shadow-none";
     const dashboardModeButton =
         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
-
-
-
-
 
     return (
         <div ref={headerRef} className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
@@ -448,8 +312,6 @@ export default function DashboardHeader({
                             Guardar plantilla
                         </button>
                     )}
-
-
 
                     {/* ----------------- ACCIONES (desktop) ----------------- */}
                     <div className="hidden sm:flex gap-2 ml-auto">
@@ -687,264 +549,6 @@ export default function DashboardHeader({
                     </div>
                 )}
             </div>
-
-            {publicando && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100]">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl w-96 text-center animate-fadeIn">
-                        {!urlFinal ? (
-                            <>
-                                <h3 className="text-sm font-medium mb-3 text-gray-700">
-                                    Publicando invitación...
-                                </h3>
-                                <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden mb-2">
-                                    <div
-                                        className="bg-[#773dbe] h-2 rounded-full transition-all duration-300"
-                                        style={{ width: `${progreso}%` }}
-                                    />
-                                </div>
-                                <p className="text-xs text-gray-500">{progreso}% completado</p>
-                            </>
-                        ) : (
-                            <>
-                                <h3 className="text-base font-semibold mb-2 text-gray-800">
-                                    🎉 ¡Invitación publicada!
-                                </h3>
-                                <p className="text-xs text-gray-500 mb-4">
-                                    Tu invitación ya está lista para compartir.
-                                </p>
-
-                                {/* 🔹 Caja con URL y botón Copiar */}
-                                <div className="relative mb-4 flex items-center">
-                                    <input
-                                        type="text"
-                                        readOnly
-                                        value={urlFinal}
-                                        className="flex-1 border border-gray-300 rounded-l-lg text-xs px-3 py-2 text-gray-700 bg-gray-50 select-all focus:outline-none"
-                                    />
-
-                                    {/* Estado interno del botón Copiar */}
-                                    <button
-                                        onClick={(e) => {
-                                            navigator.clipboard.writeText(urlFinal);
-                                            e.target.textContent = "Copiado ✓";
-                                            e.target.classList.add("bg-green-500", "hover:bg-green-600");
-                                            setTimeout(() => {
-                                                e.target.textContent = "Copiar";
-                                                e.target.classList.remove("bg-green-500", "hover:bg-green-600");
-                                            }, 1200);
-                                        }}
-                                        className="bg-[#773dbe] text-white text-xs px-3 py-2 rounded-r-lg hover:bg-purple-700 transition-all"
-                                        title="Copiar enlace"
-                                    >
-                                        Copiar
-                                    </button>
-                                </div>
-
-                                {/* 🔹 Botones de acción */}
-                                <div className="flex justify-center gap-3">
-                                    <a
-                                        href={urlFinal}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="bg-[#773dbe] text-white px-4 py-2 rounded-lg text-xs hover:bg-purple-700 transition"
-                                    >
-                                        Ver invitación
-                                    </a>
-                                    <button
-                                        onClick={() => setPublicando(false)}
-                                        className="text-xs text-gray-500 hover:text-gray-700 transition"
-                                    >
-                                        Cerrar
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
-
-
-            {mostrarModalURL && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100]">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl w-96 text-center animate-fadeIn">
-                        {slugPublicoExistente ? (
-                            <>
-                                <h3 className="text-base font-semibold mb-2 text-gray-800">
-                                    🌐 Tu invitación ya está publicada
-                                </h3>
-                                <p className="text-xs text-gray-500 mb-4">
-                                    Tenés una versión pública online. Podés <strong>verla en el enlace</strong> o <strong>actualizarla</strong> para reemplazarla con los últimos cambios.
-                                </p>
-
-                                {/* 🔹 Caja con URL claramente identificada */}
-                                <div className="mb-4 text-left">
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                                        Enlace público:
-                                    </label>
-                                    <a
-                                        href={`https://reservaeldia.com.ar/i/${slugPublicoExistente}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="block text-sm text-[#773dbe] font-medium underline hover:text-purple-800 break-words"
-                                    >
-                                        https://reservaeldia.com.ar/i/{slugPublicoExistente}
-                                    </a>
-                                    <p className="text-[11px] text-gray-400 mt-1">
-                                        (Click en el enlace para visitar la invitación publicada)
-                                    </p>
-                                </div>
-
-                                {/* 🔹 Línea divisoria visual */}
-                                <hr className="border-gray-200 mb-4" />
-
-                                {/* 🔹 Botones */}
-                                <div className="flex justify-center gap-3 mt-2">
-                                    <button
-                                        onClick={() => setMostrarModalURL(false)}
-                                        className="text-xs text-gray-500 hover:text-gray-700 transition"
-                                    >
-                                        Cerrar
-                                    </button>
-
-                                    <button
-                                        onClick={async () => {
-                                            setMostrarModalURL(false);
-                                            setPublicando(true);
-                                            setProgreso(10);
-                                            setUrlFinal(null);
-
-                                            try {
-                                                const functions = getFunctions();
-                                                const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
-
-                                                const result = await publicarInvitacion({
-                                                    slug: slugInvitacion,
-                                                    slugPublico: slugPublicoExistente,
-                                                });
-
-                                                const url = result.data?.url;
-                                                if (!url) throw new Error("No se recibió la URL final");
-
-                                                setProgreso(100);
-                                                setUrlFinal(url);
-
-                                                // ✅ Forzar re-render inmediato del botón "Ver o actualizar invitación"
-                                                setSlugPublicoExistente(slugPublicoExistente);
-
-                                            } catch (error) {
-                                                console.error("❌ Error al actualizar la invitación:", error);
-                                                alert("Ocurrió un error al actualizar la invitación.");
-                                                setPublicando(false);
-                                            }
-                                        }}
-                                        className="px-4 py-2 rounded-lg text-xs text-white bg-[#773dbe] hover:bg-purple-700 transition-all"
-                                    >
-                                        🔄 Actualizar invitación publicada
-                                    </button>
-
-                                </div>
-
-                                <p className="text-[11px] text-gray-400 mt-3">
-                                    Este botón sobrescribe la versión publicada con los últimos cambios del editor.
-                                </p>
-                            </>
-                        ) : (
-                            <>
-                                <h3 className="text-base font-semibold mb-2 text-gray-800">
-                                    🌐 Elegí tu dirección web
-                                </h3>
-                                <p className="text-xs text-gray-500 mb-4">
-                                    Tu invitación se publicará en el siguiente enlace:
-                                </p>
-
-                                {/* Campo URL */}
-                                <div className="flex items-center border rounded-lg overflow-hidden mb-3">
-                                    <span className="bg-gray-100 text-gray-600 text-xs px-2 py-2 select-none">
-                                        https://reservaeldia.com.ar/i/
-                                    </span>
-                                    <input
-                                        type="text"
-                                        className="flex-1 px-2 py-2 text-xs focus:outline-none"
-                                        placeholder="nombre-de-tu-invitacion"
-                                        value={slugPersonalizado}
-                                        onChange={(e) => {
-                                            let valor = e.target.value.toLowerCase();
-                                            valor = valor.replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-                                            setSlugPersonalizado(valor);
-                                            verificarDisponibilidadSlug(valor);
-                                        }}
-                                    />
-                                </div>
-
-                                {/* Feedback visual */}
-                                <div className="h-4 mb-4">
-                                    {verificandoSlug && (
-                                        <span className="text-xs text-gray-400">Verificando...</span>
-                                    )}
-                                    {slugDisponible === true && (
-                                        <span className="text-xs text-green-600">✅ Disponible</span>
-                                    )}
-                                    {slugDisponible === false && (
-                                        <span className="text-xs text-red-500">❌ Ya está en uso</span>
-                                    )}
-                                </div>
-
-                                {/* Botones */}
-                                <div className="flex justify-center gap-3 mt-2">
-                                    <button
-                                        onClick={() => setMostrarModalURL(false)}
-                                        className="text-xs text-gray-500 hover:text-gray-700 transition"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        disabled={!slugDisponible || !slugPersonalizado}
-                                        onClick={async () => {
-                                            setMostrarModalURL(false);
-                                            setPublicando(true);
-                                            setProgreso(10);
-                                            setUrlFinal(null);
-
-                                            try {
-                                                const functions = getFunctions();
-                                                const publicarInvitacion = httpsCallable(functions, "publicarInvitacion");
-
-                                                const result = await publicarInvitacion({
-                                                    slug: slugInvitacion,
-                                                    slugPublico: slugPersonalizado,
-                                                });
-
-                                                const url = result.data?.url;
-                                                if (!url) throw new Error("No se recibió la URL final");
-
-                                                setProgreso(100);
-                                                setUrlFinal(url);
-                                                setSlugPublicoExistente(slugPersonalizado);
-                                            } catch (error) {
-                                                console.error("❌ Error al publicar la invitación:", error);
-                                                alert("Ocurrió un error al publicar la invitación.");
-                                                setPublicando(false);
-                                            }
-                                        }}
-                                        className={`px-4 py-2 rounded-lg text-xs text-white transition-all ${slugDisponible
-                                            ? "bg-[#773dbe] hover:bg-purple-700"
-                                            : "bg-gray-300 cursor-not-allowed"
-                                            }`}
-                                    >
-                                        Publicar invitación
-                                    </button>
-                                </div>
-                            </>
-                        )}
-
-
-                    </div>
-                </div>
-            )}
-
-
-
-
 
         </div>
 

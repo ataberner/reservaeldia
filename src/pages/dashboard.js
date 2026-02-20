@@ -8,6 +8,7 @@ import TipoSelector from '../components/TipoSelector';
 import PlantillaGrid from '../components/PlantillaGrid';
 import BorradoresGrid from '@/components/BorradoresGrid';
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
+import PublicationCheckoutModal from "@/components/payments/PublicationCheckoutModal";
 import PublicadasGrid from "@/components/PublicadasGrid";
 import { httpsCallable } from "firebase/functions";
 import dynamic from "next/dynamic";
@@ -17,6 +18,7 @@ import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
 import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
+import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import {
   consumeInterruptedEditorSession,
@@ -337,10 +339,11 @@ export default function Dashboard() {
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
   const [urlPublicaVistaPrevia, setUrlPublicaVistaPrevia] = useState(null);
   const [slugPublicoVistaPrevia, setSlugPublicoVistaPrevia] = useState(null);
-  const [publicandoDesdeVistaPrevia, setPublicandoDesdeVistaPrevia] = useState(false);
   const [publicacionVistaPreviaError, setPublicacionVistaPreviaError] = useState("");
   const [publicacionVistaPreviaOk, setPublicacionVistaPreviaOk] = useState("");
   const [urlPublicadaReciente, setUrlPublicadaReciente] = useState(null);
+  const [mostrarCheckoutPublicacion, setMostrarCheckoutPublicacion] = useState(false);
+  const [operacionCheckoutPublicacion, setOperacionCheckoutPublicacion] = useState("new");
   const [vista, setVista] = useState("home");
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [profileInitialValues, setProfileInitialValues] = useState({
@@ -1040,9 +1043,9 @@ export default function Dashboard() {
       }
 
       const slugPublicoNormalizado =
-        normalizarSlugPublico(slugPublicoDetectado) ||
-        normalizarSlugPublico(urlPublicaDetectada) ||
-        normalizarSlugPublico(slugPublicoBorrador) ||
+        normalizePublicSlug(slugPublicoDetectado) ||
+        normalizePublicSlug(urlPublicaDetectada) ||
+        normalizePublicSlug(slugPublicoBorrador) ||
         null;
 
       setUrlPublicaVistaPrevia(urlPublicaDetectada || null);
@@ -1123,89 +1126,40 @@ export default function Dashboard() {
     }
   };
 
-  const extractSlugCandidate = (value) => {
-    const raw = String(value || "").trim();
-    if (!raw) return "";
-
-    try {
-      const parsed = new URL(raw);
-      const segments = parsed.pathname.split("/").filter(Boolean);
-      const iIndex = segments.indexOf("i");
-      if (iIndex >= 0 && segments[iIndex + 1]) return segments[iIndex + 1];
-      return segments[segments.length - 1] || "";
-    } catch (_e) {
-      const withoutQuery = raw.split(/[?#]/)[0] || raw;
-      const normalizedPath = withoutQuery.replace(/^\/+|\/+$/g, "");
-      if (!normalizedPath.includes("/")) return normalizedPath;
-      const segments = normalizedPath.split("/").filter(Boolean);
-      const iIndex = segments.indexOf("i");
-      if (iIndex >= 0 && segments[iIndex + 1]) return segments[iIndex + 1];
-      return segments[segments.length - 1] || "";
-    }
-  };
-
-  const normalizarSlugPublico = (value) => {
-    let candidate = extractSlugCandidate(value);
-    if (!candidate) return "";
-
-    try {
-      candidate = decodeURIComponent(candidate);
-    } catch (_e) {}
-
-    return candidate
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-_]/g, "")
-      .replace(/-+/g, "-")
-      .replace(/_+/g, "_")
-      .replace(/^[-_]+|[-_]+$/g, "");
-  };
-
-  const parseSlugFromPublicUrl = (urlValue) => normalizarSlugPublico(urlValue) || null;
-
   const publicarDesdeVistaPrevia = async () => {
-    if (!slugInvitacion || publicandoDesdeVistaPrevia) return;
+    if (!slugInvitacion) return;
 
-    setPublicandoDesdeVistaPrevia(true);
+    const slugPublicoNormalizado =
+      normalizePublicSlug(slugPublicoVistaPrevia) ||
+      normalizePublicSlug(urlPublicaVistaPrevia);
+
     setPublicacionVistaPreviaError("");
     setPublicacionVistaPreviaOk("");
-
-    try {
-      const publicarInvitacionCallable = httpsCallable(cloudFunctions, "publicarInvitacion");
-      const slugPublicoNormalizado =
-        normalizarSlugPublico(slugPublicoVistaPrevia) ||
-        normalizarSlugPublico(urlPublicaVistaPrevia);
-      const payload = slugPublicoNormalizado && slugPublicoNormalizado !== slugInvitacion
-        ? { slug: slugInvitacion, slugPublico: slugPublicoNormalizado }
-        : { slug: slugInvitacion };
-
-      const result = await publicarInvitacionCallable(payload);
-      const url = String(result?.data?.url || "").trim();
-      if (!url) {
-        throw new Error("No se recibio la URL publica");
-      }
-
-      const slugPublicado = parseSlugFromPublicUrl(url) || slugPublicoNormalizado || null;
-
-      setUrlPublicaVistaPrevia(url);
-      setUrlPublicadaReciente(url);
-      setSlugPublicoVistaPrevia(slugPublicado);
-      setPublicacionVistaPreviaOk(
-        slugPublicoNormalizado || urlPublicaVistaPrevia
-          ? "Invitacion actualizada correctamente."
-          : "Invitacion publicada correctamente."
-      );
-    } catch (error) {
-      console.error("Error publicando desde vista previa:", error);
-      setPublicacionVistaPreviaError(
-        getErrorMessage(error, "No se pudo publicar la invitacion.")
-      );
-    } finally {
-      setPublicandoDesdeVistaPrevia(false);
-    }
+    setOperacionCheckoutPublicacion(slugPublicoNormalizado ? "update" : "new");
+    setMostrarCheckoutPublicacion(true);
   };
+
+  const handleCheckoutPublished = useCallback((payload) => {
+    const publicUrl = String(payload?.publicUrl || "").trim();
+    const publicSlug =
+      normalizePublicSlug(payload?.publicSlug) || parseSlugFromPublicUrl(publicUrl);
+
+    if (publicUrl) {
+      setUrlPublicaVistaPrevia(publicUrl);
+      setUrlPublicadaReciente(publicUrl);
+    }
+
+    if (publicSlug) {
+      setSlugPublicoVistaPrevia(publicSlug);
+    }
+
+    setPublicacionVistaPreviaError("");
+    setPublicacionVistaPreviaOk(
+      payload?.operation === "update"
+        ? "Invitacion actualizada correctamente."
+        : "Invitacion publicada correctamente."
+    );
+  }, []);
 
   const handleCompleteProfile = async (payload) => {
     const upsertUserProfileCallable = httpsCallable(cloudFunctions, "upsertUserProfile");
@@ -1890,10 +1844,10 @@ export default function Dashboard() {
         visible={mostrarVistaPrevia}
         onClose={() => {
           setMostrarVistaPrevia(false);
+          setMostrarCheckoutPublicacion(false);
           setHtmlVistaPrevia(null);
           setUrlPublicaVistaPrevia(null);
           setSlugPublicoVistaPrevia(null);
-          setPublicandoDesdeVistaPrevia(false);
           setPublicacionVistaPreviaError("");
           setPublicacionVistaPreviaOk("");
           setUrlPublicadaReciente(null);
@@ -1901,14 +1855,25 @@ export default function Dashboard() {
         htmlContent={htmlVistaPrevia}
         publicUrl={urlPublicaVistaPrevia}
         onPublish={publicarDesdeVistaPrevia}
-        publishing={publicandoDesdeVistaPrevia}
+        publishing={false}
         publishError={publicacionVistaPreviaError}
         publishSuccess={publicacionVistaPreviaOk}
         publishedUrl={urlPublicadaReciente}
+        checkoutVisible={mostrarCheckoutPublicacion}
       />
 
 
       </DashboardLayout>
+
+      <PublicationCheckoutModal
+        visible={mostrarCheckoutPublicacion}
+        onClose={() => setMostrarCheckoutPublicacion(false)}
+        draftSlug={slugInvitacion}
+        operation={operacionCheckoutPublicacion}
+        currentPublicSlug={slugPublicoVistaPrevia || ""}
+        currentPublicUrl={urlPublicaVistaPrevia || ""}
+        onPublished={handleCheckoutPublished}
+      />
 
       <ProfileCompletionModal
         visible={showProfileCompletion}

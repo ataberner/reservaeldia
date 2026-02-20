@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
+import DiscountCodesManager from "@/components/admin/DiscountCodesManager";
 import UsersDirectoryManager from "@/components/admin/UsersDirectoryManager";
 
 export default function SiteManagementBoard({
@@ -9,6 +10,7 @@ export default function SiteManagementBoard({
 }) {
   const [openPanel, setOpenPanel] = useState(null);
   const isAdminsOpen = openPanel === "admins";
+  const isDiscountsOpen = openPanel === "discounts";
   const isUsersOpen = openPanel === "users";
   const canAccessSiteManagement = canManageSite === true;
 
@@ -63,6 +65,57 @@ export default function SiteManagementBoard({
 
           {isSuperAdmin && (
             <>
+              <div
+                className={`rounded-xl p-[1px] transition-all ${
+                  isDiscountsOpen
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 shadow-md"
+                    : "border border-gray-200 bg-white shadow-sm"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => togglePanel("discounts")}
+                  className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                    isDiscountsOpen
+                      ? "bg-gradient-to-r from-amber-50 to-orange-50"
+                      : "bg-white hover:bg-gray-50"
+                  }`}
+                >
+                  <div>
+                    <h2
+                      className={`text-lg font-semibold ${
+                        isDiscountsOpen ? "text-amber-900" : "text-gray-800"
+                      }`}
+                    >
+                      Codigos de descuento
+                    </h2>
+                    <p
+                      className={`mt-1 text-sm ${
+                        isDiscountsOpen ? "text-amber-700" : "text-gray-600"
+                      }`}
+                    >
+                      Crear codigos, configurar descuentos y revisar usos.
+                    </p>
+                    {isDiscountsOpen && (
+                      <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                        Seccion abierta
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
+                      isDiscountsOpen
+                        ? "bg-amber-600 text-white"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {isDiscountsOpen ? "^" : "v"}
+                  </span>
+                </button>
+              </div>
+
+              {isDiscountsOpen && <DiscountCodesManager />}
+
               <div
                 className={`rounded-xl p-[1px] transition-all ${
                   isAdminsOpen

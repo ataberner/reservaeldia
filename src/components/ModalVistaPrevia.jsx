@@ -38,7 +38,7 @@ function PreviewFrame({
           <iframe
             key={iframeKey}
             srcDoc={htmlContent}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts"
             title={iframeTitle}
             style={{
               width: "100%",
@@ -70,6 +70,7 @@ export default function ModalVistaPrevia({
   publishError = "",
   publishSuccess = "",
   publishedUrl = "",
+  checkoutVisible = false,
 }) {
   const [iframeKey, setIframeKey] = useState(0);
   const [windowHeight, setWindowHeight] = useState(820);
@@ -176,14 +177,6 @@ export default function ModalVistaPrevia({
 
   const confirmarPublicacion = () => {
     if (typeof onPublish !== "function" || publishing) return;
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(
-        yaPublicada
-          ? "¿Querés actualizar la invitacion publica con estos cambios?"
-          : "¿Querés publicar esta invitacion?"
-      );
-      if (!ok) return;
-    }
     onPublish();
   };
 
@@ -322,7 +315,7 @@ export default function ModalVistaPrevia({
                     Ver publicada
                   </a>
                 )}
-                {!publishing && (
+                {!publishing && !checkoutVisible && (
                   <span className="hidden items-center gap-1 rounded-full border border-[#d8ccea] bg-[#f7f2ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] sm:inline-flex">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#773dbe]" />
                     {yaPublicada ? "Lista para actualizar" : "Lista para publicar"}
@@ -331,18 +324,20 @@ export default function ModalVistaPrevia({
                 <button
                   type="button"
                   onClick={confirmarPublicacion}
-                  disabled={publishing || !htmlContent}
+                  disabled={publishing || !htmlContent || checkoutVisible}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:text-xs ${
-                    publishing || !htmlContent
+                    publishing || !htmlContent || checkoutVisible
                       ? "cursor-not-allowed bg-[#bda5e6]"
                       : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_28px_rgba(111,59,192,0.34)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
                   }`}
                 >
-                  {yaPublicada && !publishing ? <RefreshCw className="h-3.5 w-3.5" /> : null}
+                  {yaPublicada && !publishing && !checkoutVisible ? <RefreshCw className="h-3.5 w-3.5" /> : null}
                   {publishing
                     ? yaPublicada
                       ? "Actualizando..."
                       : "Publicando..."
+                    : checkoutVisible
+                    ? "Checkout abierto"
                     : yaPublicada
                     ? "Actualizar invitacion"
                     : "Publicar invitacion"}

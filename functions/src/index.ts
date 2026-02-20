@@ -1,11 +1,10 @@
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
+import { setGlobalOptions } from "firebase-functions/v2/options";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import { randomUUID } from "crypto";
 import { JSDOM } from "jsdom";
 import express, { Request, Response } from "express";
-import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
-import { type RSVPConfig as ModalConfig } from "./utils/generarModalRSVP";
 import {
   requireAdmin,
   requireAuth,
@@ -13,8 +12,25 @@ import {
   isSuperAdmin,
   getSuperAdminUids,
 } from "./auth/adminAuth";
+import {
+  checkPublicSlugAvailabilityHandler,
+  createPublicationCheckoutSessionHandler,
+  createPublicationPaymentHandler,
+  getPublicationCheckoutStatusHandler,
+  listPublicationDiscountCodesHandler,
+  listPublicationDiscountCodeUsageHandler,
+  processMercadoPagoWebhookRequest,
+  publishWithApprovedPaymentSession,
+  retryPaidPublicationWithNewSlugHandler,
+  upsertPublicationDiscountCodeHandler,
+} from "./payments/publicationPayments";
 
 import * as logger from "firebase-functions/logger";
+
+setGlobalOptions({
+  region: "us-central1",
+  cpu: "gcf_gen1",
+});
 
 // Inicialización de Firebase Admin
 if (!admin.apps.length) {
@@ -265,7 +281,7 @@ function toLimitedString(value: unknown, maxLength = 500): string | null {
   const normalized = asText.trim();
   if (!normalized) return null;
   if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}…`;
+  return `${normalized.slice(0, maxLength)}...`;
 }
 
 function toLimitedJson(value: unknown, maxLength = 4000): string | null {
@@ -275,7 +291,7 @@ function toLimitedJson(value: unknown, maxLength = 4000): string | null {
     const asJson = JSON.stringify(value);
     if (!asJson) return null;
     if (asJson.length <= maxLength) return asJson;
-    return `${asJson.slice(0, maxLength)}…`;
+    return `${asJson.slice(0, maxLength)}...`;
   } catch {
     return toLimitedString(value, maxLength);
   }
@@ -608,10 +624,10 @@ export const verInvitacionPublicada = onRequest(
 
 
 
-// ✅ Función para ver la invitación en el iframe
+// Funcion para ver la invitacion en el iframe
 
 export const verInvitacion = onRequest(
-  { region: "us-central1" },
+  { region: "us-central1", cpu: "gcf_gen1" },
   async (req, res): Promise<void> => {
     const slug = req.query.slug as string;
     if (!slug) {
@@ -655,7 +671,7 @@ export const verInvitacion = onRequest(
       res.set("X-Frame-Options", "").set("Content-Type", "text/html");
       res.status(200).send(dom.serialize());
     } catch (error) {
-      logger.error("❌ Error al servir invitación:", error);
+      logger.error("Error al servir invitacion:", error);
       res.status(500).send("Error interno del servidor");
     }
   }
@@ -671,9 +687,11 @@ type CopiarPlantillaData = {
 
 
 
-// ✅Copia index.html de una plantilla a una nueva carpeta de borrador y guarda el contenido inicial en Firestore.
+// Copia index.html de una plantilla a una nueva carpeta de borrador y guarda el contenido inicial en Firestore.
 
-export const copiarPlantillaHTML = onCall(async (request) => {
+export const copiarPlantillaHTML = onCall(
+  { region: "us-central1", cpu: "gcf_gen1" },
+  async (request) => {
   const { plantillaId, slug } = request.data;
   const uid = request.auth?.uid;
 
@@ -720,7 +738,8 @@ export const copiarPlantillaHTML = onCall(async (request) => {
     slug,
     url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`,
   };
-});
+  }
+);
 
 
 
@@ -750,133 +769,91 @@ export const borrarBorrador = onCall(async (request) => {
 
 
 
-// 👇 Acá definís el tipo de datos esperados
-interface PublicarInvitacionData {
-  slug: string;
-}
+// Tipos de datos esperados
+export const checkPublicSlugAvailability = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => checkPublicSlugAvailabilityHandler(request)
+);
 
-// 🗑️ ELIMINADA: función aplicarOverrides
-// Esta función era específica del editor HTML contenteditable
+export const createPublicationCheckoutSession = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => createPublicationCheckoutSessionHandler(request)
+);
 
+export const createPublicationPayment = onCall(
+  { region: "us-central1", memory: "512MiB" },
+  async (request) => createPublicationPaymentHandler(request)
+);
 
-async function resolverURLsDeObjetos(objetos: any[]): Promise<any[]> {
-  const bucket = getStorage().bucket();
+export const getPublicationCheckoutStatus = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => getPublicationCheckoutStatusHandler(request)
+);
 
-  const procesados = await Promise.all(
-    objetos.map(async (obj) => {
-      if (
-        (obj.tipo === "imagen" || obj.tipo === "icono") &&
-        obj.src &&
-        !obj.src.startsWith("http")
-      ) {
-        try {
-          const [url] = await bucket.file(obj.src).getSignedUrl({
-            action: "read",
-            expires: Date.now() + 1000 * 60 * 60 * 24 * 365, // 1 año
-          });
-          return { ...obj, src: url };
-        } catch (error) {
-          console.warn("❌ Error resolviendo URL de", obj.src, error);
-          return obj;
-        }
-      }
-      return obj;
-    })
-  );
+export const retryPaidPublicationWithNewSlug = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => retryPaidPublicationWithNewSlugHandler(request)
+);
 
-  return procesados;
-}
+export const upsertPublicationDiscountCode = onCall(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request) => upsertPublicationDiscountCodeHandler(request)
+);
 
-function safeServerTimestamp() {
-  try {
-    const fv = (admin as any)?.firestore?.FieldValue;
-    if (fv?.serverTimestamp) return fv.serverTimestamp();
-  } catch {}
-  // Fallback seguro (solo se usa si falta FieldValue en emulador)
-  return new Date();
-}
+export const listPublicationDiscountCodes = onCall(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request) => listPublicationDiscountCodesHandler(request)
+);
 
+export const listPublicationDiscountCodeUsage = onCall(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request) => listPublicationDiscountCodeUsageHandler(request)
+);
+
+export const mercadoPagoWebhook = onRequest(
+  { region: "us-central1" },
+  async (req, res) => processMercadoPagoWebhookRequest(req, res)
+);
 
 export const publicarInvitacion = onCall(
-  { region: "us-central1", memory: "512MiB" },
+  { region: "us-central1", memory: "256MiB", cpu: "gcf_gen1" },
   async (request) => {
-    const { slug, slugPublico } = request.data;
-    if (!slug) throw new HttpsError("invalid-argument", "Falta el slug del borrador");
+    const uid = requireAuth(request);
+    const slug = String(request.data?.slug || "").trim();
+    const slugPublico = String(request.data?.slugPublico || "").trim();
+    const paymentSessionId = String(request.data?.paymentSessionId || "").trim();
 
-    const slugDestino = slugPublico || slug;
-
-    // 🔹 1. Leer el borrador original
-    const docSnap = await db.collection("borradores").doc(slug).get();
-    if (!docSnap.exists) throw new HttpsError("not-found", "No se encontró el borrador");
-
-    const data = docSnap.data();
-    if (!data) throw new HttpsError("not-found", "El documento está vacío");
-
-    // 🔹 2. Resolver datos del borrador
-    const objetos = data?.objetos || [];
-    const secciones = data?.secciones || [];
-    const objetosFinales = await resolverURLsDeObjetos(objetos);
-
-    const rsvp: ModalConfig = {
-      enabled: data?.rsvp?.enabled !== false,
-      title: data?.rsvp?.title,
-      subtitle: data?.rsvp?.subtitle,
-      buttonText: data?.rsvp?.buttonText,
-      primaryColor: data?.rsvp?.primaryColor,
-      sheetUrl: data?.rsvp?.sheetUrl,
-    };
-
-    // 🔹 3. Generar HTML
-    const htmlFinal = generarHTMLDesdeSecciones(secciones, objetosFinales, rsvp, {
-      slug: slugDestino,
-    });
-
-    // 🔹 4. Subir HTML a Storage con el slug destino
-    const filePath = `publicadas/${slugDestino}/index.html`;
-    await bucket.file(filePath).save(htmlFinal, {
-      contentType: "text/html",
-      public: true,
-      metadata: { cacheControl: "public,max-age=3600" },
-    });
-
-    // 🔹 5. Guardar metadatos en Firestore
-    const url = `https://reservaeldia.com.ar/i/${slugDestino}`;
-    const publicacionData: Record<string, unknown> = {
-      slug: slugDestino,
-      userId: data.userId || null,
-      plantillaId: data.plantillaId || null,
-      urlPublica: url,
-      nombre: data.nombre || slugDestino,
-      tipo: data.tipo || data.plantillaTipo || "desconocido",
-      portada: data.thumbnailUrl || null,
-      invitadosCount: data.invitadosCount || 0,
-      publicadaEn: safeServerTimestamp(),
-    };
-
-    if (slug !== slugDestino) {
-      publicacionData.slugOriginal = slug;
+    if (!slug) {
+      throw new HttpsError("invalid-argument", "Falta el slug del borrador");
     }
 
-    await db.collection("publicadas").doc(slugDestino).set(publicacionData, { merge: true });
-
-    // 🔁 6. Guardar también el slugPublico dentro del borrador original
-    if (slugPublico && slugPublico !== slug) {
-      await db.collection("borradores").doc(slug).set(
-        { slugPublico },
-        { merge: true }
+    if (!paymentSessionId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Debes completar un pago aprobado antes de publicar o actualizar."
       );
     }
 
-    return { success: true, url };
+    return publishWithApprovedPaymentSession({
+      uid,
+      draftSlug: slug,
+      slugPublico: slugPublico || undefined,
+      paymentSessionId,
+    });
   }
 );
-
-
-
-
-
-
-
 export const borrarTodosLosBorradores = onCall(
   async (request: CallableRequest<unknown>) => {
     const userId = request.auth?.uid;
@@ -958,7 +935,7 @@ export const copiarPlantilla = onCall(
     });
 
 
-    logger.info(`✅ Borrador creado desde plantilla '${plantillaId}' con slug '${slug}'`);
+    logger.info(`Borrador creado desde plantilla '${plantillaId}' con slug '${slug}'`);
     return { slug };
   }
 );
@@ -972,7 +949,7 @@ export const crearPlantilla = onCall(
     ],
   },
   async (request: CallableRequest<{ id: string; datos: any }>) => {
-    // 🔒 Seguridad real: solo admins pueden crear plantillas base
+    // Seguridad real: solo admins pueden crear plantillas base
     // La UI puede ocultar el botón, pero acá se valida de verdad.
     requireAdmin(request);
 
@@ -989,7 +966,7 @@ export const crearPlantilla = onCall(
     let portada =
       typeof datosPlantilla.portada === "string" ? datosPlantilla.portada : null;
 
-    // 📸 Si se recibe una imagen en base64, subirla como portada
+    // Si se recibe una imagen en base64, subirla como portada
     if (previewBase64) {
       try {
         const base64 = previewBase64.split(",")[1]; // Elimina encabezado data:image/png;base64,
@@ -1006,9 +983,9 @@ export const crearPlantilla = onCall(
         });
 
         portada = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
-        logger.info(`✅ Portada subida correctamente: ${portada}`);
+        logger.info(`Portada subida correctamente: ${portada}`);
       } catch (error) {
-        logger.error("❌ Error al subir portada:", error);
+        logger.error("Error al subir portada:", error);
         throw new Error("Error al subir la imagen de portada");
       }
     }
@@ -1023,7 +1000,7 @@ export const crearPlantilla = onCall(
           : Promise.resolve(null),
       ]);
 
-    // 📝 Guardar plantilla en Firestore
+    // Guardar plantilla en Firestore
     await db.collection("plantillas").doc(id).set({
       ...datosSinPreview,
       portada: portadaNormalizada,
@@ -1048,10 +1025,11 @@ export const crearPlantilla = onCall(
 export const borrarPlantilla = onCall(
   {
     region: "us-central1",
+    cpu: "gcf_gen1",
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
   },
   async (request: CallableRequest<{ plantillaId: string }>) => {
-    // 🔒 Seguridad real: solo superadmins pueden borrar plantillas base
+    // Seguridad real: solo superadmins pueden borrar plantillas base
     requireSuperAdmin(request);
 
     const { plantillaId } = request.data || ({} as any);
@@ -1066,7 +1044,7 @@ export const borrarPlantilla = onCall(
     // (Opcional a futuro) limpiar assets en Storage / subdocs relacionados
     // Por ahora: minimalista y seguro.
 
-    logger.info(`🗑️ Plantilla '${plantillaId}' borrada por admin`);
+    logger.info(`Plantilla '${plantillaId}' borrada por admin`);
     return { success: true, plantillaId };
   }
 );
@@ -1207,7 +1185,7 @@ export const getAdminUserByEmail = onCall(
         return { found: false, user: null };
       }
 
-      logger.error("❌ Error buscando usuario por email", { email, error });
+      logger.error("Error buscando usuario por email", { email, error });
       throw new HttpsError("internal", "No se pudo buscar el usuario");
     }
   }
@@ -1309,7 +1287,7 @@ export const upsertUserProfile = onCall(
     try {
       userRecord = await admin.auth().getUser(uid);
     } catch (error: any) {
-      logger.error("❌ Error obteniendo usuario autenticado para perfil", {
+      logger.error("Error obteniendo usuario autenticado para perfil", {
         uid,
         error,
       });
@@ -1371,6 +1349,7 @@ export const upsertUserProfile = onCall(
 export const getMyProfileStatus = onCall(
   {
     region: "us-central1",
+    cpu: "gcf_gen1",
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
   },
   async (request: CallableRequest<Record<string, never>>) => {
@@ -1380,7 +1359,7 @@ export const getMyProfileStatus = onCall(
     try {
       userRecord = await admin.auth().getUser(uid);
     } catch (error: any) {
-      logger.error("❌ Error obteniendo estado de auth del perfil", { uid, error });
+      logger.error("Error obteniendo estado de auth del perfil", { uid, error });
       throw new HttpsError("internal", "No se pudo obtener el usuario");
     }
 
@@ -1554,7 +1533,7 @@ export const setAdminClaim = onCall(
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
   },
   async (request: CallableRequest<{ uidTarget: string; admin: boolean }>) => {
-    // 🔒 Solo superadmin puede asignar claims
+    // Solo superadmin puede asignar claims
     requireSuperAdmin(request);
 
     const { uidTarget, admin: adminFlag } = request.data || ({} as any);
@@ -1573,7 +1552,7 @@ export const setAdminClaim = onCall(
       if (error?.code === "auth/user-not-found") {
         throw new HttpsError("not-found", "No existe el usuario objetivo");
       }
-      logger.error("❌ Error obteniendo usuario objetivo", { uidTarget, error });
+      logger.error("Error obteniendo usuario objetivo", { uidTarget, error });
       throw new HttpsError("internal", "No se pudo obtener el usuario objetivo");
     }
 
@@ -1614,6 +1593,7 @@ export const setAdminClaim = onCall(
     };
   }
 );
+
 
 
 

@@ -15,7 +15,8 @@ export default function useKeyboardShortcuts({
 }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const key = e.key.toLowerCase();
+      const key = typeof e?.key === "string" ? e.key.toLowerCase() : "";
+      if (!key) return;
 
       // 🔒 No ejecutar atajos si se está escribiendo en un input, textarea o contenteditable
       const tag = document.activeElement?.tagName?.toLowerCase();

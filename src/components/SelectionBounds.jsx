@@ -205,6 +205,8 @@ export default function SelectionBounds({
   elementRefs,
   objetos,
   onTransform,
+  onTransformInteractionStart = null,
+  onTransformInteractionEnd = null,
   isDragging,
   isMobile = false,
 }) {
@@ -213,6 +215,10 @@ export default function SelectionBounds({
   const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
+  const transformGestureRef = useRef({
+    isRotate: false,
+    activeAnchor: null,
+  });
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -600,10 +606,26 @@ export default function SelectionBounds({
           height: Math.min(newBox.height, maxSize),
         };
       }}
-      onTransformStart={() => {
+      onTransformStart={(e) => {
         window._resizeData = { isResizing: true };
+        const tr = transformerRef.current;
+        const activeAnchor =
+          typeof tr?.getActiveAnchor === "function" ? tr.getActiveAnchor() : null;
+        const isRotateGesture =
+          typeof activeAnchor === "string" &&
+          activeAnchor.toLowerCase().includes("rotat");
+        transformGestureRef.current = {
+          isRotate: isRotateGesture,
+          activeAnchor: activeAnchor ?? null,
+        };
+        if (typeof onTransformInteractionStart === "function") {
+          onTransformInteractionStart({
+            isRotate: isRotateGesture,
+            activeAnchor: activeAnchor ?? null,
+            pointerType: e?.evt?.pointerType ?? null,
+          });
+        }
         try {
-          const tr = transformerRef.current;
           const nodes = tr?.nodes?.() || [];
           circleAnchorRef.current = null;
           textTransformAnchorRef.current = null;
@@ -884,10 +906,26 @@ export default function SelectionBounds({
         }
       }}
       onTransformEnd={(e) => {
-        if (!transformerRef.current || !onTransform) return;
+        const interactionSnapshot = {
+          isRotate: Boolean(transformGestureRef.current?.isRotate),
+          activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+          pointerType: e?.evt?.pointerType ?? null,
+        };
+        const notifyTransformInteractionEnd = () => {
+          if (typeof onTransformInteractionEnd === "function") {
+            onTransformInteractionEnd(interactionSnapshot);
+          }
+          transformGestureRef.current = {
+            isRotate: false,
+            activeAnchor: null,
+          };
+        };
 
-        const tr = transformerRef.current;
-        const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
+        try {
+          if (!transformerRef.current || !onTransform) return;
+
+          const tr = transformerRef.current;
+          const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
 
         // -------------------------
         // MULTI-SELECCIÓN
@@ -996,9 +1034,8 @@ export default function SelectionBounds({
         const node = nodes[0];
         if (!node) return;
 
-        try {
-          const pose = getTransformPose(node);
-          const finalData = {
+        const pose = getTransformPose(node);
+        const finalData = {
             x: pose.x,
             y: pose.y,
             rotation: pose.rotation,
@@ -1383,6 +1420,8 @@ export default function SelectionBounds({
         } catch (error) {
           console.warn("Error en onTransformEnd:", error);
           window._resizeData = null;
+        } finally {
+          notifyTransformInteractionEnd();
         }
       }}
 

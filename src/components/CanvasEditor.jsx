@@ -1064,6 +1064,7 @@ export default function CanvasEditor({
   }, []);
 
   const [mostrarPanelZ, setMostrarPanelZ] = useState(false);
+  const [isSelectionRotating, setIsSelectionRotating] = useState(false);
 
   const logOptionButtonMenuDebug = useCallback((eventName, payload = {}) => {
     if (typeof window === "undefined" || window.__DBG_OPTION_BUTTON !== true) return;
@@ -2349,6 +2350,28 @@ export default function CanvasEditor({
     isMobile,
     buttonSize: optionButtonSize,
   });
+
+  const handleTransformInteractionStart = useCallback((payload = {}) => {
+    const rotating = payload?.isRotate === true;
+    setIsSelectionRotating(rotating);
+    if (rotating) {
+      setMostrarPanelZ(false);
+    }
+  }, []);
+
+  const handleTransformInteractionEnd = useCallback(() => {
+    setIsSelectionRotating(false);
+    requestAnimationFrame(() => {
+      if (typeof actualizarPosicionBotonOpciones === "function") {
+        actualizarPosicionBotonOpciones("transform-interaction-end");
+      }
+    });
+  }, [actualizarPosicionBotonOpciones]);
+
+  useEffect(() => {
+    if (elementosSeleccionados.length === 1 && !editing.id) return;
+    setIsSelectionRotating(false);
+  }, [elementosSeleccionados.length, editing.id]);
 
 
 
@@ -3789,6 +3812,8 @@ export default function CanvasEditor({
                         objetos={objetos}
                         isDragging={isDragging}
                         isMobile={isMobile}
+                        onTransformInteractionStart={handleTransformInteractionStart}
+                        onTransformInteractionEnd={handleTransformInteractionEnd}
                         onTransform={(newAttrs) => {
                           if (elementosSeleccionados.length === 1) {
                             const id = elementosSeleccionados[0];
@@ -4434,7 +4459,7 @@ export default function CanvasEditor({
 
 
       {/* ? Botón de opciones PEGADO a la esquina superior derecha del elemento */}
-      {elementosSeleccionados.length === 1 && !editing.id && (
+      {elementosSeleccionados.length === 1 && !editing.id && !isSelectionRotating && (
         <div
           ref={botonOpcionesRef}
           data-option-button="true"

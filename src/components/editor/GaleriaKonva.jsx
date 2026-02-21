@@ -9,11 +9,28 @@
 // Dependencias de frontend: utils/layout (NO usar funciones de functions/).
 // ----------------------------------------------------------------------
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
 import useImage from "use-image";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
+
+const DRAG_THRESHOLD_PX = 4;
+
+function getClientPoint(evt) {
+  if (!evt) return null;
+
+  const touch =
+    evt.touches?.[0] ||
+    evt.changedTouches?.[0] ||
+    null;
+
+  const x = Number.isFinite(touch?.clientX) ? touch.clientX : evt.clientX;
+  const y = Number.isFinite(touch?.clientY) ? touch.clientY : evt.clientY;
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
 
 function ImagenCelda({ src, fit = "cover", w, h }) {
   const [img] = useImage(src, "anonymous");
@@ -57,6 +74,27 @@ export default function GaleriaKonva({
   altoCanvas = 0,
 }) {
   const [hoveredCell, setHoveredCell] = useState(null);
+  const rootRef = useRef(null);
+  const cleanupGlobalRef = useRef(null);
+  const pressRef = useRef({
+    active: false,
+    movedEnough: false,
+    startedDrag: false,
+    suppressClick: false,
+    allowDrag: false,
+    startClientX: 0,
+    startClientY: 0,
+    startNodeX: 0,
+    startNodeY: 0,
+  });
+
+  const setRootRef = useCallback(
+    (node) => {
+      rootRef.current = node || null;
+      registerRef?.(obj.id, node || null);
+    },
+    [obj.id, registerRef]
+  );
 
   const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
   const offsetY = calcularOffsetY(seccionesOrdenadas, indexSeccion);
@@ -83,20 +121,172 @@ export default function GaleriaKonva({
 
   const safeTotalHeight = Math.max(1, totalHeight);
 
+  const isRemoveButtonTarget = useCallback(
+    (target) => {
+      const targetId =
+        typeof target?.id === "function"
+          ? target.id()
+          : target?.attrs?.id;
+      return typeof targetId === "string" && targetId.startsWith(`btn-${obj.id}-`);
+    },
+    [obj.id]
+  );
+
+  const cleanupGlobal = useCallback(() => {
+    if (!cleanupGlobalRef.current) return;
+    try {
+      cleanupGlobalRef.current();
+    } finally {
+      cleanupGlobalRef.current = null;
+    }
+  }, []);
+
+  const attachGlobalListeners = useCallback(() => {
+    cleanupGlobal();
+
+    const onMove = (ev) => {
+      const press = pressRef.current;
+      if (!press.active || press.startedDrag || !press.allowDrag) return;
+
+      const point = getClientPoint(ev);
+      if (!point) return;
+
+      const dx = point.x - press.startClientX;
+      const dy = point.y - press.startClientY;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+
+      press.movedEnough = true;
+      press.startedDrag = true;
+      press.suppressClick = true;
+
+      const node = rootRef.current;
+      if (!node) return;
+
+      try {
+        node.position({ x: press.startNodeX, y: press.startNodeY });
+        node.getLayer()?.batchDraw();
+      } catch {}
+
+      try {
+        node.draggable(true);
+        node.startDrag();
+      } catch {}
+    };
+
+    const onUp = () => {
+      const press = pressRef.current;
+      if (!press.active) {
+        cleanupGlobal();
+        return;
+      }
+
+      press.active = false;
+
+      const node = rootRef.current;
+      if (node) {
+        if (!press.movedEnough) {
+          try {
+            node.position({ x: press.startNodeX, y: press.startNodeY });
+            node.getLayer()?.batchDraw();
+          } catch {}
+        } else {
+          try {
+            if (node.isDragging?.()) node.stopDrag();
+          } catch {}
+        }
+        try {
+          node.draggable(false);
+        } catch {}
+      }
+
+      press.movedEnough = false;
+      press.startedDrag = false;
+
+      setTimeout(() => {
+        pressRef.current.suppressClick = false;
+      }, 0);
+
+      cleanupGlobal();
+    };
+
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("touchmove", onMove, { capture: true, passive: true });
+    window.addEventListener("mouseup", onUp, true);
+    window.addEventListener("touchend", onUp, true);
+    window.addEventListener("touchcancel", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    window.addEventListener("blur", onUp, true);
+
+    cleanupGlobalRef.current = () => {
+      window.removeEventListener("mousemove", onMove, true);
+      window.removeEventListener("touchmove", onMove, true);
+      window.removeEventListener("mouseup", onUp, true);
+      window.removeEventListener("touchend", onUp, true);
+      window.removeEventListener("touchcancel", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("blur", onUp, true);
+    };
+  }, [cleanupGlobal]);
+
+  const handlePressStart = useCallback(
+    (e) => {
+      if (e) e.cancelBubble = true;
+      if (e?.evt) e.evt.cancelBubble = true;
+
+      const node = rootRef.current || e.currentTarget;
+      const point = getClientPoint(e?.evt);
+      if (!node || !point) return;
+
+      const press = pressRef.current;
+      press.active = true;
+      press.movedEnough = false;
+      press.startedDrag = false;
+      press.suppressClick = false;
+      press.allowDrag = isSelected && !isRemoveButtonTarget(e?.target);
+      press.startClientX = point.x;
+      press.startClientY = point.y;
+      press.startNodeX = node.x();
+      press.startNodeY = node.y();
+
+      try {
+        node.draggable(false);
+      } catch {}
+
+      attachGlobalListeners();
+    },
+    [attachGlobalListeners, isRemoveButtonTarget, isSelected]
+  );
+
+  const handleRootClick = useCallback(
+    (e) => {
+      if (e && e.evt) e.evt.cancelBubble = true;
+      if (pressRef.current.suppressClick) return;
+      onSelect?.(obj.id, e);
+    },
+    [obj.id, onSelect]
+  );
+
   const seleccionarCelda = (index, evt) => {
+    if (pressRef.current.suppressClick) return;
     if (evt?.target?.id?.() === `btn-${obj.id}-${index}`) return;
     if (evt) evt.cancelBubble = true;
+    if (evt?.evt) evt.evt.cancelBubble = true;
+    onSelect?.(obj.id, evt);
     const payload = { objId: obj.id, index };
     onPickCell?.(payload);
     setCeldaGaleriaActiva?.(payload);
   };
 
   const limpiarCelda = (index, evt) => {
+    if (pressRef.current.suppressClick) return;
     if (evt) evt.cancelBubble = true;
+    if (evt?.evt) evt.evt.cancelBubble = true;
     const nuevasCells = [...(obj.cells || [])];
     nuevasCells[index] = { ...(nuevasCells[index] || {}), mediaUrl: null };
     onChange?.(obj.id, { cells: nuevasCells });
   };
+
+  useEffect(() => () => cleanupGlobal(), [cleanupGlobal]);
 
   return (
     <Group
@@ -108,7 +298,7 @@ export default function GaleriaKonva({
       clipWidth={width}
       clipHeight={safeTotalHeight}
       draggable={false}
-      ref={(node) => registerRef?.(obj.id, node)}
+      ref={setRootRef}
       onMouseEnter={() => {
         if (!window._isDragging) onHover?.(obj.id);
       }}
@@ -116,14 +306,10 @@ export default function GaleriaKonva({
         setHoveredCell(null);
         onHover?.(null);
       }}
-      onClick={(e) => {
-        if (e && e.evt) e.evt.cancelBubble = true;
-        onSelect?.(obj.id, e);
-      }}
-      onTap={(e) => {
-        if (e && e.evt) e.evt.cancelBubble = true;
-        onSelect?.(obj.id, e);
-      }}
+      onMouseDown={handlePressStart}
+      onTouchStart={handlePressStart}
+      onClick={handleRootClick}
+      onTap={handleRootClick}
       onDragStart={(e) => {
         if (!isSelected) {
           e.target.stopDrag();
@@ -134,14 +320,6 @@ export default function GaleriaKonva({
       }}
       onDragMove={(e) => {
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
-      }}
-      onMouseDown={(e) => {
-        if (!isSelected) return;
-        const node = e.target.getStage()?.findOne(`#${obj.id}`);
-        if (node) {
-          node.draggable(true);
-          node.startDrag(e);
-        }
       }}
       onDragEnd={(e) => {
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
@@ -165,6 +343,13 @@ export default function GaleriaKonva({
         window._isDragging = false;
         onDragEndPersonalizado?.(obj.id);
         e.target.draggable(false);
+        pressRef.current.active = false;
+        pressRef.current.movedEnough = false;
+        pressRef.current.startedDrag = false;
+        setTimeout(() => {
+          pressRef.current.suppressClick = false;
+        }, 0);
+        cleanupGlobal();
       }}
     >
       <Rect
@@ -214,7 +399,7 @@ export default function GaleriaKonva({
             y={r.y}
             onMouseEnter={() => setHoveredCell(i)}
             onMouseLeave={() => setHoveredCell(null)}
-            onMouseDown={(e) => seleccionarCelda(i, e)}
+            onClick={(e) => seleccionarCelda(i, e)}
             onTap={(e) => seleccionarCelda(i, e)}
           >
             <Rect x={0} y={0} width={r.width} height={r.height} fill="transparent" />
@@ -246,7 +431,7 @@ export default function GaleriaKonva({
                 height={20}
                 listening={true}
                 onMouseEnter={() => setHoveredCell(i)}
-                onMouseDown={(e) => limpiarCelda(i, e)}
+                onClick={(e) => limpiarCelda(i, e)}
                 onTap={(e) => limpiarCelda(i, e)}
               >
                 <Rect width={20} height={20} fill="rgba(0,0,0,0.6)" cornerRadius={4} />

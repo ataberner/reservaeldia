@@ -1,4 +1,4 @@
-﻿// components/CanvasEditor.jsx
+// components/CanvasEditor.jsx
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Image as KonvaImage, Group, Circle } from "react-konva";
@@ -256,6 +256,7 @@ export default function CanvasEditor({
   const inlineRenderValueRef = useRef({ id: null, value: "" });
   const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
   const contenedorRef = useRef(null);
+  const editorOverlayRootRef = useRef(null);
   const autoSectionViewportRef = useRef(null);
   const autoSectionScrollRafRef = useRef(0);
   const seccionActivaIdRef = useRef(null);
@@ -624,6 +625,7 @@ export default function CanvasEditor({
     mobileTypographyToolbarVisible && mostrarSelectorTamano;
   const mobileBottomTypographyStripVisible =
     mobileFontStripVisible || mobileSizeStripVisible;
+  const optionButtonSize = isMobile ? 38 : 24;
 
   useEffect(() => {
     const desiredRatio = isMobile ? 1 : resolveKonvaPixelRatio();
@@ -1062,6 +1064,45 @@ export default function CanvasEditor({
   }, []);
 
   const [mostrarPanelZ, setMostrarPanelZ] = useState(false);
+
+  const logOptionButtonMenuDebug = useCallback((eventName, payload = {}) => {
+    if (typeof window === "undefined" || window.__DBG_OPTION_BUTTON !== true) return;
+    console.log(`[OPTION-BUTTON][MENU] ${eventName}`, {
+      ts: new Date().toISOString(),
+      ...payload,
+    });
+  }, []);
+
+  const togglePanelOpciones = useCallback((source = "unknown", nativeEvent = null) => {
+    setMostrarPanelZ((prev) => {
+      const next = !prev;
+      logOptionButtonMenuDebug("toggle", {
+        source,
+        prev,
+        next,
+        selectedId: elementosSeleccionados?.[0] ?? null,
+        selectionCount: elementosSeleccionados.length,
+        isMobile,
+        nativeEventType: nativeEvent?.type ?? null,
+        pointerType: nativeEvent?.pointerType ?? null,
+      });
+      return next;
+    });
+  }, [elementosSeleccionados, isMobile, logOptionButtonMenuDebug]);
+
+  useEffect(() => {
+    logOptionButtonMenuDebug("panel-state", {
+      open: mostrarPanelZ,
+      selectedId: elementosSeleccionados?.[0] ?? null,
+      selectionCount: elementosSeleccionados.length,
+      isMobile,
+    });
+  }, [
+    mostrarPanelZ,
+    elementosSeleccionados,
+    isMobile,
+    logOptionButtonMenuDebug,
+  ]);
 
   const moverElemento = (accion) => {
     const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
@@ -1937,14 +1978,70 @@ export default function CanvasEditor({
 
 
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (!e.target.closest(".menu-z-index")) {
-        setMostrarPanelZ(false);
-      }
+    const describeTarget = (target) => {
+      if (target === window) return "window";
+      if (target === document) return "document";
+      if (!(target instanceof Element)) return "unknown";
+      const tag = String(target.tagName || "").toLowerCase();
+      const id = target.id ? `#${target.id}` : "";
+      const classes = target.classList?.length
+        ? `.${Array.from(target.classList).slice(0, 2).join(".")}`
+        : "";
+      return `${tag}${id}${classes}` || "element";
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+
+    const isInsideFloatingUi = (target) => {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest(".menu-z-index") ||
+        target.closest('[data-option-button="true"]')
+      );
+    };
+
+    const handlePointerOutside = (event) => {
+      const insideFloatingUi = isInsideFloatingUi(event.target);
+      if (insideFloatingUi) {
+        logOptionButtonMenuDebug("outside-ignore", {
+          source: "global-pointerdown",
+          target: describeTarget(event.target),
+          eventType: event.type,
+          pointerType: event.pointerType ?? null,
+        });
+        return;
+      }
+
+      setMostrarPanelZ((prev) => {
+        if (!prev) return prev;
+        logOptionButtonMenuDebug("outside-close", {
+          source: "global-pointerdown",
+          target: describeTarget(event.target),
+          eventType: event.type,
+          pointerType: event.pointerType ?? null,
+          prev,
+          next: false,
+        });
+        return false;
+      });
+    };
+
+    if (typeof window !== "undefined" && "PointerEvent" in window) {
+      document.addEventListener("pointerdown", handlePointerOutside, true);
+      return () => {
+        document.removeEventListener("pointerdown", handlePointerOutside, true);
+      };
+    }
+
+    document.addEventListener("mousedown", handlePointerOutside, true);
+    document.addEventListener("touchstart", handlePointerOutside, {
+      capture: true,
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerOutside, true);
+      document.removeEventListener("touchstart", handlePointerOutside, true);
+    };
+  }, [logOptionButtonMenuDebug]);
 
 
 
@@ -2243,11 +2340,14 @@ export default function CanvasEditor({
   // ?? Función para actualizar posición del botón SIN re-render
   const { actualizarPosicionBotonOpciones } = useOptionButtonPosition({
     botonOpcionesRef,
+    layoutRootRef: editorOverlayRootRef,
     elementRefs,
     elementosSeleccionados,
     stageRef,
     escalaVisual,
     escalaActiva,
+    isMobile,
+    buttonSize: optionButtonSize,
   });
 
 
@@ -2620,10 +2720,12 @@ export default function CanvasEditor({
 
   return (
     <div
+      ref={editorOverlayRootRef}
       className="flex justify-center"
       style={{
         // ? Dejamos que el scroll lo maneje el <main> del DashboardLayout (un solo scroll)
         marginTop: 0,
+        position: "relative",
         overflowX: "hidden",
 
         // ? UX mobile: permitir scroll vertical natural alrededor del canvas
@@ -4332,84 +4434,52 @@ export default function CanvasEditor({
 
 
       {/* ? Botón de opciones PEGADO a la esquina superior derecha del elemento */}
-      {elementosSeleccionados.length === 1 && !editing.id && (() => {
-        const elementoSeleccionado = objetos.find(o => o.id === elementosSeleccionados[0]);
-        const nodeRef = elementRefs.current[elementosSeleccionados[0]];
-
-        if (!nodeRef || !elementoSeleccionado) return null;
-
-        const contenedor = contenedorRef.current;
-        const stage = stageRef.current;
-        if (!contenedor || !stage) return null;
-
-        // ?? OBTENER POSICIÓN REAL DEL ELEMENTO EN EL STAGE
-        let box = nodeRef.getClientRect();
-        if (
-          elementoSeleccionado?.tipo === "galeria" &&
-          Number.isFinite(Number(elementoSeleccionado.width)) &&
-          Number.isFinite(Number(elementoSeleccionado.height))
-        ) {
-          const absPos =
-            typeof nodeRef.getAbsolutePosition === "function"
-              ? nodeRef.getAbsolutePosition()
-              : {
-                x: typeof nodeRef.x === "function" ? nodeRef.x() : 0,
-                y: typeof nodeRef.y === "function" ? nodeRef.y() : 0,
-              };
-
-          box = {
-            x: absPos.x,
-            y: absPos.y,
-            width: Number(elementoSeleccionado.width),
-            height: Number(elementoSeleccionado.height),
-          };
-        }
-
-        // ?? OBTENER COORDENADAS DEL STAGE RELATIVAS AL VIEWPORT
-        const stageContainer = stage.container();
-        const stageRect = stageContainer.getBoundingClientRect();
-
-        // ?? CALCULAR POSICIÓN EXACTA DEL ELEMENTO EN PANTALLA
-        const elementoEnPantallaX = stageRect.left + (box.x * escalaActiva);
-        const elementoEnPantallaY = stageRect.top + (box.y * escalaActiva);
-        const anchoElemento = box.width * escalaActiva;
-
-        // ?? POSICIÓN MUY CERCA: Esquina superior derecha pegada al elemento
-        const botonX = elementoEnPantallaX + anchoElemento - 8; // Solo -8px para que se superponga un poco
-        const botonY = elementoEnPantallaY - 8; // -8px arriba del elemento
-
-        return (
-          <div
-            ref={botonOpcionesRef}
-            className="fixed z-50 bg-white border-2 border-purple-500 rounded-full shadow-lg hover:shadow-xl transition-shadow duration-200"
-            style={{
-              left: "0px", // ?? POSICIÓN INICIAL - será actualizada por la función
-              top: "0px",
-              width: "24px",
-              height: "24px",
-              display: "none",
-              alignItems: "center",
-              justifyContent: "center",
-              pointerEvents: "auto",
-              transition: "none",
-              backgroundColor: "rgba(255, 255, 255, 0.95)",
-              backdropFilter: "blur(4px)",
-              border: "2px solid #773dbe",
+      {elementosSeleccionados.length === 1 && !editing.id && (
+        <div
+          ref={botonOpcionesRef}
+          data-option-button="true"
+          className="absolute z-50 bg-white border-2 border-purple-500 rounded-full shadow-lg hover:shadow-xl transition-shadow duration-200"
+          style={{
+            left: "0px",
+            top: "0px",
+            width: `${optionButtonSize}px`,
+            height: `${optionButtonSize}px`,
+            display: "none",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "auto",
+            transition: "none",
+            backgroundColor: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(4px)",
+            border: "2px solid #773dbe",
+            touchAction: "manipulation",
+          }}
+        >
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              togglePanelOpciones("gear-pointerdown", e.nativeEvent || e);
             }}
+            onClick={(e) => {
+              // Click de teclado (Enter/Espacio) cuando no hay pointer interaction.
+              if (e.detail !== 0) return;
+              e.stopPropagation();
+              togglePanelOpciones("gear-keyboard-click", e.nativeEvent || e);
+            }}
+            className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors"
+            title="Opciones del elemento"
+            aria-label="Opciones del elemento"
+            style={{ touchAction: "manipulation" }}
           >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setMostrarPanelZ((prev) => !prev);
-              }}
-              className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors text-xs"
-              title="Opciones del elemento"
-            >
-              <Settings className="w-3.5 h-3.5 text-purple-700" />
-            </button>
-          </div>
-        );
-      })()}
+            <Settings
+              className="text-purple-700"
+              style={{ width: isMobile ? 18 : 14, height: isMobile ? 18 : 14 }}
+            />
+          </button>
+        </div>
+      )}
 
 
 
@@ -4463,6 +4533,3 @@ export default function CanvasEditor({
   );
 
 }
-
-
-

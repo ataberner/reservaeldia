@@ -4,6 +4,9 @@ import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
 
+const HOME_READY_THUMBNAIL_TARGET = 6;
+const THUMBNAIL_SETTLE_TIMEOUT_MS = 2200;
+
 const DRAFT_PREVIEW_KEYS = [
   "thumbnailUrl",
   "thumbnailurl",
@@ -78,6 +81,13 @@ export default function BorradoresGrid({
   const [cargando, setCargando] = useState(true);
   const [thumbnailsSettledBySlug, setThumbnailsSettledBySlug] = useState({});
 
+  const markThumbnailSettled = (slug) => {
+    setThumbnailsSettledBySlug((prev) => {
+      if (!slug || prev[slug]) return prev;
+      return { ...prev, [slug]: true };
+    });
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -125,9 +135,42 @@ export default function BorradoresGrid({
 
     const total = Array.isArray(borradores) ? borradores.length : 0;
     const settled = Object.keys(thumbnailsSettledBySlug).length;
-    const ready = !cargando && (total === 0 || settled >= total);
+    const readyTarget = Math.min(total, HOME_READY_THUMBNAIL_TARGET);
+    const ready = !cargando && (total === 0 || settled >= readyTarget);
     onReadyChange(ready);
   }, [borradores, cargando, onReadyChange, thumbnailsSettledBySlug]);
+
+  useEffect(() => {
+    if (cargando) return;
+    if (!Array.isArray(borradores) || borradores.length === 0) return;
+    if (typeof window === "undefined") return;
+
+    const pendingCriticalSlugs = borradores
+      .slice(0, HOME_READY_THUMBNAIL_TARGET)
+      .map((borrador) => borrador?.slug || borrador?.id)
+      .filter(Boolean)
+      .filter((slug) => !thumbnailsSettledBySlug[slug]);
+
+    if (!pendingCriticalSlugs.length) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setThumbnailsSettledBySlug((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        pendingCriticalSlugs.forEach((slug) => {
+          if (!next[slug]) {
+            next[slug] = true;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, THUMBNAIL_SETTLE_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [borradores, cargando, thumbnailsSettledBySlug]);
 
   const borrarBorrador = async (slug) => {
     const confirmado = window.confirm(`Seguro que quieres borrar \"${slug}\"?`);
@@ -180,7 +223,7 @@ export default function BorradoresGrid({
       )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
-        {borradores.map((borrador) => {
+        {borradores.map((borrador, index) => {
           const slug = borrador.slug || borrador.id;
           const nombre = borrador.nombre || slug;
           const previewCandidates = getBorradorPreviewCandidates(borrador);
@@ -199,22 +242,19 @@ export default function BorradoresGrid({
                   src={previewSrc}
                   alt={`Vista previa de ${nombre}`}
                   className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
+                  loading={index < HOME_READY_THUMBNAIL_TARGET ? "eager" : "lazy"}
+                  decoding="async"
+                  fetchPriority={index < 2 ? "high" : "auto"}
                   data-preview-index="0"
                   onLoad={() => {
-                    setThumbnailsSettledBySlug((prev) => {
-                      if (prev[slug]) return prev;
-                      return { ...prev, [slug]: true };
-                    });
+                    markThumbnailSettled(slug);
                   }}
                   onError={(event) => {
                     const img = event.currentTarget;
                     const currentIndex = Number.parseInt(img.dataset.previewIndex || "0", 10);
                     const nextIndex = currentIndex + 1;
                     if (nextIndex >= previewCandidates.length) {
-                      setThumbnailsSettledBySlug((prev) => {
-                        if (prev[slug]) return prev;
-                        return { ...prev, [slug]: true };
-                      });
+                      markThumbnailSettled(slug);
                       return;
                     }
                     img.dataset.previewIndex = String(nextIndex);

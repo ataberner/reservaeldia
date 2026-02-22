@@ -24,12 +24,33 @@ export default function DashboardLayout({
   canManageSite,
   isSuperAdmin,
   loadingAdminAccess,
+  lockMainScroll = false,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
   }, []);
 
   const headerHeight = "var(--dashboard-header-height, 52px)";
+  const mainBaseClass = modoSelector
+    ? "absolute left-0 right-0 bg-gray-50"
+    : "flex-1 px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3";
+  const mainScrollClass = lockMainScroll ? "overflow-hidden" : "overflow-y-auto";
+  const mainStyle = modoSelector
+    ? {
+        top: headerHeight,
+        height: `calc(100vh - ${headerHeight})`,
+        transform: "translateZ(0)",
+        zIndex: 0,
+      }
+    : {
+        marginTop: headerHeight,
+        height: `calc(100vh - ${headerHeight})`,
+      };
+
+  if (lockMainScroll) {
+    mainStyle.overscrollBehavior = "none";
+    mainStyle.touchAction = "none";
+  }
 
   return (
     <div className="relative flex h-screen bg-gray-100">
@@ -62,24 +83,8 @@ export default function DashboardLayout({
 
       {/* Area principal */}
       <main
-        className={
-          modoSelector
-            ? "absolute left-0 right-0 overflow-y-auto bg-gray-50"
-            : "flex-1 overflow-y-auto px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3"
-        }
-        style={
-          modoSelector
-            ? {
-                top: headerHeight,
-                height: `calc(100vh - ${headerHeight})`,
-                transform: "translateZ(0)",
-                zIndex: 0,
-              }
-            : {
-                marginTop: headerHeight,
-                height: `calc(100vh - ${headerHeight})`,
-              }
-        }
+        className={`${mainBaseClass} ${mainScrollClass}`}
+        style={mainStyle}
       >
         {children}
       </main>

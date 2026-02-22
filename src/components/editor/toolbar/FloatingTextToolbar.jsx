@@ -1,5 +1,6 @@
 // src/components/editor/toolbar/FloatingTextToolbar.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import FontSelector from "@/components/FontSelector";
 import Konva from "konva";
 
@@ -12,6 +13,7 @@ const MOBILE_FONT_WARM_COUNT = 12;
 const CANVAS_WIDTH = 800;
 const SECTION_CENTER_X = CANVAS_WIDTH / 2;
 const SECTION_CENTER_EPSILON = 2;
+const TOOLBAR_TOP_OFFSET = "calc(var(--dashboard-header-height, 52px) + 8px)";
 
 const clamp = (value, min, max) => {
   const safeMin = Number.isFinite(min) ? min : 0;
@@ -221,7 +223,7 @@ export default function FloatingTextToolbar({
   }`;
 
   const toolbarContainerStyle = {
-    top: isMobile ? "calc(56px + env(safe-area-inset-top, 0px))" : "60px",
+    top: TOOLBAR_TOP_OFFSET,
     left: "50%",
     transform: "translateX(-50%)",
     width: isMobile ? "calc(100vw - 8px)" : "auto",
@@ -704,8 +706,11 @@ export default function FloatingTextToolbar({
     return null;
   }
 
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  if (!portalTarget) return null;
+
   if (objetoSeleccionado?.tipo === "icono") {
-    return (
+    return createPortal(
       <div
         ref={toolbarRef}
         className={toolbarContainerClass}
@@ -724,11 +729,12 @@ export default function FloatingTextToolbar({
             title="Color del icono"
           />
         </div>
-      </div>
+      </div>,
+      portalTarget
     );
   }
 
-  return (
+  return createPortal(
     <>
       <div ref={toolbarRef} className={toolbarContainerClass} style={toolbarContainerStyle}>
         {objetoSeleccionado?.tipo === "forma" && (
@@ -1078,6 +1084,7 @@ export default function FloatingTextToolbar({
           />
         </div>
       )}
-    </>
+    </>,
+    portalTarget
   );
 }

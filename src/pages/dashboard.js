@@ -40,7 +40,7 @@ const FONT_PRELOAD_TIMEOUT_MS = 40000;
 const TOTAL_PRELOAD_TIMEOUT_MS = 90000;
 const SELECTOR_FONT_WARMUP_TIMEOUT_MS = 35000;
 const MIN_EDITOR_STARTUP_LOADER_MS = 1800;
-const HOME_DASHBOARD_LOADER_MAX_MS = 12000;
+const HOME_DASHBOARD_LOADER_MAX_MS = 5500;
 const HOME_DASHBOARD_LOADER_EXIT_MS = 520;
 const EDITOR_STARTUP_LOADER_EXIT_MS = 920;
 const IMAGE_SOURCE_KEYS = new Set([
@@ -1544,6 +1544,27 @@ export default function Dashboard() {
     !showHomeStartupLoader && holdHomeStartupLoader;
 
   useEffect(() => {
+    if (!shouldRenderHomeStartupLoader) return;
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyTouchAction = body.style.touchAction;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.touchAction = "none";
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.touchAction = prevBodyTouchAction;
+    };
+  }, [shouldRenderHomeStartupLoader]);
+
+  useEffect(() => {
     if (showHomeStartupLoader) {
       if (homeLoaderHideTimerRef.current) {
         clearTimeout(homeLoaderHideTimerRef.current);
@@ -1599,6 +1620,7 @@ export default function Dashboard() {
       canManageSite={canManageSite}
       isSuperAdmin={isSuperAdmin}
       loadingAdminAccess={loadingAdminAccess}
+      lockMainScroll={shouldRenderHomeStartupLoader}
     >
       {editorIssueReport && (
         <EditorIssueBanner

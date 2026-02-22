@@ -343,7 +343,10 @@ export default function MenuOpcionesElemento({
 
     if (!isOpen) return null;
 
-    return (
+    const portalTarget = typeof document !== "undefined" ? document.body : null;
+    if (!portalTarget) return null;
+
+    return createPortal(
         <div
             ref={menuRootRef}
             className={`fixed z-50 bg-white border shadow-xl p-3 text-sm space-y-1 menu-z-index ${isMobile ? "rounded-2xl w-auto" : "rounded-lg w-64"}`}
@@ -618,6 +621,7 @@ export default function MenuOpcionesElemento({
 
 
             </div>
-        </div>
+        </div>,
+        portalTarget
     );
 }

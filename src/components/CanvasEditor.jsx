@@ -267,6 +267,7 @@ export default function CanvasEditor({
   const fuentesDisponibles = ALL_FONTS;
   const { esAdmin, loadingClaims } = useAuthClaims();
   const [backgroundLoadBySection, setBackgroundLoadBySection] = useState({});
+  const startupStatusFinalizedRef = useRef(false);
   const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
@@ -355,6 +356,7 @@ export default function CanvasEditor({
 
   useEffect(() => {
     setBackgroundLoadBySection({});
+    startupStatusFinalizedRef.current = false;
   }, [slug]);
 
   const handleBackgroundImageStatusChange = useCallback((payload) => {
@@ -436,6 +438,7 @@ export default function CanvasEditor({
 
   useEffect(() => {
     if (typeof onStartupStatusChange !== "function") return;
+    if (startupStatusFinalizedRef.current) return;
 
     const payload = {
       slug,
@@ -461,6 +464,7 @@ export default function CanvasEditor({
     rafA = requestAnimationFrame(() => {
       rafB = requestAnimationFrame(() => {
         if (cancelled) return;
+        startupStatusFinalizedRef.current = true;
         onStartupStatusChange({
           ...payload,
           status: "ready",

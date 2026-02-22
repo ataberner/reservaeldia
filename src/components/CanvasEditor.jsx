@@ -2743,6 +2743,12 @@ export default function CanvasEditor({
       ? "calc(118px + env(safe-area-inset-top, 0px))"
       : "calc(64px + env(safe-area-inset-top, 0px))";
 
+  const scaledCanvasHeightCompensation = isMobile &&
+    Number.isFinite(escalaVisual) &&
+    Number.isFinite(altoCanvasDinamico)
+    ? (escalaVisual - 1) * altoCanvasDinamico
+    : 0;
+
 
 
   return (
@@ -2786,6 +2792,7 @@ export default function CanvasEditor({
             transformOrigin: 'top center',
             width: zoom === 0.8 ? "1220px" : "1000px", // ? 920px canvas + 150px cada lado
             position: "relative",
+            marginBottom: scaledCanvasHeightCompensation,
           }}
         >
 

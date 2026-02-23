@@ -143,6 +143,10 @@ export default function useStageGestures({
       const rootHit = findRootHit(e.target, elementRefs);
       const clickedOnStage = e.target === stage;
       const tappedSectionId = resolveSectionIdFromTarget(e.target);
+      const esTransformer =
+        e.target.getClassName?.() === "Transformer" ||
+        e.target.parent?.getClassName?.() === "Transformer" ||
+        e.target.attrs?.name?.includes("_anchor");
       const clientPoint = getClientPointFromNativeEvent(e.evt);
       const startScrollX =
         typeof window !== "undefined" ? window.scrollX || window.pageXOffset || 0 : 0;
@@ -160,10 +164,10 @@ export default function useStageGestures({
         moved: false,
         tappedSectionId,
         clickedOnStage,
-        startedOnElement: !!rootHit,
+        startedOnElement: !!rootHit || esTransformer,
       };
 
-      if (rootHit) return;
+      if (rootHit || esTransformer) return;
 
       if (!clickedOnStage && e.target.getClassName?.() !== "Image") {
         window.dispatchEvent(new Event("salir-modo-mover-fondo"));

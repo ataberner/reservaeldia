@@ -219,6 +219,9 @@ export default function SelectionBounds({
     isRotate: false,
     activeAnchor: null,
   });
+  const isTransformingResizeRef = useRef(false);
+  const [isResizeGestureActive, setIsResizeGestureActive] = useState(false);
+  const [pressedResizeAnchorName, setPressedResizeAnchorName] = useState(null);
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -229,15 +232,31 @@ export default function SelectionBounds({
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
-  const transformerAnchorSize = isMobile ? 24 : 14;
-  const transformerRotateOffset = isMobile ? 34 : 24;
-  const transformerAnchorRadius = 999;
-  const transformerPadding = isMobile ? 10 : 4;
-  const transformerBorderStrokeWidth = isMobile ? 1.5 : 1;
-  const transformerAnchorStrokeWidth = isMobile ? 3 : 2.5;
-  const transformerAnchorShadowBlur = isMobile ? 9 : 6;
-  const transformerAnchorShadowOffsetY = isMobile ? 4 : 3;
-  const transformerRotationSnapTolerance = isMobile ? 8 : 5;
+  const transformerAnchorSize = isMobile ? 32 : 14; //tamaño visual del nodo (más grande en mobile).
+  const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotación al borde.
+  const transformerAnchorRadius = 999; //radio de esquina del nodo (999 lo hace circular).
+  const transformerPadding = isMobile ? 14 : 4; // espacio extra entre borde del transformer y elemento.
+  const transformerBorderStrokeWidth = isMobile ? 1.5 : 1; //grosor del borde del transformer.
+  const transformerAnchorFillColor = "#9333EA";
+  const transformerAnchorStrokeWidth = isMobile ? 1.4 : 2.5; //grosor del borde del nodo.
+  const transformerAnchorShadowBlur = isMobile ? 9 : 6; // qué tan difusa es la sombra base del nodo.
+  const transformerAnchorShadowOffsetY = isMobile ? 4 : 3; // desplazamiento vertical de esa sombra.
+  const transformerAnchorHitStrokeWidth = isMobile ? 62 : 20;
+  const transformerAnchorPressedHitStrokeWidth = isMobile ? 96 : 24;
+  const transformerAnchorStrokeColor = "#ffffff";
+  const transformerAnchorPressedHaloStrokeColor = isMobile
+    ? "rgba(255, 255, 255, 0.95)"
+    : transformerAnchorStrokeColor;
+  const transformerAnchorPressedHaloStrokeWidth = isMobile ? 2.2 : 3.2;
+  const transformerAnchorShadowColor = "rgba(147, 51, 234, 0.3)";
+  const transformerAnchorPressedShadowColor = isMobile
+    ? "rgba(198, 120, 255, 1)"
+    : "rgba(147, 51, 234, 0.7)";
+  const transformerAnchorPressedShadowBlur = isMobile ? 92 : 18;
+  const transformerAnchorPressedShadowOffsetY =
+    isMobile ? 0 : transformerAnchorShadowOffsetY + 1;
+  const transformerAnchorPressedScale = isMobile ? 1.03 : 1.1;
+  const transformerRotationSnapTolerance = isMobile ? 8 : 5; //tolerancia para “encajar” rotación en ángulos fijos.
   const esTriangulo =
     primerElemento?.tipo === "forma" &&
     primerElemento?.figura === "triangle";
@@ -297,6 +316,133 @@ export default function SelectionBounds({
     };
   };
 
+
+  const clearResizeAnchorPressFeedback = () => {
+    if (isTransformingResizeRef.current) return;
+    setIsResizeGestureActive(false);
+    setPressedResizeAnchorName((current) => (current ? null : current));
+  };
+
+  const getResizeAnchorNameFromTarget = (target) => {
+    if (!target) return null;
+    const isAnchorTarget =
+      typeof target.hasName === "function"
+        ? target.hasName("_anchor")
+        : typeof target.name === "function" &&
+          String(target.name() || "").includes("_anchor");
+    if (!isAnchorTarget) return null;
+
+    const rawName =
+      typeof target.name === "function" ? String(target.name() || "") : "";
+    const anchorName = rawName.split(" ")[0] || null;
+    if (!anchorName) return null;
+    if (anchorName.toLowerCase().includes("rotat")) return null;
+    return anchorName;
+  };
+
+  const handleResizeAnchorPressStart = (event) => {
+    let anchorName = getResizeAnchorNameFromTarget(event?.target);
+    if (!anchorName) {
+      const activeAnchor =
+        typeof transformerRef.current?.getActiveAnchor === "function"
+          ? transformerRef.current.getActiveAnchor()
+          : null;
+      if (
+        typeof activeAnchor === "string" &&
+        !activeAnchor.toLowerCase().includes("rotat")
+      ) {
+        anchorName = activeAnchor;
+      }
+    }
+    if (!anchorName) return;
+    setIsResizeGestureActive(true);
+    setPressedResizeAnchorName((current) =>
+      current === anchorName ? current : anchorName
+    );
+  };
+
+  const getBoxOverflowAmount = (box, stageWidth, stageHeight) => {
+    if (!box) return Number.POSITIVE_INFINITY;
+    const x = Number(box.x);
+    const y = Number(box.y);
+    const width = Number(box.width);
+    const height = Number(box.height);
+
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height)
+    ) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const left = Math.min(x, x + width);
+    const right = Math.max(x, x + width);
+    const top = Math.min(y, y + height);
+    const bottom = Math.max(y, y + height);
+
+    const overflowLeft = Math.max(0, -left);
+    const overflowTop = Math.max(0, -top);
+    const overflowRight = Math.max(0, right - stageWidth);
+    const overflowBottom = Math.max(0, bottom - stageHeight);
+
+    return overflowLeft + overflowTop + overflowRight + overflowBottom;
+  };
+
+  const keepBoxInsideStage = (oldBox, nextBox) => {
+    const tr = transformerRef.current;
+    const stage = tr?.getStage?.();
+    const stageWidth =
+      typeof stage?.width === "function"
+        ? Number(stage.width())
+        : Number(stage?.attrs?.width);
+    const stageHeight =
+      typeof stage?.height === "function"
+        ? Number(stage.height())
+        : Number(stage?.attrs?.height);
+
+    if (
+      !Number.isFinite(stageWidth) ||
+      stageWidth <= 0 ||
+      !Number.isFinite(stageHeight) ||
+      stageHeight <= 0
+    ) {
+      return nextBox;
+    }
+
+    const oldOverflow = getBoxOverflowAmount(oldBox, stageWidth, stageHeight);
+    const nextOverflow = getBoxOverflowAmount(nextBox, stageWidth, stageHeight);
+    const epsilon = 0.5;
+
+    if (!Number.isFinite(nextOverflow)) {
+      return oldBox;
+    }
+
+    if (nextOverflow <= epsilon) {
+      return nextBox;
+    }
+
+    // Permitir transformar de vuelta hacia adentro del canvas.
+    if (nextOverflow <= oldOverflow + epsilon) {
+      return nextBox;
+    }
+
+    // Si el resize empuja más afuera del canvas, mantener el estado anterior.
+    return oldBox;
+  };
+
+  useEffect(() => {
+    if (selectedElements.length === 0 || !deberiaUsarTransformer) {
+      setIsResizeGestureActive(false);
+      setPressedResizeAnchorName((current) => (current ? null : current));
+      return;
+    }
+    if (isDragging && !isTransformingResizeRef.current) {
+      setIsResizeGestureActive(false);
+      setPressedResizeAnchorName((current) => (current ? null : current));
+    }
+  }, [selectedElements.length, isDragging, deberiaUsarTransformer]);
 
   // 🔥 Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
@@ -476,21 +622,88 @@ export default function SelectionBounds({
       padding={transformerPadding}
 
       // ❌ nodos y rotación OFF durante drag
-      enabledAnchors={isDragging ? [] : ["bottom-right"]}
+      enabledAnchors={isDragging && !isResizeGestureActive ? [] : ["bottom-right"]}
       rotateEnabled={!isDragging && !esGaleria}
+      onMouseDown={handleResizeAnchorPressStart}
+      onTouchStart={handleResizeAnchorPressStart}
+      onPointerDown={handleResizeAnchorPressStart}
+      onMouseUp={clearResizeAnchorPressFeedback}
+      onTouchEnd={clearResizeAnchorPressFeedback}
+      onPointerUp={clearResizeAnchorPressFeedback}
+      onTouchCancel={clearResizeAnchorPressFeedback}
+      onPointerCancel={clearResizeAnchorPressFeedback}
 
-      anchorFill="#9333EA"
-      anchorStroke="#ffffff"
+      anchorFill={transformerAnchorFillColor}
+      anchorStroke={transformerAnchorStrokeColor}
       anchorStrokeWidth={transformerAnchorStrokeWidth}
       anchorSize={transformerAnchorSize}
       anchorCornerRadius={transformerAnchorRadius}
-      anchorShadowColor="rgba(147, 51, 234, 0.3)"
+      anchorShadowColor={transformerAnchorShadowColor}
       anchorShadowBlur={transformerAnchorShadowBlur}
       anchorShadowOffset={{ x: 0, y: transformerAnchorShadowOffsetY }}
+      anchorStyleFunc={(anchor) => {
+        const anchorName =
+          typeof anchor?.name === "function"
+            ? String(anchor.name() || "").split(" ")[0]
+            : "";
+        const isResizeAnchorNode =
+          Boolean(anchorName) && !anchorName.toLowerCase().includes("rotat");
+        const isResizeActiveFallback =
+          isResizeGestureActive ||
+          isTransformingResizeRef.current ||
+          (typeof window !== "undefined" &&
+            Boolean(window._resizeData?.isResizing));
+        const isPressedResizeAnchor =
+          isResizeActiveFallback &&
+          isResizeAnchorNode &&
+          (!pressedResizeAnchorName || anchorName === pressedResizeAnchorName);
+
+        anchor.shadowColor(
+          isPressedResizeAnchor
+            ? transformerAnchorPressedShadowColor
+            : transformerAnchorShadowColor
+        );
+        // Mantener siempre el color original del nodo.
+        anchor.fill(transformerAnchorFillColor);
+        anchor.shadowEnabled(true);
+        // En pressed, el halo nace más cerca del anillo para que se note mejor.
+        anchor.shadowForStrokeEnabled(isPressedResizeAnchor);
+        anchor.shadowOpacity(isPressedResizeAnchor ? 1 : 0.12);
+        anchor.shadowBlur(
+          isPressedResizeAnchor
+            ? transformerAnchorPressedShadowBlur
+            : transformerAnchorShadowBlur
+        );
+        anchor.shadowOffset({
+          x: 0,
+          y: isPressedResizeAnchor
+            ? transformerAnchorPressedShadowOffsetY
+            : transformerAnchorShadowOffsetY,
+        });
+        anchor.hitStrokeWidth(
+          isPressedResizeAnchor
+            ? transformerAnchorPressedHitStrokeWidth
+            : transformerAnchorHitStrokeWidth
+        );
+        anchor.stroke(
+          isPressedResizeAnchor
+            ? transformerAnchorPressedHaloStrokeColor
+            : transformerAnchorStrokeColor
+        );
+        anchor.strokeWidth(
+          isPressedResizeAnchor
+            ? transformerAnchorPressedHaloStrokeWidth
+            : transformerAnchorStrokeWidth
+        );
+        const anchorScale = isPressedResizeAnchor
+          ? transformerAnchorPressedScale
+          : 1;
+        anchor.scale({ x: anchorScale, y: anchorScale });
+      }}
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
       centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
-      resizeEnabled={!isDragging}
+      resizeEnabled={!isDragging || isResizeGestureActive}
       rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
       rotateAnchorOffset={transformerRotateOffset}
       rotationSnapTolerance={transformerRotationSnapTolerance}
@@ -517,11 +730,11 @@ export default function SelectionBounds({
           const cellH = cellW * cellRatio;
           const nextHeight = rows * cellH + gap * (rows - 1);
 
-          return {
+          return keepBoxInsideStage(oldBox, {
             ...newBox,
             width: nextWidth,
             height: Math.max(minSize, nextHeight),
-          };
+          });
         }
 
         if (newBox.width < minSize || newBox.height < minSize) {
@@ -545,11 +758,11 @@ export default function SelectionBounds({
             height = width / ratio;
           }
 
-          return {
+          return keepBoxInsideStage(oldBox, {
             ...newBox,
             width: Math.min(Math.max(width, minSize), maxSize),
             height: Math.min(Math.max(height, minSize), maxSize),
-          };
+          });
         }
 
         if (
@@ -558,11 +771,11 @@ export default function SelectionBounds({
         ) {
           const size = Math.max(newBox.width, newBox.height);
           const finalSize = Math.min(size, maxSize);
-          return {
+          return keepBoxInsideStage(oldBox, {
             ...newBox,
             width: finalSize,
             height: finalSize,
-          };
+          });
         }
 
         if (esTriangulo) {
@@ -575,11 +788,11 @@ export default function SelectionBounds({
           const width = Math.min(Math.max(safeOldW * uniformScale, minSize), maxSize);
           const height = Math.min(Math.max(safeOldH * uniformScale, minSize), maxSize);
 
-          return {
+          return keepBoxInsideStage(oldBox, {
             ...newBox,
             width,
             height,
-          };
+          });
         }
 
         if (
@@ -593,20 +806,21 @@ export default function SelectionBounds({
           const newWidth = oldBox.width * uniformScale;
           const newHeight = oldBox.height * uniformScale;
 
-          return {
+          return keepBoxInsideStage(oldBox, {
             ...newBox,
             width: Math.min(Math.max(newWidth, minSize), maxSize),
             height: Math.min(Math.max(newHeight, minSize), maxSize),
-          };
+          });
         }
 
-        return {
+        return keepBoxInsideStage(oldBox, {
           ...newBox,
           width: Math.min(newBox.width, maxSize),
           height: Math.min(newBox.height, maxSize),
-        };
+        });
       }}
       onTransformStart={(e) => {
+        isTransformingResizeRef.current = true;
         window._resizeData = { isResizing: true };
         const tr = transformerRef.current;
         const activeAnchor =
@@ -618,6 +832,14 @@ export default function SelectionBounds({
           isRotate: isRotateGesture,
           activeAnchor: activeAnchor ?? null,
         };
+        if (!isRotateGesture) {
+          setIsResizeGestureActive(true);
+        }
+        if (!isRotateGesture && activeAnchor) {
+          setPressedResizeAnchorName((current) =>
+            current === activeAnchor ? current : activeAnchor
+          );
+        }
         if (typeof onTransformInteractionStart === "function") {
           onTransformInteractionStart({
             isRotate: isRotateGesture,
@@ -1421,6 +1643,9 @@ export default function SelectionBounds({
           console.warn("Error en onTransformEnd:", error);
           window._resizeData = null;
         } finally {
+          isTransformingResizeRef.current = false;
+          setIsResizeGestureActive(false);
+          clearResizeAnchorPressFeedback();
           notifyTransformInteractionEnd();
         }
       }}
@@ -1428,3 +1653,4 @@ export default function SelectionBounds({
     />
   );
 }
+

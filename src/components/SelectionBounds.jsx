@@ -215,6 +215,8 @@ export default function SelectionBounds({
   const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
+  const resizeHintTimersRef = useRef([]);
+  const lastResizeHintSelectionKeyRef = useRef("");
   const transformGestureRef = useRef({
     isRotate: false,
     activeAnchor: null,
@@ -222,6 +224,7 @@ export default function SelectionBounds({
   const isTransformingResizeRef = useRef(false);
   const [isResizeGestureActive, setIsResizeGestureActive] = useState(false);
   const [pressedResizeAnchorName, setPressedResizeAnchorName] = useState(null);
+  const [resizeHintPhase, setResizeHintPhase] = useState(0);
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -256,6 +259,17 @@ export default function SelectionBounds({
   const transformerAnchorPressedShadowOffsetY =
     isMobile ? 0 : transformerAnchorShadowOffsetY + 1;
   const transformerAnchorPressedScale = isMobile ? 1.03 : 1.1;
+  const transformerAnchorHintShadowColor = isMobile
+    ? "rgba(214, 165, 255, 0.95)"
+    : "rgba(167, 86, 247, 0.8)";
+  const transformerAnchorHintStrokeColor = "rgba(255, 255, 255, 0.98)";
+  const transformerAnchorHintStrongScale = isMobile ? 1.06 : 1.14;
+  const transformerAnchorHintSoftScale = isMobile ? 1.03 : 1.07;
+  const transformerAnchorHintStrongShadowBlur = isMobile ? 116 : 24;
+  const transformerAnchorHintSoftShadowBlur = isMobile ? 74 : 14;
+  const transformerAnchorHintHitStrokeWidth = isMobile ? 84 : 22;
+  const transformerHintBorderStrongStrokeWidth = isMobile ? 2.2 : 1.6;
+  const transformerHintBorderSoftStrokeWidth = isMobile ? 1.8 : 1.25;
   const transformerRotationSnapTolerance = isMobile ? 8 : 5; //tolerancia para “encajar” rotación en ángulos fijos.
   const esTriangulo =
     primerElemento?.tipo === "forma" &&
@@ -321,6 +335,32 @@ export default function SelectionBounds({
     if (isTransformingResizeRef.current) return;
     setIsResizeGestureActive(false);
     setPressedResizeAnchorName((current) => (current ? null : current));
+  };
+
+  const clearResizeHintTimers = () => {
+    if (!resizeHintTimersRef.current.length) return;
+    resizeHintTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    resizeHintTimersRef.current = [];
+  };
+
+  const stopResizeHintPulse = () => {
+    clearResizeHintTimers();
+    setResizeHintPhase((current) => (current === 0 ? current : 0));
+  };
+
+  const stopNativeTransformerIfActive = () => {
+    const tr = transformerRef.current;
+    if (!tr) return false;
+    let nativeTransforming = false;
+    try {
+      nativeTransforming = Boolean(tr.isTransforming?.());
+    } catch {}
+    if (!nativeTransforming) return false;
+    try {
+      tr.stopTransform?.();
+      tr.getLayer?.()?.batchDraw?.();
+    } catch {}
+    return true;
   };
 
   const getResizeAnchorNameFromTarget = (target) => {
@@ -433,12 +473,84 @@ export default function SelectionBounds({
   };
 
   useEffect(() => {
+    const selectionKey = selectedElements.join(",");
+
+    if (!selectionKey || !deberiaUsarTransformer) {
+      stopResizeHintPulse();
+      lastResizeHintSelectionKeyRef.current = selectionKey;
+      return;
+    }
+
+    if (isDragging || isResizeGestureActive || isTransformingResizeRef.current) {
+      stopResizeHintPulse();
+      return;
+    }
+
+    if (selectionKey === lastResizeHintSelectionKeyRef.current) return;
+    lastResizeHintSelectionKeyRef.current = selectionKey;
+
+    clearResizeHintTimers();
+    setResizeHintPhase(2);
+
+    const pulseSteps = isMobile
+      ? [
+          [1, 220],
+          [2, 380],
+          [1, 580],
+          [0, 880],
+        ]
+      : [
+          [1, 120],
+          [2, 220],
+          [1, 360],
+          [0, 560],
+        ];
+
+    resizeHintTimersRef.current = pulseSteps.map(([phase, delayMs]) =>
+      setTimeout(() => setResizeHintPhase(phase), delayMs)
+    );
+
+    return () => {
+      clearResizeHintTimers();
+    };
+  }, [
+    selectedElements.join(","),
+    deberiaUsarTransformer,
+    isDragging,
+    isResizeGestureActive,
+    isMobile,
+  ]);
+
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    try {
+      if (tr.isTransforming?.()) return;
+    } catch {}
+    try {
+      tr.forceUpdate?.();
+    } catch {}
+    tr.getLayer?.()?.batchDraw?.();
+  }, [resizeHintPhase, isResizeGestureActive, pressedResizeAnchorName]);
+
+  useEffect(
+    () => () => {
+      stopNativeTransformerIfActive();
+      clearResizeHintTimers();
+    },
+    []
+  );
+
+  useEffect(() => {
     if (selectedElements.length === 0 || !deberiaUsarTransformer) {
+      stopResizeHintPulse();
+      stopNativeTransformerIfActive();
       setIsResizeGestureActive(false);
       setPressedResizeAnchorName((current) => (current ? null : current));
       return;
     }
     if (isDragging && !isTransformingResizeRef.current) {
+      stopResizeHintPulse();
       setIsResizeGestureActive(false);
       setPressedResizeAnchorName((current) => (current ? null : current));
     }
@@ -450,6 +562,7 @@ export default function SelectionBounds({
     if (!tr) return;
 
     const selKey = selectedElements.join(",");
+    const nativeTransforming = Boolean(tr.isTransforming?.());
     TRDBG("EFFECT start", {
       selKey,
       isDragging,
@@ -458,7 +571,14 @@ export default function SelectionBounds({
       elementosTransformablesLen: elementosTransformables.length,
       transformTick,
       editingId: window.editing?.id || null,
+      nativeTransforming,
     });
+
+    // Evita re-attach del transformer mientras Konva esta en medio del gesto.
+    if (nativeTransforming || isTransformingResizeRef.current) {
+      TRDBG("EFFECT exit: transform in flight", { selKey, nativeTransforming });
+      return;
+    }
 
     // Si no corresponde transformer, no hagas detach agresivo (evita flicker)
     if (!deberiaUsarTransformer) {
@@ -565,6 +685,9 @@ export default function SelectionBounds({
         rafId = null;
         const tr = transformerRef.current;
         if (!tr) return;
+        try {
+          if (tr.isTransforming?.()) return;
+        } catch {}
         try { tr.forceUpdate?.(); } catch { }
         tr.getLayer?.()?.batchDraw?.();
       });
@@ -607,6 +730,17 @@ export default function SelectionBounds({
     );
   }
 
+  const isResizeHintVisible =
+    resizeHintPhase > 0 &&
+    !isResizeGestureActive &&
+    !isTransformingResizeRef.current;
+  const transformerBorderStroke = isResizeHintVisible ? "#A855F7" : "#9333EA";
+  const transformerBorderVisualWidth = isResizeHintVisible
+    ? resizeHintPhase === 2
+      ? transformerHintBorderStrongStrokeWidth
+      : transformerHintBorderSoftStrokeWidth
+    : transformerBorderStrokeWidth;
+
   return (
     <Transformer
       name="ui"
@@ -615,10 +749,10 @@ export default function SelectionBounds({
       // 🔵 borde siempre visible
       borderEnabled={true}
 
-      borderStroke="#9333EA"
+      borderStroke={transformerBorderStroke}
 
 
-      borderStrokeWidth={transformerBorderStrokeWidth}
+      borderStrokeWidth={transformerBorderVisualWidth}
       padding={transformerPadding}
 
       // ❌ nodos y rotación OFF durante drag
@@ -657,47 +791,76 @@ export default function SelectionBounds({
           isResizeActiveFallback &&
           isResizeAnchorNode &&
           (!pressedResizeAnchorName || anchorName === pressedResizeAnchorName);
+        const isResizeHintAnchor =
+          !isPressedResizeAnchor &&
+          !isResizeActiveFallback &&
+          isResizeAnchorNode &&
+          resizeHintPhase > 0;
+        const isStrongResizeHint = isResizeHintAnchor && resizeHintPhase === 2;
 
-        anchor.shadowColor(
-          isPressedResizeAnchor
-            ? transformerAnchorPressedShadowColor
-            : transformerAnchorShadowColor
-        );
+        const anchorShadowColor = isPressedResizeAnchor
+          ? transformerAnchorPressedShadowColor
+          : isResizeHintAnchor
+            ? transformerAnchorHintShadowColor
+            : transformerAnchorShadowColor;
+        const anchorShadowBlur = isPressedResizeAnchor
+          ? transformerAnchorPressedShadowBlur
+          : isResizeHintAnchor
+            ? isStrongResizeHint
+              ? transformerAnchorHintStrongShadowBlur
+              : transformerAnchorHintSoftShadowBlur
+            : transformerAnchorShadowBlur;
+        const anchorShadowOpacity = isPressedResizeAnchor
+          ? 1
+          : isResizeHintAnchor
+            ? isStrongResizeHint
+              ? (isMobile ? 0.95 : 0.72)
+              : (isMobile ? 0.58 : 0.42)
+            : 0.12;
+        const anchorStrokeColor = isPressedResizeAnchor
+          ? transformerAnchorPressedHaloStrokeColor
+          : isResizeHintAnchor
+            ? transformerAnchorHintStrokeColor
+            : transformerAnchorStrokeColor;
+        const anchorStrokeWidth = isPressedResizeAnchor
+          ? transformerAnchorPressedHaloStrokeWidth
+          : isResizeHintAnchor
+            ? isStrongResizeHint
+              ? (isMobile ? 2.5 : 3.3)
+              : (isMobile ? 2.1 : 2.8)
+            : transformerAnchorStrokeWidth;
+        const anchorHitStrokeWidth = isPressedResizeAnchor
+          ? transformerAnchorPressedHitStrokeWidth
+          : isResizeHintAnchor
+            ? transformerAnchorHintHitStrokeWidth
+            : transformerAnchorHitStrokeWidth;
+        const anchorScale = isPressedResizeAnchor
+          ? transformerAnchorPressedScale
+          : isResizeHintAnchor
+            ? isStrongResizeHint
+              ? transformerAnchorHintStrongScale
+              : transformerAnchorHintSoftScale
+            : 1;
+
+        anchor.shadowColor(anchorShadowColor);
         // Mantener siempre el color original del nodo.
         anchor.fill(transformerAnchorFillColor);
         anchor.shadowEnabled(true);
         // En pressed, el halo nace más cerca del anillo para que se note mejor.
-        anchor.shadowForStrokeEnabled(isPressedResizeAnchor);
-        anchor.shadowOpacity(isPressedResizeAnchor ? 1 : 0.12);
-        anchor.shadowBlur(
-          isPressedResizeAnchor
-            ? transformerAnchorPressedShadowBlur
-            : transformerAnchorShadowBlur
-        );
+        anchor.shadowForStrokeEnabled(isPressedResizeAnchor || isResizeHintAnchor);
+        anchor.shadowOpacity(anchorShadowOpacity);
+        anchor.shadowBlur(anchorShadowBlur);
         anchor.shadowOffset({
           x: 0,
           y: isPressedResizeAnchor
             ? transformerAnchorPressedShadowOffsetY
+            : isResizeHintAnchor
+              ? (isMobile ? 0 : transformerAnchorShadowOffsetY)
             : transformerAnchorShadowOffsetY,
         });
-        anchor.hitStrokeWidth(
-          isPressedResizeAnchor
-            ? transformerAnchorPressedHitStrokeWidth
-            : transformerAnchorHitStrokeWidth
-        );
-        anchor.stroke(
-          isPressedResizeAnchor
-            ? transformerAnchorPressedHaloStrokeColor
-            : transformerAnchorStrokeColor
-        );
-        anchor.strokeWidth(
-          isPressedResizeAnchor
-            ? transformerAnchorPressedHaloStrokeWidth
-            : transformerAnchorStrokeWidth
-        );
-        const anchorScale = isPressedResizeAnchor
-          ? transformerAnchorPressedScale
-          : 1;
+        anchor.hitStrokeWidth(anchorHitStrokeWidth);
+        anchor.stroke(anchorStrokeColor);
+        anchor.strokeWidth(anchorStrokeWidth);
         anchor.scale({ x: anchorScale, y: anchorScale });
       }}
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
@@ -820,6 +983,7 @@ export default function SelectionBounds({
         });
       }}
       onTransformStart={(e) => {
+        stopResizeHintPulse();
         isTransformingResizeRef.current = true;
         window._resizeData = { isResizing: true };
         const tr = transformerRef.current;

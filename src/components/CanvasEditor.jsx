@@ -434,7 +434,7 @@ export default function CanvasEditor({
     };
   }, [backgroundLoadBySection, secciones]);
 
-  const startupReady = cargado && backgroundLoadSummary.pending === 0;
+  const startupReady = cargado === true;
 
   useEffect(() => {
     if (typeof onStartupStatusChange !== "function") return;

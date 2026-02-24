@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 
 const WEDDING_SCENES = [
   "Encendemos pequenas luces para que su historia tenga brillo desde el primer segundo.",
@@ -23,8 +23,8 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
   const [lineIndex, setLineIndex] = useState(0);
   const [lineVisible, setLineVisible] = useState(true);
   const [introVisible, setIntroVisible] = useState(false);
-  const [displayProgress, setDisplayProgress] = useState(12);
-  const [maxSignalProgress, setMaxSignalProgress] = useState(12);
+  const [displayProgress, setDisplayProgress] = useState(18);
+  const [maxSignalProgress, setMaxSignalProgress] = useState(18);
   const progressStartAtRef = useRef(Date.now());
 
   useEffect(() => {
@@ -54,11 +54,11 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
   const isReady = preloadState.status === "done" && runtimeState.status === "ready";
   const expectedDurationMs = useMemo(() => {
     const estimate =
-      12000 +
-      fontsTotal * 280 +
-      imagesTotal * 190 +
-      backgroundsTotal * 260;
-    return Math.max(12000, Math.min(42000, estimate));
+      3200 +
+      fontsTotal * 120 +
+      imagesTotal * 75 +
+      backgroundsTotal * 110;
+    return Math.max(3200, Math.min(12000, estimate));
   }, [backgroundsTotal, fontsTotal, imagesTotal]);
 
   const signalProgress = useMemo(() => {
@@ -80,9 +80,9 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
     }
 
     if (preloadState.status === "done" && runtimeState.status === "ready") return 100;
-    if (preloadState.status === "done") return 88;
-    if (preloadState.status === "running") return 42;
-    return 18;
+    if (preloadState.status === "done") return 94;
+    if (preloadState.status === "running") return 56;
+    return 24;
   }, [
     backgroundsProcessed,
     backgroundsTotal,
@@ -96,8 +96,8 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
 
   useEffect(() => {
     progressStartAtRef.current = Date.now();
-    setDisplayProgress(12);
-    setMaxSignalProgress(12);
+    setDisplayProgress(18);
+    setMaxSignalProgress(18);
   }, [preloadState.slug]);
 
   useEffect(() => {
@@ -127,23 +127,23 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
         if (isReady) {
           if (prev >= 100) return 100;
           const remaining = 100 - prev;
-          const step = prev < 97
-            ? Math.max(0.9, remaining * 0.34)
-            : Math.max(0.7, remaining * 0.52);
+          const step = prev < 98
+            ? Math.max(1.3, remaining * 0.42)
+            : Math.max(0.9, remaining * 0.55);
           return Math.min(100, prev + step);
         }
 
         const elapsedMs = Date.now() - progressStartAtRef.current;
         const ratio = Math.max(0, Math.min(1, elapsedMs / expectedDurationMs));
-        const easedRatio = Math.pow(ratio, 2.35);
-        const pacedProgress = 10 + easedRatio * 80; // 10 -> 90 (inicio mas lento)
+        const easedRatio = 1 - Math.pow(1 - ratio, 1.55);
+        const pacedProgress = 16 + easedRatio * 81;
 
         const overtimeMs = Math.max(0, elapsedMs - expectedDurationMs);
-        const overtimeBoost = (1 - Math.exp(-overtimeMs / 7000)) * 9.9; // hasta ~99.9
+        const overtimeBoost = (1 - Math.exp(-overtimeMs / 2600)) * 2.4;
 
-        const signalWeight = 0.08 + ratio * 0.22; // evita saltos bruscos por señal real
+        const signalWeight = 0.24 + ratio * 0.48;
         const weightedSignal =
-          10 + Math.max(0, maxSignalProgress - 10) * signalWeight;
+          16 + Math.max(0, maxSignalProgress - 16) * signalWeight;
 
         const target = Math.min(
           99.9,
@@ -152,7 +152,7 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
 
         if (target <= prev) {
           if (prev < 99.9) {
-            const drift = ratio < 0.65 ? 0.03 : ratio < 0.9 ? 0.05 : 0.08;
+            const drift = ratio < 0.65 ? 0.05 : ratio < 0.9 ? 0.09 : 0.14;
             return Math.min(99.9, prev + drift);
           }
           return prev;
@@ -160,14 +160,14 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
 
         const gap = target - prev;
         const maxStep =
-          ratio < 0.3 ? 0.16 : ratio < 0.7 ? 0.3 : 0.58;
+          ratio < 0.25 ? 0.45 : ratio < 0.7 ? 0.75 : 1.2;
         const step = Math.min(
           maxStep,
-          Math.max(0.05, gap * (ratio < 0.65 ? 0.12 : 0.22))
+          Math.max(0.1, gap * (ratio < 0.6 ? 0.26 : 0.4))
         );
         return Math.min(target, prev + step);
       });
-    }, 120);
+    }, 90);
 
     return () => window.clearInterval(timer);
   }, [expectedDurationMs, isReady, maxSignalProgress]);
@@ -207,9 +207,7 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
             <h3 className="mt-2 text-3xl leading-tight text-[#3c2d61] [font-family:'Cormorant_Garamond','Times_New_Roman',serif] sm:text-4xl">
               Estamos preparando tu invitacion
             </h3>
-            <p className="mt-3 mx-auto max-w-3xl text-center text-sm text-[#5f5682] sm:text-base">
-              Ajustamos el ambiente para que cuando se abra, se sienta exactamente como ustedes.
-            </p>
+            
           </div>
 
           <div
@@ -255,3 +253,4 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
     </div>
   );
 }
+

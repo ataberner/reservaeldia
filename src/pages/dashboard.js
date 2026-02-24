@@ -39,10 +39,10 @@ const IMAGE_PRELOAD_BATCH_SIZE = 6;
 const FONT_PRELOAD_TIMEOUT_MS = 40000;
 const TOTAL_PRELOAD_TIMEOUT_MS = 90000;
 const SELECTOR_FONT_WARMUP_TIMEOUT_MS = 35000;
-const MIN_EDITOR_STARTUP_LOADER_MS = 1800;
+const MIN_EDITOR_STARTUP_LOADER_MS = 1200;
 const HOME_DASHBOARD_LOADER_MAX_MS = 5500;
 const HOME_DASHBOARD_LOADER_EXIT_MS = 520;
-const EDITOR_STARTUP_LOADER_EXIT_MS = 920;
+const EDITOR_STARTUP_LOADER_EXIT_MS = 520;
 const IMAGE_SOURCE_KEYS = new Set([
   "src",
   "url",
@@ -1414,11 +1414,11 @@ export default function Dashboard() {
     vista,
   ]);
 
-  const editorPreloadReady =
+  const editorPreloadWarm =
     !slugInvitacion ||
     modoEditor === "iframe" ||
     (editorPreloadState.slug === slugInvitacion &&
-      editorPreloadState.status === "done");
+      editorPreloadState.status !== "idle");
 
   const editorRuntimeReady =
     !slugInvitacion ||
@@ -1429,12 +1429,12 @@ export default function Dashboard() {
   const shouldMountCanvasEditor =
     Boolean(slugInvitacion) &&
     modoEditor !== "iframe" &&
-    editorPreloadReady;
+    editorPreloadWarm;
 
   const showEditorStartupLoaderRaw =
     Boolean(slugInvitacion) &&
     modoEditor !== "iframe" &&
-    (!editorPreloadReady || !editorRuntimeReady);
+    !editorRuntimeReady;
 
   useEffect(() => {
     const canShowLoader = Boolean(slugInvitacion) && modoEditor !== "iframe";

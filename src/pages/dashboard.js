@@ -40,8 +40,8 @@ const FONT_PRELOAD_TIMEOUT_MS = 40000;
 const TOTAL_PRELOAD_TIMEOUT_MS = 90000;
 const SELECTOR_FONT_WARMUP_TIMEOUT_MS = 35000;
 const MIN_EDITOR_STARTUP_LOADER_MS = 1200;
-const HOME_DASHBOARD_LOADER_MAX_MS = 5500;
-const HOME_DASHBOARD_LOADER_EXIT_MS = 520;
+const HOME_DASHBOARD_LOADER_MAX_MS = 3200;
+const HOME_DASHBOARD_LOADER_EXIT_MS = 320;
 const EDITOR_STARTUP_LOADER_EXIT_MS = 520;
 const IMAGE_SOURCE_KEYS = new Set([
   "src",
@@ -1641,7 +1641,7 @@ export default function Dashboard() {
           {shouldRenderHomeStartupLoader && (
             <div
               className={
-                "absolute inset-0 z-20 flex items-start justify-center rounded-2xl bg-gradient-to-b from-gray-50/80 via-gray-50/55 to-gray-50/30 pt-20 backdrop-blur-[1.5px] transition-all duration-500 ease-out " +
+                "absolute inset-0 z-20 flex items-start justify-center rounded-2xl bg-gradient-to-b from-gray-50/80 via-gray-50/55 to-gray-50/30 pt-20 backdrop-blur-[1.5px] transition-all duration-300 ease-out " +
                 (isHomeStartupLoaderExiting
                   ? "pointer-events-none opacity-0 backdrop-blur-0"
                   : "opacity-100")
@@ -1649,7 +1649,7 @@ export default function Dashboard() {
             >
               <div
                 className={
-                  "flex flex-col items-center gap-3 text-gray-600 transition-all duration-500 ease-out will-change-transform " +
+                  "flex flex-col items-center gap-3 text-gray-600 transition-all duration-300 ease-out will-change-transform " +
                   (isHomeStartupLoaderExiting
                     ? "opacity-0 translate-y-7 scale-90 blur-[1.5px]"
                     : "opacity-100 translate-y-0 scale-100 blur-0")
@@ -1909,4 +1909,3 @@ export default function Dashboard() {
     </>
   );
 }
-

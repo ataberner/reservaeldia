@@ -4,8 +4,8 @@ import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
 
-const HOME_READY_THUMBNAIL_TARGET = 6;
-const THUMBNAIL_SETTLE_TIMEOUT_MS = 2200;
+const HOME_READY_THUMBNAIL_TARGET = 2;
+const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
 
 const DRAFT_PREVIEW_KEYS = [
   "thumbnailUrl",

@@ -280,6 +280,7 @@ export function generarHTMLDesdeSecciones(
       /* vh lógico por defecto */
       --vh-safe: 100vh;
       --vh-logical: var(--vh-safe);
+      --pantalla-y-compact: 0;
 
       /* ✅ Offset SOLO para texto en Pantalla: ON (desktop default) */
       --pantalla-y-offset: ${PANTALLA_Y_OFFSET_DESKTOP_PX}px;
@@ -390,6 +391,11 @@ export function generarHTMLDesdeSecciones(
       pointer-events: auto;
     }
 
+    .objeto[data-debug-texto="1"]{
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
     .objeto.is-interactive{ pointer-events: auto; }
 
     .cd-chip { backdrop-filter: saturate(1.1); }
@@ -471,6 +477,7 @@ export function generarHTMLDesdeSecciones(
 
           // ✅ Por defecto, tamaños escalan por ancho (comportamiento actual)
           var sfinal = sx;
+          var pantallaYCompact = 0;
 
           // limpiar custom width si no aplica
           sec.style.removeProperty("--content-w-pantalla");
@@ -497,6 +504,13 @@ export function generarHTMLDesdeSecciones(
 
               // 🔥 NUEVO: el contenido acompaña parcialmente el zoom
               sfinal = sx * (1 + (zoomExtra - 1) * TEXT_ZOOM_FACTOR);
+
+              // ✅ Mobile pantalla: compacta distancia vertical para preservar la esencia
+              // del diseño en dispositivos muy altos, manteniendo y=0.5 centrado.
+              var vhLogicalPx = vhSafePx / Math.max(0.01, zoom || 1);
+              var logicalAR = vhLogicalPx / Math.max(1, vw);
+              var stretchRatio = (logicalAR / Math.max(0.01, designAR)) - 1;
+              pantallaYCompact = clamp(stretchRatio * 0.12, 0, 0.45);
             }
           }
 
@@ -512,6 +526,7 @@ export function generarHTMLDesdeSecciones(
             // resto: se comporta como siempre
             sec.style.setProperty("--vh-logical", "var(--vh-safe)");
           }
+          sec.style.setProperty("--pantalla-y-compact", String(pantallaYCompact));
         });
 
 

@@ -137,6 +137,15 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
     return 0;
   }
 
+  function topPantallaCSS(obj: any, ynRaw: any): string {
+    const yn = clamp01(ynRaw) ?? 0;
+    const ynCompactado = `calc(0.5 + ((${yn}) - 0.5) * (1 - var(--pantalla-y-compact, 0)))`;
+    return `calc(
+  (var(--vh-logical) * ${ynCompactado})
+  + (${sContenidoVar(obj)} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px))
+)`;
+  }
+
   /**
    * ✅ topCSS:
    * - Pantalla ON: usa var(--vh-logical) * yn
@@ -147,23 +156,7 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
     if (esSeccionPantalla(obj)) {
       const yPxEditor = getYPxEditor(obj);
       const yn = clamp01(yPxEditor / ALTURA_EDITOR_PANTALLA) ?? 0;
-
-
-      // ✅ Altura “de diseño” escalada por el mismo factor que usan tamaños (sfinal)
-      const designScaledH = `(${sContenidoVar(obj)} * ${ALTURA_EDITOR_PANTALLA}px)`;
-
-      // ✅ Centrado vertical: si el viewport lógico es más alto que el diseño escalado,
-      // agregamos un offset constante. (En desktop suele dar ~0 porque sfinal = vh/500)
-      const centerOffset = `max(0px, calc((var(--vh-logical) - ${designScaledH}) / 2))`;
-
-      return `calc(
-  ${centerOffset}
-  + (${designScaledH} * ${yn})
-  + (${sContenidoVar(obj)} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px))
-)`;
-
-
-
+      return topPantallaCSS(obj, yn);
     }
 
     const y = Number(obj?.y || 0);
@@ -176,12 +169,7 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
   function topCSSFromYPx(obj: any, yPx: number): string {
     if (esSeccionPantalla(obj)) {
       const yn = clamp01(yPx / ALTURA_EDITOR_PANTALLA) ?? 0;
-
-
-      return `calc((var(--vh-logical) * ${yn}) + (${sContenidoVar(
-        obj
-      )} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px)))`;
-
+      return topPantallaCSS(obj, yn);
     }
 
     return pxY(obj, yPx);
@@ -283,21 +271,13 @@ pointer-events: auto;
           align === "center" ? "top center" :
             (align === "right" ? "top right" : "top left");
 
-        const xComp =
-          align === "left" ? "calc((1 - var(--text-zoom, 1)) * 50%)" :
-            align === "right" ? "calc((var(--text-zoom, 1) - 1) * 50%)" :
-              "0px";
-
-
-
         const style = `
 ${baseStyle}
-/* ✅ para que el zoom no “empuje” a la derecha */
+/* ✅ mantener geometría estable y escalar tipografía por font-size (no por transform). */
 transform-origin: ${origin};
-/* ✅ compensa el corrimiento por scale */
-transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY}) translateX(${xComp}) scale(var(--text-zoom, 1));
+transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY});
 ${w !== undefined ? `width: ${pxX(obj, w)};` : ""}
-font-size: calc(${sFont} * ${fs}px);
+font-size: calc(${sFont} * ${fs}px * var(--text-zoom, 1));
 font-family: ${obj.fontFamily || "sans-serif"};
 font-weight: ${obj.fontWeight || "normal"};
 font-style: ${obj.fontStyle || "normal"};

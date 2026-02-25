@@ -434,7 +434,22 @@ export default function CanvasEditor({
     };
   }, [backgroundLoadBySection, secciones]);
 
-  const startupReady = cargado === true;
+  const firstSectionBackgroundReady = useMemo(() => {
+    const firstSection = seccionesOrdenadas[0];
+    if (!firstSection) return true;
+
+    const hasBackgroundImage =
+      firstSection?.fondoTipo === "imagen" &&
+      typeof firstSection?.fondoImagen === "string" &&
+      firstSection.fondoImagen.trim().length > 0;
+
+    if (!hasBackgroundImage) return true;
+
+    const status = backgroundLoadBySection[firstSection.id]?.status;
+    return status === "loaded" || status === "failed";
+  }, [backgroundLoadBySection, seccionesOrdenadas]);
+
+  const startupReady = cargado === true && firstSectionBackgroundReady;
 
   useEffect(() => {
     if (typeof onStartupStatusChange !== "function") return;
@@ -482,6 +497,7 @@ export default function CanvasEditor({
     backgroundLoadSummary.loaded,
     backgroundLoadSummary.pending,
     backgroundLoadSummary.total,
+    firstSectionBackgroundReady,
     cargado,
     onStartupStatusChange,
     slug,

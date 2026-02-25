@@ -264,7 +264,7 @@ export function generarHTMLDesdeSecciones(
         text-size-adjust: 100%;
       }
       
-        :root{ --text-zoom: 1.25; } /* probá 1.10–1.25 */
+        :root{ --text-zoom: 1; }
     }
 
     :root{

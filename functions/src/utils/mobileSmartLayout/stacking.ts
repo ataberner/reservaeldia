@@ -1,7 +1,7 @@
-// functions/src/utils/mobileSmartLayout/stacking.ts
+﻿// functions/src/utils/mobileSmartLayout/stacking.ts
 export function jsStackingBlock(): string {
   return `
-  // Centro real del área usable (compensa padding safe-left/right)
+  // Centro real del Ã¡rea usable (compensa padding safe-left/right)
   function computeCenterX(rootEl){
     var rootRect = rootEl.getBoundingClientRect();
     var rootW = rootRect.width || 0;
@@ -11,7 +11,7 @@ export function jsStackingBlock(): string {
     var padR = parseFloat(cs.paddingRight) || 0;
 
     var usableW = Math.max(0, rootW - padL - padR);
-    var centerX = padL + usableW / 2; // centro del área usable
+    var centerX = padL + usableW / 2; // centro del Ã¡rea usable
 
     return { rootW: rootW, usableW: usableW, centerX: centerX, padL: padL, padR: padR };
   }
@@ -27,7 +27,7 @@ export function jsStackingBlock(): string {
    * - preserva solape/posiciones relativas dentro del cluster
    * - centra el cluster como bloque en el eje X (sin transform)
    *
-   * Devuelve changed + neededHeight (para expandir sección)
+   * Devuelve changed + neededHeight (para expandir secciÃ³n)
    */
   function applyClusterStack(groups, rootEl, CFG, mode){
     var info = computeCenterX(rootEl);
@@ -43,9 +43,9 @@ export function jsStackingBlock(): string {
     var isMultiColLayout = (mode === "two" || mode === "three");
 
     // En multi-columna: cada columna apilada se centra por su propio bbox.
-    // Así, el centro de cada columna coincide con el centro de pantalla.
+    // AsÃ­, el centro de cada columna coincide con el centro de pantalla.
 
-    // --- Anchor global: dónde estaba “el bloque” originalmente ---
+    // --- Anchor global: dÃ³nde estaba â€œel bloqueâ€ originalmente ---
     var firstGroup = groups[0] || [];
     var anchor = Infinity;
     for (var i=0;i<firstGroup.length;i++){
@@ -54,10 +54,10 @@ export function jsStackingBlock(): string {
     if (!isFinite(anchor)) anchor = CFG.PAD_TOP;
     anchor = Math.max(CFG.PAD_TOP, anchor);
 
-    // Cursor global: dónde termina el contenido apilado hasta ahora
+    // Cursor global: dÃ³nde termina el contenido apilado hasta ahora
     var globalCursor = anchor;
 
-    // Separación entre columnas apiladas (izq, centro, der)
+    // SeparaciÃ³n entre columnas apiladas (izq, centro, der)
     var GROUP_GAP = 14;
 
     for (var g=0; g<groups.length; g++){
@@ -65,18 +65,29 @@ export function jsStackingBlock(): string {
       if (!col.length) continue;
       var colReferenceCenterX = NaN;
       var colSourceReferenceCenterX = NaN;
+      var narrowClusterCount = 0;
+      var wideClusterCount = 0;
 
-      // Métricas por grupo solo para debug.
+      // MÃ©tricas por grupo solo para debug.
       var groupMinLeft = Infinity;
       var groupMaxRight = -Infinity;
       if (isMultiColLayout){
         for (var gg=0; gg<col.length; gg++){
           groupMinLeft = Math.min(groupMinLeft, col[gg].left);
           groupMaxRight = Math.max(groupMaxRight, col[gg].left + col[gg].width);
+          var clusterWDbg = Number(col[gg].width || 0);
+          if (clusterWDbg <= (info.usableW * 0.72)) narrowClusterCount++;
+          if (clusterWDbg >= (info.usableW * 0.88)) wideClusterCount++;
         }
       }
       var groupWidth = isMultiColLayout ? Math.max(0, groupMaxRight - groupMinLeft) : 0;
       var groupBaseLeft = isMultiColLayout ? (centerX - groupWidth / 2) : 0;
+      var suspiciousWideSpan = isMultiColLayout &&
+        col.length > 1 &&
+        groupWidth >= (info.usableW * 0.88) &&
+        narrowClusterCount >= 1 &&
+        wideClusterCount >= 1;
+      var preserveColumnOffsets = isMultiColLayout && !suspiciousWideSpan;
 
       // Offset vertical original de esta columna respecto del anchor
       var colMinTop = Infinity;
@@ -97,7 +108,10 @@ export function jsStackingBlock(): string {
         mode: mode,
         groupMinLeft: isMultiColLayout ? +groupMinLeft.toFixed(1) : null,
         groupWidth: isMultiColLayout ? +groupWidth.toFixed(1) : null,
-        groupBaseLeft: isMultiColLayout ? +groupBaseLeft.toFixed(1) : null
+        groupBaseLeft: isMultiColLayout ? +groupBaseLeft.toFixed(1) : null,
+        narrowClusterCount: isMultiColLayout ? narrowClusterCount : null,
+        wideClusterCount: isMultiColLayout ? wideClusterCount : null,
+        preserveColumnOffsets: isMultiColLayout ? preserveColumnOffsets : null
       });
 
       // Cursor local de esta columna
@@ -115,7 +129,7 @@ export function jsStackingBlock(): string {
           var prevC = col[j-1];
           var prevBottom = (clusterTopPrev + prevC.height);
 
-          // ✅ Gap original entre clusters (canvas)
+          // âœ… Gap original entre clusters (canvas)
           var prevBottomOrig = (prevC.top + prevC.height);
           var gapOrig = c.top - prevBottomOrig;
           if (!isFinite(gapOrig)) gapOrig = 0;
@@ -128,11 +142,11 @@ export function jsStackingBlock(): string {
             if (!isFinite(relTopInCol)) relTopInCol = 0;
             clusterTop = colStart + Math.max(0, relTopInCol);
           } else {
-            // ✅ Gap “mobile-friendly”: escalado + clamp
+            // âœ… Gap â€œmobile-friendlyâ€: escalado + clamp
             var gapWanted = clamp(gapOrig * (CFG.GAP_SCALE || 1), CFG.MIN_GAP, CFG.MAX_GAP);
 
-            // ✅ Anti-solape definitivo:
-            //   el próximo cluster SIEMPRE empieza después del bottom real del anterior + gapWanted
+            // âœ… Anti-solape definitivo:
+            //   el prÃ³ximo cluster SIEMPRE empieza despuÃ©s del bottom real del anterior + gapWanted
             clusterTop = prevBottom + gapWanted;
 
             // En multi-columna nunca avanzamos hacia arriba respecto al flujo ya consumido.
@@ -142,10 +156,10 @@ export function jsStackingBlock(): string {
           }
         }
 
-        // Guardamos para el próximo loop
+        // Guardamos para el prÃ³ximo loop
         var clusterTopPrev = clusterTop;
 
-        // ¿centrar este cluster?
+        // Â¿centrar este cluster?
         var forceCenter = false;
         var hasTextInCluster = false;
         var hasNonTextInCluster = false;
@@ -171,8 +185,15 @@ export function jsStackingBlock(): string {
           // preservar el offset horizontal original de cada cluster.
           // Esto mantiene alineado texto/forma cuando la columna se parte
           // en varios clusters.
-          var relClusterLeft = (c.left || 0) - (groupMinLeft || 0);
-          clusterLeft = groupBaseLeft + relClusterLeft;
+          // Si el bbox de la columna queda contaminado por un outlier ancho
+          // (tipicamente texto), centrar por offsets deja la columna pegada
+          // al borde; en ese caso centramos cada cluster individualmente.
+          if (preserveColumnOffsets) {
+            var relClusterLeft = (c.left || 0) - (groupMinLeft || 0);
+            clusterLeft = groupBaseLeft + relClusterLeft;
+          } else {
+            clusterLeft = centerX - c.width / 2;
+          }
 
           // Permite forzar centrado por cluster si el nodo lo pide.
           if (forceCenter) clusterLeft = centerX - c.width / 2;
@@ -201,21 +222,50 @@ export function jsStackingBlock(): string {
               sourceClusterRefCenterX = (c.left || 0) + c.width / 2;
             }
 
-            colReferenceCenterX = clusterRefCenterX;
-            colSourceReferenceCenterX = sourceClusterRefCenterX;
+            colReferenceCenterX = Number(clusterRefCenterX);
+            colSourceReferenceCenterX = Number(sourceClusterRefCenterX);
+            if (!isFinite(colReferenceCenterX)) colReferenceCenterX = NaN;
+            if (!isFinite(colSourceReferenceCenterX)) colSourceReferenceCenterX = NaN;
           }
 
-          if (isTextOnlyCluster && isFinite(colReferenceCenterX)) {
-            var maxSnapDelta = Math.min(120, info.usableW * 0.35);
-            var sourceClusterCenterX = (c.left || 0) + c.width / 2;
-            var sourceDriftX = isFinite(colSourceReferenceCenterX)
-              ? (sourceClusterCenterX - colSourceReferenceCenterX)
-              : NaN;
-            if (isFinite(sourceDriftX) && Math.abs(sourceDriftX) <= maxSnapDelta) {
-              clusterLeft = (colReferenceCenterX + sourceDriftX) - c.width / 2;
+          if (isTextOnlyCluster) {
+            // Mantener posicion de cluster alineada con la columna centrada
+            // sin tocar la alineacion interna del texto.
+            var centeredClusterLeft = centerX - c.width / 2;
+            if (isFinite(colReferenceCenterX)) {
+              var maxSnapDelta = Math.min(120, info.usableW * 0.35);
+              var sourceClusterCenterX = (c.left || 0) + c.width / 2;
+              var sourceDriftX = isFinite(colSourceReferenceCenterX)
+                ? (sourceClusterCenterX - colSourceReferenceCenterX)
+                : NaN;
+              if (isFinite(sourceDriftX) && Math.abs(sourceDriftX) <= maxSnapDelta) {
+                var driftedClusterLeft = (colReferenceCenterX + sourceDriftX) - c.width / 2;
+                var driftedClusterCenterX = driftedClusterLeft + c.width / 2;
+                var maxRefDrift = Math.max(12, info.usableW * 0.06);
+                if (Math.abs(driftedClusterCenterX - centerX) <= maxRefDrift) {
+                  centeredClusterLeft = driftedClusterLeft;
+                }
+              }
             }
-            // Para labels cortos, centrar el contenido textual dentro del box.
-            shouldCenterTextWithinCluster = c.width <= (info.usableW * 0.65);
+            clusterLeft = centeredClusterLeft;
+            shouldCenterTextWithinCluster = false;
+          }
+
+          // Guard rail: en apilado multi-columna, un cluster no debe quedar
+          // desviado demasiado del eje central del layout mobile.
+          var clusterCenterXNow = clusterLeft + c.width / 2;
+          var maxCenterDrift = Math.max(24, info.usableW * 0.18);
+          if (Math.abs(clusterCenterXNow - centerX) > maxCenterDrift) {
+            mslLog("stack:cluster:centerFallback", {
+              g: g,
+              j: j,
+              prevLeft: +clusterLeft.toFixed(1),
+              centerX: +centerX.toFixed(1),
+              clusterCenterX: +clusterCenterXNow.toFixed(1),
+              maxCenterDrift: +maxCenterDrift.toFixed(1),
+              clusterW: +(c.width || 0).toFixed(1)
+            });
+            clusterLeft = centerX - c.width / 2;
           }
         }
         mslLog("stack:cluster", {
@@ -259,8 +309,8 @@ export function jsStackingBlock(): string {
             return a.left - b.left;
           });
 
-          // Orden semántico de lectura:
-          // no-texto + texto más cercano (debajo y por eje X), luego remanentes.
+          // Orden semÃ¡ntico de lectura:
+          // no-texto + texto mÃ¡s cercano (debajo y por eje X), luego remanentes.
           var ordered = [];
           var usedText = {};
 
@@ -347,8 +397,9 @@ export function jsStackingBlock(): string {
               }
             }
 
+            var cssLeftLin = newLeftLin - (info.padL || 0);
             lit.node.style.top = newTopLin + "px";
-            lit.node.style.left = newLeftLin + "px";
+            lit.node.style.left = cssLeftLin + "px";
             lit.node.style.right = "auto";
             lit.node.style.marginLeft = "0px";
 
@@ -365,6 +416,7 @@ export function jsStackingBlock(): string {
         // Aplicar a cada item preservando offsets relativos (solape intacto)
         for (var ii=0; ii<c.items.length; ii++){
           var it = c.items[ii];
+          var isTextNode = (it.node.getAttribute("data-debug-texto") || "") === "1";
 
           // Opt-out total del layout (decoraciones, etc.)
           var keepLayout = (it.node.getAttribute("data-mobile-layout") || "") === "keep";
@@ -378,10 +430,10 @@ export function jsStackingBlock(): string {
           if (keepAlign) newLeft = it.left;
 
           // En multi-col, neutralizamos SIEMPRE translateX(...) de textos
-          // para que la posición left calculada sea la referencia visual real.
-          var isTextNode = (it.node.getAttribute("data-debug-texto") || "") === "1";
+          // para que la posiciÃ³n left calculada sea la referencia visual real.
           var isShortTextBox = false;
           var shouldRecenterTextItem = false;
+          var recenterGuardBlocked = false;
           var centerByAlign = false;
           var targetTextCenterX = NaN;
           if (isTextNode && isMultiColLayout) {
@@ -397,16 +449,33 @@ export function jsStackingBlock(): string {
               !keepAlign;
             shouldRecenterTextItem =
               shouldCenterVisualText &&
+              !isTextOnlyCluster &&
               isFinite(colReferenceCenterX);
             if (shouldRecenterTextItem) {
               var prevLeftTxt = newLeft;
+              var currentCenterX = prevLeftTxt + (it.width || 0) / 2;
               var sourceItemCenterX = (it.left || 0) + (it.width || 0) / 2;
               var sourceDriftItemX = isFinite(colSourceReferenceCenterX)
                 ? (sourceItemCenterX - colSourceReferenceCenterX)
                 : NaN;
               var targetCenterX = colReferenceCenterX;
-              if (isFinite(sourceDriftItemX)) {
+              // En textos centrados (o labels cortos forzados al centro),
+              // no arrastramos drift horizontal del layout original para
+              // evitar corrimientos laterales en mobile.
+              var preserveSourceDrift =
+                !centerByAlign &&
+                !shouldCenterTextWithinCluster &&
+                !isShortTextBox;
+              if (preserveSourceDrift && isFinite(sourceDriftItemX)) {
                 targetCenterX += sourceDriftItemX;
+              }
+              // Guard rail: si la recorreccion propuesta se aleja demasiado del
+              // centro ya calculado para el cluster, no la aplicamos.
+              var maxRecenterShift = Math.max(18, info.usableW * 0.08);
+              if (isFinite(currentCenterX) && isFinite(targetCenterX) && Math.abs(targetCenterX - currentCenterX) > maxRecenterShift) {
+                recenterGuardBlocked = true;
+                shouldRecenterTextItem = false;
+                targetCenterX = currentCenterX;
               }
               targetTextCenterX = targetCenterX;
               newLeft = targetCenterX - (it.width || 0) / 2;
@@ -421,6 +490,8 @@ export function jsStackingBlock(): string {
                   refCenterX: +colReferenceCenterX.toFixed(1),
                   sourceRefCenterX: (typeof colSourceReferenceCenterX === "number" && isFinite(colSourceReferenceCenterX)) ? +colSourceReferenceCenterX.toFixed(1) : null,
                   sourceDriftX: isFinite(sourceDriftItemX) ? +sourceDriftItemX.toFixed(1) : null,
+                  preserveSourceDrift: preserveSourceDrift,
+                  guardBlocked: recenterGuardBlocked,
                   shortBox: isShortTextBox,
                   centerByAlign: centerByAlign
                 });
@@ -434,13 +505,14 @@ export function jsStackingBlock(): string {
             }
           }
 
+          var cssLeft = newLeft - (info.padL || 0);
           it.node.style.top = newTop + "px";
-          it.node.style.left = newLeft + "px";
+          it.node.style.left = cssLeft + "px";
           it.node.style.right = "auto";
           it.node.style.marginLeft = "0px";
 
-          // Corrección final por posición renderizada real del texto
-          // (fuentes/transform pueden introducir desvíos visuales sub-píxel).
+          // CorrecciÃ³n final por posiciÃ³n renderizada real del texto
+          // (fuentes/transform pueden introducir desvÃ­os visuales sub-pÃ­xel).
           if (isTextNode && isMultiColLayout && shouldRecenterTextItem) {
             var rrTxt = relRect(it.node, rootEl);
             var renderedCenterX = (rrTxt.left || 0) + (rrTxt.width || 0) / 2;
@@ -460,7 +532,7 @@ export function jsStackingBlock(): string {
                   delta: +renderDelta.toFixed(2)
                 });
                 newLeft = correctedLeft;
-                it.node.style.left = newLeft + "px";
+                it.node.style.left = (newLeft - (info.padL || 0)) + "px";
               }
             }
           }
@@ -475,7 +547,7 @@ export function jsStackingBlock(): string {
         colCursor = Math.max(colCursor, clusterBottomUsed);
       }
 
-      // Al terminar la columna, el cursor global baja hasta donde llegó esta columna
+      // Al terminar la columna, el cursor global baja hasta donde llegÃ³ esta columna
       globalCursor = Math.max(globalCursor, colCursor);
     }
 

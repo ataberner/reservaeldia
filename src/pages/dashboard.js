@@ -171,6 +171,49 @@ function trimText(value, max = 1000) {
   return `${text.slice(0, max)}...`;
 }
 
+function getFirstQueryValue(value) {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return null;
+  const firstString = value.find((item) => typeof item === "string");
+  return typeof firstString === "string" ? firstString : null;
+}
+
+function decodeURIComponentSafe(value) {
+  if (typeof value !== "string") return "";
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function sanitizeDraftSlug(rawSlug) {
+  if (typeof rawSlug !== "string") return null;
+  const decoded = decodeURIComponentSafe(rawSlug).trim();
+  if (!decoded) return null;
+  const slug = decoded.split("?")[0].trim();
+  return slug || null;
+}
+
+function recoverQueryFromCorruptedSlug(rawSlug) {
+  if (typeof rawSlug !== "string") return {};
+  const decoded = decodeURIComponentSafe(rawSlug);
+  const queryStart = decoded.indexOf("?");
+  if (queryStart < 0) return {};
+  const suffix = decoded.slice(queryStart + 1).trim();
+  if (!suffix) return {};
+  const recovered = {};
+  try {
+    const params = new URLSearchParams(suffix);
+    params.forEach((value, key) => {
+      const cleanKey = String(key || "").trim();
+      if (!cleanKey || cleanKey === "slug") return;
+      recovered[cleanKey] = value;
+    });
+  } catch {}
+  return recovered;
+}
+
 function isLikelyImageUrl(value) {
   if (typeof value !== "string") return false;
   const normalized = value.trim();
@@ -399,8 +442,33 @@ export default function Dashboard() {
   useEffect(() => {
     if (!router.isReady) return;
 
-    const slugParam = router.query?.slug;
-    const slugURL = typeof slugParam === "string" ? slugParam : null;
+    const rawSlugParam = getFirstQueryValue(router.query?.slug);
+    const slugURL = sanitizeDraftSlug(rawSlugParam);
+    const recoveredQuery = recoverQueryFromCorruptedSlug(rawSlugParam);
+    const recoveredQueryKeys = Object.keys(recoveredQuery).filter(
+      (key) => typeof router.query?.[key] === "undefined"
+    );
+    const shouldNormalizeUrl =
+      Boolean(rawSlugParam) &&
+      Boolean(slugURL) &&
+      (rawSlugParam !== slugURL || recoveredQueryKeys.length > 0);
+
+    if (shouldNormalizeUrl) {
+      const nextQuery = { ...router.query, slug: slugURL };
+      recoveredQueryKeys.forEach((key) => {
+        nextQuery[key] = recoveredQuery[key];
+      });
+      router.replace(
+        { pathname: "/dashboard", query: nextQuery },
+        undefined,
+        { shallow: true }
+      );
+      pushEditorBreadcrumb("dashboard-slug-sanitized", {
+        slugRaw: rawSlugParam,
+        slug: slugURL,
+        recoveredKeys: recoveredQueryKeys,
+      });
+    }
 
     if (slugURL) {
       if (slugInvitacion !== slugURL) {
@@ -449,7 +517,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    const slugQuery = typeof router.query?.slug === "string" ? router.query.slug : null;
+    const slugQuery = sanitizeDraftSlug(getFirstQueryValue(router.query?.slug));
     consumeInterruptedEditorSession({ currentSlug: slugQuery });
   }, [router.isReady, router.query?.slug]);
 

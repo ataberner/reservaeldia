@@ -12,30 +12,44 @@ export function buildScript(cfg: NormalizedConfig): string {
 <script>
 (function(){
   var ENABLED = true;
+  function readFlagFromSearch(search, name){
+    try {
+      if (typeof search !== "string" || !search) return false;
+      var normalized = search.charAt(0) === "?" ? search : ("?" + search);
+      var qp = new URLSearchParams(normalized);
+      var qv = qp.get(name);
+      return qv === "1" || String(qv).toLowerCase() === "true";
+    } catch(_e0) {
+      return false;
+    }
+  }
   function readDebugFlag(name){
     try {
       var search = (window.location && window.location.search) ? window.location.search : "";
-      var qp = new URLSearchParams(search);
-      var qv = qp.get(name);
-      if (qv === "1" || String(qv).toLowerCase() === "true") return true;
+      if (readFlagFromSearch(search, name)) return true;
     } catch(_e1) {}
+
+    // srcDoc sandbox suele conservar document.referrer con la URL padre.
+    try {
+      var referrer = (typeof document !== "undefined" && document.referrer) ? String(document.referrer) : "";
+      if (referrer) {
+        var refUrl = new URL(referrer);
+        if (readFlagFromSearch(refUrl.search || "", name)) return true;
+      }
+    } catch(_eRef) {}
 
     // srcDoc/about:srcdoc no suele tener querystring.
     try {
       if (window.parent && window.parent !== window && window.parent.location) {
         var pSearch = window.parent.location.search || "";
-        var pQ = new URLSearchParams(pSearch);
-        var pV = pQ.get(name);
-        if (pV === "1" || String(pV).toLowerCase() === "true") return true;
+        if (readFlagFromSearch(pSearch, name)) return true;
       }
     } catch(_e2) {}
 
     try {
       if (window.top && window.top !== window && window.top.location) {
         var tSearch = window.top.location.search || "";
-        var tQ = new URLSearchParams(tSearch);
-        var tV = tQ.get(name);
-        if (tV === "1" || String(tV).toLowerCase() === "true") return true;
+        if (readFlagFromSearch(tSearch, name)) return true;
       }
     } catch(_e3) {}
 
@@ -96,7 +110,6 @@ export function buildScript(cfg: NormalizedConfig): string {
     }
     dbg(label, args.slice(1));
   }
-
   var CFG = {
     MIN_GAP: ${cfg.minGapPx},
     MAX_GAP: ${cfg.maxGapPx},
@@ -146,6 +159,72 @@ export function buildScript(cfg: NormalizedConfig): string {
     return modo === "fijo";
   }
 
+  function restoreNodeBaseline(node){
+    if (!node) return 0;
+    var restored = 0;
+
+    if (!node.hasAttribute("data-msl-orig-top")) {
+      node.setAttribute("data-msl-orig-top", node.style.top || "");
+    }
+    if (!node.hasAttribute("data-msl-orig-left")) {
+      node.setAttribute("data-msl-orig-left", node.style.left || "");
+    }
+    if (!node.hasAttribute("data-msl-orig-transform")) {
+      node.setAttribute("data-msl-orig-transform", node.style.transform || "");
+    }
+    if (!node.hasAttribute("data-msl-orig-text-align")) {
+      node.setAttribute("data-msl-orig-text-align", node.style.textAlign || "");
+    }
+    if (!node.hasAttribute("data-msl-orig-transform-origin")) {
+      node.setAttribute("data-msl-orig-transform-origin", node.style.transformOrigin || "");
+    }
+    if (!node.hasAttribute("data-msl-orig-text-zoom")) {
+      node.setAttribute("data-msl-orig-text-zoom", node.style.getPropertyValue("--text-zoom") || "");
+    }
+
+    var origTop = node.getAttribute("data-msl-orig-top");
+    var origLeft = node.getAttribute("data-msl-orig-left");
+    var origTransform = node.getAttribute("data-msl-orig-transform");
+    var origTextAlign = node.getAttribute("data-msl-orig-text-align");
+    var origTransformOrigin = node.getAttribute("data-msl-orig-transform-origin");
+    var origTextZoom = node.getAttribute("data-msl-orig-text-zoom");
+
+    if (origTop != null && node.style.top !== origTop) {
+      node.style.top = origTop;
+      restored++;
+    }
+    if (origLeft != null && node.style.left !== origLeft) {
+      node.style.left = origLeft;
+      restored++;
+    }
+    if (origTransform != null && node.style.transform !== origTransform) {
+      node.style.transform = origTransform;
+      restored++;
+    }
+    if (origTextAlign != null && node.style.textAlign !== origTextAlign) {
+      if (origTextAlign) node.style.textAlign = origTextAlign;
+      else node.style.removeProperty("text-align");
+      restored++;
+    }
+    if (origTransformOrigin != null && node.style.transformOrigin !== origTransformOrigin) {
+      if (origTransformOrigin) node.style.transformOrigin = origTransformOrigin;
+      else node.style.removeProperty("transform-origin");
+      restored++;
+    }
+    if (origTextZoom != null) {
+      var currentTextZoom = node.style.getPropertyValue("--text-zoom") || "";
+      if (currentTextZoom !== origTextZoom) {
+        if (origTextZoom) node.style.setProperty("--text-zoom", origTextZoom);
+        else node.style.removeProperty("--text-zoom");
+        restored++;
+      }
+    }
+
+    node.style.right = "auto";
+    node.style.marginLeft = "0px";
+    return restored;
+  }
+
   function runOnce(){
     if(!ENABLED) return;
     if(!isMobile()) {
@@ -154,6 +233,10 @@ export function buildScript(cfg: NormalizedConfig): string {
         if(!content) return;
         var bleed = sec.querySelector(".sec-bleed");
         resetSectionFitScale(sec, content, bleed);
+        var nodesAllDesktop = getObjNodes(sec);
+        for (var nd=0; nd<nodesAllDesktop.length; nd++) {
+          restoreNodeBaseline(nodesAllDesktop[nd]);
+        }
         sec.setAttribute("data-msl-fit-scale", "1");
       });
       return;
@@ -312,31 +395,7 @@ export function buildScript(cfg: NormalizedConfig): string {
       }
       var restoredCount = 0;
       nodesAll.forEach(function(node){
-        var hasOrigTop = node.hasAttribute("data-msl-orig-top");
-        var hasOrigLeft = node.hasAttribute("data-msl-orig-left");
-        var hasOrigTransform = node.hasAttribute("data-msl-orig-transform");
-        if (!hasOrigTop) node.setAttribute("data-msl-orig-top", node.style.top || "");
-        if (!hasOrigLeft) node.setAttribute("data-msl-orig-left", node.style.left || "");
-        if (!hasOrigTransform) node.setAttribute("data-msl-orig-transform", node.style.transform || "");
-
-        var origTop = node.getAttribute("data-msl-orig-top");
-        var origLeft = node.getAttribute("data-msl-orig-left");
-        var origTransform = node.getAttribute("data-msl-orig-transform");
-
-        if (origTop != null && node.style.top !== origTop) {
-          node.style.top = origTop;
-          restoredCount++;
-        }
-        if (origLeft != null && node.style.left !== origLeft) {
-          node.style.left = origLeft;
-          restoredCount++;
-        }
-        if (origTransform != null && node.style.transform !== origTransform) {
-          node.style.transform = origTransform;
-          restoredCount++;
-        }
-        node.style.right = "auto";
-        node.style.marginLeft = "0px";
+        restoredCount += restoreNodeBaseline(node);
       });
       mslLog("section:baselineRestore", { secIndex: secIndex, nodes: nodesAll.length, restored: restoredCount });
 
@@ -702,6 +761,11 @@ export function buildScript(cfg: NormalizedConfig): string {
           overflowBefore: false,
           overflowAfter: false
         };
+        var rootPadLeft = 0;
+        if (rootEl) {
+          var rootCS = getComputedStyle(rootEl);
+          rootPadLeft = parseFloat(rootCS.paddingLeft) || 0;
+        }
         if (!flowItems || flowItems.length !== 2 || !rootEl || !rootW || rootW <= 0) {
           out.reason = "notExactPair";
           return out;
@@ -753,12 +817,12 @@ export function buildScript(cfg: NormalizedConfig): string {
         }
 
         if (moveRight > 0.01) {
-          rightItem.node.style.left = (Number(rightItem.left || 0) + moveRight) + "px";
+          rightItem.node.style.left = ((Number(rightItem.left || 0) + moveRight) - rootPadLeft) + "px";
           rightItem.node.style.right = "auto";
           rightItem.node.style.marginLeft = "0px";
         }
         if (moveLeft > 0.01) {
-          leftItem.node.style.left = (Number(leftItem.left || 0) - moveLeft) + "px";
+          leftItem.node.style.left = ((Number(leftItem.left || 0) - moveLeft) - rootPadLeft) + "px";
           leftItem.node.style.right = "auto";
           leftItem.node.style.marginLeft = "0px";
         }
@@ -781,6 +845,17 @@ export function buildScript(cfg: NormalizedConfig): string {
         return out;
       }
 
+      var prominentNonTextCount = itemsAll.filter(function(it){
+        if ((it.node.getAttribute("data-debug-texto") || "") === "1") return false;
+        var w = Number(it.width || 0);
+        var h = Number(it.height || 0);
+        if (w < 6 || h < 6) return false;
+        return true;
+      }).length;
+      // Si hay cualquier no-texto visible, evitamos anclar textos por heuristica.
+      // Esto impide que textos de una columna queden "congelados" en left original.
+      var allowHeuristicAnchors = prominentNonTextCount === 0;
+
       // ✅ Determinar qué nodos son "ANCHOR" (no se reflowean)
       // Regla: texto centrado + casi full-width => título/hero, no mover.
       function isAnchorNode(it){
@@ -797,8 +872,14 @@ export function buildScript(cfg: NormalizedConfig): string {
         // heurística para textos
         var isText = (node.getAttribute("data-debug-texto") || "") === "1";
         if (!isText) return false;
+        if (!allowHeuristicAnchors) return false;
 
         var ta = (node.style && node.style.textAlign) ? String(node.style.textAlign).toLowerCase() : "";
+        if (!ta) {
+          try {
+            ta = String(getComputedStyle(node).textAlign || "").toLowerCase();
+          } catch(_e) {}
+        }
         if (ta !== "center") return false;
 
         // solo si realmente ocupa casi todo el ancho usable
@@ -815,6 +896,8 @@ export function buildScript(cfg: NormalizedConfig): string {
         secIndex: secIndex,
         anchors: itemsAnchor.length,
         flow: itemsFlow.length,
+        prominentNonTextCount: prominentNonTextCount,
+        allowHeuristicAnchors: allowHeuristicAnchors,
         anchorsDetail: itemsAnchor.map(function(it){
           return {
             kind: (it.node.getAttribute("data-debug-texto") || "") === "1" ? "texto" : (it.node.tagName || "").toLowerCase(),

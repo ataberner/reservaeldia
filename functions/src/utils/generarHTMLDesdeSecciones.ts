@@ -113,6 +113,17 @@ function buildFondoStyle(seccion: any): string {
   return estilosFondo.replace(/\s+/g, " ").trim();
 }
 
+function hasImageBackground(seccion: any): boolean {
+  if (seccion?.fondoTipo === "imagen" && seccion?.fondoImagen) return true;
+
+  const fondoValue = typeof seccion?.fondo === "string" ? seccion.fondo.trim() : "";
+  return (
+    fondoValue.startsWith("http") ||
+    fondoValue.startsWith("data:") ||
+    fondoValue.startsWith("blob:")
+  );
+}
+
 export function generarHTMLDesdeSecciones(
   secciones: any[],
   objetos: any[],
@@ -197,6 +208,7 @@ export function generarHTMLDesdeSecciones(
     .map((seccion) => {
       const modo = String(seccion?.altoModo || "fijo").toLowerCase();
       const hbase = Number.isFinite(seccion?.altura) ? Number(seccion.altura) : 600;
+      const fondoEsImagen = hasImageBackground(seccion);
 
       const objsDeSeccion = objetos.filter((o) => o.seccionId === seccion.id);
 
@@ -214,7 +226,7 @@ export function generarHTMLDesdeSecciones(
 
 
       return `
-<section class="sec" data-modo="${escapeAttr(modo)}" style="--hbase:${hbase}">
+<section class="sec" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" style="--hbase:${hbase}">
   <div class="sec-zoom">
     <div class="sec-bg" style="${fondoStyle}"></div>
     <div class="sec-bleed">${htmlBleed}</div>
@@ -356,6 +368,11 @@ export function generarHTMLDesdeSecciones(
       transform-origin: center;
     }
 
+    /* ✅ En fondos de imagen, compensamos desde el mismo origen que el wrapper */
+    .sec[data-modo="pantalla"][data-fondo="imagen"] .sec-bg{
+      transform-origin: top center;
+    }
+
     .sec-bleed{
       position: absolute;
       inset: 0;
@@ -461,10 +478,10 @@ export function generarHTMLDesdeSecciones(
           zoomExtra = clamp(1 + (k - 1) * 0.18, 1, 1.35);
         }
 
-        // 🔧 Ajuste fino: cuánto acompaña el fondo al zoom hero (0..1.2)
-        // 0   => el fondo NO agrega zoom extra propio (solo el zoom del wrapper)
-        // 1   => comportamiento actual (fondo queda zoomExtra²)
-        // 0.3 => recomendado para empezar (sutil)
+        // 🔧 Ajuste fino: cuánto mantiene el zoom visual del fondo en mobile/pantalla.
+        // 0   => el fondo se compensa para verse similar a desktop.
+        // 1   => comportamiento anterior (fondo acompaña completo el zoom del hero).
+        // 0.3 => compensación parcial.
         var BG_ZOOM_FACTOR = 0;
 
         // 🔧 Ajuste fino: cuánto acompaña el CONTENIDO (texto/objetos) al zoom hero
@@ -476,6 +493,7 @@ export function generarHTMLDesdeSecciones(
 
         secs.forEach(function(sec){
           var modo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
+          var fondoTipo = (sec.getAttribute("data-fondo") || "color").toLowerCase();
 
           // defaults
           var zoom = 1;
@@ -506,7 +524,12 @@ export function generarHTMLDesdeSecciones(
             // ✅ Mobile: mantenemos tu comportamiento actual (zoom hero suave)
             if (isMobile){
               zoom = zoomExtra;
-              bgzoom = 1 + (zoomExtra - 1) * BG_ZOOM_FACTOR;
+              var bgVisualZoom = 1 + (zoomExtra - 1) * BG_ZOOM_FACTOR;
+              if (fondoTipo === "imagen") {
+                bgzoom = bgVisualZoom / Math.max(0.01, zoom);
+              } else {
+                bgzoom = bgVisualZoom;
+              }
 
               // 🔥 NUEVO: el contenido acompaña parcialmente el zoom
               sfinal = sx * (1 + (zoomExtra - 1) * TEXT_ZOOM_FACTOR);

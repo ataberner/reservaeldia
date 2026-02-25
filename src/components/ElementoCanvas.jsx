@@ -132,7 +132,33 @@ export default function ElementoCanvas({
       e.currentTarget?.draggable(true);
     },
 
+    onTouchStart: (e) => {
+      e.cancelBubble = true;
+      hasDragged.current = false;
+
+      e.currentTarget?.draggable(true);
+    },
+
+    onPointerDown: (e) => {
+      e.cancelBubble = true;
+      hasDragged.current = false;
+
+      e.currentTarget?.draggable(true);
+    },
+
     onMouseUp: (e) => {
+      if (e.currentTarget?.draggable && !hasDragged.current) {
+        e.currentTarget.draggable(false);
+      }
+    },
+
+    onTouchEnd: (e) => {
+      if (e.currentTarget?.draggable && !hasDragged.current) {
+        e.currentTarget.draggable(false);
+      }
+    },
+
+    onPointerUp: (e) => {
       if (e.currentTarget?.draggable && !hasDragged.current) {
         e.currentTarget.draggable(false);
       }

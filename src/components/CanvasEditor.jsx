@@ -283,6 +283,18 @@ export default function CanvasEditor({
     console.log("[TEXT-COMMIT]", ...args);
   };
 
+  const restoreElementDrag = useCallback((elementId) => {
+    if (!elementId) return;
+    const node = elementRefs.current?.[elementId];
+    if (!node || typeof node.draggable !== "function") return;
+    try {
+      node.draggable(true);
+    } catch {}
+    try {
+      node.getLayer?.()?.batchDraw?.();
+    } catch {}
+  }, []);
+
 
 
 
@@ -3608,7 +3620,9 @@ export default function CanvasEditor({
                           }
 
                           if (editing.id && editing.id !== id) {
+                            const previousEditingId = editing.id;
                             finishEdit();
+                            restoreElementDrag(previousEditingId);
                           }
 
                           e?.evt && (e.evt.cancelBubble = true);
@@ -4309,6 +4323,7 @@ export default function CanvasEditor({
                       inlineDebugLog("finish-abort-missing-object", { id: finishId });
                       inlineCommitDebugRef.current = { id: null };
                       finishEdit();
+                      restoreElementDrag(finishId);
                       return;
                     }
 
@@ -4323,6 +4338,7 @@ export default function CanvasEditor({
                       inlineCommitDebugRef.current = { id: null };
                       inlineEditPreviewRef.current = { id: null, centerX: null };
                       finishEdit();
+                      restoreElementDrag(finishId);
                       return;
                     }
 
@@ -4420,6 +4436,7 @@ export default function CanvasEditor({
                     flushSync(() => {
                       finishEdit();
                     });
+                    restoreElementDrag(finishId);
                     const stageAfterFinishEdit =
                       stageRef.current?.getStage?.() || stageRef.current || null;
                     if (typeof stageAfterFinishEdit?.batchDraw === "function") {

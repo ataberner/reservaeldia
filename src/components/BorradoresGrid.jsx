@@ -3,9 +3,13 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
+import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
+import DashboardCardDeleteButton from "@/components/DashboardCardDeleteButton";
 
 const HOME_READY_THUMBNAIL_TARGET = 2;
 const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
+const DASHBOARD_CARD_GRID_CLASS =
+  "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-6";
 
 const DRAFT_PREVIEW_KEYS = [
   "thumbnailUrl",
@@ -79,6 +83,8 @@ export default function BorradoresGrid({
 }) {
   const [borradores, setBorradores] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [deletingSlug, setDeletingSlug] = useState(null);
+  const [draftPendingDelete, setDraftPendingDelete] = useState(null);
   const [thumbnailsSettledBySlug, setThumbnailsSettledBySlug] = useState({});
 
   const markThumbnailSettled = (slug) => {
@@ -172,35 +178,37 @@ export default function BorradoresGrid({
     };
   }, [borradores, cargando, thumbnailsSettledBySlug]);
 
-  const borrarBorrador = async (slug) => {
-    const confirmado = window.confirm(`Seguro que quieres borrar \"${slug}\"?`);
-    if (!confirmado) return;
-
+  const borrarBorrador = async () => {
+    const slug = draftPendingDelete?.slug;
+    if (!slug || deletingSlug) return;
+    setDeletingSlug(slug);
     try {
       const functions = getFunctions();
       const borrar = httpsCallable(functions, "borrarBorrador");
       await borrar({ slug });
 
       setBorradores((prev) => prev.filter((b) => (b.slug || b.id) !== slug));
-      alert("Borrador eliminado correctamente.");
+      setDraftPendingDelete(null);
     } catch (error) {
       console.error("Error al borrar borrador:", error);
       alert("No se pudo borrar el borrador.");
+    } finally {
+      setDeletingSlug(null);
     }
   };
 
   if (cargando) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+      <div className={DASHBOARD_CARD_GRID_CLASS}>
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={`skeleton-draft-${index}`}
-            className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+            className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
           >
             <div className="aspect-square animate-pulse bg-gray-100" />
             <div className="space-y-2 p-3">
               <div className="h-3 animate-pulse rounded bg-gray-100" />
-              <div className="h-8 animate-pulse rounded-full bg-gray-100" />
+              <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
             </div>
           </div>
         ))}
@@ -222,10 +230,11 @@ export default function BorradoresGrid({
         <h2 className="mb-4 text-xl font-semibold text-gray-900">Tus borradores</h2>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+      <div className={DASHBOARD_CARD_GRID_CLASS}>
         {borradores.map((borrador, index) => {
           const slug = borrador.slug || borrador.id;
           const nombre = borrador.nombre || slug;
+          const href = `/dashboard?slug=${encodeURIComponent(slug)}`;
           const previewCandidates = getBorradorPreviewCandidates(borrador);
           const previewSrc = previewCandidates[0] || "/placeholder.jpg";
           const fecha = formatFecha(
@@ -235,66 +244,89 @@ export default function BorradoresGrid({
           return (
             <article
               key={slug}
-              className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+              className="group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#d9c8f5] hover:shadow-[0_14px_28px_rgba(111,59,192,0.14)] focus-within:-translate-y-0.5 focus-within:border-[#d9c8f5] focus-within:shadow-[0_14px_28px_rgba(111,59,192,0.14)]"
             >
-              <div className="relative aspect-square overflow-hidden bg-gray-100">
-                <img
-                  src={previewSrc}
-                  alt={`Vista previa de ${nombre}`}
-                  className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
-                  loading={index < HOME_READY_THUMBNAIL_TARGET ? "eager" : "lazy"}
-                  decoding="async"
-                  fetchPriority={index < 2 ? "high" : "auto"}
-                  data-preview-index="0"
-                  onLoad={() => {
-                    markThumbnailSettled(slug);
-                  }}
-                  onError={(event) => {
-                    const img = event.currentTarget;
-                    const currentIndex = Number.parseInt(img.dataset.previewIndex || "0", 10);
-                    const nextIndex = currentIndex + 1;
-                    if (nextIndex >= previewCandidates.length) {
+              <a
+                href={href}
+                className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-2"
+                onClick={(event) => {
+                  event.preventDefault();
+                  const detail = {
+                    slug,
+                    editor: borrador.editor || "konva",
+                  };
+                  window.dispatchEvent(new CustomEvent("abrir-borrador", { detail }));
+                }}
+                aria-label={`Abrir borrador ${nombre}`}
+              >
+                <div className="relative aspect-square overflow-hidden bg-gray-100">
+                  <img
+                    src={previewSrc}
+                    alt={`Vista previa de ${nombre}`}
+                    className="h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.03] group-focus-within:scale-[1.03] motion-reduce:transition-none"
+                    loading={index < HOME_READY_THUMBNAIL_TARGET ? "eager" : "lazy"}
+                    decoding="async"
+                    fetchPriority={index < 2 ? "high" : "auto"}
+                    data-preview-index="0"
+                    onLoad={() => {
                       markThumbnailSettled(slug);
-                      return;
-                    }
-                    img.dataset.previewIndex = String(nextIndex);
-                    img.src = previewCandidates[nextIndex];
-                  }}
-                />
-              </div>
-
-              <div className="p-3">
-                <h3 className="truncate text-sm font-semibold text-gray-800" title={nombre}>
-                  {nombre}
-                </h3>
-                {fecha && <p className="mt-1 text-[11px] text-gray-500">Actualizado: {fecha}</p>}
-
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <button
-                    className="w-full rounded-full border border-[#6f3bc0] bg-gradient-to-r from-[#6f3bc0] via-[#7a44ce] to-[#6c57c8] px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:from-[#6232ae] hover:via-[#6f3bc0] hover:to-[#5f4ab5] sm:flex-1 sm:px-3 sm:py-2 sm:text-xs"
-                    onClick={() => {
-                      const detail = {
-                        slug,
-                        editor: borrador.editor || "konva",
-                      };
-                      window.dispatchEvent(new CustomEvent("abrir-borrador", { detail }));
                     }}
-                  >
-                    Editar
-                  </button>
-
-                  <button
-                    className="w-full rounded-full border border-[#efd9e5] bg-gradient-to-r from-[#fff8fb] to-[#fff3f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#9b3b67] transition hover:from-[#fdeff6] hover:to-[#fce7f2] sm:w-auto sm:px-3 sm:py-2 sm:text-xs"
-                    onClick={() => borrarBorrador(slug)}
-                  >
-                    Borrar
-                  </button>
+                    onError={(event) => {
+                      const img = event.currentTarget;
+                      const currentIndex = Number.parseInt(img.dataset.previewIndex || "0", 10);
+                      const nextIndex = currentIndex + 1;
+                      if (nextIndex >= previewCandidates.length) {
+                        markThumbnailSettled(slug);
+                        return;
+                      }
+                      img.dataset.previewIndex = String(nextIndex);
+                      img.src = previewCandidates[nextIndex];
+                    }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#2d1a4a]/18 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none" />
                 </div>
-              </div>
+
+                <div className="p-3">
+                  <h3
+                    className="truncate text-sm font-semibold text-gray-800 transition-colors duration-200 group-hover:text-[#4d2b86] group-focus-within:text-[#4d2b86]"
+                    title={nombre}
+                  >
+                    {nombre}
+                  </h3>
+                  {fecha && <p className="mt-1 text-[11px] text-gray-500">Actualizado: {fecha}</p>}
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#5a2daa] group-focus-within:translate-x-0.5 group-focus-within:text-[#5a2daa]">
+                    Abrir borrador
+                  </p>
+                </div>
+              </a>
+
+              <DashboardCardDeleteButton
+                title="Borrar borrador"
+                ariaLabel={`Borrar borrador ${nombre}`}
+                isDeleting={deletingSlug === slug}
+                disabled={Boolean(deletingSlug && deletingSlug !== slug)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDraftPendingDelete({ slug, nombre });
+                }}
+              />
             </article>
           );
         })}
       </div>
+
+      <ConfirmDeleteItemModal
+        isOpen={Boolean(draftPendingDelete)}
+        itemTypeLabel="borrador"
+        itemName={draftPendingDelete?.nombre || draftPendingDelete?.slug}
+        isDeleting={Boolean(deletingSlug)}
+        onCancel={() => {
+          if (deletingSlug) return;
+          setDraftPendingDelete(null);
+        }}
+        onConfirm={borrarBorrador}
+      />
     </div>
   );
 }

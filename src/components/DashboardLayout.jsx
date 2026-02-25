@@ -83,6 +83,7 @@ export default function DashboardLayout({
 
       {/* Area principal */}
       <main
+        data-dashboard-scroll-root="true"
         className={`${mainBaseClass} ${mainScrollClass}`}
         style={mainStyle}
       >

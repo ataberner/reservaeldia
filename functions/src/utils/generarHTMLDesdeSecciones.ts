@@ -29,7 +29,7 @@ const ALTURA_REFERENCIA_PANTALLA = 500;
 // - Desktop: aplica cuando vw > 767px
 // - Mobile: aplica cuando vw <= 767px
 // (Estos valores se vuelcan a CSS variables en :root)
-const PANTALLA_Y_OFFSET_DESKTOP_PX = -28;
+const PANTALLA_Y_OFFSET_DESKTOP_PX = 0;
 const PANTALLA_Y_OFFSET_MOBILE_PX = 0;
 
 function buildGoogleFontsLink(fonts: string[]): string {

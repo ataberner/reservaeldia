@@ -187,7 +187,7 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
   //   @media (max-width: 640px) { :root { --pantalla-y-offset: Ypx } }
   //
   // Acá dejamos fallback (desktop) por si la variable CSS no existe.
-  const PANTALLA_Y_OFFSET_DESKTOP_PX = -28;
+  const PANTALLA_Y_OFFSET_DESKTOP_PX = 0;
 
   function clamp01(n: any): number | null {
     const x = Number(n);

@@ -217,7 +217,6 @@ export default function Home() {
       <Head>
         <title>Invitaciones Digitales para Bodas | Reserva el Día</title>
         <meta name="description" content="Crea y personaliza invitaciones digitales para bodas de manera fácil y rápida. ¡Diseños únicos y elegantes para tu casamiento!" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="robots" content="noindex, nofollow" /> {/* BORRAR ESTA LINEA CUANDO QUIERA MEJORAR EL SEO */}
         <link rel="preconnect" href="https://accounts.google.com" />
         <link rel="preconnect" href="https://apis.google.com" />
@@ -587,3 +586,4 @@ export default function Home() {
     </>
   );
 }
+

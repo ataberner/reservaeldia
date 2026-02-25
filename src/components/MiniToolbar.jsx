@@ -4,6 +4,7 @@ import MiniToolbarTabTexto from "@/components/MiniToolbarTabTexto";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
 import MiniToolbarTabContador from "@/components/MiniToolbarTabContador";
 import MiniToolbarTabMenu from "@/components/MiniToolbarTabMenu";
+import MiniToolbarTabEfectos from "@/components/MiniToolbarTabEfectos";
 
 
 export default function MiniToolbar({
@@ -87,6 +88,8 @@ export default function MiniToolbar({
           onBorrarTodos={onBorrarTodos}
         />
       )}
+
+      {botonActivo === "efectos" && <MiniToolbarTabEfectos />}
 
 
     </div>

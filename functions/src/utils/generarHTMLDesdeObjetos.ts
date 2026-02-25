@@ -18,6 +18,75 @@ function escapeAttr(str: string = ""): string {
     .replace(/>/g, "&gt;");
 }
 
+const MOTION_EFFECT_VALUES = new Set(["none", "reveal", "draw", "zoom", "hover", "pulse"]);
+
+function sanitizeMotionEffect(value: any): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  return MOTION_EFFECT_VALUES.has(normalized) ? normalized : "none";
+}
+
+function normalizeRoleValue(value: any): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function mapObjToDataType(obj: any): string {
+  const tipo = normalizeRoleValue(obj?.tipo);
+  const figura = normalizeRoleValue(obj?.figura);
+
+  if (tipo === "texto" || tipo === "text") return "text";
+  if (tipo === "imagen" || tipo === "image") return "image";
+  if (tipo === "icono" || tipo === "icono-svg" || tipo === "icon") return "icon";
+  if (tipo === "galeria" || tipo === "gallery") return "gallery";
+  if (tipo === "countdown") return "countdown";
+  if (tipo === "rsvp-boton" || tipo === "rsvp") return "rsvp";
+  if (tipo === "button" || tipo === "boton") return "button";
+  if (tipo === "line" || tipo === "divider") return "divider";
+  if (tipo === "forma" && figura === "line") return "divider";
+  if (tipo === "forma") return "shape";
+
+  return "unknown";
+}
+
+function inferDataRole(obj: any): string {
+  const explicitRole = normalizeRoleValue(obj?.role || obj?.rol);
+  if (explicitRole) return explicitRole;
+
+  const type = mapObjToDataType(obj);
+  if (type === "text") {
+    const fontSize = Number(obj?.fontSize);
+    if (Number.isFinite(fontSize) && fontSize >= 30) return "title";
+    if (Number.isFinite(fontSize) && fontSize >= 22) return "subtitle";
+    return "body";
+  }
+
+  if (type === "divider") return "divider";
+  if (type === "image") return "image";
+  if (type === "icon") return "icon";
+  if (type === "gallery") return "gallery";
+  if (type === "countdown") return "countdown";
+  if (type === "rsvp" || type === "button") return "cta";
+  if (type === "shape") return "decorative";
+
+  return "content";
+}
+
+function buildMotionDataAttrs(obj: any): string {
+  const dataType = escapeAttr(mapObjToDataType(obj));
+  const dataRole = escapeAttr(inferDataRole(obj));
+  const dataMotion = escapeAttr(sanitizeMotionEffect(obj?.motionEffect));
+  return `data-type="${dataType}" data-role="${dataRole}" data-motion="${dataMotion}"`;
+}
+
+function appendMotionDataAttrs(htmlElemento: string, obj: any): string {
+  if (!htmlElemento || typeof htmlElemento !== "string") return htmlElemento;
+
+  const attrs = buildMotionDataAttrs(obj);
+  return htmlElemento.replace(
+    /(<(?:div|img|svg)\b[^>]*\bclass="[^"]*\bobjeto\b[^"]*")/i,
+    `$1 ${attrs}`
+  );
+}
+
 function getLinkProps(obj: any) {
   const raw = obj?.enlace;
   if (!raw) return null;
@@ -37,12 +106,13 @@ function getLinkProps(obj: any) {
 }
 
 function envolverSiEnlace(htmlElemento: string, obj: any): string {
-  if (obj?.tipo === "rsvp-boton") return htmlElemento;
+  const htmlConData = appendMotionDataAttrs(htmlElemento, obj);
+  if (obj?.tipo === "rsvp-boton") return htmlConData;
 
   const link = getLinkProps(obj);
-  if (!link) return htmlElemento;
+  if (!link) return htmlConData;
 
-  return `<a href="${link.href}" target="${link.target}" rel="${link.rel}" style="text-decoration:none;color:inherit;display:contents">${htmlElemento}</a>`;
+  return `<a href="${link.href}" target="${link.target}" rel="${link.rel}" style="text-decoration:none;color:inherit;display:contents">${htmlConData}</a>`;
 }
 
 export function escapeHTML(texto: string = ""): string {
@@ -486,7 +556,7 @@ line-height: 1.05;
         const showLabels = obj.showLabels !== false;
         const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
 
-        return `
+        const htmlCountdown = `
 <div class="objeto"
   data-mobile-cluster="isolated"
   data-mobile-center="force"
@@ -513,6 +583,7 @@ line-height: 1.05;
   </div>
 </div>
 `.trim();
+        return appendMotionDataAttrs(htmlCountdown, obj);
       }
 
 
@@ -623,7 +694,7 @@ border-radius: calc(${sBtn} * 8px);
 cursor: pointer;
 `.trim();
 
-        return `
+        const htmlRsvp = `
 <div class="objeto is-interactive rsvp-boton"
   id="abrirModalRSVP"
   data-accion="abrir-rsvp"
@@ -635,6 +706,7 @@ cursor: pointer;
   ${texto}
 </div>
 `.trim();
+        return appendMotionDataAttrs(htmlRsvp, obj);
       }
 
       // ---------------- FORMAS ----------------

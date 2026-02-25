@@ -1,6 +1,12 @@
 // src/components/editor/events/useEditorEvents.js
 import { useEffect } from "react";
 import computeInsertDefaults from "./computeInsertDefaults";
+import {
+  applyGlobalMotionPreset,
+  clearAllMotionEffects,
+  CLEAR_ALL_MOTION_PRESET_ID,
+  sanitizeMotionEffect,
+} from "@/domain/motionEffects";
 
 const COUNTDOWN_STYLE_KEYS = [
   "fontFamily",
@@ -258,7 +264,51 @@ export default function useEditorEvents({
   }, [setObjetos]);
 
   // ------------------------------------------------------------
-  // 4) Evento global: agregar-cuadro-texto
+  // 4) Evento global: aplicar-estilo-efectos
+  // ------------------------------------------------------------
+  useEffect(() => {
+    const handler = (e) => {
+      const presetId = e?.detail?.presetId;
+      const normalizedPresetId = typeof presetId === "string" ? presetId : "";
+      const summary = {
+        presetId: normalizedPresetId,
+        total: 0,
+        changed: 0,
+      };
+
+      setObjetos((prev) => {
+        const current = Array.isArray(prev) ? prev : [];
+        const next =
+          normalizedPresetId === CLEAR_ALL_MOTION_PRESET_ID
+            ? clearAllMotionEffects(current)
+            : applyGlobalMotionPreset(current, {
+              presetId,
+              secciones,
+            });
+
+        summary.total = next.length;
+        summary.changed = next.reduce((acc, item, index) => {
+          const beforeEffect = sanitizeMotionEffect(current[index]?.motionEffect);
+          return acc + (beforeEffect !== item.motionEffect ? 1 : 0);
+        }, 0);
+        return next;
+      });
+
+      requestAnimationFrame(() => {
+        window.dispatchEvent(
+          new CustomEvent("motion-effects-applied", {
+            detail: summary,
+          })
+        );
+      });
+    };
+
+    window.addEventListener("aplicar-estilo-efectos", handler);
+    return () => window.removeEventListener("aplicar-estilo-efectos", handler);
+  }, [setObjetos, secciones]);
+
+  // ------------------------------------------------------------
+  // 5) Evento global: agregar-cuadro-texto
   // ------------------------------------------------------------
   useEffect(() => {
     const handler = () => {
@@ -273,6 +323,7 @@ export default function useEditorEvents({
         texto: "Texto",
         x: 100,
         y: 100,
+        motionEffect: sanitizeMotionEffect("none"),
         fontSize: 24,
         color: "#000000",
         fontFamily: "sans-serif",

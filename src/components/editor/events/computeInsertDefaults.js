@@ -1,4 +1,6 @@
-﻿const CANVAS_WIDTH = 800;
+﻿import { sanitizeMotionEffect } from "@/domain/motionEffects";
+
+const CANVAS_WIDTH = 800;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -93,6 +95,7 @@ export default function computeInsertDefaults({
     id,
     tipo,
     seccionId: targetSeccionId,
+    motionEffect: sanitizeMotionEffect(payload.motionEffect),
     rotation: toNumber(payload.rotation, 0),
     scaleX: toNumber(payload.scaleX, 1),
     scaleY: toNumber(payload.scaleY, 1),
@@ -267,4 +270,6 @@ export default function computeInsertDefaults({
 
   return stripUndefined(persistable);
 }
+
+
 

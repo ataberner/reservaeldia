@@ -3,6 +3,8 @@ import { CANVAS_BASE } from "../models/dimensionesBase";
 import { generarModalRSVPHTML, type RSVPConfig as ModalConfig } from "./generarModalRSVP";
 import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGaleria";
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
+import { generarMotionEffectsRuntimeHTML } from "./generarMotionEffectsRuntime";
+import { generarInvitationLoaderRuntimeHTML } from "./generarInvitationLoaderRuntime";
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
@@ -135,6 +137,8 @@ export function generarHTMLDesdeSecciones(
   const botonRSVP = ""; // (si querés agregar un botón fijo fuera del canvas, hacelo acá)
   const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled ? generarModalRSVPHTML(rsvp) : "";
   const modalGaleria = hayGaleriaConImagenes(objetos) ? generarModalGaleriaHTML() : "";
+  const invitationLoaderRuntime = generarInvitationLoaderRuntimeHTML();
+  const motionEffectsRuntime = generarMotionEffectsRuntimeHTML();
 
   function hayCountdown(objs: any[]) {
     return Array.isArray(objs) && objs.some((o) => o?.tipo === "countdown");
@@ -402,7 +406,8 @@ export function generarHTMLDesdeSecciones(
   </style>
 </head>
 
-<body data-slug="${escapeAttr(slugPublica)}">
+<body data-loader-ready="0" data-slug="${escapeAttr(slugPublica)}">
+  ${invitationLoaderRuntime}
   <div class="inv">
     ${htmlSecciones}
   </div>
@@ -410,6 +415,7 @@ export function generarHTMLDesdeSecciones(
   ${botonRSVP}
   ${modalRSVP}
   ${modalGaleria}
+  ${motionEffectsRuntime}
 
   ${scriptCountdown}
 

@@ -5,6 +5,10 @@ import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
     Link2, X
 } from "lucide-react";
+import {
+    getAllowedMotionEffectsForElement,
+    sanitizeMotionEffect,
+} from "@/domain/motionEffects";
 
 // Normaliza y valida URL básica
 function sanitizeURL(url) {
@@ -126,6 +130,14 @@ export default function MenuOpcionesElemento({
     const [enlaceReady, setEnlaceReady] = useState(false);
     const [urlInput, setUrlInput] = useState("");
     const [urlError, setUrlError] = useState(false);
+    const [mostrarSubmenuEfectos, setMostrarSubmenuEfectos] = useState(false);
+    const btnEfectosRef = useRef(null);
+    const submenuEfectosRef = useRef(null);
+    const [efectosPos, setEfectosPos] = useState({ x: -9999, y: -9999 });
+    const [efectosReady, setEfectosReady] = useState(false);
+
+    const allowedMotionEffects = getAllowedMotionEffectsForElement(elementoSeleccionado);
+    const currentMotionEffect = sanitizeMotionEffect(elementoSeleccionado?.motionEffect);
 
     // Al abrir el menú, pre-cargar la URL actual del elemento (si tiene)
     useEffect(() => {
@@ -134,6 +146,13 @@ export default function MenuOpcionesElemento({
         setUrlInput(actual || "");
         setUrlError(false);
     }, [isOpen, elementoSeleccionado]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        setMostrarSubmenuCapa(false);
+        setMostrarSubmenuEnlace(false);
+        setMostrarSubmenuEfectos(false);
+    }, [isOpen]);
 
     // Posicionar el flyout de "Enlace"
     useLayoutEffect(() => {
@@ -187,6 +206,64 @@ export default function MenuOpcionesElemento({
         };
     }, [mostrarSubmenuEnlace]);
 
+    useLayoutEffect(() => {
+        if (!mostrarSubmenuEfectos) {
+            setEfectosReady(false);
+            setEfectosPos({ x: -9999, y: -9999 });
+            return;
+        }
+
+        const btn = btnEfectosRef.current;
+        if (!btn) return;
+
+        const rect = btn.getBoundingClientRect();
+        const flyoutWidth = 300;
+        const flyoutHeight = 300;
+        const gap = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let x = rect.right + gap;
+        let y = rect.top;
+        if (x + flyoutWidth > vw) x = rect.left - flyoutWidth - gap;
+        if (x < 8) x = 8;
+        if (y + flyoutHeight > vh) y = Math.max(8, rect.bottom - flyoutHeight);
+
+        setEfectosPos({ x, y });
+        setEfectosReady(true);
+    }, [mostrarSubmenuEfectos]);
+
+    useEffect(() => {
+        if (!mostrarSubmenuEfectos) return;
+
+        const handle = () => {
+            const btn = btnEfectosRef.current;
+            if (!btn) return;
+
+            const rect = btn.getBoundingClientRect();
+            const flyoutWidth = 300;
+            const flyoutHeight = 300;
+            const gap = 8;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+
+            let x = rect.right + gap;
+            let y = rect.top;
+            if (x + flyoutWidth > vw) x = rect.left - flyoutWidth - gap;
+            if (x < 8) x = 8;
+            if (y + flyoutHeight > vh) y = Math.max(8, rect.bottom - flyoutHeight);
+
+            setEfectosPos({ x, y });
+        };
+
+        window.addEventListener("resize", handle);
+        window.addEventListener("scroll", handle, true);
+        return () => {
+            window.removeEventListener("resize", handle);
+            window.removeEventListener("scroll", handle, true);
+        };
+    }, [mostrarSubmenuEfectos]);
+
     const guardarEnlace = () => {
         const limpio = sanitizeURL(urlInput);
         if (!limpio) {
@@ -220,6 +297,21 @@ export default function MenuOpcionesElemento({
             })
         );
         setMostrarSubmenuEnlace(false);
+        onCerrar();
+    };
+
+    const actualizarMotionEffect = (effect) => {
+        const nextEffect = sanitizeMotionEffect(effect);
+        setObjetos((prev) =>
+            prev.map((item) => {
+                if (item.id !== elementoSeleccionado?.id) return item;
+                return { ...item, motionEffect: nextEffect };
+            })
+        );
+
+        setMostrarSubmenuCapa(false);
+        setMostrarSubmenuEnlace(false);
+        setMostrarSubmenuEfectos(false);
         onCerrar();
     };
 
@@ -420,6 +512,7 @@ export default function MenuOpcionesElemento({
                     onClick={() => {
                         // cerramos el de capa si estaba abierto, para no superponer
                         setMostrarSubmenuCapa(false);
+                        setMostrarSubmenuEfectos(false);
                         setMostrarSubmenuEnlace(prev => !prev);
                     }}
                     className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
@@ -514,6 +607,72 @@ export default function MenuOpcionesElemento({
 
 
 
+            <div className="relative">
+                <button
+                    ref={btnEfectosRef}
+                    onClick={() => {
+                        setMostrarSubmenuCapa(false);
+                        setMostrarSubmenuEnlace(false);
+                        setMostrarSubmenuEfectos((prev) => !prev);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                >
+                    <span className="inline-flex h-4 w-4 items-center justify-center text-[11px] font-semibold">Fx</span>
+                    Efectos
+                </button>
+
+                {mostrarSubmenuEfectos &&
+                    createPortal(
+                        <div
+                            ref={submenuEfectosRef}
+                            className="fixed z-[60] bg-white border rounded shadow-lg p-2 space-y-1 menu-z-index"
+                            style={{
+                                left: efectosPos.x,
+                                top: efectosPos.y,
+                                width: 300,
+                                maxHeight: 320,
+                                overflowY: "auto",
+                                visibility: efectosReady ? "visible" : "hidden",
+                                borderColor: "#773dbe",
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="px-2 pb-1 text-xs font-semibold text-zinc-700">
+                                Efectos del elemento
+                            </div>
+
+                            {[
+                                { value: "none", label: "Sin efecto" },
+                                { value: "reveal", label: "Aparicion al hacer scroll" },
+                                { value: "draw", label: "Dibujar linea" },
+                                { value: "zoom", label: "Zoom sutil" },
+                                { value: "hover", label: "Interaccion al tocar" },
+                                { value: "pulse", label: "Pulso suave" },
+                            ]
+                                .filter((option) => allowedMotionEffects.includes(option.value))
+                                .map((option) => {
+                                    const isActive = currentMotionEffect === option.value;
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            onClick={() => actualizarMotionEffect(option.value)}
+                                            className={`flex w-full items-center justify-between gap-2 rounded px-3 py-2 text-left text-sm transition ${isActive
+                                                ? "bg-purple-50 text-purple-800"
+                                                : "hover:bg-gray-100"
+                                                }`}
+                                        >
+                                            <span>{option.label}</span>
+                                            {isActive ? <span className="text-xs font-semibold">Activo</span> : null}
+                                        </button>
+                                    );
+                                })}
+                        </div>,
+                        document.body
+                    )
+                }
+            </div>
+
             {/* Usar como fondo (solo si es imagen) */}
             {esImagen && (
                 <button
@@ -550,7 +709,11 @@ export default function MenuOpcionesElemento({
             <div className="relative">
                 <button
                     ref={btnOrdenRef}
-                    onClick={() => setMostrarSubmenuCapa(prev => !prev)}
+                    onClick={() => {
+                        setMostrarSubmenuEnlace(false);
+                        setMostrarSubmenuEfectos(false);
+                        setMostrarSubmenuCapa((prev) => !prev);
+                    }}
                     className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
                 >
                     <Layers className="w-4 h-4" /> Orden de capa

@@ -143,10 +143,10 @@ export default function MiniToolbarTabTexto({
   seccionActivaId,
 }) {
   return (
-    <div className="flex flex-col gap-2 flex-1 min-h-0">
+    <div className="flex flex-col gap-1.5 md:gap-2 flex-1 min-h-0">
       <button
         onClick={onAgregarTitulo}
-        className="w-full px-4 py-2 rounded-lg border border-zinc-300 
+        className="w-full px-3 py-1.5 text-sm md:px-4 md:py-2 md:text-base rounded-lg border border-zinc-300 
          bg-white text-zinc-800 font-semibold text-center
          hover:bg-purple-100 hover:border-purple-500 hover:text-purple-700
          hover:shadow-md transition-all"
@@ -156,7 +156,7 @@ export default function MiniToolbarTabTexto({
 
       <button
         onClick={onAgregarSubtitulo}
-        className="w-full px-4 py-2 rounded-lg border border-zinc-300 
+        className="w-full px-3 py-1.5 text-sm md:px-4 md:py-2 md:text-base rounded-lg border border-zinc-300 
          bg-white text-zinc-700 font-medium text-center
          hover:bg-purple-100 hover:border-purple-500 hover:text-purple-700
          hover:shadow-md transition-all"
@@ -166,7 +166,7 @@ export default function MiniToolbarTabTexto({
 
       <button
         onClick={onAgregarParrafo}
-        className="w-full px-4 py-2 rounded-lg border border-zinc-300 
+        className="w-full px-3 py-1.5 text-sm md:px-4 md:py-2 md:text-base rounded-lg border border-zinc-300 
          bg-white text-zinc-600 text-center
          hover:bg-purple-100 hover:border-purple-500 hover:text-purple-700
          hover:shadow-md transition-all"

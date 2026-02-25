@@ -141,18 +141,34 @@ export default function MiniToolbarTabImagen({
   };
 
   return (
-    <>
+    <div className={`flex flex-col flex-1 min-h-0 ${isMobileViewport ? "gap-2" : "gap-3"}`}>
       <div className="relative">
         <button
           onClick={() => setMostrarPopoverGaleria((v) => !v)}
-          className="flex items-center gap-2 w-full bg-orange-100 hover:bg-orange-200 text-orange-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
+          className={`flex items-center gap-2 w-full bg-orange-100 hover:bg-orange-200 text-orange-800 font-medium shadow-sm transition-all ${
+            isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
+          }`}
         >
           <span>Insertar galeria</span>
         </button>
 
         {mostrarPopoverGaleria && (
-          <div className="absolute z-50 mt-2 w-72 right-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl p-3">
-            <div className="grid grid-cols-2 gap-2">
+          <div
+            className={`absolute z-50 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl ${
+              isMobileViewport
+                ? "left-0 right-0 w-auto p-2.5 max-h-[30vh] overflow-y-auto"
+                : "right-0 w-72 p-3"
+            }`}
+            style={
+              isMobileViewport
+                ? {
+                    WebkitOverflowScrolling: "touch",
+                    overscrollBehaviorY: "contain",
+                  }
+                : undefined
+            }
+          >
+            <div className={`grid grid-cols-2 ${isMobileViewport ? "gap-1.5" : "gap-2"}`}>
               <label className="text-xs font-medium">
                 Filas
                 <input
@@ -173,7 +189,7 @@ export default function MiniToolbarTabImagen({
               </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className={`grid grid-cols-2 ${isMobileViewport ? "gap-1.5 mt-1.5" : "gap-2 mt-2"}`}>
               <label className="text-xs font-medium">
                 Espaciado: {cfg.gap}px
                 <input
@@ -194,8 +210,8 @@ export default function MiniToolbarTabImagen({
               </label>
             </div>
 
-            <div className="mt-2">
-              <div className="text-xs font-medium mb-1">Proporcion</div>
+            <div className={isMobileViewport ? "mt-1.5" : "mt-2"}>
+              <div className={`text-xs font-medium ${isMobileViewport ? "mb-0.5" : "mb-1"}`}>Proporcion</div>
               <div className="flex gap-2">
                 {["1:1", "4:3", "16:9"].map((r) => (
                   <button
@@ -208,7 +224,7 @@ export default function MiniToolbarTabImagen({
                 ))}
               </div>
 
-              <div className="mt-2">
+              <div className={isMobileViewport ? "mt-1.5" : "mt-2"}>
                 <label className="text-xs font-medium">
                   Ancho (% del canvas): {cfg.widthPct}%
                   <input
@@ -221,17 +237,21 @@ export default function MiniToolbarTabImagen({
               </div>
             </div>
 
-            <div className="mt-3 flex gap-2">
+            <div className={`flex gap-2 ${isMobileViewport ? "mt-2" : "mt-3"}`}>
               <button
                 onClick={() => setMostrarPopoverGaleria(false)}
-                className="flex-1 px-3 py-2 rounded bg-zinc-100 hover:bg-zinc-200 text-sm"
+                className={`flex-1 rounded bg-zinc-100 hover:bg-zinc-200 ${
+                  isMobileViewport ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm"
+                }`}
               >Cancelar</button>
               <button
                 onClick={() => {
                   setMostrarPopoverGaleria(false);
                   onInsertarGaleria?.(cfg);
                 }}
-                className="flex-1 px-3 py-2 rounded bg-purple-600 hover:bg-purple-700 text-white text-sm"
+                className={`flex-1 rounded bg-purple-600 hover:bg-purple-700 text-white ${
+                  isMobileViewport ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm"
+                }`}
               >Insertar</button>
             </div>
           </div>
@@ -239,7 +259,9 @@ export default function MiniToolbarTabImagen({
       </div>
 
       <div
-        className={`rounded-xl border px-3 py-2 ${
+        className={`border ${
+          isMobileViewport ? "rounded-lg px-2.5 py-1.5" : "rounded-xl px-3 py-2"
+        } ${
           celdaActiva
             ? "border-emerald-200 bg-emerald-50"
             : "border-zinc-200 bg-zinc-50"
@@ -250,12 +272,16 @@ export default function MiniToolbarTabImagen({
             Modo galeria
           </div>
         )}
-        <p className="mt-1 text-xs text-zinc-700">{textoAyudaGaleria}</p>
+        <p className={`${isMobileViewport ? "mt-0.5 text-[11px]" : "mt-1 text-xs"} text-zinc-700`}>
+          {textoAyudaGaleria}
+        </p>
         {celdaActiva && (
           <button
             type="button"
             onClick={limpiarCeldaActiva}
-            className="mt-2 text-xs font-medium text-zinc-600 hover:text-zinc-900 underline"
+            className={`font-medium text-zinc-600 hover:text-zinc-900 underline ${
+              isMobileViewport ? "mt-1.5 text-[11px]" : "mt-2 text-xs"
+            }`}
           >
             Quitar imagen de la celda activa
           </button>
@@ -264,7 +290,9 @@ export default function MiniToolbarTabImagen({
 
       <button
         onClick={abrirSelector}
-        className={`flex items-center gap-2 w-full font-medium py-2 px-4 rounded-xl shadow-sm transition-all ${
+        className={`flex items-center gap-2 w-full font-medium shadow-sm transition-all ${
+          isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
+        } ${
           celdaActiva
             ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
             : "bg-purple-100 hover:bg-purple-200 text-purple-800"
@@ -303,6 +331,6 @@ export default function MiniToolbarTabImagen({
           onSeleccionadasChange={setImagenesSeleccionadas}
         />
       </div>
-    </>
+    </div>
   );
 }

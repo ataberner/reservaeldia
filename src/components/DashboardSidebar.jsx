@@ -28,6 +28,7 @@ const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_BAR_HEIGHT_PX = 74;
 const MOBILE_PANEL_GUTTER_PX = 8;
+const MOBILE_PANEL_BOTTOM_EXTRA_PX = 2;
 
 
 export default function DashboardSidebar({
@@ -97,6 +98,7 @@ export default function DashboardSidebar({
 
 
     const closeTimerRef = useRef(null);
+    const panelRef = useRef(null);
 
     // Helpers para mostrar/ocultar con pequeÃ±o delay seguro
     const openPanel = (tipo) => {
@@ -125,6 +127,16 @@ export default function DashboardSidebar({
         setHoverSidebar(false);
         setBotonActivo(null);
     }, []);
+
+    useEffect(() => {
+        if (!isMobileViewport) return;
+        if (!(hoverSidebar || fijadoSidebar)) return;
+        if (!botonActivo) return;
+
+        const panelEl = panelRef.current;
+        if (!panelEl) return;
+        panelEl.scrollTop = 0;
+    }, [isMobileViewport, hoverSidebar, fijadoSidebar, botonActivo]);
 
     useEffect(() => {
         if (!isMobileViewport) return;
@@ -516,6 +528,7 @@ export default function DashboardSidebar({
 
             {(hoverSidebar || fijadoSidebar) && (
                 <div
+                    ref={panelRef}
                     id="sidebar-panel"
                     className="
       absolute z-40 rounded-2xl border border-[#e6dbf8] bg-white
@@ -541,13 +554,17 @@ export default function DashboardSidebar({
                     style={
                         isMobileViewport
                             ? {
+                                position: "fixed",
                                 left: `${MOBILE_PANEL_GUTTER_PX}px`,
                                 right: `${MOBILE_PANEL_GUTTER_PX}px`,
-                                bottom: `calc(${MOBILE_BAR_HEIGHT_PX + MOBILE_PANEL_GUTTER_PX}px + env(safe-area-inset-bottom, 0px))`,
+                                bottom: `${MOBILE_BAR_HEIGHT_PX + MOBILE_PANEL_BOTTOM_EXTRA_PX}px`,
                                 width: "auto",
-                                maxHeight: "min(52vh, 440px)", // ðŸ”¹ menos invasivo en mÃ³vil
-                                overflowY: "auto", // ðŸ”¹ scroll vertical
-                                WebkitOverflowScrolling: "touch", // ðŸ”¹ scroll suave en iOS
+                                height: "min(52vh, 440px)",
+                                overflow: "hidden",
+                                overscrollBehaviorY: "contain",
+                                touchAction: "pan-y",
+                                display: "flex",
+                                flexDirection: "column",
                             }
                             : {
                                 left: "4rem",
@@ -558,7 +575,20 @@ export default function DashboardSidebar({
                             }
                     }
                 >
-                    <div className="relative w-full h-full min-h-0 flex flex-col gap-5 px-3 pb-4 pt-11 text-slate-700">
+                    <div
+                        className="relative w-full h-full min-h-0 flex flex-col gap-5 px-3 pb-4 pt-11 text-slate-700"
+                        style={
+                            isMobileViewport
+                                ? {
+                                    flex: 1,
+                                    minHeight: 0,
+                                    overflowY: "auto",
+                                    WebkitOverflowScrolling: "touch",
+                                    overscrollBehaviorY: "contain",
+                                }
+                                : undefined
+                        }
+                    >
                         {/* ðŸ”¹ BotÃ³n para cerrar el panel */}
                         {fijadoSidebar && (
                             <button

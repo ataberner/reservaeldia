@@ -297,6 +297,7 @@ export function generarHTMLDesdeSecciones(
       --vh-safe: 100vh;
       --vh-logical: var(--vh-safe);
       --pantalla-y-compact: 0;
+      --pantalla-y-base: 0px;
 
       /* ✅ Offset SOLO para texto en Pantalla: ON (desktop default) */
       --pantalla-y-offset: ${PANTALLA_Y_OFFSET_DESKTOP_PX}px;
@@ -502,6 +503,7 @@ export function generarHTMLDesdeSecciones(
           // ✅ Por defecto, tamaños escalan por ancho (comportamiento actual)
           var sfinal = sx;
           var pantallaYCompact = 0;
+          var pantallaYBasePx = 0;
 
           // limpiar custom width si no aplica
           sec.style.removeProperty("--content-w-pantalla");
@@ -534,12 +536,17 @@ export function generarHTMLDesdeSecciones(
               // 🔥 NUEVO: el contenido acompaña parcialmente el zoom
               sfinal = sx * (1 + (zoomExtra - 1) * TEXT_ZOOM_FACTOR);
 
-              // ✅ Mobile pantalla: compacta distancia vertical para preservar la esencia
-              // del diseño en dispositivos muy altos, manteniendo y=0.5 centrado.
+              // ✅ Fidelity de diseño en Pantalla:ON:
+              // no compactamos distancias verticales para respetar posiciones
+              // intencionales (incluyendo textos encimados o muy cercanos).
+              pantallaYCompact = 0;
+
+              // ✅ Ajuste de posición vertical global (uniforme):
+              // desplazamos TODO el bloque por igual para no alterar posiciones relativas.
               var vhLogicalPx = vhSafePx / Math.max(0.01, zoom || 1);
-              var logicalAR = vhLogicalPx / Math.max(1, vw);
-              var stretchRatio = (logicalAR / Math.max(0.01, designAR)) - 1;
-              pantallaYCompact = clamp(stretchRatio * 0.12, 0, 0.45);
+              var designScaledHPx = sfinal * DESIGN_H;
+              var spareVerticalPx = Math.max(0, vhLogicalPx - designScaledHPx);
+              pantallaYBasePx = spareVerticalPx * 0.36;
             }
           }
 
@@ -556,6 +563,7 @@ export function generarHTMLDesdeSecciones(
             sec.style.setProperty("--vh-logical", "var(--vh-safe)");
           }
           sec.style.setProperty("--pantalla-y-compact", String(pantallaYCompact));
+          sec.style.setProperty("--pantalla-y-base", pantallaYBasePx + "px");
         });
 
 

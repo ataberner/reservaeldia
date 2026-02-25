@@ -209,16 +209,19 @@ export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): stri
 
   function topPantallaCSS(obj: any, ynRaw: any): string {
     const yn = clamp01(ynRaw) ?? 0;
+    const yBloqueDisenio = `calc(${sContenidoVar(obj)} * ${ALTURA_EDITOR_PANTALLA}px)`;
+    const yBasePantalla = `var(--pantalla-y-base, 0px)`;
     const ynCompactado = `calc(0.5 + ((${yn}) - 0.5) * (1 - var(--pantalla-y-compact, 0)))`;
     return `calc(
-  (var(--vh-logical) * ${ynCompactado})
+  ${yBasePantalla}
+  + (${yBloqueDisenio} * ${ynCompactado})
   + (${sContenidoVar(obj)} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px))
 )`;
   }
 
   /**
    * ✅ topCSS:
-   * - Pantalla ON: usa var(--vh-logical) * yn
+   * - Pantalla ON: usa bloque de diseño escalado (500px * sfinal) + offset base uniforme
    * - Texto en Pantalla ON: suma offset (CSS var) escalado por sContenidoVar
    * - Fijo: pxY(obj, y)
    */

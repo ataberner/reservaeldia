@@ -70,14 +70,23 @@ function applyPreviewDragGrupal(stage, leaderId, deltaX, deltaY) {
     ? window._grupoSeguidores
     : getGrupoElementos().filter((id) => id !== leaderId);
 
+  const syncAttachedTextNode = (elementId, x, y) => {
+    const textNode = window._elementRefs?.[`${elementId}-text`];
+    if (!textNode || typeof textNode.position !== "function") return;
+    textNode.position({ x, y });
+  };
+
   seguidores.forEach((elementId) => {
     const node = window._elementRefs?.[elementId];
     const posInicial = window._dragInicial[elementId];
     if (!node || !posInicial) return;
+    const nextX = posInicial.x + deltaX;
+    const nextY = posInicial.y + deltaY;
     node.position({
-      x: posInicial.x + deltaX,
-      y: posInicial.y + deltaY
+      x: nextX,
+      y: nextY
     });
+    syncAttachedTextNode(elementId, nextX, nextY);
   });
 
   if (!window._groupPreviewRaf) {
@@ -393,7 +402,6 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
 
   return false;
 }
-
 
 
 

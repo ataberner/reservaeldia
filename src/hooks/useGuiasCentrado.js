@@ -225,13 +225,69 @@ export default function useGuiasCentrado({
         return g;
     };
 
+    const getUnionBox = (ids, stage, elementRefs, objById) => {
+        if (!Array.isArray(ids) || ids.length === 0) return null;
+
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+
+        ids.forEach((id) => {
+            const n = elementRefs.current?.[id];
+            if (!n) return;
+            const b = getNodeBox(n, stage, objById.get(id) || null);
+            if (!b) return;
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.width);
+            maxY = Math.max(maxY, b.y + b.height);
+        });
+
+        if (
+            !Number.isFinite(minX) ||
+            !Number.isFinite(minY) ||
+            !Number.isFinite(maxX) ||
+            !Number.isFinite(maxY)
+        ) {
+            return null;
+        }
+
+        return {
+            x: minX,
+            y: minY,
+            width: Math.max(0, maxX - minX),
+            height: Math.max(0, maxY - minY),
+        };
+    };
+
+    const shiftNodes = (ids, axis, delta, elementRefs) => {
+        if (!Array.isArray(ids) || ids.length === 0 || !Number.isFinite(delta)) return;
+        if (Math.abs(delta) < 0.0001) return;
+
+        const shiftSingle = (node) => {
+            if (!node) return;
+            try {
+                if (axis === "x") {
+                    node.x(node.x() + delta);
+                } else {
+                    node.y(node.y() + delta);
+                }
+            } catch {
+                // silencioso para no cortar drag
+            }
+        };
+
+        ids.forEach((id) => {
+            const n = elementRefs.current?.[id];
+            shiftSingle(n);
+            // Algunas formas (rect/rsvp) renderizan el texto como nodo separado.
+            shiftSingle(elementRefs.current?.[`${id}-text`]);
+        });
+    };
+
     // ---- Mostrar guías durante el drag ----
     const mostrarGuias = useCallback((pos, idActual, objetos, elementRefs) => {
-        // 🔥 NO mostrar guías durante drag grupal
-        if (window._grupoLider) {
-            setGuiaLineas([]);
-            return;
-        }
         const node = elementRefs.current?.[idActual];
         if (!node) return;
         const stage = node.getStage?.();
@@ -240,7 +296,18 @@ export default function useGuiasCentrado({
         try {
             const objById = new Map(objetos.map((o) => [o.id, o]));
             const objActual = objById.get(idActual) || null;
-            const selfBoxBefore = getNodeBox(node, stage, objActual);
+            const isGroupLeader = window._grupoLider && idActual === window._grupoLider;
+            const rawGroupIds = Array.isArray(window._grupoElementos) && window._grupoElementos.length > 1
+                ? window._grupoElementos
+                : (Array.isArray(window._elementosSeleccionados) ? window._elementosSeleccionados : []);
+            const groupIds = isGroupLeader
+                ? [...new Set(rawGroupIds.filter(Boolean))]
+                : [];
+            const isGroupDrag = isGroupLeader && groupIds.length > 1;
+
+            const selfBoxBefore = isGroupDrag
+                ? getUnionBox(groupIds, stage, elementRefs, objById)
+                : getNodeBox(node, stage, objActual);
             if (!selfBoxBefore) return;
             const selfCx = selfBoxBefore.x + selfBoxBefore.width / 2;
             const selfCy = selfBoxBefore.y + selfBoxBefore.height / 2;
@@ -261,25 +328,31 @@ export default function useGuiasCentrado({
             const distSecY = Math.abs(selfCy - secCy);
 
             // 2) ELEMENTOS (MISMA SECCIÓN): elegir mejor candidato por eje
-            const elementGuides = buildSameSectionGuides(
-                node,
-                stage,
-                objetos,
-                elementRefs,
-                idActual,
-                seccion.id,
-                objById
-            );
+            const elementGuides = isGroupDrag
+                ? []
+                : buildSameSectionGuides(
+                    node,
+                    stage,
+                    objetos,
+                    elementRefs,
+                    idActual,
+                    seccion.id,
+                    objById
+                );
 
-            const bestElX = elementGuides
-                .filter(g => g.axis === "x")
-                .map(g => ({ g, dist: distForGuide("x", g.value, selfBoxBefore) }))
-                .sort((a, b) => a.dist - b.dist)[0];
+            const bestElX = isGroupDrag
+                ? null
+                : elementGuides
+                    .filter(g => g.axis === "x")
+                    .map(g => ({ g, dist: distForGuide("x", g.value, selfBoxBefore) }))
+                    .sort((a, b) => a.dist - b.dist)[0];
 
-            const bestElY = elementGuides
-                .filter(g => g.axis === "y")
-                .map(g => ({ g, dist: distForGuide("y", g.value, selfBoxBefore) }))
-                .sort((a, b) => a.dist - b.dist)[0];
+            const bestElY = isGroupDrag
+                ? null
+                : elementGuides
+                    .filter(g => g.axis === "y")
+                    .map(g => ({ g, dist: distForGuide("y", g.value, selfBoxBefore) }))
+                    .sort((a, b) => a.dist - b.dist)[0];
 
             // Decidir qué guía “gana” por eje (sección vs elemento)
             const decidirSnap = (secDistCenter, bestEl) => {
@@ -302,19 +375,29 @@ export default function useGuiasCentrado({
 
             const applySnap = (axis, decision) => {
                 if (!decision) return { snapped: false };
-                const fresh = getNodeBox(node, stage, objActual);
+                const fresh = isGroupDrag
+                    ? getUnionBox(groupIds, stage, elementRefs, objById)
+                    : getNodeBox(node, stage, objActual);
                 if (!fresh) return { snapped: false };
 
                 if (decision.source === "seccion") {
+                    const nextCenter = axis === "x"
+                        ? fresh.x + fresh.width / 2
+                        : fresh.y + fresh.height / 2;
+                    const targetCenter = axis === "x" ? secCx : secCy;
+                    const delta = (targetCenter - nextCenter) * effSectionSnapStrength;
+
                     if (axis === "x") {
-                        const cx = fresh.x + fresh.width / 2;
-                        node.x(node.x() + (secCx - cx) * effSectionSnapStrength);
+                        if (isGroupDrag) shiftNodes(groupIds, "x", delta, elementRefs);
+                        else node.x(node.x() + delta);
                     } else {
-                        const cy = fresh.y + fresh.height / 2;
-                        node.y(node.y() + (secCy - cy) * effSectionSnapStrength);
+                        if (isGroupDrag) shiftNodes(groupIds, "y", delta, elementRefs);
+                        else node.y(node.y() + delta);
                     }
                     return { snapped: true, source: "seccion" };
                 }
+
+                if (isGroupDrag) return { snapped: false };
 
                 const delta = deltaForGuide(axis, decision.near.g.value, fresh);
                 if (axis === "x") node.x(node.x() + delta * effElementSnapStrength);
@@ -326,7 +409,9 @@ export default function useGuiasCentrado({
             const snapResY = applySnap("y", decisionY);
 
             // Recalcular box luego del snap para dibujar reach exacta
-            const selfBoxAfter = getNodeBox(node, stage, objActual);
+            const selfBoxAfter = isGroupDrag
+                ? getUnionBox(groupIds, stage, elementRefs, objById)
+                : getNodeBox(node, stage, objActual);
             if (!selfBoxAfter) return;
             const selfCxAfter = selfBoxAfter.x + selfBoxAfter.width / 2;
             const selfCyAfter = selfBoxAfter.y + selfBoxAfter.height / 2;
@@ -357,7 +442,7 @@ export default function useGuiasCentrado({
                 });
             }
 
-            if (snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
+            if (!isGroupDrag && snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
                 lines.push({
                     type: "reach-x",
                     priority: "elemento",
@@ -365,7 +450,7 @@ export default function useGuiasCentrado({
                     points: reachVertical(snapResX.near.g.value, selfBoxAfter, snapResX.near.g.targetBox)
                 });
             }
-            if (snapResY.snapped && snapResY.source === "elemento" && snapResY.near?.g?.targetBox) {
+            if (!isGroupDrag && snapResY.snapped && snapResY.source === "elemento" && snapResY.near?.g?.targetBox) {
                 lines.push({
                     type: "reach-y",
                     priority: "elemento",

@@ -3393,9 +3393,7 @@ export default function CanvasEditor({
                           }}
                           onDragMovePersonalizado={(pos, id) => {
                             window._isDragging = true;
-                            if (!window._grupoLider) {
-                              mostrarGuias(pos, id, objetos, elementRefs);
-                            }
+                            mostrarGuias(pos, id, objetos, elementRefs);
                             requestAnimationFrame(() => {
                               if (typeof actualizarPosicionBotonOpciones === "function") {
                                 actualizarPosicionBotonOpciones();
@@ -3457,9 +3455,7 @@ export default function CanvasEditor({
                             setIsDragging(true);
                           }}
                           onDragMovePersonalizado={(pos, id) => {
-                            if (!window._grupoLider) {
-                              mostrarGuias(pos, id, objetos, elementRefs);
-                            }
+                            mostrarGuias(pos, id, objetos, elementRefs);
                             requestAnimationFrame(() => {
                               if (typeof actualizarPosicionBotonOpciones === "function") {
                                 actualizarPosicionBotonOpciones();
@@ -3566,6 +3562,7 @@ export default function CanvasEditor({
                         }}
                         anchoCanvas={800}
                         isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
+                        selectionCount={elementosSeleccionados.length}
                         preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
                         isInEditMode={isInEditMode} // ?? NUEVA PROP
                         onHover={isInEditMode ? null : setHoverId}
@@ -3796,10 +3793,7 @@ export default function CanvasEditor({
                           configurarDragEnd([]);
                         }}
                         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                          // ?? NO mostrar guías durante drag grupal
-                          if (!window._grupoLider) {
-                            mostrarGuias(pos, elementId, objetos, elementRefs);
-                          }
+                          mostrarGuias(pos, elementId, objetos, elementRefs);
                           if (elementosSeleccionados.includes(elementId)) {
                             requestAnimationFrame(() => {
                               if (typeof actualizarPosicionBotonOpciones === 'function') {

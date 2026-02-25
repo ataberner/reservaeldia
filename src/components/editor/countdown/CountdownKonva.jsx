@@ -308,7 +308,20 @@ export default function CountdownKonva({
   const handleDragMove = useCallback(
     (e) => {
       if (window._grupoLider) {
-        if (obj.id === window._grupoLider) previewDragGrupal(e, obj, onChange);
+        if (obj.id === window._grupoLider) {
+          previewDragGrupal(e, obj, onChange);
+          if (onDragMovePersonalizado) {
+            lastDragMovePosRef.current = { x: e.target.x(), y: e.target.y() };
+            if (dragMoveRafRef.current == null) {
+              dragMoveRafRef.current = requestAnimationFrame(() => {
+                dragMoveRafRef.current = null;
+                const latestPos = lastDragMovePosRef.current;
+                if (!latestPos) return;
+                onDragMovePersonalizado(latestPos, obj.id);
+              });
+            }
+          }
+        }
         return;
       }
       previewDragIndividual(e, obj, (pos) => {

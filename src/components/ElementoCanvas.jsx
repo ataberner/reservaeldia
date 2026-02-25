@@ -46,6 +46,7 @@ export default function ElementoCanvas({
   registerRef,
   onHover,
   preSeleccionado,
+  selectionCount = 0,
   onDragMovePersonalizado,
   onDragStartPersonalizado,
   onDragEndPersonalizado,
@@ -173,9 +174,7 @@ export default function ElementoCanvas({
       // 🔥 DRAG GRUPAL - SOLO EL LÍDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
         previewDragGrupal(e, obj, onChange);
-
-        // 🔥 NO llamar onDragMovePersonalizado durante drag grupal (evita guías)
-        // El preview individual ya no es necesario porque manejamos todo aquí
+        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
 
         return;
       }
@@ -205,7 +204,10 @@ export default function ElementoCanvas({
 
       // 🔥 Intentar drag grupal
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged);
-      if (fueGrupal) return;
+      if (fueGrupal) {
+        onDragEndPersonalizado?.();
+        return;
+      }
 
       // 🔄 DRAG INDIVIDUAL (no cambió)
       endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
@@ -660,6 +662,7 @@ export default function ElementoCanvas({
     const W = Number(obj.width) || 128;
     const H = Number(obj.height) || 128;
     const vb = parseViewBox(obj.viewBox) || { minX: 0, minY: 0, vbWidth: 100, vbHeight: 100 };
+    const showIconSelectionFrame = (isSelected || preSeleccionado) && selectionCount <= 1;
 
     return (
       <Group
@@ -698,7 +701,7 @@ export default function ElementoCanvas({
         ))}
 
         {/* Marco de selección visual */}
-        {(isSelected || preSeleccionado) && (
+        {showIconSelectionFrame && (
           <Rect
             x={0}
             y={0}
@@ -773,6 +776,7 @@ export default function ElementoCanvas({
   if (obj.tipo === "icono-svg") {
     const W = Number(obj.width) || 128;
     const H = Number(obj.height) || 128;
+    const showLegacyIconSelectionFrame = (isSelected || preSeleccionado) && selectionCount <= 1;
 
     const vb = parseViewBox(obj.viewBox) || { minX: 0, minY: 0, vbWidth: 100, vbHeight: 100 };
     const scaleX = vb.vbWidth ? W / vb.vbWidth : 1;
@@ -815,8 +819,8 @@ export default function ElementoCanvas({
           width={W}
           height={H}
           fill="rgba(0,0,0,0.001)"
-          stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-          strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+          stroke={showLegacyIconSelectionFrame ? "#773dbe" : undefined}
+          strokeWidth={showLegacyIconSelectionFrame ? 1 : 0}
           listening={true}
         />
         <Group x={0} y={0} scaleX={scaleX} scaleY={scaleY}>

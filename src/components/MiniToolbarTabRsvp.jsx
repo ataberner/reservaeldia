@@ -9,7 +9,7 @@ import {
   normalizeRsvpConfig,
 } from "@/domain/rsvp/config";
 import {
-  DEFAULT_RSVP_BUTTON_STYLE_ID,
+  MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
 import {
@@ -486,7 +486,7 @@ export default function MiniToolbarTabRsvp({
       return;
     }
 
-    const defaultButtonStyle = createRsvpButtonStylePatch(DEFAULT_RSVP_BUTTON_STYLE_ID);
+    const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
 
     window.dispatchEvent(
       new CustomEvent("insertar-elemento", {

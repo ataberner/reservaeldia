@@ -19,7 +19,7 @@ function escapeAttr(str: string = ""): string {
     .replace(/>/g, "&gt;");
 }
 
-const MOTION_EFFECT_VALUES = new Set(["none", "reveal", "draw", "zoom", "hover", "pulse"]);
+const MOTION_EFFECT_VALUES = new Set(["none", "reveal", "draw", "zoom", "hover", "pulse", "rsvp"]);
 
 function sanitizeMotionEffect(value: any): string {
   const normalized = String(value || "").trim().toLowerCase();

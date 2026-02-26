@@ -1,4 +1,5 @@
 export const DEFAULT_RSVP_BUTTON_STYLE_ID = "aurora_glow";
+export const MIDNIGHT_RSVP_BUTTON_STYLE_ID = "midnight";
 export const CUSTOM_SOLID_RSVP_BUTTON_STYLE_ID = "custom_solid";
 
 type ButtonStylePreset = {
@@ -14,6 +15,17 @@ type ButtonStylePreset = {
 };
 
 const RSVP_BUTTON_STYLE_PRESETS: ButtonStylePreset[] = [
+  {
+    id: "midnight",
+    gradientFrom: "#334155",
+    gradientTo: "#0F172A",
+    textColor: "#F8FAFC",
+    strokeColor: "rgba(255,255,255,0.22)",
+    strokeWidth: 1.2,
+    shadowColor: "rgba(15,23,42,0.5)",
+    shadowBlur: 18,
+    shadowOffsetY: 8,
+  },
   {
     id: "aurora_glow",
     gradientFrom: "#7C3AED",
@@ -146,4 +158,3 @@ export function resolveRsvpButtonVisual(input: AnyRecord = {}) {
     cssShadow,
   };
 }
-

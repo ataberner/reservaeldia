@@ -1,8 +1,21 @@
 export const DEFAULT_RSVP_BUTTON_STYLE_ID = "aurora_glow";
+export const MIDNIGHT_RSVP_BUTTON_STYLE_ID = "midnight";
 export const CUSTOM_SOLID_RSVP_BUTTON_STYLE_ID = "custom_solid";
 export const CUSTOM_GRADIENT_RSVP_BUTTON_STYLE_ID = "custom_gradient";
 
 export const RSVP_BUTTON_STYLE_PRESETS = Object.freeze([
+  {
+    id: "midnight",
+    name: "Midnight",
+    gradientFrom: "#334155",
+    gradientTo: "#0F172A",
+    textColor: "#F8FAFC",
+    strokeColor: "rgba(255,255,255,0.22)",
+    strokeWidth: 1.2,
+    shadowColor: "rgba(15,23,42,0.5)",
+    shadowBlur: 18,
+    shadowOffsetY: 8,
+  },
   {
     id: "aurora_glow",
     name: "Aurora",

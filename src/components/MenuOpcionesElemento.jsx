@@ -651,6 +651,7 @@ export default function MenuOpcionesElemento({
                                 { value: "zoom", label: "Zoom sutil" },
                                 { value: "hover", label: "Interaccion al tocar" },
                                 { value: "pulse", label: "Pulso suave" },
+                                { value: "rsvp", label: "Llamado RSVP" },
                             ]
                                 .filter((option) => allowedMotionEffects.includes(option.value))
                                 .map((option) => {

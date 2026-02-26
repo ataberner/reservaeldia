@@ -122,6 +122,25 @@ export function generarMotionEffectsRuntimeHTML(): string {
     animation-delay: 270ms;
   }
 
+  @keyframes mefxRsvp {
+    0%, 100% {
+      scale: 1;
+      opacity: 1;
+      filter: saturate(1) brightness(1);
+    }
+    50% {
+      scale: 1.018;
+      opacity: 0.99;
+      filter: saturate(1.08) brightness(1.02);
+    }
+  }
+
+  .objeto[data-type="rsvp"].mefx-rsvp {
+    animation: mefxRsvp 2.2s ease-in-out infinite;
+    transform-origin: center center;
+    will-change: scale, opacity, filter;
+  }
+
   .mefx-stagger-item {
     opacity: 0;
     translate: 0 10px;
@@ -228,12 +247,19 @@ export function generarMotionEffectsRuntimeHTML(): string {
       transform: none !important;
       box-shadow: none !important;
     }
+
+    .objeto[data-type="rsvp"].mefx-rsvp {
+      animation: none !important;
+      scale: 1 !important;
+      opacity: 1 !important;
+      filter: none !important;
+    }
   }
 </style>
 
 <script>
 (function(){
-  var VALID_EFFECTS = { none: 1, reveal: 1, draw: 1, zoom: 1, hover: 1, pulse: 1 };
+  var VALID_EFFECTS = { none: 1, reveal: 1, draw: 1, zoom: 1, hover: 1, pulse: 1, rsvp: 1 };
   var OBSERVED_EFFECTS = { reveal: 1, draw: 1, zoom: 1 };
   var STAGGER_SELECTOR = ".galeria-celda";
   var PREPARING_CLASS = "mefx-preparing";
@@ -423,6 +449,10 @@ export function generarMotionEffectsRuntimeHTML(): string {
 
     if (effect === "pulse" && (type === "countdown" || type === "rsvp")) {
       element.classList.add("mefx-pulse");
+    }
+
+    if (effect === "rsvp" && type === "rsvp") {
+      element.classList.add("mefx-rsvp");
     }
 
     if (effect === "reveal") element.classList.add("mefx-reveal-init");

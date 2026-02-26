@@ -1,6 +1,6 @@
 import { sanitizeMotionEffect } from "@/domain/motionEffects";
 import {
-  DEFAULT_RSVP_BUTTON_STYLE_ID,
+  MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
 
@@ -252,11 +252,12 @@ export default function computeInsertDefaults({
     ].some((key) => typeof payload[key] !== "undefined");
     const stylePatch = hasVisualConfig
       ? {}
-      : createRsvpButtonStylePatch(DEFAULT_RSVP_BUTTON_STYLE_ID);
+      : createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
 
     next = {
       ...next,
       ...stylePatch,
+      motionEffect: sanitizeMotionEffect(payload.motionEffect || "rsvp"),
       x,
       y,
       width,

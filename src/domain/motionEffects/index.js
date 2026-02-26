@@ -7,6 +7,7 @@ export const MOTION_EFFECT_VALUES = Object.freeze([
   "zoom",
   "hover",
   "pulse",
+  "rsvp",
 ]);
 
 const MOTION_EFFECT_SET = new Set(MOTION_EFFECT_VALUES);
@@ -303,14 +304,19 @@ export function getAllowedMotionEffectsForElement(element) {
   const allowed = new Set(["none", "reveal", "hover"]);
   if (type === "divider") allowed.add("draw");
   if (type === "image") allowed.add("zoom");
-  if (type === "countdown" || type === "rsvp") allowed.add("pulse");
+  if (type === "countdown") allowed.add("pulse");
+  if (type === "rsvp") {
+    allowed.add("pulse");
+    allowed.add("rsvp");
+  }
   return Array.from(allowed);
 }
 
 function effectForPreset({ presetId, element, type, role, sectionContext }) {
   if (presetId === "minimal") {
     if (role === "title" || role === "subtitle") return "reveal";
-    if (type === "button" || type === "rsvp") return "hover";
+    if (type === "button") return "hover";
+    if (type === "rsvp") return "rsvp";
     return "none";
   }
 
@@ -318,7 +324,8 @@ function effectForPreset({ presetId, element, type, role, sectionContext }) {
   if (type === "gallery") return "reveal";
   if (type === "text") return "reveal";
   if (type === "button") return "hover";
-  if (type === "countdown" || type === "rsvp") return "pulse";
+  if (type === "countdown") return "pulse";
+  if (type === "rsvp") return "rsvp";
 
   if (type === "icon") {
     return isInteractiveIcon(element) ? "hover" : "reveal";

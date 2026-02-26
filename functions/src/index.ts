@@ -1,5 +1,6 @@
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import { randomUUID } from "crypto";
@@ -16,7 +17,11 @@ import {
   checkPublicSlugAvailabilityHandler,
   createPublicationCheckoutSessionHandler,
   createPublicationPaymentHandler,
+  finalizeExpiredPublicationsHandler,
+  finalizePublicationBySlug,
+  hardDeleteLegacyPublicationHandler,
   getPublicationCheckoutStatusHandler,
+  isPublicationExpiredData,
   listPublicationDiscountCodesHandler,
   listPublicationDiscountCodeUsageHandler,
   processMercadoPagoWebhookRequest,
@@ -904,6 +909,11 @@ export const retryPaidPublicationWithNewSlug = onCall(
   async (request) => retryPaidPublicationWithNewSlugHandler(request)
 );
 
+export const hardDeleteLegacyPublication = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => hardDeleteLegacyPublicationHandler(request)
+);
+
 export const upsertPublicationDiscountCode = onCall(
   {
     region: "us-central1",
@@ -936,6 +946,23 @@ export const mercadoPagoWebhook = onRequest(
   async (req, res) => processMercadoPagoWebhookRequest(req, res)
 );
 
+export const finalizeExpiredPublications = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "every 15 minutes",
+    timeZone: "Etc/UTC",
+    memory: "256MiB",
+  },
+  async () => {
+    const summary = await finalizeExpiredPublicationsHandler({
+      batchSize: 120,
+      reason: "scheduled-expiration",
+    });
+
+    logger.info("Scheduler finalizeExpiredPublications ejecutado", summary);
+  }
+);
+
 export const publicRsvpSubmit = onRequest(
   {
     region: "us-central1",
@@ -964,6 +991,30 @@ export const publicRsvpSubmit = onRequest(
       const publicationSnap = await publicationRef.get();
       if (!publicationSnap.exists) {
         res.status(404).json({ ok: false, message: "Invitacion no encontrada" });
+        return;
+      }
+
+      const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
+      if (isPublicationExpiredData(publicationData)) {
+        try {
+          await finalizePublicationBySlug({
+            slug,
+            reason: "expired-rsvp-request",
+          });
+        } catch (finalizeError) {
+          logger.warn("No se pudo finalizar una publicacion vencida en RSVP", {
+            slug,
+            error:
+              finalizeError instanceof Error
+                ? finalizeError.message
+                : String(finalizeError || ""),
+          });
+        }
+
+        res.status(410).json({
+          ok: false,
+          message: "La invitacion ya finalizo su vigencia.",
+        });
         return;
       }
 

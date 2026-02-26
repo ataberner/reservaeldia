@@ -1,6 +1,6 @@
 // src/utils/guardarThumbnail.js
 import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import Konva from "konva";
 
@@ -92,7 +92,10 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
     const urlFinal = await getDownloadURL(archivoRef);
 
     const refDoc = doc(db, "borradores", slug);
-    await updateDoc(refDoc, { thumbnailUrl: urlFinal });
+    await updateDoc(refDoc, {
+      thumbnailUrl: urlFinal,
+      thumbnailUpdatedAt: serverTimestamp(),
+    });
   } catch (error) {
     console.error("❌ Error al generar o subir thumbnail:", error);
   } finally {

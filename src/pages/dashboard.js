@@ -7,6 +7,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import TipoSelector from '../components/TipoSelector';
 import PlantillaGrid from '../components/PlantillaGrid';
 import BorradoresGrid from '@/components/BorradoresGrid';
+import DashboardPublicadasSection from "@/components/DashboardPublicadasSection";
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
 import PublicationCheckoutModal from "@/components/payments/PublicationCheckoutModal";
 import PublicadasGrid from "@/components/PublicadasGrid";
@@ -195,6 +196,120 @@ function sanitizeDraftSlug(rawSlug) {
   return slug || null;
 }
 
+function toDateFromFirestoreValue(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  }
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    try {
+      const parsed = value.toDate();
+      return parsed instanceof Date && Number.isFinite(parsed.getTime()) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    const parsed = new Date(value.seconds * 1000);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  }
+  return null;
+}
+
+function isPublicacionActiva(data) {
+  if (!data || typeof data !== "object") return false;
+
+  const estado = String(data.estado || "").trim().toLowerCase();
+  if (estado === "finalizada") return false;
+
+  const vigenteHasta = toDateFromFirestoreValue(data.vigenteHasta);
+  if (vigenteHasta && vigenteHasta.getTime() <= Date.now()) {
+    return false;
+  }
+
+  return true;
+}
+
+function isPermissionDeniedFirestoreError(error) {
+  const code = String(error?.code || "").toLowerCase();
+  return code === "permission-denied" || code.includes("permission-denied");
+}
+
+function getDraftCandidatesFromPublication(data) {
+  const candidates = [
+    data?.borradorSlug,
+    data?.borradorId,
+    data?.draftSlug,
+    data?.slugOriginal,
+  ]
+    .map((value) => sanitizeDraftSlug(typeof value === "string" ? value : ""))
+    .filter(Boolean);
+
+  return Array.from(new Set(candidates));
+}
+
+async function resolveOwnedDraftSlugForEditor({ slug, uid }) {
+  const normalizedSlug = sanitizeDraftSlug(slug);
+  if (!normalizedSlug || !uid) return normalizedSlug;
+
+  let directDraftPermissionDenied = false;
+  try {
+    const directDraftSnap = await getDoc(doc(db, "borradores", normalizedSlug));
+    if (directDraftSnap.exists()) {
+      const directDraftData = directDraftSnap.data() || {};
+      const ownerUid = String(directDraftData?.userId || "").trim();
+      return ownerUid === uid ? normalizedSlug : null;
+    }
+  } catch (error) {
+    if (isPermissionDeniedFirestoreError(error)) {
+      directDraftPermissionDenied = true;
+    } else {
+      return normalizedSlug;
+    }
+  }
+
+  try {
+    const publicationSnap = await getDoc(doc(db, "publicadas", normalizedSlug));
+    if (!publicationSnap.exists()) {
+      return directDraftPermissionDenied ? null : normalizedSlug;
+    }
+
+    const publicationData = publicationSnap.data() || {};
+    const publicationOwnerUid = String(publicationData?.userId || "").trim();
+    if (!publicationOwnerUid || publicationOwnerUid !== uid) {
+      return null;
+    }
+
+    const draftCandidates = getDraftCandidatesFromPublication(publicationData);
+    for (const candidateSlug of draftCandidates) {
+      try {
+        const candidateDraftSnap = await getDoc(doc(db, "borradores", candidateSlug));
+        if (!candidateDraftSnap.exists()) continue;
+        const candidateDraftData = candidateDraftSnap.data() || {};
+        const candidateOwnerUid = String(candidateDraftData?.userId || "").trim();
+        if (candidateOwnerUid === uid) return candidateSlug;
+      } catch (candidateError) {
+        if (!isPermissionDeniedFirestoreError(candidateError)) {
+          return normalizedSlug;
+        }
+      }
+    }
+
+    return null;
+  } catch (publicationError) {
+    if (isPermissionDeniedFirestoreError(publicationError)) {
+      return null;
+    }
+    return normalizedSlug;
+  }
+}
+
 function recoverQueryFromCorruptedSlug(rawSlug) {
   if (typeof rawSlug !== "string") return {};
   const decoded = decodeURIComponentSafe(rawSlug);
@@ -364,6 +479,7 @@ export default function Dashboard() {
   const [tipoSeleccionado, setTipoSeleccionado] = useState(DEFAULT_TIPO_INVITACION);
   const [slugInvitacion, setSlugInvitacion] = useState(null);
   const [plantillas, setPlantillas] = useState([]);
+  const [homePublicationsReady, setHomePublicationsReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [homeDraftsReady, setHomeDraftsReady] = useState(false);
   const [homeTemplatesReady, setHomeTemplatesReady] = useState(false);
@@ -382,6 +498,7 @@ export default function Dashboard() {
   const [htmlVistaPrevia, setHtmlVistaPrevia] = useState(null);
   const [urlPublicaVistaPrevia, setUrlPublicaVistaPrevia] = useState(null);
   const [slugPublicoVistaPrevia, setSlugPublicoVistaPrevia] = useState(null);
+  const [puedeActualizarPublicacion, setPuedeActualizarPublicacion] = useState(false);
   const [publicacionVistaPreviaError, setPublicacionVistaPreviaError] = useState("");
   const [publicacionVistaPreviaOk, setPublicacionVistaPreviaOk] = useState("");
   const [urlPublicadaReciente, setUrlPublicadaReciente] = useState(null);
@@ -441,6 +558,9 @@ export default function Dashboard() {
   // Sync ?slug=... with local state (always Konva)
   useEffect(() => {
     if (!router.isReady) return;
+    if (checkingAuth) return;
+
+    let cancelled = false;
 
     const rawSlugParam = getFirstQueryValue(router.query?.slug);
     const slugURL = sanitizeDraftSlug(rawSlugParam);
@@ -453,42 +573,77 @@ export default function Dashboard() {
       Boolean(slugURL) &&
       (rawSlugParam !== slugURL || recoveredQueryKeys.length > 0);
 
-    if (shouldNormalizeUrl) {
-      const nextQuery = { ...router.query, slug: slugURL };
-      recoveredQueryKeys.forEach((key) => {
-        nextQuery[key] = recoveredQuery[key];
-      });
-      router.replace(
-        { pathname: "/dashboard", query: nextQuery },
-        undefined,
-        { shallow: true }
-      );
-      pushEditorBreadcrumb("dashboard-slug-sanitized", {
-        slugRaw: rawSlugParam,
-        slug: slugURL,
-        recoveredKeys: recoveredQueryKeys,
-      });
-    }
+    const syncEditorSlugFromQuery = async () => {
+      let normalizedSlug = slugURL;
 
-    if (slugURL) {
-      if (slugInvitacion !== slugURL) {
-        setSlugInvitacion(slugURL);
+      if (slugURL && usuario?.uid) {
+        normalizedSlug = await resolveOwnedDraftSlugForEditor({
+          slug: slugURL,
+          uid: usuario.uid,
+        });
       }
-      if (modoEditor !== "konva") {
-        setModoEditor("konva");
-      }
-      setVista((prev) => (prev === "editor" ? prev : "editor"));
-      return;
-    }
 
-    if (slugInvitacion) {
+      if (cancelled) return;
+
+      if (slugURL && !normalizedSlug) {
+        const nextQuery = { ...router.query };
+        delete nextQuery.slug;
+        recoveredQueryKeys.forEach((key) => {
+          nextQuery[key] = recoveredQuery[key];
+        });
+
+        router.replace(
+          { pathname: "/dashboard", query: nextQuery },
+          undefined,
+          { shallow: true }
+        );
+
+        pushEditorBreadcrumb("dashboard-slug-access-denied", {
+          slugRaw: rawSlugParam,
+          slug: slugURL,
+        });
+
+        setSlugInvitacion(null);
+        setModoEditor(null);
+        setVista((prev) => (prev === "editor" ? "home" : prev));
+        return;
+      }
+
+      if (shouldNormalizeUrl || (normalizedSlug && normalizedSlug !== slugURL)) {
+        const nextQuery = { ...router.query, slug: normalizedSlug };
+        recoveredQueryKeys.forEach((key) => {
+          nextQuery[key] = recoveredQuery[key];
+        });
+        router.replace(
+          { pathname: "/dashboard", query: nextQuery },
+          undefined,
+          { shallow: true }
+        );
+        pushEditorBreadcrumb("dashboard-slug-sanitized", {
+          slugRaw: rawSlugParam,
+          slug: normalizedSlug,
+          recoveredKeys: recoveredQueryKeys,
+        });
+      }
+
+      if (normalizedSlug) {
+        setSlugInvitacion((prev) => (prev === normalizedSlug ? prev : normalizedSlug));
+        setModoEditor((prev) => (prev === "konva" ? prev : "konva"));
+        setVista((prev) => (prev === "editor" ? prev : "editor"));
+        return;
+      }
+
       setSlugInvitacion(null);
-    }
-    if (modoEditor) {
       setModoEditor(null);
-    }
-    setVista((prev) => (prev === "editor" ? "home" : prev));
-  }, [router.isReady, router.query?.slug]);
+      setVista((prev) => (prev === "editor" ? "home" : prev));
+    };
+
+    void syncEditorSlugFromQuery();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router.isReady, router.query?.slug, checkingAuth, usuario?.uid]);
 
   useEffect(() => {
     pushEditorBreadcrumb("dashboard-mounted", {});
@@ -1043,6 +1198,7 @@ export default function Dashboard() {
       setHtmlVistaPrevia(null); // Reset del contenido
       setUrlPublicaVistaPrevia(null); // Reset del enlace publico
       setSlugPublicoVistaPrevia(null);
+      setPuedeActualizarPublicacion(false);
       setPublicacionVistaPreviaError("");
       setPublicacionVistaPreviaOk("");
       setUrlPublicadaReciente(null);
@@ -1063,16 +1219,21 @@ export default function Dashboard() {
       let urlPublicaDetectada = "";
       let slugPublicoDetectado = "";
       const slugPublicoBorrador = String(data?.slugPublico || "").trim();
+      let publicacionNoVigenteDetectada = false;
 
       if (slugPublicoBorrador) {
         try {
           const snapPublicoPorSlug = await getDoc(doc(db, "publicadas", slugPublicoBorrador));
           if (snapPublicoPorSlug.exists()) {
             const dataPublicada = snapPublicoPorSlug.data() || {};
-            slugPublicoDetectado = slugPublicoBorrador;
-            urlPublicaDetectada =
-              String(dataPublicada?.urlPublica || "").trim() ||
-              `https://reservaeldia.com.ar/i/${slugPublicoBorrador}`;
+            if (isPublicacionActiva(dataPublicada)) {
+              slugPublicoDetectado = slugPublicoBorrador;
+              urlPublicaDetectada =
+                String(dataPublicada?.urlPublica || "").trim() ||
+                `https://reservaeldia.com.ar/i/${slugPublicoBorrador}`;
+            } else {
+              publicacionNoVigenteDetectada = true;
+            }
           }
         } catch (_e) {}
       }
@@ -1082,10 +1243,14 @@ export default function Dashboard() {
           const snapPublicoDirecto = await getDoc(doc(db, "publicadas", slugInvitacion));
           if (snapPublicoDirecto.exists()) {
             const dataPublicada = snapPublicoDirecto.data() || {};
-            slugPublicoDetectado = slugInvitacion;
-            urlPublicaDetectada =
-              String(dataPublicada?.urlPublica || "").trim() ||
-              `https://reservaeldia.com.ar/i/${slugInvitacion}`;
+            if (isPublicacionActiva(dataPublicada)) {
+              slugPublicoDetectado = slugInvitacion;
+              urlPublicaDetectada =
+                String(dataPublicada?.urlPublica || "").trim() ||
+                `https://reservaeldia.com.ar/i/${slugInvitacion}`;
+            } else {
+              publicacionNoVigenteDetectada = true;
+            }
           }
         } catch (_e) {}
       }
@@ -1101,11 +1266,15 @@ export default function Dashboard() {
           if (!snapPublicadaPorOriginal.empty) {
             const docPublicada = snapPublicadaPorOriginal.docs[0];
             const dataPublicada = docPublicada?.data() || {};
-            const slugPublicado = String(dataPublicada?.slug || docPublicada?.id || "").trim();
-            slugPublicoDetectado = slugPublicado || "";
-            urlPublicaDetectada =
-              String(dataPublicada?.urlPublica || "").trim() ||
-              (slugPublicado ? `https://reservaeldia.com.ar/i/${slugPublicado}` : "");
+            if (isPublicacionActiva(dataPublicada)) {
+              const slugPublicado = String(dataPublicada?.slug || docPublicada?.id || "").trim();
+              slugPublicoDetectado = slugPublicado || "";
+              urlPublicaDetectada =
+                String(dataPublicada?.urlPublica || "").trim() ||
+                (slugPublicado ? `https://reservaeldia.com.ar/i/${slugPublicado}` : "");
+            } else {
+              publicacionNoVigenteDetectada = true;
+            }
           }
         } catch (_e) {}
       }
@@ -1113,11 +1282,16 @@ export default function Dashboard() {
       const slugPublicoNormalizado =
         normalizePublicSlug(slugPublicoDetectado) ||
         normalizePublicSlug(urlPublicaDetectada) ||
-        normalizePublicSlug(slugPublicoBorrador) ||
         null;
 
       setUrlPublicaVistaPrevia(urlPublicaDetectada || null);
       setSlugPublicoVistaPrevia(slugPublicoNormalizado);
+      setPuedeActualizarPublicacion(Boolean(slugPublicoNormalizado));
+      if (publicacionNoVigenteDetectada && !slugPublicoNormalizado) {
+        setPublicacionVistaPreviaError(
+          "La publicacion anterior finalizo su vigencia. Puedes publicar nuevamente como nueva."
+        );
+      }
       const previewDebug = (() => {
         try {
           const qp = new URLSearchParams(window.location.search || "");
@@ -1197,13 +1371,9 @@ export default function Dashboard() {
   const publicarDesdeVistaPrevia = async () => {
     if (!slugInvitacion) return;
 
-    const slugPublicoNormalizado =
-      normalizePublicSlug(slugPublicoVistaPrevia) ||
-      normalizePublicSlug(urlPublicaVistaPrevia);
-
     setPublicacionVistaPreviaError("");
     setPublicacionVistaPreviaOk("");
-    setOperacionCheckoutPublicacion(slugPublicoNormalizado ? "update" : "new");
+    setOperacionCheckoutPublicacion(puedeActualizarPublicacion ? "update" : "new");
     setMostrarCheckoutPublicacion(true);
   };
 
@@ -1219,6 +1389,7 @@ export default function Dashboard() {
 
     if (publicSlug) {
       setSlugPublicoVistaPrevia(publicSlug);
+      setPuedeActualizarPublicacion(true);
     }
 
     setPublicacionVistaPreviaError("");
@@ -1285,6 +1456,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isHomeView) return;
+    setHomePublicationsReady(false);
     setHomeDraftsReady(false);
     setHomeTemplatesReady(false);
     setHomeLoaderForcedDone(false);
@@ -1314,7 +1486,7 @@ export default function Dashboard() {
     }
 
     const waitingForHome =
-      loading || !homeDraftsReady || !homeTemplatesReady;
+      loading || !homePublicationsReady || !homeDraftsReady || !homeTemplatesReady;
 
     if (!waitingForHome) {
       if (homeLoaderForceTimerRef.current) {
@@ -1331,11 +1503,13 @@ export default function Dashboard() {
       setHomeLoaderForcedDone(true);
       console.warn("[dashboard-home-loader] Timeout forzado:", {
         loading,
+        homePublicationsReady,
         homeDraftsReady,
         homeTemplatesReady,
       });
     }, HOME_DASHBOARD_LOADER_MAX_MS);
   }, [
+    homePublicationsReady,
     homeDraftsReady,
     homeLoaderForcedDone,
     homeTemplatesReady,
@@ -1606,7 +1780,7 @@ export default function Dashboard() {
   const showHomeStartupLoader =
     isHomeView &&
     !homeLoaderForcedDone &&
-    (loading || !homeDraftsReady || !homeTemplatesReady);
+    (loading || !homePublicationsReady || !homeDraftsReady || !homeTemplatesReady);
   const shouldRenderHomeStartupLoader = showHomeStartupLoader || holdHomeStartupLoader;
   const isHomeStartupLoaderExiting =
     !showHomeStartupLoader && holdHomeStartupLoader;
@@ -1743,6 +1917,11 @@ export default function Dashboard() {
             {SHOW_TIPO_SELECTOR && (
               <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
             )}
+
+            <DashboardPublicadasSection
+              usuario={usuario}
+              onReadyChange={setHomePublicationsReady}
+            />
 
             <section className="rounded-2xl border border-[#e9dcfb] bg-gradient-to-br from-white via-[#faf6ff] to-[#f5f9ff] p-4 sm:p-6">
               <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">
@@ -1938,6 +2117,7 @@ export default function Dashboard() {
           setHtmlVistaPrevia(null);
           setUrlPublicaVistaPrevia(null);
           setSlugPublicoVistaPrevia(null);
+          setPuedeActualizarPublicacion(false);
           setPublicacionVistaPreviaError("");
           setPublicacionVistaPreviaOk("");
           setUrlPublicadaReciente(null);

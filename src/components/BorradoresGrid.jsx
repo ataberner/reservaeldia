@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
@@ -26,6 +26,10 @@ function toMs(value) {
   if (typeof value === "string") {
     const parsed = new Date(value).getTime();
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    const parsed = value.toDate();
+    return parsed instanceof Date ? parsed.getTime() : 0;
   }
   if (typeof value === "object" && typeof value.seconds === "number") {
     return value.seconds * 1000;
@@ -59,6 +63,31 @@ function isImageSrc(value) {
   );
 }
 
+function appendCacheBust(url, versionMs) {
+  if (!url) return url;
+  if (!Number.isFinite(versionMs) || versionMs <= 0) return url;
+  if (/^data:image\//i.test(url) || /^blob:/i.test(url)) return url;
+
+  const version = String(Math.trunc(versionMs));
+  const joiner = url.includes("?") ? "&" : "?";
+
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.set("v", version);
+      return parsed.toString();
+    } catch {
+      return `${url}${joiner}v=${encodeURIComponent(version)}`;
+    }
+  }
+
+  if (url.startsWith("/")) {
+    return `${url}${joiner}v=${encodeURIComponent(version)}`;
+  }
+
+  return url;
+}
+
 function getBorradorPreviewCandidates(borrador) {
   const candidates = [];
 
@@ -74,6 +103,39 @@ function getBorradorPreviewCandidates(borrador) {
   }
 
   return candidates;
+}
+
+function getLifecycleState(borrador) {
+  const explicitState = toNonEmptyString(borrador?.publicationLifecycle?.state).toLowerCase();
+  if (explicitState === "draft" || explicitState === "published" || explicitState === "finalized") {
+    return explicitState;
+  }
+
+  const hasPublicSlug = Boolean(toNonEmptyString(borrador?.slugPublico));
+  return hasPublicSlug ? "published" : "draft";
+}
+
+function isVisibleDraft(borrador) {
+  return getLifecycleState(borrador) === "draft";
+}
+
+function getDraftLastUpdatedValue(borrador) {
+  return (
+    borrador?.ultimaEdicion ||
+    borrador?.updatedAt ||
+    borrador?.fechaActualizacion ||
+    borrador?.creadoEn ||
+    borrador?.createdAt ||
+    borrador?.publicationLifecycle?.lastPublishedAt ||
+    null
+  );
+}
+
+function getDraftThumbnailVersionValue(borrador) {
+  return (
+    borrador?.thumbnailUpdatedAt ||
+    getDraftLastUpdatedValue(borrador)
+  );
 }
 
 export default function BorradoresGrid({
@@ -95,41 +157,37 @@ export default function BorradoresGrid({
   };
 
   useEffect(() => {
-    let mounted = true;
+    const user = getAuth().currentUser;
+    if (!user) {
+      setBorradores([]);
+      setCargando(false);
+      return () => {};
+    }
 
-    const fetchBorradores = async () => {
-      const user = getAuth().currentUser;
-      if (!user) {
-        if (mounted) setCargando(false);
-        return;
-      }
-
-      try {
-        const q = query(collection(db, "borradores"), where("userId", "==", user.uid));
-        const snapshot = await getDocs(q);
-
+    const q = query(collection(db, "borradores"), where("userId", "==", user.uid));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
         const docs = snapshot.docs
-          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+          .filter((draft) => isVisibleDraft(draft))
           .sort((a, b) => {
-            const aTime = toMs(a.updatedAt || a.fechaActualizacion || a.creadoEn || a.createdAt);
-            const bTime = toMs(b.updatedAt || b.fechaActualizacion || b.creadoEn || b.createdAt);
+            const aTime = toMs(getDraftLastUpdatedValue(a));
+            const bTime = toMs(getDraftLastUpdatedValue(b));
             return bTime - aTime;
           });
 
-        if (mounted) setBorradores(docs);
-      } catch (error) {
+        setBorradores(docs);
+        setCargando(false);
+      },
+      (error) => {
         console.error("Error cargando borradores:", error);
-        if (mounted) setBorradores([]);
-      } finally {
-        if (mounted) setCargando(false);
+        setBorradores([]);
+        setCargando(false);
       }
-    };
+    );
 
-    fetchBorradores();
-
-    return () => {
-      mounted = false;
-    };
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -235,11 +293,12 @@ export default function BorradoresGrid({
           const slug = borrador.slug || borrador.id;
           const nombre = borrador.nombre || slug;
           const href = `/dashboard?slug=${encodeURIComponent(slug)}`;
-          const previewCandidates = getBorradorPreviewCandidates(borrador);
-          const previewSrc = previewCandidates[0] || "/placeholder.jpg";
-          const fecha = formatFecha(
-            borrador.updatedAt || borrador.fechaActualizacion || borrador.creadoEn || borrador.createdAt
+          const previewVersion = toMs(getDraftThumbnailVersionValue(borrador));
+          const previewCandidates = getBorradorPreviewCandidates(borrador).map((candidate) =>
+            appendCacheBust(candidate, previewVersion)
           );
+          const previewSrc = previewCandidates[0] || "/placeholder.jpg";
+          const fecha = formatFecha(getDraftLastUpdatedValue(borrador));
 
           return (
             <article

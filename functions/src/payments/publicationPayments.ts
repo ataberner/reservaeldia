@@ -13,6 +13,15 @@ import {
   validatePublicSlug,
 } from "../utils/publicSlug";
 import {
+  PUBLICATION_VIGENCY_MONTHS,
+  PUBLICATION_LIFECYCLE_STATES,
+  addMonthsPreservingDateTimeUTC,
+  computePublicationExpirationDate,
+  computePublicationExpirationTimestamp,
+  isPublicationExpiredByVigenciaDate,
+  toDateFromTimestampLike,
+} from "./publicationLifecycle";
+import {
   getMercadoPagoPaymentClient,
   getMercadoPagoPreferenceClient,
   getMercadoPagoPublicKey,
@@ -35,6 +44,18 @@ const CHECKOUT_SESSIONS_COLLECTION = "publication_checkout_sessions";
 const SLUG_RESERVATIONS_COLLECTION = "public_slug_reservations";
 const DISCOUNT_CODES_COLLECTION = "publication_discount_codes";
 const DISCOUNT_USAGE_COLLECTION = "publication_discount_code_usage";
+const PUBLICADAS_COLLECTION = "publicadas";
+const PUBLICADAS_HISTORIAL_COLLECTION = "publicadas_historial";
+const BORRADORES_COLLECTION = "borradores";
+const HISTORY_SCAN_PAGE_SIZE = 250;
+
+const FINALIZATION_REASON = Object.freeze({
+  EXPIRED_CHECKOUT_UPDATE: "expired-before-update-checkout",
+  EXPIRED_SLUG_AVAILABILITY: "expired-slug-availability-check",
+  EXPIRED_RSVP_REQUEST: "expired-rsvp-request",
+  SCHEDULED_EXPIRATION: "scheduled-expiration",
+  EXPIRED_BEFORE_UPDATE_PUBLISH: "expired-before-update-publish",
+});
 
 const SESSION_TERMINAL_STATES = new Set<CheckoutSessionStatus>([
   "published",
@@ -181,6 +202,26 @@ type DiscountUsageItem = {
   approvedAt: string | null;
 };
 
+type PublicationSummary = {
+  totalResponses: number;
+  confirmedResponses: number;
+  declinedResponses: number;
+  confirmedGuests: number;
+  vegetarianCount: number;
+  veganCount: number;
+  childrenCount: number;
+  dietaryRestrictionsCount: number;
+  transportCount: number;
+};
+
+type PublicationFinalizationResult = {
+  slug: string;
+  historyId: string | null;
+  draftSlug: string | null;
+  finalized: boolean;
+  alreadyMissing: boolean;
+};
+
 const DEFAULT_PAYMENT_CONFIG: PublicationPaymentConfig = {
   enabled: true,
   currency: "ARS",
@@ -196,6 +237,203 @@ function serverTimestamp() {
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getPublicationRef(slug: string) {
+  return db.collection(PUBLICADAS_COLLECTION).doc(slug);
+}
+
+function getPublicationHistoryRef(historyId: string) {
+  return db.collection(PUBLICADAS_HISTORIAL_COLLECTION).doc(historyId);
+}
+
+function normalizeAttendanceMetric(value: unknown): "yes" | "no" | "unknown" {
+  const raw = getString(value).toLowerCase();
+  if (!raw) return "unknown";
+  if (["yes", "si", "sí", "true", "1"].includes(raw)) return "yes";
+  if (["no", "false", "0"].includes(raw)) return "no";
+  return "unknown";
+}
+
+function normalizeBooleanMetric(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  const raw = getString(value).toLowerCase();
+  if (!raw) return false;
+  return ["yes", "si", "sí", "true", "1"].includes(raw);
+}
+
+function normalizePositiveIntMetric(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed));
+}
+
+function normalizeMenuMetricId(value: unknown): string | null {
+  const raw = getString(value).toLowerCase();
+  if (!raw) return null;
+  if (raw.includes("vegano") || raw === "vegan") return "vegan";
+  if (raw.includes("vegetar")) return "vegetarian";
+  if (raw.includes("tacc") || raw.includes("celia")) return "celiac";
+  if (raw === "standard" || raw === "clasico" || raw === "clásico") return "standard";
+  return raw;
+}
+
+function createEmptyPublicationSummary(): PublicationSummary {
+  return {
+    totalResponses: 0,
+    confirmedResponses: 0,
+    declinedResponses: 0,
+    confirmedGuests: 0,
+    vegetarianCount: 0,
+    veganCount: 0,
+    childrenCount: 0,
+    dietaryRestrictionsCount: 0,
+    transportCount: 0,
+  };
+}
+
+function buildPublicationSummary(rows: Record<string, unknown>[]): PublicationSummary {
+  const summary = createEmptyPublicationSummary();
+
+  rows.forEach((row) => {
+    summary.totalResponses += 1;
+
+    const answers =
+      row.answers && typeof row.answers === "object"
+        ? (row.answers as Record<string, unknown>)
+        : {};
+
+    const metrics =
+      row.metrics && typeof row.metrics === "object"
+        ? (row.metrics as Record<string, unknown>)
+        : {};
+
+    const legacyAttendance =
+      typeof row.confirma === "boolean"
+        ? row.confirma
+          ? "yes"
+          : "no"
+        : row.confirmado === true
+          ? "yes"
+          : row.confirmado === false
+            ? "no"
+            : row.asistencia;
+
+    const attendance = normalizeAttendanceMetric(
+      metrics.attendance ?? answers.attendance ?? legacyAttendance
+    );
+
+    if (attendance === "yes") summary.confirmedResponses += 1;
+    if (attendance === "no") summary.declinedResponses += 1;
+
+    const partySize = normalizePositiveIntMetric(
+      answers.party_size ?? row.cantidad ?? row.invitados ?? row.asistentes
+    );
+    const confirmedGuests =
+      normalizePositiveIntMetric(metrics.confirmedGuests) ||
+      (attendance === "yes" ? (partySize || 1) : 0);
+    summary.confirmedGuests += confirmedGuests;
+
+    const menuType = normalizeMenuMetricId(metrics.menuTypeId ?? answers.menu_type ?? row.menu_type);
+    if (menuType === "vegetarian") summary.vegetarianCount += 1;
+    if (menuType === "vegan") summary.veganCount += 1;
+
+    const childrenCount = normalizePositiveIntMetric(
+      metrics.childrenCount ?? answers.children_count ?? row.children_count ?? row.ninos
+    );
+    summary.childrenCount += childrenCount;
+
+    const hasDietaryRestrictions =
+      typeof metrics.hasDietaryRestrictions === "boolean"
+        ? metrics.hasDietaryRestrictions
+        : Boolean(getString(answers.dietary_notes ?? row.dietary_notes ?? row.alergias));
+    if (hasDietaryRestrictions) summary.dietaryRestrictionsCount += 1;
+
+    const needsTransport =
+      typeof metrics.needsTransport === "boolean"
+        ? metrics.needsTransport
+        : normalizeBooleanMetric(answers.needs_transport ?? row.needs_transport ?? row.transporte);
+    if (needsTransport) summary.transportCount += 1;
+  });
+
+  return summary;
+}
+
+function inferDraftSlugFromPublicationData(
+  slug: string,
+  publicationData: Record<string, unknown>
+): string {
+  const preferred =
+    getString(publicationData.borradorSlug) ||
+    getString(publicationData.borradorId) ||
+    getString(publicationData.slugOriginal) ||
+    slug;
+
+  return preferred || slug;
+}
+
+function extractDraftSlugCandidatesFromPublicationData(
+  publicationData: Record<string, unknown>
+): string[] {
+  const candidates = [
+    getString(publicationData.borradorSlug),
+    getString(publicationData.borradorId),
+    getString(publicationData.draftSlug),
+    getString(publicationData.slugOriginal),
+  ].filter(Boolean);
+
+  return Array.from(new Set(candidates));
+}
+
+function getPublicationHistoryId(params: {
+  slug: string;
+  firstPublishedAt: Date;
+}): string {
+  const publishedMs = params.firstPublishedAt.getTime();
+  return `${params.slug}__${publishedMs}`;
+}
+
+function getPublicationState(publicationData: Record<string, unknown>): string {
+  const estado = getString(publicationData.estado).toLowerCase();
+  if (estado) return estado;
+
+  const lifecycle =
+    publicationData.publicationLifecycle &&
+    typeof publicationData.publicationLifecycle === "object"
+      ? (publicationData.publicationLifecycle as Record<string, unknown>)
+      : null;
+
+  return lifecycle ? getString(lifecycle.state).toLowerCase() : "";
+}
+
+export function isPublicationExpiredData(
+  publicationData: Record<string, unknown>,
+  now: Date = new Date()
+): boolean {
+  if (!publicationData || typeof publicationData !== "object") return false;
+
+  const state = getPublicationState(publicationData);
+  if (state === PUBLICATION_LIFECYCLE_STATES.FINALIZED) return true;
+
+  if (isPublicationExpiredByVigenciaDate(publicationData.vigenteHasta, now)) {
+    return true;
+  }
+
+  const lifecycle =
+    publicationData.publicationLifecycle &&
+    typeof publicationData.publicationLifecycle === "object"
+      ? (publicationData.publicationLifecycle as Record<string, unknown>)
+      : null;
+
+  if (isPublicationExpiredByVigenciaDate(lifecycle?.expiresAt, now)) {
+    return true;
+  }
+
+  const publishedAt = toDateFromTimestampLike(publicationData.publicadaEn);
+  if (!publishedAt) return false;
+
+  const computedExpiration = computePublicationExpirationDate(publishedAt);
+  return computedExpiration.getTime() <= now.getTime();
 }
 
 function normalizeDiscountCode(value: unknown): string {
@@ -607,7 +845,7 @@ async function createMercadoPagoPreferenceForCheckout(params: {
 }
 
 async function ensureDraftOwnership(uid: string, draftSlug: string) {
-  const draftRef = db.collection("borradores").doc(draftSlug);
+  const draftRef = db.collection(BORRADORES_COLLECTION).doc(draftSlug);
   const draftSnap = await draftRef.get();
 
   if (!draftSnap.exists) {
@@ -654,8 +892,20 @@ async function checkSlugAvailability(
   uid: string,
   draftSlug: string
 ): Promise<SlugAvailabilityResult> {
-  const publishedSnap = await db.collection("publicadas").doc(slug).get();
+  const publishedSnap = await getPublicationRef(slug).get();
   if (publishedSnap.exists) {
+    const publishedData = (publishedSnap.data() || {}) as Record<string, unknown>;
+    if (isPublicationExpiredData(publishedData)) {
+      await finalizePublicationBySlug({
+        slug,
+        reason: FINALIZATION_REASON.EXPIRED_SLUG_AVAILABILITY,
+      });
+      return {
+        isAvailable: true,
+        reason: "ok",
+      };
+    }
+
     return {
       isAvailable: false,
       reason: "already-published",
@@ -716,7 +966,7 @@ async function reserveSlugForSession(params: {
 }): Promise<void> {
   const { slug, uid, draftSlug, sessionId, expiresAt } = params;
   const reservationRef = getReservationRef(slug);
-  const publicRef = db.collection("publicadas").doc(slug);
+  const publicRef = getPublicationRef(slug);
 
   await db.runTransaction(async (tx) => {
     const [publishedSnap, reservationSnap] = await Promise.all([
@@ -787,23 +1037,643 @@ async function markReservationStatus(params: {
   );
 }
 
-async function resolveExistingPublicSlug(draftSlug: string): Promise<string | null> {
-  const draftSnap = await db.collection("borradores").doc(draftSlug).get();
+function safeTimestampFromDate(dateValue: Date): admin.firestore.Timestamp {
+  return admin.firestore.Timestamp.fromDate(dateValue);
+}
+
+function computePublicationDates(params: {
+  publicationData: Record<string, unknown>;
+  publicationSnap: FirebaseFirestore.DocumentSnapshot;
+  now: Date;
+}) {
+  const { publicationData, publicationSnap, now } = params;
+  const lifecycle =
+    publicationData.publicationLifecycle &&
+    typeof publicationData.publicationLifecycle === "object"
+      ? (publicationData.publicationLifecycle as Record<string, unknown>)
+      : null;
+
+  const firstPublishedAt =
+    toDateFromTimestampLike(publicationData.publicadaEn) ||
+    toDateFromTimestampLike(lifecycle?.firstPublishedAt) ||
+    toDateFromTimestampLike(publicationSnap.createTime) ||
+    now;
+
+  const vigenteHasta =
+    toDateFromTimestampLike(publicationData.vigenteHasta) ||
+    toDateFromTimestampLike(lifecycle?.expiresAt) ||
+    computePublicationExpirationDate(firstPublishedAt);
+
+  const lastPublishedAt =
+    toDateFromTimestampLike(publicationData.ultimaPublicacionEn) ||
+    toDateFromTimestampLike(lifecycle?.lastPublishedAt) ||
+    toDateFromTimestampLike(publicationData.publicadaEn) ||
+    firstPublishedAt;
+
+  return {
+    firstPublishedAt,
+    vigenteHasta,
+    lastPublishedAt,
+  };
+}
+
+function buildHistoryPayload(params: {
+  slug: string;
+  publicationData: Record<string, unknown>;
+  draftSlug: string;
+  summary: PublicationSummary;
+  firstPublishedAt: Date;
+  vigenteHasta: Date;
+  lastPublishedAt: Date;
+  finalizedAt: Date;
+  reason: string;
+}): Record<string, unknown> {
+  const {
+    slug,
+    publicationData,
+    draftSlug,
+    summary,
+    firstPublishedAt,
+    vigenteHasta,
+    lastPublishedAt,
+    finalizedAt,
+    reason,
+  } = params;
+
+  return {
+    slug,
+    userId: getString(publicationData.userId) || null,
+    nombre: publicationData.nombre || slug,
+    tipo: publicationData.tipo || null,
+    portada: publicationData.portada || null,
+    plantillaId: publicationData.plantillaId || null,
+    borradorSlug: draftSlug,
+    slugOriginal: getString(publicationData.slugOriginal) || draftSlug,
+    estado: PUBLICATION_LIFECYCLE_STATES.FINALIZED,
+    publicadaEn: safeTimestampFromDate(firstPublishedAt),
+    vigenteHasta: safeTimestampFromDate(vigenteHasta),
+    ultimaPublicacionEn: safeTimestampFromDate(lastPublishedAt),
+    finalizadaEn: safeTimestampFromDate(finalizedAt),
+    motivoFinalizacion: reason,
+    urlPublica: null,
+    rsvp: publicationData.rsvp || null,
+    rsvpSummary: summary,
+    totalRsvpsHistorico: summary.totalResponses,
+    htmlPublicadoEliminado: true,
+    sourceCollection: PUBLICADAS_COLLECTION,
+    sourceSlug: slug,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+async function clearDraftActivePublicationState(params: {
+  draftSlug: string;
+  firstPublishedAt: Date;
+  vigenteHasta: Date;
+  lastPublishedAt: Date;
+  finalizedAt: Date;
+  reason: string;
+}): Promise<void> {
+  const {
+    draftSlug,
+    firstPublishedAt,
+    vigenteHasta,
+    lastPublishedAt,
+    finalizedAt,
+    reason,
+  } = params;
+
+  await db.collection(BORRADORES_COLLECTION).doc(draftSlug).set(
+    {
+      slugPublico: null,
+      publicationLifecycle: {
+        state: PUBLICATION_LIFECYCLE_STATES.FINALIZED,
+        activePublicSlug: null,
+        firstPublishedAt: safeTimestampFromDate(firstPublishedAt),
+        expiresAt: safeTimestampFromDate(vigenteHasta),
+        lastPublishedAt: safeTimestampFromDate(lastPublishedAt),
+        finalizedAt: safeTimestampFromDate(finalizedAt),
+      },
+      publicationFinalizedAt: safeTimestampFromDate(finalizedAt),
+      publicationFinalizationReason: reason,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function releaseSlugReservationAfterFinalization(
+  slug: string,
+  reason: string
+): Promise<void> {
+  await getReservationRef(slug).set(
+    {
+      status: "released",
+      updatedAt: serverTimestamp(),
+      releaseReason: reason,
+    },
+    { merge: true }
+  );
+}
+
+async function finalizePublicationSnapshot(params: {
+  slug: string;
+  publicationSnap: FirebaseFirestore.DocumentSnapshot;
+  reason: string;
+}): Promise<PublicationFinalizationResult> {
+  const { slug, publicationSnap, reason } = params;
+  if (!publicationSnap.exists) {
+    return {
+      slug,
+      historyId: null,
+      draftSlug: null,
+      finalized: false,
+      alreadyMissing: true,
+    };
+  }
+
+  const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
+  const publicationRef = publicationSnap.ref;
+  const now = new Date();
+  const dates = computePublicationDates({
+    publicationData,
+    publicationSnap,
+    now,
+  });
+  const draftSlug = inferDraftSlugFromPublicationData(slug, publicationData);
+  const historyId = getPublicationHistoryId({
+    slug,
+    firstPublishedAt: dates.firstPublishedAt,
+  });
+
+  const rsvpSnap = await publicationRef.collection("rsvps").get();
+  const summary = buildPublicationSummary(
+    rsvpSnap.docs.map((item) => (item.data() || {}) as Record<string, unknown>)
+  );
+
+  await getPublicationHistoryRef(historyId).set(
+    buildHistoryPayload({
+      slug,
+      publicationData,
+      draftSlug,
+      summary,
+      firstPublishedAt: dates.firstPublishedAt,
+      vigenteHasta: dates.vigenteHasta,
+      lastPublishedAt: dates.lastPublishedAt,
+      finalizedAt: now,
+      reason,
+    }),
+    { merge: true }
+  );
+
+  try {
+    await bucket.deleteFiles({ prefix: `publicadas/${slug}/` });
+  } catch (error) {
+    logger.warn("No se pudieron borrar archivos publicados durante finalizacion", {
+      slug,
+      reason,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+
+  try {
+    await db.recursiveDelete(publicationRef);
+  } catch (error) {
+    logger.warn("No se pudo eliminar la publicacion activa durante finalizacion", {
+      slug,
+      reason,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+
+  await releaseSlugReservationAfterFinalization(slug, reason);
+
+  if (draftSlug) {
+    await clearDraftActivePublicationState({
+      draftSlug,
+      firstPublishedAt: dates.firstPublishedAt,
+      vigenteHasta: dates.vigenteHasta,
+      lastPublishedAt: dates.lastPublishedAt,
+      finalizedAt: now,
+      reason,
+    });
+  }
+
+  logger.info("Publicacion finalizada", {
+    slug,
+    draftSlug,
+    historyId,
+    reason,
+    totalResponses: summary.totalResponses,
+  });
+
+  return {
+    slug,
+    historyId,
+    draftSlug,
+    finalized: true,
+    alreadyMissing: false,
+  };
+}
+
+export async function finalizePublicationBySlug(params: {
+  slug: string;
+  reason: string;
+}): Promise<PublicationFinalizationResult> {
+  const normalizedSlug = normalizePublicSlug(params.slug);
+  if (!normalizedSlug) {
+    throw new HttpsError("invalid-argument", "Slug de publicacion invalido");
+  }
+
+  const publicationSnap = await getPublicationRef(normalizedSlug).get();
+  return finalizePublicationSnapshot({
+    slug: normalizedSlug,
+    publicationSnap,
+    reason: getString(params.reason) || FINALIZATION_REASON.SCHEDULED_EXPIRATION,
+  });
+}
+
+export async function finalizeExpiredPublicationsHandler(params?: {
+  batchSize?: number;
+  reason?: string;
+}): Promise<{
+  scanned: number;
+  finalized: number;
+  missing: number;
+  failed: number;
+  reason: string;
+}> {
+  const batchSizeRaw = Number(params?.batchSize);
+  const batchSize = Number.isFinite(batchSizeRaw)
+    ? Math.max(1, Math.min(300, Math.round(batchSizeRaw)))
+    : 100;
+
+  const reason = getString(params?.reason) || FINALIZATION_REASON.SCHEDULED_EXPIRATION;
+  const now = new Date();
+  const nowTimestamp = admin.firestore.Timestamp.fromDate(now);
+  const legacyPublishedAtCutoff = addMonthsPreservingDateTimeUTC(
+    now,
+    -PUBLICATION_VIGENCY_MONTHS
+  );
+  const legacyPublishedAtCutoffTimestamp = admin.firestore.Timestamp.fromDate(
+    legacyPublishedAtCutoff
+  );
+
+  const [expiredByVigenciaSnap, expiredByLegacyPublishedAtSnap] = await Promise.all([
+    db
+      .collection(PUBLICADAS_COLLECTION)
+      .where("vigenteHasta", "<=", nowTimestamp)
+      .limit(batchSize)
+      .get(),
+    db
+      .collection(PUBLICADAS_COLLECTION)
+      .where("publicadaEn", "<=", legacyPublishedAtCutoffTimestamp)
+      .limit(batchSize)
+      .get(),
+  ]);
+
+  const candidateMap = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+  for (const docItem of expiredByVigenciaSnap.docs) {
+    candidateMap.set(docItem.id, docItem);
+  }
+  for (const docItem of expiredByLegacyPublishedAtSnap.docs) {
+    if (!candidateMap.has(docItem.id)) {
+      candidateMap.set(docItem.id, docItem);
+    }
+  }
+
+  const candidateDocs = Array.from(candidateMap.values()).slice(0, batchSize);
+
+  let finalized = 0;
+  let missing = 0;
+  let failed = 0;
+
+  for (const docItem of candidateDocs) {
+    try {
+      const publicationData = (docItem.data() || {}) as Record<string, unknown>;
+      if (!isPublicationExpiredData(publicationData, now)) {
+        continue;
+      }
+
+      const result = await finalizePublicationSnapshot({
+        slug: docItem.id,
+        publicationSnap: docItem,
+        reason,
+      });
+
+      if (result.finalized) {
+        finalized += 1;
+      } else if (result.alreadyMissing) {
+        missing += 1;
+      }
+    } catch (error) {
+      failed += 1;
+      logger.error("Error finalizando publicacion vencida", {
+        slug: docItem.id,
+        reason,
+        error: error instanceof Error ? error.message : String(error || ""),
+      });
+    }
+  }
+
+  return {
+    scanned: candidateDocs.length,
+    finalized,
+    missing,
+    failed,
+    reason,
+  };
+}
+
+type HardDeleteLegacyPublicationResult = {
+  slug: string;
+  deletedActivePublication: boolean;
+  deletedHistoryDocs: number;
+  cleanedDrafts: number;
+  removedReservation: boolean;
+  deletedStoragePrefix: boolean;
+};
+
+async function collectUserHistoryDocsForSlug(params: {
+  uid: string;
+  slug: string;
+}): Promise<FirebaseFirestore.QueryDocumentSnapshot[]> {
+  const { uid, slug } = params;
+  const historyIdPrefix = `${slug}__`;
+  const matchedDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  const seenPaths = new Set<string>();
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+
+  while (true) {
+    let historyQuery = db
+      .collection(PUBLICADAS_HISTORIAL_COLLECTION)
+      .where("userId", "==", uid)
+      .limit(HISTORY_SCAN_PAGE_SIZE);
+
+    if (cursor) {
+      historyQuery = historyQuery.startAfter(cursor);
+    }
+
+    const historySnap = await historyQuery.get();
+    if (historySnap.empty) break;
+
+    for (const historyDoc of historySnap.docs) {
+      const historyData = (historyDoc.data() || {}) as Record<string, unknown>;
+      const historySlug = getString(historyData.slug);
+      const sourceSlug = getString(historyData.sourceSlug);
+      const matches =
+        historyDoc.id.startsWith(historyIdPrefix) ||
+        historySlug === slug ||
+        sourceSlug === slug;
+
+      if (!matches) continue;
+      if (seenPaths.has(historyDoc.ref.path)) continue;
+
+      seenPaths.add(historyDoc.ref.path);
+      matchedDocs.push(historyDoc);
+    }
+
+    cursor = historySnap.docs[historySnap.docs.length - 1] || null;
+    if (historySnap.size < HISTORY_SCAN_PAGE_SIZE) break;
+  }
+
+  return matchedDocs;
+}
+
+async function deleteDocsInBatches(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[]
+): Promise<number> {
+  if (!docs.length) return 0;
+
+  let deleted = 0;
+  for (let offset = 0; offset < docs.length; offset += 400) {
+    const chunk = docs.slice(offset, offset + 400);
+    const batch = db.batch();
+    chunk.forEach((docItem) => {
+      batch.delete(docItem.ref);
+    });
+    await batch.commit();
+    deleted += chunk.length;
+  }
+
+  return deleted;
+}
+
+async function clearDraftPublicationLinksAsDraft(params: {
+  draftSlug: string;
+  uid: string;
+}): Promise<boolean> {
+  const draftSlug = getString(params.draftSlug);
+  const uid = getString(params.uid);
+  if (!draftSlug || !uid) return false;
+
+  const draftRef = db.collection(BORRADORES_COLLECTION).doc(draftSlug);
+  const draftSnap = await draftRef.get();
+  if (!draftSnap.exists) return false;
+
   const draftData = (draftSnap.data() || {}) as Record<string, unknown>;
-  const fromDraft = normalizePublicSlug(draftData.slugPublico);
-  if (fromDraft) return fromDraft;
+  const ownerUid = getString(draftData.userId);
+  if (!ownerUid || ownerUid !== uid) return false;
 
-  const sameSlugPublicSnap = await db.collection("publicadas").doc(draftSlug).get();
-  if (sameSlugPublicSnap.exists) return draftSlug;
+  await draftRef.set(
+    {
+      slugPublico: null,
+      publicationLifecycle: {
+        state: PUBLICATION_LIFECYCLE_STATES.DRAFT,
+        activePublicSlug: null,
+        firstPublishedAt: null,
+        expiresAt: null,
+        lastPublishedAt: null,
+        finalizedAt: null,
+      },
+      ultimaPublicacion: null,
+      ultimaOperacionPublicacion: null,
+      publicationFinalizedAt: null,
+      publicationFinalizationReason: null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
-  const querySnap = await db
-    .collection("publicadas")
-    .where("slugOriginal", "==", draftSlug)
-    .limit(1)
+  return true;
+}
+
+export async function hardDeleteLegacyPublicationHandler(
+  request: CallableRequest<{
+    slug: string;
+  }>
+): Promise<HardDeleteLegacyPublicationResult> {
+  const uid = requireAuth(request);
+  const slug = normalizePublicSlug(request.data?.slug);
+  if (!slug) {
+    throw new HttpsError("invalid-argument", "Slug invalido.");
+  }
+
+  const publicationRef = getPublicationRef(slug);
+  const publicationSnap = await publicationRef.get();
+  const publicationData = publicationSnap.exists
+    ? ((publicationSnap.data() || {}) as Record<string, unknown>)
+    : null;
+
+  const draftCandidates = new Set<string>();
+  let hasOwnership = false;
+
+  if (publicationData) {
+    const publicationOwnerUid = getString(publicationData.userId);
+    if (!publicationOwnerUid || publicationOwnerUid !== uid) {
+      throw new HttpsError("permission-denied", "No tienes permisos sobre esta publicacion.");
+    }
+
+    hasOwnership = true;
+    extractDraftSlugCandidatesFromPublicationData(publicationData).forEach((candidate) =>
+      draftCandidates.add(candidate)
+    );
+  }
+
+  const historyDocs = await collectUserHistoryDocsForSlug({ uid, slug });
+  if (historyDocs.length > 0) {
+    hasOwnership = true;
+    historyDocs.forEach((historyDoc) => {
+      const historyData = (historyDoc.data() || {}) as Record<string, unknown>;
+      extractDraftSlugCandidatesFromPublicationData(historyData).forEach((candidate) =>
+        draftCandidates.add(candidate)
+      );
+    });
+  }
+
+  const linkedDraftsSnap = await db
+    .collection(BORRADORES_COLLECTION)
+    .where("userId", "==", uid)
+    .where("slugPublico", "==", slug)
+    .limit(25)
     .get();
 
-  if (querySnap.empty) return null;
-  return normalizePublicSlug(querySnap.docs[0].id) || null;
+  if (!linkedDraftsSnap.empty) {
+    hasOwnership = true;
+    linkedDraftsSnap.docs.forEach((draftDoc) => {
+      draftCandidates.add(draftDoc.id);
+    });
+  }
+
+  if (!hasOwnership) {
+    throw new HttpsError("not-found", "No se encontro una publicacion legacy para eliminar.");
+  }
+
+  let deletedStoragePrefix = true;
+  try {
+    await bucket.deleteFiles({ prefix: `publicadas/${slug}/` });
+  } catch (error) {
+    deletedStoragePrefix = false;
+    logger.warn("No se pudieron borrar archivos publicados en hard-delete legacy", {
+      slug,
+      uid,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+
+  let deletedActivePublication = false;
+  if (publicationSnap.exists) {
+    await db.recursiveDelete(publicationRef);
+    deletedActivePublication = true;
+  }
+
+  const deletedHistoryDocs = await deleteDocsInBatches(historyDocs);
+
+  let cleanedDrafts = 0;
+  for (const draftSlugCandidate of draftCandidates) {
+    const cleaned = await clearDraftPublicationLinksAsDraft({
+      draftSlug: draftSlugCandidate,
+      uid,
+    });
+    if (cleaned) cleanedDrafts += 1;
+  }
+
+  const reservationRef = getReservationRef(slug);
+  const reservationSnap = await reservationRef.get();
+  let removedReservation = false;
+  if (reservationSnap.exists) {
+    await reservationRef.delete();
+    removedReservation = true;
+  }
+
+  logger.info("Hard-delete legacy publication completado", {
+    slug,
+    uid,
+    deletedActivePublication,
+    deletedHistoryDocs,
+    cleanedDrafts,
+    removedReservation,
+    deletedStoragePrefix,
+  });
+
+  return {
+    slug,
+    deletedActivePublication,
+    deletedHistoryDocs,
+    cleanedDrafts,
+    removedReservation,
+    deletedStoragePrefix,
+  };
+}
+
+async function resolveExistingPublicSlug(draftSlug: string): Promise<string | null> {
+  const draftSnap = await db.collection(BORRADORES_COLLECTION).doc(draftSlug).get();
+  const draftData = (draftSnap.data() || {}) as Record<string, unknown>;
+  const fromDraft = normalizePublicSlug(draftData.slugPublico);
+
+  const candidateSlugs = new Set<string>();
+  if (fromDraft) candidateSlugs.add(fromDraft);
+  if (draftSlug) candidateSlugs.add(draftSlug);
+
+  const slugsToInspect = Array.from(candidateSlugs);
+  for (const candidate of slugsToInspect) {
+    const candidateSnap = await getPublicationRef(candidate).get();
+    if (!candidateSnap.exists) continue;
+
+    const data = (candidateSnap.data() || {}) as Record<string, unknown>;
+    if (isPublicationExpiredData(data)) {
+      await finalizePublicationBySlug({
+        slug: candidate,
+        reason: FINALIZATION_REASON.EXPIRED_CHECKOUT_UPDATE,
+      });
+      continue;
+    }
+
+    return candidate;
+  }
+
+  const [byOriginalSnap, byDraftSlugSnap] = await Promise.all([
+    db
+      .collection(PUBLICADAS_COLLECTION)
+      .where("slugOriginal", "==", draftSlug)
+      .limit(5)
+      .get(),
+    db
+      .collection(PUBLICADAS_COLLECTION)
+      .where("borradorSlug", "==", draftSlug)
+      .limit(5)
+      .get(),
+  ]);
+
+  const queryCandidates = [...byOriginalSnap.docs, ...byDraftSlugSnap.docs];
+  for (const docItem of queryCandidates) {
+    const candidateSlug = normalizePublicSlug(docItem.id);
+    if (!candidateSlug) continue;
+
+    const data = (docItem.data() || {}) as Record<string, unknown>;
+    if (isPublicationExpiredData(data)) {
+      await finalizePublicationBySlug({
+        slug: candidateSlug,
+        reason: FINALIZATION_REASON.EXPIRED_CHECKOUT_UPDATE,
+      });
+      continue;
+    }
+
+    return candidateSlug;
+  }
+
+  return null;
 }
 
 async function resolveUrlsInObjects(objetos: unknown[]): Promise<unknown[]> {
@@ -881,15 +1751,74 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     throw new HttpsError("invalid-argument", "enlace publico invalido");
   }
 
-  const existingPublicSnap = await db.collection("publicadas").doc(normalizedPublicSlug).get();
+  let existingPublicSnap = await getPublicationRef(normalizedPublicSlug).get();
+  let existingData = existingPublicSnap.exists
+    ? ((existingPublicSnap.data() || {}) as Record<string, unknown>)
+    : null;
+
+  if (existingData && isPublicationExpiredData(existingData)) {
+    await finalizePublicationBySlug({
+      slug: normalizedPublicSlug,
+      reason: FINALIZATION_REASON.EXPIRED_BEFORE_UPDATE_PUBLISH,
+    });
+
+    existingPublicSnap = await getPublicationRef(normalizedPublicSlug).get();
+    existingData = existingPublicSnap.exists
+      ? ((existingPublicSnap.data() || {}) as Record<string, unknown>)
+      : null;
+
+    if (existingData && isPublicationExpiredData(existingData)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No se pudo limpiar la publicacion vencida. Intenta nuevamente."
+      );
+    }
+  }
+
   if (existingPublicSnap.exists) {
-    const existingData = (existingPublicSnap.data() || {}) as Record<string, unknown>;
-    const existingUid = getString(existingData.userId);
+    const existingUid = getString(existingData?.userId);
     const sameOwner = existingUid && existingUid === uid;
     if (!sameOwner) {
       throw createSlugConflictError("El enlace elegido ya pertenece a otro usuario.");
     }
   }
+
+  if (operation === "new" && existingPublicSnap.exists) {
+    throw createSlugConflictError("El enlace elegido ya esta publicado.");
+  }
+
+  if (operation === "update" && !existingPublicSnap.exists) {
+    throw new HttpsError(
+      "failed-precondition",
+      "La publicacion ya no esta activa. Publica nuevamente como nueva."
+    );
+  }
+
+  if (operation === "update" && existingData) {
+    const activeDraftSlug = inferDraftSlugFromPublicationData(
+      normalizedPublicSlug,
+      existingData
+    );
+
+    if (activeDraftSlug !== draftSlug) {
+      throw new HttpsError(
+        "failed-precondition",
+        "La publicacion activa pertenece a otro borrador."
+      );
+    }
+  }
+
+  const now = new Date();
+  const nowTimestamp = admin.firestore.Timestamp.fromDate(now);
+  const firstPublishedAt =
+    (existingData ? toDateFromTimestampLike(existingData.publicadaEn) : null) || now;
+  const firstPublishedAtTimestamp = safeTimestampFromDate(firstPublishedAt);
+  const existingVigenciaDate = existingData
+    ? toDateFromTimestampLike(existingData.vigenteHasta)
+    : null;
+  const vigenteHastaTimestamp = existingVigenciaDate
+    ? safeTimestampFromDate(existingVigenciaDate)
+    : computePublicationExpirationTimestamp(firstPublishedAt);
 
   const objetos = Array.isArray(draftData.objetos) ? draftData.objetos : [];
   const secciones = Array.isArray(draftData.secciones) ? draftData.secciones : [];
@@ -920,7 +1849,10 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     portada: draftData.thumbnailUrl || null,
     invitadosCount: draftData.invitadosCount || 0,
     rsvp,
-    publicadaEn: serverTimestamp(),
+    estado: PUBLICATION_LIFECYCLE_STATES.PUBLISHED,
+    publicadaEn: firstPublishedAtTimestamp,
+    vigenteHasta: vigenteHastaTimestamp,
+    ultimaPublicacionEn: nowTimestamp,
     borradorSlug: draftSlug,
     ultimaOperacion: operation,
     lastPaymentSessionId: paymentSessionId,
@@ -930,13 +1862,23 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     publicationData.slugOriginal = draftSlug;
   }
 
-  await db.collection("publicadas").doc(normalizedPublicSlug).set(publicationData, { merge: true });
+  await getPublicationRef(normalizedPublicSlug).set(publicationData, { merge: true });
 
-  await db.collection("borradores").doc(draftSlug).set(
+  await db.collection(BORRADORES_COLLECTION).doc(draftSlug).set(
     {
       slugPublico: normalizedPublicSlug,
-      ultimaPublicacion: serverTimestamp(),
+      publicationLifecycle: {
+        state: PUBLICATION_LIFECYCLE_STATES.PUBLISHED,
+        activePublicSlug: normalizedPublicSlug,
+        firstPublishedAt: firstPublishedAtTimestamp,
+        expiresAt: vigenteHastaTimestamp,
+        lastPublishedAt: nowTimestamp,
+        finalizedAt: null,
+      },
+      ultimaPublicacion: nowTimestamp,
       ultimaOperacionPublicacion: operation,
+      publicationFinalizedAt: null,
+      publicationFinalizationReason: null,
       lastPaymentSessionId: paymentSessionId,
     },
     { merge: true }
@@ -1541,7 +2483,7 @@ export async function createPublicationCheckoutSessionHandler(
     if (!existingSlug) {
       throw new HttpsError(
         "failed-precondition",
-        "No existe una publicacion previa para este borrador"
+        "La publicacion previa no esta activa o ya vencio. Debes crear una publicacion nueva."
       );
     }
     publicSlug = existingSlug;

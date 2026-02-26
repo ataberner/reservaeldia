@@ -96,13 +96,12 @@ async function refreshUrlsDeep(value, cache) {
 
 function isMobileRuntime() {
   if (typeof window === "undefined") return false;
-  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
-    return true;
-  }
-  const w = Number(window.innerWidth || 0);
-  const h = Number(window.innerHeight || 0);
-  const minSide = Math.min(w, h);
-  return minSide > 0 && minSide <= 1024;
+  const coarsePointer =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+  const ua = String(window.navigator?.userAgent || "");
+  const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  return coarsePointer || uaMobile;
 }
 
 /**
@@ -301,7 +300,10 @@ export default function useBorradorSync({
         // Thumbnail (mantengo tu logica con import dinamico)
         if (stageRef?.current && userId && slug) {
           // En mobile pesado, generar thumbnail al vuelo puede tumbar la pestaña.
-          if (isMobileRuntime()) return;
+          if (isMobileRuntime()) {
+            pushEditorBreadcrumb("thumbnail-skip-mobile-runtime", { slug });
+            return;
+          }
           const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
           await guardarThumbnailDesdeStage({ stageRef, uid: userId, slug });
         }

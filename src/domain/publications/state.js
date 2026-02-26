@@ -14,6 +14,10 @@ function normalizeStateText(value) {
 export function toMs(value) {
   if (!value) return 0;
   if (typeof value === "number") return value;
+  if (value instanceof Date) {
+    const parsed = value.getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
   if (typeof value === "string") {
     const parsed = new Date(value).getTime();
     return Number.isFinite(parsed) ? parsed : 0;

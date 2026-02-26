@@ -1,24 +1,17 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
+import { moveDraftToTrash } from "@/domain/drafts/service";
+import { isDraftTrashed } from "@/domain/drafts/state";
+import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
 
 const HOME_READY_THUMBNAIL_TARGET = 2;
 const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
 const DASHBOARD_CARD_GRID_CLASS =
   "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-6";
-
-const DRAFT_PREVIEW_KEYS = [
-  "thumbnailUrl",
-  "thumbnailurl",
-  "thumbnail_url",
-  "portada",
-  "previewUrl",
-  "previewurl",
-];
 
 function toMs(value) {
   if (!value) return 0;
@@ -48,21 +41,6 @@ function formatFecha(value) {
   }).format(date);
 }
 
-function toNonEmptyString(value) {
-  if (typeof value !== "string") return "";
-  return value.trim();
-}
-
-function isImageSrc(value) {
-  if (!value) return false;
-  return (
-    /^https?:\/\//i.test(value) ||
-    /^data:image\//i.test(value) ||
-    /^blob:/i.test(value) ||
-    value.startsWith("/")
-  );
-}
-
 function appendCacheBust(url, versionMs) {
   if (!url) return url;
   if (!Number.isFinite(versionMs) || versionMs <= 0) return url;
@@ -88,34 +66,23 @@ function appendCacheBust(url, versionMs) {
   return url;
 }
 
-function getBorradorPreviewCandidates(borrador) {
-  const candidates = [];
-
-  for (const key of DRAFT_PREVIEW_KEYS) {
-    const candidate = toNonEmptyString(borrador?.[key]);
-    if (isImageSrc(candidate) && !candidates.includes(candidate)) {
-      candidates.push(candidate);
-    }
-  }
-
-  if (!candidates.includes("/placeholder.jpg")) {
-    candidates.push("/placeholder.jpg");
-  }
-
-  return candidates;
-}
-
 function getLifecycleState(borrador) {
-  const explicitState = toNonEmptyString(borrador?.publicationLifecycle?.state).toLowerCase();
+  const explicitState =
+    typeof borrador?.publicationLifecycle?.state === "string"
+      ? borrador.publicationLifecycle.state.trim().toLowerCase()
+      : "";
   if (explicitState === "draft" || explicitState === "published" || explicitState === "finalized") {
     return explicitState;
   }
 
-  const hasPublicSlug = Boolean(toNonEmptyString(borrador?.slugPublico));
+  const hasPublicSlug =
+    typeof borrador?.slugPublico === "string" &&
+    borrador.slugPublico.trim().length > 0;
   return hasPublicSlug ? "published" : "draft";
 }
 
 function isVisibleDraft(borrador) {
+  if (isDraftTrashed(borrador)) return false;
   return getLifecycleState(borrador) === "draft";
 }
 
@@ -236,20 +203,18 @@ export default function BorradoresGrid({
     };
   }, [borradores, cargando, thumbnailsSettledBySlug]);
 
-  const borrarBorrador = async () => {
+  const moverBorradorAPapelera = async () => {
     const slug = draftPendingDelete?.slug;
     if (!slug || deletingSlug) return;
     setDeletingSlug(slug);
     try {
-      const functions = getFunctions();
-      const borrar = httpsCallable(functions, "borrarBorrador");
-      await borrar({ slug });
+      await moveDraftToTrash({ slug });
 
       setBorradores((prev) => prev.filter((b) => (b.slug || b.id) !== slug));
       setDraftPendingDelete(null);
     } catch (error) {
-      console.error("Error al borrar borrador:", error);
-      alert("No se pudo borrar el borrador.");
+      console.error("Error al mover borrador a papelera:", error);
+      alert("No se pudo mover el borrador a papelera.");
     } finally {
       setDeletingSlug(null);
     }
@@ -294,8 +259,8 @@ export default function BorradoresGrid({
           const nombre = borrador.nombre || slug;
           const href = `/dashboard?slug=${encodeURIComponent(slug)}`;
           const previewVersion = toMs(getDraftThumbnailVersionValue(borrador));
-          const previewCandidates = getBorradorPreviewCandidates(borrador).map((candidate) =>
-            appendCacheBust(candidate, previewVersion)
+          const previewCandidates = getDraftPreviewCandidates(borrador).map(
+            (candidate) => appendCacheBust(candidate, previewVersion)
           );
           const previewSrc = previewCandidates[0] || "/placeholder.jpg";
           const fecha = formatFecha(getDraftLastUpdatedValue(borrador));
@@ -360,8 +325,8 @@ export default function BorradoresGrid({
               </a>
 
               <DashboardCardTrashButton
-                title="Borrar borrador"
-                ariaLabel={`Borrar borrador ${nombre}`}
+                title="Mover borrador a papelera"
+                ariaLabel={`Mover borrador ${nombre} a papelera`}
                 isPending={deletingSlug === slug}
                 disabled={Boolean(deletingSlug && deletingSlug !== slug)}
                 onClick={(event) => {
@@ -380,11 +345,16 @@ export default function BorradoresGrid({
         itemTypeLabel="borrador"
         itemName={draftPendingDelete?.nombre || draftPendingDelete?.slug}
         isDeleting={Boolean(deletingSlug)}
+        dialogTitle="Mover borrador a papelera"
+        dialogDescription={`"${draftPendingDelete?.nombre || draftPendingDelete?.slug || "Este borrador"}" se movera a papelera.`}
+        warningText="Podras restaurarlo durante 30 dias antes del borrado definitivo."
+        confirmButtonText="Mover a papelera"
+        confirmingButtonText="Moviendo..."
         onCancel={() => {
           if (deletingSlug) return;
           setDraftPendingDelete(null);
         }}
-        onConfirm={borrarBorrador}
+        onConfirm={moverBorradorAPapelera}
       />
     </div>
   );

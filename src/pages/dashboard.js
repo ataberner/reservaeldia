@@ -22,6 +22,7 @@ import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner
 import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
 import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
 import { getPublicationStatus } from "@/domain/publications/state";
+import { isDraftTrashed } from "@/domain/drafts/state";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import {
   consumeInterruptedEditorSession,
@@ -260,7 +261,8 @@ async function resolveOwnedDraftSlugForEditor({ slug, uid }) {
     if (directDraftSnap.exists()) {
       const directDraftData = directDraftSnap.data() || {};
       const ownerUid = String(directDraftData?.userId || "").trim();
-      return ownerUid === uid ? normalizedSlug : null;
+      if (ownerUid !== uid) return null;
+      return isDraftTrashed(directDraftData) ? null : normalizedSlug;
     }
   } catch (error) {
     if (isPermissionDeniedFirestoreError(error)) {
@@ -289,7 +291,9 @@ async function resolveOwnedDraftSlugForEditor({ slug, uid }) {
         if (!candidateDraftSnap.exists()) continue;
         const candidateDraftData = candidateDraftSnap.data() || {};
         const candidateOwnerUid = String(candidateDraftData?.userId || "").trim();
-        if (candidateOwnerUid === uid) return candidateSlug;
+        if (candidateOwnerUid !== uid) continue;
+        if (isDraftTrashed(candidateDraftData)) continue;
+        return candidateSlug;
       } catch (candidateError) {
         if (!isPermissionDeniedFirestoreError(candidateError)) {
           return normalizedSlug;

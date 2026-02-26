@@ -36,6 +36,13 @@ import {
   isPubliclyAccessible,
   resolvePublicationPublicStateFromData,
 } from "./payments/publicationLifecycle";
+import {
+  DRAFT_STATES,
+  moveDraftToTrashHandler,
+  purgeTrashedDraftsHandler,
+  resolveDraftStateFromData,
+  restoreDraftFromTrashHandler,
+} from "./drafts/draftTrashLifecycle";
 
 import * as logger from "firebase-functions/logger";
 
@@ -803,6 +810,13 @@ export const verInvitacion = onRequest(
 
       const datos = snap.data();
       const contenido = datos?.contenido || {};
+      const draftState = resolveDraftStateFromData(
+        (datos || {}) as Record<string, unknown>
+      );
+      if (draftState === DRAFT_STATES.TRASH) {
+        res.status(404).send("Borrador en papelera");
+        return;
+      }
 
       const file = bucket.file(`borradores/${slug}/index.html`);
       const [htmlBuffer] = await file.download();
@@ -890,6 +904,9 @@ export const copiarPlantillaHTML = onCall(
     slug,
     plantillaId,
     contenido,
+    estadoBorrador: DRAFT_STATES.ACTIVE,
+    enPapeleraAt: null,
+    eliminacionDefinitivaAt: null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -924,6 +941,16 @@ export const borrarBorrador = onCall(async (request) => {
 
   return { success: true, archivosEliminados: files.length };
 });
+
+export const moveDraftToTrash = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => moveDraftToTrashHandler(request)
+);
+
+export const restoreDraftFromTrash = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => restoreDraftFromTrashHandler(request)
+);
 
 
 
@@ -1025,6 +1052,21 @@ export const purgeTrashedPublications = onSchedule(
       batchSize: 250,
     });
     logger.info("Scheduler purgeTrashedPublications ejecutado", summary);
+  }
+);
+
+export const purgeTrashedDrafts = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "every 24 hours",
+    timeZone: "Etc/UTC",
+    memory: "256MiB",
+  },
+  async () => {
+    const summary = await purgeTrashedDraftsHandler({
+      batchSize: 250,
+    });
+    logger.info("Scheduler purgeTrashedDrafts ejecutado", summary);
   }
 );
 
@@ -1237,6 +1279,9 @@ export const copiarPlantilla = onCall(
         typeof datosPlantilla.nombre === "string" && datosPlantilla.nombre.trim()
           ? datosPlantilla.nombre
           : "Plantilla sin nombre",
+      estadoBorrador: DRAFT_STATES.ACTIVE,
+      enPapeleraAt: null,
+      eliminacionDefinitivaAt: null,
       ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
       creado: admin.firestore.FieldValue.serverTimestamp(),
     });

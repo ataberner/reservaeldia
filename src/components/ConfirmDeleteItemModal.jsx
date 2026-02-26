@@ -12,6 +12,11 @@ export default function ConfirmDeleteItemModal({
   itemTypeLabel = "elemento",
   itemName = "",
   isDeleting = false,
+  dialogTitle,
+  dialogDescription,
+  warningText,
+  confirmButtonText,
+  confirmingButtonText,
   onCancel,
   onConfirm,
 }) {
@@ -21,6 +26,30 @@ export default function ConfirmDeleteItemModal({
 
   const safeItemType = useMemo(() => toNonEmptyString(itemTypeLabel, "elemento"), [itemTypeLabel]);
   const safeItemName = useMemo(() => toNonEmptyString(itemName, "sin nombre"), [itemName]);
+  const resolvedTitle = useMemo(
+    () => toNonEmptyString(dialogTitle, `Eliminar ${safeItemType}`),
+    [dialogTitle, safeItemType]
+  );
+  const resolvedDescription = useMemo(
+    () =>
+      toNonEmptyString(
+        dialogDescription,
+        `Se eliminara "${safeItemName}".`
+      ),
+    [dialogDescription, safeItemName]
+  );
+  const resolvedWarningText = useMemo(
+    () => toNonEmptyString(warningText, "Esta accion no se puede deshacer."),
+    [warningText]
+  );
+  const resolvedConfirmButtonText = useMemo(
+    () => toNonEmptyString(confirmButtonText, `Eliminar ${safeItemType}`),
+    [confirmButtonText, safeItemType]
+  );
+  const resolvedConfirmingButtonText = useMemo(
+    () => toNonEmptyString(confirmingButtonText, "Eliminando..."),
+    [confirmingButtonText]
+  );
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -109,10 +138,10 @@ export default function ConfirmDeleteItemModal({
             </div>
             <div>
               <h2 id={titleId} className="text-sm font-semibold text-slate-900">
-                Eliminar {safeItemType}
+                {resolvedTitle}
               </h2>
               <p id={descriptionId} className="mt-0.5 text-xs text-slate-600">
-                Se eliminara <span className="font-medium text-slate-800">"{safeItemName}"</span>.
+                {resolvedDescription}
               </p>
             </div>
           </div>
@@ -120,7 +149,7 @@ export default function ConfirmDeleteItemModal({
 
         <div className="relative px-4 py-3">
           <div className="rounded-xl border border-[#f2d3df] bg-gradient-to-r from-[#fff8fb] via-[#fff5fa] to-[#fff1f7] px-3 py-2.5 text-xs text-[#7f3654]">
-            Esta accion no se puede deshacer.
+            {resolvedWarningText}
           </div>
         </div>
 
@@ -142,12 +171,12 @@ export default function ConfirmDeleteItemModal({
             {isDeleting ? (
               <>
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
-                Eliminando...
+                {resolvedConfirmingButtonText}
               </>
             ) : (
               <>
                 <Trash2 className="h-4 w-4" />
-                Eliminar {safeItemType}
+                {resolvedConfirmButtonText}
               </>
             )}
           </button>

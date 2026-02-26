@@ -19,6 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import {
   adaptRsvpResponse,
   buildColumns,
@@ -126,6 +127,7 @@ export default function PublicadasGrid({ usuario }) {
   const [actionError, setActionError] = useState("");
   const [deletingPublicSlug, setDeletingPublicSlug] = useState("");
   const [pendingStateActionKey, setPendingStateActionKey] = useState("");
+  const [trashPendingPublication, setTrashPendingPublication] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
   const [publicacionIdSeleccionada, setPublicacionIdSeleccionada] = useState(null);
@@ -389,14 +391,7 @@ export default function PublicadasGrid({ usuario }) {
   const runStateTransition = async (fila, action) => {
     const safeSlug =
       typeof fila?.publicSlug === "string" ? fila.publicSlug.trim() : "";
-    if (!safeSlug || pendingStateActionKey) return;
-
-    if (action === "move_to_trash") {
-      const confirmed = window.confirm(
-        "La invitacion se movera a la papelera y dejara de aparecer en publicadas."
-      );
-      if (!confirmed) return;
-    }
+    if (!safeSlug || pendingStateActionKey) return false;
 
     const actionKey = `${safeSlug}:${action}`;
     setPendingStateActionKey(actionKey);
@@ -409,6 +404,7 @@ export default function PublicadasGrid({ usuario }) {
         action,
       });
       setRefreshTick((prev) => prev + 1);
+      return true;
     } catch (transitionError) {
       const message =
         transitionError?.message ||
@@ -418,9 +414,16 @@ export default function PublicadasGrid({ usuario }) {
           ? message
           : "No se pudo actualizar el estado de la invitacion."
       );
+      return false;
     } finally {
       setPendingStateActionKey("");
     }
+  };
+
+  const confirmMoveToTrash = async () => {
+    if (!trashPendingPublication?.publicSlug) return;
+    const moved = await runStateTransition(trashPendingPublication, "move_to_trash");
+    if (moved) setTrashPendingPublication(null);
   };
 
   const adaptedResponses = useMemo(
@@ -685,7 +688,10 @@ export default function PublicadasGrid({ usuario }) {
                               className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                runStateTransition(fila, "move_to_trash");
+                                setTrashPendingPublication({
+                                  publicSlug: fila.publicSlug,
+                                  nombre: fila.nombre || fila.publicSlug,
+                                });
                               }}
                               disabled={isPendingStateAction}
                               title="Mover a papelera"
@@ -905,6 +911,31 @@ export default function PublicadasGrid({ usuario }) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDeleteItemModal
+        isOpen={Boolean(trashPendingPublication)}
+        itemTypeLabel="invitacion"
+        itemName={trashPendingPublication?.nombre || trashPendingPublication?.publicSlug}
+        isDeleting={
+          Boolean(trashPendingPublication?.publicSlug) &&
+          pendingStateActionKey === `${trashPendingPublication?.publicSlug}:move_to_trash`
+        }
+        dialogTitle="Mover invitacion a papelera"
+        dialogDescription={`"${trashPendingPublication?.nombre || trashPendingPublication?.publicSlug || "Esta invitacion"}" se movera a papelera.`}
+        warningText="Dejara de aparecer en publicadas. Podras restaurarla luego como pausada."
+        confirmButtonText="Mover a papelera"
+        confirmingButtonText="Moviendo..."
+        onCancel={() => {
+          if (
+            trashPendingPublication?.publicSlug &&
+            pendingStateActionKey === `${trashPendingPublication.publicSlug}:move_to_trash`
+          ) {
+            return;
+          }
+          setTrashPendingPublication(null);
+        }}
+        onConfirm={confirmMoveToTrash}
+      />
     </div>
   );
 }

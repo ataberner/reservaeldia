@@ -4,6 +4,7 @@ import {
   Image as ImageIcon,
   Pencil,
 } from "lucide-react";
+import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import { db } from "@/firebase";
 import DashboardCardPauseButton from "@/components/DashboardCardPauseButton";
 import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
@@ -139,6 +140,7 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [pendingActionKey, setPendingActionKey] = useState("");
+  const [trashPendingItem, setTrashPendingItem] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
@@ -224,13 +226,7 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
   const cards = useMemo(() => items, [items]);
 
   const runTransition = async (item, action) => {
-    if (!item?.publicSlug || pendingActionKey) return;
-    if (action === "move_to_trash") {
-      const confirmed = window.confirm(
-        "La invitacion se movera a la papelera y saldra de publicadas. Podras restaurarla luego como pausada."
-      );
-      if (!confirmed) return;
-    }
+    if (!item?.publicSlug || pendingActionKey) return false;
 
     const actionKey = `${item.publicSlug}:${action}`;
     setPendingActionKey(actionKey);
@@ -242,13 +238,21 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
         action,
       });
       setRefreshTick((prev) => prev + 1);
+      return true;
     } catch (transitionError) {
       const message =
         transitionError?.message || "No se pudo actualizar el estado de la invitacion.";
       setActionError(typeof message === "string" ? message : "No se pudo actualizar el estado de la invitacion.");
+      return false;
     } finally {
       setPendingActionKey("");
     }
+  };
+
+  const confirmMoveToTrash = async () => {
+    if (!trashPendingItem?.publicSlug) return;
+    const moved = await runTransition(trashPendingItem, "move_to_trash");
+    if (moved) setTrashPendingItem(null);
   };
 
   return (
@@ -301,8 +305,6 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
               const statusDateLabel = item.isFinalized ? "Finalizada" : "Vigente hasta";
               const statusDateValue = item.isFinalized ? item.finalizadaEn : item.expiresAt;
 
-              const pauseKey = `${item.publicSlug}:pause`;
-              const resumeKey = `${item.publicSlug}:resume`;
               const trashKey = `${item.publicSlug}:move_to_trash`;
               const lifecycleAction = item.isPaused ? "resume" : item.isActive ? "pause" : "";
               const lifecycleActionKey = lifecycleAction
@@ -361,7 +363,10 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
                           placement="inline"
                           onClick={(event) => {
                             event.stopPropagation();
-                            runTransition(item, "move_to_trash");
+                            setTrashPendingItem({
+                              publicSlug: item.publicSlug,
+                              nombre: item.nombre || item.publicSlug,
+                            });
                           }}
                         />
                       ) : null}
@@ -416,6 +421,31 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteItemModal
+        isOpen={Boolean(trashPendingItem)}
+        itemTypeLabel="invitacion"
+        itemName={trashPendingItem?.nombre || trashPendingItem?.publicSlug}
+        isDeleting={
+          Boolean(trashPendingItem?.publicSlug) &&
+          pendingActionKey === `${trashPendingItem?.publicSlug}:move_to_trash`
+        }
+        dialogTitle="Mover invitacion a papelera"
+        dialogDescription={`"${trashPendingItem?.nombre || trashPendingItem?.publicSlug || "Esta invitacion"}" se movera a papelera.`}
+        warningText="Dejara de aparecer en publicadas. Podras restaurarla luego como pausada."
+        confirmButtonText="Mover a papelera"
+        confirmingButtonText="Moviendo..."
+        onCancel={() => {
+          if (
+            trashPendingItem?.publicSlug &&
+            pendingActionKey === `${trashPendingItem.publicSlug}:move_to_trash`
+          ) {
+            return;
+          }
+          setTrashPendingItem(null);
+        }}
+        onConfirm={confirmMoveToTrash}
+      />
     </section>
   );
 }

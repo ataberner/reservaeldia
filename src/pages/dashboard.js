@@ -8,6 +8,7 @@ import TipoSelector from '../components/TipoSelector';
 import PlantillaGrid from '../components/PlantillaGrid';
 import BorradoresGrid from '@/components/BorradoresGrid';
 import DashboardPublicadasSection from "@/components/DashboardPublicadasSection";
+import DashboardTrashSection from "@/components/DashboardTrashSection";
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
 import PublicationCheckoutModal from "@/components/payments/PublicationCheckoutModal";
 import PublicadasGrid from "@/components/PublicadasGrid";
@@ -20,6 +21,7 @@ import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
 import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
 import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
+import { getPublicationStatus } from "@/domain/publications/state";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import {
   consumeInterruptedEditorSession,
@@ -224,16 +226,10 @@ function toDateFromFirestoreValue(value) {
 
 function isPublicacionActiva(data) {
   if (!data || typeof data !== "object") return false;
-
-  const estado = String(data.estado || "").trim().toLowerCase();
-  if (estado === "finalizada") return false;
-
-  const vigenteHasta = toDateFromFirestoreValue(data.vigenteHasta);
-  if (vigenteHasta && vigenteHasta.getTime() <= Date.now()) {
-    return false;
-  }
-
-  return true;
+  const status = getPublicationStatus(data, Date.now());
+  if (status.isFinalized) return false;
+  if (status.isTrashed) return false;
+  return status.isActive || status.isPaused;
 }
 
 function isPermissionDeniedFirestoreError(error) {
@@ -1858,7 +1854,9 @@ export default function Dashboard() {
       usuario={usuario}
       vista={vista}
       onCambiarVista={setVista}
-      ocultarSidebar={vista === "publicadas" || vista === "gestion"}
+      ocultarSidebar={
+        vista === "publicadas" || vista === "papelera" || vista === "gestion"
+      }
       canManageSite={canManageSite}
       isSuperAdmin={isSuperAdmin}
       loadingAdminAccess={loadingAdminAccess}
@@ -2009,6 +2007,12 @@ export default function Dashboard() {
       {!slugInvitacion && vista === "publicadas" && (
         <div className="w-full px-4 pb-8">
           <PublicadasGrid usuario={usuario} />
+        </div>
+      )}
+
+      {!slugInvitacion && vista === "papelera" && (
+        <div className="w-full px-4 pb-8">
+          <DashboardTrashSection usuario={usuario} />
         </div>
       )}
 

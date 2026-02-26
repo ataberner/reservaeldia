@@ -25,11 +25,17 @@ import {
   listPublicationDiscountCodesHandler,
   listPublicationDiscountCodeUsageHandler,
   processMercadoPagoWebhookRequest,
+  purgeTrashedPublicationsHandler,
   publishWithApprovedPaymentSession,
   retryPaidPublicationWithNewSlugHandler,
+  transitionPublishedInvitationStateHandler,
   upsertPublicationDiscountCodeHandler,
 } from "./payments/publicationPayments";
 import { normalizePublicSlug } from "./utils/publicSlug";
+import {
+  isPubliclyAccessible,
+  resolvePublicationPublicStateFromData,
+} from "./payments/publicationLifecycle";
 
 import * as logger from "firebase-functions/logger";
 
@@ -715,16 +721,55 @@ const app = express();
 
 
 app.get("/i/:slug", async (req: Request, res: Response) => {
-  const slug = req.params.slug;
+  const slug = normalizePublicSlug(req.params.slug);
   if (!slug) return res.status(400).send("Falta el slug");
 
-  const file = bucket.file(`publicadas/${slug}/index.html`);
-  const [exists] = await file.exists();
+  try {
+    const publicationRef = db.collection("publicadas").doc(slug);
+    const publicationSnap = await publicationRef.get();
+    if (!publicationSnap.exists) {
+      return res.status(404).send("Invitacion publicada no encontrada");
+    }
 
-  if (!exists) return res.status(404).send("Invitación publicada no encontrada");
+    const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
+    const publicState = resolvePublicationPublicStateFromData(publicationData);
+    if (!publicState || !isPubliclyAccessible(publicState)) {
+      return res.status(404).send("Invitacion no disponible");
+    }
 
-  const [contenido] = await file.download();
-  res.set("Content-Type", "text/html").send(contenido.toString());
+    if (isPublicationExpiredData(publicationData)) {
+      try {
+        await finalizePublicationBySlug({
+          slug,
+          reason: "expired-public-slug-request",
+        });
+      } catch (finalizeError) {
+        logger.warn("No se pudo finalizar una publicacion vencida en acceso por slug", {
+          slug,
+          error:
+            finalizeError instanceof Error
+              ? finalizeError.message
+              : String(finalizeError || ""),
+        });
+      }
+      return res.status(404).send("Invitacion no disponible");
+    }
+
+    const file = bucket.file(`publicadas/${slug}/index.html`);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return res.status(404).send("Invitacion publicada no encontrada");
+    }
+
+    const [contenido] = await file.download();
+    return res.set("Content-Type", "text/html").send(contenido.toString());
+  } catch (error) {
+    logger.error("Error resolviendo invitacion publica por slug", {
+      slug,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+    return res.status(500).send("No se pudo cargar la invitacion");
+  }
 });
 
 export const verInvitacionPublicada = onRequest(
@@ -914,6 +959,11 @@ export const hardDeleteLegacyPublication = onCall(
   async (request) => hardDeleteLegacyPublicationHandler(request)
 );
 
+export const transitionPublishedInvitationState = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => transitionPublishedInvitationStateHandler(request)
+);
+
 export const upsertPublicationDiscountCode = onCall(
   {
     region: "us-central1",
@@ -963,6 +1013,21 @@ export const finalizeExpiredPublications = onSchedule(
   }
 );
 
+export const purgeTrashedPublications = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "every 24 hours",
+    timeZone: "Etc/UTC",
+    memory: "256MiB",
+  },
+  async () => {
+    const summary = await purgeTrashedPublicationsHandler({
+      batchSize: 250,
+    });
+    logger.info("Scheduler purgeTrashedPublications ejecutado", summary);
+  }
+);
+
 export const publicRsvpSubmit = onRequest(
   {
     region: "us-central1",
@@ -995,6 +1060,15 @@ export const publicRsvpSubmit = onRequest(
       }
 
       const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
+      const publicState = resolvePublicationPublicStateFromData(publicationData);
+      if (!publicState || !isPubliclyAccessible(publicState)) {
+        res.status(404).json({
+          ok: false,
+          message: "La invitacion no esta disponible.",
+        });
+        return;
+      }
+
       if (isPublicationExpiredData(publicationData)) {
         try {
           await finalizePublicationBySlug({
@@ -1826,6 +1900,7 @@ export const setAdminClaim = onCall(
     };
   }
 );
+
 
 
 

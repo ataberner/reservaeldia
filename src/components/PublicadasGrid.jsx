@@ -9,7 +9,16 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions as cloudFunctions } from "@/firebase";
-import { Copy, ExternalLink, Image as ImageIcon, Pencil, Trash2, X } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  Image as ImageIcon,
+  Pause,
+  Pencil,
+  Play,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   adaptRsvpResponse,
   buildColumns,
@@ -18,32 +27,17 @@ import {
   formatAnswerValue,
   normalizeRsvpSnapshot,
 } from "@/domain/rsvp/publicadas";
+import {
+  getPublicationStatus,
+  resolvePublicationDates,
+  toDate,
+  toMs,
+} from "@/domain/publications/state";
+import { transitionPublishedInvitationState } from "@/domain/publications/service";
 
 function isPermissionDeniedError(error) {
   const code = String(error?.code || "").toLowerCase();
   return code === "permission-denied" || code.includes("permission-denied");
-}
-
-function toMs(value) {
-  if (!value) return 0;
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const parsed = new Date(value).getTime();
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  if (typeof value === "object" && typeof value.toDate === "function") {
-    const parsed = value.toDate();
-    return parsed instanceof Date ? parsed.getTime() : 0;
-  }
-  if (typeof value === "object" && typeof value.seconds === "number") {
-    return value.seconds * 1000;
-  }
-  return 0;
-}
-
-function toDate(value) {
-  const ms = toMs(value);
-  return ms > 0 ? new Date(ms) : null;
 }
 
 function normalizeHistoricSummary(rawSummary) {
@@ -129,7 +123,10 @@ export default function PublicadasGrid({ usuario }) {
   const [items, setItems] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [deletingPublicSlug, setDeletingPublicSlug] = useState("");
+  const [pendingStateActionKey, setPendingStateActionKey] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const [publicacionIdSeleccionada, setPublicacionIdSeleccionada] = useState(null);
   const [rsvps, setRsvps] = useState([]);
@@ -147,6 +144,7 @@ export default function PublicadasGrid({ usuario }) {
 
       setCargando(true);
       setError("");
+      setActionError("");
 
       try {
         const publicacionesQuery = query(
@@ -222,21 +220,25 @@ export default function PublicadasGrid({ usuario }) {
     };
 
     fetchPublicadas();
-  }, [usuario?.uid]);
+  }, [usuario?.uid, refreshTick]);
 
   const filas = useMemo(() => {
     const ahora = Date.now();
 
     const mapped = items.map((item) => {
       const isHistory = item.source === "history";
-      const publicadaEn = toDate(item.publicadaEn);
-      const vigenteHasta = toDate(item.vigenteHasta);
+      const dates = resolvePublicationDates(item);
+      const publicadaEn = dates.publishedAt;
+      const vigenteHasta = dates.expiresAt;
       const finalizadaEn = toDate(item.finalizadaEn || item.finalizedAt);
-      const isExpired = !isHistory && vigenteHasta ? vigenteHasta.getTime() <= ahora : false;
-      const isFinalized =
-        isHistory ||
-        String(item.estado || "").toLowerCase() === "finalizada" ||
-        isExpired;
+      const status = getPublicationStatus(
+        {
+          ...item,
+          source: isHistory ? "history" : "active",
+        },
+        ahora
+      );
+      const isFinalized = status.isFinalized;
 
       const summary = normalizeHistoricSummary(item.rsvpSummary);
 
@@ -252,6 +254,8 @@ export default function PublicadasGrid({ usuario }) {
 
       const fechaEvento = isFinalized ? finalizadaEn || vigenteHasta || publicadaEn : publicadaEn;
       const sortMs =
+        toMs(item.enPapeleraAt) ||
+        toMs(item.pausadaAt) ||
         toMs(item.ultimaPublicacionEn) ||
         toMs(finalizadaEn) ||
         toMs(vigenteHasta) ||
@@ -266,11 +270,15 @@ export default function PublicadasGrid({ usuario }) {
           (item.source === "active" ? String(item.id || "").trim() : ""),
         nombre: item.nombre || item.slug || "(sin nombre)",
         portada: item.portada || null,
-        url: isFinalized ? "" : item.urlPublica || "",
+        url: isFinalized || !status.isActive ? "" : item.urlPublica || "",
         publicadaEn,
         fechaEvento,
-        estado: isFinalized ? "Finalizada" : "Activa",
+        estado: status.label,
+        stateKey: status.state,
         isFinalized,
+        isActive: status.isActive,
+        isPaused: status.isPaused,
+        isTrashed: status.isTrashed,
         confirmados,
         borradorSlug: resolveEditableDraftSlug(item),
         rsvp: item.rsvp || null,
@@ -279,7 +287,9 @@ export default function PublicadasGrid({ usuario }) {
       };
     });
 
-    return mapped.sort((a, b) => b.sortMs - a.sortMs);
+    return mapped
+      .filter((item) => !item.isTrashed)
+      .sort((a, b) => b.sortMs - a.sortMs);
   }, [items]);
 
   const publicacionSeleccionada = useMemo(
@@ -366,9 +376,50 @@ export default function PublicadasGrid({ usuario }) {
     } catch (deleteError) {
       const message =
         deleteError?.message || "No se pudo eliminar la publicacion legacy.";
-      setError(typeof message === "string" ? message : "No se pudo eliminar la publicacion legacy.");
+      setActionError(
+        typeof message === "string"
+          ? message
+          : "No se pudo eliminar la publicacion legacy."
+      );
     } finally {
       setDeletingPublicSlug("");
+    }
+  };
+
+  const runStateTransition = async (fila, action) => {
+    const safeSlug =
+      typeof fila?.publicSlug === "string" ? fila.publicSlug.trim() : "";
+    if (!safeSlug || pendingStateActionKey) return;
+
+    if (action === "move_to_trash") {
+      const confirmed = window.confirm(
+        "La invitacion se movera a la papelera y dejara de aparecer en publicadas."
+      );
+      if (!confirmed) return;
+    }
+
+    const actionKey = `${safeSlug}:${action}`;
+    setPendingStateActionKey(actionKey);
+    setError("");
+    setActionError("");
+
+    try {
+      await transitionPublishedInvitationState({
+        slug: safeSlug,
+        action,
+      });
+      setRefreshTick((prev) => prev + 1);
+    } catch (transitionError) {
+      const message =
+        transitionError?.message ||
+        "No se pudo actualizar el estado de la invitacion.";
+      setActionError(
+        typeof message === "string"
+          ? message
+          : "No se pudo actualizar el estado de la invitacion."
+      );
+    } finally {
+      setPendingStateActionKey("");
     }
   };
 
@@ -471,6 +522,11 @@ export default function PublicadasGrid({ usuario }) {
     <div className="mt-8 space-y-8">
       <div>
         <h2 className="mb-4 text-xl font-semibold">Tus invitaciones publicadas</h2>
+        {actionError ? (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        ) : null}
         <div className="overflow-x-auto rounded-xl border">
           <div className="hidden bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600 md:grid md:grid-cols-[72px_minmax(180px,1.7fr)_minmax(110px,0.8fr)_minmax(150px,1fr)_minmax(90px,0.5fr)_minmax(110px,0.8fr)]">
             <div className="px-4 py-3">Preview</div>
@@ -484,12 +540,23 @@ export default function PublicadasGrid({ usuario }) {
           <ul className="divide-y">
             {filas.map((fila) => {
               const selected = fila.id === publicacionIdSeleccionada;
+              const pauseActionKey = `${fila.publicSlug}:pause`;
+              const resumeActionKey = `${fila.publicSlug}:resume`;
+              const trashActionKey = `${fila.publicSlug}:move_to_trash`;
+              const isPendingStateAction =
+                pendingStateActionKey === pauseActionKey ||
+                pendingStateActionKey === resumeActionKey ||
+                pendingStateActionKey === trashActionKey;
               return (
                 <li
                   key={`${fila.source}-${fila.id}`}
                   onClick={() => setPublicacionIdSeleccionada(fila.id)}
                   className={`grid cursor-pointer grid-cols-1 gap-2 px-3 py-3 transition-colors md:grid-cols-[72px_minmax(180px,1.7fr)_minmax(110px,0.8fr)_minmax(150px,1fr)_minmax(90px,0.5fr)_minmax(110px,0.8fr)] sm:px-4 ${
-                    selected ? "bg-violet-50" : "hover:bg-gray-50"
+                    selected
+                      ? "bg-violet-50"
+                      : fila.isPaused
+                        ? "bg-amber-50/45 hover:bg-amber-50/65"
+                        : "hover:bg-gray-50"
                   }`}
                   title={
                     fila.isFinalized
@@ -510,7 +577,9 @@ export default function PublicadasGrid({ usuario }) {
                             <img
                               src={fila.portada}
                               alt={`Portada de ${fila.nombre}`}
-                              className="h-full w-full object-cover object-top"
+                              className={`h-full w-full object-cover object-top ${
+                                fila.isPaused ? "opacity-80 saturate-[0.9]" : ""
+                              }`}
                               loading="lazy"
                             />
                           ) : (
@@ -523,7 +592,9 @@ export default function PublicadasGrid({ usuario }) {
                         <img
                           src={fila.portada}
                           alt={`Portada de ${fila.nombre}`}
-                          className="h-full w-full object-cover object-top opacity-80"
+                          className={`h-full w-full object-cover object-top ${
+                            fila.isPaused ? "opacity-80 saturate-[0.9]" : "opacity-80"
+                          }`}
                           loading="lazy"
                         />
                       ) : (
@@ -575,15 +646,66 @@ export default function PublicadasGrid({ usuario }) {
                     {fila.confirmados}
                   </div>
 
-                  <div className="flex md:justify-end md:px-4">
+                  <div className="flex flex-wrap gap-2 md:justify-end md:px-4">
+                    {fila.source === "active" && !fila.isFinalized ? (
+                      <>
+                        {fila.isActive ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              runStateTransition(fila, "pause");
+                            }}
+                            disabled={isPendingStateAction}
+                            title="Pausar invitacion"
+                          >
+                            <Pause className="h-3.5 w-3.5" />
+                            Pausar
+                          </button>
+                        ) : null}
+
+                        {fila.isPaused ? (
+                          <>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                runStateTransition(fila, "resume");
+                              }}
+                              disabled={isPendingStateAction}
+                              title="Reanudar invitacion"
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                              Reanudar
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                runStateTransition(fila, "move_to_trash");
+                              }}
+                              disabled={isPendingStateAction}
+                              title="Mover a papelera"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Papelera
+                            </button>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+
                     {fila.borradorSlug ? (
                       <a
                         href={`/dashboard/?slug=${encodeURIComponent(fila.borradorSlug)}`}
                         className="inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-gray-100"
-                        title="Editar borrador"
+                        title="Editar invitacion"
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <Pencil className="h-3.5 w-3.5" /> Editar
+                        <Pencil className="h-3.5 w-3.5" /> Editar invitacion
                       </a>
                     ) : fila.publicSlug ? (
                       <button
@@ -793,6 +915,7 @@ function EstadoPill({ valor }) {
     Activa: "border border-green-200 bg-green-50 text-green-700",
     Finalizada: "border border-slate-300 bg-slate-100 text-slate-700",
     Pausada: "border border-amber-200 bg-amber-50 text-amber-700",
+    Papelera: "border border-rose-200 bg-rose-50 text-rose-700",
     Expirada: "border border-gray-200 bg-gray-100 text-gray-600",
     "Sin URL": "border border-red-200 bg-red-50 text-red-700",
   };

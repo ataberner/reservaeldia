@@ -822,44 +822,7 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
         });
       }
 
-      function submitViaFirestoreFallback() {
-        return Promise.all([
-          import("https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js"),
-          import("https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js"),
-        ])
-          .then(function(modules){
-            var appMod = modules[0];
-            var fsMod = modules[1];
-            var initializeApp = appMod.initializeApp;
-            var getApps = appMod.getApps;
-            var getApp = appMod.getApp;
-            var getFirestore = fsMod.getFirestore;
-            var collection = fsMod.collection;
-            var addDoc = fsMod.addDoc;
-            var serverTimestamp = fsMod.serverTimestamp;
-
-            var firebaseConfig = {
-              apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
-              authDomain: "reservaeldia.com.ar",
-              projectId: "reservaeldia-7a440",
-              appId: "1:860495975406:web:3a49ad0cf55d60313534ff"
-            };
-
-            var app = getApps && getApps().length ? getApp() : initializeApp(firebaseConfig);
-            var db = getFirestore(app);
-
-            return addDoc(collection(db, "publicadas", slug, "rsvps"), {
-              ...basePayload,
-              createdAt: serverTimestamp(),
-            });
-          });
-      }
-
       submitViaEndpoint()
-        .catch(function(endpointError){
-          console.warn("[RSVP] submit endpoint failed, trying Firestore fallback", endpointError);
-          return submitViaFirestoreFallback();
-        })
         .then(function(){
           setSubmitting(false);
           form.reset();

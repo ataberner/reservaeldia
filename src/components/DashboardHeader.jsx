@@ -4,7 +4,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { ChevronDown, LogOut, Minus, Plus, Sparkles } from "lucide-react";
+import { ChevronDown, LogOut, Minus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 
 export default function DashboardHeader({
@@ -431,7 +431,7 @@ export default function DashboardHeader({
                         <button
                             onClick={() =>
                                 onCambiarVista(
-                                    vistaActual === "publicadas" ? "home" : "publicadas"
+                                    vistaActual === "publicadas" || vistaActual === "papelera" ? "home" : "publicadas"
                                 )
                             }
                             className={`${dashboardModeButton} ${vistaActual === "publicadas"
@@ -439,13 +439,11 @@ export default function DashboardHeader({
                                 : "border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]"
                                 }`}
                             title={
-                                vistaActual === "publicadas"
-                                    ? "Volver al inicio del dashboard"
+                                vistaActual === "publicadas" || vistaActual === "papelera" ? "Volver al inicio del dashboard"
                                     : "Ver tus invitaciones publicadas"
                             }
                         >
-                            {vistaActual === "publicadas"
-                                ? "← Volver al dashboard"
+                            {vistaActual === "publicadas" || vistaActual === "papelera" ? "← Volver al dashboard"
                                 : "Mis invitaciones publicadas"}
                         </button>
 
@@ -558,6 +556,18 @@ export default function DashboardHeader({
                                 </div>
                             </div>
                         </div>
+                        {!slugInvitacion ? (
+                            <button
+                                onClick={() => {
+                                    onCambiarVista?.("papelera");
+                                    setMenuAbierto(false);
+                                }}
+                                className="group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                            >
+                                <Trash2 size={14} className="shrink-0" />
+                                <span className="truncate">Papelera</span>
+                            </button>
+                        ) : null}
                         <button
                             onClick={async () => {
                                 const { getAuth, signOut } = await import("firebase/auth");
@@ -579,4 +589,5 @@ export default function DashboardHeader({
 
     );
 }
+
 

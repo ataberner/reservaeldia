@@ -9,7 +9,106 @@ export const PUBLICATION_LIFECYCLE_STATES = Object.freeze({
 export type PublicationLifecycleState =
   (typeof PUBLICATION_LIFECYCLE_STATES)[keyof typeof PUBLICATION_LIFECYCLE_STATES];
 
+export const PUBLICATION_PUBLIC_STATES = Object.freeze({
+  ACTIVE: "publicada_activa",
+  PAUSED: "publicada_pausada",
+  TRASH: "papelera",
+});
+
+export type PublicationPublicState =
+  (typeof PUBLICATION_PUBLIC_STATES)[keyof typeof PUBLICATION_PUBLIC_STATES];
+
+export const PUBLICATION_TRASH_RETENTION_DAYS = 30;
+
 export const PUBLICATION_VIGENCY_MONTHS = 12;
+
+function normalizeStateText(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+export function normalizePublicationPublicState(value: unknown): PublicationPublicState | null {
+  const normalized = normalizeStateText(value);
+  if (!normalized) return null;
+
+  if (normalized === PUBLICATION_PUBLIC_STATES.ACTIVE) return PUBLICATION_PUBLIC_STATES.ACTIVE;
+  if (normalized === PUBLICATION_PUBLIC_STATES.PAUSED) return PUBLICATION_PUBLIC_STATES.PAUSED;
+  if (normalized === PUBLICATION_PUBLIC_STATES.TRASH) return PUBLICATION_PUBLIC_STATES.TRASH;
+
+  if (
+    normalized === PUBLICATION_LIFECYCLE_STATES.PUBLISHED ||
+    normalized === "activa" ||
+    normalized === "active"
+  ) {
+    return PUBLICATION_PUBLIC_STATES.ACTIVE;
+  }
+
+  if (normalized === "pausada" || normalized === "paused") {
+    return PUBLICATION_PUBLIC_STATES.PAUSED;
+  }
+
+  if (normalized === "trash") {
+    return PUBLICATION_PUBLIC_STATES.TRASH;
+  }
+
+  return null;
+}
+
+export function resolvePublicationPublicStateFromData(
+  data: Record<string, unknown> | null | undefined
+): PublicationPublicState | null {
+  if (!data || typeof data !== "object") return null;
+
+  const rawEstado = normalizeStateText(data.estado);
+  if (
+    rawEstado === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
+    rawEstado === "finalizada" ||
+    rawEstado === PUBLICATION_LIFECYCLE_STATES.DRAFT
+  ) {
+    return null;
+  }
+
+  const fromEstado = normalizePublicationPublicState(data.estado);
+  if (fromEstado) return fromEstado;
+
+  const lifecycle =
+    data.publicationLifecycle && typeof data.publicationLifecycle === "object"
+      ? (data.publicationLifecycle as Record<string, unknown>)
+      : null;
+
+  const rawLifecycleState = normalizeStateText(lifecycle?.state);
+  if (
+    rawLifecycleState === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
+    rawLifecycleState === "finalizada" ||
+    rawLifecycleState === PUBLICATION_LIFECYCLE_STATES.DRAFT
+  ) {
+    return null;
+  }
+
+  const fromLifecycle = normalizePublicationPublicState(lifecycle?.state);
+  if (fromLifecycle) return fromLifecycle;
+
+  if (data.enPapeleraAt) return PUBLICATION_PUBLIC_STATES.TRASH;
+  if (data.pausadaAt) return PUBLICATION_PUBLIC_STATES.PAUSED;
+
+  return PUBLICATION_PUBLIC_STATES.ACTIVE;
+}
+
+export function isTrashState(value: unknown): boolean {
+  return normalizePublicationPublicState(value) === PUBLICATION_PUBLIC_STATES.TRASH;
+}
+
+export function isPubliclyAccessible(value: unknown): boolean {
+  return normalizePublicationPublicState(value) === PUBLICATION_PUBLIC_STATES.ACTIVE;
+}
+
+function addDaysPreservingDateTimeUTC(baseDate: Date, daysToAdd: number): Date {
+  const days = Number.isFinite(daysToAdd) ? Math.trunc(daysToAdd) : 0;
+  return new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+export function computeTrashPurgeAt(venceAt: Date): Date {
+  return addDaysPreservingDateTimeUTC(venceAt, PUBLICATION_TRASH_RETENTION_DAYS);
+}
 
 export function toDateFromTimestampLike(value: unknown): Date | null {
   if (!value) return null;

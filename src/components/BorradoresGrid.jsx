@@ -4,7 +4,7 @@ import { getAuth } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "@/firebase";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
-import DashboardCardDeleteButton from "@/components/DashboardCardDeleteButton";
+import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
 
 const HOME_READY_THUMBNAIL_TARGET = 2;
 const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
@@ -359,10 +359,10 @@ export default function BorradoresGrid({
                 </div>
               </a>
 
-              <DashboardCardDeleteButton
+              <DashboardCardTrashButton
                 title="Borrar borrador"
                 ariaLabel={`Borrar borrador ${nombre}`}
-                isDeleting={deletingSlug === slug}
+                isPending={deletingSlug === slug}
                 disabled={Boolean(deletingSlug && deletingSlug !== slug)}
                 onClick={(event) => {
                   event.preventDefault();

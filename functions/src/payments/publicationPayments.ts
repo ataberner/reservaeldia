@@ -15,9 +15,14 @@ import {
 import {
   PUBLICATION_VIGENCY_MONTHS,
   PUBLICATION_LIFECYCLE_STATES,
+  PUBLICATION_PUBLIC_STATES,
+  PUBLICATION_TRASH_RETENTION_DAYS,
   addMonthsPreservingDateTimeUTC,
+  computeTrashPurgeAt,
   computePublicationExpirationDate,
   computePublicationExpirationTimestamp,
+  normalizePublicationPublicState,
+  resolvePublicationPublicStateFromData,
   isPublicationExpiredByVigenciaDate,
   toDateFromTimestampLike,
 } from "./publicationLifecycle";
@@ -222,6 +227,21 @@ type PublicationFinalizationResult = {
   alreadyMissing: boolean;
 };
 
+export type PublicationStateTransitionAction =
+  | "pause"
+  | "resume"
+  | "move_to_trash"
+  | "restore_from_trash";
+
+type PublicationStateTransitionResult = {
+  slug: string;
+  estado: string;
+  publicadaAt: string;
+  venceAt: string;
+  pausadaAt: string | null;
+  enPapeleraAt: string | null;
+};
+
 const DEFAULT_PAYMENT_CONFIG: PublicationPaymentConfig = {
   enabled: true,
   currency: "ARS",
@@ -394,7 +414,16 @@ function getPublicationHistoryId(params: {
 }
 
 function getPublicationState(publicationData: Record<string, unknown>): string {
+  const normalizedPublicState = resolvePublicationPublicStateFromData(publicationData);
+  if (normalizedPublicState) return normalizedPublicState;
+
   const estado = getString(publicationData.estado).toLowerCase();
+  if (
+    estado === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
+    estado === "finalizada"
+  ) {
+    return PUBLICATION_LIFECYCLE_STATES.FINALIZED;
+  }
   if (estado) return estado;
 
   const lifecycle =
@@ -403,7 +432,15 @@ function getPublicationState(publicationData: Record<string, unknown>): string {
       ? (publicationData.publicationLifecycle as Record<string, unknown>)
       : null;
 
-  return lifecycle ? getString(lifecycle.state).toLowerCase() : "";
+  const lifecycleState = lifecycle ? getString(lifecycle.state).toLowerCase() : "";
+  if (
+    lifecycleState === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
+    lifecycleState === "finalizada"
+  ) {
+    return PUBLICATION_LIFECYCLE_STATES.FINALIZED;
+  }
+
+  return lifecycleState;
 }
 
 export function isPublicationExpiredData(
@@ -413,9 +450,16 @@ export function isPublicationExpiredData(
   if (!publicationData || typeof publicationData !== "object") return false;
 
   const state = getPublicationState(publicationData);
-  if (state === PUBLICATION_LIFECYCLE_STATES.FINALIZED) return true;
+  if (
+    state === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
+    state === "finalizada"
+  ) {
+    return true;
+  }
+  if (state === PUBLICATION_PUBLIC_STATES.TRASH) return false;
 
-  if (isPublicationExpiredByVigenciaDate(publicationData.vigenteHasta, now)) {
+  const venceAtRaw = publicationData.venceAt ?? publicationData.vigenteHasta;
+  if (isPublicationExpiredByVigenciaDate(venceAtRaw, now)) {
     return true;
   }
 
@@ -429,7 +473,9 @@ export function isPublicationExpiredData(
     return true;
   }
 
-  const publishedAt = toDateFromTimestampLike(publicationData.publicadaEn);
+  const publishedAt =
+    toDateFromTimestampLike(publicationData.publicadaAt) ||
+    toDateFromTimestampLike(publicationData.publicadaEn);
   if (!publishedAt) return false;
 
   const computedExpiration = computePublicationExpirationDate(publishedAt);
@@ -509,6 +555,21 @@ function normalizeDraftSlug(value: unknown): string {
 function normalizeOperation(value: unknown): CheckoutOperation {
   if (value === "new" || value === "update") return value;
   throw new HttpsError("invalid-argument", "operation invalido");
+}
+
+function normalizePublicationStateTransitionAction(
+  value: unknown
+): PublicationStateTransitionAction {
+  const action = getString(value).toLowerCase();
+  if (
+    action === "pause" ||
+    action === "resume" ||
+    action === "move_to_trash" ||
+    action === "restore_from_trash"
+  ) {
+    return action;
+  }
+  throw new HttpsError("invalid-argument", "Accion de estado invalida.");
 }
 
 function toSafeIsoDate(value: unknown): string {
@@ -1054,12 +1115,14 @@ function computePublicationDates(params: {
       : null;
 
   const firstPublishedAt =
+    toDateFromTimestampLike(publicationData.publicadaAt) ||
     toDateFromTimestampLike(publicationData.publicadaEn) ||
     toDateFromTimestampLike(lifecycle?.firstPublishedAt) ||
     toDateFromTimestampLike(publicationSnap.createTime) ||
     now;
 
   const vigenteHasta =
+    toDateFromTimestampLike(publicationData.venceAt) ||
     toDateFromTimestampLike(publicationData.vigenteHasta) ||
     toDateFromTimestampLike(lifecycle?.expiresAt) ||
     computePublicationExpirationDate(firstPublishedAt);
@@ -1110,7 +1173,9 @@ function buildHistoryPayload(params: {
     borradorSlug: draftSlug,
     slugOriginal: getString(publicationData.slugOriginal) || draftSlug,
     estado: PUBLICATION_LIFECYCLE_STATES.FINALIZED,
+    publicadaAt: safeTimestampFromDate(firstPublishedAt),
     publicadaEn: safeTimestampFromDate(firstPublishedAt),
+    venceAt: safeTimestampFromDate(vigenteHasta),
     vigenteHasta: safeTimestampFromDate(vigenteHasta),
     ultimaPublicacionEn: safeTimestampFromDate(lastPublishedAt),
     finalizadaEn: safeTimestampFromDate(finalizedAt),
@@ -1386,6 +1451,375 @@ export async function finalizeExpiredPublicationsHandler(params?: {
   };
 }
 
+function toIsoOrNull(dateValue: Date | null): string | null {
+  return dateValue ? dateValue.toISOString() : null;
+}
+
+function resolveTransitionTargetState(params: {
+  currentState: string;
+  action: PublicationStateTransitionAction;
+  now: Date;
+  venceAt: Date;
+}): {
+  nextState: string;
+  pausedAt: Date | null;
+  enPapeleraAt: Date | null;
+} {
+  const { currentState, action, now, venceAt } = params;
+
+  if (action === "pause") {
+    if (currentState !== PUBLICATION_PUBLIC_STATES.ACTIVE) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Solo puedes pausar una invitacion activa."
+      );
+    }
+
+    return {
+      nextState: PUBLICATION_PUBLIC_STATES.PAUSED,
+      pausedAt: now,
+      enPapeleraAt: null,
+    };
+  }
+
+  if (action === "resume") {
+    if (currentState !== PUBLICATION_PUBLIC_STATES.PAUSED) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Solo puedes reanudar una invitacion pausada."
+      );
+    }
+    if (venceAt.getTime() <= now.getTime()) {
+      throw new HttpsError(
+        "failed-precondition",
+        "La invitacion ya vencio y no puede reanudarse."
+      );
+    }
+
+    return {
+      nextState: PUBLICATION_PUBLIC_STATES.ACTIVE,
+      pausedAt: null,
+      enPapeleraAt: null,
+    };
+  }
+
+  if (action === "move_to_trash") {
+    if (currentState !== PUBLICATION_PUBLIC_STATES.PAUSED) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Solo puedes mover a papelera una invitacion pausada."
+      );
+    }
+
+    return {
+      nextState: PUBLICATION_PUBLIC_STATES.TRASH,
+      pausedAt: now,
+      enPapeleraAt: now,
+    };
+  }
+
+  if (action === "restore_from_trash") {
+    if (currentState !== PUBLICATION_PUBLIC_STATES.TRASH) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Solo puedes restaurar invitaciones en papelera."
+      );
+    }
+
+    return {
+      nextState: PUBLICATION_PUBLIC_STATES.PAUSED,
+      pausedAt: now,
+      enPapeleraAt: null,
+    };
+  }
+
+  throw new HttpsError("invalid-argument", "Accion de estado invalida.");
+}
+
+export async function transitionPublishedInvitationStateHandler(
+  request: CallableRequest<{
+    slug: string;
+    action: PublicationStateTransitionAction;
+  }>
+): Promise<PublicationStateTransitionResult> {
+  const uid = requireAuth(request);
+  const slug = normalizePublicSlug(request.data?.slug);
+  if (!slug) {
+    throw new HttpsError("invalid-argument", "Slug invalido.");
+  }
+
+  const action = normalizePublicationStateTransitionAction(request.data?.action);
+  const publicationRef = getPublicationRef(slug);
+
+  let transitionResult: PublicationStateTransitionResult | null = null;
+  let linkedDraftSlug = "";
+  let firstPublishedAtForDraft: Date | null = null;
+  let venceAtForDraft: Date | null = null;
+
+  await db.runTransaction(async (tx) => {
+    const publicationSnap = await tx.get(publicationRef);
+    if (!publicationSnap.exists) {
+      throw new HttpsError("not-found", "Invitacion publicada no encontrada.");
+    }
+
+    const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
+    const ownerUid = getString(publicationData.userId);
+    if (!ownerUid || ownerUid !== uid) {
+      throw new HttpsError("permission-denied", "No tienes permisos sobre esta publicacion.");
+    }
+
+    const now = new Date();
+    const firstPublishedAt =
+      toDateFromTimestampLike(publicationData.publicadaAt) ||
+      toDateFromTimestampLike(publicationData.publicadaEn) ||
+      toDateFromTimestampLike(publicationSnap.createTime) ||
+      now;
+    const venceAt =
+      toDateFromTimestampLike(publicationData.venceAt) ||
+      toDateFromTimestampLike(publicationData.vigenteHasta) ||
+      computePublicationExpirationDate(firstPublishedAt);
+    const currentState = getPublicationState(publicationData);
+
+    if (
+      currentState === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
+      currentState === "finalizada"
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "La invitacion ya esta finalizada."
+      );
+    }
+
+    const normalizedCurrentPublicState = normalizePublicationPublicState(currentState);
+    if (!normalizedCurrentPublicState) {
+      throw new HttpsError(
+        "failed-precondition",
+        "La publicacion no tiene un estado compatible para esta accion."
+      );
+    }
+
+    const transitionTarget = resolveTransitionTargetState({
+      currentState: normalizedCurrentPublicState,
+      action,
+      now,
+      venceAt,
+    });
+
+    const publishedTimestamp = safeTimestampFromDate(firstPublishedAt);
+    const expiresTimestamp = safeTimestampFromDate(venceAt);
+    const pausedTimestamp = transitionTarget.pausedAt
+      ? safeTimestampFromDate(transitionTarget.pausedAt)
+      : null;
+    const trashedTimestamp = transitionTarget.enPapeleraAt
+      ? safeTimestampFromDate(transitionTarget.enPapeleraAt)
+      : null;
+
+    tx.set(
+      publicationRef,
+      {
+        estado: transitionTarget.nextState,
+        publicadaAt: publishedTimestamp,
+        publicadaEn: publishedTimestamp,
+        venceAt: expiresTimestamp,
+        vigenteHasta: expiresTimestamp,
+        pausadaAt: pausedTimestamp,
+        enPapeleraAt: trashedTimestamp,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    linkedDraftSlug = inferDraftSlugFromPublicationData(slug, publicationData);
+    firstPublishedAtForDraft = firstPublishedAt;
+    venceAtForDraft = venceAt;
+
+    transitionResult = {
+      slug,
+      estado: transitionTarget.nextState,
+      publicadaAt: firstPublishedAt.toISOString(),
+      venceAt: venceAt.toISOString(),
+      pausadaAt: toIsoOrNull(transitionTarget.pausedAt),
+      enPapeleraAt: toIsoOrNull(transitionTarget.enPapeleraAt),
+    };
+  });
+
+  if (linkedDraftSlug && firstPublishedAtForDraft && venceAtForDraft) {
+    const draftRef = db.collection(BORRADORES_COLLECTION).doc(linkedDraftSlug);
+    const draftSnap = await draftRef.get();
+    if (draftSnap.exists) {
+      await draftRef.set(
+        {
+          slugPublico: slug,
+          publicationLifecycle: {
+            state: PUBLICATION_LIFECYCLE_STATES.PUBLISHED,
+            activePublicSlug: slug,
+            firstPublishedAt: safeTimestampFromDate(firstPublishedAtForDraft),
+            expiresAt: safeTimestampFromDate(venceAtForDraft),
+            finalizedAt: null,
+          },
+          publicationFinalizedAt: null,
+          publicationFinalizationReason: null,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  if (!transitionResult) {
+    throw new HttpsError("internal", "No se pudo actualizar el estado de la invitacion.");
+  }
+
+  return transitionResult;
+}
+
+function isTrashedPublicationDueForPurge(params: {
+  publicationData: Record<string, unknown>;
+  publicationSnap: FirebaseFirestore.DocumentSnapshot;
+  now: Date;
+}): boolean {
+  const { publicationData, publicationSnap, now } = params;
+  const state = getPublicationState(publicationData);
+  if (state !== PUBLICATION_PUBLIC_STATES.TRASH) return false;
+
+  const publishedAt =
+    toDateFromTimestampLike(publicationData.publicadaAt) ||
+    toDateFromTimestampLike(publicationData.publicadaEn) ||
+    toDateFromTimestampLike(publicationSnap.createTime) ||
+    now;
+  const venceAt =
+    toDateFromTimestampLike(publicationData.venceAt) ||
+    toDateFromTimestampLike(publicationData.vigenteHasta) ||
+    computePublicationExpirationDate(publishedAt);
+  const purgeAt = computeTrashPurgeAt(venceAt);
+
+  return purgeAt.getTime() <= now.getTime();
+}
+
+async function collectDraftCandidatesForPublicationPurge(params: {
+  slug: string;
+  publicationData: Record<string, unknown>;
+}): Promise<Set<string>> {
+  const { slug, publicationData } = params;
+  const draftCandidates = new Set<string>();
+
+  extractDraftSlugCandidatesFromPublicationData(publicationData).forEach((candidate) => {
+    draftCandidates.add(candidate);
+  });
+
+  const linkedDraftsSnap = await db
+    .collection(BORRADORES_COLLECTION)
+    .where("slugPublico", "==", slug)
+    .limit(60)
+    .get();
+
+  linkedDraftsSnap.docs.forEach((draftDoc) => {
+    draftCandidates.add(draftDoc.id);
+  });
+
+  return draftCandidates;
+}
+
+async function purgeSingleTrashedPublication(params: {
+  slug: string;
+  publicationSnap: FirebaseFirestore.QueryDocumentSnapshot;
+}): Promise<void> {
+  const { slug, publicationSnap } = params;
+  const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
+  const draftCandidates = await collectDraftCandidatesForPublicationPurge({
+    slug,
+    publicationData,
+  });
+
+  try {
+    await bucket.deleteFiles({ prefix: `publicadas/${slug}/` });
+  } catch (error) {
+    logger.warn("No se pudieron borrar archivos publicados durante purga de papelera", {
+      slug,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+
+  await db.recursiveDelete(publicationSnap.ref);
+
+  for (const draftSlugCandidate of draftCandidates) {
+    await clearDraftPublicationLinksAsDraft({
+      draftSlug: draftSlugCandidate,
+    });
+  }
+
+  try {
+    await getReservationRef(slug).delete();
+  } catch (error) {
+    logger.warn("No se pudo borrar reserva de slug durante purga de papelera", {
+      slug,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+}
+
+export async function purgeTrashedPublicationsHandler(params?: {
+  batchSize?: number;
+}): Promise<{
+  scanned: number;
+  purged: number;
+  skippedNotDue: number;
+  failed: number;
+  retentionDays: number;
+}> {
+  const batchSizeRaw = Number(params?.batchSize);
+  const batchSize = Number.isFinite(batchSizeRaw)
+    ? Math.max(1, Math.min(400, Math.round(batchSizeRaw)))
+    : 150;
+  const now = new Date();
+
+  const trashedSnap = await db
+    .collection(PUBLICADAS_COLLECTION)
+    .where("estado", "==", PUBLICATION_PUBLIC_STATES.TRASH)
+    .limit(batchSize)
+    .get();
+
+  let purged = 0;
+  let skippedNotDue = 0;
+  let failed = 0;
+
+  for (const docItem of trashedSnap.docs) {
+    try {
+      const data = (docItem.data() || {}) as Record<string, unknown>;
+      const isDue = isTrashedPublicationDueForPurge({
+        publicationData: data,
+        publicationSnap: docItem,
+        now,
+      });
+
+      if (!isDue) {
+        skippedNotDue += 1;
+        continue;
+      }
+
+      await purgeSingleTrashedPublication({
+        slug: docItem.id,
+        publicationSnap: docItem,
+      });
+      purged += 1;
+    } catch (error) {
+      failed += 1;
+      logger.error("Error purgando invitacion en papelera", {
+        slug: docItem.id,
+        error: error instanceof Error ? error.message : String(error || ""),
+      });
+    }
+  }
+
+  return {
+    scanned: trashedSnap.size,
+    purged,
+    skippedNotDue,
+    failed,
+    retentionDays: PUBLICATION_TRASH_RETENTION_DAYS,
+  };
+}
+
 type HardDeleteLegacyPublicationResult = {
   slug: string;
   deletedActivePublication: boolean;
@@ -1462,11 +1896,11 @@ async function deleteDocsInBatches(
 
 async function clearDraftPublicationLinksAsDraft(params: {
   draftSlug: string;
-  uid: string;
+  uid?: string | null;
 }): Promise<boolean> {
   const draftSlug = getString(params.draftSlug);
   const uid = getString(params.uid);
-  if (!draftSlug || !uid) return false;
+  if (!draftSlug) return false;
 
   const draftRef = db.collection(BORRADORES_COLLECTION).doc(draftSlug);
   const draftSnap = await draftRef.get();
@@ -1474,7 +1908,7 @@ async function clearDraftPublicationLinksAsDraft(params: {
 
   const draftData = (draftSnap.data() || {}) as Record<string, unknown>;
   const ownerUid = getString(draftData.userId);
-  if (!ownerUid || ownerUid !== uid) return false;
+  if (uid && (!ownerUid || ownerUid !== uid)) return false;
 
   await draftRef.set(
     {
@@ -1632,6 +2066,10 @@ async function resolveExistingPublicSlug(draftSlug: string): Promise<string | nu
     if (!candidateSnap.exists) continue;
 
     const data = (candidateSnap.data() || {}) as Record<string, unknown>;
+    const state = getPublicationState(data);
+    if (state === PUBLICATION_PUBLIC_STATES.TRASH) {
+      continue;
+    }
     if (isPublicationExpiredData(data)) {
       await finalizePublicationBySlug({
         slug: candidate,
@@ -1662,6 +2100,10 @@ async function resolveExistingPublicSlug(draftSlug: string): Promise<string | nu
     if (!candidateSlug) continue;
 
     const data = (docItem.data() || {}) as Record<string, unknown>;
+    const state = getPublicationState(data);
+    if (state === PUBLICATION_PUBLIC_STATES.TRASH) {
+      continue;
+    }
     if (isPublicationExpiredData(data)) {
       await finalizePublicationBySlug({
         slug: candidateSlug,
@@ -1795,6 +2237,14 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
   }
 
   if (operation === "update" && existingData) {
+    const existingState = getPublicationState(existingData);
+    if (existingState === PUBLICATION_PUBLIC_STATES.TRASH) {
+      throw new HttpsError(
+        "failed-precondition",
+        "La invitacion esta en papelera. Restaurala para volver a publicarla."
+      );
+    }
+
     const activeDraftSlug = inferDraftSlugFromPublicationData(
       normalizedPublicSlug,
       existingData
@@ -1811,14 +2261,31 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
   const now = new Date();
   const nowTimestamp = admin.firestore.Timestamp.fromDate(now);
   const firstPublishedAt =
-    (existingData ? toDateFromTimestampLike(existingData.publicadaEn) : null) || now;
+    (existingData
+      ? toDateFromTimestampLike(existingData.publicadaAt) ||
+        toDateFromTimestampLike(existingData.publicadaEn)
+      : null) || now;
   const firstPublishedAtTimestamp = safeTimestampFromDate(firstPublishedAt);
   const existingVigenciaDate = existingData
-    ? toDateFromTimestampLike(existingData.vigenteHasta)
+    ? toDateFromTimestampLike(existingData.venceAt) ||
+      toDateFromTimestampLike(existingData.vigenteHasta)
     : null;
   const vigenteHastaTimestamp = existingVigenciaDate
     ? safeTimestampFromDate(existingVigenciaDate)
     : computePublicationExpirationTimestamp(firstPublishedAt);
+  const existingState = existingData ? getPublicationState(existingData) : "";
+  const shouldKeepPausedState =
+    operation === "update" && existingState === PUBLICATION_PUBLIC_STATES.PAUSED;
+  const normalizedEstado = shouldKeepPausedState
+    ? PUBLICATION_PUBLIC_STATES.PAUSED
+    : PUBLICATION_PUBLIC_STATES.ACTIVE;
+  const existingPausedAtDate = existingData
+    ? toDateFromTimestampLike(existingData.pausadaAt)
+    : null;
+  const pausedAtTimestamp =
+    normalizedEstado === PUBLICATION_PUBLIC_STATES.PAUSED
+      ? safeTimestampFromDate(existingPausedAtDate || now)
+      : null;
 
   const objetos = Array.isArray(draftData.objetos) ? draftData.objetos : [];
   const secciones = Array.isArray(draftData.secciones) ? draftData.secciones : [];
@@ -1849,10 +2316,14 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     portada: draftData.thumbnailUrl || null,
     invitadosCount: draftData.invitadosCount || 0,
     rsvp,
-    estado: PUBLICATION_LIFECYCLE_STATES.PUBLISHED,
+    estado: normalizedEstado,
+    publicadaAt: firstPublishedAtTimestamp,
     publicadaEn: firstPublishedAtTimestamp,
+    venceAt: vigenteHastaTimestamp,
     vigenteHasta: vigenteHastaTimestamp,
     ultimaPublicacionEn: nowTimestamp,
+    pausadaAt: pausedAtTimestamp,
+    enPapeleraAt: null,
     borradorSlug: draftSlug,
     ultimaOperacion: operation,
     lastPaymentSessionId: paymentSessionId,

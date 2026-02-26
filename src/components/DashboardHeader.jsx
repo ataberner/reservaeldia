@@ -4,7 +4,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { ChevronDown, LogOut, Minus, Plus } from "lucide-react";
+import { ChevronDown, LogOut, Minus, Plus, Sparkles } from "lucide-react";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 
 export default function DashboardHeader({
@@ -194,7 +194,15 @@ export default function DashboardHeader({
             alert("Ocurrió un error al guardar la plantilla.");
         }
     };
+    const abrirModalCrearSeccion = () => {
+        if (typeof window === "undefined") return;
+        window.dispatchEvent(new CustomEvent("dashboard-abrir-modal-seccion"));
+    };
 
+    const crearPlantillaDesdeHeader = () => {
+        if (typeof window === "undefined") return;
+        window.dispatchEvent(new CustomEvent("dashboard-crear-plantilla"));
+    };
 
     const subtleHeaderButton =
         "inline-flex items-center gap-1.5 rounded-xl border border-[#e6dbf8] bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_26px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
@@ -303,14 +311,30 @@ export default function DashboardHeader({
                         </button>
                     </div>
 
-                    {/* Guardar plantilla */}
+                    {/* Acciones admin/superadmin */}
                     {!loadingAdminAccess && canManageSite && (
-                        <button
-                            onClick={guardarPlantilla}
-                            className={templateHeaderButton}
-                        >
-                            Guardar plantilla
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={abrirModalCrearSeccion}
+                                className={subtleHeaderButton}
+                            >
+                                <Plus size={14} />
+                                Anadir seccion
+                            </button>
+                            <button
+                                onClick={crearPlantillaDesdeHeader}
+                                className={subtleHeaderButton}
+                            >
+                                <Sparkles size={14} />
+                                Crear plantilla
+                            </button>
+                            <button
+                                onClick={guardarPlantilla}
+                                className={templateHeaderButton}
+                            >
+                                Guardar plantilla
+                            </button>
+                        </div>
                     )}
 
                     {/* ----------------- ACCIONES (desktop) ----------------- */}
@@ -555,3 +579,4 @@ export default function DashboardHeader({
 
     );
 }
+

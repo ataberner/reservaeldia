@@ -13,9 +13,6 @@ export default function MiniToolbar({
   onAgregarTitulo,
   onAgregarSubtitulo,
   onAgregarParrafo,
-  onCrearPlantilla,
-  onBorrarTodos,
-  onAbrirModalSeccion,
   setMostrarGaleria,
   abrirSelector,
   imagenes,
@@ -85,11 +82,7 @@ export default function MiniToolbar({
       )}
 
       {botonActivo === "menu" && (
-        <MiniToolbarTabMenu
-          onAbrirModalSeccion={onAbrirModalSeccion}
-          onCrearPlantilla={onCrearPlantilla}
-          onBorrarTodos={onBorrarTodos}
-        />
+        <MiniToolbarTabMenu />
       )}
 
       {botonActivo === "efectos" && <MiniToolbarTabEfectos />}

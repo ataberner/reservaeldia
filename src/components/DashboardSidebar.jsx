@@ -4,7 +4,7 @@ import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import GaleriaDeImagenes from "./GaleriaDeImagenes";
 import ModalCrearSeccion from "./ModalCrearSeccion";
-import { FaBars, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
+import { FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -48,7 +48,7 @@ export default function DashboardSidebar({
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
     const modalCrear = useModalCrearSeccion();
-    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'efectos' | 'menu' | null
+    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'efectos' | null
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
@@ -143,7 +143,7 @@ export default function DashboardSidebar({
     useEffect(() => {
         if (!isMobileViewport) return;
 
-        const tabsConAutoCierre = new Set(["texto", "imagen", "contador", "efectos", "menu"]);
+        const tabsConAutoCierre = new Set(["texto", "imagen", "contador", "efectos"]);
         const handleInsertElement = () => {
             if (!fijadoSidebar) return;
             if (!botonActivo || !tabsConAutoCierre.has(botonActivo)) return;
@@ -167,12 +167,22 @@ export default function DashboardSidebar({
         return () => window.removeEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
     }, []);
 
+    useEffect(() => {
+        const handleAbrirModalSeccionDesdeHeader = () => {
+            modalCrear.abrir();
+        };
+
+        window.addEventListener("dashboard-abrir-modal-seccion", handleAbrirModalSeccionDesdeHeader);
+        return () =>
+            window.removeEventListener("dashboard-abrir-modal-seccion", handleAbrirModalSeccionDesdeHeader);
+    }, [modalCrear.abrir]);
+
 
 
     // --------------------------
     // ðŸ”¹ Crear nueva plantilla
     // --------------------------
-    const ejecutarCrearPlantilla = async () => {
+    const ejecutarCrearPlantilla = useCallback(async () => {
         const confirmar = confirm("Â¿QuerÃ©s crear la plantilla?");
         if (!confirmar) return;
 
@@ -260,7 +270,17 @@ export default function DashboardSidebar({
                 alert("OcurriÃ³ un error al crear la plantilla");
             }
         };
-    };
+    }, []);
+
+    useEffect(() => {
+        const handleCrearPlantillaDesdeHeader = () => {
+            ejecutarCrearPlantilla();
+        };
+
+        window.addEventListener("dashboard-crear-plantilla", handleCrearPlantillaDesdeHeader);
+        return () =>
+            window.removeEventListener("dashboard-crear-plantilla", handleCrearPlantillaDesdeHeader);
+    }, [ejecutarCrearPlantilla]);
 
 
 
@@ -359,7 +379,6 @@ export default function DashboardSidebar({
   `;
 
     const iconGradientByButton = {
-        menu: "from-[#7043bd] to-[#5c34a1]",
         texto: "from-[#7c4cc9] to-[#6538af]",
         forma: "from-[#3f74bf] to-[#345ea5]",
         imagen: "from-[#2f9a8f] to-[#247e74]",
@@ -370,7 +389,7 @@ export default function DashboardSidebar({
 
     const getIconButtonClass = (boton, { compact = false } = {}) => {
         const isActive = fijadoSidebar && botonActivo === boton;
-        const gradient = iconGradientByButton[boton] || iconGradientByButton.menu;
+        const gradient = iconGradientByButton[boton] || iconGradientByButton.texto;
         const shapeClass = compact ? "h-9 w-9 rounded-lg" : "h-10 w-10 rounded-xl";
         return `group flex ${shapeClass} items-center justify-center border bg-gradient-to-br ${gradient} cursor-pointer transition-all duration-200 ${isActive
             ? "border-white/70 text-white ring-2 ring-white/55 shadow-[0_12px_24px_rgba(31,15,58,0.34)]"
@@ -406,171 +425,208 @@ export default function DashboardSidebar({
                 className={sidebarShellClass}
                 style={{ zIndex: 45, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
             >
-                <div
-                    onClick={() => alternarSidebarConBoton("menu")}
-                    onMouseEnter={() => openPanel("menu")}
-
-                    className={`hidden md:flex ${getIconButtonClass("menu")}`}
-                    title="MenÃº"
-                >
-                    <FaBars className="text-lg" />
-                </div>
-
-                {/* ðŸ–¥ï¸ Escritorio: barra vertical a la izquierda */}
-                <div className="mt-4 hidden flex-col items-center gap-4 rounded-2xl border border-[#ede4fb] bg-gradient-to-b from-[#faf7ff] to-[#f4edff] px-2 py-3 md:flex">
-                    <button
+                {/* Escritorio: barra vertical a la izquierda */}
+                <div className="mt-2 hidden flex-col items-center gap-3 rounded-2xl border border-[#ede4fb] bg-gradient-to-b from-[#faf7ff] to-[#f4edff] px-2 py-3 md:flex">
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("texto")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
-                            // Si el mouse se mueve hacia el panel, no cierres
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
-                        onClick={() => alternarSidebarConBoton("texto")}
-                        className={getIconButtonClass("texto")}
-                        title="AÃ±adir texto"
                     >
-                        <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
-                    </button>
+                        <button
+                            onClick={() => alternarSidebarConBoton("texto")}
+                            className={getIconButtonClass("texto")}
+                            title="Texto"
+                        >
+                            <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Texto
+                        </span>
+                    </div>
 
-
-                    <button
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("forma")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
-                            // Si el mouse se mueve hacia el panel, no cierres
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
-                        onClick={() => alternarSidebarConBoton("forma")}
-                        className={getIconButtonClass("forma")}
-                        title="AÃ±adir forma"
                     >
-                        <img src="/icons/forma.png" alt="Forma" className="w-6 h-6" />
-                    </button>
+                        <button
+                            onClick={() => alternarSidebarConBoton("forma")}
+                            className={getIconButtonClass("forma")}
+                            title="Elementos"
+                        >
+                            <img src="/icons/forma.png" alt="Elementos" className="w-6 h-6" />
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Elementos
+                        </span>
+                    </div>
 
-                    <button
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("imagen")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
-                            // Si el mouse se mueve hacia el panel, no cierres
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
-                        onClick={() => alternarSidebarConBoton("imagen")}
-                        className={getIconButtonClass("imagen")}
-                        title="Abrir galerÃ­a"
                     >
-                        <img src="/icons/imagen.png" alt="Imagen" className="w-6 h-6" />
-                    </button>
+                        <button
+                            onClick={() => alternarSidebarConBoton("imagen")}
+                            className={getIconButtonClass("imagen")}
+                            title="Imagenes"
+                        >
+                            <img src="/icons/imagen.png" alt="Imagenes" className="w-6 h-6" />
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Imagenes
+                        </span>
+                    </div>
 
-                    <button
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("contador")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
-                            // Si el mouse se mueve hacia el panel, no cierres
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
-                        onClick={() => alternarSidebarConBoton("contador")}
-                        className={getIconButtonClass("contador")}
-                        title="Cuenta regresiva"
                     >
-                        <FaRegClock className="text-lg" />
-                    </button>
+                        <button
+                            onClick={() => alternarSidebarConBoton("contador")}
+                            className={getIconButtonClass("contador")}
+                            title="Contador"
+                        >
+                            <FaRegClock className="text-lg" />
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Contador
+                        </span>
+                    </div>
 
-                    <button
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("rsvp")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
-                        onClick={() => {
-                            setRsvpForcePresetSelection(false);
-                            alternarSidebarConBoton("rsvp");
-                        }}
-                        className={getIconButtonClass("rsvp")}
-                        title="Confirmar asistencia"
                     >
-                        <FaRegEnvelope className="text-lg" />
-                    </button>
+                        <button
+                            onClick={() => {
+                                setRsvpForcePresetSelection(false);
+                                alternarSidebarConBoton("rsvp");
+                            }}
+                            className={getIconButtonClass("rsvp")}
+                            title="Asistencia"
+                        >
+                            <FaRegEnvelope className="text-lg" />
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Asistencia
+                        </span>
+                    </div>
 
-                    <button
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("efectos")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
-                        onClick={() => alternarSidebarConBoton("efectos")}
-                        className={getIconButtonClass("efectos")}
-                        title="Efectos"
                     >
-                        <span className="text-sm font-semibold">Fx</span>
-                    </button>
+                        <button
+                            onClick={() => alternarSidebarConBoton("efectos")}
+                            className={getIconButtonClass("efectos")}
+                            title="Efectos"
+                        >
+                            <span className="text-sm font-semibold">Fx</span>
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Efectos
+                        </span>
+                    </div>
                 </div>
 
-                {/* ðŸ“± MÃ³vil: barra horizontal inferior */}
-                <div className="grid w-full grid-cols-7 items-center gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
-                    <button
-                        onClick={() => alternarSidebarConBoton("menu")}
-                        className={`${getIconButtonClass("menu", { compact: true })} justify-self-center`}
-                        title="Menu"
-                    >
-                        <FaBars className="text-base" />
-                    </button>
+                {/* Movil: barra horizontal inferior */}
+                <div className="grid w-full grid-cols-6 items-start gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
+                    <div className="flex flex-col items-center gap-1">
+                        <button
+                            onClick={() => alternarSidebarConBoton("texto")}
+                            className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
+                            title="Texto"
+                        >
+                            <img src="/icons/texto.png" alt="Texto" className="h-5 w-5" />
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Texto</span>
+                    </div>
 
-                    <button
-                        onClick={() => alternarSidebarConBoton("texto")}
-                        className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
-                        title="AÃ±adir texto"
-                    >
-                        <img src="/icons/texto.png" alt="Texto" className="h-5 w-5" />
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                        <button
+                            onClick={() => alternarSidebarConBoton("forma")}
+                            className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
+                            title="Elementos"
+                        >
+                            <img src="/icons/forma.png" alt="Elementos" className="h-5 w-5" />
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Elementos</span>
+                    </div>
 
-                    <button
-                        onClick={() => alternarSidebarConBoton("forma")}
-                        className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
-                        title="AÃ±adir forma"
-                    >
-                        <img src="/icons/forma.png" alt="Forma" className="h-5 w-5" />
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                        <button
+                            onClick={() => alternarSidebarConBoton("imagen")}
+                            className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
+                            title="Imagenes"
+                        >
+                            <img src="/icons/imagen.png" alt="Imagenes" className="h-5 w-5" />
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Imagenes</span>
+                    </div>
 
-                    <button
-                        onClick={() => alternarSidebarConBoton("imagen")}
-                        className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
-                        title="Abrir galerÃ­a"
-                    >
-                        <img src="/icons/imagen.png" alt="Imagen" className="h-5 w-5" />
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                        <button
+                            onClick={() => alternarSidebarConBoton("contador")}
+                            className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
+                            title="Contador"
+                        >
+                            <FaRegClock className="text-base" />
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Contador</span>
+                    </div>
 
-                    <button
-                        onClick={() => alternarSidebarConBoton("contador")}
-                        className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
-                        title="Cuenta regresiva"
-                    >
-                        <FaRegClock className="text-base" />
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                        <button
+                            onClick={() => {
+                                setRsvpForcePresetSelection(false);
+                                alternarSidebarConBoton("rsvp");
+                            }}
+                            className={`${getIconButtonClass("rsvp", { compact: true })} justify-self-center`}
+                            title="Asistencia"
+                        >
+                            <FaRegEnvelope className="text-base" />
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Asistencia</span>
+                    </div>
 
-                    <button
-                        onClick={() => {
-                            setRsvpForcePresetSelection(false);
-                            alternarSidebarConBoton("rsvp");
-                        }}
-                        className={`${getIconButtonClass("rsvp", { compact: true })} justify-self-center`}
-                        title="Confirmar asistencia"
-                    >
-                        <FaRegEnvelope className="text-base" />
-                    </button>
-
-                    <button
-                        onClick={() => alternarSidebarConBoton("efectos")}
-                        className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}
-                        title="Efectos"
-                    >
-                        <span className="text-xs font-semibold">Fx</span>
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                        <button
+                            onClick={() => alternarSidebarConBoton("efectos")}
+                            className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}
+                            title="Efectos"
+                        >
+                            <span className="text-xs font-semibold">Fx</span>
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Efectos</span>
+                    </div>
                 </div>
             </aside>
 
@@ -734,7 +790,6 @@ export default function DashboardSidebar({
                             seccionActivaId={seccionActivaId}
                             setImagenesSeleccionadas={setImagenesSeleccionadas}
                             abrirSelector={abrirSelector}
-                            onCrearPlantilla={ejecutarCrearPlantilla}
                             onBorrarTodos={async () => {
                                 const confirmar = confirm("Â¿Seguro que querÃ©s borrar TODOS tus borradores?");
                                 if (!confirmar) return;
@@ -752,7 +807,6 @@ export default function DashboardSidebar({
                                     alert("No se pudieron borrar los borradores.");
                                 }
                             }}
-                            onAbrirModalSeccion={modalCrear.abrir}
                             onInsertarGaleria={insertarGaleria}
                             rsvpForcePresetSelection={rsvpForcePresetSelection}
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}

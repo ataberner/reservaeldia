@@ -24,6 +24,7 @@ import {
   retryPaidPublicationWithNewSlugHandler,
   upsertPublicationDiscountCodeHandler,
 } from "./payments/publicationPayments";
+import { normalizePublicSlug } from "./utils/publicSlug";
 
 import * as logger from "firebase-functions/logger";
 
@@ -295,6 +296,114 @@ function toLimitedJson(value: unknown, maxLength = 4000): string | null {
   } catch {
     return toLimitedString(value, maxLength);
   }
+}
+
+function normalizeRsvpText(value: unknown, maxLength = 400): string | null {
+  if (value === null || typeof value === "undefined") return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.slice(0, maxLength);
+}
+
+function normalizeRsvpNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.round(parsed));
+}
+
+function normalizeRsvpBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (["si", "sí", "yes", "true", "1"].includes(normalized)) return true;
+  if (["no", "false", "0"].includes(normalized)) return false;
+  return null;
+}
+
+function normalizeRsvpAttendance(value: unknown): "yes" | "no" | "unknown" {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "yes" || normalized === "si" || normalized === "sí" || normalized === "true") {
+    return "yes";
+  }
+  if (normalized === "no" || normalized === "false") {
+    return "no";
+  }
+  return "unknown";
+}
+
+function sanitizeRsvpAnswerValue(value: unknown): string | number | boolean | null {
+  if (value === null || typeof value === "undefined") return null;
+  if (typeof value === "boolean") return value;
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return Math.max(0, Math.round(value));
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, 400);
+  }
+
+  return null;
+}
+
+function sanitizeRsvpAnswers(raw: unknown): Record<string, string | number | boolean | null> {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw as Record<string, unknown>;
+  const entries = Object.entries(source).slice(0, 30);
+  const next: Record<string, string | number | boolean | null> = {};
+
+  for (const [key, value] of entries) {
+    const questionId = normalizeRsvpText(key, 60);
+    if (!questionId) continue;
+    next[questionId] = sanitizeRsvpAnswerValue(value);
+  }
+
+  return next;
+}
+
+function sanitizeSchemaQuestionIds(
+  raw: unknown,
+  answers: Record<string, string | number | boolean | null>
+): string[] {
+  const fallback = Object.keys(answers);
+
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return fallback;
+  }
+
+  const sanitized = raw
+    .map((item) => normalizeRsvpText(item, 60))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 30);
+
+  return sanitized.length ? sanitized : fallback;
+}
+
+function sanitizeRsvpMetrics(
+  raw: unknown,
+  answers: Record<string, string | number | boolean | null>
+) {
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
+  const attendance = normalizeRsvpAttendance(source.attendance ?? answers.attendance);
+  const partySize = normalizeRsvpNumber(answers.party_size);
+  const confirmedGuests = attendance === "yes" ? (partySize && partySize > 0 ? partySize : 1) : 0;
+  const menuTypeId = normalizeRsvpText(source.menuTypeId ?? answers.menu_type, 80);
+  const childrenCount = normalizeRsvpNumber(source.childrenCount ?? answers.children_count) || 0;
+  const dietaryNotes = normalizeRsvpText(answers.dietary_notes, 400);
+  const needsTransport = normalizeRsvpBoolean(source.needsTransport ?? answers.needs_transport) === true;
+
+  return {
+    attendance,
+    confirmedGuests,
+    menuTypeId: menuTypeId || null,
+    childrenCount,
+    hasDietaryRestrictions: Boolean(dietaryNotes),
+    needsTransport,
+  };
 }
 
 function parseBucketAndPathFromStorageValue(
@@ -825,6 +934,79 @@ export const listPublicationDiscountCodeUsage = onCall(
 export const mercadoPagoWebhook = onRequest(
   { region: "us-central1" },
   async (req, res) => processMercadoPagoWebhookRequest(req, res)
+);
+
+export const publicRsvpSubmit = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    cors: true,
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Metodo no permitido" });
+      return;
+    }
+
+    try {
+      const body =
+        req.body && typeof req.body === "object"
+          ? (req.body as Record<string, unknown>)
+          : {};
+
+      const slug = normalizePublicSlug(body.slug);
+      if (!slug) {
+        res.status(400).json({ ok: false, message: "Slug invalido" });
+        return;
+      }
+
+      const publicationRef = db.collection("publicadas").doc(slug);
+      const publicationSnap = await publicationRef.get();
+      if (!publicationSnap.exists) {
+        res.status(404).json({ ok: false, message: "Invitacion no encontrada" });
+        return;
+      }
+
+      const answers = sanitizeRsvpAnswers(body.answers);
+      const schemaQuestionIds = sanitizeSchemaQuestionIds(body.schemaQuestionIds, answers);
+      const metrics = sanitizeRsvpMetrics(body.metrics, answers);
+
+      const legacyNombre = normalizeRsvpText(body.nombre ?? answers.full_name, 120);
+      const legacyAsistencia =
+        metrics.attendance === "yes" ? "si" : metrics.attendance === "no" ? "no" : null;
+      const legacyConfirma =
+        metrics.attendance === "yes" ? true : metrics.attendance === "no" ? false : null;
+      const legacyCantidad = normalizeRsvpNumber(body.cantidad ?? answers.party_size);
+      const legacyMensaje = normalizeRsvpText(body.mensaje ?? answers.host_message, 400);
+
+      const payload = {
+        version: 2,
+        schemaVersion: 2,
+        schemaQuestionIds,
+        answers,
+        metrics,
+        nombre: legacyNombre,
+        asistencia: legacyAsistencia,
+        confirma: legacyConfirma,
+        cantidad: legacyCantidad,
+        mensaje: legacyMensaje,
+        userAgent: toLimitedString(req.headers["user-agent"], 512),
+        source: "public-rsvp-submit",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      const docRef = await publicationRef.collection("rsvps").add(payload);
+      res.status(200).json({ ok: true, id: docRef.id });
+    } catch (error) {
+      logger.error("Error en publicRsvpSubmit", {
+        error: error instanceof Error ? error.message : String(error || ""),
+      });
+      res.status(500).json({
+        ok: false,
+        message: "No se pudo guardar la confirmacion",
+      });
+    }
+  }
 );
 
 export const publicarInvitacion = onCall(

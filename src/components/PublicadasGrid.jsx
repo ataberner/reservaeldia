@@ -1,24 +1,33 @@
-// src/components/PublicadasGrid.jsx
-import { useEffect, useMemo, useState } from "react";
-import { collection, query, where, orderBy, getDocs, onSnapshot } from "firebase/firestore"; // 👈 agregamos onSnapshot
+﻿import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "@/firebase";
-import { Link2, Copy, ExternalLink, Image as ImageIcon } from "lucide-react";
-import { Pencil } from "lucide-react";
+import { Copy, ExternalLink, Image as ImageIcon, Pencil, X } from "lucide-react";
+import {
+  adaptRsvpResponse,
+  buildColumns,
+  computeConfirmedGuestsFromRaw,
+  computeSummaryCards,
+  formatAnswerValue,
+  normalizeRsvpSnapshot,
+} from "@/domain/rsvp/publicadas";
 
-/**
- * Vista: Lista (tabla) de invitaciones publicadas
- * Columnas: Preview | Nombre | Estado | Fecha de publicación | Invitados confirmados
- */
 export default function PublicadasGrid({ usuario }) {
   const [items, setItems] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
 
-  // 🆕 Estados para selección y RSVPs
-  const [publicacionSeleccionada, setPublicacionSeleccionada] = useState(null); // { id, nombre }
+  const [publicacionIdSeleccionada, setPublicacionIdSeleccionada] = useState(null);
   const [rsvps, setRsvps] = useState([]);
   const [cargandoRsvps, setCargandoRsvps] = useState(false);
   const [errorRsvps, setErrorRsvps] = useState("");
+  const [detalleId, setDetalleId] = useState(null);
 
   useEffect(() => {
     const fetchPublicadas = async () => {
@@ -30,48 +39,39 @@ export default function PublicadasGrid({ usuario }) {
 
       setCargando(true);
       setError("");
+
       try {
-        const q = query(
+        const publicacionesQuery = query(
           collection(db, "publicadas"),
           where("userId", "==", usuario.uid),
           orderBy("publicadaEn", "desc")
         );
-        const snap = await getDocs(q);
 
-        // 🔢 Para cada publicación contamos confirmados en subcolección rsvps
+        const publicacionesSnap = await getDocs(publicacionesQuery);
+
         const docs = await Promise.all(
-          snap.docs.map(async (d) => {
-            const data = { id: d.id, ...d.data() };
-
-            const rsvpsSnap = await getDocs(collection(db, "publicadas", d.id, "rsvps"));
+          publicacionesSnap.docs.map(async (documento) => {
+            const data = documento.data() || {};
+            const rsvpsSnap = await getDocs(collection(db, "publicadas", documento.id, "rsvps"));
 
             let confirmadosCount = 0;
-            rsvpsSnap.forEach((r) => {
-              const rv = r.data();
-
-              // ✅ Normalizamos el "sí"
-              const confirma =
-                typeof rv.confirma === "boolean"
-                  ? rv.confirma
-                  : (typeof rv.confirmado === "boolean"
-                    ? rv.confirmado
-                    : (rv.asistencia === "si" || rv.asistencia === "sí"));
-
-              if (confirma) {
-                // 👥 Sumamos cantidad si existe, sino 1
-                const cantidad = rv.cantidad ?? rv.invitados ?? rv.asistentes ?? 1;
-                confirmadosCount += Number(cantidad) || 0;
-              }
+            rsvpsSnap.forEach((responseDoc) => {
+              confirmadosCount += computeConfirmedGuestsFromRaw(responseDoc.data() || {});
             });
 
-            return { ...data, confirmadosCount };
+            return {
+              id: documento.id,
+              ...data,
+              rsvp: normalizeRsvpSnapshot(data.rsvp),
+              confirmadosCount,
+            };
           })
         );
 
         setItems(docs);
-      } catch (e) {
-        setError(e?.message || "Error al cargar publicaciones");
+      } catch (fetchError) {
         setItems([]);
+        setError(fetchError?.message || "Error al cargar publicaciones");
       } finally {
         setCargando(false);
       }
@@ -80,40 +80,64 @@ export default function PublicadasGrid({ usuario }) {
     fetchPublicadas();
   }, [usuario?.uid]);
 
-
-
-  // 🔎 Normalización de filas
   const filas = useMemo(() => {
     const ahora = Date.now();
-    return items.map((it) => {
+
+    return items.map((item) => {
       let estado = "Activa";
-      if (it.activa === false) estado = "Pausada";
-      if (it.vigenteHasta?.toDate && it.vigenteHasta.toDate().getTime() < ahora) estado = "Expirada";
-      if (!it.urlPublica) estado = "Sin URL";
+      if (item.activa === false) estado = "Pausada";
+      if (item.vigenteHasta?.toDate && item.vigenteHasta.toDate().getTime() < ahora) estado = "Expirada";
+      if (!item.urlPublica) estado = "Sin URL";
 
       const confirmados =
-        typeof it.confirmados === "number"
-          ? it.confirmados
-          : typeof it.confirmadosCount === "number"
-            ? it.confirmadosCount
-            : typeof it.invitadosConfirmados === "number"
-              ? it.invitadosConfirmados
+        typeof item.confirmados === "number"
+          ? item.confirmados
+          : typeof item.confirmadosCount === "number"
+            ? item.confirmadosCount
+            : typeof item.invitadosConfirmados === "number"
+              ? item.invitadosConfirmados
               : 0;
 
       return {
-        id: it.id, // 👈 lo usamos como <slug> de publicadas/<id>/rsvps
-        nombre: it.nombre || it.slug || "(sin nombre)",
-        portada: it.portada,
-        url: it.urlPublica || "",
-        publicadaEn: it.publicadaEn?.toDate ? it.publicadaEn.toDate() : null,
+        id: item.id,
+        nombre: item.nombre || item.slug || "(sin nombre)",
+        portada: item.portada || null,
+        url: item.urlPublica || "",
+        publicadaEn: item.publicadaEn?.toDate ? item.publicadaEn.toDate() : null,
         estado,
         confirmados,
-        borradorSlug: it.borradorSlug || it.borradorId || it.slug || it.id,
+        borradorSlug: item.borradorSlug || item.borradorId || item.slug || item.id,
+        rsvp: item.rsvp || null,
       };
     });
   }, [items]);
 
-  // 🧭 Escuchar RSVPs de la publicación seleccionada
+  const publicacionSeleccionada = useMemo(
+    () => filas.find((fila) => fila.id === publicacionIdSeleccionada) || null,
+    [filas, publicacionIdSeleccionada]
+  );
+
+  useEffect(() => {
+    if (!filas.length) {
+      setPublicacionIdSeleccionada(null);
+      return;
+    }
+
+    if (!publicacionIdSeleccionada) {
+      setPublicacionIdSeleccionada(filas[0].id);
+      return;
+    }
+
+    const stillExists = filas.some((fila) => fila.id === publicacionIdSeleccionada);
+    if (!stillExists) {
+      setPublicacionIdSeleccionada(filas[0].id);
+    }
+  }, [filas, publicacionIdSeleccionada]);
+
+  useEffect(() => {
+    setDetalleId(null);
+  }, [publicacionIdSeleccionada]);
+
   useEffect(() => {
     if (!publicacionSeleccionada?.id) {
       setRsvps([]);
@@ -123,42 +147,80 @@ export default function PublicadasGrid({ usuario }) {
     setCargandoRsvps(true);
     setErrorRsvps("");
 
-    // Si tenés un campo de fecha en RSVPs, ordenalo por ese campo (p. ej. "creadoEn")
-    // Si no, quitá el orderBy.
-    const colRef = collection(db, "publicadas", publicacionSeleccionada.id, "rsvps");
-    // Intentamos ordenar por un campo habitual, pero si no existe, podés quitar el orderBy:
-    const q = query(colRef /* , orderBy("creadoEn", "desc") */);
+    const rsvpsCollection = collection(db, "publicadas", publicacionSeleccionada.id, "rsvps");
+    const rsvpsQuery = query(rsvpsCollection);
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubscribe = onSnapshot(
+      rsvpsQuery,
+      (snapshot) => {
+        const docs = snapshot.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
         setRsvps(docs);
         setCargandoRsvps(false);
       },
-      (err) => {
-        setErrorRsvps(err?.message || "Error al cargar RSVPs");
+      (snapshotError) => {
+        setErrorRsvps(snapshotError?.message || "Error al cargar RSVPs");
         setRsvps([]);
         setCargandoRsvps(false);
       }
     );
 
-    return () => unsub();
+    return () => unsubscribe();
   }, [publicacionSeleccionada?.id]);
 
+  const adaptedResponses = useMemo(
+    () =>
+      rsvps
+        .map((response) => adaptRsvpResponse(response, publicacionSeleccionada?.rsvp || null))
+        .sort((a, b) => {
+          const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+          const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+          return bTime - aTime;
+        }),
+    [rsvps, publicacionSeleccionada?.rsvp]
+  );
+
+  const columns = useMemo(
+    () => buildColumns(publicacionSeleccionada?.rsvp || null, adaptedResponses),
+    [publicacionSeleccionada?.rsvp, adaptedResponses]
+  );
+
+  const visibleColumns = useMemo(
+    () => columns.filter((column) => column.id !== "full_name"),
+    [columns]
+  );
+
+  const summaryCards = useMemo(
+    () => computeSummaryCards(adaptedResponses, publicacionSeleccionada?.rsvp || null),
+    [adaptedResponses, publicacionSeleccionada?.rsvp]
+  );
+
+  const detalleRespuesta = useMemo(
+    () => adaptedResponses.find((response) => response.id === detalleId) || null,
+    [adaptedResponses, detalleId]
+  );
+
+  const detalleColumns = useMemo(() => {
+    const hasFullName = columns.some((column) => column.id === "full_name");
+    if (hasFullName) return columns;
+    return [{ id: "full_name", label: "Invitado", type: "short_text" }, ...columns];
+  }, [columns]);
 
   if (cargando) {
     return (
       <div className="mt-10 space-y-3">
         <div className="h-6 w-48 bg-gray-200 animate-pulse rounded" />
         <div className="w-full overflow-hidden rounded-xl border">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="grid grid-cols-[72px_1fr_120px_180px_180px] items-center gap-3 px-3 sm:px-4 py-3 border-b">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-[72px_1fr_120px_170px_100px_120px] items-center gap-3 px-4 py-3 border-b"
+            >
               <div className="h-14 w-14 bg-gray-100 animate-pulse rounded" />
               <div className="h-4 bg-gray-100 animate-pulse rounded w-3/5" />
               <div className="h-4 bg-gray-100 animate-pulse rounded w-24" />
-              <div className="h-4 bg-gray-100 animate-pulse rounded w-36" />
-              <div className="h-4 bg-gray-100 animate-pulse rounded w-24" />
+              <div className="h-4 bg-gray-100 animate-pulse rounded w-32" />
+              <div className="h-4 bg-gray-100 animate-pulse rounded w-16" />
+              <div className="h-4 bg-gray-100 animate-pulse rounded w-20" />
             </div>
           ))}
         </div>
@@ -169,7 +231,7 @@ export default function PublicadasGrid({ usuario }) {
   if (error) {
     return (
       <div className="mt-12 text-center text-red-600">
-        <p className="font-medium">Ocurrió un error</p>
+        <p className="font-medium">Ocurrio un error</p>
         <p className="text-sm opacity-80">{error}</p>
       </div>
     );
@@ -179,246 +241,269 @@ export default function PublicadasGrid({ usuario }) {
     return (
       <div className="text-center mt-12">
         <h2 className="text-xl font-bold mb-2">Tus invitaciones publicadas</h2>
-        <p className="text-gray-500">Todavía no publicaste ninguna invitación.</p>
+        <p className="text-gray-500">Todavia no publicaste ninguna invitacion.</p>
       </div>
     );
   }
 
-  // 🔧 Convierte varios tipos de timestamp a Date
-  const tsToDate = (v) => {
-    if (!v) return null;
-    // Firestore Timestamp
-    if (typeof v.toDate === "function") return v.toDate();
-    // Marca de tiempo en milisegundos (number)
-    if (typeof v === "number") return new Date(v);
-    // Objeto estilo { seconds, nanoseconds }
-    if (typeof v.seconds === "number") return new Date(v.seconds * 1000);
-    return null;
-  };
-
-
   return (
-    <div className="mt-8">
-      <h2 className="text-xl font-semibold mb-4">Tus invitaciones publicadas</h2>
+    <div className="mt-8 space-y-8">
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Tus invitaciones publicadas</h2>
+        <div className="overflow-x-auto rounded-xl border">
+          <div className="hidden md:grid md:grid-cols-[72px_minmax(180px,1.7fr)_minmax(110px,0.8fr)_minmax(150px,1fr)_minmax(90px,0.5fr)_minmax(110px,0.8fr)] bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide">
+            <div className="px-4 py-3">Preview</div>
+            <div className="px-4 py-3">Nombre</div>
+            <div className="px-4 py-3">Estado</div>
+            <div className="px-4 py-3">Fecha</div>
+            <div className="px-4 py-3 text-right">Confirmados</div>
+            <div className="px-4 py-3 text-right">Editar</div>
+          </div>
 
-      {/* Tabla de publicaciones */}
-      <div className="overflow-x-auto rounded-xl border">
-       <div
-  className="
-    hidden md:grid
-    md:grid-cols-[72px_minmax(160px,1.5fr)_minmax(110px,0.8fr)_minmax(150px,1fr)_minmax(90px,0.6fr)_minmax(110px,0.8fr)]
-    lg:grid-cols-[80px_minmax(200px,1.7fr)_minmax(120px,0.9fr)_minmax(170px,1.1fr)_minmax(100px,0.6fr)_minmax(120px,0.8fr)]
-    xl:grid-cols-[88px_minmax(240px,2fr)_minmax(130px,0.9fr)_minmax(190px,1.1fr)_minmax(110px,0.6fr)_minmax(130px,0.8fr)]
-    bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide
-  "
->
-  <div className="px-3 lg:px-4 py-3">Preview</div>
-  <div className="px-3 lg:px-4 py-3">Nombre</div>
-  <div className="px-3 lg:px-4 py-3">Estado</div>
-  <div className="px-3 lg:px-4 py-3 whitespace-nowrap">Fecha</div>
-  <div className="px-3 lg:px-4 py-3 text-right">Confirmados</div>
-  <div className="px-3 lg:px-4 py-3 text-right">Editar</div>
-</div>
+          <ul className="divide-y">
+            {filas.map((fila) => {
+              const selected = fila.id === publicacionIdSeleccionada;
+              return (
+                <li
+                  key={fila.id}
+                  onClick={() => setPublicacionIdSeleccionada(fila.id)}
+                  className={`grid md:grid-cols-[72px_minmax(180px,1.7fr)_minmax(110px,0.8fr)_minmax(150px,1fr)_minmax(90px,0.5fr)_minmax(110px,0.8fr)] grid-cols-1 gap-2 px-3 sm:px-4 py-3 transition-colors cursor-pointer ${
+                    selected ? "bg-violet-50" : "hover:bg-gray-50"
+                  }`}
+                  title="Ver RSVPs de esta invitacion"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-16 w-16 rounded-lg overflow-hidden bg-gray-100 border">
+                      <a
+                        href={fila.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {fila.portada ? (
+                          <img
+                            src={fila.portada}
+                            alt={`Portada de ${fila.nombre}`}
+                            className="h-full w-full object-cover object-top"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-gray-400">
+                            <ImageIcon className="h-6 w-6" />
+                          </div>
+                        )}
+                      </a>
+                    </div>
 
-
-
-      
-
-        <ul className="divide-y">
-          {filas.map((f) => {
-            const selected = publicacionSeleccionada?.id === f.id;
-            return (
-             <li
-  key={f.id}
-  onClick={() => setPublicacionSeleccionada({ id: f.id, nombre: f.nombre })}
-  className={
-    `
-    group grid
-    md:grid-cols-[72px_minmax(160px,1.5fr)_minmax(110px,0.8fr)_minmax(150px,1fr)_minmax(90px,0.6fr)_minmax(110px,0.8fr)]
-    lg:grid-cols-[80px_minmax(200px,1.7fr)_minmax(120px,0.9fr)_minmax(170px,1.1fr)_minmax(100px,0.6fr)_minmax(120px,0.8fr)]
-    xl:grid-cols-[88px_minmax(240px,2fr)_minmax(130px,0.9fr)_minmax(190px,1.1fr)_minmax(110px,0.6fr)_minmax(130px,0.8fr)]
-    grid-cols-1
-    gap-2 md:gap-3 items-center
-    px-3 sm:px-4 py-3 transition-colors cursor-pointer
-    ${selected ? "bg-violet-50" : "hover:bg-gray-50"}`
-  }
-  title="Ver RSVPs de esta invitación"
->
-
-                {/* Preview */}
-                <div className="flex items-center gap-3">
-                  <div className="h-16 w-16 rounded-lg overflow-hidden bg-gray-100 border">
-                    <a href={f.url} target="_blank" rel="noreferrer" className="underline underline-offset-2" onClick={(e) => e.stopPropagation()}>
-                      {f.portada ? (
-                        <img
-                          src={f.portada}
-                          alt={`Portada de ${f.nombre}`}
-                          className="h-full w-full object-cover object-top"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-gray-400">
-                          <ImageIcon className="h-6 w-6" />
-                        </div>
-                      )}
-                    </a>
+                    <div className="md:hidden flex items-center gap-2">
+                      {fila.url ? (
+                        <>
+                          <a
+                            href={fila.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 border rounded hover:bg-gray-100"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" /> Ver
+                          </a>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              copiar(fila.url);
+                            }}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 border rounded hover:bg-gray-100"
+                          >
+                            <Copy className="h-3.5 w-3.5" /> Copiar
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-                  {/* Acciones rápidas en móvil */}
-                  <div className="flex md:hidden items-center gap-2">
-                    {f.url ? (
-                      <>
-                        <a
-                          href={f.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Abrir invitación"
-                          className="inline-flex items-center gap-1 text-xs px-2 py-1 border rounded hover:bg-gray-100"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" /> Ver
-                        </a>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); copiar(f.url); }}
-                          title="Copiar link"
-                          className="inline-flex items-center gap-1 text-xs px-2 py-1 border rounded hover:bg-gray-100"
-                        >
-                          <Copy className="h-3.5 w-3.5" /> Copiar
-                        </button>
-                      </>
-                    ) : null}
+
+                  <div className="md:px-4">
+                    <div className="font-medium text-gray-800 truncate">{fila.nombre}</div>
                   </div>
-                </div>
 
-                {/* Nombre */}
-                <div className="md:px-3 lg:px-4">
-                  <div className="font-medium text-gray-800 truncate">{f.nombre}</div>
-                </div>
+                  <div className="md:px-4">
+                    <EstadoPill valor={fila.estado} />
+                  </div>
 
-                {/* Estado */}
-                <div className="md:px-3 lg:px-4">
-                  <EstadoPill valor={f.estado} />
-                </div>
+                  <div className="md:px-4 text-sm text-gray-700 whitespace-nowrap">
+                    {fila.publicadaEn ? fila.publicadaEn.toLocaleDateString() : "(sin fecha)"}
+                  </div>
 
-                {/* Fecha */}
-                <div className="md:px-3 lg:px-4 text-sm text-gray-700 whitespace-nowrap">
-                  {f.publicadaEn ? f.publicadaEn.toLocaleDateString() : "(sin fecha)"}
-                </div>
+                  <div className="md:px-4 text-sm text-gray-800 text-right font-medium">{fila.confirmados}</div>
 
-                {/* 🆕 Confirmados */}
-                <div className="md:px-3 lg:px-4 text-sm text-gray-800 text-right font-medium">
-                  {f.confirmados}
-                </div>
-
-                {/* Editar */}
-                <div className="md:px-3 lg:px-4 flex md:justify-end">
-                  {f.borradorSlug ? (
-                    <a
-                      href={`/dashboard/?slug=${encodeURIComponent(f.borradorSlug)}`}
-                      className="inline-flex items-center gap-2 text-xs font-medium px-2.5 py-1.5 border rounded-lg hover:bg-gray-100"
-                      title="Editar borrador"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Editar
-                    </a>
-                  ) : (
-                    <span className="text-xs text-gray-400 whitespace-nowrap">No disponible</span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  <div className="md:px-4 flex md:justify-end">
+                    {fila.borradorSlug ? (
+                      <a
+                        href={`/dashboard/?slug=${encodeURIComponent(fila.borradorSlug)}`}
+                        className="inline-flex items-center gap-2 text-xs font-medium px-2.5 py-1.5 border rounded-lg hover:bg-gray-100"
+                        title="Editar borrador"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Editar
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400">No disponible</span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       </div>
 
-      {/* 🆕 Sección RSVPs debajo */}
-      {publicacionSeleccionada?.id && (
-        <div className="mt-8">
-          <div className="flex items-end justify-between mb-3">
+      {publicacionSeleccionada ? (
+        <section className="space-y-4">
+          <div className="flex items-end justify-between">
             <h3 className="text-lg font-semibold">
-              RSVPs de: <span className="font-medium text-violet-700">{publicacionSeleccionada.nombre}</span>
+              RSVPs de: <span className="text-violet-700">{publicacionSeleccionada.nombre}</span>
             </h3>
             <div className="text-sm text-gray-500">
-              {cargandoRsvps ? "Cargando..." : `${rsvps.length} registros`}
+              {cargandoRsvps ? "Cargando..." : `${adaptedResponses.length} registros`}
             </div>
           </div>
 
+          {summaryCards.length > 0 ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {summaryCards.map((card) => (
+                <article key={card.id} className="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+                  <div className="text-xs uppercase tracking-wide text-violet-700">{card.label}</div>
+                  <div className="mt-1 text-2xl font-semibold text-violet-900">{card.value}</div>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
           {errorRsvps ? (
-            <div className="p-3 rounded border border-red-200 bg-red-50 text-red-700 text-sm">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {errorRsvps}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border">
-              {/* Encabezado */}
-              <div className="hidden md:grid grid-cols-[1.5fr_110px_1fr_160px] bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide">
-                <div className="px-4 py-3">Invitado</div>
-                <div className="px-4 py-3">Confirma</div>
-                <div className="px-4 py-3">Mensaje</div>
-                <div className="px-4 py-3">Fecha</div>
+            <>
+              <div className="hidden md:block overflow-x-auto rounded-xl border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-600">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Invitado</th>
+                      {visibleColumns.map((column) => (
+                        <th key={column.id} className="px-4 py-3 text-left whitespace-nowrap">
+                          {column.label}
+                        </th>
+                      ))}
+                      <th className="px-4 py-3 text-left whitespace-nowrap">Fecha</th>
+                      <th className="px-4 py-3 text-right">Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {adaptedResponses.map((response) => (
+                      <tr key={response.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">{response.displayName}</td>
+                        {visibleColumns.map((column) => (
+                          <td key={`${response.id}-${column.id}`} className="px-4 py-3 text-gray-700 max-w-[220px]">
+                            <span className="block truncate" title={formatAnswerValue(column, response.answers[column.id])}>
+                              {formatAnswerValue(column, response.answers[column.id])}
+                            </span>
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          {response.createdAt ? response.createdAt.toLocaleString() : "(sin fecha)"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setDetalleId(response.id)}
+                            className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                          >
+                            Ver
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
-              <ul className="divide-y">
-                {rsvps.map((r) => {
-                  // 🔧 Normalizamos campos comunes
-                  const nombre =
-                    r.nombre ||
-                    r.nombreCompleto ||
-                    r.invitado ||
-                    r.email ||
-                    r.telefono ||
-                    "(sin nombre)";
-                  const confirma =
-                    typeof r.confirma === "boolean"
-                      ? r.confirma
-                      : (typeof r.confirmado === "boolean" ? r.confirmado : (r.asistencia === "si" || r.asistencia === "sí"));
-                  const cantidad = r.cantidad ?? r.invitados ?? r.asistentes ?? 1;
-                  const mensaje = r.mensaje || r.comentarios || "";
-                  // 🔎 Tomamos la fecha de creación desde el primer campo disponible
-                  const fechaTS =
-                    r.creadoEn ||
-                    r.createdAt ||
-                    r.fecha ||
-                    r.fechaCreacion ||
-                    r.enviadoEn ||
-                    r.timestamp ||
-                    null;
-
-                  const fecha = tsToDate(fechaTS);
-
-
-                  return (
-                    <li key={r.id} className="grid md:grid-cols-[1.5fr_110px_1fr_160px] grid-cols-1 gap-2 md:gap-0 px-3 sm:px-4 py-3">
-                      <div className="md:px-4">
-                        <div className="font-medium text-gray-800">{nombre}</div>
-                        {(r.email || r.telefono) && (
-                          <div className="text-xs text-gray-500">
-                            {r.email ? r.email : ""}{r.email && r.telefono ? " · " : ""}{r.telefono ? r.telefono : ""}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="md:px-4">
-                        <span className={"inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium " + (confirma ? "bg-green-50 text-green-700 border border-green-200" : "bg-gray-100 text-gray-600 border border-gray-200")}>
-                          {confirma ? "Sí" : "No"}
+              <div className="md:hidden space-y-3">
+                {adaptedResponses.map((response) => (
+                  <article key={response.id} className="rounded-xl border p-3 bg-white">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-medium text-slate-900">{response.displayName}</h4>
+                      <button
+                        type="button"
+                        onClick={() => setDetalleId(response.id)}
+                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-700"
+                      >
+                        Detalle
+                      </button>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {visibleColumns.map((column) => (
+                        <div key={`${response.id}-${column.id}`} className="flex items-start justify-between gap-3 text-sm">
+                          <span className="text-slate-500">{column.label}</span>
+                          <span className="text-slate-800 text-right">{formatAnswerValue(column, response.answers[column.id])}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-start justify-between gap-3 text-sm">
+                        <span className="text-slate-500">Fecha</span>
+                        <span className="text-slate-800 text-right">
+                          {response.createdAt ? response.createdAt.toLocaleString() : "(sin fecha)"}
                         </span>
                       </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
 
-                      <div className="md:px-4 text-sm text-gray-700 break-words">{mensaje || <span className="text-gray-400">(sin mensaje)</span>}</div>
-                      <div className="md:px-4 text-sm text-gray-700">
-                        {fecha ? fecha.toLocaleString() : "(sin fecha)"}
-                      </div>
-                    </li>
-                  );
-                })}
-
-                {!cargandoRsvps && rsvps.length === 0 && (
-                  <li className="px-4 py-6 text-sm text-gray-500">No hay RSVPs para esta invitación.</li>
-                )}
-              </ul>
-            </div>
+              {!cargandoRsvps && adaptedResponses.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  No hay RSVPs para esta invitacion.
+                </div>
+              ) : null}
+            </>
           )}
+        </section>
+      ) : null}
+
+      {detalleRespuesta ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl max-h-[86vh] overflow-hidden">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <h4 className="font-semibold text-slate-900">Detalle RSVP</h4>
+              <button
+                type="button"
+                onClick={() => setDetalleId(null)}
+                className="rounded border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(86vh-70px)]">
+              {detalleColumns.map((column) => (
+                <div key={column.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">{column.label}</div>
+                  <div className="mt-1 text-sm text-slate-900 break-words">
+                    {column.id === "full_name"
+                      ? detalleRespuesta.displayName
+                      : formatAnswerValue(column, detalleRespuesta.answers[column.id])}
+                  </div>
+                </div>
+              ))}
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Fecha</div>
+                <div className="mt-1 text-sm text-slate-900">
+                  {detalleRespuesta.createdAt ? detalleRespuesta.createdAt.toLocaleString() : "(sin fecha)"}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -429,8 +514,9 @@ function EstadoPill({ valor }) {
     Activa: "bg-green-50 text-green-700 border border-green-200",
     Pausada: "bg-amber-50 text-amber-700 border border-amber-200",
     Expirada: "bg-gray-100 text-gray-600 border border-gray-200",
-    "Sin URL": "bg-red-50 text-red-700 border red-200",
+    "Sin URL": "bg-red-50 text-red-700 border border-red-200",
   };
+
   const cls = styles[valor] || "bg-gray-50 text-gray-700 border border-gray-200";
   return <span className={`${base} ${cls}`}>{valor}</span>;
 }
@@ -438,7 +524,7 @@ function EstadoPill({ valor }) {
 async function copiar(texto) {
   try {
     await navigator.clipboard.writeText(texto);
-  } catch (e) {
-    console.warn("No se pudo copiar al portapapeles", e);
+  } catch (error) {
+    console.warn("No se pudo copiar al portapapeles", error);
   }
 }

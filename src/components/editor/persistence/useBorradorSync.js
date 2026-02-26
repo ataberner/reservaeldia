@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { db, storage } from "@/firebase";
+import { normalizeRsvpConfig } from "@/domain/rsvp/config";
 import {
   captureEditorIssue,
   pushEditorBreadcrumb,
@@ -51,18 +52,6 @@ async function refreshStorageUrl(value, cache) {
 
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey);
-  }
-
-  const hasTokenInUrl =
-    typeof value === "string" &&
-    /[?&]token=/.test(value);
-  const isUserPrivatePath = /^usuarios\//i.test(location.path || "");
-
-  // Evita ruido 404 al intentar "refrescar" URLs ya tokenizadas de uploads privados.
-  // Si el token sigue vigente, la URL funciona; si vencio, fallara al renderizar sin romper la carga.
-  if (isUserPrivatePath && hasTokenInUrl) {
-    cache.set(cacheKey, value);
-    return value;
   }
 
   try {
@@ -127,11 +116,13 @@ export default function useBorradorSync({
   // estado actual
   objetos,
   secciones,
+  rsvp,
   cargado,
 
   // setters
   setObjetos,
   setSecciones,
+  setRsvp,
   setCargado,
   setSeccionActivaId,
 
@@ -182,6 +173,7 @@ export default function useBorradorSync({
           const data = snap.data();
           const seccionesData = data.secciones || [];
           const objetosData = data.objetos || [];
+          const rsvpData = data.rsvp;
 
           // Refresca URLs de Firebase Storage por si hay tokens vencidos/revocados.
           const refreshCache = new Map();
@@ -210,6 +202,13 @@ export default function useBorradorSync({
 
           setObjetos(objsMigrados);
           setSecciones(seccionesRefrescadas);
+          if (typeof setRsvp === "function") {
+            if (rsvpData && typeof rsvpData === "object") {
+              setRsvp(normalizeRsvpConfig(rsvpData, { forceEnabled: false }));
+            } else {
+              setRsvp(null);
+            }
+          }
 
           pushEditorBreadcrumb("borrador-load-success", {
             slug,
@@ -287,11 +286,15 @@ export default function useBorradorSync({
 
         const seccionesLimpias = limpiarUndefined(secciones);
         const objetosLimpios = limpiarUndefined(objetosValidados);
+        const rsvpLimpio = rsvp
+          ? limpiarUndefined(normalizeRsvpConfig(rsvp, { forceEnabled: false }))
+          : null;
 
         const ref = doc(db, "borradores", slug);
         await updateDoc(ref, {
           objetos: objetosLimpios,
           secciones: seccionesLimpias,
+          rsvp: rsvpLimpio,
           ultimaEdicion: serverTimestamp(),
         });
 
@@ -311,6 +314,7 @@ export default function useBorradorSync({
             slug,
             objetos: Array.isArray(objetos) ? objetos.length : null,
             secciones: Array.isArray(secciones) ? secciones.length : null,
+            hasRsvp: Boolean(rsvp),
           },
           severity: "error",
         });
@@ -318,5 +322,5 @@ export default function useBorradorSync({
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [objetos, secciones, cargado, slug, userId, ignoreNextUpdateRef, stageRef, validarPuntosLinea]);
+  }, [objetos, secciones, rsvp, cargado, slug, userId, ignoreNextUpdateRef, stageRef, validarPuntosLinea]);
 }

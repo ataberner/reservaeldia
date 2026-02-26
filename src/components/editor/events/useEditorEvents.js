@@ -2,6 +2,11 @@
 import { useEffect } from "react";
 import computeInsertDefaults from "./computeInsertDefaults";
 import {
+  createDefaultRsvpConfig,
+  isRsvpConfigV2,
+  normalizeRsvpConfig,
+} from "@/domain/rsvp/config";
+import {
   applyGlobalMotionPreset,
   clearAllMotionEffects,
   CLEAR_ALL_MOTION_PRESET_ID,
@@ -56,6 +61,9 @@ export default function useEditorEvents({
   seccionActivaId,
 
   setElementosSeleccionados,
+  rsvpConfig,
+  setRsvpConfig,
+  onRequestRsvpSetup,
 
   normalizarAltoModo,
   ALTURA_PANTALLA_EDITOR,
@@ -174,9 +182,19 @@ export default function useEditorEvents({
             ? window._objetosActuales.find((o) => o?.tipo === "countdown")?.id
             : null)
           : null;
+      const existingRsvpId =
+        nuevoConSeccion?.tipo === "rsvp-boton"
+          ? (Array.isArray(window._objetosActuales)
+            ? window._objetosActuales.find((o) => o?.tipo === "rsvp-boton")?.id
+            : null)
+          : null;
 
       setObjetos((prev) => {
         if (nuevoConSeccion?.tipo !== "countdown") {
+          if (nuevoConSeccion?.tipo === "rsvp-boton") {
+            const existingIndex = prev.findIndex((obj) => obj?.tipo === "rsvp-boton");
+            if (existingIndex >= 0) return prev;
+          }
           return [...prev, nuevoConSeccion];
         }
 
@@ -208,7 +226,23 @@ export default function useEditorEvents({
         return next;
       });
 
-      setElementosSeleccionados([existingCountdownId || nuevoConSeccion.id]);
+      const selectedId = existingCountdownId || existingRsvpId || nuevoConSeccion.id;
+      setElementosSeleccionados([selectedId]);
+
+      if (nuevoConSeccion?.tipo === "rsvp-boton" && !existingRsvpId && typeof setRsvpConfig === "function") {
+        const hasConfig = isRsvpConfigV2(rsvpConfig);
+        const baseConfig = hasConfig
+          ? normalizeRsvpConfig(rsvpConfig, { forceEnabled: false })
+          : createDefaultRsvpConfig("minimal");
+
+        setRsvpConfig(baseConfig);
+        if (typeof onRequestRsvpSetup === "function") {
+          onRequestRsvpSetup({
+            forcePresetSelection: !hasConfig,
+            source: "insert-rsvp-button",
+          });
+        }
+      }
     };
 
     window.addEventListener("insertar-elemento", handler);
@@ -218,6 +252,9 @@ export default function useEditorEvents({
     secciones,
     setObjetos,
     setElementosSeleccionados,
+    rsvpConfig,
+    setRsvpConfig,
+    onRequestRsvpSetup,
     normalizarAltoModo,
     ALTURA_PANTALLA_EDITOR,
   ]);

@@ -49,6 +49,7 @@ export default function MenuOpcionesElemento({
     setSecciones,
     setObjetos,
     setElementosSeleccionados,
+    onConfigurarRsvp,
 }) {
     // Estado local del submenu "Orden de capa"
     const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
@@ -75,6 +76,7 @@ export default function MenuOpcionesElemento({
 
 
     const esImagen = elementoSeleccionado?.tipo === "imagen";
+    const esRsvp = elementoSeleccionado?.tipo === "rsvp-boton";
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -691,6 +693,21 @@ export default function MenuOpcionesElemento({
                 >
                     <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded" />
                     Usar como fondo
+                </button>
+            )}
+
+            {esRsvp && (
+                <button
+                    onClick={() => {
+                        if (typeof onConfigurarRsvp === "function") {
+                            onConfigurarRsvp();
+                        }
+                        onCerrar();
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                >
+                    <div className="w-4 h-4 rounded border border-violet-300 bg-violet-100" />
+                    Editar confirmar asistencia
                 </button>
             )}
 

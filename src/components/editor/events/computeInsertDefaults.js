@@ -1,4 +1,8 @@
-﻿import { sanitizeMotionEffect } from "@/domain/motionEffects";
+import { sanitizeMotionEffect } from "@/domain/motionEffects";
+import {
+  DEFAULT_RSVP_BUTTON_STYLE_ID,
+  createRsvpButtonStylePatch,
+} from "@/domain/rsvp/buttonStyles";
 
 const CANVAS_WIDTH = 800;
 
@@ -233,12 +237,33 @@ export default function computeInsertDefaults({
     const height = incomingHeight ?? 50;
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
     const y = incomingY ?? 140;
+    const hasVisualConfig = [
+      "rsvpStyleId",
+      "fillMode",
+      "gradientFrom",
+      "gradientTo",
+      "color",
+      "colorTexto",
+      "strokeColor",
+      "strokeWidth",
+      "shadowColor",
+      "shadowBlur",
+      "shadowOffsetY",
+    ].some((key) => typeof payload[key] !== "undefined");
+    const stylePatch = hasVisualConfig
+      ? {}
+      : createRsvpButtonStylePatch(DEFAULT_RSVP_BUTTON_STYLE_ID);
+
     next = {
       ...next,
+      ...stylePatch,
       x,
       y,
       width,
       height,
+      ancho: width,
+      alto: height,
+      cornerRadius: Number.isFinite(payload.cornerRadius) ? payload.cornerRadius : 8,
     };
   } else {
     next = {
@@ -270,6 +295,7 @@ export default function computeInsertDefaults({
 
   return stripUndefined(persistable);
 }
+
 
 
 

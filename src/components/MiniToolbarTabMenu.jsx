@@ -1,5 +1,6 @@
 // components/MiniToolbarTabMenu.jsx
 import React from "react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { useAuthClaims } from "@/hooks/useAuthClaims";
 
 export default function MiniToolbarTabMenu({
@@ -19,60 +20,33 @@ export default function MiniToolbarTabMenu({
   }
 
   return (
-    <div className="flex flex-col gap-2 flex-1 min-h-0">
-      <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto pr-1">
+    <div className="flex flex-col gap-1.5 flex-1 min-h-0">
+      <div className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
         <button
           onClick={onAbrirModalSeccion}
-          className="flex items-center gap-2 w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
+          className="inline-flex w-full items-start gap-2 rounded-lg bg-purple-100 px-3 py-1.5 text-left text-[13px] font-medium leading-tight text-purple-800 shadow-sm transition-all hover:bg-purple-200"
         >
-          <span className="text-lg">➕</span>
-          <span>Añadir sección</span>
-        </button>
-
-        <button
-          onClick={() => {
-            window.dispatchEvent(
-              new CustomEvent("insertar-elemento", {
-                detail: {
-                  id: `rsvp-${Date.now()}`,
-                  tipo: "rsvp-boton",
-                  texto: "Confirmar asistencia",
-                  x: 300,
-                  y: 100,
-                  ancho: 220,
-                  alto: 50,
-                  color: "#773dbe",
-                  colorTexto: "#ffffff",
-                  fontSize: 18,
-                  fontFamily: "sans-serif",
-                  align: "center",
-                },
-              })
-            );
-          }}
-          className="flex items-center gap-2 w-full bg-green-100 hover:bg-green-200 text-green-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
-        >
-          <span className="text-lg">📩</span>
-          <span>Añadir RSVP</span>
+          <Plus className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 break-words">Anadir seccion</span>
         </button>
 
         {esAdmin && (
           <button
             onClick={onCrearPlantilla}
-            className="flex items-center gap-2 w-full bg-blue-100 hover:bg-blue-200 text-blue-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
+            className="inline-flex w-full items-start gap-2 rounded-lg bg-blue-100 px-3 py-1.5 text-left text-[13px] font-medium leading-tight text-blue-800 shadow-sm transition-all hover:bg-blue-200"
           >
-            <span className="text-lg">✨</span>
-            <span>Crear plantilla</span>
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 break-words">Crear plantilla</span>
           </button>
         )}
 
         {esAdmin && (
           <button
             onClick={onBorrarTodos}
-            className="flex items-center gap-2 w-full bg-red-100 hover:bg-red-200 text-red-800 font-medium py-2 px-4 rounded-xl shadow-sm transition-all"
+            className="inline-flex w-full items-start gap-2 rounded-lg bg-red-100 px-3 py-1.5 text-left text-[13px] font-medium leading-tight text-red-800 shadow-sm transition-all hover:bg-red-200"
           >
-            <span className="text-lg">🗑️</span>
-            <span>Borrar todos los borradores</span>
+            <Trash2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 break-words">Borrar todos los borradores</span>
           </button>
         )}
       </div>

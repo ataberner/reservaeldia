@@ -138,8 +138,14 @@ export function cambiarAlineacionTexto({ objetos, elementosSeleccionados, setObj
         o.tipo === 'forma' &&
         o.figura === 'rect' &&
         typeof o.texto === 'string';
+      const esRsvpConTexto =
+        o.tipo === 'rsvp-boton' &&
+        typeof o.texto === 'string';
 
-      if (!elementosSeleccionados.includes(o.id) || (!esTexto && !esRectConTexto)) {
+      if (
+        !elementosSeleccionados.includes(o.id) ||
+        (!esTexto && !esRectConTexto && !esRsvpConTexto)
+      ) {
         return o;
       }
 

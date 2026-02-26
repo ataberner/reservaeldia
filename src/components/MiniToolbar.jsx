@@ -5,6 +5,7 @@ import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
 import MiniToolbarTabContador from "@/components/MiniToolbarTabContador";
 import MiniToolbarTabMenu from "@/components/MiniToolbarTabMenu";
 import MiniToolbarTabEfectos from "@/components/MiniToolbarTabEfectos";
+import MiniToolbarTabRsvp from "@/components/MiniToolbarTabRsvp";
 
 
 export default function MiniToolbar({
@@ -26,6 +27,8 @@ export default function MiniToolbar({
   seccionActivaId: seccionProp,
   setImagenesSeleccionadas,
   onInsertarGaleria,
+  rsvpForcePresetSelection,
+  onRsvpPresetSelectionComplete,
 }) {
 
   // Estado interno sincronizado con 3 fuentes: prop -> evento global -> fallback por selección
@@ -50,7 +53,7 @@ export default function MiniToolbar({
   if (!botonActivo) return null;
 
   return (
-    <div className="flex flex-col gap-4 h-full min-h-0">
+    <div className="flex flex-col gap-2 h-full min-h-0">
 
       {botonActivo === "texto" && (
         <MiniToolbarTabTexto
@@ -90,6 +93,13 @@ export default function MiniToolbar({
       )}
 
       {botonActivo === "efectos" && <MiniToolbarTabEfectos />}
+
+      {botonActivo === "rsvp" && (
+        <MiniToolbarTabRsvp
+          forcePresetSelection={rsvpForcePresetSelection}
+          onPresetSelectionComplete={onRsvpPresetSelectionComplete}
+        />
+      )}
 
 
     </div>

@@ -1,6 +1,7 @@
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
-import { generarModalRSVPHTML, type RSVPConfig as ModalConfig } from "./generarModalRSVP";
+import { generarModalRSVPHTML } from "./generarModalRSVP";
+import { type RSVPConfig as ModalConfig } from "../rsvp/config";
 import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGaleria";
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
 import { generarMotionEffectsRuntimeHTML } from "./generarMotionEffectsRuntime";

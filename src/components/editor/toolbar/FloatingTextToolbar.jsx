@@ -2,7 +2,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import FontSelector from "@/components/FontSelector";
+import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 import Konva from "konva";
+import {
+  createRsvpButtonGradientPatch,
+  createRsvpButtonSolidPatch,
+  resolveRsvpButtonVisual,
+} from "@/domain/rsvp/buttonStyles";
+import { parseLinearGradientColors } from "@/domain/colors/presets";
 
 const FONT_SELECTOR_GAP = 12;
 const FONT_SELECTOR_PADDING = 8;
@@ -200,6 +207,7 @@ export default function FloatingTextToolbar({
   const esObjetivoTipografia = (item) => {
     if (!item) return false;
     if (item.tipo === "texto") return true;
+    if (item.tipo === "rsvp-boton") return true;
     if (item.tipo === "forma" && item.figura === "rect" && typeof item.texto === "string") {
       return true;
     }
@@ -235,12 +243,27 @@ export default function FloatingTextToolbar({
   };
 
   const esTexto = objetoSeleccionado?.tipo === "texto";
+  const esRsvp = objetoSeleccionado?.tipo === "rsvp-boton";
   const esFormaConTexto =
     objetoSeleccionado?.tipo === "forma" &&
     objetoSeleccionado?.figura === "rect" &&
     typeof objetoSeleccionado?.texto === "string";
-  const esRect = objetoSeleccionado?.figura === "rect";
-  const mostrarControlesTipografia = esTexto || esFormaConTexto;
+  const esRect = objetoSeleccionado?.figura === "rect" || esRsvp;
+  const mostrarControlesTipografia = esTexto || esFormaConTexto || esRsvp;
+  const mostrarControlesFondo = objetoSeleccionado?.tipo === "forma" || esRsvp;
+  const colorFondoDefault = esRsvp ? "#773dbe" : "#ffffff";
+  const colorTextoDefault = esRsvp ? "#ffffff" : "#000000";
+  const rsvpVisualActual = esRsvp
+    ? resolveRsvpButtonVisual(objetoSeleccionado || {})
+    : null;
+  const fondoPickerValue = esRsvp
+    ? (
+        rsvpVisualActual?.hasGradient
+          ? `linear-gradient(135deg, ${rsvpVisualActual.gradientFrom} 0%, ${rsvpVisualActual.gradientTo} 100%)`
+          : (rsvpVisualActual?.fillColor || colorFondoDefault)
+      )
+    : (objetoSeleccionado?.color || colorFondoDefault);
+  const permiteGradienteFondo = esRsvp || objetoSeleccionado?.figura !== "line";
   const mobileFontStripVisible =
     isMobile && mostrarControlesTipografia && mostrarSelectorFuente;
   const mobileSizeStripVisible =
@@ -702,7 +725,14 @@ export default function FloatingTextToolbar({
     ]
   );
 
-  if (!(objetoSeleccionado?.tipo === "texto" || objetoSeleccionado?.tipo === "forma" || objetoSeleccionado?.tipo === "icono")) {
+  if (
+    !(
+      objetoSeleccionado?.tipo === "texto" ||
+      objetoSeleccionado?.tipo === "forma" ||
+      objetoSeleccionado?.tipo === "icono" ||
+      objetoSeleccionado?.tipo === "rsvp-boton"
+    )
+  ) {
     return null;
   }
 
@@ -737,22 +767,47 @@ export default function FloatingTextToolbar({
   return createPortal(
     <>
       <div ref={toolbarRef} className={toolbarContainerClass} style={toolbarContainerStyle}>
-        {objetoSeleccionado?.tipo === "forma" && (
+        {mostrarControlesFondo && (
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-600">Fondo</label>
-            <input
-              type="color"
-              value={objetoSeleccionado.color || "#ffffff"}
-              onChange={(e) => {
-                const nextColor = e.target.value;
-                actualizarSeleccionados((o) => ({ ...o, color: nextColor }));
+            <UnifiedColorPicker
+              value={fondoPickerValue}
+              showGradients={permiteGradienteFondo}
+              title="Cambiar fondo"
+              panelWidth={272}
+              triggerClassName="h-6 w-6 rounded border border-gray-300"
+              onChange={(nextColor) => {
+                actualizarSeleccionados((o) => {
+                  if (o.tipo === "rsvp-boton") {
+                    const parsedGradient = parseLinearGradientColors(nextColor);
+                    if (parsedGradient) {
+                      return {
+                        ...o,
+                        ...createRsvpButtonGradientPatch(
+                          parsedGradient.from,
+                          parsedGradient.to,
+                          String(o.colorTexto || colorTextoDefault)
+                        ),
+                      };
+                    }
+
+                    return {
+                      ...o,
+                      ...createRsvpButtonSolidPatch(
+                        nextColor,
+                        String(o.colorTexto || colorTextoDefault)
+                      ),
+                    };
+                  }
+
+                  return { ...o, color: nextColor };
+                });
               }}
-              className="w-8 h-6 rounded"
             />
           </div>
         )}
 
-        {objetoSeleccionado?.tipo === "forma" && esRect && (
+        {esRect && (
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-600">Esquinas</label>
             <input
@@ -879,7 +934,7 @@ export default function FloatingTextToolbar({
 
             <input
               type="color"
-              value={objetoSeleccionado?.colorTexto || "#000000"}
+              value={objetoSeleccionado?.colorTexto || colorTextoDefault}
               onChange={(e) => {
                 const nextColor = e.target.value;
                 actualizarSeleccionados(

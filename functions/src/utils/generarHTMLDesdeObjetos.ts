@@ -1,4 +1,5 @@
 import { LINE_CONSTANTS } from "../models/lineConstants";
+import { resolveRsvpButtonVisual } from "../rsvp/buttonStyles";
 
 // ✅ Escapar strings para meterlos en atributos/HTML
 function escHTML(str: any = ""): string {
@@ -661,12 +662,16 @@ background: ${cell.bg};
       // ---------------- RSVP BOTÓN ----------------
       if (tipo === "rsvp-boton") {
         const texto = escapeHTML(obj.texto || "Confirmar asistencia");
-        const w = Number.isFinite(obj?.ancho) ? obj.ancho : 200;
-        const h = Number.isFinite(obj?.alto) ? obj.alto : 50;
+        const w = Number.isFinite(obj?.width)
+          ? obj.width
+          : (Number.isFinite(obj?.ancho) ? obj.ancho : 200);
+        const h = Number.isFinite(obj?.height)
+          ? obj.height
+          : (Number.isFinite(obj?.alto) ? obj.alto : 50);
 
-        const color = obj.color || "#773dbe";
-        const colorTexto = obj.colorTexto || "#ffffff";
+        const rsvpVisual = resolveRsvpButtonVisual(obj || {});
         const fontSize = Number.isFinite(obj?.fontSize) ? obj.fontSize : 18;
+        const cornerRadius = Number.isFinite(obj?.cornerRadius) ? obj.cornerRadius : 8;
         const fontFamily = obj.fontFamily || "sans-serif";
         const fontWeight = obj.fontWeight || "bold";
         const fontStyle = obj.fontStyle || "normal";
@@ -682,8 +687,8 @@ background: ${cell.bg};
 ${baseStyle}
 width: ${pxX(obj, w)};
 height: ${pxY(obj, h)};
-background-color: ${color};
-color: ${colorTexto};
+background: ${rsvpVisual.cssBackground};
+color: ${rsvpVisual.textColor};
 font-size: calc(${sBtn} * ${fontSize}px);
 font-family: ${fontFamily};
 font-weight: ${fontWeight};
@@ -693,7 +698,9 @@ text-align: ${align};
 display: flex;
 align-items: center;
 justify-content: center;
-border-radius: calc(${sBtn} * 8px);
+border-radius: calc(${sBtn} * ${cornerRadius}px);
+border: ${rsvpVisual.cssBorder};
+box-shadow: ${rsvpVisual.cssShadow};
 cursor: pointer;
 `.trim();
 

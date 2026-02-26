@@ -4,7 +4,7 @@ import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import GaleriaDeImagenes from "./GaleriaDeImagenes";
 import ModalCrearSeccion from "./ModalCrearSeccion";
-import { FaBars, FaRegClock, FaTimes } from "react-icons/fa";
+import { FaBars, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -48,7 +48,8 @@ export default function DashboardSidebar({
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
     const modalCrear = useModalCrearSeccion();
-    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'efectos' | 'menu' | null
+    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'efectos' | 'menu' | null
+    const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
         imagenesEnProceso,
@@ -126,6 +127,7 @@ export default function DashboardSidebar({
         setFijadoSidebar(false);
         setHoverSidebar(false);
         setBotonActivo(null);
+        setRsvpForcePresetSelection(false);
     }, []);
 
     useEffect(() => {
@@ -151,6 +153,19 @@ export default function DashboardSidebar({
         window.addEventListener("insertar-elemento", handleInsertElement);
         return () => window.removeEventListener("insertar-elemento", handleInsertElement);
     }, [isMobileViewport, fijadoSidebar, botonActivo, closeSidebarPanel]);
+
+    useEffect(() => {
+        const handleAbrirPanelRsvp = (event) => {
+            const forcePresetSelection = event?.detail?.forcePresetSelection === true;
+            setBotonActivo("rsvp");
+            setFijadoSidebar(true);
+            setHoverSidebar(true);
+            setRsvpForcePresetSelection(forcePresetSelection);
+        };
+
+        window.addEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
+        return () => window.removeEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
+    }, []);
 
 
 
@@ -317,10 +332,16 @@ export default function DashboardSidebar({
             if (prevFijado && mismoBoton) {
                 setHoverSidebar(false);
                 setBotonActivo(null);
+                if (boton === "rsvp") {
+                    setRsvpForcePresetSelection(false);
+                }
                 return false;
             }
 
             // Si clic en otro botÃ³n => cambio el botÃ³n y dejo fijado
+            if (boton !== "rsvp") {
+                setRsvpForcePresetSelection(false);
+            }
             setHoverSidebar(true);
             setBotonActivo(boton);
             return true;
@@ -343,6 +364,7 @@ export default function DashboardSidebar({
         forma: "from-[#3f74bf] to-[#345ea5]",
         imagen: "from-[#2f9a8f] to-[#247e74]",
         contador: "from-[#d27a47] to-[#b85b31]",
+        rsvp: "from-[#2a8b6f] to-[#1d6f58]",
         efectos: "from-[#7c6a24] to-[#a9852d]",
     };
 
@@ -458,6 +480,23 @@ export default function DashboardSidebar({
                     </button>
 
                     <button
+                        onMouseEnter={() => openPanel("rsvp")}
+                        onMouseLeave={(e) => {
+                            const panel = document.getElementById("sidebar-panel");
+                            if (safeContains(panel, e.relatedTarget)) return;
+                            scheduleClosePanel();
+                        }}
+                        onClick={() => {
+                            setRsvpForcePresetSelection(false);
+                            alternarSidebarConBoton("rsvp");
+                        }}
+                        className={getIconButtonClass("rsvp")}
+                        title="Confirmar asistencia"
+                    >
+                        <FaRegEnvelope className="text-lg" />
+                    </button>
+
+                    <button
                         onMouseEnter={() => openPanel("efectos")}
                         onMouseLeave={(e) => {
                             const panel = document.getElementById("sidebar-panel");
@@ -473,7 +512,7 @@ export default function DashboardSidebar({
                 </div>
 
                 {/* ðŸ“± MÃ³vil: barra horizontal inferior */}
-                <div className="grid w-full grid-cols-6 items-center gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
+                <div className="grid w-full grid-cols-7 items-center gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
                     <button
                         onClick={() => alternarSidebarConBoton("menu")}
                         className={`${getIconButtonClass("menu", { compact: true })} justify-self-center`}
@@ -512,6 +551,17 @@ export default function DashboardSidebar({
                         title="Cuenta regresiva"
                     >
                         <FaRegClock className="text-base" />
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setRsvpForcePresetSelection(false);
+                            alternarSidebarConBoton("rsvp");
+                        }}
+                        className={`${getIconButtonClass("rsvp", { compact: true })} justify-self-center`}
+                        title="Confirmar asistencia"
+                    >
+                        <FaRegEnvelope className="text-base" />
                     </button>
 
                     <button
@@ -576,7 +626,7 @@ export default function DashboardSidebar({
                     }
                 >
                     <div
-                        className="relative w-full h-full min-h-0 flex flex-col gap-5 px-3 pb-4 pt-11 text-slate-700"
+                        className="relative w-full h-full min-h-0 flex flex-col gap-3 px-2.5 pb-3 pt-10 text-slate-700"
                         style={
                             isMobileViewport
                                 ? {
@@ -704,6 +754,8 @@ export default function DashboardSidebar({
                             }}
                             onAbrirModalSeccion={modalCrear.abrir}
                             onInsertarGaleria={insertarGaleria}
+                            rsvpForcePresetSelection={rsvpForcePresetSelection}
+                            onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}
                         />
                     </div>
                 </div>

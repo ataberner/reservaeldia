@@ -59,6 +59,8 @@ import useStageGestures from "./editor/mobile/useStageGestures";
 import useOptionButtonPosition from "@/components/editor/overlays/useOptionButtonPosition";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
+import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { resolveKonvaFill, toCssBackground } from "@/domain/colors/presets";
 
 
 
@@ -272,6 +274,7 @@ export default function CanvasEditor({
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
+  const [rsvpConfig, setRsvpConfig] = useState(null);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
 
@@ -295,6 +298,44 @@ export default function CanvasEditor({
     } catch {}
   }, []);
 
+  const abrirPanelRsvp = useCallback((options = {}) => {
+    const forcePresetSelection = options?.forcePresetSelection === true;
+    setRsvpConfig((prev) =>
+      prev
+        ? normalizeRsvpConfig(prev, { forceEnabled: false })
+        : createDefaultRsvpConfig("minimal")
+    );
+    window.dispatchEvent(
+      new CustomEvent("abrir-panel-rsvp", {
+        detail: { forcePresetSelection },
+      })
+    );
+  }, []);
+
+  useEffect(() => {
+    const handleRsvpConfigUpdate = (event) => {
+      const nextConfig = event?.detail?.config;
+      if (!nextConfig || typeof nextConfig !== "object") return;
+      setRsvpConfig(normalizeRsvpConfig(nextConfig, { forceEnabled: false }));
+    };
+
+    window.addEventListener("rsvp-config-update", handleRsvpConfigUpdate);
+    return () => window.removeEventListener("rsvp-config-update", handleRsvpConfigUpdate);
+  }, []);
+
+  useEffect(() => {
+    const normalized = rsvpConfig
+      ? normalizeRsvpConfig(rsvpConfig, { forceEnabled: false })
+      : createDefaultRsvpConfig("minimal");
+
+    window._rsvpConfigActual = normalized;
+    window.dispatchEvent(
+      new CustomEvent("rsvp-config-changed", {
+        detail: { config: normalized },
+      })
+    );
+  }, [rsvpConfig]);
+
 
 
 
@@ -304,10 +345,12 @@ export default function CanvasEditor({
 
     objetos,
     secciones,
+    rsvp: rsvpConfig,
     cargado,
 
     setObjetos,
     setSecciones,
+    setRsvp: setRsvpConfig,
     setCargado,
     setSeccionActivaId,
 
@@ -354,6 +397,9 @@ export default function CanvasEditor({
     seccionActivaId,
 
     setElementosSeleccionados,
+    rsvpConfig,
+    setRsvpConfig,
+    onRequestRsvpSetup: abrirPanelRsvp,
 
     normalizarAltoModo,
     ALTURA_PANTALLA_EDITOR,
@@ -2929,7 +2975,7 @@ export default function CanvasEditor({
                     <span className="inline-flex items-center gap-1.5">
                       <span
                         className="h-3.5 w-3.5 rounded border border-white/80 shadow-sm"
-                        style={{ backgroundColor: seccion.fondo || "#ffffff" }}
+                        style={{ background: toCssBackground(seccion.fondo, "#ffffff") }}
                       />
                       Fondo sección
                     </span>
@@ -3150,6 +3196,12 @@ export default function CanvasEditor({
                     const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
                     const esActiva = seccion.id === seccionActivaId;
                     const estaAnimando = seccionesAnimando.includes(seccion.id);
+                    const sectionFill = resolveKonvaFill(
+                      seccion.fondo,
+                      800,
+                      alturaPx,
+                      "#ffffff"
+                    );
 
                     const elementos = [
                       // Fondo de sección - puede ser color o imagen
@@ -3173,7 +3225,19 @@ export default function CanvasEditor({
                           y={offsetY}
                           width={800}
                           height={alturaPx}
-                          fill={seccion.fondo || "#ffffff"}
+                          fill={sectionFill.fillColor}
+                          fillPriority={sectionFill.hasGradient ? "linear-gradient" : "color"}
+                          fillLinearGradientStartPoint={
+                            sectionFill.hasGradient ? sectionFill.startPoint : undefined
+                          }
+                          fillLinearGradientEndPoint={
+                            sectionFill.hasGradient ? sectionFill.endPoint : undefined
+                          }
+                          fillLinearGradientColorStops={
+                            sectionFill.hasGradient
+                              ? [0, sectionFill.gradientFrom, 1, sectionFill.gradientTo]
+                              : undefined
+                          }
                           stroke="transparent"
                           strokeWidth={0}
                           listening={true}
@@ -3342,6 +3406,12 @@ export default function CanvasEditor({
                       {/* Indicador de la sección que se está modificando */}
                       {seccionesOrdenadas.map((seccion, index) => {
                         const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+                        const controlSectionFill = resolveKonvaFill(
+                          seccion.fondo,
+                          800,
+                          seccion.altura,
+                          "transparent"
+                        );
 
                         const modoSeccion = normalizarAltoModo(seccion.altoModo);
                         const permiteResizeAltura = (modoSeccion !== "pantalla");
@@ -3354,7 +3424,23 @@ export default function CanvasEditor({
                               y={offsetY}
                               width={800}
                               height={seccion.altura}
-                              fill={seccion.fondo || "transparent"} // podés poner blanco u otro color
+                              fill={controlSectionFill.fillColor}
+                              fillPriority={controlSectionFill.hasGradient ? "linear-gradient" : "color"}
+                              fillLinearGradientStartPoint={
+                                controlSectionFill.hasGradient
+                                  ? controlSectionFill.startPoint
+                                  : undefined
+                              }
+                              fillLinearGradientEndPoint={
+                                controlSectionFill.hasGradient
+                                  ? controlSectionFill.endPoint
+                                  : undefined
+                              }
+                              fillLinearGradientColorStops={
+                                controlSectionFill.hasGradient
+                                  ? [0, controlSectionFill.gradientFrom, 1, controlSectionFill.gradientTo]
+                                  : undefined
+                              }
                               onClick={() => onSelectSeccion(seccion.id)}   // ?? dispara el evento
                             />
 
@@ -3383,7 +3469,13 @@ export default function CanvasEditor({
 
                   {objetos.map((obj, i) => {
                     // ?? Determinar si está en modo edición
-                    const isInEditMode = editing.id === obj.id && elementosSeleccionados[0] === obj.id;
+                    const isInlineEditableObject =
+                      obj.tipo === "texto" ||
+                      (obj.tipo === "forma" && obj.figura === "rect");
+                    const isInEditMode =
+                      isInlineEditableObject &&
+                      editing.id === obj.id &&
+                      elementosSeleccionados[0] === obj.id;
 
                     // ??? Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
                     if (obj.tipo === "galeria") {
@@ -3615,11 +3707,10 @@ export default function CanvasEditor({
                         inlineVisibilityMode={inlineDebugAB.visibilitySource}
                         finishInlineEdit={finishEdit}
                         onSelect={isInEditMode ? null : (id, obj, e) => {
-                          if (obj.tipo === "rsvp-boton") {
-                            return;
-                          }
-
-                          if (editing.id && editing.id !== id) {
+                          const targetSupportsInlineEdit =
+                            obj?.tipo === "texto" ||
+                            (obj?.tipo === "forma" && obj?.figura === "rect");
+                          if (editing.id && (editing.id !== id || !targetSupportsInlineEdit)) {
                             const previousEditingId = editing.id;
                             finishEdit();
                             restoreElementDrag(previousEditingId);
@@ -4563,6 +4654,7 @@ export default function CanvasEditor({
           setSecciones={setSecciones}
           setObjetos={setObjetos}
           setElementosSeleccionados={setElementosSeleccionados}
+          onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
         />
       )}
 
@@ -4596,3 +4688,6 @@ export default function CanvasEditor({
   );
 
 }
+
+
+

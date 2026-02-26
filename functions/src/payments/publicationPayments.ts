@@ -5,7 +5,7 @@ import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
 import { type CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
-import { type RSVPConfig as ModalConfig } from "../utils/generarModalRSVP";
+import { normalizeRsvpConfig, type RSVPConfig as ModalConfig } from "../rsvp/config";
 import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
 import {
   type PublicSlugAvailabilityReason,
@@ -843,14 +843,23 @@ async function resolveUrlsInObjects(objetos: unknown[]): Promise<unknown[]> {
 }
 
 function createRsvpConfig(data: Record<string, any>): ModalConfig {
-  return {
-    enabled: data?.rsvp?.enabled !== false,
-    title: data?.rsvp?.title,
-    subtitle: data?.rsvp?.subtitle,
-    buttonText: data?.rsvp?.buttonText,
-    primaryColor: data?.rsvp?.primaryColor,
-    sheetUrl: data?.rsvp?.sheetUrl,
-  };
+  const rawRsvp = data?.rsvp && typeof data.rsvp === "object"
+    ? data.rsvp as Record<string, unknown>
+    : {};
+
+  const normalized = normalizeRsvpConfig({
+    ...rawRsvp,
+    enabled: rawRsvp?.enabled !== false,
+    title: rawRsvp?.title,
+    subtitle: rawRsvp?.subtitle,
+    buttonText: rawRsvp?.buttonText,
+    primaryColor: rawRsvp?.primaryColor,
+    sheetUrl: rawRsvp?.sheetUrl,
+  });
+
+  // Firestore rechaza campos `undefined` en objetos anidados.
+  // JSON stringify/parse elimina esos valores de forma segura para este snapshot.
+  return JSON.parse(JSON.stringify(normalized)) as ModalConfig;
 }
 
 function createSlugConflictError(message: string): HttpsError {
@@ -910,6 +919,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     tipo: draftData.tipo || draftData.plantillaTipo || "desconocido",
     portada: draftData.thumbnailUrl || null,
     invitadosCount: draftData.invitadosCount || 0,
+    rsvp,
     publicadaEn: serverTimestamp(),
     borradorSlug: draftSlug,
     ultimaOperacion: operation,
@@ -1178,7 +1188,16 @@ async function finalizeApprovedSession(params: {
       { merge: true }
     );
 
-    throw error;
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+
+    throw new HttpsError(
+      "failed-precondition",
+      error instanceof Error && error.message
+        ? error.message
+        : "Pago aprobado, pero la publicacion no se pudo completar en este intento."
+    );
   }
 }
 

@@ -1,6 +1,7 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
 import useImage from "use-image";
+import { resolveKonvaFill } from "@/domain/colors/presets";
 
 export default function FondoSeccion({
   seccion,
@@ -21,6 +22,7 @@ export default function FondoSeccion({
   const transformerPadding = isMobile ? 10 : 4;
   const transformerBorderStrokeWidth = isMobile ? 1.5 : 1;
   const transformerAnchorStrokeWidth = isMobile ? 2.5 : 2;
+  const fallbackFill = resolveKonvaFill(seccion.fondo, 800, alturaPx, "#f0f0f0");
 
   useEffect(() => {
     if (typeof onBackgroundImageStatusChange !== "function") return;
@@ -111,7 +113,15 @@ export default function FondoSeccion({
         y={offsetY}
         width={800}
         height={alturaPx}
-        fill={seccion.fondo || "#f0f0f0"}
+        fill={fallbackFill.fillColor}
+        fillPriority={fallbackFill.hasGradient ? "linear-gradient" : "color"}
+        fillLinearGradientStartPoint={fallbackFill.hasGradient ? fallbackFill.startPoint : undefined}
+        fillLinearGradientEndPoint={fallbackFill.hasGradient ? fallbackFill.endPoint : undefined}
+        fillLinearGradientColorStops={
+          fallbackFill.hasGradient
+            ? [0, fallbackFill.gradientFrom, 1, fallbackFill.gradientTo]
+            : undefined
+        }
         listening={true}
         preventDefault={false}
         onClick={onSelect}
@@ -146,7 +156,15 @@ export default function FondoSeccion({
         y={offsetY}
         width={800}
         height={alturaPx}
-        fill={seccion.fondo || "#f0f0f0"}
+        fill={fallbackFill.fillColor}
+        fillPriority={fallbackFill.hasGradient ? "linear-gradient" : "color"}
+        fillLinearGradientStartPoint={fallbackFill.hasGradient ? fallbackFill.startPoint : undefined}
+        fillLinearGradientEndPoint={fallbackFill.hasGradient ? fallbackFill.endPoint : undefined}
+        fillLinearGradientColorStops={
+          fallbackFill.hasGradient
+            ? [0, fallbackFill.gradientFrom, 1, fallbackFill.gradientTo]
+            : undefined
+        }
         listening={true}
         preventDefault={false}
         onClick={onSelect}

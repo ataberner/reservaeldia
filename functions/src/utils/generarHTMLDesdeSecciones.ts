@@ -163,7 +163,19 @@ export function generarHTMLDesdeSecciones(
     ? `
 <script>
 (function(){
+  var UNIT_ORDER = ["days", "hours", "minutes", "seconds"];
+
   function pad(n){ n=Math.floor(Math.abs(n)); return n<10 ? "0"+n : ""+n; }
+  function canAnimate(){
+    var runtimeEnabled = window.__COUNTDOWN_ANIMATIONS_ENABLED !== false;
+    var reduced = false;
+    try {
+      reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    } catch (_error) {
+      reduced = false;
+    }
+    return runtimeEnabled && !reduced;
+  }
   function diffParts(target){
     const now = Date.now();
     let ms = Math.max(0, target.getTime() - now);
@@ -171,26 +183,114 @@ export function generarHTMLDesdeSecciones(
     const h = Math.floor(ms / 3600000);  ms -= h*3600000;
     const m = Math.floor(ms / 60000);    ms -= m*60000;
     const s = Math.floor(ms / 1000);
-    return { d, h, m, s };
+    return { days: d, hours: h, minutes: m, seconds: s };
   }
+
+  function normalizeUnits(root){
+    var raw = String(root.getAttribute("data-units") || "");
+    if (!raw) return UNIT_ORDER.slice();
+    var units = raw
+      .split(",")
+      .map(function(item){ return String(item || "").trim().toLowerCase(); })
+      .filter(function(item){ return UNIT_ORDER.indexOf(item) >= 0; })
+      .filter(function(item, index, list){ return list.indexOf(item) === index; });
+    return units.length ? units : UNIT_ORDER.slice();
+  }
+
+  function formatUnitValue(parts, unit){
+    var value = Number(parts[unit] || 0);
+    if (unit === "days") return String(value).padStart(2, "0");
+    return pad(value);
+  }
+
+  function triggerTickAnimation(node, tickAnim){
+    if (!node || !canAnimate()) return;
+    var anim = String(tickAnim || "none").toLowerCase();
+    var className = "";
+    if (anim === "flipsoft") className = "cdv2-tick-flip";
+    if (anim === "pulse") className = "cdv2-tick-pulse";
+    if (!className) return;
+    node.classList.remove(className);
+    void node.offsetWidth;
+    node.classList.add(className);
+  }
+
+  function applyFrameAnimation(root){
+    if (!root || !canAnimate()) return;
+    var frameAnim = String(root.getAttribute("data-frame-anim") || "none").toLowerCase();
+    var frameClass = frameAnim === "rotateslow"
+      ? "cdv2-frame-rotate"
+      : frameAnim === "shimmer"
+      ? "cdv2-frame-shimmer"
+      : "";
+    if (!frameClass) return;
+    root.querySelectorAll(".cdv2-frame").forEach(function(frameNode){
+      frameNode.classList.add(frameClass);
+    });
+  }
+
+  function applyEntryAnimation(root){
+    if (!root || !canAnimate()) return;
+    var entryAnim = String(root.getAttribute("data-entry-anim") || "none").toLowerCase();
+    var className = entryAnim === "fadeup"
+      ? "cdv2-entry-up"
+      : entryAnim === "fadein"
+      ? "cdv2-entry-fade"
+      : entryAnim === "scalein"
+      ? "cdv2-entry-scale"
+      : "";
+    if (!className) return;
+    root.classList.add(className);
+  }
+
+  function tickOneLegacy(root, parts){
+    const vals = root.querySelectorAll(".cd-val");
+    if (!vals || vals.length < 4) return;
+    vals[0].textContent = String(parts.days).padStart(2, "0");
+    vals[1].textContent = pad(parts.hours);
+    vals[2].textContent = pad(parts.minutes);
+    vals[3].textContent = pad(parts.seconds);
+  }
+
+  function tickOneV2(root, parts){
+    var units = normalizeUnits(root);
+    var tickAnim = root.getAttribute("data-tick-anim") || "none";
+    var unitNodes = root.querySelectorAll("[data-unit]");
+    if (!unitNodes || !unitNodes.length) return;
+    unitNodes.forEach(function(node){
+      var unit = String(node.getAttribute("data-unit") || "").trim().toLowerCase();
+      if (units.indexOf(unit) < 0) return;
+      var valueNode = node.querySelector(".cdv2-val, .cd-val");
+      if (!valueNode) return;
+      var nextValue = formatUnitValue(parts, unit);
+      if (valueNode.textContent !== nextValue) {
+        valueNode.textContent = nextValue;
+        triggerTickAnimation(valueNode, tickAnim);
+      }
+    });
+  }
+
   function tickOne(root){
     const iso = root.getAttribute("data-target");
     if(!iso) return;
-    const t = new Date(iso);
-    if(isNaN(t.getTime())) return;
-    const p = diffParts(t);
-    const vals = root.querySelectorAll(".cd-val");
-    if(vals && vals.length >= 4){
-      vals[0].textContent = String(p.d).padStart(2,"0");
-      vals[1].textContent = pad(p.h);
-      vals[2].textContent = pad(p.m);
-      vals[3].textContent = pad(p.s);
+    const targetDate = new Date(iso);
+    if(isNaN(targetDate.getTime())) return;
+    const parts = diffParts(targetDate);
+
+    if (root.getAttribute("data-countdown-v2") === "1") {
+      tickOneV2(root, parts);
+      return;
     }
+    tickOneLegacy(root, parts);
   }
   function boot(){
     const roots = Array.from(document.querySelectorAll("[data-countdown]"));
     if(!roots.length) return;
-    roots.forEach(tickOne);
+    roots.forEach(function(root){
+      applyEntryAnimation(root);
+      applyFrameAnimation(root);
+      tickOne(root);
+    });
     setInterval(() => roots.forEach(tickOne), 1000);
   }
   if(document.readyState === "loading"){
@@ -437,6 +537,87 @@ export function generarHTMLDesdeSecciones(
     .objeto.is-interactive{ pointer-events: auto; }
 
     .cd-chip { backdrop-filter: saturate(1.1); }
+
+    .countdown-v2 .cdv2-grid {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .countdown-v2 .cdv2-unit {
+      backdrop-filter: saturate(1.04);
+    }
+
+    .countdown-v2 .cdv2-unit--hero {
+      min-height: calc(var(--sfinal, var(--sx)) * 82px);
+    }
+
+    .countdown-v2 .cdv2-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      transform-origin: 50% 50%;
+    }
+
+    .cdv2-entry-up { animation: cdv2EntryUp 420ms ease both; }
+    .cdv2-entry-fade { animation: cdv2EntryFade 380ms ease both; }
+    .cdv2-entry-scale { animation: cdv2EntryScale 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .cdv2-tick-flip { animation: cdv2TickFlip 320ms ease; transform-origin: center; }
+    .cdv2-tick-pulse { animation: cdv2TickPulse 280ms ease; }
+    .cdv2-frame-rotate img { animation: cdv2FrameRotate 12s linear infinite; }
+    .cdv2-frame-shimmer img { animation: cdv2FrameShimmer 2.4s ease-in-out infinite; }
+
+    @keyframes cdv2EntryUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes cdv2EntryFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes cdv2EntryScale {
+      from { opacity: 0; transform: scale(0.985); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes cdv2TickFlip {
+      0% { transform: rotateX(0deg); opacity: 0.84; }
+      50% { transform: rotateX(62deg); opacity: 0.95; }
+      100% { transform: rotateX(0deg); opacity: 1; }
+    }
+
+    @keyframes cdv2TickPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes cdv2FrameRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes cdv2FrameShimmer {
+      0%, 100% { opacity: 0.82; filter: brightness(1); }
+      50% { opacity: 1; filter: brightness(1.08); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cdv2-entry-up,
+      .cdv2-entry-fade,
+      .cdv2-entry-scale,
+      .cdv2-tick-flip,
+      .cdv2-tick-pulse {
+        animation: none !important;
+      }
+
+      .cdv2-frame-rotate img,
+      .cdv2-frame-shimmer img {
+        animation: none !important;
+      }
+    }
   </style>
 </head>
 

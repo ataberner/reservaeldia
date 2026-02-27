@@ -64,6 +64,30 @@ export default function SiteManagementBoard({
           </article>
 
           {isSuperAdmin && (
+            <article className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-rose-50 p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-fuchsia-900">
+                    Presets de countdown
+                  </h2>
+                  <p className="mt-1 text-sm text-fuchsia-700">
+                    Constructor profesional para crear, versionar y publicar presets globales del countdown.
+                  </p>
+                  <p className="mt-2 text-xs text-fuchsia-700">
+                    Ruta: https://reservaeldia.com.ar/admin/countdown-presets/
+                  </p>
+                </div>
+                <a
+                  href="/admin/countdown-presets/"
+                  className="inline-flex items-center rounded-lg bg-fuchsia-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-fuchsia-700"
+                >
+                  Abrir constructor
+                </a>
+              </div>
+            </article>
+          )}
+
+          {isSuperAdmin && (
             <>
               <div
                 className={`rounded-xl p-[1px] transition-all ${

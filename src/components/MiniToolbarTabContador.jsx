@@ -1,7 +1,7 @@
 // components/MiniToolbarTabContador.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
-import { COUNTDOWN_PRESETS } from "@/config/countdownPresets";
+import { useCountdownPresetCatalog } from "@/hooks/useCountdownPresetCatalog";
 
 const COUNTDOWN_STYLE_KEYS = [
   "fontFamily",
@@ -22,6 +22,21 @@ const COUNTDOWN_STYLE_KEYS = [
   "padZero",
   "layout",
   "background",
+  "countdownSchemaVersion",
+  "presetVersion",
+  "tamanoBase",
+  "layoutType",
+  "distribution",
+  "visibleUnits",
+  "framePadding",
+  "frameSvgUrl",
+  "frameColorMode",
+  "frameColor",
+  "entryAnimation",
+  "tickAnimation",
+  "frameAnimation",
+  "labelTransform",
+  "presetPropsVersion",
 ];
 
 function fechaStrToISO(str) {
@@ -56,6 +71,13 @@ function buildCountdownDesignPatch(presetPropsSafe = {}) {
 }
 
 export default function MiniToolbarTabContador() {
+  const {
+    items: countdownPresets,
+    loading: loadingCountdownPresets,
+    error: countdownPresetsError,
+    usingFallback,
+  } = useCountdownPresetCatalog();
+
   const ahoraMas30d = (() => {
     const d = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
     const pad = (n) => String(n).padStart(2, "0");
@@ -247,9 +269,29 @@ export default function MiniToolbarTabContador() {
 
       <div>
         <div className="text-xs font-medium text-zinc-700 mb-2">Disenos</div>
+        {countdownPresetsError ? (
+          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+            {usingFallback
+              ? "Catalogo remoto no disponible. Mostrando presets legacy."
+              : countdownPresetsError}
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3">
-          {COUNTDOWN_PRESETS.map((p) => {
+          {loadingCountdownPresets && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
+              Cargando presets...
+            </div>
+          )}
+
+          {!loadingCountdownPresets && countdownPresets.length === 0 && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
+              No hay presets disponibles.
+            </div>
+          )}
+
+          {!loadingCountdownPresets && countdownPresets.map((p) => {
             const isoPreview = fechaStrToISO(fechaEventoStr) || new Date().toISOString();
+            const rawPresetProps = p?.presetPropsForCanvas || p?.props || {};
 
             return (
               <button
@@ -261,7 +303,6 @@ export default function MiniToolbarTabContador() {
                     return;
                   }
 
-                  const rawPresetProps = p?.props || {};
                   const {
                     x: _px,
                     y: _py,
@@ -307,9 +348,16 @@ export default function MiniToolbarTabContador() {
                 }}
                 className="w-full group rounded-xl border border-zinc-200 hover:border-purple-300 hover:shadow-sm text-left flex flex-col px-2 py-3"
               >
-                <div className="text-sm font-semibold text-zinc-800 mb-2">{p.nombre}</div>
+                <div className="mb-2">
+                  <div>
+                    <div className="text-sm font-semibold text-zinc-800">{p.nombre}</div>
+                    {p.categoriaLabel ? (
+                      <div className="text-[11px] text-zinc-500">{p.categoriaLabel}</div>
+                    ) : null}
+                  </div>
+                </div>
                 <div className="w-full">
-                  <CountdownPreview targetISO={isoPreview} preset={p.props} size="sm" />
+                  <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
                 </div>
               </button>
             );

@@ -1,4 +1,5 @@
 import { sanitizeMotionEffect } from "@/domain/motionEffects";
+import { estimateCountdownUnitHeight } from "@/domain/countdownPresets/renderModel";
 import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
@@ -22,12 +23,73 @@ function stripUndefined(obj) {
 }
 
 function calcCountdownInitialWidth(presetProps = {}) {
-  const n = 4;
+  const defaultUnits = ["days", "hours", "minutes", "seconds"];
+  const unitsRaw = Array.isArray(presetProps.visibleUnits)
+    ? presetProps.visibleUnits
+    : defaultUnits;
+  const units = unitsRaw
+    .map((unit) => String(unit || "").trim())
+    .filter(Boolean);
+  const n = Math.max(1, units.length || defaultUnits.length);
   const gap = toNumber(presetProps.gap, 8);
   const paddingX = toNumber(presetProps.paddingX, 8);
   const chipWidth = toNumber(presetProps.chipWidth, 46);
   const chipW = chipWidth + paddingX * 2;
-  return Math.max(120, Math.round(n * chipW + gap * (n - 1)));
+  const tamanoBase = toNumber(presetProps.tamanoBase, 320);
+  const distribution = String(
+    presetProps.distribution || presetProps.layoutType || "centered"
+  ).toLowerCase();
+
+  if (distribution === "vertical") {
+    return Math.max(160, Math.round(Math.max(chipW + 24, tamanoBase * 0.48)));
+  }
+  if (distribution === "grid") {
+    const cols = Math.min(2, n);
+    return Math.max(180, Math.round(cols * chipW + gap * (cols - 1)));
+  }
+  if (distribution === "editorial") {
+    return Math.max(220, Math.round(Math.max(chipW * n + gap * (n - 1), tamanoBase * 0.72)));
+  }
+
+  return Math.max(180, Math.round(n * chipW + gap * (n - 1)));
+}
+
+function calcCountdownInitialHeight(presetProps = {}) {
+  const defaultUnits = ["days", "hours", "minutes", "seconds"];
+  const unitsRaw = Array.isArray(presetProps.visibleUnits)
+    ? presetProps.visibleUnits
+    : defaultUnits;
+  const n = Math.max(1, unitsRaw.length || defaultUnits.length);
+  const gap = toNumber(presetProps.gap, 8);
+  const paddingY = toNumber(presetProps.paddingY, 6);
+  const valueSize = toNumber(presetProps.fontSize, 16);
+  const labelSize = toNumber(presetProps.labelSize, 10);
+  const showLabels = presetProps.showLabels !== false;
+  const distribution = String(
+    presetProps.distribution || presetProps.layoutType || "centered"
+  ).toLowerCase();
+  const tamanoBase = toNumber(presetProps.tamanoBase, 320);
+  const textDrivenChipH = paddingY * 2 + valueSize + (showLabels ? labelSize : 0) + 10;
+  const layoutDrivenChipH = estimateCountdownUnitHeight({
+    tamanoBase,
+    distribution,
+    unitsCount: n,
+  });
+  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+
+  if (distribution === "vertical") {
+    return Math.max(120, Math.round(n * chipH + gap * (n - 1)));
+  }
+  if (distribution === "grid") {
+    const cols = Math.min(2, n);
+    const rows = Math.ceil(n / cols);
+    return Math.max(110, Math.round(rows * chipH + gap * (rows - 1)));
+  }
+  if (distribution === "editorial") {
+    return Math.max(110, Math.round(chipH * 1.35));
+  }
+
+  return Math.max(90, Math.round(chipH + 10));
 }
 
 function inferTextVariant(variant = "texto", isMobile = false) {
@@ -220,7 +282,7 @@ export default function computeInsertDefaults({
   } else if (tipo === "countdown") {
     const presetProps = payload.presetProps || payload.props || {};
     const width = incomingWidth ?? calcCountdownInitialWidth(presetProps);
-    const height = incomingHeight ?? 90;
+    const height = incomingHeight ?? calcCountdownInitialHeight(presetProps);
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
     const y = incomingY ?? 140;
     next = {

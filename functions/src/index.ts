@@ -43,8 +43,25 @@ import {
   resolveDraftStateFromData,
   restoreDraftFromTrashHandler,
 } from "./drafts/draftTrashLifecycle";
+import {
+  archiveCountdownPreset as archiveCountdownPresetHandler,
+  deleteCountdownPreset as deleteCountdownPresetHandler,
+  listCountdownPresetsAdmin as listCountdownPresetsAdminHandler,
+  listCountdownPresetsPublic as listCountdownPresetsPublicHandler,
+  publishCountdownPresetDraft as publishCountdownPresetDraftHandler,
+  saveCountdownPresetDraft as saveCountdownPresetDraftHandler,
+  syncLegacyCountdownPresets as syncLegacyCountdownPresetsHandler,
+} from "./countdownPresets/service";
 
 import * as logger from "firebase-functions/logger";
+
+export const saveCountdownPresetDraft = saveCountdownPresetDraftHandler;
+export const publishCountdownPresetDraft = publishCountdownPresetDraftHandler;
+export const archiveCountdownPreset = archiveCountdownPresetHandler;
+export const deleteCountdownPreset = deleteCountdownPresetHandler;
+export const listCountdownPresetsAdmin = listCountdownPresetsAdminHandler;
+export const listCountdownPresetsPublic = listCountdownPresetsPublicHandler;
+export const syncLegacyCountdownPresets = syncLegacyCountdownPresetsHandler;
 
 setGlobalOptions({
   region: "us-central1",

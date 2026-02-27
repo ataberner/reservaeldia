@@ -32,6 +32,21 @@ const COUNTDOWN_STYLE_KEYS = [
   "padZero",
   "layout",
   "background",
+  "countdownSchemaVersion",
+  "presetVersion",
+  "tamanoBase",
+  "layoutType",
+  "distribution",
+  "visibleUnits",
+  "framePadding",
+  "frameSvgUrl",
+  "frameColorMode",
+  "frameColor",
+  "entryAnimation",
+  "tickAnimation",
+  "frameAnimation",
+  "labelTransform",
+  "presetPropsVersion",
 ];
 
 function pickCountdownStylePatch(source = {}) {

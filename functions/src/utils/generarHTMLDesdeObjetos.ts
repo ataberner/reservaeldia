@@ -475,6 +475,152 @@ fill: ${escapeAttr(fill)};
       // ---------------- COUNTDOWN ----------------
       if (tipo === "countdown") {
         const targetISO = obj.targetISO || obj.fechaObjetivo || obj.fechaISO || "";
+        const schemaVersion = Number(obj.countdownSchemaVersion || 1);
+
+        if (schemaVersion >= 2) {
+          const validUnits = ["days", "hours", "minutes", "seconds"];
+          const unitLabels: Record<string, string> = {
+            days: "Dias",
+            hours: "Horas",
+            minutes: "Min",
+            seconds: "Seg",
+          };
+          const units = Array.isArray(obj.visibleUnits)
+            ? obj.visibleUnits
+              .map((u: any) => String(u || "").trim())
+              .filter((u: string) => validUnits.includes(u))
+              .filter((u: string, i: number, arr: string[]) => arr.indexOf(u) === i)
+            : ["days", "hours", "minutes", "seconds"];
+          const safeUnits = units.length ? units : ["days", "hours", "minutes", "seconds"];
+
+          const distribution = String(obj.distribution || "centered").toLowerCase();
+          const layoutType = String(obj.layoutType || "singleFrame").toLowerCase();
+          const frameColorMode = String(obj.frameColorMode || "fixed").toLowerCase();
+          const labelTransform = String(obj.labelTransform || "uppercase").toLowerCase();
+          const entryAnim = String(obj.entryAnimation || "none").toLowerCase();
+          const tickAnim = String(obj.tickAnimation || "none").toLowerCase();
+          const frameAnim = String(obj.frameAnimation || "none").toLowerCase();
+          const showLabels = obj.showLabels !== false;
+
+          const transformLabel = (label: string): string => {
+            if (labelTransform === "lowercase") return label.toLowerCase();
+            if (labelTransform === "capitalize") return label.replace(/\b\w/g, (m) => m.toUpperCase());
+            if (labelTransform === "none") return label;
+            return label.toUpperCase();
+          };
+
+          const baseStyle = stylePosBase(obj);
+          const wObj = Number.isFinite(obj?.width) ? Number(obj.width) : null;
+          const hObj = Number.isFinite(obj?.height) ? Number(obj.height) : null;
+          const sChip = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
+
+          const gridTemplateColumns =
+            distribution === "vertical"
+              ? "1fr"
+              : distribution === "grid"
+                ? `repeat(${Math.min(2, safeUnits.length)}, minmax(0, 1fr))`
+                : distribution === "editorial" && safeUnits.length > 2
+                  ? "minmax(0,1.35fr) repeat(2, minmax(0,1fr))"
+                  : `repeat(${safeUnits.length}, minmax(0, 1fr))`;
+
+          const containerStyle = `
+${baseStyle}
+${wObj ? `width: ${pxX(obj, wObj)};` : ""}
+${hObj ? `height: ${pxY(obj, hObj)};` : ""}
+display: grid;
+grid-template-columns: 1fr;
+align-items: stretch;
+font-family: ${obj.fontFamily || "Inter, system-ui, sans-serif"};
+color: ${obj.color || "#111"};
+`.trim();
+
+          const gridStyle = `
+position: relative;
+z-index: 2;
+display: grid;
+grid-template-columns: ${gridTemplateColumns};
+align-items: stretch;
+gap: calc(${sChip} * ${Number.isFinite(obj.gap) ? Number(obj.gap) : 8}px);
+padding: calc(${sChip} * ${Number.isFinite(obj.framePadding) ? Number(obj.framePadding) : 10}px);
+`.trim();
+
+          const unitStyle = `
+position: relative;
+display: flex;
+align-items: center;
+justify-content: center;
+min-height: calc(${sChip} * 68px);
+overflow: hidden;
+border-radius: calc(${sChip} * ${Number.isFinite(obj.boxRadius) ? Number(obj.boxRadius) : 10}px);
+background: ${obj.boxBg || "transparent"};
+border: calc(${sChip} * 1px) solid ${obj.boxBorder || "transparent"};
+`.trim();
+
+          const valueStyle = `
+font-weight: 700;
+font-size: calc(${sChip} * ${Number.isFinite(obj.fontSize) ? Number(obj.fontSize) : 28}px);
+line-height: ${Number.isFinite(obj.lineHeight) ? Number(obj.lineHeight) : 1.05};
+letter-spacing: calc(${sChip} * ${Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
+color: ${obj.color || "#111"};
+`.trim();
+
+          const labelStyle = `
+font-size: calc(${sChip} * ${Number.isFinite(obj.labelSize) ? Number(obj.labelSize) : 12}px);
+line-height: 1;
+letter-spacing: calc(${sChip} * ${Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
+color: ${obj.labelColor || "#6b7280"};
+`.trim();
+
+          const frameUrl = typeof obj.frameSvgUrl === "string" ? obj.frameSvgUrl : "";
+          const frameColor = obj.frameColor || "#773dbe";
+
+          const singleFrameHtml =
+            layoutType === "singleframe" && frameUrl
+              ? `<div class="cdv2-frame cdv2-frame--single" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
+              : "";
+
+          const unitsHtml = safeUnits
+            .map((unit: string, index: number) => {
+              const unitFrameHtml =
+                layoutType === "multiunit" && frameUrl
+                  ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
+                  : "";
+
+              return `
+<div class="cdv2-unit${distribution === "editorial" && index === 0 ? " cdv2-unit--hero" : ""}" data-unit="${escapeAttr(unit)}" style="${unitStyle}">
+  ${unitFrameHtml}
+  <div class="cdv2-content" style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(${sChip} * 3px);padding:calc(${sChip} * 4px);">
+    <span class="cdv2-val cd-val" style="${valueStyle}">00</span>
+    ${showLabels ? `<span class="cdv2-lab" style="${labelStyle}">${escapeAttr(transformLabel(unitLabels[unit] || unit))}</span>` : ""}
+  </div>
+</div>`.trim();
+            })
+            .join("");
+
+          const htmlCountdownV2 = `
+<div class="objeto countdown-v2"
+  data-mobile-cluster="isolated"
+  data-mobile-center="force"
+  data-countdown
+  data-countdown-v2="1"
+  data-target="${escapeAttr(targetISO)}"
+  data-layout-type="${escapeAttr(layoutType)}"
+  data-distribution="${escapeAttr(distribution)}"
+  data-entry-anim="${escapeAttr(entryAnim)}"
+  data-tick-anim="${escapeAttr(tickAnim)}"
+  data-frame-anim="${escapeAttr(frameAnim)}"
+  data-frame-color-mode="${escapeAttr(frameColorMode)}"
+  data-units="${escapeAttr(safeUnits.join(","))}"
+  style="${containerStyle}">
+  ${singleFrameHtml}
+  <div class="cdv2-grid" style="${gridStyle}">
+    ${unitsHtml}
+  </div>
+</div>
+`.trim();
+
+          return appendMotionDataAttrs(htmlCountdownV2, obj);
+        }
 
         const textColor = obj.colorTexto ?? obj.color ?? "#111";
         const fontFamily = obj.fontFamily || "Inter, system-ui, sans-serif";

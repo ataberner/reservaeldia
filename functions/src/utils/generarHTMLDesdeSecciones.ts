@@ -25,6 +25,9 @@ const EXCLUDE_FONTS = new Set([
 ]);
 
 const ALTURA_REFERENCIA_PANTALLA = 500;
+const MOBILE_TEXT_ZOOM_CAP = 1.15;
+const MOBILE_TEXT_ZOOM_MIN_VH = 760;
+const MOBILE_TEXT_ZOOM_MAX_VH = 980;
 
 // ✅ Offsets SOLO para texto en secciones Pantalla: ON
 // - Desktop: aplica cuando vw > 767px
@@ -276,8 +279,6 @@ export function generarHTMLDesdeSecciones(
         -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
       }
-      
-        :root{ --text-zoom: 1; }
     }
 
     :root{
@@ -302,6 +303,7 @@ export function generarHTMLDesdeSecciones(
 
       /* ✅ Offset SOLO para texto en Pantalla: ON (desktop default) */
       --pantalla-y-offset: ${PANTALLA_Y_OFFSET_DESKTOP_PX}px;
+      --text-scale-max: ${MOBILE_TEXT_ZOOM_CAP};
     }
 
     /* ✅ Mobile: offset distinto SOLO para texto en Pantalla: ON */
@@ -344,6 +346,7 @@ export function generarHTMLDesdeSecciones(
       /* el zoom extra va por --zoom (NO por sfinal) */
       --zoom: 1;
       --bgzoom: 1;
+      --pantalla-text-zoom: 1;
 
       /* factor final para CONTENIDO (se setea por JS) */
       --sfinal: 1;
@@ -419,6 +422,18 @@ export function generarHTMLDesdeSecciones(
       text-rendering: optimizeLegibility;
     }
 
+    .sec[data-modo="pantalla"] .objeto[data-debug-texto="1"]{
+      --text-scale-effective: var(--pantalla-text-zoom, 1);
+    }
+
+    .sec[data-modo="pantalla"] .objeto[data-debug-texto="1"][data-text-scale-mode="lock"]{
+      --text-scale-effective: 1;
+    }
+
+    .sec[data-modo="pantalla"] .objeto[data-debug-texto="1"][data-text-scale-mode="custom"]{
+      --text-scale-effective: min(var(--pantalla-text-zoom, 1), var(--text-scale-max, ${MOBILE_TEXT_ZOOM_CAP}));
+    }
+
     .objeto.is-interactive{ pointer-events: auto; }
 
     .cd-chip { backdrop-filter: saturate(1.1); }
@@ -441,6 +456,7 @@ export function generarHTMLDesdeSecciones(
   <script>
     (function(){
       function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+      function smoothstep01(t){ return t * t * (3 - 2 * t); }
 
       function compute(){
         var vw = document.documentElement.clientWidth;
@@ -491,6 +507,10 @@ export function generarHTMLDesdeSecciones(
         // 0.3 => recomendado
         // 1   => texto escala igual que el hero (no aconsejado)
         var TEXT_ZOOM_FACTOR = 0;
+        var TEXT_ZOOM_CAP = ${MOBILE_TEXT_ZOOM_CAP};
+        var TEXT_ZOOM_MIN_VH = ${MOBILE_TEXT_ZOOM_MIN_VH};
+        var TEXT_ZOOM_MAX_VH = ${MOBILE_TEXT_ZOOM_MAX_VH};
+        var TEXT_ZOOM_RANGE = Math.max(1, TEXT_ZOOM_MAX_VH - TEXT_ZOOM_MIN_VH);
 
 
         secs.forEach(function(sec){
@@ -505,6 +525,7 @@ export function generarHTMLDesdeSecciones(
           var sfinal = sx;
           var pantallaYCompact = 0;
           var pantallaYBasePx = 0;
+          var pantallaTextZoom = 1;
 
           // limpiar custom width si no aplica
           sec.style.removeProperty("--content-w-pantalla");
@@ -537,6 +558,10 @@ export function generarHTMLDesdeSecciones(
               // 🔥 NUEVO: el contenido acompaña parcialmente el zoom
               sfinal = sx * (1 + (zoomExtra - 1) * TEXT_ZOOM_FACTOR);
 
+              var zoomProgress = clamp((vhSafePx - TEXT_ZOOM_MIN_VH) / TEXT_ZOOM_RANGE, 0, 1);
+              var zoomProgressEased = smoothstep01(zoomProgress);
+              pantallaTextZoom = 1 + (TEXT_ZOOM_CAP - 1) * zoomProgressEased;
+
               // ✅ Fidelity de diseño en Pantalla:ON:
               // no compactamos distancias verticales para respetar posiciones
               // intencionales (incluyendo textos encimados o muy cercanos).
@@ -554,6 +579,7 @@ export function generarHTMLDesdeSecciones(
           sec.style.setProperty("--sfinal", String(sfinal));
           sec.style.setProperty("--zoom", String(zoom));
           sec.style.setProperty("--bgzoom", String(bgzoom));
+          sec.style.setProperty("--pantalla-text-zoom", String(pantallaTextZoom));
 
           // ✅ Solo en mobile + pantalla: corregir el "vh" que después se escala con zoom
           if (isMobile && modo === "pantalla") {
@@ -570,20 +596,30 @@ export function generarHTMLDesdeSecciones(
 
       }
 
-      window.addEventListener("load", compute);
-      window.addEventListener("resize", compute);
+      var computeRafId = 0;
+      function scheduleCompute(){
+        if (computeRafId) return;
+        computeRafId = window.requestAnimationFrame(function(){
+          computeRafId = 0;
+          compute();
+        });
+      }
+
+      window.addEventListener("load", scheduleCompute);
+      window.addEventListener("resize", scheduleCompute);
 
       if (window.visualViewport){
-        window.visualViewport.addEventListener("resize", compute);
-        window.visualViewport.addEventListener("scroll", compute);
+        window.visualViewport.addEventListener("resize", scheduleCompute);
+        window.visualViewport.addEventListener("scroll", scheduleCompute);
       }
 
       window.addEventListener("orientationchange", function(){
-        setTimeout(compute, 50);
-        setTimeout(compute, 250);
+        scheduleCompute();
+        setTimeout(scheduleCompute, 50);
+        setTimeout(scheduleCompute, 250);
       });
 
-      compute();
+      scheduleCompute();
     })();
   </script>
 

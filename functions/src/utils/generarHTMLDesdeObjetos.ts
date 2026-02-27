@@ -20,10 +20,29 @@ function escapeAttr(str: string = ""): string {
 }
 
 const MOTION_EFFECT_VALUES = new Set(["none", "reveal", "draw", "zoom", "hover", "pulse", "rsvp"]);
+const MOBILE_TEXT_SCALE_MODE_VALUES = new Set(["inherit", "lock", "custom"]);
+const MOBILE_TEXT_SCALE_CAP_MIN = 1;
+const MOBILE_TEXT_SCALE_CAP_MAX = 1.15;
 
 function sanitizeMotionEffect(value: any): string {
   const normalized = String(value || "").trim().toLowerCase();
   return MOTION_EFFECT_VALUES.has(normalized) ? normalized : "none";
+}
+
+function sanitizeMobileTextScaleMode(value: any): "inherit" | "lock" | "custom" {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!MOBILE_TEXT_SCALE_MODE_VALUES.has(normalized)) return "inherit";
+  return normalized as "inherit" | "lock" | "custom";
+}
+
+function sanitizeMobileTextScaleMax(value: any): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return MOBILE_TEXT_SCALE_CAP_MAX;
+  return Math.max(MOBILE_TEXT_SCALE_CAP_MIN, Math.min(MOBILE_TEXT_SCALE_CAP_MAX, numeric));
+}
+
+function toCssNumber(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
 }
 
 function normalizeRoleValue(value: any): string {
@@ -323,6 +342,11 @@ pointer-events: auto;
       if (tipo === "texto") {
         const align = String(obj.align || obj.textAlign || "left").toLowerCase();
         const color = obj.colorTexto || obj.color || obj.fill || "#000";
+        const mobileTextScaleMode = sanitizeMobileTextScaleMode(obj?.mobileTextScaleMode);
+        const mobileTextScaleMaxCss =
+          mobileTextScaleMode === "custom"
+            ? `--text-scale-max: ${toCssNumber(sanitizeMobileTextScaleMax(obj?.mobileTextScaleMax))};`
+            : "";
 
         const baseLineHeight =
           typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
@@ -347,11 +371,12 @@ pointer-events: auto;
 
         const style = `
 ${baseStyle}
-/* ✅ mantener geometría estable y escalar tipografía por font-size (no por transform). */
+/* Keep absolute geometry stable; visual text zoom is applied via transform. */
 transform-origin: ${origin};
-transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY});
+transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY}) scale(var(--text-scale-effective, 1));
 ${w !== undefined ? `width: ${pxX(obj, w)};` : ""}
-font-size: calc(${sFont} * ${fs}px * var(--text-zoom, 1));
+${mobileTextScaleMaxCss}
+font-size: calc(${sFont} * ${fs}px);
 font-family: ${obj.fontFamily || "sans-serif"};
 font-weight: ${obj.fontWeight || "normal"};
 font-style: ${obj.fontStyle || "normal"};
@@ -374,7 +399,7 @@ ${obj.shadowColor
 `.trim();
 
         return envolverSiEnlace(
-          `<div class="objeto" data-debug-texto="1" style="${style}">${safeTexto}</div>`,
+          `<div class="objeto" data-debug-texto="1" data-text-scale-mode="${escapeAttr(mobileTextScaleMode)}" style="${style}">${safeTexto}</div>`,
           obj
         );
       }

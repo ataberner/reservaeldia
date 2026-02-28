@@ -23,6 +23,36 @@ const MOTION_EFFECT_VALUES = new Set(["none", "reveal", "draw", "zoom", "hover",
 const MOBILE_TEXT_SCALE_MODE_VALUES = new Set(["inherit", "lock", "custom"]);
 const MOBILE_TEXT_SCALE_CAP_MIN = 1;
 const MOBILE_TEXT_SCALE_CAP_MAX = 1.15;
+const UNSAFE_CSS_TOKEN = /[<>;]/;
+const UNSAFE_CSS_PATTERN = /(url\s*\(|javascript:|expression\s*\()/i;
+const SAFE_CSS_PAINT = /^[#(),.%\-+\s\w:/]*$/i;
+
+function sanitizeCssPaint(value: any, fallback: string): string {
+  const safe = String(value || "").trim();
+  if (!safe) return fallback;
+  if (UNSAFE_CSS_TOKEN.test(safe) || UNSAFE_CSS_PATTERN.test(safe)) return fallback;
+  if (!SAFE_CSS_PAINT.test(safe)) return fallback;
+  return safe;
+}
+
+function isLinearGradientPaint(value: string): boolean {
+  const safe = String(value || "").trim().toLowerCase();
+  return safe.startsWith("linear-gradient(") && safe.endsWith(")");
+}
+
+function buildTextPaintStyleCss(value: any, fallback: string): string {
+  const safePaint = sanitizeCssPaint(value, fallback);
+  if (!isLinearGradientPaint(safePaint)) return `color: ${safePaint};`;
+
+  return `
+background-image: ${safePaint};
+background-clip: text;
+-webkit-background-clip: text;
+color: transparent;
+-webkit-text-fill-color: transparent;
+display: inline-block;
+`.trim();
+}
 
 function sanitizeMotionEffect(value: any): string {
   const normalized = String(value || "").trim().toLowerCase();
@@ -513,6 +543,10 @@ fill: ${escapeAttr(fill)};
           const wObj = Number.isFinite(obj?.width) ? Number(obj.width) : null;
           const hObj = Number.isFinite(obj?.height) ? Number(obj.height) : null;
           const sChip = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
+          const numberPaint = sanitizeCssPaint(obj.color, "#111");
+          const labelPaint = sanitizeCssPaint(obj.labelColor, "#6b7280");
+          const unitBgPaint = sanitizeCssPaint(obj.boxBg, "transparent");
+          const unitBorderPaint = sanitizeCssPaint(obj.boxBorder, "transparent");
 
           const gridTemplateColumns =
             distribution === "vertical"
@@ -531,7 +565,7 @@ display: grid;
 grid-template-columns: 1fr;
 align-items: stretch;
 font-family: ${obj.fontFamily || "Inter, system-ui, sans-serif"};
-color: ${obj.color || "#111"};
+color: ${numberPaint};
 `.trim();
 
           const gridStyle = `
@@ -552,8 +586,8 @@ justify-content: center;
 min-height: calc(${sChip} * 68px);
 overflow: hidden;
 border-radius: calc(${sChip} * ${Number.isFinite(obj.boxRadius) ? Number(obj.boxRadius) : 10}px);
-background: ${obj.boxBg || "transparent"};
-border: calc(${sChip} * 1px) solid ${obj.boxBorder || "transparent"};
+background: ${unitBgPaint};
+border: calc(${sChip} * 1px) solid ${unitBorderPaint};
 `.trim();
 
           const valueStyle = `
@@ -561,18 +595,18 @@ font-weight: 700;
 font-size: calc(${sChip} * ${Number.isFinite(obj.fontSize) ? Number(obj.fontSize) : 28}px);
 line-height: ${Number.isFinite(obj.lineHeight) ? Number(obj.lineHeight) : 1.05};
 letter-spacing: calc(${sChip} * ${Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
-color: ${obj.color || "#111"};
+${buildTextPaintStyleCss(numberPaint, "#111")}
 `.trim();
 
           const labelStyle = `
 font-size: calc(${sChip} * ${Number.isFinite(obj.labelSize) ? Number(obj.labelSize) : 12}px);
 line-height: 1;
 letter-spacing: calc(${sChip} * ${Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
-color: ${obj.labelColor || "#6b7280"};
+${buildTextPaintStyleCss(labelPaint, "#6b7280")}
 `.trim();
 
           const frameUrl = typeof obj.frameSvgUrl === "string" ? obj.frameSvgUrl : "";
-          const frameColor = obj.frameColor || "#773dbe";
+          const frameColor = sanitizeCssPaint(obj.frameColor, "#773dbe");
 
           const singleFrameHtml =
             layoutType === "singleframe" && frameUrl
@@ -622,7 +656,7 @@ color: ${obj.labelColor || "#6b7280"};
           return appendMotionDataAttrs(htmlCountdownV2, obj);
         }
 
-        const textColor = obj.colorTexto ?? obj.color ?? "#111";
+        const textColor = sanitizeCssPaint(obj.colorTexto ?? obj.color, "#111");
         const fontFamily = obj.fontFamily || "Inter, system-ui, sans-serif";
 
         const preset = obj.presetId || obj.layout || "pills";
@@ -666,14 +700,18 @@ color: ${obj.labelColor || "#6b7280"};
         const labelSize =
           Number.isFinite(obj.labelSize) ? Number(obj.labelSize) : Math.max(9, Math.round(valueSize * 0.62));
 
-        const labelColor = obj.labelColor ?? "#6b7280";
+        const labelColor = sanitizeCssPaint(obj.labelColor, "#6b7280");
         const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
         const letterSpacing = Number.isFinite(obj.letterSpacing) ? obj.letterSpacing : 0;
 
         // ✅ estilos de chip
         const containerBgFinal = "transparent";
-        const chipBgFinal = isMinimal ? "transparent" : obj.chipBackground ?? obj.boxBg ?? "rgba(255,255,255,.75)";
-        const chipBorderColorFinal = isMinimal ? "transparent" : obj.chipBorder ?? obj.boxBorder ?? "rgba(0,0,0,.08)";
+        const chipBgFinal = isMinimal
+          ? "transparent"
+          : sanitizeCssPaint(obj.chipBackground ?? obj.boxBg, "rgba(255,255,255,.75)");
+        const chipBorderColorFinal = isMinimal
+          ? "transparent"
+          : sanitizeCssPaint(obj.chipBorder ?? obj.boxBorder, "rgba(0,0,0,.08)");
 
         const containerRadius = Number.isFinite(obj.boxRadius)
           ? obj.boxRadius
@@ -720,12 +758,13 @@ box-sizing: border-box;
 font-weight: ${fontWeight};
 font-size: calc(${sChip} * ${valueSize}px);
 line-height: 1;
+${buildTextPaintStyleCss(textColor, "#111")}
 `.trim();
 
         const labelStyle = `
 font-size: calc(${sChip} * ${labelSize}px);
-color: ${labelColor};
 line-height: 1.05;
+${buildTextPaintStyleCss(labelColor, "#6b7280")}
 `.trim();
 
         const showLabels = obj.showLabels !== false;

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getRemainingParts, fmt } from "./countdownUtils";
+import { buildTextPaintStyle, resolvePreviewPaint } from "@/domain/countdownPresets/renderModel";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -123,8 +124,10 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   if (state.ended) return <div className="text-center text-green-600">Llego el dia</div>;
 
   const fontFamily = preset?.fontFamily || "Inter, system-ui, sans-serif";
-  const numberColor = preset?.color || "#111";
-  const labelColor = preset?.labelColor || "#6b7280";
+  const numberColor = resolvePreviewPaint(preset?.color, "#111");
+  const labelColor = resolvePreviewPaint(preset?.labelColor, "#6b7280");
+  const numberTextPaintStyle = buildTextPaintStyle(numberColor, "#111");
+  const labelTextPaintStyle = buildTextPaintStyle(labelColor, "#6b7280");
 
   if (!isV2) {
     return (
@@ -142,7 +145,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
           {legacyParts.map((item, index) => (
             <div key={item.key} className="relative flex items-center">
               {preset?.layout === "minimal" ? (
-                <span className="font-bold leading-none" style={{ color: numberColor, fontSize: SZ.valueFs }}>
+                <span className="font-bold leading-none" style={{ ...numberTextPaintStyle, fontSize: SZ.valueFs }}>
                   {item.value}
                 </span>
               ) : (
@@ -157,11 +160,11 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
                     padding: `${SZ.chipPy}px ${SZ.chipPx}px`,
                   }}
                 >
-                  <span className="font-bold" style={{ color: numberColor, fontSize: SZ.valueFs }}>
+                  <span className="font-bold" style={{ ...numberTextPaintStyle, fontSize: SZ.valueFs }}>
                     {item.value}
                   </span>
                   {preset?.showLabels !== false ? (
-                    <span style={{ color: labelColor, fontSize: SZ.labelFs - 2 }}>{item.label}</span>
+                    <span style={{ ...labelTextPaintStyle, fontSize: SZ.labelFs - 2 }}>{item.label}</span>
                   ) : null}
                   {preset?.layout === "flip" ? (
                     <span
@@ -173,7 +176,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
               )}
 
               {preset?.separator && index < legacyParts.length - 1 ? (
-                <span className="mx-1 font-bold" style={{ color: numberColor }}>
+                <span className="mx-1 font-bold" style={{ ...numberTextPaintStyle }}>
                   {preset.separator}
                 </span>
               ) : null}
@@ -187,6 +190,9 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   const distribution = String(preset?.distribution || "centered").toLowerCase();
   const layoutType = String(preset?.layoutType || "singleFrame").toLowerCase();
   const frameUrl = String(preset?.frameSvgUrl || "").trim();
+  const hasFrameConfigured = frameUrl.length > 0;
+  const useSingleFrameLayout = layoutType === "singleframe" && hasFrameConfigured;
+  const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
   const framePadding = Math.max(0, toFinite(preset?.framePadding, SZ.framePadding));
   const gap = Math.max(0, toFinite(preset?.gap, SZ.gap));
   const chipW = Math.max(36, toFinite(preset?.chipWidth, SZ.chipMinW));
@@ -197,8 +203,6 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   const separator = String(preset?.separator || "").slice(0, 3);
   const labelTransform = String(preset?.labelTransform || "uppercase").toLowerCase();
   const isMinimal = String(preset?.layout || "pills").toLowerCase() === "minimal";
-  const frameColor = String(preset?.frameColor || "#773dbe");
-  const hasVisibleFrameColor = frameColor.trim().toLowerCase() !== "transparent";
   const canDrawSeparators = Boolean(separator && distribution !== "vertical" && distribution !== "grid");
   const gridTemplateColumns = getGridTemplate(distribution, Math.max(1, v2Parts.length));
 
@@ -216,7 +220,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
           transformOrigin: "center",
         }}
       >
-        {layoutType === "singleframe" && frameUrl ? (
+        {useSingleFrameLayout ? (
           <img
             src={frameUrl}
             alt=""
@@ -226,20 +230,13 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
             decoding="async"
           />
         ) : null}
-        {layoutType === "singleframe" && !frameUrl && hasVisibleFrameColor ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-0 rounded-xl"
-            style={{ border: `1px solid ${frameColor}` }}
-          />
-        ) : null}
 
         <div
           className="relative z-[1] grid"
           style={{
             gridTemplateColumns,
             gap: `${gap}px`,
-            padding: layoutType === "singleframe" ? `${framePadding}px` : 0,
+            padding: useSingleFrameLayout ? `${framePadding}px` : 0,
           }}
         >
           {v2Parts.map((item, index) => (
@@ -255,7 +252,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
                   boxShadow: preset?.boxShadow ? "0 2px 6px rgba(0,0,0,0.15)" : "none",
                 }}
               >
-                {layoutType === "multiunit" && frameUrl ? (
+                {useMultiUnitFrame ? (
                   <img
                     src={frameUrl}
                     alt=""
@@ -265,20 +262,13 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
                     decoding="async"
                   />
                 ) : null}
-                {layoutType === "multiunit" && !frameUrl && hasVisibleFrameColor ? (
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-0 rounded-xl"
-                    style={{ border: `1px solid ${frameColor}` }}
-                  />
-                ) : null}
 
                 <div className="relative z-[1] flex flex-col items-center">
-                  <span className="font-bold" style={{ color: numberColor, fontSize: valueSize }}>
+                  <span className="font-bold" style={{ ...numberTextPaintStyle, fontSize: valueSize }}>
                     {item.value}
                   </span>
                   {showLabels ? (
-                    <span style={{ color: labelColor, fontSize: unitLabelSize }}>
+                    <span style={{ ...labelTextPaintStyle, fontSize: unitLabelSize }}>
                       {applyLabelTransform(item.label, labelTransform)}
                     </span>
                   ) : null}
@@ -286,7 +276,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
               </div>
 
               {canDrawSeparators && index < v2Parts.length - 1 ? (
-                <span className="mx-1 font-bold" style={{ color: numberColor, fontSize: valueSize }}>
+                <span className="mx-1 font-bold" style={{ ...numberTextPaintStyle, fontSize: valueSize }}>
                   {separator}
                 </span>
               ) : null}

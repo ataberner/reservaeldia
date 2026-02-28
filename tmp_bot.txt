@@ -1,0 +1,148 @@
+
+          <Card title="Layout">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Tipo de layout</span>
+                <select value={formState.config.layout.type} onChange={(e) => setConfigField("layout", "type", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{COUNTDOWN_LAYOUT_TYPES.map((key) => <option key={key} value={key}>{key}</option>)}</select>
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Distribucion</span>
+                <select value={formState.config.layout.distribution} onChange={(e) => setConfigField("layout", "distribution", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{COUNTDOWN_DISTRIBUTIONS.map((key) => <option key={key} value={key}>{key}</option>)}</select>
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Espaciado (gap px)</span>
+                <input type="number" min={0} max={48} value={formState.config.layout.gap} onChange={(e) => setConfigField("layout", "gap", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Padding del frame (px)</span>
+                <input type="number" min={0} max={64} value={formState.config.layout.framePadding} onChange={(e) => setConfigField("layout", "framePadding", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">{COUNTDOWN_UNITS.map((unit) => <label key={unit} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"><input type="checkbox" checked={visibleUnits.includes(unit)} onChange={() => toggleUnit(unit)} />{unit}</label>)}</div>
+          </Card>
+
+          <Card title="Tipografia y colores">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Fuente base</span>
+                <input value={formState.config.tipografia.fontFamily} onChange={(e) => setConfigField("tipografia", "fontFamily", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" placeholder="Fuente" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Tamano base ({formState.config.tamanoBase}px)</span>
+                <input type="range" min={220} max={640} value={formState.config.tamanoBase} onChange={(e) => setFormState((prev) => ({ ...prev, config: { ...prev.config, tamanoBase: Number(e.target.value) } }))} className="w-full" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Tamano numero (px)</span>
+                <input type="number" min={10} max={120} value={formState.config.tipografia.numberSize} onChange={(e) => setConfigField("tipografia", "numberSize", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Tamano label (px)</span>
+                <input type="number" min={8} max={72} value={formState.config.tipografia.labelSize} onChange={(e) => setConfigField("tipografia", "labelSize", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Letter spacing (px)</span>
+                <input type="number" min={-2} max={12} step={0.1} value={formState.config.tipografia.letterSpacing} onChange={(e) => setConfigField("tipografia", "letterSpacing", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Line height</span>
+                <input type="number" min={0.8} max={2} step={0.05} value={formState.config.tipografia.lineHeight} onChange={(e) => setConfigField("tipografia", "lineHeight", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <ColorField
+                label="Color numero"
+                value={formState.config.colores.numberColor}
+                fallback="#111111"
+                onChange={(nextValue) => setConfigField("colores", "numberColor", nextValue)}
+              />
+              <ColorField
+                label="Color label"
+                value={formState.config.colores.labelColor}
+                fallback="#4b5563"
+                onChange={(nextValue) => setConfigField("colores", "labelColor", nextValue)}
+              />
+              <FrameColorField
+                value={formState.config.colores.frameColor}
+                onChange={(nextValue) => setConfigField("colores", "frameColor", nextValue)}
+              />
+            </div>
+          </Card>
+
+          <Card title="Estilo de unidad">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Mostrar labels</span>
+                <span className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-700">
+                  <input type="checkbox" checked={formState.config.unidad.showLabels !== false} onChange={(e) => setConfigField("unidad", "showLabels", e.target.checked)} />
+                  Activo
+                </span>
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Separador entre unidades</span>
+                <input value={formState.config.unidad.separator || ""} onChange={(e) => setConfigField("unidad", "separator", e.target.value.slice(0, 4))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" placeholder="Ej: : o |" />
+              </label>
+              <UnitPaintField
+                label="Fondo de unidad"
+                value={formState.config.unidad.boxBg || "transparent"}
+                onChange={(nextValue) => setConfigField("unidad", "boxBg", nextValue)}
+                colorFallback="#ffffff"
+                advancedPlaceholder="Ej: rgba(255,255,255,0.8)"
+              />
+              <UnitPaintField
+                label="Borde de unidad"
+                value={formState.config.unidad.boxBorder || "transparent"}
+                onChange={(nextValue) => setConfigField("unidad", "boxBorder", nextValue)}
+                colorFallback="#e2e8f0"
+                advancedPlaceholder="Ej: rgba(226,232,240,0.9)"
+              />
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Radio de borde (px)</span>
+                <input type="number" min={0} max={120} value={formState.config.unidad.boxRadius} onChange={(e) => setConfigField("unidad", "boxRadius", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Sombra de unidad</span>
+                <span className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-700">
+                  <input type="checkbox" checked={formState.config.unidad.boxShadow === true} onChange={(e) => setConfigField("unidad", "boxShadow", e.target.checked)} />
+                  Activa
+                </span>
+              </label>
+            </div>
+          </Card>
+
+          <Card title="Animaciones">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Entrada</span>
+                <select value={formState.config.animaciones.entry} onChange={(e) => setConfigField("animaciones", "entry", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{COUNTDOWN_ENTRY_ANIMATIONS.map((key) => <option key={key} value={key}>{key}</option>)}</select>
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Tick (cada segundo)</span>
+                <select value={formState.config.animaciones.tick} onChange={(e) => setConfigField("animaciones", "tick", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{COUNTDOWN_TICK_ANIMATIONS.map((key) => <option key={key} value={key}>{key}</option>)}</select>
+              </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Frame</span>
+                <select value={formState.config.animaciones.frame} onChange={(e) => setConfigField("animaciones", "frame", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{COUNTDOWN_FRAME_ANIMATIONS.map((key) => <option key={key} value={key}>{key}</option>)}</select>
+              </label>
+            </div>
+          </Card>
+        </div>
+
+        <div className="space-y-2 lg:min-h-0 lg:self-start">
+          <Card title="Fecha simulada del preview">
+            <input type="datetime-local" value={new Date(targetISO).toISOString().slice(0, 16)} onChange={(e) => { const nextDate = new Date(e.target.value); if (Number.isFinite(nextDate.getTime())) setTargetISO(nextDate.toISOString()); }} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs" />
+          </Card>
+          <CountdownPresetLivePreview
+            config={previewConfig}
+            svgText={svgText}
+            frameUrl={frameUrl}
+            svgColorMode={svgColorMode}
+            frameColor={formState.config.colores.frameColor}
+            targetISO={targetISO}
+            legacyPresetProps={selectedPreset?.legacyPresetProps || null}
+            useLegacyCanvasPreview={useLegacyCanvasPreview}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}

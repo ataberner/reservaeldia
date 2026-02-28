@@ -1,4 +1,5 @@
 import { COUNTDOWN_DEFAULT_VISIBLE_UNITS } from "@/domain/countdownPresets/contract";
+import { parseLinearGradientColors } from "@/domain/colors/presets";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -31,6 +32,10 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+const UNSAFE_CSS_TOKEN = /[<>;]/;
+const UNSAFE_CSS_PATTERN = /(url\s*\(|javascript:|expression\s*\()/i;
+const SAFE_CSS_VALUE = /^[#(),.%\-+\s\w:/]*$/i;
+
 function extractFirstColorToken(value, fallback) {
   const safe = String(value || "").trim();
   if (!safe) return fallback;
@@ -50,6 +55,53 @@ export function resolveCanvasPaint(value, fallback) {
   }
 
   return extractFirstColorToken(safe, fallback);
+}
+
+export function resolvePreviewPaint(value, fallback) {
+  const safe = String(value || "").trim();
+  if (!safe) return fallback;
+  if (UNSAFE_CSS_TOKEN.test(safe) || UNSAFE_CSS_PATTERN.test(safe)) return fallback;
+  if (!SAFE_CSS_VALUE.test(safe)) return fallback;
+
+  if (typeof CSS !== "undefined" && typeof CSS.supports === "function") {
+    if (CSS.supports("color", safe) || CSS.supports("background", safe)) return safe;
+  }
+
+  if (parseLinearGradientColors(safe)) return safe;
+  return extractFirstColorToken(safe, fallback);
+}
+
+export function buildTextPaintStyle(paint, fallback = "#111111") {
+  const safePaint = resolvePreviewPaint(paint, fallback);
+  const gradient = parseLinearGradientColors(safePaint);
+  if (!gradient) return { color: safePaint };
+
+  return {
+    backgroundImage: safePaint,
+    backgroundClip: "text",
+    WebkitBackgroundClip: "text",
+    color: "transparent",
+    WebkitTextFillColor: "transparent",
+    display: "inline-block",
+  };
+}
+
+function resolveCanvasTextFill(ctx, centerX, centerY, paint, fallback, span = 140) {
+  const safePaint = resolvePreviewPaint(paint, fallback);
+  const gradient = parseLinearGradientColors(safePaint);
+  if (!gradient) return safePaint;
+
+  const safeSpan = Math.max(40, Number(span) || 140);
+  const half = safeSpan / 2;
+  const gradientFill = ctx.createLinearGradient(
+    centerX - half,
+    centerY - half,
+    centerX + half,
+    centerY + half
+  );
+  gradientFill.addColorStop(0, gradient.from);
+  gradientFill.addColorStop(1, gradient.to);
+  return gradientFill;
 }
 
 function roundRectPath(ctx, x, y, w, h, radius) {
@@ -258,8 +310,8 @@ export async function generateCountdownThumbnailDataUrl({
   const numberSize = Math.max(10, Math.min(120, Number(baseConfig?.tipografia?.numberSize) || 28));
   const labelSize = Math.max(8, Math.min(72, Number(baseConfig?.tipografia?.labelSize) || 11));
   const fontFamily = String(baseConfig?.tipografia?.fontFamily || "Poppins");
-  const numberColor = String(baseConfig?.colores?.numberColor || "#111111");
-  const labelColor = String(baseConfig?.colores?.labelColor || "#4b5563");
+  const numberColor = resolvePreviewPaint(baseConfig?.colores?.numberColor, "#111111");
+  const labelColor = resolvePreviewPaint(baseConfig?.colores?.labelColor, "#4b5563");
   const framePadding = Math.max(0, Number(baseConfig?.layout?.framePadding) || 10);
   const chipCount = Math.max(1, parts.length);
 
@@ -318,13 +370,20 @@ export async function generateCountdownThumbnailDataUrl({
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = numberColor;
     ctx.font = `700 ${numberSize}px ${fontFamily}, sans-serif`;
+    ctx.fillStyle = resolveCanvasTextFill(ctx, x + chipW / 2, valueY, numberColor, "#111111", chipW);
     ctx.fillText(part.value, x + chipW / 2, valueY);
 
     if (showLabels) {
-      ctx.fillStyle = labelColor;
       ctx.font = `500 ${labelSize}px ${fontFamily}, sans-serif`;
+      ctx.fillStyle = resolveCanvasTextFill(
+        ctx,
+        x + chipW / 2,
+        y + chipH / 2 + labelSize + framePadding * 0.02,
+        labelColor,
+        "#4b5563",
+        chipW
+      );
       const labelTransform = baseConfig?.tipografia?.labelTransform || "uppercase";
       ctx.fillText(
         transformLabel(part.label, labelTransform),
@@ -334,8 +393,15 @@ export async function generateCountdownThumbnailDataUrl({
     }
 
     if (canUseSeparators && index < parts.length - 1) {
-      ctx.fillStyle = numberColor;
       ctx.font = `700 ${Math.max(12, Math.round(numberSize * 0.62))}px ${fontFamily}, sans-serif`;
+      ctx.fillStyle = resolveCanvasTextFill(
+        ctx,
+        x + chipW + gap * 0.5,
+        y + chipH / 2 - 1,
+        numberColor,
+        "#111111",
+        Math.max(32, gap * 6)
+      );
       ctx.fillText(separator, x + chipW + gap * 0.5, y + chipH / 2 - 1);
     }
   });

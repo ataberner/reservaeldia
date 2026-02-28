@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowUp, Eye, GripVertical, Plus, Settings2, X } from "lucide-react";
+import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 import {
   countActiveCustomQuestions,
   countActiveQuestions,
@@ -132,14 +133,22 @@ function AdvancedSettingsModal({
                 />
               </Field>
               <Field label="Color boton">
-                <input
-                  type="color"
-                  className="h-8 w-10 rounded-md border border-zinc-300 p-1"
-                  value={config.modal.primaryColor}
-                  onChange={(event) =>
-                    updateConfig(setModalSettings(config, { primaryColor: event.target.value }))
-                  }
-                />
+                <div className="flex items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-1.5">
+                  <span className="text-[11px] font-semibold text-zinc-700">
+                    {String(config.modal.primaryColor || "#773dbe").toUpperCase()}
+                  </span>
+                  <UnifiedColorPicker
+                    value={config.modal.primaryColor}
+                    fallbackColor="#773dbe"
+                    showGradients={false}
+                    panelWidth={272}
+                    title="Color del boton"
+                    triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                    onChange={(nextColor) =>
+                      updateConfig(setModalSettings(config, { primaryColor: nextColor }))
+                    }
+                  />
+                </div>
               </Field>
             </div>
           </section>

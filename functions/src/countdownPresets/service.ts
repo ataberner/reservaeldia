@@ -173,6 +173,7 @@ const UNSAFE_HREF = /^(https?:|\/\/|javascript:)/i;
 const UNSAFE_CSS_TOKEN = /[<>;]/;
 const UNSAFE_CSS_PATTERN = /(url\s*\(|javascript:|expression\s*\()/i;
 const SAFE_CSS_VALUE = /^[#(),.%\-+\s\w:/]*$/i;
+const CSS_VALIDATOR_WINDOW = new JSDOM("<!doctype html><html><body></body></html>").window;
 
 const EVENTS = new Set(["boda", "quince", "cumpleanos", "aniversario", "baby-shower", "corporativo", "general"]);
 const STYLES = new Set(["minimal", "floral", "romantico", "editorial", "moderno", "clasico", "premium"]);
@@ -240,6 +241,28 @@ function sanitizeCssPaint(value: unknown, fallback: string): string {
   if (!SAFE_CSS_VALUE.test(normalized)) {
     fail("Valor CSS no permitido en estilo de unidad.");
   }
+  return normalized;
+}
+
+function isSafeCssPaint(value: string): boolean {
+  if (!value) return false;
+  if (UNSAFE_CSS_TOKEN.test(value) || UNSAFE_CSS_PATTERN.test(value)) return false;
+  if (!SAFE_CSS_VALUE.test(value)) return false;
+
+  const probe = CSS_VALIDATOR_WINDOW.document.createElement("div");
+  probe.style.color = "";
+  probe.style.color = value;
+  if (probe.style.color) return true;
+
+  probe.style.background = "";
+  probe.style.background = value;
+  return Boolean(probe.style.background);
+}
+
+function sanitizeColorPaint(value: unknown, label: string): string {
+  const normalized = text(value, 120);
+  if (!normalized) fail(`${label} invalido.`);
+  if (!isSafeCssPaint(normalized)) fail(`${label} invalido.`);
   return normalized;
 }
 
@@ -383,17 +406,18 @@ function normalizeConfig(value: unknown): Config {
       ? (raw.unidad as Record<string, unknown>)
       : {};
 
-  const numberColor = text(colorRaw.numberColor, 20);
-  const labelColor = text(colorRaw.labelColor, 20);
-  const frameColor = text(colorRaw.frameColor, 20);
+  const numberColor = sanitizeColorPaint(colorRaw.numberColor, "config.colores.numberColor");
+  const labelColor = sanitizeColorPaint(colorRaw.labelColor, "config.colores.labelColor");
+  const frameColor = sanitizeColorPaint(colorRaw.frameColor, "config.colores.frameColor");
   const boxRadiusInput = Number(unitRaw.boxRadius);
   const boxRadius = Number.isFinite(boxRadiusInput)
     ? numberInRange(boxRadiusInput, RANGES.boxRadius, "config.unidad.boxRadius")
     : 10;
 
-  if (!HEX_COLOR.test(numberColor)) fail("config.colores.numberColor invalido.");
-  if (!HEX_COLOR.test(labelColor)) fail("config.colores.labelColor invalido.");
-  if (!HEX_COLOR.test(frameColor) && !isTransparentColor(frameColor)) {
+  if (
+    !isTransparentColor(frameColor) &&
+    String(frameColor || "").trim().toLowerCase().startsWith("linear-gradient(")
+  ) {
     fail("config.colores.frameColor invalido.");
   }
 

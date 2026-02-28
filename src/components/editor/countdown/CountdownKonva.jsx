@@ -8,6 +8,7 @@ import {
   estimateCountdownUnitHeight,
   resolveCanvasPaint,
 } from "@/domain/countdownPresets/renderModel";
+import { resolveKonvaFill } from "@/domain/colors/presets";
 
 import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
@@ -45,6 +46,25 @@ function toFinite(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function buildKonvaTextFillProps(fillMeta, fallback = "#111827") {
+  if (!fillMeta?.hasGradient) {
+    return { fill: fillMeta?.fillColor || fallback };
+  }
+
+  return {
+    fill: fillMeta.fillColor || fallback,
+    fillPriority: "linear-gradient",
+    fillLinearGradientStartPoint: fillMeta.startPoint || { x: 0, y: 0 },
+    fillLinearGradientEndPoint: fillMeta.endPoint || { x: 1, y: 1 },
+    fillLinearGradientColorStops: [
+      0,
+      fillMeta.gradientFrom || fillMeta.fillColor || fallback,
+      1,
+      fillMeta.gradientTo || fillMeta.fillColor || fallback,
+    ],
+  };
+}
+
 /**
  * ✅ Comportamiento correcto:
  * - Click simple: SOLO selecciona (0 movimiento)
@@ -71,8 +91,6 @@ export default function CountdownKonva({
   hasDragged,
 }) {
   const rootRef = useRef(null);
-  const dragMoveRafRef = useRef(null);
-  const lastDragMovePosRef = useRef(null);
 
   // Tick cada 1s (no re-render si estamos arrastrando)
   const [tick, setTick] = useState(0);
@@ -127,6 +145,8 @@ export default function CountdownKonva({
 
   // Layout (countdown v2 + fallback legacy)
   const n = Math.max(1, parts.length);
+  const frameSvgUrl = String(obj.frameSvgUrl || "").trim();
+  const hasFrameConfigured = frameSvgUrl.length > 0;
   const gap = Math.max(0, toFinite(obj.gap, 8));
   const framePadding = Math.max(0, toFinite(obj.framePadding, 10));
   const paddingY = Math.max(2, toFinite(obj.paddingY, 6));
@@ -136,14 +156,14 @@ export default function CountdownKonva({
   const showLabels = obj.showLabels !== false;
   const distribution = String(obj.distribution || obj.layoutType || 'centered');
   const layoutType = String(obj.layoutType || 'singleFrame');
+  const useSingleFrameLayout = layoutType === "singleFrame" && hasFrameConfigured;
+  const useMultiUnitFrame = layoutType === "multiUnit" && hasFrameConfigured;
   const labelTransform = String(obj.labelTransform || 'uppercase');
   const lineHeight = Math.max(0.8, toFinite(obj.lineHeight, 1.05));
   const letterSpacing = toFinite(obj.letterSpacing, 0);
   const frameStrokeColor = resolveCanvasPaint(obj.frameColor, "#773dbe");
   const unitFillColor = resolveCanvasPaint(obj.boxBg, "transparent");
   const unitStrokeColor = resolveCanvasPaint(obj.boxBorder, "transparent");
-  const valueTextColor = resolveCanvasPaint(obj.color, "#111827");
-  const labelTextColor = resolveCanvasPaint(obj.labelColor, "#6b7280");
   const backgroundColor = resolveCanvasPaint(obj.background, "transparent");
 
   const baseChipW = Math.max(36, toFinite(obj.chipWidth, 46) + paddingX * 2);
@@ -189,18 +209,18 @@ export default function CountdownKonva({
 
   const containerW = Math.max(
     toFinite(obj.width, 0),
-    naturalW + (layoutType === 'singleFrame' ? framePadding * 2 : 0)
+    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0)
   );
   const containerH = Math.max(
     toFinite(obj.height, 0),
-    naturalH + (layoutType === 'singleFrame' ? framePadding * 2 : 0)
+    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
   );
 
   const contentBounds = {
-    x: layoutType === 'singleFrame' ? framePadding : 0,
-    y: layoutType === 'singleFrame' ? framePadding : 0,
-    width: Math.max(1, containerW - (layoutType === 'singleFrame' ? framePadding * 2 : 0)),
-    height: Math.max(1, containerH - (layoutType === 'singleFrame' ? framePadding * 2 : 0)),
+    x: useSingleFrameLayout ? framePadding : 0,
+    y: useSingleFrameLayout ? framePadding : 0,
+    width: Math.max(1, containerW - (useSingleFrameLayout ? framePadding * 2 : 0)),
+    height: Math.max(1, containerH - (useSingleFrameLayout ? framePadding * 2 : 0)),
   };
 
   const distributionW =
@@ -299,15 +319,14 @@ export default function CountdownKonva({
     });
   }, [canRenderSeparators, unitLayouts, separatorFontSize]);
 
-  const frameSvgUrl = obj.frameSvgUrl || null;
-  const [frameImageWithCors] = useImage(frameSvgUrl, "anonymous");
-  const [frameImageDirect] = useImage(frameSvgUrl);
+  const [frameImageWithCors] = useImage(hasFrameConfigured ? frameSvgUrl : null, "anonymous");
+  const [frameImageDirect] = useImage(hasFrameConfigured ? frameSvgUrl : null);
   const frameImage = frameImageWithCors || frameImageDirect;
 
   // ---------------------------
   // Drag gating (la clave)
   // ---------------------------
-  const THRESHOLD_PX = 4; // más responsivo para que el elemento no se sienta "atrasado" al iniciar drag.
+  const THRESHOLD_PX = 2; // menor umbral para iniciar drag con menos friccion.
 
   const pressRef = useRef({
     active: false,
@@ -500,11 +519,6 @@ export default function CountdownKonva({
   // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
   const handleDragStart = useCallback(
     (e) => {
-      if (dragMoveRafRef.current != null) {
-        cancelAnimationFrame(dragMoveRafRef.current);
-        dragMoveRafRef.current = null;
-      }
-      lastDragMovePosRef.current = null;
       onDragStartPersonalizado?.(obj.id, e);
       // Arranque de tu lógica grupal/individual
       const esGrupal = startDragGrupalLider(e, obj);
@@ -518,33 +532,11 @@ export default function CountdownKonva({
       if (window._grupoLider) {
         if (obj.id === window._grupoLider) {
           previewDragGrupal(e, obj, onChange);
-          if (onDragMovePersonalizado) {
-            lastDragMovePosRef.current = { x: e.target.x(), y: e.target.y() };
-            if (dragMoveRafRef.current == null) {
-              dragMoveRafRef.current = requestAnimationFrame(() => {
-                dragMoveRafRef.current = null;
-                const latestPos = lastDragMovePosRef.current;
-                if (!latestPos) return;
-                onDragMovePersonalizado(latestPos, obj.id);
-              });
-            }
-          }
+          onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
         }
         return;
       }
-      previewDragIndividual(e, obj, (pos) => {
-        if (!onDragMovePersonalizado) return;
-        lastDragMovePosRef.current = pos;
-
-        // Evita saturar React/UI en dragmove; máximo 1 actualización por frame.
-        if (dragMoveRafRef.current != null) return;
-        dragMoveRafRef.current = requestAnimationFrame(() => {
-          dragMoveRafRef.current = null;
-          const latestPos = lastDragMovePosRef.current;
-          if (!latestPos) return;
-          onDragMovePersonalizado(latestPos, obj.id);
-        });
-      });
+      previewDragIndividual(e, obj, onDragMovePersonalizado);
     },
     [obj, onChange, onDragMovePersonalizado]
   );
@@ -552,12 +544,6 @@ export default function CountdownKonva({
   const handleDragEnd = useCallback(
     (e) => {
       const node = e.currentTarget;
-
-      if (dragMoveRafRef.current != null) {
-        cancelAnimationFrame(dragMoveRafRef.current);
-        dragMoveRafRef.current = null;
-      }
-      lastDragMovePosRef.current = null;
 
       // Commit final
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});
@@ -593,11 +579,6 @@ export default function CountdownKonva({
   useEffect(() => {
     return () => {
       cleanupGlobal();
-      if (dragMoveRafRef.current != null) {
-        cancelAnimationFrame(dragMoveRafRef.current);
-        dragMoveRafRef.current = null;
-      }
-      lastDragMovePosRef.current = null;
     };
   }, [cleanupGlobal]);
 
@@ -644,7 +625,7 @@ export default function CountdownKonva({
 
       {!state.invalid && !state.ended && (
         <Group listening={false}>
-          {layoutType === "singleFrame" && frameImage && (
+          {useSingleFrameLayout && frameImage && (
             <KonvaImage
               image={frameImage}
               x={0}
@@ -656,7 +637,7 @@ export default function CountdownKonva({
             />
           )}
 
-          {layoutType === "singleFrame" && !frameImage && obj.frameColor && (
+          {useSingleFrameLayout && !frameImage && obj.frameColor && (
             <Rect
               x={0}
               y={0}
@@ -676,6 +657,8 @@ export default function CountdownKonva({
             const cornerRadius = Math.min(obj.boxRadius ?? 8, it.width / 2, it.height / 2);
             const valueBlockHeight = Math.max(1, valueSize * lineHeight);
             const labelBlockHeight = Math.max(1, labelSize);
+            const valueTextFill = resolveKonvaFill(obj.color, it.width, valueBlockHeight, "#111827");
+            const labelTextFill = resolveKonvaFill(obj.labelColor, it.width, labelBlockHeight, "#6b7280");
             const textStackGap = showLabels ? 4 : 0;
             const contentHeight = showLabels
               ? valueBlockHeight + textStackGap + labelBlockHeight
@@ -686,7 +669,7 @@ export default function CountdownKonva({
 
             return (
               <Group key={it.key} x={it.x} y={it.y} listening={false}>
-                {layoutType === "multiUnit" && frameImage && (
+                {useMultiUnitFrame && frameImage && (
                   <KonvaImage
                     image={frameImage}
                     width={it.width}
@@ -696,7 +679,7 @@ export default function CountdownKonva({
                   />
                 )}
 
-                {layoutType === "multiUnit" && !frameImage && obj.frameColor && (
+                {useMultiUnitFrame && !frameImage && obj.frameColor && (
                   <Rect
                     width={it.width}
                     height={it.height}
@@ -726,7 +709,7 @@ export default function CountdownKonva({
 
                 <Text
                   text={it.value}
-                  fill={valueTextColor}
+                  {...buildKonvaTextFillProps(valueTextFill, "#111827")}
                   fontFamily={obj.fontFamily}
                   fontStyle="bold"
                   fontSize={valueSize}
@@ -742,7 +725,7 @@ export default function CountdownKonva({
                 {showLabels && (
                   <Text
                     text={itemLabel}
-                    fill={labelTextColor}
+                    {...buildKonvaTextFillProps(labelTextFill, "#6b7280")}
                     fontFamily={obj.fontFamily}
                     fontSize={labelSize}
                     width={it.width}
@@ -759,21 +742,29 @@ export default function CountdownKonva({
             );
           })}
 
-          {separatorLayouts.map((item) => (
-            <Text
-              key={item.key}
-              x={item.x}
-              y={item.y}
-              width={item.width}
-              align="center"
-              text={separatorText}
-              fill={valueTextColor}
-              fontFamily={obj.fontFamily}
-              fontSize={separatorFontSize}
-              listening={false}
-              perfectDrawEnabled={false}
-            />
-          ))}
+          {separatorLayouts.map((item) => {
+            const separatorFill = resolveKonvaFill(
+              obj.color,
+              Math.max(1, item.width),
+              Math.max(1, separatorFontSize),
+              "#111827"
+            );
+            return (
+              <Text
+                key={item.key}
+                x={item.x}
+                y={item.y}
+                width={item.width}
+                align="center"
+                text={separatorText}
+                {...buildKonvaTextFillProps(separatorFill, "#111827")}
+                fontFamily={obj.fontFamily}
+                fontSize={separatorFontSize}
+                listening={false}
+                perfectDrawEnabled={false}
+              />
+            );
+          })}
         </Group>
       )}
     </Group>

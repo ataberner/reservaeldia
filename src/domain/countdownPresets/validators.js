@@ -13,6 +13,7 @@ import {
   buildCountdownCategoryLabel,
   createDefaultCountdownPresetConfig,
 } from "@/domain/countdownPresets/contract";
+import { parseLinearGradientColors } from "@/domain/colors/presets";
 
 function clampNumber(value, range) {
   const parsed = Number(value);
@@ -38,6 +39,23 @@ function sanitizeCssPaint(value, fallback = "transparent") {
   if (/(url\s*\(|javascript:|expression\s*\()/i.test(normalized)) return fallback;
   if (!/^[#(),.%\-+\s\w:/]*$/i.test(normalized)) return fallback;
   return normalized;
+}
+
+function isSafeCssPaint(value) {
+  const safe = String(value || "").trim();
+  if (!safe) return false;
+  if (/[<>;]/.test(safe)) return false;
+  if (/(url\s*\(|javascript:|expression\s*\()/i.test(safe)) return false;
+  if (!/^[#(),.%\-+\s\w:/]*$/i.test(safe)) return false;
+  if (typeof CSS !== "undefined" && typeof CSS.supports === "function") {
+    if (CSS.supports("color", safe) || CSS.supports("background", safe)) return true;
+  }
+  if (parseLinearGradientColors(safe)) return true;
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(safe)) return true;
+  if (/^rgba?\([^)]+\)$/i.test(safe)) return true;
+  if (/^hsla?\([^)]+\)$/i.test(safe)) return true;
+  if (/^[a-z]+$/i.test(safe)) return true;
+  return false;
 }
 
 function normalizeVisibleUnits(units) {
@@ -106,9 +124,9 @@ export function normalizeCountdownPresetConfig(rawConfig = {}) {
         : base.tipografia.labelTransform,
     },
     colores: {
-      numberColor: sanitizeText(colores.numberColor, base.colores.numberColor, 32),
-      labelColor: sanitizeText(colores.labelColor, base.colores.labelColor, 32),
-      frameColor: sanitizeText(colores.frameColor, base.colores.frameColor, 32),
+      numberColor: sanitizeCssPaint(colores.numberColor, base.colores.numberColor),
+      labelColor: sanitizeCssPaint(colores.labelColor, base.colores.labelColor),
+      frameColor: sanitizeCssPaint(colores.frameColor, base.colores.frameColor),
     },
     animaciones: {
       entry: hasValueInSet(animaciones.entry, COUNTDOWN_ENTRY_ANIMATIONS)
@@ -145,8 +163,11 @@ function isHexColor(value) {
 }
 
 function isFrameColor(value) {
-  const safe = String(value || "").trim().toLowerCase();
-  return safe === "transparent" || isHexColor(safe);
+  const safe = String(value || "").trim();
+  if (!safe) return false;
+  if (safe.toLowerCase() === "transparent") return true;
+  if (parseLinearGradientColors(safe)) return false;
+  return isSafeCssPaint(safe);
 }
 
 export function validateCountdownPresetInput({
@@ -170,14 +191,14 @@ export function validateCountdownPresetInput({
     errors.push("Debes seleccionar al menos una unidad visible.");
   }
 
-  if (!isHexColor(normalizedConfig.colores.numberColor)) {
-    errors.push("El color de numero debe ser hexadecimal.");
+  if (!isSafeCssPaint(normalizedConfig.colores.numberColor)) {
+    errors.push("El color de numero debe ser un color valido o gradiente CSS seguro.");
   }
-  if (!isHexColor(normalizedConfig.colores.labelColor)) {
-    errors.push("El color de label debe ser hexadecimal.");
+  if (!isSafeCssPaint(normalizedConfig.colores.labelColor)) {
+    errors.push("El color de label debe ser un color valido o gradiente CSS seguro.");
   }
   if (!isFrameColor(normalizedConfig.colores.frameColor)) {
-    errors.push("El color de frame debe ser hexadecimal o transparent.");
+    errors.push("El color de frame debe ser un color valido o transparent.");
   }
 
   if (svgInspection) {

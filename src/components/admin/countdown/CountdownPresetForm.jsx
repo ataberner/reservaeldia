@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import CountdownPresetLivePreview from "@/components/admin/countdown/CountdownPresetLivePreview";
 import SvgUploadInspector from "@/components/admin/countdown/SvgUploadInspector";
+import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 import {
   COUNTDOWN_DISTRIBUTIONS,
   COUNTDOWN_ENTRY_ANIMATIONS,
@@ -135,16 +136,17 @@ function resolveHexColor(value, fallback) {
   return HEX_COLOR.test(safe) ? safe : fallback;
 }
 
-function PaintModeButton({ active, onClick, children }) {
+function PaintModeButton({ active, onClick, children, disabled = false }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`rounded-md px-2 py-1 text-[10px] font-semibold transition-colors ${
         active
           ? "bg-slate-800 text-white"
           : "bg-transparent text-slate-600 hover:bg-slate-100"
-      }`}
+      } ${disabled ? "cursor-not-allowed opacity-50 hover:bg-transparent" : ""}`}
     >
       {children}
     </button>
@@ -189,14 +191,22 @@ function UnitPaintField({
       </div>
 
       {mode === "color" ? (
-        <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5">
-          <input
-            type="color"
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5">
+          <span
+            className="max-w-[110px] truncate text-[11px] font-semibold text-slate-700"
+            title={colorValue}
+          >
+            {colorValue.toUpperCase()}
+          </span>
+          <UnifiedColorPicker
             value={colorValue}
-            onChange={(e) => onChange(e.target.value)}
-            className="h-7 w-8 rounded border border-slate-200 bg-white p-0.5"
+            onChange={onChange}
+            fallbackColor={colorFallback}
+            panelWidth={272}
+            showGradients={false}
+            title={`Cambiar ${label.toLowerCase()}`}
+            triggerClassName="h-7 w-7 rounded border border-slate-300"
           />
-          <span className="text-[11px] font-semibold text-slate-700">{colorValue.toUpperCase()}</span>
         </div>
       ) : null}
 
@@ -219,27 +229,40 @@ function UnitPaintField({
 }
 
 function ColorField({ label, value, onChange, fallback = "#111111" }) {
-  const safeColor = resolveHexColor(value, fallback);
+  const safePaint = String(value || "").trim() || fallback;
+  const isGradient = safePaint.toLowerCase().startsWith("linear-gradient(");
   return (
     <label className="space-y-1 text-[11px] font-medium text-slate-600">
       <span>{label}</span>
-      <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5">
-        <input
-          type="color"
-          value={safeColor}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-7 w-8 rounded border border-slate-200 bg-white p-0.5"
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5">
+        <span
+          className="max-w-[110px] truncate text-[11px] font-semibold text-slate-700"
+          title={safePaint}
+        >
+          {isGradient ? "Gradiente" : safePaint.toUpperCase()}
+        </span>
+        <UnifiedColorPicker
+          value={safePaint}
+          onChange={onChange}
+          fallbackColor={fallback}
+          panelWidth={272}
+          title={`Cambiar ${label.toLowerCase()}`}
+          triggerClassName="h-7 w-7 rounded border border-slate-300"
         />
-        <span className="text-[11px] font-semibold text-slate-700">{safeColor.toUpperCase()}</span>
       </div>
     </label>
   );
 }
 
-function FrameColorField({ value, onChange }) {
+function FrameColorField({
+  value,
+  onChange,
+  disabled = false,
+  helperText = "",
+}) {
   const safeValue = String(value || "").trim();
   const isTransparent = safeValue.toLowerCase() === "transparent";
-  const colorValue = resolveHexColor(safeValue, "#773dbe");
+  const colorValue = isTransparent ? "#773dbe" : safeValue || "#773dbe";
 
   return (
     <div className="space-y-1 text-[11px] font-medium text-slate-600">
@@ -248,32 +271,44 @@ function FrameColorField({ value, onChange }) {
         <PaintModeButton
           active={!isTransparent}
           onClick={() => onChange(colorValue)}
+          disabled={disabled}
         >
           Color
         </PaintModeButton>
         <PaintModeButton
           active={isTransparent}
           onClick={() => onChange("transparent")}
+          disabled={disabled}
         >
           Transparente
         </PaintModeButton>
       </div>
 
       {!isTransparent ? (
-        <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5">
-          <input
-            type="color"
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5">
+          <span
+            className="max-w-[110px] truncate text-[11px] font-semibold text-slate-700"
+            title={colorValue}
+          >
+            {colorValue.toLowerCase().startsWith("linear-gradient(") ? "Gradiente" : colorValue.toUpperCase()}
+          </span>
+          <UnifiedColorPicker
             value={colorValue}
-            onChange={(e) => onChange(e.target.value)}
-            className="h-7 w-8 rounded border border-slate-200 bg-white p-0.5"
+            onChange={onChange}
+            fallbackColor="#773dbe"
+            panelWidth={272}
+            showGradients={false}
+            title="Cambiar color del frame"
+            disabled={disabled}
+            triggerClassName="h-7 w-7 rounded border border-slate-300"
           />
-          <span className="text-[11px] font-semibold text-slate-700">{colorValue.toUpperCase()}</span>
         </div>
       ) : (
         <p className="rounded-lg border border-dashed border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-500">
           Sin borde general visible.
         </p>
       )}
+      {helperText ? <p className="text-[11px] text-slate-500">{helperText}</p> : null}
     </div>
   );
 }
@@ -352,6 +387,14 @@ export default function CountdownPresetForm({
     selectedPreset?.draft?.svgRef?.downloadUrl ||
     selectedPreset?.svgRef?.downloadUrl ||
     "";
+  const hasFrameSvg =
+    Boolean(frameUrl) || Boolean(String(formState?.svgAsset?.svgText || "").trim());
+  const canEditSvgFrameColor = !hasFrameSvg || svgColorMode === "currentColor";
+  const frameColorHelper = hasFrameSvg
+    ? svgColorMode === "currentColor"
+      ? "Este SVG usa currentColor: el color se actualiza en el preview y en el canvas."
+      : "Este SVG tiene color fijo. Para cambiar su color desde el preset, exportalo usando currentColor."
+    : "Sin SVG cargado: este color se usa como borde de fallback del countdown.";
   const previewConfig = useMemo(() => formState.config || createDefaultCountdownPresetConfig(), [formState.config]);
 
   const toggleUnit = (unit) =>
@@ -494,6 +537,15 @@ export default function CountdownPresetForm({
 
           <SvgUploadInspector value={formState.svgAsset} onChange={(svgAsset) => setFormState((prev) => ({ ...prev, svgAsset }))} />
 
+          <Card title="Color del frame SVG">
+            <FrameColorField
+              value={formState.config.colores.frameColor}
+              onChange={(nextValue) => setConfigField("colores", "frameColor", nextValue)}
+              disabled={!canEditSvgFrameColor}
+              helperText={frameColorHelper}
+            />
+          </Card>
+
           <Card title="Layout">
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="space-y-1 text-[11px] font-medium text-slate-600">
@@ -543,7 +595,7 @@ export default function CountdownPresetForm({
                 <input type="number" min={0.8} max={2} step={0.05} value={formState.config.tipografia.lineHeight} onChange={(e) => setConfigField("tipografia", "lineHeight", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
               </label>
             </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <ColorField
                 label="Color numero"
                 value={formState.config.colores.numberColor}
@@ -555,10 +607,6 @@ export default function CountdownPresetForm({
                 value={formState.config.colores.labelColor}
                 fallback="#4b5563"
                 onChange={(nextValue) => setConfigField("colores", "labelColor", nextValue)}
-              />
-              <FrameColorField
-                value={formState.config.colores.frameColor}
-                onChange={(nextValue) => setConfigField("colores", "frameColor", nextValue)}
               />
             </div>
           </Card>

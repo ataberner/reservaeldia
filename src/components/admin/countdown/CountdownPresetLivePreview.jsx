@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildCountdownCanvasPatchFromPreset } from "@/domain/countdownPresets/toCanvasPatch";
 import { loadGoogleFont } from "@/utils/loadFont";
 import {
+  buildTextPaintStyle,
   buildFrameSvgMarkup,
   estimateCountdownUnitHeight,
   getCountdownParts,
   normalizeVisibleUnits,
   resolveCanvasPaint,
+  resolvePreviewPaint,
   transformLabel,
 } from "@/domain/countdownPresets/renderModel";
 
@@ -370,7 +372,7 @@ export default function CountdownPresetLivePreview({
   }, [canRenderSeparators, unitLayouts]);
 
   const unitBoxBg = resolveUnitCssValue(
-    resolveCanvasPaint(unidad.boxBg, "transparent"),
+    resolvePreviewPaint(unidad.boxBg, "transparent"),
     "transparent"
   );
   const unitBoxBorder = resolveUnitCssValue(
@@ -379,11 +381,11 @@ export default function CountdownPresetLivePreview({
   );
   const unitBoxRadius = Math.max(0, Math.min(120, Number(unidad.boxRadius || 10)));
   const unitBoxShadow = unidad.boxShadow === true;
-  const numberColor = resolveCanvasPaint(
+  const numberColor = resolvePreviewPaint(
     colors.numberColor || previewPatch.color,
     "#111111"
   );
-  const labelColor = resolveCanvasPaint(
+  const labelColor = resolvePreviewPaint(
     colors.labelColor || previewPatch.labelColor,
     "#4b5563"
   );
@@ -393,6 +395,8 @@ export default function CountdownPresetLivePreview({
   );
   const fontFamily = typo.fontFamily || previewPatch.fontFamily || "Poppins";
   const labelTransform = typo.labelTransform || previewPatch.labelTransform || "uppercase";
+  const numberTextPaintStyle = buildTextPaintStyle(numberColor, "#111111");
+  const labelTextPaintStyle = buildTextPaintStyle(labelColor, "#4b5563");
 
   useEffect(() => {
     const family = extractPrimaryFontName(fontFamily);
@@ -547,7 +551,7 @@ export default function CountdownPresetLivePreview({
                     <span
                       className={`font-bold ${pulseClass}`}
                       style={{
-                        color: numberColor,
+                        ...numberTextPaintStyle,
                         fontFamily,
                         fontSize: numberSize,
                         letterSpacing: `${letterSpacing}px`,
@@ -559,7 +563,7 @@ export default function CountdownPresetLivePreview({
                     {showLabels ? (
                       <span
                         style={{
-                          color: labelColor,
+                          ...labelTextPaintStyle,
                           fontFamily,
                           fontSize: labelSize,
                           marginTop: 4,
@@ -583,7 +587,7 @@ export default function CountdownPresetLivePreview({
                     left: `${item.x}px`,
                     top: `${item.y}px`,
                     transform: "translateX(-50%)",
-                    color: numberColor,
+                    ...numberTextPaintStyle,
                     fontFamily,
                     fontSize: Math.max(10, Math.round(numberSize * 0.64)),
                   }}

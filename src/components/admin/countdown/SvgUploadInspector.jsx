@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { inspectSvgFile, svgTextToBase64 } from "@/domain/countdownPresets/svgInspector";
+import {
+  convertSvgToCurrentColor,
+  inspectSvgFile,
+  inspectSvgText,
+  svgTextToBase64,
+} from "@/domain/countdownPresets/svgInspector";
 
 const SVG_RECOMMENDATION_GUIDE = [
   "Usa solo viewBox para que el frame escale sin deformarse.",
@@ -69,6 +74,7 @@ export default function SvgUploadInspector({
   onChange,
 }) {
   const [uploading, setUploading] = useState(false);
+  const [convertingColor, setConvertingColor] = useState(false);
   const [localError, setLocalError] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
   const objectUrlRef = useRef(null);
@@ -84,6 +90,7 @@ export default function SvgUploadInspector({
 
   const inspection = value?.inspection || null;
   const previewUrl = value?.previewUrl || value?.downloadUrl || null;
+  const hasSvgText = Boolean(String(value?.svgText || "").trim());
   const warnings = inspection?.warnings || [];
   const criticalErrors = inspection?.criticalErrors || [];
   const checks = inspection?.checks || {};
@@ -110,6 +117,7 @@ export default function SvgUploadInspector({
     () => warnings.map((warning) => getFriendlyWarning(warning)).filter(Boolean),
     [warnings]
   );
+  const isDynamicColorSvg = summary.colorMode === "currentColor";
   const infoTitle = useMemo(() => {
     const lines = [
       "Guia rapida para SVG",
@@ -166,6 +174,70 @@ export default function SvgUploadInspector({
     } finally {
       setUploading(false);
       event.target.value = "";
+    }
+  };
+
+  const handleConvertToEditableColor = async () => {
+    if (!hasSvgText || !value) {
+      setLocalError("No hay contenido SVG para convertir.");
+      return;
+    }
+
+    setConvertingColor(true);
+    setLocalError("");
+
+    try {
+      const converted = convertSvgToCurrentColor(value.svgText);
+      if (!converted.changed || !converted.svgText) {
+        const currentReport = inspectSvgText({
+          svgText: value.svgText,
+          fileName: value.fileName || "frame.svg",
+          byteSize: value.byteSize || 0,
+          mimeType: value.mimeType || "image/svg+xml",
+        });
+        const mode = currentReport?.checks?.colorMode || "fixed";
+        setLocalError(
+          mode === "currentColor"
+            ? "El SVG ya usa currentColor."
+            : "No se pudo convertir automaticamente. Editalo manualmente y reemplaza fill/stroke por currentColor."
+        );
+        return;
+      }
+
+      const nextByteSize = new Blob([converted.svgText], { type: "image/svg+xml" }).size;
+      const report = inspectSvgText({
+        svgText: converted.svgText,
+        fileName: value.fileName || "frame.svg",
+        byteSize: nextByteSize,
+        mimeType: value.mimeType || "image/svg+xml",
+      });
+
+      const previewBlob = new Blob([converted.svgText], { type: "image/svg+xml" });
+      const nextUrl = URL.createObjectURL(previewBlob);
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+      objectUrlRef.current = nextUrl;
+
+      onChange?.({
+        ...value,
+        valid: report.valid,
+        byteSize: nextByteSize,
+        svgText: converted.svgText,
+        svgBase64: svgTextToBase64(converted.svgText),
+        previewUrl: nextUrl,
+        colorMode: report?.checks?.colorMode || "fixed",
+        inspection: report,
+        isDirty: true,
+      });
+    } catch (error) {
+      setLocalError(
+        typeof error?.message === "string"
+          ? error.message
+          : "No se pudo convertir el SVG a color editable."
+      );
+    } finally {
+      setConvertingColor(false);
     }
   };
 
@@ -233,11 +305,26 @@ export default function SvgUploadInspector({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {value && !isDynamicColorSvg ? (
+            <button
+              type="button"
+              onClick={handleConvertToEditableColor}
+              disabled={uploading || convertingColor || !hasSvgText}
+              title={
+                hasSvgText
+                  ? "Convierte fill/stroke del SVG a currentColor para habilitar el selector de color."
+                  : "Esperando contenido SVG para convertir."
+              }
+              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {convertingColor ? "Convirtiendo..." : "Hacer color editable"}
+            </button>
+          ) : null}
           {value ? (
             <button
               type="button"
               onClick={handleRemoveSvg}
-              disabled={uploading}
+              disabled={uploading || convertingColor}
               className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
             >
               Quitar SVG
@@ -245,7 +332,13 @@ export default function SvgUploadInspector({
           ) : null}
           <label className="inline-flex cursor-pointer items-center rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100">
             {uploading ? "Procesando..." : "Subir SVG"}
-            <input type="file" accept=".svg,image/svg+xml" className="hidden" onChange={handleFileChange} />
+            <input
+              type="file"
+              accept=".svg,image/svg+xml"
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={convertingColor}
+            />
           </label>
         </div>
       </div>
@@ -316,6 +409,11 @@ export default function SvgUploadInspector({
             hint="Si dice Si, podras cambiar el color del frame desde el preset."
           />
         </dl>
+        {value && !isDynamicColorSvg ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+            Este archivo usa color fijo. Usa "Hacer color editable" para convertirlo a currentColor.
+          </p>
+        ) : null}
       </div>
 
       {previewUrl ? (

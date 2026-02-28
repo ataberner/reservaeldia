@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { useCountdownPresetCatalog } from "@/hooks/useCountdownPresetCatalog";
+import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 
 const COUNTDOWN_STYLE_KEYS = [
   "fontFamily",
@@ -68,6 +69,12 @@ function buildCountdownDesignPatch(presetPropsSafe = {}) {
     acc[key] = presetPropsSafe[key];
     return acc;
   }, {});
+}
+
+function describePaint(value) {
+  const safe = String(value || "").trim();
+  if (!safe) return "Sin color";
+  return safe.toLowerCase().startsWith("linear-gradient(") ? "Gradiente" : safe.toUpperCase();
 }
 
 export default function MiniToolbarTabContador() {
@@ -145,9 +152,18 @@ export default function MiniToolbarTabContador() {
       labelColor: countdownSel.labelColor ?? "#6b7280",
       boxBg: countdownSel.boxBg ?? "#ffffff",
       boxBorder: countdownSel.boxBorder ?? "#e5e7eb",
+      frameColor: countdownSel.frameColor ?? "#773dbe",
+      frameColorMode: String(countdownSel.frameColorMode || "fixed").toLowerCase(),
+      frameSvgUrl: String(countdownSel.frameSvgUrl || "").trim(),
       showLabels: !!countdownSel.showLabels,
     };
   }, [countdownSel]);
+
+  const canEditFrameSvgColor = useMemo(() => {
+    if (!selectedUI) return false;
+    if (!selectedUI.frameSvgUrl) return true;
+    return selectedUI.frameColorMode === "currentcolor";
+  }, [selectedUI]);
 
   const patchSelectedCountdown = (cambios) => {
     const id = selectedUI?.id;
@@ -161,87 +177,10 @@ export default function MiniToolbarTabContador() {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      {selectedUI && (
-        <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/40">
-          <div className="text-xs font-semibold text-purple-800 mb-2">
-            Colores del countdown seleccionado
-          </div>
-
-          <label className="text-xs font-medium text-zinc-700 col-span-2">
-            Separacion entre chips
-            <input
-              type="range"
-              min={0}
-              max={40}
-              step={1}
-              value={countdownSel.gap ?? 8}
-              onChange={(e) => patchSelectedCountdown({ gap: Number(e.target.value) })}
-              className="mt-2 w-full"
-            />
-            <div className="mt-1 text-[11px] text-zinc-500">
-              Gap actual: {countdownSel.gap ?? 8}px
-            </div>
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs font-medium text-zinc-700">
-              Numeros
-              <input
-                type="color"
-                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
-                value={selectedUI.color}
-                onChange={(e) => patchSelectedCountdown({ color: e.target.value })}
-              />
-            </label>
-
-            <label className="text-xs font-medium text-zinc-700">
-              Etiquetas
-              <input
-                type="color"
-                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white disabled:opacity-50"
-                value={selectedUI.labelColor}
-                onChange={(e) => patchSelectedCountdown({ labelColor: e.target.value })}
-                disabled={!selectedUI.showLabels}
-                title={
-                  !selectedUI.showLabels
-                    ? "Este preset no muestra labels (showLabels=false)"
-                    : ""
-                }
-              />
-              {!selectedUI.showLabels && (
-                <div className="mt-1 text-[11px] text-zinc-600">
-                  Este preset no muestra labels, por eso esta deshabilitado.
-                </div>
-              )}
-            </label>
-
-            <label className="text-xs font-medium text-zinc-700">
-              Fondo del chip
-              <input
-                type="color"
-                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
-                value={selectedUI.boxBg}
-                onChange={(e) => patchSelectedCountdown({ boxBg: e.target.value })}
-              />
-            </label>
-
-            <label className="text-xs font-medium text-zinc-700">
-              Borde del chip
-              <input
-                type="color"
-                className="mt-1 w-full h-10 rounded-lg border p-1 bg-white"
-                value={selectedUI.boxBorder}
-                onChange={(e) => patchSelectedCountdown({ boxBorder: e.target.value })}
-              />
-            </label>
-          </div>
-        </div>
-      )}
-
-      <div className="p-3 rounded-xl border border-zinc-200">
-        <label className="text-xs font-medium text-zinc-700">
-          Fecha y hora del evento
+    <div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+      <section className="sticky top-0 z-20 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-fuchsia-50 to-pink-50 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <label className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
+          Fecha del evento
         </label>
         <input
           type="datetime-local"
@@ -263,28 +202,153 @@ export default function MiniToolbarTabContador() {
               })
             );
           }}
-          className="mt-1 w-full rounded-lg border px-2 py-2 text-sm"
+          className="mt-2 w-full rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-sm text-zinc-800 focus:border-violet-400 focus:outline-none"
         />
-      </div>
+      </section>
 
-      <div>
-        <div className="text-xs font-medium text-zinc-700 mb-2">Disenos</div>
+      {selectedUI && (
+        <section className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
+            Estilo seleccionado
+          </h3>
+
+          <label className="block text-xs font-medium text-zinc-700">
+            Separacion entre chips
+            <input
+              type="range"
+              min={0}
+              max={40}
+              step={1}
+              value={countdownSel.gap ?? 8}
+              onChange={(e) => patchSelectedCountdown({ gap: Number(e.target.value) })}
+              className="mt-2 w-full accent-violet-600"
+            />
+            <div className="mt-1 text-[11px] text-zinc-500">
+              Gap actual: {countdownSel.gap ?? 8}px
+            </div>
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs font-medium text-zinc-700">
+              Numeros
+              <div className="mt-1 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
+                <span className="max-w-[82px] truncate text-[11px] font-semibold text-zinc-700" title={selectedUI.color}>
+                  {describePaint(selectedUI.color)}
+                </span>
+                <UnifiedColorPicker
+                  value={selectedUI.color}
+                  onChange={(nextColor) => patchSelectedCountdown({ color: nextColor })}
+                  panelWidth={272}
+                  title="Color de numeros"
+                  triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                />
+              </div>
+            </label>
+
+            <label className="text-xs font-medium text-zinc-700">
+              Etiquetas
+              <div className="mt-1 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
+                <span className="max-w-[82px] truncate text-[11px] font-semibold text-zinc-700" title={selectedUI.labelColor}>
+                  {describePaint(selectedUI.labelColor)}
+                </span>
+                <UnifiedColorPicker
+                  value={selectedUI.labelColor}
+                  onChange={(nextColor) => patchSelectedCountdown({ labelColor: nextColor })}
+                  panelWidth={272}
+                  title="Color de etiquetas"
+                  disabled={!selectedUI.showLabels}
+                  triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                />
+              </div>
+              {!selectedUI.showLabels && (
+                <div className="mt-1 text-[10px] text-zinc-600">
+                  Este preset no muestra labels.
+                </div>
+              )}
+            </label>
+
+            <label className="text-xs font-medium text-zinc-700">
+              Fondo chip
+              <div className="mt-1 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
+                <span className="max-w-[82px] truncate text-[11px] font-semibold text-zinc-700" title={selectedUI.boxBg}>
+                  {describePaint(selectedUI.boxBg)}
+                </span>
+                <UnifiedColorPicker
+                  value={selectedUI.boxBg}
+                  onChange={(nextColor) => patchSelectedCountdown({ boxBg: nextColor })}
+                  panelWidth={272}
+                  showGradients={false}
+                  title="Fondo del chip"
+                  triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                />
+              </div>
+            </label>
+
+            <label className="text-xs font-medium text-zinc-700">
+              Borde chip
+              <div className="mt-1 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
+                <span className="max-w-[82px] truncate text-[11px] font-semibold text-zinc-700" title={selectedUI.boxBorder}>
+                  {describePaint(selectedUI.boxBorder)}
+                </span>
+                <UnifiedColorPicker
+                  value={selectedUI.boxBorder}
+                  onChange={(nextColor) => patchSelectedCountdown({ boxBorder: nextColor })}
+                  panelWidth={272}
+                  showGradients={false}
+                  title="Borde del chip"
+                  triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                />
+              </div>
+            </label>
+
+            <label className="col-span-2 text-xs font-medium text-zinc-700">
+              Color frame SVG
+              <div className="mt-1 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
+                <span className="max-w-[160px] truncate text-[11px] font-semibold text-zinc-700" title={selectedUI.frameColor}>
+                  {describePaint(selectedUI.frameColor)}
+                </span>
+                <UnifiedColorPicker
+                  value={selectedUI.frameColor}
+                  onChange={(nextColor) => patchSelectedCountdown({ frameColor: nextColor })}
+                  panelWidth={272}
+                  showGradients={false}
+                  title="Color del frame SVG"
+                  disabled={!canEditFrameSvgColor}
+                  triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                />
+              </div>
+              {!canEditFrameSvgColor && (
+                <div className="mt-1 text-[10px] text-zinc-600">
+                  Este SVG tiene color fijo. Para recolorarlo, debe usar currentColor.
+                </div>
+              )}
+            </label>
+          </div>
+        </section>
+      )}
+
+      <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+          Disenos
+        </h3>
+
         {countdownPresetsError ? (
-          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
             {usingFallback
               ? "Catalogo remoto no disponible. Mostrando presets legacy."
               : countdownPresetsError}
           </div>
         ) : null}
-        <div className="flex flex-col gap-3">
+
+        <div className="flex flex-col gap-2">
           {loadingCountdownPresets && (
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
+            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-500">
               Cargando presets...
             </div>
           )}
 
           {!loadingCountdownPresets && countdownPresets.length === 0 && (
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
+            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-500">
               No hay presets disponibles.
             </div>
           )}
@@ -346,24 +410,14 @@ export default function MiniToolbarTabContador() {
                     })
                   );
                 }}
-                className="w-full group rounded-xl border border-zinc-200 hover:border-purple-300 hover:shadow-sm text-left flex flex-col px-2 py-3"
+                className="group w-full rounded-xl border border-violet-200 bg-white px-2 py-2 text-left transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-sm"
               >
-                <div className="mb-2">
-                  <div>
-                    <div className="text-sm font-semibold text-zinc-800">{p.nombre}</div>
-                    {p.categoriaLabel ? (
-                      <div className="text-[11px] text-zinc-500">{p.categoriaLabel}</div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="w-full">
-                  <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
-                </div>
+                <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
               </button>
             );
           })}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

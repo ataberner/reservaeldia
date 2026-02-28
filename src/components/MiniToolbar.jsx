@@ -47,7 +47,9 @@ export default function MiniToolbar({
   }, []);
 
 
-  if (!botonActivo) return null;
+  // El panel de "forma" se renderiza aparte (PanelDeFormas).
+  // Evitamos montar un contenedor vacío con h-full que ocupa espacio en el sidebar.
+  if (!botonActivo || botonActivo === "forma") return null;
 
   return (
     <div className="flex flex-col gap-2 h-full min-h-0">

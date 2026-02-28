@@ -34,6 +34,88 @@ function resolveKonvaFontStyle(fontStyle, fontWeight) {
   return "normal";
 }
 
+function toShapeSize(obj, fallbackWidth = 120, fallbackHeight = 120) {
+  return {
+    width: Math.max(1, Math.abs(Number(obj?.width) || fallbackWidth)),
+    height: Math.max(1, Math.abs(Number(obj?.height) || fallbackHeight)),
+  };
+}
+
+function buildRegularPolygonPoints(sides, width, height) {
+  const cx = width / 2;
+  const cy = height / 2;
+  const rx = width / 2;
+  const ry = height / 2;
+  const points = [];
+  for (let i = 0; i < sides; i += 1) {
+    const angle = -Math.PI / 2 + (i * (Math.PI * 2)) / sides;
+    points.push(cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry);
+  }
+  return points;
+}
+
+function buildStarPoints(width, height, innerRatio = 0.45) {
+  const cx = width / 2;
+  const cy = height / 2;
+  const outerX = width / 2;
+  const outerY = height / 2;
+  const innerX = outerX * innerRatio;
+  const innerY = outerY * innerRatio;
+  const points = [];
+
+  for (let i = 0; i < 10; i += 1) {
+    const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+    const radiusX = i % 2 === 0 ? outerX : innerX;
+    const radiusY = i % 2 === 0 ? outerY : innerY;
+    points.push(cx + Math.cos(angle) * radiusX, cy + Math.sin(angle) * radiusY);
+  }
+
+  return points;
+}
+
+function buildDiamondPoints(width, height) {
+  return [width / 2, 0, width, height / 2, width / 2, height, 0, height / 2];
+}
+
+function buildArrowPoints(width, height) {
+  return [
+    0, height * 0.34,
+    width * 0.6, height * 0.34,
+    width * 0.6, 0,
+    width, height / 2,
+    width * 0.6, height,
+    width * 0.6, height * 0.66,
+    0, height * 0.66,
+  ];
+}
+
+function buildHeartPath(width, height) {
+  const w = Math.max(1, width);
+  const h = Math.max(1, height);
+  return `M ${w / 2} ${h}
+    C ${w * 0.08} ${h * 0.76}, ${w * 0.02} ${h * 0.42}, ${w * 0.24} ${h * 0.24}
+    C ${w * 0.36} ${h * 0.08}, ${w * 0.48} ${h * 0.16}, ${w / 2} ${h * 0.32}
+    C ${w * 0.52} ${h * 0.16}, ${w * 0.64} ${h * 0.08}, ${w * 0.76} ${h * 0.24}
+    C ${w * 0.98} ${h * 0.42}, ${w * 0.92} ${h * 0.76}, ${w / 2} ${h}
+    Z`;
+}
+
+function shapeFillProps(fillModel) {
+  if (!fillModel?.hasGradient) {
+    return {
+      fill: fillModel?.fillColor || "#000000",
+    };
+  }
+
+  return {
+    fill: fillModel.fillColor,
+    fillPriority: "linear-gradient",
+    fillLinearGradientStartPoint: fillModel.startPoint,
+    fillLinearGradientEndPoint: fillModel.endPoint,
+    fillLinearGradientColorStops: [0, fillModel.gradientFrom, 1, fillModel.gradientTo],
+  };
+}
+
 
 
 
@@ -777,7 +859,17 @@ export default function ElementoCanvas({
 
 
   /* ---------------- ICONO RASTER (PNG/JPG/WEBP) Ã¢â‚¬â€œ sin recolor ---------------- */
-  if (obj.tipo === "icono" && (obj.formato === "png" || obj.formato === "jpg" || obj.formato === "webp")) {
+  if (
+    obj.tipo === "icono" &&
+    (
+      obj.formato === "png" ||
+      obj.formato === "jpg" ||
+      obj.formato === "jpeg" ||
+      obj.formato === "webp" ||
+      obj.formato === "gif" ||
+      obj.formato === "avif"
+    )
+  ) {
     const [img] = useImage(obj.url, "anonymous");
 
     return (
@@ -902,16 +994,17 @@ export default function ElementoCanvas({
 
 
   if (obj.tipo === "forma") {
-    switch (obj.figura) {
+    const figura = obj.figura || "rect";
+    const selectionStroke = isSelected || preSeleccionado ? "#773dbe" : undefined;
+    const selectionStrokeWidth = isSelected || preSeleccionado ? 1 : 0;
+
+    switch (figura) {
       case "rect": {
-        // Opcional: normalizamos width/height para usar en ambos nodos
-        const width = Math.abs(obj.width || 100);
-        const height = Math.abs(obj.height || 100);
+        const { width, height } = toShapeSize(obj, 100, 100);
         const rectFill = resolveKonvaFill(obj.color, width, height, "#000000");
 
         return (
           <>
-            {/* Ã°Å¸Å¸Âª Forma */}
             <Rect
               {...commonProps}
               ref={handleRef}
@@ -919,34 +1012,19 @@ export default function ElementoCanvas({
               onMouseLeave={handleMouseLeave}
               width={width}
               height={height}
-              fill={rectFill.fillColor}
-              fillPriority={rectFill.hasGradient ? "linear-gradient" : "color"}
-              fillLinearGradientStartPoint={rectFill.hasGradient ? rectFill.startPoint : undefined}
-              fillLinearGradientEndPoint={rectFill.hasGradient ? rectFill.endPoint : undefined}
-              fillLinearGradientColorStops={
-                rectFill.hasGradient
-                  ? [0, rectFill.gradientFrom, 1, rectFill.gradientTo]
-                  : undefined
-              }
+              {...shapeFillProps(rectFill)}
               cornerRadius={obj.cornerRadius || 0}
-              stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-              strokeWidth={isSelected || preSeleccionado ? 1 : 0}
-              // Ã°Å¸â€“Â±Ã¯Â¸Â Doble click para entrar en ediciÃƒÂ³n inline
+              stroke={selectionStroke}
+              strokeWidth={selectionStrokeWidth}
               onDblClick={(e) => {
                 e.cancelBubble = true;
-                if (onStartTextEdit) {
-                  onStartTextEdit(obj.id, obj.texto || "");
-                }
+                if (onStartTextEdit) onStartTextEdit(obj.id, obj.texto || "");
               }}
               onDblTap={(e) => {
                 e.cancelBubble = true;
-                if (onStartTextEdit) {
-                  onStartTextEdit(obj.id, obj.texto || "");
-                }
+                if (onStartTextEdit) onStartTextEdit(obj.id, obj.texto || "");
               }}
-              // Ã°Å¸Å¡Å¡ Sincronizar el texto mientras se arrastra la forma
               onDragMove={(e) => {
-                // Mantener cualquier lÃƒÂ³gica de drag original que venga de commonProps
                 if (typeof commonProps.onDragMove === "function") {
                   commonProps.onDragMove(e);
                 }
@@ -962,7 +1040,6 @@ export default function ElementoCanvas({
                 }
               }}
               onDragEnd={(e) => {
-                // Mantener lÃƒÂ³gica original de dragEnd (guardar posiciÃƒÂ³n, drag grupal, etc.)
                 if (typeof commonProps.onDragEnd === "function") {
                   commonProps.onDragEnd(e);
                 }
@@ -979,14 +1056,11 @@ export default function ElementoCanvas({
               }}
             />
 
-            {/* Ã¢Å“ÂÃ¯Â¸Â Texto encima de la forma */}
             {obj.texto && (
               <Text
-                id={`${obj.id}-text`}          // Ã°Å¸â€˜Ë† id para poder encontrarlo desde el Rect
+                id={`${obj.id}-text`}
                 ref={(node) => {
-                  if (registerRef) {
-                    registerRef(`${obj.id}-text`, node || null); // seguÃƒÂ­s usando tu sistema de refs
-                  }
+                  if (registerRef) registerRef(`${obj.id}-text`, node || null);
                 }}
                 x={obj.x}
                 y={obj.y}
@@ -1001,7 +1075,7 @@ export default function ElementoCanvas({
                 fill={obj.colorTexto || "#000000"}
                 align={obj.align || "center"}
                 verticalAlign="middle"
-                listening={false}              // Ã°Å¸â€˜Ë† el texto no roba eventos, los recibe el Rect
+                listening={false}
                 opacity={1}
               />
             )}
@@ -1011,65 +1085,107 @@ export default function ElementoCanvas({
 
       case "circle": {
         const circleRadius = obj.radius || 50;
-        const circleFill = resolveKonvaFill(
-          obj.color,
-          circleRadius * 2,
-          circleRadius * 2,
-          "#000000"
-        );
+        const circleFill = resolveKonvaFill(obj.color, circleRadius * 2, circleRadius * 2, "#000000");
         return (
           <Circle
             {...commonProps}
             ref={handleRef}
             radius={circleRadius}
-            fill={circleFill.fillColor}
-            fillPriority={circleFill.hasGradient ? "linear-gradient" : "color"}
-            fillLinearGradientStartPoint={circleFill.hasGradient ? circleFill.startPoint : undefined}
-            fillLinearGradientEndPoint={circleFill.hasGradient ? circleFill.endPoint : undefined}
-            fillLinearGradientColorStops={
-              circleFill.hasGradient
-                ? [0, circleFill.gradientFrom, 1, circleFill.gradientTo]
-                : undefined
-            }
+            {...shapeFillProps(circleFill)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-            strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+            stroke={selectionStroke}
+            strokeWidth={selectionStrokeWidth}
           />
         );
       }
 
       case "triangle": {
         const triangleRadius = obj.radius || 60;
-        const triangleFill = resolveKonvaFill(
-          obj.color,
-          triangleRadius * 2,
-          triangleRadius * 2,
-          "#000000"
-        );
+        const triangleFill = resolveKonvaFill(obj.color, triangleRadius * 2, triangleRadius * 2, "#000000");
         return (
           <RegularPolygon
             {...commonProps}
             ref={handleRef}
             sides={3}
             radius={triangleRadius}
-            fill={triangleFill.fillColor}
-            fillPriority={triangleFill.hasGradient ? "linear-gradient" : "color"}
-            fillLinearGradientStartPoint={triangleFill.hasGradient ? triangleFill.startPoint : undefined}
-            fillLinearGradientEndPoint={triangleFill.hasGradient ? triangleFill.endPoint : undefined}
-            fillLinearGradientColorStops={
-              triangleFill.hasGradient
-                ? [0, triangleFill.gradientFrom, 1, triangleFill.gradientTo]
-                : undefined
-            }
+            {...shapeFillProps(triangleFill)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-            strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+            stroke={selectionStroke}
+            strokeWidth={selectionStrokeWidth}
           />
         );
       }
 
+      case "diamond":
+      case "star":
+      case "arrow":
+      case "pentagon":
+      case "hexagon": {
+        const { width, height } = toShapeSize(obj, 120, 120);
+        const fillModel = resolveKonvaFill(obj.color, width, height, "#000000");
+        let points = buildDiamondPoints(width, height);
+
+        if (figura === "star") points = buildStarPoints(width, height);
+        if (figura === "arrow") points = buildArrowPoints(width, height);
+        if (figura === "pentagon") points = buildRegularPolygonPoints(5, width, height);
+        if (figura === "hexagon") points = buildRegularPolygonPoints(6, width, height);
+
+        return (
+          <Line
+            {...commonProps}
+            ref={handleRef}
+            points={points}
+            closed
+            {...shapeFillProps(fillModel)}
+            stroke={selectionStroke}
+            strokeWidth={selectionStrokeWidth}
+            lineJoin="round"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          />
+        );
+      }
+
+      case "heart": {
+        const { width, height } = toShapeSize(obj, 120, 108);
+        const fillModel = resolveKonvaFill(obj.color, width, height, "#000000");
+        return (
+          <Path
+            {...commonProps}
+            ref={handleRef}
+            data={buildHeartPath(width, height)}
+            {...shapeFillProps(fillModel)}
+            stroke={selectionStroke}
+            strokeWidth={selectionStrokeWidth}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          />
+        );
+      }
+
+      case "pill": {
+        const { width, height } = toShapeSize(obj, 170, 72);
+        const fillModel = resolveKonvaFill(obj.color, width, height, "#000000");
+        const cornerRadius = Number.isFinite(obj.cornerRadius)
+          ? obj.cornerRadius
+          : Math.max(10, Math.round(height / 2));
+        return (
+          <Rect
+            {...commonProps}
+            ref={handleRef}
+            width={width}
+            height={height}
+            cornerRadius={cornerRadius}
+            {...shapeFillProps(fillModel)}
+            stroke={selectionStroke}
+            strokeWidth={selectionStrokeWidth}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          />
+        );
+      }
 
       default:
         return null;
@@ -1078,4 +1194,5 @@ export default function ElementoCanvas({
 
   return null;
 }
+
 

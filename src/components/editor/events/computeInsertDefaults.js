@@ -187,9 +187,23 @@ export default function computeInsertDefaults({
     };
   } else if (tipo === "forma") {
     const figura = payload.figura || "rect";
-    const size = isMobile ? 120 : 100;
-    const width = incomingWidth ?? size;
-    const height = incomingHeight ?? size;
+    const baseSize = isMobile ? 120 : 100;
+    const shapeDefaults = {
+      rect: { width: baseSize, height: baseSize },
+      circle: { radius: 50 },
+      line: { points: [0, 0, 120, 0], strokeWidth: 3 },
+      triangle: { radius: 60 },
+      diamond: { width: 120, height: 120 },
+      star: { width: 120, height: 120 },
+      heart: { width: 120, height: 108 },
+      arrow: { width: 160, height: 90 },
+      pentagon: { width: 120, height: 120 },
+      hexagon: { width: 128, height: 112 },
+      pill: { width: 170, height: 72 },
+    };
+    const selectedDefault = shapeDefaults[figura] || shapeDefaults.rect;
+    const width = incomingWidth ?? selectedDefault.width ?? baseSize;
+    const height = incomingHeight ?? selectedDefault.height ?? baseSize;
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
     const y = incomingY ?? 120;
 
@@ -211,14 +225,22 @@ export default function computeInsertDefaults({
     };
 
     if (figura === "line") {
-      next.points = Array.isArray(payload.points) ? payload.points : [0, 0, 100, 0];
-      next.strokeWidth = toNumber(payload.strokeWidth, 2);
+      next.points = Array.isArray(payload.points)
+        ? payload.points
+        : (selectedDefault.points || [0, 0, 120, 0]);
+      next.strokeWidth = toNumber(
+        payload.strokeWidth,
+        selectedDefault.strokeWidth || 3
+      );
       delete next.width;
       delete next.height;
     } else if (figura === "circle") {
-      next.radius = toNumber(payload.radius, 50);
+      next.radius = toNumber(payload.radius, selectedDefault.radius || 50);
     } else if (figura === "triangle") {
-      next.radius = toNumber(payload.radius, 60);
+      next.radius = toNumber(payload.radius, selectedDefault.radius || 60);
+    } else if (figura === "pill") {
+      const safeHeight = Number.isFinite(next.height) ? next.height : (selectedDefault.height || 72);
+      next.cornerRadius = toNumber(payload.cornerRadius, Math.max(10, Math.round(safeHeight / 2)));
     }
   } else if (tipo === "icono" || tipo === "icono-svg") {
     const width = incomingWidth ?? (isMobile ? 112 : 128);

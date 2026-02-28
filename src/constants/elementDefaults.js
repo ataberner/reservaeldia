@@ -35,6 +35,35 @@ export const SHAPE_DIMENSIONS = {
   triangle: {
     points: [0, 80, 40, 0, 80, 80]
   },
+  diamond: {
+    width: 100,
+    height: 100,
+  },
+  star: {
+    width: 110,
+    height: 110,
+  },
+  heart: {
+    width: 110,
+    height: 98,
+  },
+  arrow: {
+    width: 140,
+    height: 80,
+  },
+  pentagon: {
+    width: 110,
+    height: 110,
+  },
+  hexagon: {
+    width: 118,
+    height: 102,
+  },
+  pill: {
+    width: 160,
+    height: 66,
+    cornerRadius: 33,
+  },
   default: {
     width: 80,
     height: 80

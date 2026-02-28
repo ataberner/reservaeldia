@@ -682,7 +682,11 @@ export default function DashboardSidebar({
                     }
                 >
                     <div
-                        className="relative w-full h-full min-h-0 flex flex-col gap-3 px-2.5 pb-3 pt-10 text-slate-700"
+                        className={`relative w-full h-full min-h-0 flex flex-col text-slate-700 ${
+                            botonActivo === "forma"
+                                ? "gap-0 px-2.5 pb-0.5 pt-8"
+                                : "gap-3 px-2.5 pb-3 pt-10"
+                        }`}
                         style={
                             isMobileViewport
                                 ? {

@@ -422,6 +422,7 @@ export default function DashboardSidebar({
                 })}
 
             <aside
+                data-dashboard-sidebar="true"
                 className={sidebarShellClass}
                 style={{ zIndex: 45, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
             >

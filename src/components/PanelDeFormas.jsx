@@ -15,7 +15,7 @@ function toMediaFormat(item) {
   return extension === "jpeg" ? "jpg" : extension;
 }
 
-function shapePreview(figura, sizeClass = "h-12 w-12") {
+function shapePreview(figura, sizeClass = "h-14 w-14") {
   const fill = "#1f2937";
 
   if (figura === "line") {
@@ -139,12 +139,12 @@ function HorizontalRail({
   children,
 }) {
   return (
-    <div className="relative">
+    <div className="relative py-0.5">
       <div
         ref={scrollerRef}
         className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
-        <div className="flex min-w-max gap-1.5 pr-2">{children}</div>
+        <div className="flex min-w-max gap-1.5 pr-1">{children}</div>
       </div>
 
       {canScrollLeft ? (
@@ -183,11 +183,11 @@ function ShapeButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="group flex h-[84px] w-full items-center justify-center rounded-lg bg-transparent px-1 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="group flex h-[76px] w-full items-center justify-center rounded-lg bg-transparent px-1 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="flex h-14 w-14 items-center justify-center text-slate-900">
-        {shapePreview(item.figura)}
+      <div className="flex h-16 w-16 items-center justify-center text-slate-900">
+        {shapePreview(item.figura, "h-[56px] w-[56px]")}
       </div>
     </button>
   );
@@ -198,11 +198,11 @@ function ShapeRailButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="shrink-0 flex h-[72px] w-[72px] items-center justify-center rounded-lg bg-transparent px-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="shrink-0 flex h-[68px] w-[68px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="flex h-12 w-12 items-center justify-center text-slate-900">
-        {shapePreview(item.figura, "h-11 w-11")}
+      <div className="flex h-14 w-14 items-center justify-center text-slate-900">
+        {shapePreview(item.figura, "h-[52px] w-[52px]")}
       </div>
     </button>
   );
@@ -213,10 +213,10 @@ function IconRailButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="shrink-0 flex h-[72px] w-[72px] items-center justify-center rounded-lg bg-transparent px-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="shrink-0 flex h-[68px] w-[68px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="h-12 w-12 p-1">
+      <div className="h-14 w-14 p-1">
         <div
           className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
           style={{ backgroundImage: `url(${item.src})` }}
@@ -231,10 +231,10 @@ function MediaButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="group flex h-[84px] w-full items-center justify-center rounded-lg bg-transparent px-1 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="group flex h-[76px] w-full items-center justify-center rounded-lg bg-transparent px-1 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="h-14 w-14 p-1">
+      <div className="h-16 w-16 p-1.5">
         <div
           className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
           style={{ backgroundImage: `url(${item.src})` }}
@@ -250,15 +250,15 @@ function RecentButton({ item, onInsertShape, onInsertMedia }) {
     <button
       type="button"
       onClick={() => (isShape ? onInsertShape(item) : onInsertMedia(item))}
-      className="shrink-0 flex h-[64px] w-[64px] items-center justify-center rounded-lg bg-transparent px-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="shrink-0 flex h-[62px] w-[62px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
       {isShape ? (
-        <div className="flex h-11 w-11 items-center justify-center">
-          {shapePreview(item.figura, "h-10 w-10")}
+        <div className="flex h-12 w-12 items-center justify-center">
+          {shapePreview(item.figura, "h-[46px] w-[46px]")}
         </div>
       ) : (
-        <div className="h-11 w-11 p-1">
+        <div className="h-12 w-12 p-1">
           <div
             className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
             style={{ backgroundImage: `url(${item.src})` }}
@@ -271,11 +271,11 @@ function RecentButton({ item, onInsertShape, onInsertMedia }) {
 
 function AccordionSection({ title, open, onToggle, children }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white">
+    <section className="rounded-lg border border-slate-200 bg-white p-0">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+        className="flex w-full items-center justify-between px-3 py-1.5 text-left"
       >
         <span className="text-xs font-semibold text-slate-800">{title}</span>
         {open ? (
@@ -284,7 +284,7 @@ function AccordionSection({ title, open, onToggle, children }) {
           <ChevronRight className="h-4 w-4 text-slate-600" />
         )}
       </button>
-      {open ? <div className="border-t border-slate-100 px-3 pb-3 pt-2">{children}</div> : null}
+      {open ? <div className="border-t border-slate-100 px-2.5 pb-2 pt-1.5">{children}</div> : null}
     </section>
   );
 }
@@ -301,7 +301,6 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   const {
     shapeItems,
     libraryItems,
-    popularItems,
     recentItems,
     query,
     setQuery,
@@ -314,7 +313,6 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     getLibraryByKind,
   } = useElementCatalog();
 
-  const [iconsOpen, setIconsOpen] = useState(false);
   const [gifsOpen, setGifsOpen] = useState(false);
   const [focusedLibrary, setFocusedLibrary] = useState("none");
 
@@ -329,11 +327,6 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     () => getLibraryByKind("gif", "all"),
     [getLibraryByKind]
   );
-
-  const filteredPopular = useMemo(() => {
-    const popularMedia = popularItems.filter((item) => item.kind === "icon" || item.kind === "gif");
-    return popularMedia.slice(0, 18);
-  }, [popularItems]);
 
   const filteredRecents = useMemo(() => recentItems.slice(0, 24), [recentItems]);
   const recentRail = useHorizontalScrollMeta(filteredRecents.length);
@@ -469,8 +462,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   if (focusedLibrary === "shapes") {
     return (
-      <div className="w-full space-y-0 pb-0">
-        <div className="flex items-center justify-between">
+      <div className="w-full space-y-1.5 pb-0">
+        <div className="flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Formas</h3>
           <button
             type="button"
@@ -492,8 +485,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   if (focusedLibrary === "icons") {
     return (
-      <div className="w-full space-y-0 pb-0">
-        <div className="flex items-center justify-between">
+      <div className="w-full space-y-1.5 pb-0">
+        <div className="flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Iconos</h3>
           <button
             type="button"
@@ -505,11 +498,23 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
         </div>
 
         {iconLibrary.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2" aria-label="Iconos en vista completa">
-            {iconLibrary.map((item) => (
-              <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-3 gap-2" aria-label="Iconos en vista completa">
+              {iconLibrary.map((item) => (
+                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
+              ))}
+            </div>
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loading}
+                className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? "Cargando..." : "Cargar mas iconos"}
+              </button>
+            ) : null}
+          </>
         ) : (
           <EmptyHint />
         )}
@@ -519,8 +524,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   if (focusedLibrary === "recents") {
     return (
-      <div className="w-full space-y-0 pb-0">
-        <div className="flex items-center justify-between">
+      <div className="w-full space-y-1.5 pb-0">
+        <div className="flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Recientes</h3>
           <button
             type="button"
@@ -550,8 +555,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   }
 
   return (
-    <div className="w-full space-y-0 pb-0">
-      <div className="sticky top-0 z-20 bg-white pb-1">
+    <div className="w-full space-y-1.5 pb-0">
+      <div className="sticky top-0 z-20 bg-white pb-0.5">
         <label className="block rounded-xl border border-slate-300 bg-white p-1">
           <input
             value={query}
@@ -563,8 +568,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
       </div>
 
       {!searching && filteredRecents.length > 0 ? (
-        <section className="space-y-0">
-          <div className="flex items-center justify-between">
+        <section className="space-y-0 rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/65 px-1 py-1 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between px-1 py-0.5">
             <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Recientes</h3>
             <button
               type="button"
@@ -597,8 +602,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
       ) : null}
 
       {!searching ? (
-        <section className="space-y-0">
-          <div className="flex items-center justify-between">
+        <section className="space-y-0 rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/65 px-1 py-1 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between px-1 py-0.5">
             <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Formas</h3>
             <button
               type="button"
@@ -626,8 +631,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
       ) : null}
 
       {!searching ? (
-        <section className="space-y-0">
-          <div className="flex items-center justify-between">
+        <section className="space-y-0 rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/65 px-1 py-1 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between px-1 py-0.5">
             <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Iconos</h3>
             <button
               type="button"
@@ -699,64 +704,31 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
               {Array.from({ length: 6 }).map((_, idx) => (
                 <div
                   key={`loading-library-${idx}`}
-                  className="h-[94px] rounded-xl border border-slate-200 bg-slate-100 animate-pulse"
+                  className="h-[86px] rounded-xl border border-slate-200 bg-slate-100 animate-pulse"
                 />
               ))}
             </div>
           ) : null}
 
-          {filteredPopular.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2" aria-label="Populares">
-              {filteredPopular.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
-              ))}
-            </div>
-          ) : loading ? (
-            <div className="grid grid-cols-3 gap-2">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div
-                  key={`loading-pop-${idx}`}
-                  className="h-[94px] rounded-xl border border-slate-200 bg-slate-100 animate-pulse"
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyHint />
-          )}
+          <div className="space-y-0.5">
+            <AccordionSection
+              title={`GIFs (${gifLibrary.length})`}
+              open={gifsOpen}
+              onToggle={() => setGifsOpen((value) => !value)}
+            >
+              {gifLibrary.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {gifLibrary.map((item) => (
+                    <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyHint />
+              )}
+            </AccordionSection>
+          </div>
 
-          <AccordionSection
-            title={`Iconos (${iconLibrary.length})`}
-            open={iconsOpen}
-            onToggle={() => setIconsOpen((value) => !value)}
-          >
-            {iconLibrary.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2">
-                {iconLibrary.map((item) => (
-                  <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
-                ))}
-              </div>
-            ) : (
-              <EmptyHint />
-            )}
-          </AccordionSection>
-
-          <AccordionSection
-            title={`GIFs (${gifLibrary.length})`}
-            open={gifsOpen}
-            onToggle={() => setGifsOpen((value) => !value)}
-          >
-            {gifLibrary.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2">
-                {gifLibrary.map((item) => (
-                  <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
-                ))}
-              </div>
-            ) : (
-              <EmptyHint />
-            )}
-          </AccordionSection>
-
-          {hasMore && (iconsOpen || gifsOpen) ? (
+          {hasMore && gifsOpen ? (
             <button
               type="button"
               onClick={loadMore}

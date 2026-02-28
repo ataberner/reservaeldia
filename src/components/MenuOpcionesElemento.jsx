@@ -26,6 +26,64 @@ function sanitizeURL(url) {
     }
 }
 
+const VIEWPORT_PADDING = 8;
+const DEFAULT_MENU_SIZE = { width: 256, height: 300 };
+const DEFAULT_LINK_FLYOUT_SIZE = { width: 320, height: 180 };
+const DEFAULT_EFFECTS_FLYOUT_SIZE = { width: 300, height: 320 };
+const DEFAULT_LAYER_FLYOUT_SIZE = { width: 224, height: 180 };
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function resolveViewportSize() {
+    return {
+        width: Math.max(0, window.innerWidth || 0),
+        height: Math.max(0, window.innerHeight || 0),
+    };
+}
+
+function getMeasuredSize(elementRef, fallback) {
+    const node = elementRef?.current;
+    const measuredWidth = Number(node?.offsetWidth || 0);
+    const measuredHeight = Number(node?.offsetHeight || 0);
+    return {
+        width: measuredWidth > 0 ? measuredWidth : fallback.width,
+        height: measuredHeight > 0 ? measuredHeight : fallback.height,
+    };
+}
+
+function resolveAnchoredPosition(anchorRect, requestedSize, gap = 8) {
+    const viewport = resolveViewportSize();
+    const maxWidth = Math.max(120, viewport.width - VIEWPORT_PADDING * 2);
+    const maxHeight = Math.max(120, viewport.height - VIEWPORT_PADDING * 2);
+
+    const width = clamp(requestedSize.width, 120, maxWidth);
+    const height = clamp(requestedSize.height, 120, maxHeight);
+
+    let x = anchorRect.right + gap;
+    let y = anchorRect.top;
+
+    if (x + width > viewport.width - VIEWPORT_PADDING) {
+        x = anchorRect.left - width - gap;
+    }
+    if (y + height > viewport.height - VIEWPORT_PADDING) {
+        y = anchorRect.bottom - height;
+    }
+
+    const minX = VIEWPORT_PADDING;
+    const maxX = Math.max(minX, viewport.width - width - VIEWPORT_PADDING);
+    const minY = VIEWPORT_PADDING;
+    const maxY = Math.max(minY, viewport.height - height - VIEWPORT_PADDING);
+
+    return {
+        x: clamp(x, minX, maxX),
+        y: clamp(y, minY, maxY),
+        width,
+        height,
+    };
+}
+
 
 /**
  * Menú contextual para un elemento seleccionado en el canvas.
@@ -69,7 +127,11 @@ export default function MenuOpcionesElemento({
     const submenuRef = useRef(null);
 
     // Posición del flyout
-    const [submenuPos, setSubmenuPos] = useState({ x: -9999, y: -9999 });
+    const [submenuPos, setSubmenuPos] = useState({
+        x: -9999,
+        y: -9999,
+        width: DEFAULT_LAYER_FLYOUT_SIZE.width,
+    });
     const [submenuReady, setSubmenuReady] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [mobileBottomOffset, setMobileBottomOffset] = useState(8);
@@ -91,7 +153,7 @@ export default function MenuOpcionesElemento({
         if (typeof window === "undefined") return 8;
 
         const viewportHeight = Math.max(0, window.innerHeight || 0);
-        const sidebar = document.querySelector("aside");
+        const sidebar = document.querySelector('[data-dashboard-sidebar="true"]') || document.querySelector("aside");
         if (!sidebar || typeof sidebar.getBoundingClientRect !== "function") {
             return 8;
         }
@@ -105,37 +167,33 @@ export default function MenuOpcionesElemento({
     }, []);
 
     // --- Helper: calcula la posición final del menú desde el rect del botón ⚙️
-    const calcularPosDesdeRect = (r) => {
-        const menuWidth = 256; // w-64
-        const menuHeight = 300; // estimación
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        let x = r.right + 8; // por defecto a la derecha del botón
-        let y = r.top;
-
-        // Si se sale a la derecha, lo ponemos a la izquierda del botón
-        if (x + menuWidth > vw) x = r.left - menuWidth - 8;
-
-        // Si se sale por abajo, lo acomodamos hacia arriba
-        if (y + menuHeight > vh) y = Math.max(8, r.bottom - menuHeight);
-
-        return { x, y };
-    };
+    const calcularPosDesdeRect = useCallback((rect) => {
+        const measured = getMeasuredSize(menuRootRef, DEFAULT_MENU_SIZE);
+        const posResuelta = resolveAnchoredPosition(rect, measured, 8);
+        return { x: posResuelta.x, y: posResuelta.y };
+    }, []);
 
 
     // --- Submenú Enlace ---
     const [mostrarSubmenuEnlace, setMostrarSubmenuEnlace] = useState(false);
     const btnEnlaceRef = useRef(null);
     const submenuEnlaceRef = useRef(null);
-    const [enlacePos, setEnlacePos] = useState({ x: -9999, y: -9999 });
+    const [enlacePos, setEnlacePos] = useState({
+        x: -9999,
+        y: -9999,
+        width: DEFAULT_LINK_FLYOUT_SIZE.width,
+    });
     const [enlaceReady, setEnlaceReady] = useState(false);
     const [urlInput, setUrlInput] = useState("");
     const [urlError, setUrlError] = useState(false);
     const [mostrarSubmenuEfectos, setMostrarSubmenuEfectos] = useState(false);
     const btnEfectosRef = useRef(null);
     const submenuEfectosRef = useRef(null);
-    const [efectosPos, setEfectosPos] = useState({ x: -9999, y: -9999 });
+    const [efectosPos, setEfectosPos] = useState({
+        x: -9999,
+        y: -9999,
+        width: DEFAULT_EFFECTS_FLYOUT_SIZE.width,
+    });
     const [efectosReady, setEfectosReady] = useState(false);
 
     const allowedMotionEffects = getAllowedMotionEffectsForElement(elementoSeleccionado);
@@ -156,115 +214,74 @@ export default function MenuOpcionesElemento({
         setMostrarSubmenuEfectos(false);
     }, [isOpen]);
 
-    // Posicionar el flyout de "Enlace"
+    // Posicionar los flyouts
+    const recalcularSubmenuEnlacePos = useCallback(() => {
+        const btn = btnEnlaceRef.current;
+        if (!btn) return;
+        const anchor = btn.getBoundingClientRect();
+        const measured = getMeasuredSize(submenuEnlaceRef, DEFAULT_LINK_FLYOUT_SIZE);
+        const posResuelta = resolveAnchoredPosition(anchor, measured, 8);
+        setEnlacePos({ x: posResuelta.x, y: posResuelta.y, width: posResuelta.width });
+    }, []);
+
+    const recalcularSubmenuEfectosPos = useCallback(() => {
+        const btn = btnEfectosRef.current;
+        if (!btn) return;
+        const anchor = btn.getBoundingClientRect();
+        const measured = getMeasuredSize(submenuEfectosRef, DEFAULT_EFFECTS_FLYOUT_SIZE);
+        const posResuelta = resolveAnchoredPosition(anchor, measured, 8);
+        setEfectosPos({ x: posResuelta.x, y: posResuelta.y, width: posResuelta.width });
+    }, []);
+
     useLayoutEffect(() => {
         if (!mostrarSubmenuEnlace) {
             setEnlaceReady(false);
-            setEnlacePos({ x: -9999, y: -9999 });
+            setEnlacePos({
+                x: -9999,
+                y: -9999,
+                width: DEFAULT_LINK_FLYOUT_SIZE.width,
+            });
             return;
         }
-        const btn = btnEnlaceRef.current;
-        if (!btn) return;
-
-        const r = btn.getBoundingClientRect();
-        const flyoutWidth = 320;  // un poco más ancho para el input
-        const flyoutHeight = 160; // estimado
-        const gap = 8;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        let x = r.right + gap;
-        let y = r.top;
-
-        if (x + flyoutWidth > vw) x = r.left - flyoutWidth - gap;
-        if (y + flyoutHeight > vh) y = Math.max(8, r.bottom - flyoutHeight);
-
-        setEnlacePos({ x, y });
+        recalcularSubmenuEnlacePos();
         setEnlaceReady(true);
-    }, [mostrarSubmenuEnlace]);
+    }, [mostrarSubmenuEnlace, recalcularSubmenuEnlacePos]);
 
-    // Reposicionar ante scroll/resize con el flyout abierto
     useEffect(() => {
         if (!mostrarSubmenuEnlace) return;
-        const handle = () => {
-            const btn = btnEnlaceRef.current;
-            if (!btn) return;
-            const r = btn.getBoundingClientRect();
-            const flyoutWidth = 320, flyoutHeight = 160, gap = 8;
-            const vw = window.innerWidth, vh = window.innerHeight;
-
-            let x = r.right + gap;
-            let y = r.top;
-            if (x + flyoutWidth > vw) x = r.left - flyoutWidth - gap;
-            if (y + flyoutHeight > vh) y = Math.max(8, r.bottom - flyoutHeight);
-
-            setEnlacePos({ x, y });
-        };
+        const handle = () => recalcularSubmenuEnlacePos();
         window.addEventListener("resize", handle);
         window.addEventListener("scroll", handle, true);
         return () => {
             window.removeEventListener("resize", handle);
             window.removeEventListener("scroll", handle, true);
         };
-    }, [mostrarSubmenuEnlace]);
+    }, [mostrarSubmenuEnlace, recalcularSubmenuEnlacePos]);
 
     useLayoutEffect(() => {
         if (!mostrarSubmenuEfectos) {
             setEfectosReady(false);
-            setEfectosPos({ x: -9999, y: -9999 });
+            setEfectosPos({
+                x: -9999,
+                y: -9999,
+                width: DEFAULT_EFFECTS_FLYOUT_SIZE.width,
+            });
             return;
         }
-
-        const btn = btnEfectosRef.current;
-        if (!btn) return;
-
-        const rect = btn.getBoundingClientRect();
-        const flyoutWidth = 300;
-        const flyoutHeight = 300;
-        const gap = 8;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        let x = rect.right + gap;
-        let y = rect.top;
-        if (x + flyoutWidth > vw) x = rect.left - flyoutWidth - gap;
-        if (x < 8) x = 8;
-        if (y + flyoutHeight > vh) y = Math.max(8, rect.bottom - flyoutHeight);
-
-        setEfectosPos({ x, y });
+        recalcularSubmenuEfectosPos();
         setEfectosReady(true);
-    }, [mostrarSubmenuEfectos]);
+    }, [mostrarSubmenuEfectos, recalcularSubmenuEfectosPos]);
 
     useEffect(() => {
         if (!mostrarSubmenuEfectos) return;
-
-        const handle = () => {
-            const btn = btnEfectosRef.current;
-            if (!btn) return;
-
-            const rect = btn.getBoundingClientRect();
-            const flyoutWidth = 300;
-            const flyoutHeight = 300;
-            const gap = 8;
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
-
-            let x = rect.right + gap;
-            let y = rect.top;
-            if (x + flyoutWidth > vw) x = rect.left - flyoutWidth - gap;
-            if (x < 8) x = 8;
-            if (y + flyoutHeight > vh) y = Math.max(8, rect.bottom - flyoutHeight);
-
-            setEfectosPos({ x, y });
-        };
-
+        const handle = () => recalcularSubmenuEfectosPos();
         window.addEventListener("resize", handle);
         window.addEventListener("scroll", handle, true);
         return () => {
             window.removeEventListener("resize", handle);
             window.removeEventListener("scroll", handle, true);
         };
-    }, [mostrarSubmenuEfectos]);
+    }, [mostrarSubmenuEfectos, recalcularSubmenuEfectosPos]);
 
     const guardarEnlace = () => {
         const limpio = sanitizeURL(urlInput);
@@ -338,7 +355,7 @@ export default function MenuOpcionesElemento({
         const p = calcularPosDesdeRect(r);
         setPos(p);
         setReady(true); // ya tenemos posición; mostrar menú
-    }, [isOpen, botonOpcionesRef, isMobile]);
+    }, [isOpen, botonOpcionesRef, isMobile, calcularPosDesdeRect]);
 
     useLayoutEffect(() => {
         if (!isOpen || !isMobile) {
@@ -361,60 +378,39 @@ export default function MenuOpcionesElemento({
         };
     }, [isOpen, isMobile, calcularOffsetBottomMobile]);
 
+    const recalcularSubmenuCapaPos = useCallback(() => {
+        const btn = btnOrdenRef.current;
+        if (!btn) return;
+        const anchor = btn.getBoundingClientRect();
+        const measured = getMeasuredSize(submenuRef, DEFAULT_LAYER_FLYOUT_SIZE);
+        const posResuelta = resolveAnchoredPosition(anchor, measured, 8);
+        setSubmenuPos({ x: posResuelta.x, y: posResuelta.y, width: posResuelta.width });
+    }, []);
+
     useLayoutEffect(() => {
         if (!mostrarSubmenuCapa) {
             setSubmenuReady(false);
-            setSubmenuPos({ x: -9999, y: -9999 });
+            setSubmenuPos({
+                x: -9999,
+                y: -9999,
+                width: DEFAULT_LAYER_FLYOUT_SIZE.width,
+            });
             return;
         }
-        const btn = btnOrdenRef.current;
-        if (!btn) return;
-
-        const r = btn.getBoundingClientRect();
-        const flyoutWidth = 224;   // ~ w-56
-        const flyoutHeight = 180;  // estimado
-        const gap = 8;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        let x = r.right + gap;     // por defecto, a la derecha del botón
-        let y = r.top;
-
-        // Si no entra a la derecha, lo abrimos a la izquierda del panel
-        if (x + flyoutWidth > vw) x = r.left - flyoutWidth - gap;
-
-        // Si se pasa por abajo, lo “clamp” hacia arriba
-        if (y + flyoutHeight > vh) y = Math.max(8, r.bottom - flyoutHeight);
-
-        setSubmenuPos({ x, y });
+        recalcularSubmenuCapaPos();
         setSubmenuReady(true);
-    }, [mostrarSubmenuCapa]);
-
+    }, [mostrarSubmenuCapa, recalcularSubmenuCapaPos]);
 
     useEffect(() => {
         if (!mostrarSubmenuCapa) return;
-        const handle = () => {
-            const btn = btnOrdenRef.current;
-            if (!btn) return;
-            const r = btn.getBoundingClientRect();
-            const gap = 8, flyoutWidth = 224, flyoutHeight = 180;
-            const vw = window.innerWidth, vh = window.innerHeight;
-
-            let x = r.right + gap;
-            let y = r.top;
-            if (x + flyoutWidth > vw) x = r.left - flyoutWidth - gap;
-            if (y + flyoutHeight > vh) y = Math.max(8, r.bottom - flyoutHeight);
-
-            setSubmenuPos({ x, y });
-        };
-
+        const handle = () => recalcularSubmenuCapaPos();
         window.addEventListener("resize", handle);
         window.addEventListener("scroll", handle, true);
         return () => {
             window.removeEventListener("resize", handle);
             window.removeEventListener("scroll", handle, true);
         };
-    }, [mostrarSubmenuCapa]);
+    }, [mostrarSubmenuCapa, recalcularSubmenuCapaPos]);
 
 
     // 2) Reposicionar ante scroll/resize mientras esté abierto
@@ -433,7 +429,7 @@ export default function MenuOpcionesElemento({
             window.removeEventListener("resize", handle);
             window.removeEventListener("scroll", handle, true);
         };
-    }, [isOpen, botonOpcionesRef]);
+    }, [isOpen, botonOpcionesRef, calcularPosDesdeRect]);
 
     if (!isOpen) return null;
 
@@ -463,6 +459,7 @@ export default function MenuOpcionesElemento({
                         top: `${pos.y}px`,
                         borderColor: "#773dbe",
                         borderWidth: "1px",
+                        maxWidth: "calc(100vw - 16px)",
                         maxHeight: "400px",
                         overflowY: "auto",
                         animation: "fadeInScale 0.15s ease-out",
@@ -531,7 +528,8 @@ export default function MenuOpcionesElemento({
                             style={{
                                 left: enlacePos.x,
                                 top: enlacePos.y,
-                                width: 320,
+                                width: enlacePos.width,
+                                maxWidth: "calc(100vw - 16px)",
                                 visibility: enlaceReady ? "visible" : "hidden",
                                 borderColor: "#773dbe",
                             }}
@@ -631,7 +629,8 @@ export default function MenuOpcionesElemento({
                             style={{
                                 left: efectosPos.x,
                                 top: efectosPos.y,
-                                width: 300,
+                                width: efectosPos.width,
+                                maxWidth: "calc(100vw - 16px)",
                                 maxHeight: 320,
                                 overflowY: "auto",
                                 visibility: efectosReady ? "visible" : "hidden",
@@ -746,7 +745,8 @@ export default function MenuOpcionesElemento({
                             style={{
                                 left: submenuPos.x,
                                 top: submenuPos.y,
-                                width: 224,              // w-56
+                                width: submenuPos.width,
+                                maxWidth: "calc(100vw - 16px)",
                                 visibility: submenuReady ? "visible" : "hidden",
                             }}
                             onMouseDown={(e) => e.stopPropagation()}

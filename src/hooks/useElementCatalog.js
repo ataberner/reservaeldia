@@ -23,6 +23,9 @@ const RECENT_LIMIT = 24;
 const FIRESTORE_PAGE_SIZE = 96;
 const STORAGE_PAGE_SIZE = 72;
 const CATALOG_CACHE_TTL_MS = 2 * 60 * 1000;
+const SEARCH_AUTOLOAD_MAX_ATTEMPTS = 12;
+const SEARCH_AUTOLOAD_DELAY_MS = 140;
+const SEARCH_CATEGORY_TARGET_MATCHES = 36;
 
 let catalogCache = {
   updatedAt: 0,
@@ -80,6 +83,7 @@ function toRecentIdentity(item) {
 export default function useElementCatalog() {
   const loadingRef = useRef(false);
   const initializedRef = useRef(false);
+  const searchAutoloadStateRef = useRef({ query: "", attempts: 0 });
   const firestoreCursorRef = useRef(null);
   const storageTokenRef = useRef(undefined);
   const sourceRef = useRef("firestore");
@@ -345,8 +349,9 @@ export default function useElementCatalog() {
     [shapeItems, libraryItems]
   );
 
+  const normalizedQuery = useMemo(() => normalizeQueryText(query), [query]);
+
   const groupedResults = useMemo(() => {
-    const normalizedQuery = normalizeQueryText(query);
     if (!normalizedQuery) {
       return {
         shape: [],
@@ -362,7 +367,64 @@ export default function useElementCatalog() {
       icon: grouped.icon.slice(0, 120),
       gif: grouped.gif.slice(0, 80),
     };
-  }, [allSearchableItems, query]);
+  }, [allSearchableItems, normalizedQuery]);
+
+  const queryMatchesKnownCategory = useMemo(() => {
+    if (!normalizedQuery) return false;
+    return categories.some((entry) => {
+      const value = String(entry?.value || "");
+      return value === normalizedQuery || value.includes(normalizedQuery) || normalizedQuery.includes(value);
+    });
+  }, [categories, normalizedQuery]);
+
+  const categoryMatchCount = useMemo(() => {
+    if (!normalizedQuery) return 0;
+    return libraryItems.reduce((total, item) => {
+      if (!item || (item.kind !== "icon" && item.kind !== "gif")) return total;
+      const itemCategories = Array.isArray(item.categories) ? item.categories : [];
+      const matched = itemCategories.some(
+        (value) => value === normalizedQuery || value.includes(normalizedQuery) || normalizedQuery.includes(value)
+      );
+      return matched ? total + 1 : total;
+    }, 0);
+  }, [libraryItems, normalizedQuery]);
+
+  useEffect(() => {
+    if (!normalizedQuery) {
+      searchAutoloadStateRef.current = { query: "", attempts: 0 };
+      return;
+    }
+
+    if (searchAutoloadStateRef.current.query !== normalizedQuery) {
+      searchAutoloadStateRef.current = { query: normalizedQuery, attempts: 0 };
+    }
+
+    const mediaMatches = groupedResults.icon.length + groupedResults.gif.length;
+    const canAttemptMore = searchAutoloadStateRef.current.attempts < SEARCH_AUTOLOAD_MAX_ATTEMPTS;
+    const shouldCompleteCategory = queryMatchesKnownCategory && categoryMatchCount < SEARCH_CATEGORY_TARGET_MATCHES;
+    const shouldAutoload = hasMore && canAttemptMore && !loadingRef.current && (mediaMatches === 0 || shouldCompleteCategory);
+
+    if (!shouldAutoload) return;
+
+    const timerId = window.setTimeout(() => {
+      if (loadingRef.current || !hasMore) return;
+      searchAutoloadStateRef.current = {
+        query: normalizedQuery,
+        attempts: searchAutoloadStateRef.current.attempts + 1,
+      };
+      loadMore();
+    }, SEARCH_AUTOLOAD_DELAY_MS);
+
+    return () => window.clearTimeout(timerId);
+  }, [
+    categoryMatchCount,
+    groupedResults.gif.length,
+    groupedResults.icon.length,
+    hasMore,
+    loadMore,
+    normalizedQuery,
+    queryMatchesKnownCategory,
+  ]);
 
   const getLibraryByKind = useCallback(
     (kind, category = "all") => {

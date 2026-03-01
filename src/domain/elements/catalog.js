@@ -49,6 +49,24 @@ function normalizeTextToken(value) {
     .trim();
 }
 
+function normalizeLooseToken(value) {
+  return normalizeTextToken(value)
+    .replace(/[-_./]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expandSearchVariants(value) {
+  const strict = normalizeTextToken(value);
+  const loose = normalizeLooseToken(value);
+  if (!strict && !loose) return [];
+
+  const slug = loose ? loose.replace(/\s+/g, "-") : "";
+  const compact = loose ? loose.replace(/\s+/g, "") : "";
+
+  return safeArrayUnique([strict, loose, slug, compact]);
+}
+
 function sanitizeListFromUnknown(value) {
   if (Array.isArray(value)) {
     return value
@@ -125,12 +143,11 @@ export function normalizeCatalogIconItem(raw, fallbackId = "") {
     ...sanitizeListFromUnknown(raw?.tags),
   ]);
   const label = resolveLabel(raw, id);
-  const labelToken = normalizeTextToken(label);
   const searchText = safeArrayUnique([
-    labelToken,
-    normalizeTextToken(id),
-    ...categoryList,
-    ...keywordList,
+    ...expandSearchVariants(label),
+    ...expandSearchVariants(id),
+    ...categoryList.flatMap((entry) => expandSearchVariants(entry)),
+    ...keywordList.flatMap((entry) => expandSearchVariants(entry)),
   ]).join(" ");
 
   /** @type {ElementCatalogItem} */
@@ -214,20 +231,43 @@ function queryScore(item, normalizedQuery) {
   if (!normalizedQuery) return 0;
 
   const label = normalizeTextToken(item?.label);
+  const labelLoose = normalizeLooseToken(item?.label);
   const id = normalizeTextToken(item?.id);
+  const idLoose = normalizeLooseToken(item?.id);
   const categories = Array.isArray(item?.categories) ? item.categories : [];
   const keywords = Array.isArray(item?.keywords) ? item.keywords : [];
+  const queryLoose = normalizeLooseToken(normalizedQuery);
   const haystack = `${label} ${id} ${item?.searchText || ""}`.trim();
+  const haystackLoose = normalizeLooseToken(haystack);
+  const categoryVariants = categories.flatMap((value) => expandSearchVariants(value));
+  const keywordVariants = keywords.flatMap((value) => expandSearchVariants(value));
 
   let score = 0;
-  if (!haystack.includes(normalizedQuery)) return 0;
+  if (!haystack.includes(normalizedQuery) && !haystackLoose.includes(queryLoose)) return 0;
 
   if (label === normalizedQuery || id === normalizedQuery) score += 800;
-  if (label.startsWith(normalizedQuery)) score += 560;
-  if (id.startsWith(normalizedQuery)) score += 500;
-  if (label.includes(normalizedQuery)) score += 360;
-  if (categories.some((value) => value.includes(normalizedQuery))) score += 250;
-  if (keywords.some((value) => value.includes(normalizedQuery))) score += 220;
+  if (label.startsWith(normalizedQuery) || labelLoose.startsWith(queryLoose)) score += 560;
+  if (id.startsWith(normalizedQuery) || idLoose.startsWith(queryLoose)) score += 500;
+  if (label.includes(normalizedQuery) || labelLoose.includes(queryLoose)) score += 360;
+
+  const hasExactCategory = categoryVariants.some(
+    (variant) => variant === normalizedQuery || variant === queryLoose
+  );
+  const hasPrefixCategory = categoryVariants.some(
+    (variant) => variant.startsWith(normalizedQuery) || variant.startsWith(queryLoose)
+  );
+  const hasContainsCategory = categoryVariants.some(
+    (variant) => variant.includes(normalizedQuery) || variant.includes(queryLoose)
+  );
+
+  if (hasExactCategory) score += 760;
+  else if (hasPrefixCategory) score += 520;
+  else if (hasContainsCategory) score += 320;
+
+  const hasKeywordMatch = keywordVariants.some(
+    (variant) => variant.includes(normalizedQuery) || variant.includes(queryLoose)
+  );
+  if (hasKeywordMatch) score += 220;
   if (item?.popular) score += 35;
 
   return score;

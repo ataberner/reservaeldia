@@ -4,6 +4,8 @@ import useElementCatalog from "@/hooks/useElementCatalog";
 import { fetchSvgPaths } from "@/utils/parseSvg";
 import { normalizeQueryText } from "@/domain/elements/catalog";
 
+const DEFAULT_INSERTED_ICON_COLOR = "#111827";
+
 function toMediaFormat(item) {
   const fromItem = String(item?.formato || "").trim().toLowerCase();
   if (fromItem) return fromItem === "jpeg" ? "jpg" : fromItem;
@@ -315,6 +317,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   const [gifsOpen, setGifsOpen] = useState(false);
   const [focusedLibrary, setFocusedLibrary] = useState("none");
+  const iconLoadMoreSentinelRef = useRef(null);
+  const iconScrollContainerRef = useRef(null);
 
   const normalizedQuery = normalizeQueryText(query);
   const searching = normalizedQuery.length > 0;
@@ -343,6 +347,30 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   }, [groupedResults, searching]);
 
   const hasQueryResults = queryResults.shape.length || queryResults.icon.length || queryResults.gif.length;
+
+  useEffect(() => {
+    if (focusedLibrary !== "icons" || !hasMore) return;
+    const sentinel = iconLoadMoreSentinelRef.current;
+    const scrollRoot = iconScrollContainerRef.current;
+    if (!sentinel || !scrollRoot || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (loading) return;
+        loadMore();
+      },
+      {
+        root: scrollRoot,
+        rootMargin: "220px 0px",
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [focusedLibrary, hasMore, loadMore, loading, iconLibrary.length]);
 
   const dispatchInsert = useCallback((detail) => {
     window.dispatchEvent(new CustomEvent("insertar-elemento", { detail }));
@@ -423,7 +451,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
               tipo: "icono",
               formato: "svg",
               colorizable: true,
-              color: "#773dbe",
+              color: DEFAULT_INSERTED_ICON_COLOR,
               paths,
               url: src,
               viewBox: viewBox || null,
@@ -485,8 +513,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   if (focusedLibrary === "icons") {
     return (
-      <div className="w-full space-y-1.5 pb-0">
-        <div className="flex items-center justify-between py-0">
+      <div className="w-full h-full min-h-0 flex flex-col gap-1.5 pb-0">
+        <div className="shrink-0 flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Iconos</h3>
           <button
             type="button"
@@ -497,27 +525,27 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
           </button>
         </div>
 
-        {iconLibrary.length > 0 ? (
-          <>
-            <div className="grid grid-cols-3 gap-2" aria-label="Iconos en vista completa">
-              {iconLibrary.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
-              ))}
-            </div>
-            {hasMore ? (
-              <button
-                type="button"
-                onClick={loadMore}
-                disabled={loading}
-                className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {loading ? "Cargando..." : "Cargar mas iconos"}
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <EmptyHint />
-        )}
+        <div ref={iconScrollContainerRef} className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+          {iconLibrary.length > 0 ? (
+            <>
+              <div className="grid grid-cols-3 gap-2" aria-label="Iconos en vista completa">
+                {iconLibrary.map((item) => (
+                  <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
+                ))}
+              </div>
+              {hasMore ? (
+                <div className="space-y-1 pb-1">
+                  <div ref={iconLoadMoreSentinelRef} className="h-1 w-full" aria-hidden="true" />
+                  <p className="text-center text-[11px] text-slate-500">
+                    {loading ? "Cargando mas iconos..." : "Desliza para cargar mas iconos automaticamente"}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <EmptyHint />
+          )}
+        </div>
       </div>
     );
   }

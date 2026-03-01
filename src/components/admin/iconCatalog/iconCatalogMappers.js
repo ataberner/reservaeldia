@@ -2,6 +2,30 @@ function normalizeString(value) {
   return String(value || "").trim();
 }
 
+function normalizeSearchToken(value) {
+  return normalizeString(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizeSearchLooseToken(value) {
+  return normalizeSearchToken(value)
+    .replace(/[-_./]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildSearchVariants(value) {
+  const strict = normalizeSearchToken(value);
+  const loose = normalizeSearchLooseToken(value);
+  if (!strict && !loose) return [];
+
+  const slug = loose ? loose.replace(/\s+/g, "-") : "";
+  const compact = loose ? loose.replace(/\s+/g, "") : "";
+  return unique([strict, loose, slug, compact]);
+}
+
 export function normalizeCategoryLabel(value) {
   const compact = normalizeString(value).replace(/\s+/g, " ").toLowerCase();
   if (!compact) return "";
@@ -196,6 +220,7 @@ export function mapIconDocToViewModel(doc, source = "active") {
 
 export function buildSearchHaystack(icon) {
   const values = [
+    icon?.id,
     icon?.nombre,
     icon?.categoria,
     ...(icon?.categorias || []),
@@ -205,29 +230,29 @@ export function buildSearchHaystack(icon) {
     icon?.assetType,
     icon?.format,
   ];
-  return values
-    .map((entry) => normalizeString(entry).toLowerCase())
-    .filter(Boolean)
-    .join(" ");
+  const tokens = values.flatMap((entry) => buildSearchVariants(entry));
+  return unique(tokens).join(" ");
 }
 
 export function filterIcons(items, filters) {
   const list = Array.isArray(items) ? items : [];
-  const search = normalizeString(filters?.search || "").toLowerCase();
-  const category = normalizeString(filters?.category || "all").toLowerCase();
-  const status = normalizeString(filters?.status || "all").toLowerCase();
-  const health = normalizeString(filters?.health || "all").toLowerCase();
+  const search = normalizeSearchLooseToken(filters?.search || "");
+  const searchVariants = buildSearchVariants(search);
+  const category = normalizeSearchToken(filters?.category || "all");
+  const status = normalizeSearchToken(filters?.status || "all");
+  const health = normalizeSearchToken(filters?.health || "all");
 
   return list.filter((icon) => {
     if (search) {
       const haystack = buildSearchHaystack(icon);
-      if (!haystack.includes(search)) return false;
+      const matched = searchVariants.some((variant) => haystack.includes(variant));
+      if (!matched) return false;
     }
 
     if (category && category !== "all") {
       const iconCategories = [
-        normalizeString(icon?.categoria).toLowerCase(),
-        ...(icon?.categorias || []).map((entry) => normalizeString(entry).toLowerCase()),
+        normalizeSearchToken(icon?.categoria),
+        ...(icon?.categorias || []).map((entry) => normalizeSearchToken(entry)),
       ].filter(Boolean);
       if (!iconCategories.includes(category)) return false;
     }

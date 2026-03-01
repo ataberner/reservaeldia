@@ -1,0 +1,51 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "publicadas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "publicadaEn",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "iconos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "popular",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "categoria",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nombre",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "iconos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "stats.usesCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "nombre",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

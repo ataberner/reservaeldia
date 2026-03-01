@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.superadmin == true ||
+        request.auth.token.role == "admin"
+      );
+    }
+
+    match /iconos/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /iconos_archived/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Compatibility fallback for existing app assets.
+    match /{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+  }
+}
+

@@ -33,6 +33,7 @@ import {
   getMercadoPagoWebhookSecret,
   getMercadoPagoWebhookUrl,
 } from "./mercadoPagoClient";
+import { applyPublicationIconUsageDelta } from "../iconCatalog/usage";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -2305,6 +2306,39 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     },
   });
 
+  let iconUsage: Record<string, number> = {};
+  let iconUsageMeta: Record<string, unknown> = {
+    source: "publish-delta",
+    resolvedRefs: 0,
+    unresolvedRefs: 0,
+    generatedAt: nowTimestamp,
+  };
+  try {
+    const usageResult = await applyPublicationIconUsageDelta({
+      objetos,
+      oldUsageMap: existingData?.iconUsage,
+      publicSlug: normalizedPublicSlug,
+      usedAt: now,
+    });
+    iconUsage = usageResult.newUsage;
+    iconUsageMeta = {
+      source: "publish-delta",
+      resolvedRefs: usageResult.resolvedRefs,
+      unresolvedRefs: usageResult.unresolvedRefs.length,
+      generatedAt: nowTimestamp,
+      appliedDelta: usageResult.appliedDelta,
+    };
+  } catch (iconUsageError) {
+    logger.warn("No se pudo actualizar estadisticas de iconos al publicar", {
+      publicSlug: normalizedPublicSlug,
+      draftSlug,
+      error:
+        iconUsageError instanceof Error
+          ? iconUsageError.message
+          : String(iconUsageError || ""),
+    });
+  }
+
   const publicUrl = `https://reservaeldia.com.ar/i/${normalizedPublicSlug}`;
   const publicationData: Record<string, unknown> = {
     slug: normalizedPublicSlug,
@@ -2327,6 +2361,8 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     borradorSlug: draftSlug,
     ultimaOperacion: operation,
     lastPaymentSessionId: paymentSessionId,
+    iconUsage,
+    iconUsageMeta,
   };
 
   if (draftSlug !== normalizedPublicSlug) {

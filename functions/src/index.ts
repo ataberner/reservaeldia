@@ -52,6 +52,19 @@ import {
   saveCountdownPresetDraft as saveCountdownPresetDraftHandler,
   syncLegacyCountdownPresets as syncLegacyCountdownPresetsHandler,
 } from "./countdownPresets/service";
+import {
+  adminGetIconUsageStatsV2 as adminGetIconUsageStatsV2Handler,
+  adminListIconCatalogV2 as adminListIconCatalogV2Handler,
+  adminPatchIconMetadataV2 as adminPatchIconMetadataV2Handler,
+  adminRevalidateIconV2 as adminRevalidateIconV2Handler,
+  adminSetIconActivationV2 as adminSetIconActivationV2Handler,
+  adminSetIconPriorityV2 as adminSetIconPriorityV2Handler,
+} from "./iconCatalog/service";
+import {
+  dailyIconCatalogReconcileV2 as dailyIconCatalogReconcileV2Handler,
+  dailyIconUsageScanV2 as dailyIconUsageScanV2Handler,
+  onIconCatalogDocWriteV2 as onIconCatalogDocWriteV2Handler,
+} from "./iconCatalog/triggers";
 
 import * as logger from "firebase-functions/logger";
 
@@ -62,6 +75,15 @@ export const deleteCountdownPreset = deleteCountdownPresetHandler;
 export const listCountdownPresetsAdmin = listCountdownPresetsAdminHandler;
 export const listCountdownPresetsPublic = listCountdownPresetsPublicHandler;
 export const syncLegacyCountdownPresets = syncLegacyCountdownPresetsHandler;
+export const adminListIconCatalogV2 = adminListIconCatalogV2Handler;
+export const adminPatchIconMetadataV2 = adminPatchIconMetadataV2Handler;
+export const adminSetIconActivationV2 = adminSetIconActivationV2Handler;
+export const adminSetIconPriorityV2 = adminSetIconPriorityV2Handler;
+export const adminRevalidateIconV2 = adminRevalidateIconV2Handler;
+export const adminGetIconUsageStatsV2 = adminGetIconUsageStatsV2Handler;
+export const onIconCatalogDocWriteV2 = onIconCatalogDocWriteV2Handler;
+export const dailyIconCatalogReconcileV2 = dailyIconCatalogReconcileV2Handler;
+export const dailyIconUsageScanV2 = dailyIconUsageScanV2Handler;
 
 setGlobalOptions({
   region: "us-central1",

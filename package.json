@@ -7,6 +7,8 @@
       "dev:reset": "node -e \"const fs=require('fs'); ['.next','.next-dev'].forEach((d)=>fs.rmSync(d,{recursive:true,force:true}))\" && next dev",
       "build": "next build",
       "export": "next export",
+      "icons:categories:normalize:dry": "node scripts/normalizeIconCategoriesCase.cjs --dry-run",
+      "icons:categories:normalize:apply": "node scripts/normalizeIconCategoriesCase.cjs --apply",
       "deploy:full": "npm run build && firebase deploy",
       "deploy:hosting": "npm run build && firebase deploy --only hosting"
    },

@@ -23,6 +23,10 @@ service firebase.storage {
       allow read, write: if isAdmin();
     }
 
+    match /decoraciones/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
     // Compatibility fallback for existing app assets.
     match /{allPaths=**} {
       allow read: if isSignedIn();
@@ -30,4 +34,3 @@ service firebase.storage {
     }
   }
 }
-

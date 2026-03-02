@@ -63,6 +63,28 @@ export default function SiteManagementBoard({
             </div>
           </article>
 
+          <article className="rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-teal-900">
+                  Gestionar decoraciones
+                </h2>
+                <p className="mt-1 text-sm text-teal-700">
+                  Acceso al panel de imagenes decorativas para categorias, orden, estado y metadatos.
+                </p>
+                <p className="mt-2 text-xs text-teal-700">
+                  Ruta: https://reservaeldia.com.ar/admin/decoraciones/
+                </p>
+              </div>
+              <a
+                href="/admin/decoraciones/"
+                className="inline-flex items-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-700"
+              >
+                Abrir panel de decoraciones
+              </a>
+            </div>
+          </article>
+
           {isSuperAdmin && (
             <article className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-rose-50 p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">

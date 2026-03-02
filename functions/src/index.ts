@@ -65,6 +65,15 @@ import {
   dailyIconUsageScanV2 as dailyIconUsageScanV2Handler,
   onIconCatalogDocWriteV2 as onIconCatalogDocWriteV2Handler,
 } from "./iconCatalog/triggers";
+import {
+  adminGetDecorUsageStatsV1 as adminGetDecorUsageStatsV1Handler,
+  adminListDecorCatalogV1 as adminListDecorCatalogV1Handler,
+  adminPatchDecorMetadataV1 as adminPatchDecorMetadataV1Handler,
+  adminRevalidateDecorV1 as adminRevalidateDecorV1Handler,
+  adminSetDecorActivationV1 as adminSetDecorActivationV1Handler,
+  adminSetDecorPriorityV1 as adminSetDecorPriorityV1Handler,
+} from "./decorCatalog/service";
+import { onDecorCatalogDocWriteV1 as onDecorCatalogDocWriteV1Handler } from "./decorCatalog/triggers";
 
 import * as logger from "firebase-functions/logger";
 
@@ -84,6 +93,13 @@ export const adminGetIconUsageStatsV2 = adminGetIconUsageStatsV2Handler;
 export const onIconCatalogDocWriteV2 = onIconCatalogDocWriteV2Handler;
 export const dailyIconCatalogReconcileV2 = dailyIconCatalogReconcileV2Handler;
 export const dailyIconUsageScanV2 = dailyIconUsageScanV2Handler;
+export const adminListDecorCatalogV1 = adminListDecorCatalogV1Handler;
+export const adminPatchDecorMetadataV1 = adminPatchDecorMetadataV1Handler;
+export const adminSetDecorActivationV1 = adminSetDecorActivationV1Handler;
+export const adminSetDecorPriorityV1 = adminSetDecorPriorityV1Handler;
+export const adminRevalidateDecorV1 = adminRevalidateDecorV1Handler;
+export const adminGetDecorUsageStatsV1 = adminGetDecorUsageStatsV1Handler;
+export const onDecorCatalogDocWriteV1 = onDecorCatalogDocWriteV1Handler;
 
 setGlobalOptions({
   region: "us-central1",

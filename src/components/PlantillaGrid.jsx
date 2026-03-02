@@ -9,24 +9,13 @@ const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
 const DASHBOARD_CARD_GRID_CLASS =
   "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-6";
 
-const generarSlug = (texto) => {
-  return String(texto || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9\s]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-");
-};
-
 export default function PlantillaGrid({
   plantillas,
-  onSeleccionarPlantilla,
+  onSelectTemplate,
   onPlantillaBorrada,
   isSuperAdmin = false,
   onReadyChange,
 }) {
-  const [loadingId, setLoadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [templatePendingDelete, setTemplatePendingDelete] = useState(null);
   const [thumbnailsSettledById, setThumbnailsSettledById] = useState({});
@@ -100,23 +89,6 @@ export default function PlantillaGrid({
     }
   };
 
-  const crearCopia = async (plantilla) => {
-    setLoadingId(plantilla.id);
-    try {
-      const functions = getFunctions();
-      const copiarPlantilla = httpsCallable(functions, "copiarPlantilla");
-
-      const slug = `${generarSlug(plantilla.nombre)}-${Date.now()}`;
-      const result = await copiarPlantilla({ plantillaId: plantilla.id, slug });
-      return result?.data?.slug || null;
-    } catch (error) {
-      console.error("Error copiando plantilla:", error);
-      return null;
-    } finally {
-      setLoadingId(null);
-    }
-  };
-
   if (!Array.isArray(plantillas) || plantillas.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/70 px-4 py-8 text-center text-sm text-gray-500">
@@ -130,7 +102,6 @@ export default function PlantillaGrid({
       <div className={DASHBOARD_CARD_GRID_CLASS}>
         {plantillas.map((plantilla, index) => {
           const nombrePlantilla = plantilla.nombre || "Plantilla";
-          const isLoadingCurrent = loadingId === plantilla.id;
 
           return (
             <article
@@ -156,13 +127,11 @@ export default function PlantillaGrid({
 
               <button
                 type="button"
-                onClick={async () => {
-                  const slug = await crearCopia(plantilla);
-                  if (slug) onSeleccionarPlantilla(slug, plantilla);
+                onClick={() => {
+                  onSelectTemplate?.(plantilla);
                 }}
-                disabled={isLoadingCurrent}
                 className="block w-full rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-2 disabled:cursor-not-allowed"
-                aria-label={`Usar plantilla ${nombrePlantilla}`}
+                aria-label={`Abrir plantilla ${nombrePlantilla}`}
               >
                 <div className="relative aspect-square overflow-hidden bg-gray-100">
                   <img
@@ -196,7 +165,7 @@ export default function PlantillaGrid({
                     {nombrePlantilla}
                   </h3>
                   <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#5a2daa] group-focus-within:translate-x-0.5 group-focus-within:text-[#5a2daa]">
-                    {isLoadingCurrent ? "Creando borrador..." : "Usar plantilla"}
+                    ver invitacion
                   </p>
                 </div>
               </button>

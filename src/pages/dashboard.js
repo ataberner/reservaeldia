@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { collection, query, where, doc, getDoc, getDocs, limit } from 'firebase/firestore';
 import { db, functions as cloudFunctions } from '../firebase';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -10,6 +10,7 @@ import BorradoresGrid from '@/components/BorradoresGrid';
 import DashboardPublicadasSection from "@/components/DashboardPublicadasSection";
 import DashboardTrashSection from "@/components/DashboardTrashSection";
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
+import TemplatePreviewModal from "@/components/TemplatePreviewModal";
 import PublicationCheckoutModal from "@/components/payments/PublicationCheckoutModal";
 import PublicadasGrid from "@/components/PublicadasGrid";
 import { httpsCallable } from "firebase/functions";
@@ -24,6 +25,9 @@ import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
 import { getPublicationStatus } from "@/domain/publications/state";
 import { isDraftTrashed } from "@/domain/drafts/state";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { createDraftFromTemplate } from "@/domain/templates/service";
+import { normalizeTemplateMetadata } from "@/domain/templates/metadata";
+import { generateTemplatePreviewHtml } from "@/domain/templates/preview";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import {
   consumeInterruptedEditorSession,
@@ -85,6 +89,15 @@ const INITIAL_EDITOR_RUNTIME_STATE = Object.freeze({
   failedBackgrounds: 0,
   pendingBackgrounds: 0,
 });
+const TEMPLATE_PREVIEW_STATUS_IDLE = Object.freeze({
+  status: "idle",
+  error: "",
+});
+const TEMPLATE_EVENT_DRAFT_INITIAL = Object.freeze({
+  eventName: "",
+  eventDate: "",
+  hosts: "",
+});
 
 function createEditorPreloadState(overrides = {}) {
   return {
@@ -96,6 +109,13 @@ function createEditorPreloadState(overrides = {}) {
 function createEditorRuntimeState(overrides = {}) {
   return {
     ...INITIAL_EDITOR_RUNTIME_STATE,
+    ...overrides,
+  };
+}
+
+function createTemplatePreviewStatus(overrides = {}) {
+  return {
+    ...TEMPLATE_PREVIEW_STATUS_IDLE,
     ...overrides,
   };
 }
@@ -480,6 +500,12 @@ export default function Dashboard() {
   const [tipoSeleccionado, setTipoSeleccionado] = useState(DEFAULT_TIPO_INVITACION);
   const [slugInvitacion, setSlugInvitacion] = useState(null);
   const [plantillas, setPlantillas] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isOpeningTemplateEditor, setIsOpeningTemplateEditor] = useState(false);
+  const [templatePreviewCacheById, setTemplatePreviewCacheById] = useState({});
+  const [templatePreviewStatus, setTemplatePreviewStatus] = useState({});
+  const [templateEventDraftByTemplateId, setTemplateEventDraftByTemplateId] = useState({});
   const [homePublicationsReady, setHomePublicationsReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [homeDraftsReady, setHomeDraftsReady] = useState(false);
@@ -533,6 +559,21 @@ export default function Dashboard() {
   const router = useRouter();
   const { loadingAdminAccess, isSuperAdmin, canManageSite } =
     useAdminAccess(usuario);
+  const selectedTemplateId =
+    typeof selectedTemplate?.id === "string" ? selectedTemplate.id : "";
+  const selectedTemplateMetadata = useMemo(
+    () => normalizeTemplateMetadata(selectedTemplate),
+    [selectedTemplate]
+  );
+  const selectedTemplatePreviewHtml = selectedTemplateId
+    ? templatePreviewCacheById[selectedTemplateId] || ""
+    : "";
+  const selectedTemplatePreviewState = selectedTemplateId
+    ? templatePreviewStatus[selectedTemplateId] || TEMPLATE_PREVIEW_STATUS_IDLE
+    : TEMPLATE_PREVIEW_STATUS_IDLE;
+  const selectedTemplateEventDraft = selectedTemplateId
+    ? templateEventDraftByTemplateId[selectedTemplateId] || TEMPLATE_EVENT_DRAFT_INITIAL
+    : TEMPLATE_EVENT_DRAFT_INITIAL;
 
   useEffect(() => {
     return () => {
@@ -1192,7 +1233,118 @@ export default function Dashboard() {
     },
     [router]
   );
-  
+
+  const ensureTemplateEventDraft = useCallback((templateId) => {
+    const safeTemplateId = String(templateId || "").trim();
+    if (!safeTemplateId) return;
+
+    setTemplateEventDraftByTemplateId((prev) => {
+      if (prev[safeTemplateId]) return prev;
+      return {
+        ...prev,
+        [safeTemplateId]: {
+          ...TEMPLATE_EVENT_DRAFT_INITIAL,
+        },
+      };
+    });
+  }, []);
+
+  const loadTemplatePreview = useCallback(
+    async (template) => {
+      const safeTemplate = template && typeof template === "object" ? template : null;
+      const templateId = String(safeTemplate?.id || "").trim();
+      if (!templateId) return;
+
+      if (templatePreviewCacheById[templateId]) {
+        setTemplatePreviewStatus((prev) => ({
+          ...prev,
+          [templateId]: createTemplatePreviewStatus({ status: "ready", error: "" }),
+        }));
+        return;
+      }
+
+      setTemplatePreviewStatus((prev) => ({
+        ...prev,
+        [templateId]: createTemplatePreviewStatus({ status: "loading", error: "" }),
+      }));
+
+      try {
+        const html = await generateTemplatePreviewHtml(safeTemplate);
+        setTemplatePreviewCacheById((prev) => {
+          if (prev[templateId]) return prev;
+          return {
+            ...prev,
+            [templateId]: html,
+          };
+        });
+        setTemplatePreviewStatus((prev) => ({
+          ...prev,
+          [templateId]: createTemplatePreviewStatus({ status: "ready", error: "" }),
+        }));
+      } catch (error) {
+        setTemplatePreviewStatus((prev) => ({
+          ...prev,
+          [templateId]: createTemplatePreviewStatus({
+            status: "error",
+            error: getErrorMessage(
+              error,
+              "No se pudo generar la vista previa de esta plantilla."
+            ),
+          }),
+        }));
+      }
+    },
+    [templatePreviewCacheById]
+  );
+
+  const openModal = useCallback(
+    (template) => {
+      const safeTemplate = template && typeof template === "object" ? template : null;
+      const templateId = String(safeTemplate?.id || "").trim();
+      if (!safeTemplate || !templateId) return;
+
+      setSelectedTemplate(safeTemplate);
+      setIsTemplateModalOpen(true);
+      ensureTemplateEventDraft(templateId);
+      void loadTemplatePreview(safeTemplate);
+    },
+    [ensureTemplateEventDraft, loadTemplatePreview]
+  );
+
+  const closeModal = useCallback(() => {
+    if (isOpeningTemplateEditor) return;
+    setIsTemplateModalOpen(false);
+    setSelectedTemplate(null);
+  }, [isOpeningTemplateEditor]);
+
+  const handleOpenEditor = useCallback(async () => {
+    const templateId = String(selectedTemplate?.id || "").trim();
+    if (!templateId || isOpeningTemplateEditor) return;
+
+    setIsOpeningTemplateEditor(true);
+    try {
+      const { slug } = await createDraftFromTemplate({
+        templateId,
+        templateName: selectedTemplate?.nombre,
+      });
+
+      pushEditorBreadcrumb("abrir-plantilla", {
+        slug,
+        plantillaId: templateId,
+        editor: selectedTemplate?.editor || null,
+        source: "template-modal",
+      });
+
+      setIsTemplateModalOpen(false);
+      setSelectedTemplate(null);
+      abrirBorradorEnEditor(slug, selectedTemplate?.editor);
+    } catch (error) {
+      alert("Error al copiar la plantilla");
+      console.error(error);
+    } finally {
+      setIsOpeningTemplateEditor(false);
+    }
+  }, [abrirBorradorEnEditor, isOpeningTemplateEditor, selectedTemplate]);
 
   const generarVistaPrevia = async () => {
     try {
@@ -1890,7 +2042,7 @@ export default function Dashboard() {
       canManageSite={canManageSite}
       isSuperAdmin={isSuperAdmin}
       loadingAdminAccess={loadingAdminAccess}
-      lockMainScroll={shouldRenderHomeStartupLoader}
+      lockMainScroll={shouldRenderHomeStartupLoader || isTemplateModalOpen}
     >
       {editorIssueReport && (
         <EditorIssueBanner
@@ -2011,18 +2163,8 @@ export default function Dashboard() {
                     onPlantillaBorrada={(plantillaId) => {
                       setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
                     }}
-                    onSeleccionarPlantilla={async (slug, plantilla) => {
-                      try {
-                        pushEditorBreadcrumb("abrir-plantilla", {
-                          slug,
-                          plantillaId: plantilla?.id || null,
-                          editor: plantilla?.editor || null,
-                        });
-                        abrirBorradorEnEditor(slug, plantilla?.editor);
-                      } catch (error) {
-                        alert("Error al copiar la plantilla");
-                        console.error(error);
-                      }
+                    onSelectTemplate={(template) => {
+                      openModal(template);
                     }}
                   />
                 )}
@@ -2141,6 +2283,18 @@ export default function Dashboard() {
       )}
 
 
+
+      <TemplatePreviewModal
+        visible={isTemplateModalOpen}
+        template={selectedTemplate}
+        metadata={selectedTemplateMetadata}
+        previewHtml={selectedTemplatePreviewHtml}
+        previewStatus={selectedTemplatePreviewState}
+        onClose={closeModal}
+        onOpenEditor={handleOpenEditor}
+        openingEditor={isOpeningTemplateEditor}
+        eventDraft={selectedTemplateEventDraft}
+      />
 
       {/* Modal de vista previa */}
       <ModalVistaPrevia

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Monitor, RefreshCw, Smartphone, X } from "lucide-react";
+import { Maximize2, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 
 const MOBILE_VIEWPORT_WIDTH = 390;
 const MOBILE_VIEWPORT_HEIGHT = 844;
@@ -73,6 +73,8 @@ export default function ModalVistaPrevia({
   checkoutVisible = false,
 }) {
   const [iframeKey, setIframeKey] = useState(0);
+  const [fullscreenPreview, setFullscreenPreview] = useState(false);
+  const [fullscreenIframeKey, setFullscreenIframeKey] = useState(0);
   const [windowHeight, setWindowHeight] = useState(820);
   const [windowWidth, setWindowWidth] = useState(0);
   const [stageWidth, setStageWidth] = useState(0);
@@ -84,11 +86,27 @@ export default function ModalVistaPrevia({
   }, [visible]);
 
   useEffect(() => {
+    if (visible) return;
+    setFullscreenPreview(false);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!fullscreenPreview) return;
+    setFullscreenIframeKey((k) => k + 1);
+  }, [fullscreenPreview]);
+
+  useEffect(() => {
     if (!visible || typeof document === "undefined" || typeof window === "undefined") return;
 
     const previousOverflow = document.body.style.overflow;
     const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose?.();
+      if (event.key !== "Escape") return;
+      if (fullscreenPreview) {
+        event.preventDefault();
+        setFullscreenPreview(false);
+        return;
+      }
+      onClose?.();
     };
     const onResize = () => {
       setWindowHeight(window.innerHeight || 820);
@@ -105,7 +123,7 @@ export default function ModalVistaPrevia({
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onResize);
     };
-  }, [visible, onClose]);
+  }, [visible, onClose, fullscreenPreview]);
 
   useEffect(() => {
     if (!visible || typeof window === "undefined") return;
@@ -174,13 +192,64 @@ export default function ModalVistaPrevia({
   const overlayPhone = sideBySide && safeStageWidth >= 1220;
   const phoneOffsetX = overlayPhone ? Math.round(Math.min(120, desktopScaledWidth * 0.18)) : 0;
   const phoneOffsetY = overlayPhone ? Math.round(Math.min(120, desktopScaledHeight * 0.24)) : 0;
+  const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
 
   const confirmarPublicacion = () => {
     if (typeof onPublish !== "function" || publishing) return;
     onPublish();
   };
 
+  const abrirPantallaCompleta = () => {
+    if (!htmlContent) return;
+    setFullscreenPreview(true);
+  };
+
+  const cerrarPantallaCompleta = () => {
+    setFullscreenPreview(false);
+  };
+
   if (!visible) return null;
+  if (fullscreenPreview) {
+    return (
+      <div className="fixed inset-0 z-[10000] bg-white">
+        <button
+          type="button"
+          onClick={cerrarPantallaCompleta}
+          className="absolute left-1/2 top-3 z-20 inline-flex -translate-x-1/2 items-center justify-center rounded-full border border-[#d9cbed] bg-white/95 p-2 text-[#6f3bc0] shadow-[0_10px_24px_rgba(111,59,192,0.24)] backdrop-blur hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]"
+          aria-label="Salir de pantalla completa"
+          title="Salir de pantalla completa (Esc)"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        {htmlContent ? (
+          <iframe
+            key={`fullscreen-${fullscreenIframeKey}`}
+            srcDoc={htmlContent}
+            sandbox="allow-scripts"
+            title={
+              isMobileViewport
+                ? "Vista previa movil en pantalla completa"
+                : "Vista previa escritorio en pantalla completa"
+            }
+            style={{
+              width: "100%",
+              height: "100%",
+              border: "none",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center bg-slate-50">
+            <div className="flex items-center gap-3 text-slate-600">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#773dbe] border-t-transparent" />
+              <span className="text-sm">Generando vista previa...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[9999] bg-[#f7f4ff]/70 backdrop-blur-sm">
@@ -203,6 +272,22 @@ export default function ModalVistaPrevia({
                   Movil
                 </span>
               </div>
+
+              <button
+                type="button"
+                onClick={abrirPantallaCompleta}
+                disabled={!htmlContent}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium sm:text-xs ${
+                  htmlContent
+                    ? "border-[#ddd2f5] bg-white text-[#6f3bc0] hover:bg-[#f4ecff]"
+                    : "cursor-not-allowed border-[#ece4fb] bg-[#fbf9ff] text-[#ab93d2]"
+                }`}
+                aria-label="Abrir vista previa en pantalla completa"
+                title={`Abrir vista previa en pantalla completa (${isMobileViewport ? "movil" : "escritorio"})`}
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Pantalla completa</span>
+              </button>
 
               <button
                 type="button"

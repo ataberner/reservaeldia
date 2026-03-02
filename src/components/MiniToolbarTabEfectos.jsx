@@ -69,6 +69,13 @@ export default function MiniToolbarTabEfectos() {
         Elige un estilo global. Se asigna un efecto por elemento y se guarda en
         el borrador automaticamente.
       </p>
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        Para ajustar un elemento puntual, selecciona ese elemento en el canvas y
+        abre su menu de opciones para editar sus Efectos.
+      </div>
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+        Los efectos tambien se muestran en la vista previa de la invitacion.
+      </div>
 
       {PRESET_ORDER.map((preset) => {
         const copy = PRESET_COPY[preset.id];

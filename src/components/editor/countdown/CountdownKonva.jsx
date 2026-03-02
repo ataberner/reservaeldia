@@ -46,6 +46,25 @@ function toFinite(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function getClientPoint(evt) {
+  if (!evt) return null;
+  const touch = evt.touches?.[0] || evt.changedTouches?.[0] || null;
+  const x = Number.isFinite(touch?.clientX) ? touch.clientX : evt.clientX;
+  const y = Number.isFinite(touch?.clientY) ? touch.clientY : evt.clientY;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function resolvePointerType(evt) {
+  if (evt?.pointerType) return String(evt.pointerType).toLowerCase();
+  if (evt?.touches || evt?.changedTouches) return "touch";
+  return "mouse";
+}
+
+function getDragIntentThreshold(pointerType) {
+  return pointerType === "touch" || pointerType === "pen" ? 8 : 3;
+}
+
 function buildKonvaTextFillProps(fillMeta, fallback = "#111827") {
   if (!fillMeta?.hasGradient) {
     return { fill: fillMeta?.fillColor || fallback };
@@ -68,12 +87,12 @@ function buildKonvaTextFillProps(fillMeta, fallback = "#111827") {
 /**
  * ✅ Comportamiento correcto:
  * - Click simple: SOLO selecciona (0 movimiento)
- * - Drag: SOLO si mantiene apretado + mueve más de THRESHOLD_PX
+ * - Drag: SOLO si mantiene apretado + supera un umbral por tipo de puntero
  *
  * ✅ Implementación pro:
  * - El nodo está draggable=false siempre.
  * - En mousedown/touchstart: empezamos un "press".
- * - En mousemove/touchmove global: si supera umbral => habilitamos draggable y llamamos startDrag()
+ * - En pointer/mouse/touch move global: si supera umbral => habilitamos draggable y llamamos startDrag()
  * - En mouseup/touchend global: si no llegó a umbral => no hubo drag; si hubo => cerramos y deshabilitamos.
  */
 export default function CountdownKonva({
@@ -326,16 +345,17 @@ export default function CountdownKonva({
   // ---------------------------
   // Drag gating (la clave)
   // ---------------------------
-  const THRESHOLD_PX = 2; // menor umbral para iniciar drag con menos friccion.
-
   const pressRef = useRef({
     active: false,
     movedEnough: false,
     startedDrag: false,
     startClientX: 0,
     startClientY: 0,
+    startStageX: 0,
+    startStageY: 0,
     startNodeX: 0,
     startNodeY: 0,
+    dragThreshold: 3,
     // para ignorar click si se convirtió en drag
     suppressClick: false,
   });
@@ -356,15 +376,18 @@ export default function CountdownKonva({
       if (!pressRef.current.active) return;
       if (pressRef.current.startedDrag) return;
 
-      const cx = ev.clientX ?? (ev.touches && ev.touches[0]?.clientX) ?? null;
-      const cy = ev.clientY ?? (ev.touches && ev.touches[0]?.clientY) ?? null;
-      if (cx == null || cy == null) return;
+      if (ev?.cancelable) {
+        try { ev.preventDefault(); } catch {}
+      }
 
-      const dx = cx - pressRef.current.startClientX;
-      const dy = cy - pressRef.current.startClientY;
-      const dist = Math.hypot(dx, dy);
+      const point = getClientPoint(ev);
+      if (!point) return;
 
-      if (dist < THRESHOLD_PX) return;
+      const dxClient = point.x - pressRef.current.startClientX;
+      const dyClient = point.y - pressRef.current.startClientY;
+      const dist = Math.hypot(dxClient, dyClient);
+
+      if (dist < pressRef.current.dragThreshold) return;
 
       // ✅ Se convirtió en drag intencional
       pressRef.current.movedEnough = true;
@@ -374,9 +397,34 @@ export default function CountdownKonva({
       const node = rootRef.current;
       if (!node) return;
 
-      // Asegurar que empiece desde la posición exacta del press (evita saltitos)
+      // Corregimos posición inicial con el delta real para evitar “arrastre atrasado”.
+      let deltaX = dxClient;
+      let deltaY = dyClient;
       try {
-        node.position({ x: pressRef.current.startNodeX, y: pressRef.current.startNodeY });
+        const stage = node.getStage();
+        if (stage?.setPointersPositions) {
+          stage.setPointersPositions(ev);
+        }
+        const stagePoint = stage?.getPointerPosition?.();
+        if (
+          Number.isFinite(stagePoint?.x) &&
+          Number.isFinite(stagePoint?.y) &&
+          Number.isFinite(pressRef.current.startStageX) &&
+          Number.isFinite(pressRef.current.startStageY)
+        ) {
+          deltaX = stagePoint.x - pressRef.current.startStageX;
+          deltaY = stagePoint.y - pressRef.current.startStageY;
+          if (dragStartPos) {
+            dragStartPos.current = { x: stagePoint.x, y: stagePoint.y };
+          }
+        }
+      } catch {}
+
+      try {
+        node.position({
+          x: pressRef.current.startNodeX + deltaX,
+          y: pressRef.current.startNodeY + deltaY,
+        });
         node.getLayer()?.batchDraw();
       } catch {}
 
@@ -387,13 +435,6 @@ export default function CountdownKonva({
       draggingRef.current = true;
       window._isDragging = true;
       if (hasDragged?.current != null) hasDragged.current = true;
-
-      // Necesario para que tu motor individual tenga un startPos coherente incluso si CanvasEditor no lo setea
-      try {
-        const stage = node.getStage();
-        const p = stage?.getPointerPosition?.();
-        if (dragStartPos && p) dragStartPos.current = { x: p.x, y: p.y };
-      } catch {}
 
       // Iniciar drag nativo de Konva (esto dispara dragstart/dragmove/dragend)
       try { node.startDrag(); } catch {}
@@ -442,22 +483,28 @@ export default function CountdownKonva({
       cleanupGlobal();
     };
 
+    window.addEventListener("pointermove", onMove, true);
     window.addEventListener("mousemove", onMove, true);
-    window.addEventListener("touchmove", onMove, { capture: true, passive: true });
+    window.addEventListener("touchmove", onMove, { capture: true, passive: false });
+    window.addEventListener("pointerup", onUp, true);
     window.addEventListener("mouseup", onUp, true);
     window.addEventListener("touchend", onUp, true);
+    window.addEventListener("touchcancel", onUp, true);
     window.addEventListener("pointercancel", onUp, true);
     window.addEventListener("blur", onUp, true);
 
     cleanupGlobalRef.current = () => {
+      window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("mousemove", onMove, true);
       window.removeEventListener("touchmove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("mouseup", onUp, true);
       window.removeEventListener("touchend", onUp, true);
+      window.removeEventListener("touchcancel", onUp, true);
       window.removeEventListener("pointercancel", onUp, true);
       window.removeEventListener("blur", onUp, true);
     };
-  }, [THRESHOLD_PX, cleanupGlobal, dragStartPos, hasDragged]);
+  }, [cleanupGlobal, dragStartPos, hasDragged]);
 
   // ---------------------------
   // Handlers del nodo
@@ -465,25 +512,39 @@ export default function CountdownKonva({
   const handleDown = useCallback(
     (e) => {
       e.cancelBubble = true;
+      if (e?.evt) e.evt.cancelBubble = true;
+      if (pressRef.current.active) return;
 
       const node = e.currentTarget;
       const ev = e.evt;
+      const stage = node?.getStage?.();
+      const pointerType = resolvePointerType(ev);
+      const dragThreshold = getDragIntentThreshold(pointerType);
+      const clientPoint = getClientPoint(ev);
+      const stagePoint = stage?.getPointerPosition?.();
 
       // Iniciar press
       pressRef.current.active = true;
       pressRef.current.movedEnough = false;
       pressRef.current.startedDrag = false;
       pressRef.current.suppressClick = false;
+      pressRef.current.dragThreshold = dragThreshold;
 
       // Guardar posición inicial del nodo
       pressRef.current.startNodeX = node.x();
       pressRef.current.startNodeY = node.y();
 
       // Guardar punto inicial del puntero (en px reales)
-      const cx = ev?.clientX ?? (ev?.touches && ev.touches[0]?.clientX) ?? 0;
-      const cy = ev?.clientY ?? (ev?.touches && ev.touches[0]?.clientY) ?? 0;
-      pressRef.current.startClientX = cx;
-      pressRef.current.startClientY = cy;
+      pressRef.current.startClientX =
+        clientPoint?.x ??
+        (Number.isFinite(stagePoint?.x) ? stagePoint.x : 0);
+      pressRef.current.startClientY =
+        clientPoint?.y ??
+        (Number.isFinite(stagePoint?.y) ? stagePoint.y : 0);
+      pressRef.current.startStageX =
+        Number.isFinite(stagePoint?.x) ? stagePoint.x : 0;
+      pressRef.current.startStageY =
+        Number.isFinite(stagePoint?.y) ? stagePoint.y : 0;
 
       // Por defecto NO draggable en press (clave)
       try { node.draggable(false); } catch {}
@@ -598,6 +659,7 @@ export default function CountdownKonva({
 
       onMouseDown={handleDown}
       onTouchStart={handleDown}
+      onPointerDown={handleDown}
 
       onClick={handleClick}
       onTap={handleClick}

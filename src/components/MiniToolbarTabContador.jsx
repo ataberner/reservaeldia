@@ -177,7 +177,7 @@ export default function MiniToolbarTabContador() {
   };
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+    <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
       <section className="sticky top-0 z-20 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-fuchsia-50 to-pink-50 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
         <label className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
           Fecha del evento
@@ -207,10 +207,7 @@ export default function MiniToolbarTabContador() {
       </section>
 
       {selectedUI && (
-        <section className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
-            Estilo seleccionado
-          </h3>
+        <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
 
           <label className="block text-xs font-medium text-zinc-700">
             Separacion entre chips
@@ -228,7 +225,7 @@ export default function MiniToolbarTabContador() {
             </div>
           </label>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-medium text-zinc-700">
               Numeros
               <div className="mt-1 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
@@ -327,11 +324,7 @@ export default function MiniToolbarTabContador() {
         </section>
       )}
 
-      <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
-          Disenos
-        </h3>
-
+      <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
         {countdownPresetsError ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
             {usingFallback
@@ -340,15 +333,15 @@ export default function MiniToolbarTabContador() {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-4">
           {loadingCountdownPresets && (
-            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-500">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
               Cargando presets...
             </div>
           )}
 
           {!loadingCountdownPresets && countdownPresets.length === 0 && (
-            <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-500">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
               No hay presets disponibles.
             </div>
           )}
@@ -382,22 +375,6 @@ export default function MiniToolbarTabContador() {
 
                   const designPatch = buildCountdownDesignPatch(presetPropsSafe);
 
-                  if (countdownEnBorrador?.id) {
-                    window.dispatchEvent(
-                      new CustomEvent("actualizar-elemento", {
-                        detail: {
-                          id: countdownEnBorrador.id,
-                          cambios: {
-                            fechaObjetivo: iso,
-                            presetId: p.id,
-                            ...designPatch,
-                          },
-                        },
-                      })
-                    );
-                    return;
-                  }
-
                   window.dispatchEvent(
                     new CustomEvent("insertar-elemento", {
                       detail: {
@@ -410,7 +387,7 @@ export default function MiniToolbarTabContador() {
                     })
                   );
                 }}
-                className="group w-full rounded-xl border border-violet-200 bg-white px-2 py-2 text-left transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-sm"
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-px hover:border-zinc-300 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
               >
                 <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
               </button>

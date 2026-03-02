@@ -225,13 +225,35 @@ export default function useEditorEvents({
         const primaryIndex = countdownIndexes[0];
         const existingCountdown = prev[primaryIndex];
         const stylePatch = pickCountdownStylePatch(nuevoConSeccion);
+        const shouldMoveToTargetSection =
+          typeof nuevoConSeccion?.seccionId === "string" &&
+          !!nuevoConSeccion.seccionId &&
+          existingCountdown?.seccionId !== nuevoConSeccion.seccionId;
+
+        const relocationPatch = shouldMoveToTargetSection
+          ? {
+              seccionId: nuevoConSeccion.seccionId,
+              x: nuevoConSeccion.x,
+              y: nuevoConSeccion.y,
+              width: nuevoConSeccion.width ?? existingCountdown.width,
+              height: nuevoConSeccion.height ?? existingCountdown.height,
+            }
+          : {};
 
         const nextCountdown = {
           ...existingCountdown,
           ...stylePatch,
+          ...relocationPatch,
           fechaObjetivo: nuevoConSeccion.fechaObjetivo ?? existingCountdown.fechaObjetivo,
           presetId: nuevoConSeccion.presetId,
         };
+        if (shouldMoveToTargetSection) {
+          if (Number.isFinite(nuevoConSeccion.yNorm)) {
+            nextCountdown.yNorm = nuevoConSeccion.yNorm;
+          } else if (Object.prototype.hasOwnProperty.call(nextCountdown, "yNorm")) {
+            delete nextCountdown.yNorm;
+          }
+        }
 
         // Enforce global uniqueness: mantenemos solo un countdown por borrador.
         const next = prev.filter(

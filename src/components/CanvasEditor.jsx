@@ -1611,12 +1611,18 @@ export default function CanvasEditor({
     fontWeight = "normal",
     fontStyle = "normal",
     lineHeight = 1.2,
+    letterSpacing = 0,
   } = {}) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       const fallbackSize = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 24;
-      return { width: Math.max(20, String(texto ?? "").length * (fallbackSize * 0.55)), height: fallbackSize * lineHeight };
+      const safeText = String(texto ?? "");
+      const spacingExtra = Math.max(0, safeText.length - 1) * (Number(letterSpacing) || 0);
+      return {
+        width: Math.max(20, safeText.length * (fallbackSize * 0.55) + spacingExtra),
+        height: fallbackSize * lineHeight,
+      };
     }
 
     const safeFontSize = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 24;
@@ -1631,7 +1637,16 @@ export default function CanvasEditor({
     const rawText = String(texto ?? "");
     const safeText = rawText.replace(/[ \t]+$/gm, "");
     const lines = safeText.split(/\r?\n/);
-    const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 20);
+    const safeLetterSpacing = Number.isFinite(Number(letterSpacing)) ? Number(letterSpacing) : 0;
+    const maxLineWidth = Math.max(
+      ...lines.map((line) => {
+        const safeLine = String(line || "");
+        const baseWidth = ctx.measureText(safeLine).width;
+        const spacingExtra = Math.max(0, safeLine.length - 1) * safeLetterSpacing;
+        return baseWidth + spacingExtra;
+      }),
+      20
+    );
 
     return {
       width: maxLineWidth,
@@ -1657,6 +1672,8 @@ export default function CanvasEditor({
         Number.isFinite(objTexto.lineHeight) && objTexto.lineHeight > 0
           ? objTexto.lineHeight
           : 1.2;
+      const letterSpacing =
+        Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
       const probe = new Konva.Text({
         text: safeText,
@@ -1668,6 +1685,7 @@ export default function CanvasEditor({
           objTexto.fontWeight || "normal"
         ),
         lineHeight: baseLineHeight * 0.92,
+        letterSpacing,
         padding: 0,
         wrap: "none",
       });
@@ -1699,6 +1717,8 @@ export default function CanvasEditor({
         Number.isFinite(objTexto.lineHeight) && objTexto.lineHeight > 0
           ? objTexto.lineHeight
           : 1.2;
+      const letterSpacing =
+        Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
       const probe = new Konva.Text({
         text: safeText,
@@ -1710,6 +1730,7 @@ export default function CanvasEditor({
           objTexto.fontWeight || "normal"
         ),
         lineHeight: baseLineHeight * 0.92,
+        letterSpacing,
         padding: 0,
         wrap: "none",
       });
@@ -1735,6 +1756,8 @@ export default function CanvasEditor({
       typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
         ? objTexto.lineHeight
         : 1.2;
+    const letterSpacing =
+      Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
     const previousMetrics = obtenerMetricasTexto(objTexto.texto, {
       fontSize: objTexto.fontSize,
@@ -1742,6 +1765,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
 
     const nextMetrics = obtenerMetricasTexto(objTexto.texto, {
@@ -1750,6 +1774,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
 
     const previousWidthFromKonva = medirAnchoTextoKonva(
@@ -1795,6 +1820,8 @@ export default function CanvasEditor({
       typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
         ? objTexto.lineHeight
         : 1.2;
+    const letterSpacing =
+      Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
     const nextMetrics = obtenerMetricasTexto(objTexto.texto, {
       fontSize: safeNextSize,
@@ -1802,6 +1829,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
     const nextWidthFromKonva = medirAnchoTextoKonva(
       objTexto,
@@ -1838,6 +1866,8 @@ export default function CanvasEditor({
       typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
         ? objTexto.lineHeight
         : 1.2;
+    const letterSpacing =
+      Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
     const nextMetrics = obtenerMetricasTexto(objTexto.texto, {
       fontSize: safeNextSize,
@@ -1845,6 +1875,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
     const nextHeightFromKonva = medirAltoTextoKonva(
       objTexto,
@@ -1886,6 +1917,8 @@ export default function CanvasEditor({
       typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
         ? objTexto.lineHeight
         : 1.2;
+    const letterSpacing =
+      Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
     const metrics = obtenerMetricasTexto(objTexto.texto, {
       fontSize: safeNextSize,
@@ -1893,6 +1926,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
     const widthFromKonva = medirAnchoTextoKonva(
       objTexto,
@@ -2021,6 +2055,8 @@ export default function CanvasEditor({
       typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
         ? objTexto.lineHeight
         : 1.2;
+    const letterSpacing =
+      Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
 
     const previousMetrics = obtenerMetricasTexto(objTexto.texto, {
       fontSize: objTexto.fontSize,
@@ -2028,6 +2064,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
 
     const nextMetrics = obtenerMetricasTexto(textoObjetivo, {
@@ -2036,6 +2073,7 @@ export default function CanvasEditor({
       fontWeight: objTexto.fontWeight,
       fontStyle: objTexto.fontStyle,
       lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
     });
 
     const previousWidthFromKonva = medirAnchoTextoKonva(objTexto, objTexto.texto);

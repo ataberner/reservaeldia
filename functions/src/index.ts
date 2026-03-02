@@ -32,6 +32,7 @@ import {
   upsertPublicationDiscountCodeHandler,
 } from "./payments/publicationPayments";
 import { normalizePublicSlug } from "./utils/publicSlug";
+import { normalizeInvitationType } from "./utils/invitationType";
 import {
   isPubliclyAccessible,
   resolvePublicationPublicStateFromData,
@@ -74,6 +75,16 @@ import {
   adminSetDecorPriorityV1 as adminSetDecorPriorityV1Handler,
 } from "./decorCatalog/service";
 import { onDecorCatalogDocWriteV1 as onDecorCatalogDocWriteV1Handler } from "./decorCatalog/triggers";
+import {
+  adminDeleteTextPresetV1 as adminDeleteTextPresetV1Handler,
+  adminDuplicateTextPresetV1 as adminDuplicateTextPresetV1Handler,
+  adminListTextPresetsV1 as adminListTextPresetsV1Handler,
+  adminSetTextPresetActivationV1 as adminSetTextPresetActivationV1Handler,
+  adminSetTextPresetVisibilityV1 as adminSetTextPresetVisibilityV1Handler,
+  adminSyncLegacyTextPresetsV1 as adminSyncLegacyTextPresetsV1Handler,
+  adminUpsertTextPresetV1 as adminUpsertTextPresetV1Handler,
+  listTextPresetsPublicV1 as listTextPresetsPublicV1Handler,
+} from "./textPresets/service";
 
 import * as logger from "firebase-functions/logger";
 
@@ -100,6 +111,14 @@ export const adminSetDecorPriorityV1 = adminSetDecorPriorityV1Handler;
 export const adminRevalidateDecorV1 = adminRevalidateDecorV1Handler;
 export const adminGetDecorUsageStatsV1 = adminGetDecorUsageStatsV1Handler;
 export const onDecorCatalogDocWriteV1 = onDecorCatalogDocWriteV1Handler;
+export const adminListTextPresetsV1 = adminListTextPresetsV1Handler;
+export const adminUpsertTextPresetV1 = adminUpsertTextPresetV1Handler;
+export const adminDuplicateTextPresetV1 = adminDuplicateTextPresetV1Handler;
+export const adminSetTextPresetActivationV1 = adminSetTextPresetActivationV1Handler;
+export const adminSetTextPresetVisibilityV1 = adminSetTextPresetVisibilityV1Handler;
+export const adminDeleteTextPresetV1 = adminDeleteTextPresetV1Handler;
+export const adminSyncLegacyTextPresetsV1 = adminSyncLegacyTextPresetsV1Handler;
+export const listTextPresetsPublicV1 = listTextPresetsPublicV1Handler;
 
 setGlobalOptions({
   region: "us-central1",
@@ -1297,6 +1316,7 @@ export const copiarPlantilla = onCall(
     if (!datos) throw new Error("Plantilla no encontrada");
 
     const datosPlantilla = datos as Record<string, unknown>;
+    const tipoInvitacion = normalizeInvitationType(datosPlantilla.tipo);
     const assetCache: TemplateAssetCopyCache = new Map();
     const [objetosNormalizados, seccionesNormalizadas, portadaNormalizada] =
       await Promise.all([
@@ -1330,6 +1350,7 @@ export const copiarPlantilla = onCall(
       objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
       secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
       portada: portadaNormalizada,
+      tipoInvitacion,
       nombre:
         typeof datosPlantilla.nombre === "string" && datosPlantilla.nombre.trim()
           ? datosPlantilla.nombre

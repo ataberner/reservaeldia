@@ -415,6 +415,7 @@ color: ${color};
 text-align: ${align};
 white-space: pre-wrap;
 line-height: ${lineHeightFinal};
+letter-spacing: calc(${sFont} * ${Number.isFinite(obj?.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
 padding: 0;
 margin: 0;
 box-sizing: content-box;

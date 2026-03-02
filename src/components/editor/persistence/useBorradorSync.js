@@ -4,6 +4,7 @@ import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { db, storage } from "@/firebase";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { normalizeInvitationType } from "@/domain/invitationTypes";
 import {
   captureEditorIssue,
   pushEditorBreadcrumb,
@@ -170,9 +171,36 @@ export default function useBorradorSync({
 
         if (snap.exists()) {
           const data = snap.data();
+          const plantillaId =
+            typeof data?.plantillaId === "string" ? data.plantillaId.trim() : "";
           const seccionesData = data.secciones || [];
           const objetosData = data.objetos || [];
           const rsvpData = data.rsvp;
+          const tipoDraftRaw =
+            typeof data?.tipoInvitacion === "string" ? data.tipoInvitacion : "";
+          let tipoInvitacion = normalizeInvitationType(tipoDraftRaw);
+
+          if (!tipoDraftRaw && plantillaId) {
+            try {
+              const plantillaSnap = await getDoc(doc(db, "plantillas", plantillaId));
+              if (plantillaSnap.exists()) {
+                const plantillaData = plantillaSnap.data() || {};
+                tipoInvitacion = normalizeInvitationType(plantillaData?.tipo);
+
+                if (tipoInvitacion) {
+                  await updateDoc(ref, {
+                    tipoInvitacion,
+                  });
+                }
+              }
+            } catch (tipoError) {
+              pushEditorBreadcrumb("tipo-invitacion-backfill-failed", {
+                slug,
+                plantillaId: plantillaId || null,
+                message: tipoError?.message || null,
+              });
+            }
+          }
 
           // Refresca URLs de Firebase Storage por si hay tokens vencidos/revocados.
           const refreshCache = new Map();
@@ -201,6 +229,18 @@ export default function useBorradorSync({
 
           setObjetos(objsMigrados);
           setSecciones(seccionesRefrescadas);
+          if (typeof window !== "undefined") {
+            window._draftTipoInvitacion = tipoInvitacion || "general";
+            window._tipoInvitacionActual = tipoInvitacion || "general";
+            window.dispatchEvent(
+              new CustomEvent("editor-tipo-invitacion", {
+                detail: { tipoInvitacion: tipoInvitacion || "general" },
+              })
+            );
+            if (window.canvasEditor && typeof window.canvasEditor === "object") {
+              window.canvasEditor.tipoInvitacion = tipoInvitacion || "general";
+            }
+          }
           if (typeof setRsvp === "function") {
             if (rsvpData && typeof rsvpData === "object") {
               setRsvp(normalizeRsvpConfig(rsvpData, { forceEnabled: false }));

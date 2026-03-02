@@ -85,6 +85,28 @@ export default function SiteManagementBoard({
             </div>
           </article>
 
+          <article className="rounded-xl border border-cyan-200 bg-gradient-to-r from-cyan-50 to-sky-50 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-cyan-900">
+                  Presets de texto
+                </h2>
+                <p className="mt-1 text-sm text-cyan-700">
+                  Gestiona presets simples y combinaciones para el menu Texto del editor.
+                </p>
+                <p className="mt-2 text-xs text-cyan-700">
+                  Ruta: https://reservaeldia.com.ar/admin/presets-texto/
+                </p>
+              </div>
+              <a
+                href="/admin/presets-texto/"
+                className="inline-flex items-center rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-700"
+              >
+                Abrir presets de texto
+              </a>
+            </div>
+          </article>
+
           {isSuperAdmin && (
             <article className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-rose-50 p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">

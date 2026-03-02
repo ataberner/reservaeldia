@@ -184,6 +184,12 @@ export default function computeInsertDefaults({
       fontStyle: payload.fontStyle ?? variant.fontStyle,
       textDecoration: payload.textDecoration ?? "none",
       align: payload.align ?? "left",
+      ...(Number.isFinite(Number(payload.lineHeight))
+        ? { lineHeight: Number(payload.lineHeight) }
+        : {}),
+      ...(Number.isFinite(Number(payload.letterSpacing))
+        ? { letterSpacing: Number(payload.letterSpacing) }
+        : {}),
     };
   } else if (tipo === "forma") {
     const figura = payload.figura || "rect";

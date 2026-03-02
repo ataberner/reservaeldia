@@ -251,6 +251,7 @@ function measureDomInkProbe({
   fontSizePx,
   fontFamily,
   lineHeightPx,
+  letterSpacingPx,
   probeText,
 }) {
   if (typeof document === "undefined") return null;
@@ -269,6 +270,7 @@ function measureDomInkProbe({
     host.style.fontWeight = fontWeight || "normal";
     host.style.fontStyle = fontStyle || "normal";
     host.style.lineHeight = `${lineHeightPx}px`;
+    host.style.letterSpacing = `${Number(letterSpacingPx || 0)}px`;
     host.style.boxSizing = "border-box";
     host.style.pointerEvents = "none";
     host.style.userSelect = "none";
@@ -405,6 +407,7 @@ export default function InlineTextEditor({
         fontFamily: getProp(textNode, "fontFamily", "sans-serif"),
         fontWeight: normalizedFont.fontWeight,
         fontStyle: normalizedFont.fontStyle,
+        letterSpacing: getProp(textNode, "letterSpacing", 0),
         fill: getProp(textNode, "fill", "#000"),
         lineHeightKonva: getProp(textNode, "lineHeight", 1.2),
       };
@@ -415,6 +418,7 @@ export default function InlineTextEditor({
         fontFamily: "sans-serif",
         fontWeight: "normal",
         fontStyle: "normal",
+        letterSpacing: 0,
         fill: "#000",
         lineHeightKonva: 1.2,
       };
@@ -429,6 +433,9 @@ export default function InlineTextEditor({
   const PADDING_Y = 0;
   const fontSizePx = Math.max(1, Number(nodeProps.fontSize || 24) * totalScaleY);
   const lineHeightPx = Math.max(1, fontSizePx * konvaLineHeight);
+  const letterSpacingPx =
+    (Number.isFinite(Number(nodeProps.letterSpacing)) ? Number(nodeProps.letterSpacing) : 0) *
+    totalScaleX;
   const rawValue = String(value ?? "");
   const normalizedValue = rawValue.replace(/\r\n/g, "\n");
   const normalizedValueForSingleLine = normalizedValue.replace(/\n+$/g, "");
@@ -456,9 +463,18 @@ export default function InlineTextEditor({
 
     const textValue = isSingleLine ? normalizedValueForSingleLine : normalizedValue;
     const lines = textValue.split(/\r?\n/);
-    const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 0);
+    const maxLineWidth = Math.max(
+      ...lines.map((line) => {
+        const safeLine = String(line || "");
+        const baseWidth = ctx.measureText(safeLine).width;
+        const spacingExtra = Math.max(0, safeLine.length - 1) * letterSpacingPx;
+        return baseWidth + spacingExtra;
+      }),
+      0
+    );
     return Math.max(20, Math.ceil(maxLineWidth));
   }, [
+    letterSpacingPx,
     normalizedWidthMode,
     nodeProps.fontFamily,
     nodeProps.fontSize,
@@ -573,6 +589,7 @@ export default function InlineTextEditor({
       fontSizePx,
       fontFamily: nodeProps.fontFamily,
       lineHeightPx: editableLineHeightPx,
+      letterSpacingPx,
       probeText,
     });
     const canvasInkTopInsetPx =
@@ -640,6 +657,7 @@ export default function InlineTextEditor({
       computedBorderBottom: computedStyle?.borderBottomWidth ?? null,
       fontSizePx,
       lineHeightPx,
+      letterSpacingPx,
       isSingleLine,
       verticalInsetPx,
       editableLineHeightPx,
@@ -690,6 +708,7 @@ export default function InlineTextEditor({
     totalScaleY,
     fontSizePx,
     lineHeightPx,
+    letterSpacingPx,
     isSingleLine,
     verticalInsetPx,
     editableLineHeightPx,
@@ -830,6 +849,7 @@ export default function InlineTextEditor({
             fontWeight: nodeProps.fontWeight,
             fontStyle: nodeProps.fontStyle,
             lineHeight: `${editableLineHeightPx}px`,
+            letterSpacing: `${letterSpacingPx}px`,
             minHeight: `${lineHeightPx}px`,
             color: "transparent",
             caretColor: nodeProps.fill,

@@ -554,6 +554,8 @@ export default function ElementoCanvas({
     const baseLineHeight =
       typeof obj.lineHeight === "number" && obj.lineHeight > 0 ? obj.lineHeight : 1.2;
     const lineHeight = baseLineHeight * 0.92;
+    const letterSpacing =
+      Number.isFinite(Number(obj.letterSpacing)) ? Number(obj.letterSpacing) : 0;
 
 
     // Ã¢Å“â€¦ Evita bbox sobrado a la derecha por espacios/tabs invisibles al final de lÃƒÂ­nea
@@ -585,7 +587,15 @@ export default function ElementoCanvas({
     ctx.font = `${style} ${weight} ${validFontSize}px ${fontForCanvas}`;
 
     const lines = safeText.split(/\r?\n/);
-    const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 20);
+    const maxLineWidth = Math.max(
+      ...lines.map((line) => {
+        const safeLine = String(line || "");
+        const baseWidth = ctx.measureText(safeLine).width;
+        const spacingExtra = Math.max(0, safeLine.length - 1) * letterSpacing;
+        return baseWidth + spacingExtra;
+      }),
+      20
+    );
     const numLines = lines.length;
     const textWidth = Math.ceil(maxLineWidth);
     const textHeight = validFontSize * lineHeight * numLines;
@@ -676,6 +686,7 @@ export default function ElementoCanvas({
           fontStyle={konvaFontStyle}
           textDecoration={textDecoration}
           lineHeight={lineHeight}
+          letterSpacing={letterSpacing}
           fill={fillColor}
           opacity={appliedOpacity}
           verticalAlign="top"

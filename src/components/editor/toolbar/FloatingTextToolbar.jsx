@@ -104,6 +104,8 @@ export default function FloatingTextToolbar({
     const fontWeight = obj.fontWeight || "normal";
     const fontStyle = obj.fontStyle || "normal";
     const fontFamily = String(fontFamilyOverride || obj.fontFamily || "sans-serif");
+    const letterSpacing =
+      Number.isFinite(Number(obj.letterSpacing)) ? Number(obj.letterSpacing) : 0;
     const baseLineHeight =
       Number.isFinite(obj.lineHeight) && obj.lineHeight > 0
         ? obj.lineHeight
@@ -119,6 +121,7 @@ export default function FloatingTextToolbar({
         fontWeight,
         fontStyle: resolveKonvaFontStyle(fontStyle, fontWeight),
         lineHeight: baseLineHeight * 0.92,
+        letterSpacing,
         padding: 0,
         wrap: "none",
       });
@@ -138,7 +141,15 @@ export default function FloatingTextToolbar({
       : (/\s/.test(fontFamily) ? `"${fontFamily}"` : fontFamily);
     ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontForCanvas}`;
     const lines = safeText.split(/\r?\n/);
-    const maxLineWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), 20);
+    const maxLineWidth = Math.max(
+      ...lines.map((line) => {
+        const safeLine = String(line || "");
+        const baseWidth = ctx.measureText(safeLine).width;
+        const spacingExtra = Math.max(0, safeLine.length - 1) * letterSpacing;
+        return baseWidth + spacingExtra;
+      }),
+      20
+    );
     return Number.isFinite(maxLineWidth) ? maxLineWidth : null;
   };
 

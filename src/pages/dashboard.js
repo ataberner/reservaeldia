@@ -23,6 +23,7 @@ import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
 import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
 import { getPublicationStatus } from "@/domain/publications/state";
 import { isDraftTrashed } from "@/domain/drafts/state";
+import { normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import {
   consumeInterruptedEditorSession,
@@ -1216,6 +1217,22 @@ export default function Dashboard() {
       const data = snap.data();
       const objetosBase = data?.objetos || [];
       const secciones = data?.secciones || [];
+      const rawRsvp =
+        data?.rsvp && typeof data.rsvp === "object"
+          ? data.rsvp
+          : {};
+      const rsvpPreviewConfig = normalizeRsvpConfig(
+        {
+          ...rawRsvp,
+          enabled: rawRsvp?.enabled !== false,
+          title: rawRsvp?.title,
+          subtitle: rawRsvp?.subtitle,
+          buttonText: rawRsvp?.buttonText,
+          primaryColor: rawRsvp?.primaryColor,
+          sheetUrl: rawRsvp?.sheetUrl,
+        },
+        { forceEnabled: false }
+      );
       let urlPublicaDetectada = "";
       let slugPublicoDetectado = "";
       const slugPublicoBorrador = String(data?.slugPublico || "").trim();
@@ -1352,7 +1369,16 @@ export default function Dashboard() {
 
       // Import HTML generation function
       const { generarHTMLDesdeSecciones } = await import("../../functions/src/utils/generarHTMLDesdeSecciones");
-      const htmlGenerado = generarHTMLDesdeSecciones(secciones, objetosBase);
+      const slugPreview = slugPublicoNormalizado || sanitizeDraftSlug(slugInvitacion) || "";
+      const htmlGenerado = generarHTMLDesdeSecciones(
+        secciones,
+        objetosBase,
+        rsvpPreviewConfig,
+        {
+          slug: slugPreview,
+          isPreview: true,
+        }
+      );
 
       // DEBUG: inspect countdown props
       try {

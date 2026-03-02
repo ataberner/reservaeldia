@@ -52,6 +52,7 @@ function buildGoogleFontsLink(fonts: string[]): string {
 
 type GenerarHTMLOpciones = {
   slug?: string;
+  isPreview?: boolean;
 };
 
 function escapeAttr(str: string = ""): string {
@@ -137,6 +138,7 @@ export function generarHTMLDesdeSecciones(
 ): string {
   const slug = opciones?.slug ?? "";
   const slugPublica = opts?.slug ?? "";
+  const isPreview = opciones?.isPreview === true;
 
   const fuentesUsadas = [
     ...new Set(
@@ -150,7 +152,10 @@ export function generarHTMLDesdeSecciones(
 
   const hayRSVPEnCanvas = objetos?.some((o) => o.tipo === "rsvp-boton");
   const botonRSVP = ""; // (si querés agregar un botón fijo fuera del canvas, hacelo acá)
-  const modalRSVP = hayRSVPEnCanvas && rsvp?.enabled ? generarModalRSVPHTML(rsvp) : "";
+  const modalRSVP =
+    hayRSVPEnCanvas && rsvp?.enabled
+      ? generarModalRSVPHTML(rsvp, { previewMode: isPreview })
+      : "";
   const modalGaleria = hayGaleriaConImagenes(objetos) ? generarModalGaleriaHTML() : "";
   const invitationLoaderRuntime = generarInvitationLoaderRuntimeHTML();
   const motionEffectsRuntime = generarMotionEffectsRuntimeHTML();
@@ -356,7 +361,7 @@ export function generarHTMLDesdeSecciones(
 
   return `
 <!DOCTYPE html>
-<html lang="es"${slug ? ` data-slug="${escapeAttr(slug)}"` : ""}>
+<html lang="es"${slug ? ` data-slug="${escapeAttr(slug)}"` : ""}${isPreview ? ' data-preview="1"' : ""}>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -621,7 +626,7 @@ export function generarHTMLDesdeSecciones(
   </style>
 </head>
 
-<body data-loader-ready="0" data-slug="${escapeAttr(slugPublica)}">
+<body data-loader-ready="0" data-slug="${escapeAttr(slugPublica)}"${isPreview ? ' data-preview="1"' : ""}>
   ${invitationLoaderRuntime}
   <div class="inv">
     ${htmlSecciones}

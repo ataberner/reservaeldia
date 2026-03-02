@@ -1,5 +1,9 @@
 import { getActiveQuestions, normalizeRsvpConfig, type RSVPConfig } from "../rsvp/config";
 
+type RsvpModalRuntimeOptions = {
+  previewMode?: boolean;
+};
+
 function serializeForInlineScript(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, "\\u003c")
@@ -9,7 +13,10 @@ function serializeForInlineScript(value: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-export function generarModalRSVPHTML(cfg: RSVPConfig): string {
+export function generarModalRSVPHTML(
+  cfg: RSVPConfig,
+  runtimeOptions: RsvpModalRuntimeOptions = {}
+): string {
   const normalized = normalizeRsvpConfig(cfg);
   if (!normalized.enabled) return "";
 
@@ -17,6 +24,7 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
   const payloadConfig = {
     ...normalized,
     questions: activeQuestions,
+    previewMode: runtimeOptions.previewMode === true,
     submitEndpoint: "https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit",
   };
 
@@ -619,6 +627,22 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
     return "https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit";
   }
 
+  function isPreviewMode() {
+    if (RSVP_CONFIG && RSVP_CONFIG.previewMode === true) return true;
+
+    var htmlPreview = document.documentElement && document.documentElement.dataset
+      ? String(document.documentElement.dataset.preview || "").toLowerCase()
+      : "";
+    if (htmlPreview === "1" || htmlPreview === "true") return true;
+
+    var bodyPreview = document.body && document.body.dataset
+      ? String(document.body.dataset.preview || "").toLowerCase()
+      : "";
+    if (bodyPreview === "1" || bodyPreview === "true") return true;
+
+    return false;
+  }
+
   function boot(){
     var modal = document.getElementById("modal-rsvp");
     if (!modal) return;
@@ -663,6 +687,7 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
 
     var defaultSubmitLabel = sendBtn.textContent || "Enviar";
     var isSubmitting = false;
+    var previewMode = isPreviewMode();
 
     function clearStatus(){
       if (!statusNode) return;
@@ -759,6 +784,14 @@ export function generarModalRSVPHTML(cfg: RSVPConfig): string {
         if (invalidControl && typeof invalidControl.focus === "function") {
           invalidControl.focus();
         }
+        return;
+      }
+
+      if (previewMode) {
+        setStatus(
+          "success",
+          "Vista previa: la respuesta no se envio. Publica la invitacion para recibir RSVPs reales."
+        );
         return;
       }
 

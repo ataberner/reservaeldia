@@ -3,8 +3,71 @@ export function jsDomHelpersBlock(): string {
   return `
   function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
 
+  function toPositiveNumber(value){
+    var n = Number(value);
+    return (isFinite(n) && n > 0) ? n : 0;
+  }
+
+  function minPositive(values, fallback){
+    var valid = (values || []).filter(function(v){
+      return isFinite(v) && v > 0;
+    });
+    if (!valid.length) return fallback;
+    return Math.min.apply(null, valid);
+  }
+
+  function getScreenShortSide(){
+    var screenW = toPositiveNumber(window.screen && window.screen.width);
+    var screenH = toPositiveNumber(window.screen && window.screen.height);
+    return minPositive([screenW, screenH], screenW || screenH || 0);
+  }
+
+  function isLikelyTouchMobileDevice(){
+    var ua = String((navigator && navigator.userAgent) || "");
+    var mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+    var touchPoints = Number((navigator && navigator.maxTouchPoints) || 0);
+    var coarsePointer = false;
+    try {
+      coarsePointer = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    } catch(_e) {
+      coarsePointer = false;
+    }
+    return mobileUA || (touchPoints > 0 && coarsePointer);
+  }
+
+  function resolveViewportWidth(){
+    var docW = toPositiveNumber(document.documentElement && document.documentElement.clientWidth);
+    var innerW = toPositiveNumber(window.innerWidth);
+    var vvW = toPositiveNumber(window.visualViewport && window.visualViewport.width);
+    var embedded = false;
+    try {
+      embedded = window.self !== window.top;
+    } catch(_e) {
+      embedded = true;
+    }
+
+    if (embedded) {
+      var embeddedWidth = minPositive([docW, innerW, vvW], docW || innerW || vvW || 0);
+      var screenShort = getScreenShortSide();
+      if ((!embeddedWidth || embeddedWidth <= 0) && screenShort > 0) {
+        return screenShort;
+      }
+      if (
+        embeddedWidth > 767 &&
+        isLikelyTouchMobileDevice() &&
+        screenShort > 0 &&
+        screenShort < embeddedWidth
+      ) {
+        return screenShort;
+      }
+      return embeddedWidth;
+    }
+
+    return docW || innerW || vvW || 0;
+  }
+
   function isMobile(){
-    return (document.documentElement.clientWidth || 0) <= 767;
+    return resolveViewportWidth() <= 767;
   }
 
   function getObjNodes(sec){

@@ -645,8 +645,95 @@ export function generarHTMLDesdeSecciones(
       function smoothstep01(t){ return t * t * (3 - 2 * t); }
 
       function compute(){
-        var vw = document.documentElement.clientWidth;
+        var docEl = document.documentElement;
+        var vv = window.visualViewport;
+
+        function toPositiveNumber(value){
+          var n = Number(value);
+          return (isFinite(n) && n > 0) ? n : 0;
+        }
+
+        function minPositive(values, fallback){
+          var valid = (values || []).filter(function(v){
+            return isFinite(v) && v > 0;
+          });
+          if (!valid.length) return fallback;
+          return Math.min.apply(null, valid);
+        }
+
+        function detectEmbeddedContext(){
+          try {
+            return window.self !== window.top;
+          } catch(_e) {
+            return true;
+          }
+        }
+
+        function getScreenShortSide(){
+          var screenW = toPositiveNumber(window.screen && window.screen.width);
+          var screenH = toPositiveNumber(window.screen && window.screen.height);
+          return minPositive([screenW, screenH], screenW || screenH || 0);
+        }
+
+        function getScreenLongSide(){
+          var screenW = toPositiveNumber(window.screen && window.screen.width);
+          var screenH = toPositiveNumber(window.screen && window.screen.height);
+          if (screenW > 0 && screenH > 0) return Math.max(screenW, screenH);
+          return screenW || screenH || 0;
+        }
+
+        function readMobileSignals(){
+          var ua = String((navigator && navigator.userAgent) || "");
+          var mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+          var touchPoints = Number((navigator && navigator.maxTouchPoints) || 0);
+          var coarsePointer = false;
+          try {
+            coarsePointer = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+          } catch(_e) {
+            coarsePointer = false;
+          }
+          return {
+            mobileUA: mobileUA,
+            touchPoints: touchPoints,
+            coarsePointer: coarsePointer,
+            isLikelyMobile: mobileUA || (touchPoints > 0 && coarsePointer),
+          };
+        }
+
+        var embeddedContext = detectEmbeddedContext();
+        var mobileSignals = readMobileSignals();
+        var docW = toPositiveNumber(docEl.clientWidth);
+        var innerW = toPositiveNumber(window.innerWidth);
+        var vvW = toPositiveNumber(vv && vv.width);
+        var docH = toPositiveNumber(docEl.clientHeight);
+        var innerH = toPositiveNumber(window.innerHeight);
+        var vvH = toPositiveNumber(vv && vv.height);
+        var screenShortSide = getScreenShortSide();
+        var screenLongSide = getScreenLongSide();
+
+        // En iframe/srcDoc mobile algunos navegadores reportan visualViewport externo.
+        // En ese contexto usamos la menor dimension valida para evitar secciones sobredimensionadas.
+        var vw = embeddedContext
+          ? minPositive([docW, innerW, vvW], docW || innerW || vvW || 0)
+          : (docW || innerW || vvW || 0);
+
+        // Fallback robusto para iframe en mobile: algunos navegadores exponen
+        // viewport "desktop-like" y desactivan el reflow mobile por error.
+        if ((!isFinite(vw) || vw <= 0) && screenShortSide > 0) {
+          vw = screenShortSide;
+        }
+        if (
+          embeddedContext &&
+          mobileSignals.isLikelyMobile &&
+          screenShortSide > 0 &&
+          vw > 767 &&
+          screenShortSide < vw
+        ) {
+          vw = screenShortSide;
+        }
+
         var BASE_W = 800; // = CANVAS_BASE.ANCHO
+        if (!isFinite(vw) || vw <= 0) vw = BASE_W;
 
         // contentW (sin vw-32)
         var contentW = Math.min(BASE_W, vw);
@@ -659,11 +746,25 @@ export function generarHTMLDesdeSecciones(
         document.documentElement.style.setProperty("--bx", String(bx));
 
         var secs = Array.from(document.querySelectorAll(".sec"));
-        var isMobile = vw <= 767;
+        var isMobile =
+          vw <= 767 ||
+          (mobileSignals.isLikelyMobile && screenShortSide > 0 && screenShortSide <= 767);
 
         // viewport real (más estable en mobile)
-        var vv = window.visualViewport;
-        var viewportH = (vv && vv.height) ? vv.height : window.innerHeight;
+        var viewportH = embeddedContext
+          ? minPositive([docH, innerH, vvH], innerH || docH || vvH || 0)
+          : (vvH || innerH || docH || 0);
+        if (!isFinite(viewportH) || viewportH <= 0) {
+          viewportH = innerH || docH || 0;
+        }
+        if (
+          embeddedContext &&
+          mobileSignals.isLikelyMobile &&
+          screenLongSide > 0 &&
+          viewportH > screenLongSide
+        ) {
+          viewportH = screenLongSide;
+        }
 
         // safe areas (css env)
         var safeTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-top")) || 0;

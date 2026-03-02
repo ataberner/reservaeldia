@@ -152,11 +152,54 @@ export function buildScript(cfg: NormalizedConfig): string {
     return false;
   }
 
+  function resetFixedSectionInlineHeight(sec){
+    if (!sec) return;
+    var modo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
+    if (modo !== "fijo") return;
+    if (sec.style) {
+      sec.style.removeProperty("height");
+    }
+    sec.removeAttribute("data-msl-base-height");
+  }
+
   function shouldProcessSection(sec){
     if(!sec) return false;
     if(!CFG.ONLY_FIXED) return true;
     var modo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
     return modo === "fijo";
+  }
+
+  function detectEmbeddedContext(){
+    try {
+      return window.self !== window.top;
+    } catch(_e) {
+      return true;
+    }
+  }
+
+  function isPreviewDocument(){
+    var htmlPreview = "";
+    var bodyPreview = "";
+    try {
+      htmlPreview = String(
+        document && document.documentElement && document.documentElement.dataset
+          ? document.documentElement.dataset.preview || ""
+          : ""
+      ).toLowerCase();
+    } catch(_e1) {}
+    try {
+      bodyPreview = String(
+        document && document.body && document.body.dataset
+          ? document.body.dataset.preview || ""
+          : ""
+      ).toLowerCase();
+    } catch(_e2) {}
+    return (
+      htmlPreview === "1" ||
+      htmlPreview === "true" ||
+      bodyPreview === "1" ||
+      bodyPreview === "true"
+    );
   }
 
   function restoreNodeBaseline(node){
@@ -227,8 +270,14 @@ export function buildScript(cfg: NormalizedConfig): string {
 
   function runOnce(){
     if(!ENABLED) return;
+    var embeddedContext = detectEmbeddedContext();
+    var previewDocument = isPreviewDocument();
+
     if(!isMobile()) {
       Array.from(document.querySelectorAll(".sec")).forEach(function(sec){
+        if (previewDocument && embeddedContext) {
+          resetFixedSectionInlineHeight(sec);
+        }
         var content = sec.querySelector(".sec-content");
         if(!content) return;
         var bleed = sec.querySelector(".sec-bleed");
@@ -249,7 +298,12 @@ export function buildScript(cfg: NormalizedConfig): string {
       var secIndex = secs.indexOf(sec);
       var secModo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
       var allowReflow = shouldProcessSection(sec);
+      var isEmbeddedPreview = previewDocument && embeddedContext;
       mslLog("section:start", { secIndex: secIndex, modo: secModo, allowReflow: allowReflow });
+
+      if (isEmbeddedPreview) {
+        resetFixedSectionInlineHeight(sec);
+      }
 
       var content = sec.querySelector(".sec-content");
       if(!content) return;
@@ -333,8 +387,16 @@ export function buildScript(cfg: NormalizedConfig): string {
           preserveBottomGap: +gap.toFixed(1),
           finalNeededHeight: +neededHeight.toFixed(1)
         });
-        if (secModo === "fijo" && neededHeight > 0) {
-          expandFixedSection(sec, neededHeight);
+        if (secModo === "fijo") {
+          if (isEmbeddedPreview) {
+            if (neededHeight > 0) {
+              sec.style.height = Math.ceil(neededHeight) + "px";
+            } else {
+              sec.style.removeProperty("height");
+            }
+          } else if (neededHeight > 0) {
+            expandFixedSection(sec, neededHeight);
+          }
         }
       }
 
@@ -404,10 +466,16 @@ export function buildScript(cfg: NormalizedConfig): string {
       var contentW = contentRect.width || 0;
       var secCurrentH = sec.getBoundingClientRect().height || 0;
       var baseHeightAttr = "data-msl-base-height";
-      if (!sec.hasAttribute(baseHeightAttr)) {
+      var shouldPersistBaseHeight = !isEmbeddedPreview;
+      if (shouldPersistBaseHeight && !sec.hasAttribute(baseHeightAttr)) {
         sec.setAttribute(baseHeightAttr, String(secCurrentH));
       }
-      var baseSecHeight = parseFloat(sec.getAttribute(baseHeightAttr) || "");
+      if (!shouldPersistBaseHeight && sec.hasAttribute(baseHeightAttr)) {
+        sec.removeAttribute(baseHeightAttr);
+      }
+      var baseSecHeight = shouldPersistBaseHeight
+        ? parseFloat(sec.getAttribute(baseHeightAttr) || "")
+        : secCurrentH;
       if (!isFinite(baseSecHeight) || baseSecHeight <= 0) baseSecHeight = secCurrentH;
 
       // items (rects) en coordenadas del content (TODOS)
@@ -455,6 +523,11 @@ export function buildScript(cfg: NormalizedConfig): string {
         if (btm > maxOriginalBottom) maxOriginalBottom = btm;
       }
       var baseBottomGap = Math.max(0, baseSecHeight - maxOriginalBottom);
+      if (isEmbeddedPreview) {
+        // En preview embebida el viewport puede estabilizarse en varios ticks.
+        // Evitamos conservar gaps de runs previos que inflan secciones fijas.
+        baseBottomGap = Math.max(0, secCurrentH - maxOriginalBottom);
+      }
 
       // Si todo mide 0 (fonts no listas), reintentamos luego
       var anyValidAll = itemsAll.some(function(it){ return it.height > 0.5; });

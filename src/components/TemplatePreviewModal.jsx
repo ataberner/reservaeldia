@@ -40,42 +40,15 @@ export default function TemplatePreviewModal({
   useEffect(() => {
     if (!visible || typeof document === "undefined") return undefined;
 
-    const html = document.documentElement;
-    const body = document.body;
-    const scrollRoot = document.querySelector('[data-dashboard-scroll-root="true"]');
-
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    const previousBodyTouchAction = body.style.touchAction;
-    const previousRootOverflow = scrollRoot?.style.overflow;
-    const previousRootOverscroll = scrollRoot?.style.overscrollBehavior;
-    const previousRootTouchAction = scrollRoot?.style.touchAction;
-
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || openingEditor) return;
       onClose?.();
     };
 
     document.addEventListener("keydown", onKeyDown);
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    body.style.touchAction = "none";
-    if (scrollRoot) {
-      scrollRoot.style.overflow = "hidden";
-      scrollRoot.style.overscrollBehavior = "none";
-      scrollRoot.style.touchAction = "none";
-    }
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      html.style.overflow = previousHtmlOverflow;
-      body.style.overflow = previousBodyOverflow;
-      body.style.touchAction = previousBodyTouchAction;
-      if (scrollRoot) {
-        scrollRoot.style.overflow = previousRootOverflow || "";
-        scrollRoot.style.overscrollBehavior = previousRootOverscroll || "";
-        scrollRoot.style.touchAction = previousRootTouchAction || "";
-      }
     };
   }, [onClose, openingEditor, visible]);
 

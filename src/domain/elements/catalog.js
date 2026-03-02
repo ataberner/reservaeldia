@@ -3,13 +3,17 @@
  * @property {string} id
  * @property {string} label
  * @property {string|null} src
- * @property {"shape"|"icon"|"gif"} kind
+ * @property {"shape"|"icon"|"gif"|"image"} kind
  * @property {string|null} figura
  * @property {string|null} formato
  * @property {boolean} popular
  * @property {string[]} categories
  * @property {string[]} keywords
  * @property {string} searchText
+ * @property {number|null} width
+ * @property {number|null} height
+ * @property {string|null} assetType
+ * @property {string|null} status
  */
 
 const CURATED_CATEGORY_ORDER = [
@@ -107,6 +111,8 @@ function guessFormat(raw) {
 }
 
 function resolveKind(raw, format) {
+  const assetType = normalizeTextToken(raw?.assetType || raw?.tipoAsset || raw?.tipo);
+  if (assetType === "decoracion") return "image";
   if (normalizeTextToken(raw?.tipo) === "gif" || format === "gif") return "gif";
   return "icon";
 }
@@ -122,6 +128,11 @@ function resolveLabel(raw, fallbackId) {
 
 function safeArrayUnique(values) {
   return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))];
+}
+
+function parseOptionalNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 export function normalizeCatalogIconItem(raw, fallbackId = "") {
@@ -162,6 +173,10 @@ export function normalizeCatalogIconItem(raw, fallbackId = "") {
     categories: categoryList,
     keywords: keywordList,
     searchText,
+    width: parseOptionalNumber(raw?.width),
+    height: parseOptionalNumber(raw?.height),
+    assetType: normalizeTextToken(raw?.assetType || raw?.tipoAsset) || null,
+    status: normalizeTextToken(raw?.status) || null,
   };
 
   return normalized;
@@ -316,6 +331,7 @@ export function groupResultsByKind(items = []) {
   const grouped = {
     shape: [],
     icon: [],
+    image: [],
     gif: [],
   };
 
@@ -329,7 +345,9 @@ export function groupResultsByKind(items = []) {
 
 export function normalizeRecentEntry(entry) {
   if (!entry || typeof entry !== "object") return null;
-  const kind = entry.kind === "shape" || entry.kind === "gif" ? entry.kind : "icon";
+  const kind = entry.kind === "shape" || entry.kind === "gif" || entry.kind === "image"
+    ? entry.kind
+    : "icon";
   const id = String(entry.id || "").trim();
   if (!id) return null;
 
@@ -344,6 +362,10 @@ export function normalizeRecentEntry(entry) {
     categories: safeArrayUnique(sanitizeListFromUnknown(entry.categories)),
     keywords: safeArrayUnique(sanitizeListFromUnknown(entry.keywords)),
     searchText: String(entry.searchText || ""),
+    width: parseOptionalNumber(entry.width),
+    height: parseOptionalNumber(entry.height),
+    assetType: normalizeTextToken(entry.assetType) || null,
+    status: normalizeTextToken(entry.status) || null,
     insertedAt: Number(entry.insertedAt || Date.now()),
   };
 }

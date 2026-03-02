@@ -13,6 +13,21 @@ import { db, storage } from "@/firebase";
 
 const ICONS_COLLECTION = "iconos";
 const ICONS_STORAGE_FOLDER = "iconos";
+const DECOR_COLLECTION = "decoraciones";
+
+function normalizeToken(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isActiveDecorCandidate(raw) {
+  const status = normalizeToken(raw?.status);
+  if (status && status !== "active") return false;
+
+  const assetType = normalizeToken(raw?.assetType || raw?.tipo);
+  if (assetType && assetType !== "decoracion") return false;
+
+  return true;
+}
 
 export async function fetchFirestoreCatalogPage({
   pageSize = 96,
@@ -54,6 +69,43 @@ export async function fetchFirestorePopularCatalog({
     id: docSnapshot.id,
     ...docSnapshot.data(),
   }));
+}
+
+export async function fetchFirestoreDecorCatalogPage({
+  pageSize = 96,
+  cursor = null,
+} = {}) {
+  const constraints = [orderBy(documentId()), limit(pageSize)];
+  if (cursor) {
+    constraints.splice(1, 0, startAfter(cursor));
+  }
+
+  const decorCollectionRef = collection(db, DECOR_COLLECTION);
+  let snapshot = null;
+
+  try {
+    snapshot = await getDocs(
+      query(decorCollectionRef, where("status", "==", "active"), ...constraints)
+    );
+  } catch {
+    snapshot = await getDocs(query(decorCollectionRef, ...constraints));
+  }
+
+  const items = snapshot.docs
+    .map((docSnapshot) => ({
+      id: docSnapshot.id,
+      ...docSnapshot.data(),
+    }))
+    .filter((item) => isActiveDecorCandidate(item));
+  const nextCursor = snapshot.docs.length
+    ? snapshot.docs[snapshot.docs.length - 1]
+    : null;
+
+  return {
+    items,
+    cursor: nextCursor,
+    hasMore: snapshot.docs.length === pageSize,
+  };
 }
 
 export async function fetchStorageCatalogPage({

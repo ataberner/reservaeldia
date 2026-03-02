@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import useElementCatalog from "@/hooks/useElementCatalog";
 import { fetchSvgPaths } from "@/utils/parseSvg";
 import { normalizeQueryText } from "@/domain/elements/catalog";
@@ -146,7 +146,7 @@ function HorizontalRail({
         ref={scrollerRef}
         className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
-        <div className="flex min-w-max gap-1.5 pr-1">{children}</div>
+        <div className="flex min-w-max gap-1 pr-1">{children}</div>
       </div>
 
       {canScrollLeft ? (
@@ -185,11 +185,11 @@ function ShapeButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="group flex h-[76px] w-full items-center justify-center rounded-lg bg-transparent px-1 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="group flex h-[88px] w-full items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="flex h-16 w-16 items-center justify-center text-slate-900">
-        {shapePreview(item.figura, "h-[56px] w-[56px]")}
+      <div className="flex h-20 w-20 items-center justify-center text-slate-900">
+        {shapePreview(item.figura, "h-[64px] w-[64px]")}
       </div>
     </button>
   );
@@ -200,11 +200,11 @@ function ShapeRailButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="shrink-0 flex h-[68px] w-[68px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="shrink-0 flex h-[80px] w-[80px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="flex h-14 w-14 items-center justify-center text-slate-900">
-        {shapePreview(item.figura, "h-[52px] w-[52px]")}
+      <div className="flex h-[66px] w-[66px] items-center justify-center text-slate-900">
+        {shapePreview(item.figura, "h-[62px] w-[62px]")}
       </div>
     </button>
   );
@@ -215,10 +215,10 @@ function IconRailButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="shrink-0 flex h-[68px] w-[68px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="shrink-0 flex h-[80px] w-[80px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="h-14 w-14 p-1">
+      <div className="h-[66px] w-[66px] p-1">
         <div
           className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
           style={{ backgroundImage: `url(${item.src})` }}
@@ -233,10 +233,10 @@ function MediaButton({ item, onInsert }) {
     <button
       type="button"
       onClick={() => onInsert(item)}
-      className="group flex h-[76px] w-full items-center justify-center rounded-lg bg-transparent px-1 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      className="group flex h-[88px] w-full items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
-      <div className="h-16 w-16 p-1.5">
+      <div className="h-20 w-20 p-1">
         <div
           className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
           style={{ backgroundImage: `url(${item.src})` }}
@@ -246,21 +246,21 @@ function MediaButton({ item, onInsert }) {
   );
 }
 
-function RecentButton({ item, onInsertShape, onInsertMedia }) {
+function RecentButton({ item, onInsert }) {
   const isShape = item.kind === "shape";
   return (
     <button
       type="button"
-      onClick={() => (isShape ? onInsertShape(item) : onInsertMedia(item))}
-      className="shrink-0 flex h-[62px] w-[62px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
+      onClick={() => onInsert(item)}
+      className="shrink-0 flex h-[70px] w-[70px] items-center justify-center rounded-lg bg-transparent px-0.5 py-0.5 transition hover:-translate-y-[1px] hover:bg-slate-50"
       title={`Insertar ${item.label}`}
     >
       {isShape ? (
-        <div className="flex h-12 w-12 items-center justify-center">
-          {shapePreview(item.figura, "h-[46px] w-[46px]")}
+        <div className="flex h-14 w-14 items-center justify-center">
+          {shapePreview(item.figura, "h-[54px] w-[54px]")}
         </div>
       ) : (
-        <div className="h-12 w-12 p-1">
+        <div className="h-14 w-14 p-1">
           <div
             className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
             style={{ backgroundImage: `url(${item.src})` }}
@@ -268,26 +268,6 @@ function RecentButton({ item, onInsertShape, onInsertMedia }) {
         </div>
       )}
     </button>
-  );
-}
-
-function AccordionSection({ title, open, onToggle, children }) {
-  return (
-    <section className="rounded-lg border border-slate-200 bg-white p-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-1.5 text-left"
-      >
-        <span className="text-xs font-semibold text-slate-800">{title}</span>
-        {open ? (
-          <ChevronDown className="h-4 w-4 text-slate-600" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-slate-600" />
-        )}
-      </button>
-      {open ? <div className="border-t border-slate-100 px-2.5 pb-2 pt-1.5">{children}</div> : null}
-    </section>
   );
 }
 
@@ -310,15 +290,19 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     hasMore,
     loadMore,
     loading,
+    hasMoreDecor,
+    loadMoreDecor,
+    loadingDecor,
     error,
     registerRecent,
     getLibraryByKind,
   } = useElementCatalog();
 
-  const [gifsOpen, setGifsOpen] = useState(false);
   const [focusedLibrary, setFocusedLibrary] = useState("none");
   const iconLoadMoreSentinelRef = useRef(null);
   const iconScrollContainerRef = useRef(null);
+  const imageLoadMoreSentinelRef = useRef(null);
+  const imageScrollContainerRef = useRef(null);
 
   const normalizedQuery = normalizeQueryText(query);
   const searching = normalizedQuery.length > 0;
@@ -327,8 +311,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     () => getLibraryByKind("icon", "all"),
     [getLibraryByKind]
   );
-  const gifLibrary = useMemo(
-    () => getLibraryByKind("gif", "all"),
+  const imageLibrary = useMemo(
+    () => getLibraryByKind("image", "all"),
     [getLibraryByKind]
   );
 
@@ -336,17 +320,23 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   const recentRail = useHorizontalScrollMeta(filteredRecents.length);
   const shapeRail = useHorizontalScrollMeta(shapeItems.length);
   const iconRail = useHorizontalScrollMeta(iconLibrary.length);
+  const imageRail = useHorizontalScrollMeta(imageLibrary.length);
 
   const queryResults = useMemo(() => {
-    if (!searching) return { shape: [], icon: [], gif: [] };
+    if (!searching) return { shape: [], icon: [], image: [], gif: [] };
     return {
       shape: groupedResults.shape,
       icon: groupedResults.icon,
+      image: groupedResults.image,
       gif: groupedResults.gif,
     };
   }, [groupedResults, searching]);
 
-  const hasQueryResults = queryResults.shape.length || queryResults.icon.length || queryResults.gif.length;
+  const hasQueryResults =
+    queryResults.shape.length ||
+    queryResults.icon.length ||
+    queryResults.image.length ||
+    queryResults.gif.length;
 
   useEffect(() => {
     if (focusedLibrary !== "icons" || !hasMore) return;
@@ -371,6 +361,30 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [focusedLibrary, hasMore, loadMore, loading, iconLibrary.length]);
+
+  useEffect(() => {
+    if (focusedLibrary !== "images" || !hasMoreDecor) return;
+    const sentinel = imageLoadMoreSentinelRef.current;
+    const scrollRoot = imageScrollContainerRef.current;
+    if (!sentinel || !scrollRoot || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (loadingDecor) return;
+        loadMoreDecor();
+      },
+      {
+        root: scrollRoot,
+        rootMargin: "220px 0px",
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [focusedLibrary, hasMoreDecor, loadMoreDecor, loadingDecor, imageLibrary.length]);
 
   const dispatchInsert = useCallback((detail) => {
     window.dispatchEvent(new CustomEvent("insertar-elemento", { detail }));
@@ -486,6 +500,53 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     [dispatchInsert, registerRecent]
   );
 
+  const insertDecorImage = useCallback(
+    (item) => {
+      const src = String(item?.src || "").trim();
+      if (!src) return;
+
+      const parsedWidth = Number(item?.width);
+      const parsedHeight = Number(item?.height);
+      const payload = {
+        id: `imagen-${Date.now().toString(36)}`,
+        tipo: "imagen",
+        src,
+      };
+
+      if (Number.isFinite(parsedWidth) && parsedWidth > 0) {
+        payload.ancho = Math.round(parsedWidth);
+      }
+      if (Number.isFinite(parsedHeight) && parsedHeight > 0) {
+        payload.alto = Math.round(parsedHeight);
+      }
+
+      dispatchInsert(payload);
+      registerRecent({
+        ...item,
+        kind: "image",
+        insertedAt: Date.now(),
+      });
+    },
+    [dispatchInsert, registerRecent]
+  );
+
+  const insertLibraryItem = useCallback(
+    (item) => {
+      if (item?.kind === "shape") {
+        insertShape(item);
+        return;
+      }
+
+      if (item?.kind === "image") {
+        insertDecorImage(item);
+        return;
+      }
+
+      insertMedia(item);
+    },
+    [insertDecorImage, insertMedia, insertShape]
+  );
+
   if (!abierto || !sidebarAbierta) return null;
 
   if (focusedLibrary === "shapes") {
@@ -502,7 +563,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2" aria-label="Formas en vista completa">
+        <div className="grid grid-cols-3 gap-1.5" aria-label="Formas en vista completa">
           {shapeItems.map((shape) => (
             <ShapeButton key={shape.id} item={shape} onInsert={insertShape} />
           ))}
@@ -528,7 +589,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
         <div ref={iconScrollContainerRef} className="min-h-0 flex-1 overflow-y-auto pr-0.5">
           {iconLibrary.length > 0 ? (
             <>
-              <div className="grid grid-cols-3 gap-2" aria-label="Iconos en vista completa">
+              <div className="grid grid-cols-3 gap-1.5" aria-label="Iconos en vista completa">
                 {iconLibrary.map((item) => (
                   <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
                 ))}
@@ -538,6 +599,45 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
                   <div ref={iconLoadMoreSentinelRef} className="h-1 w-full" aria-hidden="true" />
                   <p className="text-center text-[11px] text-slate-500">
                     {loading ? "Cargando mas iconos..." : "Desliza para cargar mas iconos automaticamente"}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <EmptyHint />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (focusedLibrary === "images") {
+    return (
+      <div className="w-full h-full min-h-0 flex flex-col gap-1.5 pb-0">
+        <div className="shrink-0 flex items-center justify-between py-0">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Imagenes</h3>
+          <button
+            type="button"
+            onClick={() => setFocusedLibrary("none")}
+            className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Volver
+          </button>
+        </div>
+
+        <div ref={imageScrollContainerRef} className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+          {imageLibrary.length > 0 ? (
+            <>
+              <div className="grid grid-cols-3 gap-1.5" aria-label="Imagenes en vista completa">
+                {imageLibrary.map((item) => (
+                  <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
+                ))}
+              </div>
+              {hasMoreDecor ? (
+                <div className="space-y-1 pb-1">
+                  <div ref={imageLoadMoreSentinelRef} className="h-1 w-full" aria-hidden="true" />
+                  <p className="text-center text-[11px] text-slate-500">
+                    {loadingDecor ? "Cargando mas imagenes..." : "Desliza para cargar mas imagenes automaticamente"}
                   </p>
                 </div>
               ) : null}
@@ -565,13 +665,12 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
         </div>
 
         {filteredRecents.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2" aria-label="Recientes en vista completa">
+          <div className="grid grid-cols-3 gap-1.5" aria-label="Recientes en vista completa">
             {filteredRecents.map((item, index) => (
               <RecentButton
                 key={`${item.id}-${item.src || item.figura || "recent"}-${index}`}
                 item={item}
-                onInsertShape={insertShape}
-                onInsertMedia={insertMedia}
+                onInsert={insertLibraryItem}
               />
             ))}
           </div>
@@ -589,7 +688,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Busca formas, iconos o gifs"
+            placeholder="Busca formas, iconos o imagenes"
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-500"
           />
         </label>
@@ -621,8 +720,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
               <RecentButton
                 key={`${item.id}-${item.src || item.figura || "recent"}-${index}`}
                 item={item}
-                onInsertShape={insertShape}
-                onInsertMedia={insertMedia}
+                onInsert={insertLibraryItem}
               />
             ))}
           </HorizontalRail>
@@ -682,7 +780,40 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
               rightLabel="Ver iconos siguientes"
             >
               {iconLibrary.map((item) => (
-                <IconRailButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
+                <IconRailButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
+              ))}
+            </HorizontalRail>
+          ) : (
+            <EmptyHint />
+          )}
+        </section>
+      ) : null}
+
+      {!searching ? (
+        <section className="space-y-0 rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/65 px-1 py-1 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between px-1 py-0.5">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Imagenes</h3>
+            <button
+              type="button"
+              onClick={() => setFocusedLibrary("images")}
+              className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Ver mas
+            </button>
+          </div>
+
+          {imageLibrary.length > 0 ? (
+            <HorizontalRail
+              scrollerRef={imageRail.scrollerRef}
+              canScrollLeft={imageRail.scrollMeta.left}
+              canScrollRight={imageRail.scrollMeta.right}
+              onScrollLeft={() => imageRail.scrollByStep(-1)}
+              onScrollRight={() => imageRail.scrollByStep(1)}
+              leftLabel="Ver imagenes anteriores"
+              rightLabel="Ver imagenes siguientes"
+            >
+              {imageLibrary.map((item) => (
+                <IconRailButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
               ))}
             </HorizontalRail>
           ) : (
@@ -700,7 +831,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
       {searching ? (
         <>
           {queryResults.shape.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2" aria-label="Resultados formas">
+            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados formas">
               {queryResults.shape.map((shape) => (
                 <ShapeButton key={shape.id} item={shape} onInsert={insertShape} />
               ))}
@@ -708,17 +839,25 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
           ) : null}
 
           {queryResults.icon.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2" aria-label="Resultados iconos">
+            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados iconos">
               {queryResults.icon.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
+                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
+              ))}
+            </div>
+          ) : null}
+
+          {queryResults.image.length > 0 ? (
+            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados imagenes">
+              {queryResults.image.map((item) => (
+                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
               ))}
             </div>
           ) : null}
 
           {queryResults.gif.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2" aria-label="Resultados gifs">
+            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados gifs">
               {queryResults.gif.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
+                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
               ))}
             </div>
           ) : null}
@@ -727,8 +866,8 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
         </>
       ) : (
         <>
-          {loading && libraryItems.length === 0 ? (
-            <div className="grid grid-cols-3 gap-2">
+          {(loading || loadingDecor) && libraryItems.length === 0 && imageLibrary.length === 0 ? (
+            <div className="grid grid-cols-3 gap-1.5">
               {Array.from({ length: 6 }).map((_, idx) => (
                 <div
                   key={`loading-library-${idx}`}
@@ -738,36 +877,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
             </div>
           ) : null}
 
-          <div className="space-y-0.5">
-            <AccordionSection
-              title={`GIFs (${gifLibrary.length})`}
-              open={gifsOpen}
-              onToggle={() => setGifsOpen((value) => !value)}
-            >
-              {gifLibrary.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {gifLibrary.map((item) => (
-                    <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertMedia} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyHint />
-              )}
-            </AccordionSection>
-          </div>
-
-          {hasMore && gifsOpen ? (
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={loading}
-              className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {loading ? "Cargando..." : "Cargar mas elementos"}
-            </button>
-          ) : null}
-
-          {!loading && iconLibrary.length === 0 && gifLibrary.length === 0 ? (
+          {!loading && !loadingDecor && iconLibrary.length === 0 && imageLibrary.length === 0 ? (
             <EmptyHint />
           ) : null}
         </>

@@ -14,6 +14,7 @@ import {
 } from "@/domain/elements/catalog";
 import {
   fetchFirestoreCatalogPage,
+  fetchFirestoreDecorCatalogPage,
   fetchFirestorePopularCatalog,
   fetchStorageCatalogPage,
 } from "@/domain/elements/service";
@@ -21,6 +22,7 @@ import {
 const RECENT_STORAGE_KEY = "editor:elements:recent:v1";
 const RECENT_LIMIT = 24;
 const FIRESTORE_PAGE_SIZE = 96;
+const DECOR_PAGE_SIZE = 96;
 const STORAGE_PAGE_SIZE = 72;
 const CATALOG_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_AUTOLOAD_MAX_ATTEMPTS = 12;
@@ -35,6 +37,9 @@ let catalogCache = {
   hasMore: true,
   firestoreCursor: null,
   storageToken: undefined,
+  decorBaseItems: [],
+  hasMoreDecor: true,
+  decorCursor: null,
 };
 
 function readRecentItems() {
@@ -71,6 +76,16 @@ function normalizeRawCatalogItems(rawItems = []) {
     (Array.isArray(rawItems) ? rawItems : [])
       .map((raw, index) => normalizeCatalogIconItem(raw, raw?.id || `raw-${index}`))
       .filter(Boolean)
+      .filter((item) => item.kind === "icon" || item.kind === "gif")
+  );
+}
+
+function normalizeRawDecorItems(rawItems = []) {
+  return dedupeCatalogItems(
+    (Array.isArray(rawItems) ? rawItems : [])
+      .map((raw, index) => normalizeCatalogIconItem(raw, raw?.id || `decor-${index}`))
+      .filter(Boolean)
+      .filter((item) => item.kind === "image")
   );
 }
 
@@ -82,18 +97,23 @@ function toRecentIdentity(item) {
 
 export default function useElementCatalog() {
   const loadingRef = useRef(false);
+  const decorLoadingRef = useRef(false);
   const initializedRef = useRef(false);
   const searchAutoloadStateRef = useRef({ query: "", attempts: 0 });
   const firestoreCursorRef = useRef(null);
   const storageTokenRef = useRef(undefined);
+  const decorCursorRef = useRef(null);
   const sourceRef = useRef("firestore");
 
   const [query, setQuery] = useState("");
   const [libraryBaseItems, setLibraryBaseItems] = useState([]);
   const [popularBaseItems, setPopularBaseItems] = useState([]);
+  const [decorBaseItems, setDecorBaseItems] = useState([]);
   const [recentItems, setRecentItems] = useState(() => readRecentItems());
   const [hasMore, setHasMore] = useState(true);
+  const [hasMoreDecor, setHasMoreDecor] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [loadingDecor, setLoadingDecor] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState("firestore");
 
@@ -118,16 +138,19 @@ export default function useElementCatalog() {
     const now = Date.now();
     const cacheIsFresh =
       Array.isArray(catalogCache.libraryBaseItems) &&
-      catalogCache.libraryBaseItems.length > 0 &&
+      Array.isArray(catalogCache.decorBaseItems) &&
       now - (catalogCache.updatedAt || 0) < CATALOG_CACHE_TTL_MS;
     if (cacheIsFresh) {
-      setLibraryBaseItems(catalogCache.libraryBaseItems);
+      setLibraryBaseItems(catalogCache.libraryBaseItems || []);
       setPopularBaseItems(catalogCache.popularBaseItems || []);
+      setDecorBaseItems(catalogCache.decorBaseItems || []);
       setHasMore(Boolean(catalogCache.hasMore));
+      setHasMoreDecor(Boolean(catalogCache.hasMoreDecor));
       setSource(catalogCache.source || "firestore");
       sourceRef.current = catalogCache.source || "firestore";
       firestoreCursorRef.current = catalogCache.firestoreCursor || null;
       storageTokenRef.current = catalogCache.storageToken;
+      decorCursorRef.current = catalogCache.decorCursor || null;
       setError("");
       return;
     }
@@ -135,6 +158,11 @@ export default function useElementCatalog() {
     loadingRef.current = true;
     setLoading(true);
     setError("");
+
+    const decorTask = fetchFirestoreDecorCatalogPage({
+      pageSize: DECOR_PAGE_SIZE,
+      cursor: null,
+    }).catch(() => null);
 
     try {
       const [firstPage, popularPage] = await Promise.all([
@@ -146,9 +174,10 @@ export default function useElementCatalog() {
       const mergedLibrary = sortLibraryItemsDefault(
         mergeCatalogItems(normalizedPage, normalizedPopular)
       );
+      const resolvedPopular = resolvePopularItems(mergedLibrary, normalizedPopular);
 
       setLibraryBaseItems(mergedLibrary);
-      setPopularBaseItems(resolvePopularItems(mergedLibrary, normalizedPopular));
+      setPopularBaseItems(resolvedPopular);
       firestoreCursorRef.current = firstPage.cursor || null;
       storageTokenRef.current = undefined;
       sourceRef.current = "firestore";
@@ -157,7 +186,7 @@ export default function useElementCatalog() {
       saveCacheSnapshot({
         source: "firestore",
         libraryBaseItems: mergedLibrary,
-        popularBaseItems: resolvePopularItems(mergedLibrary, normalizedPopular),
+        popularBaseItems: resolvedPopular,
         hasMore: Boolean(firstPage.hasMore),
         firestoreCursor: firstPage.cursor || null,
         storageToken: undefined,
@@ -166,7 +195,7 @@ export default function useElementCatalog() {
       if (!mergedLibrary.length) {
         throw new Error("Catalogo de Firestore vacio.");
       }
-    } catch (firestoreError) {
+    } catch {
       try {
         const fallbackPage = await fetchStorageCatalogPage({
           pageSize: STORAGE_PAGE_SIZE,
@@ -190,7 +219,7 @@ export default function useElementCatalog() {
           firestoreCursor: null,
           storageToken: fallbackPage.nextPageToken || undefined,
         });
-      } catch (storageError) {
+      } catch {
         setLibraryBaseItems([]);
         setPopularBaseItems([]);
         firestoreCursorRef.current = null;
@@ -209,6 +238,28 @@ export default function useElementCatalog() {
         });
       }
     } finally {
+      const decorPage = await decorTask;
+      if (decorPage) {
+        const decorItems = sortLibraryItemsDefault(normalizeRawDecorItems(decorPage.items));
+        setDecorBaseItems(decorItems);
+        setHasMoreDecor(Boolean(decorPage.hasMore));
+        decorCursorRef.current = decorPage.cursor || null;
+        saveCacheSnapshot({
+          decorBaseItems: decorItems,
+          hasMoreDecor: Boolean(decorPage.hasMore),
+          decorCursor: decorPage.cursor || null,
+        });
+      } else {
+        setDecorBaseItems([]);
+        setHasMoreDecor(false);
+        decorCursorRef.current = null;
+        saveCacheSnapshot({
+          decorBaseItems: [],
+          hasMoreDecor: false,
+          decorCursor: null,
+        });
+      }
+
       loadingRef.current = false;
       setLoading(false);
     }
@@ -263,7 +314,7 @@ export default function useElementCatalog() {
           return nextLibrary;
         });
       }
-    } catch (loadError) {
+    } catch {
       if (sourceRef.current === "firestore") {
         try {
           const fallbackPage = await fetchStorageCatalogPage({
@@ -302,6 +353,36 @@ export default function useElementCatalog() {
     }
   }, [hasMore, popularBaseItems, saveCacheSnapshot]);
 
+  const loadMoreDecor = useCallback(async () => {
+    if (decorLoadingRef.current || !hasMoreDecor) return;
+    decorLoadingRef.current = true;
+    setLoadingDecor(true);
+
+    try {
+      const nextPage = await fetchFirestoreDecorCatalogPage({
+        pageSize: DECOR_PAGE_SIZE,
+        cursor: decorCursorRef.current,
+      });
+      const normalizedNext = normalizeRawDecorItems(nextPage.items);
+      decorCursorRef.current = nextPage.cursor || null;
+      setHasMoreDecor(Boolean(nextPage.hasMore));
+      setDecorBaseItems((previous) => {
+        const nextLibrary = sortLibraryItemsDefault(mergeCatalogItems(previous, normalizedNext));
+        saveCacheSnapshot({
+          decorBaseItems: nextLibrary,
+          hasMoreDecor: Boolean(nextPage.hasMore),
+          decorCursor: nextPage.cursor || null,
+        });
+        return nextLibrary;
+      });
+    } catch {
+      setHasMoreDecor(false);
+    } finally {
+      decorLoadingRef.current = false;
+      setLoadingDecor(false);
+    }
+  }, [hasMoreDecor, saveCacheSnapshot]);
+
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
@@ -339,14 +420,24 @@ export default function useElementCatalog() {
     [libraryItems, popularBaseItems, resolvePopularItems]
   );
 
+  const decorItems = useMemo(
+    () => sortLibraryItemsDefault(dedupeCatalogItems(decorBaseItems)),
+    [decorBaseItems]
+  );
+
+  const combinedLibraryItems = useMemo(
+    () => sortLibraryItemsDefault(mergeCatalogItems(libraryItems, decorItems)),
+    [libraryItems, decorItems]
+  );
+
   const categories = useMemo(
-    () => buildOrderedCategories(mergeCatalogItems(libraryItems, popularItems)),
-    [libraryItems, popularItems]
+    () => buildOrderedCategories(mergeCatalogItems(combinedLibraryItems, popularItems)),
+    [combinedLibraryItems, popularItems]
   );
 
   const allSearchableItems = useMemo(
-    () => dedupeCatalogItems([...shapeItems, ...libraryItems]),
-    [shapeItems, libraryItems]
+    () => dedupeCatalogItems([...shapeItems, ...combinedLibraryItems]),
+    [shapeItems, combinedLibraryItems]
   );
 
   const normalizedQuery = useMemo(() => normalizeQueryText(query), [query]);
@@ -356,6 +447,7 @@ export default function useElementCatalog() {
       return {
         shape: [],
         icon: [],
+        image: [],
         gif: [],
       };
     }
@@ -365,6 +457,7 @@ export default function useElementCatalog() {
     return {
       shape: grouped.shape.slice(0, 36),
       icon: grouped.icon.slice(0, 120),
+      image: grouped.image.slice(0, 120),
       gif: grouped.gif.slice(0, 80),
     };
   }, [allSearchableItems, normalizedQuery]);
@@ -379,15 +472,17 @@ export default function useElementCatalog() {
 
   const categoryMatchCount = useMemo(() => {
     if (!normalizedQuery) return 0;
-    return libraryItems.reduce((total, item) => {
-      if (!item || (item.kind !== "icon" && item.kind !== "gif")) return total;
+    return combinedLibraryItems.reduce((total, item) => {
+      if (!item || (item.kind !== "icon" && item.kind !== "gif" && item.kind !== "image")) {
+        return total;
+      }
       const itemCategories = Array.isArray(item.categories) ? item.categories : [];
       const matched = itemCategories.some(
         (value) => value === normalizedQuery || value.includes(normalizedQuery) || normalizedQuery.includes(value)
       );
       return matched ? total + 1 : total;
     }, 0);
-  }, [libraryItems, normalizedQuery]);
+  }, [combinedLibraryItems, normalizedQuery]);
 
   useEffect(() => {
     if (!normalizedQuery) {
@@ -399,20 +494,27 @@ export default function useElementCatalog() {
       searchAutoloadStateRef.current = { query: normalizedQuery, attempts: 0 };
     }
 
-    const mediaMatches = groupedResults.icon.length + groupedResults.gif.length;
+    const mediaMatches = groupedResults.icon.length + groupedResults.image.length + groupedResults.gif.length;
     const canAttemptMore = searchAutoloadStateRef.current.attempts < SEARCH_AUTOLOAD_MAX_ATTEMPTS;
     const shouldCompleteCategory = queryMatchesKnownCategory && categoryMatchCount < SEARCH_CATEGORY_TARGET_MATCHES;
-    const shouldAutoload = hasMore && canAttemptMore && !loadingRef.current && (mediaMatches === 0 || shouldCompleteCategory);
+    const shouldAutoloadIcons =
+      hasMore && canAttemptMore && !loadingRef.current && (mediaMatches === 0 || shouldCompleteCategory);
+    const shouldAutoloadDecor =
+      hasMoreDecor && canAttemptMore && !decorLoadingRef.current && (groupedResults.image.length === 0 || shouldCompleteCategory);
 
-    if (!shouldAutoload) return;
+    if (!shouldAutoloadIcons && !shouldAutoloadDecor) return;
 
     const timerId = window.setTimeout(() => {
-      if (loadingRef.current || !hasMore) return;
+      if (shouldAutoloadIcons && !loadingRef.current && hasMore) {
+        loadMore();
+      }
+      if (shouldAutoloadDecor && !decorLoadingRef.current && hasMoreDecor) {
+        loadMoreDecor();
+      }
       searchAutoloadStateRef.current = {
         query: normalizedQuery,
         attempts: searchAutoloadStateRef.current.attempts + 1,
       };
-      loadMore();
     }, SEARCH_AUTOLOAD_DELAY_MS);
 
     return () => window.clearTimeout(timerId);
@@ -420,18 +522,21 @@ export default function useElementCatalog() {
     categoryMatchCount,
     groupedResults.gif.length,
     groupedResults.icon.length,
+    groupedResults.image.length,
     hasMore,
+    hasMoreDecor,
     loadMore,
+    loadMoreDecor,
     normalizedQuery,
     queryMatchesKnownCategory,
   ]);
 
   const getLibraryByKind = useCallback(
     (kind, category = "all") => {
-      const byKind = libraryItems.filter((item) => item.kind === kind);
+      const byKind = combinedLibraryItems.filter((item) => item.kind === kind);
       return filterByCategory(byKind, category);
     },
-    [libraryItems]
+    [combinedLibraryItems]
   );
 
   return {
@@ -446,6 +551,9 @@ export default function useElementCatalog() {
     hasMore,
     loadMore,
     loading,
+    hasMoreDecor,
+    loadMoreDecor,
+    loadingDecor,
     error,
     registerRecent,
     getLibraryByKind,

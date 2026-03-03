@@ -2993,8 +2993,10 @@ export default function CanvasEditor({
               const esPrimera = index === 0;
               const esUltima = index === seccionesOrdenadas.length - 1;
               const estaAnimando = seccionesAnimando.includes(seccion.id);
-              const sectionButtonBase =
-                "px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-2 focus-visible:ring-[#dccaf7]";
+              const sectionActionCompact = !isMobile;
+              const sectionButtonBase = sectionActionCompact
+                ? "h-8 w-8 rounded-lg text-xs font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-2 focus-visible:ring-[#dccaf7] inline-flex items-center justify-center"
+                : "px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-2 focus-visible:ring-[#dccaf7]";
               const sectionButtonDisabled =
                 "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 shadow-none";
               const sectionButtonPrimary =
@@ -3005,10 +3007,20 @@ export default function CanvasEditor({
                 "border-emerald-300 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-[0_10px_22px_rgba(5,150,105,0.28)] hover:-translate-y-[1px] hover:from-emerald-600 hover:to-emerald-700 hover:shadow-[0_14px_28px_rgba(5,150,105,0.36)]";
               const sectionButtonDanger =
                 "border-rose-300 bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-[0_10px_22px_rgba(225,29,72,0.28)] hover:-translate-y-[1px] hover:from-rose-600 hover:to-red-700 hover:shadow-[0_14px_28px_rgba(225,29,72,0.36)]";
+              const sectionIconClass = sectionActionCompact ? "w-4 h-4" : "w-3.5 h-3.5";
+              const sectionActionsStackClass = sectionActionCompact
+                ? "flex flex-col items-center gap-1.5 rounded-xl border border-[#e4d7f6] bg-white/95 p-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.14)] backdrop-blur"
+                : "flex flex-col gap-2";
+              const renderSectionActionContent = (IconComponent, label) => (
+                <span className={`inline-flex items-center ${sectionActionCompact ? "justify-center" : "gap-1.5"}`}>
+                  <IconComponent className={sectionIconClass} />
+                  {!sectionActionCompact ? label : null}
+                </span>
+              );
 
               const actionButtons = (
                 <>
-                  {/* Botón Subir */}
+                  {/* Boton Subir */}
                   <button
                     onClick={() =>
                       moverSeccionExternal({
@@ -3025,15 +3037,13 @@ export default function CanvasEditor({
                       ? sectionButtonDisabled
                       : sectionButtonPrimary
                       } ${estaAnimando ? "animate-pulse" : ""}`}
-                    title={esPrimera ? "Ya es la primera sección" : "Subir sección"}
+                    title={esPrimera ? "Ya es la primera seccion" : "Subir seccion"}
+                    aria-label="Subir seccion"
                   >
-                      <span className="inline-flex items-center gap-1.5">
-                        <MoveUp className="w-3.5 h-3.5" />
-                        Subir sección
-                      </span>
-                    </button>
+                    {renderSectionActionContent(MoveUp, "Subir seccion")}
+                  </button>
 
-                  {/* Botón Bajar */}
+                  {/* Boton Bajar */}
                   <button
                     onClick={() =>
                       moverSeccionExternal({
@@ -3050,15 +3060,13 @@ export default function CanvasEditor({
                       ? sectionButtonDisabled
                       : sectionButtonPrimary
                       } ${estaAnimando ? "animate-pulse" : ""}`}
-                    title={esUltima ? "Ya es la última sección" : "Bajar sección"}
+                    title={esUltima ? "Ya es la ultima seccion" : "Bajar seccion"}
+                    aria-label="Bajar seccion"
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <MoveDown className="w-3.5 h-3.5" />
-                      Bajar sección
-                    </span>
+                    {renderSectionActionContent(MoveDown, "Bajar seccion")}
                   </button>
 
-                  {/* Botón Añadir sección */}
+                  {/* Boton Anadir seccion */}
                   <button
                     onClick={handleCrearSeccion}
                     disabled={estaAnimando}
@@ -3066,38 +3074,45 @@ export default function CanvasEditor({
                       ? `${sectionButtonDisabled} animate-pulse`
                       : sectionButtonPrimary
                       }`}
-                    title="Añadir una nueva sección debajo"
+                    title="Anadir una nueva seccion debajo"
+                    aria-label="Anadir seccion"
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      Añadir sección
-                    </span>
+                    {renderSectionActionContent(PlusCircle, "Anadir seccion")}
                   </button>
 
-                  <div
-                    className={`${sectionButtonBase} ${sectionButtonNeutral} flex items-center justify-between gap-2`}
-                    title="Cambiar color de fondo de esta sección"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-3.5 w-3.5 rounded border border-white/80 shadow-sm"
-                        style={{ background: toCssBackground(seccion.fondo, "#ffffff") }}
-                      />
-                      Fondo sección
-                    </span>
+                  {sectionActionCompact ? (
                     <SelectorColorSeccion
                       seccion={seccion}
+                      compact
                       disabled={estaAnimando || isDeletingSection}
                       onChange={(id, color) => cambiarColorFondoSeccion(id, color)}
                     />
-                  </div>
+                  ) : (
+                    <div
+                      className={`${sectionButtonBase} ${sectionButtonNeutral} flex items-center justify-between gap-2`}
+                      title="Cambiar color de fondo de esta seccion"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-3.5 w-3.5 rounded border border-white/80 shadow-sm"
+                          style={{ background: toCssBackground(seccion.fondo, "#ffffff") }}
+                        />
+                        Fondo seccion
+                      </span>
+                      <SelectorColorSeccion
+                        seccion={seccion}
+                        disabled={estaAnimando || isDeletingSection}
+                        onChange={(id, color) => cambiarColorFondoSeccion(id, color)}
+                      />
+                    </div>
+                  )}
 
                   {(() => {
                     const modoSeccion = normalizarAltoModo(seccion.altoModo);
                     const esPantalla = modoSeccion === "pantalla";
 
                     return (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className={sectionActionCompact ? "flex flex-col items-center gap-1.5" : "flex flex-wrap items-center gap-2"}>
                         {/* Toggle Pantalla completa */}
                         <button
                           onClick={() => togglePantallaCompletaSeccion(seccion.id)}
@@ -3105,15 +3120,16 @@ export default function CanvasEditor({
                             ? sectionButtonPrimary
                             : sectionButtonNeutral
                             }`}
-                          title="Hace que esta sección sea de pantalla completa (100vh) al publicar"
+                          title="Pantalla completa de la seccion"
+                          aria-label={esPantalla ? "Pantalla completa activada" : "Pantalla completa desactivada"}
                         >
-                          <span className="inline-flex items-center gap-1.5">
-                            <Monitor className="w-3.5 h-3.5" />
-                            {esPantalla ? "Pantalla completa: ON" : "Pantalla completa: OFF"}
-                          </span>
+                          {renderSectionActionContent(
+                            Monitor,
+                            esPantalla ? "Pantalla completa: ON" : "Pantalla completa: OFF"
+                          )}
                         </button>
 
-                        {/* Botón Desanclar fondo */}
+                        {/* Boton Desanclar fondo */}
                         {seccion.fondoTipo === "imagen" && (
                           <button
                             onClick={() =>
@@ -3128,11 +3144,9 @@ export default function CanvasEditor({
                             }
                             className={`${sectionButtonBase} ${sectionButtonNeutral}`}
                             title="Desanclar imagen de fondo"
+                            aria-label="Desanclar imagen de fondo"
                           >
-                            <span className="inline-flex items-center gap-1.5">
-                              <Unlink2 className="w-3.5 h-3.5" />
-                              Desanclar fondo
-                            </span>
+                            {renderSectionActionContent(Unlink2, "Desanclar fondo")}
                           </button>
                         )}
 
@@ -3149,6 +3163,7 @@ export default function CanvasEditor({
                                 : sectionButtonNeutral
                             }`}
                             title="Modo mover fondo en mobile"
+                            aria-label="Modo mover fondo"
                           >
                             {mobileBackgroundEditSectionId === seccion.id
                               ? "Mover fondo: ON"
@@ -3159,7 +3174,7 @@ export default function CanvasEditor({
                     );
                   })()}
 
-                  {/* Botón Guardar como plantilla */}
+                  {/* Boton Guardar como plantilla */}
                   {canManageSite && (
                     <button
                       onClick={() =>
@@ -3175,16 +3190,14 @@ export default function CanvasEditor({
                         ? sectionButtonDisabled
                         : sectionButtonSuccess
                         } ${estaAnimando ? "animate-pulse" : ""}`}
-                      title="Guardar esta sección como plantilla"
+                      title="Guardar esta seccion como plantilla"
+                      aria-label="Guardar seccion como plantilla"
                     >
-                      <span className="inline-flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5" />
-                        Plantilla
-                      </span>
+                      {renderSectionActionContent(Layers, "Plantilla")}
                     </button>
                   )}
 
-                  {/* Botón Borrar sección */}
+                  {/* Boton Borrar seccion */}
                   <button
                     onClick={() => {
                       if (isMobile) {
@@ -3197,12 +3210,10 @@ export default function CanvasEditor({
                       ? sectionButtonDisabled
                       : sectionButtonDanger
                       } ${estaAnimando || isDeletingSection ? "animate-pulse" : ""}`}
-                    title="Borrar esta sección y todos sus elementos"
+                    title="Borrar esta seccion y todos sus elementos"
+                    aria-label="Borrar seccion"
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Borrar sección
-                    </span>
+                    {renderSectionActionContent(Trash2, "Borrar seccion")}
                   </button>
                 </>
               );
@@ -3221,7 +3232,7 @@ export default function CanvasEditor({
                       type="button"
                       onClick={() => setMobileSectionActionsOpen((prev) => !prev)}
                       className="flex h-9 w-9 items-center justify-center rounded-full border border-[#ccb6ef] bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6737b3] text-white shadow-[0_10px_22px_rgba(119,61,190,0.35)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#7f4fc5] hover:via-[#6f3bbc] hover:to-[#5f31a8] hover:shadow-[0_14px_28px_rgba(119,61,190,0.42)]"
-                      title="Acciones de sección"
+                      title="Acciones de seccion"
                     >
                       {mobileSectionActionsOpen ? (
                         <ChevronUp className="w-4 h-4" />
@@ -3241,15 +3252,17 @@ export default function CanvasEditor({
                 );
               }
 
+              const desktopPanelWidth = sectionActionCompact ? 56 : 260;
+
               return (
                 <div
                   key={`orden-${seccion.id}`}
-                  className="absolute flex flex-col gap-2"
+                  className={`absolute ${sectionActionsStackClass}`}
                   style={{
                     top: offsetY + 20,
-                    right: -150,
+                    right: sectionActionCompact ? 10 : -150,
                     zIndex: 25,
-                    maxWidth: 260,
+                    maxWidth: sectionActionCompact ? desktopPanelWidth : 260,
                   }}
                 >
                   {actionButtons}

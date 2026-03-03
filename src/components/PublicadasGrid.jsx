@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -35,6 +37,12 @@ import {
   toMs,
 } from "@/domain/publications/state";
 import { transitionPublishedInvitationState } from "@/domain/publications/service";
+import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
+import {
+  getPublicationPreview,
+  resolvePublicationDraftLookupSlug,
+  resolvePublicationEditableDraftSlug,
+} from "@/domain/publications/preview";
 
 function isPermissionDeniedError(error) {
   const code = String(error?.code || "").toLowerCase();
@@ -65,14 +73,60 @@ function normalizeHistoricSummary(rawSummary) {
   };
 }
 
-function resolveEditableDraftSlug(data) {
-  const candidates = [data?.borradorSlug, data?.borradorId, data?.draftSlug];
-  for (const value of candidates) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
+function getPublicationItemKey(source, id) {
+  const safeSource = typeof source === "string" && source.trim() ? source.trim() : "active";
+  const safeId = typeof id === "string" ? id.trim() : String(id || "").trim();
+  return `${safeSource}:${safeId}`;
+}
+
+async function resolveDraftPreviewFallbackByItemKey(items = []) {
+  const itemKeyToDraftSlug = new Map();
+
+  items.forEach((item) => {
+    const hasPreview = getPublicationPreview(item);
+    if (hasPreview) return;
+
+    const fallbackSlug = typeof item?.id === "string" ? item.id.trim() : "";
+    const draftSlug = resolvePublicationDraftLookupSlug(item, fallbackSlug);
+    if (!draftSlug) return;
+
+    const itemKey = getPublicationItemKey(item?.source, item?.id);
+    itemKeyToDraftSlug.set(itemKey, draftSlug);
+  });
+
+  const uniqueDraftSlugs = [...new Set(itemKeyToDraftSlug.values())];
+  if (!uniqueDraftSlugs.length) return new Map();
+
+  const draftPreviewBySlug = new Map();
+
+  await Promise.all(
+    uniqueDraftSlugs.map(async (draftSlug) => {
+      try {
+        const draftSnap = await getDoc(doc(db, "borradores", draftSlug));
+        if (!draftSnap.exists()) return;
+
+        const draftData = draftSnap.data() || {};
+        const fallbackPreview =
+          getDraftPreviewCandidates(draftData, { includePlaceholder: false })[0] || "";
+
+        if (fallbackPreview) {
+          draftPreviewBySlug.set(draftSlug, fallbackPreview);
+        }
+      } catch {
+        // Ignoramos fallos individuales para no bloquear la carga.
+      }
+    })
+  );
+
+  const fallbackByItemKey = new Map();
+  itemKeyToDraftSlug.forEach((draftSlug, itemKey) => {
+    const preview = draftPreviewBySlug.get(draftSlug) || "";
+    if (preview) {
+      fallbackByItemKey.set(itemKey, preview);
     }
-  }
-  return "";
+  });
+
+  return fallbackByItemKey;
 }
 
 function buildHistoricSummaryCards(summary) {
@@ -212,7 +266,20 @@ export default function PublicadasGrid({ usuario }) {
           };
         });
 
-        setItems([...activeDocs, ...historyDocs]);
+        const mergedItems = [...activeDocs, ...historyDocs];
+        const fallbackPreviewByItemKey =
+          await resolveDraftPreviewFallbackByItemKey(mergedItems);
+
+        setItems(
+          mergedItems.map((item) => {
+            const itemKey = getPublicationItemKey(item.source, item.id);
+            const fallbackPreview = fallbackPreviewByItemKey.get(itemKey) || "";
+            return {
+              ...item,
+              portada: getPublicationPreview(item) || fallbackPreview || null,
+            };
+          })
+        );
       } catch (fetchError) {
         setItems([]);
         setError(fetchError?.message || "Error al cargar publicaciones");
@@ -271,7 +338,7 @@ export default function PublicadasGrid({ usuario }) {
           (typeof item.slug === "string" && item.slug.trim()) ||
           (item.source === "active" ? String(item.id || "").trim() : ""),
         nombre: item.nombre || item.slug || "(sin nombre)",
-        portada: item.portada || null,
+        portada: getPublicationPreview(item) || null,
         url: isFinalized || !status.isActive ? "" : item.urlPublica || "",
         publicadaEn,
         fechaEvento,
@@ -282,7 +349,7 @@ export default function PublicadasGrid({ usuario }) {
         isPaused: status.isPaused,
         isTrashed: status.isTrashed,
         confirmados,
-        borradorSlug: resolveEditableDraftSlug(item),
+        borradorSlug: resolvePublicationEditableDraftSlug(item),
         rsvp: item.rsvp || null,
         rsvpSummary: summary,
         sortMs,

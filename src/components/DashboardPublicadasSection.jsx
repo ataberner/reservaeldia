@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 import {
   Image as ImageIcon,
   Pencil,
@@ -14,6 +23,12 @@ import {
   toMs,
 } from "@/domain/publications/state";
 import { transitionPublishedInvitationState } from "@/domain/publications/service";
+import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
+import {
+  getPublicationPreview,
+  resolvePublicationDraftLookupSlug,
+  resolvePublicationEditableDraftSlug,
+} from "@/domain/publications/preview";
 
 const HOME_PUBLICATIONS_LIMIT = 10;
 const PUBLICADAS_CARD_GRID_CLASS =
@@ -35,28 +50,64 @@ function formatDate(value) {
   }).format(new Date(ms));
 }
 
-function getPreview(item) {
-  const options = [
-    item?.portada,
-    item?.thumbnailUrl,
-    item?.thumbnailurl,
-    item?.thumbnail_url,
-  ].filter((value) => typeof value === "string" && value.trim());
-
-  return options[0] || "";
+function getPublicationItemKey(source, id) {
+  const safeSource = typeof source === "string" && source.trim() ? source.trim() : "active";
+  const safeId = typeof id === "string" ? id.trim() : String(id || "").trim();
+  return `${safeSource}:${safeId}`;
 }
 
-function resolveEditableDraftSlug(data) {
-  const candidates = [data?.borradorSlug, data?.borradorId, data?.draftSlug];
-  for (const value of candidates) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
+async function resolveDraftPreviewFallbackByItemKey(items = []) {
+  const itemKeyToDraftSlug = new Map();
+
+  items.forEach((item) => {
+    const hasPreview = getPublicationPreview(item?.data);
+    if (hasPreview) return;
+
+    const fallbackSlug =
+      typeof item?.id === "string" && item.id.trim() ? item.id.trim() : "";
+    const draftSlug = resolvePublicationDraftLookupSlug(item?.data, fallbackSlug);
+    if (!draftSlug) return;
+
+    const itemKey = getPublicationItemKey(item?.source, item?.id);
+    itemKeyToDraftSlug.set(itemKey, draftSlug);
+  });
+
+  const uniqueDraftSlugs = [...new Set(itemKeyToDraftSlug.values())];
+  if (!uniqueDraftSlugs.length) return new Map();
+
+  const draftPreviewBySlug = new Map();
+
+  await Promise.all(
+    uniqueDraftSlugs.map(async (draftSlug) => {
+      try {
+        const draftSnap = await getDoc(doc(db, "borradores", draftSlug));
+        if (!draftSnap.exists()) return;
+
+        const draftData = draftSnap.data() || {};
+        const fallbackPreview =
+          getDraftPreviewCandidates(draftData, { includePlaceholder: false })[0] || "";
+
+        if (fallbackPreview) {
+          draftPreviewBySlug.set(draftSlug, fallbackPreview);
+        }
+      } catch {
+        // Ignoramos fallos individuales para no bloquear el listado.
+      }
+    })
+  );
+
+  const fallbackByItemKey = new Map();
+  itemKeyToDraftSlug.forEach((draftSlug, itemKey) => {
+    const preview = draftPreviewBySlug.get(draftSlug) || "";
+    if (preview) {
+      fallbackByItemKey.set(itemKey, preview);
     }
-  }
-  return "";
+  });
+
+  return fallbackByItemKey;
 }
 
-function buildActiveItem(docItem, nowMs) {
+function buildActiveItem(docItem, nowMs, fallbackPreview = "") {
   const data = docItem.data() || {};
   const status = getPublicationStatus(data, nowMs);
   const dates = resolvePublicationDates(data);
@@ -72,9 +123,9 @@ function buildActiveItem(docItem, nowMs) {
     source: "active",
     publicSlug: docItem.id,
     nombre: data.nombre || data.slug || docItem.id,
-    portada: getPreview(data),
+    portada: getPublicationPreview(data) || fallbackPreview,
     url: status.isActive ? String(data.urlPublica || "").trim() : "",
-    borradorSlug: resolveEditableDraftSlug(data),
+    borradorSlug: resolvePublicationEditableDraftSlug(data),
     statusLabel: status.label,
     isActive: status.isActive,
     isPaused: status.isPaused,
@@ -88,7 +139,7 @@ function buildActiveItem(docItem, nowMs) {
   };
 }
 
-function buildHistoryItem(docItem) {
+function buildHistoryItem(docItem, fallbackPreview = "") {
   const data = docItem.data() || {};
   const dates = resolvePublicationDates(data);
   const sortMs =
@@ -102,9 +153,9 @@ function buildHistoryItem(docItem) {
       (typeof data.slug === "string" && data.slug.trim()) ||
       "",
     nombre: data.nombre || data.slug || "(sin nombre)",
-    portada: getPreview(data),
+    portada: getPublicationPreview(data) || fallbackPreview,
     url: "",
-    borradorSlug: resolveEditableDraftSlug(data),
+    borradorSlug: resolvePublicationEditableDraftSlug(data),
     statusLabel: "Finalizada",
     isActive: false,
     isPaused: false,
@@ -192,11 +243,44 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
           throw historyResult.reason;
         }
 
+        const rawPublicationItems = [
+          ...activeSnap.docs.map((docItem) => ({
+            id: docItem.id,
+            source: "active",
+            data: docItem.data() || {},
+          })),
+          ...(historySnap?.docs || []).map((docItem) => ({
+            id: docItem.id,
+            source: "history",
+            data: docItem.data() || {},
+          })),
+        ];
+
+        const fallbackPreviewByItemKey =
+          await resolveDraftPreviewFallbackByItemKey(rawPublicationItems);
+
         const activeItems = activeSnap.docs
-          .map((docItem) => buildActiveItem(docItem, nowMs))
+          .map((docItem) =>
+            buildActiveItem(
+              docItem,
+              nowMs,
+              fallbackPreviewByItemKey.get(
+                getPublicationItemKey("active", docItem.id)
+              ) || ""
+            )
+          )
           .filter((item) => !item.isTrashed);
 
-        const historyItems = historySnap ? historySnap.docs.map(buildHistoryItem) : [];
+        const historyItems = historySnap
+          ? historySnap.docs.map((docItem) =>
+              buildHistoryItem(
+                docItem,
+                fallbackPreviewByItemKey.get(
+                  getPublicationItemKey("history", docItem.id)
+                ) || ""
+              )
+            )
+          : [];
         const merged = [...activeItems, ...historyItems]
           .sort((a, b) => b.sortMs - a.sortMs)
           .slice(0, HOME_PUBLICATIONS_LIMIT);

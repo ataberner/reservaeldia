@@ -4939,6 +4939,20 @@ export default function CanvasEditor({
                       return;
                     }
 
+                    const textoActualRaw = String(objeto?.texto ?? "");
+                    const textoSinCambios = textoNuevoRaw === textoActualRaw;
+                    if (textoSinCambios) {
+                      inlineDebugLog("finish-noop-unchanged-text", {
+                        id: finishId,
+                        valueLength: textoNuevoRaw.length,
+                      });
+                      inlineCommitDebugRef.current = { id: null };
+                      inlineEditPreviewRef.current = { id: null, centerX: null };
+                      finishEdit();
+                      restoreElementDrag(finishId);
+                      return;
+                    }
+
                     const actualizado = [...objetos];
                     const patch = { texto: textoNuevoRaw };
 

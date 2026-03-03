@@ -325,6 +325,10 @@ export default function InlineTextEditor({
     nodeId: null,
     centerXDom: null,
   });
+  const inlineSessionRef = useRef({
+    editingId: null,
+    initialNormalizedValue: "",
+  });
   const DEBUG_MODE = isInlineDebugEnabled();
 
   const normalizedFinishMode = normalizeFinishMode(finishMode);
@@ -395,6 +399,14 @@ export default function InlineTextEditor({
     };
   }
 
+  const sessionChanged = inlineSessionRef.current.editingId !== editingId;
+  if (sessionChanged) {
+    inlineSessionRef.current = {
+      editingId: editingId || null,
+      initialNormalizedValue: String(value ?? "").replace(/\r\n/g, "\n"),
+    };
+  }
+
   const nodeProps = useMemo(() => {
     try {
       const getProp = (n, getterName, fallback) => {
@@ -455,6 +467,8 @@ export default function InlineTextEditor({
     totalScaleX;
   const rawValue = String(value ?? "");
   const normalizedValue = rawValue.replace(/\r\n/g, "\n");
+  const hasSessionValueChanged =
+    normalizedValue !== inlineSessionRef.current.initialNormalizedValue;
   const normalizedValueForSingleLine = normalizedValue.replace(/\n+$/g, "");
   const isSingleLine = !normalizedValue.includes("\n");
   const verticalInsetPx = 0;
@@ -503,12 +517,14 @@ export default function InlineTextEditor({
     normalizedValueForSingleLine,
   ]);
 
+  const shouldUseMeasuredWidth =
+    normalizedWidthMode === "measured" && hasSessionValueChanged;
   const effectiveTextWidth =
-    normalizedWidthMode === "measured" && Number.isFinite(measuredContentWidth)
+    shouldUseMeasuredWidth && Number.isFinite(measuredContentWidth)
       ? measuredContentWidth
       : baseTextWidth;
   const minWidthPx =
-    normalizedWidthMode === "measured" ? effectiveTextWidth : baseTextWidth;
+    shouldUseMeasuredWidth ? effectiveTextWidth : baseTextWidth;
 
   const cardWidth = effectiveTextWidth + PADDING_X * 2;
   let left;

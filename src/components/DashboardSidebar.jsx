@@ -1,8 +1,7 @@
-﻿// src/components/DashboardSidebar.jsx
+// src/components/DashboardSidebar.jsx
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
-import GaleriaDeImagenes from "./GaleriaDeImagenes";
 import ModalCrearSeccion from "./ModalCrearSeccion";
 import { FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -23,27 +22,24 @@ function safeContains(container, maybeNode) {
     return container.contains(maybeNode);
 }
 
-
-const ratioCell = (r) => (r === "4:3" ? 3 / 4 : r === "16:9" ? 9 / 16 : 1);
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_BAR_HEIGHT_PX = 74;
 const MOBILE_PANEL_GUTTER_PX = 8;
 const MOBILE_PANEL_BOTTOM_EXTRA_PX = 2;
+const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "contador", "efectos"]);
 
 
 export default function DashboardSidebar({
     modoSelector,
-    mostrarMiniToolbar,
     seccionActivaId,
 }) {
     // --------------------------
-    // ðŸ”¹ Estados internos del sidebar
+    // Estados internos del sidebar
     // --------------------------
     const [hoverSidebar, setHoverSidebar] = useState(false);
     const [fijadoSidebar, setFijadoSidebar] = useState(false);
-    const [mostrarGaleria, setMostrarGaleria] = useState(false);
-    const [imagenesSeleccionadas, setImagenesSeleccionadas] = useState(0);
-    const [modoFormasCompleto, setModoFormasCompleto] = useState(false);
+    const [, setMostrarGaleria] = useState(false);
+    const [, setImagenesSeleccionadas] = useState(0);
     const [isMobileViewport, setIsMobileViewport] = useState(
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
@@ -63,21 +59,20 @@ export default function DashboardSidebar({
     const sidebarAbierta = fijadoSidebar || hoverSidebar;
 
     // --------------------------
-    // ðŸ”¹ Reset de paneles al cerrar sidebar
+    // Reset de paneles al cerrar sidebar
     // --------------------------
     useEffect(() => {
         if (!sidebarAbierta) {
             setMostrarGaleria(false);
-            setModoFormasCompleto(false);
         }
     }, [sidebarAbierta]);
 
     // --------------------------
-    // ðŸ”¹ Cierra hover al hacer clic fuera
+    // Cierra hover al hacer clic fuera
     // --------------------------
     useEffect(() => {
         const handleClickFuera = (e) => {
-            const sidebar = document.querySelector("aside");
+            const sidebar = asideRef.current;
             if (!sidebar) return;
 
             if (!sidebar.contains(e.target) && !fijadoSidebar) {
@@ -99,9 +94,10 @@ export default function DashboardSidebar({
 
 
     const closeTimerRef = useRef(null);
+    const asideRef = useRef(null);
     const panelRef = useRef(null);
 
-    // Helpers para mostrar/ocultar con pequeÃ±o delay seguro
+    // Helpers para mostrar/ocultar con pequeno delay seguro
     const openPanel = (tipo) => {
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
         if (fijadoSidebar) return;
@@ -112,7 +108,7 @@ export default function DashboardSidebar({
     const scheduleClosePanel = () => {
         if (fijadoSidebar) return;
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-        // â³ delay mÃ¡s generoso
+        // Delay mas generoso
         closeTimerRef.current = setTimeout(() => setHoverSidebar(false), 250);
     };
 
@@ -143,10 +139,9 @@ export default function DashboardSidebar({
     useEffect(() => {
         if (!isMobileViewport) return;
 
-        const tabsConAutoCierre = new Set(["texto", "imagen", "contador", "efectos"]);
         const handleInsertElement = () => {
             if (!fijadoSidebar) return;
-            if (!botonActivo || !tabsConAutoCierre.has(botonActivo)) return;
+            if (!botonActivo || !TABS_WITH_AUTO_CLOSE_ON_INSERT.has(botonActivo)) return;
             closeSidebarPanel();
         };
 
@@ -180,10 +175,10 @@ export default function DashboardSidebar({
 
 
     // --------------------------
-    // ðŸ”¹ Crear nueva plantilla
+    // Crear nueva plantilla
     // --------------------------
     const ejecutarCrearPlantilla = useCallback(async () => {
-        const confirmar = confirm("Â¿QuerÃ©s crear la plantilla?");
+        const confirmar = confirm("Queres crear la plantilla?");
         if (!confirmar) return;
 
         const urlFondo =
@@ -220,7 +215,7 @@ export default function DashboardSidebar({
                             {
                                 id: "titulo1",
                                 tipo: "texto",
-                                texto: "Â¡Nos Casamos!",
+                                texto: "Nos Casamos!",
                                 x: 100,
                                 y: 200,
                                 fontSize: 20,
@@ -263,11 +258,11 @@ export default function DashboardSidebar({
                     },
                 });
 
-                console.log("âœ… Plantilla creada:", res.data);
-                alert("âœ… Plantilla creada con Ã©xito");
+                console.log("Plantilla creada:", res.data);
+                alert("Plantilla creada con exito");
             } catch (error) {
-                console.error("âŒ Error al crear la plantilla:", error);
-                alert("OcurriÃ³ un error al crear la plantilla");
+                console.error("Error al crear la plantilla:", error);
+                alert("Ocurrio un error al crear la plantilla");
             }
         };
     }, []);
@@ -281,41 +276,6 @@ export default function DashboardSidebar({
         return () =>
             window.removeEventListener("dashboard-crear-plantilla", handleCrearPlantillaDesdeHeader);
     }, [ejecutarCrearPlantilla]);
-
-
-
-    // ðŸ‘‡ handler para insertar el contador con defaults
-    const onAgregarCuentaRegresiva = useCallback(({ targetISO, preset }) => {
-        if (!seccionActivaId) {
-            alert("Selecciona una seccion antes de agregar la cuenta regresiva.");
-            return;
-        }
-
-        const rawPresetProps = (preset && preset.props) ? preset.props : {};
-        const {
-            x: _px,
-            y: _py,
-            width: _pw,
-            height: _ph,
-            fechaObjetivo: _pFecha,
-            targetISO: _pTargetISO,
-            tipo: _ptipo,
-            id: _pid,
-            ...presetPropsSafe
-        } = rawPresetProps;
-
-        window.dispatchEvent(new CustomEvent("insertar-elemento", {
-            detail: {
-                id: `count-${Date.now().toString(36)}`,
-                tipo: "countdown",
-                fechaObjetivo: targetISO,
-                presetId: preset?.id,
-                presetProps: presetPropsSafe,
-            }
-        }));
-    }, [seccionActivaId]);
-
-
 
     const insertarGaleria = useCallback((cfg) => {
         const rows = Math.max(1, cfg.rows || 1);
@@ -348,7 +308,7 @@ export default function DashboardSidebar({
         setFijadoSidebar((prevFijado) => {
             const mismoBoton = botonActivo === boton;
 
-            // Si ya estaba fijado y vuelvo a hacer click en el mismo botÃ³n => cierro
+            // Si ya estaba fijado y vuelvo a hacer click en el mismo boton => cierro
             if (prevFijado && mismoBoton) {
                 setHoverSidebar(false);
                 setBotonActivo(null);
@@ -358,7 +318,7 @@ export default function DashboardSidebar({
                 return false;
             }
 
-            // Si clic en otro botÃ³n => cambio el botÃ³n y dejo fijado
+            // Si clic en otro boton => cambio el boton y dejo fijado
             if (boton !== "rsvp") {
                 setRsvpForcePresetSelection(false);
             }
@@ -373,8 +333,8 @@ export default function DashboardSidebar({
     md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-16
     flex items-center justify-center md:flex-col md:items-center md:justify-start
     border-t border-[#e6dbf8] md:border-t-0 md:border-r md:border-[#e6dbf8]
-    bg-white/95 backdrop-blur-sm
-    shadow-[0_-6px_18px_rgba(15,23,42,0.08)] md:shadow-[8px_0_24px_rgba(15,23,42,0.08)]
+    bg-white md:bg-white/95 md:backdrop-blur-sm
+    shadow-[0_-4px_12px_rgba(15,23,42,0.08)] md:shadow-[8px_0_24px_rgba(15,23,42,0.08)]
     px-2 py-1.5 md:px-0 md:py-2
   `;
 
@@ -401,7 +361,7 @@ export default function DashboardSidebar({
 
 
     // --------------------------
-    // ðŸ”¹ No renderizar en modo selector
+    // No renderizar en modo selector
     // --------------------------
     if (modoSelector) return null;
 
@@ -422,6 +382,7 @@ export default function DashboardSidebar({
                 })}
 
             <aside
+                ref={asideRef}
                 data-dashboard-sidebar="true"
                 className={sidebarShellClass}
                 style={{ zIndex: 45, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
@@ -432,12 +393,12 @@ export default function DashboardSidebar({
                         className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("texto")}
                         onMouseLeave={(e) => {
-                            const panel = document.getElementById("sidebar-panel");
+                            const panel = panelRef.current;
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                     >
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("texto")}
                             className={getIconButtonClass("texto")}
                             title="Texto"
@@ -453,12 +414,12 @@ export default function DashboardSidebar({
                         className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("forma")}
                         onMouseLeave={(e) => {
-                            const panel = document.getElementById("sidebar-panel");
+                            const panel = panelRef.current;
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                     >
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("forma")}
                             className={getIconButtonClass("forma")}
                             title="Elementos"
@@ -474,12 +435,12 @@ export default function DashboardSidebar({
                         className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("imagen")}
                         onMouseLeave={(e) => {
-                            const panel = document.getElementById("sidebar-panel");
+                            const panel = panelRef.current;
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                     >
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("imagen")}
                             className={getIconButtonClass("imagen")}
                             title="Imagenes"
@@ -495,12 +456,12 @@ export default function DashboardSidebar({
                         className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("contador")}
                         onMouseLeave={(e) => {
-                            const panel = document.getElementById("sidebar-panel");
+                            const panel = panelRef.current;
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                     >
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("contador")}
                             className={getIconButtonClass("contador")}
                             title="Contador"
@@ -516,12 +477,12 @@ export default function DashboardSidebar({
                         className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("rsvp")}
                         onMouseLeave={(e) => {
-                            const panel = document.getElementById("sidebar-panel");
+                            const panel = panelRef.current;
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                     >
-                        <button
+                        <button type="button"
                             onClick={() => {
                                 setRsvpForcePresetSelection(false);
                                 alternarSidebarConBoton("rsvp");
@@ -540,12 +501,12 @@ export default function DashboardSidebar({
                         className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("efectos")}
                         onMouseLeave={(e) => {
-                            const panel = document.getElementById("sidebar-panel");
+                            const panel = panelRef.current;
                             if (safeContains(panel, e.relatedTarget)) return;
                             scheduleClosePanel();
                         }}
                     >
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("efectos")}
                             className={getIconButtonClass("efectos")}
                             title="Efectos"
@@ -561,7 +522,7 @@ export default function DashboardSidebar({
                 {/* Movil: barra horizontal inferior */}
                 <div className="grid w-full grid-cols-6 items-start gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
                     <div className="flex flex-col items-center gap-1">
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("texto")}
                             className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
                             title="Texto"
@@ -572,7 +533,7 @@ export default function DashboardSidebar({
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("forma")}
                             className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
                             title="Elementos"
@@ -583,7 +544,7 @@ export default function DashboardSidebar({
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("imagen")}
                             className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
                             title="Imagenes"
@@ -594,7 +555,7 @@ export default function DashboardSidebar({
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("contador")}
                             className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
                             title="Contador"
@@ -605,7 +566,7 @@ export default function DashboardSidebar({
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                        <button
+                        <button type="button"
                             onClick={() => {
                                 setRsvpForcePresetSelection(false);
                                 alternarSidebarConBoton("rsvp");
@@ -619,7 +580,7 @@ export default function DashboardSidebar({
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                        <button
+                        <button type="button"
                             onClick={() => alternarSidebarConBoton("efectos")}
                             className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}
                             title="Efectos"
@@ -643,18 +604,18 @@ export default function DashboardSidebar({
       transition-all duration-200 animate-slideUp
     "
                     onMouseEnter={() => {
-                        cancelClosePanel(); // ðŸš« cancela el cierre programado
+                        cancelClosePanel(); // Cancela el cierre programado
                         if (!fijadoSidebar) setHoverSidebar(true);
                     }}
                     onMouseLeave={(e) => {
-                        const aside = document.querySelector("aside");
+                        const aside = asideRef.current;
                         // Si el mouse se va hacia la barra lateral, no cierres
                         if (safeContains(aside, e.relatedTarget)) return;
-                        scheduleClosePanel(); // â³ programa cierre
+                        scheduleClosePanel(); // Programa cierre
                     }}
 
                     onMouseDown={(e) => {
-                        // ðŸ§  importante: si el usuario clickea dentro del panel, no cerramos
+                        // Importante: si el usuario clickea dentro del panel, no cerramos
                         e.stopPropagation();
                         if (!fijadoSidebar) setHoverSidebar(true);
                     }}
@@ -700,9 +661,9 @@ export default function DashboardSidebar({
                                 : undefined
                         }
                     >
-                        {/* ðŸ”¹ BotÃ³n para cerrar el panel */}
+                        {/* Boton para cerrar el panel */}
                         {fijadoSidebar && (
-                            <button
+                            <button type="button"
                                 onClick={closeSidebarPanel}
                                 className="
             absolute top-2 right-2 z-[60] flex h-8 w-8 items-center justify-center rounded-full
@@ -717,17 +678,16 @@ export default function DashboardSidebar({
                             </button>
                         )}
 
-                        {/* ðŸ”¹ Panel de Formas */}
+                        {/* Panel de Formas */}
                         {botonActivo === "forma" && (
                             <PanelDeFormas
                                 abierto={true}
-                                onCerrar={() => setModoFormasCompleto(false)}
                                 sidebarAbierta={sidebarAbierta}
                                 seccionActivaId={seccionActivaId}
                             />
                         )}
 
-                        {/* ðŸ”¹ MiniToolbar con todas las acciones */}
+                        {/* MiniToolbar con todas las acciones */}
                         <MiniToolbar
                             botonActivo={botonActivo}
                             onAgregarTitulo={() => {
@@ -781,10 +741,6 @@ export default function DashboardSidebar({
                                     })
                                 );
                             }}
-                            onAgregarForma={() => setModoFormasCompleto(true)}
-                            onAgregarImagen={() => setMostrarGaleria((prev) => !prev)}
-                            onAgregarCuentaRegresiva={onAgregarCuentaRegresiva}
-                            mostrarGaleria={mostrarGaleria}
                             setMostrarGaleria={setMostrarGaleria}
                             imagenes={imagenes}
                             imagenesEnProceso={imagenesEnProceso}
@@ -795,23 +751,6 @@ export default function DashboardSidebar({
                             seccionActivaId={seccionActivaId}
                             setImagenesSeleccionadas={setImagenesSeleccionadas}
                             abrirSelector={abrirSelector}
-                            onBorrarTodos={async () => {
-                                const confirmar = confirm("Â¿Seguro que querÃ©s borrar TODOS tus borradores?");
-                                if (!confirmar) return;
-                                try {
-                                    const functions = (await import("firebase/functions")).getFunctions();
-                                    const borrarTodos = (await import("firebase/functions")).httpsCallable(
-                                        functions,
-                                        "borrarTodosLosBorradores"
-                                    );
-                                    await borrarTodos();
-                                    alert("âœ… Todos los borradores fueron eliminados.");
-                                    window.location.reload();
-                                } catch (error) {
-                                    console.error("âŒ Error al borrar todos los borradores", error);
-                                    alert("No se pudieron borrar los borradores.");
-                                }
-                            }}
                             onInsertarGaleria={insertarGaleria}
                             rsvpForcePresetSelection={rsvpForcePresetSelection}
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}
@@ -830,4 +769,5 @@ export default function DashboardSidebar({
         </>
     );
 }
+
 

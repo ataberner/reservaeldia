@@ -20,6 +20,8 @@ export default function useEditorWindowBridge({
   historialLength,
   futurosLength,
   stageRef,
+  getTemplateAuthoringSnapshot,
+  getTemplateAuthoringStatus,
 }) {
   const mergeCanvasEditor = (patch = {}) => {
     if (typeof window === "undefined") return;
@@ -55,6 +57,14 @@ export default function useEditorWindowBridge({
       rehacer: onRehacer,
       stageRef: stageRef.current,
       getHistorial: () => ({ historial: historialLength, futuros: futurosLength }),
+      getTemplateAuthoringSnapshot:
+        typeof getTemplateAuthoringSnapshot === "function"
+          ? getTemplateAuthoringSnapshot
+          : undefined,
+      getTemplateAuthoringStatus:
+        typeof getTemplateAuthoringStatus === "function"
+          ? getTemplateAuthoringStatus
+          : undefined,
     });
   }, [
     cambiarColorFondoSeccion,
@@ -65,6 +75,8 @@ export default function useEditorWindowBridge({
     historialLength,
     futurosLength,
     stageRef,
+    getTemplateAuthoringSnapshot,
+    getTemplateAuthoringStatus,
   ]);
 
   useEffect(() => {
@@ -106,6 +118,8 @@ export default function useEditorWindowBridge({
         "rehacer",
         "stageRef",
         "getHistorial",
+        "getTemplateAuthoringSnapshot",
+        "getTemplateAuthoringStatus",
       ]);
     };
   }, []);

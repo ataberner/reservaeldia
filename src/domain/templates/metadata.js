@@ -46,6 +46,10 @@ function toStringList(value) {
 }
 
 function parseRating(value) {
+  if (value && typeof value === "object") {
+    return parseRating(value.value);
+  }
+
   const raw = Number(value);
   if (!Number.isFinite(raw)) return DEFAULT_RATING;
   const bounded = Math.max(0, Math.min(5, raw));
@@ -53,6 +57,16 @@ function parseRating(value) {
 }
 
 function parsePopularity(value) {
+  if (value && typeof value === "object") {
+    const label = normalizeText(value.label);
+    if (label) return label;
+    const score = Number(value.score);
+    if (Number.isFinite(score)) {
+      const bounded = Math.max(0, Math.min(100, Math.round(score)));
+      return `${bounded}% recomendada`;
+    }
+  }
+
   if (typeof value === "number" && Number.isFinite(value)) {
     const bounded = Math.max(0, Math.min(100, Math.round(value)));
     return `${bounded}% recomendada`;
@@ -127,9 +141,9 @@ function inferBadges(template) {
 
 function inferCategories(template) {
   const categories = uniqueStrings([
+    ...toStringList(template?.tags),
     ...toStringList(template?.categorias),
     ...toStringList(template?.categoria),
-    ...toStringList(template?.tags),
     ...toStringList(template?.estilos),
     ...toStringList(template?.estilo),
     normalizeText(template?.tipo),

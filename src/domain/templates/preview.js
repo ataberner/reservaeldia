@@ -1,4 +1,5 @@
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { resolveTemplatePreviewSource as resolveTemplatePreviewSourceContract } from "../../../shared/templates/contract.js";
 
 function normalizeTemplateArrays(template) {
   const safeTemplate = template && typeof template === "object" ? template : {};
@@ -51,4 +52,8 @@ export async function generateTemplatePreviewHtml(template) {
   }
 
   return html;
+}
+
+export function resolveTemplatePreviewSource(template) {
+  return resolveTemplatePreviewSourceContract(template);
 }

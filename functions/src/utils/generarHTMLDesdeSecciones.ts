@@ -308,6 +308,224 @@ export function generarHTMLDesdeSecciones(
 `.trim()
     : "";
 
+  const scriptTemplatePreviewPatch = `
+<script>
+(function(){
+  function toText(value){
+    return String(value == null ? "" : value).trim();
+  }
+
+  function toStringArray(value){
+    if (!Array.isArray(value)) return [];
+    return value
+      .map(function(item){ return toText(item); })
+      .filter(Boolean);
+  }
+
+  function replaceInText(source, findText, replaceText){
+    var base = String(source == null ? "" : source);
+    var find = String(findText == null ? "" : findText);
+    var replace = String(replaceText == null ? "" : replaceText);
+    if (!find) return base;
+    if (base.indexOf(find) < 0) return base;
+    return base.split(find).join(replace);
+  }
+
+  function findObjectElementById(id){
+    var safeId = toText(id);
+    if (!safeId) return null;
+    var nodes = document.querySelectorAll("[data-obj-id]");
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      if (toText(node.getAttribute("data-obj-id")) === safeId) return node;
+    }
+    return null;
+  }
+
+  function findSectionElementById(id){
+    var safeId = toText(id);
+    if (!safeId) return null;
+    var nodes = document.querySelectorAll("[data-seccion-id]");
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      if (toText(node.getAttribute("data-seccion-id")) === safeId) return node;
+    }
+    return null;
+  }
+
+  function setImageSource(targetElement, nextUrl){
+    var safeUrl = toText(nextUrl);
+    if (!safeUrl || !targetElement) return false;
+    var imageNode = targetElement.tagName && targetElement.tagName.toLowerCase() === "img"
+      ? targetElement
+      : targetElement.querySelector("img");
+    if (!imageNode) {
+      targetElement.style.backgroundImage = "url('" + safeUrl.replace(/'/g, "%27") + "')";
+      return true;
+    }
+    if (toText(imageNode.getAttribute("src")) === safeUrl) return false;
+    imageNode.setAttribute("src", safeUrl);
+    return true;
+  }
+
+  function ensureGalleryCellImage(cell, url){
+    var existingImg = cell.querySelector("img");
+    if (!existingImg) {
+      existingImg = document.createElement("img");
+      existingImg.setAttribute("alt", "");
+      existingImg.setAttribute("loading", "lazy");
+      existingImg.setAttribute("decoding", "async");
+      existingImg.style.width = "100%";
+      existingImg.style.height = "100%";
+      existingImg.style.display = "block";
+      existingImg.style.objectFit = "cover";
+      cell.appendChild(existingImg);
+    }
+    existingImg.setAttribute("src", url);
+  }
+
+  function applyGalleryCells(targetElement, urls){
+    if (!targetElement) return false;
+    var safeUrls = toStringArray(urls);
+    if (!safeUrls.length) return false;
+    var galleryRoot = targetElement.classList && targetElement.classList.contains("galeria")
+      ? targetElement
+      : targetElement.querySelector(".galeria");
+    if (!galleryRoot) return false;
+
+    var cells = galleryRoot.querySelectorAll(".galeria-celda");
+    if (!cells.length) return false;
+
+    var applied = 0;
+    for (var i = 0; i < cells.length; i += 1) {
+      var nextUrl = safeUrls[i];
+      if (!nextUrl) continue;
+      var cell = cells[i];
+      ensureGalleryCellImage(cell, nextUrl);
+      cell.classList.add("galeria-celda--clickable");
+      cell.setAttribute("data-gallery-image", "1");
+      cell.setAttribute("role", "button");
+      cell.setAttribute("tabindex", "0");
+      cell.setAttribute("aria-label", "Ver imagen en pantalla completa");
+      applied += 1;
+    }
+
+    return applied > 0;
+  }
+
+  function applyElementOperation(targetElement, operation){
+    if (!targetElement || !operation) return false;
+    var path = toText(operation.path).toLowerCase();
+    if (!path) return false;
+
+    var mode = toText(operation.mode).toLowerCase() === "replace" ? "replace" : "set";
+    var nextValue = operation.value;
+    var defaultValue = operation.defaultValue;
+
+    if (path === "cells") {
+      return applyGalleryCells(targetElement, nextValue);
+    }
+
+    if (path === "texto" || path === "text" || path === "title" || path === "label") {
+      var currentText = String(targetElement.textContent || "");
+      var nextText = String(nextValue == null ? "" : nextValue);
+      if (mode === "replace") {
+        var replacedText = replaceInText(currentText, String(defaultValue == null ? "" : defaultValue), nextText);
+        if (replacedText === currentText && toText(defaultValue) === "" && nextText) {
+          replacedText = nextText;
+        }
+        if (replacedText === currentText) return false;
+        targetElement.textContent = replacedText;
+        return true;
+      }
+      if (currentText === nextText) return false;
+      targetElement.textContent = nextText;
+      return true;
+    }
+
+    if (path === "src" || path === "url" || path === "mediaurl" || path === "fondoimagen") {
+      return setImageSource(targetElement, nextValue);
+    }
+
+    return false;
+  }
+
+  function applyGlobalReplaceText(operation){
+    var findText = String(operation.find == null ? "" : operation.find);
+    var replaceText = String(operation.replace == null ? "" : operation.replace);
+    if (!findText) return false;
+
+    var textNodes = document.querySelectorAll('.objeto[data-type="text"], .objeto[data-debug-texto="1"]');
+    if (!textNodes.length) {
+      textNodes = document.querySelectorAll(".objeto");
+    }
+
+    var changed = 0;
+    for (var i = 0; i < textNodes.length; i += 1) {
+      var node = textNodes[i];
+      var currentText = String(node.textContent || "");
+      var nextText = replaceInText(currentText, findText, replaceText);
+      if (nextText === currentText) continue;
+      node.textContent = nextText;
+      changed += 1;
+    }
+
+    return changed > 0;
+  }
+
+  function applyGlobalOperation(operation){
+    var mode = toText(operation.mode).toLowerCase();
+    if (mode === "replacetextglobal") {
+      return applyGlobalReplaceText(operation);
+    }
+    if (mode === "setfirstgallerycells") {
+      var firstGallery = document.querySelector(".objeto.galeria, .objeto[data-type='gallery']");
+      if (!firstGallery) return false;
+      return applyGalleryCells(firstGallery, operation.value);
+    }
+    return false;
+  }
+
+  function applyOperation(operation){
+    if (!operation || typeof operation !== "object") return false;
+    var scope = toText(operation.scope).toLowerCase();
+
+    if (scope === "global") {
+      return applyGlobalOperation(operation);
+    }
+
+    if (scope === "objeto") {
+      var objectElement = findObjectElementById(operation.id);
+      if (!objectElement) return false;
+      return applyElementOperation(objectElement, operation);
+    }
+
+    if (scope === "seccion") {
+      var sectionElement = findSectionElementById(operation.id);
+      if (!sectionElement) return false;
+      return applyElementOperation(sectionElement, operation);
+    }
+
+    return false;
+  }
+
+  window.addEventListener("message", function(event){
+    var payload = event && event.data;
+    if (!payload || payload.type !== "template-preview:apply") return;
+    var operations = Array.isArray(payload.operations) ? payload.operations : [];
+    if (!operations.length) return;
+    operations.forEach(function(operation){
+      try {
+        applyOperation(operation);
+      } catch (_error) {
+        // Ignorar errores de patch para no interrumpir la preview.
+      }
+    });
+  });
+})();
+</script>
+`.trim();
+
   const seccionesOrdenadas = [...(secciones || [])].sort(
     (a, b) => (Number(a?.orden) || 0) - (Number(b?.orden) || 0)
   );
@@ -318,6 +536,7 @@ export function generarHTMLDesdeSecciones(
       const modo = String(seccion?.altoModo || "fijo").toLowerCase();
       const hbase = Number.isFinite(seccion?.altura) ? Number(seccion.altura) : 600;
       const fondoEsImagen = hasImageBackground(seccion);
+      const seccionId = escapeAttr(String(seccion?.id || "").trim());
 
       const objsDeSeccion = objetos.filter((o) => o.seccionId === seccion.id);
 
@@ -335,7 +554,7 @@ export function generarHTMLDesdeSecciones(
 
 
       return `
-<section class="sec" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" style="--hbase:${hbase}">
+<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" style="--hbase:${hbase}">
   <div class="sec-zoom">
     <div class="sec-bg" style="${fondoStyle}"></div>
     <div class="sec-bleed">${htmlBleed}</div>
@@ -638,6 +857,7 @@ export function generarHTMLDesdeSecciones(
   ${motionEffectsRuntime}
 
   ${scriptCountdown}
+  ${scriptTemplatePreviewPatch}
 
   <script>
     (function(){

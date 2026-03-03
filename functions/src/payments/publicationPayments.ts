@@ -34,6 +34,10 @@ import {
   getMercadoPagoWebhookUrl,
 } from "./mercadoPagoClient";
 import { applyPublicationIconUsageDelta } from "../iconCatalog/usage";
+import {
+  buildDraftContentMeta,
+  normalizeDraftRenderState,
+} from "../drafts/sourceOfTruth";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -2188,6 +2192,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
 
   const draft = await ensureDraftOwnership(uid, draftSlug);
   const draftData = draft.data;
+  const draftRenderState = normalizeDraftRenderState(draftData);
 
   const normalizedPublicSlug = normalizePublicSlug(publicSlug);
   if (!normalizedPublicSlug) {
@@ -2288,10 +2293,13 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
       ? safeTimestampFromDate(existingPausedAtDate || now)
       : null;
 
-  const objetos = Array.isArray(draftData.objetos) ? draftData.objetos : [];
-  const secciones = Array.isArray(draftData.secciones) ? draftData.secciones : [];
+  const objetos = draftRenderState.objetos;
+  const secciones = draftRenderState.secciones;
   const objetosFinales = await resolveUrlsInObjects(objetos);
-  const rsvp = createRsvpConfig(draftData as Record<string, any>);
+  const rsvp = createRsvpConfig({
+    ...(draftData as Record<string, unknown>),
+    rsvp: draftRenderState.rsvp || {},
+  } as Record<string, any>);
 
   const htmlFinal = generarHTMLDesdeSecciones(secciones as any[], objetosFinales as any[], rsvp, {
     slug: normalizedPublicSlug,
@@ -2387,6 +2395,13 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
       publicationFinalizedAt: null,
       publicationFinalizationReason: null,
       lastPaymentSessionId: paymentSessionId,
+      draftContentMeta: {
+        ...buildDraftContentMeta({
+          lastWriter: "publish",
+          reason: "publication-snapshot-read",
+        }),
+        updatedAt: serverTimestamp(),
+      },
     },
     { merge: true }
   );

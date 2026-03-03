@@ -85,6 +85,10 @@ import {
   adminUpsertTextPresetV1 as adminUpsertTextPresetV1Handler,
   listTextPresetsPublicV1 as listTextPresetsPublicV1Handler,
 } from "./textPresets/service";
+import {
+  buildTemplateCatalogFromContract,
+  normalizeTemplateContractDocument,
+} from "./templates/contractLoader";
 
 import * as logger from "firebase-functions/logger";
 
@@ -1428,13 +1432,22 @@ export const crearPlantilla = onCall(
           : Promise.resolve(null),
       ]);
 
-    // Guardar plantilla en Firestore
-    await db.collection("plantillas").doc(id).set({
-      ...datosSinPreview,
-      portada: portadaNormalizada,
-      objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
-      secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
-    });
+    const normalizedTemplate = await normalizeTemplateContractDocument(
+      {
+        id,
+        ...datosSinPreview,
+        portada: portadaNormalizada,
+        objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
+        secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
+      },
+      id
+    );
+    const templateCatalogDoc = await buildTemplateCatalogFromContract(normalizedTemplate);
+
+    await Promise.all([
+      db.collection("plantillas").doc(id).set(normalizedTemplate),
+      db.collection("plantillas_catalog").doc(id).set(templateCatalogDoc),
+    ]);
 
     logger.info(`Plantilla '${id}' creada con exito`);
     return { success: true, portada: portadaNormalizada };
@@ -1466,8 +1479,10 @@ export const borrarPlantilla = onCall(
       throw new HttpsError("invalid-argument", "Falta plantillaId");
     }
 
-    // Borrar doc principal
-    await db.collection("plantillas").doc(plantillaId).delete();
+    const batch = db.batch();
+    batch.delete(db.collection("plantillas").doc(plantillaId));
+    batch.delete(db.collection("plantillas_catalog").doc(plantillaId));
+    await batch.commit();
 
     // (Opcional a futuro) limpiar assets en Storage / subdocs relacionados
     // Por ahora: minimalista y seguro.

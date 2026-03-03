@@ -3,8 +3,22 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import useElementCatalog from "@/hooks/useElementCatalog";
 import { fetchSvgPaths } from "@/utils/parseSvg";
 import { normalizeQueryText } from "@/domain/elements/catalog";
+import {
+  buildDecorImageInsertPayload,
+  buildRasterIconInsertPayload,
+  buildShapeInsertPayload,
+} from "@/domain/elements/insertions";
 
 const DEFAULT_INSERTED_ICON_COLOR = "#111827";
+const SHAPE_PREVIEW_FILL = "#1f2937";
+const SHAPE_POLYGONS = {
+  triangle: "50,14 86,84 14,84",
+  diamond: "50,10 90,50 50,90 10,50",
+  star: "50,10 61,37 90,37 67,55 76,84 50,66 24,84 33,55 10,37 39,37",
+  arrow: "10,34 58,34 58,14 90,50 58,86 58,66 10,66",
+  pentagon: "50,10 88,38 74,84 26,84 12,38",
+  hexagon: "28,12 72,12 92,50 72,88 28,88 8,50",
+};
 
 function toMediaFormat(item) {
   const fromItem = String(item?.formato || "").trim().toLowerCase();
@@ -18,12 +32,10 @@ function toMediaFormat(item) {
 }
 
 function shapePreview(figura, sizeClass = "h-14 w-14") {
-  const fill = "#1f2937";
-
   if (figura === "line") {
     return (
       <svg viewBox="0 0 100 100" className={sizeClass}>
-        <line x1="14" y1="50" x2="86" y2="50" stroke={fill} strokeWidth="8" strokeLinecap="round" />
+        <line x1="14" y1="50" x2="86" y2="50" stroke={SHAPE_PREVIEW_FILL} strokeWidth="8" strokeLinecap="round" />
       </svg>
     );
   }
@@ -31,24 +43,15 @@ function shapePreview(figura, sizeClass = "h-14 w-14") {
   if (figura === "heart") {
     return (
       <svg viewBox="0 0 100 100" className={sizeClass}>
-        <path d="M50 84 C8 58 14 25 34 25 C42 25 47 30 50 36 C53 30 58 25 66 25 C86 25 92 58 50 84 Z" fill={fill} />
+        <path d="M50 84 C8 58 14 25 34 25 C42 25 47 30 50 36 C53 30 58 25 66 25 C86 25 92 58 50 84 Z" fill={SHAPE_PREVIEW_FILL} />
       </svg>
     );
   }
 
-  const polygonMap = {
-    triangle: "50,14 86,84 14,84",
-    diamond: "50,10 90,50 50,90 10,50",
-    star: "50,10 61,37 90,37 67,55 76,84 50,66 24,84 33,55 10,37 39,37",
-    arrow: "10,34 58,34 58,14 90,50 58,86 58,66 10,66",
-    pentagon: "50,10 88,38 74,84 26,84 12,38",
-    hexagon: "28,12 72,12 92,50 72,88 28,88 8,50",
-  };
-
-  if (polygonMap[figura]) {
+  if (SHAPE_POLYGONS[figura]) {
     return (
       <svg viewBox="0 0 100 100" className={sizeClass}>
-        <polygon points={polygonMap[figura]} fill={fill} />
+        <polygon points={SHAPE_POLYGONS[figura]} fill={SHAPE_PREVIEW_FILL} />
       </svg>
     );
   }
@@ -56,7 +59,7 @@ function shapePreview(figura, sizeClass = "h-14 w-14") {
   if (figura === "circle") {
     return (
       <svg viewBox="0 0 100 100" className={sizeClass}>
-        <circle cx="50" cy="50" r="34" fill={fill} />
+        <circle cx="50" cy="50" r="34" fill={SHAPE_PREVIEW_FILL} />
       </svg>
     );
   }
@@ -64,14 +67,14 @@ function shapePreview(figura, sizeClass = "h-14 w-14") {
   if (figura === "pill") {
     return (
       <svg viewBox="0 0 100 100" className={sizeClass}>
-        <rect x="10" y="30" width="80" height="40" rx="20" fill={fill} />
+        <rect x="10" y="30" width="80" height="40" rx="20" fill={SHAPE_PREVIEW_FILL} />
       </svg>
     );
   }
 
   return (
     <svg viewBox="0 0 100 100" className={sizeClass}>
-      <rect x="18" y="18" width="64" height="64" fill={fill} />
+      <rect x="18" y="18" width="64" height="64" fill={SHAPE_PREVIEW_FILL} />
     </svg>
   );
 }
@@ -210,6 +213,19 @@ function ShapeRailButton({ item, onInsert }) {
   );
 }
 
+function ThumbnailImage({ src, alt }) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      className="h-full w-full rounded object-contain"
+    />
+  );
+}
+
 function IconRailButton({ item, onInsert }) {
   return (
     <button
@@ -219,10 +235,7 @@ function IconRailButton({ item, onInsert }) {
       title={`Insertar ${item.label}`}
     >
       <div className="h-[66px] w-[66px] p-1">
-        <div
-          className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
-          style={{ backgroundImage: `url(${item.src})` }}
-        />
+        <ThumbnailImage src={item.src} alt={item.label} />
       </div>
     </button>
   );
@@ -237,10 +250,7 @@ function MediaButton({ item, onInsert }) {
       title={`Insertar ${item.label}`}
     >
       <div className="h-20 w-20 p-1">
-        <div
-          className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
-          style={{ backgroundImage: `url(${item.src})` }}
-        />
+        <ThumbnailImage src={item.src} alt={item.label} />
       </div>
     </button>
   );
@@ -261,10 +271,7 @@ function RecentButton({ item, onInsert }) {
         </div>
       ) : (
         <div className="h-14 w-14 p-1">
-          <div
-            className="h-full w-full rounded bg-center bg-no-repeat bg-contain"
-            style={{ backgroundImage: `url(${item.src})` }}
-          />
+          <ThumbnailImage src={item.src} alt={item.label} />
         </div>
       )}
     </button>
@@ -392,58 +399,13 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   const insertShape = useCallback(
     (shapeItem) => {
-      const figura = shapeItem?.figura || "rect";
-      const base = {
-        id: `forma-${Date.now().toString(36)}`,
-        tipo: "forma",
-        figura,
-        color: shapeItem?.color || "#111827",
-        texto: "",
-        fontSize: 24,
-        fontFamily: "sans-serif",
-        fontWeight: "normal",
-        fontStyle: "normal",
-        colorTexto: "#111827",
-        align: "center",
-      };
-
-      if (figura === "line") {
-        base.points = [0, 0, 120, 0];
-        base.strokeWidth = 3;
-      } else if (figura === "circle") {
-        base.radius = 50;
-      } else if (figura === "triangle") {
-        base.radius = 60;
-      } else if (figura === "diamond") {
-        base.width = 120;
-        base.height = 120;
-      } else if (figura === "star") {
-        base.width = 120;
-        base.height = 120;
-      } else if (figura === "heart") {
-        base.width = 120;
-        base.height = 108;
-      } else if (figura === "arrow") {
-        base.width = 160;
-        base.height = 90;
-      } else if (figura === "pentagon") {
-        base.width = 120;
-        base.height = 120;
-      } else if (figura === "hexagon") {
-        base.width = 128;
-        base.height = 112;
-      } else if (figura === "pill") {
-        base.width = 170;
-        base.height = 72;
-        base.cornerRadius = 36;
-      }
-
-      dispatchInsert(base);
+      const insertedAt = Date.now();
+      dispatchInsert(buildShapeInsertPayload(shapeItem, insertedAt));
       registerRecent({
         ...shapeItem,
         src: null,
         formato: null,
-        insertedAt: Date.now(),
+        insertedAt,
       });
     },
     [dispatchInsert, registerRecent]
@@ -453,6 +415,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     async (item) => {
       const src = String(item?.src || "").trim();
       if (!src) return;
+      const insertedAt = Date.now();
 
       const format = toMediaFormat(item);
 
@@ -461,7 +424,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
           const { paths, viewBox } = await fetchSvgPaths(src);
           if (Array.isArray(paths) && paths.length > 0) {
             dispatchInsert({
-              id: `icono-${Date.now().toString(36)}`,
+              id: `icono-${insertedAt.toString(36)}`,
               tipo: "icono",
               formato: "svg",
               colorizable: true,
@@ -473,7 +436,7 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
             registerRecent({
               ...item,
               formato: "svg",
-              insertedAt: Date.now(),
+              insertedAt,
             });
             return;
           }
@@ -483,18 +446,12 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
       }
 
       const safeFormat = format || "png";
-      dispatchInsert({
-        id: `icono-${Date.now().toString(36)}`,
-        tipo: "icono",
-        formato: safeFormat,
-        colorizable: false,
-        url: src,
-      });
+      dispatchInsert(buildRasterIconInsertPayload(src, safeFormat, insertedAt));
 
       registerRecent({
         ...item,
         formato: safeFormat,
-        insertedAt: Date.now(),
+        insertedAt,
       });
     },
     [dispatchInsert, registerRecent]
@@ -502,29 +459,15 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   const insertDecorImage = useCallback(
     (item) => {
-      const src = String(item?.src || "").trim();
-      if (!src) return;
-
-      const parsedWidth = Number(item?.width);
-      const parsedHeight = Number(item?.height);
-      const payload = {
-        id: `imagen-${Date.now().toString(36)}`,
-        tipo: "imagen",
-        src,
-      };
-
-      if (Number.isFinite(parsedWidth) && parsedWidth > 0) {
-        payload.ancho = Math.round(parsedWidth);
-      }
-      if (Number.isFinite(parsedHeight) && parsedHeight > 0) {
-        payload.alto = Math.round(parsedHeight);
-      }
+      const insertedAt = Date.now();
+      const payload = buildDecorImageInsertPayload(item, insertedAt);
+      if (!payload) return;
 
       dispatchInsert(payload);
       registerRecent({
         ...item,
         kind: "image",
-        insertedAt: Date.now(),
+        insertedAt,
       });
     },
     [dispatchInsert, registerRecent]
@@ -686,9 +629,12 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
       <div className="sticky top-0 z-20 bg-white pb-0.5">
         <label className="block rounded-xl border border-slate-300 bg-white p-1">
           <input
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Busca formas, iconos o imagenes"
+            autoComplete="off"
+            aria-label="Buscar elementos"
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-500"
           />
         </label>

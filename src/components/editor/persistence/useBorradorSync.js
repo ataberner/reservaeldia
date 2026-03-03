@@ -1,14 +1,22 @@
 // src/components/editor/persistence/useBorradorSync.js
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { db, storage } from "@/firebase";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { normalizeInvitationType } from "@/domain/invitationTypes";
 import {
+  buildDraftContentMeta,
+  normalizeDraftRenderState,
+} from "@/domain/drafts/sourceOfTruth";
+import {
   captureEditorIssue,
   pushEditorBreadcrumb,
 } from "@/lib/monitoring/editorIssueReporter";
+
+const PERSIST_DEBOUNCE_MS = 500;
+const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
+const DRAFT_FLUSH_RESULT_EVENT = "editor:draft-flush:result";
 
 function parseStorageLocationFromUrl(value) {
   if (typeof value !== "string" || !/^https?:\/\//i.test(value)) return null;
@@ -105,9 +113,21 @@ function isMobileRuntime() {
   return coarsePointer || uaMobile;
 }
 
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeFlushRequestDetail(detail) {
+  const safeDetail = detail && typeof detail === "object" ? detail : {};
+  const requestId = normalizeText(safeDetail.requestId);
+  const slug = normalizeText(safeDetail.slug);
+  const reason = normalizeText(safeDetail.reason) || "manual-flush";
+  return { requestId, slug, reason };
+}
+
 /**
  * Hook de sincronizacion Firestore para el borrador (carga + guardado con debounce).
- * Mantiene la logica original de CanvasEditor.
+ * Incluye flush inmediato para acciones criticas (preview/publicacion).
  */
 export default function useBorradorSync({
   slug,
@@ -125,6 +145,7 @@ export default function useBorradorSync({
   setRsvp,
   setCargado,
   setSeccionActivaId,
+  onDraftLoaded,
 
   // refs / helpers que ya existen en CanvasEditor
   ignoreNextUpdateRef,
@@ -138,9 +159,27 @@ export default function useBorradorSync({
   ALTURA_PANTALLA_EDITOR,
 }) {
   const skipNextPersistRef = useRef(true);
+  const persistTimeoutRef = useRef(null);
+  const persistInFlightRef = useRef(null);
+  const latestStateRef = useRef({
+    slug: null,
+    userId: null,
+    objetos: [],
+    secciones: [],
+    rsvp: null,
+    cargado: false,
+  });
+  latestStateRef.current = {
+    slug,
+    userId,
+    objetos,
+    secciones,
+    rsvp,
+    cargado,
+  };
 
   // helper: limpiar undefined recursivo
-  const limpiarUndefined = (obj) => {
+  const limpiarUndefined = useCallback((obj) => {
     if (Array.isArray(obj)) return obj.map(limpiarUndefined);
 
     if (obj !== null && typeof obj === "object") {
@@ -153,11 +192,151 @@ export default function useBorradorSync({
     }
 
     return obj;
-  };
+  }, []);
+
+  const persistDraftNow = useCallback(
+    async ({ reason = "autosave", immediate = false } = {}) => {
+      const state = latestStateRef.current;
+      const safeSlug = normalizeText(state.slug);
+
+      if (!safeSlug) {
+        return {
+          ok: false,
+          reason: "missing-slug",
+          error: "Slug de borrador no disponible.",
+        };
+      }
+
+      if (!state.cargado) {
+        return {
+          ok: false,
+          reason: "draft-not-loaded",
+          error: "El borrador todavia no termino de cargar.",
+        };
+      }
+
+      if (window._resizeData?.isResizing) {
+        return {
+          ok: false,
+          reason: "resize-in-progress",
+          error: "Espera a que termine el ajuste de tamano en curso.",
+        };
+      }
+
+      if (persistInFlightRef.current) {
+        try {
+          await persistInFlightRef.current;
+        } catch {
+          // Si una persistencia previa falla, continuamos con el siguiente intento.
+        }
+      }
+
+      const persistPromise = (async () => {
+        const rawObjetos = Array.isArray(state.objetos) ? state.objetos : [];
+        const rawSecciones = Array.isArray(state.secciones) ? state.secciones : [];
+        const rawRsvp =
+          state.rsvp && typeof state.rsvp === "object"
+            ? state.rsvp
+            : null;
+
+        // Validacion: lineas + normalizacion de textos
+        const objetosValidados = rawObjetos.map((obj) => {
+          if (obj?.tipo === "forma" && obj?.figura === "line") {
+            return validarPuntosLinea(obj);
+          }
+
+          if (obj?.tipo === "texto") {
+            return {
+              ...obj,
+              color: obj.colorTexto || obj.color || obj.fill || "#000000",
+              stroke: obj.stroke || null,
+              strokeWidth: obj.strokeWidth || 0,
+              shadowColor: obj.shadowColor || null,
+              shadowBlur: obj.shadowBlur || 0,
+              shadowOffsetX: obj.shadowOffsetX || 0,
+              shadowOffsetY: obj.shadowOffsetY || 0,
+            };
+          }
+
+          return obj;
+        });
+
+        const seccionesLimpias = limpiarUndefined(rawSecciones);
+        const objetosLimpios = limpiarUndefined(objetosValidados);
+        const rsvpLimpio = rawRsvp
+          ? limpiarUndefined(normalizeRsvpConfig(rawRsvp, { forceEnabled: false }))
+          : null;
+
+        const ref = doc(db, "borradores", safeSlug);
+        await updateDoc(ref, {
+          objetos: objetosLimpios,
+          secciones: seccionesLimpias,
+          rsvp: rsvpLimpio,
+          draftContentMeta: {
+            ...buildDraftContentMeta({
+              lastWriter: "canvas",
+              reason,
+            }),
+            updatedAt: serverTimestamp(),
+          },
+          ultimaEdicion: serverTimestamp(),
+        });
+
+        if (!immediate && stageRef?.current && state.userId && safeSlug) {
+          // En mobile pesado, generar thumbnail al vuelo puede tumbar la pestana.
+          if (isMobileRuntime()) {
+            pushEditorBreadcrumb("thumbnail-skip-mobile-runtime", { slug: safeSlug });
+            return;
+          }
+          const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
+          await guardarThumbnailDesdeStage({ stageRef, uid: state.userId, slug: safeSlug });
+        }
+      })();
+
+      persistInFlightRef.current = persistPromise;
+
+      try {
+        await persistPromise;
+        return {
+          ok: true,
+        };
+      } catch (error) {
+        captureEditorIssue({
+          source: "useBorradorSync.save",
+          error,
+          detail: {
+            slug: safeSlug,
+            reason,
+            immediate,
+            objetos: Array.isArray(state.objetos) ? state.objetos.length : null,
+            secciones: Array.isArray(state.secciones) ? state.secciones.length : null,
+            hasRsvp: Boolean(state.rsvp),
+          },
+          severity: "error",
+        });
+
+        return {
+          ok: false,
+          reason: "persist-failed",
+          error: "No se pudo guardar el borrador en este momento.",
+        };
+      } finally {
+        if (persistInFlightRef.current === persistPromise) {
+          persistInFlightRef.current = null;
+        }
+      }
+    },
+    [limpiarUndefined, stageRef, validarPuntosLinea]
+  );
 
   // 1) Cargar borrador desde Firestore
   useEffect(() => {
     if (!slug) return;
+
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+    }
 
     // Al cambiar de borrador, evitamos persistir inmediatamente tras hidratar estado.
     skipNextPersistRef.current = true;
@@ -170,12 +349,13 @@ export default function useBorradorSync({
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
-          const data = snap.data();
+          const data = snap.data() || {};
+          const renderState = normalizeDraftRenderState(data);
           const plantillaId =
             typeof data?.plantillaId === "string" ? data.plantillaId.trim() : "";
-          const seccionesData = data.secciones || [];
-          const objetosData = data.objetos || [];
-          const rsvpData = data.rsvp;
+          const seccionesData = renderState.secciones;
+          const objetosData = renderState.objetos;
+          const rsvpData = renderState.rsvp;
           const tipoDraftRaw =
             typeof data?.tipoInvitacion === "string" ? data.tipoInvitacion : "";
           let tipoInvitacion = normalizeInvitationType(tipoDraftRaw);
@@ -209,7 +389,7 @@ export default function useBorradorSync({
             refreshUrlsDeep(objetosData, refreshCache),
           ]);
 
-          // Mantengo tu migracion de yNorm para secciones pantalla
+          // Mantengo migracion de yNorm para secciones pantalla.
           const objsMigrados = objetosRefrescados.map((o) => {
             if (!o?.seccionId) return o;
 
@@ -248,6 +428,20 @@ export default function useBorradorSync({
               setRsvp(null);
             }
           }
+          if (typeof onDraftLoaded === "function") {
+            onDraftLoaded({
+              slug,
+              plantillaId: plantillaId || null,
+              templateAuthoringDraft:
+                data?.templateAuthoringDraft && typeof data.templateAuthoringDraft === "object"
+                  ? data.templateAuthoringDraft
+                  : null,
+              objetos: objsMigrados,
+              secciones: seccionesRefrescadas,
+              rsvp: rsvpData && typeof rsvpData === "object" ? rsvpData : null,
+              loadedAt: Date.now(),
+            });
+          }
 
           pushEditorBreadcrumb("borrador-load-success", {
             slug,
@@ -261,6 +455,17 @@ export default function useBorradorSync({
           }
         } else {
           pushEditorBreadcrumb("borrador-load-missing", { slug });
+          if (typeof onDraftLoaded === "function") {
+            onDraftLoaded({
+              slug,
+              plantillaId: null,
+              templateAuthoringDraft: null,
+              objetos: [],
+              secciones: [],
+              rsvp: null,
+              loadedAt: Date.now(),
+            });
+          }
         }
       } catch (error) {
         captureEditorIssue({
@@ -278,12 +483,12 @@ export default function useBorradorSync({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  // 2) Guardar en Firestore con debounce cuando cambian objetos/secciones
+  // 2) Guardar en Firestore con debounce cuando cambian objetos/secciones/rsvp.
   useEffect(() => {
     if (!cargado) return;
     if (!slug) return;
 
-    // Evita write + thumbnail justo al terminar la carga inicial (causa inestabilidad móvil en borradores pesados).
+    // Evita write + thumbnail justo al terminar la carga inicial.
     if (skipNextPersistRef.current) {
       skipNextPersistRef.current = false;
       return;
@@ -296,73 +501,77 @@ export default function useBorradorSync({
       return;
     }
 
-    // No guardar durante resize (logica actual)
+    // No guardar durante resize.
     if (window._resizeData?.isResizing) return;
 
-    const timeoutId = setTimeout(async () => {
-      try {
-        // Validacion: lineas + normalizacion de textos
-        const objetosValidados = (objetos || []).map((obj) => {
-          if (obj?.tipo === "forma" && obj?.figura === "line") {
-            return validarPuntosLinea(obj);
-          }
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+    }
 
-          if (obj?.tipo === "texto") {
-            return {
-              ...obj,
-              color: obj.colorTexto || obj.color || obj.fill || "#000000",
-              stroke: obj.stroke || null,
-              strokeWidth: obj.strokeWidth || 0,
-              shadowColor: obj.shadowColor || null,
-              shadowBlur: obj.shadowBlur || 0,
-              shadowOffsetX: obj.shadowOffsetX || 0,
-              shadowOffsetY: obj.shadowOffsetY || 0,
-            };
-          }
+    persistTimeoutRef.current = setTimeout(() => {
+      persistTimeoutRef.current = null;
+      void persistDraftNow({
+        reason: "debounced-autosave",
+        immediate: false,
+      });
+    }, PERSIST_DEBOUNCE_MS);
 
-          return obj;
-        });
-
-        const seccionesLimpias = limpiarUndefined(secciones);
-        const objetosLimpios = limpiarUndefined(objetosValidados);
-        const rsvpLimpio = rsvp
-          ? limpiarUndefined(normalizeRsvpConfig(rsvp, { forceEnabled: false }))
-          : null;
-
-        const ref = doc(db, "borradores", slug);
-        await updateDoc(ref, {
-          objetos: objetosLimpios,
-          secciones: seccionesLimpias,
-          rsvp: rsvpLimpio,
-          ultimaEdicion: serverTimestamp(),
-        });
-
-        // Thumbnail (mantengo tu logica con import dinamico)
-        if (stageRef?.current && userId && slug) {
-          // En mobile pesado, generar thumbnail al vuelo puede tumbar la pestaña.
-          if (isMobileRuntime()) {
-            pushEditorBreadcrumb("thumbnail-skip-mobile-runtime", { slug });
-            return;
-          }
-          const { guardarThumbnailDesdeStage } = await import("@/utils/guardarThumbnail");
-          await guardarThumbnailDesdeStage({ stageRef, uid: userId, slug });
-        }
-      } catch (error) {
-        console.error("Error guardando en Firebase:", error);
-        captureEditorIssue({
-          source: "useBorradorSync.save",
-          error,
-          detail: {
-            slug,
-            objetos: Array.isArray(objetos) ? objetos.length : null,
-            secciones: Array.isArray(secciones) ? secciones.length : null,
-            hasRsvp: Boolean(rsvp),
-          },
-          severity: "error",
-        });
+    return () => {
+      if (persistTimeoutRef.current) {
+        clearTimeout(persistTimeoutRef.current);
+        persistTimeoutRef.current = null;
       }
-    }, 500);
+    };
+  }, [cargado, ignoreNextUpdateRef, objetos, persistDraftNow, rsvp, secciones, slug]);
 
-    return () => clearTimeout(timeoutId);
-  }, [objetos, secciones, rsvp, cargado, slug, userId, ignoreNextUpdateRef, stageRef, validarPuntosLinea]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleFlushRequest = async (event) => {
+      const detail = normalizeFlushRequestDetail(event?.detail);
+      if (!detail.requestId || !detail.slug) return;
+
+      const currentSlug = normalizeText(latestStateRef.current.slug);
+      if (!currentSlug || detail.slug !== currentSlug) return;
+
+      if (persistTimeoutRef.current) {
+        clearTimeout(persistTimeoutRef.current);
+        persistTimeoutRef.current = null;
+      }
+
+      const result = await persistDraftNow({
+        reason: detail.reason || "external-flush",
+        immediate: true,
+      });
+
+      window.dispatchEvent(
+        new CustomEvent(DRAFT_FLUSH_RESULT_EVENT, {
+          detail: {
+            requestId: detail.requestId,
+            slug: detail.slug,
+            ok: result.ok === true,
+            reason: result.reason || "",
+            error: result.ok ? "" : result.error || "No se pudo guardar el borrador.",
+          },
+        })
+      );
+    };
+
+    window.addEventListener(DRAFT_FLUSH_REQUEST_EVENT, handleFlushRequest);
+
+    return () => {
+      window.removeEventListener(DRAFT_FLUSH_REQUEST_EVENT, handleFlushRequest);
+    };
+  }, [persistDraftNow]);
+
+  useEffect(
+    () => () => {
+      if (persistTimeoutRef.current) {
+        clearTimeout(persistTimeoutRef.current);
+        persistTimeoutRef.current = null;
+      }
+    },
+    []
+  );
 }

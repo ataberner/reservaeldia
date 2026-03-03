@@ -1,6 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, Star, X } from "lucide-react";
+import { resolveTemplatePreviewSource } from "@/domain/templates/preview";
+import TemplateEventForm from "@/components/templates/TemplateEventForm";
+import {
+  buildPreviewOperationsForField,
+  buildPreviewPatchMessage,
+} from "@/domain/templates/previewLivePatch";
 
 function toText(value, fallback = "") {
   const safe = String(value || "").trim();
@@ -18,11 +24,16 @@ export default function TemplatePreviewModal({
   previewHtml,
   previewStatus,
   onClose,
-  onOpenEditor,
+  onOpenEditorWithChanges,
+  onOpenEditorWithoutChanges,
+  formState,
+  onFormStateChange,
   openingEditor = false,
-  eventDraft,
 }) {
   const modalPanelRef = useRef(null);
+  const previewFrameRef = useRef(null);
+  const inputPatchTimersRef = useRef({});
+  const [previewUrlFailed, setPreviewUrlFailed] = useState(false);
   const status = toText(previewStatus?.status, previewHtml ? "ready" : "idle");
   const errorMessage = toText(
     previewStatus?.error,
@@ -36,6 +47,37 @@ export default function TemplatePreviewModal({
   const rating = Number(metadata?.rating);
   const safeRating = Number.isFinite(rating) ? rating.toFixed(1) : "4.8";
   const popularity = toText(metadata?.popularity, "96% recomendada");
+  const previewSource = resolveTemplatePreviewSource(template);
+  const previewUrl = previewSource.mode === "url" ? previewSource.previewUrl : null;
+  const hasPreviewUrl = Boolean(previewUrl);
+  const usePreviewUrl = hasPreviewUrl && !previewUrlFailed;
+  const fieldsCount = Array.isArray(template?.fieldsSchema) ? template.fieldsSchema.length : 0;
+  const defaultsCount =
+    template?.defaults && typeof template.defaults === "object"
+      ? Object.keys(template.defaults).length
+      : 0;
+  const hasGalleryRules = Boolean(
+    template?.galleryRules &&
+    typeof template.galleryRules === "object" &&
+    Object.keys(template.galleryRules).length > 0
+  );
+  const shouldShowGeneratedPreview = status === "ready" && Boolean(previewHtml);
+  const shouldShowPreviewUrl = usePreviewUrl && !shouldShowGeneratedPreview && status !== "loading";
+  const canPatchPreview = shouldShowGeneratedPreview;
+
+  useEffect(() => {
+    setPreviewUrlFailed(false);
+  }, [previewUrl]);
+
+  useEffect(
+    () => () => {
+      Object.values(inputPatchTimersRef.current).forEach((timerId) => {
+        clearTimeout(timerId);
+      });
+      inputPatchTimersRef.current = {};
+    },
+    []
+  );
 
   useEffect(() => {
     if (!visible || typeof document === "undefined") return undefined;
@@ -51,6 +93,47 @@ export default function TemplatePreviewModal({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [onClose, openingEditor, visible]);
+
+  const postPreviewOperations = useCallback(
+    (operations) => {
+      if (!canPatchPreview) return;
+      if (!Array.isArray(operations) || operations.length === 0) return;
+      const frameWindow = previewFrameRef.current?.contentWindow;
+      if (!frameWindow) return;
+
+      frameWindow.postMessage(buildPreviewPatchMessage(operations), "*");
+    },
+    [canPatchPreview]
+  );
+
+  const handleLiveFieldUpdate = useCallback(
+    ({ fieldKey, value, phase }) => {
+      const key = toText(fieldKey);
+      if (!key || !phase) return;
+
+      const operations = buildPreviewOperationsForField({
+        template,
+        fieldKey: key,
+        value,
+        phase,
+      });
+      if (!operations.length) return;
+
+      if (phase === "input") {
+        if (inputPatchTimersRef.current[key]) {
+          clearTimeout(inputPatchTimersRef.current[key]);
+        }
+        inputPatchTimersRef.current[key] = setTimeout(() => {
+          postPreviewOperations(operations);
+          delete inputPatchTimersRef.current[key];
+        }, 180);
+        return;
+      }
+
+      postPreviewOperations(operations);
+    },
+    [postPreviewOperations, template]
+  );
 
   if (!visible || typeof document === "undefined") return null;
 
@@ -86,8 +169,19 @@ export default function TemplatePreviewModal({
           <div className="flex-1 overflow-y-auto px-3 pb-5 pt-3 sm:px-5 sm:pb-6 sm:pt-4">
             <div className="relative overflow-hidden">
               <div className="h-[42dvh] max-h-[50vh] min-h-[220px] bg-white sm:h-[46vh]">
-                {status === "ready" && previewHtml ? (
+                {shouldShowPreviewUrl ? (
                   <iframe
+                    src={previewUrl}
+                    sandbox="allow-scripts allow-same-origin"
+                    title={`Vista previa de ${title}`}
+                    className="h-full w-full border-0"
+                    onError={() => setPreviewUrlFailed(true)}
+                  />
+                ) : null}
+
+                {shouldShowGeneratedPreview ? (
+                  <iframe
+                    ref={previewFrameRef}
                     srcDoc={previewHtml}
                     sandbox="allow-scripts"
                     title={`Vista previa de ${title}`}
@@ -95,7 +189,7 @@ export default function TemplatePreviewModal({
                   />
                 ) : null}
 
-                {(status === "idle" || status === "loading") && (
+                {!shouldShowPreviewUrl && (status === "idle" || status === "loading") && (
                   <div className="flex h-full items-center justify-center bg-slate-50">
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                       <Loader2 className="h-4 w-4 animate-spin text-[#6f3bc0]" />
@@ -104,11 +198,19 @@ export default function TemplatePreviewModal({
                   </div>
                 )}
 
-                {status === "error" && (
+                {!shouldShowPreviewUrl && status === "error" && (
                   <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
                     <p className="max-w-xl text-sm text-rose-600">{errorMessage}</p>
                   </div>
                 )}
+
+                {!shouldShowPreviewUrl && status === "ready" && !previewHtml ? (
+                  <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
+                    <p className="max-w-xl text-sm text-rose-600">
+                      No se pudo cargar la vista previa de esta plantilla.
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent via-[#f7f4ff]/80 to-[#f7f4ff]" />
             </div>
@@ -150,31 +252,20 @@ export default function TemplatePreviewModal({
                 ))}
               </div>
 
-              <div className="pt-1.5">
-                <button
-                  type="button"
-                  onClick={onOpenEditor}
-                  disabled={openingEditor}
-                  className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-[#8248cb] via-[#733ebf] to-[#6334ad] px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(111,59,192,0.3)] transition hover:from-[#7842c2] hover:via-[#6838b5] hover:to-[#5a2ea4] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {openingEditor ? "Creando borrador..." : "Abrir editor"}
-                </button>
-                <p className="mt-1.5 text-[11px] text-slate-500">
-                  Cerrar modal: tecla Esc o click fuera del contenido.
-                </p>
-              </div>
+              <TemplateEventForm
+                template={template}
+                formState={formState}
+                onFormStateChange={onFormStateChange}
+                onLiveFieldUpdate={handleLiveFieldUpdate}
+                onSaveAndOpen={onOpenEditorWithChanges}
+                onOpenWithoutChanges={onOpenEditorWithoutChanges}
+                openingEditor={openingEditor}
+              />
 
-              <div className="pt-3">
-                <h3 className="text-sm font-semibold text-slate-900">Datos de tu evento</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  Esta seccion queda reservada para cargar los datos antes de abrir el canvas.
-                </p>
-                <p className="mt-1.5 text-[11px] text-slate-500">
-                  Estado inicial listo para formulario futuro.
-                  {" "}
-                  {eventDraft && typeof eventDraft === "object" ? "(draft preparado)." : ""}
-                </p>
-              </div>
+              <p className="pt-2 text-[11px] text-slate-500">
+                Cerrar modal: tecla Esc o click fuera del contenido. Campos: {fieldsCount}. Defaults: {defaultsCount}.
+                {hasGalleryRules ? " Incluye reglas de galeria." : ""}
+              </p>
             </div>
           </div>
         </div>

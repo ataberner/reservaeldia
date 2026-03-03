@@ -34,7 +34,8 @@ import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar
 import SelectorColorSeccion from "./SelectorColorSeccion";
 import Konva from "konva";
 import { ALL_FONTS } from '../config/fonts';
-import { useAuthClaims } from "@/hooks/useAuthClaims";
+import useTemplateFieldAuthoring from "@/components/editor/templateAuthoring/useTemplateFieldAuthoring";
+import TemplateFieldBadgeOverlay from "@/components/editor/templateAuthoring/TemplateFieldBadgeOverlay";
 import {
   Trash2,
   Layers,
@@ -228,6 +229,7 @@ export default function CanvasEditor({
   onFuturosChange,
   userId,
   onStartupStatusChange,
+  canManageSite = false,
 }) {
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
@@ -267,7 +269,11 @@ export default function CanvasEditor({
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
-  const { esAdmin, loadingClaims } = useAuthClaims();
+  const [draftMeta, setDraftMeta] = useState({
+    plantillaId: null,
+    templateAuthoringDraft: null,
+    loadedAt: 0,
+  });
   const [backgroundLoadBySection, setBackgroundLoadBySection] = useState({});
   const startupStatusFinalizedRef = useRef(false);
   const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
@@ -277,6 +283,14 @@ export default function CanvasEditor({
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+
+  useEffect(() => {
+    setDraftMeta({
+      plantillaId: null,
+      templateAuthoringDraft: null,
+      loadedAt: 0,
+    });
+  }, [slug]);
 
   const isTextResizeDebugEnabled = () =>
     typeof window !== "undefined" && Boolean(window.__DBG_TEXT_RESIZE);
@@ -353,6 +367,19 @@ export default function CanvasEditor({
     setRsvp: setRsvpConfig,
     setCargado,
     setSeccionActivaId,
+    onDraftLoaded: (meta) => {
+      const safeMeta = meta && typeof meta === "object" ? meta : {};
+      setDraftMeta({
+        plantillaId:
+          typeof safeMeta.plantillaId === "string" ? safeMeta.plantillaId : null,
+        templateAuthoringDraft:
+          safeMeta.templateAuthoringDraft &&
+          typeof safeMeta.templateAuthoringDraft === "object"
+            ? safeMeta.templateAuthoringDraft
+            : null,
+        loadedAt: Number(safeMeta.loadedAt || Date.now()),
+      });
+    },
 
     ignoreNextUpdateRef,
     stageRef,
@@ -629,6 +656,45 @@ export default function CanvasEditor({
     elementosSeleccionados.length === 1
       ? objetos.find(o => o.id === elementosSeleccionados[0])
       : null;
+
+  const templateAuthoring = useTemplateFieldAuthoring({
+    enabled: canManageSite,
+    slug,
+    userId,
+    objetos,
+    selectedElement: objetoSeleccionado,
+    draftMeta,
+  });
+  const templateAuthoringStatus = templateAuthoring.status || { isReady: true, issues: [] };
+  const templateAuthoringIssues = Array.isArray(templateAuthoringStatus.issues)
+    ? templateAuthoringStatus.issues
+    : [];
+  const templateAuthoringIssueCount = templateAuthoringIssues.length;
+  const canRenderTemplateAuthoringMenu =
+    canManageSite &&
+    templateAuthoring.selectedIsSupportedElement;
+  const templateAuthoringStatusLabel = !templateAuthoring.canConfigure
+    ? "Schema deshabilitado"
+    : templateAuthoringStatus.isReady
+      ? "Listo para publicar"
+      : `No listo para publicar (${templateAuthoringIssueCount})`;
+  const templateAuthoringStatusClass = !templateAuthoring.canConfigure
+    ? "border-slate-300 bg-slate-100 text-slate-700"
+    : templateAuthoringStatus.isReady
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : "border-amber-300 bg-amber-50 text-amber-700";
+
+  const handleViewTemplateFieldUsage = useCallback(
+    (fieldKey) => {
+      const usage = templateAuthoring.getFieldUsage(fieldKey);
+      if (!usage.length) {
+        alert(`El campo '${fieldKey}' no tiene targets activos.`);
+        return;
+      }
+      alert(`Campo '${fieldKey}' usado en ${usage.length} elemento(s):\n- ${usage.join("\n- ")}`);
+    },
+    [templateAuthoring]
+  );
 
   const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
   const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
@@ -2218,6 +2284,8 @@ export default function CanvasEditor({
     futurosLength: futuros.length,
 
     stageRef,
+    getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
+    getTemplateAuthoringStatus: templateAuthoring.getStatus,
   });
 
 
@@ -3092,7 +3160,7 @@ export default function CanvasEditor({
                   })()}
 
                   {/* Botón Guardar como plantilla */}
-                  {!loadingClaims && esAdmin && (
+                  {canManageSite && (
                     <button
                       onClick={() =>
                         guardarSeccionComoPlantilla({
@@ -4673,6 +4741,33 @@ export default function CanvasEditor({
         </div>
       )}
 
+      {canManageSite && (
+        <div
+          className={`pointer-events-none absolute right-3 top-3 z-[70] rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm ${templateAuthoringStatusClass}`}
+          title={
+            !templateAuthoring.canConfigure
+              ? "Este borrador no tiene plantilla base para configurar schema."
+              : templateAuthoringStatus.isReady
+                ? "Schema dinamico listo para publicar."
+                : "Corrige inconsistencias de mapping antes de guardar plantilla."
+          }
+        >
+          {templateAuthoringStatusLabel}
+        </div>
+      )}
+
+      {canManageSite && (
+        <TemplateFieldBadgeOverlay
+          layoutRootRef={editorOverlayRootRef}
+          stageRef={stageRef}
+          elementRefs={elementRefs}
+          selectedElementId={elementosSeleccionados[0] || ""}
+          hoveredElementId={hoverId || ""}
+          fieldIndexByElementId={templateAuthoring.fieldIndexByElementId}
+          fieldsSchema={templateAuthoring.fieldsSchema}
+          isMobile={isMobile}
+        />
+      )}
 
 
       {mostrarPanelZ && (
@@ -4693,6 +4788,28 @@ export default function CanvasEditor({
           setObjetos={setObjetos}
           setElementosSeleccionados={setElementosSeleccionados}
           onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
+          canManageSite={canManageSite}
+          templateAuthoring={
+            canRenderTemplateAuthoringMenu
+              ? {
+                  canConfigure: templateAuthoring.canConfigure,
+                  loading: templateAuthoring.loading,
+                  saving: templateAuthoring.saving,
+                  error: templateAuthoring.error,
+                  selectedElementType: templateAuthoring.selectedElementType,
+                  selectedIsSupportedElement: templateAuthoring.selectedIsSupportedElement,
+                  selectedElementDefaultFieldType: templateAuthoring.selectedElementDefaultFieldType,
+                  selectedField: templateAuthoring.selectedField,
+                  fieldsSchema: templateAuthoring.fieldsSchema,
+                  onCreateField: templateAuthoring.createFieldFromSelection,
+                  onLinkField: templateAuthoring.linkSelectionToField,
+                  onEditField: templateAuthoring.editField,
+                  onUnlinkField: templateAuthoring.unlinkSelection,
+                  onDeleteField: templateAuthoring.deleteField,
+                  onViewUsage: handleViewTemplateFieldUsage,
+                }
+              : null
+          }
         />
       )}
 

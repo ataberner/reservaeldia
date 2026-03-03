@@ -124,7 +124,8 @@ function buildMotionDataAttrs(obj: any): string {
   const dataType = escapeAttr(mapObjToDataType(obj));
   const dataRole = escapeAttr(inferDataRole(obj));
   const dataMotion = escapeAttr(sanitizeMotionEffect(obj?.motionEffect));
-  return `data-type="${dataType}" data-role="${dataRole}" data-motion="${dataMotion}"`;
+  const dataObjId = escapeAttr(String(obj?.id || "").trim());
+  return `data-type="${dataType}" data-role="${dataRole}" data-motion="${dataMotion}"${dataObjId ? ` data-obj-id="${dataObjId}"` : ""}`;
 }
 
 function appendMotionDataAttrs(htmlElemento: string, obj: any): string {

@@ -9,6 +9,7 @@ import {
     getAllowedMotionEffectsForElement,
     sanitizeMotionEffect,
 } from "@/domain/motionEffects";
+import TemplateDynamicFieldMenuSection from "@/components/editor/templateAuthoring/TemplateDynamicFieldMenuSection";
 
 // Normaliza y valida URL básica
 function sanitizeURL(url) {
@@ -28,6 +29,7 @@ function sanitizeURL(url) {
 
 const VIEWPORT_PADDING = 8;
 const DEFAULT_MENU_SIZE = { width: 256, height: 300 };
+const DEFAULT_MENU_SIZE_WITH_AUTHORING = { width: 320, height: 360 };
 const DEFAULT_LINK_FLYOUT_SIZE = { width: 320, height: 180 };
 const DEFAULT_EFFECTS_FLYOUT_SIZE = { width: 300, height: 320 };
 const DEFAULT_LAYER_FLYOUT_SIZE = { width: 224, height: 180 };
@@ -108,6 +110,8 @@ export default function MenuOpcionesElemento({
     setObjetos,
     setElementosSeleccionados,
     onConfigurarRsvp,
+    canManageSite = false,
+    templateAuthoring = null,
 }) {
     // Estado local del submenu "Orden de capa"
     const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
@@ -139,6 +143,9 @@ export default function MenuOpcionesElemento({
 
     const esImagen = elementoSeleccionado?.tipo === "imagen";
     const esRsvp = elementoSeleccionado?.tipo === "rsvp-boton";
+    const authoringConfig =
+        templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
+    const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -167,11 +174,16 @@ export default function MenuOpcionesElemento({
     }, []);
 
     // --- Helper: calcula la posición final del menú desde el rect del botón ⚙️
+    const baseMenuSize = shouldRenderTemplateAuthoringSection
+        ? DEFAULT_MENU_SIZE_WITH_AUTHORING
+        : DEFAULT_MENU_SIZE;
+    const desktopMenuWidthClass = shouldRenderTemplateAuthoringSection ? "w-80" : "w-64";
+
     const calcularPosDesdeRect = useCallback((rect) => {
-        const measured = getMeasuredSize(menuRootRef, DEFAULT_MENU_SIZE);
+        const measured = getMeasuredSize(menuRootRef, baseMenuSize);
         const posResuelta = resolveAnchoredPosition(rect, measured, 8);
         return { x: posResuelta.x, y: posResuelta.y };
-    }, []);
+    }, [baseMenuSize]);
 
 
     // --- Submenú Enlace ---
@@ -439,7 +451,7 @@ export default function MenuOpcionesElemento({
     return createPortal(
         <div
             ref={menuRootRef}
-            className={`fixed z-50 bg-white border shadow-xl p-3 text-sm space-y-1 menu-z-index ${isMobile ? "rounded-2xl w-auto" : "rounded-lg w-64"}`}
+            className={`fixed z-50 bg-white border shadow-xl p-3 text-sm space-y-1 menu-z-index ${isMobile ? "rounded-2xl w-auto" : `rounded-lg ${desktopMenuWidthClass}`}`}
             style={
                 isMobile
                     ? {
@@ -502,6 +514,28 @@ export default function MenuOpcionesElemento({
             >
                 <PlusCircle className="w-4 h-4" /> Duplicar
             </button>
+
+            {shouldRenderTemplateAuthoringSection && (
+                <TemplateDynamicFieldMenuSection
+                    visible={true}
+                    canConfigure={authoringConfig?.canConfigure === true}
+                    loading={authoringConfig?.loading === true}
+                    saving={authoringConfig?.saving === true}
+                    error={authoringConfig?.error || ""}
+                    selectedElement={elementoSeleccionado}
+                    selectedElementType={authoringConfig?.selectedElementType || ""}
+                    selectedIsSupportedElement={authoringConfig?.selectedIsSupportedElement === true}
+                    suggestedFieldType={authoringConfig?.selectedElementDefaultFieldType || "text"}
+                    selectedField={authoringConfig?.selectedField || null}
+                    fieldsSchema={authoringConfig?.fieldsSchema || []}
+                    onCreateField={authoringConfig?.onCreateField}
+                    onLinkField={authoringConfig?.onLinkField}
+                    onEditField={authoringConfig?.onEditField}
+                    onUnlinkField={authoringConfig?.onUnlinkField}
+                    onDeleteField={authoringConfig?.onDeleteField}
+                    onViewUsage={authoringConfig?.onViewUsage}
+                />
+            )}
 
 
             {/* Enlace */}

@@ -6,6 +6,7 @@ import { useRouter } from "next/router";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronDown, LogOut, Minus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
+import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
 
 export default function DashboardHeader({
     slugInvitacion,
@@ -140,21 +141,53 @@ export default function DashboardHeader({
 
     // 🔹 Función para guardar plantilla
     const guardarPlantilla = async () => {
-        const nombre = prompt("¿Qué nombre querés darle a la nueva plantilla?");
+        const nombre = prompt("Que nombre queres darle a la nueva plantilla?");
         if (!nombre) return;
 
         try {
             const ref = doc(db, "borradores", slugInvitacion);
             const snap = await getDoc(ref);
-            if (!snap.exists) throw new Error("No se encontró el borrador");
+            if (!snap.exists()) throw new Error("No se encontro el borrador.");
 
             const data = snap.data();
             const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+            const runtimeAuthoringStatus =
+                typeof window !== "undefined" &&
+                typeof window.canvasEditor?.getTemplateAuthoringStatus === "function"
+                    ? window.canvasEditor.getTemplateAuthoringStatus()
+                    : null;
+            const runtimeAuthoringSnapshot =
+                typeof window !== "undefined" &&
+                typeof window.canvasEditor?.getTemplateAuthoringSnapshot === "function"
+                    ? window.canvasEditor.getTemplateAuthoringSnapshot()
+                    : null;
+            const stagedAuthoringSnapshot =
+                data?.templateAuthoringDraft && typeof data.templateAuthoringDraft === "object"
+                    ? data.templateAuthoringDraft
+                    : null;
+            const authoringStatusToValidate =
+                runtimeAuthoringStatus && typeof runtimeAuthoringStatus === "object"
+                    ? runtimeAuthoringStatus
+                    : stagedAuthoringSnapshot?.status || null;
 
-            // ✅ Capturar imagen del canvas
+            if (authoringStatusToValidate && authoringStatusToValidate.isReady === false) {
+                const issues = Array.isArray(authoringStatusToValidate.issues)
+                    ? authoringStatusToValidate.issues
+                    : [];
+                const preview = issues.slice(0, 4);
+                const body = preview.length
+                    ? `- ${preview.join("\n- ")}`
+                    : "- Revisa defaults y applyTargets.";
+                const extra = issues.length > 4 ? `\n... y ${issues.length - 4} mas.` : "";
+                alert(
+                    `No se puede guardar plantilla porque el schema dinamico no esta listo.\n${body}${extra}`
+                );
+                return;
+            }
+
             const stage = window.canvasEditor?.stageRef;
             if (!stage) {
-                alert("❌ El editor no está listo todavía.");
+                alert("El editor no esta listo todavia.");
                 return;
             }
 
@@ -162,7 +195,6 @@ export default function DashboardHeader({
             const res = await fetch(dataURL);
             const blob = await res.blob();
 
-            // ✅ Subir imagen a Firebase Storage
             const storage = (await import("firebase/storage")).getStorage();
             const storageRef = (await import("firebase/storage")).ref(
                 storage,
@@ -171,27 +203,26 @@ export default function DashboardHeader({
             await (await import("firebase/storage")).uploadBytes(storageRef, blob);
 
             const portada = await (await import("firebase/storage")).getDownloadURL(storageRef);
+            const payload = buildTemplatePayloadFromAuthoring({
+                draftData: data,
+                authoringState: runtimeAuthoringSnapshot || stagedAuthoringSnapshot || null,
+            });
 
-            // ✅ Crear plantilla en Firestore
             const functions = getFunctions();
             const crearPlantilla = httpsCallable(functions, "crearPlantilla");
-
             await crearPlantilla({
                 id,
                 datos: {
+                    ...payload,
                     nombre,
-                    tipo: "boda",
                     portada,
-                    editor: "konva",
-                    objetos: data.objetos,
-                    secciones: data.secciones,
                 },
             });
 
-            alert("✅ La plantilla se guardó correctamente.");
+            alert("La plantilla se guardo correctamente.");
         } catch (error) {
-            console.error("❌ Error al guardar plantilla:", error);
-            alert("Ocurrió un error al guardar la plantilla.");
+            console.error("Error al guardar plantilla:", error);
+            alert("Ocurrio un error al guardar la plantilla.");
         }
     };
     const abrirModalCrearSeccion = () => {

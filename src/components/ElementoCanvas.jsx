@@ -444,6 +444,34 @@ export default function ElementoCanvas({
     obj?.__groupAlign,
   ]);
 
+  useEffect(() => {
+    if (!obj || obj.tipo !== "texto") return;
+    if (typeof window === "undefined") return;
+
+    const remeasure = () => {
+      const node = textNodeRef.current;
+      if (!node || typeof node.getTextWidth !== "function") return;
+      const wReal = Math.ceil(node.getTextWidth() || 0);
+      if (wReal > 0) setMeasuredTextWidth(wReal);
+    };
+
+    remeasure();
+    window.addEventListener("fonts-loaded", remeasure);
+    return () => {
+      window.removeEventListener("fonts-loaded", remeasure);
+    };
+  }, [
+    obj?.id,
+    obj?.tipo,
+    obj?.texto,
+    obj?.fontFamily,
+    obj?.fontSize,
+    obj?.fontStyle,
+    obj?.fontWeight,
+    obj?.lineHeight,
+    obj?.letterSpacing,
+  ]);
+
 
 
   useEffect(() => {
@@ -652,7 +680,12 @@ export default function ElementoCanvas({
     const availableWidth = Math.max(1, ANCHO_CANVAS - validX);
 
     // ancho real del texto (mÃƒÂ¡xima lÃƒÂ­nea, segÃƒÂºn tu cÃƒÂ¡lculo actual)
-    const realTextWidth = Math.max(1, textWidth);
+    const realTextWidth = Math.max(
+      1,
+      Number.isFinite(measuredTextWidth) && measuredTextWidth > 0
+        ? measuredTextWidth
+        : textWidth
+    );
 
     // Ã¢Å“â€¦ Si entra, NO usamos width (bounds ajustado)
     // Ã¢Å“â€¦ Si no entra, usamos width=available y wrap por caracteres para cortar en el borde
@@ -660,9 +693,9 @@ export default function ElementoCanvas({
 
     const wrapToUse = shouldWrapToCanvasEdge ? "char" : "none";
     const widthToUse = shouldWrapToCanvasEdge ? availableWidth : undefined;
-    const inlineCaretOnlyMode = true;
-    const appliedOpacity =
-      isEditing && !inlineCaretOnlyMode ? 0 : 1;
+    // Durante inline edit mostramos el texto del overlay DOM y ocultamos el Konva
+    // para evitar que cursor y glifos salgan de sincronía visual.
+    const appliedOpacity = isEditingByOverlay ? 0 : 1;
 
     return (
       <>

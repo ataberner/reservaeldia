@@ -320,7 +320,11 @@ export default function InlineTextEditor({
   if (!node) return null;
 
   const editorRef = useRef(null);
-  const textCenterXDomRef = useRef(null);
+  const textCenterLockRef = useRef({
+    editingId: null,
+    nodeId: null,
+    centerXDom: null,
+  });
   const DEBUG_MODE = isInlineDebugEnabled();
 
   const normalizedFinishMode = normalizeFinishMode(finishMode);
@@ -377,6 +381,19 @@ export default function InlineTextEditor({
       return node;
     }
   }, [node, stage]);
+
+  const textNodeId =
+    (typeof textNode?.id === "function" ? textNode.id() : textNode?.attrs?.id) || null;
+  const lockChanged =
+    textCenterLockRef.current.editingId !== editingId ||
+    textCenterLockRef.current.nodeId !== textNodeId;
+  if (lockChanged) {
+    textCenterLockRef.current = {
+      editingId: editingId || null,
+      nodeId: textNodeId,
+      centerXDom: null,
+    };
+  }
 
   const nodeProps = useMemo(() => {
     try {
@@ -498,9 +515,9 @@ export default function InlineTextEditor({
   let top;
 
   if (isTextNode) {
-    if (textCenterXDomRef.current == null) {
+    if (textCenterLockRef.current.centerXDom == null) {
       const centerXCanvas = rect.x + rect.width / 2;
-      textCenterXDomRef.current =
+      textCenterLockRef.current.centerXDom =
         stageBox.left + centerXCanvas * totalScaleX + window.scrollX;
     }
 
@@ -509,7 +526,7 @@ export default function InlineTextEditor({
       rect.y * totalScaleY +
       window.scrollY -
       PADDING_Y;
-    left = textCenterXDomRef.current - cardWidth / 2;
+    left = textCenterLockRef.current.centerXDom - cardWidth / 2;
   } else {
     const centerXCanvas = rect.x + rect.width / 2;
     const centerYCanvas = rect.y + rect.height / 2;
@@ -851,9 +868,9 @@ export default function InlineTextEditor({
             lineHeight: `${editableLineHeightPx}px`,
             letterSpacing: `${letterSpacingPx}px`,
             minHeight: `${lineHeightPx}px`,
-            color: "transparent",
+            color: nodeProps.fill,
             caretColor: nodeProps.fill,
-            WebkitTextFillColor: "transparent",
+            WebkitTextFillColor: nodeProps.fill,
             background: "transparent",
             borderRadius: 0,
             paddingTop: `${verticalInsetPx}px`,

@@ -263,6 +263,11 @@ export default function CanvasEditor({
   const editorOverlayRootRef = useRef(null);
   const autoSectionViewportRef = useRef(null);
   const autoSectionScrollRafRef = useRef(0);
+  const followMoveScrollRafRef = useRef(0);
+  const seccionesAnimandoActivasRef = useRef(false);
+  const bloqueoAutoSeleccionSeccionRef = useRef(0);
+  const ultimaSeccionMovidaRef = useRef(null);
+  const previoAnimandoSeccionesRef = useRef(false);
   const seccionActivaIdRef = useRef(null);
   const ignoreNextUpdateRef = useRef(0);
   const [anchoStage, setAnchoStage] = useState(800);
@@ -791,6 +796,19 @@ export default function CanvasEditor({
       setMobileSectionActionsOpen(false);
     }
   }, [isMobile, mobileSectionActionsOpen]);
+
+  useEffect(() => {
+    seccionesAnimandoActivasRef.current = seccionesAnimando.length > 0;
+  }, [seccionesAnimando]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && followMoveScrollRafRef.current) {
+        window.cancelAnimationFrame(followMoveScrollRafRef.current);
+        followMoveScrollRafRef.current = 0;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -2114,7 +2132,59 @@ export default function CanvasEditor({
     return finalSize;
   }, [medirAnchoTextoKonva, textResizeDebug]);
 
-  const calcularXTextoCentrado = useCallback((objTexto, textoObjetivo) => {
+  const obtenerCentroVisualTextoX = useCallback((objTexto, nodeOverride = null) => {
+    if (!objTexto || objTexto.tipo !== "texto") return null;
+
+    const currentX = Number.isFinite(objTexto.x) ? objTexto.x : 0;
+    const nodeCandidate =
+      nodeOverride || elementRefs.current?.[objTexto.id] || null;
+
+    if (nodeCandidate && typeof nodeCandidate.getClientRect === "function") {
+      try {
+        const rect = nodeCandidate.getClientRect({
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        });
+        if (
+          Number.isFinite(rect?.x) &&
+          Number.isFinite(rect?.width) &&
+          rect.width > 0
+        ) {
+          return rect.x + (rect.width / 2);
+        }
+      } catch {
+        // fallback a metricas de texto si el nodo no responde todavia
+      }
+    }
+
+    if (Number.isFinite(objTexto.width) && objTexto.width > 0) {
+      return currentX + (objTexto.width / 2);
+    }
+
+    const baseLineHeight =
+      typeof objTexto.lineHeight === "number" && objTexto.lineHeight > 0
+        ? objTexto.lineHeight
+        : 1.2;
+    const letterSpacing =
+      Number.isFinite(Number(objTexto.letterSpacing)) ? Number(objTexto.letterSpacing) : 0;
+    const widthFromKonva = medirAnchoTextoKonva(objTexto, objTexto.texto);
+    if (Number.isFinite(widthFromKonva) && widthFromKonva > 0) {
+      return currentX + (widthFromKonva / 2);
+    }
+
+    const metrics = obtenerMetricasTexto(objTexto.texto, {
+      fontSize: objTexto.fontSize,
+      fontFamily: objTexto.fontFamily,
+      fontWeight: objTexto.fontWeight,
+      fontStyle: objTexto.fontStyle,
+      lineHeight: baseLineHeight * 0.92,
+      letterSpacing,
+    });
+    return currentX + (metrics.width / 2);
+  }, [obtenerMetricasTexto, medirAnchoTextoKonva]);
+
+  const calcularXTextoCentrado = useCallback((objTexto, textoObjetivo, centerXFijo = null) => {
     if (!objTexto || objTexto.tipo !== "texto") return Number.isFinite(objTexto?.x) ? objTexto.x : 0;
 
     const baseLineHeight =
@@ -2153,6 +2223,11 @@ export default function CanvasEditor({
       Number.isFinite(nextWidthFromKonva) && nextWidthFromKonva > 0
         ? nextWidthFromKonva
         : nextMetrics.width;
+
+    const safeCenterXFijo = Number(centerXFijo);
+    if (Number.isFinite(safeCenterXFijo)) {
+      return safeCenterXFijo - (nextWidth / 2);
+    }
 
     const currentX = Number.isFinite(objTexto.x) ? objTexto.x : 0;
     const centerX = currentX + (previousWidth / 2);
@@ -2381,8 +2456,199 @@ export default function CanvasEditor({
     return window;
   }, []);
 
+  const obtenerObjetivoScrollSeccion = useCallback(({
+    seccionId,
+    seccionesFuente = null,
+  } = {}) => {
+    if (!seccionId || typeof window === "undefined") return null;
+
+    const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+    const stageContainer = stage?.container?.();
+    if (!stageContainer) return null;
+
+    const stageRect = stageContainer.getBoundingClientRect?.();
+    if (!stageRect || !Number.isFinite(stageRect.top) || !Number.isFinite(stageRect.height)) {
+      return null;
+    }
+
+    const viewport = autoSectionViewportRef.current || resolverViewportScrollSecciones();
+    if (!viewport) return null;
+
+    const base = Array.isArray(seccionesFuente) && seccionesFuente.length > 0
+      ? seccionesFuente
+      : seccionesOrdenadas;
+    if (!Array.isArray(base) || base.length === 0) return null;
+
+    const ordenadas = [...base].sort((a, b) => a.orden - b.orden);
+    const index = ordenadas.findIndex((s) => s.id === seccionId);
+    if (index < 0) return null;
+
+    const alturaCanvasLocal = Math.max(
+      1,
+      ordenadas.reduce((acc, s) => acc + (Number(s.altura) || 0), 0)
+    );
+    const pxPorUnidad = Number(stageRect.height || 0) / alturaCanvasLocal;
+    if (!(pxPorUnidad > 0)) return null;
+
+    const offsetY = calcularOffsetY(ordenadas, index);
+    const alturaSeccion = Math.max(1, Number(ordenadas[index]?.altura) || 1);
+    const seccionTopViewport = stageRect.top + offsetY * pxPorUnidad;
+    const seccionBottomViewport = seccionTopViewport + alturaSeccion * pxPorUnidad;
+    const centroSeccion = (seccionTopViewport + seccionBottomViewport) / 2;
+
+    let viewportTop = 0;
+    let viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    let scrollActual = window.scrollY || window.pageYOffset || 0;
+
+    if (viewport !== window) {
+      const viewportRect = viewport.getBoundingClientRect?.();
+      if (!viewportRect) return null;
+      viewportTop = viewportRect.top;
+      viewportHeight = viewport.clientHeight || (viewportRect.bottom - viewportRect.top) || 0;
+      scrollActual = viewport.scrollTop || 0;
+    }
+
+    if (!(viewportHeight > 0)) return null;
+
+    const centroDeseadoViewport = viewportTop + viewportHeight / 2;
+    const delta = centroSeccion - centroDeseadoViewport;
+    const targetScroll = Math.max(0, scrollActual + delta);
+
+    return {
+      viewport,
+      currentScroll: scrollActual,
+      targetScroll,
+    };
+  }, [resolverViewportScrollSecciones, seccionesOrdenadas]);
+
+  const desplazarViewportHaciaSeccion = useCallback(({
+    seccionId,
+    seccionesFuente = null,
+    behavior = "smooth",
+  } = {}) => {
+    const objetivo = obtenerObjetivoScrollSeccion({ seccionId, seccionesFuente });
+    if (!objetivo) return;
+
+    const { viewport, currentScroll, targetScroll } = objetivo;
+    if (Math.abs(targetScroll - currentScroll) < 2) return;
+
+    if (viewport === window) {
+      window.scrollTo({ top: Math.round(targetScroll), behavior });
+      return;
+    }
+
+    viewport.scrollTo({ top: Math.round(targetScroll), behavior });
+  }, [obtenerObjetivoScrollSeccion]);
+
+  const seguirScrollDuranteMovimientoSeccion = useCallback(({
+    seccionId,
+    maxDurationMs = 1400,
+  } = {}) => {
+    if (!seccionId || typeof window === "undefined") return;
+
+    if (followMoveScrollRafRef.current) {
+      window.cancelAnimationFrame(followMoveScrollRafRef.current);
+      followMoveScrollRafRef.current = 0;
+    }
+
+    const startedAt = window.performance?.now?.() || Date.now();
+
+    const step = (nowRaw) => {
+      const now = Number.isFinite(nowRaw) ? nowRaw : (window.performance?.now?.() || Date.now());
+      const elapsed = now - startedAt;
+
+      const objetivo = obtenerObjetivoScrollSeccion({
+        seccionId,
+      });
+
+      if (!objetivo) {
+        if (elapsed < maxDurationMs) {
+          followMoveScrollRafRef.current = window.requestAnimationFrame(step);
+        } else {
+          followMoveScrollRafRef.current = 0;
+        }
+        return;
+      }
+
+      const { viewport, currentScroll, targetScroll } = objetivo;
+      const delta = targetScroll - currentScroll;
+      const animando = seccionesAnimandoActivasRef.current;
+      const gain = animando ? 0.08 : 0.14;
+      const nextScroll = Math.abs(delta) < 0.8
+        ? targetScroll
+        : currentScroll + delta * gain;
+      const roundedTop = Math.round(Math.max(0, nextScroll));
+
+      if (viewport === window) {
+        window.scrollTo({ top: roundedTop, behavior: "auto" });
+      } else {
+        viewport.scrollTo({ top: roundedTop, behavior: "auto" });
+      }
+
+      bloqueoAutoSeleccionSeccionRef.current = Math.max(
+        bloqueoAutoSeleccionSeccionRef.current,
+        Date.now() + 220
+      );
+
+      const remaining = Math.abs(targetScroll - nextScroll);
+      if (!animando) {
+        followMoveScrollRafRef.current = 0;
+        return;
+      }
+
+      if (elapsed < maxDurationMs && remaining > 0.9) {
+        followMoveScrollRafRef.current = window.requestAnimationFrame(step);
+        return;
+      }
+
+      followMoveScrollRafRef.current = 0;
+    };
+
+    followMoveScrollRafRef.current = window.requestAnimationFrame(step);
+  }, [obtenerObjetivoScrollSeccion]);
+
+  const moverSeccionConScroll = useCallback(({
+    seccionId,
+    direccion,
+  }) => {
+    if (!seccionId || (direccion !== "subir" && direccion !== "bajar")) return;
+
+    ultimaSeccionMovidaRef.current = seccionId;
+    bloqueoAutoSeleccionSeccionRef.current = Date.now() + 1500;
+    onSelectSeccion(seccionId);
+
+    const ordenadasActuales = [...secciones].sort((a, b) => a.orden - b.orden);
+    const indiceActual = ordenadasActuales.findIndex((s) => s.id === seccionId);
+    if (indiceActual < 0) return;
+
+    const indiceDestino = direccion === "subir" ? indiceActual - 1 : indiceActual + 1;
+    if (indiceDestino < 0 || indiceDestino >= ordenadasActuales.length) return;
+
+    moverSeccionExternal({
+      seccionId,
+      direccion,
+      secciones,
+      slug,
+      setSecciones,
+      setSeccionesAnimando,
+    });
+
+    seguirScrollDuranteMovimientoSeccion({
+      seccionId,
+      maxDurationMs: 1400,
+    });
+  }, [
+    secciones,
+    slug,
+    setSecciones,
+    setSeccionesAnimando,
+    onSelectSeccion,
+    seguirScrollDuranteMovimientoSeccion,
+  ]);
+
   const sincronizarSeccionVisiblePorScroll = useCallback(() => {
     if (!seccionesOrdenadas.length || typeof window === "undefined") return;
+    if (bloqueoAutoSeleccionSeccionRef.current > Date.now()) return;
 
     const stage = stageRef.current?.getStage?.() || stageRef.current || null;
     const stageContainer = stage?.container?.();
@@ -2454,6 +2720,26 @@ export default function CanvasEditor({
 
     onSelectSeccion(mejorId);
   }, [altoCanvasDinamico, onSelectSeccion, resolverViewportScrollSecciones, seccionesOrdenadas]);
+
+  useEffect(() => {
+    const estabaAnimando = previoAnimandoSeccionesRef.current;
+    const estaAnimandoAhora = seccionesAnimando.length > 0;
+
+    if (estabaAnimando && !estaAnimandoAhora) {
+      const seccionMovidaId = ultimaSeccionMovidaRef.current;
+      if (seccionMovidaId) {
+        bloqueoAutoSeleccionSeccionRef.current = Date.now() + 750;
+        onSelectSeccion(seccionMovidaId);
+        if (typeof window !== "undefined" && followMoveScrollRafRef.current) {
+          window.cancelAnimationFrame(followMoveScrollRafRef.current);
+          followMoveScrollRafRef.current = 0;
+        }
+        ultimaSeccionMovidaRef.current = null;
+      }
+    }
+
+    previoAnimandoSeccionesRef.current = estaAnimandoAhora;
+  }, [seccionesAnimando, onSelectSeccion]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -2730,8 +3016,14 @@ export default function CanvasEditor({
       !Number.isFinite(objetoEnEdicion.width) &&
       objetoEnEdicion.__autoWidth !== false;
 
+    const lockedCenterX =
+      inlineEditPreviewRef.current?.id === editing.id &&
+      Number.isFinite(inlineEditPreviewRef.current?.centerX)
+        ? inlineEditPreviewRef.current.centerX
+        : null;
+
     const expectedX = shouldKeepCenterPreview
-      ? calcularXTextoCentrado(objetoEnEdicion, editingValue)
+      ? calcularXTextoCentrado(objetoEnEdicion, editingValue, lockedCenterX)
       : (Number.isFinite(objetoEnEdicion.x) ? objetoEnEdicion.x : null);
 
     inlineDebugLog("preview-effect-start", {
@@ -2741,6 +3033,7 @@ export default function CanvasEditor({
       objX: objetoEnEdicion.x ?? null,
       objY: objetoEnEdicion.y ?? null,
       shouldKeepCenterPreview,
+      lockedCenterX,
       expectedX,
       beforeMetrics,
     });
@@ -2812,6 +3105,38 @@ export default function CanvasEditor({
       deltaFinalVsExpected,
       finalNodeMetrics,
     });
+
+    const shouldAutoCorrectFinalX =
+      Number.isFinite(pending.expectedX) &&
+      Number.isFinite(finalX) &&
+      Math.abs(deltaFinalVsExpected) > 0.25;
+    if (shouldAutoCorrectFinalX) {
+      inlineDebugLog("finish-post-commit:autocorrect-x", {
+        id: pending.id,
+        fromX: finalX,
+        toX: pending.expectedX,
+        deltaFinalVsExpected,
+      });
+      setObjetos((prev) => {
+        const index = prev.findIndex((o) => o.id === pending.id);
+        if (index < 0) return prev;
+        const current = prev[index];
+        const currentX = Number.isFinite(current?.x) ? current.x : null;
+        if (
+          Number.isFinite(currentX) &&
+          Number.isFinite(pending.expectedX) &&
+          Math.abs(currentX - pending.expectedX) <= 0.01
+        ) {
+          return prev;
+        }
+        const next = [...prev];
+        next[index] = {
+          ...current,
+          x: pending.expectedX,
+        };
+        return next;
+      });
+    }
 
     inlineCommitDebugRef.current = { id: null };
   }, [editing.id, objetos, obtenerMetricasNodoInline]);
@@ -3023,13 +3348,9 @@ export default function CanvasEditor({
                   {/* Boton Subir */}
                   <button
                     onClick={() =>
-                      moverSeccionExternal({
+                      moverSeccionConScroll({
                         seccionId: seccion.id,
                         direccion: "subir",
-                        secciones,
-                        slug,
-                        setSecciones,
-                        setSeccionesAnimando,
                       })
                     }
                     disabled={esPrimera || estaAnimando}
@@ -3046,13 +3367,9 @@ export default function CanvasEditor({
                   {/* Boton Bajar */}
                   <button
                     onClick={() =>
-                      moverSeccionExternal({
+                      moverSeccionConScroll({
                         seccionId: seccion.id,
                         direccion: "bajar",
-                        secciones,
-                        slug,
-                        setSecciones,
-                        setSeccionesAnimando,
                       })
                     }
                     disabled={esUltima || estaAnimando}
@@ -3755,7 +4072,16 @@ export default function CanvasEditor({
                             obj.__autoWidth !== false;
 
                           if (shouldKeepCenterPreview) {
-                            const previewX = calcularXTextoCentrado(obj, textoPreview);
+                            const lockedCenterX =
+                              inlineEditPreviewRef.current?.id === obj.id &&
+                              Number.isFinite(inlineEditPreviewRef.current?.centerX)
+                                ? inlineEditPreviewRef.current.centerX
+                                : null;
+                            const previewX = calcularXTextoCentrado(
+                              obj,
+                              textoPreview,
+                              lockedCenterX
+                            );
                             if (Number.isFinite(previewX)) {
                               previewObj.x = previewX;
                             }
@@ -3793,6 +4119,15 @@ export default function CanvasEditor({
                         onStartTextEdit={isInEditMode ? null : (id, texto) => {
                           const node = elementRefs.current[id];
                           const nodeMetrics = obtenerMetricasNodoInline(node);
+                          const shouldKeepCenterXDuringEdit =
+                            obj?.tipo === "texto" &&
+                            !obj.__groupAlign &&
+                            !Number.isFinite(obj.width) &&
+                            obj.__autoWidth !== false;
+                          const centerXLock =
+                            shouldKeepCenterXDuringEdit
+                              ? obtenerCentroVisualTextoX(obj, node)
+                              : null;
                           const previousCurrentEditingId = window._currentEditingId ?? null;
                           setInlineOverlayMountedId(null);
                           captureInlineSnapshot("enter: pre-start", {
@@ -3801,12 +4136,17 @@ export default function CanvasEditor({
                             textoLength: String(texto ?? "").length,
                           });
                           window._currentEditingId = id;
-                          inlineEditPreviewRef.current = { id: null, centerX: null };
+                          inlineEditPreviewRef.current = {
+                            id: shouldKeepCenterXDuringEdit ? id : null,
+                            centerX: Number.isFinite(centerXLock) ? centerXLock : null,
+                          };
                           inlineDebugLog("start-inline-edit", {
                             id,
                             textoLength: String(texto ?? "").length,
                             objectX: obj?.x ?? null,
                             objectY: obj?.y ?? null,
+                            shouldKeepCenterXDuringEdit,
+                            centerXLock,
                             previousCurrentEditingId,
                             nextCurrentEditingId: window._currentEditingId,
                             nodeMetrics,
@@ -4507,11 +4847,57 @@ export default function CanvasEditor({
                   }}
                   onFinish={() => {
                     const finishId = editing.id;
+                    const safeFinishId = String(finishId || "").replace(/"/g, '\\"');
+                    const overlayRoot =
+                      typeof document !== "undefined" && safeFinishId
+                        ? document.querySelector(`[data-inline-editor-id="${safeFinishId}"]`)
+                        : null;
+                    const overlayEditor = overlayRoot?.querySelector?.('[contenteditable="true"]');
+                    const domRawText =
+                      overlayEditor && typeof overlayEditor.innerText === "string"
+                        ? overlayEditor.innerText
+                        : null;
+                    const domNormalizedText = domRawText == null
+                      ? null
+                      : String(domRawText)
+                        .replace(/\r\n/g, "\n")
+                        .replace(/\u200B/g, "");
+                    const domTrailingNewlines =
+                      domNormalizedText?.match(/\n+$/)?.[0]?.length || 0;
+                    let textoNuevoRaw =
+                      domNormalizedText == null
+                        ? String(editing.value ?? "")
+                        : (
+                          domTrailingNewlines >= 2
+                            ? domNormalizedText.slice(0, -1)
+                            : domNormalizedText
+                        );
+                    const domCenterXCanvas = (() => {
+                      if (!overlayRoot || typeof document === "undefined") return null;
+                      const overlayRect = overlayRoot.getBoundingClientRect?.();
+                      if (
+                        !Number.isFinite(overlayRect?.left) ||
+                        !Number.isFinite(overlayRect?.width)
+                      ) {
+                        return null;
+                      }
+                      const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+                      const stageContainer = stage?.container?.();
+                      const stageRect = stageContainer?.getBoundingClientRect?.();
+                      if (!stageRect || !Number.isFinite(stageRect.left)) return null;
+                      const stageScaleX =
+                        typeof stage?.scaleX === "function"
+                          ? stage.scaleX()
+                          : (Number(stage?.scaleX) || 1);
+                      const totalScaleX = (Number(escalaVisual) || 1) * (Number(stageScaleX) || 1);
+                      if (!Number.isFinite(totalScaleX) || totalScaleX <= 0) return null;
+                      const centerXViewport = overlayRect.left + (overlayRect.width / 2);
+                      return (centerXViewport - stageRect.left) / totalScaleX;
+                    })();
                     captureInlineSnapshot("finish: blur", {
                       id: finishId,
-                      valueLength: String(editing.value ?? "").length,
+                      valueLength: textoNuevoRaw.length,
                     });
-                    const textoNuevoRaw = String(editing.value ?? "");
                     const textoNuevoValidado = textoNuevoRaw.trim();
                     const index = objetos.findIndex(o => o.id === finishId);
                     const objeto = objetos[index];
@@ -4524,6 +4910,7 @@ export default function CanvasEditor({
                       trimmedLength: textoNuevoValidado.length,
                       objectX: objeto?.x ?? null,
                       objectY: objeto?.y ?? null,
+                      domCenterXCanvas,
                       previewRef: { ...inlineEditPreviewRef.current },
                       liveMetricsAtFinish,
                     });
@@ -4560,20 +4947,64 @@ export default function CanvasEditor({
                       !objeto.__groupAlign &&
                       !Number.isFinite(objeto.width) &&
                       objeto.__autoWidth !== false;
+                    const lockedCenterX =
+                      inlineEditPreviewRef.current?.id === finishId &&
+                      Number.isFinite(inlineEditPreviewRef.current?.centerX)
+                        ? inlineEditPreviewRef.current.centerX
+                        : null;
 
                     if (shouldKeepCenterX) {
-                      const nextX = calcularXTextoCentrado(objeto, textoNuevoRaw);
+                      const baseLineHeight =
+                        typeof objeto.lineHeight === "number" && objeto.lineHeight > 0
+                          ? objeto.lineHeight
+                          : 1.2;
+                      const letterSpacing =
+                        Number.isFinite(Number(objeto.letterSpacing)) ? Number(objeto.letterSpacing) : 0;
+                      const liveNodeX =
+                        Number.isFinite(liveMetricsAtFinish?.x) ? liveMetricsAtFinish.x : (
+                          typeof liveNodeAtFinish?.x === "function" ? liveNodeAtFinish.x() : null
+                        );
+                      const nextWidthFromKonva = medirAnchoTextoKonva(objeto, textoNuevoRaw);
+                      const nextMetrics = obtenerMetricasTexto(textoNuevoRaw, {
+                        fontSize: objeto.fontSize,
+                        fontFamily: objeto.fontFamily,
+                        fontWeight: objeto.fontWeight,
+                        fontStyle: objeto.fontStyle,
+                        lineHeight: baseLineHeight * 0.92,
+                        letterSpacing,
+                      });
+                      const nextWidth =
+                        Number.isFinite(nextWidthFromKonva) && nextWidthFromKonva > 0
+                          ? nextWidthFromKonva
+                          : nextMetrics.width;
+                      const xFromDomCenter =
+                        Number.isFinite(domCenterXCanvas) && Number.isFinite(nextWidth)
+                          ? domCenterXCanvas - (nextWidth / 2)
+                          : null;
+                      const nextX = calcularXTextoCentrado(
+                        objeto,
+                        textoNuevoRaw,
+                        lockedCenterX
+                      );
                       const currentX = Number.isFinite(objeto.x) ? objeto.x : 0;
-                      if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
-                        patch.x = nextX;
+                      const committedX = Number.isFinite(xFromDomCenter)
+                        ? xFromDomCenter
+                        : (Number.isFinite(liveNodeX) ? liveNodeX : nextX);
+                      if (Number.isFinite(committedX) && Math.abs(committedX - currentX) > 0.01) {
+                        patch.x = committedX;
                       }
 
                       inlineDebugLog("finish-center-computed", {
                         id: finishId,
                         shouldKeepCenterX,
+                        lockedCenterX,
+                        domCenterXCanvas,
+                        nextWidth,
+                        xFromDomCenter,
+                        liveNodeX,
                         currentX,
                         nextX,
-                        patchX: patch.x ?? null,
+                        committedX: patch.x ?? null,
                       });
                     }
 

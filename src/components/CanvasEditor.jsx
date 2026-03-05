@@ -21,17 +21,12 @@ import { borrarSeccion as borrarSeccionExternal } from "@/utils/editorSecciones"
 import { moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
 import { validarPuntosLinea } from "./editor/selection/selectionUtils";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
-import MenuOpcionesElemento from "./MenuOpcionesElemento";
 import useGuiasCentrado from '@/hooks/useGuiasCentrado';
-import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar";
 import Konva from "konva";
 import { ALL_FONTS } from '../config/fonts';
 import useTemplateFieldAuthoring from "@/components/editor/templateAuthoring/useTemplateFieldAuthoring";
-import TemplateFieldBadgeOverlay from "@/components/editor/templateAuthoring/TemplateFieldBadgeOverlay";
-import { Settings } from "lucide-react";
 import useBorradorSync from "./editor/persistence/useBorradorSync";
 import useSectionsManager from "./editor/sections/useSectionsManager";
-import ConfirmDeleteSectionModal from "@/components/editor/sections/ConfirmDeleteSectionModal";
 import useEditorEvents from "./editor/events/useEditorEvents";
 import useEditorWindowBridge from "./editor/window/useEditorWindowBridge";
 import useHistoryManager from "./editor/history/useHistoryManager";
@@ -93,6 +88,12 @@ import {
   applyLineUpdate,
 } from "@/components/editor/canvasEditor/objectUpdateUtils";
 import { createTextLayoutUtils } from "@/components/editor/canvasEditor/textLayoutUtils";
+import useCanvasEditorStartupStatus from "@/components/editor/canvasEditor/useCanvasEditorStartupStatus";
+import useCanvasEditorStageInteraction from "@/components/editor/canvasEditor/useCanvasEditorStageInteraction";
+import useCanvasEditorFontPreload from "@/components/editor/canvasEditor/useCanvasEditorFontPreload";
+import useCanvasEditorGlobalsBridge from "@/components/editor/canvasEditor/useCanvasEditorGlobalsBridge";
+import { createLineIntersectionDetector } from "@/components/editor/canvasEditor/lineIntersectionUtils";
+import CanvasEditorOverlays from "@/components/editor/canvasEditor/CanvasEditorOverlays";
 
 
 
@@ -185,8 +186,6 @@ export default function CanvasEditor({
     templateAuthoringDraft: null,
     loadedAt: 0,
   });
-  const [backgroundLoadBySection, setBackgroundLoadBySection] = useState({});
-  const startupStatusFinalizedRef = useRef(false);
   const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
@@ -349,156 +348,13 @@ export default function CanvasEditor({
     () => [...secciones].sort((a, b) => a.orden - b.orden),
     [secciones]
   );
-
-  useEffect(() => {
-    setBackgroundLoadBySection({});
-    startupStatusFinalizedRef.current = false;
-  }, [slug]);
-
-  const handleBackgroundImageStatusChange = useCallback((payload) => {
-    const sectionId = payload?.sectionId;
-    if (!sectionId) return;
-
-    const hasBackgroundImage = payload?.hasBackgroundImage === true;
-    const imageUrl = typeof payload?.imageUrl === "string" ? payload.imageUrl : "";
-    const incomingStatus = typeof payload?.status === "string" ? payload.status : "loading";
-    const status = hasBackgroundImage
-      ? (incomingStatus === "loaded" || incomingStatus === "failed"
-        ? incomingStatus
-        : "loading")
-      : "none";
-
-    setBackgroundLoadBySection((prev) => {
-      const current = prev[sectionId];
-      if (
-        current &&
-        current.status === status &&
-        current.hasBackgroundImage === hasBackgroundImage &&
-        current.imageUrl === imageUrl
-      ) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [sectionId]: {
-          status,
-          hasBackgroundImage,
-          imageUrl,
-        },
-      };
-    });
-  }, []);
-
-  const backgroundLoadSummary = useMemo(() => {
-    const sectionsWithBackgroundImage = (secciones || []).filter((seccion) => (
-      seccion?.fondoTipo === "imagen" &&
-      typeof seccion?.fondoImagen === "string" &&
-      seccion.fondoImagen.trim().length > 0
-    ));
-
-    let loaded = 0;
-    let failed = 0;
-    let pending = 0;
-
-    sectionsWithBackgroundImage.forEach((seccion) => {
-      const status = backgroundLoadBySection[seccion.id]?.status;
-
-      if (!status || status === "loading") {
-        pending += 1;
-        return;
-      }
-
-      if (status === "loaded") {
-        loaded += 1;
-        return;
-      }
-
-      if (status === "failed") {
-        failed += 1;
-        return;
-      }
-
-      pending += 1;
-    });
-
-    return {
-      total: sectionsWithBackgroundImage.length,
-      loaded,
-      failed,
-      pending,
-    };
-  }, [backgroundLoadBySection, secciones]);
-
-  const firstSectionBackgroundReady = useMemo(() => {
-    const firstSection = seccionesOrdenadas[0];
-    if (!firstSection) return true;
-
-    const hasBackgroundImage =
-      firstSection?.fondoTipo === "imagen" &&
-      typeof firstSection?.fondoImagen === "string" &&
-      firstSection.fondoImagen.trim().length > 0;
-
-    if (!hasBackgroundImage) return true;
-
-    const status = backgroundLoadBySection[firstSection.id]?.status;
-    return status === "loaded" || status === "failed";
-  }, [backgroundLoadBySection, seccionesOrdenadas]);
-
-  const startupReady = cargado === true && firstSectionBackgroundReady;
-
-  useEffect(() => {
-    if (typeof onStartupStatusChange !== "function") return;
-    if (startupStatusFinalizedRef.current) return;
-
-    const payload = {
-      slug,
-      draftLoaded: cargado === true,
-      totalBackgrounds: backgroundLoadSummary.total,
-      loadedBackgrounds: backgroundLoadSummary.loaded,
-      failedBackgrounds: backgroundLoadSummary.failed,
-      pendingBackgrounds: backgroundLoadSummary.pending,
-    };
-
-    if (!startupReady) {
-      onStartupStatusChange({
-        ...payload,
-        status: "running",
-      });
-      return;
-    }
-
-    let cancelled = false;
-    let rafA = 0;
-    let rafB = 0;
-
-    rafA = requestAnimationFrame(() => {
-      rafB = requestAnimationFrame(() => {
-        if (cancelled) return;
-        startupStatusFinalizedRef.current = true;
-        onStartupStatusChange({
-          ...payload,
-          status: "ready",
-        });
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      if (rafA) cancelAnimationFrame(rafA);
-      if (rafB) cancelAnimationFrame(rafB);
-    };
-  }, [
-    backgroundLoadSummary.failed,
-    backgroundLoadSummary.loaded,
-    backgroundLoadSummary.pending,
-    backgroundLoadSummary.total,
-    firstSectionBackgroundReady,
+  const { handleBackgroundImageStatusChange } = useCanvasEditorStartupStatus({
+    slug,
+    secciones,
+    seccionesOrdenadas,
     cargado,
     onStartupStatusChange,
-    slug,
-    startupReady,
-  ]);
+  });
 
   const seccionPendienteEliminar = useMemo(
     () => secciones.find((seccion) => seccion.id === deleteSectionModal.sectionId) || null,
@@ -636,13 +492,6 @@ export default function CanvasEditor({
       } catch { }
     });
   }, [imperativeObjects]);
-
-
-
-
-
-  const loadedFontFamiliesRef = useRef(new Set());
-
 
   const {
     isMobile,
@@ -1688,17 +1537,6 @@ export default function CanvasEditor({
     prevEditingIdRef.current = currentId;
   }, [editing.id, captureInlineSnapshot]);
 
-  const fuentesNecesarias = useMemo(() => {
-    // fuentes usadas en textos + countdown (si aplica) + formas con texto (rect)
-    const fonts = (objetos || [])
-      .filter(o => (o.tipo === "texto" || o.tipo === "countdown" || (o.tipo === "forma" && o.figura === "rect")) && o.fontFamily)
-      .map(o => String(o.fontFamily).replace(/['"]/g, "").split(",")[0].trim())
-      .filter(Boolean);
-
-    return [...new Set(fonts)];
-  }, [objetos]);
-
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.editing = editing;
@@ -1884,101 +1722,18 @@ export default function CanvasEditor({
     ignoreNextUpdateRef,
   });
 
-  useEffect(() => {
-    const stage = stageRef.current?.getStage?.();
-    if (!stage) return;
+  useCanvasEditorStageInteraction({
+    stageRef,
+    setIsDragging,
+    isMobile,
+  });
 
-    const content = stage.content;
-    if (!content) return;
-
-    // ? Estado base: scroll vertical permitido sobre canvas vacÃ­o
-    const setScrollMode = () => {
-      content.style.touchAction = "pan-y";
-    };
-
-    // ? Durante drag: bloquear scroll para editar fino
-    const setEditMode = () => {
-      content.style.touchAction = "none";
-    };
-
-    // ? NUEVO: estado React confiable para UI (Transformer/hover/etc.)
-    const onDragStart = () => {
-      setIsDragging(true);
-    };
-
-    const onDragEnd = () => {
-      setIsDragging(false);
-    };
-
-    // ? Failsafe: por si termina â€œraroâ€ (touch cancel, pointer up, etc.)
-    const stopDragging = () => {
-      setIsDragging(false);
-      setScrollMode();
-    };
-
-    // Inicial
-    setScrollMode();
-    setIsDragging(false); // ?? por las dudas, al montar
-    content.style.WebkitUserSelect = "none";
-    content.style.WebkitTouchCallout = "none";
-
-    // Konva events
-    stage.on("dragstart", setEditMode);
-    stage.on("dragend", setScrollMode);
-
-    // ? NUEVO (UI state)
-    stage.on("dragstart", onDragStart);
-    stage.on("dragend", onDragEnd);
-
-    // Failsafes (si el drag termina raro)
-    stage.on("touchend", stopDragging);
-    stage.on("pointerup", stopDragging);
-    stage.on("mouseup", stopDragging);
-    stage.on("touchcancel", stopDragging);
-
-    return () => {
-      stage.off("dragstart", setEditMode);
-      stage.off("dragend", setScrollMode);
-
-      stage.off("dragstart", onDragStart);
-      stage.off("dragend", onDragEnd);
-
-      stage.off("touchend", stopDragging);
-      stage.off("pointerup", stopDragging);
-      stage.off("mouseup", stopDragging);
-      stage.off("touchcancel", stopDragging);
-    };
-  }, [setIsDragging]);
-
-  useEffect(() => {
-    const stage = stageRef.current?.getStage?.() || stageRef.current;
-    const content = stage?.content || stage?.container?.();
-    if (!content) return;
-
-    const setDragDistanceForInput = (pointerType) => {
-      const isTouchLike =
-        pointerType === "touch" ||
-        pointerType === "pen" ||
-        (typeof pointerType !== "string" && isMobile);
-      Konva.dragDistance = isTouchLike ? 14 : 5;
-    };
-
-    const onPointerDown = (event) => setDragDistanceForInput(event.pointerType);
-    const onTouchStart = () => setDragDistanceForInput("touch");
-    const onMouseDown = () => setDragDistanceForInput("mouse");
-
-    setDragDistanceForInput(isMobile ? "touch" : "mouse");
-
-    content.addEventListener("pointerdown", onPointerDown, { passive: true });
-    content.addEventListener("touchstart", onTouchStart, { passive: true });
-    content.addEventListener("mousedown", onMouseDown, { passive: true });
-
-    return () => {
-      content.removeEventListener("pointerdown", onPointerDown);
-      content.removeEventListener("touchstart", onTouchStart);
-      content.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [isMobile]);
+  useCanvasEditorFontPreload({
+    objetos,
+    cargado,
+    stageRef,
+    fontManager,
+  });
 
 
 
@@ -2048,75 +1803,6 @@ export default function CanvasEditor({
       onFuturosChange(futuros);
     }
   }, [futuros, onFuturosChange]);
-
-
-
-
-  useEffect(() => {
-    // Pre-cargar fuentes populares al iniciar
-    fontManager.preloadPopularFonts();
-
-    // Escuchar evento de fuentes cargadas para redibujar
-    const handleFontsLoaded = () => {
-      if (stageRef.current) {
-        stageRef.current.batchDraw();
-      }
-    };
-
-    window.addEventListener('fonts-loaded', handleFontsLoaded);
-
-    return () => {
-      window.removeEventListener('fonts-loaded', handleFontsLoaded);
-    };
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-
-    async function precargar() {
-      // Solo precargar fuentes nuevas para evitar re-renders globales del stage
-      if (!fuentesNecesarias.length) return;
-      const pendientes = fuentesNecesarias.filter(
-        (fontName) => !loadedFontFamiliesRef.current.has(fontName)
-      );
-      if (!pendientes.length) return;
-
-      try {
-        // ? Ideal: que fontManager.loadFonts devuelva Promise
-        // Si hoy no devuelve, igual lo resolvemos con document.fonts mÃ¡s abajo.
-        const maybePromise = fontManager.loadFonts?.(pendientes);
-
-        // Si devuelve promise, esperamos
-        if (maybePromise && typeof maybePromise.then === "function") {
-          await maybePromise;
-        }
-
-        // ? Segundo seguro: esperar a que el browser confirme
-        // (esto garantiza que no haya fallback)
-        if (document?.fonts?.load) {
-          await Promise.all(
-            pendientes.map(f =>
-              document.fonts.load(`16px "${f}"`)
-            )
-          );
-        }
-        if (!alive) return;
-        pendientes.forEach((fontName) => loadedFontFamiliesRef.current.add(fontName));
-
-        // Redraw por si acaso
-        requestAnimationFrame(() => {
-          stageRef.current?.batchDraw?.();
-        });
-      } catch (e) {
-        console.warn("?? Error precargando fuentes:", e);
-      }
-    }
-
-    // Solo precargar cuando ya cargaste el borrador (para evitar overlay raro)
-    if (cargado) precargar();
-
-    return () => { alive = false; };
-  }, [cargado, fuentesNecesarias]);
 
 
 
@@ -2846,94 +2532,7 @@ export default function CanvasEditor({
 
     return () => clearTimeout(timer);
   }, [elementosSeleccionados, objetos]);
-
-
-  const detectarInterseccionLinea = useMemo(() => {
-    return (lineObj, area, stage) => {
-      try {
-        if (!lineObj || !area || !lineObj.points) return false;
-
-        let points = lineObj.points;
-        if (!Array.isArray(points) || points.length < 4) {
-          points = [0, 0, 100, 0];
-        }
-
-        const puntosLimpios = [
-          parseFloat(points[0]) || 0,
-          parseFloat(points[1]) || 0,
-          parseFloat(points[2]) || 100,
-          parseFloat(points[3]) || 0
-        ];
-
-        // ?? USAR LA POSICIÃ“N DEL NODO REAL EN EL STAGE
-        const node = window._elementRefs?.[lineObj.id];
-        const lineX = node ? node.x() : (lineObj.x || 0);
-        const lineY = node ? node.y() : (lineObj.y || 0);
-
-        // Coordenadas absolutas de los puntos
-        const startX = lineX + puntosLimpios[0];
-        const startY = lineY + puntosLimpios[1];
-        const endX = lineX + puntosLimpios[2];
-        const endY = lineY + puntosLimpios[3];
-
-
-
-        // ?? MÃ‰TODO 1: Verificar si algÃºn punto estÃ¡ dentro del Ã¡rea
-        const startDentro = (
-          startX >= area.x && startX <= area.x + area.width &&
-          startY >= area.y && startY <= area.y + area.height
-        );
-
-        const endDentro = (
-          endX >= area.x && endX <= area.x + area.width &&
-          endY >= area.y && endY <= area.y + area.height
-        );
-
-
-        if (startDentro || endDentro) {
-          return true;
-        }
-
-        // ?? MÃ‰TODO 2: Verificar intersecciÃ³n lÃ­nea-rectÃ¡ngulo
-        const intersecta = lineIntersectsRect(
-          startX, startY, endX, endY,
-          area.x, area.y, area.x + area.width, area.y + area.height
-        );
-
-
-        if (intersecta) {
-          return true;
-        }
-
-        return false;
-
-      } catch (error) {
-        return false;
-      }
-    };
-  }, []);
-
-  // FunciÃ³n auxiliar para verificar intersecciÃ³n lÃ­nea-rectÃ¡ngulo
-  function lineIntersectsRect(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectBottom) {
-    // Verificar si la lÃ­nea intersecta con alguno de los 4 lados del rectÃ¡ngulo
-    return (
-      lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectTop) || // Top
-      lineIntersectsLine(x1, y1, x2, y2, rectRight, rectTop, rectRight, rectBottom) || // Right
-      lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectBottom, rectRight, rectBottom) || // Bottom
-      lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectTop, rectLeft, rectBottom) // Left
-    );
-  }
-
-  // FunciÃ³n auxiliar para verificar intersecciÃ³n lÃ­nea-lÃ­nea
-  function lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
-    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if (Math.abs(denom) < 0.0001) return false;
-
-    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
-    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
-
-    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-  }
+  const detectarInterseccionLinea = useMemo(() => createLineIntersectionDetector(), []);
 
 
   // ?? Ajustar el transformer cuando cambia el texto inline
@@ -3009,70 +2608,18 @@ export default function CanvasEditor({
 
 
 
-  useEffect(() => {
-    window._elementosSeleccionados = elementosSeleccionados;
-    window._objetosActuales = objetos;
-    window._elementRefs = elementRefs.current;
-    window._seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
-    window._altoCanvas = altoCanvas;
-    window.dispatchEvent(
-      new CustomEvent("editor-selection-change", {
-        detail: {
-          ids: [...elementosSeleccionados],
-          activeSectionId: seccionActivaId || null,
-          galleryCell: celdaGaleriaActiva || null,
-        },
-      })
-    );
-  }, [elementosSeleccionados, objetos, secciones, altoCanvas, seccionActivaId, celdaGaleriaActiva]);
-
-  useEffect(() => {
-    if (!celdaGaleriaActiva) return;
-
-    const { objId } = celdaGaleriaActiva;
-    const galeriaExiste = objetos.some((o) => o.id === objId && o.tipo === "galeria");
-    if (!galeriaExiste) {
-      setCeldaGaleriaActiva(null);
-      return;
-    }
-
-    if (elementosSeleccionados.length !== 1 || elementosSeleccionados[0] !== objId) {
-      setCeldaGaleriaActiva(null);
-    }
-  }, [celdaGaleriaActiva, elementosSeleccionados, objetos]);
-
-  useEffect(() => {
-    window._celdaGaleriaActiva = celdaGaleriaActiva || null;
-    window.dispatchEvent(
-      new CustomEvent("editor-gallery-cell-change", {
-        detail: { cell: celdaGaleriaActiva || null },
-      })
-    );
-  }, [celdaGaleriaActiva]);
-
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("seccion-activa", {
-        detail: { id: seccionActivaId || null },
-      })
-    );
-  }, [seccionActivaId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    window.setHoverIdGlobal = setHoverId;
-    return () => {
-      if (window.setHoverIdGlobal === setHoverId) {
-        delete window.setHoverIdGlobal;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hoverId) return;
-    const exists = objetos.some((o) => o.id === hoverId);
-    if (!exists) setHoverId(null);
-  }, [hoverId, objetos]);
+  useCanvasEditorGlobalsBridge({
+    elementosSeleccionados,
+    objetos,
+    elementRefs,
+    secciones,
+    altoCanvas,
+    seccionActivaId,
+    celdaGaleriaActiva,
+    setCeldaGaleriaActiva,
+    hoverId,
+    setHoverId,
+  });
 
 
 
@@ -3648,147 +3195,54 @@ export default function CanvasEditor({
 
 
       {/* ? BotÃ³n de opciones PEGADO a la esquina superior derecha del elemento */}
-      {elementosSeleccionados.length === 1 && !editing.id && !isSelectionRotating && (
-        <div
-          ref={botonOpcionesRef}
-          data-option-button="true"
-          className="absolute z-50 bg-white border-2 border-purple-500 rounded-full shadow-lg hover:shadow-xl transition-shadow duration-200"
-          style={{
-            left: "0px",
-            top: "0px",
-            width: `${optionButtonSize}px`,
-            height: `${optionButtonSize}px`,
-            display: "none",
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: "auto",
-            transition: "none",
-            backgroundColor: "rgba(255, 255, 255, 0.95)",
-            backdropFilter: "blur(4px)",
-            border: "2px solid #773dbe",
-            touchAction: "manipulation",
-          }}
-        >
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              togglePanelOpciones("gear-pointerdown", e.nativeEvent || e);
-            }}
-            onClick={(e) => {
-              // Click de teclado (Enter/Espacio) cuando no hay pointer interaction.
-              if (e.detail !== 0) return;
-              e.stopPropagation();
-              togglePanelOpciones("gear-keyboard-click", e.nativeEvent || e);
-            }}
-            className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors"
-            title="Opciones del elemento"
-            aria-label="Opciones del elemento"
-            style={{ touchAction: "manipulation" }}
-          >
-            <Settings
-              className="text-purple-700"
-              style={{ width: isMobile ? 18 : 14, height: isMobile ? 18 : 14 }}
-            />
-          </button>
-        </div>
-      )}
-
-      {canManageSite && (
-        <div
-          className={`pointer-events-none absolute right-3 top-3 z-[70] rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm ${templateAuthoringStatusClass}`}
-          title={
-            !templateAuthoring.canConfigure
-              ? "Este borrador no tiene plantilla base para configurar schema."
-              : templateAuthoringStatus.isReady
-                ? "Schema dinamico listo para publicar."
-                : "Corrige inconsistencias de mapping antes de guardar plantilla."
-          }
-        >
-          {templateAuthoringStatusLabel}
-        </div>
-      )}
-
-      {canManageSite && (
-        <TemplateFieldBadgeOverlay
-          layoutRootRef={editorOverlayRootRef}
-          stageRef={stageRef}
-          elementRefs={elementRefs}
-          selectedElementId={elementosSeleccionados[0] || ""}
-          hoveredElementId={hoverId || ""}
-          fieldIndexByElementId={templateAuthoring.fieldIndexByElementId}
-          fieldsSchema={templateAuthoring.fieldsSchema}
-          isMobile={isMobile}
-        />
-      )}
-
-
-      {mostrarPanelZ && (
-        <MenuOpcionesElemento
-          isOpen={mostrarPanelZ}
-          botonOpcionesRef={botonOpcionesRef}
-          elementoSeleccionado={objetos.find(o => o.id === elementosSeleccionados[0])}
-          onCopiar={onCopiar}
-          onPegar={onPegar}
-          onDuplicar={onDuplicar}
-          onEliminar={onEliminar}
-          moverElemento={moverElemento}
-          onCerrar={() => setMostrarPanelZ(false)}
-          reemplazarFondo={reemplazarFondo}
-          secciones={secciones}
-          objetos={objetos}
-          setSecciones={setSecciones}
-          setObjetos={setObjetos}
-          setElementosSeleccionados={setElementosSeleccionados}
-          onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
-          canManageSite={canManageSite}
-          templateAuthoring={
-            canRenderTemplateAuthoringMenu
-              ? {
-                  canConfigure: templateAuthoring.canConfigure,
-                  loading: templateAuthoring.loading,
-                  saving: templateAuthoring.saving,
-                  error: templateAuthoring.error,
-                  selectedElementType: templateAuthoring.selectedElementType,
-                  selectedIsSupportedElement: templateAuthoring.selectedIsSupportedElement,
-                  selectedElementDefaultFieldType: templateAuthoring.selectedElementDefaultFieldType,
-                  selectedField: templateAuthoring.selectedField,
-                  fieldsSchema: templateAuthoring.fieldsSchema,
-                  onCreateField: templateAuthoring.createFieldFromSelection,
-                  onLinkField: templateAuthoring.linkSelectionToField,
-                  onEditField: templateAuthoring.editField,
-                  onUnlinkField: templateAuthoring.unlinkSelection,
-                  onDeleteField: templateAuthoring.deleteField,
-                  onViewUsage: handleViewTemplateFieldUsage,
-                }
-              : null
-          }
-        />
-      )}
-
-
-      <FloatingTextToolbar
-        objetoSeleccionado={objetoSeleccionado}
-        setObjetos={setObjetos}
+      <CanvasEditorOverlays
         elementosSeleccionados={elementosSeleccionados}
+        editingId={editing.id}
+        isSelectionRotating={isSelectionRotating}
+        botonOpcionesRef={botonOpcionesRef}
+        optionButtonSize={optionButtonSize}
+        togglePanelOpciones={togglePanelOpciones}
+        isMobile={isMobile}
+        canManageSite={canManageSite}
+        templateAuthoringStatusClass={templateAuthoringStatusClass}
+        templateAuthoring={templateAuthoring}
+        templateAuthoringStatus={templateAuthoringStatus}
+        templateAuthoringStatusLabel={templateAuthoringStatusLabel}
+        editorOverlayRootRef={editorOverlayRootRef}
+        stageRef={stageRef}
+        elementRefs={elementRefs}
+        hoverId={hoverId}
+        mostrarPanelZ={mostrarPanelZ}
+        objetos={objetos}
+        onCopiar={onCopiar}
+        onPegar={onPegar}
+        onDuplicar={onDuplicar}
+        onEliminar={onEliminar}
+        moverElemento={moverElemento}
+        setMostrarPanelZ={setMostrarPanelZ}
+        reemplazarFondo={reemplazarFondo}
+        secciones={secciones}
+        setSecciones={setSecciones}
+        setObjetos={setObjetos}
+        setElementosSeleccionados={setElementosSeleccionados}
+        abrirPanelRsvp={abrirPanelRsvp}
+        canRenderTemplateAuthoringMenu={canRenderTemplateAuthoringMenu}
+        handleViewTemplateFieldUsage={handleViewTemplateFieldUsage}
+        objetoSeleccionado={objetoSeleccionado}
         mostrarSelectorFuente={mostrarSelectorFuente}
         setMostrarSelectorFuente={setMostrarSelectorFuente}
         mostrarSelectorTamano={mostrarSelectorTamano}
         setMostrarSelectorTamano={setMostrarSelectorTamano}
-        ALL_FONTS={ALL_FONTS}
+        allFonts={ALL_FONTS}
         fontManager={fontManager}
         tamaniosDisponibles={tamaniosDisponibles}
         onCambiarAlineacion={onCambiarAlineacion}
-      />
-
-      <ConfirmDeleteSectionModal
-        isOpen={deleteSectionModal.isOpen}
-        sectionName={seccionPendienteEliminar?.tipo}
-        itemCount={cantidadElementosSeccionPendiente}
-        isDeleting={isDeletingSection}
-        onCancel={cerrarModalBorrarSeccion}
-        onConfirm={confirmarBorrarSeccion}
+        deleteSectionModal={deleteSectionModal}
+        seccionPendienteEliminar={seccionPendienteEliminar}
+        cantidadElementosSeccionPendiente={cantidadElementosSeccionPendiente}
+        isDeletingSection={isDeletingSection}
+        cerrarModalBorrarSeccion={cerrarModalBorrarSeccion}
+        confirmarBorrarSeccion={confirmarBorrarSeccion}
       />
 
 
@@ -3797,6 +3251,10 @@ export default function CanvasEditor({
   );
 
 }
+
+
+
+
 
 
 

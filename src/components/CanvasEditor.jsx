@@ -58,6 +58,15 @@ import useCanvasScaleLayout from "@/components/editor/mobile/useCanvasScaleLayou
 import useCanvasInteractionState from "@/components/editor/mobile/useCanvasInteractionState";
 import useStageGestures from "./editor/mobile/useStageGestures";
 import useOptionButtonPosition from "@/components/editor/overlays/useOptionButtonPosition";
+import {
+  getInlineKonvaProjectedRectViewport as getInlineKonvaProjectedRectViewportShared,
+  resolveInlineKonvaTextNode as resolveInlineKonvaTextNodeShared,
+  resolveInlineStageViewportMetrics as resolveInlineStageViewportMetricsShared,
+} from "@/components/editor/overlays/inlineGeometry";
+import {
+  getInlineLineStats as getInlineLineStatsShared,
+  normalizeInlineEditableText as normalizeInlineEditableTextShared,
+} from "@/components/editor/overlays/inlineTextModel";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
 import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
@@ -111,7 +120,7 @@ function resolveKonvaFontStyle(fontStyle, fontWeight) {
   return "normal";
 }
 
-// ??? FUNCIÓN HELPER PARA LIMPIAR UNDEFINED
+// ??? FUNCIÃ“N HELPER PARA LIMPIAR UNDEFINED
 const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {
     return obj.map(limpiarObjetoUndefined);
@@ -135,7 +144,7 @@ const limpiarObjetoUndefined = (obj) => {
 function setGlobalCursor(cursor = '', stageRef = null) {
   try {
     document.body.style.cursor = cursor || '';
-    // ?? limpiamos también el contenedor del Stage si existe
+    // ?? limpiamos tambiÃ©n el contenedor del Stage si existe
     const stage = stageRef?.current?.container?.() || null;
     if (stage) stage.style.cursor = cursor || '';
     // fallback: canvas principal
@@ -152,6 +161,10 @@ function isInlineDebugEnabled() {
   return typeof window !== "undefined" && window.__INLINE_DEBUG !== false;
 }
 
+function isInlineMicroMoveDebugEnabled() {
+  return typeof window !== "undefined" && window.__INLINE_MICROMOVE_DEBUG === true;
+}
+
 function formatInlineLogPayload(payload = {}) {
   try {
     return JSON.stringify(payload, null, 2);
@@ -162,12 +175,22 @@ function formatInlineLogPayload(payload = {}) {
 
 function inlineDebugLog(event, payload = {}) {
   if (!isInlineDebugEnabled()) return;
-  const essentialEvents = new Set([
-    "start-inline-edit",
-    "linebreak-model-sync",
-    "linebreak-transformer",
+  const microMoveEnabled = isInlineMicroMoveDebugEnabled();
+  const microMoveEvents = new Set([
+    "snapshot-overlay: pre-focus-call",
+    "snapshot-overlay: post-focus-sync",
+    "snapshot-overlay: before-show",
+    "snapshot-overlay: after-show-sync",
+    "snapshot-overlay: after-show-raf1",
+    "snapshot-konva: before-hide",
+    "snapshot-konva: after-hide-sync",
+    "snapshot-konva: after-hide-raf1",
+    "snapshot-selection-set",
+    "snapshot-konva-hide-before-applied",
+    "snapshot-konva-hide-applied",
   ]);
-  if (!essentialEvents.has(event)) return;
+  const shouldLog = microMoveEnabled && microMoveEvents.has(event);
+  if (!shouldLog) return;
   const ts = new Date().toISOString();
   const body = formatInlineLogPayload(payload);
   console.log(`[INLINE][${ts}] ${event}\n${body}`);
@@ -187,15 +210,565 @@ function nextInlineFrameMeta() {
   return { frame: next, perfMs };
 }
 
-function getInlineLineStats(value) {
-  const normalized = String(value ?? "").replace(/\r\n/g, "\n");
-  const trailing = normalized.match(/\n+$/)?.[0];
+function roundInlineMetric(value, digits = 4) {
+  return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
+}
+
+function rectToInlinePayload(rect) {
+  if (!rect) return null;
   return {
-    normalized,
-    length: normalized.length,
-    lineCount: normalized === "" ? 1 : normalized.split("\n").length,
-    trailingNewlines: trailing ? trailing.length : 0,
+    x: roundInlineMetric(Number(rect.x)),
+    y: roundInlineMetric(Number(rect.y)),
+    width: roundInlineMetric(Number(rect.width)),
+    height: roundInlineMetric(Number(rect.height)),
   };
+}
+
+function computeInlineRectDelta(prevRect, nextRect) {
+  if (!prevRect || !nextRect) return null;
+  return {
+    dx: roundInlineMetric(Number(nextRect.x) - Number(prevRect.x)),
+    dy: roundInlineMetric(Number(nextRect.y) - Number(prevRect.y)),
+    dw: roundInlineMetric(Number(nextRect.width) - Number(prevRect.width)),
+    dh: roundInlineMetric(Number(nextRect.height) - Number(prevRect.height)),
+  };
+}
+
+function isInlineRectEmpty(rect) {
+  if (!rect) return true;
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (![x, y, width, height].every(Number.isFinite)) return true;
+  const eps = 0.001;
+  return (
+    Math.abs(x) <= eps &&
+    Math.abs(y) <= eps &&
+    Math.abs(width) <= eps &&
+    Math.abs(height) <= eps
+  );
+}
+
+function pickInlinePrimaryRect(rangeRect, firstClientRect) {
+  if (!isInlineRectEmpty(firstClientRect)) return firstClientRect;
+  if (!isInlineRectEmpty(rangeRect)) return rangeRect;
+  return null;
+}
+
+function collectInlineTextNodes(rootEl) {
+  if (!rootEl || typeof document === "undefined") return [];
+  try {
+    const showText = typeof NodeFilter !== "undefined" ? NodeFilter.SHOW_TEXT : 4;
+    const walker = document.createTreeWalker(rootEl, showText);
+    const nodes = [];
+    while (walker.nextNode()) {
+      nodes.push(walker.currentNode);
+    }
+    return nodes;
+  } catch {
+    return [];
+  }
+}
+
+function getInlineTextNodeLength(node) {
+  return typeof node?.nodeValue === "string" ? node.nodeValue.length : 0;
+}
+
+function clampInlineRangeOffset(node, rawOffset) {
+  const numericOffset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
+  if (!node) return 0;
+  if (node.nodeType === 3) {
+    return Math.min(numericOffset, getInlineTextNodeLength(node));
+  }
+  return Math.min(numericOffset, node.childNodes?.length || 0);
+}
+
+function computeInlineGlobalTextOffset(rootEl, anchorNode, anchorOffset) {
+  if (!rootEl || !anchorNode || typeof document === "undefined") return null;
+  try {
+    const safeOffset = clampInlineRangeOffset(anchorNode, anchorOffset);
+    const prefixRange = document.createRange();
+    prefixRange.selectNodeContents(rootEl);
+    prefixRange.setEnd(anchorNode, safeOffset);
+    return Math.max(0, prefixRange.toString().length);
+  } catch {
+    return null;
+  }
+}
+
+function resolveInlineCaretTextPosition(rootEl, anchorNode, anchorOffset) {
+  const anchorInRoot =
+    !!rootEl &&
+    !!anchorNode &&
+    typeof rootEl.contains === "function" &&
+    rootEl.contains(anchorNode);
+
+  if (!anchorInRoot || !anchorNode) {
+    return {
+      resolvedNode: null,
+      resolvedOffset: null,
+      strategy: "anchor-outside-editor",
+    };
+  }
+
+  if (anchorNode.nodeType === 3) {
+    return {
+      resolvedNode: anchorNode,
+      resolvedOffset: clampInlineRangeOffset(anchorNode, anchorOffset),
+      strategy: "anchor-text-node",
+    };
+  }
+
+  const textNodes = collectInlineTextNodes(rootEl).filter(
+    (node) => getInlineTextNodeLength(node) > 0
+  );
+  if (textNodes.length === 0) {
+    return {
+      resolvedNode: null,
+      resolvedOffset: null,
+      strategy: "no-text-nodes",
+    };
+  }
+
+  const globalOffset = computeInlineGlobalTextOffset(rootEl, anchorNode, anchorOffset);
+  if (!Number.isFinite(globalOffset)) {
+    return {
+      resolvedNode: textNodes[0],
+      resolvedOffset: 0,
+      strategy: "global-offset-unavailable",
+    };
+  }
+
+  let remaining = Math.max(0, globalOffset);
+  for (const textNode of textNodes) {
+    const len = getInlineTextNodeLength(textNode);
+    if (remaining <= len) {
+      return {
+        resolvedNode: textNode,
+        resolvedOffset: remaining,
+        strategy: "mapped-from-global-offset",
+      };
+    }
+    remaining -= len;
+  }
+
+  const lastNode = textNodes[textNodes.length - 1];
+  return {
+    resolvedNode: lastNode,
+    resolvedOffset: getInlineTextNodeLength(lastNode),
+    strategy: "mapped-to-last-text-node",
+  };
+}
+
+function measureInlineRangeRects(range) {
+  if (!range) return { rangeRect: null, firstClientRect: null };
+  let rangeRect = null;
+  let firstClientRect = null;
+  try {
+    rangeRect = rectToInlinePayload(range.getBoundingClientRect());
+  } catch {
+    rangeRect = null;
+  }
+  try {
+    const rects = range.getClientRects?.();
+    firstClientRect = rects && rects.length > 0 ? rectToInlinePayload(rects[0]) : null;
+  } catch {
+    firstClientRect = null;
+  }
+  return { rangeRect, firstClientRect };
+}
+
+function buildInlineCaretFallbackRange(rootEl, resolvedNode, resolvedOffset) {
+  if (typeof document === "undefined") {
+    return {
+      range: null,
+      fallbackUsed: false,
+      fallbackDirection: null,
+      fallbackReason: "document-unavailable",
+    };
+  }
+
+  const nodeLen = getInlineTextNodeLength(resolvedNode);
+  if (resolvedNode && nodeLen > 0) {
+    const safeOffset = clampInlineRangeOffset(resolvedNode, resolvedOffset);
+    const fallbackRange = document.createRange();
+    if (safeOffset > 0) {
+      fallbackRange.setStart(resolvedNode, safeOffset - 1);
+      fallbackRange.setEnd(resolvedNode, safeOffset);
+      return {
+        range: fallbackRange,
+        fallbackUsed: true,
+        fallbackDirection: "before",
+        fallbackReason: "collapsed-caret-empty",
+      };
+    }
+    if (safeOffset < nodeLen) {
+      fallbackRange.setStart(resolvedNode, safeOffset);
+      fallbackRange.setEnd(resolvedNode, safeOffset + 1);
+      return {
+        range: fallbackRange,
+        fallbackUsed: true,
+        fallbackDirection: "after",
+        fallbackReason: "collapsed-caret-empty",
+      };
+    }
+  }
+
+  const textNodes = collectInlineTextNodes(rootEl).filter(
+    (node) => getInlineTextNodeLength(node) > 0
+  );
+  if (textNodes.length > 0) {
+    const firstTextNode = textNodes[0];
+    const fallbackRange = document.createRange();
+    fallbackRange.setStart(firstTextNode, 0);
+    fallbackRange.setEnd(firstTextNode, Math.min(1, getInlineTextNodeLength(firstTextNode)));
+    return {
+      range: fallbackRange,
+      fallbackUsed: true,
+      fallbackDirection: "first-char",
+      fallbackReason: "collapsed-caret-empty-no-local-char",
+    };
+  }
+
+  return {
+    range: null,
+    fallbackUsed: false,
+    fallbackDirection: null,
+    fallbackReason: "fallback-no-text-available",
+  };
+}
+
+function getInlineEdgeCharTarget(rootEl, edge = "first") {
+  const textNodes = collectInlineTextNodes(rootEl).filter(
+    (node) => getInlineTextNodeLength(node) > 0
+  );
+  if (textNodes.length === 0) return null;
+  const searchFirst = edge !== "last";
+  const nodes = searchFirst ? textNodes : [...textNodes].reverse();
+
+  for (const textNode of nodes) {
+    const text = textNode.nodeValue || "";
+    if (!text) continue;
+    if (searchFirst) {
+      for (let i = 0; i < text.length; i += 1) {
+        if (/\S/.test(text[i])) return { node: textNode, offset: i, char: text[i] };
+      }
+    } else {
+      for (let i = text.length - 1; i >= 0; i -= 1) {
+        if (/\S/.test(text[i])) return { node: textNode, offset: i, char: text[i] };
+      }
+    }
+  }
+
+  if (searchFirst) {
+    const firstNode = textNodes[0];
+    return {
+      node: firstNode,
+      offset: 0,
+      char: firstNode.nodeValue?.[0] || "",
+    };
+  }
+
+  const lastNode = textNodes[textNodes.length - 1];
+  const lastOffset = Math.max(0, getInlineTextNodeLength(lastNode) - 1);
+  return {
+    node: lastNode,
+    offset: lastOffset,
+    char: lastNode.nodeValue?.[lastOffset] || "",
+  };
+}
+
+function getInlineInkCharMetrics(rootEl, edge = "first") {
+  if (
+    !rootEl ||
+    rootEl instanceof HTMLInputElement ||
+    rootEl instanceof HTMLTextAreaElement ||
+    typeof document === "undefined"
+  ) {
+    return {
+      available: false,
+      edge,
+      nodeName: null,
+      offset: null,
+      char: null,
+      rangeRect: null,
+      firstClientRect: null,
+      inkRect: null,
+    };
+  }
+
+  const target = getInlineEdgeCharTarget(rootEl, edge);
+  if (!target?.node) {
+    return {
+      available: false,
+      edge,
+      nodeName: null,
+      offset: null,
+      char: null,
+      rangeRect: null,
+      firstClientRect: null,
+      inkRect: null,
+    };
+  }
+
+  try {
+    const range = document.createRange();
+    const safeStart = clampInlineRangeOffset(target.node, target.offset);
+    const safeEnd = clampInlineRangeOffset(target.node, safeStart + 1);
+    range.setStart(target.node, safeStart);
+    range.setEnd(target.node, Math.max(safeEnd, safeStart));
+    const measured = measureInlineRangeRects(range);
+    const inkRect = pickInlinePrimaryRect(measured.rangeRect, measured.firstClientRect);
+    return {
+      available: Boolean(inkRect),
+      edge,
+      nodeName: target.node.nodeName || null,
+      offset: safeStart,
+      char: target.char ?? null,
+      rangeRect: measured.rangeRect,
+      firstClientRect: measured.firstClientRect,
+      inkRect,
+    };
+  } catch {
+    return {
+      available: false,
+      edge,
+      nodeName: target.node.nodeName || null,
+      offset: Number.isFinite(target.offset) ? target.offset : null,
+      char: target.char ?? null,
+      rangeRect: null,
+      firstClientRect: null,
+      inkRect: null,
+    };
+  }
+}
+
+function buildInlineInkCenterRect(firstRect, lastRect) {
+  const first = firstRect || null;
+  const last = lastRect || null;
+  if (!first && !last) return null;
+  const a = first || last;
+  const b = last || first;
+  const centerAX = Number(a.x) + Number(a.width) / 2;
+  const centerAY = Number(a.y) + Number(a.height) / 2;
+  const centerBX = Number(b.x) + Number(b.width) / 2;
+  const centerBY = Number(b.y) + Number(b.height) / 2;
+  if (![centerAX, centerAY, centerBX, centerBY].every(Number.isFinite)) return null;
+  return {
+    x: roundInlineMetric((centerAX + centerBX) / 2),
+    y: roundInlineMetric((centerAY + centerBY) / 2),
+    width: 0,
+    height: 0,
+  };
+}
+
+function getInlineLineBoxRect(rootEl) {
+  if (
+    !rootEl ||
+    rootEl instanceof HTMLInputElement ||
+    rootEl instanceof HTMLTextAreaElement ||
+    typeof document === "undefined"
+  ) {
+    return null;
+  }
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(rootEl);
+    const rects = range.getClientRects?.();
+    if (rects && rects.length > 0) return rectToInlinePayload(rects[0]);
+    return rectToInlinePayload(range.getBoundingClientRect());
+  } catch {
+    return null;
+  }
+}
+
+function resolveInlineKonvaTextNode(node, stage) {
+  return resolveInlineKonvaTextNodeShared(node, stage);
+}
+
+function getInlineKonvaProjectedRectViewport(node, stage, escalaVisual = 1) {
+  return getInlineKonvaProjectedRectViewportShared(node, stage, escalaVisual);
+}
+
+function getInlineSelectionCaretMetrics(rootEl) {
+  const emptySelection = {
+    anchorOffset: null,
+    focusOffset: null,
+    isCollapsed: null,
+    anchorNodeName: null,
+    anchorInEditor: null,
+  };
+
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    typeof window.getSelection !== "function"
+  ) {
+    return {
+      selection: emptySelection,
+      caretResolvedNodeName: null,
+      resolvedOffset: null,
+      resolveStrategy: null,
+      usedFallback: false,
+      fallbackDirection: null,
+      fallbackReason: null,
+      caretRangeRect: null,
+      caretFirstClientRect: null,
+      caretRect: null,
+      caretProxyRect: null,
+      caretHeight: null,
+      caretHasRects: false,
+      hasMetrics: false,
+      missingReason: "selection-api-unavailable",
+    };
+  }
+
+  const selection = window.getSelection();
+  if (!selection) {
+    return {
+      selection: emptySelection,
+      caretResolvedNodeName: null,
+      resolvedOffset: null,
+      resolveStrategy: null,
+      usedFallback: false,
+      fallbackDirection: null,
+      fallbackReason: null,
+      caretRangeRect: null,
+      caretFirstClientRect: null,
+      caretRect: null,
+      caretProxyRect: null,
+      caretHeight: null,
+      caretHasRects: false,
+      hasMetrics: false,
+      missingReason: "selection-null",
+    };
+  }
+
+  const anchorNode = selection.anchorNode || null;
+  const anchorOffset = Number.isFinite(selection.anchorOffset)
+    ? selection.anchorOffset
+    : null;
+  const focusOffset = Number.isFinite(selection.focusOffset)
+    ? selection.focusOffset
+    : null;
+  const isCollapsed =
+    typeof selection.isCollapsed === "boolean" ? selection.isCollapsed : null;
+  const anchorInEditor =
+    !!rootEl &&
+    !!anchorNode &&
+    typeof rootEl.contains === "function" &&
+    rootEl.contains(anchorNode);
+
+  const selectionSnapshot = {
+    anchorOffset,
+    focusOffset,
+    isCollapsed,
+    anchorNodeName: anchorNode?.nodeName || null,
+    anchorInEditor,
+  };
+
+  if (!anchorNode) {
+    return {
+      selection: selectionSnapshot,
+      caretResolvedNodeName: null,
+      resolvedOffset: null,
+      resolveStrategy: null,
+      usedFallback: false,
+      fallbackDirection: null,
+      fallbackReason: null,
+      caretRangeRect: null,
+      caretFirstClientRect: null,
+      caretRect: null,
+      caretProxyRect: null,
+      caretHeight: null,
+      caretHasRects: false,
+      hasMetrics: false,
+      missingReason: "anchor-node-missing",
+    };
+  }
+
+  const resolved = resolveInlineCaretTextPosition(rootEl, anchorNode, anchorOffset);
+  const resolvedNode = resolved.resolvedNode || null;
+  const resolvedOffset = Number.isFinite(resolved.resolvedOffset)
+    ? resolved.resolvedOffset
+    : clampInlineRangeOffset(anchorNode, anchorOffset);
+
+  let caretRange = null;
+  try {
+    caretRange = document.createRange();
+    if (resolvedNode) {
+      caretRange.setStart(
+        resolvedNode,
+        clampInlineRangeOffset(resolvedNode, resolvedOffset)
+      );
+    } else {
+      caretRange.setStart(anchorNode, clampInlineRangeOffset(anchorNode, anchorOffset));
+    }
+    caretRange.collapse(true);
+  } catch {
+    caretRange = null;
+  }
+
+  const measured = measureInlineRangeRects(caretRange);
+  const caretRangeRect = measured.rangeRect;
+  const caretFirstClientRect = measured.firstClientRect;
+  const caretRect = pickInlinePrimaryRect(caretRangeRect, caretFirstClientRect);
+  const caretHasRects = Boolean(caretRect);
+
+  let usedFallback = false;
+  let fallbackDirection = null;
+  let fallbackReason = null;
+  let caretProxyRect = null;
+  if (!caretHasRects && selectionSnapshot.anchorInEditor) {
+    const fallback = buildInlineCaretFallbackRange(rootEl, resolvedNode, resolvedOffset);
+    const fallbackMeasured = measureInlineRangeRects(fallback.range);
+    const proxyRect = pickInlinePrimaryRect(
+      fallbackMeasured.rangeRect,
+      fallbackMeasured.firstClientRect
+    );
+    if (proxyRect) {
+      usedFallback = true;
+      fallbackDirection = fallback.fallbackDirection;
+      fallbackReason = fallback.fallbackReason;
+      caretProxyRect = proxyRect;
+    } else if (fallback.fallbackUsed) {
+      usedFallback = true;
+      fallbackDirection = fallback.fallbackDirection;
+      fallbackReason = `${fallback.fallbackReason}-no-usable-rect`;
+    } else {
+      fallbackReason = fallback.fallbackReason;
+    }
+  }
+
+  return {
+    selection: selectionSnapshot,
+    caretResolvedNodeName: resolvedNode?.nodeName || anchorNode?.nodeName || null,
+    resolvedOffset,
+    resolveStrategy: resolved.strategy || null,
+    usedFallback,
+    fallbackDirection,
+    fallbackReason,
+    caretRangeRect,
+    caretFirstClientRect,
+    caretRect,
+    caretProxyRect,
+    caretHeight: Number.isFinite(caretRect?.height) ? caretRect.height : null,
+    caretHasRects,
+    hasMetrics: caretHasRects,
+    missingReason: caretHasRects
+      ? null
+      : (!selectionSnapshot.anchorInEditor
+        ? "caret-outside-editor"
+        : (caretRange ? "caret-range-rect-empty" : "caret-range-error")),
+  };
+}
+
+function getInlineLineStats(value) {
+  return getInlineLineStatsShared(value, {
+    canonical: true,
+    trimPhantomTrailingNewline: true,
+  });
 }
 
 function normalizeInlineDebugAB(rawConfig) {
@@ -214,10 +787,14 @@ function normalizeInlineDebugAB(rawConfig) {
   const overlayWidthMode =
     raw.overlayWidthMode === "fit-content" ? "fit-content" : "measured";
 
+  const overlayEngine =
+    raw.overlayEngine === "phase_atomic_v2" ? "phase_atomic_v2" : "legacy";
+
   return {
     visibilitySource,
     finishMode,
     overlayWidthMode,
+    overlayEngine,
   };
 }
 
@@ -256,9 +833,23 @@ export default function CanvasEditor({
   const elementRefs = useRef({});
   const inlineEditPreviewRef = useRef({ id: null, centerX: null });
   const inlineCommitDebugRef = useRef({ id: null });
+  const inlineSnapshotHistoryRef = useRef({});
+  const inlineVisibilitySnapshotRef = useRef({});
+  const inlineKonvaDrawMetaRef = useRef({ seq: 0, nowMs: null, source: null });
+  const inlinePaintApproxRef = useRef({ lastPaintApproxMs: null, pending: false });
+  const logInlineSnapshotRef = useRef(null);
+  const pendingInlineStartRef = useRef(0);
   const prevEditingIdRef = useRef(null);
   const inlineRenderValueRef = useRef({ id: null, value: "" });
   const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
+  const inlineSwapAckSeqRef = useRef(0);
+  const [inlineSwapAck, setInlineSwapAck] = useState({
+    id: null,
+    sessionId: null,
+    phase: null,
+    token: 0,
+    offsetY: 0,
+  });
   const contenedorRef = useRef(null);
   const editorOverlayRootRef = useRef(null);
   const autoSectionViewportRef = useRef(null);
@@ -717,7 +1308,7 @@ export default function CanvasEditor({
     elementRefs.current[id] = node;
     imperativeObjects.registerObject(id, node);
 
-    // ? Debounce por frame para evitar ráfagas de re-attach del Transformer
+    // ? Debounce por frame para evitar rÃ¡fagas de re-attach del Transformer
     if (_refEventQueued.current.has(id)) return;
     _refEventQueued.current.add(id);
 
@@ -788,7 +1379,46 @@ export default function CanvasEditor({
     if (typeof window === "undefined") {
       return normalizeInlineDebugAB(null);
     }
-    return normalizeInlineDebugAB(window.__INLINE_AB);
+    const normalized = normalizeInlineDebugAB(window.__INLINE_AB);
+    try {
+      const params = new URLSearchParams(window.location?.search || "");
+      const queryEngine = params.get("inlineOverlayEngine");
+      const hasPhaseAtomicFlag =
+        params.has("phase_atomic_v2") ||
+        params.get("phase_atomic_v2") === "1" ||
+        window.__INLINE_OVERLAY_ENGINE === "phase_atomic_v2";
+      if (queryEngine === "phase_atomic_v2" || hasPhaseAtomicFlag) {
+        return {
+          ...normalized,
+          overlayEngine: "phase_atomic_v2",
+        };
+      }
+    } catch {
+      // no-op
+    }
+    return normalized;
+  }, [editing.id, editing.value]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location?.search || "");
+      const queryEngine = params.get("inlineOverlayEngine");
+      const hasPhaseAtomicFlag =
+        queryEngine === "phase_atomic_v2" ||
+        params.has("phase_atomic_v2") ||
+        params.get("phase_atomic_v2") === "1";
+      if (!hasPhaseAtomicFlag) return;
+      window.__INLINE_OVERLAY_ENGINE = "phase_atomic_v2";
+      window.__INLINE_AB = {
+        ...(window.__INLINE_AB && typeof window.__INLINE_AB === "object"
+          ? window.__INLINE_AB
+          : {}),
+        overlayEngine: "phase_atomic_v2",
+      };
+    } catch {
+      // no-op
+    }
   }, [editing.id, editing.value]);
 
   useEffect(() => {
@@ -810,178 +1440,607 @@ export default function CanvasEditor({
     };
   }, []);
 
+  const ensureInlineFontReady = useCallback(async (fontFamily) => {
+    const normalizedFont = fontManager.normalizeFontName(fontFamily);
+    if (!normalizedFont) {
+      return {
+        waited: false,
+        ready: true,
+        fontName: null,
+        loadedCount: null,
+        failedCount: null,
+      };
+    }
+
+    if (fontManager.isFontAvailable(normalizedFont)) {
+      return {
+        waited: false,
+        ready: true,
+        fontName: normalizedFont,
+        loadedCount: null,
+        failedCount: null,
+      };
+    }
+
+    let loadSummary = null;
+    try {
+      loadSummary = await fontManager.loadFonts([normalizedFont], { timeoutMs: 700 });
+    } catch {
+      // no-op
+    }
+
+    if (typeof document !== "undefined" && document.fonts?.load) {
+      try {
+        await Promise.race([
+          document.fonts.load(`16px "${normalizedFont}"`),
+          new Promise((resolve) => setTimeout(resolve, 200)),
+        ]);
+      } catch {
+        // no-op
+      }
+    }
+
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+
+    return {
+      waited: true,
+      ready: fontManager.isFontAvailable(normalizedFont),
+      fontName: normalizedFont,
+      loadedCount: loadSummary?.loaded?.length ?? null,
+      failedCount: loadSummary?.failed?.length ?? null,
+    };
+  }, []);
+
   useEffect(() => {
     if (!isMobile) return;
     setMobileSectionActionsOpen(false);
   }, [seccionActivaId, isMobile]);
 
-  const handleInlineOverlayMountChange = useCallback((id, mounted) => {
+  const markInlineKonvaDraw = useCallback((source = "unknown") => {
+    const nowMs =
+      typeof window !== "undefined" && typeof window.performance?.now === "function"
+        ? roundInlineMetric(Number(window.performance.now()), 3)
+        : null;
+    const prevSeq = Number(inlineKonvaDrawMetaRef.current?.seq || 0);
+    inlineKonvaDrawMetaRef.current = {
+      seq: prevSeq + 1,
+      nowMs,
+      source,
+    };
+  }, []);
+
+  const applyInlineOverlayMountState = useCallback((id, mounted, meta = {}) => {
     const safeId = id || null;
     if (!safeId) return;
 
+    if (mounted) {
+      logInlineSnapshotRef.current?.("konva-hide-before-applied", {
+        id: safeId,
+        hideCanvasTextWhenEditing: true,
+        hideApplied: false,
+        ...meta,
+      });
+    }
+
+    const nodeForHandoff = elementRefs.current[safeId] || null;
+    if (mounted) {
+      logInlineSnapshotRef.current?.("konva: before-hide", {
+        id: safeId,
+        eventLoopPhase: "sync",
+        ...meta,
+      });
+    }
+    if (nodeForHandoff && typeof nodeForHandoff.opacity === "function") {
+      nodeForHandoff.opacity(mounted ? 0 : 1);
+      const layer = nodeForHandoff.getLayer?.() || null;
+      if (typeof layer?.batchDraw === "function") {
+        layer.batchDraw();
+        markInlineKonvaDraw("layer.batchDraw");
+      } else {
+        const stage = stageRef.current?.getStage?.() || stageRef.current || null;
+        if (typeof stage?.batchDraw === "function") {
+          stage.batchDraw();
+          markInlineKonvaDraw("stage.batchDraw");
+        }
+      }
+      if (mounted) {
+        logInlineSnapshotRef.current?.("konva: after-hide-sync", {
+          id: safeId,
+          eventLoopPhase: "sync",
+          ...meta,
+        });
+        requestAnimationFrame((rafStamp) => {
+          logInlineSnapshotRef.current?.("konva: after-hide-raf1", {
+            id: safeId,
+            eventLoopPhase: "raf",
+            rafStamp: roundInlineMetric(Number(rafStamp), 3),
+            ...meta,
+          });
+        });
+      }
+      if (mounted) {
+        logInlineSnapshotRef.current?.("konva-hide-applied", {
+          id: safeId,
+          hideCanvasTextWhenEditing: true,
+          hideApplied: true,
+          ...meta,
+        });
+      }
+    }
+
     setInlineOverlayMountedId((previous) => {
       const next = mounted ? safeId : (previous === safeId ? null : previous);
+      const node = elementRefs.current[safeId] || null;
+      const nodeVisibility = node
+        ? {
+            opacity:
+              typeof node.opacity === "function" ? node.opacity() : null,
+            visible:
+              typeof node.visible === "function" ? node.visible() : null,
+          }
+        : null;
+      const safeDomId = String(safeId).replace(/"/g, '\\"');
+      const overlayDomPresent = safeDomId
+        ? Boolean(document.querySelector(`[data-inline-editor-id="${safeDomId}"]`))
+        : false;
       inlineDebugLog("overlay-mounted-state", {
         id: safeId,
         mounted,
         previousOverlayMountedId: previous,
         nextOverlayMountedId: next,
+        overlayDomPresent,
+        nodeVisibility,
+        ...meta,
       });
+      if (mounted) {
+        logInlineSnapshotRef.current?.("overlay-visible-applied", {
+          id: safeId,
+          overlayMounted: next === safeId,
+          overlayDomPresent,
+          ...meta,
+        });
+      }
       return next;
     });
+  }, [markInlineKonvaDraw]);
+
+  const handleInlineOverlayMountChange = useCallback((id, mounted) => {
+    if (inlineDebugAB.overlayEngine === "phase_atomic_v2") return;
+    applyInlineOverlayMountState(id, mounted, {
+      engine: "legacy",
+      phase: mounted ? "active" : "done",
+    });
+  }, [applyInlineOverlayMountState, inlineDebugAB.overlayEngine]);
+
+  const scheduleInlineSwapCommit = useCallback((commitFn) => {
+    if (typeof commitFn !== "function") return;
+    const runCommit = () => commitFn();
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(runCommit);
+      return;
+    }
+    Promise.resolve().then(runCommit);
   }, []);
 
-  const captureInlineSnapshot = useCallback((eventName, extra = {}) => {
+  const handleInlineOverlaySwapRequest = useCallback((payload = {}) => {
+    const id = payload?.id || null;
+    const sessionId = payload?.sessionId || null;
+    const phase = payload?.phase || null;
+    const offsetY = Number(payload?.offsetY);
+    if (!id || !sessionId || !phase) return;
+
+    const meta = {
+      engine: "phase_atomic_v2",
+      phase,
+      sessionId,
+      offsetY: Number.isFinite(offsetY) ? roundInlineMetric(offsetY, 4) : null,
+    };
+
+    if (phase === "ready_to_swap") {
+      scheduleInlineSwapCommit(() => {
+        applyInlineOverlayMountState(id, true, meta);
+        inlineSwapAckSeqRef.current += 1;
+        setInlineSwapAck({
+          id,
+          sessionId,
+          phase: "swap-commit",
+          token: inlineSwapAckSeqRef.current,
+          offsetY: Number.isFinite(offsetY) ? offsetY : 0,
+        });
+      });
+      return;
+    }
+
+    if (phase === "finish_commit" || phase === "done" || phase === "cancel") {
+      scheduleInlineSwapCommit(() => {
+        applyInlineOverlayMountState(id, false, meta);
+        inlineSwapAckSeqRef.current += 1;
+        setInlineSwapAck({
+          id,
+          sessionId,
+          phase,
+          token: inlineSwapAckSeqRef.current,
+          offsetY: Number.isFinite(offsetY) ? offsetY : 0,
+        });
+      });
+    }
+  }, [applyInlineOverlayMountState, scheduleInlineSwapCommit]);
+
+  const logInlineSnapshot = useCallback((eventName, extra = {}) => {
     if (typeof window === "undefined") return;
     if (!isInlineDebugEnabled()) return;
     if (window.__INLINE_SNAPSHOT !== true) return;
 
     const snapshotAllowlist = new Set([
-      "enter: pre-start",
-      "enter: after-start-sync",
-      "finish: blur",
-      "finish: after-finishEdit",
-      "exit: immediate",
+      "overlay: pre-focus-call",
+      "overlay: post-focus-sync",
+      "overlay: before-show",
+      "overlay: after-show-sync",
+      "overlay: after-show-raf1",
+      "konva: before-hide",
+      "konva: after-hide-sync",
+      "konva: after-hide-raf1",
+      "selection-set",
+      "konva-hide-before-applied",
+      "konva-hide-applied",
     ]);
     if (!snapshotAllowlist.has(eventName)) return;
 
-    const frameMeta = nextInlineFrameMeta();
+    const nowMsRaw =
+      typeof window.performance?.now === "function"
+        ? Number(window.performance.now())
+        : null;
+    if (!inlinePaintApproxRef.current.pending && typeof requestAnimationFrame === "function") {
+      inlinePaintApproxRef.current.pending = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame((stamp) => {
+          inlinePaintApproxRef.current.lastPaintApproxMs = roundInlineMetric(
+            Number(stamp),
+            3
+          );
+          inlinePaintApproxRef.current.pending = false;
+        });
+      });
+    }
+
     const snapshotId =
       extra.id ||
       editing.id ||
       inlineCommitDebugRef.current?.id ||
       prevEditingIdRef.current ||
       null;
-
-    const node = snapshotId ? elementRefs.current[snapshotId] : null;
-    const nodeMetrics = obtenerMetricasNodoInline(node);
-    const objMetrics = snapshotId
-      ? (() => {
-          const obj = objetos.find((o) => o.id === snapshotId);
-          if (!obj) return null;
-          return {
-            id: obj.id,
-            tipo: obj.tipo || null,
-            x: Number.isFinite(obj.x) ? obj.x : null,
-            y: Number.isFinite(obj.y) ? obj.y : null,
-            textoLength: String(obj.texto ?? "").length,
-            fontSize: Number.isFinite(obj.fontSize) ? obj.fontSize : null,
-            lineHeight:
-              Number.isFinite(obj.lineHeight) && obj.lineHeight > 0
-                ? obj.lineHeight
-                : null,
-          };
-        })()
+    const snapshotKey = String(snapshotId || "__none__");
+    const safeId =
+      snapshotId == null ? null : String(snapshotId).replace(/"/g, '\\"');
+    const overlayEl = safeId
+      ? document.querySelector(`[data-inline-editor-id="${safeId}"]`)
+      : null;
+    const contentEl = overlayEl
+      ? (
+          overlayEl.querySelector('[contenteditable="true"]') ||
+          overlayEl.querySelector("input") ||
+          overlayEl.querySelector("textarea")
+        )
       : null;
 
+    const overlayRect = rectToInlinePayload(overlayEl?.getBoundingClientRect?.() || null);
+    const inkFirstCharMetrics = getInlineInkCharMetrics(contentEl, "first");
+    const inkFirstCharRect = inkFirstCharMetrics?.inkRect ?? null;
+    const inkLineBoxRect = getInlineLineBoxRect(contentEl);
+    const readOverlayMetric = (attrName) => {
+      const raw = overlayEl?.getAttribute?.(attrName);
+      const numeric = Number(raw);
+      return Number.isFinite(numeric) ? roundInlineMetric(numeric) : null;
+    };
+    const readExtraMetric = (key) => {
+      const numeric = Number(extra?.[key]);
+      return Number.isFinite(numeric) ? roundInlineMetric(numeric) : null;
+    };
+    const computedBaselineOffsetPx =
+      readExtraMetric("computedBaselineOffsetPx") ??
+      readOverlayMetric("data-inline-computed-baseline-offset") ??
+      null;
+    const appliedVerticalCorrectionPx =
+      readExtraMetric("appliedVerticalCorrectionPx") ??
+      readOverlayMetric("data-inline-vertical-correction") ??
+      null;
+    const topRawPx =
+      readExtraMetric("topRawPx") ??
+      readOverlayMetric("data-inline-top-raw") ??
+      null;
+    const topCorrectedPx =
+      readExtraMetric("topCorrectedPx") ??
+      readOverlayMetric("data-inline-top-corrected") ??
+      null;
+    const baselineFromTopPx =
+      readExtraMetric("baselineFromTopPx") ??
+      readOverlayMetric("data-inline-baseline-from-top") ??
+      null;
+    const eventLoopPhase =
+      typeof extra?.eventLoopPhase === "string"
+        ? extra.eventLoopPhase
+        : (eventName.includes("raf") ? "raf" : "sync");
+    const rafStamp = readExtraMetric("rafStamp");
+    const nowMs = Number.isFinite(nowMsRaw) ? roundInlineMetric(nowMsRaw, 3) : null;
+    const lastPaintApprox =
+      readExtraMetric("lastPaintApprox") ??
+      inlinePaintApproxRef.current.lastPaintApproxMs ??
+      null;
+    const overlayComputedStyle =
+      overlayEl && typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(overlayEl)
+        : null;
+    const overlayComputedOpacity = overlayComputedStyle
+      ? roundInlineMetric(Number(overlayComputedStyle.opacity || 1), 4)
+      : null;
+    const overlayComputedVisibility = overlayComputedStyle?.visibility ?? null;
+    const overlayComputedDisplay = overlayComputedStyle?.display ?? null;
+    const overlayComputedTransform = overlayComputedStyle?.transform ?? null;
+    const overlayComputedWillChange = overlayComputedStyle?.willChange ?? null;
+    const overlayIsConnected = Boolean(overlayEl?.isConnected);
+    const overlayHasFocus = Boolean(contentEl && document.activeElement === contentEl);
+
     const stage = stageRef.current?.getStage?.() || stageRef.current || null;
-    let stageRect = null;
-    try {
-      const r = stage?.container?.()?.getBoundingClientRect?.();
-      if (r) {
-        stageRect = {
-          x: r.x,
-          y: r.y,
-          width: r.width,
-          height: r.height,
-        };
-      }
-    } catch {
-      stageRect = null;
-    }
-
-    let inlineRect = null;
-    let inlineStyle = null;
-    let inlineContentRect = null;
-    let inlineContentMetrics = null;
-    if (snapshotId) {
-      const safeId = String(snapshotId).replace(/"/g, '\\"');
-      const overlayEl = document.querySelector(`[data-inline-editor-id="${safeId}"]`);
-      if (overlayEl) {
-        const r = overlayEl.getBoundingClientRect();
-        inlineRect = {
-          x: r.x,
-          y: r.y,
-          width: r.width,
-          height: r.height,
-        };
-        inlineStyle = {
-          left: overlayEl.style.left,
-          top: overlayEl.style.top,
-          minWidth: overlayEl.style.minWidth,
-          maxWidth: overlayEl.style.maxWidth,
-          width: overlayEl.style.width,
-        };
-
-        const contentEl = overlayEl.querySelector('[contenteditable="true"]');
-        const contentRect = contentEl?.getBoundingClientRect?.();
-        if (contentRect) {
-          inlineContentRect = {
-            x: contentRect.x,
-            y: contentRect.y,
-            width: contentRect.width,
-            height: contentRect.height,
-          };
+    const node = snapshotId ? elementRefs.current[snapshotId] || null : null;
+    const konvaTextOpacity =
+      node && typeof node.opacity === "function"
+        ? roundInlineMetric(Number(node.opacity()), 4)
+        : null;
+    const konvaTextVisible =
+      node && typeof node.visible === "function" ? Boolean(node.visible()) : null;
+    const currentDrawSeq = Number(inlineKonvaDrawMetaRef.current?.seq || 0);
+    const previousDrawSeq =
+      Number(inlineVisibilitySnapshotRef.current[snapshotKey]?.drawSeq || 0);
+    const konvaDrawnThisFrame =
+      currentDrawSeq > 0 && currentDrawSeq !== previousDrawSeq;
+    inlineVisibilitySnapshotRef.current[snapshotKey] = {
+      drawSeq: currentDrawSeq,
+    };
+    const konvaTextNode = resolveInlineKonvaTextNode(node, stage);
+    const konvaProjection = getInlineKonvaProjectedRectViewport(
+      konvaTextNode,
+      stage,
+      escalaVisual
+    );
+    const konvaTextClientRect = konvaProjection.konvaTextClientRect;
+    const konvaProjectedRectViewport = konvaProjection.konvaProjectedRectViewport;
+    const konvaVsDomInkDelta = konvaProjectedRectViewport
+      ? {
+          dx: inkFirstCharRect
+            ? roundInlineMetric(
+                Number(inkFirstCharRect.x) - Number(konvaProjectedRectViewport.x)
+              )
+            : null,
+          dy: inkFirstCharRect
+            ? roundInlineMetric(
+                Number(inkFirstCharRect.y) - Number(konvaProjectedRectViewport.y)
+              )
+            : null,
+          dw: inkLineBoxRect
+            ? roundInlineMetric(
+                Number(inkLineBoxRect.width) - Number(konvaProjectedRectViewport.width)
+              )
+            : null,
+          dh: inkLineBoxRect
+            ? roundInlineMetric(
+                Number(inkLineBoxRect.height) - Number(konvaProjectedRectViewport.height)
+              )
+            : null,
         }
-        inlineContentMetrics = contentEl
-          ? {
-              scrollWidth: contentEl.scrollWidth,
-              clientWidth: contentEl.clientWidth,
-              isFocused: document.activeElement === contentEl,
-            }
-          : null;
-      }
-    }
+      : null;
 
-    let transformerRect = null;
-    try {
-      const transformer = stage?.findOne?.("Transformer");
-      if (transformer) {
-        const trRect = transformer.getClientRect({
-          skipTransform: false,
-          skipShadow: true,
-          skipStroke: true,
-        });
-        const nodes = transformer.nodes?.() || [];
-        transformerRect = trRect
-          ? {
-              x: trRect.x,
-              y: trRect.y,
-              width: trRect.width,
-              height: trRect.height,
-              nodesCount: nodes.length,
-              includesSnapshotNode: !!(node && nodes.includes(node)),
-            }
-          : null;
+    const readKonvaStyleValue = (target, key) => {
+      if (!target) return null;
+      try {
+        const fn = target[key];
+        if (typeof fn === "function") {
+          const value = fn.call(target);
+          return value ?? null;
+        }
+        if (typeof target.getAttr === "function") {
+          const attrValue = target.getAttr(key);
+          if (typeof attrValue !== "undefined") return attrValue;
+        }
+        if (target?.attrs && Object.prototype.hasOwnProperty.call(target.attrs, key)) {
+          return target.attrs[key];
+        }
+      } catch {
+        return null;
       }
-    } catch {
-      transformerRect = null;
-    }
+      return null;
+    };
 
-    inlineDebugLog(`snapshot-${eventName}`, {
-      ...frameMeta,
-      ...extra,
-      id: snapshotId,
-      eventName,
-      editingId: editing.id ?? null,
-      currentEditingId: window._currentEditingId ?? null,
-      overlayMountedId: inlineOverlayMountedId ?? null,
-      inlineAB: inlineDebugAB,
+    const konvaStyleNode = konvaTextNode || node;
+    const konvaFontSize = Number(readKonvaStyleValue(konvaStyleNode, "fontSize"));
+    const konvaLineHeightRaw = Number(readKonvaStyleValue(konvaStyleNode, "lineHeight"));
+    const konvaLineHeightEffective =
+      Number.isFinite(konvaFontSize) && Number.isFinite(konvaLineHeightRaw)
+        ? roundInlineMetric(konvaFontSize * konvaLineHeightRaw)
+        : (Number.isFinite(konvaLineHeightRaw) ? roundInlineMetric(konvaLineHeightRaw) : null);
+
+    const konvaTextStyleSnapshot = {
+      fontFamily: readKonvaStyleValue(konvaStyleNode, "fontFamily"),
+      fontSize: Number.isFinite(konvaFontSize) ? roundInlineMetric(konvaFontSize) : null,
+      fontStyle: readKonvaStyleValue(konvaStyleNode, "fontStyle"),
+      fontVariant: readKonvaStyleValue(konvaStyleNode, "fontVariant"),
+      fontWeight: readKonvaStyleValue(konvaStyleNode, "fontWeight"),
+      lineHeight: konvaLineHeightEffective,
+      padding: (() => {
+        const value = Number(readKonvaStyleValue(konvaStyleNode, "padding"));
+        return Number.isFinite(value) ? roundInlineMetric(value) : readKonvaStyleValue(konvaStyleNode, "padding");
+      })(),
+      align: readKonvaStyleValue(konvaStyleNode, "align"),
+      verticalAlign: readKonvaStyleValue(konvaStyleNode, "verticalAlign"),
+      scaleX: (() => {
+        const value = Number(readKonvaStyleValue(konvaStyleNode, "scaleX"));
+        return Number.isFinite(value) ? roundInlineMetric(value) : null;
+      })(),
+      scaleY: (() => {
+        const value = Number(readKonvaStyleValue(konvaStyleNode, "scaleY"));
+        return Number.isFinite(value) ? roundInlineMetric(value) : null;
+      })(),
+      offsetX: (() => {
+        const value = Number(readKonvaStyleValue(konvaStyleNode, "offsetX"));
+        return Number.isFinite(value) ? roundInlineMetric(value) : null;
+      })(),
+      offsetY: (() => {
+        const value = Number(readKonvaStyleValue(konvaStyleNode, "offsetY"));
+        return Number.isFinite(value) ? roundInlineMetric(value) : null;
+      })(),
+      rotation: (() => {
+        const value = Number(readKonvaStyleValue(konvaStyleNode, "rotation"));
+        return Number.isFinite(value) ? roundInlineMetric(value) : null;
+      })(),
+    };
+
+    const domComputedStyle =
+      contentEl && typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(contentEl)
+        : null;
+    const domTextStyleSnapshot = {
+      fontFamily: domComputedStyle?.fontFamily ?? null,
+      fontSize: domComputedStyle?.fontSize ?? null,
+      fontWeight: domComputedStyle?.fontWeight ?? null,
+      fontStyle: domComputedStyle?.fontStyle ?? null,
+      lineHeight: domComputedStyle?.lineHeight ?? null,
+      letterSpacing: domComputedStyle?.letterSpacing ?? null,
+      paddingTop: domComputedStyle?.paddingTop ?? null,
+      paddingLeft: domComputedStyle?.paddingLeft ?? null,
+      borderTopWidth: domComputedStyle?.borderTopWidth ?? null,
+      borderLeftWidth: domComputedStyle?.borderLeftWidth ?? null,
+      boxSizing: domComputedStyle?.boxSizing ?? null,
+      whiteSpace: domComputedStyle?.whiteSpace ?? null,
+      transform: domComputedStyle?.transform ?? null,
+    };
+
+    const baselineDiagnostics = {
+      domGlyphTop: inkFirstCharRect ? roundInlineMetric(Number(inkFirstCharRect.y)) : null,
+      domLineBoxTop: inkLineBoxRect ? roundInlineMetric(Number(inkLineBoxRect.y)) : null,
+      domLineBoxHeight: inkLineBoxRect ? roundInlineMetric(Number(inkLineBoxRect.height)) : null,
+      konvaTop: konvaProjectedRectViewport ? roundInlineMetric(Number(konvaProjectedRectViewport.y)) : null,
+      konvaHeight: konvaProjectedRectViewport ? roundInlineMetric(Number(konvaProjectedRectViewport.height)) : null,
+      deltaTop:
+        konvaProjectedRectViewport && inkLineBoxRect
+          ? roundInlineMetric(Number(inkLineBoxRect.y) - Number(konvaProjectedRectViewport.y))
+          : null,
+      deltaGlyphTop:
+        konvaProjectedRectViewport && inkFirstCharRect
+          ? roundInlineMetric(Number(inkFirstCharRect.y) - Number(konvaProjectedRectViewport.y))
+          : null,
+    };
+
+    const payload = {
       escalaVisual,
-      stageRect,
-      nodeMetrics,
-      objMetrics,
-      transformerRect,
-      inlineRect,
-      inlineStyle,
-      inlineContentRect,
-      inlineContentMetrics,
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-      innerWidth: window.innerWidth,
-      innerHeight: window.innerHeight,
-    });
-  }, [editing.id, escalaVisual, inlineDebugAB, inlineOverlayMountedId, objetos, obtenerMetricasNodoInline]);
+      nowMs,
+      eventLoopPhase,
+      rafStamp,
+      lastPaintApprox,
+      overlayRect,
+      inkFirstCharRect,
+      inkLineBoxRect,
+      konvaTextOpacity,
+      konvaTextVisible,
+      konvaDrawnThisFrame,
+      overlayComputedOpacity,
+      overlayComputedVisibility,
+      overlayComputedDisplay,
+      overlayComputedTransform,
+      overlayComputedWillChange,
+      overlayIsConnected,
+      overlayHasFocus,
+      konvaTextClientRect,
+      konvaProjectedRectViewport,
+      konvaVsDomInkDelta,
+      computedBaselineOffsetPx,
+      appliedVerticalCorrectionPx,
+      topRawPx,
+      topCorrectedPx,
+      baselineFromTopPx,
+      konvaTextStyleSnapshot,
+      domTextStyleSnapshot,
+      baselineDiagnostics,
+    };
+
+    const overlayVisibleForCrossfade =
+      Number(overlayComputedOpacity) > 0 &&
+      overlayComputedDisplay !== "none" &&
+      overlayComputedVisibility !== "hidden";
+    const overlayHiddenForCrossfade =
+      Number(overlayComputedOpacity) === 0 ||
+      overlayComputedDisplay === "none" ||
+      overlayComputedVisibility === "hidden";
+    const crossfadeState = {
+      bothVisible:
+        Number(konvaTextOpacity) > 0 &&
+        overlayVisibleForCrossfade,
+      bothHidden:
+        Number(konvaTextOpacity) === 0 &&
+        overlayHiddenForCrossfade,
+    };
+    payload.crossfadeState = crossfadeState;
+
+    inlineDebugLog(`snapshot-${eventName}`, payload);
+
+    const threshold = 0.5;
+    const deltaTop = Number(baselineDiagnostics.deltaTop);
+    const hasKonvaDomMismatch =
+      Number.isFinite(deltaTop) &&
+      Math.abs(deltaTop) >= threshold;
+
+    if (hasKonvaDomMismatch) {
+      const mismatchPayload = {
+        eventName,
+        deltaTop: baselineDiagnostics.deltaTop,
+        deltaGlyphTop: baselineDiagnostics.deltaGlyphTop,
+        konvaProjectedRectViewport,
+        inkLineBoxRect,
+      };
+      const ts = new Date().toISOString();
+      console.log(
+        `[INLINE][ALERT][${ts}] konva-dom-mismatch\n${formatInlineLogPayload(mismatchPayload)}`
+      );
+    }
+
+    const crossfadeAlertEvents = new Set([
+      "overlay: before-show",
+      "overlay: after-show-sync",
+      "overlay: after-show-raf1",
+      "konva: before-hide",
+      "konva: after-hide-sync",
+      "konva: after-hide-raf1",
+    ]);
+    if (
+      crossfadeAlertEvents.has(eventName) &&
+      (crossfadeState.bothVisible || crossfadeState.bothHidden)
+    ) {
+      const ts = new Date().toISOString();
+      console.log(
+        `[INLINE][ALERT][${ts}] crossfade-glitch\n${formatInlineLogPayload({
+          eventName,
+          crossfadeState,
+          konvaTextOpacity,
+          konvaTextVisible,
+          overlayComputedOpacity,
+          overlayComputedDisplay,
+          overlayComputedVisibility,
+          nowMs,
+          eventLoopPhase,
+          rafStamp,
+          lastPaintApprox,
+          deltaTop: baselineDiagnostics.deltaTop,
+          deltaGlyphTop: baselineDiagnostics.deltaGlyphTop,
+        })}`
+      );
+    }
+  }, [editing.id, escalaVisual]);
+
+  const captureInlineSnapshot = useCallback((eventName, extra = {}) => {
+    logInlineSnapshot(eventName, extra);
+  }, [logInlineSnapshot]);
+
+  logInlineSnapshotRef.current = logInlineSnapshot;
 
   useEffect(() => {
     const currentId = editing.id || null;
@@ -1091,17 +2150,202 @@ export default function CanvasEditor({
     if (window.__INLINE_DEBUG === undefined) {
       window.__INLINE_DEBUG = false;
     }
+    if (window.__INLINE_MICROMOVE_DEBUG === undefined) {
+      window.__INLINE_MICROMOVE_DEBUG = false;
+    }
     if (window.__INLINE_FRAME_SEQ === undefined) {
       window.__INLINE_FRAME_SEQ = 0;
     }
-    const normalizedAB = normalizeInlineDebugAB(window.__INLINE_AB);
-    window.__INLINE_AB = { ...normalizedAB };
+    window.__INLINE_AB = { ...inlineDebugAB };
     inlineDebugLog("debug-enabled", {
       enabled: window.__INLINE_DEBUG,
+      microMoveEnabled: window.__INLINE_MICROMOVE_DEBUG,
       inlineAB: window.__INLINE_AB,
       frameSeq: window.__INLINE_FRAME_SEQ,
     });
+  }, [inlineDebugAB]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (!Array.isArray(window.__INLINE_TRACE)) {
+      window.__INLINE_TRACE = [];
+    }
+    if (!window.__INLINE_TEST || typeof window.__INLINE_TEST !== "object") {
+      window.__INLINE_TEST = {};
+    }
+
+    const fallbackRunMatrix = async (options = {}) => {
+      const maxErrorPx = Number.isFinite(Number(options?.maxErrorPx))
+        ? Number(options.maxErrorPx)
+        : 0.5;
+      const phases = new Set(["after-first-paint", "post-layout"]);
+      const trace = Array.isArray(window.__INLINE_TRACE) ? [...window.__INLINE_TRACE] : [];
+      const filtered = trace.filter((entry) => phases.has(entry?.phase || entry?.eventName));
+      const failures = filtered.filter((entry) => {
+        const dx = Math.abs(Number(entry?.dx || 0));
+        const dy = Math.abs(Number(entry?.dy || 0));
+        return dx > maxErrorPx || dy > maxErrorPx;
+      });
+      return {
+        generatedAt: new Date().toISOString(),
+        engine: "canvas-fallback",
+        summary: {
+          sampleCount: filtered.length,
+          failures: failures.length,
+          passRate:
+            filtered.length > 0
+              ? roundInlineMetric(((filtered.length - failures.length) / filtered.length) * 100, 2)
+              : null,
+          maxErrorPx,
+        },
+        sampleCount: trace.length,
+        trace,
+      };
+    };
+
+    const previousRunMatrix = window.__INLINE_TEST.runMatrix;
+    if (typeof previousRunMatrix !== "function") {
+      window.__INLINE_TEST.runMatrix = fallbackRunMatrix;
+    }
+    if (typeof window.__INLINE_TEST.clearTrace !== "function") {
+      window.__INLINE_TEST.clearTrace = () => {
+        window.__INLINE_TRACE = [];
+        return true;
+      };
+    }
+
+    return () => {
+      if (window.__INLINE_TEST?.runMatrix === fallbackRunMatrix) {
+        delete window.__INLINE_TEST.runMatrix;
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (!window.__INLINE_TEST || typeof window.__INLINE_TEST !== "object") {
+      window.__INLINE_TEST = {};
+    }
+
+    const findInlineProbeCandidate = (preferredId = null) => {
+      if (preferredId) {
+        const preferred = objetos.find((obj) => obj?.id === preferredId) || null;
+        if (preferred && (
+          preferred.tipo === "texto" ||
+          (preferred.tipo === "forma" && preferred.figura === "rect" && typeof preferred.texto === "string")
+        )) {
+          return preferred;
+        }
+      }
+      return (
+        objetos.find((obj) => (
+          obj?.tipo === "texto" ||
+          (obj?.tipo === "forma" && obj?.figura === "rect" && typeof obj?.texto === "string")
+        )) || null
+      );
+    };
+
+    const startFirstTextEdit = async (options = {}) => {
+      const preferredId = options?.id || null;
+      const candidate = findInlineProbeCandidate(preferredId);
+      if (!candidate) {
+        return { ok: false, reason: "no-inline-text-candidate" };
+      }
+      try {
+        await ensureInlineFontReady(candidate.fontFamily);
+      } catch {
+        // no-op
+      }
+      const id = candidate.id;
+      const initialValue = String(candidate.texto ?? "");
+      setInlineOverlayMountedId(null);
+      setInlineSwapAck((prev) => ({
+        id: null,
+        sessionId: null,
+        phase: "probe-reset",
+        token: Number(prev?.token || 0) + 1,
+        offsetY: 0,
+      }));
+      window._currentEditingId = id;
+      flushSync(() => {
+        startEdit(id, initialValue);
+      });
+      const node = elementRefs.current[id] || null;
+      node?.draggable?.(false);
+      node?.getLayer?.()?.batchDraw?.();
+      return {
+        ok: true,
+        id,
+        valueLength: initialValue.length,
+      };
+    };
+
+    const setInlineValueForProbe = async (nextValue = "") => {
+      if (!editing.id) {
+        return { ok: false, reason: "no-active-inline-session" };
+      }
+      const safeValue = String(nextValue ?? "");
+      flushSync(() => {
+        updateEdit(safeValue);
+      });
+      return { ok: true, id: editing.id, valueLength: safeValue.length };
+    };
+
+    const finishInlineEditForProbe = async () => {
+      const currentId = editing.id || null;
+      if (!currentId) {
+        return { ok: false, reason: "no-active-inline-session" };
+      }
+      flushSync(() => {
+        finishEdit();
+      });
+      restoreElementDrag(currentId);
+      if (window._currentEditingId === currentId) {
+        window._currentEditingId = null;
+      }
+      setInlineOverlayMountedId((prev) => (prev === currentId ? null : prev));
+      return { ok: true, id: currentId };
+    };
+
+    const getInlineProbeState = () => ({
+      editingId: editing.id || null,
+      overlayMountedId: inlineOverlayMountedId || null,
+      objectsCount: objetos.length,
+      textCandidateCount: objetos.filter((obj) => (
+        obj?.tipo === "texto" ||
+        (obj?.tipo === "forma" && obj?.figura === "rect" && typeof obj?.texto === "string")
+      )).length,
+    });
+
+    window.__INLINE_TEST.startFirstTextEdit = startFirstTextEdit;
+    window.__INLINE_TEST.setInlineValue = setInlineValueForProbe;
+    window.__INLINE_TEST.finishInlineEdit = finishInlineEditForProbe;
+    window.__INLINE_TEST.getProbeState = getInlineProbeState;
+
+    return () => {
+      if (window.__INLINE_TEST?.startFirstTextEdit === startFirstTextEdit) {
+        delete window.__INLINE_TEST.startFirstTextEdit;
+      }
+      if (window.__INLINE_TEST?.setInlineValue === setInlineValueForProbe) {
+        delete window.__INLINE_TEST.setInlineValue;
+      }
+      if (window.__INLINE_TEST?.finishInlineEdit === finishInlineEditForProbe) {
+        delete window.__INLINE_TEST.finishInlineEdit;
+      }
+      if (window.__INLINE_TEST?.getProbeState === getInlineProbeState) {
+        delete window.__INLINE_TEST.getProbeState;
+      }
+    };
+  }, [
+    editing.id,
+    ensureInlineFontReady,
+    finishEdit,
+    inlineOverlayMountedId,
+    objetos,
+    restoreElementDrag,
+    startEdit,
+    updateEdit,
+  ]);
 
   useEffect(() => {
     const currentId = editing.id || null;
@@ -1173,7 +2417,7 @@ export default function CanvasEditor({
   }, [editing.id]);
 
 
-  // ?? Función para actualizar offsets de imagen de fondo (SIN UNDEFINED)
+  // ?? FunciÃ³n para actualizar offsets de imagen de fondo (SIN UNDEFINED)
   const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
     setSecciones(prev =>
       prev.map(s => {
@@ -1182,7 +2426,7 @@ export default function CanvasEditor({
         // ?? CREAR OBJETO LIMPIO
         const seccionActualizada = { ...s };
 
-        // ?? SOLO AGREGAR CAMPOS SI TIENEN VALORES VÁLIDOS
+        // ?? SOLO AGREGAR CAMPOS SI TIENEN VALORES VÃLIDOS
         if (nuevosOffsets.offsetX !== undefined && nuevosOffsets.offsetX !== null) {
           seccionActualizada.fondoImagenOffsetX = nuevosOffsets.offsetX;
         }
@@ -1332,7 +2576,7 @@ export default function CanvasEditor({
     const content = stage.content;
     if (!content) return;
 
-    // ? Estado base: scroll vertical permitido sobre canvas vacío
+    // ? Estado base: scroll vertical permitido sobre canvas vacÃ­o
     const setScrollMode = () => {
       content.style.touchAction = "pan-y";
     };
@@ -1351,7 +2595,7 @@ export default function CanvasEditor({
       setIsDragging(false);
     };
 
-    // ? Failsafe: por si termina “raro” (touch cancel, pointer up, etc.)
+    // ? Failsafe: por si termina â€œraroâ€ (touch cancel, pointer up, etc.)
     const stopDragging = () => {
       setIsDragging(false);
       setScrollMode();
@@ -1424,7 +2668,7 @@ export default function CanvasEditor({
 
 
 
-  // Recordar última sección activa
+  // Recordar Ãºltima secciÃ³n activa
   useEffect(() => {
     seccionActivaIdRef.current = seccionActivaId;
   }, [seccionActivaId]);
@@ -1454,7 +2698,7 @@ export default function CanvasEditor({
     const obj = objetos.find((o) => o.id === nuevoTextoRef.current);
     if (obj) {
       setElementosSeleccionados([obj.id]);
-      // NO iniciar edición automáticamente - solo seleccionar
+      // NO iniciar ediciÃ³n automÃ¡ticamente - solo seleccionar
       nuevoTextoRef.current = null;
     }
   }, [objetos]);
@@ -1524,7 +2768,7 @@ export default function CanvasEditor({
 
       try {
         // ? Ideal: que fontManager.loadFonts devuelva Promise
-        // Si hoy no devuelve, igual lo resolvemos con document.fonts más abajo.
+        // Si hoy no devuelve, igual lo resolvemos con document.fonts mÃ¡s abajo.
         const maybePromise = fontManager.loadFonts?.(pendientes);
 
         // Si devuelve promise, esperamos
@@ -1577,9 +2821,9 @@ export default function CanvasEditor({
     const nuevos = [...objetos];
     const { fromTransform, ...cleanNuevo } = nuevo;
 
-    // Preservar datos específicos según el tipo de objeto
+    // Preservar datos especÃ­ficos segÃºn el tipo de objeto
     if (nuevos[index].tipo === 'forma' && nuevos[index].figura === 'line') {
-      // Para líneas, asegurar que los puntos se preserven
+      // Para lÃ­neas, asegurar que los puntos se preserven
       nuevos[index] = {
         ...nuevos[index],
         ...cleanNuevo,
@@ -1595,7 +2839,7 @@ export default function CanvasEditor({
 
   const actualizarObjetoPorId = (id, cambios) => {
     const index = objetos.findIndex((o) => o.id === id);
-    if (index === -1) return console.warn("? No se encontró el objeto con ID:", id);
+    if (index === -1) return console.warn("? No se encontrÃ³ el objeto con ID:", id);
     actualizarObjeto(index, cambios);
   };
 
@@ -1644,12 +2888,12 @@ export default function CanvasEditor({
     }
 
     if (nuevaData.isPreview) {
-      // Preview: Solo actualización visual sin historial
+      // Preview: Solo actualizaciÃ³n visual sin historial
       setObjetos(prev => {
         const nuevos = [...prev];
         const { isPreview, ...cleanData } = nuevaData;
 
-        // Asegurar que los puntos siempre sean un array válido
+        // Asegurar que los puntos siempre sean un array vÃ¡lido
         if (cleanData.points) {
           cleanData.points = cleanData.points.map(p => parseFloat(p) || 0);
         }
@@ -1668,7 +2912,7 @@ export default function CanvasEditor({
         const nuevos = [...prev];
         const { isFinal, ...cleanData } = nuevaData;
 
-        // Asegurar que los puntos siempre sean un array válido
+        // Asegurar que los puntos siempre sean un array vÃ¡lido
         if (cleanData.points) {
           cleanData.points = cleanData.points.map(p => parseFloat(p) || 0);
         }
@@ -1688,7 +2932,7 @@ export default function CanvasEditor({
 
 
 
-  // ?? Métricas de texto consistentes con el render de ElementoCanvas
+  // ?? MÃ©tricas de texto consistentes con el render de ElementoCanvas
   const obtenerMetricasTexto = (texto, {
     fontSize = 24,
     fontFamily = "sans-serif",
@@ -2415,7 +3659,7 @@ export default function CanvasEditor({
   ]);
 
 
-  // 3) Cada vez que el usuario selecciona una sección, actualizamos global y notificamos
+  // 3) Cada vez que el usuario selecciona una secciÃ³n, actualizamos global y notificamos
   const onSelectSeccion = useCallback((id) => {
     try {
       setSeccionActivaId(id);
@@ -2787,7 +4031,7 @@ export default function CanvasEditor({
 
 
 
-  // ?? NUEVO HOOK PARA GUÍAS
+  // ?? NUEVO HOOK PARA GUÃAS
   const {
     guiaLineas,
     mostrarGuias,
@@ -2796,7 +4040,7 @@ export default function CanvasEditor({
   } = useGuiasCentrado({
     anchoCanvas: 800,
     altoCanvas: altoCanvasDinamico,
-    // UX: guía de sección solo al centrar, con imán sutil.
+    // UX: guÃ­a de secciÃ³n solo al centrar, con imÃ¡n sutil.
     margenSensibilidad: 8,
     magnetRadius: 10,
     sectionMagnetRadius: 6,
@@ -2808,7 +4052,7 @@ export default function CanvasEditor({
     seccionesOrdenadas
   });
 
-  // ?? Función para actualizar posición del botón SIN re-render
+  // ?? FunciÃ³n para actualizar posiciÃ³n del botÃ³n SIN re-render
   const { actualizarPosicionBotonOpciones } = useOptionButtonPosition({
     botonOpcionesRef,
     layoutRootRef: editorOverlayRootRef,
@@ -2847,7 +4091,7 @@ export default function CanvasEditor({
 
   useEffect(() => {
     const onDragStartGlobal = () => {
-      // limpiar hover/preselección inmediatamente para evitar "flash" visual
+      // limpiar hover/preselecciÃ³n inmediatamente para evitar "flash" visual
       flushSync(() => {
         setHoverId(null);
         setElementosPreSeleccionados([]);
@@ -2855,7 +4099,7 @@ export default function CanvasEditor({
       });
     };
     const onDragEndGlobal = () => {
-      // nada por ahora; si quisieras, podrías recalcular algo acá
+      // nada por ahora; si quisieras, podrÃ­as recalcular algo acÃ¡
     };
 
     window.addEventListener("dragging-start", onDragStartGlobal);
@@ -2870,19 +4114,19 @@ export default function CanvasEditor({
 
 
 
-  // ?? OPTIMIZACIÓN: Limpiar cache de intersección al cambiar selección
+  // ?? OPTIMIZACIÃ“N: Limpiar cache de intersecciÃ³n al cambiar selecciÃ³n
   useEffect(() => {
-    // Limpiar cache cuando cambia la selección
+    // Limpiar cache cuando cambia la selecciÃ³n
     if (window._lineIntersectionCache) {
       window._lineIntersectionCache = {};
     }
   }, [elementosSeleccionados.length]);
 
-  // ?? OPTIMIZACIÓN: Forzar actualización de líneas después de drag grupal
+  // ?? OPTIMIZACIÃ“N: Forzar actualizaciÃ³n de lÃ­neas despuÃ©s de drag grupal
   useEffect(() => {
     if (window._grupoLider || elementosSeleccionados.length === 0) return;
 
-    // Solo correr esta optimización cuando acaba de finalizar un drag grupal.
+    // Solo correr esta optimizaciÃ³n cuando acaba de finalizar un drag grupal.
     const now =
       typeof performance !== "undefined" && typeof performance.now === "function"
         ? performance.now()
@@ -2928,7 +4172,7 @@ export default function CanvasEditor({
           parseFloat(points[3]) || 0
         ];
 
-        // ?? USAR LA POSICIÓN DEL NODO REAL EN EL STAGE
+        // ?? USAR LA POSICIÃ“N DEL NODO REAL EN EL STAGE
         const node = window._elementRefs?.[lineObj.id];
         const lineX = node ? node.x() : (lineObj.x || 0);
         const lineY = node ? node.y() : (lineObj.y || 0);
@@ -2941,7 +4185,7 @@ export default function CanvasEditor({
 
 
 
-        // ?? MÉTODO 1: Verificar si algún punto está dentro del área
+        // ?? MÃ‰TODO 1: Verificar si algÃºn punto estÃ¡ dentro del Ã¡rea
         const startDentro = (
           startX >= area.x && startX <= area.x + area.width &&
           startY >= area.y && startY <= area.y + area.height
@@ -2957,7 +4201,7 @@ export default function CanvasEditor({
           return true;
         }
 
-        // ?? MÉTODO 2: Verificar intersección línea-rectángulo
+        // ?? MÃ‰TODO 2: Verificar intersecciÃ³n lÃ­nea-rectÃ¡ngulo
         const intersecta = lineIntersectsRect(
           startX, startY, endX, endY,
           area.x, area.y, area.x + area.width, area.y + area.height
@@ -2976,9 +4220,9 @@ export default function CanvasEditor({
     };
   }, []);
 
-  // Función auxiliar para verificar intersección línea-rectángulo
+  // FunciÃ³n auxiliar para verificar intersecciÃ³n lÃ­nea-rectÃ¡ngulo
   function lineIntersectsRect(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectBottom) {
-    // Verificar si la línea intersecta con alguno de los 4 lados del rectángulo
+    // Verificar si la lÃ­nea intersecta con alguno de los 4 lados del rectÃ¡ngulo
     return (
       lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectTop) || // Top
       lineIntersectsLine(x1, y1, x2, y2, rectRight, rectTop, rectRight, rectBottom) || // Right
@@ -2987,7 +4231,7 @@ export default function CanvasEditor({
     );
   }
 
-  // Función auxiliar para verificar intersección línea-línea
+  // FunciÃ³n auxiliar para verificar intersecciÃ³n lÃ­nea-lÃ­nea
   function lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
     const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
     if (Math.abs(denom) < 0.0001) return false;
@@ -3004,86 +4248,14 @@ export default function CanvasEditor({
     if (!editing.id || !elementRefs.current[editing.id]) return;
 
     const node = elementRefs.current[editing.id];
-    const objetoEnEdicion = objetos.find((o) => o.id === editing.id);
-    if (!objetoEnEdicion) return;
-    const nodeClass = node.getClassName?.();
-    const beforeMetrics = obtenerMetricasNodoInline(node);
-    const editingValue = String(editing.value ?? "");
 
-    const shouldKeepCenterPreview =
-      objetoEnEdicion.tipo === "texto" &&
-      !objetoEnEdicion.__groupAlign &&
-      !Number.isFinite(objetoEnEdicion.width) &&
-      objetoEnEdicion.__autoWidth !== false;
-
-    const lockedCenterX =
-      inlineEditPreviewRef.current?.id === editing.id &&
-      Number.isFinite(inlineEditPreviewRef.current?.centerX)
-        ? inlineEditPreviewRef.current.centerX
-        : null;
-
-    const expectedX = shouldKeepCenterPreview
-      ? calcularXTextoCentrado(objetoEnEdicion, editingValue, lockedCenterX)
-      : (Number.isFinite(objetoEnEdicion.x) ? objetoEnEdicion.x : null);
-
-    inlineDebugLog("preview-effect-start", {
-      id: editing.id,
-      valueLength: editingValue.length,
-      nodeClass,
-      objX: objetoEnEdicion.x ?? null,
-      objY: objetoEnEdicion.y ?? null,
-      shouldKeepCenterPreview,
-      lockedCenterX,
-      expectedX,
-      beforeMetrics,
-    });
-
-    // ?? Actualizar el transformer si está presente
+    // ?? Actualizar el transformer si estÃ¡ presente
     const transformer = node.getStage()?.findOne('Transformer');
     if (transformer && transformer.nodes && transformer.nodes().includes(node)) {
       transformer.forceUpdate(); // Actualiza manualmente el transformer
       transformer.getLayer()?.batchDraw(); // Redibuja
-
-      let transformerRect = null;
-      try {
-        transformerRect = transformer.getClientRect({
-          skipTransform: false,
-          skipShadow: true,
-          skipStroke: true,
-        });
-      } catch {
-        transformerRect = null;
-      }
-
-      inlineDebugLog("preview-transformer-updated", {
-        id: editing.id,
-        transformerRect: transformerRect
-          ? {
-              x: transformerRect.x,
-              y: transformerRect.y,
-              width: transformerRect.width,
-              height: transformerRect.height,
-            }
-          : null,
-      });
     }
-
-    const afterMetrics = obtenerMetricasNodoInline(node);
-    const afterX =
-      typeof node.x === "function" ? node.x() : afterMetrics?.x ?? null;
-    inlineDebugLog("preview-props-sync", {
-      id: editing.id,
-      valueLength: editingValue.length,
-      expectedX,
-      afterX,
-      deltaX:
-        Number.isFinite(afterX) && Number.isFinite(expectedX)
-          ? afterX - expectedX
-          : null,
-      beforeMetrics,
-      afterMetrics,
-    });
-  }, [editing.id, editing.value, objetos, obtenerMetricasNodoInline, calcularXTextoCentrado]);
+  }, [editing.id, editing.value]);
 
   useEffect(() => {
     const pending = inlineCommitDebugRef.current;
@@ -3270,7 +4442,7 @@ export default function CanvasEditor({
         touchAction: "pan-y",
         WebkitOverflowScrolling: "touch",
 
-        // ? espacio para que no “choque” con header / barras
+        // ? espacio para que no â€œchoqueâ€ con header / barras
         paddingTop: 12 + mobileCanvasToolbarOffset,
         paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
         transition: "padding-top 180ms ease",
@@ -3304,13 +4476,13 @@ export default function CanvasEditor({
           <div
             className="relative"
             style={{
-              width: zoom === 0.8 ? "1220px" : "1000px", // ? AJUSTAR SEGÚN ZOOM
+              width: zoom === 0.8 ? "1220px" : "1000px", // ? AJUSTAR SEGÃšN ZOOM
               display: "flex",
               justifyContent: "center",
             }}
           >
 
-            {/* Botones de orden de sección */}
+            {/* Botones de orden de secciÃ³n */}
             {seccionActivaId && seccionesOrdenadas.map((seccion, index) => {
               if (seccion.id !== seccionActivaId) return null;
 
@@ -3640,7 +4812,7 @@ export default function CanvasEditor({
                     );
 
                     const elementos = [
-                      // Fondo de sección - puede ser color o imagen
+                      // Fondo de secciÃ³n - puede ser color o imagen
                       seccion.fondoTipo === "imagen" ? (
                         <FondoSeccion
                           key={`fondo-${seccion.id}`}
@@ -3689,7 +4861,7 @@ export default function CanvasEditor({
                   })}
 
 
-                  {/* Control de altura para sección activa */}
+                  {/* Control de altura para secciÃ³n activa */}
                   {seccionActivaId && seccionesOrdenadas.map((seccion, index) => {
                     if (seccion.id !== seccionActivaId) return null;
 
@@ -3702,7 +4874,7 @@ export default function CanvasEditor({
 
                     return (
                       <Group name="ui" key={`control-altura-${seccion.id}`}>
-                        {/* Línea indicadora */}
+                        {/* LÃ­nea indicadora */}
                         <Line
                           name="ui"
                           points={[50, controlY, 750, controlY]}
@@ -3739,7 +4911,7 @@ export default function CanvasEditor({
                         >
 
 
-                          {/* Área de detección */}
+                          {/* Ãrea de detecciÃ³n */}
                           <Rect
                             x={-45}
                             y={-22}
@@ -3763,7 +4935,7 @@ export default function CanvasEditor({
                             listening={false}
                           />
 
-                          {/* Animación de pulso durante el control */}
+                          {/* AnimaciÃ³n de pulso durante el control */}
                           {controlandoAltura === seccion.id && (
                             <Rect
                               x={-30}
@@ -3839,7 +5011,7 @@ export default function CanvasEditor({
                         listening={false}
                       />
 
-                      {/* Indicador de la sección que se está modificando */}
+                      {/* Indicador de la secciÃ³n que se estÃ¡ modificando */}
                       {seccionesOrdenadas.map((seccion, index) => {
                         const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
                         const controlSectionFill = resolveKonvaFill(
@@ -3854,7 +5026,7 @@ export default function CanvasEditor({
 
                         return (
                           <Group key={seccion.id}>
-                            {/* Rect “fondo” clickeable */}
+                            {/* Rect â€œfondoâ€ clickeable */}
                             <Rect
                               x={0}
                               y={offsetY}
@@ -3880,7 +5052,7 @@ export default function CanvasEditor({
                               onClick={() => onSelectSeccion(seccion.id)}   // ?? dispara el evento
                             />
 
-                            {/* Rect highlight si estás controlando la altura */}
+                            {/* Rect highlight si estÃ¡s controlando la altura */}
                             {seccion.id === controlandoAltura && (
                               <Rect
                                 x={0}
@@ -3904,7 +5076,7 @@ export default function CanvasEditor({
 
 
                   {objetos.map((obj, i) => {
-                    // ?? Determinar si está en modo edición
+                    // ?? Determinar si estÃ¡ en modo ediciÃ³n
                     const isInlineEditableObject =
                       obj.tipo === "texto" ||
                       (obj.tipo === "forma" && obj.figura === "rect");
@@ -3913,7 +5085,7 @@ export default function CanvasEditor({
                       editing.id === obj.id &&
                       elementosSeleccionados[0] === obj.id;
 
-                    // ??? Caso especial: la galería la renderizamos acá (no usa ElementoCanvas)
+                    // ??? Caso especial: la galerÃ­a la renderizamos acÃ¡ (no usa ElementoCanvas)
                     if (obj.tipo === "galeria") {
 
                       return (
@@ -3980,7 +5152,7 @@ export default function CanvasEditor({
                           seccionesOrdenadas={seccionesOrdenadas}
                           altoCanvas={altoCanvas}
 
-                          // ? selección
+                          // ? selecciÃ³n
                           onSelect={(id, e) => {
                             e?.evt && (e.evt.cancelBubble = true);
                             setElementosSeleccionados([id]);
@@ -4003,7 +5175,7 @@ export default function CanvasEditor({
                             });
                           }}
 
-                          // ? FIN de drag: limpiar guías / UI auxiliar
+                          // ? FIN de drag: limpiar guÃ­as / UI auxiliar
                           onDragEndPersonalizado={() => {
                             setIsDragging(false);
                             limpiarGuias();
@@ -4016,7 +5188,7 @@ export default function CanvasEditor({
                           dragStartPos={dragStartPos}
                           hasDragged={hasDragged}
 
-                          // ? ¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
+                          // ? Â¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
                           onChange={(id, cambios) => {
                             setObjetos(prev => {
                               const i = prev.findIndex(o => o.id === id);
@@ -4024,7 +5196,7 @@ export default function CanvasEditor({
 
                               const objOriginal = prev[i];
 
-                              // ?? Si no es final de drag, mergeamos sin más (no tocar coords)
+                              // ?? Si no es final de drag, mergeamos sin mÃ¡s (no tocar coords)
                               if (!cambios.finalizoDrag) {
                                 const updated = [...prev];
                                 updated[i] = { ...updated[i], ...cambios };
@@ -4044,7 +5216,7 @@ export default function CanvasEditor({
                               if (nuevaSeccion) {
                                 next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
                               } else {
-                                // convertir y absoluta ? y relativa a la sección actual
+                                // convertir y absoluta ? y relativa a la secciÃ³n actual
                                 next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
                               }
 
@@ -4065,13 +5237,17 @@ export default function CanvasEditor({
                       editing.id === obj.id && obj.tipo === "texto"
                         ? (() => {
                           const textoPreview = String(editing.value ?? "");
-                          const previewObj = { ...obj, texto: textoPreview };
+                          const textoOriginal = String(obj.texto ?? "");
+                          const hasPreviewTextChanged = textoPreview !== textoOriginal;
+                          const previewObj = hasPreviewTextChanged
+                            ? { ...obj, texto: textoPreview }
+                            : obj;
                           const shouldKeepCenterPreview =
                             !obj.__groupAlign &&
                             !Number.isFinite(obj.width) &&
                             obj.__autoWidth !== false;
 
-                          if (shouldKeepCenterPreview) {
+                          if (shouldKeepCenterPreview && hasPreviewTextChanged) {
                             const lockedCenterX =
                               inlineEditPreviewRef.current?.id === obj.id &&
                               Number.isFinite(inlineEditPreviewRef.current?.centerX)
@@ -4096,7 +5272,7 @@ export default function CanvasEditor({
                         key={obj.id}
                         obj={{
                           ...objPreview,
-                          // ?? yLocal: en sección pantalla usamos yNorm * 500
+                          // ?? yLocal: en secciÃ³n pantalla usamos yNorm * 500
                           // fallback legacy: si no hay yNorm, usamos obj.y
                           y: (() => {
                             const idxSec = seccionesOrdenadas.findIndex(s => s.id === objPreview.seccionId);
@@ -4116,7 +5292,16 @@ export default function CanvasEditor({
                         isInEditMode={isInEditMode} // ?? NUEVA PROP
                         onHover={isInEditMode ? null : setHoverId}
                         registerRef={registerRef}
-                        onStartTextEdit={isInEditMode ? null : (id, texto) => {
+                        onStartTextEdit={isInEditMode ? null : async (id, texto) => {
+                          const startAttempt = Number(pendingInlineStartRef.current || 0) + 1;
+                          pendingInlineStartRef.current = startAttempt;
+                          const fontWait = await ensureInlineFontReady(obj?.fontFamily);
+                          if (pendingInlineStartRef.current !== startAttempt) return;
+                          inlineDebugLog("start-inline-font-ready", {
+                            id,
+                            objectFontFamily: obj?.fontFamily ?? null,
+                            ...fontWait,
+                          });
                           const node = elementRefs.current[id];
                           const nodeMetrics = obtenerMetricasNodoInline(node);
                           const shouldKeepCenterXDuringEdit =
@@ -4130,6 +5315,13 @@ export default function CanvasEditor({
                               : null;
                           const previousCurrentEditingId = window._currentEditingId ?? null;
                           setInlineOverlayMountedId(null);
+                          setInlineSwapAck((prev) => ({
+                            id: null,
+                            sessionId: null,
+                            phase: "reset",
+                            token: Number(prev?.token || 0) + 1,
+                            offsetY: 0,
+                          }));
                           captureInlineSnapshot("enter: pre-start", {
                             id,
                             previousId: previousCurrentEditingId,
@@ -4160,10 +5352,15 @@ export default function CanvasEditor({
                             previousId: previousCurrentEditingId,
                             nextCurrentEditingId: window._currentEditingId ?? null,
                           });
+                          captureInlineSnapshot("overlay: before-mount", {
+                            id,
+                            source: "start-inline-edit",
+                          });
                         }}
                         editingId={editing.id}
                         inlineOverlayMountedId={inlineOverlayMountedId}
                         inlineVisibilityMode={inlineDebugAB.visibilitySource}
+                        inlineOverlayEngine={inlineDebugAB.overlayEngine}
                         finishInlineEdit={finishEdit}
                         onSelect={isInEditMode ? null : (id, obj, e) => {
                           const targetSupportsInlineEdit =
@@ -4270,21 +5467,21 @@ export default function CanvasEditor({
                               );
                             }
 
-                            // 1) Determinar sección final
+                            // 1) Determinar secciÃ³n final
                             const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
 
-                            // 2) Obtener yRelPx (y relativa dentro de la sección en px)
+                            // 2) Obtener yRelPx (y relativa dentro de la secciÃ³n en px)
                             let yRelPx;
 
                             if (nuevaSeccion) {
                               // coordenadasAjustadas normalmente ya trae y relativa
                               yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
                             } else {
-                              // si no cambió de sección, convertimos desde y absoluta
+                              // si no cambiÃ³ de secciÃ³n, convertimos desde y absoluta
                               yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
                             }
 
-                            // 3) Aplicar política pantalla: guardar yNorm
+                            // 3) Aplicar polÃ­tica pantalla: guardar yNorm
                             if (esSeccionPantallaById(seccionFinalId)) {
                               const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
                               coordenadasFinales.yNorm = yNorm;
@@ -4407,12 +5604,12 @@ export default function CanvasEditor({
                             if (objIndex !== -1) {
 
                               if (newAttrs.isPreview) {
-                                // Preview: actualización sin historial
+                                // Preview: actualizaciÃ³n sin historial
                                 setObjetos(prev => {
                                   const nuevos = [...prev];
                                   const elemento = nuevos[objIndex];
                                   // Countdown: durante preview dejamos que Konva escale el nodo
-                                  // sin tocar estado React para evitar desincronización con Transformer.
+                                  // sin tocar estado React para evitar desincronizaciÃ³n con Transformer.
                                   if (
                                     elemento.tipo === "countdown" ||
                                     (
@@ -4459,7 +5656,7 @@ export default function CanvasEditor({
                                   return nuevos;
                                 });
 
-                                // ?? ACTUALIZAR POSICIÓN DEL BOTÓN DURANTE TRANSFORM
+                                // ?? ACTUALIZAR POSICIÃ“N DEL BOTÃ“N DURANTE TRANSFORM
                                 requestAnimationFrame(() => {
                                   if (typeof actualizarPosicionBotonOpciones === 'function') {
                                     actualizarPosicionBotonOpciones();
@@ -4467,7 +5664,7 @@ export default function CanvasEditor({
                                 });
 
                               } else if (newAttrs.isFinal) {
-                                // Final: actualización completa
+                                // Final: actualizaciÃ³n completa
                                 window._resizeData = { isResizing: false };
 
                                 const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
@@ -4480,8 +5677,8 @@ export default function CanvasEditor({
                                   fromTransform: true
                                 };
 
-                                // ? COUNTDOWN: conservar escala final del drag (sin reconversión a chipWidth)
-                                // para que el tamaño final coincida exactamente con lo soltado.
+                                // ? COUNTDOWN: conservar escala final del drag (sin reconversiÃ³n a chipWidth)
+                                // para que el tamaÃ±o final coincida exactamente con lo soltado.
                                 if (objOriginal.tipo === "texto" && Number.isFinite(cleanAttrs.fontSize)) {
                                   const requestedFontSize = Math.max(6, Number(cleanAttrs.fontSize) || 6);
                                   const originalFontSize = Number.isFinite(objOriginal.fontSize)
@@ -4622,8 +5819,8 @@ export default function CanvasEditor({
                                 try {
                                   const idx = seccionesOrdenadas.findIndex(s => s.id === objOriginal.seccionId);
                                   const safe = idx >= 0 ? idx : 0;
-                                  // Nota: en tu código lo llamás a veces con 2 params, a veces con 3.
-                                  // Acá usamos 3, consistente con otras partes del archivo.
+                                  // Nota: en tu cÃ³digo lo llamÃ¡s a veces con 2 params, a veces con 3.
+                                  // AcÃ¡ usamos 3, consistente con otras partes del archivo.
                                   offsetY = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
                                 } catch {
                                   offsetY = 0;
@@ -4708,14 +5905,14 @@ export default function CanvasEditor({
                   })()}
 
 
-                  {/* No mostrar hover durante drag/resize/edición NI cuando hay líder de grupo */}
+                  {/* No mostrar hover durante drag/resize/ediciÃ³n NI cuando hay lÃ­der de grupo */}
                   {!window._resizeData?.isResizing && !isDragging && !window._isDragging && !window._grupoLider && !editing.id && (
                     <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} objetos={objetos} />
                   )}
 
 
 
-                  {/* ?? Controles especiales para líneas seleccionadas */}
+                  {/* ?? Controles especiales para lÃ­neas seleccionadas */}
                   {elementosSeleccionados.length === 1 && (() => {
                     const elementoSeleccionado = objetos.find(obj => obj.id === elementosSeleccionados[0]);
                     if (elementoSeleccionado?.tipo === 'forma' && elementoSeleccionado?.figura === 'line') {
@@ -4728,7 +5925,7 @@ export default function CanvasEditor({
                           onUpdateLine={actualizarLinea}
                           altoCanvas={altoCanvasDinamico}
                           isMobile={isMobile}
-                          // ?? NUEVA PROP: Pasar información sobre drag grupal
+                          // ?? NUEVA PROP: Pasar informaciÃ³n sobre drag grupal
                           isDragGrupalActive={window._grupoLider !== null}
                           elementosSeleccionados={elementosSeleccionados}
                         />
@@ -4741,9 +5938,9 @@ export default function CanvasEditor({
 
 
 
-                  {/* Líneas de guía dinámicas mejoradas */}
+                  {/* LÃ­neas de guÃ­a dinÃ¡micas mejoradas */}
                   {guiaLineas.map((linea, i) => {
-                    // Determinar el estilo visual según el tipo
+                    // Determinar el estilo visual segÃºn el tipo
                     const esLineaSeccion = linea.priority === 'seccion';
 
                     return (
@@ -4751,13 +5948,13 @@ export default function CanvasEditor({
                         name="ui"
                         key={`${linea.type}-${i}`}
                         points={linea.points}
-                        stroke={esLineaSeccion ? "#773dbe" : "#9333ea"} // Violeta más intenso para sección
-                        strokeWidth={esLineaSeccion ? 2 : 1} // Líneas de sección más gruesas
+                        stroke={esLineaSeccion ? "#773dbe" : "#9333ea"} // Violeta mÃ¡s intenso para secciÃ³n
+                        strokeWidth={esLineaSeccion ? 2 : 1} // LÃ­neas de secciÃ³n mÃ¡s gruesas
                         dash={linea.style === 'dashed' ? [8, 6] : undefined} // Punteado para elementos
-                        opacity={esLineaSeccion ? 0.9 : 0.7} // Líneas de sección más opacas
+                        opacity={esLineaSeccion ? 0.9 : 0.7} // LÃ­neas de secciÃ³n mÃ¡s opacas
                         listening={false}
                         perfectDrawEnabled={false}
-                        // Efecto sutil de resplandor para líneas de sección
+                        // Efecto sutil de resplandor para lÃ­neas de secciÃ³n
                         shadowColor={esLineaSeccion ? "rgba(119, 61, 190, 0.3)" : undefined}
                         shadowBlur={esLineaSeccion ? 4 : 0}
                         shadowEnabled={esLineaSeccion}
@@ -4768,7 +5965,7 @@ export default function CanvasEditor({
 
                 </CanvasElementsLayer>
 
-                {/* ? Overlay superior: borde de sección activa SIEMPRE arriba de todo */}
+                {/* ? Overlay superior: borde de secciÃ³n activa SIEMPRE arriba de todo */}
                 <CanvasElementsLayer>
                   {(() => {
                     if (!seccionActivaId) return null;
@@ -4807,6 +6004,12 @@ export default function CanvasEditor({
 
             {editing.id && elementRefs.current[editing.id] && (() => {
               const objetoEnEdicion = objetos.find(o => o.id === editing.id);
+              const keepCenterDuringEdit =
+                Boolean(objetoEnEdicion) &&
+                objetoEnEdicion.tipo === "texto" &&
+                !objetoEnEdicion.__groupAlign &&
+                !Number.isFinite(Number(objetoEnEdicion.width)) &&
+                objetoEnEdicion.__autoWidth !== false;
 
               return (
                 <InlineTextEditor
@@ -4814,7 +6017,9 @@ export default function CanvasEditor({
                   node={elementRefs.current[editing.id]}
                   value={editing.value}
                   textAlign={objetoEnEdicion?.align || 'left'} // ?? Solo pasar alineación
+                  maintainCenterWhileEditing={keepCenterDuringEdit}
                   onOverlayMountChange={handleInlineOverlayMountChange}
+                  onOverlaySwapRequest={handleInlineOverlaySwapRequest}
                   onChange={(nextValue) => {
                     const nextText = String(nextValue ?? "");
                     const prevStats = getInlineLineStats(editing.value);
@@ -4857,21 +6062,14 @@ export default function CanvasEditor({
                       overlayEditor && typeof overlayEditor.innerText === "string"
                         ? overlayEditor.innerText
                         : null;
-                    const domNormalizedText = domRawText == null
-                      ? null
-                      : String(domRawText)
-                        .replace(/\r\n/g, "\n")
-                        .replace(/\u200B/g, "");
-                    const domTrailingNewlines =
-                      domNormalizedText?.match(/\n+$/)?.[0]?.length || 0;
                     let textoNuevoRaw =
-                      domNormalizedText == null
-                        ? String(editing.value ?? "")
-                        : (
-                          domTrailingNewlines >= 2
-                            ? domNormalizedText.slice(0, -1)
-                            : domNormalizedText
-                        );
+                      domRawText == null
+                        ? normalizeInlineEditableTextShared(String(editing.value ?? ""), {
+                          trimPhantomTrailingNewline: true,
+                        })
+                        : normalizeInlineEditableTextShared(domRawText, {
+                          trimPhantomTrailingNewline: true,
+                        });
                     const domCenterXCanvas = (() => {
                       if (!overlayRoot || typeof document === "undefined") return null;
                       const overlayRect = overlayRoot.getBoundingClientRect?.();
@@ -4882,14 +6080,12 @@ export default function CanvasEditor({
                         return null;
                       }
                       const stage = stageRef.current?.getStage?.() || stageRef.current || null;
-                      const stageContainer = stage?.container?.();
-                      const stageRect = stageContainer?.getBoundingClientRect?.();
+                      const stageMetrics = resolveInlineStageViewportMetricsShared(stage, {
+                        scaleVisual: escalaVisual,
+                      });
+                      const stageRect = stageMetrics?.stageRect;
+                      const totalScaleX = Number(stageMetrics?.totalScaleX);
                       if (!stageRect || !Number.isFinite(stageRect.left)) return null;
-                      const stageScaleX =
-                        typeof stage?.scaleX === "function"
-                          ? stage.scaleX()
-                          : (Number(stage?.scaleX) || 1);
-                      const totalScaleX = (Number(escalaVisual) || 1) * (Number(stageScaleX) || 1);
                       if (!Number.isFinite(totalScaleX) || totalScaleX <= 0) return null;
                       const centerXViewport = overlayRect.left + (overlayRect.width / 2);
                       return (centerXViewport - stageRect.left) / totalScaleX;
@@ -4924,9 +6120,9 @@ export default function CanvasEditor({
                       return;
                     }
 
-                    // ?? Podés permitir texto vacío en formas si querés (yo lo permitiría)
+                    // ?? PodÃ©s permitir texto vacÃ­o en formas si querÃ©s (yo lo permitirÃ­a)
                     if (textoNuevoValidado === "" && objeto.tipo === "texto") {
-                      console.warn("?? El texto está vacío. No se actualiza.");
+                      console.warn("?? El texto estÃ¡ vacÃ­o. No se actualiza.");
                       inlineDebugLog("finish-abort-empty", {
                         id: finishId,
                         rawLength: textoNuevoRaw.length,
@@ -4991,9 +6187,21 @@ export default function CanvasEditor({
                         Number.isFinite(nextWidthFromKonva) && nextWidthFromKonva > 0
                           ? nextWidthFromKonva
                           : nextMetrics.width;
+                      const availableWidthForCenter = Math.max(
+                        1,
+                        800 - (
+                          Number.isFinite(objeto.x)
+                            ? objeto.x
+                            : (Number.isFinite(liveNodeX) ? liveNodeX : 0)
+                        )
+                      );
+                      const centerWidthForCommit =
+                        Number.isFinite(nextWidth) && nextWidth > 0
+                          ? Math.min(nextWidth, availableWidthForCenter)
+                          : nextWidth;
                       const xFromDomCenter =
-                        Number.isFinite(domCenterXCanvas) && Number.isFinite(nextWidth)
-                          ? domCenterXCanvas - (nextWidth / 2)
+                        Number.isFinite(domCenterXCanvas) && Number.isFinite(centerWidthForCommit)
+                          ? domCenterXCanvas - (centerWidthForCommit / 2)
                           : null;
                       const nextX = calcularXTextoCentrado(
                         objeto,
@@ -5014,6 +6222,8 @@ export default function CanvasEditor({
                         lockedCenterX,
                         domCenterXCanvas,
                         nextWidth,
+                        centerWidthForCommit,
+                        availableWidthForCenter,
                         xFromDomCenter,
                         liveNodeX,
                         currentX,
@@ -5125,6 +6335,8 @@ export default function CanvasEditor({
                   scaleVisual={escalaVisual}
                   finishMode={inlineDebugAB.finishMode}
                   widthMode={inlineDebugAB.overlayWidthMode}
+                  overlayEngine={inlineDebugAB.overlayEngine}
+                  swapAckToken={inlineSwapAck}
 
                 />
               );
@@ -5151,7 +6363,7 @@ export default function CanvasEditor({
 
 
 
-      {/* ? Botón de opciones PEGADO a la esquina superior derecha del elemento */}
+      {/* ? BotÃ³n de opciones PEGADO a la esquina superior derecha del elemento */}
       {elementosSeleccionados.length === 1 && !editing.id && !isSelectionRotating && (
         <div
           ref={botonOpcionesRef}
@@ -5301,6 +6513,8 @@ export default function CanvasEditor({
   );
 
 }
+
+
 
 
 

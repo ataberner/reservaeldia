@@ -1,0 +1,6 @@
+2026/03/05-13:46:58.075 74e4 Creating DB C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb since it was missing.
+2026/03/05-13:46:58.117 74e4 Reusing MANIFEST C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/MANIFEST-000001
+2026/03/05-13:46:58.207 4714 Level-0 table #5: started
+2026/03/05-13:46:58.241 4714 Level-0 table #5: 1258 bytes OK
+2026/03/05-13:46:58.255 4714 Delete type=0 #3
+2026/03/05-13:46:58.256 74e4 Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

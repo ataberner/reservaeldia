@@ -34,6 +34,14 @@ function resolveKonvaFontStyle(fontStyle, fontWeight) {
   return "normal";
 }
 
+function isInlineCanvasTextDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  return (
+    window.__INLINE_CANVAS_TEXT_DEBUG === true ||
+    window.__INLINE_BOX_DEBUG === true
+  );
+}
+
 function toShapeSize(obj, fallbackWidth = 120, fallbackHeight = 120) {
   return {
     width: Math.max(1, Math.abs(Number(obj?.width) || fallbackWidth)),
@@ -139,10 +147,12 @@ export default function ElementoCanvas({
   onStartTextEdit,
   editingMode = false,
   inlineOverlayMountedId = null,
-  inlineVisibilityMode = "reactive"
+  inlineVisibilityMode = "reactive",
+  inlineOverlayEngine = "legacy",
 }) {
   const [img] = useImage(obj.src || null, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
+  const [debugTextClientRect, setDebugTextClientRect] = useState(null);
 
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
@@ -476,9 +486,91 @@ export default function ElementoCanvas({
 
   useEffect(() => {
     setMeasuredTextWidth(null);
+    setDebugTextClientRect(null);
     // tambiÃƒÂ©n conviene resetear el layout base cuando cambia de texto
     if (obj?.tipo === "texto") baseTextLayoutRef.current = null;
   }, [obj?.id]);
+
+  useEffect(() => {
+    if (!obj || obj.tipo !== "texto") {
+      setDebugTextClientRect(null);
+      return;
+    }
+    if (!isInlineCanvasTextDebugEnabled()) {
+      setDebugTextClientRect(null);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    let raf1 = null;
+    let raf2 = null;
+
+    const measureClientRect = () => {
+      const node = textNodeRef.current;
+      if (!node || typeof node.getClientRect !== "function") {
+        setDebugTextClientRect(null);
+        return;
+      }
+      try {
+        const stage = node.getStage?.() || null;
+        const rect = node.getClientRect({
+          relativeTo: stage || undefined,
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        });
+        if (
+          rect &&
+          Number.isFinite(rect.x) &&
+          Number.isFinite(rect.y) &&
+          Number.isFinite(rect.width) &&
+          Number.isFinite(rect.height)
+        ) {
+          setDebugTextClientRect({
+            x: Number(rect.x),
+            y: Number(rect.y),
+            width: Math.max(0, Number(rect.width)),
+            height: Math.max(0, Number(rect.height)),
+          });
+          return;
+        }
+      } catch {
+        // no-op
+      }
+      setDebugTextClientRect(null);
+    };
+
+    raf1 = requestAnimationFrame(() => {
+      measureClientRect();
+      raf2 = requestAnimationFrame(measureClientRect);
+    });
+
+    window.addEventListener("fonts-loaded", measureClientRect);
+    return () => {
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      window.removeEventListener("fonts-loaded", measureClientRect);
+    };
+  }, [
+    obj?.id,
+    obj?.tipo,
+    obj?.texto,
+    obj?.x,
+    obj?.y,
+    obj?.rotation,
+    obj?.scaleX,
+    obj?.scaleY,
+    obj?.fontFamily,
+    obj?.fontSize,
+    obj?.fontStyle,
+    obj?.fontWeight,
+    obj?.lineHeight,
+    obj?.letterSpacing,
+    obj?.width,
+    measuredTextWidth,
+    editingId,
+    inlineOverlayMountedId,
+  ]);
 
 
 
@@ -560,21 +652,40 @@ export default function ElementoCanvas({
 
 
   if (obj.tipo === "texto") {
+    const overlayEngine =
+      inlineOverlayEngine === "phase_atomic_v2" ? "phase_atomic_v2" : "legacy";
     const visibilityMode =
       inlineVisibilityMode === "window" ? "window" : "reactive";
     const isEditingByWindow = window._currentEditingId === obj.id;
     const isEditingByReactive = editingId === obj.id;
-    const overlayDomPresentLoose = (() => {
-      if (typeof document === "undefined") return false;
+    let overlayDomPresentLoose = false;
+    let overlayFocused = false;
+    let overlayVisualReady = false;
+    if (isEditingByReactive && typeof document !== "undefined") {
       const safeId = String(obj.id).replace(/"/g, '\\"');
-      return Boolean(document.querySelector(`[data-inline-editor-id="${safeId}"]`));
-    })();
-    const overlayDomPresent =
-      inlineOverlayMountedId === obj.id && overlayDomPresentLoose;
-    const isEditingByOverlay = overlayDomPresent;
+      const overlayRoot = document.querySelector(`[data-inline-editor-id="${safeId}"]`);
+      overlayDomPresentLoose = Boolean(overlayRoot);
+      overlayVisualReady =
+        overlayRoot?.getAttribute("data-inline-editor-visual-ready") === "true";
+      const activeEl = document.activeElement;
+      overlayFocused = Boolean(
+        overlayRoot &&
+        activeEl &&
+        (activeEl === overlayRoot || overlayRoot.contains(activeEl))
+      );
+    }
+    // Handoff visual: en modo reactivo ocultamos Konva cuando el overlay
+    // ya está oficialmente montado o, como fallback, cuando está presente y enfocado.
+    const isEditingByOverlay =
+      overlayEngine === "phase_atomic_v2"
+        ? inlineOverlayMountedId === obj.id
+        : (
+          inlineOverlayMountedId === obj.id ||
+          (isEditingByReactive && overlayDomPresentLoose && overlayVisualReady && overlayFocused)
+        );
     const isEditing =
       visibilityMode === "reactive"
-        ? (isEditingByReactive || isEditingByOverlay)
+        ? isEditingByOverlay
         : (isEditingByWindow || isEditingByReactive || isEditingByOverlay);
     const fontFamily = obj.fontFamily || "sans-serif";
     const align = (obj.align || "left").toLowerCase();
@@ -695,10 +806,57 @@ export default function ElementoCanvas({
     const widthToUse = shouldWrapToCanvasEdge ? availableWidth : undefined;
     // Durante inline edit mostramos el texto del overlay DOM y ocultamos el Konva
     // para evitar que cursor y glifos salgan de sincronía visual.
-    const appliedOpacity = isEditingByOverlay ? 0 : 1;
+    const appliedOpacity = isEditing ? 0 : 1;
+    const canvasTextDebugEnabled = isInlineCanvasTextDebugEnabled();
+    const canvasTextDebugRect =
+      debugTextClientRect &&
+      Number.isFinite(debugTextClientRect.x) &&
+      Number.isFinite(debugTextClientRect.y) &&
+      Number.isFinite(debugTextClientRect.width) &&
+      Number.isFinite(debugTextClientRect.height)
+        ? debugTextClientRect
+        : null;
+    const canvasTextDebugLabelX = canvasTextDebugRect ? canvasTextDebugRect.x + 2 : 0;
+    const canvasTextDebugLabelY = canvasTextDebugRect ? Math.max(0, canvasTextDebugRect.y - 14) : 0;
 
     return (
       <>
+        {canvasTextDebugEnabled && canvasTextDebugRect && (
+          <>
+            <Rect
+              x={canvasTextDebugRect.x}
+              y={canvasTextDebugRect.y}
+              width={canvasTextDebugRect.width}
+              height={canvasTextDebugRect.height}
+              fill="rgba(16, 185, 129, 0.20)"
+              stroke="rgba(5, 150, 105, 0.95)"
+              strokeWidth={1}
+              dash={[6, 4]}
+              listening={false}
+              perfectDrawEnabled={false}
+            />
+            <Rect
+              x={canvasTextDebugLabelX - 2}
+              y={canvasTextDebugLabelY - 1}
+              width={72}
+              height={14}
+              fill="rgba(5, 150, 105, 0.95)"
+              listening={false}
+              perfectDrawEnabled={false}
+            />
+            <Text
+              x={canvasTextDebugLabelX}
+              y={canvasTextDebugLabelY}
+              text="KONVA TEXT"
+              fontSize={10}
+              fontFamily="monospace"
+              fill="#ffffff"
+              listening={false}
+              lineHeight={1}
+              perfectDrawEnabled={false}
+            />
+          </>
+        )}
         <Text
           {...commonProps}
           ref={(node) => {

@@ -1234,8 +1234,55 @@ export default function Dashboard() {
       }
 
       setVista("editor");
+      const nextQuery = { slug };
+      const currentQuery =
+        router?.query && typeof router.query === "object" ? router.query : {};
+      let locationParams = null;
+      if (typeof window !== "undefined") {
+        try {
+          locationParams = new URLSearchParams(window.location.search || "");
+        } catch {
+          locationParams = null;
+        }
+      }
+      const passthroughKeys = ["phase_atomic_v2", "inlineOverlayEngine"];
+      passthroughKeys.forEach((key) => {
+        const value = currentQuery[key];
+        if (typeof value === "string" && value.trim()) {
+          nextQuery[key] = value;
+          return;
+        }
+        if (Array.isArray(value)) {
+          const first = value.find((item) => typeof item === "string" && item.trim());
+          if (typeof first === "string" && first.trim()) {
+            nextQuery[key] = first;
+          }
+        }
+        if (typeof nextQuery[key] === "undefined" && locationParams) {
+          const fromLocation = locationParams.get(key);
+          if (typeof fromLocation === "string" && fromLocation.trim()) {
+            nextQuery[key] = fromLocation;
+          } else if (locationParams.has(key) && key === "phase_atomic_v2") {
+            nextQuery[key] = "1";
+          }
+        }
+      });
+      if (
+        nextQuery.inlineOverlayEngine === "phase_atomic_v2" ||
+        nextQuery.phase_atomic_v2 === "1"
+      ) {
+        try {
+          window.__INLINE_OVERLAY_ENGINE = "phase_atomic_v2";
+          window.__INLINE_AB = {
+            ...(window.__INLINE_AB && typeof window.__INLINE_AB === "object"
+              ? window.__INLINE_AB
+              : {}),
+            overlayEngine: "phase_atomic_v2",
+          };
+        } catch {}
+      }
       router.replace(
-        { pathname: "/dashboard", query: { slug } },
+        { pathname: "/dashboard", query: nextQuery },
         undefined,
         { shallow: true }
       );

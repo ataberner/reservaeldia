@@ -1,0 +1,7 @@
+2026/03/05-13:48:11.491 83a4 Reusing MANIFEST C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/MANIFEST-000001
+2026/03/05-13:48:11.493 83a4 Recovering log #4
+2026/03/05-13:48:11.493 83a4 Reusing old log C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/000004.log 
+2026/03/05-13:48:11.810 4dec Level-0 table #8: started
+2026/03/05-13:48:11.972 4dec Level-0 table #8: 2016 bytes OK
+2026/03/05-13:48:12.064 4dec Delete type=0 #4
+2026/03/05-13:48:12.065 83a4 Manual compaction at level-0 from '\x00\x04\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at (end)

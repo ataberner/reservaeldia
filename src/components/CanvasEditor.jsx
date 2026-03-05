@@ -41,7 +41,6 @@ import {
   normalizeInlineEditableText as normalizeInlineEditableTextShared,
 } from "@/components/editor/overlays/inlineTextModel";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
-import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
 import SectionActionsOverlay from "@/components/editor/canvasEditor/SectionActionsOverlay";
 import CanvasStageContent from "@/components/editor/canvasEditor/CanvasStageContent";
 import {
@@ -94,6 +93,10 @@ import useCanvasEditorFontPreload from "@/components/editor/canvasEditor/useCanv
 import useCanvasEditorGlobalsBridge from "@/components/editor/canvasEditor/useCanvasEditorGlobalsBridge";
 import { createLineIntersectionDetector } from "@/components/editor/canvasEditor/lineIntersectionUtils";
 import CanvasEditorOverlays from "@/components/editor/canvasEditor/CanvasEditorOverlays";
+import useCanvasEditorRsvpBridge from "@/components/editor/canvasEditor/useCanvasEditorRsvpBridge";
+import useCanvasEditorSectionUiSync from "@/components/editor/canvasEditor/useCanvasEditorSectionUiSync";
+import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/useCanvasEditorExternalCallbacks";
+import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEditor/useCanvasEditorOptionPanelOutsideClose";
 
 
 
@@ -222,43 +225,10 @@ export default function CanvasEditor({
     } catch {}
   }, []);
 
-  const abrirPanelRsvp = useCallback((options = {}) => {
-    const forcePresetSelection = options?.forcePresetSelection === true;
-    setRsvpConfig((prev) =>
-      prev
-        ? normalizeRsvpConfig(prev, { forceEnabled: false })
-        : createDefaultRsvpConfig("minimal")
-    );
-    window.dispatchEvent(
-      new CustomEvent("abrir-panel-rsvp", {
-        detail: { forcePresetSelection },
-      })
-    );
-  }, []);
-
-  useEffect(() => {
-    const handleRsvpConfigUpdate = (event) => {
-      const nextConfig = event?.detail?.config;
-      if (!nextConfig || typeof nextConfig !== "object") return;
-      setRsvpConfig(normalizeRsvpConfig(nextConfig, { forceEnabled: false }));
-    };
-
-    window.addEventListener("rsvp-config-update", handleRsvpConfigUpdate);
-    return () => window.removeEventListener("rsvp-config-update", handleRsvpConfigUpdate);
-  }, []);
-
-  useEffect(() => {
-    const normalized = rsvpConfig
-      ? normalizeRsvpConfig(rsvpConfig, { forceEnabled: false })
-      : createDefaultRsvpConfig("minimal");
-
-    window._rsvpConfigActual = normalized;
-    window.dispatchEvent(
-      new CustomEvent("rsvp-config-changed", {
-        detail: { config: normalized },
-      })
-    );
-  }, [rsvpConfig]);
+  const { abrirPanelRsvp } = useCanvasEditorRsvpBridge({
+    rsvpConfig,
+    setRsvpConfig,
+  });
 
 
 
@@ -1734,31 +1704,11 @@ export default function CanvasEditor({
     stageRef,
     fontManager,
   });
-
-
-
-
-  // Recordar Ãºltima secciÃ³n activa
-  useEffect(() => {
-    seccionActivaIdRef.current = seccionActivaId;
-  }, [seccionActivaId]);
-
-  useEffect(() => {
-    if (seccionActivaId) window._lastSeccionActivaId = seccionActivaId;
-  }, [seccionActivaId]);
-
-  useEffect(() => {
-    if (!mobileBackgroundEditSectionId) {
-      window.dispatchEvent(new Event("salir-modo-mover-fondo"));
-      return;
-    }
-
-    window.dispatchEvent(
-      new CustomEvent("activar-modo-mover-fondo", {
-        detail: { sectionId: mobileBackgroundEditSectionId },
-      })
-    );
-  }, [mobileBackgroundEditSectionId]);
+  useCanvasEditorSectionUiSync({
+    seccionActivaIdRef,
+    seccionActivaId,
+    mobileBackgroundEditSectionId,
+  });
 
 
 
@@ -1790,19 +1740,12 @@ export default function CanvasEditor({
 
 
 
-  useEffect(() => {
-    if (onHistorialChange) {
-
-      onHistorialChange(historial);
-    }
-  }, [historial, onHistorialChange]);
-
-  useEffect(() => {
-    if (onFuturosChange) {
-
-      onFuturosChange(futuros);
-    }
-  }, [futuros, onFuturosChange]);
+  useCanvasEditorExternalCallbacks({
+    historial,
+    onHistorialChange,
+    futuros,
+    onFuturosChange,
+  });
 
 
 
@@ -1858,71 +1801,10 @@ export default function CanvasEditor({
     calcularXTextoCentrado,
   } = textLayoutUtils;
 
-  useEffect(() => {
-    const describeTarget = (target) => {
-      if (target === window) return "window";
-      if (target === document) return "document";
-      if (!(target instanceof Element)) return "unknown";
-      const tag = String(target.tagName || "").toLowerCase();
-      const id = target.id ? `#${target.id}` : "";
-      const classes = target.classList?.length
-        ? `.${Array.from(target.classList).slice(0, 2).join(".")}`
-        : "";
-      return `${tag}${id}${classes}` || "element";
-    };
-
-    const isInsideFloatingUi = (target) => {
-      if (!(target instanceof Element)) return false;
-      return Boolean(
-        target.closest(".menu-z-index") ||
-        target.closest('[data-option-button="true"]')
-      );
-    };
-
-    const handlePointerOutside = (event) => {
-      const insideFloatingUi = isInsideFloatingUi(event.target);
-      if (insideFloatingUi) {
-        logOptionButtonMenuDebug("outside-ignore", {
-          source: "global-pointerdown",
-          target: describeTarget(event.target),
-          eventType: event.type,
-          pointerType: event.pointerType ?? null,
-        });
-        return;
-      }
-
-      setMostrarPanelZ((prev) => {
-        if (!prev) return prev;
-        logOptionButtonMenuDebug("outside-close", {
-          source: "global-pointerdown",
-          target: describeTarget(event.target),
-          eventType: event.type,
-          pointerType: event.pointerType ?? null,
-          prev,
-          next: false,
-        });
-        return false;
-      });
-    };
-
-    if (typeof window !== "undefined" && "PointerEvent" in window) {
-      document.addEventListener("pointerdown", handlePointerOutside, true);
-      return () => {
-        document.removeEventListener("pointerdown", handlePointerOutside, true);
-      };
-    }
-
-    document.addEventListener("mousedown", handlePointerOutside, true);
-    document.addEventListener("touchstart", handlePointerOutside, {
-      capture: true,
-      passive: true,
-    });
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerOutside, true);
-      document.removeEventListener("touchstart", handlePointerOutside, true);
-    };
-  }, [logOptionButtonMenuDebug]);
+  useCanvasEditorOptionPanelOutsideClose({
+    logOptionButtonMenuDebug,
+    setMostrarPanelZ,
+  });
 
 
 
@@ -3251,6 +3133,7 @@ export default function CanvasEditor({
   );
 
 }
+
 
 
 

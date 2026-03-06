@@ -1,7 +1,14 @@
-2026/03/05-13:48:11.491 83a4 Reusing MANIFEST C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/MANIFEST-000001
-2026/03/05-13:48:11.493 83a4 Recovering log #4
-2026/03/05-13:48:11.493 83a4 Reusing old log C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/000004.log 
-2026/03/05-13:48:11.810 4dec Level-0 table #8: started
-2026/03/05-13:48:11.972 4dec Level-0 table #8: 2016 bytes OK
-2026/03/05-13:48:12.064 4dec Delete type=0 #4
-2026/03/05-13:48:12.065 83a4 Manual compaction at level-0 from '\x00\x04\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/03/05-22:26:36.440 5bf0 Reusing MANIFEST C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/MANIFEST-000001
+2026/03/05-22:26:36.442 5bf0 Recovering log #10
+2026/03/05-22:26:36.444 5bf0 Reusing old log C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/000010.log 
+2026/03/05-22:26:36.447 5bf0 Delete type=2 #8
+2026/03/05-22:26:36.640 7354 Level-0 table #15: started
+2026/03/05-22:26:36.668 7354 Level-0 table #15: 1500 bytes OK
+2026/03/05-22:26:36.678 7354 Delete type=0 #10
+2026/03/05-22:26:36.680 5bf0 Manual compaction at level-0 from '\x00\x06\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at '\x00\x06\x00\x00\x05' @ 210 : 1
+2026/03/05-22:26:36.680 5bf0 Compacting 1@0 + 1@1 files
+2026/03/05-22:26:36.714 5bf0 Generated table #16@0: 52 keys, 1512 bytes
+2026/03/05-22:26:36.714 5bf0 Compacted 1@0 + 1@1 files => 1512 bytes
+2026/03/05-22:26:36.722 5bf0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/05-22:26:36.723 5bf0 Delete type=2 #15
+2026/03/05-22:26:36.724 5bf0 Manual compaction at level-0 from '\x00\x06\x00\x00\x05' @ 210 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at (end)

@@ -1,13 +1,8 @@
 import { roundMetric } from "@/components/editor/overlays/inlineEditor/inlineEditorNumeric";
-
-function isBoldFontWeight(weight) {
-  const normalized = String(weight || "normal").toLowerCase();
-  return (
-    normalized === "bold" ||
-    normalized === "bolder" ||
-    ["500", "600", "700", "800", "900"].includes(normalized)
-  );
-}
+import { isBoldFontWeight } from "@/components/editor/textSystem/metricsLayout/services/textFontStyleService";
+import {
+  buildCanvasFontValue as buildCanvasFontValueShared,
+} from "@/components/editor/textSystem/metricsLayout/services/textMeasureService";
 
 export function normalizeInlineFontProps(rawFontStyle, rawFontWeight) {
   const styleToken = String(rawFontStyle || "normal").toLowerCase();
@@ -24,16 +19,13 @@ export function normalizeInlineFontProps(rawFontStyle, rawFontWeight) {
   };
 }
 
-function buildCanvasFontFamilyToken(fontFamily) {
-  const rawFamily = String(fontFamily || "sans-serif").trim();
-  const unquotedFamily = rawFamily.replace(/^['"]+|['"]+$/g, "");
-  const safeFamily = unquotedFamily || "sans-serif";
-  if (safeFamily.includes(",")) return safeFamily;
-  return /\s/.test(safeFamily) ? `"${safeFamily}"` : safeFamily;
-}
-
 export function buildCanvasFontValue({ fontStyle, fontWeight, fontSizePx, fontFamily }) {
-  return `${fontStyle || "normal"} ${fontWeight || "normal"} ${fontSizePx}px ${buildCanvasFontFamilyToken(fontFamily)}`;
+  return buildCanvasFontValueShared({
+    fontStyle,
+    fontWeight,
+    fontSizePx,
+    fontFamily,
+  });
 }
 
 export function resolveCanvasTextVisualWidth(metrics) {

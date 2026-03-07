@@ -1,3 +1,8 @@
+import {
+  isBoldFontWeight as isBoldFontWeightShared,
+  resolveKonvaFontStyle as resolveKonvaFontStyleShared,
+} from "@/components/editor/textSystem/metricsLayout/services/textFontStyleService";
+
 export const ALTURA_REFERENCIA_PANTALLA = 500;
 export const ALTURA_PANTALLA_EDITOR = 500;
 
@@ -6,25 +11,10 @@ export function normalizarAltoModo(modo) {
   return m === "pantalla" ? "pantalla" : "fijo";
 }
 
-export function isBoldFontWeight(weight) {
-  const normalized = String(weight || "normal").toLowerCase();
-  return (
-    normalized === "bold" ||
-    normalized === "bolder" ||
-    ["500", "600", "700", "800", "900"].includes(normalized)
-  );
-}
+export const isBoldFontWeight = (weight) => isBoldFontWeightShared(weight);
 
-export function resolveKonvaFontStyle(fontStyle, fontWeight) {
-  const style = String(fontStyle || "normal").toLowerCase();
-  const isItalic = style.includes("italic") || style.includes("oblique");
-  const isBold = style.includes("bold") || isBoldFontWeight(fontWeight);
-
-  if (isBold && isItalic) return "bold italic";
-  if (isBold) return "bold";
-  if (isItalic) return "italic";
-  return "normal";
-}
+export const resolveKonvaFontStyle = (fontStyle, fontWeight) =>
+  resolveKonvaFontStyleShared(fontStyle, fontWeight);
 
 export const limpiarObjetoUndefined = (obj) => {
   if (Array.isArray(obj)) {

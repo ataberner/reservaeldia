@@ -63,8 +63,7 @@ import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/u
 import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEditor/useCanvasEditorOptionPanelOutsideClose";
 import useCanvasEditorSectionFlow from "@/components/editor/canvasEditor/useCanvasEditorSectionFlow";
 import useCanvasEditorInteractionEffects from "@/components/editor/canvasEditor/useCanvasEditorInteractionEffects";
-import useCanvasEditorInlineRuntime from "@/components/editor/canvasEditor/useCanvasEditorInlineRuntime";
-import useCanvasEditorInlineCommitHandlers from "@/components/editor/canvasEditor/useCanvasEditorInlineCommitHandlers";
+import useCanvasEditorTextSystem from "@/components/editor/textSystem/runtime/useCanvasEditorTextSystem";
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
 
 
@@ -468,40 +467,6 @@ export default function CanvasEditor({
     }
   }, [isMobile]);
 
-  const {
-    inlineDebugAB,
-    ensureInlineFontReady,
-    captureInlineSnapshot,
-    handleInlineOverlayMountChange,
-    handleInlineOverlaySwapRequest,
-  } = useCanvasEditorInlineRuntime({
-    editing,
-    isMobile,
-    mobileSectionActionsOpen,
-    setMobileSectionActionsOpen,
-    seccionActivaId,
-    fontManager,
-    inlineSwapAckSeqRef,
-    inlineCommitDebugRef,
-    inlineVisibilitySnapshotRef,
-    inlineKonvaDrawMetaRef,
-    inlinePaintApproxRef,
-    logInlineSnapshotRef,
-    prevEditingIdRef,
-    inlineRenderValueRef,
-    inlineOverlayMountedId,
-    setInlineOverlayMountedId,
-    setInlineSwapAck,
-    stageRef,
-    elementRefs,
-    escalaVisual,
-    objetos,
-    startEdit,
-    updateEdit,
-    finishEdit,
-    restoreElementDrag,
-    obtenerMetricasNodoInline,
-  });
   // ?? FunciÃ³n para actualizar offsets de imagen de fondo (SIN UNDEFINED)
   const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
     setSecciones(prev =>
@@ -934,27 +899,62 @@ export default function CanvasEditor({
   }, [editing.id, editing.value]);
 
   const {
+    inlineDebugAB,
+    ensureInlineFontReady,
+    captureInlineSnapshot,
+    handleInlineOverlayMountChange,
+    handleInlineOverlaySwapRequest,
     onInlineChange,
     onInlineDebugEvent,
     onInlineFinish,
-  } = useCanvasEditorInlineCommitHandlers({
-    editing,
-    captureInlineSnapshot,
-    updateEdit,
-    objetos,
-    elementRefs,
-    inlineEditPreviewRef,
-    inlineCommitDebugRef,
-    inlineOverlayMountedId,
-    finishEdit,
-    restoreElementDrag,
-    stageRef,
-    escalaVisual,
-    medirAnchoTextoKonva,
-    obtenerMetricasTexto,
-    calcularXTextoCentrado,
-    setObjetos,
-    obtenerMetricasNodoInline,
+  } = useCanvasEditorTextSystem({
+    runtimeParams: {
+      editing,
+      isMobile,
+      mobileSectionActionsOpen,
+      setMobileSectionActionsOpen,
+      seccionActivaId,
+      fontManager,
+      inlineSwapAckSeqRef,
+      inlineCommitDebugRef,
+      inlineVisibilitySnapshotRef,
+      inlineKonvaDrawMetaRef,
+      inlinePaintApproxRef,
+      logInlineSnapshotRef,
+      prevEditingIdRef,
+      inlineRenderValueRef,
+      inlineOverlayMountedId,
+      setInlineOverlayMountedId,
+      setInlineSwapAck,
+      stageRef,
+      elementRefs,
+      escalaVisual,
+      objetos,
+      startEdit,
+      updateEdit,
+      finishEdit,
+      restoreElementDrag,
+      obtenerMetricasNodoInline,
+    },
+    commitParams: (runtime) => ({
+      editing,
+      captureInlineSnapshot: runtime.captureInlineSnapshot,
+      updateEdit,
+      objetos,
+      elementRefs,
+      inlineEditPreviewRef,
+      inlineCommitDebugRef,
+      inlineOverlayMountedId,
+      finishEdit,
+      restoreElementDrag,
+      stageRef,
+      escalaVisual,
+      medirAnchoTextoKonva,
+      obtenerMetricasTexto,
+      calcularXTextoCentrado,
+      setObjetos,
+      obtenerMetricasNodoInline,
+    }),
   });
 
 

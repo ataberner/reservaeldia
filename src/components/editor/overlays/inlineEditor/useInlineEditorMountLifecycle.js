@@ -1,4 +1,8 @@
 import { useLayoutEffect, useEffect, useCallback } from "react";
+import {
+  getCurrentInlineEditingId,
+  getInlineEditingSnapshot,
+} from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 
 export default function useInlineEditorMountLifecycle({
   editorRef,
@@ -104,8 +108,8 @@ export default function useInlineEditorMountLifecycle({
         emitDebug("overlay: after-unmount-raf", {
           id: closingId,
           overlayStillPresent,
-          currentEditingId: window._currentEditingId ?? null,
-          globalEditingId: window.editing?.id ?? null,
+          currentEditingId: getCurrentInlineEditingId(),
+          globalEditingId: getInlineEditingSnapshot()?.id ?? null,
         });
       });
     };

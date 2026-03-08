@@ -553,8 +553,11 @@ export default function CanvasStageContent({
 
 
 
+                    const supportsInlinePreview =
+                      obj.tipo === "texto" ||
+                      (obj.tipo === "forma" && obj.figura === "rect");
                     const objPreview =
-                      editing.id === obj.id && obj.tipo === "texto"
+                      editing.id === obj.id && supportsInlinePreview
                         ? (() => {
                           const textoPreview = String(editing.value ?? "");
                           const textoOriginal = String(obj.texto ?? "");
@@ -563,6 +566,7 @@ export default function CanvasStageContent({
                             ? { ...obj, texto: textoPreview }
                             : obj;
                           const shouldKeepCenterPreview =
+                            obj.tipo === "texto" &&
                             !obj.__groupAlign &&
                             !Number.isFinite(obj.width) &&
                             obj.__autoWidth !== false;

@@ -122,10 +122,9 @@ export default function InlineTextEditor({
   scaleVisual = 1,
   finishMode = "raf",
   widthMode = "measured",
-  onOverlayMountChange = null,
   onOverlaySwapRequest = null,
   onDebugEvent = null,
-  overlayEngine = "legacy",
+  overlayEngine = "phase_atomic_v2",
   swapAckToken = null,
   maintainCenterWhileEditing = false,
 }) {
@@ -134,6 +133,7 @@ export default function InlineTextEditor({
   const editorRef = useRef(null);
   const contentBoxRef = useRef(null);
   const editableHostRef = useRef(null);
+  const overlayRootRef = useRef(null);
   const nudgeCalibrationRef = useRef({
     key: null,
   });
@@ -147,8 +147,6 @@ export default function InlineTextEditor({
   const DEBUG_MODE = isInlineDebugEnabled();
   const BOX_DEBUG_MODE = isInlineBoxDebugEnabled();
   const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
-  const [legacyExitPending, setLegacyExitPending] = useState(false);
-  const legacyStableOverlayWidthRef = useRef(null);
   const normalizedOverlayEngine = normalizeInlineOverlayEngine(overlayEngine);
   const isPhaseAtomicV2 = normalizedOverlayEngine === "phase_atomic_v2";
   const overlaySessionIdRef = useRef(null);
@@ -166,7 +164,7 @@ export default function InlineTextEditor({
     id: null,
     sessionId: null,
   });
-  const legacyEntryFocusStateRef = useRef({
+  const entryFocusStateRef = useRef({
     editingId: null,
     settled: false,
   });
@@ -694,7 +692,7 @@ export default function InlineTextEditor({
       event: "nudge-cache-read",
       id: editingId || null,
       sessionId: overlaySessionIdRef.current || null,
-      phase: isPhaseAtomicV2 ? "phase_atomic_v2" : "legacy",
+      phase: "phase_atomic_v2",
       cacheApplied: false,
       nudgeCacheKey: nudgeCacheKey || null,
       cachedRaw: typeof cached === "undefined" ? null : cached,
@@ -734,16 +732,10 @@ export default function InlineTextEditor({
     const seed = Math.random().toString(36).slice(2, 10);
     overlaySessionIdRef.current = `${editingId}-${Date.now()}-${seed}`;
     swapAckSeenRef.current = 0;
-    legacyEntryFocusStateRef.current = {
+    entryFocusStateRef.current = {
       editingId,
       settled: false,
     };
-  }, [editingId, isPhaseAtomicV2]);
-
-  useEffect(() => {
-    if (!editingId) return;
-    setLegacyExitPending(false);
-    legacyStableOverlayWidthRef.current = null;
   }, [editingId, isPhaseAtomicV2]);
 
   useLayoutEffect(() => {
@@ -751,14 +743,14 @@ export default function InlineTextEditor({
     if (!editingId) return undefined;
     if (!editorVisualReady) return undefined;
 
-    const state = legacyEntryFocusStateRef.current || {};
+    const state = entryFocusStateRef.current || {};
     if (state.editingId !== editingId) {
-      legacyEntryFocusStateRef.current = {
+      entryFocusStateRef.current = {
         editingId,
         settled: false,
       };
     }
-    if (legacyEntryFocusStateRef.current?.settled) return undefined;
+    if (entryFocusStateRef.current?.settled) return undefined;
 
     const initialEl = editorRef.current;
     if (!initialEl) return undefined;
@@ -810,7 +802,7 @@ export default function InlineTextEditor({
         event: "focus-ownership-entry",
         id: editingId || null,
         sessionId: overlaySessionIdRef.current || null,
-        phase: "legacy-entry-ready",
+        phase: "entry-ready",
         attempt,
         maxAttempts,
         editorVisualReady: Boolean(editorVisualReady),
@@ -820,7 +812,7 @@ export default function InlineTextEditor({
 
       if (isFocused) {
         placeCaretAtEnd(targetEl);
-        legacyEntryFocusStateRef.current = {
+        entryFocusStateRef.current = {
           editingId,
           settled: true,
         };
@@ -936,21 +928,7 @@ export default function InlineTextEditor({
     normalizedWidthMode === "measured" && Number.isFinite(effectiveTextWidth)
       ? effectiveTextWidth
       : null;
-  const shouldFreezeLegacyExitGeometry =
-    !isPhaseAtomicV2 &&
-    Boolean(legacyExitPending);
-  const frozenLegacyOverlayWidthPx =
-    Number.isFinite(Number(legacyStableOverlayWidthRef.current))
-      ? Number(legacyStableOverlayWidthRef.current)
-      : (
-        hasProjectedKonvaWidth
-          ? projectedWidth
-          : measuredOverlayWidthRawPx
-      );
-  const measuredOverlayWidthPx =
-    shouldFreezeLegacyExitGeometry
-      ? frozenLegacyOverlayWidthPx
-      : measuredOverlayWidthRawPx;
+  const measuredOverlayWidthPx = measuredOverlayWidthRawPx;
   const liveSymmetricWidthPx = (() => {
     if (!isTextNode) {
       return hasProjectedKonvaWidth ? projectedWidth : measuredOverlayWidthPx;
@@ -992,7 +970,6 @@ export default function InlineTextEditor({
     ? resolvedOverlayHeightPx
     : lineHeightPx;
   const shouldCenterTextWithinOverlay =
-    !shouldFreezeLegacyExitGeometry &&
     Boolean(maintainCenterWhileEditing) &&
     isSingleLine &&
     Number.isFinite(resolvedOverlayWidthPx) &&
@@ -1005,12 +982,6 @@ export default function InlineTextEditor({
   const centeredEditorLeftPx = shouldCenterTextWithinOverlay
     ? (Number(resolvedOverlayWidthPx) - Number(measuredOverlayWidthPx)) / 2
     : 0;
-  useEffect(() => {
-    if (isPhaseAtomicV2) return;
-    if (shouldFreezeLegacyExitGeometry) return;
-    if (!Number.isFinite(Number(resolvedOverlayWidthPx))) return;
-    legacyStableOverlayWidthRef.current = Number(resolvedOverlayWidthPx);
-  }, [isPhaseAtomicV2, resolvedOverlayWidthPx, shouldFreezeLegacyExitGeometry]);
   useLayoutEffect(() => {
     if (isPhaseAtomicV2) return undefined;
     if (layoutProbeRevision <= 0) return;
@@ -1800,7 +1771,6 @@ export default function InlineTextEditor({
         boxShadow: "inset 0 0 0 1px rgba(2, 132, 199, 0.45)",
       }
     : {};
-
   const emitDebug = useInlineDebugEmitter({
     DEBUG_MODE,
     editingId,
@@ -1914,31 +1884,6 @@ export default function InlineTextEditor({
     overlayPhase,
   ]);
 
-  // Handoff visual: avisar al canvas recien cuando el editor DOM ya esta
-  // visualmente calibrado para evitar saltos Konva->DOM al entrar en edicion.
-  useEffect(() => {
-    if (isPhaseAtomicV2) return undefined;
-    if (typeof onOverlayMountChange !== "function") return;
-    if (!editingId) return;
-    if (!editorVisualReady) return;
-    const visualEl = editorRef.current;
-    const isEditorFocused =
-      Boolean(visualEl) &&
-      typeof document !== "undefined" &&
-      document.activeElement === visualEl;
-    if (!isEditorFocused) return;
-
-    onOverlayMountChange(editingId, true);
-    return () => {
-      onOverlayMountChange(editingId, false);
-    };
-  }, [
-    editingId,
-    editorVisualReady,
-    isPhaseAtomicV2,
-    onOverlayMountChange,
-  ]);
-
   const {
     triggerFinish,
   } = useInlineEditorMountLifecycle({
@@ -1969,19 +1914,13 @@ export default function InlineTextEditor({
     emitDebug,
     triggerFinish,
   });
-  const handleLegacyAwareBlur = useCallback((event) => {
-    if (!isPhaseAtomicV2) {
-      setLegacyExitPending(true);
-    }
-    handleBlur(event);
-  }, [handleBlur, isPhaseAtomicV2]);
-
   return (
     <InlineEditorPortalView
       BOX_DEBUG_MODE={BOX_DEBUG_MODE}
       konvaRectDebugStyle={konvaRectDebugStyle}
       konvaLabelDebugStyle={konvaLabelDebugStyle}
       editingId={editingId}
+      overlayRootRef={overlayRootRef}
       editorVisualReady={editorVisualReady}
       normalizedOverlayEngine={normalizedOverlayEngine}
       overlayPhase={overlayPhase}
@@ -2017,7 +1956,7 @@ export default function InlineTextEditor({
       textAlign={textAlign}
       onInput={handleInput}
       onKeyDown={handleKeyDown}
-      onBlur={handleLegacyAwareBlur}
+      onBlur={handleBlur}
     />
   );
 }

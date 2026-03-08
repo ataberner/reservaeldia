@@ -63,7 +63,6 @@ export default function useCanvasEditorInlineRuntime({
   inlineKonvaDrawMetaRef,
   inlinePaintApproxRef,
   logInlineSnapshotRef,
-  prevEditingIdRef,
   inlineRenderValueRef,
   inlineOverlayMountedId,
   setInlineOverlayMountedId,
@@ -127,11 +126,8 @@ export default function useCanvasEditorInlineRuntime({
         "konva: after-hide-raf1",
       ]);
 
-      const resolvedEngine =
-        details?.engine === "phase_atomic_v2" || inlineDebugAB.overlayEngine === "phase_atomic_v2"
-          ? "phase_atomic_v2"
-          : "legacy";
-      const canEmitExtended = resolvedEngine === "phase_atomic_v2" || diagConfig.extended;
+      const resolvedEngine = "phase_atomic_v2";
+      const canEmitExtended = true;
       const shouldEmit =
         defaultDiagEvents.has(eventName) ||
         (canEmitExtended && extendedDiagEvents.has(eventName));
@@ -238,8 +234,6 @@ export default function useCanvasEditorInlineRuntime({
   const applyInlineOverlayMountState = useCallback((id, mounted, meta = {}) => {
     const safeId = id || null;
     if (!safeId) return;
-    const isLegacyUnmount = meta?.engine === "legacy" && mounted === false;
-    const shouldApplyImperativeVisibility = !isLegacyUnmount;
 
     if (mounted) {
       logInlineSnapshotRef.current?.("konva-hide-before-applied", {
@@ -250,7 +244,10 @@ export default function useCanvasEditorInlineRuntime({
       });
     }
 
-    const nodeForHandoff = elementRefs.current[safeId] || null;
+    const sourceNode = elementRefs.current[safeId] || null;
+    const stageForHandoff =
+      sourceNode?.getStage?.() || stageRef.current?.getStage?.() || stageRef.current || null;
+    const nodeForHandoff = resolveInlineKonvaTextNode(sourceNode, stageForHandoff) || sourceNode;
     if (mounted) {
       logInlineSnapshotRef.current?.("konva: before-hide", {
         id: safeId,
@@ -258,11 +255,7 @@ export default function useCanvasEditorInlineRuntime({
         ...meta,
       });
     }
-    if (
-      shouldApplyImperativeVisibility &&
-      nodeForHandoff &&
-      typeof nodeForHandoff.opacity === "function"
-    ) {
+    if (nodeForHandoff && typeof nodeForHandoff.opacity === "function") {
       nodeForHandoff.opacity(mounted ? 0 : 1);
       const layer = nodeForHandoff.getLayer?.() || null;
       if (typeof layer?.batchDraw === "function") {
@@ -320,7 +313,10 @@ export default function useCanvasEditorInlineRuntime({
 
     setInlineOverlayMountedId((previous) => {
       const next = mounted ? safeId : (previous === safeId ? null : previous);
-      const node = elementRefs.current[safeId] || null;
+      const baseNode = elementRefs.current[safeId] || null;
+      const stageForVisibility =
+        baseNode?.getStage?.() || stageRef.current?.getStage?.() || stageRef.current || null;
+      const node = resolveInlineKonvaTextNode(baseNode, stageForVisibility) || baseNode;
       const nodeVisibility = node
         ? {
             opacity:
@@ -362,15 +358,13 @@ export default function useCanvasEditorInlineRuntime({
       }
       return next;
     });
-  }, [emitAlignmentVisibilityAuthority, inlineDebugAB.overlayEngine, markInlineKonvaDraw]);
-
-  const handleInlineOverlayMountChange = useCallback((id, mounted) => {
-    if (inlineDebugAB.overlayEngine === "phase_atomic_v2") return;
-    applyInlineOverlayMountState(id, mounted, {
-      engine: "legacy",
-      phase: mounted ? "active" : "done",
-    });
-  }, [applyInlineOverlayMountState, inlineDebugAB.overlayEngine]);
+  }, [
+    emitAlignmentVisibilityAuthority,
+    inlineDebugAB.overlayEngine,
+    markInlineKonvaDraw,
+    resolveInlineKonvaTextNode,
+    stageRef,
+  ]);
 
   const scheduleInlineSwapCommit = useCallback((commitFn) => {
     if (typeof commitFn !== "function") return;
@@ -477,7 +471,6 @@ export default function useCanvasEditorInlineRuntime({
       extra.id ||
       editing.id ||
       inlineCommitDebugRef.current?.id ||
-      prevEditingIdRef.current ||
       null;
     const snapshotKey = String(snapshotId || "__none__");
     const safeId =
@@ -1113,32 +1106,6 @@ export default function useCanvasEditorInlineRuntime({
     updateEdit,
   ]);
 
-  useEffect(() => {
-    const currentId = editing.id || null;
-    const previousId = prevEditingIdRef.current;
-
-    if (currentId && currentId !== previousId) {
-      requestAnimationFrame(() => {
-        captureInlineSnapshot("enter: raf1", { id: currentId, previousId });
-        requestAnimationFrame(() => {
-          captureInlineSnapshot("enter: raf2", { id: currentId, previousId });
-        });
-      });
-    }
-
-    if (!currentId && previousId) {
-      captureInlineSnapshot("exit: immediate", { id: previousId });
-      requestAnimationFrame(() => {
-        captureInlineSnapshot("exit: raf1", { id: previousId });
-        requestAnimationFrame(() => {
-          captureInlineSnapshot("exit: raf2", { id: previousId });
-        });
-      });
-    }
-
-    prevEditingIdRef.current = currentId;
-  }, [editing.id, captureInlineSnapshot]);
-
   useInlineGlobalEditingSync({
     editing,
     inlineDebugLog,
@@ -1149,7 +1116,6 @@ export default function useCanvasEditorInlineRuntime({
     inlineDebugAB,
     ensureInlineFontReady,
     captureInlineSnapshot,
-    handleInlineOverlayMountChange,
     handleInlineOverlaySwapRequest,
   };
 }

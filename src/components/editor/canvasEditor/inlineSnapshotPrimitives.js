@@ -636,8 +636,7 @@ export function normalizeInlineDebugAB(rawConfig) {
   const overlayWidthMode =
     raw.overlayWidthMode === "fit-content" ? "fit-content" : "measured";
 
-  const overlayEngine =
-    raw.overlayEngine === "phase_atomic_v2" ? "phase_atomic_v2" : "legacy";
+  const overlayEngine = "phase_atomic_v2";
 
   return {
     visibilitySource,

@@ -34,7 +34,7 @@ function resolvePixelSnap(rawOffset) {
 }
 
 export function normalizeInlineOverlayEngine(engine) {
-  return engine === "phase_atomic_v2" ? "phase_atomic_v2" : "legacy";
+  return "phase_atomic_v2";
 }
 
 export function computeInlineAlignmentOffsetV2({

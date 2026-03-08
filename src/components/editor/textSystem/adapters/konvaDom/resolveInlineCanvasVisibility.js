@@ -6,8 +6,7 @@ export default function resolveInlineCanvasVisibility({
   editingId,
   currentInlineEditingId,
 }) {
-  const normalizedOverlayEngine =
-    overlayEngine === "phase_atomic_v2" ? "phase_atomic_v2" : "legacy";
+  const normalizedOverlayEngine = "phase_atomic_v2";
   const normalizedVisibilityMode =
     visibilityMode === "window" ? "window" : "reactive";
   const isEditingByWindow = currentInlineEditingId === objectId;
@@ -15,6 +14,7 @@ export default function resolveInlineCanvasVisibility({
   let overlayDomPresentLoose = false;
   let overlayFocused = false;
   let overlayVisualReady = false;
+  const overlayLegacyExitHolding = false;
 
   if (isEditingByReactive && typeof document !== "undefined") {
     const safeId = String(objectId).replace(/"/g, '\\"');
@@ -30,18 +30,8 @@ export default function resolveInlineCanvasVisibility({
     );
   }
 
-  const isEditingByOverlay =
-    normalizedOverlayEngine === "phase_atomic_v2"
-      ? inlineOverlayMountedId === objectId
-      : (
-        inlineOverlayMountedId === objectId ||
-        (isEditingByReactive && overlayDomPresentLoose && overlayVisualReady && overlayFocused)
-      );
-
-  const isEditing =
-    normalizedVisibilityMode === "reactive"
-      ? isEditingByOverlay
-      : (isEditingByWindow || isEditingByReactive || isEditingByOverlay);
+  const isEditingByOverlay = inlineOverlayMountedId === objectId;
+  const isEditing = isEditingByOverlay;
 
   return {
     isEditing,
@@ -51,6 +41,7 @@ export default function resolveInlineCanvasVisibility({
     overlayDomPresentLoose,
     overlayFocused,
     overlayVisualReady,
+    overlayLegacyExitHolding,
     overlayEngine: normalizedOverlayEngine,
     visibilityMode: normalizedVisibilityMode,
   };

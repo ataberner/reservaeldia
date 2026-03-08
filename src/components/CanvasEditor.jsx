@@ -126,7 +126,6 @@ export default function CanvasEditor({
   const inlinePaintApproxRef = useRef({ lastPaintApproxMs: null, pending: false });
   const logInlineSnapshotRef = useRef(null);
   const pendingInlineStartRef = useRef(0);
-  const prevEditingIdRef = useRef(null);
   const inlineRenderValueRef = useRef({ id: null, value: "" });
   const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
   const inlineSwapAckSeqRef = useRef(0);
@@ -902,7 +901,6 @@ export default function CanvasEditor({
     inlineDebugAB,
     ensureInlineFontReady,
     captureInlineSnapshot,
-    handleInlineOverlayMountChange,
     handleInlineOverlaySwapRequest,
     onInlineChange,
     onInlineDebugEvent,
@@ -921,7 +919,6 @@ export default function CanvasEditor({
       inlineKonvaDrawMetaRef,
       inlinePaintApproxRef,
       logInlineSnapshotRef,
-      prevEditingIdRef,
       inlineRenderValueRef,
       inlineOverlayMountedId,
       setInlineOverlayMountedId,
@@ -946,7 +943,7 @@ export default function CanvasEditor({
       inlineCommitDebugRef,
       inlineOverlayMountedId,
       setInlineOverlayMountedId,
-      inlineOverlayEngine: runtime.inlineDebugAB?.overlayEngine || "legacy",
+      inlineOverlayEngine: runtime.inlineDebugAB?.overlayEngine || "phase_atomic_v2",
       finishEdit,
       restoreElementDrag,
       stageRef,
@@ -1191,7 +1188,6 @@ export default function CanvasEditor({
               editing={editing}
               elementRefs={elementRefs}
               objetos={objetos}
-              handleInlineOverlayMountChange={handleInlineOverlayMountChange}
               handleInlineOverlaySwapRequest={handleInlineOverlaySwapRequest}
               onInlineChange={onInlineChange}
               onInlineDebugEvent={onInlineDebugEvent}

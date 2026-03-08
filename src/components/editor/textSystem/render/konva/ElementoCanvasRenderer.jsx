@@ -135,7 +135,7 @@ export default function ElementoCanvas({
   editingMode = false,
   inlineOverlayMountedId = null,
   inlineVisibilityMode = "reactive",
-  inlineOverlayEngine = "legacy",
+  inlineOverlayEngine = "phase_atomic_v2",
 }) {
   const [img] = useImage(obj.src || null, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
@@ -1166,6 +1166,15 @@ export default function ElementoCanvas({
       case "rect": {
         const { width, height } = toShapeSize(obj, 100, 100);
         const rectFill = resolveKonvaFill(obj.color, width, height, "#000000");
+        const inlineVisibility = resolveInlineCanvasVisibility({
+          overlayEngine: inlineOverlayEngine,
+          visibilityMode: inlineVisibilityMode,
+          inlineOverlayMountedId,
+          objectId: obj.id,
+          editingId,
+          currentInlineEditingId: getCurrentInlineEditingId(),
+        });
+        const textOpacity = inlineVisibility.isEditing ? 0 : 1;
 
         return (
           <>
@@ -1240,7 +1249,7 @@ export default function ElementoCanvas({
                 align={obj.align || "center"}
                 verticalAlign="middle"
                 listening={false}
-                opacity={1}
+                opacity={textOpacity}
               />
             )}
           </>

@@ -5,6 +5,7 @@ export default function InlineEditorPortalView({
   konvaRectDebugStyle,
   konvaLabelDebugStyle,
   editingId,
+  overlayRootRef,
   editorVisualReady,
   normalizedOverlayEngine,
   overlayPhase,
@@ -43,6 +44,7 @@ export default function InlineEditorPortalView({
   onBlur,
 }) {
   const overlayPortalTarget = document.body;
+  const liveEditableVisible = true;
 
   return createPortal(
     <>
@@ -61,6 +63,7 @@ export default function InlineEditorPortalView({
         </div>
       )}
       <div
+        ref={overlayRootRef}
         data-inline-editor-id={editingId || ""}
         data-inline-editor-visual-ready={editorVisualReady ? "true" : "false"}
         data-inline-overlay-engine={normalizedOverlayEngine}
@@ -98,6 +101,8 @@ export default function InlineEditorPortalView({
           padding: `${PADDING_Y}px ${PADDING_X}px`,
           zIndex: 9999,
           boxSizing: "border-box",
+          visibility: liveEditableVisible ? "visible" : "hidden",
+          pointerEvents: liveEditableVisible ? "auto" : "none",
           ...overlayDebugStyle,
         }}
       >

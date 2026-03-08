@@ -5,7 +5,6 @@ export default function CanvasInlineEditingLayer({
   editing,
   elementRefs,
   objetos,
-  handleInlineOverlayMountChange,
   handleInlineOverlaySwapRequest,
   onInlineChange,
   onInlineDebugEvent,
@@ -36,7 +35,6 @@ export default function CanvasInlineEditingLayer({
             value={editing.value}
             textAlign={objetoEnEdicion?.align || "left"}
             maintainCenterWhileEditing={keepCenterDuringEdit}
-            onOverlayMountChange={handleInlineOverlayMountChange}
             onOverlaySwapRequest={handleInlineOverlaySwapRequest}
             onChange={onInlineChange}
             onDebugEvent={onInlineDebugEvent}

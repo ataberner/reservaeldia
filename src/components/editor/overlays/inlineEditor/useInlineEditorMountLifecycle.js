@@ -42,37 +42,110 @@ export default function useInlineEditorMountLifecycle({
       window._preFillChar = null;
     }
 
-    if (el instanceof HTMLInputElement) {
-      el.value = initialText;
-      emitDebug("overlay: before-focus");
-      el.focus();
-      const len = initialText.length;
+    let cancelled = false;
+    let retryRafId = 0;
+    let layoutRaf1 = 0;
+    let layoutRaf2 = 0;
+    let afterFocusRaf = 0;
+    const maxFocusAttempts = 1;
+    let focusAttempts = 0;
+
+    const isFocusedNow = () =>
+      typeof document !== "undefined" && document.activeElement === el;
+
+    const placeCaretAtEnd = () => {
+      if (el instanceof HTMLInputElement) {
+        const len = initialText.length;
+        try {
+          el.setSelectionRange(len, len);
+        } catch {
+          // no-op
+        }
+        return;
+      }
+
       try {
-        el.setSelectionRange(len, len);
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection?.();
+        if (!sel) return;
+        sel.removeAllRanges();
+        sel.addRange(range);
       } catch {
         // no-op
       }
+    };
+
+    const focusAndSelect = (attempt) => {
+      emitDebug("overlay: before-focus", { attempt });
+      try {
+        el.focus({ preventScroll: true });
+      } catch {
+        el.focus();
+      }
+      const focused = isFocusedNow();
+      if (focused) {
+        placeCaretAtEnd();
+      }
+      return focused;
+    };
+
+    if (el instanceof HTMLInputElement) {
+      el.value = initialText;
     } else {
       el.innerText = initialText;
-      emitDebug("overlay: before-focus");
-      el.focus();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
     }
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setLayoutProbeRevision((prev) => prev + 1);
-        requestAnimationFrame(() => {
-          emitDebug("overlay: after-focus");
+    const finalizeLayoutProbe = () => {
+      layoutRaf1 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        layoutRaf2 = requestAnimationFrame(() => {
+          if (cancelled) return;
+          setLayoutProbeRevision((prev) => prev + 1);
+          afterFocusRaf = requestAnimationFrame(() => {
+            if (cancelled) return;
+            emitDebug("overlay: after-focus", {
+              attempt: focusAttempts,
+              isFocused: isFocusedNow(),
+            });
+          });
         });
       });
-    });
+    };
+
+    const runFocusHandshake = () => {
+      if (cancelled) return;
+      focusAttempts += 1;
+      const focused = focusAndSelect(focusAttempts);
+      if (focused || focusAttempts >= maxFocusAttempts) {
+        finalizeLayoutProbe();
+        return;
+      }
+      retryRafId = requestAnimationFrame(runFocusHandshake);
+    };
+
+    if (isPhaseAtomicV2) {
+      focusAttempts = 1;
+      emitDebug("overlay: before-focus", { attempt: focusAttempts });
+      try {
+        el.focus({ preventScroll: true });
+      } catch {
+        el.focus();
+      }
+      // Preservar el comportamiento previo en v2: forzar caret inicial en el primer pase.
+      placeCaretAtEnd();
+      finalizeLayoutProbe();
+    } else {
+      runFocusHandshake();
+    }
+
     return () => {
+      cancelled = true;
+      if (retryRafId) window.cancelAnimationFrame(retryRafId);
+      if (layoutRaf1) window.cancelAnimationFrame(layoutRaf1);
+      if (layoutRaf2) window.cancelAnimationFrame(layoutRaf2);
+      if (afterFocusRaf) window.cancelAnimationFrame(afterFocusRaf);
       if (isPhaseAtomicV2 && typeof onOverlaySwapRequest === "function" && editingId) {
         const closingId = editingId;
         const closingSessionId = overlaySessionIdRef.current;

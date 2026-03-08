@@ -945,6 +945,8 @@ export default function CanvasEditor({
       inlineEditPreviewRef,
       inlineCommitDebugRef,
       inlineOverlayMountedId,
+      setInlineOverlayMountedId,
+      inlineOverlayEngine: runtime.inlineDebugAB?.overlayEngine || "legacy",
       finishEdit,
       restoreElementDrag,
       stageRef,

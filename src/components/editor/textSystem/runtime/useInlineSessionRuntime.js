@@ -15,11 +15,40 @@ import {
 } from "@/components/editor/canvasEditor/inlineSnapshotPrimitives";
 import {
   clearCurrentInlineEditingIdIfMatches,
+  getCurrentInlineEditingId,
   setCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import useInlineDebugABConfig from "@/components/editor/textSystem/runtime/useInlineDebugABConfig";
 import useInlineFontReady from "@/components/editor/textSystem/runtime/useInlineFontReady";
 import useInlineGlobalEditingSync from "@/components/editor/textSystem/bridges/window/useInlineGlobalEditingSync";
+import resolveInlineCanvasVisibility from "@/components/editor/textSystem/adapters/konvaDom/resolveInlineCanvasVisibility";
+
+function parseInlineDiagFlag(value, fallback = false) {
+  if (typeof value === "undefined") return fallback;
+  if (value === true || value === 1 || value === "1") return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  if (value === false || value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function readInlineAlignmentDiagConfig(debugEnabled) {
+  if (!debugEnabled || typeof window === "undefined") {
+    return {
+      enabled: false,
+      extended: false,
+    };
+  }
+  const enabled = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT, true);
+  const extended = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT_EXTENDED, false);
+  return {
+    enabled,
+    extended,
+  };
+}
 
 export default function useCanvasEditorInlineRuntime({
   editing,
@@ -82,9 +111,135 @@ export default function useCanvasEditorInlineRuntime({
     };
   }, []);
 
+  const emitAlignmentVisibilityAuthority = useCallback((eventName, details = {}) => {
+    try {
+      const diagConfig = readInlineAlignmentDiagConfig(isInlineDebugEnabled());
+      if (!diagConfig.enabled) return;
+
+      const defaultDiagEvents = new Set([
+        "overlay-mounted-state",
+        "konva: after-hide-sync",
+        "finish_commit",
+        "done",
+        "cancel",
+      ]);
+      const extendedDiagEvents = new Set([
+        "konva: after-hide-raf1",
+      ]);
+
+      const resolvedEngine =
+        details?.engine === "phase_atomic_v2" || inlineDebugAB.overlayEngine === "phase_atomic_v2"
+          ? "phase_atomic_v2"
+          : "legacy";
+      const canEmitExtended = resolvedEngine === "phase_atomic_v2" || diagConfig.extended;
+      const shouldEmit =
+        defaultDiagEvents.has(eventName) ||
+        (canEmitExtended && extendedDiagEvents.has(eventName));
+      if (!shouldEmit) return;
+
+      const targetId = details?.id || editing.id || null;
+      if (!targetId) return;
+
+      const overlayMountedId = Object.prototype.hasOwnProperty.call(details, "inlineOverlayMountedId")
+        ? details.inlineOverlayMountedId
+        : inlineOverlayMountedId;
+      const resolvedVisibilityMode =
+        inlineDebugAB.visibilitySource === "window" ? "window" : "reactive";
+      const currentInlineEditingId = getCurrentInlineEditingId();
+      const safeId = String(targetId).replace(/"/g, '\\"');
+      const overlayRoot =
+        typeof document !== "undefined"
+          ? document.querySelector(`[data-inline-editor-id="${safeId}"]`)
+          : null;
+      const overlayDomPresent = Boolean(overlayRoot);
+      const overlayVisualReady =
+        overlayRoot?.getAttribute?.("data-inline-editor-visual-ready") === "true";
+      const activeEl = typeof document !== "undefined" ? document.activeElement : null;
+      const overlayFocused = Boolean(
+        overlayRoot &&
+        activeEl &&
+        (activeEl === overlayRoot || overlayRoot.contains(activeEl))
+      );
+
+      const adapterDecision = resolveInlineCanvasVisibility({
+        overlayEngine: resolvedEngine,
+        visibilityMode: resolvedVisibilityMode,
+        inlineOverlayMountedId: overlayMountedId,
+        objectId: targetId,
+        editingId: editing.id,
+        currentInlineEditingId,
+      });
+      const targetNode = elementRefs.current[targetId] || null;
+      const konvaOpacity =
+        targetNode && typeof targetNode.opacity === "function"
+          ? roundInlineMetric(Number(targetNode.opacity()), 4)
+          : null;
+      const konvaVisible =
+        targetNode && typeof targetNode.visible === "function"
+          ? Boolean(targetNode.visible())
+          : null;
+
+      const payload = {
+        id: targetId,
+        sessionId: details?.sessionId || null,
+        eventName,
+        phase: details?.phase || eventName,
+        engine: resolvedEngine,
+        visibilityMode: resolvedVisibilityMode,
+        authorities: {
+          editingIdReactive: editing.id || null,
+          currentEditingIdWindow: currentInlineEditingId || null,
+          inlineOverlayMountedId: overlayMountedId || null,
+        },
+        overlayState: {
+          overlayDomPresent,
+          overlayVisualReady,
+          overlayFocused,
+        },
+        adapterDecision: {
+          isEditingByWindow: Boolean(adapterDecision?.isEditingByWindow),
+          isEditingByReactive: Boolean(adapterDecision?.isEditingByReactive),
+          isEditingByOverlay: Boolean(adapterDecision?.isEditingByOverlay),
+          isEditing: Boolean(adapterDecision?.isEditing),
+        },
+        konvaState: {
+          opacity: konvaOpacity,
+          visible: konvaVisible,
+          drawSeq: Number(inlineKonvaDrawMetaRef.current?.seq || 0),
+        },
+        handoff: {
+          swapToken: Number.isFinite(Number(details?.swapToken))
+            ? Number(details.swapToken)
+            : null,
+          offsetY: Number.isFinite(Number(details?.offsetY))
+            ? roundInlineMetric(Number(details.offsetY), 4)
+            : null,
+          eventLoopPhase: details?.eventLoopPhase || "sync",
+        },
+      };
+      console.log(
+        `[INLINE][DIAG] alignment-visibility-authority\n${formatInlineLogPayload(payload)}`
+      );
+    } catch (diagError) {
+      console.warn("[INLINE][DIAG] visibility-channel-error", {
+        eventName,
+        error: String(diagError || ""),
+      });
+    }
+  }, [
+    editing.id,
+    elementRefs,
+    inlineDebugAB.overlayEngine,
+    inlineDebugAB.visibilitySource,
+    inlineKonvaDrawMetaRef,
+    inlineOverlayMountedId,
+  ]);
+
   const applyInlineOverlayMountState = useCallback((id, mounted, meta = {}) => {
     const safeId = id || null;
     if (!safeId) return;
+    const isLegacyUnmount = meta?.engine === "legacy" && mounted === false;
+    const shouldApplyImperativeVisibility = !isLegacyUnmount;
 
     if (mounted) {
       logInlineSnapshotRef.current?.("konva-hide-before-applied", {
@@ -103,7 +258,11 @@ export default function useCanvasEditorInlineRuntime({
         ...meta,
       });
     }
-    if (nodeForHandoff && typeof nodeForHandoff.opacity === "function") {
+    if (
+      shouldApplyImperativeVisibility &&
+      nodeForHandoff &&
+      typeof nodeForHandoff.opacity === "function"
+    ) {
       nodeForHandoff.opacity(mounted ? 0 : 1);
       const layer = nodeForHandoff.getLayer?.() || null;
       if (typeof layer?.batchDraw === "function") {
@@ -122,12 +281,30 @@ export default function useCanvasEditorInlineRuntime({
           eventLoopPhase: "sync",
           ...meta,
         });
+        emitAlignmentVisibilityAuthority("konva: after-hide-sync", {
+          id: safeId,
+          sessionId: meta?.sessionId || null,
+          phase: meta?.phase || null,
+          engine: meta?.engine || inlineDebugAB.overlayEngine,
+          offsetY: meta?.offsetY,
+          eventLoopPhase: "sync",
+          swapToken: null,
+        });
         requestAnimationFrame((rafStamp) => {
           logInlineSnapshotRef.current?.("konva: after-hide-raf1", {
             id: safeId,
             eventLoopPhase: "raf",
             rafStamp: roundInlineMetric(Number(rafStamp), 3),
             ...meta,
+          });
+          emitAlignmentVisibilityAuthority("konva: after-hide-raf1", {
+            id: safeId,
+            sessionId: meta?.sessionId || null,
+            phase: meta?.phase || null,
+            engine: meta?.engine || inlineDebugAB.overlayEngine,
+            offsetY: meta?.offsetY,
+            eventLoopPhase: "raf",
+            swapToken: null,
           });
         });
       }
@@ -165,6 +342,16 @@ export default function useCanvasEditorInlineRuntime({
         nodeVisibility,
         ...meta,
       });
+      emitAlignmentVisibilityAuthority("overlay-mounted-state", {
+        id: safeId,
+        sessionId: meta?.sessionId || null,
+        phase: meta?.phase || null,
+        engine: meta?.engine || inlineDebugAB.overlayEngine,
+        offsetY: meta?.offsetY,
+        eventLoopPhase: "sync",
+        swapToken: null,
+        inlineOverlayMountedId: next,
+      });
       if (mounted) {
         logInlineSnapshotRef.current?.("overlay-visible-applied", {
           id: safeId,
@@ -175,7 +362,7 @@ export default function useCanvasEditorInlineRuntime({
       }
       return next;
     });
-  }, [markInlineKonvaDraw]);
+  }, [emitAlignmentVisibilityAuthority, inlineDebugAB.overlayEngine, markInlineKonvaDraw]);
 
   const handleInlineOverlayMountChange = useCallback((id, mounted) => {
     if (inlineDebugAB.overlayEngine === "phase_atomic_v2") return;
@@ -228,16 +415,26 @@ export default function useCanvasEditorInlineRuntime({
       scheduleInlineSwapCommit(() => {
         applyInlineOverlayMountState(id, false, meta);
         inlineSwapAckSeqRef.current += 1;
+        const nextToken = inlineSwapAckSeqRef.current;
         setInlineSwapAck({
           id,
           sessionId,
           phase,
-          token: inlineSwapAckSeqRef.current,
+          token: nextToken,
           offsetY: Number.isFinite(offsetY) ? offsetY : 0,
+        });
+        emitAlignmentVisibilityAuthority(phase, {
+          id,
+          sessionId,
+          phase,
+          engine: "phase_atomic_v2",
+          offsetY: Number.isFinite(offsetY) ? offsetY : null,
+          eventLoopPhase: "sync",
+          swapToken: nextToken,
         });
       });
     }
-  }, [applyInlineOverlayMountState, scheduleInlineSwapCommit]);
+  }, [applyInlineOverlayMountState, emitAlignmentVisibilityAuthority, scheduleInlineSwapCommit]);
 
   const logInlineSnapshot = useCallback((eventName, extra = {}) => {
     if (typeof window === "undefined") return;

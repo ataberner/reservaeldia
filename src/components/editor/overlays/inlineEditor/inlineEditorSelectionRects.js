@@ -48,49 +48,16 @@ export function getCollapsedCaretProbeRectInEditor(el) {
   if (!el || el instanceof HTMLInputElement || typeof window === "undefined") return null;
   const sel = window.getSelection?.();
   if (!sel || sel.rangeCount === 0) return null;
-  let originalRange = null;
-  let marker = null;
   try {
     const activeRange = sel.getRangeAt(0);
     if (!el.contains(activeRange.startContainer) || !el.contains(activeRange.endContainer)) {
       return null;
     }
-    originalRange = activeRange.cloneRange();
     const probeRange = activeRange.cloneRange();
     probeRange.collapse(true);
-
-    marker = document.createElement("span");
-    marker.textContent = "\u200b";
-    marker.style.display = "inline-block";
-    marker.style.width = "0px";
-    marker.style.padding = "0";
-    marker.style.margin = "0";
-    marker.style.border = "0";
-    marker.style.lineHeight = "1";
-    marker.style.pointerEvents = "none";
-
-    probeRange.insertNode(marker);
-    const rect = marker.getBoundingClientRect();
-
-    if (marker.parentNode) {
-      marker.parentNode.removeChild(marker);
-      marker.parentNode?.normalize?.();
-    }
-    sel.removeAllRanges();
-    sel.addRange(originalRange);
+    const rect = probeRange.getBoundingClientRect?.() || null;
     return rectToPayload(rect);
   } catch {
-    try {
-      if (marker?.parentNode) {
-        marker.parentNode.removeChild(marker);
-      }
-      if (originalRange && sel) {
-        sel.removeAllRanges();
-        sel.addRange(originalRange);
-      }
-    } catch {
-      // no-op
-    }
     return null;
   }
 }

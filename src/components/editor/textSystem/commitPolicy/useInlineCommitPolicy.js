@@ -22,6 +22,8 @@ export default function useCanvasEditorInlineCommitHandlers({
   inlineEditPreviewRef,
   inlineCommitDebugRef,
   inlineOverlayMountedId,
+  setInlineOverlayMountedId,
+  inlineOverlayEngine = "legacy",
   finishEdit,
   restoreElementDrag,
   stageRef,
@@ -122,6 +124,179 @@ useEffect(() => {
 
   const onInlineFinish = () => {
   const finishId = editing.id;
+  const isPhaseAtomicV2 = inlineOverlayEngine === "phase_atomic_v2";
+  const isLegacyExitRcaDiagEnabled =
+    !isPhaseAtomicV2 &&
+    typeof window !== "undefined" &&
+    window.__INLINE_DEBUG === true;
+  let drawRequestedByBatchDraw = false;
+  let lastKnownBaseRect = null;
+  const roundDiagMetric = (value, digits = 4) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return Number(numeric.toFixed(digits));
+  };
+  const readOverlayBaseSnapshot = () => {
+    if (typeof document === "undefined") {
+      return { overlayDomPresent: false, overlayRect: null };
+    }
+    const safeId = String(finishId || "").replace(/"/g, '\\"');
+    if (!safeId) {
+      return { overlayDomPresent: false, overlayRect: null };
+    }
+    const overlayEl = document.querySelector(`[data-inline-editor-id="${safeId}"]`);
+    if (!overlayEl) {
+      return { overlayDomPresent: false, overlayRect: null };
+    }
+    const rect = overlayEl.getBoundingClientRect?.();
+    if (
+      !Number.isFinite(Number(rect?.x)) ||
+      !Number.isFinite(Number(rect?.y)) ||
+      !Number.isFinite(Number(rect?.width)) ||
+      !Number.isFinite(Number(rect?.height))
+    ) {
+      return { overlayDomPresent: true, overlayRect: null };
+    }
+    const overlayRect = {
+      x: roundDiagMetric(rect.x),
+      y: roundDiagMetric(rect.y),
+      width: roundDiagMetric(rect.width),
+      height: roundDiagMetric(rect.height),
+    };
+    lastKnownBaseRect = overlayRect;
+    return {
+      overlayDomPresent: true,
+      overlayRect,
+    };
+  };
+  const readKonvaRawRectViewport = (node, stage) => {
+    if (!node || !stage) return null;
+    if (typeof node.getClientRect !== "function") return null;
+    const localRect = node.getClientRect({
+      relativeTo: stage,
+      skipTransform: false,
+      skipShadow: true,
+      skipStroke: true,
+    });
+    const localX = Number(localRect?.x);
+    const localY = Number(localRect?.y);
+    const localWidth = Number(localRect?.width);
+    const localHeight = Number(localRect?.height);
+    if (![localX, localY, localWidth, localHeight].every(Number.isFinite)) return null;
+    const stageMetrics = resolveInlineStageViewportMetricsShared(stage, {
+      scaleVisual: escalaVisual,
+    });
+    const stageRect = stageMetrics?.stageRect;
+    const totalScaleX = Number(stageMetrics?.totalScaleX);
+    const totalScaleY = Number(stageMetrics?.totalScaleY);
+    if (!stageRect) return null;
+    if (!Number.isFinite(totalScaleX) || !Number.isFinite(totalScaleY)) return null;
+    return {
+      x: roundDiagMetric(Number(stageRect.left) + localX * totalScaleX),
+      y: roundDiagMetric(Number(stageRect.top) + localY * totalScaleY),
+      width: roundDiagMetric(localWidth * totalScaleX),
+      height: roundDiagMetric(localHeight * totalScaleY),
+    };
+  };
+  const readKonvaNodeValue = (node, key) => {
+    if (!node) return null;
+    try {
+      const fn = node[key];
+      if (typeof fn === "function") {
+        const value = fn.call(node);
+        return typeof value === "undefined" ? null : value;
+      }
+      if (typeof node.getAttr === "function") {
+        const value = node.getAttr(key);
+        return typeof value === "undefined" ? null : value;
+      }
+      if (node?.attrs && Object.prototype.hasOwnProperty.call(node.attrs, key)) {
+        return node.attrs[key];
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+  const emitLegacyExitRcaCheckpoint = (eventName, details = {}) => {
+    if (!isLegacyExitRcaDiagEnabled) return;
+    try {
+      const stage =
+        details?.stage ||
+        stageRef.current?.getStage?.() ||
+        stageRef.current ||
+        null;
+      const liveNode = elementRefs.current[finishId] || null;
+      const overlaySnapshot = readOverlayBaseSnapshot();
+      const konvaRectBase = overlaySnapshot.overlayRect || lastKnownBaseRect;
+      const konvaRectRaw = readKonvaRawRectViewport(liveNode, stage);
+      const layer = liveNode?.getLayer?.() || null;
+      const rawX = Number(konvaRectRaw?.x);
+      const rawWidth = Number(konvaRectRaw?.width);
+      const baseX = Number(konvaRectBase?.x);
+      const baseWidth = Number(konvaRectBase?.width);
+      const payload = {
+        eventName,
+        id: finishId || null,
+        phase: "legacy-exit-rca",
+        overlayDomPresent: overlaySnapshot.overlayDomPresent,
+        overlayRect: overlaySnapshot.overlayRect,
+        konvaNode: {
+          opacity: roundDiagMetric(readKonvaNodeValue(liveNode, "opacity")),
+          visible: (() => {
+            const value = readKonvaNodeValue(liveNode, "visible");
+            return typeof value === "boolean" ? value : null;
+          })(),
+          text: (() => {
+            const value = readKonvaNodeValue(liveNode, "text");
+            return value == null ? null : String(value);
+          })(),
+          x: roundDiagMetric(readKonvaNodeValue(liveNode, "x")),
+          width: roundDiagMetric(readKonvaNodeValue(liveNode, "width")),
+          scaleX: roundDiagMetric(readKonvaNodeValue(liveNode, "scaleX")),
+          offsetX: roundDiagMetric(readKonvaNodeValue(liveNode, "offsetX")),
+        },
+        konvaRectRaw,
+        konvaRectBase,
+        rawVsBaseDelta: {
+          dx:
+            Number.isFinite(rawX) && Number.isFinite(baseX)
+              ? roundDiagMetric(rawX - baseX)
+              : null,
+          widthDw:
+            Number.isFinite(rawWidth) && Number.isFinite(baseWidth)
+              ? roundDiagMetric(rawWidth - baseWidth)
+              : null,
+        },
+        commitTextFinal: String(textoNuevoRaw ?? ""),
+        patchXFinal: Number.isFinite(patch?.x) ? roundDiagMetric(patch.x) : null,
+        drawRequestedByBatchDraw: Boolean(drawRequestedByBatchDraw),
+        layerWaitingForDraw:
+          layer && Object.prototype.hasOwnProperty.call(layer, "_waitingForDraw")
+            ? Boolean(layer._waitingForDraw)
+            : null,
+        barrierResult: typeof details?.barrierResult === "string" ? details.barrierResult : null,
+        waitRafCount: Number.isFinite(Number(details?.waitRafCount))
+          ? Number(details.waitRafCount)
+          : null,
+        waitingForDrawAtReveal:
+          typeof details?.waitingForDrawAtReveal === "boolean"
+            ? details.waitingForDrawAtReveal
+            : null,
+      };
+      console.log(`[INLINE][DIAG] ${eventName}\n${JSON.stringify(payload, null, 2)}`);
+    } catch (diagError) {
+      console.warn("[INLINE][DIAG] legacy-exit-rca-error", {
+        eventName,
+        error: String(diagError || ""),
+      });
+    }
+  };
+  const clearLegacyInlineOverlayMounted = () => {
+    if (isPhaseAtomicV2) return;
+    if (typeof setInlineOverlayMountedId !== "function") return;
+    setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+  };
   const safeFinishId = String(finishId || "").replace(/"/g, '\\"');
   const overlayRoot =
     typeof document !== "undefined" && safeFinishId
@@ -366,39 +541,148 @@ useEffect(() => {
     expectedX,
     patchX: patch.x ?? null,
   });
+  emitLegacyExitRcaCheckpoint("exit:post-commit-pre-reveal");
   logFinishVisibilityCheck("after-commit-before-finishEdit");
   inlineEditPreviewRef.current = { id: null, centerX: null };
-  flushSync(() => {
-    finishEdit();
-  });
-  restoreElementDrag(finishId);
-  const stageAfterFinishEdit =
+  const LEGACY_REVEAL_MAX_WAIT_RAF = 8;
+  const resolveStageForReveal = () =>
     stageRef.current?.getStage?.() || stageRef.current || null;
-  if (typeof stageAfterFinishEdit?.batchDraw === "function") {
-    stageAfterFinishEdit.batchDraw();
-  }
-  logFinishVisibilityCheck("after-finishEdit-sync");
-  clearCurrentInlineEditingIdIfMatches(finishId);
-  captureInlineSnapshot("finish: after-finishEdit", {
-    id: finishId,
-    expectedX,
-    patchX: patch.x ?? null,
-  });
-  requestAnimationFrame(() => {
-    logFinishVisibilityCheck("after-finishEdit-raf1");
-    captureInlineSnapshot("finish: raf1", {
+  const readLayerWaitingForDrawSignal = (layer) => {
+    if (!layer) return null;
+    if (!Object.prototype.hasOwnProperty.call(layer, "_waitingForDraw")) return null;
+    return Boolean(layer._waitingForDraw);
+  };
+  const requestBatchDraw = ({ layer, stage }) => {
+    if (typeof layer?.batchDraw === "function") {
+      drawRequestedByBatchDraw = true;
+      layer.batchDraw();
+      return "layer";
+    }
+    if (typeof stage?.batchDraw === "function") {
+      drawRequestedByBatchDraw = true;
+      stage.batchDraw();
+      return "stage";
+    }
+    return null;
+  };
+
+  let revealDone = false;
+  const finalizeReveal = ({
+    barrierResult = null,
+    waitRafCount = 0,
+    waitingForDrawAtReveal = null,
+    stageForReveal = null,
+    requestPostRevealBatchDraw = false,
+  } = {}) => {
+    if (revealDone) return;
+    revealDone = true;
+
+    flushSync(() => {
+      clearLegacyInlineOverlayMounted();
+      finishEdit();
+    });
+    restoreElementDrag(finishId);
+
+    const revealStage = stageForReveal || resolveStageForReveal();
+    if (requestPostRevealBatchDraw && typeof revealStage?.batchDraw === "function") {
+      drawRequestedByBatchDraw = true;
+      revealStage.batchDraw();
+    }
+    emitLegacyExitRcaCheckpoint("exit:reveal-sync", {
+      stage: revealStage,
+      barrierResult,
+      waitRafCount,
+      waitingForDrawAtReveal,
+    });
+    logFinishVisibilityCheck("after-finishEdit-sync");
+    clearCurrentInlineEditingIdIfMatches(finishId);
+    captureInlineSnapshot("finish: after-finishEdit", {
       id: finishId,
       expectedX,
       patchX: patch.x ?? null,
     });
+
     requestAnimationFrame(() => {
-      captureInlineSnapshot("finish: raf2", {
+      emitLegacyExitRcaCheckpoint("exit:after-raf1", {
+        stage: revealStage,
+        barrierResult,
+        waitRafCount,
+        waitingForDrawAtReveal,
+      });
+      logFinishVisibilityCheck("after-finishEdit-raf1");
+      captureInlineSnapshot("finish: raf1", {
         id: finishId,
         expectedX,
         patchX: patch.x ?? null,
       });
+      requestAnimationFrame(() => {
+        captureInlineSnapshot("finish: raf2", {
+          id: finishId,
+          expectedX,
+          patchX: patch.x ?? null,
+        });
+      });
     });
+  };
+
+  if (isPhaseAtomicV2) {
+    const phaseAtomicStage = resolveStageForReveal();
+    finalizeReveal({
+      stageForReveal: phaseAtomicStage,
+      requestPostRevealBatchDraw: true,
+    });
+    return;
+  }
+
+  const targetNode = elementRefs.current[finishId] || null;
+  const targetLayer = targetNode?.getLayer?.() || null;
+  const legacyStage = resolveStageForReveal();
+  const drawSource = requestBatchDraw({
+    layer: targetLayer,
+    stage: legacyStage,
   });
+  const canConfirmDraw = drawSource === "layer" && readLayerWaitingForDrawSignal(targetLayer) !== null;
+
+  if (!canConfirmDraw) {
+    finalizeReveal({
+      barrierResult: "fallback-no-confirmation",
+      waitRafCount: 0,
+      waitingForDrawAtReveal: readLayerWaitingForDrawSignal(targetLayer),
+      stageForReveal: legacyStage,
+    });
+    return;
+  }
+
+  let waitRafCount = 0;
+  const waitForLayerDraw = () => {
+    waitRafCount += 1;
+    const waitingSignal = readLayerWaitingForDrawSignal(targetLayer);
+    const isSettled = waitRafCount >= 1 && waitingSignal === false;
+
+    if (isSettled) {
+      finalizeReveal({
+        barrierResult: "draw-settled",
+        waitRafCount,
+        waitingForDrawAtReveal: waitingSignal,
+        stageForReveal: legacyStage,
+      });
+      return;
+    }
+
+    if (waitRafCount >= LEGACY_REVEAL_MAX_WAIT_RAF) {
+      finalizeReveal({
+        barrierResult: "timeout",
+        waitRafCount,
+        waitingForDrawAtReveal: waitingSignal,
+        stageForReveal: legacyStage,
+      });
+      return;
+    }
+
+    requestAnimationFrame(waitForLayerDraw);
+  };
+
+  requestAnimationFrame(waitForLayerDraw);
   };
 
   return {

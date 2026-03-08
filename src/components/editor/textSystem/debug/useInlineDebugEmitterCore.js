@@ -23,6 +23,56 @@ import { roundMetric } from "@/components/editor/overlays/inlineEditor/inlineEdi
 import { INLINE_LAYOUT_VERSION } from "@/components/editor/overlays/inlineEditor/inlineEditorConstants";
 import useInlineTraceBridge from "@/components/editor/textSystem/debug/useInlineTraceBridge";
 
+function parseInlineDiagFlag(value, fallback = false) {
+  if (typeof value === "undefined") return fallback;
+  if (value === true || value === 1 || value === "1") return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  if (value === false || value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function readInlineAlignmentDiagConfig(debugEnabled) {
+  if (!debugEnabled || typeof window === "undefined") {
+    return {
+      enabled: false,
+      extended: false,
+    };
+  }
+  const enabled = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT, true);
+  const extended = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT_EXTENDED, false);
+  return {
+    enabled,
+    extended,
+  };
+}
+
+function buildCenterSnapshot(rect) {
+  const x = Number(rect?.x);
+  const width = Number(rect?.width);
+  if (!Number.isFinite(x) || !Number.isFinite(width)) return null;
+  return {
+    x: roundMetric(x),
+    width: roundMetric(width),
+    centerX: roundMetric(x + width / 2),
+  };
+}
+
+function buildCenterDelta(fromRect, toRect) {
+  const fromX = Number(fromRect?.x);
+  const fromW = Number(fromRect?.width);
+  const toX = Number(toRect?.x);
+  const toW = Number(toRect?.width);
+  if (![fromX, fromW, toX, toW].every(Number.isFinite)) return null;
+  return {
+    centerDx: roundMetric(toX + toW / 2 - (fromX + fromW / 2)),
+    widthDw: roundMetric(toW - fromW),
+  };
+}
+
 export default function useInlineDebugEmitter({
   DEBUG_MODE,
   editingId,
@@ -632,6 +682,132 @@ export default function useInlineDebugEmitter({
         maxAllowedPx: 0.5,
       });
     }
+
+    const diagConfig = readInlineAlignmentDiagConfig(DEBUG_MODE);
+    if (diagConfig.enabled) {
+      const defaultDiagEvents = new Set([
+        "overlay: before-show",
+        "overlay: after-first-paint",
+        "overlay: post-layout",
+      ]);
+      const extendedDiagEvents = new Set([
+        "overlay: ready-to-swap",
+        "overlay: swap-commit",
+      ]);
+      const canEmitExtended = isPhaseAtomicV2 || diagConfig.extended;
+      const shouldEmitDiag =
+        defaultDiagEvents.has(eventName) ||
+        (canEmitExtended && extendedDiagEvents.has(eventName));
+
+      if (shouldEmitDiag) {
+        try {
+          const rawRectSnapshot = buildCenterSnapshot(projectedKonvaRectRawSnapshot);
+          const baseRectSnapshot = buildCenterSnapshot(projectedKonvaRect);
+          const overlayRectSnapshot = buildCenterSnapshot(overlayRect);
+          const editorRectSnapshot = buildCenterSnapshot(editableVisualRect);
+          const rawToBase = buildCenterDelta(projectedKonvaRectRawSnapshot, projectedKonvaRect);
+          const baseToOverlay = buildCenterDelta(projectedKonvaRect, overlayRect);
+          const overlayToEditor = buildCenterDelta(overlayRect, editableVisualRect);
+
+          const alignmentAuthoritiesPayload = {
+            id: editingId || null,
+            sessionId: overlaySessionIdRef.current || null,
+            eventName,
+            phase: payload.phase || eventName,
+            overlayEngine: normalizedOverlayEngine,
+            rawRect: rawRectSnapshot,
+            baseRect: baseRectSnapshot,
+            overlayRect: overlayRectSnapshot,
+            editorRect: editorRectSnapshot,
+            centerLocks: {
+              lockedCenterStageX: roundMetric(Number(lockedCenterStageX)),
+              centerViewportX: roundMetric(Number(centerViewportX)),
+            },
+            widthModel: {
+              projectedWidth: roundMetric(Number(projectedWidth)),
+              measuredOverlayWidthPx: roundMetric(Number(measuredOverlayWidthPx)),
+              resolvedOverlayWidthPx: roundMetric(Number(resolvedOverlayWidthPx)),
+              centeredEditorWidthPx: roundMetric(Number(centeredEditorWidthPx)),
+              centeredEditorLeftPx: roundMetric(Number(centeredEditorLeftPx)),
+              overlayWidthSource: overlayWidthSource || null,
+            },
+            deltas: {
+              rawToBaseCenterDx: rawToBase?.centerDx ?? null,
+              baseToOverlayCenterDx: baseToOverlay?.centerDx ?? null,
+              overlayToEditorCenterDx: overlayToEditor?.centerDx ?? null,
+              rawToBaseWidthDw: rawToBase?.widthDw ?? null,
+              baseToOverlayWidthDw: baseToOverlay?.widthDw ?? null,
+            },
+          };
+          console.log(
+            `[INLINE][DIAG] alignment-authorities\n${formatInlineLogPayload(alignmentAuthoritiesPayload)}`
+          );
+          pushInlineTraceEvent("alignment-authorities", {
+            id: alignmentAuthoritiesPayload.id,
+            sessionId: alignmentAuthoritiesPayload.sessionId,
+            phase: alignmentAuthoritiesPayload.phase,
+            overlayEngine: alignmentAuthoritiesPayload.overlayEngine,
+            eventName,
+            rawToBaseCenterDx: alignmentAuthoritiesPayload.deltas.rawToBaseCenterDx,
+            baseToOverlayCenterDx: alignmentAuthoritiesPayload.deltas.baseToOverlayCenterDx,
+            overlayToEditorCenterDx: alignmentAuthoritiesPayload.deltas.overlayToEditorCenterDx,
+          });
+
+          const alignmentOffsetBreakdownPayload = {
+            id: editingId || null,
+            sessionId: overlaySessionIdRef.current || null,
+            eventName,
+            phase: payload.phase || eventName,
+            overlayEngine: normalizedOverlayEngine,
+            lineModel: {
+              isSingleLine: Boolean(isSingleLine),
+              singleLineCaretMode: singleLineCaretMode || null,
+              lineHeightPx: roundMetric(Number(lineHeightPx)),
+              cssLineHeightPx: roundMetric(Number(cssLineHeightPx)),
+              editableLineHeightPx: roundMetric(Number(editableLineHeightPx)),
+            },
+            offsetModel: {
+              source: domToKonvaOffsetModel?.source || null,
+              rawOffset: roundMetric(Number(domToKonvaOffsetModel?.rawOffset)),
+              saneLimit: roundMetric(Number(domToKonvaOffsetModel?.saneLimit)),
+              blockedReason: domToKonvaOffsetModel?.blockedReason || null,
+              appliedOffset: roundMetric(Number(domToKonvaOffsetModel?.appliedOffset)),
+            },
+            breakdown: {
+              domToKonvaGlyphOffsetPx: roundMetric(domToKonvaGlyphOffsetPx),
+              domToKonvaPaddingOffsetPx: roundMetric(domToKonvaPaddingOffsetPx),
+              domToKonvaBaseVisualOffsetPx: roundMetric(domToKonvaBaseVisualOffsetPx),
+              domVisualNudgePx: roundMetric(domVisualNudgePx),
+              domVisualResidualDeadZonePx: roundMetric(domVisualResidualDeadZonePx),
+              domVisualResidualDeadZoneEffectivePx: roundMetric(domVisualResidualDeadZoneEffectivePx),
+              domToKonvaVisualOffsetRawPx: roundMetric(domToKonvaVisualOffsetRawPx),
+              domToKonvaVisualOffsetPx: roundMetric(domToKonvaVisualOffsetPx),
+              v2OffsetOneShotPx: roundMetric(Number(v2OffsetOneShotPx || 0)),
+              effectiveVisualOffsetPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+            },
+          };
+          console.log(
+            `[INLINE][DIAG] alignment-offset-breakdown\n${formatInlineLogPayload(alignmentOffsetBreakdownPayload)}`
+          );
+          pushInlineTraceEvent("alignment-offset-breakdown", {
+            id: alignmentOffsetBreakdownPayload.id,
+            sessionId: alignmentOffsetBreakdownPayload.sessionId,
+            phase: alignmentOffsetBreakdownPayload.phase,
+            overlayEngine: alignmentOffsetBreakdownPayload.overlayEngine,
+            eventName,
+            effectiveVisualOffsetPx:
+              alignmentOffsetBreakdownPayload.breakdown.effectiveVisualOffsetPx,
+            blockedReason: alignmentOffsetBreakdownPayload.offsetModel.blockedReason,
+          });
+        } catch (diagError) {
+          console.warn("[INLINE][DIAG] alignment-channel-error", {
+            eventName,
+            error: String(diagError || ""),
+          });
+        }
+      }
+    }
+
     if (typeof onDebugEvent === "function") {
       onDebugEvent(eventName, payload);
     }

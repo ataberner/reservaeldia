@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
   INLINE_ALIGNMENT_MODEL_V2_VERSION,
   pushInlineTraceEvent,
@@ -108,10 +108,32 @@ function normalizeProbeRect(rect) {
   return rect;
 }
 
-function roundNullableMetric(value) {
+function toFiniteNumber(value) {
   if (value === null || typeof value === "undefined" || value === "") return null;
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? roundMetric(numeric) : null;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function roundNullableMetric(value) {
+  const numeric = toFiniteNumber(value);
+  return numeric === null ? null : roundMetric(numeric);
+}
+
+function diffNullableMetric(nextValue, prevValue) {
+  const next = toFiniteNumber(nextValue);
+  const prev = toFiniteNumber(prevValue);
+  if (next === null || prev === null) return null;
+  return roundMetric(next - prev);
+}
+
+function maxAbsFinite(values = []) {
+  const normalized = Array.isArray(values)
+    ? values
+      .map((value) => toFiniteNumber(value))
+      .filter((value) => value !== null)
+    : [];
+  if (normalized.length === 0) return null;
+  return Math.max(...normalized.map((value) => Math.abs(value)));
 }
 
 export default function useInlineDebugEmitter({
@@ -183,6 +205,12 @@ export default function useInlineDebugEmitter({
   editableHostRef,
   overlaySessionIdRef,
 }) {
+  const horizontalDiagRef = useRef({
+    sessionKey: null,
+    eventName: null,
+    metrics: null,
+  });
+
   const emitDebug = useCallback((eventName, extra = {}) => {
     if (!DEBUG_MODE) return;
     const diagConfig = readInlineAlignmentDiagConfig(DEBUG_MODE);
@@ -225,14 +253,26 @@ export default function useInlineDebugEmitter({
       Boolean(selectionRectRaw) && !selectionRect;
     const projectedKonvaRect = projectedKonvaRectBase;
     const projectedKonvaRectRawSnapshot = projectedKonvaRectRaw;
+    const overlayToKonvaDx = overlayRect
+      ? overlayRect.x - projectedKonvaRect.x
+      : null;
     const overlayToKonvaDy = overlayRect
       ? overlayRect.y - projectedKonvaRect.y
+      : null;
+    const contentToKonvaDx = contentRect
+      ? contentRect.x - projectedKonvaRect.x
       : null;
     const contentToKonvaDy = contentRect
       ? contentRect.y - projectedKonvaRect.y
       : null;
+    const fullRangeToContentDx =
+      fullRangeRect && contentRect ? fullRangeRect.x - contentRect.x : null;
     const fullRangeToContentDy =
       fullRangeRect && contentRect ? fullRangeRect.y - contentRect.y : null;
+    const caretToContentDx =
+      selectionInfo.inEditor && selectionRect && contentRect
+        ? selectionRect.x - contentRect.x
+        : null;
     const caretToContentDy =
       selectionInfo.inEditor && selectionRect && contentRect
         ? selectionRect.y - contentRect.y
@@ -241,6 +281,8 @@ export default function useInlineDebugEmitter({
     const caretProbeRect = normalizeProbeRect(caretProbeRectRaw);
     const caretProbeRectDegenerate =
       Boolean(caretProbeRectRaw) && !caretProbeRect;
+    const caretProbeToContentDx =
+      caretProbeRect && contentRect ? caretProbeRect.x - contentRect.x : null;
     const caretProbeToContentDy =
       caretProbeRect && contentRect ? caretProbeRect.y - contentRect.y : null;
     const caretProbeHeightPx = caretProbeRect ? caretProbeRect.height : null;
@@ -249,6 +291,8 @@ export default function useInlineDebugEmitter({
     const selectionGeometryReady = Boolean(selectionRect);
     const caretGeometryReady = Boolean(caretProbeRect);
     const firstGlyphRect = getFirstGlyphRectInEditor(editorRef.current);
+    const firstGlyphToContentDx =
+      firstGlyphRect && contentRect ? firstGlyphRect.x - contentRect.x : null;
     const firstGlyphToContentDy =
       firstGlyphRect && contentRect ? firstGlyphRect.y - contentRect.y : null;
     const firstGlyphHeightPx = firstGlyphRect ? firstGlyphRect.height : null;
@@ -272,6 +316,7 @@ export default function useInlineDebugEmitter({
         lineHeightPx: editableLineHeightPx,
         letterSpacingPx,
         probeText,
+        canvasInkMetrics,
       });
     const domCssInkProbe =
       domCssInkProbeModel ||
@@ -314,6 +359,119 @@ export default function useInlineDebugEmitter({
       Number.isFinite(firstGlyphToContentDy) && Number.isFinite(Number(domCssInkProbe?.glyphTopInsetPx))
         ? firstGlyphToContentDy - Number(domCssInkProbe.glyphTopInsetPx)
         : null;
+    const firstGlyphX = toFiniteNumber(firstGlyphRect?.x);
+    const projectedKonvaX = toFiniteNumber(projectedKonvaRect?.x);
+    const domProbeHostWidthPx = toFiniteNumber(domInkProbe?.hostWidthPx);
+    const konvaProbeHostWidthPx = toFiniteNumber(konvaInkProbe?.hostWidthPx);
+    const domProbeGlyphWidthPx = toFiniteNumber(
+      domInkProbe?.glyphInkWidthPx ?? domInkProbe?.glyphWidthPx
+    );
+    const konvaProbeGlyphWidthPx = toFiniteNumber(konvaInkProbe?.glyphWidthPx);
+    const domProbeGlyphLeftInsetPx = toFiniteNumber(
+      domInkProbe?.glyphInkLeftInsetPx ?? domInkProbe?.glyphLeftInsetPx
+    );
+    const konvaProbeGlyphLeftInsetPx = toFiniteNumber(konvaInkProbe?.glyphLeftInsetPx);
+    const domProbeGlyphRightInsetPx = toFiniteNumber(
+      domInkProbe?.glyphInkRightInsetPx ?? domInkProbe?.glyphRightInsetPx
+    );
+    const konvaProbeGlyphRightInsetPx = toFiniteNumber(konvaInkProbe?.glyphRightInsetPx);
+    const firstGlyphToKonvaDx =
+      firstGlyphX !== null && projectedKonvaX !== null
+        ? firstGlyphX - projectedKonvaX
+        : null;
+    const probeHostWidthDeltaPx =
+      domProbeHostWidthPx !== null && konvaProbeHostWidthPx !== null
+        ? domProbeHostWidthPx - konvaProbeHostWidthPx
+        : null;
+    const probeGlyphWidthDeltaPx =
+      domProbeGlyphWidthPx !== null && konvaProbeGlyphWidthPx !== null
+        ? domProbeGlyphWidthPx - konvaProbeGlyphWidthPx
+        : null;
+    const probeGlyphLeftInsetDeltaPx =
+      domProbeGlyphLeftInsetPx !== null && konvaProbeGlyphLeftInsetPx !== null
+        ? domProbeGlyphLeftInsetPx - konvaProbeGlyphLeftInsetPx
+        : null;
+    const probeGlyphRightInsetDeltaPx =
+      domProbeGlyphRightInsetPx !== null && konvaProbeGlyphRightInsetPx !== null
+        ? domProbeGlyphRightInsetPx - konvaProbeGlyphRightInsetPx
+        : null;
+    const rendererParityThresholdsPx = {
+      overlayToKonvaDx: 0.05,
+      firstGlyphToKonvaDx: 0.05,
+      probeHostWidthDeltaPx: 0.25,
+      probeGlyphWidthDeltaPx: 1,
+      probeGlyphLeftInsetDeltaPx: 1,
+      probeGlyphRightInsetDeltaPx: 1,
+    };
+    const rendererParityComparable = {
+      overlayToKonvaDx: roundNullableMetric(overlayToKonvaDx),
+      firstGlyphToKonvaDx: roundNullableMetric(firstGlyphToKonvaDx),
+      probeHostWidthDeltaPx: roundNullableMetric(probeHostWidthDeltaPx),
+      probeGlyphWidthDeltaPx: roundNullableMetric(probeGlyphWidthDeltaPx),
+      probeGlyphLeftInsetDeltaPx: roundNullableMetric(probeGlyphLeftInsetDeltaPx),
+      probeGlyphRightInsetDeltaPx: roundNullableMetric(probeGlyphRightInsetDeltaPx),
+    };
+    const rendererParityKeysLayout = [
+      "overlayToKonvaDx",
+      "firstGlyphToKonvaDx",
+      "probeHostWidthDeltaPx",
+    ];
+    const rendererParityKeysInk = [
+      "probeGlyphWidthDeltaPx",
+      "probeGlyphLeftInsetDeltaPx",
+      "probeGlyphRightInsetDeltaPx",
+    ];
+    const isRendererParityBreached = (key) => {
+      const comparableValue = toFiniteNumber(rendererParityComparable[key]);
+      const thresholdValue = toFiniteNumber(rendererParityThresholdsPx[key]);
+      if (comparableValue === null || thresholdValue === null) return false;
+      return Math.abs(comparableValue) > thresholdValue;
+    };
+    const rendererParityBreached = {
+      overlayToKonvaDx: isRendererParityBreached("overlayToKonvaDx"),
+      firstGlyphToKonvaDx: isRendererParityBreached("firstGlyphToKonvaDx"),
+      probeHostWidthDeltaPx: isRendererParityBreached("probeHostWidthDeltaPx"),
+      probeGlyphWidthDeltaPx: isRendererParityBreached("probeGlyphWidthDeltaPx"),
+      probeGlyphLeftInsetDeltaPx: isRendererParityBreached("probeGlyphLeftInsetDeltaPx"),
+      probeGlyphRightInsetDeltaPx: isRendererParityBreached("probeGlyphRightInsetDeltaPx"),
+    };
+    const rendererParityLayoutBreached = {
+      overlayToKonvaDx: rendererParityBreached.overlayToKonvaDx,
+      firstGlyphToKonvaDx: rendererParityBreached.firstGlyphToKonvaDx,
+      probeHostWidthDeltaPx: rendererParityBreached.probeHostWidthDeltaPx,
+    };
+    const rendererParityInkBreached = {
+      probeGlyphWidthDeltaPx: rendererParityBreached.probeGlyphWidthDeltaPx,
+      probeGlyphLeftInsetDeltaPx: rendererParityBreached.probeGlyphLeftInsetDeltaPx,
+      probeGlyphRightInsetDeltaPx: rendererParityBreached.probeGlyphRightInsetDeltaPx,
+    };
+    const rendererParityLayoutMaxAbsDeltaPx = roundNullableMetric(
+      maxAbsFinite(rendererParityKeysLayout.map((key) => rendererParityComparable[key]))
+    );
+    const rendererParityInkMaxAbsDeltaPx = roundNullableMetric(
+      maxAbsFinite(rendererParityKeysInk.map((key) => rendererParityComparable[key]))
+    );
+    const resolveParityStatus = (breachedMap, maxAbsDeltaPx) => {
+      if (Object.values(breachedMap).some(Boolean)) return "mismatch";
+      const maxAbs = toFiniteNumber(maxAbsDeltaPx);
+      return maxAbs !== null && maxAbs > 0.01 ? "subpixel" : "aligned";
+    };
+    const rendererParityLayoutStatus = resolveParityStatus(
+      rendererParityLayoutBreached,
+      rendererParityLayoutMaxAbsDeltaPx
+    );
+    const rendererParityInkStatus = resolveParityStatus(
+      rendererParityInkBreached,
+      rendererParityInkMaxAbsDeltaPx
+    );
+    // Estado principal enfocado en desplazamiento geometrico (handoff/layout).
+    const rendererParityStatus = rendererParityLayoutStatus;
+    const rendererParityMaxAbsDeltaPx = rendererParityLayoutMaxAbsDeltaPx;
+    const rendererParityLikelySource = (() => {
+      if (rendererParityLayoutStatus === "mismatch") return "layout-rasterization";
+      if (rendererParityLayoutStatus === "subpixel") return "subpixel-rasterization";
+      return "none";
+    })();
 
     const payload = {
       ...frameMeta,
@@ -379,7 +537,9 @@ export default function useInlineDebugEmitter({
       projectedKonvaRectRaw: projectedKonvaRectRawSnapshot,
       lockedCenterStageX: roundMetric(Number(lockedCenterStageX)),
       centerViewportX: roundMetric(Number(centerViewportX)),
+      overlayToKonvaDx,
       overlayToKonvaDy,
+      contentToKonvaDx,
       contentToKonvaDy,
       fullRangeRect,
       selectionInEditor: selectionInfo.inEditor,
@@ -387,15 +547,19 @@ export default function useInlineDebugEmitter({
       selectionRectRaw,
       selectionRectDegenerate,
       selectionGeometryReady,
+      fullRangeToContentDx,
       fullRangeToContentDy,
+      caretToContentDx,
       caretToContentDy,
       caretProbeRect,
       caretProbeRectRaw,
       caretProbeRectDegenerate,
       caretGeometryReady,
+      caretProbeToContentDx,
       caretProbeToContentDy,
       caretProbeHeightPx,
       firstGlyphRect,
+      firstGlyphToContentDx,
       firstGlyphToContentDy,
       firstGlyphHeightPx,
       computedFontSize: computedStyle?.fontSize ?? null,
@@ -406,6 +570,8 @@ export default function useInlineDebugEmitter({
       computedFontOpticalSizing: computedStyle?.fontOpticalSizing ?? null,
       computedPaddingTop: computedStyle?.paddingTop ?? null,
       computedPaddingBottom: computedStyle?.paddingBottom ?? null,
+      computedEditorLeftPx: roundNullableMetric(Number.parseFloat(computedStyle?.left)),
+      computedEditorTransform: computedStyle?.transform ?? null,
       computedBorderTop: computedStyle?.borderTopWidth ?? null,
       computedBorderBottom: computedStyle?.borderBottomWidth ?? null,
       fontSizePx,
@@ -518,6 +684,126 @@ export default function useInlineDebugEmitter({
     const domEditableVisualDy = Number.isFinite(domEditableVisualDyRaw)
       ? roundMetric(domEditableVisualDyRaw)
       : null;
+    const rawToBaseCenter = buildCenterDelta(
+      projectedKonvaRectRawSnapshot,
+      projectedKonvaRect
+    );
+    const rawToOverlayCenter = buildCenterDelta(
+      projectedKonvaRectRawSnapshot,
+      overlayRect
+    );
+    const baseToOverlayCenter = buildCenterDelta(projectedKonvaRect, overlayRect);
+    const overlayToContentCenter = buildCenterDelta(overlayRect, contentRect);
+    const overlayToEditorCenter = buildCenterDelta(overlayRect, editableVisualRect);
+    const contentToEditorCenter = buildCenterDelta(contentRect, editableVisualRect);
+    const rawToBaseLeftDx =
+      Number.isFinite(Number(projectedKonvaRectRawSnapshot?.x)) &&
+      Number.isFinite(Number(projectedKonvaRect?.x))
+        ? Number(projectedKonvaRect?.x) - Number(projectedKonvaRectRawSnapshot?.x)
+        : null;
+    const rawToBaseWidthDw =
+      Number.isFinite(Number(projectedKonvaRectRawSnapshot?.width)) &&
+      Number.isFinite(Number(projectedKonvaRect?.width))
+        ? Number(projectedKonvaRect?.width) - Number(projectedKonvaRectRawSnapshot?.width)
+        : null;
+    const rawToOverlayLeftDx =
+      Number.isFinite(Number(projectedKonvaRectRawSnapshot?.x)) &&
+      Number.isFinite(Number(overlayRect?.x))
+        ? Number(overlayRect?.x) - Number(projectedKonvaRectRawSnapshot?.x)
+        : null;
+    const rawToOverlayWidthDw =
+      Number.isFinite(Number(projectedKonvaRectRawSnapshot?.width)) &&
+      Number.isFinite(Number(overlayRect?.width))
+        ? Number(overlayRect?.width) - Number(projectedKonvaRectRawSnapshot?.width)
+        : null;
+
+    const overlayToContentDx =
+      overlayRect && contentRect
+        ? Number(contentRect.x) - Number(overlayRect.x)
+        : null;
+    const overlayToEditorDx =
+      overlayRect && editableVisualRect
+        ? Number(editableVisualRect.x) - Number(overlayRect.x)
+        : null;
+    const contentToEditorDx =
+      contentRect && editableVisualRect
+        ? Number(editableVisualRect.x) - Number(contentRect.x)
+        : null;
+
+    const contentClientWidthRaw = Number(editorRef.current?.clientWidth);
+    const contentScrollWidthRaw = Number(editorRef.current?.scrollWidth);
+    const contentOverflowXRaw =
+      Number.isFinite(contentScrollWidthRaw) && Number.isFinite(contentClientWidthRaw)
+        ? contentScrollWidthRaw - contentClientWidthRaw
+        : null;
+
+    const horizontalSessionId = overlaySessionIdRef.current || null;
+    const horizontalSessionKey = `${editingId || "__no-id__"}::${horizontalSessionId || "__no-session__"}`;
+    const horizontalMetricsCurrent = {
+      overlayX: Number(overlayRect?.x),
+      overlayWidth: Number(overlayRect?.width),
+      contentX: Number(contentRect?.x),
+      contentWidth: Number(contentRect?.width),
+      editableVisualX: Number(editableVisualRect?.x),
+      editableVisualWidth: Number(editableVisualRect?.width),
+      overlayLeftComputedPx: Number(left),
+      centeredEditorLeftPx: Number(centeredEditorLeftPx),
+      centeredEditorWidthPx: Number(centeredEditorWidthPx),
+      contentClientWidth: contentClientWidthRaw,
+      contentScrollWidth: contentScrollWidthRaw,
+      contentOverflowX: contentOverflowXRaw,
+    };
+    const previousHorizontalEntry =
+      horizontalDiagRef.current?.sessionKey === horizontalSessionKey
+        ? horizontalDiagRef.current
+        : null;
+    const previousHorizontalMetrics = previousHorizontalEntry?.metrics || null;
+    const horizontalShiftFromPrev = previousHorizontalMetrics
+      ? {
+          fromEvent: previousHorizontalEntry?.eventName || null,
+          overlayDx: diffNullableMetric(
+            horizontalMetricsCurrent.overlayX,
+            previousHorizontalMetrics.overlayX
+          ),
+          contentDx: diffNullableMetric(
+            horizontalMetricsCurrent.contentX,
+            previousHorizontalMetrics.contentX
+          ),
+          editableVisualDx: diffNullableMetric(
+            horizontalMetricsCurrent.editableVisualX,
+            previousHorizontalMetrics.editableVisualX
+          ),
+          overlayWidthDw: diffNullableMetric(
+            horizontalMetricsCurrent.overlayWidth,
+            previousHorizontalMetrics.overlayWidth
+          ),
+          editableVisualWidthDw: diffNullableMetric(
+            horizontalMetricsCurrent.editableVisualWidth,
+            previousHorizontalMetrics.editableVisualWidth
+          ),
+          centeredEditorLeftDx: diffNullableMetric(
+            horizontalMetricsCurrent.centeredEditorLeftPx,
+            previousHorizontalMetrics.centeredEditorLeftPx
+          ),
+          centeredEditorWidthDw: diffNullableMetric(
+            horizontalMetricsCurrent.centeredEditorWidthPx,
+            previousHorizontalMetrics.centeredEditorWidthPx
+          ),
+          contentOverflowXDx: diffNullableMetric(
+            horizontalMetricsCurrent.contentOverflowX,
+            previousHorizontalMetrics.contentOverflowX
+          ),
+          overlayToEditorDx: diffNullableMetric(
+            horizontalMetricsCurrent.editableVisualX - horizontalMetricsCurrent.overlayX,
+            previousHorizontalMetrics.editableVisualX - previousHorizontalMetrics.overlayX
+          ),
+        }
+      : null;
+    horizontalDiagRef.current = {
+      sessionKey: horizontalSessionKey,
+      eventName,
+      metrics: horizontalMetricsCurrent,
+    };
 
     const domBoxTop = contentRect ? Number(contentRect.y) : null;
     const domBoxHeight = contentRect ? Number(contentRect.height) : null;
@@ -749,6 +1035,111 @@ export default function useInlineDebugEmitter({
         phase: payload.phase || eventName,
         overlayEngine: normalizedOverlayEngine,
         geometry: positionSnapshot.delta || null,
+        horizontal: {
+          x: {
+            konvaRawX: roundNullableMetric(projectedKonvaRectRawSnapshot?.x),
+            konvaBaseX: roundNullableMetric(projectedKonvaRect?.x),
+            overlayX: roundNullableMetric(overlayRect?.x),
+            contentX: roundNullableMetric(contentRect?.x),
+            editableVisualX: roundNullableMetric(editableVisualRect?.x),
+            fullRangeX: roundNullableMetric(fullRangeRect?.x),
+            selectionX: roundNullableMetric(selectionRect?.x),
+            caretProbeX: roundNullableMetric(caretProbeRect?.x),
+            firstGlyphX: roundNullableMetric(firstGlyphRect?.x),
+          },
+          width: {
+            projectedWidthPx: roundNullableMetric(projectedKonvaRect?.width),
+            overlayWidthPx: roundNullableMetric(overlayRect?.width),
+            contentWidthPx: roundNullableMetric(contentRect?.width),
+            editableVisualWidthPx: roundNullableMetric(editableVisualRect?.width),
+            measuredOverlayWidthPx: roundNullableMetric(measuredOverlayWidthPx),
+            syncedOverlayWidthPx: roundNullableMetric(resolvedOverlayWidthPx),
+            centeredEditorWidthPx: roundNullableMetric(centeredEditorWidthPx),
+            contentClientWidthPx: roundNullableMetric(contentClientWidthRaw),
+            contentScrollWidthPx: roundNullableMetric(contentScrollWidthRaw),
+            contentOverflowXPx: roundNullableMetric(contentOverflowXRaw),
+          },
+          local: {
+            overlayLeftComputedPx: roundNullableMetric(left),
+            centeredEditorLeftPx: roundNullableMetric(centeredEditorLeftPx),
+            overlayToContentDx: roundNullableMetric(overlayToContentDx),
+            overlayToEditorDx: roundNullableMetric(overlayToEditorDx),
+            contentToEditorDx: roundNullableMetric(contentToEditorDx),
+            rawToBaseLeftDx: roundNullableMetric(rawToBaseLeftDx),
+            rawToBaseWidthDw: roundNullableMetric(rawToBaseWidthDw),
+            rawToOverlayLeftDx: roundNullableMetric(rawToOverlayLeftDx),
+            rawToOverlayWidthDw: roundNullableMetric(rawToOverlayWidthDw),
+            rawToBaseCenterDx: rawToBaseCenter?.centerDx ?? null,
+            rawToOverlayCenterDx: rawToOverlayCenter?.centerDx ?? null,
+            baseToOverlayCenterDx: baseToOverlayCenter?.centerDx ?? null,
+            overlayToContentCenterDx: overlayToContentCenter?.centerDx ?? null,
+            overlayToEditorCenterDx: overlayToEditorCenter?.centerDx ?? null,
+            contentToEditorCenterDx: contentToEditorCenter?.centerDx ?? null,
+          },
+          caret: {
+            fullRangeToContentDx: roundNullableMetric(fullRangeToContentDx),
+            selectionToContentDx: roundNullableMetric(caretToContentDx),
+            caretProbeToContentDx: roundNullableMetric(caretProbeToContentDx),
+            firstGlyphToContentDx: roundNullableMetric(firstGlyphToContentDx),
+          },
+          shiftFromPrev: horizontalShiftFromPrev,
+        },
+        inkX: {
+          comparable: rendererParityComparable,
+          probes: {
+            domProbeHostWidthPx: roundNullableMetric(domInkProbe?.hostWidthPx),
+            konvaProbeHostWidthPx: roundNullableMetric(konvaInkProbe?.hostWidthPx),
+            domProbeGlyphWidthPx: roundNullableMetric(
+              domInkProbe?.glyphInkWidthPx ?? domInkProbe?.glyphWidthPx
+            ),
+            domProbeGlyphInkWidthPx: roundNullableMetric(domInkProbe?.glyphInkWidthPx),
+            konvaProbeGlyphWidthPx: roundNullableMetric(konvaInkProbe?.glyphWidthPx),
+            domProbeGlyphLeftInsetPx: roundNullableMetric(
+              domInkProbe?.glyphInkLeftInsetPx ?? domInkProbe?.glyphLeftInsetPx
+            ),
+            domProbeGlyphInkLeftInsetPx: roundNullableMetric(domInkProbe?.glyphInkLeftInsetPx),
+            konvaProbeGlyphLeftInsetPx: roundNullableMetric(konvaInkProbe?.glyphLeftInsetPx),
+            domProbeGlyphRightInsetPx: roundNullableMetric(
+              domInkProbe?.glyphInkRightInsetPx ?? domInkProbe?.glyphRightInsetPx
+            ),
+            domProbeGlyphInkRightInsetPx: roundNullableMetric(domInkProbe?.glyphInkRightInsetPx),
+            konvaProbeGlyphRightInsetPx: roundNullableMetric(konvaInkProbe?.glyphRightInsetPx),
+            domProbeGlyphInkSource: domInkProbe?.glyphInkSource || null,
+            canvasActualInkWidthPx: roundNullableMetric(canvasInkMetrics?.actualInkWidthPx),
+            canvasAdvanceWidthPx: roundNullableMetric(canvasInkMetrics?.advanceWidthPx),
+            canvasAdvanceToInkLeftInsetPx: roundNullableMetric(
+              canvasInkMetrics?.advanceToInkLeftInsetPx
+            ),
+            canvasAdvanceToInkRightInsetPx: roundNullableMetric(
+              canvasInkMetrics?.advanceToInkRightInsetPx
+            ),
+          },
+          rendererParity: {
+            status: rendererParityStatus,
+            likelySource: rendererParityLikelySource,
+            maxAbsComparableDeltaPx: rendererParityMaxAbsDeltaPx,
+            thresholdsPx: rendererParityThresholdsPx,
+            breached: rendererParityBreached,
+            layout: {
+              status: rendererParityLayoutStatus,
+              maxAbsComparableDeltaPx: rendererParityLayoutMaxAbsDeltaPx,
+              breached: rendererParityLayoutBreached,
+            },
+            ink: {
+              status: rendererParityInkStatus,
+              likelySource:
+                rendererParityInkStatus === "mismatch"
+                  ? "renderer-ink-rasterization"
+                  : (
+                    rendererParityInkStatus === "subpixel"
+                      ? "subpixel-rasterization"
+                      : "none"
+                  ),
+              maxAbsComparableDeltaPx: rendererParityInkMaxAbsDeltaPx,
+              breached: rendererParityInkBreached,
+            },
+          },
+        },
         focus: {
           isFocused: payload.isFocused,
           focusClaimed: payload.focusClaimed,
@@ -883,6 +1274,27 @@ export default function useInlineDebugEmitter({
       dy: roundMetric(traceDy),
       dw: roundMetric(Number(positionSnapshot?.delta?.dw)),
       dh: roundMetric(Number(positionSnapshot?.delta?.dh)),
+      overlayToEditorDx: roundNullableMetric(overlayToEditorDx),
+      overlayToContentDx: roundNullableMetric(overlayToContentDx),
+      contentToEditorDx: roundNullableMetric(contentToEditorDx),
+      centeredEditorLeftPx: roundNullableMetric(centeredEditorLeftPx),
+      centeredEditorWidthPx: roundNullableMetric(centeredEditorWidthPx),
+      contentOverflowXPx: roundNullableMetric(contentOverflowXRaw),
+      editorDxFromPrev: horizontalShiftFromPrev?.editableVisualDx ?? null,
+      overlayDxFromPrev: horizontalShiftFromPrev?.overlayDx ?? null,
+      overlayToEditorDxFromPrev: horizontalShiftFromPrev?.overlayToEditorDx ?? null,
+      rendererParityStatus,
+      rendererParityLikelySource,
+      rendererParityMaxAbsDeltaPx,
+      rendererParityLayoutStatus,
+      rendererParityLayoutMaxAbsDeltaPx,
+      rendererParityInkStatus,
+      rendererParityInkMaxAbsDeltaPx,
+      firstGlyphToKonvaDx: rendererParityComparable.firstGlyphToKonvaDx,
+      probeHostWidthDeltaPx: rendererParityComparable.probeHostWidthDeltaPx,
+      probeGlyphWidthDeltaPx: rendererParityComparable.probeGlyphWidthDeltaPx,
+      probeGlyphLeftInsetDeltaPx: rendererParityComparable.probeGlyphLeftInsetDeltaPx,
+      probeGlyphRightInsetDeltaPx: rendererParityComparable.probeGlyphRightInsetDeltaPx,
       offsetYApplied: roundMetric(Number(domToKonvaVisualOffsetPx || 0)),
       offsetYResolved: roundMetric(Number(effectiveVisualOffsetPx || 0)),
       domVisualDy: roundMetric(domEditableVisualDy),

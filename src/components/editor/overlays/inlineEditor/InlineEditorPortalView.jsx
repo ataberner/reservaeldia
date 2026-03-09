@@ -27,6 +27,8 @@ export default function InlineEditorPortalView({
   contentDebugStyle,
   editableHostRef,
   editorRef,
+  editorVisualWidthPx,
+  editorVisualLeftPx,
   centeredEditorWidthPx,
   centeredEditorLeftPx,
   effectiveVisualOffsetPx,
@@ -45,6 +47,16 @@ export default function InlineEditorPortalView({
 }) {
   const overlayPortalTarget = document.body;
   const liveEditableVisible = true;
+  const resolvedEditorWidthCss = Number.isFinite(editorVisualWidthPx)
+    ? `${editorVisualWidthPx}px`
+    : (
+      Number.isFinite(centeredEditorWidthPx)
+        ? `${centeredEditorWidthPx}px`
+        : "100%"
+    );
+  const resolvedEditorLeftCss = Number.isFinite(editorVisualLeftPx)
+    ? `${editorVisualLeftPx}px`
+    : `${centeredEditorLeftPx}px`;
 
   return createPortal(
     <>
@@ -181,16 +193,13 @@ export default function InlineEditorPortalView({
             style={{
               display: "block",
               verticalAlign: "top",
-              width: Number.isFinite(centeredEditorWidthPx)
-                ? `${centeredEditorWidthPx}px`
-                : "100%",
-              minWidth: Number.isFinite(centeredEditorWidthPx)
-                ? `${centeredEditorWidthPx}px`
-                : "100%",
+              width: resolvedEditorWidthCss,
+              minWidth: resolvedEditorWidthCss,
+              maxWidth: "none",
               height: "100%",
               minHeight: "100%",
               position: "absolute",
-              left: `${centeredEditorLeftPx}px`,
+              left: resolvedEditorLeftCss,
               top: "0px",
               transform: `translateY(${effectiveVisualOffsetPx}px)`,
               transformOrigin: "top left",
@@ -204,9 +213,13 @@ export default function InlineEditorPortalView({
               fontWeight: nodeProps.fontWeight,
               fontStyle: nodeProps.fontStyle,
               fontOpticalSizing: "none",
-              textRendering: "geometricPrecision",
-              WebkitFontSmoothing: "antialiased",
-              MozOsxFontSmoothing: "grayscale",
+              fontKerning: "auto",
+              fontVariantLigatures: "normal",
+              fontFeatureSettings: "normal",
+              fontSynthesis: "weight style",
+              textRendering: "auto",
+              WebkitFontSmoothing: "auto",
+              MozOsxFontSmoothing: "auto",
               lineHeight: `${editableLineHeightPx}px`,
               letterSpacing: `${letterSpacingPx}px`,
               color: editorTextColor,

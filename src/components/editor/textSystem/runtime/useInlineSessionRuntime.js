@@ -53,6 +53,12 @@ function readInlineAlignmentDiagConfig(debugEnabled) {
   };
 }
 
+function toInlineFiniteNumber(value) {
+  if (value === null || typeof value === "undefined" || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export default function useCanvasEditorInlineRuntime({
   editing,
   isMobile,
@@ -181,6 +187,29 @@ export default function useCanvasEditorInlineRuntime({
       const overlayDomPresent = Boolean(overlayRoot);
       const overlayVisualReady =
         overlayRoot?.getAttribute?.("data-inline-editor-visual-ready") === "true";
+      const overlayEditableEl = overlayRoot
+        ? (
+            overlayRoot.querySelector('[contenteditable="true"]') ||
+            overlayRoot.querySelector("input") ||
+            overlayRoot.querySelector("textarea")
+          )
+        : null;
+      const overlayRectRaw = overlayRoot?.getBoundingClientRect?.() || null;
+      const overlayEditableRectRaw = overlayEditableEl?.getBoundingClientRect?.() || null;
+      const overlayXRaw = toInlineFiniteNumber(overlayRectRaw?.x);
+      const overlayWidthRaw = toInlineFiniteNumber(overlayRectRaw?.width);
+      const editableXRaw = toInlineFiniteNumber(overlayEditableRectRaw?.x);
+      const editableWidthRaw = toInlineFiniteNumber(overlayEditableRectRaw?.width);
+      const overlayX = overlayXRaw !== null ? roundInlineMetric(overlayXRaw, 4) : null;
+      const overlayWidth =
+        overlayWidthRaw !== null ? roundInlineMetric(overlayWidthRaw, 4) : null;
+      const editableX = editableXRaw !== null ? roundInlineMetric(editableXRaw, 4) : null;
+      const editableWidth =
+        editableWidthRaw !== null ? roundInlineMetric(editableWidthRaw, 4) : null;
+      const overlayToEditableDx =
+        editableXRaw !== null && overlayXRaw !== null
+          ? roundInlineMetric(editableXRaw - overlayXRaw, 4)
+          : null;
       const activeEl = typeof document !== "undefined" ? document.activeElement : null;
       const overlayFocused = Boolean(
         overlayRoot &&
@@ -206,6 +235,24 @@ export default function useCanvasEditorInlineRuntime({
       const konvaVisible =
         targetNode && typeof targetNode.visible === "function"
           ? Boolean(targetNode.visible())
+          : null;
+      const stage = targetNode?.getStage?.() || stageRef.current?.getStage?.() || stageRef.current || null;
+      const konvaTextNode = resolveInlineKonvaTextNode(targetNode, stage) || targetNode;
+      const konvaProjection = konvaTextNode
+        ? getInlineKonvaProjectedRectViewport(konvaTextNode, stage, escalaVisual)
+        : null;
+      const konvaProjectedRect = konvaProjection?.konvaProjectedRectViewport || null;
+      const konvaProjectedXRaw = toInlineFiniteNumber(konvaProjectedRect?.x);
+      const konvaProjectedWidthRaw = toInlineFiniteNumber(konvaProjectedRect?.width);
+      const konvaProjectedX =
+        konvaProjectedXRaw !== null ? roundInlineMetric(konvaProjectedXRaw, 4) : null;
+      const konvaProjectedWidth =
+        konvaProjectedWidthRaw !== null
+          ? roundInlineMetric(konvaProjectedWidthRaw, 4)
+          : null;
+      const overlayToKonvaDx =
+        overlayXRaw !== null && konvaProjectedXRaw !== null
+          ? roundInlineMetric(overlayXRaw - konvaProjectedXRaw, 4)
           : null;
 
       if (compactMode) {
@@ -237,6 +284,16 @@ export default function useCanvasEditorInlineRuntime({
           offsetSource: details?.offsetSource || null,
           offsetSpace: details?.offsetSpace || null,
           eventLoopPhase: details?.eventLoopPhase || "sync",
+          horizontal: {
+            overlayX,
+            overlayWidth,
+            editableX,
+            editableWidth,
+            overlayToEditableDx,
+            konvaProjectedX,
+            konvaProjectedWidth,
+            overlayToKonvaDx,
+          },
         };
         console.log(
           `[INLINE][DIAG] visibility-compact\n${formatInlineLogPayload(compactPayload)}`
@@ -325,6 +382,8 @@ export default function useCanvasEditorInlineRuntime({
     inlineKonvaDrawMetaRef,
     inlineOverlayMountedId,
     inlineOverlayMountSession,
+    escalaVisual,
+    stageRef,
   ]);
 
   const applyInlineOverlayMountState = useCallback((id, mounted, meta = {}) => {

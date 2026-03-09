@@ -205,6 +205,11 @@ export default function InlineTextEditor({
     sessionId: null,
     settled: false,
   });
+  const inlinePristineValueRef = useRef({
+    editingId: null,
+    initialNormalizedValue: null,
+    dirty: false,
+  });
   const nudgeDiagPrevRef = useRef({
     projectedY: null,
     konvaTopInset: null,
@@ -330,6 +335,22 @@ export default function InlineTextEditor({
   const normalizedValue = normalizeInlineEditableText(rawValue, {
     trimPhantomTrailingNewline: true,
   });
+  if (inlinePristineValueRef.current.editingId !== (editingId || null)) {
+    inlinePristineValueRef.current = {
+      editingId: editingId || null,
+      initialNormalizedValue: normalizedValue,
+      dirty: false,
+    };
+  } else if (
+    !inlinePristineValueRef.current.dirty &&
+    inlinePristineValueRef.current.initialNormalizedValue !== normalizedValue
+  ) {
+    inlinePristineValueRef.current.dirty = true;
+  }
+  const isPristineInlineValue = Boolean(
+    inlinePristineValueRef.current.editingId === (editingId || null) &&
+    inlinePristineValueRef.current.dirty === false
+  );
   const normalizedValueForMeasure = normalizedValue.replace(/[ \t]+$/gm, "");
   const normalizedValueForSingleLine = normalizedValueForMeasure.replace(/\n+$/g, "");
   const isSingleLine = !normalizedValueForMeasure.includes("\n");
@@ -457,28 +478,6 @@ export default function InlineTextEditor({
   const singleLineCaretMode = !isSingleLine
     ? "multiline"
     : (useKonvaLineHeightForSingleLine ? "konva-line-height" : "font-size-line-height");
-  const domInkProbeModel = useMemo(
-    () =>
-      measureDomInkProbe({
-        fontStyle: nodeProps.fontStyle,
-        fontWeight: nodeProps.fontWeight,
-        fontSizePx,
-        fontFamily: nodeProps.fontFamily,
-        lineHeightPx: editableLineHeightPx,
-        letterSpacingPx,
-        probeText: metricsProbeText,
-      }),
-    [
-      fontMetricsRevision,
-      editableLineHeightPx,
-      fontSizePx,
-      letterSpacingPx,
-      nodeProps.fontFamily,
-      nodeProps.fontStyle,
-      nodeProps.fontWeight,
-      metricsProbeText,
-    ]
-  );
   const canvasInkMetricsModel = useMemo(
     () =>
       measureCanvasInkMetrics({
@@ -491,6 +490,30 @@ export default function InlineTextEditor({
     [
       fontMetricsRevision,
       fontSizePx,
+      nodeProps.fontFamily,
+      nodeProps.fontStyle,
+      nodeProps.fontWeight,
+      metricsProbeText,
+    ]
+  );
+  const domInkProbeModel = useMemo(
+    () =>
+      measureDomInkProbe({
+        fontStyle: nodeProps.fontStyle,
+        fontWeight: nodeProps.fontWeight,
+        fontSizePx,
+        fontFamily: nodeProps.fontFamily,
+        lineHeightPx: editableLineHeightPx,
+        letterSpacingPx,
+        probeText: metricsProbeText,
+        canvasInkMetrics: canvasInkMetricsModel,
+      }),
+    [
+      fontMetricsRevision,
+      canvasInkMetricsModel,
+      editableLineHeightPx,
+      fontSizePx,
+      letterSpacingPx,
       nodeProps.fontFamily,
       nodeProps.fontStyle,
       nodeProps.fontWeight,
@@ -1565,7 +1588,11 @@ export default function InlineTextEditor({
       }),
       0
     );
-    return Math.max(20, Math.ceil(maxLineWidth));
+    const normalizedMaxLineWidth = roundMetric(Number(maxLineWidth));
+    return Math.max(
+      20,
+      Number.isFinite(Number(normalizedMaxLineWidth)) ? Number(normalizedMaxLineWidth) : 0
+    );
   }, [
     editableLineHeightPx,
     fontMetricsRevision,
@@ -1626,7 +1653,11 @@ export default function InlineTextEditor({
       return hasProjectedKonvaWidth ? projectedWidth : measuredOverlayWidthPx;
     }
     if (hasProjectedKonvaWidth && Number.isFinite(measuredOverlayWidthPx)) {
-      // Nunca usar un ancho menor al que Konva ya esta pintando.
+      // Handoff semantico: mientras el valor no cambie, la geometria inicial
+      // debe permanecer anclada al rect raw de Konva (sin desacople raw->base).
+      if (isPristineInlineValue) return projectedWidth;
+      // Tras primer cambio de contenido, nunca usar un ancho menor al que
+      // Konva ya pintaba (evita recorte visual en la transicion de ancho).
       return Math.max(projectedWidth, measuredOverlayWidthPx);
     }
     if (hasProjectedKonvaWidth) return projectedWidth;
@@ -1636,9 +1667,13 @@ export default function InlineTextEditor({
   const overlayWidthSource =
     hasProjectedKonvaWidth && Number.isFinite(measuredOverlayWidthPx)
       ? (
-        measuredOverlayWidthPx > projectedWidth
-          ? "max:measured"
-          : "max:konva"
+        isPristineInlineValue
+          ? "handoff:konva-pristine"
+          : (
+            measuredOverlayWidthPx > projectedWidth
+              ? "max:measured"
+              : "max:konva"
+          )
       )
       : (
         hasProjectedKonvaWidth
@@ -1668,12 +1703,79 @@ export default function InlineTextEditor({
     Number.isFinite(measuredOverlayWidthPx) &&
     Number(measuredOverlayWidthPx) > 0 &&
     Number(resolvedOverlayWidthPx) - Number(measuredOverlayWidthPx) > 0.5;
-  const centeredEditorWidthPx = shouldCenterTextWithinOverlay
+  const centeredEditorBaseWidthPx = shouldCenterTextWithinOverlay
     ? Number(measuredOverlayWidthPx)
     : null;
-  const centeredEditorLeftPx = shouldCenterTextWithinOverlay
+  const centeredEditorBaseLeftPx = shouldCenterTextWithinOverlay
     ? (Number(resolvedOverlayWidthPx) - Number(measuredOverlayWidthPx)) / 2
     : 0;
+  const centeredEditorSlackPx = shouldCenterTextWithinOverlay
+    ? Math.max(0, Number(resolvedOverlayWidthPx) - Number(measuredOverlayWidthPx))
+    : 0;
+  // Reserva minima para caret sin provocar salto visible al reclamar foco.
+  const caretReservePxRaw = shouldCenterTextWithinOverlay
+    ? Math.min(
+      1,
+      Math.max(0.5, Number(fontSizePx || 0) * 0.03),
+      Number(centeredEditorSlackPx || 0)
+    )
+    : 0;
+  const caretReservePx = shouldCenterTextWithinOverlay
+    ? Math.max(0, Number(snapToDevicePixelGrid(caretReservePxRaw)))
+    : 0;
+  const centeredEditorWidthPx = shouldCenterTextWithinOverlay
+    ? Math.max(1, Number(centeredEditorBaseWidthPx) - Number(caretReservePx))
+    : null;
+  const centeredEditorLeftPx = shouldCenterTextWithinOverlay
+    ? Number(centeredEditorBaseLeftPx) - Number(caretReservePx) * 0.5
+    : 0;
+  const editorBaseWidthPx = Number.isFinite(centeredEditorWidthPx)
+    ? Number(centeredEditorWidthPx)
+    : (
+      Number.isFinite(resolvedOverlayWidthPx)
+        ? Number(resolvedOverlayWidthPx)
+        : (Number.isFinite(resolvedMinWidthPx) ? Number(resolvedMinWidthPx) : null)
+    );
+  const canvasInkOverflowLeftPx = Math.max(
+    0,
+    -Number(canvasInkMetricsModel?.advanceToInkLeftInsetPx || 0)
+  );
+  const canvasInkOverflowRightPx = Math.max(
+    0,
+    -Number(canvasInkMetricsModel?.advanceToInkRightInsetPx || 0)
+  );
+  const domInkRightInsetForParity = Number.isFinite(Number(domInkProbeModel?.glyphInkRightInsetPx))
+    ? Number(domInkProbeModel.glyphInkRightInsetPx)
+    : Number(domInkProbeModel?.glyphRightInsetPx);
+  const domInkLeftInsetForParity = Number.isFinite(Number(domInkProbeModel?.glyphInkLeftInsetPx))
+    ? Number(domInkProbeModel.glyphInkLeftInsetPx)
+    : Number(domInkProbeModel?.glyphLeftInsetPx);
+  const domInkOverflowLeftPx = Math.max(0, -Number(domInkLeftInsetForParity || 0));
+  const domInkOverflowRightPx = Math.max(0, -Number(domInkRightInsetForParity || 0));
+  const inkParityLeftExpansionPxRaw =
+    canvasInkOverflowLeftPx - domInkOverflowLeftPx;
+  const inkParityRightExpansionPxRaw =
+    canvasInkOverflowRightPx - domInkOverflowRightPx;
+  const shouldApplyHorizontalInkParity =
+    Boolean(isPhaseAtomicV2) &&
+    Boolean(isSingleLine) &&
+    Boolean(isPristineInlineValue) &&
+    Number.isFinite(editorBaseWidthPx) &&
+    (
+      Math.abs(Number(inkParityLeftExpansionPxRaw || 0)) > 0.01 ||
+      Math.abs(Number(inkParityRightExpansionPxRaw || 0)) > 0.01
+    );
+  const inkParityLeftExpansionPx = shouldApplyHorizontalInkParity
+    ? Math.max(0, Number(inkParityLeftExpansionPxRaw || 0))
+    : 0;
+  const inkParityRightExpansionPx = shouldApplyHorizontalInkParity
+    ? Math.max(0, Number(inkParityRightExpansionPxRaw || 0))
+    : 0;
+  const editorVisualLeftPx = Number(centeredEditorLeftPx || 0) - inkParityLeftExpansionPx;
+  const editorVisualWidthPx =
+    Number.isFinite(editorBaseWidthPx)
+      ? Math.max(1, Number(editorBaseWidthPx) + inkParityLeftExpansionPx + inkParityRightExpansionPx)
+      : null;
   useLayoutEffect(() => {
     if (isPhaseAtomicV2) return undefined;
     if (layoutProbeRevision <= 0) return;
@@ -2490,8 +2592,8 @@ export default function InlineTextEditor({
     isSingleLine,
     maintainCenterWhileEditing,
     shouldCenterTextWithinOverlay,
-    centeredEditorWidthPx,
-    centeredEditorLeftPx,
+    centeredEditorWidthPx: editorVisualWidthPx,
+    centeredEditorLeftPx: editorVisualLeftPx,
     singleLineCaretMode,
     singleLineProbeOverflowPx,
     useKonvaLineHeightForSingleLine,
@@ -2649,6 +2751,8 @@ export default function InlineTextEditor({
       contentDebugStyle={contentDebugStyle}
       editableHostRef={editableHostRef}
       editorRef={editorRef}
+      editorVisualWidthPx={editorVisualWidthPx}
+      editorVisualLeftPx={editorVisualLeftPx}
       centeredEditorWidthPx={centeredEditorWidthPx}
       centeredEditorLeftPx={centeredEditorLeftPx}
       effectiveVisualOffsetPx={effectiveVisualOffsetPx}

@@ -566,6 +566,71 @@ export default function Dashboard() {
   const homeLoaderForceTimerRef = useRef(null);
   const homeLoaderHideTimerRef = useRef(null);
   const router = useRouter();
+  const normalizeDashboardAsPath = useCallback((value) => {
+    if (typeof value !== "string") return "";
+    const withoutHash = value.split("#")[0] || "";
+    const [pathnameRaw, searchRaw = ""] = withoutHash.split("?");
+    let pathname = pathnameRaw.trim() || "/";
+    if (pathname.length > 1 && pathname.endsWith("/")) {
+      pathname = pathname.slice(0, -1);
+    }
+    return searchRaw ? `${pathname}?${searchRaw}` : pathname;
+  }, []);
+  const buildDashboardAsPathFromQuery = useCallback((queryObj = {}) => {
+    const params = new URLSearchParams();
+    Object.keys(queryObj || {})
+      .sort()
+      .forEach((key) => {
+        const value = queryObj[key];
+        if (Array.isArray(value)) {
+          value.forEach((item) => {
+            if (item === null || typeof item === "undefined") return;
+            const text = String(item).trim();
+            if (!text) return;
+            params.append(key, text);
+          });
+          return;
+        }
+        if (value === null || typeof value === "undefined") return;
+        const text = String(value).trim();
+        if (!text) return;
+        params.set(key, text);
+      });
+    const serialized = params.toString();
+    return serialized ? `/dashboard?${serialized}` : "/dashboard";
+  }, []);
+  const replaceDashboardQuerySafely = useCallback(
+    (nextQuery = {}, options = { shallow: true }) => {
+      const targetAsPath = buildDashboardAsPathFromQuery(nextQuery);
+      const currentAsPath =
+        typeof window !== "undefined"
+          ? `${window.location.pathname || ""}${window.location.search || ""}`
+          : (typeof router.asPath === "string" ? router.asPath : "");
+
+      if (
+        normalizeDashboardAsPath(currentAsPath) ===
+        normalizeDashboardAsPath(targetAsPath)
+      ) {
+        return Promise.resolve(false);
+      }
+
+      return router
+        .replace(
+          { pathname: "/dashboard", query: nextQuery },
+          undefined,
+          options
+        )
+        .then(() => true)
+        .catch((error) => {
+          const message = String(error?.message || "");
+          if (message.includes("attempted to hard navigate to the same URL")) {
+            return false;
+          }
+          throw error;
+        });
+    },
+    [buildDashboardAsPathFromQuery, normalizeDashboardAsPath, router]
+  );
   const { loadingAdminAccess, isSuperAdmin, canManageSite } =
     useAdminAccess(usuario);
   const selectedTemplateId =
@@ -643,11 +708,7 @@ export default function Dashboard() {
           nextQuery[key] = recoveredQuery[key];
         });
 
-        router.replace(
-          { pathname: "/dashboard", query: nextQuery },
-          undefined,
-          { shallow: true }
-        );
+        void replaceDashboardQuerySafely(nextQuery, { shallow: true });
 
         pushEditorBreadcrumb("dashboard-slug-access-denied", {
           slugRaw: rawSlugParam,
@@ -665,11 +726,7 @@ export default function Dashboard() {
         recoveredQueryKeys.forEach((key) => {
           nextQuery[key] = recoveredQuery[key];
         });
-        router.replace(
-          { pathname: "/dashboard", query: nextQuery },
-          undefined,
-          { shallow: true }
-        );
+        void replaceDashboardQuerySafely(nextQuery, { shallow: true });
         pushEditorBreadcrumb("dashboard-slug-sanitized", {
           slugRaw: rawSlugParam,
           slug: normalizedSlug,
@@ -694,7 +751,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [router.isReady, router.query?.slug, checkingAuth, usuario?.uid]);
+  }, [router.isReady, router.query?.slug, checkingAuth, usuario?.uid, replaceDashboardQuerySafely]);
 
   useEffect(() => {
     pushEditorBreadcrumb("dashboard-mounted", {});
@@ -1281,13 +1338,9 @@ export default function Dashboard() {
           };
         } catch {}
       }
-      router.replace(
-        { pathname: "/dashboard", query: nextQuery },
-        undefined,
-        { shallow: true }
-      );
+      void replaceDashboardQuerySafely(nextQuery, { shallow: true });
     },
-    [router]
+    [replaceDashboardQuerySafely, router]
   );
 
   const resetTemplateFormState = useCallback((template) => {

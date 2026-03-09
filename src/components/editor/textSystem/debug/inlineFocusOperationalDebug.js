@@ -2,6 +2,23 @@ function hasWindow() {
   return typeof window !== "undefined";
 }
 
+function parseInlineDiagFlag(value, fallback = false) {
+  if (typeof value === "undefined") return fallback;
+  if (value === true || value === 1 || value === "1") return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  if (value === false || value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function isInlineDiagCompactEnabled() {
+  if (!hasWindow()) return true;
+  return parseInlineDiagFlag(window.__INLINE_DIAG_COMPACT, true);
+}
+
 function toSafeElementLabel(element) {
   if (!element || !(element instanceof Element)) return null;
   const tag = String(element.tagName || "").toLowerCase();
@@ -190,6 +207,19 @@ function applySessionMetrics(entry) {
 
 export function emitInlineFocusRcaEvent(eventName, payload = {}) {
   if (!isInlineFocusRcaDebugEnabled()) return;
+  const compactMode = isInlineDiagCompactEnabled();
+  if (compactMode) {
+    const compactEvents = new Set([
+      "intent-start-inline",
+      "focus-mount-skipped-v2",
+      "inline-session-start",
+      "overlay-ready-to-swap",
+      "overlay-swap-commit",
+      "overlay-focus-claim-commit",
+      "blur",
+    ]);
+    if (!compactEvents.has(eventName)) return;
+  }
 
   const editorEl = payload?.editorEl || null;
   const snapshot = buildInlineFocusOperationalSnapshot(editorEl);
@@ -207,14 +237,31 @@ export function emitInlineFocusRcaEvent(eventName, payload = {}) {
     ...payload?.extra,
   };
   const entry = applySessionMetrics(entryBase);
+  const compactEntry = compactMode
+    ? {
+        ts: entry.ts,
+        perfNowMs: entry.perfNowMs,
+        eventName: entry.eventName,
+        editingId: entry.editingId,
+        overlayPhase: entry.overlayPhase,
+        sessionId: entry.sessionId || entry.sessionMetrics?.sessionId || null,
+        reason: entry.reason || null,
+        path: entry.path || null,
+        attempt: Number.isFinite(Number(entry.attempt)) ? Number(entry.attempt) : null,
+        focusOperationalCore: Boolean(entry.focusOperationalCore),
+        isActiveElementEditor: Boolean(entry.isActiveElementEditor),
+        hasSelectionInsideEditor: Boolean(entry.hasSelectionInsideEditor),
+        hasValidRangeInsideEditor: Boolean(entry.hasValidRangeInsideEditor),
+      }
+    : entry;
 
   if (!Array.isArray(window.__INLINE_FOCUS_RCA_TRACE)) {
     window.__INLINE_FOCUS_RCA_TRACE = [];
   }
-  window.__INLINE_FOCUS_RCA_TRACE.push(entry);
+  window.__INLINE_FOCUS_RCA_TRACE.push(compactEntry);
   if (window.__INLINE_FOCUS_RCA_TRACE.length > 500) {
     window.__INLINE_FOCUS_RCA_TRACE.splice(0, window.__INLINE_FOCUS_RCA_TRACE.length - 500);
   }
 
-  console.log("[INLINE][FOCUS-RCA]", entry);
+  console.log("[INLINE][FOCUS-RCA]", compactEntry);
 }

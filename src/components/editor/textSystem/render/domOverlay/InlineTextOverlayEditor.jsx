@@ -7,7 +7,7 @@ import {
   normalizeInlineEditableText,
 } from "@/components/editor/overlays/inlineTextModel";
 import {
-  computeInlineAlignmentOffsetV2,
+  resolveVerticalAuthoritySnapshot,
   normalizeInlineOverlayEngine,
 } from "@/components/editor/overlays/inlineAlignmentModelV2";
 import {
@@ -76,6 +76,9 @@ function formatInlineDiagPayload(payload = {}) {
 
 function shouldEmitInlineNudgeDiag(debugMode) {
   if (!debugMode || typeof window === "undefined") return false;
+  const compact = parseInlineDiagFlag(window.__INLINE_DIAG_COMPACT, true);
+  const extended = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT_EXTENDED, false);
+  if (compact && !extended) return false;
   return parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT, true);
 }
 
@@ -114,6 +117,27 @@ function isZeroRectPayload(rect) {
     Math.abs(width) < 0.0001 &&
     Math.abs(height) < 0.0001
   );
+}
+
+function isUsableClientRect(rect) {
+  return isFiniteRectPayload(rect) && !isZeroRectPayload(rect);
+}
+
+function createEmptyVerticalAuthoritySession() {
+  return {
+    editingId: null,
+    sessionId: null,
+    revision: 0,
+    frozen: false,
+    source: null,
+    coordinateSpace: "content-ink",
+    modelOffsetPx: 0,
+    visualOffsetPx: 0,
+    frozenAtPhase: null,
+    blockedReason: null,
+    status: "unresolved",
+    diagnostics: null,
+  };
 }
 
 export default function InlineTextEditor({
@@ -162,6 +186,13 @@ export default function InlineTextEditor({
   const [v2FontsReady, setV2FontsReady] = useState(!isPhaseAtomicV2);
   const [v2OffsetComputed, setV2OffsetComputed] = useState(!isPhaseAtomicV2);
   const [v2OffsetOneShotPx, setV2OffsetOneShotPx] = useState(0);
+  const [v2AuthorityGateTimedOut, setV2AuthorityGateTimedOut] = useState(false);
+  const [v2EffectiveFontFamily, setV2EffectiveFontFamily] = useState(null);
+  const [v2LiveFirstGlyphTopInsetPx, setV2LiveFirstGlyphTopInsetPx] = useState(null);
+  const [v2LiveFirstGlyphSamples, setV2LiveFirstGlyphSamples] = useState([]);
+  const [v2LiveFirstGlyphGeometryUsable, setV2LiveFirstGlyphGeometryUsable] = useState(false);
+  const [v2VerticalAuthoritySnapshot, setV2VerticalAuthoritySnapshot] = useState(null);
+  const verticalAuthoritySessionRef = useRef(createEmptyVerticalAuthoritySession());
   const [v2SwapRequested, setV2SwapRequested] = useState(false);
   const v2InitEditingIdRef = useRef(null);
   const pendingDoneDispatchRef = useRef({
@@ -498,14 +529,149 @@ export default function InlineTextEditor({
     ]
   );
   const verticalInsetPx = singleLineVerticalPadPx;
-  const domToKonvaOffsetModel = useMemo(() => {
-    if (isPhaseAtomicV2) {
-      return computeInlineAlignmentOffsetV2({
+  const v2AuthorityCandidate = useMemo(
+    () => {
+      if (!isPhaseAtomicV2) return null;
+      const previousSnapshot =
+        verticalAuthoritySessionRef.current?.frozen &&
+        verticalAuthoritySessionRef.current?.editingId === editingId
+          ? verticalAuthoritySessionRef.current
+          : v2VerticalAuthoritySnapshot;
+      return resolveVerticalAuthoritySnapshot({
         domCssInkProbe: domCssInkProbeModel,
+        domInkProbe: domInkProbeModel,
+        domLiveFirstGlyphTopInsetPx: v2LiveFirstGlyphTopInsetPx,
+        domLiveFirstGlyphSamples: v2LiveFirstGlyphSamples,
+        domLiveGeometryUsable: v2LiveFirstGlyphGeometryUsable,
         konvaInkProbe: konvaInkProbeModel,
         editableLineHeightPx,
+        fontFamily: v2EffectiveFontFamily || nodeProps.fontFamily,
+        fontLoadAvailable: fontLoadStatus?.available,
         fallbackOffset: 0,
+        previousSnapshot,
       });
+    },
+    [
+      isPhaseAtomicV2,
+      editingId,
+      domCssInkProbeModel,
+      domInkProbeModel,
+      v2LiveFirstGlyphTopInsetPx,
+      v2LiveFirstGlyphSamples,
+      v2LiveFirstGlyphGeometryUsable,
+      konvaInkProbeModel,
+      editableLineHeightPx,
+      v2EffectiveFontFamily,
+      nodeProps.fontFamily,
+      fontLoadStatus?.available,
+      v2VerticalAuthoritySnapshot,
+    ]
+  );
+  const activeV2AuthoritySnapshot = useMemo(() => {
+    if (!isPhaseAtomicV2) return null;
+    const frozenSession = verticalAuthoritySessionRef.current;
+    if (
+      frozenSession?.frozen &&
+      frozenSession?.editingId === editingId
+    ) {
+      return frozenSession;
+    }
+    return v2VerticalAuthoritySnapshot || v2AuthorityCandidate;
+  }, [
+    isPhaseAtomicV2,
+    editingId,
+    v2VerticalAuthoritySnapshot,
+    v2AuthorityCandidate,
+  ]);
+  const domToKonvaOffsetModel = useMemo(() => {
+    if (isPhaseAtomicV2) {
+      const snapshot = activeV2AuthoritySnapshot;
+      const diagnostics = snapshot?.diagnostics || {};
+      return {
+        source: snapshot?.source || "domProbe",
+        domTopInset: diagnostics.domTopInset ?? null,
+        domProbeTopInset: diagnostics.domProbeTopInset ?? null,
+        domLiveTopInset: diagnostics.domLiveTopInset ?? null,
+        activeDomTopInset: diagnostics.activeDomTopInset ?? null,
+        konvaTopInset: diagnostics.konvaTopInset ?? null,
+        rawOffset: diagnostics.rawOffset ?? null,
+        saneLimit: diagnostics.saneLimit ?? null,
+        snappedOffset: diagnostics.snappedOffset ?? null,
+        pixelSnapStep: diagnostics.pixelSnapStep ?? null,
+        pixelSnapUsed: Boolean(diagnostics.pixelSnapUsed),
+        appliedOffset: snapshot?.visualOffsetPx ?? 0,
+        blockedReason: snapshot?.blockedReason ?? null,
+        domSourceDeltaPx: diagnostics.domSourceDeltaPx ?? null,
+        domSourceDivergenceLimitPx: diagnostics.domSourceDivergenceLimitPx ?? null,
+        liveSourceDeltaPx: diagnostics.liveSourceDeltaPx ?? null,
+        liveSourceDivergenceLimitPx: diagnostics.liveSourceDivergenceLimitPx ?? null,
+        liveStabilityEpsilonPx: diagnostics.liveStabilityEpsilonPx ?? null,
+        liveSampleCount: diagnostics.liveSampleCount ?? 0,
+        liveSampleDeltaPx: diagnostics.liveSampleDeltaPx ?? null,
+        liveSampleStable: Boolean(diagnostics.liveSampleStable),
+        liveGeometryReady: Boolean(diagnostics.liveGeometryReady),
+        fontFamilyRaw: diagnostics.fontFamilyRaw ?? null,
+        fontFamilyNormalizedForNudge: diagnostics.fontFamilyNormalizedForNudge ?? null,
+        domCssReliable: Boolean(diagnostics.domCssReliable),
+        severeDomSourceDisagreement: Boolean(diagnostics.severeDomSourceDisagreement),
+        preferDomCssOnDisagreement: Boolean(diagnostics.preferDomCssOnDisagreement),
+        domCssRawOffsetPx: diagnostics.domCssRawOffsetPx ?? null,
+        domCssInConflict: Boolean(diagnostics.domCssInConflict),
+        preferLiveForLargeCssOffset: Boolean(diagnostics.preferLiveForLargeCssOffset),
+        largeStableOffsetLimitPx: diagnostics.largeStableOffsetLimitPx ?? null,
+        largeStableOffsetBaseLimitPx: diagnostics.largeStableOffsetBaseLimitPx ?? null,
+        largeStableOffsetFontUnavailableCapPx:
+          diagnostics.largeStableOffsetFontUnavailableCapPx ?? null,
+        largeStableOffsetStrictCapPx: diagnostics.largeStableOffsetStrictCapPx ?? null,
+        largeStableOffsetStrictCapApplied: Boolean(
+          diagnostics.largeStableOffsetStrictCapApplied
+        ),
+        largeStableOffsetFontSpecificCapPx:
+          diagnostics.largeStableOffsetFontSpecificCapPx ?? null,
+        largeStableOffsetFontSpecificCapApplied: Boolean(
+          diagnostics.largeStableOffsetFontSpecificCapApplied
+        ),
+        largeStableOffsetFontSpecificZeroDriftApplied: Boolean(
+          diagnostics.largeStableOffsetFontSpecificZeroDriftApplied
+        ),
+        largeStableOffsetFontSpecificPerceptualNudgePx:
+          diagnostics.largeStableOffsetFontSpecificPerceptualNudgePx ?? null,
+        largeStableOffsetFontSpecificPerceptualNudgeSource:
+          diagnostics.largeStableOffsetFontSpecificPerceptualNudgeSource ?? null,
+        largeStableOffsetFontSpecificPerceptualNudgeMode:
+          diagnostics.largeStableOffsetFontSpecificPerceptualNudgeMode ?? null,
+        largeStableOffsetFontSpecificPerceptualNudgeApplied: Boolean(
+          diagnostics.largeStableOffsetFontSpecificPerceptualNudgeApplied
+        ),
+        largeStableOffsetFontSpecificPerceptualNudgeAppliedAs:
+          diagnostics.largeStableOffsetFontSpecificPerceptualNudgeAppliedAs ?? null,
+        fontLoadAvailable:
+          typeof diagnostics.fontLoadAvailable === "boolean"
+            ? diagnostics.fontLoadAvailable
+            : null,
+        largeStableOffsetDampened: Boolean(diagnostics.largeStableOffsetDampened),
+        largeStableOffsetDampenedFromPx: diagnostics.largeStableOffsetDampenedFromPx ?? null,
+        largeStableOffsetDampenedToPx: diagnostics.largeStableOffsetDampenedToPx ?? null,
+        largeStableOffsetFinalAppliedPx: diagnostics.largeStableOffsetFinalAppliedPx ?? null,
+        severeLiveDisagreementGuardApplied: Boolean(
+          diagnostics.severeLiveDisagreementGuardApplied
+        ),
+        severeLiveDisagreementGuardFromPx:
+          diagnostics.severeLiveDisagreementGuardFromPx ?? null,
+        severeLiveDisagreementGuardToPx:
+          diagnostics.severeLiveDisagreementGuardToPx ?? null,
+        largeStableOffsetFinalAppliedWithPerceptualNudgePx:
+          diagnostics.largeStableOffsetFinalAppliedWithPerceptualNudgePx ?? null,
+        largeStableOffsetPolicyVersion: diagnostics.largeStableOffsetPolicyVersion ?? null,
+        liveFallbackReliable: Boolean(diagnostics.liveFallbackReliable),
+        status: snapshot?.status || "resolved",
+        revision: Number(snapshot?.revision || 1),
+        coordinateSpace: snapshot?.coordinateSpace || "content-ink",
+        modelOffsetPx: snapshot?.modelOffsetPx ?? 0,
+        visualOffsetPx: snapshot?.visualOffsetPx ?? 0,
+        frozen: Boolean(snapshot?.frozen),
+        frozenAtPhase: snapshot?.frozenAtPhase || null,
+      };
     }
     const domTopInsetPrimary = Number(domCssInkProbeModel?.glyphTopInsetPx);
     const domTopInsetFallback = Number(domInkProbeModel?.glyphTopInsetPx);
@@ -593,6 +759,7 @@ export default function InlineTextEditor({
     };
   }, [
     isPhaseAtomicV2,
+    activeV2AuthoritySnapshot,
     domCssInkProbeModel,
     domInkProbeModel,
     editableLineHeightPx,
@@ -661,12 +828,16 @@ export default function InlineTextEditor({
       ? 0
       : domToKonvaVisualOffsetRawPx
       );
+  const resolvedV2VisualOffsetPxRaw = Number(
+    activeV2AuthoritySnapshot?.visualOffsetPx ?? v2OffsetOneShotPx ?? 0
+  );
+  const resolvedV2VisualOffsetPx = Number.isFinite(resolvedV2VisualOffsetPxRaw)
+    ? resolvedV2VisualOffsetPxRaw
+    : 0;
   const effectiveVisualOffsetPx = isPhaseAtomicV2
-    ? Number(v2OffsetOneShotPx || 0)
+    ? (v2OffsetComputed ? resolvedV2VisualOffsetPx : 0)
     : Number(domToKonvaVisualOffsetPx || 0);
-  const isEditorVisible = isPhaseAtomicV2
-    ? (editorVisualReady || v2OffsetComputed)
-    : editorVisualReady;
+  const isEditorVisible = Boolean(editorVisualReady);
   const editorPaddingTopPx = Math.max(0, Number(verticalInsetPx || 0));
   const editorPaddingBottomPx = Math.max(0, Number(verticalInsetPx || 0));
 
@@ -679,15 +850,29 @@ export default function InlineTextEditor({
         return;
       }
       v2InitEditingIdRef.current = editingId;
+      verticalAuthoritySessionRef.current = createEmptyVerticalAuthoritySession();
       setDomVisualNudgePx(0);
       setEditorVisualReady(false);
       setOverlayPhase("prepare_mount");
       setV2FontsReady(false);
       setV2OffsetComputed(false);
+      setV2OffsetOneShotPx(0);
+      setV2AuthorityGateTimedOut(false);
+      setV2EffectiveFontFamily(null);
+      setV2LiveFirstGlyphTopInsetPx(null);
+      setV2LiveFirstGlyphSamples([]);
+      setV2LiveFirstGlyphGeometryUsable(false);
+      setV2VerticalAuthoritySnapshot(null);
       setV2SwapRequested(false);
       return;
     }
     v2InitEditingIdRef.current = null;
+    verticalAuthoritySessionRef.current = createEmptyVerticalAuthoritySession();
+    setV2VerticalAuthoritySnapshot(null);
+    setV2AuthorityGateTimedOut(false);
+    setV2EffectiveFontFamily(null);
+    setV2LiveFirstGlyphSamples([]);
+    setV2LiveFirstGlyphGeometryUsable(false);
     const cached = INLINE_VISUAL_NUDGE_CACHE.get(nudgeCacheKey);
     const cachedNum = Number(cached);
     const maxCachedAbs = 14;
@@ -720,6 +905,158 @@ export default function InlineTextEditor({
     setDomVisualNudgePx(0);
     setEditorVisualReady(false);
   }, [editingId, isPhaseAtomicV2, nudgeCacheKey]);
+  useLayoutEffect(() => {
+    if (!isPhaseAtomicV2) return undefined;
+    if (!editingId) return undefined;
+    if (!v2FontsReady || v2OffsetComputed) return undefined;
+    if (verticalAuthoritySessionRef.current?.frozen) return undefined;
+
+    const contentEl = contentBoxRef.current;
+    const visualEl = editorRef.current;
+    if (!contentEl || !visualEl) return undefined;
+
+    let cancelled = false;
+    let rafId = 0;
+    const probeLiveGlyph = () => {
+      if (cancelled) return;
+      const contentRect = contentEl.getBoundingClientRect();
+      const firstGlyphRect = getFirstGlyphRectInEditor(visualEl);
+      const geometryUsable =
+        isUsableClientRect(contentRect) && isUsableClientRect(firstGlyphRect);
+      setV2LiveFirstGlyphGeometryUsable((prev) => (
+        prev === geometryUsable ? prev : geometryUsable
+      ));
+      if (geometryUsable) {
+        const computedFontFamily = (() => {
+          try {
+            return String(window.getComputedStyle(visualEl)?.fontFamily || "").trim() || null;
+          } catch {
+            return null;
+          }
+        })();
+        if (computedFontFamily) {
+          setV2EffectiveFontFamily((prev) => (
+            prev === computedFontFamily ? prev : computedFontFamily
+          ));
+        }
+        const liveTopInset = Number(firstGlyphRect.y) - Number(contentRect.y);
+        if (Number.isFinite(liveTopInset)) {
+          const roundedTopInset = Number(roundMetric(liveTopInset));
+          setV2LiveFirstGlyphTopInsetPx((prev) => {
+            const prevNum = Number(prev);
+            if (Number.isFinite(prevNum) && Math.abs(prevNum - roundedTopInset) <= 0.0001) {
+              return prev;
+            }
+            return roundedTopInset;
+          });
+          setV2LiveFirstGlyphSamples((prev) => {
+            const normalized = Array.isArray(prev) ? prev : [];
+            const last = normalized.length > 0 ? Number(normalized[normalized.length - 1]) : null;
+            if (
+              Number.isFinite(last) &&
+              Math.abs(last - roundedTopInset) <= 0.0001 &&
+              normalized.length >= 2
+            ) {
+              return normalized;
+            }
+            if (normalized.length === 0) return [roundedTopInset];
+            if (normalized.length === 1) return [normalized[0], roundedTopInset];
+            return [normalized[1], roundedTopInset];
+          });
+        }
+      }
+      rafId = window.requestAnimationFrame(probeLiveGlyph);
+    };
+
+    rafId = window.requestAnimationFrame(probeLiveGlyph);
+    return () => {
+      cancelled = true;
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [
+    editingId,
+    isPhaseAtomicV2,
+    v2FontsReady,
+    v2OffsetComputed,
+    fontMetricsRevision,
+    viewportSyncRevision,
+    overlayPhase,
+    setV2LiveFirstGlyphGeometryUsable,
+    setV2LiveFirstGlyphSamples,
+    setV2LiveFirstGlyphTopInsetPx,
+    setV2EffectiveFontFamily,
+  ]);
+  useEffect(() => {
+    if (!isPhaseAtomicV2) return undefined;
+    if (!editingId) return undefined;
+    if (!v2FontsReady || v2OffsetComputed) return undefined;
+    const sampleCount = Array.isArray(v2LiveFirstGlyphSamples)
+      ? v2LiveFirstGlyphSamples.length
+      : 0;
+    if (sampleCount >= 2) {
+      if (v2AuthorityGateTimedOut) {
+        setV2AuthorityGateTimedOut(false);
+      }
+      return undefined;
+    }
+    if (v2AuthorityGateTimedOut) {
+      setV2AuthorityGateTimedOut(false);
+    }
+    const delayMs = sampleCount === 0 ? 120 : 24;
+    const timerId = window.setTimeout(() => {
+      setV2AuthorityGateTimedOut(true);
+    }, delayMs);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [
+    editingId,
+    isPhaseAtomicV2,
+    v2FontsReady,
+    v2OffsetComputed,
+    v2AuthorityGateTimedOut,
+    v2LiveFirstGlyphSamples,
+    setV2AuthorityGateTimedOut,
+  ]);
+  useLayoutEffect(() => {
+    if (!isPhaseAtomicV2) return;
+    if (!editingId) return;
+    if (!v2FontsReady || v2OffsetComputed) return;
+    const liveSampleCount = Array.isArray(v2LiveFirstGlyphSamples)
+      ? v2LiveFirstGlyphSamples.length
+      : 0;
+    const hasStableLiveSample = liveSampleCount >= 2;
+    if (!hasStableLiveSample && !v2AuthorityGateTimedOut) return;
+    if (!v2AuthorityCandidate || v2AuthorityCandidate.status !== "resolved") return;
+    const currentSession = verticalAuthoritySessionRef.current;
+    if (currentSession?.frozen && currentSession?.editingId === editingId) return;
+
+    setOverlayPhase("compute_offset");
+    const frozenSnapshot = {
+      ...v2AuthorityCandidate,
+      editingId,
+      sessionId: overlaySessionIdRef.current || null,
+      frozen: true,
+      frozenAtPhase: "compute_offset",
+    };
+    verticalAuthoritySessionRef.current = frozenSnapshot;
+    setV2VerticalAuthoritySnapshot(frozenSnapshot);
+    setV2OffsetOneShotPx(Number(frozenSnapshot.visualOffsetPx || 0));
+    setV2OffsetComputed(true);
+    setOverlayPhase("ready_to_swap");
+  }, [
+    isPhaseAtomicV2,
+    editingId,
+    v2FontsReady,
+    v2OffsetComputed,
+    v2LiveFirstGlyphSamples,
+    v2AuthorityGateTimedOut,
+    v2AuthorityCandidate,
+    setV2VerticalAuthoritySnapshot,
+    setV2OffsetOneShotPx,
+    setV2OffsetComputed,
+    setOverlayPhase,
+  ]);
   useEffect(() => {
     if (isPhaseAtomicV2) return;
     const nudge = Number(domVisualNudgePx);
@@ -739,6 +1076,8 @@ export default function InlineTextEditor({
     swapAckSeenRef.current = 0;
     if (isPhaseAtomicV2) {
       overlaySessionIdRef.current = null;
+      verticalAuthoritySessionRef.current = createEmptyVerticalAuthoritySession();
+      setV2VerticalAuthoritySnapshot(null);
       entryFocusStateRef.current = {
         editingId,
         sessionId: null,
@@ -773,8 +1112,27 @@ export default function InlineTextEditor({
     if (!mountSession?.swapCommitted) return false;
     if (mountSession.id !== editingId) return false;
     if (mountSession.sessionId !== sessionId) return false;
+    const authoritySnapshot = activeV2AuthoritySnapshot || v2VerticalAuthoritySnapshot;
+    const expectedRevision = Number(authoritySnapshot?.revision || 0);
+    const mountRevision = Number(mountSession?.offsetRevision);
+    if (
+      Number.isFinite(expectedRevision) &&
+      expectedRevision > 0 &&
+      Number.isFinite(mountRevision) &&
+      mountRevision !== expectedRevision
+    ) {
+      return false;
+    }
+    const expectedSource = authoritySnapshot?.source || null;
+    const expectedSpace = authoritySnapshot?.coordinateSpace || "content-ink";
+    if (expectedSource && mountSession?.offsetSource && mountSession.offsetSource !== expectedSource) {
+      return false;
+    }
+    if (expectedSpace && mountSession?.offsetSpace && mountSession.offsetSpace !== expectedSpace) {
+      return false;
+    }
     return true;
-  }, [editingId, inlineOverlayMountSession, isPhaseAtomicV2]);
+  }, [activeV2AuthoritySnapshot, editingId, inlineOverlayMountSession, isPhaseAtomicV2, v2VerticalAuthoritySnapshot]);
 
   const commitOperationalFocusClaim = useCallback(({
     sessionId,
@@ -808,6 +1166,26 @@ export default function InlineTextEditor({
       sessionId,
       settled: true,
     };
+    const authoritySnapshot = activeV2AuthoritySnapshot || v2VerticalAuthoritySnapshot;
+    const authorityRevision = Number(authoritySnapshot?.revision || 0);
+    const authorityOffset = Number(
+      authoritySnapshot?.visualOffsetPx ?? resolvedV2VisualOffsetPx ?? 0
+    );
+    const authoritySource = authoritySnapshot?.source || null;
+    const authoritySpace = authoritySnapshot?.coordinateSpace || "content-ink";
+    const mountSession = inlineOverlayMountSession || null;
+    const swapCommitOffset = Number(mountSession?.offsetY);
+    const swapCommitRevision = Number(mountSession?.offsetRevision);
+    const swapCommitSource = mountSession?.offsetSource || null;
+    const swapCommitSpace = mountSession?.offsetSpace || null;
+    const invariantOffsetAtomicPass =
+      (!Number.isFinite(swapCommitOffset) || Math.abs(swapCommitOffset - authorityOffset) <= 0.0001) &&
+      (!Number.isFinite(swapCommitRevision) ||
+        !Number.isFinite(authorityRevision) ||
+        authorityRevision <= 0 ||
+        swapCommitRevision === authorityRevision) &&
+      (!swapCommitSource || !authoritySource || swapCommitSource === authoritySource) &&
+      (!swapCommitSpace || !authoritySpace || swapCommitSpace === authoritySpace);
     setOverlayPhase("active");
     const debugEmitter = emitDebugRef.current;
     if (typeof debugEmitter === "function") {
@@ -821,6 +1199,15 @@ export default function InlineTextEditor({
         isFocused: Boolean(operationalSnapshot.isActiveElementEditor),
         selectionInEditor: Boolean(operationalSnapshot.hasSelectionInsideEditor),
         hasValidRangeInsideEditor: Boolean(operationalSnapshot.hasValidRangeInsideEditor),
+        authorityRevision: Number.isFinite(authorityRevision) && authorityRevision > 0
+          ? authorityRevision
+          : null,
+        authorityFrozen: Boolean(authoritySnapshot?.frozen),
+        offsetSource: authoritySource,
+        offsetSpace: authoritySpace,
+        offsetAtSwapCommit: Number.isFinite(swapCommitOffset) ? roundMetric(swapCommitOffset) : null,
+        offsetAtActiveInit: roundMetric(authorityOffset),
+        invariantOffsetAtomicPass,
       });
     }
     emitInlineFocusRcaEvent("overlay-focus-claim-commit", {
@@ -838,9 +1225,13 @@ export default function InlineTextEditor({
     return true;
   }, [
     editingId,
+    inlineOverlayMountSession,
     isMountSessionReadyForClaim,
     isPhaseAtomicV2,
+    activeV2AuthoritySnapshot,
+    resolvedV2VisualOffsetPx,
     setOverlayPhase,
+    v2VerticalAuthoritySnapshot,
   ]);
 
   useLayoutEffect(() => {
@@ -2128,6 +2519,7 @@ export default function InlineTextEditor({
     domToKonvaVisualOffsetPx,
     effectiveVisualOffsetPx,
     v2OffsetOneShotPx,
+    v2VerticalAuthoritySnapshot: activeV2AuthoritySnapshot,
     fontMetricsRevision,
     fontLoadStatus,
     isPhaseAtomicV2,
@@ -2140,7 +2532,7 @@ export default function InlineTextEditor({
     editableHostRef,
     overlaySessionIdRef,
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     emitDebugRef.current = emitDebug;
     return () => {
       if (emitDebugRef.current === emitDebug) {
@@ -2152,7 +2544,7 @@ export default function InlineTextEditor({
     editingId,
     isPhaseAtomicV2,
     fontLoadStatusAvailable: fontLoadStatus?.available,
-    domToKonvaOffsetApplied: domToKonvaOffsetModel?.appliedOffset,
+    v2VerticalAuthoritySnapshot: activeV2AuthoritySnapshot,
     onOverlaySwapRequest,
     swapAckToken,
     emitDebug,
@@ -2209,6 +2601,7 @@ export default function InlineTextEditor({
     onChange,
     onOverlaySwapRequest,
     v2OffsetOneShotPx,
+    v2VerticalAuthoritySnapshot: activeV2AuthoritySnapshot,
     setLayoutProbeRevision,
     normalizedFinishMode,
     onFinish,

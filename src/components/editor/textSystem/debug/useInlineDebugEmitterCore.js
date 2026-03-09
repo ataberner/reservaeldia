@@ -40,13 +40,16 @@ function readInlineAlignmentDiagConfig(debugEnabled) {
     return {
       enabled: false,
       extended: false,
+      compact: true,
     };
   }
   const enabled = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT, true);
   const extended = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT_EXTENDED, false);
+  const compact = parseInlineDiagFlag(window.__INLINE_DIAG_COMPACT, true);
   return {
     enabled,
     extended,
+    compact,
   };
 }
 
@@ -105,6 +108,12 @@ function normalizeProbeRect(rect) {
   return rect;
 }
 
+function roundNullableMetric(value) {
+  if (value === null || typeof value === "undefined" || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? roundMetric(numeric) : null;
+}
+
 export default function useInlineDebugEmitter({
   DEBUG_MODE,
   editingId,
@@ -161,6 +170,7 @@ export default function useInlineDebugEmitter({
   domToKonvaVisualOffsetPx,
   effectiveVisualOffsetPx,
   v2OffsetOneShotPx,
+  v2VerticalAuthoritySnapshot,
   fontMetricsRevision,
   fontLoadStatus,
   isPhaseAtomicV2,
@@ -175,18 +185,27 @@ export default function useInlineDebugEmitter({
 }) {
   const emitDebug = useCallback((eventName, extra = {}) => {
     if (!DEBUG_MODE) return;
-    const essentialEvents = new Set([
-      "overlay: before-show",
-      "overlay: before-focus",
-      "overlay: after-focus",
-      "overlay: after-fonts-ready",
-      "overlay: ready-to-swap",
-      "overlay: swap-commit",
-      "overlay: after-first-paint",
-      "overlay: post-layout",
-      "finish: blur",
-      "input: linebreak",
-    ]);
+    const diagConfig = readInlineAlignmentDiagConfig(DEBUG_MODE);
+    const compactMode = Boolean(diagConfig.compact);
+    const essentialEvents = compactMode
+      ? new Set([
+          "overlay: ready-to-swap",
+          "overlay: swap-commit",
+          "overlay: after-first-paint",
+          "finish: blur",
+        ])
+      : new Set([
+          "overlay: before-show",
+          "overlay: before-focus",
+          "overlay: after-focus",
+          "overlay: after-fonts-ready",
+          "overlay: ready-to-swap",
+          "overlay: swap-commit",
+          "overlay: after-first-paint",
+          "overlay: post-layout",
+          "finish: blur",
+          "input: linebreak",
+        ]);
     if (!essentialEvents.has(eventName)) return;
     const ts = new Date().toISOString();
     const frameMeta = nextInlineFrameMeta();
@@ -440,6 +459,25 @@ export default function useInlineDebugEmitter({
       domToKonvaVisualOffsetRawPx: roundMetric(domToKonvaVisualOffsetRawPx),
       domToKonvaVisualOffsetPx: roundMetric(effectiveVisualOffsetPx),
       domToKonvaVisualOffsetOneShotPx: roundMetric(Number(v2OffsetOneShotPx || 0)),
+      authorityRevision: Number.isFinite(Number(v2VerticalAuthoritySnapshot?.revision))
+        ? Number(v2VerticalAuthoritySnapshot.revision)
+        : (Number.isFinite(Number(domToKonvaOffsetModel?.revision))
+          ? Number(domToKonvaOffsetModel.revision)
+          : null),
+      authorityFrozen: Boolean(
+        v2VerticalAuthoritySnapshot?.frozen || domToKonvaOffsetModel?.frozen
+      ),
+      authoritySource: v2VerticalAuthoritySnapshot?.source || domToKonvaOffsetModel?.source || null,
+      authoritySpace:
+        v2VerticalAuthoritySnapshot?.coordinateSpace ||
+        domToKonvaOffsetModel?.coordinateSpace ||
+        "content-ink",
+      modelOffsetPx: roundMetric(
+        Number(v2VerticalAuthoritySnapshot?.modelOffsetPx ?? domToKonvaOffsetModel?.modelOffsetPx)
+      ),
+      visualOffsetPx: roundMetric(
+        Number(v2VerticalAuthoritySnapshot?.visualOffsetPx ?? domToKonvaOffsetModel?.visualOffsetPx)
+      ),
       domToKonvaOffsetModel: domToKonvaOffsetModel || null,
       layoutModelVersion: isPhaseAtomicV2
         ? `${INLINE_LAYOUT_VERSION}-${INLINE_ALIGNMENT_MODEL_V2_VERSION}`
@@ -469,113 +507,18 @@ export default function useInlineDebugEmitter({
           }
         : null,
     };
-    console.log(`[INLINE][POS] position:konva-vs-dom\n${formatInlineLogPayload(positionSnapshot)}`);
-    const sizeSnapshot = {
-      id: editingId || null,
-      eventName,
-      boxes: {
-        konvaText: projectedKonvaRect
-          ? {
-              x: roundMetric(Number(projectedKonvaRect.x)),
-              y: roundMetric(Number(projectedKonvaRect.y)),
-              width: roundMetric(Number(projectedKonvaRect.width)),
-              height: roundMetric(Number(projectedKonvaRect.height)),
-            }
-          : null,
-        konvaTextRaw: projectedKonvaRectRawSnapshot
-          ? {
-              x: roundMetric(Number(projectedKonvaRectRawSnapshot.x)),
-              y: roundMetric(Number(projectedKonvaRectRawSnapshot.y)),
-              width: roundMetric(Number(projectedKonvaRectRawSnapshot.width)),
-              height: roundMetric(Number(projectedKonvaRectRawSnapshot.height)),
-            }
-          : null,
-        domOverlay: overlayRect
-          ? {
-              x: roundMetric(Number(overlayRect.x)),
-              y: roundMetric(Number(overlayRect.y)),
-              width: roundMetric(Number(overlayRect.width)),
-              height: roundMetric(Number(overlayRect.height)),
-            }
-          : null,
-        domText: contentRect
-          ? {
-              x: roundMetric(Number(contentRect.x)),
-              y: roundMetric(Number(contentRect.y)),
-              width: roundMetric(Number(contentRect.width)),
-              height: roundMetric(Number(contentRect.height)),
-            }
-          : null,
-        domEditable: editableRect
-          ? {
-              x: roundMetric(Number(editableRect.x)),
-              y: roundMetric(Number(editableRect.y)),
-              width: roundMetric(Number(editableRect.width)),
-              height: roundMetric(Number(editableRect.height)),
-            }
-          : null,
-        domEditableVisual: editableVisualRect
-          ? {
-              x: roundMetric(Number(editableVisualRect.x)),
-              y: roundMetric(Number(editableVisualRect.y)),
-              width: roundMetric(Number(editableVisualRect.width)),
-              height: roundMetric(Number(editableVisualRect.height)),
-            }
-          : null,
-      },
-      delta: {
-        overlayVsKonva:
-          overlayRect && projectedKonvaRect
-            ? {
-                dx: roundMetric(Number(overlayRect.x) - Number(projectedKonvaRect.x)),
-                dy: roundMetric(Number(overlayRect.y) - Number(projectedKonvaRect.y)),
-                dw: roundMetric(Number(overlayRect.width) - Number(projectedKonvaRect.width)),
-                dh: roundMetric(Number(overlayRect.height) - Number(projectedKonvaRect.height)),
-              }
-            : null,
-        domTextVsKonva:
-          contentRect && projectedKonvaRect
-            ? {
-                dx: roundMetric(Number(contentRect.x) - Number(projectedKonvaRect.x)),
-                dy: roundMetric(Number(contentRect.y) - Number(projectedKonvaRect.y)),
-                dw: roundMetric(Number(contentRect.width) - Number(projectedKonvaRect.width)),
-                dh: roundMetric(Number(contentRect.height) - Number(projectedKonvaRect.height)),
-              }
-            : null,
-        domEditableVsKonva:
-          editableRect && projectedKonvaRect
-            ? {
-                dx: roundMetric(Number(editableRect.x) - Number(projectedKonvaRect.x)),
-                dy: roundMetric(Number(editableRect.y) - Number(projectedKonvaRect.y)),
-                dw: roundMetric(Number(editableRect.width) - Number(projectedKonvaRect.width)),
-                dh: roundMetric(Number(editableRect.height) - Number(projectedKonvaRect.height)),
-              }
-            : null,
-        domEditableVsDomText:
-          editableRect && contentRect
-            ? {
-                dx: roundMetric(Number(editableRect.x) - Number(contentRect.x)),
-                dy: roundMetric(Number(editableRect.y) - Number(contentRect.y)),
-                dw: roundMetric(Number(editableRect.width) - Number(contentRect.width)),
-                dh: roundMetric(Number(editableRect.height) - Number(contentRect.height)),
-              }
-            : null,
-        domEditableVisualVsDomText:
-          editableVisualRect && contentRect
-            ? {
-                dx: roundMetric(Number(editableVisualRect.x) - Number(contentRect.x)),
-                dy: roundMetric(Number(editableVisualRect.y) - Number(contentRect.y)),
-                dw: roundMetric(Number(editableVisualRect.width) - Number(contentRect.width)),
-                dh: roundMetric(Number(editableVisualRect.height) - Number(contentRect.height)),
-              }
-            : null,
-      },
-      syncedTarget: {
-        widthPx: roundMetric(Number(resolvedOverlayWidthPx)),
-        heightPx: roundMetric(Number(resolvedOverlayHeightPx)),
-      },
-    };
-    console.log(`[INLINE][SIZE] box-size-position\n${formatInlineLogPayload(sizeSnapshot)}`);
+    if (!compactMode) {
+      console.log(`[INLINE][POS] position:konva-vs-dom\n${formatInlineLogPayload(positionSnapshot)}`);
+    }
+
+    const domEditableVisualDyRaw =
+      editableVisualRect && contentRect
+        ? Number(editableVisualRect.y) - Number(contentRect.y)
+        : null;
+    const domEditableVisualDy = Number.isFinite(domEditableVisualDyRaw)
+      ? roundMetric(domEditableVisualDyRaw)
+      : null;
+
     const domBoxTop = contentRect ? Number(contentRect.y) : null;
     const domBoxHeight = contentRect ? Number(contentRect.height) : null;
     const domEditableTop = editableRect ? Number(editableRect.y) : null;
@@ -687,10 +630,237 @@ export default function useInlineDebugEmitter({
         offsetBlockedReason: domToKonvaOffsetModel?.blockedReason || null,
       },
     };
-    console.log(`[INLINE][ALIGN] glyph-top-alignment\n${formatInlineLogPayload(alignSnapshot)}`);
-
-    const body = formatInlineLogPayload(payload);
-    console.log(`[INLINE][${ts}] ${eventName}\n${body}`);
+    if (!compactMode) {
+      const sizeSnapshot = {
+        id: editingId || null,
+        eventName,
+        boxes: {
+          konvaText: projectedKonvaRect
+            ? {
+                x: roundMetric(Number(projectedKonvaRect.x)),
+                y: roundMetric(Number(projectedKonvaRect.y)),
+                width: roundMetric(Number(projectedKonvaRect.width)),
+                height: roundMetric(Number(projectedKonvaRect.height)),
+              }
+            : null,
+          konvaTextRaw: projectedKonvaRectRawSnapshot
+            ? {
+                x: roundMetric(Number(projectedKonvaRectRawSnapshot.x)),
+                y: roundMetric(Number(projectedKonvaRectRawSnapshot.y)),
+                width: roundMetric(Number(projectedKonvaRectRawSnapshot.width)),
+                height: roundMetric(Number(projectedKonvaRectRawSnapshot.height)),
+              }
+            : null,
+          domOverlay: overlayRect
+            ? {
+                x: roundMetric(Number(overlayRect.x)),
+                y: roundMetric(Number(overlayRect.y)),
+                width: roundMetric(Number(overlayRect.width)),
+                height: roundMetric(Number(overlayRect.height)),
+              }
+            : null,
+          domText: contentRect
+            ? {
+                x: roundMetric(Number(contentRect.x)),
+                y: roundMetric(Number(contentRect.y)),
+                width: roundMetric(Number(contentRect.width)),
+                height: roundMetric(Number(contentRect.height)),
+              }
+            : null,
+          domEditable: editableRect
+            ? {
+                x: roundMetric(Number(editableRect.x)),
+                y: roundMetric(Number(editableRect.y)),
+                width: roundMetric(Number(editableRect.width)),
+                height: roundMetric(Number(editableRect.height)),
+              }
+            : null,
+          domEditableVisual: editableVisualRect
+            ? {
+                x: roundMetric(Number(editableVisualRect.x)),
+                y: roundMetric(Number(editableVisualRect.y)),
+                width: roundMetric(Number(editableVisualRect.width)),
+                height: roundMetric(Number(editableVisualRect.height)),
+              }
+            : null,
+        },
+        delta: {
+          overlayVsKonva:
+            overlayRect && projectedKonvaRect
+              ? {
+                  dx: roundMetric(Number(overlayRect.x) - Number(projectedKonvaRect.x)),
+                  dy: roundMetric(Number(overlayRect.y) - Number(projectedKonvaRect.y)),
+                  dw: roundMetric(Number(overlayRect.width) - Number(projectedKonvaRect.width)),
+                  dh: roundMetric(Number(overlayRect.height) - Number(projectedKonvaRect.height)),
+                }
+              : null,
+          domTextVsKonva:
+            contentRect && projectedKonvaRect
+              ? {
+                  dx: roundMetric(Number(contentRect.x) - Number(projectedKonvaRect.x)),
+                  dy: roundMetric(Number(contentRect.y) - Number(projectedKonvaRect.y)),
+                  dw: roundMetric(Number(contentRect.width) - Number(projectedKonvaRect.width)),
+                  dh: roundMetric(Number(contentRect.height) - Number(projectedKonvaRect.height)),
+                }
+              : null,
+          domEditableVsKonva:
+            editableRect && projectedKonvaRect
+              ? {
+                  dx: roundMetric(Number(editableRect.x) - Number(projectedKonvaRect.x)),
+                  dy: roundMetric(Number(editableRect.y) - Number(projectedKonvaRect.y)),
+                  dw: roundMetric(Number(editableRect.width) - Number(projectedKonvaRect.width)),
+                  dh: roundMetric(Number(editableRect.height) - Number(projectedKonvaRect.height)),
+                }
+              : null,
+          domEditableVsDomText:
+            editableRect && contentRect
+              ? {
+                  dx: roundMetric(Number(editableRect.x) - Number(contentRect.x)),
+                  dy: roundMetric(Number(editableRect.y) - Number(contentRect.y)),
+                  dw: roundMetric(Number(editableRect.width) - Number(contentRect.width)),
+                  dh: roundMetric(Number(editableRect.height) - Number(contentRect.height)),
+                }
+              : null,
+          domEditableVisualVsDomText:
+            editableVisualRect && contentRect
+              ? {
+                  dx: roundMetric(Number(editableVisualRect.x) - Number(contentRect.x)),
+                  dy: roundMetric(Number(editableVisualRect.y) - Number(contentRect.y)),
+                  dw: roundMetric(Number(editableVisualRect.width) - Number(contentRect.width)),
+                  dh: roundMetric(Number(editableVisualRect.height) - Number(contentRect.height)),
+                }
+              : null,
+        },
+        syncedTarget: {
+          widthPx: roundMetric(Number(resolvedOverlayWidthPx)),
+          heightPx: roundMetric(Number(resolvedOverlayHeightPx)),
+        },
+      };
+      console.log(`[INLINE][SIZE] box-size-position\n${formatInlineLogPayload(sizeSnapshot)}`);
+      console.log(`[INLINE][ALIGN] glyph-top-alignment\n${formatInlineLogPayload(alignSnapshot)}`);
+      const body = formatInlineLogPayload(payload);
+      console.log(`[INLINE][${ts}] ${eventName}\n${body}`);
+    } else {
+      const compactPayload = {
+        ts,
+        id: editingId || null,
+        sessionId: overlaySessionIdRef.current || null,
+        eventName,
+        phase: payload.phase || eventName,
+        overlayEngine: normalizedOverlayEngine,
+        geometry: positionSnapshot.delta || null,
+        focus: {
+          isFocused: payload.isFocused,
+          focusClaimed: payload.focusClaimed,
+          selectionReady: payload.selectionGeometryReady,
+          caretReady: payload.caretGeometryReady,
+        },
+        offset: {
+          source: payload.authoritySource,
+          revision: payload.authorityRevision,
+          frozen: payload.authorityFrozen,
+          space: payload.authoritySpace,
+          modelPx: payload.modelOffsetPx,
+          visualPx: payload.visualOffsetPx,
+          appliedPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+          domVisualDy: domEditableVisualDy,
+          domSourceDeltaPx: roundMetric(Number(domToKonvaOffsetModel?.domSourceDeltaPx)),
+          domSourceLimitPx: roundMetric(
+            Number(domToKonvaOffsetModel?.domSourceDivergenceLimitPx)
+          ),
+          domCssReliable: Boolean(domToKonvaOffsetModel?.domCssReliable),
+          liveFallbackReliable: Boolean(domToKonvaOffsetModel?.liveFallbackReliable),
+          liveSampleCount: Number(domToKonvaOffsetModel?.liveSampleCount || 0),
+          domCssRawOffsetPx: roundMetric(Number(domToKonvaOffsetModel?.domCssRawOffsetPx)),
+          domCssInConflict: Boolean(domToKonvaOffsetModel?.domCssInConflict),
+          fontFamilyRaw: domToKonvaOffsetModel?.fontFamilyRaw || null,
+          fontFamilyNormalizedForNudge:
+            domToKonvaOffsetModel?.fontFamilyNormalizedForNudge || null,
+          preferLiveForLargeCssOffset: Boolean(
+            domToKonvaOffsetModel?.preferLiveForLargeCssOffset
+          ),
+          largeStableOffsetLimitPx: roundMetric(
+            Number(domToKonvaOffsetModel?.largeStableOffsetLimitPx)
+          ),
+          largeStableOffsetBaseLimitPx: roundMetric(
+            Number(domToKonvaOffsetModel?.largeStableOffsetBaseLimitPx)
+          ),
+          largeStableOffsetFontUnavailableCapPx: roundMetric(
+            Number(domToKonvaOffsetModel?.largeStableOffsetFontUnavailableCapPx)
+          ),
+          largeStableOffsetStrictCapPx: roundMetric(
+            Number(domToKonvaOffsetModel?.largeStableOffsetStrictCapPx)
+          ),
+          largeStableOffsetStrictCapApplied: Boolean(
+            domToKonvaOffsetModel?.largeStableOffsetStrictCapApplied
+          ),
+          largeStableOffsetFontSpecificCapPx: roundMetric(
+            Number(domToKonvaOffsetModel?.largeStableOffsetFontSpecificCapPx)
+          ),
+          largeStableOffsetFontSpecificCapApplied: Boolean(
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificCapApplied
+          ),
+          largeStableOffsetFontSpecificZeroDriftApplied: Boolean(
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificZeroDriftApplied
+          ),
+          largeStableOffsetFontSpecificPerceptualNudgePx: roundNullableMetric(
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificPerceptualNudgePx
+          ),
+          largeStableOffsetFontSpecificPerceptualNudgeSource:
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificPerceptualNudgeSource || null,
+          largeStableOffsetFontSpecificPerceptualNudgeMode:
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificPerceptualNudgeMode || null,
+          largeStableOffsetFontSpecificPerceptualNudgeApplied: Boolean(
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificPerceptualNudgeApplied
+          ),
+          largeStableOffsetFontSpecificPerceptualNudgeAppliedAs:
+            domToKonvaOffsetModel?.largeStableOffsetFontSpecificPerceptualNudgeAppliedAs || null,
+          fontLoadAvailable:
+            typeof domToKonvaOffsetModel?.fontLoadAvailable === "boolean"
+              ? domToKonvaOffsetModel.fontLoadAvailable
+              : null,
+          largeStableOffsetDampened: Boolean(
+            domToKonvaOffsetModel?.largeStableOffsetDampened
+          ),
+          largeStableOffsetDampenedFromPx: roundNullableMetric(
+            domToKonvaOffsetModel?.largeStableOffsetDampenedFromPx
+          ),
+          largeStableOffsetDampenedToPx: roundNullableMetric(
+            domToKonvaOffsetModel?.largeStableOffsetDampenedToPx
+          ),
+          largeStableOffsetFinalAppliedPx: roundNullableMetric(
+            domToKonvaOffsetModel?.largeStableOffsetFinalAppliedPx
+          ),
+          severeLiveDisagreementGuardApplied: Boolean(
+            domToKonvaOffsetModel?.severeLiveDisagreementGuardApplied
+          ),
+          severeLiveDisagreementGuardFromPx: roundNullableMetric(
+            domToKonvaOffsetModel?.severeLiveDisagreementGuardFromPx
+          ),
+          severeLiveDisagreementGuardToPx: roundNullableMetric(
+            domToKonvaOffsetModel?.severeLiveDisagreementGuardToPx
+          ),
+          largeStableOffsetFinalAppliedWithPerceptualNudgePx: roundNullableMetric(
+            domToKonvaOffsetModel?.largeStableOffsetFinalAppliedWithPerceptualNudgePx
+          ),
+          largeStableOffsetPolicyVersion:
+            domToKonvaOffsetModel?.largeStableOffsetPolicyVersion || null,
+          severeDomSourceDisagreement: Boolean(
+            domToKonvaOffsetModel?.severeDomSourceDisagreement
+          ),
+          preferDomCssOnDisagreement: Boolean(
+            domToKonvaOffsetModel?.preferDomCssOnDisagreement
+          ),
+          atReadyToSwap: roundMetric(Number(payload?.offsetAtReadyToSwap)),
+          atSwapCommit: roundMetric(Number(payload?.offsetAtSwapCommit)),
+          atFirstPaint: roundMetric(Number(payload?.offsetAtFirstPaint)),
+          invariantOffsetAtomicPass: payload?.invariantOffsetAtomicPass ?? null,
+        },
+      };
+      console.log(
+        `[INLINE][DIAG] alignment-compact\n${formatInlineLogPayload(compactPayload)}`
+      );
+    }
     const traceDx = Number(positionSnapshot?.delta?.dx);
     const traceDy = Number(positionSnapshot?.delta?.dy);
     pushInlineTraceEvent(eventName, {
@@ -715,6 +885,7 @@ export default function useInlineDebugEmitter({
       dh: roundMetric(Number(positionSnapshot?.delta?.dh)),
       offsetYApplied: roundMetric(Number(domToKonvaVisualOffsetPx || 0)),
       offsetYResolved: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+      domVisualDy: roundMetric(domEditableVisualDy),
       fontSpec: fontLoadStatus?.spec || null,
       dpr: payload.dpr,
       zoom: payload.zoom,
@@ -733,8 +904,7 @@ export default function useInlineDebugEmitter({
       });
     }
 
-    const diagConfig = readInlineAlignmentDiagConfig(DEBUG_MODE);
-    if (diagConfig.enabled) {
+    if (diagConfig.enabled && !compactMode) {
       const defaultDiagEvents = new Set([
         "overlay: before-show",
         "overlay: after-first-paint",
@@ -818,10 +988,38 @@ export default function useInlineDebugEmitter({
             },
             offsetModel: {
               source: domToKonvaOffsetModel?.source || null,
-              rawOffset: roundMetric(Number(domToKonvaOffsetModel?.rawOffset)),
-              saneLimit: roundMetric(Number(domToKonvaOffsetModel?.saneLimit)),
+              revision: Number.isFinite(Number(domToKonvaOffsetModel?.revision))
+                ? Number(domToKonvaOffsetModel?.revision)
+                : (Number.isFinite(Number(v2VerticalAuthoritySnapshot?.revision))
+                  ? Number(v2VerticalAuthoritySnapshot?.revision)
+                  : null),
+              frozen: Boolean(domToKonvaOffsetModel?.frozen || v2VerticalAuthoritySnapshot?.frozen),
+              coordinateSpace:
+                domToKonvaOffsetModel?.coordinateSpace ||
+                v2VerticalAuthoritySnapshot?.coordinateSpace ||
+                "content-ink",
+              activeDomTopInset: roundNullableMetric(domToKonvaOffsetModel?.activeDomTopInset),
+              domTopInset: roundNullableMetric(domToKonvaOffsetModel?.domTopInset),
+              domProbeTopInset: roundNullableMetric(domToKonvaOffsetModel?.domProbeTopInset),
+              domLiveTopInset: roundNullableMetric(domToKonvaOffsetModel?.domLiveTopInset),
+              domSourceDeltaPx: roundNullableMetric(domToKonvaOffsetModel?.domSourceDeltaPx),
+              liveSourceDeltaPx: roundNullableMetric(domToKonvaOffsetModel?.liveSourceDeltaPx),
+              domSourceDivergenceLimitPx: roundNullableMetric(
+                domToKonvaOffsetModel?.domSourceDivergenceLimitPx
+              ),
+              liveSourceDivergenceLimitPx: roundNullableMetric(
+                domToKonvaOffsetModel?.liveSourceDivergenceLimitPx
+              ),
+              rawOffset: roundNullableMetric(domToKonvaOffsetModel?.rawOffset),
+              saneLimit: roundNullableMetric(domToKonvaOffsetModel?.saneLimit),
               blockedReason: domToKonvaOffsetModel?.blockedReason || null,
-              appliedOffset: roundMetric(Number(domToKonvaOffsetModel?.appliedOffset)),
+              appliedOffset: roundNullableMetric(domToKonvaOffsetModel?.appliedOffset),
+              modelOffsetPx: roundNullableMetric(
+                v2VerticalAuthoritySnapshot?.modelOffsetPx ?? domToKonvaOffsetModel?.modelOffsetPx
+              ),
+              visualOffsetPx: roundNullableMetric(
+                v2VerticalAuthoritySnapshot?.visualOffsetPx ?? domToKonvaOffsetModel?.visualOffsetPx
+              ),
             },
             breakdown: {
               domToKonvaGlyphOffsetPx: roundMetric(domToKonvaGlyphOffsetPx),
@@ -834,6 +1032,11 @@ export default function useInlineDebugEmitter({
               domToKonvaVisualOffsetPx: roundMetric(domToKonvaVisualOffsetPx),
               v2OffsetOneShotPx: roundMetric(Number(v2OffsetOneShotPx || 0)),
               effectiveVisualOffsetPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+              offsetAtReadyToSwap: roundMetric(Number(payload?.offsetAtReadyToSwap)),
+              offsetAtSwapCommit: roundMetric(Number(payload?.offsetAtSwapCommit)),
+              offsetAtFirstPaint: roundMetric(Number(payload?.offsetAtFirstPaint)),
+              offsetAtActiveInit: roundMetric(Number(payload?.offsetAtActiveInit)),
+              invariantOffsetAtomicPass: payload?.invariantOffsetAtomicPass ?? null,
             },
           };
           console.log(
@@ -848,6 +1051,10 @@ export default function useInlineDebugEmitter({
             effectiveVisualOffsetPx:
               alignmentOffsetBreakdownPayload.breakdown.effectiveVisualOffsetPx,
             blockedReason: alignmentOffsetBreakdownPayload.offsetModel.blockedReason,
+            authorityRevision: alignmentOffsetBreakdownPayload.offsetModel.revision,
+            authorityFrozen: alignmentOffsetBreakdownPayload.offsetModel.frozen,
+            invariantOffsetAtomicPass:
+              alignmentOffsetBreakdownPayload.breakdown.invariantOffsetAtomicPass,
           });
         } catch (diagError) {
           console.warn("[INLINE][DIAG] alignment-channel-error", {
@@ -922,6 +1129,7 @@ export default function useInlineDebugEmitter({
     domToKonvaVisualOffsetRawPx,
     effectiveVisualOffsetPx,
     v2OffsetOneShotPx,
+    v2VerticalAuthoritySnapshot,
     fontMetricsRevision,
     fontLoadStatus?.available,
     fontLoadStatus?.spec,

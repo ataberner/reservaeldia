@@ -135,6 +135,10 @@ export default function CanvasEditor({
     swapCommitted: false,
     phase: "idle",
     token: 0,
+    offsetY: 0,
+    offsetRevision: null,
+    offsetSource: null,
+    offsetSpace: "content-ink",
   });
   const inlineSwapAckSeqRef = useRef(0);
   const [inlineSwapAck, setInlineSwapAck] = useState({
@@ -143,6 +147,9 @@ export default function CanvasEditor({
     phase: null,
     token: 0,
     offsetY: 0,
+    offsetRevision: null,
+    offsetSource: null,
+    offsetSpace: "content-ink",
   });
   useEffect(() => {
     const mountedId = inlineOverlayMountSession?.mounted
@@ -186,6 +193,7 @@ export default function CanvasEditor({
     window.__INLINE_DEBUG = true;
     window.__INLINE_DIAG_ALIGNMENT = true;
     window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
+    window.__INLINE_DIAG_COMPACT = true;
     window.__INLINE_FOCUS_RCA = true;
     if (!Array.isArray(window.__INLINE_FOCUS_RCA_TRACE)) {
       window.__INLINE_FOCUS_RCA_TRACE = [];
@@ -198,6 +206,7 @@ export default function CanvasEditor({
       INLINE_DEBUG: window.__INLINE_DEBUG,
       INLINE_DIAG_ALIGNMENT: window.__INLINE_DIAG_ALIGNMENT,
       INLINE_DIAG_ALIGNMENT_EXTENDED: window.__INLINE_DIAG_ALIGNMENT_EXTENDED,
+      INLINE_DIAG_COMPACT: window.__INLINE_DIAG_COMPACT,
       INLINE_FOCUS_RCA: window.__INLINE_FOCUS_RCA,
     });
   }, []);

@@ -4,18 +4,24 @@ import {
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 
+function isNearlyEqual(a, b, epsilon = 0.0001) {
+  const left = Number(a);
+  const right = Number(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  return Math.abs(left - right) <= epsilon;
+}
+
 export default function useInlinePhaseAtomicLifecycle({
   editingId,
   isPhaseAtomicV2,
   fontLoadStatusAvailable,
-  domToKonvaOffsetApplied,
+  v2VerticalAuthoritySnapshot,
   onOverlaySwapRequest,
   swapAckToken,
   emitDebug,
   v2FontsReady,
   setV2FontsReady,
   v2OffsetComputed,
-  setV2OffsetComputed,
   v2OffsetOneShotPx,
   setV2OffsetOneShotPx,
   v2SwapRequested,
@@ -28,9 +34,10 @@ export default function useInlinePhaseAtomicLifecycle({
   setLayoutProbeRevision,
 }) {
   const emitDebugRef = useRef(emitDebug);
-  useEffect(() => {
+  useLayoutEffect(() => {
     emitDebugRef.current = emitDebug;
   }, [emitDebug]);
+
   const emitDebugStable = useCallback((eventName, payload = {}) => {
     const debugEmitter = emitDebugRef.current;
     if (typeof debugEmitter === "function") {
@@ -81,27 +88,12 @@ export default function useInlinePhaseAtomicLifecycle({
     emitDebugStable,
     fontLoadStatusAvailable,
     isPhaseAtomicV2,
+    setOverlayPhase,
+    setV2FontsReady,
     v2OffsetComputed,
     v2SwapRequested,
     swapAckSeenRef,
-  ]);
-
-  useEffect(() => {
-    if (!isPhaseAtomicV2) return;
-    if (!editingId) return;
-    if (!v2FontsReady || v2OffsetComputed) return;
-
-    setOverlayPhase("compute_offset");
-    const offset = Number(domToKonvaOffsetApplied);
-    setV2OffsetOneShotPx(Number.isFinite(offset) ? offset : 0);
-    setV2OffsetComputed(true);
-    setOverlayPhase("ready_to_swap");
-  }, [
-    domToKonvaOffsetApplied,
-    editingId,
-    isPhaseAtomicV2,
-    v2FontsReady,
-    v2OffsetComputed,
+    overlaySessionIdRef,
   ]);
 
   useLayoutEffect(() => {
@@ -109,6 +101,7 @@ export default function useInlinePhaseAtomicLifecycle({
     if (!editingId) return;
     if (!v2OffsetComputed || v2SwapRequested) return;
     if (typeof onOverlaySwapRequest !== "function") return;
+    if (!v2VerticalAuthoritySnapshot?.frozen) return;
 
     const previousSessionId = overlaySessionIdRef.current;
     const hasSessionForEditingId =
@@ -128,12 +121,39 @@ export default function useInlinePhaseAtomicLifecycle({
         },
       });
     }
+
+    const authorityOffsetRaw = Number(v2VerticalAuthoritySnapshot?.visualOffsetPx || 0);
+    const authorityOffset = Number.isFinite(authorityOffsetRaw) ? authorityOffsetRaw : 0;
+    const authorityRevision = Number(v2VerticalAuthoritySnapshot?.revision || 0);
+    const authoritySource = v2VerticalAuthoritySnapshot?.source || null;
+    const authoritySpace = v2VerticalAuthoritySnapshot?.coordinateSpace || "content-ink";
+    const oneShotOffsetRaw = Number(v2OffsetOneShotPx || 0);
+    const oneShotOffset = Number.isFinite(oneShotOffsetRaw) ? oneShotOffsetRaw : 0;
+    const offsetAtomicPass = isNearlyEqual(oneShotOffset, authorityOffset);
+    if (!offsetAtomicPass) {
+      setV2OffsetOneShotPx(authorityOffset);
+      emitDebugStable("overlay: offset-atomic-corrected-before-swap", {
+        phase: "ready_to_swap",
+        sessionId,
+        offsetAtOneShot: roundMetric(oneShotOffset),
+        offsetAtAuthority: roundMetric(authorityOffset),
+      });
+    }
+
+    const resolvedSwapOffset = authorityOffset;
     setV2SwapRequested(true);
     setOverlayPhase("ready_to_swap");
     emitDebugStable("overlay: ready-to-swap", {
       phase: "ready_to_swap",
       sessionId,
-      offsetYApplied: roundMetric(Number(v2OffsetOneShotPx || 0)),
+      authorityRevision: Number.isFinite(authorityRevision) ? authorityRevision : null,
+      authorityFrozen: true,
+      offsetSource: authoritySource,
+      offsetSpace: authoritySpace,
+      offsetAtReadyToSwap: roundMetric(resolvedSwapOffset),
+      offsetYApplied: roundMetric(resolvedSwapOffset),
+      invariantOffsetAtomicPass: offsetAtomicPass,
+      offsetAtOneShot: roundMetric(oneShotOffset),
     });
     emitInlineFocusRcaEvent("overlay-ready-to-swap", {
       editingId,
@@ -146,16 +166,24 @@ export default function useInlinePhaseAtomicLifecycle({
       id: editingId,
       sessionId,
       phase: "ready_to_swap",
-      offsetY: Number(v2OffsetOneShotPx || 0),
+      offsetY: Number(resolvedSwapOffset || 0),
+      offsetRevision: Number.isFinite(authorityRevision) ? authorityRevision : null,
+      offsetSource: authoritySource,
+      offsetSpace: authoritySpace,
     });
   }, [
     editingId,
     emitDebugStable,
     isPhaseAtomicV2,
     onOverlaySwapRequest,
+    overlaySessionIdRef,
+    setOverlayPhase,
+    setV2OffsetOneShotPx,
+    setV2SwapRequested,
     v2OffsetComputed,
     v2OffsetOneShotPx,
     v2SwapRequested,
+    v2VerticalAuthoritySnapshot,
   ]);
 
   useLayoutEffect(() => {
@@ -192,6 +220,44 @@ export default function useInlinePhaseAtomicLifecycle({
         });
         return;
       }
+
+      const expectedRevision = Number(v2VerticalAuthoritySnapshot?.revision || 0);
+      const expectedSource = v2VerticalAuthoritySnapshot?.source || null;
+      const expectedSpace = v2VerticalAuthoritySnapshot?.coordinateSpace || "content-ink";
+      const expectedOffsetRaw = Number(v2VerticalAuthoritySnapshot?.visualOffsetPx || 0);
+      const expectedOffset = Number.isFinite(expectedOffsetRaw) ? expectedOffsetRaw : 0;
+      const ackOffset = Number(swapAckToken?.offsetY);
+      const ackRevision = Number(swapAckToken?.offsetRevision);
+      const ackSource = swapAckToken?.offsetSource || null;
+      const ackSpace = swapAckToken?.offsetSpace || null;
+      const revisionMatches =
+        !Number.isFinite(expectedRevision) ||
+        expectedRevision <= 0 ||
+        (Number.isFinite(ackRevision) && ackRevision === expectedRevision);
+      const sourceMatches = !expectedSource || !ackSource || ackSource === expectedSource;
+      const spaceMatches = !expectedSpace || !ackSpace || ackSpace === expectedSpace;
+      const offsetMatches = isNearlyEqual(ackOffset, expectedOffset);
+      const invariantOffsetAtomicPass =
+        revisionMatches && sourceMatches && spaceMatches && offsetMatches;
+
+      if (!invariantOffsetAtomicPass) {
+        emitDebugStable("overlay: swap-commit-rejected-offset-mismatch", {
+          phase: "swap-commit",
+          sessionId: overlaySessionIdRef.current,
+          swapAckToken: token,
+          expectedRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+          ackRevision: Number.isFinite(ackRevision) ? ackRevision : null,
+          expectedSource,
+          ackSource,
+          expectedSpace,
+          ackSpace,
+          expectedOffset: roundMetric(expectedOffset),
+          ackOffset: roundMetric(ackOffset),
+          invariantOffsetAtomicPass,
+        });
+        return;
+      }
+
       swapAckSeenRef.current = token;
       setOverlayPhase("await_focus_claim");
       setEditorVisualReady(true);
@@ -200,7 +266,13 @@ export default function useInlinePhaseAtomicLifecycle({
         nextOverlayPhase: "await_focus_claim",
         sessionId: overlaySessionIdRef.current,
         swapAckToken: token,
-        offsetYApplied: roundMetric(Number(v2OffsetOneShotPx || 0)),
+        authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+        authorityFrozen: true,
+        offsetSource: expectedSource,
+        offsetSpace: expectedSpace,
+        offsetAtSwapCommit: roundMetric(expectedOffset),
+        offsetYApplied: roundMetric(expectedOffset),
+        invariantOffsetAtomicPass,
       });
       emitInlineFocusRcaEvent("overlay-swap-commit", {
         editingId,
@@ -216,6 +288,13 @@ export default function useInlinePhaseAtomicLifecycle({
           phase: "after-first-paint",
           sessionId: overlaySessionIdRef.current,
           swapAckToken: token,
+          authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+          authorityFrozen: true,
+          offsetSource: expectedSource,
+          offsetSpace: expectedSpace,
+          offsetAtFirstPaint: roundMetric(expectedOffset),
+          offsetYApplied: roundMetric(expectedOffset),
+          invariantOffsetAtomicPass,
         });
       });
       return;
@@ -230,9 +309,13 @@ export default function useInlinePhaseAtomicLifecycle({
     emitDebugStable,
     inlineOverlayMountSession,
     isPhaseAtomicV2,
-    setLayoutProbeRevision,
+    overlaySessionIdRef,
     setEditorVisualReady,
+    setLayoutProbeRevision,
+    setOverlayPhase,
+    swapAckSeenRef,
     swapAckToken,
     v2OffsetOneShotPx,
+    v2VerticalAuthoritySnapshot,
   ]);
 }

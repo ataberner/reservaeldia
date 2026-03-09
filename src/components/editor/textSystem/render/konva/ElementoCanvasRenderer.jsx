@@ -34,8 +34,22 @@ function isInlineIntentDebugEnabled() {
   return window.__DBG_INLINE_INTENT === true;
 }
 
+function isInlineDiagCompactEnabled() {
+  if (typeof window === "undefined") return true;
+  const raw = window.__INLINE_DIAG_COMPACT;
+  if (raw === true || raw === 1 || raw === "1") return true;
+  if (raw === false || raw === 0 || raw === "0") return false;
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return true;
+}
+
 function logInlineIntentEmitter(eventName, payload = {}) {
   if (!isInlineIntentDebugEnabled()) return;
+  if (isInlineDiagCompactEnabled()) return;
   console.log(`[INLINE-INTENT][EMIT] ${eventName}`, {
     ts: new Date().toISOString(),
     ...payload,

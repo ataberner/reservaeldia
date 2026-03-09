@@ -1,4 +1,4 @@
-import { useLayoutEffect, useEffect, useCallback } from "react";
+import { useLayoutEffect, useEffect, useCallback, useRef } from "react";
 import {
   getCurrentInlineEditingId,
   getInlineEditingSnapshot,
@@ -20,10 +20,20 @@ export default function useInlineEditorMountLifecycle({
   onChange,
   onOverlaySwapRequest,
   v2OffsetOneShotPx,
+  v2VerticalAuthoritySnapshot,
   setLayoutProbeRevision,
   normalizedFinishMode,
   onFinish,
 }) {
+  const v2OffsetOneShotRef = useRef(v2OffsetOneShotPx);
+  const v2VerticalAuthoritySnapshotRef = useRef(v2VerticalAuthoritySnapshot);
+  useEffect(() => {
+    v2OffsetOneShotRef.current = v2OffsetOneShotPx;
+  }, [v2OffsetOneShotPx]);
+  useEffect(() => {
+    v2VerticalAuthoritySnapshotRef.current = v2VerticalAuthoritySnapshot;
+  }, [v2VerticalAuthoritySnapshot]);
+
   // Inicializar contenido + foco + caret antes del primer paint visible
   useLayoutEffect(() => {
     const el = editorRef.current;
@@ -167,7 +177,14 @@ export default function useInlineEditorMountLifecycle({
       if (isPhaseAtomicV2 && typeof onOverlaySwapRequest === "function" && editingId) {
         const closingId = editingId;
         const closingSessionId = overlaySessionIdRef.current;
-        const closingOffset = Number(v2OffsetOneShotPx || 0);
+        const closingSnapshot = v2VerticalAuthoritySnapshotRef.current;
+        const closingOffset = Number(
+          closingSnapshot?.visualOffsetPx ?? v2OffsetOneShotRef.current ?? 0
+        );
+        const closingOffsetRevision = Number(closingSnapshot?.revision || 0);
+        const closingOffsetSource = closingSnapshot?.source || null;
+        const closingOffsetSpace =
+          closingSnapshot?.coordinateSpace || "content-ink";
         const timerId = window.setTimeout(() => {
           const pending = pendingDoneDispatchRef.current || {};
           if (Number(pending.timerId || 0) !== Number(timerId)) return;
@@ -181,6 +198,11 @@ export default function useInlineEditorMountLifecycle({
             sessionId: closingSessionId,
             phase: "done",
             offsetY: closingOffset,
+            offsetRevision: Number.isFinite(closingOffsetRevision) && closingOffsetRevision > 0
+              ? closingOffsetRevision
+              : null,
+            offsetSource: closingOffsetSource,
+            offsetSpace: closingOffsetSpace,
           });
         }, 0);
         pendingDoneDispatchRef.current = {
@@ -216,11 +238,19 @@ export default function useInlineEditorMountLifecycle({
   const triggerFinish = useCallback((trigger = "blur") => {
     if (isPhaseAtomicV2 && typeof onOverlaySwapRequest === "function" && editingId) {
       setOverlayPhase("finish_commit");
+      const activeSnapshot = v2VerticalAuthoritySnapshotRef.current;
       onOverlaySwapRequest({
         id: editingId,
         sessionId: overlaySessionIdRef.current,
         phase: "finish_commit",
-        offsetY: Number(v2OffsetOneShotPx || 0),
+        offsetY: Number(activeSnapshot?.visualOffsetPx ?? v2OffsetOneShotRef.current ?? 0),
+        offsetRevision:
+          Number.isFinite(Number(activeSnapshot?.revision)) &&
+          Number(activeSnapshot?.revision) > 0
+            ? Number(activeSnapshot?.revision)
+            : null,
+        offsetSource: activeSnapshot?.source || null,
+        offsetSpace: activeSnapshot?.coordinateSpace || "content-ink",
       });
     }
     emitDebug("finish: blur", {
@@ -248,7 +278,6 @@ export default function useInlineEditorMountLifecycle({
     onOverlaySwapRequest,
     overlaySessionIdRef,
     setOverlayPhase,
-    v2OffsetOneShotPx,
   ]);
 
   return {

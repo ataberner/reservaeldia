@@ -73,6 +73,38 @@ function buildCenterDelta(fromRect, toRect) {
   };
 }
 
+function isFiniteRectPayload(rect) {
+  if (!rect) return false;
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  return [x, y, width, height].every(Number.isFinite);
+}
+
+function isZeroRectPayload(rect) {
+  if (!isFiniteRectPayload(rect)) return false;
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  return (
+    Math.abs(x) < 0.0001 &&
+    Math.abs(y) < 0.0001 &&
+    Math.abs(width) < 0.0001 &&
+    Math.abs(height) < 0.0001
+  );
+}
+
+function normalizeProbeRect(rect) {
+  if (!isFiniteRectPayload(rect)) return null;
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (width < 0 || height < 0) return null;
+  if (isZeroRectPayload(rect)) return null;
+  return rect;
+}
+
 export default function useInlineDebugEmitter({
   DEBUG_MODE,
   editingId,
@@ -168,6 +200,10 @@ export default function useInlineDebugEmitter({
       : null;
     const fullRangeRect = getFullRangeRect(editorRef.current);
     const selectionInfo = getSelectionRectInEditor(editorRef.current);
+    const selectionRectRaw = selectionInfo?.rect || null;
+    const selectionRect = normalizeProbeRect(selectionRectRaw);
+    const selectionRectDegenerate =
+      Boolean(selectionRectRaw) && !selectionRect;
     const projectedKonvaRect = projectedKonvaRectBase;
     const projectedKonvaRectRawSnapshot = projectedKonvaRectRaw;
     const overlayToKonvaDy = overlayRect
@@ -179,13 +215,20 @@ export default function useInlineDebugEmitter({
     const fullRangeToContentDy =
       fullRangeRect && contentRect ? fullRangeRect.y - contentRect.y : null;
     const caretToContentDy =
-      selectionInfo.inEditor && selectionInfo.rect && contentRect
-        ? selectionInfo.rect.y - contentRect.y
+      selectionInfo.inEditor && selectionRect && contentRect
+        ? selectionRect.y - contentRect.y
         : null;
-    const caretProbeRect = getCollapsedCaretProbeRectInEditor(editorRef.current);
+    const caretProbeRectRaw = getCollapsedCaretProbeRectInEditor(editorRef.current);
+    const caretProbeRect = normalizeProbeRect(caretProbeRectRaw);
+    const caretProbeRectDegenerate =
+      Boolean(caretProbeRectRaw) && !caretProbeRect;
     const caretProbeToContentDy =
       caretProbeRect && contentRect ? caretProbeRect.y - contentRect.y : null;
     const caretProbeHeightPx = caretProbeRect ? caretProbeRect.height : null;
+    const isFocused = document.activeElement === editorRef.current;
+    const focusClaimed = Boolean(isFocused && selectionInfo.inEditor);
+    const selectionGeometryReady = Boolean(selectionRect);
+    const caretGeometryReady = Boolean(caretProbeRect);
     const firstGlyphRect = getFirstGlyphRectInEditor(editorRef.current);
     const firstGlyphToContentDy =
       firstGlyphRect && contentRect ? firstGlyphRect.y - contentRect.y : null;
@@ -311,7 +354,8 @@ export default function useInlineDebugEmitter({
         : null,
       contentScrollWidth: editorRef.current?.scrollWidth ?? null,
       contentClientWidth: editorRef.current?.clientWidth ?? null,
-      isFocused: document.activeElement === editorRef.current,
+      isFocused,
+      focusClaimed,
       projectedKonvaRect,
       projectedKonvaRectRaw: projectedKonvaRectRawSnapshot,
       lockedCenterStageX: roundMetric(Number(lockedCenterStageX)),
@@ -320,10 +364,16 @@ export default function useInlineDebugEmitter({
       contentToKonvaDy,
       fullRangeRect,
       selectionInEditor: selectionInfo.inEditor,
-      selectionRect: selectionInfo.rect,
+      selectionRect,
+      selectionRectRaw,
+      selectionRectDegenerate,
+      selectionGeometryReady,
       fullRangeToContentDy,
       caretToContentDy,
       caretProbeRect,
+      caretProbeRectRaw,
+      caretProbeRectDegenerate,
+      caretGeometryReady,
       caretProbeToContentDy,
       caretProbeHeightPx,
       firstGlyphRect,

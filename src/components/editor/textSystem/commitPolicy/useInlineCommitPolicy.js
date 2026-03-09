@@ -19,6 +19,7 @@ export default function useCanvasEditorInlineCommitHandlers({
   inlineEditPreviewRef,
   inlineCommitDebugRef,
   setInlineOverlayMountedId,
+  setInlineOverlayMountSession,
   finishEdit,
   restoreElementDrag,
   calcularXTextoCentrado,
@@ -89,6 +90,18 @@ export default function useCanvasEditorInlineCommitHandlers({
       inlineEditPreviewRef.current = { id: null, centerX: null };
       flushSync(() => {
         setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+        setInlineOverlayMountSession((prev) => {
+          const prevId = prev?.mounted ? prev.id : null;
+          if (prevId !== finishId) return prev;
+          return {
+            id: null,
+            sessionId: null,
+            mounted: false,
+            swapCommitted: false,
+            phase: "finish-missing-object",
+            token: Number(prev?.token || 0),
+          };
+        });
         finishEdit();
       });
       restoreElementDrag(finishId);
@@ -107,6 +120,18 @@ export default function useCanvasEditorInlineCommitHandlers({
       inlineEditPreviewRef.current = { id: null, centerX: null };
       flushSync(() => {
         setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+        setInlineOverlayMountSession((prev) => {
+          const prevId = prev?.mounted ? prev.id : null;
+          if (prevId !== finishId) return prev;
+          return {
+            id: null,
+            sessionId: null,
+            mounted: false,
+            swapCommitted: false,
+            phase: "finish-empty-abort",
+            token: Number(prev?.token || 0),
+          };
+        });
         finishEdit();
       });
       restoreElementDrag(finishId);
@@ -124,6 +149,18 @@ export default function useCanvasEditorInlineCommitHandlers({
       inlineEditPreviewRef.current = { id: null, centerX: null };
       flushSync(() => {
         setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+        setInlineOverlayMountSession((prev) => {
+          const prevId = prev?.mounted ? prev.id : null;
+          if (prevId !== finishId) return prev;
+          return {
+            id: null,
+            sessionId: null,
+            mounted: false,
+            swapCommitted: false,
+            phase: "finish-noop-unchanged-text",
+            token: Number(prev?.token || 0),
+          };
+        });
         finishEdit();
       });
       restoreElementDrag(finishId);
@@ -186,6 +223,18 @@ export default function useCanvasEditorInlineCommitHandlers({
 
     flushSync(() => {
       setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+      setInlineOverlayMountSession((prev) => {
+        const prevId = prev?.mounted ? prev.id : null;
+        if (prevId !== finishId) return prev;
+        return {
+          id: null,
+          sessionId: null,
+          mounted: false,
+          swapCommitted: false,
+          phase: "finish-commit",
+          token: Number(prev?.token || 0),
+        };
+      });
       finishEdit();
     });
     restoreElementDrag(finishId);

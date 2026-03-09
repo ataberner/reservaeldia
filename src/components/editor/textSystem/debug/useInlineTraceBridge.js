@@ -42,15 +42,32 @@ export default function useInlineTraceBridge({
       window.__INLINE_TRACE = [];
       return true;
     };
+    const getFocusRcaTrace = () =>
+      Array.isArray(window.__INLINE_FOCUS_RCA_TRACE)
+        ? [...window.__INLINE_FOCUS_RCA_TRACE]
+        : [];
+    const clearFocusRcaTrace = () => {
+      window.__INLINE_FOCUS_RCA_TRACE = [];
+      window.__INLINE_FOCUS_RCA_SESSION = {};
+      return true;
+    };
 
     window.__INLINE_TEST.runMatrix = runMatrix;
     window.__INLINE_TEST.clearTrace = clearTrace;
+    window.__INLINE_TEST.getFocusRcaTrace = getFocusRcaTrace;
+    window.__INLINE_TEST.clearFocusRcaTrace = clearFocusRcaTrace;
     return () => {
       if (window.__INLINE_TEST?.runMatrix === runMatrix) {
         delete window.__INLINE_TEST.runMatrix;
       }
       if (window.__INLINE_TEST?.clearTrace === clearTrace) {
         delete window.__INLINE_TEST.clearTrace;
+      }
+      if (window.__INLINE_TEST?.getFocusRcaTrace === getFocusRcaTrace) {
+        delete window.__INLINE_TEST.getFocusRcaTrace;
+      }
+      if (window.__INLINE_TEST?.clearFocusRcaTrace === clearFocusRcaTrace) {
+        delete window.__INLINE_TEST.clearFocusRcaTrace;
       }
     };
   }, [isPhaseAtomicV2, normalizedOverlayEngine]);

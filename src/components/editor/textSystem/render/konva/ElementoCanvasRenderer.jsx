@@ -29,6 +29,19 @@ function isInlineCanvasTextDebugEnabled() {
   );
 }
 
+function isInlineIntentDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  return window.__DBG_INLINE_INTENT === true;
+}
+
+function logInlineIntentEmitter(eventName, payload = {}) {
+  if (!isInlineIntentDebugEnabled()) return;
+  console.log(`[INLINE-INTENT][EMIT] ${eventName}`, {
+    ts: new Date().toISOString(),
+    ...payload,
+  });
+}
+
 function toShapeSize(obj, fallbackWidth = 120, fallbackHeight = 120) {
   return {
     width: Math.max(1, Math.abs(Number(obj?.width) || fallbackWidth)),
@@ -131,9 +144,9 @@ export default function ElementoCanvas({
   onDragEndPersonalizado,
   dragStartPos,
   hasDragged,
-  onStartTextEdit,
   editingMode = false,
   inlineOverlayMountedId = null,
+  inlineOverlayMountSession = null,
   inlineVisibilityMode = "reactive",
   inlineOverlayEngine = "phase_atomic_v2",
 }) {
@@ -162,38 +175,45 @@ export default function ElementoCanvas({
 
 
   // Ã¢Å“â€¦ Click con estado fresco (evita stale closures del useMemo)
+  const emitSelectionGesture = useCallback((gesture, e) => {
+    if (!onSelect) return;
+
+    e && (e.cancelBubble = true);
+    e?.evt && (e.evt.cancelBubble = true);
+
+    if (hasDragged.current) {
+      logInlineIntentEmitter("skip-due-drag", {
+        id: obj.id,
+        tipo: obj.tipo,
+        gesture,
+      });
+      return;
+    }
+
+    logInlineIntentEmitter("emit-gesture", {
+      id: obj.id,
+      tipo: obj.tipo,
+      gesture,
+      shift: Boolean(e?.evt?.shiftKey),
+      ctrl: Boolean(e?.evt?.ctrlKey),
+      meta: Boolean(e?.evt?.metaKey),
+    });
+
+    onSelect(obj.id, obj, e, { gesture });
+  }, [hasDragged, obj, onSelect]);
+
   const handleClick = useCallback(
     (e) => {
-      e.cancelBubble = true;
-
-      if (!hasDragged.current) {
-        // Ã°Å¸Â§Â  Texto normal
-        if (obj.tipo === "texto") {
-          if (isSelected) {
-            onStartTextEdit?.(obj.id, obj.texto);
-          } else {
-            onSelect(obj.id, obj, e);
-          }
-        }
-
-        // Ã°Å¸â€ â€¢ Forma con texto (rect)
-        else if (obj.tipo === "forma" && obj.figura === "rect") {
-          if (isSelected) {
-            onStartTextEdit?.(obj.id, obj.texto || "");
-          } else {
-            onSelect(obj.id, obj, e);
-          }
-        }
-
-        // Ã°Å¸Â§Â± Para todo lo demÃƒÂ¡s
-
-        // Ã°Å¸Â§Â± Para todo lo demÃƒÂ¡s
-        else {
-          onSelect(obj.id, obj, e);
-        }
-      }
+      emitSelectionGesture("primary", e);
     },
-    [obj, isSelected, onSelect, onStartTextEdit]
+    [emitSelectionGesture]
+  );
+
+  const handleDoubleClick = useCallback(
+    (e) => {
+      emitSelectionGesture("double", e);
+    },
+    [emitSelectionGesture]
   );
 
 
@@ -249,6 +269,8 @@ export default function ElementoCanvas({
 
     onClick: handleClick,
     onTap: handleClick,
+    onDblClick: handleDoubleClick,
+    onDblTap: handleDoubleClick,
 
     onDragStart: (e) => {
 
@@ -330,6 +352,7 @@ export default function ElementoCanvas({
     editingMode,
     isInEditMode,
     handleClick,
+    handleDoubleClick,
     onDragMovePersonalizado,
     onDragStartPersonalizado,
     onDragEndPersonalizado,
@@ -643,6 +666,7 @@ export default function ElementoCanvas({
       overlayEngine: inlineOverlayEngine,
       visibilityMode: inlineVisibilityMode,
       inlineOverlayMountedId,
+      inlineOverlayMountSession,
       objectId: obj.id,
       editingId,
       currentInlineEditingId: getCurrentInlineEditingId(),
@@ -899,14 +923,6 @@ export default function ElementoCanvas({
           onDragEnd={(e) => {
             commonProps.onDragEnd?.(e);
             syncRsvpTextPosition(e.target);
-          }}
-          onDblClick={(e) => {
-            e.cancelBubble = true;
-            onStartTextEdit?.(obj.id, obj.texto || "Confirmar asistencia");
-          }}
-          onDblTap={(e) => {
-            e.cancelBubble = true;
-            onStartTextEdit?.(obj.id, obj.texto || "Confirmar asistencia");
           }}
         />
 
@@ -1170,6 +1186,7 @@ export default function ElementoCanvas({
           overlayEngine: inlineOverlayEngine,
           visibilityMode: inlineVisibilityMode,
           inlineOverlayMountedId,
+          inlineOverlayMountSession,
           objectId: obj.id,
           editingId,
           currentInlineEditingId: getCurrentInlineEditingId(),
@@ -1189,14 +1206,6 @@ export default function ElementoCanvas({
               cornerRadius={obj.cornerRadius || 0}
               stroke={selectionStroke}
               strokeWidth={selectionStrokeWidth}
-              onDblClick={(e) => {
-                e.cancelBubble = true;
-                if (onStartTextEdit) onStartTextEdit(obj.id, obj.texto || "");
-              }}
-              onDblTap={(e) => {
-                e.cancelBubble = true;
-                if (onStartTextEdit) onStartTextEdit(obj.id, obj.texto || "");
-              }}
               onDragMove={(e) => {
                 if (typeof commonProps.onDragMove === "function") {
                   commonProps.onDragMove(e);
@@ -1367,6 +1376,7 @@ export default function ElementoCanvas({
 
   return null;
 }
+
 
 
 

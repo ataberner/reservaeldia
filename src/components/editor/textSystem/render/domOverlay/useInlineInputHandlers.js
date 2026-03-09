@@ -3,8 +3,15 @@ import {
   getInlineLineStats,
   normalizeInlineEditableText,
 } from "@/components/editor/overlays/inlineTextModel";
+import {
+  emitInlineFocusRcaEvent,
+} from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 
 export default function useInlineInputHandlers({
+  editingId,
+  editorRef,
+  sessionIdRef,
+  overlayPhase,
   normalizedValue,
   onChange,
   emitDebug,
@@ -32,6 +39,16 @@ export default function useInlineInputHandlers({
 
     onChange(nextValue);
 
+    emitInlineFocusRcaEvent("input", {
+      editingId,
+      overlayPhase,
+      editorEl: editorRef?.current || null,
+      extra: {
+        sessionId: sessionIdRef?.current || null,
+        valueLength: nextValue.length,
+      },
+    });
+
     if (
       prevLineCount !== nextLineCount ||
       prevTrailingNewlines !== nextTrailingNewlines ||
@@ -51,7 +68,7 @@ export default function useInlineInputHandlers({
         normalizationChanged,
       });
     }
-  }, [emitDebug, normalizedValue, onChange]);
+  }, [editingId, editorRef, emitDebug, normalizedValue, onChange, overlayPhase, sessionIdRef]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Enter" && !e.isComposing) {
@@ -60,8 +77,16 @@ export default function useInlineInputHandlers({
   }, []);
 
   const handleBlur = useCallback(() => {
+    emitInlineFocusRcaEvent("blur", {
+      editingId,
+      overlayPhase,
+      editorEl: editorRef?.current || null,
+      extra: {
+        sessionId: sessionIdRef?.current || null,
+      },
+    });
     triggerFinish("blur");
-  }, [triggerFinish]);
+  }, [editingId, editorRef, overlayPhase, sessionIdRef, triggerFinish]);
 
   return {
     handleInput,

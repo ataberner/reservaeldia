@@ -1,5 +1,8 @@
-import { useEffect, useLayoutEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { roundMetric } from "@/components/editor/overlays/inlineEditor/inlineEditorNumeric";
+import {
+  emitInlineFocusRcaEvent,
+} from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 
 export default function useInlinePhaseAtomicLifecycle({
   editingId,
@@ -18,14 +21,29 @@ export default function useInlinePhaseAtomicLifecycle({
   v2SwapRequested,
   setV2SwapRequested,
   overlaySessionIdRef,
+  inlineOverlayMountSession,
   swapAckSeenRef,
   setOverlayPhase,
   setEditorVisualReady,
   setLayoutProbeRevision,
 }) {
+  const emitDebugRef = useRef(emitDebug);
+  useEffect(() => {
+    emitDebugRef.current = emitDebug;
+  }, [emitDebug]);
+  const emitDebugStable = useCallback((eventName, payload = {}) => {
+    const debugEmitter = emitDebugRef.current;
+    if (typeof debugEmitter === "function") {
+      debugEmitter(eventName, payload);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isPhaseAtomicV2) return undefined;
     if (!editingId) return undefined;
+    if (v2SwapRequested || v2OffsetComputed || swapAckSeenRef.current > 0) {
+      return undefined;
+    }
     let cancelled = false;
     let timeoutId = 0;
 
@@ -33,7 +51,7 @@ export default function useInlinePhaseAtomicLifecycle({
     const markReady = (reason) => {
       if (cancelled) return;
       setV2FontsReady(true);
-      emitDebug("overlay: after-fonts-ready", {
+      emitDebugStable("overlay: after-fonts-ready", {
         phase: "after-fonts-ready",
         reason,
         sessionId: overlaySessionIdRef.current,
@@ -58,7 +76,15 @@ export default function useInlinePhaseAtomicLifecycle({
         window.clearTimeout(timeoutId);
       }
     };
-  }, [editingId, emitDebug, fontLoadStatusAvailable, isPhaseAtomicV2]);
+  }, [
+    editingId,
+    emitDebugStable,
+    fontLoadStatusAvailable,
+    isPhaseAtomicV2,
+    v2OffsetComputed,
+    v2SwapRequested,
+    swapAckSeenRef,
+  ]);
 
   useEffect(() => {
     if (!isPhaseAtomicV2) return;
@@ -84,14 +110,37 @@ export default function useInlinePhaseAtomicLifecycle({
     if (!v2OffsetComputed || v2SwapRequested) return;
     if (typeof onOverlaySwapRequest !== "function") return;
 
-    const sessionId = overlaySessionIdRef.current || `${editingId}-${Date.now()}`;
+    const previousSessionId = overlaySessionIdRef.current;
+    const hasSessionForEditingId =
+      typeof previousSessionId === "string" &&
+      previousSessionId.startsWith(`${editingId}-`);
+    const sessionId = hasSessionForEditingId
+      ? previousSessionId
+      : `${editingId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     overlaySessionIdRef.current = sessionId;
+    if (!hasSessionForEditingId) {
+      emitInlineFocusRcaEvent("inline-session-start", {
+        editingId,
+        overlayPhase: "ready_to_swap",
+        extra: {
+          sessionId,
+          engine: "phase_atomic_v2",
+        },
+      });
+    }
     setV2SwapRequested(true);
     setOverlayPhase("ready_to_swap");
-    emitDebug("overlay: ready-to-swap", {
+    emitDebugStable("overlay: ready-to-swap", {
       phase: "ready_to_swap",
       sessionId,
       offsetYApplied: roundMetric(Number(v2OffsetOneShotPx || 0)),
+    });
+    emitInlineFocusRcaEvent("overlay-ready-to-swap", {
+      editingId,
+      overlayPhase: "ready_to_swap",
+      extra: {
+        sessionId,
+      },
     });
     onOverlaySwapRequest({
       id: editingId,
@@ -101,7 +150,7 @@ export default function useInlinePhaseAtomicLifecycle({
     });
   }, [
     editingId,
-    emitDebug,
+    emitDebugStable,
     isPhaseAtomicV2,
     onOverlaySwapRequest,
     v2OffsetComputed,
@@ -117,20 +166,53 @@ export default function useInlinePhaseAtomicLifecycle({
     if (swapAckToken?.id !== editingId) return;
     if (swapAckToken?.sessionId !== overlaySessionIdRef.current) return;
 
-    swapAckSeenRef.current = token;
     const phase = swapAckToken?.phase || null;
     if (phase === "swap-commit") {
-      setOverlayPhase("active");
+      const mountSession = inlineOverlayMountSession || null;
+      const isMountedForSession = Boolean(
+        mountSession?.mounted &&
+        mountSession?.swapCommitted &&
+        mountSession?.id === editingId &&
+        mountSession?.sessionId === overlaySessionIdRef.current
+      );
+      const mountSessionToken = Number(mountSession?.token || 0);
+      const mountTokenMatches =
+        !Number.isFinite(mountSessionToken) ||
+        mountSessionToken <= 0 ||
+        mountSessionToken === token;
+      if (!isMountedForSession || !mountTokenMatches) {
+        emitDebugStable("overlay: swap-commit-wait-mount-session", {
+          phase: "swap-commit-wait-mount-session",
+          sessionId: overlaySessionIdRef.current,
+          swapAckToken: token,
+          mountSessionId: mountSession?.sessionId || null,
+          mountSessionToken: Number.isFinite(mountSessionToken) ? mountSessionToken : null,
+          mountSessionMounted: Boolean(mountSession?.mounted),
+          mountSessionSwapCommitted: Boolean(mountSession?.swapCommitted),
+        });
+        return;
+      }
+      swapAckSeenRef.current = token;
+      setOverlayPhase("await_focus_claim");
       setEditorVisualReady(true);
-      emitDebug("overlay: swap-commit", {
+      emitDebugStable("overlay: swap-commit", {
         phase: "swap-commit",
+        nextOverlayPhase: "await_focus_claim",
         sessionId: overlaySessionIdRef.current,
         swapAckToken: token,
         offsetYApplied: roundMetric(Number(v2OffsetOneShotPx || 0)),
       });
+      emitInlineFocusRcaEvent("overlay-swap-commit", {
+        editingId,
+        overlayPhase: "await_focus_claim",
+        extra: {
+          sessionId: overlaySessionIdRef.current,
+          swapAckToken: token,
+        },
+      });
       requestAnimationFrame(() => {
         setLayoutProbeRevision((prev) => prev + 1);
-        emitDebug("overlay: after-first-paint", {
+        emitDebugStable("overlay: after-first-paint", {
           phase: "after-first-paint",
           sessionId: overlaySessionIdRef.current,
           swapAckToken: token,
@@ -140,11 +222,13 @@ export default function useInlinePhaseAtomicLifecycle({
     }
 
     if (phase === "finish_commit" || phase === "done" || phase === "cancel") {
+      swapAckSeenRef.current = token;
       setOverlayPhase("done");
     }
   }, [
     editingId,
-    emitDebug,
+    emitDebugStable,
+    inlineOverlayMountSession,
     isPhaseAtomicV2,
     setLayoutProbeRevision,
     setEditorVisualReady,

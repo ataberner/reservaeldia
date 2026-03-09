@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Group, Circle } from "react-konva";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
@@ -14,6 +15,41 @@ import {
   getCurrentInlineEditingId,
   setCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
+import {
+  emitInlineFocusRcaEvent,
+} from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
+
+const INLINE_INTENT_STALE_MS = 1500;
+
+function isInlineIntentDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  return window.__DBG_INLINE_INTENT === true;
+}
+
+function isSemanticInlineEditableObject(obj) {
+  return (
+    obj?.tipo === "texto" ||
+    (obj?.tipo === "forma" && obj?.figura === "rect")
+  );
+}
+
+function isLegacyDoubleInlineEditableObject(obj) {
+  return obj?.tipo === "rsvp-boton";
+}
+
+function getRuntimeInteractionState() {
+  if (typeof window === "undefined") {
+    return {
+      dragging: false,
+      resizing: false,
+    };
+  }
+
+  return {
+    dragging: Boolean(window._isDragging),
+    resizing: Boolean(window._resizeData?.isResizing),
+  };
+}
 
 export default function CanvasStageContent({
   stageRef,
@@ -65,10 +101,12 @@ export default function CanvasStageContent({
   obtenerMetricasNodoInline,
   obtenerCentroVisualTextoX,
   setInlineOverlayMountedId,
+  setInlineOverlayMountSession,
   setInlineSwapAck,
   captureInlineSnapshot,
   startEdit,
   inlineOverlayMountedId,
+  inlineOverlayMountSession,
   inlineDebugAB,
   finishEdit,
   restoreElementDrag,
@@ -87,6 +125,635 @@ export default function CanvasStageContent({
   normalizarMedidasGaleria,
   setElementosSeleccionados,
 }) {
+  const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
+  const inlineActivationRef = useRef({
+    openingId: null,
+    openingAtMs: 0,
+  });
+
+  const logInlineIntent = useCallback((eventName, payload = {}) => {
+    if (!isInlineIntentDebugEnabled()) return;
+    console.log(`[INLINE-INTENT] ${eventName}`, {
+      ts: new Date().toISOString(),
+      ...payload,
+    });
+  }, []);
+
+  const clearInlineActivation = useCallback((reason, extra = {}) => {
+    const previous = inlineActivationRef.current || {};
+    if (previous.openingId || isInlineIntentDebugEnabled()) {
+      logInlineIntent("inline-opening-clear", {
+        reason,
+        previousOpeningId: previous.openingId || null,
+        previousOpeningAtMs: Number.isFinite(previous.openingAtMs)
+          ? previous.openingAtMs
+          : null,
+        ...extra,
+      });
+    }
+    inlineActivationRef.current = {
+      openingId: null,
+      openingAtMs: 0,
+    };
+  }, [logInlineIntent]);
+
+  const armInlineActivation = useCallback((id, reason, extra = {}) => {
+    if (!id) return;
+    const next = {
+      openingId: id,
+      openingAtMs: Date.now(),
+    };
+    inlineActivationRef.current = next;
+    logInlineIntent("inline-opening-arm", {
+      reason,
+      openingId: id,
+      openingAtMs: next.openingAtMs,
+      ...extra,
+    });
+  }, [logInlineIntent]);
+
+  const clearInlineIntent = useCallback((reason, extra = {}) => {
+    const previous = inlineIntentRef.current || {};
+    if (previous.candidateId || isInlineIntentDebugEnabled()) {
+      logInlineIntent("intent-clear", {
+        reason,
+        previousCandidateId: previous.candidateId || null,
+        previousArmedAtMs: Number.isFinite(previous.armedAtMs)
+          ? previous.armedAtMs
+          : null,
+        ...extra,
+      });
+    }
+    inlineIntentRef.current = {
+      candidateId: null,
+      armedAtMs: 0,
+    };
+  }, [logInlineIntent]);
+
+  const armInlineIntent = useCallback((id, reason, extra = {}) => {
+    if (!id) return;
+    const next = {
+      candidateId: id,
+      armedAtMs: Date.now(),
+    };
+    inlineIntentRef.current = next;
+    logInlineIntent("intent-arm", {
+      reason,
+      candidateId: id,
+      armedAtMs: next.armedAtMs,
+      ...extra,
+    });
+  }, [logInlineIntent]);
+
+  const isIntentFresh = useCallback((intent, nowMs = Date.now()) => {
+    if (!intent?.candidateId) return false;
+    if (!Number.isFinite(Number(intent.armedAtMs))) return false;
+    return nowMs - Number(intent.armedAtMs) <= INLINE_INTENT_STALE_MS;
+  }, []);
+
+  const isInlineSemanticContextValid = useCallback(({ obj, event }) => {
+    if (!isSemanticInlineEditableObject(obj)) return false;
+
+    const nativeEvent = event?.evt || null;
+    const runtimeInteraction = getRuntimeInteractionState();
+    const hasDisallowedModifiers =
+      Boolean(nativeEvent?.ctrlKey) ||
+      Boolean(nativeEvent?.metaKey) ||
+      Boolean(nativeEvent?.altKey);
+    if (hasDisallowedModifiers) return false;
+    if (Boolean(nativeEvent?.shiftKey)) return false;
+
+    if (seleccionActiva) return false;
+    if (runtimeInteraction.dragging || isDragging) return false;
+    if (runtimeInteraction.resizing) return false;
+    if (hasDragged?.current) return false;
+
+    return true;
+  }, [hasDragged, isDragging, seleccionActiva]);
+
+  const startInlineFromDecision = useCallback(async ({
+    id,
+    targetObj,
+    sourceGesture = "primary",
+    sourceReason = null,
+  }) => {
+    if (!id || !targetObj) return;
+
+    const initialText = String(
+      targetObj?.texto ??
+        (targetObj?.tipo === "rsvp-boton" ? "Confirmar asistencia" : "")
+    );
+
+    armInlineActivation(id, "start-inline-decision", {
+      sourceGesture,
+      sourceReason: sourceReason || null,
+    });
+
+    const startAttempt = Number(pendingInlineStartRef.current || 0) + 1;
+    pendingInlineStartRef.current = startAttempt;
+
+    const fontWait = await ensureInlineFontReady(targetObj?.fontFamily);
+    if (pendingInlineStartRef.current !== startAttempt) {
+      clearInlineActivation("start-inline-stale-attempt", {
+        id,
+        startAttempt,
+        pendingAttempt: Number(pendingInlineStartRef.current || 0),
+        sourceGesture,
+        sourceReason: sourceReason || null,
+      });
+      return;
+    }
+
+    inlineDebugLog("start-inline-font-ready", {
+      id,
+      objectFontFamily: targetObj?.fontFamily ?? null,
+      sourceGesture,
+      ...fontWait,
+    });
+    logInlineIntent("start-inline-font-ready", {
+      id,
+      sourceGesture,
+      sourceReason: sourceReason || null,
+      waited: fontWait?.waited ?? null,
+      ready: fontWait?.ready ?? null,
+    });
+
+    const node = elementRefs.current[id];
+    const nodeMetrics = obtenerMetricasNodoInline(node);
+    const shouldKeepCenterXDuringEdit =
+      targetObj?.tipo === "texto" &&
+      !targetObj.__groupAlign &&
+      !Number.isFinite(targetObj.width) &&
+      targetObj.__autoWidth !== false;
+    const centerXLock = shouldKeepCenterXDuringEdit
+      ? obtenerCentroVisualTextoX(targetObj, node)
+      : null;
+    const previousCurrentEditingId = getCurrentInlineEditingId();
+
+    setInlineOverlayMountedId(null);
+    setInlineOverlayMountSession((prev) => ({
+      id: null,
+      sessionId: null,
+      mounted: false,
+      swapCommitted: false,
+      phase: "reset",
+      token: Number(prev?.token || 0) + 1,
+    }));
+    setInlineSwapAck((prev) => ({
+      id: null,
+      sessionId: null,
+      phase: "reset",
+      token: Number(prev?.token || 0) + 1,
+      offsetY: 0,
+    }));
+    captureInlineSnapshot("enter: pre-start", {
+      id,
+      previousId: previousCurrentEditingId,
+      textoLength: initialText.length,
+    });
+    setCurrentInlineEditingId(id);
+    inlineEditPreviewRef.current = {
+      id: shouldKeepCenterXDuringEdit ? id : null,
+      centerX: Number.isFinite(centerXLock) ? centerXLock : null,
+    };
+    inlineDebugLog("start-inline-edit", {
+      id,
+      textoLength: initialText.length,
+      objectX: targetObj?.x ?? null,
+      objectY: targetObj?.y ?? null,
+      shouldKeepCenterXDuringEdit,
+      centerXLock,
+      previousCurrentEditingId,
+      nextCurrentEditingId: getCurrentInlineEditingId(),
+      sourceGesture,
+      nodeMetrics,
+    });
+    logInlineIntent("start-inline-commit", {
+      id,
+      sourceGesture,
+      sourceReason: sourceReason || null,
+      previousCurrentEditingId: previousCurrentEditingId || null,
+    });
+
+    startEdit(id, initialText);
+    node?.draggable(false);
+    node?.getLayer?.()?.batchDraw?.();
+    captureInlineSnapshot("enter: after-start-sync", {
+      id,
+      previousId: previousCurrentEditingId,
+      nextCurrentEditingId: getCurrentInlineEditingId(),
+    });
+    captureInlineSnapshot("overlay: before-mount", {
+      id,
+      source: "start-inline-edit",
+    });
+  }, [
+    armInlineActivation,
+    captureInlineSnapshot,
+    clearInlineActivation,
+    elementRefs,
+    ensureInlineFontReady,
+    inlineDebugLog,
+    inlineEditPreviewRef,
+    obtenerCentroVisualTextoX,
+    obtenerMetricasNodoInline,
+    pendingInlineStartRef,
+    setInlineOverlayMountedId,
+    setInlineOverlayMountSession,
+    setInlineSwapAck,
+    startEdit,
+    logInlineIntent,
+  ]);
+
+  const decideInlineIntent = useCallback(({
+    id,
+    obj,
+    event,
+    meta,
+    selectionSnapshot,
+  }) => {
+    const gesture = meta?.gesture === "double" ? "double" : "primary";
+    const nativeEvent = event?.evt || null;
+    const shift = Boolean(nativeEvent?.shiftKey);
+    const nowMs = Date.now();
+    const intent = inlineIntentRef.current || {};
+    const sameCandidate = intent.candidateId === id;
+    const intentFresh = sameCandidate && isIntentFresh(intent, nowMs);
+    const supportsSemanticInline = isSemanticInlineEditableObject(obj);
+    const supportsLegacyDoubleInline = isLegacyDoubleInlineEditableObject(obj);
+    const semanticValid = isInlineSemanticContextValid({ obj, event });
+    const runtimeInteraction = getRuntimeInteractionState();
+    const selectionIsSingleSame =
+      Array.isArray(selectionSnapshot) &&
+      selectionSnapshot.length === 1 &&
+      selectionSnapshot[0] === id;
+    const selectionHasConflict =
+      Array.isArray(selectionSnapshot) &&
+      selectionSnapshot.length > 0 &&
+      !selectionSnapshot.includes(id);
+    const selectionAllowsInline = !selectionHasConflict;
+    const canStartBySemanticSelection =
+      supportsSemanticInline &&
+      semanticValid &&
+      selectionIsSingleSame &&
+      selectionAllowsInline;
+    const canStartByFreshCandidateFallback =
+      supportsSemanticInline &&
+      semanticValid &&
+      sameCandidate &&
+      intentFresh &&
+      selectionAllowsInline;
+
+    logInlineIntent("gate-input", {
+      id,
+      gesture,
+      shift,
+      editingId: editing.id || null,
+      candidateId: intent.candidateId || null,
+      intentArmedAtMs: Number.isFinite(intent.armedAtMs) ? intent.armedAtMs : null,
+      intentFresh,
+      semanticValid,
+      selectionSnapshot,
+      selectionIsSingleSame,
+      selectionHasConflict,
+      selectionAllowsInline,
+      dragging: runtimeInteraction.dragging || Boolean(isDragging),
+      resizing: runtimeInteraction.resizing,
+      seleccionActiva: Boolean(seleccionActiva),
+      supportsSemanticInline,
+      supportsLegacyDoubleInline,
+      canStartBySemanticSelection,
+      canStartByFreshCandidateFallback,
+    });
+
+    if (shift) {
+      return { decision: "multiselect_toggle", gesture };
+    }
+
+    if (!semanticValid && !(supportsLegacyDoubleInline && gesture === "double")) {
+      return { decision: "ignore", gesture };
+    }
+
+    if (canStartBySemanticSelection) {
+      return {
+        decision: "start_inline",
+        gesture,
+        reason: "semantic-selected-same-id",
+      };
+    }
+
+    if (canStartByFreshCandidateFallback) {
+      return {
+        decision: "start_inline",
+        gesture,
+        reason: "fresh-candidate-fallback",
+      };
+    }
+
+    if (supportsLegacyDoubleInline && gesture === "double") {
+      return {
+        decision: "start_inline",
+        gesture,
+        reason: "legacy-double",
+      };
+    }
+
+    return {
+      decision: "select_only",
+      gesture,
+      reason: "select-first-gesture",
+    };
+  }, [
+    editing.id,
+    isDragging,
+    isInlineSemanticContextValid,
+    isIntentFresh,
+    logInlineIntent,
+    seleccionActiva,
+  ]);
+
+  const applyInlineIntentDecision = useCallback(({
+    id,
+    obj,
+    event,
+    decision,
+    gesture,
+    reason = null,
+  }) => {
+    const targetSupportsInline =
+      isSemanticInlineEditableObject(obj) || isLegacyDoubleInlineEditableObject(obj);
+
+    if (editing.id && (editing.id !== id || !targetSupportsInline)) {
+      const previousEditingId = editing.id;
+      finishEdit();
+      restoreElementDrag(previousEditingId);
+      clearInlineIntent("editing-finished-by-selection", {
+        clickedId: id,
+        previousEditingId,
+      });
+    }
+
+    event && (event.cancelBubble = true);
+    event?.evt && (event.evt.cancelBubble = true);
+
+    if (decision === "ignore") {
+      logInlineIntent("gate-ignore", { id, gesture, reason: reason || null });
+      emitInlineFocusRcaEvent("intent-ignore", {
+        editingId: id,
+        extra: {
+          gesture,
+          decision,
+          reason: reason || null,
+        },
+      });
+      return;
+    }
+
+    if (decision === "multiselect_toggle") {
+      setElementosSeleccionados((prev) => {
+        if (prev.includes(id)) return prev.filter((x) => x !== id);
+        return [...prev, id];
+      });
+      clearInlineIntent("multiselect-toggle", { id, gesture });
+      emitInlineFocusRcaEvent("intent-multiselect-toggle", {
+        editingId: id,
+        extra: {
+          gesture,
+          decision,
+          reason: reason || null,
+        },
+      });
+      return;
+    }
+
+    if (decision === "select_only") {
+      setElementosSeleccionados((prev) =>
+        prev.length === 1 && prev[0] === id ? prev : [id]
+      );
+      if (isSemanticInlineEditableObject(obj)) {
+        armInlineIntent(id, "first-valid-selection", { gesture });
+      } else {
+        clearInlineIntent("non-inline-selection", { id, gesture });
+      }
+      logInlineIntent("gate-select-only", { id, gesture });
+      emitInlineFocusRcaEvent("intent-select-only", {
+        editingId: id,
+        extra: {
+          gesture,
+          decision,
+          reason: reason || null,
+        },
+      });
+      return;
+    }
+
+    if (decision === "start_inline") {
+      setElementosSeleccionados((prev) =>
+        prev.length === 1 && prev[0] === id ? prev : [id]
+      );
+      clearInlineIntent("start-inline", { id, gesture });
+      logInlineIntent("gate-start-inline", {
+        id,
+        gesture,
+        reason: reason || null,
+      });
+      emitInlineFocusRcaEvent("intent-start-inline", {
+        editingId: id,
+        extra: {
+          gesture,
+          decision,
+          reason: reason || null,
+        },
+      });
+      startInlineFromDecision({
+        id,
+        targetObj: obj,
+        sourceGesture: gesture,
+        sourceReason: reason || null,
+      });
+    }
+  }, [
+    armInlineIntent,
+    clearInlineIntent,
+    editing.id,
+    finishEdit,
+    logInlineIntent,
+    restoreElementDrag,
+    setElementosSeleccionados,
+    startInlineFromDecision,
+  ]);
+
+  const handleElementSelectIntent = useCallback((id, obj, event, meta = {}) => {
+    const gesture = meta?.gesture === "double" ? "double" : "primary";
+    const opening = inlineActivationRef.current || {};
+    const openingId = opening.openingId || null;
+    if (openingId && openingId !== id) {
+      clearInlineActivation("opening-replaced-by-other-target", {
+        openingId,
+        clickedId: id,
+        gesture,
+      });
+    }
+
+    const isInlineOpenOrOpeningSameId =
+      openingId === id ||
+      (editing.id === id && isSemanticInlineEditableObject(obj));
+    if (isInlineOpenOrOpeningSameId) {
+      event && (event.cancelBubble = true);
+      event?.evt && (event.evt.cancelBubble = true);
+      logInlineIntent("gate-ignore-inline-open-or-opening", {
+        id,
+        gesture,
+        openingId,
+        editingId: editing.id || null,
+      });
+      emitInlineFocusRcaEvent("intent-ignore-inline-open-or-opening", {
+        editingId: id,
+        extra: {
+          gesture,
+          openingId,
+          editingId: editing.id || null,
+        },
+      });
+      return;
+    }
+
+    const selectionSnapshot =
+      typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+      ? [...window._elementosSeleccionados]
+      : [...elementosSeleccionados];
+    const decision = decideInlineIntent({
+      id,
+      obj,
+      event,
+      meta,
+      selectionSnapshot,
+    });
+
+    applyInlineIntentDecision({
+      id,
+      obj,
+      event,
+      decision: decision.decision,
+      gesture: decision.gesture,
+      reason: decision.reason || null,
+    });
+  }, [
+    applyInlineIntentDecision,
+    clearInlineActivation,
+    decideInlineIntent,
+    editing.id,
+    elementosSeleccionados,
+  ]);
+
+  const selectSectionAndClearInlineIntent = useCallback((sectionId, reason = "section-select") => {
+    clearInlineActivation(reason, {
+      sectionId: sectionId || null,
+    });
+    clearInlineIntent(reason, {
+      sectionId: sectionId || null,
+    });
+    if (typeof onSelectSeccion === "function") {
+      onSelectSeccion(sectionId);
+    }
+  }, [clearInlineActivation, clearInlineIntent, onSelectSeccion]);
+
+  const handleStageMouseDownWithInlineIntent = useCallback((e) => {
+    clearInlineActivation("canvas-mousedown", {
+      targetClass: e?.target?.getClassName?.() || null,
+    });
+    clearInlineIntent("canvas-mousedown", {
+      targetClass: e?.target?.getClassName?.() || null,
+    });
+    if (typeof stageGestures?.onMouseDown === "function") {
+      stageGestures.onMouseDown(e);
+    }
+  }, [clearInlineActivation, clearInlineIntent, stageGestures]);
+
+  const handleStageTouchStartWithInlineIntent = useCallback((e) => {
+    clearInlineActivation("canvas-touchstart", {
+      targetClass: e?.target?.getClassName?.() || null,
+    });
+    clearInlineIntent("canvas-touchstart", {
+      targetClass: e?.target?.getClassName?.() || null,
+    });
+    if (typeof stageGestures?.onTouchStart === "function") {
+      stageGestures.onTouchStart(e);
+    }
+  }, [clearInlineActivation, clearInlineIntent, stageGestures]);
+
+  const handleTransformInteractionStartWithInlineIntent = useCallback((...args) => {
+    clearInlineActivation("transform-start", {
+      selected: [...elementosSeleccionados],
+    });
+    clearInlineIntent("transform-start", {
+      selected: [...elementosSeleccionados],
+    });
+    if (typeof handleTransformInteractionStart === "function") {
+      handleTransformInteractionStart(...args);
+    }
+  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionStart]);
+
+  const handleTransformInteractionEndWithInlineIntent = useCallback((...args) => {
+    clearInlineActivation("transform-end", {
+      selected: [...elementosSeleccionados],
+    });
+    clearInlineIntent("transform-end", {
+      selected: [...elementosSeleccionados],
+    });
+    if (typeof handleTransformInteractionEnd === "function") {
+      handleTransformInteractionEnd(...args);
+    }
+  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionEnd]);
+
+  useEffect(() => {
+    if (elementosSeleccionados.length !== 1) {
+      clearInlineActivation("selection-size-change", {
+        selectionCount: elementosSeleccionados.length,
+      });
+      clearInlineIntent("selection-size-change", {
+        selectionCount: elementosSeleccionados.length,
+      });
+      return;
+    }
+    const selectedId = elementosSeleccionados[0];
+    const currentCandidateId = inlineIntentRef.current?.candidateId;
+    if (currentCandidateId && currentCandidateId !== selectedId) {
+      clearInlineIntent("selection-id-change", {
+        selectedId,
+        candidateId: currentCandidateId,
+      });
+    }
+    const currentOpeningId = inlineActivationRef.current?.openingId;
+    if (currentOpeningId && currentOpeningId !== selectedId) {
+      clearInlineActivation("selection-id-change", {
+        selectedId,
+        openingId: currentOpeningId,
+      });
+    }
+  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados]);
+
+  useEffect(() => {
+    if (seleccionActiva) {
+      clearInlineActivation("marquee-selection-active");
+      clearInlineIntent("marquee-selection-active");
+    }
+  }, [clearInlineActivation, clearInlineIntent, seleccionActiva]);
+
+  useEffect(() => {
+    if (editing.id) {
+      clearInlineActivation("editing-active", {
+        editingId: editing.id,
+      });
+      clearInlineIntent("editing-active", {
+        editingId: editing.id,
+      });
+    } else {
+      clearInlineActivation("editing-finished");
+      clearInlineIntent("editing-finished");
+    }
+  }, [clearInlineActivation, clearInlineIntent, editing.id]);
+
   return (
               <Stage
                 ref={stageRef}
@@ -105,9 +772,9 @@ export default function CanvasStageContent({
                 }}
 
 
-                onMouseDown={stageGestures.onMouseDown}
+                onMouseDown={handleStageMouseDownWithInlineIntent}
 
-                onTouchStart={stageGestures.onTouchStart}
+                onTouchStart={handleStageTouchStartWithInlineIntent}
 
                 onTouchMove={stageGestures.onTouchMove}
 
@@ -139,7 +806,7 @@ export default function CanvasStageContent({
                           seccion={seccion}
                           offsetY={offsetY}
                           alturaPx={alturaPx}
-                          onSelect={() => onSelectSeccion(seccion.id)}
+                          onSelect={() => selectSectionAndClearInlineIntent(seccion.id, "section-bg-image-select")}
                           onUpdateFondoOffset={actualizarOffsetFondo}
                           isMobile={isMobile}
                           mobileBackgroundEditEnabled={mobileBackgroundEditSectionId === seccion.id}
@@ -170,8 +837,8 @@ export default function CanvasStageContent({
                           strokeWidth={0}
                           listening={true}
                           preventDefault={false}
-                          onClick={() => onSelectSeccion(seccion.id)}
-                          onTap={() => onSelectSeccion(seccion.id)}
+                          onClick={() => selectSectionAndClearInlineIntent(seccion.id, "section-bg-color-select")}
+                          onTap={() => selectSectionAndClearInlineIntent(seccion.id, "section-bg-color-select")}
                         />
                       )
                     ];
@@ -369,7 +1036,7 @@ export default function CanvasStageContent({
                                   ? [0, controlSectionFill.gradientFrom, 1, controlSectionFill.gradientTo]
                                   : undefined
                               }
-                              onClick={() => onSelectSeccion(seccion.id)}   // ?? dispara el evento
+                              onClick={() => selectSectionAndClearInlineIntent(seccion.id, "section-overlay-select")}   // ?? dispara el evento
                             />
 
                             {/* Rect highlight si estÃ¡s controlando la altura */}
@@ -421,6 +1088,7 @@ export default function CanvasStageContent({
                           altoCanvas={altoCanvas}
                           onSelect={(id, e) => {
                             e?.evt && (e.evt.cancelBubble = true);
+                            clearInlineIntent("non-inline-select", { id, tipo: "galeria" });
                             setElementosSeleccionados([id]);
                           }}
                           onDragMovePersonalizado={(pos, id) => {
@@ -433,6 +1101,7 @@ export default function CanvasStageContent({
                             });
                           }}
                           onDragStartPersonalizado={(dragId = obj.id) => {
+                            clearInlineIntent("drag-start", { dragId, tipo: "galeria" });
                             if (!elementosSeleccionados.includes(dragId)) {
                               setElementosSeleccionados([dragId]);
                             }
@@ -475,11 +1144,13 @@ export default function CanvasStageContent({
                           // ? selecciÃ³n
                           onSelect={(id, e) => {
                             e?.evt && (e.evt.cancelBubble = true);
+                            clearInlineIntent("non-inline-select", { id, tipo: "countdown" });
                             setElementosSeleccionados([id]);
                           }}
 
                           // ? PREVIEW liviano (no tocar estado del objeto para que no haya lag)
                           onDragStartPersonalizado={(dragId = obj.id) => {
+                            clearInlineIntent("drag-start", { dragId, tipo: "countdown" });
                             if (!elementosSeleccionados.includes(dragId)) {
                               setElementosSeleccionados([dragId]);
                             }
@@ -616,103 +1287,13 @@ export default function CanvasStageContent({
                         isInEditMode={isInEditMode} // ?? NUEVA PROP
                         onHover={isInEditMode ? null : setHoverId}
                         registerRef={registerRef}
-                        onStartTextEdit={isInEditMode ? null : async (id, texto) => {
-                          const startAttempt = Number(pendingInlineStartRef.current || 0) + 1;
-                          pendingInlineStartRef.current = startAttempt;
-                          const fontWait = await ensureInlineFontReady(obj?.fontFamily);
-                          if (pendingInlineStartRef.current !== startAttempt) return;
-                          inlineDebugLog("start-inline-font-ready", {
-                            id,
-                            objectFontFamily: obj?.fontFamily ?? null,
-                            ...fontWait,
-                          });
-                          const node = elementRefs.current[id];
-                          const nodeMetrics = obtenerMetricasNodoInline(node);
-                          const shouldKeepCenterXDuringEdit =
-                            obj?.tipo === "texto" &&
-                            !obj.__groupAlign &&
-                            !Number.isFinite(obj.width) &&
-                            obj.__autoWidth !== false;
-                          const centerXLock =
-                            shouldKeepCenterXDuringEdit
-                              ? obtenerCentroVisualTextoX(obj, node)
-                              : null;
-                          const previousCurrentEditingId = getCurrentInlineEditingId();
-                          setInlineOverlayMountedId(null);
-                          setInlineSwapAck((prev) => ({
-                            id: null,
-                            sessionId: null,
-                            phase: "reset",
-                            token: Number(prev?.token || 0) + 1,
-                            offsetY: 0,
-                          }));
-                          captureInlineSnapshot("enter: pre-start", {
-                            id,
-                            previousId: previousCurrentEditingId,
-                            textoLength: String(texto ?? "").length,
-                          });
-                          setCurrentInlineEditingId(id);
-                          inlineEditPreviewRef.current = {
-                            id: shouldKeepCenterXDuringEdit ? id : null,
-                            centerX: Number.isFinite(centerXLock) ? centerXLock : null,
-                          };
-                          inlineDebugLog("start-inline-edit", {
-                            id,
-                            textoLength: String(texto ?? "").length,
-                            objectX: obj?.x ?? null,
-                            objectY: obj?.y ?? null,
-                            shouldKeepCenterXDuringEdit,
-                            centerXLock,
-                            previousCurrentEditingId,
-                            nextCurrentEditingId: getCurrentInlineEditingId(),
-                            nodeMetrics,
-                          });
-
-                          startEdit(id, texto);
-                          node?.draggable(false);
-                          node?.getLayer?.()?.batchDraw?.();
-                          captureInlineSnapshot("enter: after-start-sync", {
-                            id,
-                            previousId: previousCurrentEditingId,
-                            nextCurrentEditingId: getCurrentInlineEditingId(),
-                          });
-                          captureInlineSnapshot("overlay: before-mount", {
-                            id,
-                            source: "start-inline-edit",
-                          });
-                        }}
                         editingId={editing.id}
                         inlineOverlayMountedId={inlineOverlayMountedId}
+                        inlineOverlayMountSession={inlineOverlayMountSession}
                         inlineVisibilityMode={inlineDebugAB.visibilitySource}
                         inlineOverlayEngine={inlineDebugAB.overlayEngine}
                         finishInlineEdit={finishEdit}
-                        onSelect={isInEditMode ? null : (id, obj, e) => {
-                          const targetSupportsInlineEdit =
-                            obj?.tipo === "texto" ||
-                            (obj?.tipo === "forma" && obj?.figura === "rect");
-                          if (editing.id && (editing.id !== id || !targetSupportsInlineEdit)) {
-                            const previousEditingId = editing.id;
-                            finishEdit();
-                            restoreElementDrag(previousEditingId);
-                          }
-
-                          e?.evt && (e.evt.cancelBubble = true);
-
-                          const esShift = e?.evt?.shiftKey;
-
-                          setElementosSeleccionados((prev) => {
-
-                            if (esShift) {
-                              if (prev.includes(id)) {
-                                return prev.filter((x) => x !== id);
-                              } else {
-                                return [...prev, id];
-                              }
-                            } else {
-                              return [id];
-                            }
-                          });
-                        }}
+                        onSelect={isInEditMode ? null : handleElementSelectIntent}
 
 
                         onChange={(id, nuevo) => {
@@ -859,6 +1440,7 @@ export default function CanvasStageContent({
                           });
                         }}
                         onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id, e) => {
+                          clearInlineIntent("drag-start", { dragId });
                           const seleccionActual = Array.isArray(window._elementosSeleccionados)
                             ? window._elementosSeleccionados
                             : elementosSeleccionados;
@@ -918,8 +1500,8 @@ export default function CanvasStageContent({
                         objetos={objetos}
                         isDragging={isDragging}
                         isMobile={isMobile}
-                        onTransformInteractionStart={handleTransformInteractionStart}
-                        onTransformInteractionEnd={handleTransformInteractionEnd}
+                        onTransformInteractionStart={handleTransformInteractionStartWithInlineIntent}
+                        onTransformInteractionEnd={handleTransformInteractionEndWithInlineIntent}
                         onTransform={(newAttrs) => {
                           if (elementosSeleccionados.length === 1) {
                             const id = elementosSeleccionados[0];

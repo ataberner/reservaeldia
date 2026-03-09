@@ -12,6 +12,7 @@ export default function CanvasInlineEditingLayer({
   escalaVisual,
   inlineDebugAB,
   inlineSwapAck,
+  inlineOverlayMountSession,
   isMobile,
   zoom,
   altoCanvasDinamico,
@@ -44,6 +45,7 @@ export default function CanvasInlineEditingLayer({
             widthMode={inlineDebugAB.overlayWidthMode}
             overlayEngine={inlineDebugAB.overlayEngine}
             swapAckToken={inlineSwapAck}
+            inlineOverlayMountSession={inlineOverlayMountSession}
           />
         );
       })()}

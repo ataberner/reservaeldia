@@ -128,6 +128,14 @@ export default function CanvasEditor({
   const pendingInlineStartRef = useRef(0);
   const inlineRenderValueRef = useRef({ id: null, value: "" });
   const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
+  const [inlineOverlayMountSession, setInlineOverlayMountSession] = useState({
+    id: null,
+    sessionId: null,
+    mounted: false,
+    swapCommitted: false,
+    phase: "idle",
+    token: 0,
+  });
   const inlineSwapAckSeqRef = useRef(0);
   const [inlineSwapAck, setInlineSwapAck] = useState({
     id: null,
@@ -136,6 +144,14 @@ export default function CanvasEditor({
     token: 0,
     offsetY: 0,
   });
+  useEffect(() => {
+    const mountedId = inlineOverlayMountSession?.mounted
+      ? inlineOverlayMountSession.id || null
+      : null;
+    setInlineOverlayMountedId((previous) => (
+      previous === mountedId ? previous : mountedId
+    ));
+  }, [inlineOverlayMountSession]);
   const contenedorRef = useRef(null);
   const editorOverlayRootRef = useRef(null);
   const autoSectionViewportRef = useRef(null);
@@ -163,6 +179,28 @@ export default function CanvasEditor({
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.__DBG_INLINE_INTENT = true;
+    window.__INLINE_DEBUG = true;
+    window.__INLINE_DIAG_ALIGNMENT = true;
+    window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
+    window.__INLINE_FOCUS_RCA = true;
+    if (!Array.isArray(window.__INLINE_FOCUS_RCA_TRACE)) {
+      window.__INLINE_FOCUS_RCA_TRACE = [];
+    }
+    if (!window.__INLINE_FOCUS_RCA_SESSION || typeof window.__INLINE_FOCUS_RCA_SESSION !== "object") {
+      window.__INLINE_FOCUS_RCA_SESSION = {};
+    }
+    console.log("[INLINE][DEBUG] flags enabled", {
+      DBG_INLINE_INTENT: window.__DBG_INLINE_INTENT,
+      INLINE_DEBUG: window.__INLINE_DEBUG,
+      INLINE_DIAG_ALIGNMENT: window.__INLINE_DIAG_ALIGNMENT,
+      INLINE_DIAG_ALIGNMENT_EXTENDED: window.__INLINE_DIAG_ALIGNMENT_EXTENDED,
+      INLINE_FOCUS_RCA: window.__INLINE_FOCUS_RCA,
+    });
+  }, []);
 
   useEffect(() => {
     setDraftMeta({
@@ -922,6 +960,8 @@ export default function CanvasEditor({
       inlineRenderValueRef,
       inlineOverlayMountedId,
       setInlineOverlayMountedId,
+      inlineOverlayMountSession,
+      setInlineOverlayMountSession,
       setInlineSwapAck,
       stageRef,
       elementRefs,
@@ -943,6 +983,7 @@ export default function CanvasEditor({
       inlineCommitDebugRef,
       inlineOverlayMountedId,
       setInlineOverlayMountedId,
+      setInlineOverlayMountSession,
       inlineOverlayEngine: runtime.inlineDebugAB?.overlayEngine || "phase_atomic_v2",
       finishEdit,
       restoreElementDrag,
@@ -1158,10 +1199,12 @@ export default function CanvasEditor({
                 obtenerMetricasNodoInline={obtenerMetricasNodoInline}
                 obtenerCentroVisualTextoX={obtenerCentroVisualTextoX}
                 setInlineOverlayMountedId={setInlineOverlayMountedId}
+                setInlineOverlayMountSession={setInlineOverlayMountSession}
                 setInlineSwapAck={setInlineSwapAck}
                 captureInlineSnapshot={captureInlineSnapshot}
                 startEdit={startEdit}
                 inlineOverlayMountedId={inlineOverlayMountedId}
+                inlineOverlayMountSession={inlineOverlayMountSession}
                 inlineDebugAB={inlineDebugAB}
                 finishEdit={finishEdit}
                 restoreElementDrag={restoreElementDrag}
@@ -1195,6 +1238,7 @@ export default function CanvasEditor({
               escalaVisual={escalaVisual}
               inlineDebugAB={inlineDebugAB}
               inlineSwapAck={inlineSwapAck}
+              inlineOverlayMountSession={inlineOverlayMountSession}
               isMobile={isMobile}
               zoom={zoom}
               altoCanvasDinamico={altoCanvasDinamico}

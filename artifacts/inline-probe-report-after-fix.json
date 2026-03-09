@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-03-09T11:44:17.932Z",
+  "locationHref": "http://localhost:3000/dashboard/?phase_atomic_v2=1",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/138.0.0.0 Safari/537.36",
+  "dpr": 1,
+  "headless": true,
+  "userDataDir": "C:\\Reservaeldia\\artifacts\\inline-probe-user-data",
+  "interactiveWaitMs": 0,
+  "hasInlineApi": false,
+  "overlayCount": 0,
+  "inlineHarnessReady": false,
+  "title": null,
+  "pathname": "/dashboard/",
+  "hasDashboardRoot": false,
+  "hasCanvasContainer": false,
+  "isLikelyAuthGate": false,
+  "inlineTestKeys": [],
+  "bodyTextSnippet": "",
+  "runtimeDiagnostics": {
+    "pageErrors": [],
+    "requestFailures": [],
+    "consoleErrors": [
+      "Error al cargar plantillas: JSHandle@error"
+    ]
+  },
+  "setupResult": {
+    "harnessReady": false,
+    "clearedTrace": false,
+    "autoStartRequested": true,
+    "startResult": null,
+    "valueResult": null,
+    "stateBefore": null,
+    "stateAfter": null
+  },
+  "matrixResult": {
+    "generatedAt": "2026-03-09T11:44:17.933Z",
+    "engine": "fallback",
+    "sampleCount": 0,
+    "summary": {
+      "sampleCount": 0,
+      "failures": 0,
+      "passRate": null,
+      "maxErrorPx": 0.5
+    },
+    "trace": [],
+    "note": "runMatrix API not available yet; fallback summary from __INLINE_TRACE."
+  }
+}

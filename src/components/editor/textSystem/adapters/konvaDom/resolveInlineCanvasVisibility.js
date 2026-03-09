@@ -2,9 +2,11 @@ export default function resolveInlineCanvasVisibility({
   overlayEngine,
   visibilityMode,
   inlineOverlayMountedId,
+  inlineOverlayMountSession,
   objectId,
   editingId,
   currentInlineEditingId,
+  sessionId = null,
 }) {
   const normalizedOverlayEngine = "phase_atomic_v2";
   const normalizedVisibilityMode =
@@ -30,7 +32,13 @@ export default function resolveInlineCanvasVisibility({
     );
   }
 
-  const isEditingByOverlay = inlineOverlayMountedId === objectId;
+  const mountSession = inlineOverlayMountSession || null;
+  const mountId = mountSession?.mounted ? mountSession.id : null;
+  const mountSessionId = mountSession?.mounted ? mountSession.sessionId : null;
+  const mountSwapCommitted = Boolean(mountSession?.mounted && mountSession?.swapCommitted);
+  const sessionMatches = !sessionId || !mountSessionId || mountSessionId === sessionId;
+  const isEditingByOverlay = mountSwapCommitted && mountId === objectId && sessionMatches;
+  const isEditingByOverlayLegacy = inlineOverlayMountedId === objectId;
   const isEditing = isEditingByOverlay;
 
   return {
@@ -38,6 +46,12 @@ export default function resolveInlineCanvasVisibility({
     isEditingByWindow,
     isEditingByReactive,
     isEditingByOverlay,
+    isEditingByOverlayLegacy,
+    overlayMountSessionId: mountSessionId || null,
+    overlayMountSwapCommitted: mountSwapCommitted,
+    overlayMountSessionToken: Number.isFinite(Number(mountSession?.token))
+      ? Number(mountSession.token)
+      : null,
     overlayDomPresentLoose,
     overlayFocused,
     overlayVisualReady,

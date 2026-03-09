@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-03-09T11:44:38.910Z",
+  "locationHref": "http://localhost:3000/?phase_atomic_v2=1",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/138.0.0.0 Safari/537.36",
+  "dpr": 1,
+  "headless": true,
+  "userDataDir": "C:\\Reservaeldia\\artifacts\\inline-probe-user-data",
+  "interactiveWaitMs": 0,
+  "hasInlineApi": false,
+  "overlayCount": 0,
+  "inlineHarnessReady": false,
+  "title": "Invitaciones Digitales para Bodas | Reserva el Día",
+  "pathname": "/",
+  "hasDashboardRoot": false,
+  "hasCanvasContainer": false,
+  "isLikelyAuthGate": true,
+  "inlineTestKeys": [],
+  "bodyTextSnippet": "Inicio\nFuncionalidades\nCómo Funciona\nPrecios\nIniciar sesión\nRegistrarme\nInvitaciones Digitales para Bodas\n\nTu invitación perfecta, diseñada a tu manera. En minutos.\n\nCreá una invitación digital única para tu evento.\nElegí una plantilla, personalizala visualmente y compartila con un solo click.\n¡Conocé nuestros modelos ahora!\n\nCREAR MI INVITACIÓN\nDiseños de invitaciones digitales\nFuncionalidades de",
+  "runtimeDiagnostics": {
+    "pageErrors": [],
+    "requestFailures": [],
+    "consoleErrors": [
+      "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension installed which messes with the HTML before React loaded.\n\n%s%s https://react.dev/link/hydration-mismatch \n\n  ...\n    <PathnameContextProviderAdapter router={{sdc:{},sbc:{}, ...}} isAutoExport={true}>\n      <MyApp pageProps={{}} Component={function Home} err={undefined} router={{sdc:{},sbc:{}, ...}}>\n        <Head>\n        <Home>\n          <Head>\n          <header>\n          <section>\n          <section id=\"invitaciones\" className=\"container-...\">\n            <h2>\n            <div className=\"container\">\n              <div className=\"row align-...\">\n                <div>\n                <div className=\"col-12 col...\">\n                  <div className=\"d-flex gap-4\">\n                    <div className=\"text-center\">\n                      <LinkComponent href=\"#\">\n                        <a\n                          ref={function}\n                          onClick={function onClick}\n                          onMouseEnter={function onMouseEnter}\n                          onTouchStart={function onTouchStart}\n+                         href=\"/?phase_atomic_v2=1#\"\n-                         href=\"/#\"\n                        >\n                    <div className=\"text-center\">\n                      <LinkComponent href=\"#\">\n                        <a\n                          ref={function}\n                          onClick={function onClick}\n                          onMouseEnter={function onMouseEnter}\n                          onTouchStart={function onTouchStart}\n+                         href=\"/?phase_atomic_v2=1#\"\n-                         href=\"/#\"\n                        >\n          ...\n      ...\n"
+    ]
+  },
+  "setupResult": {
+    "harnessReady": false,
+    "clearedTrace": false,
+    "autoStartRequested": true,
+    "startResult": null,
+    "valueResult": null,
+    "stateBefore": null,
+    "stateAfter": null
+  },
+  "matrixResult": {
+    "generatedAt": "2026-03-09T11:44:38.910Z",
+    "engine": "fallback",
+    "sampleCount": 0,
+    "summary": {
+      "sampleCount": 0,
+      "failures": 0,
+      "passRate": null,
+      "maxErrorPx": 0.5
+    },
+    "trace": [],
+    "note": "runMatrix API not available yet; fallback summary from __INLINE_TRACE."
+  }
+}

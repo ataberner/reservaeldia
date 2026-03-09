@@ -3,6 +3,9 @@ import {
   getCurrentInlineEditingId,
   getInlineEditingSnapshot,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
+import {
+  emitInlineFocusRcaEvent,
+} from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 
 export default function useInlineEditorMountLifecycle({
   editorRef,
@@ -97,17 +100,27 @@ export default function useInlineEditorMountLifecycle({
       el.innerText = initialText;
     }
 
-    const finalizeLayoutProbe = () => {
+    const finalizeLayoutProbe = ({ emitAfterFocus = true } = {}) => {
       layoutRaf1 = requestAnimationFrame(() => {
         if (cancelled) return;
         layoutRaf2 = requestAnimationFrame(() => {
           if (cancelled) return;
           setLayoutProbeRevision((prev) => prev + 1);
+          if (!emitAfterFocus) return;
           afterFocusRaf = requestAnimationFrame(() => {
             if (cancelled) return;
+            const focused = isFocusedNow();
+            if (!focused) {
+              emitDebug("overlay: after-focus-skipped", {
+                attempt: focusAttempts,
+                isFocused: false,
+                reason: "no-focus-ownership",
+              });
+              return;
+            }
             emitDebug("overlay: after-focus", {
               attempt: focusAttempts,
-              isFocused: isFocusedNow(),
+              isFocused: true,
             });
           });
         });
@@ -126,16 +139,21 @@ export default function useInlineEditorMountLifecycle({
     };
 
     if (isPhaseAtomicV2) {
-      focusAttempts = 1;
-      emitDebug("overlay: before-focus", { attempt: focusAttempts });
-      try {
-        el.focus({ preventScroll: true });
-      } catch {
-        el.focus();
-      }
-      // Preservar el comportamiento previo en v2: forzar caret inicial en el primer pase.
-      placeCaretAtEnd();
-      finalizeLayoutProbe();
+      emitDebug("overlay: before-focus", {
+        attempt: 0,
+        skipped: true,
+        reason: "await-semantic-ready-focus-authority",
+      });
+      emitInlineFocusRcaEvent("focus-mount-skipped-v2", {
+        editingId,
+        overlayPhase: "prepare_mount",
+        editorEl: el,
+        extra: {
+          sessionId: overlaySessionIdRef.current || null,
+          reason: "await-semantic-ready-focus-authority",
+        },
+      });
+      finalizeLayoutProbe({ emitAfterFocus: false });
     } else {
       runFocusHandshake();
     }

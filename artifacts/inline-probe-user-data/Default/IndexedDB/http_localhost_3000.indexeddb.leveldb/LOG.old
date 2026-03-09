@@ -1,13 +1,14 @@
-2026/03/05-22:22:16.891 4514 Reusing MANIFEST C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/MANIFEST-000001
-2026/03/05-22:22:16.911 4514 Recovering log #7
-2026/03/05-22:22:16.913 4514 Reusing old log C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/000007.log 
-2026/03/05-22:22:17.063 6f44 Level-0 table #11: started
-2026/03/05-22:22:17.107 6f44 Level-0 table #11: 905 bytes OK
-2026/03/05-22:22:17.121 6f44 Delete type=0 #7
-2026/03/05-22:22:17.124 7bb8 Manual compaction at level-0 from '\x00\x05\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x06\x00\x00\x00' @ 0 : 0; will stop at '\x00\x05\x00\x00\x05' @ 165 : 1
-2026/03/05-22:22:17.124 7bb8 Compacting 1@0 + 1@1 files
-2026/03/05-22:22:17.167 7bb8 Generated table #12@0: 48 keys, 1430 bytes
-2026/03/05-22:22:17.167 7bb8 Compacted 1@0 + 1@1 files => 1430 bytes
-2026/03/05-22:22:17.191 7bb8 compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/03/05-22:22:17.192 7bb8 Delete type=2 #11
-2026/03/05-22:22:17.197 7bb8 Manual compaction at level-0 from '\x00\x05\x00\x00\x05' @ 165 : 1 .. '\x00\x06\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/03/09-08:49:01.309 6d40 Reusing MANIFEST C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/MANIFEST-000001
+2026/03/09-08:49:01.310 6d40 Recovering log #34
+2026/03/09-08:49:01.312 6d40 Reusing old log C:\Reservaeldia\artifacts\inline-probe-user-data\Default\IndexedDB\http_localhost_3000.indexeddb.leveldb/000034.log 
+2026/03/09-08:49:01.313 6d40 Delete type=2 #32
+2026/03/09-08:49:01.725 6d40 Level-0 table #39: started
+2026/03/09-08:49:01.764 6d40 Level-0 table #39: 917 bytes OK
+2026/03/09-08:49:01.770 6d40 Delete type=0 #34
+2026/03/09-08:49:01.772 7934 Manual compaction at level-0 from '\x00\x0c\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0c\x00\x00\x05' @ 420 : 1
+2026/03/09-08:49:01.773 7934 Compacting 1@0 + 1@1 files
+2026/03/09-08:49:01.813 7934 Generated table #40@0: 52 keys, 1530 bytes
+2026/03/09-08:49:01.817 7934 Compacted 1@0 + 1@1 files => 1530 bytes
+2026/03/09-08:49:01.822 7934 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/09-08:49:01.829 7934 Delete type=2 #39
+2026/03/09-08:49:01.831 7934 Manual compaction at level-0 from '\x00\x0c\x00\x00\x05' @ 420 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at (end)

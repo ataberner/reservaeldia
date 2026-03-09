@@ -49,6 +49,10 @@ import useInlineDebugEmitter from "@/components/editor/overlays/inlineEditor/use
 import useInlineEditorMountLifecycle from "@/components/editor/overlays/inlineEditor/useInlineEditorMountLifecycle";
 import InlineEditorPortalView from "@/components/editor/overlays/inlineEditor/InlineEditorPortalView";
 import useInlineInputHandlers from "@/components/editor/textSystem/render/domOverlay/useInlineInputHandlers";
+import {
+  buildInlineFocusOperationalSnapshot,
+  emitInlineFocusRcaEvent,
+} from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -126,6 +130,7 @@ export default function InlineTextEditor({
   onDebugEvent = null,
   overlayEngine = "phase_atomic_v2",
   swapAckToken = null,
+  inlineOverlayMountSession = null,
   maintainCenterWhileEditing = false,
 }) {
   if (!node) return null;
@@ -166,6 +171,7 @@ export default function InlineTextEditor({
   });
   const entryFocusStateRef = useRef({
     editingId: null,
+    sessionId: null,
     settled: false,
   });
   const nudgeDiagPrevRef = useRef({
@@ -174,6 +180,7 @@ export default function InlineTextEditor({
     liveTopInset: null,
     residual: null,
   });
+  const emitDebugRef = useRef(null);
 
   const normalizedFinishMode = normalizeFinishMode(finishMode);
   const normalizedWidthMode = normalizeWidthMode(widthMode);
@@ -729,24 +736,125 @@ export default function InlineTextEditor({
 
   useEffect(() => {
     if (!editingId) return;
-    const seed = Math.random().toString(36).slice(2, 10);
-    overlaySessionIdRef.current = `${editingId}-${Date.now()}-${seed}`;
     swapAckSeenRef.current = 0;
+    if (isPhaseAtomicV2) {
+      overlaySessionIdRef.current = null;
+      entryFocusStateRef.current = {
+        editingId,
+        sessionId: null,
+        settled: false,
+      };
+      return;
+    }
+    const seed = Math.random().toString(36).slice(2, 10);
+    const sessionId = `${editingId}-${Date.now()}-${seed}`;
+    overlaySessionIdRef.current = sessionId;
     entryFocusStateRef.current = {
       editingId,
+      sessionId,
       settled: false,
     };
-  }, [editingId, isPhaseAtomicV2]);
+    emitInlineFocusRcaEvent("inline-session-start", {
+      editingId,
+      overlayPhase: isPhaseAtomicV2 ? "prepare_mount" : "active",
+      editorEl: editorRef.current,
+      extra: {
+        sessionId,
+        engine: normalizedOverlayEngine,
+      },
+    });
+  }, [editingId, isPhaseAtomicV2, normalizedOverlayEngine]);
+
+  const isMountSessionReadyForClaim = useCallback((sessionId) => {
+    if (!isPhaseAtomicV2) return true;
+    if (!editingId || !sessionId) return false;
+    const mountSession = inlineOverlayMountSession || null;
+    if (!mountSession?.mounted) return false;
+    if (!mountSession?.swapCommitted) return false;
+    if (mountSession.id !== editingId) return false;
+    if (mountSession.sessionId !== sessionId) return false;
+    return true;
+  }, [editingId, inlineOverlayMountSession, isPhaseAtomicV2]);
+
+  const commitOperationalFocusClaim = useCallback(({
+    sessionId,
+    reason = "unknown",
+    editorElOverride = null,
+    attempt = null,
+    maxAttempts = null,
+    path = "unknown",
+  } = {}) => {
+    if (!isPhaseAtomicV2) return false;
+    if (!editingId || !sessionId) return false;
+    if (overlaySessionIdRef.current !== sessionId) return false;
+    if (!isMountSessionReadyForClaim(sessionId)) return false;
+    const targetEl = editorElOverride || editorRef.current;
+    if (!targetEl) return false;
+
+    const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
+    if (!operationalSnapshot.focusOperationalCore) return false;
+
+    const previousState = entryFocusStateRef.current || {};
+    if (
+      previousState.editingId === editingId &&
+      previousState.sessionId === sessionId &&
+      previousState.settled
+    ) {
+      return true;
+    }
+
+    entryFocusStateRef.current = {
+      editingId,
+      sessionId,
+      settled: true,
+    };
+    setOverlayPhase("active");
+    const debugEmitter = emitDebugRef.current;
+    if (typeof debugEmitter === "function") {
+      debugEmitter("overlay: focus-claim-commit", {
+        phase: "focus-claim-commit",
+        sessionId,
+        reason,
+        path,
+        attempt: Number.isFinite(Number(attempt)) ? Number(attempt) : null,
+        maxAttempts: Number.isFinite(Number(maxAttempts)) ? Number(maxAttempts) : null,
+        isFocused: Boolean(operationalSnapshot.isActiveElementEditor),
+        selectionInEditor: Boolean(operationalSnapshot.hasSelectionInsideEditor),
+        hasValidRangeInsideEditor: Boolean(operationalSnapshot.hasValidRangeInsideEditor),
+      });
+    }
+    emitInlineFocusRcaEvent("overlay-focus-claim-commit", {
+      editingId,
+      overlayPhase: "active",
+      editorEl: targetEl,
+      extra: {
+        sessionId,
+        reason,
+        path,
+        attempt: Number.isFinite(Number(attempt)) ? Number(attempt) : null,
+        maxAttempts: Number.isFinite(Number(maxAttempts)) ? Number(maxAttempts) : null,
+      },
+    });
+    return true;
+  }, [
+    editingId,
+    isMountSessionReadyForClaim,
+    isPhaseAtomicV2,
+    setOverlayPhase,
+  ]);
 
   useLayoutEffect(() => {
     if (isPhaseAtomicV2) return undefined;
     if (!editingId) return undefined;
     if (!editorVisualReady) return undefined;
+    const sessionId = overlaySessionIdRef.current || null;
+    if (!sessionId) return undefined;
 
     const state = entryFocusStateRef.current || {};
-    if (state.editingId !== editingId) {
+    if (state.editingId !== editingId || state.sessionId !== sessionId) {
       entryFocusStateRef.current = {
         editingId,
+        sessionId,
         settled: false,
       };
     }
@@ -786,6 +894,7 @@ export default function InlineTextEditor({
 
     const tryFocus = () => {
       if (cancelled) return;
+      if (overlaySessionIdRef.current !== sessionId) return;
       const targetEl = editorRef.current;
       if (!targetEl) return;
       attempt += 1;
@@ -795,8 +904,12 @@ export default function InlineTextEditor({
       } catch {
         targetEl.focus();
       }
-      const isFocused =
-        typeof document !== "undefined" && document.activeElement === targetEl;
+      const firstSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
+      const isFocused = Boolean(firstSnapshot.isActiveElementEditor);
+      if (isFocused) {
+        placeCaretAtEnd(targetEl);
+      }
+      const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
 
       emitInlineNudgeDiag(DEBUG_MODE, "focus-ownership-entry", {
         event: "focus-ownership-entry",
@@ -809,11 +922,25 @@ export default function InlineTextEditor({
         isFocused,
         sameNodeAsInitial,
       });
+      emitInlineFocusRcaEvent("focus-attempt", {
+        editingId,
+        overlayPhase: "entry-ready",
+        editorEl: targetEl,
+        extra: {
+          sessionId,
+          attempt,
+          maxAttempts,
+          path: "entry-ready",
+          isFocused,
+          sameNodeAsInitial,
+          focusOperationalCore: Boolean(operationalSnapshot.focusOperationalCore),
+        },
+      });
 
-      if (isFocused) {
-        placeCaretAtEnd(targetEl);
+      if (operationalSnapshot.focusOperationalCore) {
         entryFocusStateRef.current = {
           editingId,
+          sessionId,
           settled: true,
         };
         return;
@@ -829,6 +956,180 @@ export default function InlineTextEditor({
       if (rafId) window.cancelAnimationFrame(rafId);
     };
   }, [editingId, editorVisualReady, isPhaseAtomicV2]);
+
+  useLayoutEffect(() => {
+    if (!isPhaseAtomicV2) return undefined;
+    if (!editingId) return undefined;
+    if (!editorVisualReady) return undefined;
+    if (overlayPhase !== "await_focus_claim") return undefined;
+    const sessionId = overlaySessionIdRef.current || null;
+    if (!sessionId) return undefined;
+    if (!isMountSessionReadyForClaim(sessionId)) return undefined;
+
+    const state = entryFocusStateRef.current || {};
+    if (state.editingId !== editingId || state.sessionId !== sessionId) {
+      entryFocusStateRef.current = {
+        editingId,
+        sessionId,
+        settled: false,
+      };
+    }
+    if (entryFocusStateRef.current?.settled) return undefined;
+
+    const initialEl = editorRef.current;
+    if (!initialEl) return undefined;
+
+    let cancelled = false;
+    let rafId = 0;
+    let attempt = 0;
+    const maxAttempts = 4;
+
+    const placeCaretAtEnd = (targetEl) => {
+      if (!targetEl) return;
+      if (targetEl instanceof HTMLInputElement) {
+        const len = String(targetEl.value || "").length;
+        try {
+          targetEl.setSelectionRange(len, len);
+        } catch {
+          // no-op
+        }
+        return;
+      }
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(targetEl);
+        range.collapse(false);
+        const sel = window.getSelection?.();
+        if (!sel) return;
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch {
+        // no-op
+      }
+    };
+
+    const tryFocus = () => {
+      if (cancelled) return;
+      if (overlaySessionIdRef.current !== sessionId) return;
+      const targetEl = editorRef.current;
+      if (!targetEl) return;
+      attempt += 1;
+      const sameNodeAsInitial = targetEl === initialEl;
+      try {
+        targetEl.focus({ preventScroll: true });
+      } catch {
+        targetEl.focus();
+      }
+      const firstSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
+      const isFocused = Boolean(firstSnapshot.isActiveElementEditor);
+      if (isFocused) {
+        placeCaretAtEnd(targetEl);
+      }
+      const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
+
+      emitInlineNudgeDiag(DEBUG_MODE, "focus-ownership-entry", {
+        event: "focus-ownership-entry",
+        id: editingId || null,
+        sessionId: overlaySessionIdRef.current || null,
+        phase: "post-ready-v2",
+        overlayPhase: overlayPhase || null,
+        attempt,
+        maxAttempts,
+        editorVisualReady: Boolean(editorVisualReady),
+        isFocused,
+        sameNodeAsInitial,
+      });
+      emitInlineFocusRcaEvent("focus-reclaim-attempt", {
+        editingId,
+        overlayPhase: overlayPhase || null,
+        editorEl: targetEl,
+        extra: {
+          sessionId,
+          attempt,
+          maxAttempts,
+          path: "post-ready-v2",
+          isFocused,
+          sameNodeAsInitial,
+          focusOperationalCore: Boolean(operationalSnapshot.focusOperationalCore),
+        },
+      });
+
+      if (commitOperationalFocusClaim({
+        sessionId,
+        reason: "post-ready-v2",
+        editorElOverride: targetEl,
+        attempt,
+        maxAttempts,
+        path: "post-ready-v2",
+      })) {
+        return;
+      }
+      if (attempt >= maxAttempts) return;
+      rafId = window.requestAnimationFrame(tryFocus);
+    };
+
+    tryFocus();
+
+    return () => {
+      cancelled = true;
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [
+    commitOperationalFocusClaim,
+    editingId,
+    editorVisualReady,
+    isMountSessionReadyForClaim,
+    isPhaseAtomicV2,
+    overlayPhase,
+  ]);
+
+  useEffect(() => {
+    if (!isPhaseAtomicV2) return undefined;
+    if (!editingId) return undefined;
+    if (!editorVisualReady) return undefined;
+    if (overlayPhase !== "await_focus_claim") return undefined;
+    const sessionId = overlaySessionIdRef.current || null;
+    if (!sessionId) return undefined;
+    if (!isMountSessionReadyForClaim(sessionId)) return undefined;
+
+    const evaluateClaim = (reason) => {
+      commitOperationalFocusClaim({
+        sessionId,
+        reason,
+        path: "await-focus-observer",
+      });
+    };
+
+    evaluateClaim("await-focus-observer:init");
+
+    const handleSelectionChange = () => {
+      evaluateClaim("await-focus-observer:selectionchange");
+    };
+    const handleFocusIn = (event) => {
+      const targetEl = editorRef.current;
+      if (!targetEl) return;
+      const rawTarget = event?.target;
+      const targetNode = rawTarget instanceof Node ? rawTarget : null;
+      if (targetNode && targetNode !== targetEl && !targetEl.contains(targetNode)) {
+        return;
+      }
+      evaluateClaim("await-focus-observer:focusin");
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("focusin", handleFocusIn, true);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      document.removeEventListener("focusin", handleFocusIn, true);
+    };
+  }, [
+    commitOperationalFocusClaim,
+    editingId,
+    editorVisualReady,
+    isMountSessionReadyForClaim,
+    isPhaseAtomicV2,
+    overlayPhase,
+  ]);
 
   const className =
     typeof node.getClassName === "function" ? node.getClassName() : "Text";
@@ -1839,6 +2140,14 @@ export default function InlineTextEditor({
     editableHostRef,
     overlaySessionIdRef,
   });
+  useEffect(() => {
+    emitDebugRef.current = emitDebug;
+    return () => {
+      if (emitDebugRef.current === emitDebug) {
+        emitDebugRef.current = null;
+      }
+    };
+  }, [emitDebug]);
   useInlinePhaseAtomicLifecycle({
     editingId,
     isPhaseAtomicV2,
@@ -1856,6 +2165,7 @@ export default function InlineTextEditor({
     v2SwapRequested,
     setV2SwapRequested,
     overlaySessionIdRef,
+    inlineOverlayMountSession,
     swapAckSeenRef,
     setOverlayPhase,
     setEditorVisualReady,
@@ -1909,6 +2219,10 @@ export default function InlineTextEditor({
     handleKeyDown,
     handleBlur,
   } = useInlineInputHandlers({
+    editingId,
+    editorRef,
+    sessionIdRef: overlaySessionIdRef,
+    overlayPhase,
     normalizedValue,
     onChange,
     emitDebug,

@@ -31,9 +31,17 @@ export default function useInlinePhaseAtomicLifecycle({
   swapAckSeenRef,
   setOverlayPhase,
   setEditorVisualReady,
+  setRenderAuthorityPhase,
+  setCaretVisible,
   setLayoutProbeRevision,
 }) {
   const emitDebugRef = useRef(emitDebug);
+  const promotionRafIdsRef = useRef({
+    previewReady: 0,
+    previewPaint: 0,
+    editableReady: 0,
+    editablePaint: 0,
+  });
   useLayoutEffect(() => {
     emitDebugRef.current = emitDebug;
   }, [emitDebug]);
@@ -44,6 +52,21 @@ export default function useInlinePhaseAtomicLifecycle({
       debugEmitter(eventName, payload);
     }
   }, []);
+  const clearPromotionRafs = useCallback(() => {
+    const pending = promotionRafIdsRef.current || {};
+    if (pending.previewReady) window.cancelAnimationFrame(pending.previewReady);
+    if (pending.previewPaint) window.cancelAnimationFrame(pending.previewPaint);
+    if (pending.editableReady) window.cancelAnimationFrame(pending.editableReady);
+    if (pending.editablePaint) window.cancelAnimationFrame(pending.editablePaint);
+    promotionRafIdsRef.current = {
+      previewReady: 0,
+      previewPaint: 0,
+      editableReady: 0,
+      editablePaint: 0,
+    };
+  }, []);
+
+  useEffect(() => clearPromotionRafs, [clearPromotionRafs]);
 
   useEffect(() => {
     if (!isPhaseAtomicV2) return undefined;
@@ -154,6 +177,9 @@ export default function useInlinePhaseAtomicLifecycle({
       offsetYApplied: roundMetric(resolvedSwapOffset),
       invariantOffsetAtomicPass: offsetAtomicPass,
       offsetAtOneShot: roundMetric(oneShotOffset),
+      renderAuthorityPhase: "konva",
+      caretVisible: false,
+      paintStable: false,
     });
     emitInlineFocusRcaEvent("overlay-ready-to-swap", {
       editingId,
@@ -170,6 +196,9 @@ export default function useInlinePhaseAtomicLifecycle({
       offsetRevision: Number.isFinite(authorityRevision) ? authorityRevision : null,
       offsetSource: authoritySource,
       offsetSpace: authoritySpace,
+      renderAuthority: "konva",
+      caretVisible: false,
+      paintStable: false,
     });
   }, [
     editingId,
@@ -259,11 +288,13 @@ export default function useInlinePhaseAtomicLifecycle({
       }
 
       swapAckSeenRef.current = token;
-      setOverlayPhase("await_focus_claim");
+      setRenderAuthorityPhase("dom-preview");
+      setCaretVisible(false);
+      setOverlayPhase("dom_preview");
       setEditorVisualReady(true);
       emitDebugStable("overlay: swap-commit", {
         phase: "swap-commit",
-        nextOverlayPhase: "await_focus_claim",
+        nextOverlayPhase: "dom_preview",
         sessionId: overlaySessionIdRef.current,
         swapAckToken: token,
         authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
@@ -273,46 +304,132 @@ export default function useInlinePhaseAtomicLifecycle({
         offsetAtSwapCommit: roundMetric(expectedOffset),
         offsetYApplied: roundMetric(expectedOffset),
         invariantOffsetAtomicPass,
+        renderAuthorityPhase: "dom-preview",
+        caretVisible: false,
+        paintStable: false,
       });
       emitInlineFocusRcaEvent("overlay-swap-commit", {
         editingId,
-        overlayPhase: "await_focus_claim",
+        overlayPhase: "dom_preview",
         extra: {
           sessionId: overlaySessionIdRef.current,
           swapAckToken: token,
         },
       });
-      requestAnimationFrame(() => {
-        setLayoutProbeRevision((prev) => prev + 1);
-        emitDebugStable("overlay: after-first-paint", {
-          phase: "after-first-paint",
-          sessionId: overlaySessionIdRef.current,
-          swapAckToken: token,
-          authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
-          authorityFrozen: true,
-          offsetSource: expectedSource,
-          offsetSpace: expectedSpace,
-          offsetAtFirstPaint: roundMetric(expectedOffset),
-          offsetYApplied: roundMetric(expectedOffset),
-          invariantOffsetAtomicPass,
+      clearPromotionRafs();
+
+      promotionRafIdsRef.current.previewReady = requestAnimationFrame(() => {
+        if (overlaySessionIdRef.current !== swapAckToken?.sessionId) return;
+        if (typeof onOverlaySwapRequest === "function") {
+          onOverlaySwapRequest({
+            id: editingId,
+            sessionId: overlaySessionIdRef.current,
+            phase: "preview_ready",
+            offsetY: expectedOffset,
+            offsetRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+            offsetSource: expectedSource,
+            offsetSpace: expectedSpace,
+            renderAuthority: "dom-preview",
+            caretVisible: false,
+            paintStable: true,
+          });
+        }
+        promotionRafIdsRef.current.previewPaint = requestAnimationFrame(() => {
+          if (overlaySessionIdRef.current !== swapAckToken?.sessionId) return;
+          setLayoutProbeRevision((prev) => prev + 1);
+          emitDebugStable("overlay: preview-ready", {
+            phase: "preview-ready",
+            sessionId: overlaySessionIdRef.current,
+            swapAckToken: token,
+            authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+            authorityFrozen: true,
+            offsetSource: expectedSource,
+            offsetSpace: expectedSpace,
+            offsetAtPreviewReady: roundMetric(expectedOffset),
+            offsetYApplied: roundMetric(expectedOffset),
+            invariantOffsetAtomicPass,
+            renderAuthorityPhase: "dom-preview",
+            caretVisible: false,
+            paintStable: true,
+          });
+          emitDebugStable("overlay: after-first-paint", {
+            phase: "after-first-paint",
+            sessionId: overlaySessionIdRef.current,
+            swapAckToken: token,
+            authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+            authorityFrozen: true,
+            offsetSource: expectedSource,
+            offsetSpace: expectedSpace,
+            offsetAtFirstPaint: roundMetric(expectedOffset),
+            offsetYApplied: roundMetric(expectedOffset),
+            invariantOffsetAtomicPass,
+            renderAuthorityPhase: "dom-preview",
+            caretVisible: false,
+            paintStable: true,
+          });
+          promotionRafIdsRef.current.editableReady = requestAnimationFrame(() => {
+            if (overlaySessionIdRef.current !== swapAckToken?.sessionId) return;
+            setRenderAuthorityPhase("dom-editable");
+            setCaretVisible(true);
+            setOverlayPhase("await_focus_claim");
+            if (typeof onOverlaySwapRequest === "function") {
+              onOverlaySwapRequest({
+                id: editingId,
+                sessionId: overlaySessionIdRef.current,
+                phase: "editable_ready",
+                offsetY: expectedOffset,
+                offsetRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+                offsetSource: expectedSource,
+                offsetSpace: expectedSpace,
+                renderAuthority: "dom-editable",
+                caretVisible: true,
+                paintStable: true,
+              });
+            }
+            promotionRafIdsRef.current.editablePaint = requestAnimationFrame(() => {
+              if (overlaySessionIdRef.current !== swapAckToken?.sessionId) return;
+              setLayoutProbeRevision((prev) => prev + 1);
+              emitDebugStable("overlay: editable-ready", {
+                phase: "editable-ready",
+                sessionId: overlaySessionIdRef.current,
+                swapAckToken: token,
+                authorityRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+                authorityFrozen: true,
+                offsetSource: expectedSource,
+                offsetSpace: expectedSpace,
+                offsetAtEditableReady: roundMetric(expectedOffset),
+                offsetYApplied: roundMetric(expectedOffset),
+                invariantOffsetAtomicPass,
+                renderAuthorityPhase: "dom-editable",
+                caretVisible: true,
+                paintStable: true,
+              });
+            });
+          });
         });
       });
-      return;
     }
 
     if (phase === "finish_commit" || phase === "done" || phase === "cancel") {
+      clearPromotionRafs();
       swapAckSeenRef.current = token;
       setOverlayPhase("done");
+      setRenderAuthorityPhase("konva");
+      setCaretVisible(false);
     }
   }, [
     editingId,
+    clearPromotionRafs,
     emitDebugStable,
     inlineOverlayMountSession,
     isPhaseAtomicV2,
+    onOverlaySwapRequest,
     overlaySessionIdRef,
+    setCaretVisible,
     setEditorVisualReady,
     setLayoutProbeRevision,
     setOverlayPhase,
+    setRenderAuthorityPhase,
     swapAckSeenRef,
     swapAckToken,
     v2OffsetOneShotPx,

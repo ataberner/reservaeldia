@@ -311,7 +311,6 @@ export default function CanvasStageContent({
       ? obtenerCentroVisualTextoX(targetObj, node)
       : null;
     const previousCurrentEditingId = getCurrentInlineEditingId();
-
     setInlineOverlayMountedId(null);
     setInlineOverlayMountSession((prev) => ({
       id: null,
@@ -320,6 +319,13 @@ export default function CanvasStageContent({
       swapCommitted: false,
       phase: "reset",
       token: Number(prev?.token || 0) + 1,
+      offsetY: 0,
+      offsetRevision: null,
+      offsetSource: null,
+      offsetSpace: "content-ink",
+      renderAuthority: "konva",
+      caretVisible: false,
+      paintStable: false,
     }));
     setInlineSwapAck((prev) => ({
       id: null,
@@ -327,6 +333,12 @@ export default function CanvasStageContent({
       phase: "reset",
       token: Number(prev?.token || 0) + 1,
       offsetY: 0,
+      offsetRevision: null,
+      offsetSource: null,
+      offsetSpace: "content-ink",
+      renderAuthority: "konva",
+      caretVisible: false,
+      paintStable: false,
     }));
     captureInlineSnapshot("enter: pre-start", {
       id,

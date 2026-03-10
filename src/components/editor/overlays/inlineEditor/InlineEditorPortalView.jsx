@@ -10,6 +10,9 @@ export default function InlineEditorPortalView({
   editingId,
   overlayRootRef,
   editorVisualReady,
+  paintStable,
+  renderAuthorityPhase,
+  caretVisible,
   normalizedOverlayEngine,
   overlayPhase,
   normalizedWidthMode,
@@ -38,6 +41,7 @@ export default function InlineEditorPortalView({
   effectiveVisualOffsetPx,
   internalContentOffsetPx = 0,
   isEditorVisible,
+  isEditorInteractive,
   fontSizePx,
   nodeProps,
   editableLineHeightPx,
@@ -52,6 +56,7 @@ export default function InlineEditorPortalView({
 }) {
   const overlayPortalTarget = document.body;
   const liveEditableVisible = true;
+  const overlayPointerEvents = isEditorInteractive ? "auto" : "none";
   const resolvedEditorWidthCss = Number.isFinite(editorVisualWidthPx)
     ? `${editorVisualWidthPx}px`
     : (
@@ -83,8 +88,11 @@ export default function InlineEditorPortalView({
         ref={overlayRootRef}
         data-inline-editor-id={editingId || ""}
         data-inline-editor-visual-ready={editorVisualReady ? "true" : "false"}
+        data-inline-editor-paint-stable={paintStable ? "true" : "false"}
         data-inline-overlay-engine={normalizedOverlayEngine}
         data-inline-overlay-phase={overlayPhase}
+        data-inline-render-authority-phase={renderAuthorityPhase || "konva"}
+        data-inline-caret-visible={caretVisible ? "true" : "false"}
         data-inline-editor="true"
         data-inline-width-mode={normalizedWidthMode}
         data-inline-finish-mode={normalizedFinishMode}
@@ -119,7 +127,7 @@ export default function InlineEditorPortalView({
           zIndex: 9999,
           boxSizing: "border-box",
           visibility: liveEditableVisible ? "visible" : "hidden",
-          pointerEvents: liveEditableVisible ? "auto" : "none",
+          pointerEvents: liveEditableVisible ? overlayPointerEvents : "none",
           ...overlayDebugStyle,
         }}
       >
@@ -214,8 +222,10 @@ export default function InlineEditorPortalView({
           >
             <div
               ref={editorRef}
-              contentEditable
+              data-inline-editor-content="true"
+              contentEditable={isEditorInteractive}
               suppressContentEditableWarning
+              spellCheck={false}
               style={{
                 display: "block",
                 verticalAlign: "top",
@@ -230,6 +240,7 @@ export default function InlineEditorPortalView({
                 top: `${Number(internalContentOffsetPx || 0)}px`,
                 transform: "none",
                 visibility: isEditorVisible ? "visible" : "hidden",
+                pointerEvents: isEditorInteractive ? "auto" : "none",
                 whiteSpace: "pre",
                 overflowWrap: "normal",
                 wordBreak: "normal",
@@ -242,7 +253,7 @@ export default function InlineEditorPortalView({
                 lineHeight: `${editableLineHeightPx}px`,
                 letterSpacing: `${letterSpacingPx}px`,
                 color: editorTextColor,
-                caretColor: editorTextColor,
+                caretColor: caretVisible ? editorTextColor : "transparent",
                 WebkitTextFillColor: editorTextColor,
                 background: "transparent",
                 borderRadius: 0,
@@ -254,10 +265,11 @@ export default function InlineEditorPortalView({
                 outline: "none",
                 boxSizing: "border-box",
                 textAlign: textAlign || "left",
+                userSelect: isEditorInteractive ? "text" : "none",
               }}
-              onInput={onInput}
-              onKeyDown={onKeyDown}
-              onBlur={onBlur}
+              onInput={isEditorInteractive ? onInput : undefined}
+              onKeyDown={isEditorInteractive ? onKeyDown : undefined}
+              onBlur={isEditorInteractive ? onBlur : undefined}
             />
           </div>
         </div>

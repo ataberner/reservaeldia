@@ -169,9 +169,15 @@ export default function InlineTextEditor({
   const nudgeCalibrationRef = useRef({
     key: null,
   });
+  const normalizedOverlayEngine = normalizeInlineOverlayEngine(overlayEngine);
+  const isPhaseAtomicV2 = normalizedOverlayEngine === "phase_atomic_v2";
   const [domVisualNudgePx, setDomVisualNudgePx] = useState(0);
   const [layoutProbeRevision, setLayoutProbeRevision] = useState(0);
   const [editorVisualReady, setEditorVisualReady] = useState(false);
+  const [renderAuthorityPhase, setRenderAuthorityPhase] = useState(
+    isPhaseAtomicV2 ? "konva" : "dom-editable"
+  );
+  const [caretVisible, setCaretVisible] = useState(!isPhaseAtomicV2);
   const horizontalCenterLockRef = useRef({
     editingId: null,
     centerStageX: null,
@@ -179,8 +185,6 @@ export default function InlineTextEditor({
   const DEBUG_MODE = isInlineDebugEnabled();
   const BOX_DEBUG_MODE = isInlineBoxDebugEnabled();
   const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
-  const normalizedOverlayEngine = normalizeInlineOverlayEngine(overlayEngine);
-  const isPhaseAtomicV2 = normalizedOverlayEngine === "phase_atomic_v2";
   const overlaySessionIdRef = useRef(null);
   const swapAckSeenRef = useRef(0);
   const [overlayPhase, setOverlayPhase] = useState(
@@ -693,6 +697,7 @@ export default function InlineTextEditor({
         blockedReason: snapshot?.blockedReason ?? null,
         horizontalBlockedReason: diagnostics.horizontalBlockedReason ?? null,
         domSourceDeltaPx: diagnostics.domSourceDeltaPx ?? null,
+        domCssProbeResidualPx: diagnostics.domCssProbeResidualPx ?? null,
         domSourceDivergenceLimitPx: diagnostics.domSourceDivergenceLimitPx ?? null,
         liveSourceDeltaPx: diagnostics.liveSourceDeltaPx ?? null,
         liveSourceDivergenceLimitPx: diagnostics.liveSourceDivergenceLimitPx ?? null,
@@ -758,6 +763,17 @@ export default function InlineTextEditor({
           diagnostics.externalOffsetRoutedToInternalFromPx ?? null,
         externalOffsetRoutedToInternalToPx:
           diagnostics.externalOffsetRoutedToInternalToPx ?? null,
+        internalRouteProbeCalibrationMinPx:
+          diagnostics.internalRouteProbeCalibrationMinPx ?? null,
+        internalRouteProbeCalibrationMaxPx:
+          diagnostics.internalRouteProbeCalibrationMaxPx ?? null,
+        internalRouteProbeCalibrationApplied: Boolean(
+          diagnostics.internalRouteProbeCalibrationApplied
+        ),
+        internalRouteProbeCalibrationPx:
+          diagnostics.internalRouteProbeCalibrationPx ?? null,
+        internalContentOffsetBasePx:
+          diagnostics.internalContentOffsetBasePx ?? null,
         largeStableOffsetFinalAppliedWithPerceptualNudgePx:
           diagnostics.largeStableOffsetFinalAppliedWithPerceptualNudgePx ?? null,
         largeStableOffsetPolicyVersion: diagnostics.largeStableOffsetPolicyVersion ?? null,
@@ -940,6 +956,14 @@ export default function InlineTextEditor({
   const resolvedV2VisualOffsetPx = Number.isFinite(resolvedV2VisualOffsetPxRaw)
     ? resolvedV2VisualOffsetPxRaw
     : 0;
+  const runtimeRenderAuthorityPhase =
+    inlineOverlayMountSession?.renderAuthority || (isPhaseAtomicV2 ? "konva" : "dom-editable");
+  const runtimeCaretVisible = Boolean(
+    isPhaseAtomicV2 ? inlineOverlayMountSession?.caretVisible : true
+  );
+  const runtimePaintStable = Boolean(
+    isPhaseAtomicV2 ? inlineOverlayMountSession?.paintStable : editorVisualReady
+  );
   const baseVisualOffsetPx = isPhaseAtomicV2
     ? (v2OffsetComputed ? resolvedV2VisualOffsetPx : 0)
     : Number(domToKonvaVisualOffsetPx || 0);
@@ -966,7 +990,18 @@ export default function InlineTextEditor({
   const effectiveInternalContentOffsetPx =
     Number(authorityInternalContentOffsetPx || 0) +
     Number(routedInternalContentOffsetPx || 0);
-  const isEditorVisible = Boolean(editorVisualReady);
+  const isDomVisualAuthorityPhase =
+    runtimeRenderAuthorityPhase === "dom-preview" ||
+    runtimeRenderAuthorityPhase === "dom-editable";
+  const isEditorVisible = Boolean(editorVisualReady) && (
+    !isPhaseAtomicV2 || isDomVisualAuthorityPhase
+  );
+  const isEditorInteractive = !isPhaseAtomicV2 || (
+    renderAuthorityPhase === "dom-editable" &&
+    runtimeRenderAuthorityPhase === "dom-editable" &&
+    caretVisible &&
+    runtimeCaretVisible
+  );
   const baseEditorPaddingTopPx = Math.max(0, Number(verticalInsetPx || 0));
   const baseEditorPaddingBottomPx = Math.max(0, Number(verticalInsetPx || 0));
   const editorPaddingTopPx = baseEditorPaddingTopPx;
@@ -984,6 +1019,8 @@ export default function InlineTextEditor({
       verticalAuthoritySessionRef.current = createEmptyVerticalAuthoritySession();
       setDomVisualNudgePx(0);
       setEditorVisualReady(false);
+      setRenderAuthorityPhase("konva");
+      setCaretVisible(false);
       setOverlayPhase("prepare_mount");
       setV2FontsReady(false);
       setV2OffsetComputed(false);
@@ -1039,6 +1076,8 @@ export default function InlineTextEditor({
     });
     setDomVisualNudgePx(0);
     setEditorVisualReady(false);
+    setRenderAuthorityPhase("dom-editable");
+    setCaretVisible(true);
   }, [editingId, isPhaseAtomicV2, nudgeCacheKey]);
   useLayoutEffect(() => {
     if (!isPhaseAtomicV2) return undefined;
@@ -1282,6 +1321,9 @@ export default function InlineTextEditor({
     if (!mountSession?.swapCommitted) return false;
     if (mountSession.id !== editingId) return false;
     if (mountSession.sessionId !== sessionId) return false;
+    if (mountSession.renderAuthority !== "dom-editable") return false;
+    if (!mountSession.caretVisible) return false;
+    if (!mountSession.paintStable) return false;
     const authoritySnapshot = activeV2AuthoritySnapshot || v2VerticalAuthoritySnapshot;
     const expectedRevision = Number(authoritySnapshot?.revision || 0);
     const mountRevision = Number(mountSession?.offsetRevision);
@@ -1378,6 +1420,11 @@ export default function InlineTextEditor({
         offsetAtSwapCommit: Number.isFinite(swapCommitOffset) ? roundMetric(swapCommitOffset) : null,
         offsetAtActiveInit: roundMetric(authorityOffset),
         invariantOffsetAtomicPass,
+        renderAuthorityPhase: "dom-editable",
+        runtimeRenderAuthorityPhase: mountSession?.renderAuthority || "dom-editable",
+        caretVisible: true,
+        runtimeCaretVisible: Boolean(mountSession?.caretVisible),
+        paintStable: Boolean(mountSession?.paintStable),
       });
     }
     emitInlineFocusRcaEvent("overlay-focus-claim-commit", {
@@ -1407,7 +1454,7 @@ export default function InlineTextEditor({
   useLayoutEffect(() => {
     if (isPhaseAtomicV2) return undefined;
     if (!editingId) return undefined;
-    if (!editorVisualReady) return undefined;
+    if (!isEditorInteractive) return undefined;
     const sessionId = overlaySessionIdRef.current || null;
     if (!sessionId) return undefined;
 
@@ -1516,12 +1563,12 @@ export default function InlineTextEditor({
       cancelled = true;
       if (rafId) window.cancelAnimationFrame(rafId);
     };
-  }, [editingId, editorVisualReady, isPhaseAtomicV2]);
+  }, [editingId, isEditorInteractive, isPhaseAtomicV2]);
 
   useLayoutEffect(() => {
     if (!isPhaseAtomicV2) return undefined;
     if (!editingId) return undefined;
-    if (!editorVisualReady) return undefined;
+    if (!isEditorInteractive) return undefined;
     if (overlayPhase !== "await_focus_claim") return undefined;
     const sessionId = overlaySessionIdRef.current || null;
     if (!sessionId) return undefined;
@@ -1638,7 +1685,7 @@ export default function InlineTextEditor({
   }, [
     commitOperationalFocusClaim,
     editingId,
-    editorVisualReady,
+    isEditorInteractive,
     isMountSessionReadyForClaim,
     isPhaseAtomicV2,
     overlayPhase,
@@ -1647,7 +1694,7 @@ export default function InlineTextEditor({
   useEffect(() => {
     if (!isPhaseAtomicV2) return undefined;
     if (!editingId) return undefined;
-    if (!editorVisualReady) return undefined;
+    if (!isEditorInteractive) return undefined;
     if (overlayPhase !== "await_focus_claim") return undefined;
     const sessionId = overlaySessionIdRef.current || null;
     if (!sessionId) return undefined;
@@ -1686,7 +1733,7 @@ export default function InlineTextEditor({
   }, [
     commitOperationalFocusClaim,
     editingId,
-    editorVisualReady,
+    isEditorInteractive,
     isMountSessionReadyForClaim,
     isPhaseAtomicV2,
     overlayPhase,
@@ -2754,6 +2801,11 @@ export default function InlineTextEditor({
     editorPaddingBottomPx,
     editableLineHeightPx,
     editorVisualReady,
+    renderAuthorityPhase,
+    runtimeRenderAuthorityPhase,
+    caretVisible,
+    runtimeCaretVisible,
+    runtimePaintStable,
     lockedCenterStageX,
     centerViewportX,
     probeTextForAlignment,
@@ -2777,6 +2829,7 @@ export default function InlineTextEditor({
     v2VerticalAuthoritySnapshot: activeV2AuthoritySnapshot,
     fontMetricsRevision,
     fontLoadStatus,
+    effectiveFontFamily: v2EffectiveFontFamily || nodeProps.fontFamily,
     isPhaseAtomicV2,
     normalizedOverlayEngine,
     nodeProps,
@@ -2822,6 +2875,8 @@ export default function InlineTextEditor({
     swapAckSeenRef,
     setOverlayPhase,
     setEditorVisualReady,
+    setRenderAuthorityPhase,
+    setCaretVisible,
     setLayoutProbeRevision,
   });
 
@@ -2890,6 +2945,9 @@ export default function InlineTextEditor({
       editingId={editingId}
       overlayRootRef={overlayRootRef}
       editorVisualReady={editorVisualReady}
+      paintStable={isPhaseAtomicV2 ? runtimePaintStable : editorVisualReady}
+      renderAuthorityPhase={renderAuthorityPhase}
+      caretVisible={caretVisible}
       normalizedOverlayEngine={normalizedOverlayEngine}
       overlayPhase={overlayPhase}
       normalizedWidthMode={normalizedWidthMode}
@@ -2918,6 +2976,7 @@ export default function InlineTextEditor({
       effectiveVisualOffsetPx={effectiveVisualOffsetPx}
       internalContentOffsetPx={effectiveInternalContentOffsetPx}
       isEditorVisible={isEditorVisible}
+      isEditorInteractive={isEditorInteractive}
       fontSizePx={domRenderFontSizePx}
       nodeProps={nodeProps}
       editableLineHeightPx={editableLineHeightPx}

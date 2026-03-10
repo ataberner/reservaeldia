@@ -203,6 +203,9 @@ export default function useInlineEditorMountLifecycle({
               : null,
             offsetSource: closingOffsetSource,
             offsetSpace: closingOffsetSpace,
+            renderAuthority: "konva",
+            caretVisible: false,
+            paintStable: false,
           });
         }, 0);
         pendingDoneDispatchRef.current = {
@@ -251,6 +254,9 @@ export default function useInlineEditorMountLifecycle({
             : null,
         offsetSource: activeSnapshot?.source || null,
         offsetSpace: activeSnapshot?.coordinateSpace || "content-ink",
+        renderAuthority: "konva",
+        caretVisible: false,
+        paintStable: false,
       });
     }
     emitDebug("finish: blur", {

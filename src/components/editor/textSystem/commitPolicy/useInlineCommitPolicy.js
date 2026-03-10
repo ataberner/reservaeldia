@@ -66,7 +66,9 @@ export default function useCanvasEditorInlineCommitHandlers({
       typeof document !== "undefined" && safeFinishId
         ? document.querySelector(`[data-inline-editor-id="${safeFinishId}"]`)
         : null;
-    const overlayEditor = overlayRoot?.querySelector?.('[contenteditable="true"]');
+    const overlayEditor =
+      overlayRoot?.querySelector?.('[data-inline-editor-content="true"]') ||
+      overlayRoot?.querySelector?.('[contenteditable="true"]');
     const domRawText =
       overlayEditor && typeof overlayEditor.innerText === "string"
         ? overlayEditor.innerText
@@ -100,6 +102,13 @@ export default function useCanvasEditorInlineCommitHandlers({
             swapCommitted: false,
             phase: "finish-missing-object",
             token: Number(prev?.token || 0),
+            offsetY: 0,
+            offsetRevision: null,
+            offsetSource: null,
+            offsetSpace: "content-ink",
+            renderAuthority: "konva",
+            caretVisible: false,
+            paintStable: false,
           };
         });
         finishEdit();
@@ -130,6 +139,13 @@ export default function useCanvasEditorInlineCommitHandlers({
             swapCommitted: false,
             phase: "finish-empty-abort",
             token: Number(prev?.token || 0),
+            offsetY: 0,
+            offsetRevision: null,
+            offsetSource: null,
+            offsetSpace: "content-ink",
+            renderAuthority: "konva",
+            caretVisible: false,
+            paintStable: false,
           };
         });
         finishEdit();
@@ -159,6 +175,13 @@ export default function useCanvasEditorInlineCommitHandlers({
             swapCommitted: false,
             phase: "finish-noop-unchanged-text",
             token: Number(prev?.token || 0),
+            offsetY: 0,
+            offsetRevision: null,
+            offsetSource: null,
+            offsetSpace: "content-ink",
+            renderAuthority: "konva",
+            caretVisible: false,
+            paintStable: false,
           };
         });
         finishEdit();
@@ -233,6 +256,13 @@ export default function useCanvasEditorInlineCommitHandlers({
           swapCommitted: false,
           phase: "finish-commit",
           token: Number(prev?.token || 0),
+          offsetY: 0,
+          offsetRevision: null,
+          offsetSource: null,
+          offsetSpace: "content-ink",
+          renderAuthority: "konva",
+          caretVisible: false,
+          paintStable: false,
         };
       });
       finishEdit();

@@ -2,7 +2,7 @@ import { roundInlineMetric } from "@/components/editor/overlays/inlineGeometry";
 
 export const INLINE_ALIGNMENT_MODEL_V2_VERSION = "phase-atomic-v2";
 export const INLINE_TRACE_RING_MAX = 600;
-const LARGE_STABLE_OFFSET_POLICY_VERSION = "domCss-large-stable-cap-v9";
+const LARGE_STABLE_OFFSET_POLICY_VERSION = "domCss-large-stable-cap-v10";
 const FONT_NUDGE_OVERRIDE_MAX_ABS_PX = 40;
 const ENABLE_FONT_SPECIFIC_PERCEPTUAL_NUDGE = false;
 
@@ -237,14 +237,22 @@ function buildLiveSampleStats(samples = []) {
   };
 }
 
-function computeSnapshotRevision(previousSnapshot, source, modelOffsetPx, modelOffsetXPx = 0) {
+function computeSnapshotRevision(
+  previousSnapshot,
+  source,
+  modelOffsetPx,
+  modelOffsetXPx = 0,
+  internalContentOffsetPx = 0
+) {
   const previousRevision = Number(previousSnapshot?.revision);
   const previousSource = String(previousSnapshot?.source || "");
   const previousOffset = toFiniteNumber(previousSnapshot?.modelOffsetPx);
   const previousOffsetX = toFiniteNumber(previousSnapshot?.modelOffsetXPx, 0);
+  const previousInternalOffset = toFiniteNumber(previousSnapshot?.internalContentOffsetPx, 0);
   const nextSource = String(source || "");
   const nextOffset = toFiniteNumber(modelOffsetPx);
   const nextOffsetX = toFiniteNumber(modelOffsetXPx, 0);
+  const nextInternalOffset = toFiniteNumber(internalContentOffsetPx, 0);
   if (
     Number.isFinite(previousRevision) &&
     previousRevision > 0 &&
@@ -254,7 +262,10 @@ function computeSnapshotRevision(previousSnapshot, source, modelOffsetPx, modelO
     Math.abs(previousOffset - nextOffset) <= 0.0001 &&
     Number.isFinite(previousOffsetX) &&
     Number.isFinite(nextOffsetX) &&
-    Math.abs(previousOffsetX - nextOffsetX) <= 0.0001
+    Math.abs(previousOffsetX - nextOffsetX) <= 0.0001 &&
+    Number.isFinite(previousInternalOffset) &&
+    Number.isFinite(nextInternalOffset) &&
+    Math.abs(previousInternalOffset - nextInternalOffset) <= 0.0001
   ) {
     return previousRevision;
   }
@@ -321,6 +332,10 @@ export function resolveVerticalAuthoritySnapshot({
   const domSourceDeltaPx =
     Number.isFinite(domTopInset) && Number.isFinite(domProbeTopInset)
       ? Math.abs(domTopInset - domProbeTopInset)
+      : null;
+  const domCssProbeResidualPx =
+    Number.isFinite(domTopInset) && Number.isFinite(domProbeTopInset)
+      ? (domTopInset - domProbeTopInset)
       : null;
   const liveSourceDeltaPx =
     Number.isFinite(domLiveTopInset) && Number.isFinite(domProbeTopInset)
@@ -650,13 +665,27 @@ export function resolveVerticalAuthoritySnapshot({
     selected.source === "domCss" &&
     Number.isFinite(finalAppliedOffsetWithPerceptualNudge) &&
     Math.abs(finalAppliedOffsetWithPerceptualNudge) >= effectiveLargeOffsetLimitWithFontCapPx;
+  const internalRouteProbeCalibrationMinPx = 0.05;
+  const internalRouteProbeCalibrationMaxPx = Math.max(0.75, 1 / resolvedDpr);
+  const shouldApplyInternalRouteProbeCalibration =
+    shouldRouteExternalOffsetToInternal &&
+    selected.source === "domCss" &&
+    domCssReliable &&
+    !domCssInConflict &&
+    !severeMixedSourceDisagreement &&
+    Number.isFinite(domCssProbeResidualPx) &&
+    Math.abs(domCssProbeResidualPx) >= internalRouteProbeCalibrationMinPx &&
+    Math.abs(domCssProbeResidualPx) <= internalRouteProbeCalibrationMaxPx;
+  const internalRouteProbeCalibrationPx = shouldApplyInternalRouteProbeCalibration
+    ? roundInlineMetric(domCssProbeResidualPx)
+    : 0;
   const routedExternalOffsetPx = shouldRouteExternalOffsetToInternal
     ? 0
     : finalAppliedOffsetWithPerceptualNudge;
   const resolvedSource = shouldNeutralizeBidirectionalConflict
     ? "conflictNeutral"
     : (shouldRouteExternalOffsetToInternal ? "domCssInternal" : selected.source);
-  const internalContentOffsetPx = roundInlineMetric(
+  const internalContentOffsetBasePx = roundInlineMetric(
     (
       (shouldNeutralizeBidirectionalConflict
         ? toFiniteNumber(selectedAppliedOffset, 0)
@@ -667,6 +696,9 @@ export function resolveVerticalAuthoritySnapshot({
         : 0
       )
     )
+  );
+  const internalContentOffsetPx = roundInlineMetric(
+    internalContentOffsetBasePx + internalRouteProbeCalibrationPx
   );
 
   const modelOffsetPx = roundInlineMetric(
@@ -679,7 +711,8 @@ export function resolveVerticalAuthoritySnapshot({
     previousSnapshot,
     resolvedSource,
     modelOffsetPx,
-    modelOffsetXPx
+    modelOffsetXPx,
+    internalContentOffsetPx
   );
 
   return {
@@ -716,6 +749,7 @@ export function resolveVerticalAuthoritySnapshot({
       horizontalPixelSnapUsed: Boolean(horizontalPixelSnapUsed),
       horizontalBlockedReason,
       domSourceDeltaPx: roundInlineMetric(domSourceDeltaPx),
+      domCssProbeResidualPx: roundInlineMetric(domCssProbeResidualPx),
       domSourceDivergenceLimitPx: roundInlineMetric(domSourceDivergenceLimitPx),
       liveSourceDeltaPx: roundInlineMetric(liveSourceDeltaPx),
       liveSourceDivergenceLimitPx: roundInlineMetric(liveSourceDivergenceLimitPx),
@@ -778,6 +812,17 @@ export function resolveVerticalAuthoritySnapshot({
         finalAppliedOffsetWithPerceptualNudge
       ),
       externalOffsetRoutedToInternalToPx: roundInlineMetric(routedExternalOffsetPx),
+      internalRouteProbeCalibrationMinPx: roundInlineMetric(
+        internalRouteProbeCalibrationMinPx
+      ),
+      internalRouteProbeCalibrationMaxPx: roundInlineMetric(
+        internalRouteProbeCalibrationMaxPx
+      ),
+      internalRouteProbeCalibrationApplied: shouldApplyInternalRouteProbeCalibration,
+      internalRouteProbeCalibrationPx: roundInlineMetric(
+        internalRouteProbeCalibrationPx
+      ),
+      internalContentOffsetBasePx: roundInlineMetric(internalContentOffsetBasePx),
       internalContentOffsetPx: roundInlineMetric(internalContentOffsetPx),
       largeStableOffsetFinalAppliedWithPerceptualNudgePx: roundInlineMetric(
         finalAppliedOffsetWithPerceptualNudge
@@ -852,6 +897,7 @@ export function computeInlineAlignmentOffsetV2({
     blockedReason: snapshot?.blockedReason || null,
     horizontalBlockedReason: diagnostics.horizontalBlockedReason ?? null,
     domSourceDeltaPx: diagnostics.domSourceDeltaPx ?? null,
+    domCssProbeResidualPx: diagnostics.domCssProbeResidualPx ?? null,
     domSourceDivergenceLimitPx: diagnostics.domSourceDivergenceLimitPx ?? null,
     liveSourceDeltaPx: diagnostics.liveSourceDeltaPx ?? null,
     liveSourceDivergenceLimitPx: diagnostics.liveSourceDivergenceLimitPx ?? null,
@@ -931,6 +977,16 @@ export function computeInlineAlignmentOffsetV2({
       diagnostics.externalOffsetRoutedToInternalFromPx ?? null,
     externalOffsetRoutedToInternalToPx:
       diagnostics.externalOffsetRoutedToInternalToPx ?? null,
+    internalRouteProbeCalibrationMinPx:
+      diagnostics.internalRouteProbeCalibrationMinPx ?? null,
+    internalRouteProbeCalibrationMaxPx:
+      diagnostics.internalRouteProbeCalibrationMaxPx ?? null,
+    internalRouteProbeCalibrationApplied: Boolean(
+      diagnostics.internalRouteProbeCalibrationApplied
+    ),
+    internalRouteProbeCalibrationPx:
+      diagnostics.internalRouteProbeCalibrationPx ?? null,
+    internalContentOffsetBasePx: diagnostics.internalContentOffsetBasePx ?? null,
     largeStableOffsetFinalAppliedWithPerceptualNudgePx:
       diagnostics.largeStableOffsetFinalAppliedWithPerceptualNudgePx ?? null,
     largeStableOffsetPolicyVersion: diagnostics.largeStableOffsetPolicyVersion ?? null,

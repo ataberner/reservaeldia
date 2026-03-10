@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import Konva from "konva";
 import {
   INLINE_ALIGNMENT_MODEL_V2_VERSION,
   pushInlineTraceEvent,
@@ -34,6 +35,12 @@ import {
   buildInlineTextWithCaretSnapshot,
 } from "@/components/editor/textSystem/debug/buildInlineTextWithCaretComparisonPayload";
 import { buildInlineTextInkPositionDiagPayload } from "@/components/editor/textSystem/debug/buildInlineTextInkPositionDiagPayload";
+import {
+  buildInlineRenderPixelDiffPayload,
+  captureDomRenderBitmap,
+  captureKonvaRenderBitmap,
+  resolveInlineRenderCaptureRect,
+} from "@/components/editor/textSystem/debug/inlineRenderPixelDiff";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -58,10 +65,12 @@ function readInlineAlignmentDiagConfig(debugEnabled) {
   const enabled = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT, true);
   const extended = parseInlineDiagFlag(window.__INLINE_DIAG_ALIGNMENT_EXTENDED, false);
   const compact = parseInlineDiagFlag(window.__INLINE_DIAG_COMPACT, true);
+  const pixelDiff = parseInlineDiagFlag(window.__INLINE_DIAG_PIXEL_DIFF, true);
   return {
     enabled,
     extended,
     compact,
+    pixelDiff,
   };
 }
 
@@ -197,6 +206,11 @@ export default function useInlineDebugEmitter({
   editorPaddingBottomPx,
   editableLineHeightPx,
   editorVisualReady,
+  renderAuthorityPhase,
+  runtimeRenderAuthorityPhase,
+  caretVisible,
+  runtimeCaretVisible,
+  runtimePaintStable,
   lockedCenterStageX,
   centerViewportX,
   probeTextForAlignment,
@@ -220,6 +234,7 @@ export default function useInlineDebugEmitter({
   v2VerticalAuthoritySnapshot,
   fontMetricsRevision,
   fontLoadStatus,
+  effectiveFontFamily = null,
   isPhaseAtomicV2,
   normalizedOverlayEngine,
   nodeProps,
@@ -253,16 +268,51 @@ export default function useInlineDebugEmitter({
     afterCaretVisibleStable: null,
     emitted: false,
   });
+  const renderPhaseComparisonRef = useRef({
+    sessionKey: null,
+    konvaVisible: null,
+    domPreviewVisible: null,
+    domEditableCaretVisible: null,
+    konvaToPreviewEmitted: false,
+    previewToEditableEmitted: false,
+  });
+  const phaseTimingRef = useRef({
+    sessionKey: null,
+    readyToSwapTs: null,
+    swapCommitTs: null,
+    previewReadyTs: null,
+    firstPaintTs: null,
+    editableReadyTs: null,
+    focusClaimTs: null,
+  });
+  const renderPixelDiffRef = useRef({
+    sessionKey: null,
+    konvaVisible: null,
+    domPreviewVisible: null,
+    domEditableVisible: null,
+    konvaToPreviewEmitted: false,
+    previewToEditableEmitted: false,
+    nextCaptureId: 0,
+    requestIds: {
+      konvaVisible: 0,
+      domPreviewVisible: 0,
+      domEditableVisible: 0,
+    },
+  });
 
   const emitDebug = useCallback((eventName, extra = {}) => {
     if (!DEBUG_MODE) return;
     const diagConfig = readInlineAlignmentDiagConfig(DEBUG_MODE);
     const compactMode = Boolean(diagConfig.compact);
+    const pixelDiffEnabled = Boolean(diagConfig.pixelDiff);
     const essentialEvents = compactMode
       ? new Set([
           "overlay: ready-to-swap",
           "overlay: swap-commit",
+          "overlay: preview-ready",
+          "overlay: editable-ready",
           "overlay: after-first-paint",
+          "overlay: focus-claim-commit",
           "finish: blur",
         ])
       : new Set([
@@ -272,7 +322,10 @@ export default function useInlineDebugEmitter({
           "overlay: after-fonts-ready",
           "overlay: ready-to-swap",
           "overlay: swap-commit",
+          "overlay: preview-ready",
+          "overlay: editable-ready",
           "overlay: after-first-paint",
+          "overlay: focus-claim-commit",
           "overlay: post-layout",
           "finish: blur",
           "input: linebreak",
@@ -280,6 +333,49 @@ export default function useInlineDebugEmitter({
     if (!essentialEvents.has(eventName)) return;
     const ts = new Date().toISOString();
     const frameMeta = nextInlineFrameMeta();
+    const resolvedRenderAuthorityPhase =
+      extra?.renderAuthorityPhase || renderAuthorityPhase || (isPhaseAtomicV2 ? "konva" : "dom-editable");
+    const resolvedRuntimeRenderAuthorityPhase =
+      extra?.runtimeRenderAuthorityPhase ||
+      runtimeRenderAuthorityPhase ||
+      (isPhaseAtomicV2 ? "konva" : "dom-editable");
+    const resolvedCaretVisible =
+      typeof extra?.caretVisible === "boolean" ? extra.caretVisible : Boolean(caretVisible);
+    const resolvedRuntimeCaretVisible =
+      typeof extra?.runtimeCaretVisible === "boolean"
+        ? extra.runtimeCaretVisible
+        : Boolean(runtimeCaretVisible);
+    const resolvedPaintStable =
+      typeof extra?.paintStable === "boolean"
+        ? extra.paintStable
+        : Boolean(runtimePaintStable);
+    const rendererKind =
+      resolvedRuntimeRenderAuthorityPhase === "konva" ? "konva" : "dom";
+    const comparisonSessionKey = `${editingId || "none"}::${overlaySessionIdRef.current || "none"}`;
+    if (phaseTimingRef.current.sessionKey !== comparisonSessionKey) {
+      phaseTimingRef.current = {
+        sessionKey: comparisonSessionKey,
+        readyToSwapTs: null,
+        swapCommitTs: null,
+        previewReadyTs: null,
+        firstPaintTs: null,
+        editableReadyTs: null,
+        focusClaimTs: null,
+      };
+    }
+    if (eventName === "overlay: ready-to-swap") {
+      phaseTimingRef.current.readyToSwapTs = ts;
+    } else if (eventName === "overlay: swap-commit") {
+      phaseTimingRef.current.swapCommitTs = ts;
+    } else if (eventName === "overlay: preview-ready") {
+      phaseTimingRef.current.previewReadyTs = ts;
+    } else if (eventName === "overlay: after-first-paint") {
+      phaseTimingRef.current.firstPaintTs = ts;
+    } else if (eventName === "overlay: editable-ready") {
+      phaseTimingRef.current.editableReadyTs = ts;
+    } else if (eventName === "overlay: focus-claim-commit") {
+      phaseTimingRef.current.focusClaimTs = ts;
+    }
     const editorVisualEl = editorFrameRef?.current || editorRef.current || null;
     const overlayEl = editorVisualEl || null;
     const overlayRect = overlayEl?.getBoundingClientRect?.() || null;
@@ -415,7 +511,7 @@ export default function useInlineDebugEmitter({
     const firstGlyphToContentDy =
       firstGlyphRect && contentRect ? firstGlyphRect.y - contentRect.y : null;
     const firstGlyphHeightPx = firstGlyphRect ? firstGlyphRect.height : null;
-    const caretComparisonSessionKey = `${editingId || "none"}::${overlaySessionIdRef.current || "none"}`;
+    const caretComparisonSessionKey = comparisonSessionKey;
     if (caretComparisonRef.current.sessionKey !== caretComparisonSessionKey) {
       caretComparisonRef.current = {
         sessionKey: caretComparisonSessionKey,
@@ -432,7 +528,62 @@ export default function useInlineDebugEmitter({
         emitted: false,
       };
     }
-    const textWithCaretSnapshot = buildInlineTextWithCaretSnapshot({
+    if (renderPhaseComparisonRef.current.sessionKey !== caretComparisonSessionKey) {
+      renderPhaseComparisonRef.current = {
+        sessionKey: caretComparisonSessionKey,
+        konvaVisible: null,
+        domPreviewVisible: null,
+        domEditableCaretVisible: null,
+        konvaToPreviewEmitted: false,
+        previewToEditableEmitted: false,
+      };
+    }
+    if (renderPixelDiffRef.current.sessionKey !== caretComparisonSessionKey) {
+      renderPixelDiffRef.current = {
+        sessionKey: caretComparisonSessionKey,
+        konvaVisible: null,
+        domPreviewVisible: null,
+        domEditableVisible: null,
+        konvaToPreviewEmitted: false,
+        previewToEditableEmitted: false,
+        nextCaptureId: 0,
+        requestIds: {
+          konvaVisible: 0,
+          domPreviewVisible: 0,
+          domEditableVisible: 0,
+        },
+      };
+    }
+    const textWithCaretSnapshot = {
+      ...buildInlineTextWithCaretSnapshot({
+        ts,
+        eventName,
+        phase: extra?.phase || overlayPhase,
+        contentRect,
+        editableVisualRect,
+        fullRangeRect,
+        firstGlyphRect,
+        lastGlyphRect,
+        textInkRect,
+        editorEl: editorRef.current,
+      }),
+      rendererKind,
+      renderAuthorityPhase: resolvedRenderAuthorityPhase,
+      runtimeRenderAuthorityPhase: resolvedRuntimeRenderAuthorityPhase,
+      caretVisible: resolvedCaretVisible,
+      runtimeCaretVisible: resolvedRuntimeCaretVisible,
+      paintStable: resolvedPaintStable,
+    };
+    const pixelCaptureRect = resolveInlineRenderCaptureRect({
+      dpr: typeof window !== "undefined" ? Number(window.devicePixelRatio || 1) : 1,
+      textInkRect,
+      fullRangeRect,
+      contentRect,
+      caretRect: caretProbeRect || selectionRect,
+      includeCaret: resolvedRuntimeCaretVisible,
+      paddingPx: 2,
+    });
+    const caretStateSnapshot = buildInlineCaretStateSnapshot({
       ts,
       eventName,
       phase: extra?.phase || overlayPhase,
@@ -443,18 +594,8 @@ export default function useInlineDebugEmitter({
       lastGlyphRect,
       textInkRect,
       editorEl: editorRef.current,
-    });
-    const caretStateSnapshot = buildInlineCaretStateSnapshot({
-      ts,
-      eventName,
-      phase: extra?.phase || overlayPhase,
-      contentRect,
-      editableVisualRect,
-      fullRangeRect,
-      firstGlyphRect,
       selectionRect,
       caretRect: caretProbeRect,
-      editorEl: editorRef.current,
       computedStyle,
       isFocused,
       focusClaimed,
@@ -464,14 +605,44 @@ export default function useInlineDebugEmitter({
       selectionState,
       caretState,
     });
-    const isBeforeCaretCandidateEvent =
-      eventName === "overlay: ready-to-swap" ||
-      eventName === "overlay: swap-commit";
-    const isAfterCaretCandidateEvent =
-      eventName === "overlay: after-first-paint" ||
-      eventName === "overlay: post-layout" ||
-      eventName === "finish: blur";
-    if (isBeforeCaretCandidateEvent && !focusClaimed) {
+    const caretVisibleNow = Boolean(
+      isFocused &&
+      selectionInfo.inEditor &&
+      selectionIsCollapsed === true &&
+      resolvedRuntimeCaretVisible
+    );
+    const isKonvaVisibleStage =
+      resolvedRuntimeRenderAuthorityPhase === "konva" &&
+      (eventName === "overlay: ready-to-swap" || eventName === "overlay: swap-commit");
+    const isPreviewSnapshotEvent =
+      resolvedRuntimeRenderAuthorityPhase === "dom-preview" &&
+      (eventName === "overlay: preview-ready" || eventName === "overlay: after-first-paint");
+    const isPreviewStableEvent =
+      resolvedRuntimeRenderAuthorityPhase === "dom-preview" &&
+      eventName === "overlay: after-first-paint";
+    const isDomEditableWithCaretEvent =
+      resolvedRuntimeRenderAuthorityPhase === "dom-editable" &&
+      resolvedRuntimeCaretVisible &&
+      caretVisibleNow &&
+      (
+        eventName === "overlay: focus-claim-commit" ||
+        eventName === "overlay: post-layout" ||
+        eventName === "finish: blur"
+      );
+
+    if (isKonvaVisibleStage) {
+      renderPhaseComparisonRef.current.konvaVisible = textWithCaretSnapshot;
+      renderPhaseComparisonRef.current.domPreviewVisible = null;
+      renderPhaseComparisonRef.current.domEditableCaretVisible = null;
+      renderPhaseComparisonRef.current.konvaToPreviewEmitted = false;
+      renderPhaseComparisonRef.current.previewToEditableEmitted = false;
+    }
+
+    if (isPreviewSnapshotEvent) {
+      renderPhaseComparisonRef.current.domPreviewVisible = textWithCaretSnapshot;
+    }
+
+    if (isPreviewStableEvent && !focusClaimed) {
       caretComparisonRef.current.beforeCaret = caretStateSnapshot;
       caretComparisonRef.current.afterCaret = null;
       caretComparisonRef.current.emitted = false;
@@ -479,11 +650,31 @@ export default function useInlineDebugEmitter({
       textWithCaretComparisonRef.current.afterCaretVisibleStable = null;
       textWithCaretComparisonRef.current.emitted = false;
     }
+
+    if (
+      isPreviewStableEvent &&
+      !renderPhaseComparisonRef.current.konvaToPreviewEmitted &&
+      renderPhaseComparisonRef.current.konvaVisible
+    ) {
+      const renderPhasePayload = {
+        comparisonKind: "konva-visible-to-dom-preview",
+        fromPhase: "konva",
+        toPhase: "dom-preview",
+        ...buildInlineTextWithCaretComparisonPayload({
+          beforeCaretVisible: renderPhaseComparisonRef.current.konvaVisible,
+          afterCaretVisibleStable: renderPhaseComparisonRef.current.domPreviewVisible,
+        }),
+      };
+      console.log(
+        `[INLINE_RENDER_PHASE_COMPARISON] ${eventName}\n${formatInlineLogPayload(renderPhasePayload)}`
+      );
+      renderPhaseComparisonRef.current.konvaToPreviewEmitted = true;
+    }
+
     if (
       !caretComparisonRef.current.emitted &&
       caretComparisonRef.current.beforeCaret &&
-      isAfterCaretCandidateEvent &&
-      focusClaimed
+      isDomEditableWithCaretEvent
     ) {
       caretComparisonRef.current.afterCaret = caretStateSnapshot;
       const caretComparisonPayload = buildInlineCaretComparisonPayload({
@@ -495,16 +686,10 @@ export default function useInlineDebugEmitter({
       );
       caretComparisonRef.current.emitted = true;
     }
-    const caretVisibleNow = Boolean(
-      isFocused &&
-      selectionInfo.inEditor &&
-      selectionIsCollapsed === true
-    );
     if (
       !textWithCaretComparisonRef.current.emitted &&
       textWithCaretComparisonRef.current.beforeCaretVisible &&
-      isAfterCaretCandidateEvent &&
-      caretVisibleNow &&
+      isDomEditableWithCaretEvent &&
       editorVisualReady
     ) {
       textWithCaretComparisonRef.current.afterCaretVisibleStable = textWithCaretSnapshot;
@@ -516,6 +701,137 @@ export default function useInlineDebugEmitter({
         `[INLINE_TEXT_WITH_CARET_COMPARISON] ${eventName}\n${formatInlineLogPayload(textWithCaretComparisonPayload)}`
       );
       textWithCaretComparisonRef.current.emitted = true;
+    }
+    if (
+      isDomEditableWithCaretEvent &&
+      !renderPhaseComparisonRef.current.previewToEditableEmitted &&
+      renderPhaseComparisonRef.current.domPreviewVisible
+    ) {
+      renderPhaseComparisonRef.current.domEditableCaretVisible = textWithCaretSnapshot;
+      const renderPhasePayload = {
+        comparisonKind: "dom-preview-to-dom-editable-caret",
+        fromPhase: "dom-preview",
+        toPhase: "dom-editable",
+        ...buildInlineTextWithCaretComparisonPayload({
+          beforeCaretVisible: renderPhaseComparisonRef.current.domPreviewVisible,
+          afterCaretVisibleStable: renderPhaseComparisonRef.current.domEditableCaretVisible,
+        }),
+      };
+      console.log(
+        `[INLINE_RENDER_PHASE_COMPARISON] ${eventName}\n${formatInlineLogPayload(renderPhasePayload)}`
+      );
+      renderPhaseComparisonRef.current.previewToEditableEmitted = true;
+    }
+
+    const scheduleRenderPixelCapture = ({
+      slot,
+      captureKind,
+      caretRequested = false,
+    }) => {
+      if (!pixelDiffEnabled || !pixelCaptureRect) return;
+      const pixelDiffState = renderPixelDiffRef.current;
+      const captureId = Number(pixelDiffState.nextCaptureId || 0) + 1;
+      pixelDiffState.nextCaptureId = captureId;
+      pixelDiffState.requestIds = {
+        ...(pixelDiffState.requestIds || {}),
+        [slot]: captureId,
+      };
+      const capturePhase = extra?.phase || overlayPhase;
+      const stage = konvaTextNode?.getStage?.() || null;
+      const capturePromise = captureKind === "konva"
+        ? captureKonvaRenderBitmap({
+            stage,
+            captureRect: pixelCaptureRect,
+            dpr: typeof window !== "undefined" ? Number(window.devicePixelRatio || 1) : 1,
+            eventName,
+            phase: capturePhase,
+            rendererKind: "konva",
+          })
+        : captureDomRenderBitmap({
+            element: editorRef.current,
+            captureRect: pixelCaptureRect,
+            dpr: typeof window !== "undefined" ? Number(window.devicePixelRatio || 1) : 1,
+            eventName,
+            phase: capturePhase,
+            rendererKind: resolvedRuntimeRenderAuthorityPhase || "dom",
+            caretVisible: caretRequested,
+            caretRect: caretProbeRect || selectionRect || null,
+            caretColor: computedStyle?.color || null,
+          });
+
+      void capturePromise.then((snapshot) => {
+        const currentState = renderPixelDiffRef.current;
+        if (currentState.sessionKey !== caretComparisonSessionKey) return;
+        if (Number(currentState.requestIds?.[slot] || 0) !== captureId) return;
+        currentState[slot] = snapshot;
+
+        if (
+          !currentState.konvaToPreviewEmitted &&
+          currentState.konvaVisible &&
+          currentState.domPreviewVisible
+        ) {
+          const payload = {
+            eventName,
+            phase: capturePhase,
+            ...buildInlineRenderPixelDiffPayload({
+              comparisonKind: "konva-visible-to-dom-preview",
+              fromPhase: "konva",
+              toPhase: "dom-preview",
+              beforeSnapshot: currentState.konvaVisible,
+              afterSnapshot: currentState.domPreviewVisible,
+            }),
+          };
+          console.log(
+            `[INLINE_RENDER_PIXEL_DIFF] ${eventName}\n${formatInlineLogPayload(payload)}`
+          );
+          currentState.konvaToPreviewEmitted = true;
+        }
+
+        if (
+          !currentState.previewToEditableEmitted &&
+          currentState.domPreviewVisible &&
+          currentState.domEditableVisible
+        ) {
+          const payload = {
+            eventName,
+            phase: capturePhase,
+            ...buildInlineRenderPixelDiffPayload({
+              comparisonKind: "dom-preview-to-dom-editable-caret",
+              fromPhase: "dom-preview",
+              toPhase: "dom-editable",
+              beforeSnapshot: currentState.domPreviewVisible,
+              afterSnapshot: currentState.domEditableVisible,
+            }),
+          };
+          console.log(
+            `[INLINE_RENDER_PIXEL_DIFF] ${eventName}\n${formatInlineLogPayload(payload)}`
+          );
+          currentState.previewToEditableEmitted = true;
+        }
+      });
+    };
+
+    if (eventName === "overlay: swap-commit" && resolvedRuntimeRenderAuthorityPhase === "konva") {
+      scheduleRenderPixelCapture({
+        slot: "konvaVisible",
+        captureKind: "konva",
+      });
+    }
+
+    if (eventName === "overlay: after-first-paint" && resolvedRuntimeRenderAuthorityPhase === "dom-preview") {
+      scheduleRenderPixelCapture({
+        slot: "domPreviewVisible",
+        captureKind: "dom",
+        caretRequested: false,
+      });
+    }
+
+    if (eventName === "overlay: editable-ready" && resolvedRuntimeRenderAuthorityPhase === "dom-editable") {
+      scheduleRenderPixelCapture({
+        slot: "domEditableVisible",
+        captureKind: "dom",
+        caretRequested: resolvedRuntimeCaretVisible,
+      });
     }
     const probeText = metricsProbeText;
     const canvasInkMetrics =
@@ -777,11 +1093,28 @@ export default function useInlineDebugEmitter({
       overlayEngine: normalizedOverlayEngine,
       sessionId: overlaySessionIdRef.current,
       valueLength: rawValue.length,
+      rendererKind,
+      renderAuthorityPhase: resolvedRenderAuthorityPhase,
+      runtimeRenderAuthorityPhase: resolvedRuntimeRenderAuthorityPhase,
+      caretVisible: resolvedCaretVisible,
+      runtimeCaretVisible: resolvedRuntimeCaretVisible,
+      caretVisibleNow,
+      paintStable: resolvedPaintStable,
+      runtimePaintStable: Boolean(runtimePaintStable),
       dpr:
         typeof window !== "undefined"
           ? roundMetric(Number(window.devicePixelRatio || 1), 3)
           : null,
+      konvaPixelRatio: roundNullableMetric(Konva?.pixelRatio),
       zoom: roundMetric(Number(scaleVisual || 1), 4),
+      phaseTimings: {
+        readyToSwapTs: phaseTimingRef.current.readyToSwapTs,
+        swapCommitTs: phaseTimingRef.current.swapCommitTs,
+        previewReadyTs: phaseTimingRef.current.previewReadyTs,
+        firstPaintTs: phaseTimingRef.current.firstPaintTs,
+        editableReadyTs: phaseTimingRef.current.editableReadyTs,
+        focusClaimTs: phaseTimingRef.current.focusClaimTs,
+      },
       left,
       top,
       baseTextWidth,
@@ -862,6 +1195,7 @@ export default function useInlineDebugEmitter({
       fontWeightRawNode: nodeProps.fontWeightRaw ?? null,
       fontStyleNormalizedNode: nodeProps.fontStyle || null,
       fontWeightNormalizedNode: nodeProps.fontWeight || null,
+      effectiveFontFamily: effectiveFontFamily || nodeProps.fontFamily || null,
       computedFontSize: computedStyle?.fontSize ?? null,
       computedFontFamily: computedStyle?.fontFamily ?? null,
       computedFontWeight: computedStyle?.fontWeight ?? null,
@@ -1355,6 +1689,19 @@ export default function useInlineDebugEmitter({
         eventName,
         phase: payload.phase || eventName,
         overlayEngine: normalizedOverlayEngine,
+        renderer: {
+          kind: rendererKind,
+          renderAuthorityPhase: resolvedRenderAuthorityPhase,
+          runtimeRenderAuthorityPhase: resolvedRuntimeRenderAuthorityPhase,
+          caretVisible: resolvedCaretVisible,
+          runtimeCaretVisible: resolvedRuntimeCaretVisible,
+          caretVisibleNow,
+          paintStable: resolvedPaintStable,
+          runtimePaintStable: Boolean(runtimePaintStable),
+          konvaPixelRatio: roundNullableMetric(Konva?.pixelRatio),
+          dpr: payload.dpr,
+          zoom: payload.zoom,
+        },
         geometry: positionSnapshot.delta || null,
         horizontal: {
           x: {
@@ -1538,6 +1885,9 @@ export default function useInlineDebugEmitter({
           ),
           domVisualDy: domEditableVisualDy,
           domSourceDeltaPx: roundMetric(Number(domToKonvaOffsetModel?.domSourceDeltaPx)),
+          domCssProbeResidualPx: roundNullableMetric(
+            domToKonvaOffsetModel?.domCssProbeResidualPx
+          ),
           domSourceLimitPx: roundMetric(
             Number(domToKonvaOffsetModel?.domSourceDivergenceLimitPx)
           ),
@@ -1621,6 +1971,21 @@ export default function useInlineDebugEmitter({
           ),
           externalOffsetRoutedToInternalToPx: roundNullableMetric(
             domToKonvaOffsetModel?.externalOffsetRoutedToInternalToPx
+          ),
+          internalRouteProbeCalibrationMinPx: roundNullableMetric(
+            domToKonvaOffsetModel?.internalRouteProbeCalibrationMinPx
+          ),
+          internalRouteProbeCalibrationMaxPx: roundNullableMetric(
+            domToKonvaOffsetModel?.internalRouteProbeCalibrationMaxPx
+          ),
+          internalRouteProbeCalibrationApplied: Boolean(
+            domToKonvaOffsetModel?.internalRouteProbeCalibrationApplied
+          ),
+          internalRouteProbeCalibrationPx: roundNullableMetric(
+            domToKonvaOffsetModel?.internalRouteProbeCalibrationPx
+          ),
+          internalContentOffsetBasePx: roundNullableMetric(
+            domToKonvaOffsetModel?.internalContentOffsetBasePx
           ),
           largeStableOffsetFinalAppliedWithPerceptualNudgePx: roundNullableMetric(
             domToKonvaOffsetModel?.largeStableOffsetFinalAppliedWithPerceptualNudgePx
@@ -1810,6 +2175,9 @@ export default function useInlineDebugEmitter({
               domProbeTopInset: roundNullableMetric(domToKonvaOffsetModel?.domProbeTopInset),
               domLiveTopInset: roundNullableMetric(domToKonvaOffsetModel?.domLiveTopInset),
               domSourceDeltaPx: roundNullableMetric(domToKonvaOffsetModel?.domSourceDeltaPx),
+              domCssProbeResidualPx: roundNullableMetric(
+                domToKonvaOffsetModel?.domCssProbeResidualPx
+              ),
               liveSourceDeltaPx: roundNullableMetric(domToKonvaOffsetModel?.liveSourceDeltaPx),
               domSourceDivergenceLimitPx: roundNullableMetric(
                 domToKonvaOffsetModel?.domSourceDivergenceLimitPx
@@ -1829,6 +2197,21 @@ export default function useInlineDebugEmitter({
               ),
               externalOffsetRoutedToInternalToPx: roundNullableMetric(
                 domToKonvaOffsetModel?.externalOffsetRoutedToInternalToPx
+              ),
+              internalRouteProbeCalibrationMinPx: roundNullableMetric(
+                domToKonvaOffsetModel?.internalRouteProbeCalibrationMinPx
+              ),
+              internalRouteProbeCalibrationMaxPx: roundNullableMetric(
+                domToKonvaOffsetModel?.internalRouteProbeCalibrationMaxPx
+              ),
+              internalRouteProbeCalibrationApplied: Boolean(
+                domToKonvaOffsetModel?.internalRouteProbeCalibrationApplied
+              ),
+              internalRouteProbeCalibrationPx: roundNullableMetric(
+                domToKonvaOffsetModel?.internalRouteProbeCalibrationPx
+              ),
+              internalContentOffsetBasePx: roundNullableMetric(
+                domToKonvaOffsetModel?.internalContentOffsetBasePx
               ),
               modelOffsetPx: roundNullableMetric(
                 v2VerticalAuthoritySnapshot?.modelOffsetPx ?? domToKonvaOffsetModel?.modelOffsetPx
@@ -1940,6 +2323,11 @@ export default function useInlineDebugEmitter({
     editorPaddingBottomPx,
     editableLineHeightPx,
     editorVisualReady,
+    renderAuthorityPhase,
+    runtimeRenderAuthorityPhase,
+    caretVisible,
+    runtimeCaretVisible,
+    runtimePaintStable,
     lockedCenterStageX,
     centerViewportX,
     probeTextForAlignment,
@@ -1963,6 +2351,7 @@ export default function useInlineDebugEmitter({
     fontMetricsRevision,
     fontLoadStatus?.available,
     fontLoadStatus?.spec,
+    effectiveFontFamily,
     isPhaseAtomicV2,
     normalizedOverlayEngine,
     nodeProps.fontStyle,

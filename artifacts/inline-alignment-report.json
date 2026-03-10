@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T12:52:21.594Z",
+  "generatedAt": "2026-03-10T15:54:28.855Z",
   "locationHref": "http://localhost:3000/dashboard/?phase_atomic_v2=1",
   "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/138.0.0.0 Safari/537.36",
   "dpr": 1,
@@ -33,7 +33,7 @@
     "stateAfter": null
   },
   "matrixResult": {
-    "generatedAt": "2026-03-09T12:52:21.594Z",
+    "generatedAt": "2026-03-10T15:54:28.850Z",
     "engine": "fallback",
     "sampleCount": 0,
     "summary": {

@@ -36,8 +36,17 @@ export default function resolveInlineCanvasVisibility({
   const mountId = mountSession?.mounted ? mountSession.id : null;
   const mountSessionId = mountSession?.mounted ? mountSession.sessionId : null;
   const mountSwapCommitted = Boolean(mountSession?.mounted && mountSession?.swapCommitted);
+  const renderAuthority = mountSession?.renderAuthority || "konva";
+  const caretVisible = Boolean(mountSession?.caretVisible);
+  const paintStable = Boolean(mountSession?.paintStable);
   const sessionMatches = !sessionId || !mountSessionId || mountSessionId === sessionId;
-  const isEditingByOverlay = mountSwapCommitted && mountId === objectId && sessionMatches;
+  const overlayOwnsVisualAuthority =
+    renderAuthority === "dom-preview" || renderAuthority === "dom-editable";
+  const isEditingByOverlay =
+    mountSwapCommitted &&
+    overlayOwnsVisualAuthority &&
+    mountId === objectId &&
+    sessionMatches;
   const isEditingByOverlayLegacy = inlineOverlayMountedId === objectId;
   const isEditing = isEditingByOverlay;
 
@@ -52,6 +61,10 @@ export default function resolveInlineCanvasVisibility({
     overlayMountSessionToken: Number.isFinite(Number(mountSession?.token))
       ? Number(mountSession.token)
       : null,
+    renderAuthority,
+    caretVisible,
+    paintStable,
+    overlayOwnsVisualAuthority,
     overlayDomPresentLoose,
     overlayFocused,
     overlayVisualReady,

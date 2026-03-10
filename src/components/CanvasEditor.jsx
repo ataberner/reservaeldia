@@ -70,17 +70,29 @@ import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInl
 
 Konva.dragDistance = 8;
 
+function shouldUseLowPowerKonvaRaster() {
+  if (typeof window === "undefined") return false;
+
+  const matchMedia = (query) =>
+    typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+
+  const primaryCoarse = matchMedia("(pointer: coarse)");
+  const primaryFine = matchMedia("(pointer: fine)");
+  const noHover = matchMedia("(hover: none)");
+  const maxTouchPoints =
+    typeof navigator !== "undefined"
+      ? Number(navigator.maxTouchPoints || 0)
+      : 0;
+
+  return primaryCoarse || (!primaryFine && noHover && maxTouchPoints > 0);
+}
+
 function resolveKonvaPixelRatio() {
   if (typeof window === "undefined") return 1;
 
   const dpr = Number(window.devicePixelRatio || 1);
-  const coarsePointer =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(pointer: coarse)").matches;
-  const minSide = Math.min(Number(window.innerWidth || 0), Number(window.innerHeight || 0));
-  const mobileLike = coarsePointer || (minSide > 0 && minSide <= 1024);
-
-  if (mobileLike) return 1;
+  if (!Number.isFinite(dpr) || dpr <= 0) return 1;
+  if (shouldUseLowPowerKonvaRaster()) return 1;
   return Math.min(dpr, 2);
 }
 
@@ -139,6 +151,9 @@ export default function CanvasEditor({
     offsetRevision: null,
     offsetSource: null,
     offsetSpace: "content-ink",
+    renderAuthority: "konva",
+    caretVisible: false,
+    paintStable: false,
   });
   const inlineSwapAckSeqRef = useRef(0);
   const [inlineSwapAck, setInlineSwapAck] = useState({
@@ -150,6 +165,9 @@ export default function CanvasEditor({
     offsetRevision: null,
     offsetSource: null,
     offsetSpace: "content-ink",
+    renderAuthority: "konva",
+    caretVisible: false,
+    paintStable: false,
   });
   useEffect(() => {
     const mountedId = inlineOverlayMountSession?.mounted
@@ -506,12 +524,22 @@ export default function CanvasEditor({
   const optionButtonSize = isMobile ? 38 : 24;
 
   useEffect(() => {
-    const desiredRatio = isMobile ? 1 : resolveKonvaPixelRatio();
-    if (Konva.pixelRatio !== desiredRatio) {
-      Konva.pixelRatio = desiredRatio;
-      stageRef.current?.getStage?.()?.batchDraw?.();
-    }
-  }, [isMobile]);
+    if (typeof window === "undefined") return undefined;
+
+    const applyKonvaPixelRatio = () => {
+      const desiredRatio = resolveKonvaPixelRatio();
+      if (Konva.pixelRatio !== desiredRatio) {
+        Konva.pixelRatio = desiredRatio;
+        stageRef.current?.getStage?.()?.batchDraw?.();
+      }
+    };
+
+    applyKonvaPixelRatio();
+    window.addEventListener("resize", applyKonvaPixelRatio);
+    return () => {
+      window.removeEventListener("resize", applyKonvaPixelRatio);
+    };
+  }, []);
 
   // ?? FunciÃ³n para actualizar offsets de imagen de fondo (SIN UNDEFINED)
   const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {

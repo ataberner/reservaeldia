@@ -455,6 +455,9 @@ export function estimateDomCssInkProbe({
     glyphHeightPx: roundMetric(glyphHeightPx),
     glyphTopInsetPx: roundMetric(glyphTopInsetPx),
     glyphBottomInsetPx: roundMetric(glyphBottomInsetPx),
+    glyphInkHeightPx: roundMetric(glyphHeightPx),
+    glyphInkTopInsetPx: roundMetric(glyphTopInsetPx),
+    glyphInkBottomInsetPx: roundMetric(glyphBottomInsetPx),
     fontToInkTopPx: roundMetric(fontToInkTopPx),
     fontToInkBottomPx: roundMetric(fontToInkBottomPx),
     method: "css-linebox-plus-canvas-ink",
@@ -501,10 +504,23 @@ export function measureDomInkProbe({
     span.style.whiteSpace = "pre";
     span.textContent = probeText || "Hg";
     host.appendChild(span);
+    const baselineProbe = document.createElement("span");
+    baselineProbe.style.display = "inline-block";
+    baselineProbe.style.width = "0";
+    baselineProbe.style.height = "0";
+    baselineProbe.style.margin = "0";
+    baselineProbe.style.padding = "0";
+    baselineProbe.style.border = "0";
+    baselineProbe.style.fontSize = "0";
+    baselineProbe.style.lineHeight = "0";
+    baselineProbe.style.verticalAlign = "baseline";
+    baselineProbe.textContent = "\u200b";
+    host.appendChild(baselineProbe);
     document.body.appendChild(host);
 
     const hostRect = host.getBoundingClientRect();
     const spanRect = span.getBoundingClientRect();
+    const baselineRect = baselineProbe.getBoundingClientRect();
     const textNode = span.firstChild;
     let inkRect = null;
     if (textNode && typeof document.createRange === "function") {
@@ -520,6 +536,47 @@ export function measureDomInkProbe({
       }
     }
     const glyphInkRect = inkRect || spanRect;
+    const baselineY = Number(baselineRect.top);
+    const hostTop = Number(hostRect.top);
+    const hostBottom = Number(hostRect.bottom);
+    const actualAscentPx = Number(canvasInkMetrics?.actualAscentPx);
+    const actualDescentPx = Number(canvasInkMetrics?.actualDescentPx);
+    const canUseBaselineVerticalModel =
+      Number.isFinite(baselineY) &&
+      Number.isFinite(hostTop) &&
+      Number.isFinite(hostBottom) &&
+      Number.isFinite(actualAscentPx) &&
+      Number.isFinite(actualDescentPx) &&
+      actualAscentPx >= 0 &&
+      actualDescentPx >= 0;
+    const glyphInkTopInsetFromBaselinePx = canUseBaselineVerticalModel
+      ? baselineY - hostTop - actualAscentPx
+      : null;
+    const glyphInkBottomInsetFromBaselinePx = canUseBaselineVerticalModel
+      ? hostBottom - (baselineY + actualDescentPx)
+      : null;
+    const glyphInkHeightFromBaselinePx = canUseBaselineVerticalModel
+      ? actualAscentPx + actualDescentPx
+      : null;
+    const glyphInkTopInsetFromDomRectPx = Number(glyphInkRect.top - hostRect.top);
+    const glyphInkBottomInsetFromDomRectPx = Number(hostRect.bottom - glyphInkRect.bottom);
+    const glyphInkHeightFromDomRectPx = Number(glyphInkRect.height);
+    const canUseBaselineVerticalInk =
+      Number.isFinite(glyphInkTopInsetFromBaselinePx) &&
+      Number.isFinite(glyphInkBottomInsetFromBaselinePx) &&
+      Number.isFinite(glyphInkHeightFromBaselinePx) &&
+      glyphInkHeightFromBaselinePx > 0 &&
+      glyphInkTopInsetFromBaselinePx > -hostRect.height * 0.75 &&
+      glyphInkBottomInsetFromBaselinePx > -hostRect.height * 0.75;
+    const glyphInkTopInsetResolvedPx = canUseBaselineVerticalInk
+      ? glyphInkTopInsetFromBaselinePx
+      : glyphInkTopInsetFromDomRectPx;
+    const glyphInkBottomInsetResolvedPx = canUseBaselineVerticalInk
+      ? glyphInkBottomInsetFromBaselinePx
+      : glyphInkBottomInsetFromDomRectPx;
+    const glyphInkHeightResolvedPx = canUseBaselineVerticalInk
+      ? glyphInkHeightFromBaselinePx
+      : glyphInkHeightFromDomRectPx;
     const hostWidthPx = Number(hostRect.width);
     const canvasAdvanceWidthPx = Number(canvasInkMetrics?.advanceWidthPx);
     const canvasInkLeftInsetPx = Number(canvasInkMetrics?.advanceToInkLeftInsetPx);
@@ -559,28 +616,50 @@ export function measureDomInkProbe({
       Number.isFinite(glyphInkRightInsetFromCanvasPx)
         ? glyphInkRightInsetFromCanvasPx
         : Number(hostRect.right - glyphInkRect.right);
+    const lineBoxTopInsetPx = Number(spanRect.top - hostRect.top);
+    const lineBoxBottomInsetPx = Number(hostRect.bottom - spanRect.bottom);
+    const lineBoxHeightPx = Number(spanRect.height);
     return {
       probeText,
       hostWidthPx: roundMetric(hostRect.width),
       hostHeightPx: roundMetric(hostRect.height),
       glyphWidthPx: roundMetric(spanRect.width),
-      glyphHeightPx: roundMetric(spanRect.height),
+      glyphHeightPx: roundMetric(glyphInkHeightResolvedPx),
       glyphLeftInsetPx: roundMetric(spanRect.left - hostRect.left),
-      glyphTopInsetPx: roundMetric(spanRect.top - hostRect.top),
+      glyphTopInsetPx: roundMetric(glyphInkTopInsetResolvedPx),
       glyphRightInsetPx: roundMetric(hostRect.right - spanRect.right),
-      glyphBottomInsetPx: roundMetric(hostRect.bottom - spanRect.bottom),
+      glyphBottomInsetPx: roundMetric(glyphInkBottomInsetResolvedPx),
       glyphInkWidthPx: roundMetric(glyphInkWidthResolvedPx),
-      glyphInkHeightPx: roundMetric(glyphInkRect.height),
+      glyphInkHeightPx: roundMetric(glyphInkHeightResolvedPx),
       glyphInkLeftInsetPx: roundMetric(glyphInkLeftInsetResolvedPx),
-      glyphInkTopInsetPx: roundMetric(glyphInkRect.top - hostRect.top),
+      glyphInkTopInsetPx: roundMetric(glyphInkTopInsetResolvedPx),
       glyphInkRightInsetPx: roundMetric(glyphInkRightInsetResolvedPx),
-      glyphInkBottomInsetPx: roundMetric(hostRect.bottom - glyphInkRect.bottom),
+      glyphInkBottomInsetPx: roundMetric(glyphInkBottomInsetResolvedPx),
       glyphInkSource: canUseCanvasHorizontalInkModel
-        ? "canvas-metrics-horizontal-plus-dom-vertical"
+        ? (
+          canUseBaselineVerticalInk
+            ? "canvas-metrics-horizontal-plus-dom-baseline-canvas-vertical"
+            : "canvas-metrics-horizontal-plus-dom-vertical"
+        )
         : (inkRect ? "range" : "span-box"),
+      glyphInkVerticalSource: canUseBaselineVerticalInk
+        ? "dom-baseline-plus-canvas-ink"
+        : (inkRect ? "range" : "span-box"),
+      baselineInsetPx: Number.isFinite(baselineY) && Number.isFinite(hostTop)
+        ? roundMetric(baselineY - hostTop)
+        : null,
+      lineBoxTopInsetPx: roundMetric(lineBoxTopInsetPx),
+      lineBoxBottomInsetPx: roundMetric(lineBoxBottomInsetPx),
+      lineBoxHeightPx: roundMetric(lineBoxHeightPx),
       glyphInkDomRangeWidthPx: roundMetric(glyphInkRect.width),
       glyphInkDomRangeLeftInsetPx: roundMetric(glyphInkRect.left - hostRect.left),
       glyphInkDomRangeRightInsetPx: roundMetric(hostRect.right - glyphInkRect.right),
+      glyphInkDomRangeTopInsetPx: roundMetric(glyphInkTopInsetFromDomRectPx),
+      glyphInkDomRangeBottomInsetPx: roundMetric(glyphInkBottomInsetFromDomRectPx),
+      glyphInkDomRangeHeightPx: roundMetric(glyphInkHeightFromDomRectPx),
+      glyphInkBaselineTopInsetPx: roundMetric(glyphInkTopInsetFromBaselinePx),
+      glyphInkBaselineBottomInsetPx: roundMetric(glyphInkBottomInsetFromBaselinePx),
+      glyphInkBaselineHeightPx: roundMetric(glyphInkHeightFromBaselinePx),
     };
   } catch {
     return null;

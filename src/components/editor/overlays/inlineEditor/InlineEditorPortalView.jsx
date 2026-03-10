@@ -29,12 +29,14 @@ export default function InlineEditorPortalView({
   resolvedContentMinHeightPx,
   contentDebugStyle,
   editableHostRef,
+  editorFrameRef,
   editorRef,
   editorVisualWidthPx,
   editorVisualLeftPx,
   centeredEditorWidthPx,
   centeredEditorLeftPx,
   effectiveVisualOffsetPx,
+  internalContentOffsetPx = 0,
   isEditorVisible,
   fontSizePx,
   nodeProps,
@@ -190,9 +192,7 @@ export default function InlineEditorPortalView({
           }}
         >
           <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
+            ref={editorFrameRef}
             style={{
               display: "block",
               verticalAlign: "top",
@@ -203,39 +203,63 @@ export default function InlineEditorPortalView({
               minHeight: "100%",
               position: "absolute",
               left: resolvedEditorLeftCss,
-              // Avoid transform-based compositing on text: it can make glyphs look thinner.
               top: `${effectiveVisualOffsetPx}px`,
-              transform: "none",
-              visibility: isEditorVisible ? "visible" : "hidden",
-              whiteSpace: "pre",
-              overflowWrap: "normal",
-              wordBreak: "normal",
-              overflow: "visible",
-              fontSize: `${fontSizePx}px`,
-              fontFamily: nodeProps.fontFamily,
-              fontWeight: nodeProps.fontWeight,
-              fontStyle: nodeProps.fontStyle,
-              ...INLINE_DOM_TEXT_RENDER_PARITY_STYLE,
-              lineHeight: `${editableLineHeightPx}px`,
-              letterSpacing: `${letterSpacingPx}px`,
-              color: editorTextColor,
-              caretColor: editorTextColor,
-              WebkitTextFillColor: editorTextColor,
-              background: "transparent",
-              borderRadius: 0,
-              paddingTop: `${editorPaddingTopPx}px`,
-              paddingBottom: `${editorPaddingBottomPx}px`,
-              paddingLeft: 0,
-              paddingRight: 0,
               margin: 0,
+              padding: 0,
+              border: 0,
               outline: "none",
               boxSizing: "border-box",
-              textAlign: textAlign || "left",
+              overflow: "visible",
             }}
-            onInput={onInput}
-            onKeyDown={onKeyDown}
-            onBlur={onBlur}
-          />
+          >
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              style={{
+                display: "block",
+                verticalAlign: "top",
+                width: "100%",
+                minWidth: "100%",
+                maxWidth: "none",
+                height: "100%",
+                minHeight: "100%",
+                position: "absolute",
+                left: 0,
+                // Keep external box locked; internal parity is applied inside the frame.
+                top: `${Number(internalContentOffsetPx || 0)}px`,
+                transform: "none",
+                visibility: isEditorVisible ? "visible" : "hidden",
+                whiteSpace: "pre",
+                overflowWrap: "normal",
+                wordBreak: "normal",
+                overflow: "visible",
+                fontSize: `${fontSizePx}px`,
+                fontFamily: nodeProps.fontFamily,
+                fontWeight: nodeProps.fontWeight,
+                fontStyle: nodeProps.fontStyle,
+                ...INLINE_DOM_TEXT_RENDER_PARITY_STYLE,
+                lineHeight: `${editableLineHeightPx}px`,
+                letterSpacing: `${letterSpacingPx}px`,
+                color: editorTextColor,
+                caretColor: editorTextColor,
+                WebkitTextFillColor: editorTextColor,
+                background: "transparent",
+                borderRadius: 0,
+                paddingTop: `${editorPaddingTopPx}px`,
+                paddingBottom: `${editorPaddingBottomPx}px`,
+                paddingLeft: 0,
+                paddingRight: 0,
+                margin: 0,
+                outline: "none",
+                boxSizing: "border-box",
+                textAlign: textAlign || "left",
+              }}
+              onInput={onInput}
+              onKeyDown={onKeyDown}
+              onBlur={onBlur}
+            />
+          </div>
         </div>
         </div>
       </div>

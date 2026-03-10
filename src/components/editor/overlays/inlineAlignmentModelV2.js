@@ -4,26 +4,7 @@ export const INLINE_ALIGNMENT_MODEL_V2_VERSION = "phase-atomic-v2";
 export const INLINE_TRACE_RING_MAX = 600;
 const LARGE_STABLE_OFFSET_POLICY_VERSION = "domCss-large-stable-cap-v9";
 const FONT_NUDGE_OVERRIDE_MAX_ABS_PX = 40;
-const FIXED_INLINE_FONT_NUDGE_CONFIGS = Object.freeze({
-  montserrat: Object.freeze({ valuePx: -3.4, mode: "additive" }),
-  arial: Object.freeze({ valuePx: -1.9, mode: "additive" }),
-  raleway: Object.freeze({ valuePx: -2, mode: "additive" }),
-  "great vibes": Object.freeze({ valuePx: -3, mode: "absolute" }),
-  "bodoni moda": Object.freeze({ valuePx: -7, mode: "additive" }),
-  georgia: Object.freeze({ valuePx: -2.2, mode: "additive" }),
-  poppins: Object.freeze({ valuePx: -6, mode: "additive" }),
-  "playfair display": Object.freeze({ valuePx: -5.8, mode: "additive" }),
-  "cormorant garamond": Object.freeze({ valuePx: -4, mode: "additive" }),
-  lora: Object.freeze({ valuePx: -4.4, mode: "additive" }),
-  nunito: Object.freeze({ valuePx: -4.9, mode: "additive" }),
-  "libre bodoni": Object.freeze({ valuePx: -3.3, mode: "additive" }),
-  allura: Object.freeze({ valuePx: -1, mode: "additive" }),
-  parisienne: Object.freeze({ valuePx: -3, mode: "additive" }),
-  sacramento: Object.freeze({ valuePx: -4.1, mode: "additive" }),
-  cinzel: Object.freeze({ valuePx: -4.2, mode: "additive" }),
-  "abril fatface": Object.freeze({ valuePx: -6, mode: "additive" }),
-  "bebas neue": Object.freeze({ valuePx: -4, mode: "additive" }),
-});
+const ENABLE_FONT_SPECIFIC_PERCEPTUAL_NUDGE = false;
 
 function resolveFontSpecificStableCapPx(fontFamily) {
   const normalized = String(fontFamily || "").toLowerCase();
@@ -51,29 +32,8 @@ function sanitizeFontFamilyKey(normalizedFamily) {
     .replace(/^_+|_+$/g, "");
 }
 
-function resolveFixedFontNudgeConfig(normalizedFamily) {
-  if (!normalizedFamily) return null;
-  const direct = FIXED_INLINE_FONT_NUDGE_CONFIGS[normalizedFamily];
-  if (direct) {
-    return {
-      ...direct,
-      source: `fixed(window.__INLINE_${sanitizeFontFamilyKey(normalizedFamily)}_NUDGE_PX)`,
-    };
-  }
-  const fuzzyMatch = Object.entries(FIXED_INLINE_FONT_NUDGE_CONFIGS).find(([key]) => (
-    normalizedFamily.includes(key)
-  ));
-  if (!fuzzyMatch) return null;
-  const [matchedFamily, matchedConfig] = fuzzyMatch;
-  return {
-    ...matchedConfig,
-    source: `fixed(window.__INLINE_${sanitizeFontFamilyKey(matchedFamily)}_NUDGE_PX)`,
-  };
-}
-
 function resolveDefaultFontNudgeConfig(normalizedFamily) {
-  const fixedConfig = resolveFixedFontNudgeConfig(normalizedFamily);
-  if (fixedConfig) return fixedConfig;
+  void normalizedFamily;
   return null;
 }
 
@@ -177,14 +137,16 @@ function readWindowFontNudgeOverride(normalizedFamily) {
 function resolveFontSpecificPerceptualNudge(fontFamily) {
   const normalizedFamily = normalizeFontFamilyForNudge(fontFamily);
   const defaultConfig = resolveDefaultFontNudgeConfig(normalizedFamily);
-  if (defaultConfig?.source?.startsWith("fixed(")) {
+  const override = readWindowFontNudgeOverride(normalizedFamily);
+  if (!ENABLE_FONT_SPECIFIC_PERCEPTUAL_NUDGE) {
+    void defaultConfig;
+    void override;
     return {
-      valuePx: defaultConfig.valuePx,
-      source: defaultConfig.source,
-      mode: defaultConfig.mode,
+      valuePx: null,
+      source: "formula-only",
+      mode: null,
     };
   }
-  const override = readWindowFontNudgeOverride(normalizedFamily);
   const overrideValuePx = toFiniteNumber(override?.valuePx, null);
 
   if (Number.isFinite(overrideValuePx)) {
@@ -275,19 +237,24 @@ function buildLiveSampleStats(samples = []) {
   };
 }
 
-function computeSnapshotRevision(previousSnapshot, source, modelOffsetPx) {
+function computeSnapshotRevision(previousSnapshot, source, modelOffsetPx, modelOffsetXPx = 0) {
   const previousRevision = Number(previousSnapshot?.revision);
   const previousSource = String(previousSnapshot?.source || "");
   const previousOffset = toFiniteNumber(previousSnapshot?.modelOffsetPx);
+  const previousOffsetX = toFiniteNumber(previousSnapshot?.modelOffsetXPx, 0);
   const nextSource = String(source || "");
   const nextOffset = toFiniteNumber(modelOffsetPx);
+  const nextOffsetX = toFiniteNumber(modelOffsetXPx, 0);
   if (
     Number.isFinite(previousRevision) &&
     previousRevision > 0 &&
     previousSource === nextSource &&
     Number.isFinite(previousOffset) &&
     Number.isFinite(nextOffset) &&
-    Math.abs(previousOffset - nextOffset) <= 0.0001
+    Math.abs(previousOffset - nextOffset) <= 0.0001 &&
+    Number.isFinite(previousOffsetX) &&
+    Number.isFinite(nextOffsetX) &&
+    Math.abs(previousOffsetX - nextOffsetX) <= 0.0001
   ) {
     return previousRevision;
   }
@@ -301,6 +268,10 @@ export function resolveVerticalAuthoritySnapshot({
   domCssInkProbe,
   domInkProbe,
   domLiveFirstGlyphTopInsetPx,
+  domLiveInkTopInsetPx = null,
+  domLiveInkLeftInsetPx = null,
+  domProbeInkLeftInsetPx = null,
+  konvaInkLeftInsetPx = null,
   domLiveFirstGlyphSamples = [],
   domLiveGeometryUsable = false,
   konvaInkProbe,
@@ -311,10 +282,35 @@ export function resolveVerticalAuthoritySnapshot({
   previousSnapshot = null,
   dpr = null,
 }) {
-  const domTopInset = toFiniteNumber(domCssInkProbe?.glyphTopInsetPx);
-  const domProbeTopInset = toFiniteNumber(domInkProbe?.glyphTopInsetPx);
-  const domLiveTopInset = toFiniteNumber(domLiveFirstGlyphTopInsetPx);
-  const konvaTopInset = toFiniteNumber(konvaInkProbe?.glyphTopInsetPx);
+  const domTopInset = toFiniteNumber(
+    domCssInkProbe?.glyphTopInsetPx,
+    toFiniteNumber(domCssInkProbe?.glyphInkTopInsetPx)
+  );
+  const domProbeTopInset = toFiniteNumber(
+    domInkProbe?.glyphTopInsetPx,
+    toFiniteNumber(domInkProbe?.glyphInkTopInsetPx)
+  );
+  const domLiveTopInset = toFiniteNumber(
+    domLiveInkTopInsetPx,
+    toFiniteNumber(domLiveFirstGlyphTopInsetPx)
+  );
+  const domLeftInset = toFiniteNumber(
+    domCssInkProbe?.glyphInkLeftInsetPx,
+    toFiniteNumber(domCssInkProbe?.glyphLeftInsetPx)
+  );
+  const domProbeLeftInset = toFiniteNumber(
+    domProbeInkLeftInsetPx,
+    toFiniteNumber(domInkProbe?.glyphInkLeftInsetPx, toFiniteNumber(domInkProbe?.glyphLeftInsetPx))
+  );
+  const domLiveLeftInset = toFiniteNumber(domLiveInkLeftInsetPx);
+  const konvaTopInset = toFiniteNumber(
+    konvaInkProbe?.glyphTopInsetPx,
+    toFiniteNumber(konvaInkProbe?.glyphInkTopInsetPx)
+  );
+  const konvaLeftInset = toFiniteNumber(
+    konvaInkLeftInsetPx,
+    toFiniteNumber(konvaInkProbe?.glyphInkLeftInsetPx, toFiniteNumber(konvaInkProbe?.glyphLeftInsetPx))
+  );
   const resolvedDpr = resolveDpr(dpr);
   const safeLineHeight = Math.max(0, toFiniteNumber(editableLineHeightPx, 0));
   const saneLimit = Math.min(Math.max(safeLineHeight * 0.28, 8), 96);
@@ -335,6 +331,11 @@ export function resolveVerticalAuthoritySnapshot({
       !Number.isFinite(domSourceDeltaPx) ||
       domSourceDeltaPx <= domSourceDivergenceLimitPx
     );
+  const severeMixedSourceDisagreement =
+    Number.isFinite(domSourceDeltaPx) &&
+    Number.isFinite(domSourceDivergenceLimitPx) &&
+    domSourceDeltaPx > domSourceDivergenceLimitPx &&
+    Number.isFinite(domTopInset);
   const severeDomSourceDisagreement =
     Number.isFinite(domSourceDeltaPx) &&
     domSourceDeltaPx > Math.max(domSourceDivergenceLimitPx, 3.5);
@@ -436,10 +437,20 @@ export function resolveVerticalAuthoritySnapshot({
   };
 
   const candidateOrder = (() => {
+    // When mixed DOM sources (range/live) disagree with CSS+canvas line-box
+    // model, keep using live/probe authority unless CSS is actually reliable.
+    if (severeMixedSourceDisagreement) {
+      if (liveFallbackReliable) {
+        return ["domLiveFirstGlyph", "domProbe", "domCss"];
+      }
+      return ["domProbe", "domCss", "domLiveFirstGlyph"];
+    }
+    if (liveFallbackReliable) {
+      return ["domLiveFirstGlyph", "domProbe", "domCss"];
+    }
     if (preferDomCssOnDisagreement) return ["domCss", "domProbe", "domLiveFirstGlyph"];
     if (preferLiveForLargeCssOffset) return ["domLiveFirstGlyph", "domCss", "domProbe"];
     if (domCssReliable) return ["domCss", "domProbe", "domLiveFirstGlyph"];
-    if (liveFallbackReliable) return ["domLiveFirstGlyph", "domProbe", "domCss"];
     return ["domProbe", "domCss", "domLiveFirstGlyph"];
   })();
 
@@ -447,6 +458,25 @@ export function resolveVerticalAuthoritySnapshot({
     if (source === "domCss") return domTopInset;
     if (source === "domProbe") return domProbeTopInset;
     if (source === "domLiveFirstGlyph") return domLiveTopInset;
+    return null;
+  };
+
+  const resolveCandidateLeftInset = (source) => {
+    if (source === "domCss") {
+      if (Number.isFinite(domLeftInset)) return domLeftInset;
+      if (Number.isFinite(domProbeLeftInset)) return domProbeLeftInset;
+      return domLiveLeftInset;
+    }
+    if (source === "domProbe") {
+      if (Number.isFinite(domProbeLeftInset)) return domProbeLeftInset;
+      if (Number.isFinite(domLeftInset)) return domLeftInset;
+      return domLiveLeftInset;
+    }
+    if (source === "domLiveFirstGlyph") {
+      if (Number.isFinite(domLiveLeftInset)) return domLiveLeftInset;
+      if (Number.isFinite(domProbeLeftInset)) return domProbeLeftInset;
+      return domLeftInset;
+    }
     return null;
   };
 
@@ -471,6 +501,30 @@ export function resolveVerticalAuthoritySnapshot({
       pixelSnapUsed: false,
       blockedReason: fallbackCandidate.blockedReason || "missing-metrics",
     };
+  }
+
+  const activeDomLeftInset = toFiniteNumber(resolveCandidateLeftInset(selected.source));
+  let horizontalRawOffsetPx = null;
+  let horizontalSnappedOffsetPx = 0;
+  let horizontalBlockedReason = null;
+  let horizontalPixelSnapStep = null;
+  let horizontalPixelSnapUsed = false;
+  if (!Number.isFinite(konvaLeftInset) || !Number.isFinite(activeDomLeftInset)) {
+    horizontalBlockedReason = "missing-metrics";
+  } else {
+    horizontalRawOffsetPx = konvaLeftInset - activeDomLeftInset;
+    if (!Number.isFinite(horizontalRawOffsetPx)) {
+      horizontalBlockedReason = "invalid-raw-offset";
+      horizontalRawOffsetPx = null;
+    } else if (Math.abs(horizontalRawOffsetPx) > saneLimit) {
+      horizontalBlockedReason = "out-of-range";
+      horizontalSnappedOffsetPx = 0;
+    } else {
+      const horizontalSnap = resolvePixelSnap(horizontalRawOffsetPx);
+      horizontalSnappedOffsetPx = toFiniteNumber(horizontalSnap.snappedOffset, 0);
+      horizontalPixelSnapStep = horizontalSnap.pixelSnapStep;
+      horizontalPixelSnapUsed = Boolean(horizontalSnap.pixelSnapUsed);
+    }
   }
 
   const conservativeLargeOffsetLimitPx = Math.min(2.2, Math.max(1.6, safeLineHeight * 0.04));
@@ -510,25 +564,61 @@ export function resolveVerticalAuthoritySnapshot({
       ? Math.min(effectiveLargeOffsetLimitPx, Number(fontSpecificLargeStableCapPx))
       : effectiveLargeOffsetLimitPx;
   const selectedAppliedOffset = toFiniteNumber(selected.appliedOffset, fallbackOffset);
+  const shouldCapUnreliableDomCssOffset =
+    selected.source === "domCss" &&
+    domCssInConflict &&
+    !severeMixedSourceDisagreement &&
+    Number.isFinite(selectedAppliedOffset);
+  const unreliableDomCssCappedOffset = shouldCapUnreliableDomCssOffset
+    ? Math.sign(selectedAppliedOffset) * Math.min(
+      Math.abs(selectedAppliedOffset),
+      effectiveLargeOffsetLimitWithFontCapPx
+    )
+    : selectedAppliedOffset;
   const shouldDampenLargeStableOffset =
     selected.source === "domCss" &&
     domCssReliable &&
     liveFallbackReliable &&
     !domCssInConflict &&
-    Number.isFinite(selectedAppliedOffset) &&
-    Math.abs(selectedAppliedOffset) > effectiveLargeOffsetLimitWithFontCapPx;
+    Number.isFinite(unreliableDomCssCappedOffset) &&
+    Math.abs(unreliableDomCssCappedOffset) > effectiveLargeOffsetLimitWithFontCapPx;
   const dampenedAppliedOffset = shouldDampenLargeStableOffset
-    ? Math.sign(selectedAppliedOffset) * effectiveLargeOffsetLimitWithFontCapPx
-    : selectedAppliedOffset;
+    ? Math.sign(unreliableDomCssCappedOffset) * effectiveLargeOffsetLimitWithFontCapPx
+    : unreliableDomCssCappedOffset;
   const finalAppliedOffset = shouldApplyFontSpecificZeroDrift ? 0 : dampenedAppliedOffset;
-  const isGreatVibesFont = String(fontFamily || "").toLowerCase().includes("great vibes");
-  const shouldNeutralizeSevereLiveDisagreement =
-    severeDomSourceDisagreement &&
-    selected.source === "domLiveFirstGlyph" &&
-    !isGreatVibesFont;
-  const finalAppliedOffsetAfterSevereLiveGuard = shouldNeutralizeSevereLiveDisagreement
+  const probeRawOffsetPx =
+    Number.isFinite(konvaTopInset) && Number.isFinite(domProbeTopInset)
+      ? (konvaTopInset - domProbeTopInset)
+      : null;
+  const liveRawOffsetPx =
+    Number.isFinite(konvaTopInset) && Number.isFinite(domLiveTopInset)
+      ? (konvaTopInset - domLiveTopInset)
+      : null;
+  const hasOppositeConflictSignals = (() => {
+    const css = toFiniteNumber(domCssRawOffsetPx);
+    const live = toFiniteNumber(liveRawOffsetPx);
+    const probe = toFiniteNumber(probeRawOffsetPx);
+    const candidates = [live, probe].filter((value) => Number.isFinite(value));
+    if (!Number.isFinite(css) || candidates.length === 0) return false;
+    return candidates.some((value) => (
+      Math.sign(css) !== Math.sign(value) &&
+      Math.abs(css) >= 2 &&
+      Math.abs(value) >= 2
+    ));
+  })();
+  const hasLargeUnreliableVerticalOffset =
+    domCssInConflict &&
+    Number.isFinite(selectedAppliedOffset) &&
+    Math.abs(selectedAppliedOffset) >= 4;
+  const shouldNeutralizeBidirectionalConflict =
+    severeMixedSourceDisagreement &&
+    (hasOppositeConflictSignals || hasLargeUnreliableVerticalOffset);
+  // Keep the live authority untouched once it is deemed reliable.
+  const shouldNeutralizeSevereLiveDisagreement = false;
+  const finalAppliedOffsetAfterSevereLiveGuard = finalAppliedOffset;
+  const finalAppliedOffsetAfterConflictGuard = shouldNeutralizeBidirectionalConflict
     ? 0
-    : finalAppliedOffset;
+    : finalAppliedOffsetAfterSevereLiveGuard;
   const normalizedFontFamilyForNudge = normalizeFontFamilyForNudge(fontFamily);
   const fontSpecificPerceptualNudge = resolveFontSpecificPerceptualNudge(fontFamily);
   const fontSpecificPerceptualNudgePx = toFiniteNumber(fontSpecificPerceptualNudge?.valuePx);
@@ -542,28 +632,64 @@ export function resolveVerticalAuthoritySnapshot({
   const shouldApplyAbsolutePerceptualNudge =
     Number.isFinite(fontSpecificPerceptualNudgePx) &&
     fontSpecificPerceptualNudgeMode === "absolute" &&
-    shouldApplyFontSpecificZeroDrift;
+    shouldApplyFontSpecificZeroDrift &&
+    !shouldNeutralizeBidirectionalConflict;
   const shouldApplyAdditivePerceptualNudge =
     Number.isFinite(fontSpecificPerceptualNudgePx) &&
-    fontSpecificPerceptualNudgeMode === "additive";
+    fontSpecificPerceptualNudgeMode === "additive" &&
+    !shouldNeutralizeBidirectionalConflict;
   const finalAppliedOffsetWithPerceptualNudge = shouldApplyAbsolutePerceptualNudge
     ? Number(fontSpecificPerceptualNudgePx)
     : (
       shouldApplyAdditivePerceptualNudge
-        ? finalAppliedOffsetAfterSevereLiveGuard + Number(fontSpecificPerceptualNudgePx)
-        : finalAppliedOffsetAfterSevereLiveGuard
+        ? finalAppliedOffsetAfterConflictGuard + Number(fontSpecificPerceptualNudgePx)
+        : finalAppliedOffsetAfterConflictGuard
     );
+  const shouldRouteExternalOffsetToInternal =
+    !shouldNeutralizeBidirectionalConflict &&
+    selected.source === "domCss" &&
+    Number.isFinite(finalAppliedOffsetWithPerceptualNudge) &&
+    Math.abs(finalAppliedOffsetWithPerceptualNudge) >= effectiveLargeOffsetLimitWithFontCapPx;
+  const routedExternalOffsetPx = shouldRouteExternalOffsetToInternal
+    ? 0
+    : finalAppliedOffsetWithPerceptualNudge;
+  const resolvedSource = shouldNeutralizeBidirectionalConflict
+    ? "conflictNeutral"
+    : (shouldRouteExternalOffsetToInternal ? "domCssInternal" : selected.source);
+  const internalContentOffsetPx = roundInlineMetric(
+    (
+      (shouldNeutralizeBidirectionalConflict
+        ? toFiniteNumber(selectedAppliedOffset, 0)
+        : 0
+      ) +
+      (shouldRouteExternalOffsetToInternal
+        ? toFiniteNumber(finalAppliedOffsetWithPerceptualNudge, 0)
+        : 0
+      )
+    )
+  );
 
   const modelOffsetPx = roundInlineMetric(
-    toFiniteNumber(finalAppliedOffsetWithPerceptualNudge, fallbackOffset)
+    toFiniteNumber(routedExternalOffsetPx, fallbackOffset)
   );
-  const revision = computeSnapshotRevision(previousSnapshot, selected.source, modelOffsetPx);
+  const modelOffsetXPx = roundInlineMetric(
+    toFiniteNumber(horizontalSnappedOffsetPx, 0)
+  );
+  const revision = computeSnapshotRevision(
+    previousSnapshot,
+    resolvedSource,
+    modelOffsetPx,
+    modelOffsetXPx
+  );
 
   return {
     status: "resolved",
-    source: selected.source,
+    source: resolvedSource,
     modelOffsetPx,
     visualOffsetPx: modelOffsetPx,
+    internalContentOffsetPx,
+    modelOffsetXPx,
+    visualOffsetXPx: modelOffsetXPx,
     revision,
     coordinateSpace: "content-ink",
     frozen: false,
@@ -573,12 +699,22 @@ export function resolveVerticalAuthoritySnapshot({
       domProbeTopInset: roundInlineMetric(domProbeTopInset),
       domLiveTopInset: roundInlineMetric(domLiveTopInset),
       activeDomTopInset: roundInlineMetric(selected.activeDomTopInset),
+      domLeftInset: roundInlineMetric(domLeftInset),
+      domProbeLeftInset: roundInlineMetric(domProbeLeftInset),
+      domLiveLeftInset: roundInlineMetric(domLiveLeftInset),
+      activeDomLeftInset: roundInlineMetric(activeDomLeftInset),
       konvaTopInset: roundInlineMetric(konvaTopInset),
+      konvaLeftInset: roundInlineMetric(konvaLeftInset),
       rawOffset: roundInlineMetric(selected.rawOffset),
+      rawOffsetX: roundInlineMetric(horizontalRawOffsetPx),
       saneLimit: roundInlineMetric(saneLimit),
       snappedOffset: roundInlineMetric(selected.snappedOffset),
+      snappedOffsetX: roundInlineMetric(horizontalSnappedOffsetPx),
       pixelSnapStep: selected.pixelSnapStep,
       pixelSnapUsed: Boolean(selected.pixelSnapUsed),
+      horizontalPixelSnapStep: roundInlineMetric(horizontalPixelSnapStep),
+      horizontalPixelSnapUsed: Boolean(horizontalPixelSnapUsed),
+      horizontalBlockedReason,
       domSourceDeltaPx: roundInlineMetric(domSourceDeltaPx),
       domSourceDivergenceLimitPx: roundInlineMetric(domSourceDivergenceLimitPx),
       liveSourceDeltaPx: roundInlineMetric(liveSourceDeltaPx),
@@ -591,6 +727,7 @@ export function resolveVerticalAuthoritySnapshot({
       fontFamilyRaw: String(fontFamily || "") || null,
       fontFamilyNormalizedForNudge: normalizedFontFamilyForNudge || null,
       domCssReliable,
+      severeMixedSourceDisagreement,
       severeDomSourceDisagreement,
       liveFallbackReliable,
       preferDomCssOnDisagreement,
@@ -619,14 +756,29 @@ export function resolveVerticalAuthoritySnapshot({
       fontLoadAvailable:
         typeof fontLoadAvailable === "boolean" ? fontLoadAvailable : null,
       largeStableOffsetDampened: shouldDampenLargeStableOffset,
-      largeStableOffsetDampenedFromPx: roundInlineMetric(selectedAppliedOffset),
+      largeStableOffsetDampenedFromPx: roundInlineMetric(unreliableDomCssCappedOffset),
       largeStableOffsetDampenedToPx: roundInlineMetric(dampenedAppliedOffset),
       largeStableOffsetFinalAppliedPx: roundInlineMetric(finalAppliedOffset),
+      unreliableDomCssConflictCapApplied: shouldCapUnreliableDomCssOffset,
+      unreliableDomCssConflictCapFromPx: roundInlineMetric(selectedAppliedOffset),
+      unreliableDomCssConflictCapToPx: roundInlineMetric(unreliableDomCssCappedOffset),
       severeLiveDisagreementGuardApplied: shouldNeutralizeSevereLiveDisagreement,
       severeLiveDisagreementGuardFromPx: roundInlineMetric(finalAppliedOffset),
       severeLiveDisagreementGuardToPx: roundInlineMetric(
         finalAppliedOffsetAfterSevereLiveGuard
       ),
+      bidirectionalConflictGuardApplied: shouldNeutralizeBidirectionalConflict,
+      bidirectionalConflictGuardCssRawOffsetPx: roundInlineMetric(domCssRawOffsetPx),
+      bidirectionalConflictGuardProbeRawOffsetPx: roundInlineMetric(probeRawOffsetPx),
+      bidirectionalConflictGuardLiveRawOffsetPx: roundInlineMetric(liveRawOffsetPx),
+      bidirectionalConflictGuardFromPx: roundInlineMetric(finalAppliedOffsetAfterSevereLiveGuard),
+      bidirectionalConflictGuardToPx: roundInlineMetric(finalAppliedOffsetAfterConflictGuard),
+      externalOffsetRoutedToInternalApplied: shouldRouteExternalOffsetToInternal,
+      externalOffsetRoutedToInternalFromPx: roundInlineMetric(
+        finalAppliedOffsetWithPerceptualNudge
+      ),
+      externalOffsetRoutedToInternalToPx: roundInlineMetric(routedExternalOffsetPx),
+      internalContentOffsetPx: roundInlineMetric(internalContentOffsetPx),
       largeStableOffsetFinalAppliedWithPerceptualNudgePx: roundInlineMetric(
         finalAppliedOffsetWithPerceptualNudge
       ),
@@ -680,14 +832,25 @@ export function computeInlineAlignmentOffsetV2({
     domProbeTopInset: diagnostics.domProbeTopInset ?? null,
     domLiveTopInset: diagnostics.domLiveTopInset ?? null,
     activeDomTopInset: diagnostics.activeDomTopInset ?? null,
+    domLeftInset: diagnostics.domLeftInset ?? null,
+    domProbeLeftInset: diagnostics.domProbeLeftInset ?? null,
+    domLiveLeftInset: diagnostics.domLiveLeftInset ?? null,
+    activeDomLeftInset: diagnostics.activeDomLeftInset ?? null,
     konvaTopInset: diagnostics.konvaTopInset ?? null,
+    konvaLeftInset: diagnostics.konvaLeftInset ?? null,
     rawOffset: diagnostics.rawOffset ?? null,
+    rawOffsetX: diagnostics.rawOffsetX ?? null,
     saneLimit: diagnostics.saneLimit ?? null,
     snappedOffset: diagnostics.snappedOffset ?? null,
+    snappedOffsetX: diagnostics.snappedOffsetX ?? null,
     pixelSnapStep: diagnostics.pixelSnapStep ?? null,
     pixelSnapUsed: Boolean(diagnostics.pixelSnapUsed),
+    horizontalPixelSnapStep: diagnostics.horizontalPixelSnapStep ?? null,
+    horizontalPixelSnapUsed: Boolean(diagnostics.horizontalPixelSnapUsed),
     appliedOffset: snapshot?.visualOffsetPx ?? 0,
+    appliedOffsetX: snapshot?.visualOffsetXPx ?? 0,
     blockedReason: snapshot?.blockedReason || null,
+    horizontalBlockedReason: diagnostics.horizontalBlockedReason ?? null,
     domSourceDeltaPx: diagnostics.domSourceDeltaPx ?? null,
     domSourceDivergenceLimitPx: diagnostics.domSourceDivergenceLimitPx ?? null,
     liveSourceDeltaPx: diagnostics.liveSourceDeltaPx ?? null,
@@ -700,6 +863,7 @@ export function computeInlineAlignmentOffsetV2({
     fontFamilyRaw: diagnostics.fontFamilyRaw ?? null,
     fontFamilyNormalizedForNudge: diagnostics.fontFamilyNormalizedForNudge ?? null,
     domCssReliable: Boolean(diagnostics.domCssReliable),
+    severeMixedSourceDisagreement: Boolean(diagnostics.severeMixedSourceDisagreement),
     severeDomSourceDisagreement: Boolean(diagnostics.severeDomSourceDisagreement),
     preferDomCssOnDisagreement: Boolean(diagnostics.preferDomCssOnDisagreement),
     domCssRawOffsetPx: diagnostics.domCssRawOffsetPx ?? null,
@@ -747,6 +911,26 @@ export function computeInlineAlignmentOffsetV2({
       diagnostics.severeLiveDisagreementGuardFromPx ?? null,
     severeLiveDisagreementGuardToPx:
       diagnostics.severeLiveDisagreementGuardToPx ?? null,
+    bidirectionalConflictGuardApplied: Boolean(
+      diagnostics.bidirectionalConflictGuardApplied
+    ),
+    bidirectionalConflictGuardCssRawOffsetPx:
+      diagnostics.bidirectionalConflictGuardCssRawOffsetPx ?? null,
+    bidirectionalConflictGuardProbeRawOffsetPx:
+      diagnostics.bidirectionalConflictGuardProbeRawOffsetPx ?? null,
+    bidirectionalConflictGuardLiveRawOffsetPx:
+      diagnostics.bidirectionalConflictGuardLiveRawOffsetPx ?? null,
+    bidirectionalConflictGuardFromPx:
+      diagnostics.bidirectionalConflictGuardFromPx ?? null,
+    bidirectionalConflictGuardToPx:
+      diagnostics.bidirectionalConflictGuardToPx ?? null,
+    externalOffsetRoutedToInternalApplied: Boolean(
+      diagnostics.externalOffsetRoutedToInternalApplied
+    ),
+    externalOffsetRoutedToInternalFromPx:
+      diagnostics.externalOffsetRoutedToInternalFromPx ?? null,
+    externalOffsetRoutedToInternalToPx:
+      diagnostics.externalOffsetRoutedToInternalToPx ?? null,
     largeStableOffsetFinalAppliedWithPerceptualNudgePx:
       diagnostics.largeStableOffsetFinalAppliedWithPerceptualNudgePx ?? null,
     largeStableOffsetPolicyVersion: diagnostics.largeStableOffsetPolicyVersion ?? null,
@@ -756,6 +940,9 @@ export function computeInlineAlignmentOffsetV2({
     coordinateSpace: snapshot?.coordinateSpace || "content-ink",
     modelOffsetPx: snapshot?.modelOffsetPx ?? 0,
     visualOffsetPx: snapshot?.visualOffsetPx ?? 0,
+    internalContentOffsetPx: snapshot?.internalContentOffsetPx ?? 0,
+    modelOffsetXPx: snapshot?.modelOffsetXPx ?? 0,
+    visualOffsetXPx: snapshot?.visualOffsetXPx ?? 0,
     frozen: Boolean(snapshot?.frozen),
     diagnostics,
   };

@@ -27,6 +27,7 @@ import {
   getFirstGlyphRectInEditor,
   getFullRangeRect,
   getSelectionRectInEditor,
+  getTextInkRectInEditor,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorSelectionRects";
 import {
   buildCanvasFontValue,
@@ -163,6 +164,7 @@ export default function InlineTextEditor({
   const editorRef = useRef(null);
   const contentBoxRef = useRef(null);
   const editableHostRef = useRef(null);
+  const editorFrameRef = useRef(null);
   const overlayRootRef = useRef(null);
   const nudgeCalibrationRef = useRef({
     key: null,
@@ -190,6 +192,8 @@ export default function InlineTextEditor({
   const [v2AuthorityGateTimedOut, setV2AuthorityGateTimedOut] = useState(false);
   const [v2EffectiveFontFamily, setV2EffectiveFontFamily] = useState(null);
   const [v2LiveFirstGlyphTopInsetPx, setV2LiveFirstGlyphTopInsetPx] = useState(null);
+  const [v2LiveTextInkTopInsetPx, setV2LiveTextInkTopInsetPx] = useState(null);
+  const [v2LiveTextInkLeftInsetPx, setV2LiveTextInkLeftInsetPx] = useState(null);
   const [v2LiveFirstGlyphSamples, setV2LiveFirstGlyphSamples] = useState([]);
   const [v2LiveFirstGlyphGeometryUsable, setV2LiveFirstGlyphGeometryUsable] = useState(false);
   const [v2VerticalAuthoritySnapshot, setV2VerticalAuthoritySnapshot] = useState(null);
@@ -394,6 +398,8 @@ export default function InlineTextEditor({
       }),
     [isSingleLine, normalizedValue, normalizedValueForSingleLine]
   );
+  // Keep a stable vertical probe so ascent/descent metrics do not drift
+  // with the edited content (which can produce large offset jumps).
   const metricsProbeText = "HgAy";
   const fontLoadStatus = useMemo(() => {
     if (
@@ -595,6 +601,25 @@ export default function InlineTextEditor({
         domCssInkProbe: domCssInkProbeModel,
         domInkProbe: domInkProbeModel,
         domLiveFirstGlyphTopInsetPx: v2LiveFirstGlyphTopInsetPx,
+        // Keep vertical authority anchored to live first-glyph geometry.
+        // textInkRect is useful for diagnostics/horizontal context but is not
+        // a comparable vertical model against probe-based konva insets.
+        domLiveInkTopInsetPx: v2LiveFirstGlyphTopInsetPx,
+        domLiveInkLeftInsetPx: isSingleLine ? v2LiveTextInkLeftInsetPx : null,
+        domProbeInkLeftInsetPx: isSingleLine
+          ? (
+            Number.isFinite(Number(domInkProbeModel?.glyphInkLeftInsetPx))
+              ? Number(domInkProbeModel.glyphInkLeftInsetPx)
+              : Number(domInkProbeModel?.glyphLeftInsetPx)
+          )
+          : null,
+        konvaInkLeftInsetPx: isSingleLine
+          ? (
+            Number.isFinite(Number(konvaInkProbeModel?.glyphLeftInsetPx))
+              ? Number(konvaInkProbeModel.glyphLeftInsetPx)
+              : null
+          )
+          : null,
         domLiveFirstGlyphSamples: v2LiveFirstGlyphSamples,
         domLiveGeometryUsable: v2LiveFirstGlyphGeometryUsable,
         konvaInkProbe: konvaInkProbeModel,
@@ -610,7 +635,9 @@ export default function InlineTextEditor({
       editingId,
       domCssInkProbeModel,
       domInkProbeModel,
+      isSingleLine,
       v2LiveFirstGlyphTopInsetPx,
+      v2LiveTextInkLeftInsetPx,
       v2LiveFirstGlyphSamples,
       v2LiveFirstGlyphGeometryUsable,
       konvaInkProbeModel,
@@ -647,14 +674,24 @@ export default function InlineTextEditor({
         domProbeTopInset: diagnostics.domProbeTopInset ?? null,
         domLiveTopInset: diagnostics.domLiveTopInset ?? null,
         activeDomTopInset: diagnostics.activeDomTopInset ?? null,
+        domLeftInset: diagnostics.domLeftInset ?? null,
+        domProbeLeftInset: diagnostics.domProbeLeftInset ?? null,
+        domLiveLeftInset: diagnostics.domLiveLeftInset ?? null,
+        activeDomLeftInset: diagnostics.activeDomLeftInset ?? null,
         konvaTopInset: diagnostics.konvaTopInset ?? null,
+        konvaLeftInset: diagnostics.konvaLeftInset ?? null,
         rawOffset: diagnostics.rawOffset ?? null,
+        rawOffsetX: diagnostics.rawOffsetX ?? null,
         saneLimit: diagnostics.saneLimit ?? null,
         snappedOffset: diagnostics.snappedOffset ?? null,
+        snappedOffsetX: diagnostics.snappedOffsetX ?? null,
         pixelSnapStep: diagnostics.pixelSnapStep ?? null,
         pixelSnapUsed: Boolean(diagnostics.pixelSnapUsed),
         appliedOffset: snapshot?.visualOffsetPx ?? 0,
+        modelOffsetXPx: snapshot?.modelOffsetXPx ?? 0,
+        visualOffsetXPx: snapshot?.visualOffsetXPx ?? 0,
         blockedReason: snapshot?.blockedReason ?? null,
+        horizontalBlockedReason: diagnostics.horizontalBlockedReason ?? null,
         domSourceDeltaPx: diagnostics.domSourceDeltaPx ?? null,
         domSourceDivergenceLimitPx: diagnostics.domSourceDivergenceLimitPx ?? null,
         liveSourceDeltaPx: diagnostics.liveSourceDeltaPx ?? null,
@@ -714,6 +751,13 @@ export default function InlineTextEditor({
           diagnostics.severeLiveDisagreementGuardFromPx ?? null,
         severeLiveDisagreementGuardToPx:
           diagnostics.severeLiveDisagreementGuardToPx ?? null,
+        externalOffsetRoutedToInternalApplied: Boolean(
+          diagnostics.externalOffsetRoutedToInternalApplied
+        ),
+        externalOffsetRoutedToInternalFromPx:
+          diagnostics.externalOffsetRoutedToInternalFromPx ?? null,
+        externalOffsetRoutedToInternalToPx:
+          diagnostics.externalOffsetRoutedToInternalToPx ?? null,
         largeStableOffsetFinalAppliedWithPerceptualNudgePx:
           diagnostics.largeStableOffsetFinalAppliedWithPerceptualNudgePx ?? null,
         largeStableOffsetPolicyVersion: diagnostics.largeStableOffsetPolicyVersion ?? null,
@@ -723,6 +767,8 @@ export default function InlineTextEditor({
         coordinateSpace: snapshot?.coordinateSpace || "content-ink",
         modelOffsetPx: snapshot?.modelOffsetPx ?? 0,
         visualOffsetPx: snapshot?.visualOffsetPx ?? 0,
+        internalContentOffsetPx:
+          snapshot?.internalContentOffsetPx ?? diagnostics.internalContentOffsetPx ?? 0,
         frozen: Boolean(snapshot?.frozen),
         frozenAtPhase: snapshot?.frozenAtPhase || null,
       };
@@ -820,6 +866,12 @@ export default function InlineTextEditor({
     konvaInkProbeModel,
   ]);
   const domToKonvaGlyphOffsetPx = Number(domToKonvaOffsetModel?.appliedOffset || 0);
+  const domToKonvaGlyphOffsetXPx = Number(domToKonvaOffsetModel?.visualOffsetXPx || 0);
+  const domToKonvaInternalContentOffsetPx = Number(
+    domToKonvaOffsetModel?.internalContentOffsetPx ??
+    domToKonvaOffsetModel?.diagnostics?.internalContentOffsetPx ??
+    0
+  );
   const domToKonvaPaddingOffsetPx = 0;
   const domToKonvaBaseVisualOffsetPx =
     Number(domToKonvaGlyphOffsetPx || 0) + Number(domToKonvaPaddingOffsetPx || 0);
@@ -888,12 +940,37 @@ export default function InlineTextEditor({
   const resolvedV2VisualOffsetPx = Number.isFinite(resolvedV2VisualOffsetPxRaw)
     ? resolvedV2VisualOffsetPxRaw
     : 0;
-  const effectiveVisualOffsetPx = isPhaseAtomicV2
+  const baseVisualOffsetPx = isPhaseAtomicV2
     ? (v2OffsetComputed ? resolvedV2VisualOffsetPx : 0)
     : Number(domToKonvaVisualOffsetPx || 0);
+  const authorityInternalContentOffsetPx = Number.isFinite(domToKonvaInternalContentOffsetPx)
+    ? domToKonvaInternalContentOffsetPx
+    : 0;
+  const externalOffsetRouteThresholdPx = Math.max(
+    2.2,
+    Number(domToKonvaOffsetModel?.largeStableOffsetLimitPx || 0)
+  );
+  const shouldRouteLargeExternalOffsetToInternal = (
+    isPhaseAtomicV2 &&
+    v2OffsetComputed &&
+    Number.isFinite(baseVisualOffsetPx) &&
+    Math.abs(baseVisualOffsetPx) >= externalOffsetRouteThresholdPx &&
+    String(domToKonvaOffsetModel?.source || "") !== "conflictNeutral"
+  );
+  const effectiveVisualOffsetPx = shouldRouteLargeExternalOffsetToInternal
+    ? 0
+    : Number(baseVisualOffsetPx || 0);
+  const routedInternalContentOffsetPx = shouldRouteLargeExternalOffsetToInternal
+    ? Number(baseVisualOffsetPx || 0)
+    : 0;
+  const effectiveInternalContentOffsetPx =
+    Number(authorityInternalContentOffsetPx || 0) +
+    Number(routedInternalContentOffsetPx || 0);
   const isEditorVisible = Boolean(editorVisualReady);
-  const editorPaddingTopPx = Math.max(0, Number(verticalInsetPx || 0));
-  const editorPaddingBottomPx = Math.max(0, Number(verticalInsetPx || 0));
+  const baseEditorPaddingTopPx = Math.max(0, Number(verticalInsetPx || 0));
+  const baseEditorPaddingBottomPx = Math.max(0, Number(verticalInsetPx || 0));
+  const editorPaddingTopPx = baseEditorPaddingTopPx;
+  const editorPaddingBottomPx = baseEditorPaddingBottomPx;
 
   useEffect(() => {
     nudgeCalibrationRef.current = {
@@ -914,6 +991,8 @@ export default function InlineTextEditor({
       setV2AuthorityGateTimedOut(false);
       setV2EffectiveFontFamily(null);
       setV2LiveFirstGlyphTopInsetPx(null);
+      setV2LiveTextInkTopInsetPx(null);
+      setV2LiveTextInkLeftInsetPx(null);
       setV2LiveFirstGlyphSamples([]);
       setV2LiveFirstGlyphGeometryUsable(false);
       setV2VerticalAuthoritySnapshot(null);
@@ -925,6 +1004,8 @@ export default function InlineTextEditor({
     setV2VerticalAuthoritySnapshot(null);
     setV2AuthorityGateTimedOut(false);
     setV2EffectiveFontFamily(null);
+    setV2LiveTextInkTopInsetPx(null);
+    setV2LiveTextInkLeftInsetPx(null);
     setV2LiveFirstGlyphSamples([]);
     setV2LiveFirstGlyphGeometryUsable(false);
     const cached = INLINE_VISUAL_NUDGE_CACHE.get(nudgeCacheKey);
@@ -975,8 +1056,13 @@ export default function InlineTextEditor({
       if (cancelled) return;
       const contentRect = contentEl.getBoundingClientRect();
       const firstGlyphRect = getFirstGlyphRectInEditor(visualEl);
+      const textInkRect = getTextInkRectInEditor(visualEl);
+      const preferredVerticalRect = isUsableClientRect(firstGlyphRect) ? firstGlyphRect : null;
+      const preferredHorizontalRect = isUsableClientRect(textInkRect)
+        ? textInkRect
+        : preferredVerticalRect;
       const geometryUsable =
-        isUsableClientRect(contentRect) && isUsableClientRect(firstGlyphRect);
+        isUsableClientRect(contentRect) && isUsableClientRect(preferredVerticalRect);
       setV2LiveFirstGlyphGeometryUsable((prev) => (
         prev === geometryUsable ? prev : geometryUsable
       ));
@@ -993,7 +1079,13 @@ export default function InlineTextEditor({
             prev === computedFontFamily ? prev : computedFontFamily
           ));
         }
-        const liveTopInset = Number(firstGlyphRect.y) - Number(contentRect.y);
+        const liveTopInset = Number(preferredVerticalRect.y) - Number(contentRect.y);
+        const liveLeftInset = preferredHorizontalRect
+          ? Number(preferredHorizontalRect.x) - Number(contentRect.x)
+          : null;
+        const liveTextInkTopInset = isUsableClientRect(textInkRect)
+          ? Number(textInkRect.y) - Number(contentRect.y)
+          : null;
         if (Number.isFinite(liveTopInset)) {
           const roundedTopInset = Number(roundMetric(liveTopInset));
           setV2LiveFirstGlyphTopInsetPx((prev) => {
@@ -1018,6 +1110,28 @@ export default function InlineTextEditor({
             return [normalized[1], roundedTopInset];
           });
         }
+        if (Number.isFinite(liveTextInkTopInset)) {
+          const roundedTextInkTopInset = Number(roundMetric(liveTextInkTopInset));
+          setV2LiveTextInkTopInsetPx((prev) => {
+            const prevNum = Number(prev);
+            if (Number.isFinite(prevNum) && Math.abs(prevNum - roundedTextInkTopInset) <= 0.0001) {
+              return prev;
+            }
+            return roundedTextInkTopInset;
+          });
+        } else {
+          setV2LiveTextInkTopInsetPx((prev) => (prev === null ? prev : null));
+        }
+        if (Number.isFinite(liveLeftInset)) {
+          const roundedLeftInset = Number(roundMetric(liveLeftInset));
+          setV2LiveTextInkLeftInsetPx((prev) => {
+            const prevNum = Number(prev);
+            if (Number.isFinite(prevNum) && Math.abs(prevNum - roundedLeftInset) <= 0.0001) {
+              return prev;
+            }
+            return roundedLeftInset;
+          });
+        }
       }
       rafId = window.requestAnimationFrame(probeLiveGlyph);
     };
@@ -1038,6 +1152,8 @@ export default function InlineTextEditor({
     setV2LiveFirstGlyphGeometryUsable,
     setV2LiveFirstGlyphSamples,
     setV2LiveFirstGlyphTopInsetPx,
+    setV2LiveTextInkTopInsetPx,
+    setV2LiveTextInkLeftInsetPx,
     setV2EffectiveFontFamily,
   ]);
   useEffect(() => {
@@ -1803,7 +1919,11 @@ export default function InlineTextEditor({
   const inkParityRightExpansionPx = shouldApplyHorizontalInkParity
     ? Math.max(0, Number(inkParityRightExpansionPxRaw || 0))
     : 0;
-  const editorVisualLeftPx = Number(centeredEditorLeftPx || 0) - inkParityLeftExpansionPx;
+  const editorVisualLeftPx = (
+    Number(centeredEditorLeftPx || 0) -
+    inkParityLeftExpansionPx +
+    (isPhaseAtomicV2 && isSingleLine ? Number(domToKonvaGlyphOffsetXPx || 0) : 0)
+  );
   const editorVisualWidthPx =
     Number.isFinite(editorBaseWidthPx)
       ? Math.max(1, Number(editorBaseWidthPx) + inkParityLeftExpansionPx + inkParityRightExpansionPx)
@@ -2652,6 +2772,7 @@ export default function InlineTextEditor({
     domToKonvaVisualOffsetRawPx,
     domToKonvaVisualOffsetPx,
     effectiveVisualOffsetPx,
+    effectiveInternalContentOffsetPx,
     v2OffsetOneShotPx,
     v2VerticalAuthoritySnapshot: activeV2AuthoritySnapshot,
     fontMetricsRevision,
@@ -2666,6 +2787,7 @@ export default function InlineTextEditor({
     domPerceptualScale,
     domPerceptualScaleModel,
     editorRef,
+    editorFrameRef,
     contentBoxRef,
     editableHostRef,
     overlaySessionIdRef,
@@ -2787,12 +2909,14 @@ export default function InlineTextEditor({
       resolvedContentMinHeightPx={resolvedContentMinHeightPx}
       contentDebugStyle={contentDebugStyle}
       editableHostRef={editableHostRef}
+      editorFrameRef={editorFrameRef}
       editorRef={editorRef}
       editorVisualWidthPx={editorVisualWidthPx}
       editorVisualLeftPx={editorVisualLeftPx}
       centeredEditorWidthPx={centeredEditorWidthPx}
       centeredEditorLeftPx={centeredEditorLeftPx}
       effectiveVisualOffsetPx={effectiveVisualOffsetPx}
+      internalContentOffsetPx={effectiveInternalContentOffsetPx}
       isEditorVisible={isEditorVisible}
       fontSizePx={domRenderFontSizePx}
       nodeProps={nodeProps}

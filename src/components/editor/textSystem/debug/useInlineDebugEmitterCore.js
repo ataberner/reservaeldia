@@ -11,7 +11,9 @@ import {
   getCollapsedCaretProbeRectInEditor,
   getFirstGlyphRectInEditor,
   getFullRangeRect,
+  getLastGlyphRectInEditor,
   getSelectionRectInEditor,
+  getTextInkRectInEditor,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorSelectionRects";
 import {
   estimateDomCssInkProbe,
@@ -23,6 +25,15 @@ import { roundMetric } from "@/components/editor/overlays/inlineEditor/inlineEdi
 import { INLINE_LAYOUT_VERSION } from "@/components/editor/overlays/inlineEditor/inlineEditorConstants";
 import useInlineTraceBridge from "@/components/editor/textSystem/debug/useInlineTraceBridge";
 import { buildInlineTextBoxesPayload } from "@/components/editor/textSystem/debug/buildInlineTextBoxesPayload";
+import {
+  buildInlineCaretComparisonPayload,
+  buildInlineCaretStateSnapshot,
+} from "@/components/editor/textSystem/debug/buildInlineCaretComparisonPayload";
+import {
+  buildInlineTextWithCaretComparisonPayload,
+  buildInlineTextWithCaretSnapshot,
+} from "@/components/editor/textSystem/debug/buildInlineTextWithCaretComparisonPayload";
+import { buildInlineTextInkPositionDiagPayload } from "@/components/editor/textSystem/debug/buildInlineTextInkPositionDiagPayload";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -204,6 +215,7 @@ export default function useInlineDebugEmitter({
   domToKonvaVisualOffsetRawPx,
   domToKonvaVisualOffsetPx,
   effectiveVisualOffsetPx,
+  effectiveInternalContentOffsetPx = 0,
   v2OffsetOneShotPx,
   v2VerticalAuthoritySnapshot,
   fontMetricsRevision,
@@ -218,6 +230,7 @@ export default function useInlineDebugEmitter({
   domPerceptualScale = null,
   domPerceptualScaleModel = null,
   editorRef,
+  editorFrameRef = null,
   contentBoxRef,
   editableHostRef,
   overlaySessionIdRef,
@@ -227,6 +240,18 @@ export default function useInlineDebugEmitter({
     sessionKey: null,
     eventName: null,
     metrics: null,
+  });
+  const caretComparisonRef = useRef({
+    sessionKey: null,
+    beforeCaret: null,
+    afterCaret: null,
+    emitted: false,
+  });
+  const textWithCaretComparisonRef = useRef({
+    sessionKey: null,
+    beforeCaretVisible: null,
+    afterCaretVisibleStable: null,
+    emitted: false,
   });
 
   const emitDebug = useCallback((eventName, extra = {}) => {
@@ -255,20 +280,56 @@ export default function useInlineDebugEmitter({
     if (!essentialEvents.has(eventName)) return;
     const ts = new Date().toISOString();
     const frameMeta = nextInlineFrameMeta();
-    const overlayEl = editorRef.current?.parentElement || null;
+    const editorVisualEl = editorFrameRef?.current || editorRef.current || null;
+    const overlayEl = editorVisualEl || null;
     const overlayRect = overlayEl?.getBoundingClientRect?.() || null;
     const contentRect = contentBoxRef.current?.getBoundingClientRect?.() || null;
     const editableRect = editableHostRef.current?.getBoundingClientRect?.() || null;
-    const editableVisualRect = editorRef.current?.getBoundingClientRect?.() || null;
+    const editableVisualRect = editorVisualEl?.getBoundingClientRect?.() || null;
     const computedStyle = editorRef.current
       ? window.getComputedStyle(editorRef.current)
       : null;
+    const computedVisualStyle = editorVisualEl
+      ? window.getComputedStyle(editorVisualEl)
+      : computedStyle;
     const fullRangeRect = getFullRangeRect(editorRef.current);
     const selectionInfo = getSelectionRectInEditor(editorRef.current);
     const selectionRectRaw = selectionInfo?.rect || null;
     const selectionRect = normalizeProbeRect(selectionRectRaw);
     const selectionRectDegenerate =
       Boolean(selectionRectRaw) && !selectionRect;
+    const selectionApi = (
+      typeof window !== "undefined" &&
+      typeof window.getSelection === "function"
+    )
+      ? window.getSelection()
+      : null;
+    const selectionExists = Boolean(selectionApi && selectionApi.rangeCount > 0);
+    const selectionIsCollapsed = selectionExists
+      ? Boolean(selectionApi?.isCollapsed)
+      : null;
+    const selectionState = (() => {
+      const inEditor = Boolean(selectionInfo.inEditor);
+      const isCollapsed = selectionIsCollapsed === true;
+      const geometryReady = Boolean(inEditor && !isCollapsed && selectionRect);
+      const geometryEmpty = Boolean(selectionRectDegenerate);
+      let geometryReason = null;
+      if (!selectionExists) geometryReason = "no-selection";
+      else if (!inEditor) geometryReason = "selection-outside-editor";
+      else if (isCollapsed) geometryReason = "selection-collapsed";
+      else if (geometryEmpty) geometryReason = "selection-rect-empty";
+      else if (!selectionRectRaw) geometryReason = "browser-no-usable-geometry";
+      else if (geometryReady) geometryReason = "ready";
+      else geometryReason = "geometry-unavailable";
+      return {
+        exists: selectionExists,
+        isCollapsed: selectionIsCollapsed,
+        inEditor,
+        geometryReady,
+        geometryEmpty,
+        geometryReason,
+      };
+    })();
     const projectedKonvaRect = projectedKonvaRectBase;
     const projectedKonvaRectRawSnapshot = projectedKonvaRectRaw;
     const inlineTextBoxesPayload = buildInlineTextBoxesPayload({
@@ -276,7 +337,7 @@ export default function useInlineDebugEmitter({
       projectedKonvaRect,
       projectedKonvaRectRaw: projectedKonvaRectRawSnapshot,
       domRect: editableVisualRect,
-      domElement: editorRef.current,
+      domElement: editorVisualEl,
       domComputedStyle: computedStyle,
       totalScaleX,
       totalScaleY,
@@ -314,6 +375,29 @@ export default function useInlineDebugEmitter({
     const caretProbeRect = normalizeProbeRect(caretProbeRectRaw);
     const caretProbeRectDegenerate =
       Boolean(caretProbeRectRaw) && !caretProbeRect;
+    const caretState = (() => {
+      const inEditor = Boolean(selectionInfo.inEditor);
+      const isCollapsed = selectionIsCollapsed === true;
+      const exists = Boolean(selectionExists && inEditor && isCollapsed);
+      const geometryReady = Boolean(exists && caretProbeRect);
+      const geometryEmpty = Boolean(caretProbeRectDegenerate);
+      let geometryReason = null;
+      if (!selectionExists) geometryReason = "no-selection";
+      else if (!inEditor) geometryReason = "selection-outside-editor";
+      else if (!isCollapsed) geometryReason = "selection-not-collapsed";
+      else if (geometryEmpty) geometryReason = "caret-rect-empty";
+      else if (!caretProbeRectRaw) geometryReason = "browser-no-usable-geometry";
+      else if (geometryReady) geometryReason = "ready";
+      else geometryReason = "geometry-unavailable";
+      return {
+        exists,
+        isCollapsed: selectionIsCollapsed,
+        inEditor,
+        geometryReady,
+        geometryEmpty,
+        geometryReason,
+      };
+    })();
     const caretProbeToContentDx =
       caretProbeRect && contentRect ? caretProbeRect.x - contentRect.x : null;
     const caretProbeToContentDy =
@@ -321,14 +405,118 @@ export default function useInlineDebugEmitter({
     const caretProbeHeightPx = caretProbeRect ? caretProbeRect.height : null;
     const isFocused = document.activeElement === editorRef.current;
     const focusClaimed = Boolean(isFocused && selectionInfo.inEditor);
-    const selectionGeometryReady = Boolean(selectionRect);
-    const caretGeometryReady = Boolean(caretProbeRect);
+    const selectionGeometryReady = Boolean(selectionState.geometryReady);
+    const caretGeometryReady = Boolean(caretState.geometryReady);
     const firstGlyphRect = getFirstGlyphRectInEditor(editorRef.current);
+    const lastGlyphRect = getLastGlyphRectInEditor(editorRef.current);
+    const textInkRect = getTextInkRectInEditor(editorRef.current);
     const firstGlyphToContentDx =
       firstGlyphRect && contentRect ? firstGlyphRect.x - contentRect.x : null;
     const firstGlyphToContentDy =
       firstGlyphRect && contentRect ? firstGlyphRect.y - contentRect.y : null;
     const firstGlyphHeightPx = firstGlyphRect ? firstGlyphRect.height : null;
+    const caretComparisonSessionKey = `${editingId || "none"}::${overlaySessionIdRef.current || "none"}`;
+    if (caretComparisonRef.current.sessionKey !== caretComparisonSessionKey) {
+      caretComparisonRef.current = {
+        sessionKey: caretComparisonSessionKey,
+        beforeCaret: null,
+        afterCaret: null,
+        emitted: false,
+      };
+    }
+    if (textWithCaretComparisonRef.current.sessionKey !== caretComparisonSessionKey) {
+      textWithCaretComparisonRef.current = {
+        sessionKey: caretComparisonSessionKey,
+        beforeCaretVisible: null,
+        afterCaretVisibleStable: null,
+        emitted: false,
+      };
+    }
+    const textWithCaretSnapshot = buildInlineTextWithCaretSnapshot({
+      ts,
+      eventName,
+      phase: extra?.phase || overlayPhase,
+      contentRect,
+      editableVisualRect,
+      fullRangeRect,
+      firstGlyphRect,
+      lastGlyphRect,
+      textInkRect,
+      editorEl: editorRef.current,
+    });
+    const caretStateSnapshot = buildInlineCaretStateSnapshot({
+      ts,
+      eventName,
+      phase: extra?.phase || overlayPhase,
+      contentRect,
+      editableVisualRect,
+      fullRangeRect,
+      firstGlyphRect,
+      selectionRect,
+      caretRect: caretProbeRect,
+      editorEl: editorRef.current,
+      computedStyle,
+      isFocused,
+      focusClaimed,
+      selectionInEditor: selectionInfo.inEditor,
+      selectionGeometryReady,
+      caretGeometryReady,
+      selectionState,
+      caretState,
+    });
+    const isBeforeCaretCandidateEvent =
+      eventName === "overlay: ready-to-swap" ||
+      eventName === "overlay: swap-commit";
+    const isAfterCaretCandidateEvent =
+      eventName === "overlay: after-first-paint" ||
+      eventName === "overlay: post-layout" ||
+      eventName === "finish: blur";
+    if (isBeforeCaretCandidateEvent && !focusClaimed) {
+      caretComparisonRef.current.beforeCaret = caretStateSnapshot;
+      caretComparisonRef.current.afterCaret = null;
+      caretComparisonRef.current.emitted = false;
+      textWithCaretComparisonRef.current.beforeCaretVisible = textWithCaretSnapshot;
+      textWithCaretComparisonRef.current.afterCaretVisibleStable = null;
+      textWithCaretComparisonRef.current.emitted = false;
+    }
+    if (
+      !caretComparisonRef.current.emitted &&
+      caretComparisonRef.current.beforeCaret &&
+      isAfterCaretCandidateEvent &&
+      focusClaimed
+    ) {
+      caretComparisonRef.current.afterCaret = caretStateSnapshot;
+      const caretComparisonPayload = buildInlineCaretComparisonPayload({
+        beforeCaret: caretComparisonRef.current.beforeCaret,
+        afterCaret: caretComparisonRef.current.afterCaret,
+      });
+      console.log(
+        `[INLINE_CARET_COMPARISON] ${eventName}\n${formatInlineLogPayload(caretComparisonPayload)}`
+      );
+      caretComparisonRef.current.emitted = true;
+    }
+    const caretVisibleNow = Boolean(
+      isFocused &&
+      selectionInfo.inEditor &&
+      selectionIsCollapsed === true
+    );
+    if (
+      !textWithCaretComparisonRef.current.emitted &&
+      textWithCaretComparisonRef.current.beforeCaretVisible &&
+      isAfterCaretCandidateEvent &&
+      caretVisibleNow &&
+      editorVisualReady
+    ) {
+      textWithCaretComparisonRef.current.afterCaretVisibleStable = textWithCaretSnapshot;
+      const textWithCaretComparisonPayload = buildInlineTextWithCaretComparisonPayload({
+        beforeCaretVisible: textWithCaretComparisonRef.current.beforeCaretVisible,
+        afterCaretVisibleStable: textWithCaretComparisonRef.current.afterCaretVisibleStable,
+      });
+      console.log(
+        `[INLINE_TEXT_WITH_CARET_COMPARISON] ${eventName}\n${formatInlineLogPayload(textWithCaretComparisonPayload)}`
+      );
+      textWithCaretComparisonRef.current.emitted = true;
+    }
     const probeText = metricsProbeText;
     const canvasInkMetrics =
       canvasInkMetricsModel ||
@@ -369,6 +557,81 @@ export default function useInlineDebugEmitter({
         letterSpacingPx,
         probeText,
       });
+    const inlineTextInkPositionDiagPayload = buildInlineTextInkPositionDiagPayload({
+      konvaBoxRect: projectedKonvaRect,
+      domBoxRect: editableVisualRect || contentRect || overlayRect || null,
+      domInkAnchorRect:
+        editorRef.current?.getBoundingClientRect?.() ||
+        editableVisualRect ||
+        contentRect ||
+        null,
+      konvaInkProbe,
+      domInkProbe,
+      canvasInkMetrics,
+      domTextInkRect: textInkRect,
+      fullRangeRect,
+      firstGlyphRect,
+      lastGlyphRect,
+    });
+    const domInkAnchorRectForChain =
+      editorRef.current?.getBoundingClientRect?.() ||
+      editableVisualRect ||
+      null;
+    console.log(
+      `[INLINE_TEXT_INK_POSITION_DIAG] ${eventName}\n${formatInlineLogPayload(inlineTextInkPositionDiagPayload)}`
+    );
+    const offsetApplicationChainPayload = {
+      ts,
+      id: editingId || null,
+      sessionId: overlaySessionIdRef.current || null,
+      eventName,
+      phase: extra?.phase || overlayPhase,
+      offset: {
+        source: domToKonvaOffsetModel?.source || null,
+        calculatedModelPx: roundNullableMetric(
+          v2VerticalAuthoritySnapshot?.modelOffsetPx ??
+          domToKonvaOffsetModel?.modelOffsetPx
+        ),
+        calculatedVisualPx: roundNullableMetric(
+          v2VerticalAuthoritySnapshot?.visualOffsetPx ??
+          domToKonvaOffsetModel?.visualOffsetPx
+        ),
+        externalAppliedPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+        internalAppliedPx: roundMetric(Number(effectiveInternalContentOffsetPx || 0)),
+        combinedAppliedPx: roundMetric(
+          Number(effectiveVisualOffsetPx || 0) + Number(effectiveInternalContentOffsetPx || 0)
+        ),
+        routedToInternal: Boolean(domToKonvaOffsetModel?.externalOffsetRoutedToInternalApplied),
+        routedFromPx: roundNullableMetric(
+          domToKonvaOffsetModel?.externalOffsetRoutedToInternalFromPx
+        ),
+        routedToPx: roundNullableMetric(domToKonvaOffsetModel?.externalOffsetRoutedToInternalToPx),
+      },
+      geometry: {
+        konvaBoxY: roundNullableMetric(projectedKonvaRect?.y),
+        domExternalBoxY: roundNullableMetric(editableVisualRect?.y),
+        domInkAnchorBoxY: roundNullableMetric(domInkAnchorRectForChain?.y),
+        geometryDy: roundNullableMetric(
+          Number.isFinite(Number(editableVisualRect?.y)) && Number.isFinite(Number(projectedKonvaRect?.y))
+            ? Number(editableVisualRect.y) - Number(projectedKonvaRect.y)
+            : null
+        ),
+      },
+      ink: {
+        konvaTop: inlineTextInkPositionDiagPayload?.konva?.ink?.top ?? null,
+        domTop: inlineTextInkPositionDiagPayload?.dom?.ink?.top ?? null,
+        konvaBaselineY: inlineTextInkPositionDiagPayload?.konva?.baselineY ?? null,
+        domBaselineY: inlineTextInkPositionDiagPayload?.dom?.baselineY ?? null,
+      },
+      delta: {
+        inkTopDelta: inlineTextInkPositionDiagPayload?.delta?.inkTopDelta ?? null,
+        baselineDelta: inlineTextInkPositionDiagPayload?.delta?.baselineDelta ?? null,
+        inkCenterYDelta: inlineTextInkPositionDiagPayload?.delta?.inkCenterYDelta ?? null,
+      },
+    };
+    console.log(
+      `[INLINE_OFFSET_APPLICATION_CHAIN] ${eventName}\n${formatInlineLogPayload(offsetApplicationChainPayload)}`
+    );
     const canvasInkTopInsetHeuristicPx =
       canvasInkMetrics && Number.isFinite(canvasInkMetrics.actualInkHeightPx)
         ? (editableLineHeightPx - canvasInkMetrics.actualInkHeightPx) / 2
@@ -607,9 +870,10 @@ export default function useInlineDebugEmitter({
       computedFontOpticalSizing: computedStyle?.fontOpticalSizing ?? null,
       computedPaddingTop: computedStyle?.paddingTop ?? null,
       computedPaddingBottom: computedStyle?.paddingBottom ?? null,
-      computedEditorLeftPx: roundNullableMetric(Number.parseFloat(computedStyle?.left)),
-      computedEditorTopPx: roundNullableMetric(Number.parseFloat(computedStyle?.top)),
-      computedEditorTransform: computedStyle?.transform ?? null,
+      computedEditorLeftPx: roundNullableMetric(Number.parseFloat(computedVisualStyle?.left)),
+      computedEditorTopPx: roundNullableMetric(Number.parseFloat(computedVisualStyle?.top)),
+      computedEditorInnerTopPx: roundNullableMetric(Number.parseFloat(computedStyle?.top)),
+      computedEditorTransform: computedVisualStyle?.transform ?? null,
       computedBorderTop: computedStyle?.borderTopWidth ?? null,
       computedBorderBottom: computedStyle?.borderBottomWidth ?? null,
       domPerceptualScale: roundNullableMetric(domPerceptualScale),
@@ -674,6 +938,13 @@ export default function useInlineDebugEmitter({
       domVisualResidualDeadZoneEffectivePx: roundMetric(domVisualResidualDeadZoneEffectivePx),
       domToKonvaVisualOffsetRawPx: roundMetric(domToKonvaVisualOffsetRawPx),
       domToKonvaVisualOffsetPx: roundMetric(effectiveVisualOffsetPx),
+      domToKonvaInternalContentOffsetPx: roundMetric(
+        Number(
+          domToKonvaOffsetModel?.internalContentOffsetPx ??
+          effectiveInternalContentOffsetPx ??
+          0
+        )
+      ),
       domToKonvaVisualOffsetOneShotPx: roundMetric(Number(v2OffsetOneShotPx || 0)),
       authorityRevision: Number.isFinite(Number(v2VerticalAuthoritySnapshot?.revision))
         ? Number(v2VerticalAuthoritySnapshot.revision)
@@ -1211,6 +1482,7 @@ export default function useInlineDebugEmitter({
             domPerceptualScaleCanvasProbeInkWidthPx:
               payload.domPerceptualScaleCanvasProbeInkWidthPx,
             editorTopPx: payload.computedEditorTopPx,
+            editorInnerTopPx: payload.computedEditorInnerTopPx,
             editorTransform: payload.computedEditorTransform,
             fontOpticalSizing: payload.computedFontOpticalSizing,
             textRendering: computedStyle?.textRendering ?? null,
@@ -1260,6 +1532,10 @@ export default function useInlineDebugEmitter({
           modelPx: payload.modelOffsetPx,
           visualPx: payload.visualOffsetPx,
           appliedPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+          internalContentPx: roundMetric(Number(effectiveInternalContentOffsetPx || 0)),
+          appliedPxWithInternal: roundMetric(
+            Number(effectiveVisualOffsetPx || 0) + Number(effectiveInternalContentOffsetPx || 0)
+          ),
           domVisualDy: domEditableVisualDy,
           domSourceDeltaPx: roundMetric(Number(domToKonvaOffsetModel?.domSourceDeltaPx)),
           domSourceLimitPx: roundMetric(
@@ -1337,6 +1613,15 @@ export default function useInlineDebugEmitter({
           severeLiveDisagreementGuardToPx: roundNullableMetric(
             domToKonvaOffsetModel?.severeLiveDisagreementGuardToPx
           ),
+          externalOffsetRoutedToInternalApplied: Boolean(
+            domToKonvaOffsetModel?.externalOffsetRoutedToInternalApplied
+          ),
+          externalOffsetRoutedToInternalFromPx: roundNullableMetric(
+            domToKonvaOffsetModel?.externalOffsetRoutedToInternalFromPx
+          ),
+          externalOffsetRoutedToInternalToPx: roundNullableMetric(
+            domToKonvaOffsetModel?.externalOffsetRoutedToInternalToPx
+          ),
           largeStableOffsetFinalAppliedWithPerceptualNudgePx: roundNullableMetric(
             domToKonvaOffsetModel?.largeStableOffsetFinalAppliedWithPerceptualNudgePx
           ),
@@ -1403,6 +1688,10 @@ export default function useInlineDebugEmitter({
       probeGlyphRightInsetDeltaPx: rendererParityComparable.probeGlyphRightInsetDeltaPx,
       offsetYApplied: roundMetric(Number(domToKonvaVisualOffsetPx || 0)),
       offsetYResolved: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+      offsetYInternal: roundMetric(Number(effectiveInternalContentOffsetPx || 0)),
+      offsetYResolvedWithInternal: roundMetric(
+        Number(effectiveVisualOffsetPx || 0) + Number(effectiveInternalContentOffsetPx || 0)
+      ),
       domVisualDy: roundMetric(domEditableVisualDy),
       fontSpec: fontLoadStatus?.spec || null,
       dpr: payload.dpr,
@@ -1532,11 +1821,24 @@ export default function useInlineDebugEmitter({
               saneLimit: roundNullableMetric(domToKonvaOffsetModel?.saneLimit),
               blockedReason: domToKonvaOffsetModel?.blockedReason || null,
               appliedOffset: roundNullableMetric(domToKonvaOffsetModel?.appliedOffset),
+              externalOffsetRoutedToInternalApplied: Boolean(
+                domToKonvaOffsetModel?.externalOffsetRoutedToInternalApplied
+              ),
+              externalOffsetRoutedToInternalFromPx: roundNullableMetric(
+                domToKonvaOffsetModel?.externalOffsetRoutedToInternalFromPx
+              ),
+              externalOffsetRoutedToInternalToPx: roundNullableMetric(
+                domToKonvaOffsetModel?.externalOffsetRoutedToInternalToPx
+              ),
               modelOffsetPx: roundNullableMetric(
                 v2VerticalAuthoritySnapshot?.modelOffsetPx ?? domToKonvaOffsetModel?.modelOffsetPx
               ),
               visualOffsetPx: roundNullableMetric(
                 v2VerticalAuthoritySnapshot?.visualOffsetPx ?? domToKonvaOffsetModel?.visualOffsetPx
+              ),
+              internalContentOffsetPx: roundNullableMetric(
+                v2VerticalAuthoritySnapshot?.internalContentOffsetPx ??
+                domToKonvaOffsetModel?.internalContentOffsetPx
               ),
             },
             breakdown: {
@@ -1550,6 +1852,13 @@ export default function useInlineDebugEmitter({
               domToKonvaVisualOffsetPx: roundMetric(domToKonvaVisualOffsetPx),
               v2OffsetOneShotPx: roundMetric(Number(v2OffsetOneShotPx || 0)),
               effectiveVisualOffsetPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+              effectiveInternalContentOffsetPx: roundMetric(
+                Number(effectiveInternalContentOffsetPx || 0)
+              ),
+              effectiveVisualOffsetWithInternalPx: roundMetric(
+                Number(effectiveVisualOffsetPx || 0) +
+                Number(effectiveInternalContentOffsetPx || 0)
+              ),
               offsetAtReadyToSwap: roundMetric(Number(payload?.offsetAtReadyToSwap)),
               offsetAtSwapCommit: roundMetric(Number(payload?.offsetAtSwapCommit)),
               offsetAtFirstPaint: roundMetric(Number(payload?.offsetAtFirstPaint)),
@@ -1568,6 +1877,8 @@ export default function useInlineDebugEmitter({
             eventName,
             effectiveVisualOffsetPx:
               alignmentOffsetBreakdownPayload.breakdown.effectiveVisualOffsetPx,
+            effectiveInternalContentOffsetPx:
+              alignmentOffsetBreakdownPayload.breakdown.effectiveInternalContentOffsetPx,
             blockedReason: alignmentOffsetBreakdownPayload.offsetModel.blockedReason,
             authorityRevision: alignmentOffsetBreakdownPayload.offsetModel.revision,
             authorityFrozen: alignmentOffsetBreakdownPayload.offsetModel.frozen,
@@ -1646,6 +1957,7 @@ export default function useInlineDebugEmitter({
     domVisualResidualDeadZoneEffectivePx,
     domToKonvaVisualOffsetRawPx,
     effectiveVisualOffsetPx,
+    effectiveInternalContentOffsetPx,
     v2OffsetOneShotPx,
     v2VerticalAuthoritySnapshot,
     fontMetricsRevision,
@@ -1668,6 +1980,7 @@ export default function useInlineDebugEmitter({
     domPerceptualScaleModel?.domProbeWidthPx,
     domPerceptualScaleModel?.canvasProbeWidthPx,
     domPerceptualScaleModel?.canvasProbeInkWidthPx,
+    editorFrameRef,
     konvaTextNode,
   ]);
 

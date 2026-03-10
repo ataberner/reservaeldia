@@ -10,3 +10,11 @@ export {
   buildInlineTextWithCaretSnapshot,
 } from "@/components/editor/textSystem/debug/buildInlineTextWithCaretComparisonPayload";
 export { buildInlineTextInkPositionDiagPayload } from "@/components/editor/textSystem/debug/buildInlineTextInkPositionDiagPayload";
+export {
+  emitSemanticCaretDebug,
+  emitSemanticCaretPositionDebug,
+  isSemanticCaretDebugEnabled,
+  isSemanticCaretPositionDebugEnabled,
+  rectToSemanticCaretPayload,
+  roundSemanticCaretMetric,
+} from "@/components/editor/textSystem/debug/semanticHiddenCaretDebug";

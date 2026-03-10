@@ -163,6 +163,7 @@ export default function ElementoCanvas({
   inlineOverlayMountSession = null,
   inlineVisibilityMode = "reactive",
   inlineOverlayEngine = "phase_atomic_v2",
+  onInlineEditPointer = null,
 }) {
   const [img] = useImage(obj.src || null, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
@@ -170,6 +171,8 @@ export default function ElementoCanvas({
 
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
+  const inlineEditPointerActive =
+    isInEditMode && typeof onInlineEditPointer === "function";
 
 
   // Ã°Å¸â€Â¥ PREVENIR onChange RECURSIVO PARA AUTOFIX
@@ -239,12 +242,16 @@ export default function ElementoCanvas({
     rotation: obj.rotation || 0,
     scaleX: obj.scaleX || 1,
     scaleY: obj.scaleY || 1,
-    draggable: !editingMode,
-    listening: !isInEditMode,
+    draggable: !editingMode && !inlineEditPointerActive,
+    listening: !isInEditMode || inlineEditPointerActive,
 
     onMouseDown: (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
+      if (inlineEditPointerActive) {
+        onInlineEditPointer(e, obj);
+        return;
+      }
 
       e.currentTarget?.draggable(true);
     },
@@ -252,6 +259,10 @@ export default function ElementoCanvas({
     onTouchStart: (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
+      if (inlineEditPointerActive) {
+        onInlineEditPointer(e, obj);
+        return;
+      }
 
       e.currentTarget?.draggable(true);
     },
@@ -259,6 +270,10 @@ export default function ElementoCanvas({
     onPointerDown: (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
+      if (inlineEditPointerActive) {
+        onInlineEditPointer(e, obj);
+        return;
+      }
 
       e.currentTarget?.draggable(true);
     },
@@ -364,9 +379,11 @@ export default function ElementoCanvas({
   }), [
     obj,
     editingMode,
+    inlineEditPointerActive,
     isInEditMode,
     handleClick,
     handleDoubleClick,
+    onInlineEditPointer,
     onDragMovePersonalizado,
     onDragStartPersonalizado,
     onDragEndPersonalizado,
@@ -805,7 +822,7 @@ export default function ElementoCanvas({
     const widthToUse = shouldWrapToCanvasEdge ? availableWidth : undefined;
     // Durante inline edit mostramos el texto del overlay DOM y ocultamos el Konva
     // para evitar que cursor y glifos salgan de sincronía visual.
-    const appliedOpacity = isEditing ? 0 : 1;
+    const appliedOpacity = 1;
     const canvasTextDebugEnabled = isInlineCanvasTextDebugEnabled();
     const canvasTextDebugRect =
       debugTextClientRect &&

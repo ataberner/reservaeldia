@@ -64,6 +64,7 @@ import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEd
 import useCanvasEditorSectionFlow from "@/components/editor/canvasEditor/useCanvasEditorSectionFlow";
 import useCanvasEditorInteractionEffects from "@/components/editor/canvasEditor/useCanvasEditorInteractionEffects";
 import useCanvasEditorTextSystem from "@/components/editor/textSystem/runtime/useCanvasEditorTextSystem";
+import useTextEditInteractionController from "@/components/editor/textSystem/runtime/useTextEditInteractionController";
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
 
 
@@ -1034,6 +1035,41 @@ export default function CanvasEditor({
     }),
   });
 
+  const textEditInteractionController = useTextEditInteractionController({
+    editing,
+    stageRef,
+    scaleVisual: escalaVisual,
+    onChange: onInlineChange,
+    onFinish: onInlineFinish,
+    onDebugEvent: onInlineDebugEvent,
+  });
+  const textEditBackendController = useMemo(() => ({
+    registerBackend: textEditInteractionController.registerBackend,
+    handleInput: textEditInteractionController.handleInput,
+    handleFocus: textEditInteractionController.handleFocus,
+    handleBlur: textEditInteractionController.handleBlur,
+    handleKeyDown: textEditInteractionController.handleKeyDown,
+    handleSelectionMutation: textEditInteractionController.handleSelectionMutation,
+    syncDecorations: textEditInteractionController.syncDecorations,
+  }), [
+    textEditInteractionController.handleBlur,
+    textEditInteractionController.handleFocus,
+    textEditInteractionController.handleInput,
+    textEditInteractionController.handleKeyDown,
+    textEditInteractionController.handleSelectionMutation,
+    textEditInteractionController.registerBackend,
+    textEditInteractionController.syncDecorations,
+  ]);
+
+  const requestInlineEditFinish = useCallback((reason = "manual") => {
+    const handled = textEditInteractionController.requestFinish(reason);
+    if (!handled && editing.id) {
+      onInlineFinish();
+      return true;
+    }
+    return handled;
+  }, [editing.id, onInlineFinish, textEditInteractionController.requestFinish]);
+
 
 
 
@@ -1245,6 +1281,9 @@ export default function CanvasEditor({
                 inlineDebugAB={inlineDebugAB}
                 finishEdit={finishEdit}
                 restoreElementDrag={restoreElementDrag}
+                requestInlineEditFinish={requestInlineEditFinish}
+                onInlineEditCanvasPointer={textEditInteractionController.handleCanvasPointer}
+                inlineEditDecorations={textEditInteractionController.decorations}
                 configurarDragEnd={configurarDragEnd}
                 ajustarFontSizeAAnchoVisual={ajustarFontSizeAAnchoVisual}
                 calcularPosTextoDesdeCentro={calcularPosTextoDesdeCentro}
@@ -1268,14 +1307,9 @@ export default function CanvasEditor({
               editing={editing}
               elementRefs={elementRefs}
               objetos={objetos}
-              handleInlineOverlaySwapRequest={handleInlineOverlaySwapRequest}
-              onInlineChange={onInlineChange}
-              onInlineDebugEvent={onInlineDebugEvent}
-              onInlineFinish={onInlineFinish}
               escalaVisual={escalaVisual}
-              inlineDebugAB={inlineDebugAB}
-              inlineSwapAck={inlineSwapAck}
-              inlineOverlayMountSession={inlineOverlayMountSession}
+              textEditController={textEditInteractionController}
+              textEditBackendController={textEditBackendController}
               isMobile={isMobile}
               zoom={zoom}
               altoCanvasDinamico={altoCanvasDinamico}

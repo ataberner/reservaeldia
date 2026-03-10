@@ -1,54 +1,46 @@
-import InlineTextEditor from "@/components/InlineTextEditor";
+import { createPortal } from "react-dom";
+import HiddenSemanticTextBackend from "@/components/editor/textSystem/render/domSemantic/HiddenSemanticTextBackend";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
 
 export default function CanvasInlineEditingLayer({
   editing,
   elementRefs,
   objetos,
-  handleInlineOverlaySwapRequest,
-  onInlineChange,
-  onInlineDebugEvent,
-  onInlineFinish,
   escalaVisual,
-  inlineDebugAB,
-  inlineSwapAck,
-  inlineOverlayMountSession,
+  textEditController,
+  textEditBackendController,
   isMobile,
   zoom,
   altoCanvasDinamico,
   seccionesOrdenadas,
 }) {
-  return (
-    <>
-      {editing.id && elementRefs.current[editing.id] && (() => {
-        const objetoEnEdicion = objetos.find((o) => o.id === editing.id);
-        const keepCenterDuringEdit =
-          Boolean(objetoEnEdicion) &&
-          objetoEnEdicion.tipo === "texto" &&
-          !objetoEnEdicion.__groupAlign &&
-          !Number.isFinite(Number(objetoEnEdicion.width)) &&
-          objetoEnEdicion.__autoWidth !== false;
+  const semanticBackend =
+    editing.id && elementRefs.current[editing.id] && (() => {
+      const objetoEnEdicion = objetos.find((o) => o.id === editing.id);
+      const keepCenterDuringEdit =
+        Boolean(objetoEnEdicion) &&
+        objetoEnEdicion.tipo === "texto" &&
+        !objetoEnEdicion.__groupAlign &&
+        !Number.isFinite(Number(objetoEnEdicion.width)) &&
+        objetoEnEdicion.__autoWidth !== false;
 
         return (
-          <InlineTextEditor
-            editingId={editing.id}
+          <HiddenSemanticTextBackend
+            editing={editing}
             node={elementRefs.current[editing.id]}
-            value={editing.value}
+            controller={textEditBackendController || textEditController}
             textAlign={objetoEnEdicion?.align || "left"}
-            maintainCenterWhileEditing={keepCenterDuringEdit}
-            onOverlaySwapRequest={handleInlineOverlaySwapRequest}
-            onChange={onInlineChange}
-            onDebugEvent={onInlineDebugEvent}
-            onFinish={onInlineFinish}
             scaleVisual={escalaVisual}
-            finishMode={inlineDebugAB.finishMode}
-            widthMode={inlineDebugAB.overlayWidthMode}
-            overlayEngine={inlineDebugAB.overlayEngine}
-            swapAckToken={inlineSwapAck}
-            inlineOverlayMountSession={inlineOverlayMountSession}
+            preserveCenterDuringEdit={keepCenterDuringEdit}
           />
         );
-      })()}
+      })();
+
+  return (
+    <>
+      {semanticBackend && typeof document !== "undefined"
+        ? createPortal(semanticBackend, document.body)
+        : semanticBackend}
 
       {!isMobile && (
         <DividersOverlayStage

@@ -7,6 +7,7 @@ import GaleriaKonva from "@/components/editor/GaleriaKonva";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import ElementoCanvas from "@/components/ElementoCanvas";
 import SelectionBounds from "@/components/SelectionBounds";
+import InlineTextEditDecorationsLayer from "@/components/editor/textSystem/render/konva/InlineTextEditDecorationsLayer";
 import HoverIndicator from "@/components/HoverIndicator";
 import LineControls from "@/components/LineControls";
 import { calcularOffsetY } from "@/utils/layout";
@@ -15,6 +16,9 @@ import {
   getCurrentInlineEditingId,
   setCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
+import {
+  resolveInlineKonvaTextNode,
+} from "@/components/editor/overlays/inlineGeometry";
 import {
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
@@ -40,14 +44,11 @@ function isInlineDiagCompactEnabled() {
 }
 
 function isSemanticInlineEditableObject(obj) {
-  return (
-    obj?.tipo === "texto" ||
-    (obj?.tipo === "forma" && obj?.figura === "rect")
-  );
+  return obj?.tipo === "texto";
 }
 
 function isLegacyDoubleInlineEditableObject(obj) {
-  return obj?.tipo === "rsvp-boton";
+  return false;
 }
 
 function getRuntimeInteractionState() {
@@ -62,6 +63,30 @@ function getRuntimeInteractionState() {
     dragging: Boolean(window._isDragging),
     resizing: Boolean(window._resizeData?.isResizing),
   };
+}
+
+function resolveInlineEditOutlineRect(editingId, elementRefs, stage) {
+  if (!editingId || !elementRefs?.current || !stage) return null;
+  const sourceNode = elementRefs.current[editingId] || null;
+  const textNode = resolveInlineKonvaTextNode(sourceNode, stage) || sourceNode;
+  if (!textNode || typeof textNode.getClientRect !== "function") return null;
+  try {
+    const rect = textNode.getClientRect({
+      relativeTo: stage,
+      skipTransform: false,
+      skipShadow: true,
+      skipStroke: true,
+    });
+    if (!rect) return null;
+    return {
+      x: Number(rect.x),
+      y: Number(rect.y),
+      width: Number(rect.width),
+      height: Number(rect.height),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export default function CanvasStageContent({
@@ -123,6 +148,9 @@ export default function CanvasStageContent({
   inlineDebugAB,
   finishEdit,
   restoreElementDrag,
+  requestInlineEditFinish,
+  onInlineEditCanvasPointer,
+  inlineEditDecorations,
   configurarDragEnd,
   ajustarFontSizeAAnchoVisual,
   calcularPosTextoDesdeCentro,
@@ -519,8 +547,14 @@ export default function CanvasStageContent({
 
     if (editing.id && (editing.id !== id || !targetSupportsInline)) {
       const previousEditingId = editing.id;
-      finishEdit();
-      restoreElementDrag(previousEditingId);
+      const finishHandled =
+        typeof requestInlineEditFinish === "function"
+          ? requestInlineEditFinish("selection-change")
+          : false;
+      if (!finishHandled) {
+        finishEdit();
+        restoreElementDrag(previousEditingId);
+      }
       clearInlineIntent("editing-finished-by-selection", {
         clickedId: id,
         previousEditingId,
@@ -612,6 +646,7 @@ export default function CanvasStageContent({
     editing.id,
     finishEdit,
     logInlineIntent,
+    requestInlineEditFinish,
     restoreElementDrag,
     setElementosSeleccionados,
     startInlineFromDecision,
@@ -699,10 +734,20 @@ export default function CanvasStageContent({
     clearInlineIntent("canvas-mousedown", {
       targetClass: e?.target?.getClassName?.() || null,
     });
+    if (editing.id) {
+      requestInlineEditFinish?.("canvas-mousedown");
+      return;
+    }
     if (typeof stageGestures?.onMouseDown === "function") {
       stageGestures.onMouseDown(e);
     }
-  }, [clearInlineActivation, clearInlineIntent, stageGestures]);
+  }, [
+    clearInlineActivation,
+    clearInlineIntent,
+    editing.id,
+    requestInlineEditFinish,
+    stageGestures,
+  ]);
 
   const handleStageTouchStartWithInlineIntent = useCallback((e) => {
     clearInlineActivation("canvas-touchstart", {
@@ -711,10 +756,20 @@ export default function CanvasStageContent({
     clearInlineIntent("canvas-touchstart", {
       targetClass: e?.target?.getClassName?.() || null,
     });
+    if (editing.id) {
+      requestInlineEditFinish?.("canvas-touchstart");
+      return;
+    }
     if (typeof stageGestures?.onTouchStart === "function") {
       stageGestures.onTouchStart(e);
     }
-  }, [clearInlineActivation, clearInlineIntent, stageGestures]);
+  }, [
+    clearInlineActivation,
+    clearInlineIntent,
+    editing.id,
+    requestInlineEditFinish,
+    stageGestures,
+  ]);
 
   const handleTransformInteractionStartWithInlineIntent = useCallback((...args) => {
     clearInlineActivation("transform-start", {
@@ -1098,9 +1153,7 @@ export default function CanvasStageContent({
 
                   {objetos.map((obj, i) => {
                     // ?? Determinar si estÃ¡ en modo ediciÃ³n
-                    const isInlineEditableObject =
-                      obj.tipo === "texto" ||
-                      (obj.tipo === "forma" && obj.figura === "rect");
+                    const isInlineEditableObject = obj.tipo === "texto";
                     const isInEditMode =
                       isInlineEditableObject &&
                       editing.id === obj.id &&
@@ -1258,9 +1311,7 @@ export default function CanvasStageContent({
 
 
 
-                    const supportsInlinePreview =
-                      obj.tipo === "texto" ||
-                      (obj.tipo === "forma" && obj.figura === "rect");
+                    const supportsInlinePreview = obj.tipo === "texto";
                     const objPreview =
                       editing.id === obj.id && supportsInlinePreview
                         ? (() => {
@@ -1327,6 +1378,9 @@ export default function CanvasStageContent({
                         inlineVisibilityMode={inlineDebugAB.visibilitySource}
                         inlineOverlayEngine={inlineDebugAB.overlayEngine}
                         finishInlineEdit={finishEdit}
+                        onInlineEditPointer={
+                          isInEditMode ? onInlineEditCanvasPointer : null
+                        }
                         onSelect={isInEditMode ? null : handleElementSelectIntent}
 
 
@@ -1509,6 +1563,17 @@ export default function CanvasStageContent({
                     );
                   })}
 
+                  {editing.id && (
+                    <InlineTextEditDecorationsLayer
+                      decorations={inlineEditDecorations}
+                      outlineRect={resolveInlineEditOutlineRect(
+                        editing.id,
+                        elementRefs,
+                        stageRef.current?.getStage?.() || stageRef.current || null
+                      )}
+                    />
+                  )}
+
 
 
                   {seleccionActiva && areaSeleccion && (
@@ -1526,7 +1591,7 @@ export default function CanvasStageContent({
                   )}
 
 
-                  {elementosSeleccionados.length > 0 && (() => {
+                  {!editing.id && elementosSeleccionados.length > 0 && (() => {
                     return (
                       <SelectionBounds
                         selectedElements={elementosSeleccionados}

@@ -17,6 +17,10 @@ function isUsableDomRect(rect) {
   return [x, y, width, height].every(Number.isFinite) && width >= 0 && height >= 0;
 }
 
+function rectHasVisibleHeight(rect) {
+  return isUsableDomRect(rect) && Number(rect.height) > 0;
+}
+
 function unionClientRects(rects = []) {
   const usable = Array.from(rects || []).filter((rect) => {
     const width = Number(rect?.width);
@@ -41,6 +45,28 @@ function unionClientRects(rects = []) {
     width: Math.max(0, right - left),
     height: Math.max(0, bottom - top),
   };
+}
+
+function firstUsableClientRect(rects = []) {
+  const list = Array.from(rects || []);
+  for (let index = 0; index < list.length; index += 1) {
+    const rect = list[index];
+    if (rectHasVisibleHeight(rect)) {
+      return rectToPayload(rect);
+    }
+  }
+  return null;
+}
+
+function lastUsableClientRect(rects = []) {
+  const list = Array.from(rects || []);
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const rect = list[index];
+    if (rectHasVisibleHeight(rect)) {
+      return rectToPayload(rect);
+    }
+  }
+  return null;
 }
 
 function isIgnorableGlyphChar(char) {
@@ -93,6 +119,65 @@ function getVisibleGlyphRectFromTextNode(textNode, searchFromEnd = false) {
   return fallbackRect;
 }
 
+function getAdjacentCaretProxyRectFromTextNode(textNode, offset, edge) {
+  if (
+    !textNode ||
+    textNode.nodeType !== Node.TEXT_NODE ||
+    typeof document === "undefined"
+  ) {
+    return null;
+  }
+
+  const textLength = String(textNode.nodeValue || "").length;
+  if (!Number.isFinite(textLength) || textLength <= 0) return null;
+  const safeOffset = Math.max(0, Math.min(textLength, Number(offset || 0)));
+
+  let start = null;
+  let end = null;
+  let preferredRect = null;
+  if (edge === "start") {
+    if (safeOffset >= textLength) return null;
+    start = safeOffset;
+    end = Math.min(textLength, safeOffset + 1);
+  } else {
+    if (safeOffset <= 0) return null;
+    start = Math.max(0, safeOffset - 1);
+    end = safeOffset;
+  }
+
+  if (start === end) return null;
+
+  try {
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    preferredRect =
+      edge === "start"
+        ? firstUsableClientRect(range.getClientRects?.() || [])
+        : lastUsableClientRect(range.getClientRects?.() || []);
+    if (!preferredRect) {
+      const boundingRect = range.getBoundingClientRect?.() || null;
+      preferredRect = rectHasVisibleHeight(boundingRect)
+        ? rectToPayload(boundingRect)
+        : null;
+    }
+  } catch {
+    preferredRect = null;
+  }
+
+  if (!preferredRect) return null;
+
+  return {
+    x:
+      edge === "start"
+        ? Number(preferredRect.x || 0)
+        : Number(preferredRect.x || 0) + Number(preferredRect.width || 0),
+    y: Number(preferredRect.y || 0),
+    width: 0,
+    height: Number(preferredRect.height || 0),
+  };
+}
+
 export function getFullRangeRect(el) {
   if (!el) return null;
   if (el instanceof HTMLInputElement) return null;
@@ -140,8 +225,25 @@ export function getCollapsedCaretProbeRectInEditor(el) {
     }
     const probeRange = activeRange.cloneRange();
     probeRange.collapse(true);
-    const rect = probeRange.getBoundingClientRect?.() || null;
-    return rectToPayload(rect);
+    const liveRects = probeRange.getClientRects?.() || [];
+    const liveRect =
+      firstUsableClientRect(liveRects) ||
+      (() => {
+        const boundingRect = probeRange.getBoundingClientRect?.() || null;
+        return rectHasVisibleHeight(boundingRect) ? rectToPayload(boundingRect) : null;
+      })();
+    if (liveRect) return liveRect;
+
+    const startContainer = probeRange.startContainer || null;
+    const startOffset = Number(probeRange.startOffset || 0);
+    if (startContainer?.nodeType === Node.TEXT_NODE) {
+      return (
+        getAdjacentCaretProxyRectFromTextNode(startContainer, startOffset, "start") ||
+        getAdjacentCaretProxyRectFromTextNode(startContainer, startOffset, "end")
+      );
+    }
+
+    return null;
   } catch {
     return null;
   }

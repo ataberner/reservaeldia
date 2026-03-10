@@ -5,6 +5,13 @@ import {
 import {
   getInlineLineStats as getInlineLineStatsShared,
 } from "@/components/editor/overlays/inlineTextModel";
+import {
+  clampEditableRangeOffset as clampInlineRangeOffsetShared,
+  collectEditableTextNodes as collectInlineTextNodesShared,
+  computeCanonicalTextOffset as computeInlineGlobalTextOffsetShared,
+  getEditableTextNodeLength as getInlineTextNodeLengthShared,
+  resolveEditorCaretTextPosition as resolveInlineCaretTextPositionShared,
+} from "@/components/editor/textSystem/services/textCaretPositionService";
 
 export function isInlineDebugEnabled() {
   return typeof window !== "undefined" && window.__INLINE_DEBUG !== false;
@@ -106,107 +113,33 @@ export function pickInlinePrimaryRect(rangeRect, firstClientRect) {
 }
 
 export function collectInlineTextNodes(rootEl) {
-  if (!rootEl || typeof document === "undefined") return [];
-  try {
-    const showText = typeof NodeFilter !== "undefined" ? NodeFilter.SHOW_TEXT : 4;
-    const walker = document.createTreeWalker(rootEl, showText);
-    const nodes = [];
-    while (walker.nextNode()) {
-      nodes.push(walker.currentNode);
-    }
-    return nodes;
-  } catch {
-    return [];
-  }
+  return collectInlineTextNodesShared(rootEl);
 }
 
 export function getInlineTextNodeLength(node) {
-  return typeof node?.nodeValue === "string" ? node.nodeValue.length : 0;
+  return getInlineTextNodeLengthShared(node);
 }
 
 export function clampInlineRangeOffset(node, rawOffset) {
-  const numericOffset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
-  if (!node) return 0;
-  if (node.nodeType === 3) {
-    return Math.min(numericOffset, getInlineTextNodeLength(node));
-  }
-  return Math.min(numericOffset, node.childNodes?.length || 0);
+  return clampInlineRangeOffsetShared(node, rawOffset);
 }
 
 export function computeInlineGlobalTextOffset(rootEl, anchorNode, anchorOffset) {
-  if (!rootEl || !anchorNode || typeof document === "undefined") return null;
-  try {
-    const safeOffset = clampInlineRangeOffset(anchorNode, anchorOffset);
-    const prefixRange = document.createRange();
-    prefixRange.selectNodeContents(rootEl);
-    prefixRange.setEnd(anchorNode, safeOffset);
-    return Math.max(0, prefixRange.toString().length);
-  } catch {
-    return null;
-  }
+  return computeInlineGlobalTextOffsetShared(rootEl, anchorNode, anchorOffset);
 }
 
 export function resolveInlineCaretTextPosition(rootEl, anchorNode, anchorOffset) {
-  const anchorInRoot =
-    !!rootEl &&
-    !!anchorNode &&
-    typeof rootEl.contains === "function" &&
-    rootEl.contains(anchorNode);
-
-  if (!anchorInRoot || !anchorNode) {
-    return {
-      resolvedNode: null,
-      resolvedOffset: null,
-      strategy: "anchor-outside-editor",
-    };
-  }
-
-  if (anchorNode.nodeType === 3) {
-    return {
-      resolvedNode: anchorNode,
-      resolvedOffset: clampInlineRangeOffset(anchorNode, anchorOffset),
-      strategy: "anchor-text-node",
-    };
-  }
-
-  const textNodes = collectInlineTextNodes(rootEl).filter(
-    (node) => getInlineTextNodeLength(node) > 0
+  const resolved = resolveInlineCaretTextPositionShared(
+    rootEl,
+    anchorNode,
+    anchorOffset
   );
-  if (textNodes.length === 0) {
-    return {
-      resolvedNode: null,
-      resolvedOffset: null,
-      strategy: "no-text-nodes",
-    };
-  }
-
-  const globalOffset = computeInlineGlobalTextOffset(rootEl, anchorNode, anchorOffset);
-  if (!Number.isFinite(globalOffset)) {
-    return {
-      resolvedNode: textNodes[0],
-      resolvedOffset: 0,
-      strategy: "global-offset-unavailable",
-    };
-  }
-
-  let remaining = Math.max(0, globalOffset);
-  for (const textNode of textNodes) {
-    const len = getInlineTextNodeLength(textNode);
-    if (remaining <= len) {
-      return {
-        resolvedNode: textNode,
-        resolvedOffset: remaining,
-        strategy: "mapped-from-global-offset",
-      };
-    }
-    remaining -= len;
-  }
-
-  const lastNode = textNodes[textNodes.length - 1];
   return {
-    resolvedNode: lastNode,
-    resolvedOffset: getInlineTextNodeLength(lastNode),
-    strategy: "mapped-to-last-text-node",
+    resolvedNode: resolved?.resolvedNode || null,
+    resolvedOffset: Number.isFinite(resolved?.resolvedOffset)
+      ? Number(resolved.resolvedOffset)
+      : null,
+    strategy: resolved?.strategy || "unresolved",
   };
 }
 

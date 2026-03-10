@@ -4,6 +4,26 @@ export const INLINE_ALIGNMENT_MODEL_V2_VERSION = "phase-atomic-v2";
 export const INLINE_TRACE_RING_MAX = 600;
 const LARGE_STABLE_OFFSET_POLICY_VERSION = "domCss-large-stable-cap-v9";
 const FONT_NUDGE_OVERRIDE_MAX_ABS_PX = 40;
+const FIXED_INLINE_FONT_NUDGE_CONFIGS = Object.freeze({
+  montserrat: Object.freeze({ valuePx: -3.4, mode: "additive" }),
+  arial: Object.freeze({ valuePx: -1.9, mode: "additive" }),
+  raleway: Object.freeze({ valuePx: -2, mode: "additive" }),
+  "great vibes": Object.freeze({ valuePx: -3, mode: "absolute" }),
+  "bodoni moda": Object.freeze({ valuePx: -7, mode: "additive" }),
+  georgia: Object.freeze({ valuePx: -2.2, mode: "additive" }),
+  poppins: Object.freeze({ valuePx: -6, mode: "additive" }),
+  "playfair display": Object.freeze({ valuePx: -5.8, mode: "additive" }),
+  "cormorant garamond": Object.freeze({ valuePx: -4, mode: "additive" }),
+  lora: Object.freeze({ valuePx: -4.4, mode: "additive" }),
+  nunito: Object.freeze({ valuePx: -4.9, mode: "additive" }),
+  "libre bodoni": Object.freeze({ valuePx: -3.3, mode: "additive" }),
+  allura: Object.freeze({ valuePx: -1, mode: "additive" }),
+  parisienne: Object.freeze({ valuePx: -3, mode: "additive" }),
+  sacramento: Object.freeze({ valuePx: -4.1, mode: "additive" }),
+  cinzel: Object.freeze({ valuePx: -4.2, mode: "additive" }),
+  "abril fatface": Object.freeze({ valuePx: -6, mode: "additive" }),
+  "bebas neue": Object.freeze({ valuePx: -4, mode: "additive" }),
+});
 
 function resolveFontSpecificStableCapPx(fontFamily) {
   const normalized = String(fontFamily || "").toLowerCase();
@@ -31,19 +51,29 @@ function sanitizeFontFamilyKey(normalizedFamily) {
     .replace(/^_+|_+$/g, "");
 }
 
+function resolveFixedFontNudgeConfig(normalizedFamily) {
+  if (!normalizedFamily) return null;
+  const direct = FIXED_INLINE_FONT_NUDGE_CONFIGS[normalizedFamily];
+  if (direct) {
+    return {
+      ...direct,
+      source: `fixed(window.__INLINE_${sanitizeFontFamilyKey(normalizedFamily)}_NUDGE_PX)`,
+    };
+  }
+  const fuzzyMatch = Object.entries(FIXED_INLINE_FONT_NUDGE_CONFIGS).find(([key]) => (
+    normalizedFamily.includes(key)
+  ));
+  if (!fuzzyMatch) return null;
+  const [matchedFamily, matchedConfig] = fuzzyMatch;
+  return {
+    ...matchedConfig,
+    source: `fixed(window.__INLINE_${sanitizeFontFamilyKey(matchedFamily)}_NUDGE_PX)`,
+  };
+}
+
 function resolveDefaultFontNudgeConfig(normalizedFamily) {
-  if (normalizedFamily.includes("great vibes")) {
-    return {
-      valuePx: -2.8,
-      mode: "absolute",
-    };
-  }
-  if (normalizedFamily.includes("arial")) {
-    return {
-      valuePx: -0.2,
-      mode: "additive",
-    };
-  }
+  const fixedConfig = resolveFixedFontNudgeConfig(normalizedFamily);
+  if (fixedConfig) return fixedConfig;
   return null;
 }
 
@@ -147,6 +177,13 @@ function readWindowFontNudgeOverride(normalizedFamily) {
 function resolveFontSpecificPerceptualNudge(fontFamily) {
   const normalizedFamily = normalizeFontFamilyForNudge(fontFamily);
   const defaultConfig = resolveDefaultFontNudgeConfig(normalizedFamily);
+  if (defaultConfig?.source?.startsWith("fixed(")) {
+    return {
+      valuePx: defaultConfig.valuePx,
+      source: defaultConfig.source,
+      mode: defaultConfig.mode,
+    };
+  }
   const override = readWindowFontNudgeOverride(normalizedFamily);
   const overrideValuePx = toFiniteNumber(override?.valuePx, null);
 

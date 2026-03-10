@@ -4,18 +4,181 @@ import {
   buildCanvasFontValue as buildCanvasFontValueShared,
 } from "@/components/editor/textSystem/metricsLayout/services/textMeasureService";
 
+export const INLINE_DOM_TEXT_RENDER_PARITY_STYLE = Object.freeze({
+  fontOpticalSizing: "none",
+  fontKerning: "auto",
+  fontVariantLigatures: "normal",
+  fontFeatureSettings: "normal",
+  fontSynthesis: "weight style",
+  textRendering: "auto",
+  WebkitFontSmoothing: "auto",
+  MozOsxFontSmoothing: "auto",
+});
+
+export function applyInlineDomTextRenderParity(styleTarget) {
+  if (!styleTarget) return;
+  styleTarget.fontOpticalSizing = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.fontOpticalSizing;
+  styleTarget.fontKerning = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.fontKerning;
+  styleTarget.fontVariantLigatures = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.fontVariantLigatures;
+  styleTarget.fontFeatureSettings = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.fontFeatureSettings;
+  styleTarget.fontSynthesis = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.fontSynthesis;
+  styleTarget.textRendering = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.textRendering;
+  styleTarget.webkitFontSmoothing = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.WebkitFontSmoothing;
+  styleTarget.mozOsxFontSmoothing = INLINE_DOM_TEXT_RENDER_PARITY_STYLE.MozOsxFontSmoothing;
+}
+
+export function resolveInlineDomPerceptualScale({
+  totalScaleY = 1,
+  fontFamily = "",
+  fontStyle = "normal",
+  fontWeight = "normal",
+  fontSizePx = 16,
+  lineHeightPx = null,
+  letterSpacingPx = 0,
+  probeText = "HgAy",
+}) {
+  const safeFontSizePx = Number(fontSizePx);
+  if (!Number.isFinite(safeFontSizePx) || safeFontSizePx <= 0) {
+    return {
+      scale: 1,
+      source: "fallback:invalid-font-size",
+      widthRatio: null,
+      domProbeWidthPx: null,
+      canvasProbeWidthPx: null,
+    };
+  }
+  const safeLineHeightPx = Number(lineHeightPx);
+  const resolvedLineHeightPx =
+    Number.isFinite(safeLineHeightPx) && safeLineHeightPx > 0
+      ? safeLineHeightPx
+      : safeFontSizePx;
+  const safeLetterSpacingPx = Number.isFinite(Number(letterSpacingPx))
+    ? Number(letterSpacingPx)
+    : 0;
+  const resolvedProbeText = String(probeText || "HgAy") || "HgAy";
+
+  const domProbeWidthPx = measureDomTextVisualWidth({
+    fontStyle,
+    fontWeight,
+    fontSizePx: safeFontSizePx,
+    fontFamily,
+    lineHeightPx: resolvedLineHeightPx,
+    letterSpacingPx: safeLetterSpacingPx,
+    probeText: resolvedProbeText,
+  });
+  let canvasProbeWidthPx = null;
+  let canvasProbeInkWidthPx = null;
+  if (typeof document !== "undefined") {
+    try {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        if (typeof ctx.fontKerning !== "undefined") {
+          ctx.fontKerning = "auto";
+        }
+        ctx.font = buildCanvasFontValue({
+          fontStyle,
+          fontWeight,
+          fontSizePx: safeFontSizePx,
+          fontFamily,
+        });
+        const metrics = ctx.measureText(resolvedProbeText);
+        const spacingExtra = Math.max(0, resolvedProbeText.length - 1) * safeLetterSpacingPx;
+        const advanceWidth = Number(metrics?.width);
+        const visualInkWidth = resolveCanvasTextVisualWidth(metrics);
+        canvasProbeWidthPx =
+          Number.isFinite(advanceWidth) && advanceWidth > 0
+            ? advanceWidth + spacingExtra
+            : null;
+        canvasProbeInkWidthPx =
+          Number.isFinite(visualInkWidth) && visualInkWidth > 0
+            ? visualInkWidth + spacingExtra
+            : null;
+      }
+    } catch {
+      canvasProbeWidthPx = null;
+      canvasProbeInkWidthPx = null;
+    }
+  }
+  const domWidth = Number(domProbeWidthPx);
+  const canvasWidth = Number(canvasProbeWidthPx);
+  const widthRatio =
+    Number.isFinite(domWidth) &&
+    Number.isFinite(canvasWidth) &&
+    domWidth > 0 &&
+    canvasWidth > 0
+      ? canvasWidth / domWidth
+      : null;
+  const boundedWidthRatio =
+    Number.isFinite(widthRatio) && widthRatio > 0
+      ? Math.max(1, Math.min(1.015, widthRatio))
+      : null;
+
+  if (Number.isFinite(boundedWidthRatio)) {
+    const withinDeadzone = Math.abs(boundedWidthRatio - 1) <= 0.002;
+    const downscaleBlocked = widthRatio < 1;
+    return {
+      scale: withinDeadzone || downscaleBlocked ? 1 : boundedWidthRatio,
+      source:
+        downscaleBlocked
+          ? "probe-width:no-downscale"
+          : (withinDeadzone ? "probe-width:deadzone" : "probe-width:ratio"),
+      widthRatio: roundMetric(widthRatio, 6),
+      domProbeWidthPx: roundMetric(domWidth),
+      canvasProbeWidthPx: roundMetric(canvasWidth),
+      canvasProbeInkWidthPx: Number.isFinite(canvasProbeInkWidthPx)
+        ? roundMetric(canvasProbeInkWidthPx)
+        : null,
+    };
+  }
+
+  const stageScaleY = Number(totalScaleY);
+  const stageScaleYSafe =
+    Number.isFinite(stageScaleY) && stageScaleY > 0
+      ? roundMetric(stageScaleY, 6)
+      : null;
+  return {
+    scale: 1,
+    source: "fallback:unity",
+    widthRatio: null,
+    domProbeWidthPx: Number.isFinite(domWidth) ? roundMetric(domWidth) : null,
+    canvasProbeWidthPx: Number.isFinite(canvasWidth) ? roundMetric(canvasWidth) : null,
+    canvasProbeInkWidthPx: Number.isFinite(canvasProbeInkWidthPx)
+      ? roundMetric(canvasProbeInkWidthPx)
+      : null,
+    stageScaleY: stageScaleYSafe,
+  };
+}
+
+function normalizeInlineFontWeightToken(rawFontWeight) {
+  if (rawFontWeight === null || typeof rawFontWeight === "undefined") return null;
+  const token = String(rawFontWeight).trim().toLowerCase();
+  if (!token) return null;
+  if (["normal", "bold", "bolder", "lighter"].includes(token)) {
+    return token;
+  }
+  const numeric = Number(token);
+  if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 1000) {
+    return String(Math.round(numeric));
+  }
+  return null;
+}
+
 export function normalizeInlineFontProps(rawFontStyle, rawFontWeight) {
   const styleToken = String(rawFontStyle || "normal").toLowerCase();
-  const weightToken = String(rawFontWeight || "").toLowerCase();
-
-  const italic = styleToken.includes("italic") || styleToken.includes("oblique");
+  const normalizedWeightToken = normalizeInlineFontWeightToken(rawFontWeight);
+  const italic = styleToken.includes("italic");
+  const oblique = !italic && styleToken.includes("oblique");
   const boldFromStyle = styleToken.includes("bold");
-  const boldFromWeight = isBoldFontWeight(weightToken);
-  const bold = boldFromStyle || boldFromWeight;
+  const boldFromWeight = isBoldFontWeight(normalizedWeightToken || "normal");
+  const forceBoldFromStyle = boldFromStyle && !boldFromWeight;
+  const resolvedWeight = forceBoldFromStyle
+    ? "bold"
+    : (normalizedWeightToken || "normal");
 
   return {
-    fontStyle: italic ? "italic" : "normal",
-    fontWeight: bold ? "bold" : "normal",
+    fontStyle: italic ? "italic" : (oblique ? "oblique" : "normal"),
+    fontWeight: resolvedWeight,
   };
 }
 
@@ -323,14 +486,7 @@ export function measureDomInkProbe({
     host.style.fontFamily = fontFamily || "sans-serif";
     host.style.fontWeight = fontWeight || "normal";
     host.style.fontStyle = fontStyle || "normal";
-    host.style.fontOpticalSizing = "none";
-    host.style.fontKerning = "auto";
-    host.style.fontVariantLigatures = "normal";
-    host.style.fontFeatureSettings = "normal";
-    host.style.fontSynthesis = "weight style";
-    host.style.textRendering = "auto";
-    host.style.webkitFontSmoothing = "auto";
-    host.style.mozOsxFontSmoothing = "auto";
+    applyInlineDomTextRenderParity(host.style);
     host.style.lineHeight = `${lineHeightPx}px`;
     host.style.letterSpacing = `${Number(letterSpacingPx || 0)}px`;
     host.style.boxSizing = "border-box";
@@ -470,14 +626,7 @@ export function measureDomTextVisualWidth({
     span.style.fontFamily = fontFamily || "sans-serif";
     span.style.fontWeight = fontWeight || "normal";
     span.style.fontStyle = fontStyle || "normal";
-    span.style.fontOpticalSizing = "none";
-    span.style.fontKerning = "auto";
-    span.style.fontVariantLigatures = "normal";
-    span.style.fontFeatureSettings = "normal";
-    span.style.fontSynthesis = "weight style";
-    span.style.textRendering = "auto";
-    span.style.webkitFontSmoothing = "auto";
-    span.style.mozOsxFontSmoothing = "auto";
+    applyInlineDomTextRenderParity(span.style);
     span.style.lineHeight = `${lineHeightPx}px`;
     span.style.letterSpacing = `${Number(letterSpacingPx || 0)}px`;
     span.textContent = String(probeText || "").length > 0 ? String(probeText) : "\u200b";

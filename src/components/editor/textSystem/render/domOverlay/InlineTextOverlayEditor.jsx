@@ -37,6 +37,7 @@ import {
   measureDomTextVisualWidth,
   measureKonvaInkProbe,
   normalizeInlineFontProps,
+  resolveInlineDomPerceptualScale,
   resolveCanvasTextVisualWidth,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorTextMetrics";
 import {
@@ -276,6 +277,8 @@ export default function InlineTextEditor({
       return {
         fontSize: getProp(textNode, "fontSize", 24),
         fontFamily: getProp(textNode, "fontFamily", "sans-serif"),
+        fontStyleRaw: rawFontStyle,
+        fontWeightRaw: rawFontWeight,
         fontWeight: normalizedFont.fontWeight,
         fontStyle: normalizedFont.fontStyle,
         letterSpacing: getProp(textNode, "letterSpacing", 0),
@@ -287,6 +290,8 @@ export default function InlineTextEditor({
       return {
         fontSize: 24,
         fontFamily: "sans-serif",
+        fontStyleRaw: "normal",
+        fontWeightRaw: "normal",
         fontWeight: "normal",
         fontStyle: "normal",
         letterSpacing: 0,
@@ -331,6 +336,32 @@ export default function InlineTextEditor({
   const letterSpacingPx =
     (Number.isFinite(Number(nodeProps.letterSpacing)) ? Number(nodeProps.letterSpacing) : 0) *
     totalScaleX;
+  const domPerceptualScaleModel = useMemo(
+    () =>
+      resolveInlineDomPerceptualScale({
+        totalScaleY,
+        fontFamily: nodeProps.fontFamily,
+        fontStyle: nodeProps.fontStyle,
+        fontWeight: nodeProps.fontWeight,
+        fontSizePx,
+        lineHeightPx,
+        letterSpacingPx,
+        probeText: "HgAy",
+      }),
+    [
+      fontMetricsRevision,
+      fontSizePx,
+      konvaLineHeight,
+      letterSpacingPx,
+      lineHeightPx,
+      nodeProps.fontFamily,
+      nodeProps.fontStyle,
+      nodeProps.fontWeight,
+      totalScaleY,
+    ]
+  );
+  const domPerceptualScale = Number(domPerceptualScaleModel?.scale || 1);
+  const domRenderFontSizePx = Math.max(1, Number(fontSizePx) * domPerceptualScale);
   const rawValue = String(value ?? "");
   const normalizedValue = normalizeInlineEditableText(rawValue, {
     trimPhantomTrailingNewline: true,
@@ -437,7 +468,7 @@ export default function InlineTextEditor({
     return measureDomInkProbe({
       fontStyle: nodeProps.fontStyle,
       fontWeight: nodeProps.fontWeight,
-      fontSizePx,
+      fontSizePx: domRenderFontSizePx,
       fontFamily: nodeProps.fontFamily,
       lineHeightPx: fontSizePx,
       letterSpacingPx,
@@ -448,7 +479,7 @@ export default function InlineTextEditor({
     isSingleLine,
     nodeProps.fontStyle,
     nodeProps.fontWeight,
-    fontSizePx,
+    domRenderFontSizePx,
     nodeProps.fontFamily,
     letterSpacingPx,
     metricsProbeText,
@@ -501,7 +532,7 @@ export default function InlineTextEditor({
       measureDomInkProbe({
         fontStyle: nodeProps.fontStyle,
         fontWeight: nodeProps.fontWeight,
-        fontSizePx,
+        fontSizePx: domRenderFontSizePx,
         fontFamily: nodeProps.fontFamily,
         lineHeightPx: editableLineHeightPx,
         letterSpacingPx,
@@ -512,7 +543,7 @@ export default function InlineTextEditor({
       fontMetricsRevision,
       canvasInkMetricsModel,
       editableLineHeightPx,
-      fontSizePx,
+      domRenderFontSizePx,
       letterSpacingPx,
       nodeProps.fontFamily,
       nodeProps.fontStyle,
@@ -1565,7 +1596,7 @@ export default function InlineTextEditor({
         const domWidth = measureDomTextVisualWidth({
           fontStyle: nodeProps.fontStyle,
           fontWeight: nodeProps.fontWeight,
-          fontSizePx,
+          fontSizePx: domRenderFontSizePx,
           fontFamily: nodeProps.fontFamily,
           lineHeightPx: editableLineHeightPx,
           letterSpacingPx,
@@ -1598,6 +1629,7 @@ export default function InlineTextEditor({
     fontMetricsRevision,
     letterSpacingPx,
     normalizedWidthMode,
+    domRenderFontSizePx,
     nodeProps.fontFamily,
     nodeProps.fontSize,
     nodeProps.fontStyle,
@@ -2629,10 +2661,15 @@ export default function InlineTextEditor({
     nodeProps,
     overlayPhase,
     scaleVisual,
+    totalScaleX,
+    totalScaleY,
+    domPerceptualScale,
+    domPerceptualScaleModel,
     editorRef,
     contentBoxRef,
     editableHostRef,
     overlaySessionIdRef,
+    konvaTextNode: rectSourceNode,
   });
   useLayoutEffect(() => {
     emitDebugRef.current = emitDebug;
@@ -2757,7 +2794,7 @@ export default function InlineTextEditor({
       centeredEditorLeftPx={centeredEditorLeftPx}
       effectiveVisualOffsetPx={effectiveVisualOffsetPx}
       isEditorVisible={isEditorVisible}
-      fontSizePx={fontSizePx}
+      fontSizePx={domRenderFontSizePx}
       nodeProps={nodeProps}
       editableLineHeightPx={editableLineHeightPx}
       letterSpacingPx={letterSpacingPx}

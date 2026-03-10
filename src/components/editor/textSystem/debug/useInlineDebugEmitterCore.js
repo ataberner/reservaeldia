@@ -22,6 +22,7 @@ import {
 import { roundMetric } from "@/components/editor/overlays/inlineEditor/inlineEditorNumeric";
 import { INLINE_LAYOUT_VERSION } from "@/components/editor/overlays/inlineEditor/inlineEditorConstants";
 import useInlineTraceBridge from "@/components/editor/textSystem/debug/useInlineTraceBridge";
+import { buildInlineTextBoxesPayload } from "@/components/editor/textSystem/debug/buildInlineTextBoxesPayload";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -136,6 +137,18 @@ function maxAbsFinite(values = []) {
   return Math.max(...normalized.map((value) => Math.abs(value)));
 }
 
+function normalizeFontWeightForCompare(value) {
+  const token = String(value || "").trim().toLowerCase();
+  if (!token) return null;
+  if (token === "normal") return "400";
+  if (token === "bold") return "700";
+  const numeric = Number(token);
+  if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 1000) {
+    return String(Math.round(numeric));
+  }
+  return token;
+}
+
 export default function useInlineDebugEmitter({
   DEBUG_MODE,
   editingId,
@@ -200,10 +213,15 @@ export default function useInlineDebugEmitter({
   nodeProps,
   overlayPhase,
   scaleVisual,
+  totalScaleX = null,
+  totalScaleY = null,
+  domPerceptualScale = null,
+  domPerceptualScaleModel = null,
   editorRef,
   contentBoxRef,
   editableHostRef,
   overlaySessionIdRef,
+  konvaTextNode = null,
 }) {
   const horizontalDiagRef = useRef({
     sessionKey: null,
@@ -253,6 +271,21 @@ export default function useInlineDebugEmitter({
       Boolean(selectionRectRaw) && !selectionRect;
     const projectedKonvaRect = projectedKonvaRectBase;
     const projectedKonvaRectRawSnapshot = projectedKonvaRectRaw;
+    const inlineTextBoxesPayload = buildInlineTextBoxesPayload({
+      konvaNode: konvaTextNode,
+      projectedKonvaRect,
+      projectedKonvaRectRaw: projectedKonvaRectRawSnapshot,
+      domRect: editableVisualRect,
+      domElement: editorRef.current,
+      domComputedStyle: computedStyle,
+      totalScaleX,
+      totalScaleY,
+      domPerceptualScale,
+      domPerceptualScaleModel,
+    });
+    console.log(
+      `[INLINE_TEXT_BOXES] ${eventName}\n${formatInlineLogPayload(inlineTextBoxesPayload)}`
+    );
     const overlayToKonvaDx = overlayRect
       ? overlayRect.x - projectedKonvaRect.x
       : null;
@@ -562,6 +595,10 @@ export default function useInlineDebugEmitter({
       firstGlyphToContentDx,
       firstGlyphToContentDy,
       firstGlyphHeightPx,
+      fontStyleRawNode: nodeProps.fontStyleRaw ?? null,
+      fontWeightRawNode: nodeProps.fontWeightRaw ?? null,
+      fontStyleNormalizedNode: nodeProps.fontStyle || null,
+      fontWeightNormalizedNode: nodeProps.fontWeight || null,
       computedFontSize: computedStyle?.fontSize ?? null,
       computedFontFamily: computedStyle?.fontFamily ?? null,
       computedFontWeight: computedStyle?.fontWeight ?? null,
@@ -571,9 +608,22 @@ export default function useInlineDebugEmitter({
       computedPaddingTop: computedStyle?.paddingTop ?? null,
       computedPaddingBottom: computedStyle?.paddingBottom ?? null,
       computedEditorLeftPx: roundNullableMetric(Number.parseFloat(computedStyle?.left)),
+      computedEditorTopPx: roundNullableMetric(Number.parseFloat(computedStyle?.top)),
       computedEditorTransform: computedStyle?.transform ?? null,
       computedBorderTop: computedStyle?.borderTopWidth ?? null,
       computedBorderBottom: computedStyle?.borderBottomWidth ?? null,
+      domPerceptualScale: roundNullableMetric(domPerceptualScale),
+      domPerceptualScaleSource: domPerceptualScaleModel?.source || null,
+      domPerceptualScaleWidthRatio: roundNullableMetric(domPerceptualScaleModel?.widthRatio),
+      domPerceptualScaleDomProbeWidthPx: roundNullableMetric(
+        domPerceptualScaleModel?.domProbeWidthPx
+      ),
+      domPerceptualScaleCanvasProbeWidthPx: roundNullableMetric(
+        domPerceptualScaleModel?.canvasProbeWidthPx
+      ),
+      domPerceptualScaleCanvasProbeInkWidthPx: roundNullableMetric(
+        domPerceptualScaleModel?.canvasProbeInkWidthPx
+      ),
       fontSizePx,
       lineHeightPx,
       cssLineHeightPx,
@@ -1140,6 +1190,62 @@ export default function useInlineDebugEmitter({
             },
           },
         },
+        fontParity: {
+          node: {
+            rawFontStyle: payload.fontStyleRawNode,
+            rawFontWeight: payload.fontWeightRawNode,
+            normalizedFontStyle: payload.fontStyleNormalizedNode,
+            normalizedFontWeight: payload.fontWeightNormalizedNode,
+          },
+          computed: {
+            fontFamily: payload.computedFontFamily,
+            fontStyle: payload.computedFontStyle,
+            fontWeight: payload.computedFontWeight,
+            fontSize: payload.computedFontSize,
+            lineHeight: payload.computedLineHeight,
+            domPerceptualScale: payload.domPerceptualScale,
+            domPerceptualScaleSource: payload.domPerceptualScaleSource,
+            domPerceptualScaleWidthRatio: payload.domPerceptualScaleWidthRatio,
+            domPerceptualScaleDomProbeWidthPx: payload.domPerceptualScaleDomProbeWidthPx,
+            domPerceptualScaleCanvasProbeWidthPx: payload.domPerceptualScaleCanvasProbeWidthPx,
+            domPerceptualScaleCanvasProbeInkWidthPx:
+              payload.domPerceptualScaleCanvasProbeInkWidthPx,
+            editorTopPx: payload.computedEditorTopPx,
+            editorTransform: payload.computedEditorTransform,
+            fontOpticalSizing: payload.computedFontOpticalSizing,
+            textRendering: computedStyle?.textRendering ?? null,
+            fontKerning: computedStyle?.fontKerning ?? null,
+            fontVariantLigatures: computedStyle?.fontVariantLigatures ?? null,
+            fontFeatureSettings: computedStyle?.fontFeatureSettings ?? null,
+            fontSynthesis: computedStyle?.fontSynthesis ?? null,
+            webkitFontSmoothing: computedStyle?.webkitFontSmoothing ?? null,
+            mozOsxFontSmoothing: computedStyle?.mozOsxFontSmoothing ?? null,
+          },
+          compare: {
+            weightNodeVsComputed:
+              (() => {
+                const normalizedNode = normalizeFontWeightForCompare(
+                  payload.fontWeightNormalizedNode
+                );
+                const normalizedComputed = normalizeFontWeightForCompare(
+                  payload.computedFontWeight
+                );
+                if (!normalizedNode || !normalizedComputed) return null;
+                return normalizedNode === normalizedComputed ? "match" : "mismatch";
+              })(),
+            styleNodeVsComputed:
+              (() => {
+                const nodeStyle = String(payload.fontStyleNormalizedNode || "")
+                  .trim()
+                  .toLowerCase();
+                const computedStyleToken = String(payload.computedFontStyle || "")
+                  .trim()
+                  .toLowerCase();
+                if (!nodeStyle || !computedStyleToken) return null;
+                return nodeStyle === computedStyleToken ? "match" : "mismatch";
+              })(),
+          },
+        },
         focus: {
           isFocused: payload.isFocused,
           focusClaimed: payload.focusClaimed,
@@ -1549,9 +1655,20 @@ export default function useInlineDebugEmitter({
     normalizedOverlayEngine,
     nodeProps.fontStyle,
     nodeProps.fontWeight,
+    nodeProps.fontStyleRaw,
+    nodeProps.fontWeightRaw,
     nodeProps.fontFamily,
     overlayPhase,
     scaleVisual,
+    totalScaleX,
+    totalScaleY,
+    domPerceptualScale,
+    domPerceptualScaleModel?.source,
+    domPerceptualScaleModel?.widthRatio,
+    domPerceptualScaleModel?.domProbeWidthPx,
+    domPerceptualScaleModel?.canvasProbeWidthPx,
+    domPerceptualScaleModel?.canvasProbeInkWidthPx,
+    konvaTextNode,
   ]);
 
   useInlineTraceBridge({

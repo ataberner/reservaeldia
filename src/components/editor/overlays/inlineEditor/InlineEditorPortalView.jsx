@@ -1,4 +1,7 @@
 import { createPortal } from "react-dom";
+import {
+  INLINE_DOM_TEXT_RENDER_PARITY_STYLE,
+} from "@/components/editor/overlays/inlineEditor/inlineEditorTextMetrics";
 
 export default function InlineEditorPortalView({
   BOX_DEBUG_MODE,
@@ -200,9 +203,9 @@ export default function InlineEditorPortalView({
               minHeight: "100%",
               position: "absolute",
               left: resolvedEditorLeftCss,
-              top: "0px",
-              transform: `translateY(${effectiveVisualOffsetPx}px)`,
-              transformOrigin: "top left",
+              // Avoid transform-based compositing on text: it can make glyphs look thinner.
+              top: `${effectiveVisualOffsetPx}px`,
+              transform: "none",
               visibility: isEditorVisible ? "visible" : "hidden",
               whiteSpace: "pre",
               overflowWrap: "normal",
@@ -212,14 +215,7 @@ export default function InlineEditorPortalView({
               fontFamily: nodeProps.fontFamily,
               fontWeight: nodeProps.fontWeight,
               fontStyle: nodeProps.fontStyle,
-              fontOpticalSizing: "none",
-              fontKerning: "auto",
-              fontVariantLigatures: "normal",
-              fontFeatureSettings: "normal",
-              fontSynthesis: "weight style",
-              textRendering: "auto",
-              WebkitFontSmoothing: "auto",
-              MozOsxFontSmoothing: "auto",
+              ...INLINE_DOM_TEXT_RENDER_PARITY_STYLE,
               lineHeight: `${editableLineHeightPx}px`,
               letterSpacing: `${letterSpacingPx}px`,
               color: editorTextColor,

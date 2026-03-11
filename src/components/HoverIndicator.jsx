@@ -1,6 +1,11 @@
 import { Rect, Group } from "react-konva";
 
-export default function HoverIndicator({ hoveredElement, elementRefs, objetos = [] }) {
+export default function HoverIndicator({
+  hoveredElement,
+  elementRefs,
+  objetos = [],
+  activeInlineEditingId = null,
+}) {
   if (!hoveredElement || !elementRefs?.current?.[hoveredElement]) return null;
 
   const node = elementRefs.current[hoveredElement];
@@ -9,6 +14,12 @@ export default function HoverIndicator({ hoveredElement, elementRefs, objetos = 
   const hoveredObj = Array.isArray(objetos)
     ? objetos.find((o) => o.id === hoveredElement)
     : null;
+  const suppressInlineTextHover =
+    hoveredObj?.tipo === "texto" && hoveredElement === activeInlineEditingId;
+
+  if (suppressInlineTextHover) {
+    return null;
+  }
 
   let box = null;
   if (

@@ -4,7 +4,7 @@ function normalizeInlineRawText(rawText) {
     .replace(/\u200B/g, "");
 }
 
-function trimPhantomTerminalNewline(normalizedText) {
+function trimModelPhantomTerminalNewline(normalizedText) {
   const trailingNewlines = normalizedText.match(/\n+$/)?.[0].length || 0;
   if (trailingNewlines === 0) return normalizedText;
 
@@ -21,13 +21,34 @@ function trimPhantomTerminalNewline(normalizedText) {
   return normalizedText;
 }
 
+function trimDomPhantomTerminalNewline(normalizedText) {
+  const trailingNewlines = normalizedText.match(/\n+$/)?.[0].length || 0;
+  if (trailingNewlines === 0) return normalizedText;
+
+  // El DOM del contentEditable suele agregar exactamente una linea terminal
+  // fantasma; removemos solo una para conservar lineas vacias reales.
+  return normalizedText.slice(0, -1);
+}
+
 export function normalizeInlineEditableText(
   rawText,
-  { trimPhantomTrailingNewline = true } = {}
+  { trimPhantomTrailingNewline = true, source = "model" } = {}
 ) {
   const normalized = normalizeInlineRawText(rawText);
   if (!trimPhantomTrailingNewline) return normalized;
-  return trimPhantomTerminalNewline(normalized);
+  return source === "dom"
+    ? trimDomPhantomTerminalNewline(normalized)
+    : trimModelPhantomTerminalNewline(normalized);
+}
+
+export function normalizeInlineEditableDomText(
+  rawText,
+  { trimPhantomTrailingNewline = true } = {}
+) {
+  return normalizeInlineEditableText(rawText, {
+    trimPhantomTrailingNewline,
+    source: "dom",
+  });
 }
 
 export function getInlineLineStats(

@@ -174,6 +174,17 @@ export default function CanvasStageContent({
     openingId: null,
     openingAtMs: 0,
   });
+  const activeInlineEditingId =
+    editing.id ||
+    getCurrentInlineEditingId() ||
+    (inlineOverlayMountSession?.mounted ? inlineOverlayMountSession.id : null) ||
+    inlineOverlayMountedId ||
+    null;
+
+  useEffect(() => {
+    if (!hoverId || !activeInlineEditingId || hoverId !== activeInlineEditingId) return;
+    setHoverId(null);
+  }, [activeInlineEditingId, hoverId, setHoverId]);
 
   const logInlineIntent = useCallback((eventName, payload = {}) => {
     if (!isInlineIntentDebugEnabled()) return;
@@ -1928,8 +1939,16 @@ export default function CanvasStageContent({
 
 
                   {/* No mostrar hover durante drag/resize/ediciÃ³n NI cuando hay lÃ­der de grupo */}
-                  {!window._resizeData?.isResizing && !isDragging && !window._isDragging && !window._grupoLider && !editing.id && (
-                    <HoverIndicator hoveredElement={hoverId} elementRefs={elementRefs} objetos={objetos} />
+                  {!window._resizeData?.isResizing &&
+                    !isDragging &&
+                    !window._isDragging &&
+                    !window._grupoLider && (
+                    <HoverIndicator
+                      hoveredElement={hoverId}
+                      elementRefs={elementRefs}
+                      objetos={objetos}
+                      activeInlineEditingId={activeInlineEditingId}
+                    />
                   )}
 
 

@@ -8,8 +8,11 @@ import {
   resolveVerticalAuthoritySnapshot,
 } from "@/components/editor/overlays/inlineAlignmentModelV2";
 import {
-  normalizeInlineEditableText,
+  normalizeInlineEditableDomText,
 } from "@/components/editor/overlays/inlineTextModel";
+import {
+  setPlainTextEditableContent,
+} from "@/components/editor/textSystem/services/textCaretPositionService";
 import {
   applyInlineDomTextRenderParity,
   estimateDomCssInkProbe,
@@ -97,12 +100,7 @@ function HiddenSemanticTextBackend({
   const registerBackend = controller?.registerBackend;
   const editingId = editing?.id || null;
   const rawValue = String(editing?.value ?? "");
-  const normalizedValue = useMemo(
-    () => normalizeInlineEditableText(rawValue, {
-      trimPhantomTrailingNewline: true,
-    }),
-    [rawValue]
-  );
+  const sessionValue = rawValue;
 
   const stage = node?.getStage?.() || null;
   const textNode = useMemo(
@@ -153,12 +151,12 @@ function HiddenSemanticTextBackend({
   useLayoutEffect(() => {
     const editorEl = editableRef.current;
     if (!editorEl) return;
-    const currentText = normalizeInlineEditableText(
+    const currentText = normalizeInlineEditableDomText(
       String(editorEl.innerText || ""),
       { trimPhantomTrailingNewline: true }
     );
     if (currentText !== rawValue) {
-      editorEl.innerText = rawValue;
+      setPlainTextEditableContent(editorEl, rawValue);
     }
   }, [rawValue]);
 
@@ -276,7 +274,7 @@ function HiddenSemanticTextBackend({
   );
   const lineHeightPx = Math.max(1, fontSizePx * Number(nodeProps.lineHeight || 1.2));
   const letterSpacingPx = Number(nodeProps.letterSpacing || 0) * backendMetricScaleX;
-  const normalizedValueForMeasure = normalizedValue.replace(/[ \t]+$/gm, "");
+  const normalizedValueForMeasure = sessionValue.replace(/[ \t]+$/gm, "");
   const isSingleLine = !normalizedValueForMeasure.includes("\n");
 
   const domPerceptualScaleModel = useMemo(

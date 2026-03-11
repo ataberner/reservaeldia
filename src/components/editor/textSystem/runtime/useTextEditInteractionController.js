@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from "react-dom";
 import {
   normalizeInlineEditableText,
+  normalizeInlineEditableDomText,
 } from "@/components/editor/overlays/inlineTextModel";
 import {
   resolveInlineStageViewportMetrics,
@@ -24,6 +25,7 @@ import {
 import {
   applySelectionRange,
   createLogicalCaretRange,
+  normalizeEditablePlainTextStructure,
   resolveEditorRangeTextPosition,
   selectAllEditableContent,
 } from "@/components/editor/textSystem/services/textCaretPositionService";
@@ -247,6 +249,7 @@ function buildCaretTextPreview(text, offset, radius = 12) {
 }
 
 const CANVAS_REFOCUS_BLUR_GUARD_MS = 250;
+const ENTER_VISUAL_CARET_GRACE_MS = 250;
 
 export default function useTextEditInteractionController({
   editing,
@@ -290,17 +293,19 @@ export default function useTextEditInteractionController({
     nextLength: null,
     ts: null,
   });
+  const pendingStructuredSelectionRestoreRef = useRef({
+    logicalOffset: null,
+    textLength: null,
+    inputType: null,
+  });
   const [backendRevision, setBackendRevision] = useState(0);
   const [decorations, setDecorations] = useState(createEmptyDecorations);
   const [isFocused, setIsFocused] = useState(false);
   const [caretBlinkVisible, setCaretBlinkVisible] = useState(true);
 
   const editingId = editing?.id || null;
-  const normalizedValue = useMemo(
-    () =>
-      normalizeInlineEditableText(String(editing?.value ?? ""), {
-        trimPhantomTrailingNewline: true,
-      }),
+  const sessionValue = useMemo(
+    () => String(editing?.value ?? ""),
     [editing?.value]
   );
   const initialCaretClientPoint = useMemo(() => {
@@ -341,6 +346,17 @@ export default function useTextEditInteractionController({
     const logicalOffsetFallbackHint = Number.isFinite(requestedLogicalOffsetRef.current)
       ? Number(requestedLogicalOffsetRef.current)
       : null;
+    const lastInputType = String(lastInputEventRef.current?.inputType || "");
+    const lastKey = String(lastKeyEventRef.current?.key || "");
+    const lastKeyTs = Number(lastKeyEventRef.current?.ts || 0);
+    const preferTerminalEmptyLine =
+      lastInputType === "insertParagraph" ||
+      lastInputType === "insertLineBreak" ||
+      (
+        lastKey === "Enter" &&
+        Number.isFinite(lastKeyTs) &&
+        Date.now() - lastKeyTs <= ENTER_VISUAL_CARET_GRACE_MS
+      );
     const nextGeometry = resolveTextSelectionGeometry({
       editorEl: editorRef.current,
       stage,
@@ -349,6 +365,7 @@ export default function useTextEditInteractionController({
         backendMetaRef.current?.preserveCenterDuringEdit
       ),
       logicalOffsetHint: logicalOffsetFallbackHint,
+      preferTerminalEmptyLine,
     });
     const resolvedLogicalOffset = Number(nextGeometry?.diagnostics?.logicalOffset);
     const logicalOffsetSource = String(
@@ -418,23 +435,23 @@ export default function useTextEditInteractionController({
 
     const debugLogicalOffset = clampCaretOffset(
       nextGeometry?.diagnostics?.logicalOffset,
-      normalizedValue.length
+      sessionValue.length
     );
     const previewSourceOffset = Number.isFinite(debugLogicalOffset)
       ? debugLogicalOffset
       : (
         Number.isFinite(logicalCaretOffsetRef.current)
-          ? clampCaretOffset(logicalCaretOffsetRef.current, normalizedValue.length)
+          ? clampCaretOffset(logicalCaretOffsetRef.current, sessionValue.length)
           : (
             Number.isFinite(requestedLogicalOffsetRef.current)
-              ? clampCaretOffset(requestedLogicalOffsetRef.current, normalizedValue.length)
+              ? clampCaretOffset(requestedLogicalOffsetRef.current, sessionValue.length)
               : null
           )
       );
     const caretTextPayload = {
       id: editingId,
-      textLength: normalizedValue.length,
-      textPreview: buildCaretTextPreview(normalizedValue, previewSourceOffset),
+      textLength: sessionValue.length,
+      textPreview: buildCaretTextPreview(sessionValue, previewSourceOffset),
       offsets: {
         logical: debugLogicalOffset,
         source: nextGeometry?.diagnostics?.logicalOffsetSource || null,
@@ -494,7 +511,7 @@ export default function useTextEditInteractionController({
     return nextGeometry;
   }, [
     editingId,
-    normalizedValue,
+    sessionValue,
     onDebugEvent,
     scaleVisual,
     stageRef,
@@ -548,7 +565,7 @@ export default function useTextEditInteractionController({
 
   const focusEditorAtBoundary = useCallback((boundary = "end") => {
     if (!editorRef.current) return false;
-    const targetOffset = boundary === "start" ? 0 : normalizedValue.length;
+    const targetOffset = boundary === "start" ? 0 : sessionValue.length;
     requestedLogicalOffsetRef.current = targetOffset;
     suppressNextFocusSyncRef.current = true;
     focusSemanticEditor(editorRef.current);
@@ -561,7 +578,7 @@ export default function useTextEditInteractionController({
       window.requestAnimationFrame(syncDecorations);
     });
     return moved;
-  }, [flushDecorationsSync, normalizedValue.length, syncDecorations]);
+  }, [flushDecorationsSync, sessionValue.length, syncDecorations]);
 
   const focusEditorFromViewportPoint = useCallback(({
     clientX,
@@ -581,7 +598,7 @@ export default function useTextEditInteractionController({
     });
     if (!placed) {
       requestedLogicalOffsetRef.current =
-        fallbackBoundary === "start" ? 0 : normalizedValue.length;
+        fallbackBoundary === "start" ? 0 : sessionValue.length;
       moveSemanticCaretToBoundary(editorRef.current, fallbackBoundary);
     }
     flushDecorationsSync();
@@ -590,7 +607,7 @@ export default function useTextEditInteractionController({
       window.requestAnimationFrame(syncDecorations);
     });
     return placed;
-  }, [flushDecorationsSync, normalizedValue.length, syncDecorations]);
+  }, [flushDecorationsSync, sessionValue.length, syncDecorations]);
 
   const selectAllEditorContent = useCallback(() => {
     if (!editorRef.current) return false;
@@ -617,10 +634,10 @@ export default function useTextEditInteractionController({
     }
 
     const preferredLogicalOffset = Number.isFinite(requestedLogicalOffsetRef.current)
-      ? clampCaretOffset(requestedLogicalOffsetRef.current, normalizedValue.length)
+      ? clampCaretOffset(requestedLogicalOffsetRef.current, sessionValue.length)
       : (
         Number.isFinite(logicalCaretOffsetRef.current)
-          ? clampCaretOffset(logicalCaretOffsetRef.current, normalizedValue.length)
+          ? clampCaretOffset(logicalCaretOffsetRef.current, sessionValue.length)
           : null
       );
 
@@ -628,7 +645,7 @@ export default function useTextEditInteractionController({
     focusSemanticEditor(editorEl);
     if (Number.isFinite(preferredLogicalOffset)) {
       const { range } = createLogicalCaretRange(editorEl, preferredLogicalOffset, {
-        textLength: normalizedValue.length,
+        textLength: sessionValue.length,
       });
       if (applySelectionRange(range)) {
         setIsFocused(true);
@@ -638,7 +655,7 @@ export default function useTextEditInteractionController({
     }
 
     return focusEditorAtBoundary(boundary);
-  }, [focusEditorAtBoundary, normalizedValue.length]);
+  }, [focusEditorAtBoundary, sessionValue.length]);
 
   useEffect(() => {
     restoreEditorSelectionRef.current = restoreEditorSelection;
@@ -676,12 +693,44 @@ export default function useTextEditInteractionController({
   }, [editingId, focusEditorFromViewportPoint, onDebugEvent, scaleVisual, stageRef]);
 
   const handleInput = useCallback((event) => {
-    const rawText = String(event?.currentTarget?.innerText || "");
-    const nextValue = normalizeInlineEditableText(rawText, {
+    const editorEl = event?.currentTarget || null;
+    const rawText = String(editorEl?.innerText || "");
+    const domNormalized = normalizeInlineEditableText(rawText, {
+      trimPhantomTrailingNewline: false,
+    });
+    const nextValue = normalizeInlineEditableDomText(rawText, {
       trimPhantomTrailingNewline: true,
     });
+    const isComposing = Boolean(event?.nativeEvent?.isComposing || event?.isComposing);
+    const inputType = String(event?.nativeEvent?.inputType || "");
+    const isLineBreakInput =
+      inputType === "insertParagraph" || inputType === "insertLineBreak";
+    const pendingRestore = pendingStructuredSelectionRestoreRef.current || {};
+    const preferredLogicalOffset =
+      isLineBreakInput &&
+      Number.isFinite(pendingRestore.logicalOffset) &&
+      Number.isFinite(pendingRestore.textLength)
+        ? Math.max(
+          0,
+          Number(pendingRestore.logicalOffset) +
+            Math.max(0, domNormalized.length - Number(pendingRestore.textLength))
+        )
+        : null;
+    if (!isComposing) {
+      normalizeEditablePlainTextStructure(editorEl, domNormalized, {
+        textLength: domNormalized.length,
+        preserveSelection: true,
+        preferredLogicalOffset,
+        preferPreferredLogicalOffset: isLineBreakInput,
+      });
+    }
+    pendingStructuredSelectionRestoreRef.current = {
+      logicalOffset: null,
+      textLength: null,
+      inputType: null,
+    };
     lastInputEventRef.current = {
-      inputType: event?.nativeEvent?.inputType || null,
+      inputType: inputType || null,
       data:
         typeof event?.nativeEvent?.data === "string"
           ? event.nativeEvent.data
@@ -748,6 +797,40 @@ export default function useTextEditInteractionController({
       window.requestAnimationFrame(() => {
         syncDecorations();
       });
+    }
+    if (event.key === "Enter" && !event.isComposing) {
+      const editorEl = editorRef.current;
+      const currentRange = getSelectionRangeInsideEditor(editorEl);
+      const currentPosition = currentRange
+        ? resolveEditorRangeTextPosition(editorEl, currentRange)
+        : null;
+      const currentRawText = normalizeInlineEditableText(
+        String(editorEl?.innerText || ""),
+        { trimPhantomTrailingNewline: false }
+      );
+      const currentLogicalOffset = Number.isFinite(currentPosition?.logicalFocusOffset)
+        ? Number(currentPosition.logicalFocusOffset)
+        : (
+          Number.isFinite(currentPosition?.logicalOffset)
+            ? Number(currentPosition.logicalOffset)
+            : null
+        );
+      pendingStructuredSelectionRestoreRef.current = {
+        logicalOffset: currentLogicalOffset,
+        textLength: currentRawText.length,
+        inputType: "enter",
+      };
+      setCaretBlinkVisible(true);
+      window.requestAnimationFrame(() => {
+        syncDecorations();
+        window.requestAnimationFrame(syncDecorations);
+      });
+    } else {
+      pendingStructuredSelectionRestoreRef.current = {
+        logicalOffset: null,
+        textLength: null,
+        inputType: null,
+      };
     }
     if (event.key === "Escape") {
       event.preventDefault();
@@ -871,7 +954,7 @@ export default function useTextEditInteractionController({
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [editingId, normalizedValue, syncDecorations]);
+  }, [editingId, sessionValue, syncDecorations]);
 
   useEffect(() => {
     if (!editingId || typeof document === "undefined") return undefined;
@@ -930,7 +1013,7 @@ export default function useTextEditInteractionController({
 
   return {
     editingId,
-    normalizedValue,
+    normalizedValue: sessionValue,
     rootRef,
     editorRef,
     registerBackend,

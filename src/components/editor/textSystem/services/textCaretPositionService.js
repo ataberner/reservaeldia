@@ -1,4 +1,5 @@
 import {
+  normalizeInlineEditableDomText,
   normalizeInlineEditableText,
 } from "@/components/editor/overlays/inlineTextModel";
 
@@ -75,6 +76,133 @@ export function clampEditableRangeOffset(node, rawOffset) {
   return Math.min(numericOffset, node.childNodes?.length || 0);
 }
 
+function isSelectionRangeInsideEditor(editorEl, range) {
+  if (!editorEl || !range) return false;
+  const startContainer = range.startContainer || null;
+  const endContainer = range.endContainer || null;
+  if (!startContainer || !endContainer) return false;
+  if (startContainer === editorEl || endContainer === editorEl) return true;
+  if (typeof editorEl.contains !== "function") return false;
+  return editorEl.contains(startContainer) && editorEl.contains(endContainer);
+}
+
+export function hasStructuredEditableContent(editorEl) {
+  if (!editorEl) return false;
+  try {
+    if (typeof editorEl.querySelector === "function") {
+      return Boolean(editorEl.querySelector("*"));
+    }
+  } catch {
+    // no-op
+  }
+  return Array.from(editorEl.childNodes || []).some((node) => node?.nodeType === 1);
+}
+
+export function setPlainTextEditableContent(editorEl, nextText) {
+  if (!editorEl) return false;
+  const resolvedText = String(nextText ?? "");
+  const currentText = String(editorEl.textContent ?? "");
+  const hasStructuredContent = hasStructuredEditableContent(editorEl);
+  if (!hasStructuredContent && currentText === resolvedText) {
+    return false;
+  }
+  editorEl.textContent = resolvedText;
+  return true;
+}
+
+export function normalizeEditablePlainTextStructure(
+  editorEl,
+  nextText,
+  {
+    textLength = null,
+    preserveSelection = true,
+    preferredLogicalOffset = null,
+    preferPreferredLogicalOffset = false,
+  } = {}
+) {
+  if (!editorEl) {
+    return {
+      applied: false,
+      restoredSelection: false,
+      selectionLogicalOffset: null,
+      resolvedSelectionLogicalOffset: null,
+      appliedSelectionLogicalOffset: null,
+      selectionAliasKind: null,
+      hadStructuredContent: false,
+    };
+  }
+
+  const hadStructuredContent = hasStructuredEditableContent(editorEl);
+  let selectionLogicalOffset = null;
+  let resolvedSelectionLogicalOffset = null;
+  let selectionAliasKind = null;
+  if (preserveSelection && hasDocumentSelectionApi()) {
+    try {
+      const selection = window.getSelection?.();
+      if (selection?.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        if (isSelectionRangeInsideEditor(editorEl, range)) {
+          const position = resolveEditorRangeTextPosition(editorEl, range);
+          selectionAliasKind = position?.selectionAliasKind || null;
+          if (Number.isFinite(position?.logicalFocusOffset)) {
+            resolvedSelectionLogicalOffset = Number(position.logicalFocusOffset);
+          } else if (Number.isFinite(position?.logicalOffset)) {
+            resolvedSelectionLogicalOffset = Number(position.logicalOffset);
+          }
+        }
+      }
+    } catch {
+      resolvedSelectionLogicalOffset = null;
+      selectionAliasKind = null;
+    }
+  }
+
+  const safePreferredLogicalOffset = Number.isFinite(preferredLogicalOffset)
+    ? Number(preferredLogicalOffset)
+    : null;
+  selectionLogicalOffset =
+    preferPreferredLogicalOffset && Number.isFinite(safePreferredLogicalOffset)
+      ? safePreferredLogicalOffset
+      : resolvedSelectionLogicalOffset;
+  if (
+    !Number.isFinite(selectionLogicalOffset) &&
+    Number.isFinite(safePreferredLogicalOffset)
+  ) {
+    selectionLogicalOffset = safePreferredLogicalOffset;
+  }
+
+  const applied = setPlainTextEditableContent(editorEl, nextText);
+  if (!applied) {
+    return {
+      applied: false,
+      restoredSelection: false,
+      selectionLogicalOffset,
+      resolvedSelectionLogicalOffset,
+      appliedSelectionLogicalOffset: selectionLogicalOffset,
+      selectionAliasKind,
+      hadStructuredContent,
+    };
+  }
+
+  let restoredSelection = false;
+  if (preserveSelection && Number.isFinite(selectionLogicalOffset)) {
+    const { range } = createLogicalCaretRange(editorEl, selectionLogicalOffset, {
+      textLength,
+    });
+    restoredSelection = applySelectionRange(range);
+  }
+
+  return {
+    applied: true,
+    restoredSelection,
+    selectionLogicalOffset,
+    resolvedSelectionLogicalOffset,
+    appliedSelectionLogicalOffset: selectionLogicalOffset,
+    selectionAliasKind,
+    hadStructuredContent,
+  };
+}
+
 export function normalizeEditableRawText(rawText) {
   return normalizeInlineEditableText(String(rawText ?? ""), {
     trimPhantomTrailingNewline: false,
@@ -82,7 +210,7 @@ export function normalizeEditableRawText(rawText) {
 }
 
 export function getCanonicalEditorText(editorEl) {
-  return normalizeInlineEditableText(String(editorEl?.innerText || ""), {
+  return normalizeInlineEditableDomText(String(editorEl?.innerText || ""), {
     trimPhantomTrailingNewline: true,
   });
 }
@@ -602,6 +730,26 @@ export function resolveEditorCaretTextPosition(
         : target.strategy,
       textLength: safeTextLength,
     };
+  }
+
+  if (selectionAliasKind && Number.isFinite(logicalOffset)) {
+    const target = resolveLogicalCaretTarget(editorEl, logicalOffset, {
+      textLength: safeTextLength,
+    });
+    if (target?.node) {
+      return {
+        logicalOffset: Number.isFinite(target.logicalOffset)
+          ? Number(target.logicalOffset)
+          : logicalOffset,
+        selectionAliasKind,
+        resolvedNode: target.node,
+        resolvedOffset: Number.isFinite(target.offset)
+          ? Number(target.offset)
+          : null,
+        strategy: `${selectionAliasKind}-to-${target.strategy || "logical-target"}`,
+        textLength: safeTextLength,
+      };
+    }
   }
 
   return {

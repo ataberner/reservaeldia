@@ -7,6 +7,7 @@ import {
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 import {
+  setPlainTextEditableContent,
   selectAllEditableContent,
 } from "@/components/editor/textSystem/services/textCaretPositionService";
 
@@ -86,7 +87,7 @@ export default function useInlineEditorMountLifecycle({
     if (el instanceof HTMLInputElement) {
       el.value = initialText;
     } else {
-      el.innerText = initialText;
+      setPlainTextEditableContent(el, initialText);
     }
 
     const finalizeLayoutProbe = ({ emitAfterFocus = true } = {}) => {

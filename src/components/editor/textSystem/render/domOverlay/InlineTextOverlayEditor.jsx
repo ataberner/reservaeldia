@@ -96,6 +96,22 @@ function emitInlineNudgeDiag(debugMode, eventName, payload = {}) {
   }
 }
 
+function buildInlineLayoutTextValue(rawText) {
+  return normalizeInlineEditableText(String(rawText ?? ""), {
+    trimPhantomTrailingNewline: false,
+  });
+}
+
+function hasOnlyPhantomTrailingNewlineDelta(previousValue, nextValue) {
+  return (
+    typeof previousValue === "string" &&
+    typeof nextValue === "string" &&
+    previousValue.length === nextValue.length + 1 &&
+    previousValue.endsWith("\n") &&
+    previousValue.slice(0, -1) === nextValue
+  );
+}
+
 function isFiniteRectPayload(rect) {
   if (!rect) return false;
   const x = Number(rect.x);
@@ -217,6 +233,7 @@ export default function InlineTextEditor({
     sessionId: null,
     settled: false,
   });
+  const layoutTextSessionRef = useRef(null);
   const inlinePristineValueRef = useRef({
     editingId: null,
     initialNormalizedValue: null,
@@ -377,6 +394,33 @@ export default function InlineTextEditor({
   const normalizedValue = normalizeInlineEditableText(rawValue, {
     trimPhantomTrailingNewline: true,
   });
+  const [layoutTextValue, setLayoutTextValue] = useState(() =>
+    buildInlineLayoutTextValue(rawValue)
+  );
+  useEffect(() => {
+    if (layoutTextSessionRef.current === (editingId || null)) return;
+    layoutTextSessionRef.current = editingId || null;
+    setLayoutTextValue(buildInlineLayoutTextValue(rawValue));
+  }, [editingId, rawValue]);
+  useEffect(() => {
+    const nextLayoutTextValue = buildInlineLayoutTextValue(rawValue);
+    setLayoutTextValue((prev) => {
+      if (prev === nextLayoutTextValue) return prev;
+      const prevCanonicalValue = normalizeInlineEditableText(prev, {
+        trimPhantomTrailingNewline: true,
+      });
+      if (prevCanonicalValue !== normalizedValue) return nextLayoutTextValue;
+      return hasOnlyPhantomTrailingNewlineDelta(prev, nextLayoutTextValue)
+        ? nextLayoutTextValue
+        : prev;
+    });
+  }, [editingId, normalizedValue, rawValue]);
+  const handleDomLayoutValueChange = useCallback((nextDomValue) => {
+    const nextLayoutTextValue = buildInlineLayoutTextValue(nextDomValue);
+    setLayoutTextValue((prev) => (
+      prev === nextLayoutTextValue ? prev : nextLayoutTextValue
+    ));
+  }, []);
   if (inlinePristineValueRef.current.editingId !== (editingId || null)) {
     inlinePristineValueRef.current = {
       editingId: editingId || null,
@@ -393,9 +437,10 @@ export default function InlineTextEditor({
     inlinePristineValueRef.current.editingId === (editingId || null) &&
     inlinePristineValueRef.current.dirty === false
   );
-  const normalizedValueForMeasure = normalizedValue.replace(/[ \t]+$/gm, "");
-  const normalizedValueForSingleLine = normalizedValueForMeasure.replace(/\n+$/g, "");
-  const isSingleLine = !normalizedValueForMeasure.includes("\n");
+  const layoutTextValueForMeasure = layoutTextValue.replace(/[ \t]+$/gm, "");
+  const normalizedValueForMeasure = layoutTextValueForMeasure;
+  const normalizedValueForSingleLine = layoutTextValueForMeasure.replace(/\n+$/g, "");
+  const isSingleLine = !layoutTextValueForMeasure.includes("\n");
   const probeTextForAlignment = useMemo(
     () =>
       buildInlineProbeText({
@@ -2888,6 +2933,7 @@ export default function InlineTextEditor({
     sessionIdRef: overlaySessionIdRef,
     overlayPhase,
     normalizedValue,
+    onDomLayoutValueChange: handleDomLayoutValueChange,
     onChange,
     emitDebug,
     triggerFinish,
@@ -2932,6 +2978,7 @@ export default function InlineTextEditor({
       internalContentOffsetPx={effectiveInternalContentOffsetPx}
       isEditorVisible={isEditorVisible}
       isEditorInteractive={isEditorInteractive}
+      isSingleLine={isSingleLine}
       fontSizePx={domRenderFontSizePx}
       nodeProps={nodeProps}
       editableLineHeightPx={editableLineHeightPx}

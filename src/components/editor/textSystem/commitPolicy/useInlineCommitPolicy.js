@@ -4,6 +4,7 @@ import {
   inlineDebugLog,
 } from "@/components/editor/canvasEditor/inlineSnapshotPrimitives";
 import {
+  normalizeInlineEditableDomText as normalizeInlineEditableDomTextShared,
   normalizeInlineEditableText as normalizeInlineEditableTextShared,
 } from "@/components/editor/overlays/inlineTextModel";
 import {
@@ -76,10 +77,14 @@ export default function useCanvasEditorInlineCommitHandlers({
         ? overlayEditor.innerText
         : null;
 
-    const textoNuevoRaw = normalizeInlineEditableTextShared(
-      domRawText == null ? String(editing.value ?? "") : domRawText,
-      { trimPhantomTrailingNewline: true }
-    );
+    const textoNuevoRaw =
+      domRawText == null
+        ? normalizeInlineEditableTextShared(String(editing.value ?? ""), {
+            trimPhantomTrailingNewline: true,
+          })
+        : normalizeInlineEditableDomTextShared(domRawText, {
+            trimPhantomTrailingNewline: true,
+          });
 
     captureInlineSnapshot("finish: blur", {
       id: finishId,

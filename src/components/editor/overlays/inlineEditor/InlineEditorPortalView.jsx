@@ -42,6 +42,7 @@ export default function InlineEditorPortalView({
   internalContentOffsetPx = 0,
   isEditorVisible,
   isEditorInteractive,
+  isSingleLine = true,
   fontSizePx,
   nodeProps,
   editableLineHeightPx,
@@ -226,6 +227,8 @@ export default function InlineEditorPortalView({
               contentEditable={isEditorInteractive}
               suppressContentEditableWarning
               spellCheck={false}
+              role="textbox"
+              aria-multiline={isSingleLine ? "false" : "true"}
               style={{
                 display: "block",
                 verticalAlign: "top",
@@ -241,9 +244,9 @@ export default function InlineEditorPortalView({
                 transform: "none",
                 visibility: isEditorVisible ? "visible" : "hidden",
                 pointerEvents: isEditorInteractive ? "auto" : "none",
-                whiteSpace: "pre",
-                overflowWrap: "normal",
-                wordBreak: "normal",
+                whiteSpace: isSingleLine ? "pre" : "pre-wrap",
+                overflowWrap: isSingleLine ? "normal" : "break-word",
+                wordBreak: isSingleLine ? "normal" : "break-word",
                 overflow: "visible",
                 fontSize: `${fontSizePx}px`,
                 fontFamily: nodeProps.fontFamily,

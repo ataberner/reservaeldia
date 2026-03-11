@@ -209,6 +209,120 @@ function resolveSingleLineMetricCaretFallbackRect(
   };
 }
 
+function resolveTerminalEmptyLineMetricCaretFallbackRect(
+  editorEl,
+  {
+    preserveCenterDuringEdit = false,
+    logicalOffset = null,
+    logicalOffsetHint = null,
+    selectionAliasKind = null,
+    textLength = null,
+  } = {}
+) {
+  if (
+    !editorEl ||
+    typeof window === "undefined" ||
+    typeof document === "undefined"
+  ) {
+    return null;
+  }
+
+  const rawText = String(editorEl.innerText || "");
+  const trailingNewlines = rawText.match(/\n+$/)?.[0].length || 0;
+  if (trailingNewlines <= 0 || !rawText.includes("\n")) return null;
+
+  const resolvedLogicalOffset = Number.isFinite(logicalOffset)
+    ? Number(logicalOffset)
+    : null;
+  const globalOffset = Number.isFinite(resolvedLogicalOffset)
+    ? Number(resolvedLogicalOffset)
+    : (
+      Number.isFinite(logicalOffsetHint)
+        ? Number(logicalOffsetHint)
+        : null
+    );
+  const canonicalTextLength = Number.isFinite(textLength)
+    ? Math.max(0, Number(textLength))
+    : null;
+  const isBoundaryEndSelection =
+    selectionAliasKind === "root-end" ||
+    selectionAliasKind === "element-end";
+  const isAtCanonicalEnd =
+    Number.isFinite(globalOffset) &&
+    Number.isFinite(canonicalTextLength) &&
+    globalOffset >= canonicalTextLength;
+  if (!isBoundaryEndSelection && !isAtCanonicalEnd) return null;
+
+  const editorRect = editorEl.getBoundingClientRect?.() || null;
+  if (!editorRect) return null;
+
+  const computedStyle = window.getComputedStyle?.(editorEl) || null;
+  const fontSize = parseCssPixelValue(computedStyle?.fontSize, null);
+  const lineHeight =
+    parseCssPixelValue(computedStyle?.lineHeight, fontSize) || fontSize;
+  if (!Number.isFinite(fontSize) || fontSize <= 0) return null;
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return null;
+
+  const textAlign = String(computedStyle?.textAlign || "left").toLowerCase();
+  const paddingLeft = parseCssPixelValue(computedStyle?.paddingLeft, 0) || 0;
+  const paddingRight = parseCssPixelValue(computedStyle?.paddingRight, 0) || 0;
+  const paddingTop = parseCssPixelValue(computedStyle?.paddingTop, 0) || 0;
+  const containerWidth = Math.max(0, Number(editorRect.width || 0));
+  const contentWidth = Math.max(0, containerWidth - paddingLeft - paddingRight);
+  const contentLeft = Number(editorRect.left || 0) + paddingLeft;
+  const contentTop = Number(editorRect.top || 0) + paddingTop;
+  const rawLines = rawText.split("\n");
+  const terminalLineIndex = Math.max(0, rawLines.length - 1);
+
+  let x = contentLeft;
+  if (preserveCenterDuringEdit || textAlign === "center") {
+    x = contentLeft + contentWidth / 2;
+  } else if (textAlign === "right" || textAlign === "end") {
+    x = contentLeft + contentWidth;
+  }
+
+  const rect = {
+    x,
+    y: contentTop + terminalLineIndex * lineHeight,
+    width: 0,
+    height: lineHeight,
+  };
+
+  return {
+    rect,
+    diagnostics: {
+      kind: "metric-terminal-empty-line",
+      globalOffset,
+      resolvedGlobalOffset: Number.isFinite(resolvedLogicalOffset)
+        ? resolvedLogicalOffset
+        : null,
+      usedLogicalOffsetHint:
+        !Number.isFinite(resolvedLogicalOffset) &&
+        Number.isFinite(logicalOffsetHint),
+      selectionAliasKind,
+      preserveCenterDuringEdit,
+      textAlign,
+      trailingNewlines,
+      canonicalTextLength,
+      rawTextLength: rawText.length,
+      rawLineCount: rawLines.length,
+      terminalLineIndex,
+      lineHeight,
+      fontSize,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      editorRect: toDebugRect({
+        x: Number(editorRect.left || 0),
+        y: Number(editorRect.top || 0),
+        width: Number(editorRect.width || 0),
+        height: Number(editorRect.height || 0),
+      }),
+      rect: toDebugRect(rect),
+    },
+  };
+}
+
 function buildCaretProxyRect(rect, edge = "start") {
   if (!rectHasVisibleHeight(rect)) return null;
   const x =
@@ -272,6 +386,7 @@ export function resolveTextSelectionGeometry({
   scaleVisual = 1,
   preserveCenterDuringEdit = false,
   logicalOffsetHint = null,
+  preferTerminalEmptyLine = false,
 }) {
   if (!editorEl || !stage || typeof window === "undefined") {
     return createEmptyTextSelectionGeometry();
@@ -323,7 +438,22 @@ export function resolveTextSelectionGeometry({
       selectionAliasKind &&
       selectionAliasKind.startsWith("root-")
   );
-  const metricCaretFallback =
+  const terminalEmptyLineCaretFallback =
+    isCollapsed &&
+    preferTerminalEmptyLine &&
+    !hasRawCollapsedCaretRect &&
+    !hasCanonicalCollapsedCaretRect
+      ? resolveTerminalEmptyLineMetricCaretFallbackRect(editorEl, {
+          preserveCenterDuringEdit,
+          logicalOffset: selectionLogicalOffset,
+          logicalOffsetHint: Number.isFinite(selectionLogicalOffset)
+            ? null
+            : logicalOffsetHint,
+          selectionAliasKind,
+          textLength: selectionPosition?.textLength ?? null,
+        })
+      : null;
+  const singleLineMetricCaretFallback =
     isCollapsed &&
     !hasRawCollapsedCaretRect &&
     !hasCanonicalCollapsedCaretRect
@@ -335,6 +465,8 @@ export function resolveTextSelectionGeometry({
             : logicalOffsetHint,
         })
       : null;
+  const metricCaretFallback =
+    terminalEmptyLineCaretFallback || singleLineMetricCaretFallback;
   const glyphCaretFallbackRect = resolveCollapsedCaretFallbackRect(editorEl, range);
   const fullRangeRect = getFullRangeRect(editorEl) || null;
   let caretSourceKind = null;

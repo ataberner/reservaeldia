@@ -22,6 +22,9 @@ import {
 import {
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
+import {
+  readClientPointFromCanvasEvent,
+} from "@/components/editor/textSystem/services/textCanvasPointerService";
 
 const INLINE_INTENT_STALE_MS = 1500;
 
@@ -286,6 +289,7 @@ export default function CanvasStageContent({
     targetObj,
     sourceGesture = "primary",
     sourceReason = null,
+    sourceClientPoint = null,
   }) => {
     if (!id || !targetObj) return;
 
@@ -397,13 +401,21 @@ export default function CanvasStageContent({
       previousCurrentEditingId: previousCurrentEditingId || null,
     });
 
-    startEdit(id, initialText);
+    startEdit(id, initialText, {
+      initialCaretClientPoint: sourceClientPoint,
+    });
     node?.draggable(false);
     node?.getLayer?.()?.batchDraw?.();
     captureInlineSnapshot("enter: after-start-sync", {
       id,
       previousId: previousCurrentEditingId,
       nextCurrentEditingId: getCurrentInlineEditingId(),
+      requestedCaretClientX: Number.isFinite(Number(sourceClientPoint?.clientX))
+        ? Number(sourceClientPoint.clientX)
+        : null,
+      requestedCaretClientY: Number.isFinite(Number(sourceClientPoint?.clientY))
+        ? Number(sourceClientPoint.clientY)
+        : null,
     });
     captureInlineSnapshot("overlay: before-mount", {
       id,
@@ -638,6 +650,10 @@ export default function CanvasStageContent({
         targetObj: obj,
         sourceGesture: gesture,
         sourceReason: reason || null,
+        sourceClientPoint: readClientPointFromCanvasEvent(
+          event,
+          stageRef.current?.getStage?.() || stageRef.current || null
+        ),
       });
     }
   }, [
@@ -649,6 +665,7 @@ export default function CanvasStageContent({
     requestInlineEditFinish,
     restoreElementDrag,
     setElementosSeleccionados,
+    stageRef,
     startInlineFromDecision,
   ]);
 

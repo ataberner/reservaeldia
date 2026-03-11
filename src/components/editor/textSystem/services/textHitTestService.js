@@ -1,6 +1,8 @@
 import {
   applySelectionRange,
   createBoundaryCaretRange,
+  createLogicalCaretRange,
+  getCanonicalEditorTextLength,
   resolveEditorRangeTextPosition,
 } from "@/components/editor/textSystem/services/textCaretPositionService";
 
@@ -47,6 +49,84 @@ function getViewportPointPosition({ clientX, clientY }) {
   return null;
 }
 
+function isUsableViewportRect(rect) {
+  return (
+    rect &&
+    Number.isFinite(Number(rect.left)) &&
+    Number.isFinite(Number(rect.top)) &&
+    Number.isFinite(Number(rect.bottom))
+  );
+}
+
+function readCollapsedCaretViewportRect(range) {
+  if (!range) return null;
+  try {
+    const rects = range.getClientRects?.() || [];
+    for (const rect of rects) {
+      if (isUsableViewportRect(rect)) {
+        return rect;
+      }
+    }
+    const boundingRect = range.getBoundingClientRect?.() || null;
+    return isUsableViewportRect(boundingRect) ? boundingRect : null;
+  } catch {
+    return null;
+  }
+}
+
+function computeAxisDistance(value, start, end) {
+  const numericValue = Number(value);
+  const numericStart = Number(start);
+  const numericEnd = Number(end);
+  if (
+    !Number.isFinite(numericValue) ||
+    !Number.isFinite(numericStart) ||
+    !Number.isFinite(numericEnd)
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+  if (numericValue < numericStart) return numericStart - numericValue;
+  if (numericValue > numericEnd) return numericValue - numericEnd;
+  return 0;
+}
+
+function resolveLogicalCaretRangeFromPoint({
+  editorEl,
+  clientX,
+  clientY,
+}) {
+  if (!editorEl) return null;
+  const textLength = getCanonicalEditorTextLength(editorEl);
+  let bestMatch = null;
+
+  for (let logicalOffset = 0; logicalOffset <= textLength; logicalOffset += 1) {
+    const { range } = createLogicalCaretRange(editorEl, logicalOffset, {
+      textLength,
+    });
+    const caretRect = readCollapsedCaretViewportRect(range);
+    if (!caretRect) continue;
+
+    const verticalDistance = computeAxisDistance(
+      clientY,
+      caretRect.top,
+      caretRect.bottom
+    );
+    const horizontalDistance = Math.abs(
+      Number(clientX) - Number(caretRect.left)
+    );
+    const score = verticalDistance * 10000 + horizontalDistance;
+
+    if (!bestMatch || score < bestMatch.score) {
+      bestMatch = {
+        score,
+        range,
+      };
+    }
+  }
+
+  return bestMatch?.range || null;
+}
+
 export function focusSemanticEditor(editorEl) {
   if (!editorEl || typeof editorEl.focus !== "function") return;
   try {
@@ -76,6 +156,15 @@ export function resolveSemanticCaretRangeFromPoint({
   if (range && containsNode(editorEl, range.startContainer)) {
     const canonicalPosition = resolveEditorRangeTextPosition(editorEl, range);
     return canonicalPosition.canonicalRange || range;
+  }
+
+  const logicalFallbackRange = resolveLogicalCaretRangeFromPoint({
+    editorEl,
+    clientX,
+    clientY,
+  });
+  if (logicalFallbackRange) {
+    return logicalFallbackRange;
   }
 
   const editorRect = editorEl.getBoundingClientRect?.() || null;

@@ -26,6 +26,9 @@ import {
   createLogicalCaretRange,
   resolveEditorRangeTextPosition,
 } from "@/components/editor/textSystem/services/textCaretPositionService";
+import {
+  readClientPointFromCanvasEvent,
+} from "@/components/editor/textSystem/services/textCanvasPointerService";
 
 function createEmptyDecorations() {
   return createEmptyTextSelectionGeometry();
@@ -192,34 +195,6 @@ function getSelectionRangeInsideEditor(editorEl) {
   return null;
 }
 
-function readClientPointFromCanvasEvent(event, stage, scaleVisual) {
-  const nativeEvent = event?.evt || event;
-  const clientX = Number(nativeEvent?.clientX);
-  const clientY = Number(nativeEvent?.clientY);
-  if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
-    return { clientX, clientY };
-  }
-
-  const pointerPosition =
-    stage?.getPointerPosition?.() ||
-    (Number.isFinite(Number(event?.x)) && Number.isFinite(Number(event?.y))
-      ? { x: Number(event.x), y: Number(event.y) }
-      : null);
-  const stageMetrics = resolveInlineStageViewportMetrics(stage, { scaleVisual });
-  if (!pointerPosition || !stageMetrics?.stageRect) {
-    return { clientX: null, clientY: null };
-  }
-
-  return {
-    clientX:
-      Number(stageMetrics.stageRect.left || 0) +
-      Number(pointerPosition.x || 0) * Number(stageMetrics.totalScaleX || 1),
-    clientY:
-      Number(stageMetrics.stageRect.top || 0) +
-      Number(pointerPosition.y || 0) * Number(stageMetrics.totalScaleY || 1),
-  };
-}
-
 function isSelectionNavigationKey(key) {
   return (
     key === "ArrowLeft" ||
@@ -270,6 +245,8 @@ function buildCaretTextPreview(text, offset, radius = 12) {
   };
 }
 
+const CANVAS_REFOCUS_BLUR_GUARD_MS = 250;
+
 export default function useTextEditInteractionController({
   editing,
   stageRef,
@@ -292,6 +269,8 @@ export default function useTextEditInteractionController({
   const caretBlinkVisibleRef = useRef(true);
   const logicalCaretOffsetRef = useRef(null);
   const requestedLogicalOffsetRef = useRef(null);
+  const pendingInitialCaretPointRef = useRef(null);
+  const pendingCanvasRefocusRef = useRef(null);
   const suppressNextFocusSyncRef = useRef(false);
   const lastKeyEventRef = useRef({
     key: null,
@@ -318,6 +297,17 @@ export default function useTextEditInteractionController({
       }),
     [editing?.value]
   );
+  const initialCaretClientPoint = useMemo(() => {
+    const clientX = Number(editing?.initialCaretClientPoint?.clientX);
+    const clientY = Number(editing?.initialCaretClientPoint?.clientY);
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+      return null;
+    }
+    return { clientX, clientY };
+  }, [
+    editing?.initialCaretClientPoint?.clientX,
+    editing?.initialCaretClientPoint?.clientY,
+  ]);
 
   useEffect(() => {
     isFocusedRef.current = isFocused;
@@ -326,6 +316,10 @@ export default function useTextEditInteractionController({
   useEffect(() => {
     caretBlinkVisibleRef.current = caretBlinkVisible;
   }, [caretBlinkVisible]);
+
+  useEffect(() => {
+    pendingInitialCaretPointRef.current = initialCaretClientPoint;
+  }, [editingId, initialCaretClientPoint]);
 
   const syncDecorations = useCallback(() => {
     const stage = stageRef.current?.getStage?.() || stageRef.current || null;
@@ -558,6 +552,35 @@ export default function useTextEditInteractionController({
     return moved;
   }, [flushDecorationsSync, normalizedValue.length, syncDecorations]);
 
+  const focusEditorFromViewportPoint = useCallback(({
+    clientX,
+    clientY,
+    fallbackBoundary = "end",
+  }) => {
+    if (!editorRef.current) return false;
+    suppressNextFocusSyncRef.current = true;
+    requestedLogicalOffsetRef.current = null;
+    focusSemanticEditor(editorRef.current);
+    setIsFocused(true);
+    setCaretBlinkVisible(true);
+    const placed = placeSemanticCaretFromPoint({
+      editorEl: editorRef.current,
+      clientX,
+      clientY,
+    });
+    if (!placed) {
+      requestedLogicalOffsetRef.current =
+        fallbackBoundary === "start" ? 0 : normalizedValue.length;
+      moveSemanticCaretToBoundary(editorRef.current, fallbackBoundary);
+    }
+    flushDecorationsSync();
+    window.requestAnimationFrame(syncDecorations);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(syncDecorations);
+    });
+    return placed;
+  }, [flushDecorationsSync, normalizedValue.length, syncDecorations]);
+
   const restoreEditorSelection = useCallback((boundary = "end") => {
     const editorEl = editorRef.current;
     if (!editorEl) return false;
@@ -593,7 +616,7 @@ export default function useTextEditInteractionController({
     restoreEditorSelectionRef.current = restoreEditorSelection;
   }, [restoreEditorSelection]);
 
-  const handleCanvasPointer = useCallback((event) => {
+  const handleCanvasPointer = useCallback((event, targetObj = null) => {
     if (!editingId || !editorRef.current) return false;
     const stage = stageRef.current?.getStage?.() || stageRef.current || null;
     const { clientX, clientY } = readClientPointFromCanvasEvent(
@@ -601,34 +624,28 @@ export default function useTextEditInteractionController({
       stage,
       scaleVisual
     );
-
-    suppressNextFocusSyncRef.current = true;
-    requestedLogicalOffsetRef.current = null;
-    focusSemanticEditor(editorRef.current);
-    setIsFocused(true);
-    setCaretBlinkVisible(true);
-    const placed = placeSemanticCaretFromPoint({
-      editorEl: editorRef.current,
-      clientX,
-      clientY,
-    });
-    if (!placed) {
-      requestedLogicalOffsetRef.current = normalizedValue.length;
-      moveSemanticCaretToBoundary(editorRef.current, "end");
+    const targetId = targetObj?.id || null;
+    const isSameEditingTarget = !targetId || targetId === editingId;
+    if (isSameEditingTarget) {
+      pendingCanvasRefocusRef.current = {
+        editingId,
+        clientX,
+        clientY,
+        fallbackBoundary: "end",
+        armedAtMs: Date.now(),
+      };
     }
-    flushDecorationsSync();
-    window.requestAnimationFrame(syncDecorations);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(syncDecorations);
-    });
+    const placed = focusEditorFromViewportPoint({ clientX, clientY });
     onDebugEvent?.("semantic:canvas-pointer", {
       id: editingId,
       placed,
+      targetId,
+      isSameEditingTarget,
       clientX: Number.isFinite(Number(clientX)) ? Number(clientX) : null,
       clientY: Number.isFinite(Number(clientY)) ? Number(clientY) : null,
     });
     return true;
-  }, [editingId, flushDecorationsSync, normalizedValue.length, onDebugEvent, scaleVisual, stageRef, syncDecorations]);
+  }, [editingId, focusEditorFromViewportPoint, onDebugEvent, scaleVisual, stageRef]);
 
   const handleInput = useCallback((event) => {
     const rawText = String(event?.currentTarget?.innerText || "");
@@ -654,6 +671,7 @@ export default function useTextEditInteractionController({
   }, [editing?.value, flushDecorationsSync, onChange, syncDecorations]);
 
   const handleFocus = useCallback(() => {
+    pendingCanvasRefocusRef.current = null;
     setIsFocused(true);
     setCaretBlinkVisible(true);
     if (suppressNextFocusSyncRef.current) {
@@ -665,9 +683,30 @@ export default function useTextEditInteractionController({
   }, [flushDecorationsSync, syncDecorations]);
 
   const handleBlur = useCallback(() => {
+    const pendingCanvasRefocus = pendingCanvasRefocusRef.current;
+    const sameEditingSession =
+      pendingCanvasRefocus?.editingId === editingId;
+    const refocusStillFresh =
+      sameEditingSession &&
+      Number.isFinite(Number(pendingCanvasRefocus?.armedAtMs)) &&
+      Date.now() - Number(pendingCanvasRefocus.armedAtMs) <=
+        CANVAS_REFOCUS_BLUR_GUARD_MS;
+    if (refocusStillFresh) {
+      window.requestAnimationFrame(() => {
+        const latestPending = pendingCanvasRefocusRef.current;
+        if (latestPending?.editingId !== editingId) return;
+        focusEditorFromViewportPoint({
+          clientX: latestPending.clientX,
+          clientY: latestPending.clientY,
+          fallbackBoundary: latestPending.fallbackBoundary || "end",
+        });
+      });
+      return;
+    }
+    pendingCanvasRefocusRef.current = null;
     setIsFocused(false);
     requestFinish("blur");
-  }, [requestFinish]);
+  }, [editingId, focusEditorFromViewportPoint, requestFinish]);
 
   const handleKeyDown = useCallback((event) => {
     event.stopPropagation();
@@ -732,6 +771,7 @@ export default function useTextEditInteractionController({
       logicalCaretOffsetRef.current = null;
       requestedLogicalOffsetRef.current = null;
       suppressNextFocusSyncRef.current = false;
+      pendingCanvasRefocusRef.current = null;
       setIsFocused(false);
       setCaretBlinkVisible(true);
       setDecorations(createEmptyDecorations());
@@ -746,12 +786,22 @@ export default function useTextEditInteractionController({
   useEffect(() => {
     if (!editingId || !editorRef.current) return undefined;
     const rafId = window.requestAnimationFrame(() => {
+      const pendingPoint = pendingInitialCaretPointRef.current;
+      if (pendingPoint) {
+        pendingInitialCaretPointRef.current = null;
+        focusEditorFromViewportPoint({
+          clientX: pendingPoint.clientX,
+          clientY: pendingPoint.clientY,
+          fallbackBoundary: "end",
+        });
+        return;
+      }
       restoreEditorSelectionRef.current?.("end");
     });
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [backendRevision, editingId]);
+  }, [backendRevision, editingId, focusEditorFromViewportPoint]);
 
   useLayoutEffect(() => {
     if (!editingId) return undefined;

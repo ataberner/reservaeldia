@@ -82,6 +82,7 @@ const FontSelector = memo(({
   const panelNode = (
     <div
       ref={containerRef}
+      data-preserve-canvas-selection="true"
       className={`${panelStyle ? "fixed" : "absolute top-full left-0 mt-2"} bg-white border border-gray-200 rounded-2xl shadow-xl p-4 w-80 max-h-[500px] overflow-hidden popup-fuente z-50 ${
         isOpen ? 'block' : 'hidden'
       }`}

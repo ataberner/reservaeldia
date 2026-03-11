@@ -314,6 +314,7 @@ export default function UnifiedColorPicker({
   const panel = (
     <div
       ref={panelRef}
+      data-preserve-canvas-selection="true"
       className="fixed z-[130]"
       style={{
         top: `${panelPosition.top}px`,
@@ -594,7 +595,11 @@ export default function UnifiedColorPicker({
   );
 
   return (
-    <div ref={rootRef} className="relative">
+    <div
+      ref={rootRef}
+      data-preserve-canvas-selection="true"
+      className="relative"
+    >
       <button
         ref={triggerRef}
         type="button"

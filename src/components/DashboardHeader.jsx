@@ -249,7 +249,12 @@ export default function DashboardHeader({
         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
 
     return (
-        <div ref={headerRef} className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200">
+        <div
+            ref={headerRef}
+            data-dashboard-header="true"
+            data-preserve-canvas-selection="true"
+            className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white px-4 py-2 shadow-sm border-b border-gray-200"
+        >
             {slugInvitacion ? (
                 /* ----------------- 🟣 Modo edición ----------------- */
                 <div className="flex items-center gap-2 flex-1">

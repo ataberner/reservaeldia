@@ -99,6 +99,16 @@ function resolveKonvaPixelRatio() {
 
 Konva.pixelRatio = resolveKonvaPixelRatio();
 
+const PRESERVE_CANVAS_SELECTION_SELECTOR = [
+  '[data-preserve-canvas-selection="true"]',
+  '[data-dashboard-sidebar="true"]',
+  "#sidebar-panel",
+  '[data-option-button="true"]',
+  '[data-inline-editor="true"]',
+  ".menu-z-index",
+  ".popup-fuente",
+].join(", ");
+
 function isTypographyEditableCanvasObject(obj) {
   return Boolean(
     obj &&
@@ -425,6 +435,21 @@ export default function CanvasEditor({
     setMostrarSelectorTamano(false);
     setHoverId(null);
   }, []);
+
+  const clearCanvasSelectionUi = useCallback(() => {
+    setElementosSeleccionados([]);
+    setElementosPreSeleccionados([]);
+    setSeleccionActiva(false);
+    setInicioSeleccion(null);
+    setAreaSeleccion(null);
+    cerrarMenusFlotantes();
+  }, [
+    cerrarMenusFlotantes,
+    setAreaSeleccion,
+    setElementosPreSeleccionados,
+    setInicioSeleccion,
+    setSeleccionActiva,
+  ]);
 
   // ???Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
@@ -828,14 +853,7 @@ export default function CanvasEditor({
     onDuplicar,
     onEliminar,
     onDeseleccionar: () => {
-      if (elementosSeleccionados.length > 0) {
-        setElementosSeleccionados([]);
-        setMostrarPanelZ(false);
-        setMostrarSubmenuCapa(false);
-        setMostrarSelectorFuente(false);
-        setMostrarSelectorTamano(false);
-        setHoverId(null);
-      }
+      if (elementosSeleccionados.length > 0) clearCanvasSelectionUi();
     },
     onCopiar,
     onPegar,
@@ -1079,6 +1097,63 @@ export default function CanvasEditor({
     }
     return handled;
   }, [editing.id, onInlineFinish, textEditInteractionController.requestFinish]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    if (elementosSeleccionados.length === 0) return undefined;
+
+    const resolveTargetElement = (target) => {
+      if (target instanceof Element) return target;
+      if (target instanceof Node) return target.parentElement;
+      return null;
+    };
+
+    const isInsideCanvasStage = (targetElement) => {
+      if (!targetElement) return false;
+      const stage = stageRef.current?.getStage?.() || stageRef.current;
+      const container = stage?.container?.() || stage?.content || null;
+      return Boolean(container && typeof container.contains === "function" && container.contains(targetElement));
+    };
+
+    const shouldPreserveSelection = (targetElement) =>
+      Boolean(targetElement?.closest?.(PRESERVE_CANVAS_SELECTION_SELECTOR));
+
+    const handlePointerOutsideCanvas = (event) => {
+      const targetElement = resolveTargetElement(event.target);
+      if (!targetElement) return;
+      if (isInsideCanvasStage(targetElement)) return;
+      if (shouldPreserveSelection(targetElement)) return;
+
+      if (editing.id) {
+        requestInlineEditFinish("outside-canvas-pointerdown");
+      }
+      clearCanvasSelectionUi();
+    };
+
+    if (typeof window !== "undefined" && "PointerEvent" in window) {
+      document.addEventListener("pointerdown", handlePointerOutsideCanvas, true);
+      return () => {
+        document.removeEventListener("pointerdown", handlePointerOutsideCanvas, true);
+      };
+    }
+
+    document.addEventListener("mousedown", handlePointerOutsideCanvas, true);
+    document.addEventListener("touchstart", handlePointerOutsideCanvas, {
+      capture: true,
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerOutsideCanvas, true);
+      document.removeEventListener("touchstart", handlePointerOutsideCanvas, true);
+    };
+  }, [
+    clearCanvasSelectionUi,
+    editing.id,
+    elementosSeleccionados.length,
+    requestInlineEditFinish,
+    stageRef,
+  ]);
 
 
 

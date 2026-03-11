@@ -1017,8 +1017,6 @@ export default function ElementoCanvas({
     const W = Number(obj.width) || 128;
     const H = Number(obj.height) || 128;
     const vb = parseViewBox(obj.viewBox) || { minX: 0, minY: 0, vbWidth: 100, vbHeight: 100 };
-    const showIconSelectionFrame = (isSelected || preSeleccionado) && selectionCount <= 1;
-
     return (
       <Group
         {...commonProps}
@@ -1056,18 +1054,6 @@ export default function ElementoCanvas({
         ))}
 
         {/* Marco de selecciÃƒÂ³n visual */}
-        {showIconSelectionFrame && (
-          <Rect
-            x={0}
-            y={0}
-            width={W}
-            height={H}
-            stroke="#773dbe"
-            strokeWidth={1}
-            fill="transparent"
-            listening={false}        // Solo visual
-          />
-        )}
       </Group>
     );
   }
@@ -1141,8 +1127,6 @@ export default function ElementoCanvas({
   if (obj.tipo === "icono-svg") {
     const W = Number(obj.width) || 128;
     const H = Number(obj.height) || 128;
-    const showLegacyIconSelectionFrame = (isSelected || preSeleccionado) && selectionCount <= 1;
-
     const vb = parseViewBox(obj.viewBox) || { minX: 0, minY: 0, vbWidth: 100, vbHeight: 100 };
     const scaleX = vb.vbWidth ? W / vb.vbWidth : 1;
     const scaleY = vb.vbHeight ? H / vb.vbHeight : 1;
@@ -1184,8 +1168,8 @@ export default function ElementoCanvas({
           width={W}
           height={H}
           fill="rgba(0,0,0,0.001)"
-          stroke={showLegacyIconSelectionFrame ? "#773dbe" : undefined}
-          strokeWidth={showLegacyIconSelectionFrame ? 1 : 0}
+          stroke="transparent"
+          strokeWidth={0}
           listening={true}
         />
         <Group x={0} y={0} scaleX={scaleX} scaleY={scaleY}>

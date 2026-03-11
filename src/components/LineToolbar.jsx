@@ -73,6 +73,7 @@ export default function LineToolbar({
 
   return (
     <div
+      data-preserve-canvas-selection="true"
       className="fixed z-50 bg-white border rounded shadow p-2 flex gap-2 items-center line-toolbar"
       style={{
         ...style,

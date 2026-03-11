@@ -90,6 +90,29 @@ function computeAxisDistance(value, start, end) {
   return 0;
 }
 
+function computePointDistanceToRect(clientX, clientY, rect) {
+  if (!rect) {
+    return {
+      dx: Number.POSITIVE_INFINITY,
+      dy: Number.POSITIVE_INFINITY,
+      score: Number.POSITIVE_INFINITY,
+    };
+  }
+
+  const left = Number(rect.left);
+  const right = Number(rect.right);
+  const top = Number(rect.top);
+  const bottom = Number(rect.bottom);
+  const dx = computeAxisDistance(clientX, left, right);
+  const dy = computeAxisDistance(clientY, top, bottom);
+
+  return {
+    dx,
+    dy,
+    score: dx * dx + dy * dy,
+  };
+}
+
 function resolveLogicalCaretRangeFromPoint({
   editorEl,
   clientX,
@@ -106,15 +129,8 @@ function resolveLogicalCaretRangeFromPoint({
     const caretRect = readCollapsedCaretViewportRect(range);
     if (!caretRect) continue;
 
-    const verticalDistance = computeAxisDistance(
-      clientY,
-      caretRect.top,
-      caretRect.bottom
-    );
-    const horizontalDistance = Math.abs(
-      Number(clientX) - Number(caretRect.left)
-    );
-    const score = verticalDistance * 10000 + horizontalDistance;
+    const distance = computePointDistanceToRect(clientX, clientY, caretRect);
+    const score = distance.score;
 
     if (!bestMatch || score < bestMatch.score) {
       bestMatch = {

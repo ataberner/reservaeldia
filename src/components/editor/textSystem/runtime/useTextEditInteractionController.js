@@ -259,6 +259,7 @@ export default function useTextEditInteractionController({
   const editorRef = useRef(null);
   const backendMetaRef = useRef({
     preserveCenterDuringEdit: false,
+    renderCaretNatively: false,
   });
   const finishLockRef = useRef(null);
   const geometryDebugSignatureRef = useRef(null);
@@ -506,17 +507,22 @@ export default function useTextEditInteractionController({
     rootEl = null,
     editorEl = null,
     preserveCenterDuringEdit = false,
+    renderCaretNatively = false,
   } = {}) => {
     const nextPreserveCenterDuringEdit = Boolean(preserveCenterDuringEdit);
+    const nextRenderCaretNatively = Boolean(renderCaretNatively);
     const backendChanged =
       rootRef.current !== rootEl ||
       editorRef.current !== editorEl ||
       Boolean(backendMetaRef.current?.preserveCenterDuringEdit) !==
-        nextPreserveCenterDuringEdit;
+        nextPreserveCenterDuringEdit ||
+      Boolean(backendMetaRef.current?.renderCaretNatively) !==
+        nextRenderCaretNatively;
     rootRef.current = rootEl;
     editorRef.current = editorEl;
     backendMetaRef.current = {
       preserveCenterDuringEdit: nextPreserveCenterDuringEdit,
+      renderCaretNatively: nextRenderCaretNatively,
     };
     if (backendChanged) {
       setBackendRevision((previous) => previous + 1);
@@ -755,6 +761,7 @@ export default function useTextEditInteractionController({
       decorationsRef.current = createEmptyDecorations();
       backendMetaRef.current = {
         preserveCenterDuringEdit: false,
+        renderCaretNatively: false,
       };
       lastKeyEventRef.current = {
         key: null,
@@ -845,13 +852,27 @@ export default function useTextEditInteractionController({
     };
   }, [decorations?.isCollapsed, editingId, isFocused]);
 
+  const shouldHideSyntheticDecorations = Boolean(
+    backendMetaRef.current?.renderCaretNatively
+  );
   const visibleDecorations = useMemo(() => ({
     ...decorations,
+    selectionRects: shouldHideSyntheticDecorations
+      ? []
+      : (Array.isArray(decorations?.selectionRects)
+        ? decorations.selectionRects
+        : []),
+    selectionBounds: shouldHideSyntheticDecorations
+      ? null
+      : (decorations?.selectionBounds || null),
     caretRect:
-      isFocused && decorations?.isCollapsed && caretBlinkVisible
+      !shouldHideSyntheticDecorations &&
+      isFocused &&
+      decorations?.isCollapsed &&
+      caretBlinkVisible
         ? decorations?.caretRect || null
         : null,
-  }), [caretBlinkVisible, decorations, isFocused]);
+  }), [caretBlinkVisible, decorations, isFocused, shouldHideSyntheticDecorations]);
 
   return {
     editingId,

@@ -139,6 +139,7 @@ function HiddenSemanticTextBackend({
       fontSize: toPositiveNumber(readNodeAttr(textNode, "fontSize", 24), 24),
       fontStyle: normalizedFont.fontStyle,
       fontWeight: normalizedFont.fontWeight,
+      fill: readNodeAttr(textNode, "fill", "#111111") || "#111111",
       lineHeight: toPositiveNumber(readNodeAttr(textNode, "lineHeight", 1.2), 1.2),
       letterSpacing: Number(readNodeAttr(textNode, "letterSpacing", 0)) || 0,
       width: toPositiveNumber(readNodeAttr(textNode, "width", 0), 1),
@@ -148,21 +149,6 @@ function HiddenSemanticTextBackend({
       scaleY: Number(readNodeAttr(textNode, "scaleY", 1)) || 1,
     };
   }, [textNode]);
-
-  useEffect(() => {
-    registerBackend?.({
-      rootEl: overlayRootRef.current,
-      editorEl: editableRef.current,
-      preserveCenterDuringEdit,
-    });
-    return () => {
-      registerBackend?.({
-        rootEl: null,
-        editorEl: null,
-        preserveCenterDuringEdit: false,
-      });
-    };
-  }, [editingId, preserveCenterDuringEdit, registerBackend]);
 
   useLayoutEffect(() => {
     const editorEl = editableRef.current;
@@ -230,9 +216,9 @@ function HiddenSemanticTextBackend({
     });
   }, [editingId, rawValue, scaleVisual, stage, textNode]);
 
-  if (!editingId || !node || !textNode || !stageMetrics?.stageRect) {
-    return null;
-  }
+  const hasRenderableBackend = Boolean(
+    editingId && node && textNode && stageMetrics?.stageRect
+  );
 
   const projectedRect =
     effectiveKonvaProjection?.konvaProjectedRectViewport || null;
@@ -247,17 +233,56 @@ function HiddenSemanticTextBackend({
     Math.abs(Number(nodeProps.rotation || 0)) < 0.01 &&
     Math.abs(Number(nodeProps.scaleX || 1) - 1) < 0.01 &&
     Math.abs(Number(nodeProps.scaleY || 1) - 1) < 0.01;
+  const usesTransformedBackendLayout = !useProjectedBoxLayout;
+  const backendMetricScaleX = useProjectedBoxLayout ? totalScaleX : 1;
+  const backendMetricScaleY = useProjectedBoxLayout ? totalScaleY : 1;
 
-  const fontSizePx = Math.max(1, Number(nodeProps.fontSize || 24) * totalScaleY);
+  useEffect(() => {
+    if (!registerBackend) return undefined;
+    if (!hasRenderableBackend) {
+      registerBackend({
+        rootEl: null,
+        editorEl: null,
+        preserveCenterDuringEdit: false,
+        renderCaretNatively: false,
+      });
+      return undefined;
+    }
+    registerBackend?.({
+      rootEl: overlayRootRef.current,
+      editorEl: editableRef.current,
+      preserveCenterDuringEdit,
+      renderCaretNatively: usesTransformedBackendLayout,
+    });
+    return () => {
+      registerBackend?.({
+        rootEl: null,
+        editorEl: null,
+        preserveCenterDuringEdit: false,
+        renderCaretNatively: false,
+      });
+    };
+  }, [
+    hasRenderableBackend,
+    editingId,
+    preserveCenterDuringEdit,
+    registerBackend,
+    usesTransformedBackendLayout,
+  ]);
+
+  const fontSizePx = Math.max(
+    1,
+    Number(nodeProps.fontSize || 24) * backendMetricScaleY
+  );
   const lineHeightPx = Math.max(1, fontSizePx * Number(nodeProps.lineHeight || 1.2));
-  const letterSpacingPx = Number(nodeProps.letterSpacing || 0) * totalScaleX;
+  const letterSpacingPx = Number(nodeProps.letterSpacing || 0) * backendMetricScaleX;
   const normalizedValueForMeasure = normalizedValue.replace(/[ \t]+$/gm, "");
   const isSingleLine = !normalizedValueForMeasure.includes("\n");
 
   const domPerceptualScaleModel = useMemo(
     () =>
       resolveInlineDomPerceptualScale({
-        totalScaleY,
+        totalScaleY: backendMetricScaleY,
         fontFamily: nodeProps.fontFamily,
         fontStyle: nodeProps.fontStyle,
         fontWeight: nodeProps.fontWeight,
@@ -273,7 +298,7 @@ function HiddenSemanticTextBackend({
       nodeProps.fontFamily,
       nodeProps.fontStyle,
       nodeProps.fontWeight,
-      totalScaleY,
+      backendMetricScaleY,
     ]
   );
   const domPerceptualScale = Number(domPerceptualScaleModel?.scale || 1);
@@ -426,7 +451,9 @@ function HiddenSemanticTextBackend({
   const cssTransform = buildCssMatrix(textNode, stageMetrics);
 
   useLayoutEffect(() => {
-    if (!editingId || typeof controller?.syncDecorations !== "function") return;
+    if (!hasRenderableBackend || typeof controller?.syncDecorations !== "function") {
+      return;
+    }
     const signature = JSON.stringify({
       x: roundSemanticCaretMetric(projectedRect?.x),
       y: roundSemanticCaretMetric(projectedRect?.y),
@@ -440,7 +467,7 @@ function HiddenSemanticTextBackend({
     controller.syncDecorations();
   }, [
     controller,
-    editingId,
+    hasRenderableBackend,
     projectedRect,
     totalScaleX,
     totalScaleY,
@@ -449,7 +476,7 @@ function HiddenSemanticTextBackend({
   useLayoutEffect(() => {
     const rootEl = overlayRootRef.current;
     const editorEl = editableRef.current;
-    if (!editingId || !rootEl || !editorEl) return;
+    if (!hasRenderableBackend || !rootEl || !editorEl) return;
 
     const payload = {
       id: editingId,
@@ -471,10 +498,15 @@ function HiddenSemanticTextBackend({
         width: roundSemanticCaretMetric(rootWidth),
         height: roundSemanticCaretMetric(rootHeight),
       },
+      backend: {
+        usesTransformedBackendLayout,
+      },
       stage: {
         stageRectViewport: rectToSemanticCaretPayload(stageMetrics?.stageRect),
         totalScaleX: roundSemanticCaretMetric(totalScaleX),
         totalScaleY: roundSemanticCaretMetric(totalScaleY),
+        backendMetricScaleX: roundSemanticCaretMetric(backendMetricScaleX),
+        backendMetricScaleY: roundSemanticCaretMetric(backendMetricScaleY),
       },
       typography: {
         fontFamily: nodeProps.fontFamily,
@@ -560,12 +592,19 @@ function HiddenSemanticTextBackend({
     shouldRouteLargeExternalOffsetToInternal,
     stageMetrics?.stageRect,
     textAlign,
+    usesTransformedBackendLayout,
+    backendMetricScaleX,
+    backendMetricScaleY,
     totalScaleX,
     totalScaleY,
     useProjectedBoxLayout,
     visualOffsetXPx,
     visualOffsetYPx,
   ]);
+
+  if (!hasRenderableBackend) {
+    return null;
+  }
 
   return (
     <div
@@ -640,7 +679,9 @@ function HiddenSemanticTextBackend({
               background: "transparent",
               color: "transparent",
               WebkitTextFillColor: "transparent",
-              caretColor: "transparent",
+              caretColor: usesTransformedBackendLayout
+                ? nodeProps.fill
+                : "transparent",
               whiteSpace: isSingleLine ? "pre" : "pre-wrap",
               overflowWrap: isSingleLine ? "normal" : "break-word",
               wordBreak: isSingleLine ? "normal" : "break-word",

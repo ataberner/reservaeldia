@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, Star, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { resolveTemplatePreviewSource } from "@/domain/templates/preview";
 import TemplateEventForm from "@/components/templates/TemplateEventForm";
 import {
@@ -32,7 +32,9 @@ export default function TemplatePreviewModal({
 }) {
   const modalPanelRef = useRef(null);
   const previewFrameRef = useRef(null);
+  const formRef = useRef(null);
   const inputPatchTimersRef = useRef({});
+  const [mode, setMode] = useState("collapsed");
   const [previewUrlFailed, setPreviewUrlFailed] = useState(false);
   const status = toText(previewStatus?.status, previewHtml ? "ready" : "idle");
   const errorMessage = toText(
@@ -41,33 +43,25 @@ export default function TemplatePreviewModal({
   );
 
   const title = toText(metadata?.title, toText(template?.nombre, "Plantilla"));
-  const badges = toList(metadata?.badges);
+  const badges = toList(metadata?.badges).filter((badge) => toText(badge).toLowerCase() !== "top");
   const features = toList(metadata?.features);
   const categories = toList(metadata?.categories);
-  const rating = Number(metadata?.rating);
-  const safeRating = Number.isFinite(rating) ? rating.toFixed(1) : "4.8";
-  const popularity = toText(metadata?.popularity, "96% recomendada");
   const previewSource = resolveTemplatePreviewSource(template);
   const previewUrl = previewSource.mode === "url" ? previewSource.previewUrl : null;
   const hasPreviewUrl = Boolean(previewUrl);
   const usePreviewUrl = hasPreviewUrl && !previewUrlFailed;
-  const fieldsCount = Array.isArray(template?.fieldsSchema) ? template.fieldsSchema.length : 0;
-  const defaultsCount =
-    template?.defaults && typeof template.defaults === "object"
-      ? Object.keys(template.defaults).length
-      : 0;
-  const hasGalleryRules = Boolean(
-    template?.galleryRules &&
-    typeof template.galleryRules === "object" &&
-    Object.keys(template.galleryRules).length > 0
-  );
   const shouldShowGeneratedPreview = status === "ready" && Boolean(previewHtml);
   const shouldShowPreviewUrl = usePreviewUrl && !shouldShowGeneratedPreview && status !== "loading";
   const canPatchPreview = shouldShowGeneratedPreview;
+  const isExpanded = mode === "expanded";
 
   useEffect(() => {
     setPreviewUrlFailed(false);
   }, [previewUrl]);
+
+  useEffect(() => {
+    setMode("collapsed");
+  }, [template?.id, visible]);
 
   useEffect(
     () => () => {
@@ -135,11 +129,20 @@ export default function TemplatePreviewModal({
     [postPreviewOperations, template]
   );
 
+  const handlePrimaryAction = useCallback(() => {
+    if (isExpanded) {
+      formRef.current?.submitChanges?.();
+      return;
+    }
+
+    onOpenEditorWithoutChanges?.();
+  }, [isExpanded, onOpenEditorWithoutChanges]);
+
   if (!visible || typeof document === "undefined") return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10000] bg-[#160a2b]/66 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[10000] bg-[rgba(0,0,0,0.35)] backdrop-blur-[4px]"
       onMouseDown={(event) => {
         if (openingEditor) return;
         const panel = modalPanelRef.current;
@@ -150,25 +153,28 @@ export default function TemplatePreviewModal({
       }}
       role="presentation"
     >
-      <div className="h-full w-full p-0 sm:p-4">
+      <div className="flex h-[100dvh] w-full justify-center px-0 sm:px-4">
         <div
           ref={modalPanelRef}
-          className="relative mx-auto flex h-full w-full max-w-[980px] flex-col overflow-hidden bg-[#f7f4ff] shadow-[0_28px_90px_rgba(15,23,42,0.34)] sm:h-[94vh] sm:rounded-[26px]"
+          className="relative flex h-[100dvh] w-full max-w-[980px] flex-col overflow-hidden border-x border-white/10 bg-[linear-gradient(180deg,#fbf8ff_0%,#f4eeff_100%)] shadow-[0_20px_60px_rgba(0,0,0,0.25)]"
         >
           <button
             type="button"
             onClick={onClose}
             disabled={openingEditor}
-            className="absolute right-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/76 text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.18)] backdrop-blur-md transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-not-allowed disabled:opacity-50 sm:hidden"
+            className="absolute right-3 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/76 text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.18)] backdrop-blur-md transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-not-allowed disabled:opacity-50 sm:right-4"
             style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
             aria-label="Cerrar modal"
           >
             <X className="h-4 w-4" />
           </button>
 
-          <div className="flex-1 overflow-y-auto px-3 pb-5 pt-3 sm:px-5 sm:pb-6 sm:pt-4">
-            <div className="relative overflow-hidden">
-              <div className="h-[42dvh] max-h-[50vh] min-h-[220px] bg-white sm:h-[46vh]">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div
+              className="relative min-h-[280px] overflow-hidden bg-white transition-[flex-basis] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:min-h-[320px]"
+              style={{ flexBasis: isExpanded ? "50%" : "100%" }}
+            >
+              <div className="absolute inset-0 bg-white">
                 {shouldShowPreviewUrl ? (
                   <iframe
                     src={previewUrl}
@@ -212,60 +218,99 @@ export default function TemplatePreviewModal({
                   </div>
                 ) : null}
               </div>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent via-[#f7f4ff]/80 to-[#f7f4ff]" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#120822]/24 via-transparent to-transparent sm:h-28" />
+              <div
+                className={`pointer-events-none absolute inset-x-0 bottom-0 transition-[height,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                  isExpanded
+                    ? "h-36 bg-gradient-to-b from-transparent via-[#f7f1ff]/78 to-[#f7f1ff] opacity-100 sm:h-40"
+                    : "h-28 bg-gradient-to-b from-transparent via-[#fbf8ff]/72 to-[#fbf8ff] opacity-100 sm:h-32"
+                }`}
+              />
+
+              <div className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3 sm:px-5 sm:pb-5">
+                <div
+                  className="relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-3 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-4"
+                  style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
+                >
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.42),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),transparent_55%)]" />
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/55" />
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="relative min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="mr-auto text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
+                        {badges.map((badge) => (
+                          <span
+                            key={badge}
+                            className="rounded-full border border-white/35 bg-white/26 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#5f3596] backdrop-blur-md"
+                          >
+                            {badge}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {features.map((feature) => (
+                          <span
+                            key={feature}
+                            className="rounded-full border border-white/30 bg-white/20 px-2 py-0.5 text-[11px] font-medium text-[#5d2f9f] backdrop-blur-md"
+                          >
+                            {feature}
+                          </span>
+                        ))}
+                        {(categories.length ? categories : ["Evento"]).map((category) => (
+                          <span
+                            key={category}
+                            className="rounded-full border border-white/28 bg-white/18 px-2 py-0.5 text-[11px] text-slate-700 backdrop-blur-md"
+                          >
+                            {category}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="relative flex flex-wrap gap-2 lg:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
+                        disabled={openingEditor}
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handlePrimaryAction}
+                        disabled={openingEditor}
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {openingEditor
+                          ? "Creando borrador..."
+                          : isExpanded
+                            ? "Crear invitacion"
+                            : "Editar plantilla"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="-mt-8 space-y-2 px-0.5 text-xs sm:text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="mr-1 text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
-                {badges.map((badge) => (
-                  <span
-                    key={badge}
-                    className="rounded-full bg-[#efe8fb] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#6f3bc0]"
-                  >
-                    {badge}
-                  </span>
-                ))}
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#fff6da] px-2 py-0.5 font-semibold text-[#8a6410]">
-                  <Star className="h-3.5 w-3.5 fill-current" />
-                  {safeRating}
-                </span>
-                <span className="rounded-full bg-[#edf4ff] px-2 py-0.5 text-[#1f4e9f]">{popularity}</span>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                {features.map((feature) => (
-                  <span
-                    key={feature}
-                    className="rounded-full bg-[#f0e9fb] px-2 py-0.5 text-[11px] font-medium text-[#5d2f9f]"
-                  >
-                    {feature}
-                  </span>
-                ))}
-                {(categories.length ? categories : ["Evento"]).map((category) => (
-                  <span
-                    key={category}
-                    className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] text-slate-700"
-                  >
-                    {category}
-                  </span>
-                ))}
-              </div>
-
+            <div
+              className={`relative overflow-hidden bg-[#f7f1ff] ${
+                isExpanded ? "min-h-0 flex-1" : "basis-0"
+              }`}
+            >
               <TemplateEventForm
+                ref={formRef}
                 template={template}
                 formState={formState}
                 onFormStateChange={onFormStateChange}
                 onLiveFieldUpdate={handleLiveFieldUpdate}
                 onSaveAndOpen={onOpenEditorWithChanges}
-                onOpenWithoutChanges={onOpenEditorWithoutChanges}
                 openingEditor={openingEditor}
+                mode={mode}
               />
-
-              <p className="pt-2 text-[11px] text-slate-500">
-                Cerrar modal: tecla Esc o click fuera del contenido. Campos: {fieldsCount}. Defaults: {defaultsCount}.
-                {hasGalleryRules ? " Incluye reglas de galeria." : ""}
-              </p>
             </div>
           </div>
         </div>

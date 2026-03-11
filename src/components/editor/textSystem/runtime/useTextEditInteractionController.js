@@ -287,6 +287,7 @@ export default function useTextEditInteractionController({
   const geometryDebugSignatureRef = useRef(null);
   const caretTextDebugSignatureRef = useRef(null);
   const decorationsRef = useRef(createEmptyDecorations());
+  const restoreEditorSelectionRef = useRef(null);
   const isFocusedRef = useRef(false);
   const caretBlinkVisibleRef = useRef(true);
   const logicalCaretOffsetRef = useRef(null);
@@ -588,6 +589,10 @@ export default function useTextEditInteractionController({
     return focusEditorAtBoundary(boundary);
   }, [focusEditorAtBoundary, normalizedValue.length]);
 
+  useEffect(() => {
+    restoreEditorSelectionRef.current = restoreEditorSelection;
+  }, [restoreEditorSelection]);
+
   const handleCanvasPointer = useCallback((event) => {
     if (!editingId || !editorRef.current) return false;
     const stage = stageRef.current?.getStage?.() || stageRef.current || null;
@@ -741,12 +746,12 @@ export default function useTextEditInteractionController({
   useEffect(() => {
     if (!editingId || !editorRef.current) return undefined;
     const rafId = window.requestAnimationFrame(() => {
-      restoreEditorSelection("end");
+      restoreEditorSelectionRef.current?.("end");
     });
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [backendRevision, editingId, restoreEditorSelection]);
+  }, [backendRevision, editingId]);
 
   useLayoutEffect(() => {
     if (!editingId) return undefined;

@@ -14,7 +14,10 @@ export default function useCanvasEditorFontPreload({
         (o) =>
           (o.tipo === "texto" ||
             o.tipo === "countdown" ||
-            (o.tipo === "forma" && o.figura === "rect")) &&
+            o.tipo === "rsvp-boton" ||
+            (o.tipo === "forma" &&
+              o.figura === "rect" &&
+              typeof o.texto === "string")) &&
           o.fontFamily
       )
       .map((o) => String(o.fontFamily).replace(/['"]/g, "").split(",")[0].trim())

@@ -99,6 +99,21 @@ function resolveKonvaPixelRatio() {
 
 Konva.pixelRatio = resolveKonvaPixelRatio();
 
+function isTypographyEditableCanvasObject(obj) {
+  return Boolean(
+    obj &&
+      (
+        obj.tipo === "texto" ||
+        obj.tipo === "rsvp-boton" ||
+        (
+          obj.tipo === "forma" &&
+          obj.figura === "rect" &&
+          typeof obj.texto === "string"
+        )
+      )
+  );
+}
+
 export default function CanvasEditor({
   slug,
   zoom = 1,
@@ -500,17 +515,8 @@ export default function CanvasEditor({
     zoom,
   });
 
-  const mobileTypographyToolbarVisible = isMobile && Boolean(
-    objetoSeleccionado &&
-    (
-      objetoSeleccionado.tipo === "texto" ||
-      (
-        objetoSeleccionado.tipo === "forma" &&
-        objetoSeleccionado.figura === "rect" &&
-        typeof objetoSeleccionado.texto === "string"
-      )
-    )
-  );
+  const mobileTypographyToolbarVisible =
+    isMobile && isTypographyEditableCanvasObject(objetoSeleccionado);
 
   const mobileTextToolbarVisible =
     mobileTypographyToolbarVisible ||

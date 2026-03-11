@@ -142,6 +142,9 @@ function HiddenSemanticTextBackend({
       letterSpacing: Number(readNodeAttr(textNode, "letterSpacing", 0)) || 0,
       width: toPositiveNumber(readNodeAttr(textNode, "width", 0), 1),
       height: toPositiveNumber(readNodeAttr(textNode, "height", 0), 1),
+      verticalAlign: String(readNodeAttr(textNode, "verticalAlign", "top") || "top")
+        .trim()
+        .toLowerCase(),
       rotation: Number(readNodeAttr(textNode, "rotation", 0)) || 0,
       scaleX: Number(readNodeAttr(textNode, "scaleX", 1)) || 1,
       scaleY: Number(readNodeAttr(textNode, "scaleY", 1)) || 1,
@@ -446,6 +449,24 @@ function HiddenSemanticTextBackend({
   const rootHeight = useProjectedBoxLayout
     ? Math.max(1, Number(projectedRect?.height || 0))
     : Math.max(1, Number(nodeProps.height || 1));
+  const textLineCount = Math.max(1, String(rawValue || "").split("\n").length);
+  const centeredTextBlockHeightPx = Math.max(
+    1,
+    Number(textLineCount) * Number(lineHeightPx || fontSizePx || 1)
+  );
+  const verticalAlignOffsetPx = (() => {
+    const availableSlackPx = Math.max(
+      0,
+      Number(rootHeight || 0) - Number(centeredTextBlockHeightPx || 0)
+    );
+    if (nodeProps.verticalAlign === "middle") {
+      return availableSlackPx / 2;
+    }
+    if (nodeProps.verticalAlign === "bottom") {
+      return availableSlackPx;
+    }
+    return 0;
+  })();
   const cssTransform = buildCssMatrix(textNode, stageMetrics);
 
   useLayoutEffect(() => {
@@ -510,11 +531,14 @@ function HiddenSemanticTextBackend({
         fontFamily: nodeProps.fontFamily,
         fontStyle: nodeProps.fontStyle,
         fontWeight: nodeProps.fontWeight,
+        verticalAlign: nodeProps.verticalAlign,
         fontSizePx: roundSemanticCaretMetric(fontSizePx),
         domRenderFontSizePx: roundSemanticCaretMetric(domRenderFontSizePx),
         lineHeightPx: roundSemanticCaretMetric(lineHeightPx),
         editableLineHeightPx: roundSemanticCaretMetric(editableLineHeightPx),
         letterSpacingPx: roundSemanticCaretMetric(letterSpacingPx),
+        textLineCount,
+        centeredTextBlockHeightPx: roundSemanticCaretMetric(centeredTextBlockHeightPx),
       },
       offsets: {
         visualOffsetXPx: roundSemanticCaretMetric(visualOffsetXPx),
@@ -522,6 +546,7 @@ function HiddenSemanticTextBackend({
         effectiveVisualOffsetPx: roundSemanticCaretMetric(
           effectiveVisualOffsetPx
         ),
+        verticalAlignOffsetPx: roundSemanticCaretMetric(verticalAlignOffsetPx),
         internalContentOffsetBasePx: roundSemanticCaretMetric(
           internalContentOffsetBasePx
         ),
@@ -583,19 +608,23 @@ function HiddenSemanticTextBackend({
     nodeProps.fontFamily,
     nodeProps.fontStyle,
     nodeProps.fontWeight,
+    nodeProps.verticalAlign,
     projectedRect,
     rawValue.length,
+    centeredTextBlockHeightPx,
     rootHeight,
     rootWidth,
     shouldRouteLargeExternalOffsetToInternal,
     stageMetrics?.stageRect,
     textAlign,
+    textLineCount,
     usesTransformedBackendLayout,
     backendMetricScaleX,
     backendMetricScaleY,
     totalScaleX,
     totalScaleY,
     useProjectedBoxLayout,
+    verticalAlignOffsetPx,
     visualOffsetXPx,
     visualOffsetYPx,
   ]);
@@ -638,7 +667,7 @@ function HiddenSemanticTextBackend({
           style={{
             position: "absolute",
             left: `${visualOffsetXPx}px`,
-            top: `${effectiveVisualOffsetPx}px`,
+            top: `${Number(effectiveVisualOffsetPx || 0) + Number(verticalAlignOffsetPx || 0)}px`,
             width: "100%",
             height: "100%",
             overflow: "visible",

@@ -907,6 +907,7 @@ export default function ElementoCanvas({
   if (obj.tipo === "rsvp-boton") {
     const fontFamily = obj.fontFamily || "sans-serif";
     const rsvpVisual = resolveRsvpButtonVisual(obj);
+    const textOpacity = 1;
 
     const width = Number.isFinite(obj.width) ? obj.width : (obj.ancho || 200);
     const height = Number.isFinite(obj.height) ? obj.height : (obj.alto || 50);
@@ -927,6 +928,7 @@ export default function ElementoCanvas({
         {/* ðŸŸ£ BotÃ³n (fondo) */}
         <Rect
           {...commonProps}
+          id={obj.id}
           ref={handleRef}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
@@ -964,11 +966,12 @@ export default function ElementoCanvas({
               registerRef(`${obj.id}-text`, node || null); // si querÃ©s manipular el texto aparte
             }
           }}
+          id={`${obj.id}-text`}
           x={obj.x}
           y={obj.y}
           width={width}
           height={height}
-          text={obj.texto || "Confirmar asistencia"}
+          text={obj.texto ?? "Confirmar asistencia"}
           fontSize={normalizeFontSize(obj.fontSize, 18)}
           fontFamily={fontFamily}
           fontStyle={resolveKonvaFontStyle(obj.fontStyle || "normal", obj.fontWeight || "bold")}
@@ -978,7 +981,7 @@ export default function ElementoCanvas({
           align={obj.align || "center"}
           verticalAlign="middle"
           listening={false}
-          opacity={1}
+          opacity={textOpacity}
         />
 
       </>
@@ -1213,21 +1216,13 @@ export default function ElementoCanvas({
       case "rect": {
         const { width, height } = toShapeSize(obj, 100, 100);
         const rectFill = resolveKonvaFill(obj.color, width, height, "#000000");
-        const inlineVisibility = resolveInlineCanvasVisibility({
-          overlayEngine: inlineOverlayEngine,
-          visibilityMode: inlineVisibilityMode,
-          inlineOverlayMountedId,
-          inlineOverlayMountSession,
-          objectId: obj.id,
-          editingId,
-          currentInlineEditingId: getCurrentInlineEditingId(),
-        });
-        const textOpacity = inlineVisibility.isEditing ? 0 : 1;
+        const textOpacity = 1;
 
         return (
           <>
             <Rect
               {...commonProps}
+              id={obj.id}
               ref={handleRef}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
@@ -1269,7 +1264,7 @@ export default function ElementoCanvas({
               }}
             />
 
-            {obj.texto && (
+            {typeof obj.texto === "string" && (
               <Text
                 id={`${obj.id}-text`}
                 ref={(node) => {
@@ -1279,7 +1274,7 @@ export default function ElementoCanvas({
                 y={obj.y}
                 width={width}
                 height={height}
-                text={obj.texto}
+                text={obj.texto ?? ""}
                 fontSize={normalizeFontSize(obj.fontSize, 24)}
                 fontFamily={obj.fontFamily || "sans-serif"}
                 fontWeight={obj.fontWeight || "normal"}

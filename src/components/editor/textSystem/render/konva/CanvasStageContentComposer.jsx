@@ -46,8 +46,24 @@ function isInlineDiagCompactEnabled() {
   return true;
 }
 
+function isRectInlineEditableObject(obj) {
+  return (
+    obj?.tipo === "forma" &&
+    obj?.figura === "rect" &&
+    typeof obj?.texto === "string"
+  );
+}
+
+function isRsvpInlineEditableObject(obj) {
+  return obj?.tipo === "rsvp-boton";
+}
+
 function isSemanticInlineEditableObject(obj) {
-  return obj?.tipo === "texto";
+  return (
+    obj?.tipo === "texto" ||
+    isRectInlineEditableObject(obj) ||
+    isRsvpInlineEditableObject(obj)
+  );
 }
 
 function isLegacyDoubleInlineEditableObject(obj) {
@@ -1339,7 +1355,7 @@ export default function CanvasStageContent({
 
 
 
-                    const supportsInlinePreview = obj.tipo === "texto";
+                    const supportsInlinePreview = isSemanticInlineEditableObject(obj);
                     const objPreview =
                       editing.id === obj.id && supportsInlinePreview
                         ? (() => {

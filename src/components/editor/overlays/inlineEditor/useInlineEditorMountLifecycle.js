@@ -6,6 +6,9 @@ import {
 import {
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
+import {
+  selectAllEditableContent,
+} from "@/components/editor/textSystem/services/textCaretPositionService";
 
 export default function useInlineEditorMountLifecycle({
   editorRef,
@@ -66,30 +69,6 @@ export default function useInlineEditorMountLifecycle({
     const isFocusedNow = () =>
       typeof document !== "undefined" && document.activeElement === el;
 
-    const placeCaretAtEnd = () => {
-      if (el instanceof HTMLInputElement) {
-        const len = initialText.length;
-        try {
-          el.setSelectionRange(len, len);
-        } catch {
-          // no-op
-        }
-        return;
-      }
-
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const sel = window.getSelection?.();
-        if (!sel) return;
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch {
-        // no-op
-      }
-    };
-
     const focusAndSelect = (attempt) => {
       emitDebug("overlay: before-focus", { attempt });
       try {
@@ -99,7 +78,7 @@ export default function useInlineEditorMountLifecycle({
       }
       const focused = isFocusedNow();
       if (focused) {
-        placeCaretAtEnd();
+        selectAllEditableContent(el);
       }
       return focused;
     };

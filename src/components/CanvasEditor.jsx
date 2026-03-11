@@ -1031,6 +1031,8 @@ export default function CanvasEditor({
       obtenerMetricasTexto,
       calcularXTextoCentrado,
       setObjetos,
+      setElementosSeleccionados,
+      setMostrarPanelZ,
       obtenerMetricasNodoInline,
     }),
   });

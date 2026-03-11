@@ -45,6 +45,9 @@ import {
   INLINE_LAYOUT_VERSION,
   INLINE_VISUAL_NUDGE_CACHE,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorConstants";
+import {
+  selectAllEditableContent,
+} from "@/components/editor/textSystem/services/textCaretPositionService";
 import useInlineViewportSyncRevision from "@/components/editor/overlays/inlineEditor/useInlineViewportSyncRevision";
 import useInlinePhaseAtomicLifecycle from "@/components/editor/overlays/inlineEditor/useInlinePhaseAtomicLifecycle";
 import useInlineDebugEmitter from "@/components/editor/overlays/inlineEditor/useInlineDebugEmitter";
@@ -1476,30 +1479,6 @@ export default function InlineTextEditor({
     let attempt = 0;
     const maxAttempts = 4;
 
-    const placeCaretAtEnd = (targetEl) => {
-      if (!targetEl) return;
-      if (targetEl instanceof HTMLInputElement) {
-        const len = String(targetEl.value || "").length;
-        try {
-          targetEl.setSelectionRange(len, len);
-        } catch {
-          // no-op
-        }
-        return;
-      }
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(targetEl);
-        range.collapse(false);
-        const sel = window.getSelection?.();
-        if (!sel) return;
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch {
-        // no-op
-      }
-    };
-
     const tryFocus = () => {
       if (cancelled) return;
       if (overlaySessionIdRef.current !== sessionId) return;
@@ -1515,7 +1494,7 @@ export default function InlineTextEditor({
       const firstSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
       const isFocused = Boolean(firstSnapshot.isActiveElementEditor);
       if (isFocused) {
-        placeCaretAtEnd(targetEl);
+        selectAllEditableContent(targetEl);
       }
       const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
 
@@ -1592,30 +1571,6 @@ export default function InlineTextEditor({
     let attempt = 0;
     const maxAttempts = 4;
 
-    const placeCaretAtEnd = (targetEl) => {
-      if (!targetEl) return;
-      if (targetEl instanceof HTMLInputElement) {
-        const len = String(targetEl.value || "").length;
-        try {
-          targetEl.setSelectionRange(len, len);
-        } catch {
-          // no-op
-        }
-        return;
-      }
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(targetEl);
-        range.collapse(false);
-        const sel = window.getSelection?.();
-        if (!sel) return;
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch {
-        // no-op
-      }
-    };
-
     const tryFocus = () => {
       if (cancelled) return;
       if (overlaySessionIdRef.current !== sessionId) return;
@@ -1631,7 +1586,7 @@ export default function InlineTextEditor({
       const firstSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
       const isFocused = Boolean(firstSnapshot.isActiveElementEditor);
       if (isFocused) {
-        placeCaretAtEnd(targetEl);
+        selectAllEditableContent(targetEl);
       }
       const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
 

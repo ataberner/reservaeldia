@@ -24,6 +24,8 @@ export default function useCanvasEditorInlineCommitHandlers({
   restoreElementDrag,
   calcularXTextoCentrado,
   setObjetos,
+  setElementosSeleccionados,
+  setMostrarPanelZ,
 }) {
   const onInlineChange = (nextValue) => {
     const nextText = String(nextValue ?? "");
@@ -120,10 +122,27 @@ export default function useCanvasEditorInlineCommitHandlers({
 
     const textoNuevoValidado = textoNuevoRaw.trim();
     if (textoNuevoValidado === "" && objeto.tipo === "texto") {
-      inlineDebugLog("finish-abort-empty", {
+      inlineDebugLog("finish-delete-empty", {
         id: finishId,
         rawLength: textoNuevoRaw.length,
         trimmedLength: textoNuevoValidado.length,
+      });
+      captureInlineSnapshot("finish-empty: before-delete-flush", {
+        id: finishId,
+      });
+      flushSync(() => {
+        setObjetos((prev) => prev.filter((item) => item.id !== finishId));
+        if (typeof setElementosSeleccionados === "function") {
+          setElementosSeleccionados((prev) =>
+            Array.isArray(prev) ? prev.filter((id) => id !== finishId) : []
+          );
+        }
+        if (typeof setMostrarPanelZ === "function") {
+          setMostrarPanelZ(false);
+        }
+      });
+      captureInlineSnapshot("finish-empty: after-delete-flush", {
+        id: finishId,
       });
       inlineCommitDebugRef.current = { id: null };
       inlineEditPreviewRef.current = { id: null, centerX: null };
@@ -137,7 +156,7 @@ export default function useCanvasEditorInlineCommitHandlers({
             sessionId: null,
             mounted: false,
             swapCommitted: false,
-            phase: "finish-empty-abort",
+            phase: "finish-empty-delete",
             token: Number(prev?.token || 0),
             offsetY: 0,
             offsetRevision: null,

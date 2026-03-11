@@ -493,6 +493,35 @@ export function applySelectionRange(range) {
   }
 }
 
+export function selectAllEditableContent(editorEl) {
+  if (!editorEl) return false;
+
+  const isTextInput =
+    typeof HTMLInputElement !== "undefined" &&
+    (editorEl instanceof HTMLInputElement ||
+      editorEl instanceof HTMLTextAreaElement);
+
+  if (isTextInput) {
+    try {
+      const textLength = String(editorEl.value ?? "").length;
+      editorEl.setSelectionRange(0, textLength);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (typeof document === "undefined") return false;
+
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(editorEl);
+    return applySelectionRange(range);
+  } catch {
+    return false;
+  }
+}
+
 export function resolveEditorCaretTextPosition(
   editorEl,
   anchorNode,

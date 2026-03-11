@@ -1,4 +1,9 @@
 import { Group, Rect } from "react-konva";
+import {
+  buildInlineCaretVisual,
+  INLINE_CARET_ACCENT,
+  INLINE_CARET_ACCENT_SOFT,
+} from "@/components/editor/textSystem/render/inlineCaretStyle";
 
 export default function InlineTextEditDecorationsLayer({
   decorations = null,
@@ -20,6 +25,7 @@ export default function InlineTextEditDecorationsLayer({
     Number.isFinite(Number(caretRect.x)) &&
     Number.isFinite(Number(caretRect.y)) &&
     Number.isFinite(Number(caretRect.height));
+  const caretVisual = hasCaret ? buildInlineCaretVisual(caretRect) : null;
 
   if (!hasSelection && !hasCaret && !hasOutline) {
     return null;
@@ -52,15 +58,32 @@ export default function InlineTextEditDecorationsLayer({
         />
       ))}
 
-      {hasCaret && (
-        <Rect
-          x={caretRect.x}
-          y={caretRect.y}
-          width={caretRect.width}
-          height={caretRect.height}
-          fill="#111111"
-          perfectDrawEnabled={false}
-        />
+      {caretVisual && (
+        <Group>
+          <Rect
+            x={caretVisual.glow.x}
+            y={caretVisual.glow.y}
+            width={caretVisual.glow.width}
+            height={caretVisual.glow.height}
+            fill={INLINE_CARET_ACCENT_SOFT}
+            cornerRadius={caretVisual.glow.radius}
+            opacity={0.85}
+            perfectDrawEnabled={false}
+          />
+          <Rect
+            x={caretVisual.body.x}
+            y={caretVisual.body.y}
+            width={caretVisual.body.width}
+            height={caretVisual.body.height}
+            cornerRadius={caretVisual.body.radius}
+            fill={INLINE_CARET_ACCENT}
+            opacity={0.82}
+            shadowColor="rgba(51, 65, 85, 0.08)"
+            shadowBlur={1.5}
+            shadowOpacity={0.45}
+            perfectDrawEnabled={false}
+          />
+        </Group>
       )}
     </Group>
   );

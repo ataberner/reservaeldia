@@ -31,6 +31,9 @@ import {
 import {
   readClientPointFromCanvasEvent,
 } from "@/components/editor/textSystem/services/textCanvasPointerService";
+import {
+  INLINE_CARET_BLINK_INTERVAL_MS,
+} from "@/components/editor/textSystem/render/inlineCaretStyle";
 
 function createEmptyDecorations() {
   return createEmptyTextSelectionGeometry();
@@ -342,6 +345,8 @@ export default function useTextEditInteractionController({
       return emptyGeometry;
     }
 
+    const previousGeometry = decorationsRef.current;
+
     const logicalOffsetFallbackHint = Number.isFinite(requestedLogicalOffsetRef.current)
       ? Number(requestedLogicalOffsetRef.current)
       : null;
@@ -383,7 +388,12 @@ export default function useTextEditInteractionController({
       decorationsRef.current = nextGeometry;
       setDecorations(nextGeometry);
     }
-    if (nextGeometry?.isCollapsed) {
+    const shouldResetBlink =
+      Boolean(nextGeometry?.isCollapsed) && (
+        !previousGeometry?.isCollapsed ||
+        !areRectsEqual(nextGeometry?.caretRect, previousGeometry?.caretRect)
+      );
+    if (shouldResetBlink) {
       setCaretBlinkVisible(true);
     }
 
@@ -963,7 +973,7 @@ export default function useTextEditInteractionController({
 
     const intervalId = window.setInterval(() => {
       setCaretBlinkVisible((visible) => !visible);
-    }, 530);
+    }, INLINE_CARET_BLINK_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);
@@ -972,6 +982,11 @@ export default function useTextEditInteractionController({
 
   const shouldHideSyntheticDecorations = Boolean(
     backendMetaRef.current?.renderCaretNatively
+  );
+  const nativeCaretVisible = Boolean(
+    isFocused &&
+    decorations?.isCollapsed &&
+    caretBlinkVisible
   );
   const visibleDecorations = useMemo(() => ({
     ...decorations,
@@ -985,12 +1000,10 @@ export default function useTextEditInteractionController({
       : (decorations?.selectionBounds || null),
     caretRect:
       !shouldHideSyntheticDecorations &&
-      isFocused &&
-      decorations?.isCollapsed &&
-      caretBlinkVisible
+      nativeCaretVisible
         ? decorations?.caretRect || null
         : null,
-  }), [caretBlinkVisible, decorations, isFocused, shouldHideSyntheticDecorations]);
+  }), [decorations, nativeCaretVisible, shouldHideSyntheticDecorations]);
 
   return {
     editingId,
@@ -1006,6 +1019,7 @@ export default function useTextEditInteractionController({
     handleKeyDown,
     handleSelectionMutation,
     syncDecorations,
+    nativeCaretVisible,
     decorations: visibleDecorations,
   };
 }

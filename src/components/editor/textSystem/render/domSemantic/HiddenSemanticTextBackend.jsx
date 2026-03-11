@@ -98,6 +98,7 @@ function HiddenSemanticTextBackend({
   const projectionSyncSignatureRef = useRef(null);
   const [liveKonvaProjection, setLiveKonvaProjection] = useState(null);
   const registerBackend = controller?.registerBackend;
+  const nativeCaretVisible = Boolean(controller?.nativeCaretVisible);
   const editingId = editing?.id || null;
   const rawValue = String(editing?.value ?? "");
   const sessionValue = rawValue;
@@ -707,7 +708,7 @@ function HiddenSemanticTextBackend({
               color: "transparent",
               WebkitTextFillColor: "transparent",
               caretColor: usesTransformedBackendLayout
-                ? nodeProps.fill
+                ? (nativeCaretVisible ? nodeProps.fill : "transparent")
                 : "transparent",
               whiteSpace: isSingleLine ? "pre" : "pre-wrap",
               overflowWrap: isSingleLine ? "normal" : "break-word",

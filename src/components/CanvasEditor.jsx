@@ -1059,12 +1059,14 @@ export default function CanvasEditor({
     handleKeyDown: textEditInteractionController.handleKeyDown,
     handleSelectionMutation: textEditInteractionController.handleSelectionMutation,
     syncDecorations: textEditInteractionController.syncDecorations,
+    nativeCaretVisible: textEditInteractionController.nativeCaretVisible,
   }), [
     textEditInteractionController.handleBlur,
     textEditInteractionController.handleFocus,
     textEditInteractionController.handleInput,
     textEditInteractionController.handleKeyDown,
     textEditInteractionController.handleSelectionMutation,
+    textEditInteractionController.nativeCaretVisible,
     textEditInteractionController.registerBackend,
     textEditInteractionController.syncDecorations,
   ]);

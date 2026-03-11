@@ -2,6 +2,9 @@ import { createPortal } from "react-dom";
 import {
   INLINE_DOM_TEXT_RENDER_PARITY_STYLE,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorTextMetrics";
+import {
+  INLINE_CARET_ACCENT,
+} from "@/components/editor/textSystem/render/inlineCaretStyle";
 
 export default function InlineEditorPortalView({
   BOX_DEBUG_MODE,
@@ -256,7 +259,7 @@ export default function InlineEditorPortalView({
                 lineHeight: `${editableLineHeightPx}px`,
                 letterSpacing: `${letterSpacingPx}px`,
                 color: editorTextColor,
-                caretColor: caretVisible ? editorTextColor : "transparent",
+                caretColor: caretVisible ? INLINE_CARET_ACCENT : "transparent",
                 WebkitTextFillColor: editorTextColor,
                 background: "transparent",
                 borderRadius: 0,

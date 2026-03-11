@@ -114,11 +114,11 @@ function buildArrowPoints(width, height) {
 function buildHeartPath(width, height) {
   const w = Math.max(1, width);
   const h = Math.max(1, height);
-  return `M ${w / 2} ${h}
-    C ${w * 0.08} ${h * 0.76}, ${w * 0.02} ${h * 0.42}, ${w * 0.24} ${h * 0.24}
-    C ${w * 0.36} ${h * 0.08}, ${w * 0.48} ${h * 0.16}, ${w / 2} ${h * 0.32}
-    C ${w * 0.52} ${h * 0.16}, ${w * 0.64} ${h * 0.08}, ${w * 0.76} ${h * 0.24}
-    C ${w * 0.98} ${h * 0.42}, ${w * 0.92} ${h * 0.76}, ${w / 2} ${h}
+  return `M ${w * 0.5} ${h * 0.84}
+    C ${w * 0.08} ${h * 0.58}, ${w * 0.14} ${h * 0.25}, ${w * 0.34} ${h * 0.25}
+    C ${w * 0.42} ${h * 0.25}, ${w * 0.47} ${h * 0.30}, ${w * 0.5} ${h * 0.36}
+    C ${w * 0.53} ${h * 0.30}, ${w * 0.58} ${h * 0.25}, ${w * 0.66} ${h * 0.25}
+    C ${w * 0.86} ${h * 0.25}, ${w * 0.92} ${h * 0.58}, ${w * 0.5} ${h * 0.84}
     Z`;
 }
 
@@ -912,26 +912,34 @@ export default function ElementoCanvas({
     const width = Number.isFinite(obj.width) ? obj.width : (obj.ancho || 200);
     const height = Number.isFinite(obj.height) ? obj.height : (obj.alto || 50);
 
-    const syncRsvpTextPosition = (target) => {
-      const nuevaPos = target?.position?.();
-      if (!nuevaPos) return;
-      const windowRefs = getWindowElementRefs();
-      const textoNode = windowRefs?.[`${obj.id}-text`];
-      if (!textoNode) return;
-      textoNode.x(nuevaPos.x);
-      textoNode.y(nuevaPos.y);
-      textoNode.getLayer()?.batchDraw();
-    };
-
     return (
-      <>
+      <Group
+        {...commonProps}
+        id={obj.id}
+        ref={handleRef}
+        width={width}
+        height={height}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <Rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="rgba(0,0,0,0.001)"
+          stroke="transparent"
+          listening={true}
+          draggable={false}
+          onClick={handleClick}
+          onTap={handleClick}
+          onDblClick={handleDoubleClick}
+          onDblTap={handleDoubleClick}
+        />
         {/* ðŸŸ£ BotÃ³n (fondo) */}
         <Rect
-          {...commonProps}
-          id={obj.id}
-          ref={handleRef}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          x={0}
+          y={0}
           width={width}
           height={height}
           cornerRadius={Number.isFinite(obj.cornerRadius) ? obj.cornerRadius : 8}
@@ -949,14 +957,7 @@ export default function ElementoCanvas({
           shadowColor={rsvpVisual.shadowColor}
           shadowBlur={rsvpVisual.shadowBlur}
           shadowOffset={{ x: 0, y: rsvpVisual.shadowOffsetY }}
-          onDragMove={(e) => {
-            commonProps.onDragMove?.(e);
-            syncRsvpTextPosition(e.target);
-          }}
-          onDragEnd={(e) => {
-            commonProps.onDragEnd?.(e);
-            syncRsvpTextPosition(e.target);
-          }}
+          listening={false}
         />
 
         {/* ðŸ”¤ Texto encima del botÃ³n */}
@@ -967,8 +968,8 @@ export default function ElementoCanvas({
             }
           }}
           id={`${obj.id}-text`}
-          x={obj.x}
-          y={obj.y}
+          x={0}
+          y={0}
           width={width}
           height={height}
           text={obj.texto ?? "Confirmar asistencia"}
@@ -984,7 +985,7 @@ export default function ElementoCanvas({
           opacity={textOpacity}
         />
 
-      </>
+      </Group>
     );
   }
 
@@ -1219,49 +1220,39 @@ export default function ElementoCanvas({
         const textOpacity = 1;
 
         return (
-          <>
+          <Group
+            {...commonProps}
+            id={obj.id}
+            ref={handleRef}
+            width={width}
+            height={height}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
             <Rect
-              {...commonProps}
-              id={obj.id}
-              ref={handleRef}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="rgba(0,0,0,0.001)"
+              stroke="transparent"
+              listening={true}
+              draggable={false}
+              onClick={handleClick}
+              onTap={handleClick}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+            />
+            <Rect
+              x={0}
+              y={0}
               width={width}
               height={height}
               {...shapeFillProps(rectFill)}
               cornerRadius={obj.cornerRadius || 0}
               stroke={selectionStroke}
               strokeWidth={selectionStrokeWidth}
-              onDragMove={(e) => {
-                if (typeof commonProps.onDragMove === "function") {
-                  commonProps.onDragMove(e);
-                }
-
-                const { x, y } = e.target.position();
-                const stage = e.target.getStage();
-                const textoNode = stage?.findOne(`#${obj.id}-text`);
-
-                if (textoNode) {
-                  textoNode.x(x);
-                  textoNode.y(y);
-                  textoNode.getLayer()?.batchDraw();
-                }
-              }}
-              onDragEnd={(e) => {
-                if (typeof commonProps.onDragEnd === "function") {
-                  commonProps.onDragEnd(e);
-                }
-
-                const { x, y } = e.target.position();
-                const stage = e.target.getStage();
-                const textoNode = stage?.findOne(`#${obj.id}-text`);
-
-                if (textoNode) {
-                  textoNode.x(x);
-                  textoNode.y(y);
-                  textoNode.getLayer()?.batchDraw();
-                }
-              }}
+              listening={false}
             />
 
             {typeof obj.texto === "string" && (
@@ -1270,8 +1261,8 @@ export default function ElementoCanvas({
                 ref={(node) => {
                   if (registerRef) registerRef(`${obj.id}-text`, node || null);
                 }}
-                x={obj.x}
-                y={obj.y}
+                x={0}
+                y={0}
                 width={width}
                 height={height}
                 text={obj.texto ?? ""}
@@ -1287,7 +1278,7 @@ export default function ElementoCanvas({
                 opacity={textOpacity}
               />
             )}
-          </>
+          </Group>
         );
       }
 
@@ -1295,16 +1286,39 @@ export default function ElementoCanvas({
         const circleRadius = obj.radius || 50;
         const circleFill = resolveKonvaFill(obj.color, circleRadius * 2, circleRadius * 2, "#000000");
         return (
-          <Circle
+          <Group
             {...commonProps}
+            id={obj.id}
             ref={handleRef}
-            radius={circleRadius}
-            {...shapeFillProps(circleFill)}
+            width={circleRadius * 2}
+            height={circleRadius * 2}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            stroke={selectionStroke}
-            strokeWidth={selectionStrokeWidth}
-          />
+          >
+            <Rect
+              x={-circleRadius}
+              y={-circleRadius}
+              width={circleRadius * 2}
+              height={circleRadius * 2}
+              fill="rgba(0,0,0,0.001)"
+              stroke="transparent"
+              listening={true}
+              draggable={false}
+              onClick={handleClick}
+              onTap={handleClick}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+            />
+            <Circle
+              x={0}
+              y={0}
+              radius={circleRadius}
+              {...shapeFillProps(circleFill)}
+              stroke={selectionStroke}
+              strokeWidth={selectionStrokeWidth}
+              listening={false}
+            />
+          </Group>
         );
       }
 
@@ -1312,17 +1326,40 @@ export default function ElementoCanvas({
         const triangleRadius = obj.radius || 60;
         const triangleFill = resolveKonvaFill(obj.color, triangleRadius * 2, triangleRadius * 2, "#000000");
         return (
-          <RegularPolygon
+          <Group
             {...commonProps}
+            id={obj.id}
             ref={handleRef}
-            sides={3}
-            radius={triangleRadius}
-            {...shapeFillProps(triangleFill)}
+            width={triangleRadius * 2}
+            height={triangleRadius * 2}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            stroke={selectionStroke}
-            strokeWidth={selectionStrokeWidth}
-          />
+          >
+            <Rect
+              x={-triangleRadius}
+              y={-triangleRadius}
+              width={triangleRadius * 2}
+              height={triangleRadius * 2}
+              fill="rgba(0,0,0,0.001)"
+              stroke="transparent"
+              listening={true}
+              draggable={false}
+              onClick={handleClick}
+              onTap={handleClick}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+            />
+            <RegularPolygon
+              x={0}
+              y={0}
+              sides={3}
+              radius={triangleRadius}
+              {...shapeFillProps(triangleFill)}
+              stroke={selectionStroke}
+              strokeWidth={selectionStrokeWidth}
+              listening={false}
+            />
+          </Group>
         );
       }
 
@@ -1341,18 +1378,41 @@ export default function ElementoCanvas({
         if (figura === "hexagon") points = buildRegularPolygonPoints(6, width, height);
 
         return (
-          <Line
+          <Group
             {...commonProps}
+            id={obj.id}
             ref={handleRef}
-            points={points}
-            closed
-            {...shapeFillProps(fillModel)}
-            stroke={selectionStroke}
-            strokeWidth={selectionStrokeWidth}
-            lineJoin="round"
+            width={width}
+            height={height}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-          />
+          >
+            <Rect
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="rgba(0,0,0,0.001)"
+              stroke="transparent"
+              listening={true}
+              draggable={false}
+              onClick={handleClick}
+              onTap={handleClick}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+            />
+            <Line
+              x={0}
+              y={0}
+              points={points}
+              closed
+              {...shapeFillProps(fillModel)}
+              stroke={selectionStroke}
+              strokeWidth={selectionStrokeWidth}
+              lineJoin="round"
+              listening={false}
+            />
+          </Group>
         );
       }
 
@@ -1360,16 +1420,39 @@ export default function ElementoCanvas({
         const { width, height } = toShapeSize(obj, 120, 108);
         const fillModel = resolveKonvaFill(obj.color, width, height, "#000000");
         return (
-          <Path
+          <Group
             {...commonProps}
+            id={obj.id}
             ref={handleRef}
-            data={buildHeartPath(width, height)}
-            {...shapeFillProps(fillModel)}
-            stroke={selectionStroke}
-            strokeWidth={selectionStrokeWidth}
+            width={width}
+            height={height}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-          />
+          >
+            <Rect
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="rgba(0,0,0,0.001)"
+              stroke="transparent"
+              listening={true}
+              draggable={false}
+              onClick={handleClick}
+              onTap={handleClick}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+            />
+            <Path
+              x={0}
+              y={0}
+              data={buildHeartPath(width, height)}
+              {...shapeFillProps(fillModel)}
+              stroke={selectionStroke}
+              strokeWidth={selectionStrokeWidth}
+              listening={false}
+            />
+          </Group>
         );
       }
 
@@ -1380,18 +1463,41 @@ export default function ElementoCanvas({
           ? obj.cornerRadius
           : Math.max(10, Math.round(height / 2));
         return (
-          <Rect
+          <Group
             {...commonProps}
+            id={obj.id}
             ref={handleRef}
             width={width}
             height={height}
-            cornerRadius={cornerRadius}
-            {...shapeFillProps(fillModel)}
-            stroke={selectionStroke}
-            strokeWidth={selectionStrokeWidth}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-          />
+          >
+            <Rect
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="rgba(0,0,0,0.001)"
+              stroke="transparent"
+              listening={true}
+              draggable={false}
+              onClick={handleClick}
+              onTap={handleClick}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+            />
+            <Rect
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              cornerRadius={cornerRadius}
+              {...shapeFillProps(fillModel)}
+              stroke={selectionStroke}
+              strokeWidth={selectionStrokeWidth}
+              listening={false}
+            />
+          </Group>
         );
       }
 

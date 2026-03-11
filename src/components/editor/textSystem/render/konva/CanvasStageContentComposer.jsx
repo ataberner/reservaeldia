@@ -544,6 +544,14 @@ export default function CanvasStageContent({
       return { decision: "multiselect_toggle", gesture };
     }
 
+    if (!supportsSemanticInline && !supportsLegacyDoubleInline) {
+      return {
+        decision: "select_only",
+        gesture,
+        reason: "non-inline-target",
+      };
+    }
+
     if (!semanticValid && !(supportsLegacyDoubleInline && gesture === "double")) {
       return { decision: "ignore", gesture };
     }

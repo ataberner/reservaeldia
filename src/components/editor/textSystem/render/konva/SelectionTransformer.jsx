@@ -92,6 +92,7 @@ export default function SelectionBounds({
   onTransformInteractionStart = null,
   onTransformInteractionEnd = null,
   isDragging,
+  isInteractionLocked = false,
   isMobile = false,
 }) {
   const transformerRef = useRef(null);
@@ -186,6 +187,7 @@ export default function SelectionBounds({
 
   const deberiaUsarTransformer =
     elementosTransformables.length > 0;
+  const interactionLocked = Boolean(isInteractionLocked);
 
   const selectedGeomKey = elementosSeleccionadosData
     .map((o) =>
@@ -534,6 +536,14 @@ export default function SelectionBounds({
     }
   }, [selectedElements.length, isDragging, deberiaUsarTransformer]);
 
+  useEffect(() => {
+    if (!interactionLocked) return;
+    stopResizeHintPulse();
+    setIsResizeGestureActive(false);
+    setPressedResizeAnchorName((current) => (current ? null : current));
+    hideRotationIndicator();
+  }, [interactionLocked]);
+
   // ðŸ”¥ Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
     const tr = transformerRef.current;
@@ -775,8 +785,12 @@ export default function SelectionBounds({
       padding={transformerPadding}
 
       // âŒ nodos y rotaciÃ³n OFF durante drag
-      enabledAnchors={isDragging && !isResizeGestureActive ? [] : ["bottom-right"]}
-      rotateEnabled={!isDragging && !esGaleria}
+      enabledAnchors={
+        interactionLocked || (isDragging && !isResizeGestureActive)
+          ? []
+          : ["bottom-right"]
+      }
+      rotateEnabled={!interactionLocked && !isDragging && !esGaleria}
       onMouseDown={handleResizeAnchorPressStart}
       onTouchStart={handleResizeAnchorPressStart}
       onPointerDown={handleResizeAnchorPressStart}
@@ -889,7 +903,7 @@ export default function SelectionBounds({
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
       centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
-      resizeEnabled={!isDragging || isResizeGestureActive}
+      resizeEnabled={!interactionLocked && (!isDragging || isResizeGestureActive)}
       rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
       rotateAnchorOffset={transformerRotateOffset}
       rotationSnapTolerance={transformerRotationSnapTolerance}

@@ -15,6 +15,7 @@ import {
   getWindowObjectResolver,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import resolveInlineCanvasVisibility from "@/components/editor/textSystem/adapters/konvaDom/resolveInlineCanvasVisibility";
+import { resolveKonvaImageCrop } from "@/components/editor/textSystem/render/konva/imageCropUtils";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -992,6 +993,7 @@ export default function ElementoCanvas({
 
 
   if (obj.tipo === "imagen" && img) {
+    const imageCrop = resolveKonvaImageCrop(obj, img);
     return (
       <KonvaImage
         {...commonProps}
@@ -999,8 +1001,9 @@ export default function ElementoCanvas({
         id={obj.id}
         image={img}
         crossOrigin="anonymous"
-        width={obj.width || img.width}
-        height={obj.height || img.height}
+        width={imageCrop.width}
+        height={imageCrop.height}
+        crop={imageCrop.crop}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Group, Circle } from "react-konva";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
@@ -7,6 +7,7 @@ import GaleriaKonva from "@/components/editor/GaleriaKonva";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import ElementoCanvas from "@/components/ElementoCanvas";
 import SelectionBounds from "@/components/SelectionBounds";
+import ImageCropOverlay from "@/components/editor/textSystem/render/konva/ImageCropOverlay";
 import InlineTextEditDecorationsLayer from "@/components/editor/textSystem/render/konva/InlineTextEditDecorationsLayer";
 import HoverIndicator from "@/components/HoverIndicator";
 import LineControls from "@/components/LineControls";
@@ -203,6 +204,7 @@ export default function CanvasStageContent({
     openingId: null,
     openingAtMs: 0,
   });
+  const [isImageCropInteracting, setIsImageCropInteracting] = useState(false);
   const activeInlineEditingId =
     editing.id ||
     getCurrentInlineEditingId() ||
@@ -860,6 +862,120 @@ export default function CanvasStageContent({
     }
   }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionEnd]);
 
+  const handleImageCropPreview = useCallback((cropAttrs = {}) => {
+    if (elementosSeleccionados.length !== 1) return;
+    const selectedId = elementosSeleccionados[0];
+
+    setObjetos((prev) => {
+      const objIndex = prev.findIndex((obj) => obj.id === selectedId);
+      if (objIndex === -1) return prev;
+
+      const current = prev[objIndex];
+      if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
+
+      const next = [...prev];
+      next[objIndex] = {
+        ...current,
+        x: Number.isFinite(cropAttrs.x) ? cropAttrs.x : current.x,
+        y: Number.isFinite(cropAttrs.y)
+          ? convertirAbsARel(cropAttrs.y, current.seccionId, seccionesOrdenadas)
+          : current.y,
+        width: Number.isFinite(cropAttrs.width) ? cropAttrs.width : current.width,
+        height: Number.isFinite(cropAttrs.height) ? cropAttrs.height : current.height,
+        cropX: Number.isFinite(cropAttrs.cropX) ? cropAttrs.cropX : current.cropX,
+        cropY: Number.isFinite(cropAttrs.cropY) ? cropAttrs.cropY : current.cropY,
+        cropWidth: Number.isFinite(cropAttrs.cropWidth)
+          ? cropAttrs.cropWidth
+          : current.cropWidth,
+        cropHeight: Number.isFinite(cropAttrs.cropHeight)
+          ? cropAttrs.cropHeight
+          : current.cropHeight,
+        ancho: Number.isFinite(cropAttrs.ancho) ? cropAttrs.ancho : current.ancho,
+        alto: Number.isFinite(cropAttrs.alto) ? cropAttrs.alto : current.alto,
+        rotation: Number.isFinite(cropAttrs.rotation)
+          ? cropAttrs.rotation
+          : (current.rotation || 0),
+        scaleX: 1,
+        scaleY: 1,
+      };
+      return next;
+    });
+
+    requestAnimationFrame(() => {
+      if (typeof actualizarPosicionBotonOpciones === "function") {
+        actualizarPosicionBotonOpciones("image-crop-preview");
+      }
+    });
+  }, [
+    actualizarPosicionBotonOpciones,
+    convertirAbsARel,
+    elementosSeleccionados,
+    seccionesOrdenadas,
+    setObjetos,
+  ]);
+
+  const handleImageCropCommit = useCallback((cropAttrs = {}) => {
+    if (elementosSeleccionados.length !== 1) return;
+    const selectedId = elementosSeleccionados[0];
+    setObjetos((prev) => {
+      const objIndex = prev.findIndex((obj) => obj.id === selectedId);
+      if (objIndex === -1) return prev;
+
+      const current = prev[objIndex];
+      if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
+
+      const next = [...prev];
+      next[objIndex] = {
+        ...current,
+        x: Number.isFinite(cropAttrs.x) ? cropAttrs.x : current.x,
+        y: Number.isFinite(cropAttrs.y)
+          ? convertirAbsARel(cropAttrs.y, current.seccionId, seccionesOrdenadas)
+          : current.y,
+        width: Number.isFinite(cropAttrs.width) ? cropAttrs.width : current.width,
+        height: Number.isFinite(cropAttrs.height) ? cropAttrs.height : current.height,
+        cropX: Number.isFinite(cropAttrs.cropX) ? cropAttrs.cropX : current.cropX,
+        cropY: Number.isFinite(cropAttrs.cropY) ? cropAttrs.cropY : current.cropY,
+        cropWidth: Number.isFinite(cropAttrs.cropWidth)
+          ? cropAttrs.cropWidth
+          : current.cropWidth,
+        cropHeight: Number.isFinite(cropAttrs.cropHeight)
+          ? cropAttrs.cropHeight
+          : current.cropHeight,
+        ancho: Number.isFinite(cropAttrs.ancho) ? cropAttrs.ancho : current.ancho,
+        alto: Number.isFinite(cropAttrs.alto) ? cropAttrs.alto : current.alto,
+        rotation: Number.isFinite(cropAttrs.rotation)
+          ? cropAttrs.rotation
+          : (current.rotation || 0),
+        scaleX: 1,
+        scaleY: 1,
+      };
+      return next;
+    });
+
+    requestAnimationFrame(() => {
+      if (typeof actualizarPosicionBotonOpciones === "function") {
+        actualizarPosicionBotonOpciones("image-crop-commit");
+      }
+    });
+  }, [
+    actualizarPosicionBotonOpciones,
+    convertirAbsARel,
+    elementosSeleccionados,
+    seccionesOrdenadas,
+    setObjetos,
+  ]);
+
+  const handleImageCropInteractionStart = useCallback((payload = {}) => {
+    setIsImageCropInteracting(true);
+    setHoverId(null);
+    handleTransformInteractionStartWithInlineIntent(payload);
+  }, [handleTransformInteractionStartWithInlineIntent, setHoverId]);
+
+  const handleImageCropInteractionEnd = useCallback((payload = {}) => {
+    setIsImageCropInteracting(false);
+    handleTransformInteractionEndWithInlineIntent(payload);
+  }, [handleTransformInteractionEndWithInlineIntent]);
+
   useEffect(() => {
     if (elementosSeleccionados.length !== 1) {
       clearInlineActivation("selection-size-change", {
@@ -907,6 +1023,18 @@ export default function CanvasStageContent({
       clearInlineIntent("editing-finished");
     }
   }, [clearInlineActivation, clearInlineIntent, editing.id]);
+
+  useEffect(() => {
+    if (editing.id || elementosSeleccionados.length !== 1) {
+      setIsImageCropInteracting(false);
+      return;
+    }
+
+    const selectedObject = objetos.find((obj) => obj.id === elementosSeleccionados[0]);
+    if (!selectedObject || selectedObject.tipo !== "imagen" || selectedObject.esFondo) {
+      setIsImageCropInteracting(false);
+    }
+  }, [editing.id, elementosSeleccionados, objetos]);
 
   return (
               <Stage
@@ -1671,6 +1799,7 @@ export default function CanvasStageContent({
                         elementRefs={elementRefs}
                         objetos={objetos}
                         isDragging={isDragging}
+                        isInteractionLocked={isImageCropInteracting}
                         isMobile={isMobile}
                         onTransformInteractionStart={handleTransformInteractionStartWithInlineIntent}
                         onTransformInteractionEnd={handleTransformInteractionEndWithInlineIntent}
@@ -1984,6 +2113,25 @@ export default function CanvasStageContent({
 
 
                   {/* No mostrar hover durante drag/resize/ediciÃ³n NI cuando hay lÃ­der de grupo */}
+                  {!editing.id && (
+                    <ImageCropOverlay
+                      selectedElementId={
+                        elementosSeleccionados.length === 1 ? elementosSeleccionados[0] : null
+                      }
+                      objetos={objetos}
+                      elementRefs={elementRefs}
+                      stageRef={stageRef}
+                      isMobile={isMobile}
+                      supportsPointerEvents={supportsPointerEvents}
+                      setGlobalCursor={setGlobalCursor}
+                      clearGlobalCursor={clearGlobalCursor}
+                      onCropPreview={handleImageCropPreview}
+                      onCropCommit={handleImageCropCommit}
+                      onInteractionStart={handleImageCropInteractionStart}
+                      onInteractionEnd={handleImageCropInteractionEnd}
+                    />
+                  )}
+
                   {!window._resizeData?.isResizing &&
                     !isDragging &&
                     !window._isDragging &&

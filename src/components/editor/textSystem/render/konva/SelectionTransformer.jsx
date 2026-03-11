@@ -1,6 +1,6 @@
-// SelectionBounds.jsx
+﻿// SelectionBounds.jsx
 import { useEffect, useRef, useState } from "react";
-import { Transformer, Rect } from "react-konva";
+import { Transformer, Rect, Group, Text } from "react-konva";
 import SelectionBoundsIndicator from "@/components/editor/textSystem/render/konva/SelectionBoundsIndicator";
 import {
   getSelectionFramePadding,
@@ -69,6 +69,20 @@ function getCountdownScaledSize(node) {
   return { width: 100, height: 50 };
 }
 
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return value;
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeRotationIndicatorDegrees(angle) {
+  if (!Number.isFinite(angle)) return 0;
+  let normalized = angle % 360;
+  if (normalized < 0) normalized += 360;
+  const rounded = Math.round(normalized);
+  return rounded >= 360 ? 0 : rounded;
+}
+
 
 export default function SelectionBounds({
   selectedElements,
@@ -85,6 +99,7 @@ export default function SelectionBounds({
   const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
+  const rotationIndicatorGroupRef = useRef(null);
   const resizeHintTimersRef = useRef([]);
   const lastResizeHintSelectionKeyRef = useRef("");
   const transformGestureRef = useRef({
@@ -105,14 +120,14 @@ export default function SelectionBounds({
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
-  const transformerAnchorSize = isMobile ? 32 : 14; //tamaño visual del nodo (más grande en mobile).
-  const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotación al borde.
+  const transformerAnchorSize = isMobile ? 32 : 14; //tamaÃ±o visual del nodo (mÃ¡s grande en mobile).
+  const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotaciÃ³n al borde.
   const transformerAnchorRadius = 999; //radio de esquina del nodo (999 lo hace circular).
   const transformerPadding = getSelectionFramePadding(isMobile); // espacio extra entre borde del transformer y elemento.
   const transformerBorderStrokeWidth = getSelectionFrameStrokeWidth(isMobile); //grosor del borde del transformer.
   const transformerAnchorFillColor = "#9333EA";
   const transformerAnchorStrokeWidth = isMobile ? 1.4 : 2.5; //grosor del borde del nodo.
-  const transformerAnchorShadowBlur = isMobile ? 9 : 6; // qué tan difusa es la sombra base del nodo.
+  const transformerAnchorShadowBlur = isMobile ? 9 : 6; // quÃ© tan difusa es la sombra base del nodo.
   const transformerAnchorShadowOffsetY = isMobile ? 4 : 3; // desplazamiento vertical de esa sombra.
   const transformerAnchorHitStrokeWidth = isMobile ? 62 : 20;
   const transformerAnchorPressedHitStrokeWidth = isMobile ? 96 : 24;
@@ -146,7 +161,13 @@ export default function SelectionBounds({
   const transformerAnchorHintHitStrokeWidth = isMobile ? 84 : 22;
   const transformerHintBorderStrongStrokeWidth = isMobile ? 2.8 : 1.6;
   const transformerHintBorderSoftStrokeWidth = isMobile ? 2.2 : 1.25;
-  const transformerRotationSnapTolerance = isMobile ? 8 : 5; //tolerancia para “encajar” rotación en ángulos fijos.
+  const transformerRotationSnapTolerance = isMobile ? 8 : 5; //tolerancia para â€œencajarâ€ rotaciÃ³n en Ã¡ngulos fijos.
+  const rotationIndicatorWidth = isMobile ? 92 : 72;
+  const rotationIndicatorHeight = isMobile ? 38 : 30;
+  const rotationIndicatorOffsetX = isMobile ? 26 : 22;
+  const rotationIndicatorOffsetY = isMobile ? 24 : 20;
+  const rotationIndicatorMargin = isMobile ? 14 : 10;
+  const rotationIndicatorFontSize = isMobile ? 18 : 14;
   const esTriangulo =
     primerElemento?.tipo === "forma" &&
     primerElemento?.figura === "triangle";
@@ -206,7 +227,72 @@ export default function SelectionBounds({
     };
   };
 
+  const hideRotationIndicator = () => {
+    const indicator = rotationIndicatorGroupRef.current;
+    if (!indicator || !indicator.visible()) return;
+    indicator.visible(false);
+    indicator.getLayer?.()?.batchDraw?.();
+  };
 
+  const updateRotationIndicator = (node) => {
+    if (!transformGestureRef.current?.isRotate) {
+      hideRotationIndicator();
+      return;
+    }
+
+    const indicator = rotationIndicatorGroupRef.current;
+    const stage = transformerRef.current?.getStage?.();
+    const pose = getTransformPose(node);
+    const pointer =
+      stage && typeof stage.getPointerPosition === "function"
+        ? stage.getPointerPosition()
+        : null;
+    if (!indicator || !stage || !pointer) return;
+
+    const stageWidth =
+      typeof stage.width === "function"
+        ? Number(stage.width())
+        : Number(stage?.attrs?.width);
+    const stageHeight =
+      typeof stage.height === "function"
+        ? Number(stage.height())
+        : Number(stage?.attrs?.height);
+    const clampIndicatorX = (value) =>
+      Number.isFinite(stageWidth)
+        ? clamp(
+            value,
+            rotationIndicatorMargin,
+            Math.max(
+              rotationIndicatorMargin,
+              stageWidth - rotationIndicatorWidth - rotationIndicatorMargin
+            )
+          )
+        : value;
+    const clampIndicatorY = (value) =>
+      Number.isFinite(stageHeight)
+        ? clamp(
+            value,
+            rotationIndicatorMargin,
+            Math.max(
+              rotationIndicatorMargin,
+              stageHeight - rotationIndicatorHeight - rotationIndicatorMargin
+            )
+          )
+        : value;
+
+    const desiredX = Number(pointer.x) + rotationIndicatorOffsetX;
+    const desiredY = Number(pointer.y) + rotationIndicatorOffsetY;
+    const nextX = clampIndicatorX(desiredX);
+    const nextY = clampIndicatorY(desiredY);
+
+    const degreeText =
+      String(normalizeRotationIndicatorDegrees(pose.rotation)) + String.fromCharCode(176);
+
+    indicator.position({ x: nextX, y: nextY });
+    indicator.visible(true);
+    indicator.findOne(".rotation-angle-label")?.text(degreeText);
+    indicator.getLayer?.()?.batchDraw?.();
+  };
   const clearResizeAnchorPressFeedback = () => {
     if (isTransformingResizeRef.current) return;
     setIsResizeGestureActive(false);
@@ -342,7 +428,7 @@ export default function SelectionBounds({
       return nextBox;
     }
 
-    // Si el resize empuja más afuera del canvas, mantener el estado anterior.
+    // Si el resize empuja mÃ¡s afuera del canvas, mantener el estado anterior.
     return oldBox;
   };
 
@@ -448,7 +534,7 @@ export default function SelectionBounds({
     }
   }, [selectedElements.length, isDragging, deberiaUsarTransformer]);
 
-  // 🔥 Efecto principal del Transformer (SIN retry / SIN flicker)
+  // ðŸ”¥ Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -502,7 +588,7 @@ export default function SelectionBounds({
       }
     }
 
-    // Si aún no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
+    // Si aÃºn no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
     if (nodosTransformables.length === 0) {
       TRDBG("EFFECT exit: no nodes yet", {
         selKey,
@@ -531,7 +617,7 @@ export default function SelectionBounds({
     tr.getLayer()?.batchDraw();
 
   }, [
-    // Dependencias mínimas reales
+    // Dependencias mÃ­nimas reales
     selectedElements.join(","),
     deberiaUsarTransformer,
     hasGallery,
@@ -598,7 +684,7 @@ export default function SelectionBounds({
 
 
 
-  // 🔥 Render
+  // ðŸ”¥ Render
 
   if (selectedElements.length === 0) return null;
 
@@ -638,11 +724,48 @@ export default function SelectionBounds({
     : transformerBorderStrokeWidth;
 
   return (
-    <Transformer
+    <>
+      <Group
+        ref={rotationIndicatorGroupRef}
+        name="ui rotation-angle-indicator"
+        listening={false}
+        visible={false}
+      >
+        <Rect
+          x={0}
+          y={0}
+          width={rotationIndicatorWidth}
+          height={rotationIndicatorHeight}
+          cornerRadius={isMobile ? 14 : 10}
+          fill="rgba(88, 28, 135, 0.94)"
+          stroke="#A855F7"
+          strokeWidth={isMobile ? 1.5 : 1}
+          shadowColor="rgba(76, 29, 149, 0.28)"
+          shadowBlur={isMobile ? 12 : 8}
+          shadowOffset={{ x: 0, y: isMobile ? 4 : 3 }}
+          shadowOpacity={1}
+        />
+        <Text
+          name="rotation-angle-label"
+          x={0}
+          y={0}
+          width={rotationIndicatorWidth}
+          height={rotationIndicatorHeight}
+          align="center"
+          verticalAlign="middle"
+          fill="#FFFFFF"
+          fontSize={rotationIndicatorFontSize}
+          fontStyle="bold"
+          text={"0" + String.fromCharCode(176)}
+          listening={false}
+        />
+      </Group>
+
+      <Transformer
       name="ui"
       ref={transformerRef}
 
-      // 🔵 borde siempre visible
+      // ðŸ”µ borde siempre visible
       borderEnabled={true}
 
       borderStroke={transformerBorderStroke}
@@ -651,7 +774,7 @@ export default function SelectionBounds({
       borderStrokeWidth={transformerBorderVisualWidth}
       padding={transformerPadding}
 
-      // ❌ nodos y rotación OFF durante drag
+      // âŒ nodos y rotaciÃ³n OFF durante drag
       enabledAnchors={isDragging && !isResizeGestureActive ? [] : ["bottom-right"]}
       rotateEnabled={!isDragging && !esGaleria}
       onMouseDown={handleResizeAnchorPressStart}
@@ -745,7 +868,7 @@ export default function SelectionBounds({
         anchor.shadowColor(anchorShadowColor);
         anchor.fill(anchorFillColor);
         anchor.shadowEnabled(true);
-        // En pressed, el halo nace más cerca del anillo para que se note mejor.
+        // En pressed, el halo nace mÃ¡s cerca del anillo para que se note mejor.
         anchor.shadowForStrokeEnabled(true);
         anchor.shadowOpacity(anchorShadowOpacity);
         anchor.shadowBlur(anchorShadowBlur);
@@ -896,6 +1019,12 @@ export default function SelectionBounds({
           isRotate: isRotateGesture,
           activeAnchor: activeAnchor ?? null,
         };
+        if (isRotateGesture) {
+          const nodes = typeof tr?.nodes === "function" ? tr.nodes() || [] : [];
+          updateRotationIndicator(nodes[0] || null);
+        } else {
+          hideRotationIndicator();
+        }
         setIsResizeGestureActive(true);
         if (activeAnchor) {
           setPressedResizeAnchorName((current) =>
@@ -997,7 +1126,7 @@ export default function SelectionBounds({
             : null;
 
           const n = nodes[0];
-          const id = n ? (typeof n.id === "function" ? n.id() : n.attrs?.id) : "∅";
+          const id = n ? (typeof n.id === "function" ? n.id() : n.attrs?.id) : "âˆ…";
           const trRect = tr?.getClientRect?.({ skipTransform: false, skipShadow: true, skipStroke: true });
 
           slog(
@@ -1017,8 +1146,13 @@ export default function SelectionBounds({
 
         const tr = transformerRef.current;
         const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
-        const node = nodes[0]; // ✅ nodo real (single select)
+        const node = nodes[0]; // âœ… nodo real (single select)
         if (!node) return;
+        if (transformGestureRef.current?.isRotate) {
+          updateRotationIndicator(node);
+        } else {
+          hideRotationIndicator();
+        }
 
         try {
           const pose = getTransformPose(node);
@@ -1169,21 +1303,21 @@ export default function SelectionBounds({
           onTransform(transformData);
 
           // --- LOG COMPACTO (opcional) ---
-          const id = (typeof node.id === "function" ? node.id() : node.attrs?.id) || "∅";
+          const id = (typeof node.id === "function" ? node.id() : node.attrs?.id) || "âˆ…";
           const sx = node.scaleX?.() ?? 1;
           const sy = node.scaleY?.() ?? 1;
           const r = node.getClientRect({ skipTransform: false, skipShadow: true, skipStroke: true });
           slog(
             "[TR] live",
             `id=${id}`,
-            `tipo=${primerElemento?.tipo || "∅"}`,
+            `tipo=${primerElemento?.tipo || "âˆ…"}`,
             `sx=${sx.toFixed(3)}`,
             `sy=${sy.toFixed(3)}`,
             `x=${(node.x?.() ?? 0).toFixed(1)}`,
             `y=${(node.y?.() ?? 0).toFixed(1)}`,
             `nodeRect(w=${r.width.toFixed(1)},h=${r.height.toFixed(1)})`,
-            `w=${transformData.width ?? "∅"}`,
-            `h=${transformData.height ?? "∅"}`
+            `w=${transformData.width ?? "âˆ…"}`,
+            `h=${transformData.height ?? "âˆ…"}`
           );
         } catch (error) {
           console.warn("Error en onTransform:", error);
@@ -1207,12 +1341,13 @@ export default function SelectionBounds({
 
         try {
           if (!transformerRef.current || !onTransform) return;
+          hideRotationIndicator();
 
           const tr = transformerRef.current;
           const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
 
         // -------------------------
-        // MULTI-SELECCIÓN
+        // MULTI-SELECCIÃ“N
         // -------------------------
         if (nodes.length > 1) {
           try {
@@ -1313,7 +1448,7 @@ export default function SelectionBounds({
         }
 
         // -------------------------
-        // SINGLE-SELECCIÓN
+        // SINGLE-SELECCIÃ“N
         // -------------------------
         const node = nodes[0];
         if (!node) return;
@@ -1504,7 +1639,7 @@ export default function SelectionBounds({
             }
 
             // Para texto evitamos aplanar antes del commit en React,
-            // así no aparece un frame intermedio con tamaño "saltado".
+            // asÃ­ no aparece un frame intermedio con tamaÃ±o "saltado".
             textTransformAnchorRef.current = null;
           } else {
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
@@ -1532,7 +1667,7 @@ export default function SelectionBounds({
                 if (typeof node.radius === "function") node.radius(finalData.radius);
                 node.getLayer()?.batchDraw();
               } catch (err) {
-                console.warn("Error aplanando escala de triángulo (sync):", err);
+                console.warn("Error aplanando escala de triÃ¡ngulo (sync):", err);
               }
             } else {
               finalData.scaleX = 1;
@@ -1563,7 +1698,7 @@ export default function SelectionBounds({
                 } catch {}
               }
 
-              // ✅ Aplanar escala INMEDIATO
+              // âœ… Aplanar escala INMEDIATO
               try {
                 const fw = finalData.width;
                 const fh = finalData.height;
@@ -1593,7 +1728,7 @@ export default function SelectionBounds({
           circleAnchorRef.current = null;
 
 
-          // ✅ Reatachar 1 vez, con ref fresco, en el próximo frame
+          // âœ… Reatachar 1 vez, con ref fresco, en el prÃ³ximo frame
           try {
             const tr2 = transformerRef.current;
             if (!tr2) return;
@@ -1614,7 +1749,7 @@ export default function SelectionBounds({
                 hasStage: !!freshNode?.getStage?.(),
               });
 
-              // Si el nodo no está listo, despegar y salir
+              // Si el nodo no estÃ¡ listo, despegar y salir
               if (!freshNode || freshNode._destroyed || !freshNode.getStage?.()) {
                 TRDBG("onTransformEnd RAF -> DETACH nodes([])", { idSel });
                 try { tr2.nodes([]); tr2.getLayer?.()?.batchDraw(); } catch { }
@@ -1705,6 +1840,7 @@ export default function SelectionBounds({
           console.warn("Error en onTransformEnd:", error);
           window._resizeData = null;
         } finally {
+          hideRotationIndicator();
           isTransformingResizeRef.current = false;
           setIsResizeGestureActive(false);
           clearResizeAnchorPressFeedback();
@@ -1712,8 +1848,11 @@ export default function SelectionBounds({
         }
       }}
 
-    />
+      />
+    </>
   );
 }
+
+
 
 

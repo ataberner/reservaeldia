@@ -25,6 +25,10 @@ import {
 import {
   readClientPointFromCanvasEvent,
 } from "@/components/editor/textSystem/services/textCanvasPointerService";
+import {
+  buildSelectionFramePolygon,
+  getSelectionFramePadding,
+} from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 
 const INLINE_INTENT_STALE_MS = 1500;
 
@@ -84,7 +88,7 @@ function getRuntimeInteractionState() {
   };
 }
 
-function resolveInlineEditOutlineRect(editingId, elementRefs, stage) {
+function resolveInlineEditOutlineRect(editingId, elementRefs, stage, isMobile = false) {
   if (!editingId || !elementRefs?.current || !stage) return null;
   const sourceNode = elementRefs.current[editingId] || null;
   const textNode = resolveInlineKonvaTextNode(sourceNode, stage) || sourceNode;
@@ -97,15 +101,24 @@ function resolveInlineEditOutlineRect(editingId, elementRefs, stage) {
       skipStroke: true,
     });
     if (!rect) return null;
+    const padding = getSelectionFramePadding(isMobile);
     return {
-      x: Number(rect.x),
-      y: Number(rect.y),
-      width: Number(rect.width),
-      height: Number(rect.height),
+      x: Number(rect.x) - padding,
+      y: Number(rect.y) - padding,
+      width: Number(rect.width) + padding * 2,
+      height: Number(rect.height) + padding * 2,
     };
   } catch {
     return null;
   }
+}
+
+function resolveInlineEditOutlinePoints(editingId, elementRefs, stage, isMobile = false) {
+  if (!editingId || !elementRefs?.current || !stage) return null;
+  const sourceNode = elementRefs.current[editingId] || null;
+  const textNode = resolveInlineKonvaTextNode(sourceNode, stage) || sourceNode;
+  if (!textNode) return null;
+  return buildSelectionFramePolygon(textNode, getSelectionFramePadding(isMobile));
 }
 
 export default function CanvasStageContent({
@@ -1609,11 +1622,19 @@ export default function CanvasStageContent({
 
                   {editing.id && (
                     <InlineTextEditDecorationsLayer
+                      isMobile={isMobile}
                       decorations={inlineEditDecorations}
+                      outlinePoints={resolveInlineEditOutlinePoints(
+                        editing.id,
+                        elementRefs,
+                        stageRef.current?.getStage?.() || stageRef.current || null,
+                        isMobile
+                      )}
                       outlineRect={resolveInlineEditOutlineRect(
                         editing.id,
                         elementRefs,
-                        stageRef.current?.getStage?.() || stageRef.current || null
+                        stageRef.current?.getStage?.() || stageRef.current || null,
+                        isMobile
                       )}
                     />
                   )}
@@ -1964,6 +1985,7 @@ export default function CanvasStageContent({
                       elementRefs={elementRefs}
                       objetos={objetos}
                       activeInlineEditingId={activeInlineEditingId}
+                      isMobile={isMobile}
                     />
                   )}
 

@@ -1,19 +1,30 @@
-import { Group, Rect } from "react-konva";
+import { Group, Rect, Line } from "react-konva";
 import {
   buildInlineCaretVisual,
   INLINE_CARET_ACCENT,
   INLINE_CARET_ACCENT_SOFT,
 } from "@/components/editor/textSystem/render/inlineCaretStyle";
+import {
+  getSelectionFrameStrokeWidth,
+  SELECTION_FRAME_STROKE,
+} from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 
 export default function InlineTextEditDecorationsLayer({
   decorations = null,
   outlineRect = null,
+  outlinePoints = null,
+  isMobile = false,
 }) {
   const selectionRects = Array.isArray(decorations?.selectionRects)
     ? decorations.selectionRects
     : [];
   const caretRect = decorations?.caretRect || null;
+  const hasOutlinePoints =
+    Array.isArray(outlinePoints) &&
+    outlinePoints.length >= 8 &&
+    outlinePoints.every((value) => Number.isFinite(Number(value)));
   const hasOutline =
+    !hasOutlinePoints &&
     outlineRect &&
     Number.isFinite(Number(outlineRect.x)) &&
     Number.isFinite(Number(outlineRect.y)) &&
@@ -27,21 +38,30 @@ export default function InlineTextEditDecorationsLayer({
     Number.isFinite(Number(caretRect.height));
   const caretVisual = hasCaret ? buildInlineCaretVisual(caretRect) : null;
 
-  if (!hasSelection && !hasCaret && !hasOutline) {
+  if (!hasSelection && !hasCaret && !hasOutline && !hasOutlinePoints) {
     return null;
   }
 
   return (
     <Group name="inline-text-edit-decorations" listening={false}>
+      {hasOutlinePoints && (
+        <Line
+          points={outlinePoints}
+          closed
+          fillEnabled={false}
+          stroke={SELECTION_FRAME_STROKE}
+          strokeWidth={getSelectionFrameStrokeWidth(isMobile)}
+          perfectDrawEnabled={false}
+        />
+      )}
       {hasOutline && (
         <Rect
           x={outlineRect.x}
           y={outlineRect.y}
           width={outlineRect.width}
           height={outlineRect.height}
-          stroke="#773dbe"
-          strokeWidth={1.25}
-          dash={[6, 3]}
+          stroke={SELECTION_FRAME_STROKE}
+          strokeWidth={getSelectionFrameStrokeWidth(isMobile)}
           perfectDrawEnabled={false}
         />
       )}

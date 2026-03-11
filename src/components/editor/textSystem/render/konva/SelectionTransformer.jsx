@@ -2,8 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Transformer, Rect } from "react-konva";
 import SelectionBoundsIndicator from "@/components/editor/textSystem/render/konva/SelectionBoundsIndicator";
-
-
+import {
+  getSelectionFramePadding,
+  getSelectionFrameStrokeWidth,
+  SELECTION_FRAME_ACTIVE_STROKE,
+  SELECTION_FRAME_STROKE,
+} from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -104,8 +108,8 @@ export default function SelectionBounds({
   const transformerAnchorSize = isMobile ? 32 : 14; //tamaño visual del nodo (más grande en mobile).
   const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotación al borde.
   const transformerAnchorRadius = 999; //radio de esquina del nodo (999 lo hace circular).
-  const transformerPadding = isMobile ? 14 : 4; // espacio extra entre borde del transformer y elemento.
-  const transformerBorderStrokeWidth = isMobile ? 1.5 : 1; //grosor del borde del transformer.
+  const transformerPadding = getSelectionFramePadding(isMobile); // espacio extra entre borde del transformer y elemento.
+  const transformerBorderStrokeWidth = getSelectionFrameStrokeWidth(isMobile); //grosor del borde del transformer.
   const transformerAnchorFillColor = "#9333EA";
   const transformerAnchorStrokeWidth = isMobile ? 1.4 : 2.5; //grosor del borde del nodo.
   const transformerAnchorShadowBlur = isMobile ? 9 : 6; // qué tan difusa es la sombra base del nodo.
@@ -624,7 +628,9 @@ export default function SelectionBounds({
     resizeHintPhase > 0 &&
     !isResizeGestureActive &&
     !isTransformingResizeRef.current;
-  const transformerBorderStroke = isResizeHintVisible ? "#A855F7" : "#9333EA";
+  const transformerBorderStroke = isResizeHintVisible
+    ? SELECTION_FRAME_ACTIVE_STROKE
+    : SELECTION_FRAME_STROKE;
   const transformerBorderVisualWidth = isResizeHintVisible
     ? resizeHintPhase === 2
       ? transformerHintBorderStrongStrokeWidth

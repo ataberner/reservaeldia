@@ -1,10 +1,15 @@
-import { Rect, Group } from "react-konva";
+import { Rect, Group, Line } from "react-konva";
+import {
+  buildSelectionFramePolygon,
+  getSelectionFramePadding,
+} from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 
 export default function HoverIndicator({
   hoveredElement,
   elementRefs,
   objetos = [],
   activeInlineEditingId = null,
+  isMobile = false,
 }) {
   if (!hoveredElement || !elementRefs?.current?.[hoveredElement]) return null;
 
@@ -16,6 +21,10 @@ export default function HoverIndicator({
     : null;
   const suppressInlineTextHover =
     hoveredObj?.tipo === "texto" && hoveredElement === activeInlineEditingId;
+  const shouldUseRotatedFrame =
+    hoveredObj?.tipo === "texto" ||
+    hoveredObj?.tipo === "forma" ||
+    hoveredObj?.tipo === "rsvp-boton";
 
   if (suppressInlineTextHover) {
     return null;
@@ -41,26 +50,56 @@ export default function HoverIndicator({
       width: Number(hoveredObj.width),
       height: Number(hoveredObj.height),
     };
+  } else if (hoveredObj?.tipo === "rsvp-boton") {
+    box = node.getClientRect({
+      skipShadow: true,
+      skipStroke: true,
+    });
   } else {
     box = node.getClientRect();
   }
 
-  if (!box || isNaN(box.x) || isNaN(box.y) || box.width <= 0 || box.height <= 0) {
+  const framePadding = getSelectionFramePadding(isMobile);
+  const framePoints =
+    shouldUseRotatedFrame
+      ? buildSelectionFramePolygon(node, framePadding)
+      : null;
+  const hasFramePoints =
+    Array.isArray(framePoints) &&
+    framePoints.length === 8 &&
+    framePoints.every((value) => Number.isFinite(Number(value)));
+
+  if (
+    !hasFramePoints &&
+    (!box || isNaN(box.x) || isNaN(box.y) || box.width <= 0 || box.height <= 0)
+  ) {
     return null;
   }
 
   return (
     <Group name="ui-hover-indicator">
-      <Rect
-        x={box.x - 2}
-        y={box.y - 2}
-        width={box.width + 4}
-        height={box.height + 4}
-        fill="transparent"
-        stroke="#9333EA"
-        strokeWidth={2}
-        listening={false}
-      />
+      {hasFramePoints ? (
+        <Line
+          points={framePoints}
+          closed
+          fillEnabled={false}
+          stroke="#9333EA"
+          strokeWidth={2}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      ) : (
+        <Rect
+          x={box.x - framePadding}
+          y={box.y - framePadding}
+          width={box.width + framePadding * 2}
+          height={box.height + framePadding * 2}
+          fill="transparent"
+          stroke="#9333EA"
+          strokeWidth={2}
+          listening={false}
+        />
+      )}
     </Group>
   );
 }

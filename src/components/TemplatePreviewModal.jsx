@@ -8,6 +8,9 @@ import {
   buildPreviewPatchMessage,
 } from "@/domain/templates/previewLivePatch";
 
+const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
+const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
+
 function toText(value, fallback = "") {
   const safe = String(value || "").trim();
   return safe || fallback;
@@ -15,6 +18,92 @@ function toText(value, fallback = "") {
 
 function toList(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function TemplatePreviewViewport({
+  iframeRef,
+  src,
+  srcDoc,
+  sandbox,
+  title,
+  onError,
+}) {
+  const stageRef = useRef(null);
+  const [stageWidth, setStageWidth] = useState(0);
+  const [stageHeight, setStageHeight] = useState(0);
+
+  useEffect(() => {
+    const node = stageRef.current;
+    if (!node) return undefined;
+
+    const measure = () => {
+      setStageWidth(node.clientWidth || 0);
+      setStageHeight(node.clientHeight || 0);
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver((entries) => {
+        const rect = entries?.[0]?.contentRect;
+        if (!rect) {
+          measure();
+          return;
+        }
+        setStageWidth(rect.width || 0);
+        setStageHeight(rect.height || 0);
+      });
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    return undefined;
+  }, []);
+
+  const widthBudget = Math.max(stageWidth, 240);
+  const scale = clamp(widthBudget / TEMPLATE_PREVIEW_VIEWPORT_WIDTH, 0.16, 1);
+  const scaledWidth = Math.round(TEMPLATE_PREVIEW_VIEWPORT_WIDTH * scale);
+  const scaledHeight = Math.round(TEMPLATE_PREVIEW_VIEWPORT_HEIGHT * scale);
+
+  return (
+    <div
+      ref={stageRef}
+      className="flex h-full w-full items-start justify-center overflow-hidden"
+    >
+      <div
+        className="overflow-hidden bg-white"
+        style={{ width: scaledWidth, height: scaledHeight }}
+      >
+        <div
+          style={{
+            width: TEMPLATE_PREVIEW_VIEWPORT_WIDTH,
+            height: TEMPLATE_PREVIEW_VIEWPORT_HEIGHT,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        >
+          <iframe
+            ref={iframeRef}
+            src={src}
+            srcDoc={srcDoc}
+            sandbox={sandbox}
+            title={title}
+            className="block h-full w-full border-0"
+            onError={onError}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function TemplatePreviewModal({
@@ -74,17 +163,21 @@ export default function TemplatePreviewModal({
   );
 
   useEffect(() => {
-    if (!visible || typeof document === "undefined") return undefined;
+    if (!visible || typeof document === "undefined" || typeof window === "undefined") return undefined;
+
+    modalPanelRef.current?.focus?.({ preventScroll: true });
 
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || openingEditor) return;
+      event.preventDefault();
+      event.stopPropagation();
       onClose?.();
     };
 
-    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
 
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown, true);
     };
   }, [onClose, openingEditor, visible]);
 
@@ -156,6 +249,7 @@ export default function TemplatePreviewModal({
       <div className="flex h-[100dvh] w-full justify-center px-0 sm:px-4">
         <div
           ref={modalPanelRef}
+          tabIndex={-1}
           className="relative flex h-[100dvh] w-full max-w-[980px] flex-col overflow-hidden border-x border-white/10 bg-[linear-gradient(180deg,#fbf8ff_0%,#f4eeff_100%)] shadow-[0_20px_60px_rgba(0,0,0,0.25)]"
         >
           <button
@@ -176,22 +270,20 @@ export default function TemplatePreviewModal({
             >
               <div className="absolute inset-0 bg-white">
                 {shouldShowPreviewUrl ? (
-                  <iframe
+                  <TemplatePreviewViewport
                     src={previewUrl}
                     sandbox="allow-scripts allow-same-origin"
                     title={`Vista previa de ${title}`}
-                    className="h-full w-full border-0"
                     onError={() => setPreviewUrlFailed(true)}
                   />
                 ) : null}
 
                 {shouldShowGeneratedPreview ? (
-                  <iframe
-                    ref={previewFrameRef}
+                  <TemplatePreviewViewport
                     srcDoc={previewHtml}
                     sandbox="allow-scripts"
                     title={`Vista previa de ${title}`}
-                    className="h-full w-full border-0"
+                    iframeRef={previewFrameRef}
                   />
                 ) : null}
 

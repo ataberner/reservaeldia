@@ -206,7 +206,7 @@ export function buildTemplatePayloadFromAuthoring({
   return {
     nombre: normalizeText(safeDraftData.nombre) || "Plantilla",
     tipo: normalizedType || "general",
-    editor: normalizeText(safeDraftData.editor) || "konva",
+    editor: "konva",
     portada: normalizeText(safeDraftData.portada) || null,
     objetos: renderState.objetos,
     secciones: renderState.secciones,

@@ -1347,10 +1347,7 @@ export const copiarPlantilla = onCall(
       slug,
       userId: uid,
       plantillaId,
-      editor:
-        typeof datosPlantilla.editor === "string"
-          ? datosPlantilla.editor
-          : "konva",
+      editor: "konva",
       objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
       secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
       portada: portadaNormalizada,

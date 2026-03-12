@@ -277,7 +277,7 @@ export default function BorradoresGrid({
                   event.preventDefault();
                   const detail = {
                     slug,
-                    editor: borrador.editor || "konva",
+                    editor: "konva",
                   };
                   window.dispatchEvent(new CustomEvent("abrir-borrador", { detail }));
                 }}

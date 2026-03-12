@@ -340,6 +340,51 @@ async function resolveOwnedDraftSlugForEditor({ slug, uid }) {
   }
 }
 
+function hasModernDraftRenderState(rawDraft) {
+  const renderState = normalizeDraftRenderState(rawDraft);
+  return renderState.secciones.length > 0 || renderState.objetos.length > 0;
+}
+
+async function resolveCompatibleDraftForDashboardEditor({ slug, uid }) {
+  const resolvedSlug = await resolveOwnedDraftSlugForEditor({ slug, uid });
+  if (!resolvedSlug) {
+    return { status: "unavailable", slug: null, draftData: null };
+  }
+
+  try {
+    const draftSnap = await getDoc(doc(db, "borradores", resolvedSlug));
+    if (!draftSnap.exists()) {
+      return { status: "missing", slug: resolvedSlug, draftData: null };
+    }
+
+    const draftData = draftSnap.data() || {};
+    if (isDraftTrashed(draftData)) {
+      return { status: "unavailable", slug: resolvedSlug, draftData };
+    }
+
+    if (!hasModernDraftRenderState(draftData)) {
+      return { status: "legacy", slug: resolvedSlug, draftData };
+    }
+
+    return { status: "ok", slug: resolvedSlug, draftData };
+  } catch (error) {
+    if (isPermissionDeniedFirestoreError(error)) {
+      return { status: "unavailable", slug: resolvedSlug, draftData: null };
+    }
+
+    return { status: "ok", slug: resolvedSlug, draftData: null };
+  }
+}
+
+function buildLegacyDraftNotice(slug, draftData = null) {
+  const legacyName = String(draftData?.nombre || draftData?.slug || slug || "").trim();
+  return {
+    slug,
+    title: "Este borrador usa un formato antiguo",
+    body: `El borrador "${legacyName}" no se puede abrir en el dashboard actual porque no tiene estructura moderna de secciones y objetos.`,
+  };
+}
+
 function recoverQueryFromCorruptedSlug(rawSlug) {
   if (typeof rawSlug !== "string") return {};
   const decoded = decodeURIComponentSafe(rawSlug);
@@ -521,7 +566,6 @@ export default function Dashboard() {
   const [homeTemplatesReady, setHomeTemplatesReady] = useState(false);
   const [homeLoaderForcedDone, setHomeLoaderForcedDone] = useState(false);
   const [holdHomeStartupLoader, setHoldHomeStartupLoader] = useState(false);
-  const [urlIframe, setUrlIframe] = useState(null);
   const [zoom, setZoom] = useState(0.8);
   const [secciones, setSecciones] = useState([]);
   const [seccionActivaId, setSeccionActivaId] = useState(null);
@@ -541,6 +585,7 @@ export default function Dashboard() {
   const [mostrarCheckoutPublicacion, setMostrarCheckoutPublicacion] = useState(false);
   const [operacionCheckoutPublicacion, setOperacionCheckoutPublicacion] = useState("new");
   const [vista, setVista] = useState("home");
+  const [legacyDraftNotice, setLegacyDraftNotice] = useState(null);
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [profileInitialValues, setProfileInitialValues] = useState({
     nombre: "",
@@ -691,17 +736,22 @@ export default function Dashboard() {
 
     const syncEditorSlugFromQuery = async () => {
       let normalizedSlug = slugURL;
+      let compatibilityStatus = slugURL ? "ok" : "idle";
+      let compatibleDraftData = null;
 
       if (slugURL && usuario?.uid) {
-        normalizedSlug = await resolveOwnedDraftSlugForEditor({
+        const compatibleDraft = await resolveCompatibleDraftForDashboardEditor({
           slug: slugURL,
           uid: usuario.uid,
         });
+        normalizedSlug = compatibleDraft.slug;
+        compatibilityStatus = compatibleDraft.status;
+        compatibleDraftData = compatibleDraft.draftData;
       }
 
       if (cancelled) return;
 
-      if (slugURL && !normalizedSlug) {
+      if (slugURL && compatibilityStatus !== "ok") {
         const nextQuery = { ...router.query };
         delete nextQuery.slug;
         recoveredQueryKeys.forEach((key) => {
@@ -710,14 +760,23 @@ export default function Dashboard() {
 
         void replaceDashboardQuerySafely(nextQuery, { shallow: true });
 
-        pushEditorBreadcrumb("dashboard-slug-access-denied", {
+        pushEditorBreadcrumb(
+          compatibilityStatus === "legacy"
+            ? "dashboard-slug-legacy-deprecated"
+            : "dashboard-slug-access-denied",
+          {
           slugRaw: rawSlugParam,
           slug: slugURL,
-        });
+          }
+        );
+
+        if (compatibilityStatus === "legacy") {
+          setLegacyDraftNotice(buildLegacyDraftNotice(slugURL, compatibleDraftData));
+        }
 
         setSlugInvitacion(null);
         setModoEditor(null);
-        setVista((prev) => (prev === "editor" ? "home" : prev));
+        setVista("home");
         return;
       }
 
@@ -735,6 +794,7 @@ export default function Dashboard() {
       }
 
       if (normalizedSlug) {
+        setLegacyDraftNotice(null);
         setSlugInvitacion((prev) => (prev === normalizedSlug ? prev : normalizedSlug));
         setModoEditor((prev) => (prev === "konva" ? prev : "konva"));
         setVista((prev) => (prev === "editor" ? prev : "editor"));
@@ -808,7 +868,7 @@ export default function Dashboard() {
   }, [slugInvitacion]);
 
   useEffect(() => {
-    if (!slugInvitacion || modoEditor === "iframe") {
+    if (!slugInvitacion) {
       setEditorPreloadState(createEditorPreloadState());
       return;
     }
@@ -1148,10 +1208,10 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [slugInvitacion, modoEditor]);
+  }, [slugInvitacion]);
 
   useEffect(() => {
-    if (!slugInvitacion || modoEditor === "iframe") {
+    if (!slugInvitacion) {
       setEditorRuntimeState(createEditorRuntimeState());
       return;
     }
@@ -1163,7 +1223,7 @@ export default function Dashboard() {
         status: "running",
       });
     });
-  }, [slugInvitacion, modoEditor]);
+  }, [slugInvitacion]);
 
   const handleEditorStartupStatusChange = useCallback((statusPayload = {}) => {
     const payloadSlug =
@@ -1275,23 +1335,42 @@ export default function Dashboard() {
   };
 
   const abrirBorradorEnEditor = useCallback(
-    (slug, editor = "konva") => {
-      if (!slug) return;
+    async (slug) => {
+      const safeSlug = sanitizeDraftSlug(slug);
+      if (!safeSlug) return;
 
-      const editorNormalizado = editor === "iframe" ? "iframe" : "konva";
-      setSlugInvitacion(slug);
+      const compatibleDraft = usuario?.uid
+        ? await resolveCompatibleDraftForDashboardEditor({
+            slug: safeSlug,
+            uid: usuario.uid,
+          })
+        : {
+            status: "ok",
+            slug: safeSlug,
+            draftData: null,
+          };
 
-      if (editorNormalizado === "konva") {
-        setUrlIframe(null);
-        setModoEditor("konva");
-      } else {
-        const url = `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`;
-        setUrlIframe(url);
-        setModoEditor("iframe");
+      if (compatibleDraft.status !== "ok" || !compatibleDraft.slug) {
+        if (compatibleDraft.status === "legacy") {
+          setLegacyDraftNotice(
+            buildLegacyDraftNotice(safeSlug, compatibleDraft.draftData)
+          );
+          pushEditorBreadcrumb("dashboard-open-legacy-blocked", {
+            slug: safeSlug,
+          });
+        }
+
+        setSlugInvitacion(null);
+        setModoEditor(null);
+        setVista("home");
+        return;
       }
 
+      setLegacyDraftNotice(null);
+      setSlugInvitacion(compatibleDraft.slug);
+      setModoEditor("konva");
       setVista("editor");
-      const nextQuery = { slug };
+      const nextQuery = { slug: compatibleDraft.slug };
       const currentQuery =
         router?.query && typeof router.query === "object" ? router.query : {};
       let locationParams = null;
@@ -1340,7 +1419,7 @@ export default function Dashboard() {
       }
       void replaceDashboardQuerySafely(nextQuery, { shallow: true });
     },
-    [replaceDashboardQuerySafely, router]
+    [replaceDashboardQuerySafely, router, usuario?.uid]
   );
 
   const resetTemplateFormState = useCallback((template) => {
@@ -1542,14 +1621,14 @@ export default function Dashboard() {
       pushEditorBreadcrumb("abrir-plantilla", {
         slug,
         plantillaId: templateId,
-        editor: selectedTemplate?.editor || null,
+        editor: "konva",
         source: applyChanges ? "template-modal-with-changes" : "template-modal-without-changes",
       });
 
       setIsTemplateModalOpen(false);
       setSelectedTemplate(null);
       setTemplateFormState(TEMPLATE_FORM_STATE_INITIAL);
-      abrirBorradorEnEditor(slug, selectedTemplate?.editor);
+      void abrirBorradorEnEditor(slug);
     } catch (error) {
       alert(
         getErrorMessage(
@@ -1976,16 +2055,14 @@ export default function Dashboard() {
   useEffect(() => {
 
     const handleAbrirBorrador = (e) => {
-      const { slug, editor } = e.detail;
+      const { slug } = e.detail;
       if (!slug) return;
 
-      // Safe fallback: only "iframe" keeps iframe mode, otherwise Konva.
-      const editorNormalizado = editor === "iframe" ? "iframe" : "konva";
       pushEditorBreadcrumb("abrir-borrador-evento", {
         slug,
-        editor: editorNormalizado,
+        editor: "konva",
       });
-      abrirBorradorEnEditor(slug, editorNormalizado);
+      void abrirBorradorEnEditor(slug);
     };
 
 
@@ -2113,28 +2190,22 @@ export default function Dashboard() {
 
   const editorPreloadWarm =
     !slugInvitacion ||
-    modoEditor === "iframe" ||
     (editorPreloadState.slug === slugInvitacion &&
       editorPreloadState.status !== "idle");
 
   const editorRuntimeReady =
     !slugInvitacion ||
-    modoEditor === "iframe" ||
     (editorRuntimeState.slug === slugInvitacion &&
       editorRuntimeState.status === "ready");
 
   const shouldMountCanvasEditor =
-    Boolean(slugInvitacion) &&
-    modoEditor !== "iframe" &&
-    editorPreloadWarm;
+    Boolean(slugInvitacion) && editorPreloadWarm;
 
   const showEditorStartupLoaderRaw =
-    Boolean(slugInvitacion) &&
-    modoEditor !== "iframe" &&
-    !editorRuntimeReady;
+    Boolean(slugInvitacion) && !editorRuntimeReady;
 
   useEffect(() => {
-    const canShowLoader = Boolean(slugInvitacion) && modoEditor !== "iframe";
+    const canShowLoader = Boolean(slugInvitacion);
 
     if (!canShowLoader) {
       if (editorLoaderHideTimerRef.current) {
@@ -2332,6 +2403,23 @@ export default function Dashboard() {
           onSend={handleSendEditorIssue}
         />
       )}
+      {legacyDraftNotice && !slugInvitacion && (
+        <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_28px_rgba(180,120,24,0.08)] sm:mx-6 lg:mx-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{legacyDraftNotice.title}</p>
+              <p className="mt-1 text-amber-800/90">{legacyDraftNotice.body}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLegacyDraftNotice(null)}
+              className="rounded-lg border border-amber-300 bg-white/80 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-white"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
    
 
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
@@ -2479,85 +2567,50 @@ export default function Dashboard() {
       )}
 
       {slugInvitacion && (
-        <>
-          {modoEditor !== "iframe" && (
-            <ChunkErrorBoundary>
-              <div className={shouldMountCanvasEditor ? "relative" : ""}>
-                {shouldMountCanvasEditor && (
-                  <div
-                    className={
-                      "transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
-                      (showEditorStartupLoader
-                        ? "pointer-events-none opacity-0 scale-[0.985] blur-[3px]"
-                        : "opacity-100 scale-100 blur-0")
-                    }
-                    aria-hidden={showEditorStartupLoader ? "true" : undefined}
-                  >
-                    <CanvasEditor
-                      slug={slugInvitacion}
-                      zoom={zoom}
-                      onHistorialChange={setHistorialExternos}
-                      onFuturosChange={setFuturosExternos}
-                      userId={usuario?.uid}
-                      secciones={[]}
-                      onStartupStatusChange={handleEditorStartupStatusChange}
-                      canManageSite={canManageSite}
-                    />
-                  </div>
-                )}
-
-                {shouldRenderEditorStartupLoader && (
-                  <div className={shouldMountCanvasEditor ? "absolute inset-0 z-10" : ""}>
-                    <div
-                      className={
-                        "w-full transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
-                        (isEditorStartupLoaderExiting
-                          ? "pointer-events-none opacity-0 translate-y-10 scale-[1.03] blur-[2.5px]"
-                          : "opacity-100 translate-y-0 scale-100 blur-0")
-                      }
-                    >
-                    <EditorStartupLoader
-                      preloadState={editorPreloadState}
-                      runtimeState={editorRuntimeState}
-                    />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ChunkErrorBoundary>
-          )}
-
-          {modoEditor === "iframe" && (
-            <div
-              className="flex justify-center items-start"
-              style={{
-                backgroundColor: zoom < 1 ? "#e5e5e5" : "transparent",
-                overflow: "auto",
-                borderRadius: "16px",
-              }}
-            >
+        <ChunkErrorBoundary>
+          <div className={shouldMountCanvasEditor ? "relative" : ""}>
+            {shouldMountCanvasEditor && (
               <div
-                style={{
-                  ...(zoom < 1
-                    ? { transform: `scale(0.8)`, transformOrigin: "top center", width: "800px" }
-                    : { width: "100%" }),
-                }}
+                className={
+                  "transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+                  (showEditorStartupLoader
+                    ? "pointer-events-none opacity-0 scale-[0.985] blur-[3px]"
+                    : "opacity-100 scale-100 blur-0")
+                }
+                aria-hidden={showEditorStartupLoader ? "true" : undefined}
               >
-                <iframe
-                  src={urlIframe}
-                  width="100%"
-                  height="1000"
-                  style={{
-                    border: "none",
-                    borderRadius: "16px",
-                    pointerEvents: "auto",
-                    display: "block",
-                  }}
+                <CanvasEditor
+                  slug={slugInvitacion}
+                  zoom={zoom}
+                  onHistorialChange={setHistorialExternos}
+                  onFuturosChange={setFuturosExternos}
+                  userId={usuario?.uid}
+                  secciones={[]}
+                  onStartupStatusChange={handleEditorStartupStatusChange}
+                  canManageSite={canManageSite}
                 />
               </div>
-            </div>
-          )}
-        </>
+            )}
+
+            {shouldRenderEditorStartupLoader && (
+              <div className={shouldMountCanvasEditor ? "absolute inset-0 z-10" : ""}>
+                <div
+                  className={
+                    "w-full transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+                    (isEditorStartupLoaderExiting
+                      ? "pointer-events-none opacity-0 translate-y-10 scale-[1.03] blur-[2.5px]"
+                      : "opacity-100 translate-y-0 scale-100 blur-0")
+                  }
+                >
+                <EditorStartupLoader
+                  preloadState={editorPreloadState}
+                  runtimeState={editorRuntimeState}
+                />
+                </div>
+              </div>
+            )}
+          </div>
+        </ChunkErrorBoundary>
       )}
 
 

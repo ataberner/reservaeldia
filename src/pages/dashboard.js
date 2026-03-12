@@ -229,6 +229,17 @@ function sanitizeDraftSlug(rawSlug) {
   return slug || null;
 }
 
+function sanitizeUidValue(rawUid) {
+  if (typeof rawUid !== "string") return "";
+  return rawUid.trim();
+}
+
+function isTruthyQueryFlag(value) {
+  const rawValue = getFirstQueryValue(value);
+  const normalized = String(rawValue || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function toDateFromFirestoreValue(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -678,6 +689,30 @@ export default function Dashboard() {
   );
   const { loadingAdminAccess, isSuperAdmin, canManageSite } =
     useAdminAccess(usuario);
+  const adminDraftSnapshotCallable = useMemo(
+    () => httpsCallable(cloudFunctions, "getAdminDraftSnapshot"),
+    []
+  );
+  const [adminDraftView, setAdminDraftView] = useState({
+    enabled: false,
+    status: "idle",
+    ownerUid: "",
+    slug: "",
+    draftData: null,
+    draftName: "",
+  });
+  const resetAdminDraftView = useCallback(() => {
+    setAdminDraftView({
+      enabled: false,
+      status: "idle",
+      ownerUid: "",
+      slug: "",
+      draftData: null,
+      draftName: "",
+    });
+  }, []);
+  const isAdminReadOnlyView =
+    adminDraftView.enabled === true && adminDraftView.status === "ready";
   const selectedTemplateId =
     typeof selectedTemplate?.id === "string" ? selectedTemplate.id : "";
   const selectedTemplateMetadata = useMemo(
@@ -720,11 +755,16 @@ export default function Dashboard() {
   useEffect(() => {
     if (!router.isReady) return;
     if (checkingAuth) return;
+    if (loadingAdminAccess) return;
 
     let cancelled = false;
 
     const rawSlugParam = getFirstQueryValue(router.query?.slug);
     const slugURL = sanitizeDraftSlug(rawSlugParam);
+    const adminViewEnabled = isTruthyQueryFlag(router.query?.adminView);
+    const ownerUidFromQuery = sanitizeUidValue(
+      getFirstQueryValue(router.query?.ownerUid)
+    );
     const recoveredQuery = recoverQueryFromCorruptedSlug(rawSlugParam);
     const recoveredQueryKeys = Object.keys(recoveredQuery).filter(
       (key) => typeof router.query?.[key] === "undefined"
@@ -735,6 +775,165 @@ export default function Dashboard() {
       (rawSlugParam !== slugURL || recoveredQueryKeys.length > 0);
 
     const syncEditorSlugFromQuery = async () => {
+      const baseNextQuery = { ...router.query };
+      recoveredQueryKeys.forEach((key) => {
+        baseNextQuery[key] = recoveredQuery[key];
+      });
+
+      if (adminViewEnabled) {
+        if (!slugURL || !ownerUidFromQuery) {
+          const nextQuery = { ...baseNextQuery };
+          delete nextQuery.slug;
+          delete nextQuery.adminView;
+          delete nextQuery.ownerUid;
+          void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+          resetAdminDraftView();
+          setSlugInvitacion(null);
+          setModoEditor(null);
+          setVista("home");
+          return;
+        }
+
+        if (!isSuperAdmin) {
+          const nextQuery = { ...baseNextQuery };
+          delete nextQuery.slug;
+          delete nextQuery.adminView;
+          delete nextQuery.ownerUid;
+          void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+          pushEditorBreadcrumb("dashboard-adminview-access-denied", {
+            slug: slugURL,
+            ownerUid: ownerUidFromQuery,
+          });
+          resetAdminDraftView();
+          setSlugInvitacion(null);
+          setModoEditor(null);
+          setVista("home");
+          return;
+        }
+
+        setAdminDraftView({
+          enabled: true,
+          status: "loading",
+          ownerUid: ownerUidFromQuery,
+          slug: slugURL,
+          draftData: null,
+          draftName: "",
+        });
+
+        try {
+          const result = await adminDraftSnapshotCallable({
+            ownerUid: ownerUidFromQuery,
+            slug: slugURL,
+          });
+          const data = result?.data || {};
+          if (cancelled) return;
+
+          const normalizedSlug =
+            sanitizeDraftSlug(
+              typeof data.slug === "string" ? data.slug : slugURL
+            ) || slugURL;
+          const normalizedOwnerUid =
+            sanitizeUidValue(
+              typeof data.ownerUid === "string" ? data.ownerUid : ownerUidFromQuery
+            ) || ownerUidFromQuery;
+          const draftName =
+            typeof data.draftName === "string" ? data.draftName : "";
+          const status =
+            typeof data.status === "string" ? data.status : "unavailable";
+          const draftData =
+            data.draft && typeof data.draft === "object" ? data.draft : null;
+
+          if (status !== "ok" || !draftData) {
+            const nextQuery = { ...baseNextQuery };
+            delete nextQuery.slug;
+            delete nextQuery.adminView;
+            delete nextQuery.ownerUid;
+            void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+
+            pushEditorBreadcrumb(
+              status === "legacy"
+                ? "dashboard-adminview-legacy-blocked"
+                : "dashboard-adminview-unavailable",
+              {
+                slug: normalizedSlug,
+                ownerUid: normalizedOwnerUid,
+              }
+            );
+
+            if (status === "legacy") {
+              setLegacyDraftNotice(
+                buildLegacyDraftNotice(normalizedSlug, {
+                  nombre: draftName || normalizedSlug,
+                })
+              );
+            }
+
+            resetAdminDraftView();
+            setSlugInvitacion(null);
+            setModoEditor(null);
+            setVista("home");
+            return;
+          }
+
+          if (
+            shouldNormalizeUrl ||
+            normalizedSlug !== slugURL ||
+            normalizedOwnerUid !== ownerUidFromQuery ||
+            getFirstQueryValue(router.query?.adminView) !== "1"
+          ) {
+            const nextQuery = {
+              ...baseNextQuery,
+              slug: normalizedSlug,
+              adminView: "1",
+              ownerUid: normalizedOwnerUid,
+            };
+            void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+            pushEditorBreadcrumb("dashboard-adminview-query-normalized", {
+              slugRaw: rawSlugParam,
+              slug: normalizedSlug,
+              ownerUid: normalizedOwnerUid,
+            });
+          }
+
+          setLegacyDraftNotice(null);
+          setAdminDraftView({
+            enabled: true,
+            status: "ready",
+            ownerUid: normalizedOwnerUid,
+            slug: normalizedSlug,
+            draftData,
+            draftName,
+          });
+          setSlugInvitacion((prev) => (prev === normalizedSlug ? prev : normalizedSlug));
+          setModoEditor((prev) => (prev === "konva" ? prev : "konva"));
+          setVista((prev) => (prev === "editor" ? prev : "editor"));
+          return;
+        } catch (error) {
+          if (cancelled) return;
+
+          console.error("Error cargando snapshot admin del borrador:", error);
+          pushEditorBreadcrumb("dashboard-adminview-load-error", {
+            slug: slugURL,
+            ownerUid: ownerUidFromQuery,
+            message: getErrorMessage(error, "adminview-load-error"),
+          });
+
+          const nextQuery = { ...baseNextQuery };
+          delete nextQuery.slug;
+          delete nextQuery.adminView;
+          delete nextQuery.ownerUid;
+          void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+
+          resetAdminDraftView();
+          setSlugInvitacion(null);
+          setModoEditor(null);
+          setVista("home");
+          return;
+        }
+      }
+
+      resetAdminDraftView();
+
       let normalizedSlug = slugURL;
       let compatibilityStatus = slugURL ? "ok" : "idle";
       let compatibleDraftData = null;
@@ -752,11 +951,8 @@ export default function Dashboard() {
       if (cancelled) return;
 
       if (slugURL && compatibilityStatus !== "ok") {
-        const nextQuery = { ...router.query };
+        const nextQuery = { ...baseNextQuery };
         delete nextQuery.slug;
-        recoveredQueryKeys.forEach((key) => {
-          nextQuery[key] = recoveredQuery[key];
-        });
 
         void replaceDashboardQuerySafely(nextQuery, { shallow: true });
 
@@ -781,10 +977,7 @@ export default function Dashboard() {
       }
 
       if (shouldNormalizeUrl || (normalizedSlug && normalizedSlug !== slugURL)) {
-        const nextQuery = { ...router.query, slug: normalizedSlug };
-        recoveredQueryKeys.forEach((key) => {
-          nextQuery[key] = recoveredQuery[key];
-        });
+        const nextQuery = { ...baseNextQuery, slug: normalizedSlug };
         void replaceDashboardQuerySafely(nextQuery, { shallow: true });
         pushEditorBreadcrumb("dashboard-slug-sanitized", {
           slugRaw: rawSlugParam,
@@ -811,7 +1004,19 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [router.isReady, router.query?.slug, checkingAuth, usuario?.uid, replaceDashboardQuerySafely]);
+  }, [
+    adminDraftSnapshotCallable,
+    checkingAuth,
+    isSuperAdmin,
+    loadingAdminAccess,
+    replaceDashboardQuerySafely,
+    resetAdminDraftView,
+    router.isReady,
+    router.query?.adminView,
+    router.query?.ownerUid,
+    router.query?.slug,
+    usuario?.uid,
+  ]);
 
   useEffect(() => {
     pushEditorBreadcrumb("dashboard-mounted", {});
@@ -2370,7 +2575,7 @@ export default function Dashboard() {
   return (
     <>
       <DashboardLayout
-      mostrarMiniToolbar={!!slugInvitacion}
+      mostrarMiniToolbar={!!slugInvitacion && !isAdminReadOnlyView}
       seccionActivaId={seccionActivaId}
       modoSelector={!slugInvitacion && vista === "home"}
       slugInvitacion={slugInvitacion}
@@ -2385,12 +2590,17 @@ export default function Dashboard() {
       vista={vista}
       onCambiarVista={setVista}
       ocultarSidebar={
-        vista === "publicadas" || vista === "papelera" || vista === "gestion"
+        vista === "publicadas" ||
+        vista === "papelera" ||
+        vista === "gestion" ||
+        isAdminReadOnlyView
       }
       canManageSite={canManageSite}
       isSuperAdmin={isSuperAdmin}
       loadingAdminAccess={loadingAdminAccess}
       lockMainScroll={shouldRenderHomeStartupLoader || isTemplateModalOpen}
+      editorReadOnly={isAdminReadOnlyView}
+      draftDisplayName={adminDraftView.draftName || ""}
     >
       {editorIssueReport && (
         <EditorIssueBanner
@@ -2420,6 +2630,13 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      {!slugInvitacion &&
+        adminDraftView.enabled &&
+        adminDraftView.status === "loading" && (
+          <div className="mx-4 mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm sm:mx-6 lg:mx-8">
+            Cargando vista administrativa del borrador...
+          </div>
+        )}
    
 
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
@@ -2586,7 +2803,9 @@ export default function Dashboard() {
                   userId={usuario?.uid}
                   secciones={[]}
                   onStartupStatusChange={handleEditorStartupStatusChange}
-                  canManageSite={canManageSite}
+                  canManageSite={canManageSite && !isAdminReadOnlyView}
+                  readOnly={isAdminReadOnlyView}
+                  initialDraftData={isAdminReadOnlyView ? adminDraftView.draftData : null}
                 />
               </div>
             )}

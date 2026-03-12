@@ -23,6 +23,8 @@ export default function DashboardHeader({
     canManageSite = false,
     isSuperAdmin = false,
     loadingAdminAccess = false,
+    editorReadOnly = false,
+    draftDisplayName = "",
 }) {
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
@@ -102,6 +104,10 @@ export default function DashboardHeader({
     useEffect(() => {
         const cargarNombre = async () => {
             if (!slugInvitacion) return;
+            if (editorReadOnly) {
+                setNombreBorrador(draftDisplayName || "Sin nombre");
+                return;
+            }
 
             try {
                 const ref = doc(db, "borradores", slugInvitacion);
@@ -119,7 +125,7 @@ export default function DashboardHeader({
         };
 
         cargarNombre();
-    }, [slugInvitacion]);
+    }, [draftDisplayName, editorReadOnly, slugInvitacion]);
 
 
     // Cerrar menú si clic afuera
@@ -310,8 +316,8 @@ export default function DashboardHeader({
                                     document.dispatchEvent(e);
                                 }
                             }}
-                            disabled={historialExternos.length <= 1}
-                            className={`flex items-center gap-1 ${historialExternos.length <= 1
+                            disabled={editorReadOnly || historialExternos.length <= 1}
+                            className={`flex items-center gap-1 ${editorReadOnly || historialExternos.length <= 1
                                 ? historyActionDisabled
                                 : historyActionEnabled
                                 }`}
@@ -336,8 +342,8 @@ export default function DashboardHeader({
                                     document.dispatchEvent(e);
                                 }
                             }}
-                            disabled={futurosExternos.length === 0}
-                            className={`flex items-center gap-1 ${futurosExternos.length === 0
+                            disabled={editorReadOnly || futurosExternos.length === 0}
+                            className={`flex items-center gap-1 ${editorReadOnly || futurosExternos.length === 0
                                 ? historyActionDisabled
                                 : historyActionEnabled
                                 }`}
@@ -352,7 +358,7 @@ export default function DashboardHeader({
                     </div>
 
                     {/* Acciones admin/superadmin */}
-                    {!loadingAdminAccess && canManageSite && (
+                    {!loadingAdminAccess && canManageSite && !editorReadOnly && (
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={abrirModalCrearSeccion}
@@ -379,32 +385,46 @@ export default function DashboardHeader({
 
                     {/* ----------------- ACCIONES (desktop) ----------------- */}
                     <div className="hidden sm:flex gap-2 ml-auto">
-                        {/* Input editable con nombre del borrador */}
-                        <input
-                            type="text"
-                            value={nombreBorrador}
-                            onChange={(e) => setNombreBorrador(e.target.value)}
-                            onBlur={async () => {
-                                if (!slugInvitacion) return;
-                                const ref = doc(db, "borradores", slugInvitacion);
-                                await (await import("firebase/firestore")).updateDoc(ref, {
-                                    nombre: nombreBorrador,
-                                });
-                            }}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            title="Editar nombre del borrador"
-                        />
+                        {editorReadOnly ? (
+                            <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                                Modo solo lectura
+                            </span>
+                        ) : (
+                            <>
+                                <input
+                                    type="text"
+                                    value={nombreBorrador}
+                                    onChange={(e) => setNombreBorrador(e.target.value)}
+                                    onBlur={async () => {
+                                        if (!slugInvitacion) return;
+                                        const ref = doc(db, "borradores", slugInvitacion);
+                                        await (await import("firebase/firestore")).updateDoc(ref, {
+                                            nombre: nombreBorrador,
+                                        });
+                                    }}
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                    title="Editar nombre del borrador"
+                                />
 
-                        <button
-                            onClick={generarVistaPrevia}
-                            className={primaryHeaderButton}
-                        >
-                            Vista previa y publicar
-                        </button>
+                                <button
+                                    onClick={generarVistaPrevia}
+                                    className={primaryHeaderButton}
+                                >
+                                    Vista previa y publicar
+                                </button>
+                            </>
+                        )}
                     </div>
 
                     {/* ----------------- ACCIONES (mobile) ----------------- */}
-                    <div ref={accionesMobileRef} className="sm:hidden ml-auto relative">
+                    {editorReadOnly ? (
+                        <div className="sm:hidden ml-auto">
+                            <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-600">
+                                Solo lectura
+                            </span>
+                        </div>
+                    ) : (
+                        <div ref={accionesMobileRef} className="sm:hidden ml-auto relative">
                         <button
                             onClick={() => setAccionesMobileAbiertas((v) => !v)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e6dbf8] bg-white/95 text-[#773dbe] shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:shadow-[0_12px_24px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]"
@@ -455,7 +475,8 @@ export default function DashboardHeader({
                                 </div>
                             </div>
                         )}
-                    </div>
+                        </div>
+                    )}
 
 
                 </div>

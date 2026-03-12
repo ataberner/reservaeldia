@@ -1,7 +1,6 @@
 import { useState } from "react";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import DiscountCodesManager from "@/components/admin/DiscountCodesManager";
-import UsersDirectoryManager from "@/components/admin/UsersDirectoryManager";
 
 export default function SiteManagementBoard({
   isSuperAdmin,
@@ -10,7 +9,6 @@ export default function SiteManagementBoard({
   const [openPanel, setOpenPanel] = useState(null);
   const isAdminsOpen = openPanel === "admins";
   const isDiscountsOpen = openPanel === "discounts";
-  const isUsersOpen = openPanel === "users";
   const canAccessSiteManagement = isSuperAdmin === true;
 
   const togglePanel = (panelKey) => {
@@ -142,56 +140,27 @@ export default function SiteManagementBoard({
 
           {isAdminsOpen && <AdminUsersManager />}
 
-          <div
-            className={`rounded-xl p-[1px] transition-all ${
-              isUsersOpen
-                ? "bg-gradient-to-r from-emerald-500 to-cyan-500 shadow-md"
-                : "border border-gray-200 bg-white shadow-sm"
-            }`}
+          <a
+            href="/admin/usuarios"
+            className="block rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
           >
-            <button
-              type="button"
-              onClick={() => togglePanel("users")}
-              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
-                isUsersOpen
-                  ? "bg-gradient-to-r from-emerald-50 to-cyan-50"
-                  : "bg-white hover:bg-gray-50"
-              }`}
-            >
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2
-                  className={`text-lg font-semibold ${
-                    isUsersOpen ? "text-emerald-900" : "text-gray-800"
-                  }`}
-                >
+                <h2 className="text-lg font-semibold text-emerald-900">
                   Administrar usuarios
                 </h2>
-                <p
-                  className={`mt-1 text-sm ${
-                    isUsersOpen ? "text-emerald-700" : "text-gray-600"
-                  }`}
-                >
-                  Estadisticas globales y listado paginado de usuarios.
+                <p className="mt-1 text-sm text-emerald-700">
+                  Abrir la pagina dedicada con metricas por usuario y detalle inline.
                 </p>
-                {isUsersOpen && (
-                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                    Seccion abierta
-                  </span>
-                )}
+                <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  Pagina dedicada
+                </span>
               </div>
-              <span
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                  isUsersOpen
-                    ? "bg-emerald-600 text-white"
-                    : "bg-gray-100 text-gray-700"
-                }`}
-              >
-                {isUsersOpen ? "^" : "v"}
+              <span className="inline-flex h-10 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white">
+                Abrir
               </span>
-            </button>
-          </div>
-
-          {isUsersOpen && <UsersDirectoryManager />}
+            </div>
+          </a>
         </div>
       )}
     </section>

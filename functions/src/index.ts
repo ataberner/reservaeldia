@@ -144,6 +144,7 @@ const MAX_ADMIN_SCAN = 10000;
 const MAX_USERS_STATS_SCAN = 100000;
 const DEFAULT_USERS_PAGE_SIZE = 100;
 const MAX_USERS_PAGE_SIZE = 200;
+const USER_DIRECTORY_IN_QUERY_LIMIT = 10;
 const TEMPLATE_ASSET_FIELD_KEYS = new Set([
   "src",
   "url",
@@ -174,6 +175,13 @@ type UserProfileData = {
   profileComplete: boolean;
 };
 
+type UserDirectoryMetrics = {
+  drafts: number;
+  publishedActive: number;
+  publishedPaused: number;
+  publishedExpired: number;
+};
+
 type AdminUserSummary = {
   uid: string;
   email: string | null;
@@ -183,6 +191,24 @@ type AdminUserSummary = {
   disabled: boolean;
   lastSignInTime: string | null;
   creationTime: string | null;
+};
+
+type UserDirectoryDraftDetail = {
+  slug: string;
+  nombre: string | null;
+  lastUpdatedAt: string | null;
+  isLegacy: boolean;
+  canOpenCanvas: boolean;
+};
+
+type UserDirectoryPublicationStatus = "active" | "paused" | "expired";
+
+type UserDirectoryPublicationDetail = {
+  publicSlug: string;
+  nombre: string | null;
+  status: UserDirectoryPublicationStatus;
+  publishedAt: string | null;
+  expiresAt: string | null;
 };
 
 type UserDirectoryItem = {
@@ -199,6 +225,7 @@ type UserDirectoryItem = {
   disabled: boolean;
   lastSignInTime: string | null;
   creationTime: string | null;
+  metrics: UserDirectoryMetrics;
 };
 
 const USER_PROFILE_SOURCE_SET = new Set<UserProfileSource>([
@@ -370,6 +397,32 @@ function toISODateTime(value: unknown): string | null {
   }
 
   return null;
+}
+
+function serializeCallableValue(value: unknown): unknown {
+  if (isTimestampLike(value)) {
+    return value.toDate().toISOString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => serializeCallableValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const entries = Object.entries(source).flatMap(([key, nestedValue]) => {
+      const serialized = serializeCallableValue(nestedValue);
+      if (typeof serialized === "undefined") return [];
+      return [[key, serialized] as const];
+    });
+    return Object.fromEntries(entries);
+  }
+
+  return value;
 }
 
 function toLimitedString(value: unknown, maxLength = 500): string | null {
@@ -768,7 +821,8 @@ function toAdminUserSummary(
 function toUserDirectoryItem(
   userRecord: admin.auth.UserRecord,
   superAdminSet: Set<string>,
-  profile: UserProfileData | null = null
+  profile: UserProfileData | null = null,
+  metrics: UserDirectoryMetrics | null = null
 ): UserDirectoryItem {
   const claims = (userRecord.customClaims || {}) as CustomClaimsMap;
   const profileData = profile || {
@@ -794,11 +848,369 @@ function toUserDirectoryItem(
     nombreCompleto,
     fechaNacimiento: profileData.fechaNacimiento,
     profileComplete,
+    metrics: metrics || createEmptyUserDirectoryMetrics(),
     adminClaim: claims.admin === true,
     isSuperAdmin: superAdminSet.has(userRecord.uid),
     disabled: userRecord.disabled === true,
     lastSignInTime: userRecord.metadata?.lastSignInTime || null,
     creationTime: userRecord.metadata?.creationTime || null,
+  };
+}
+
+function createEmptyUserDirectoryMetrics(): UserDirectoryMetrics {
+  return {
+    drafts: 0,
+    publishedActive: 0,
+    publishedPaused: 0,
+    publishedExpired: 0,
+  };
+}
+
+function getUserDirectoryMetricsEntry(
+  metricsByUid: Map<string, UserDirectoryMetrics>,
+  uid: string
+): UserDirectoryMetrics {
+  const existing = metricsByUid.get(uid);
+  if (existing) return existing;
+
+  const created = createEmptyUserDirectoryMetrics();
+  metricsByUid.set(uid, created);
+  return created;
+}
+
+function getUserDirectoryExpiredSet(
+  expiredKeysByUid: Map<string, Set<string>>,
+  uid: string
+): Set<string> {
+  const existing = expiredKeysByUid.get(uid);
+  if (existing) return existing;
+
+  const created = new Set<string>();
+  expiredKeysByUid.set(uid, created);
+  return created;
+}
+
+function chunkStringValues(values: string[], chunkSize: number): string[][] {
+  const size = Math.max(1, Math.floor(chunkSize || 1));
+  const uniqueValues = Array.from(
+    new Set(
+      values
+        .map((value) => normalizeOptionalText(value))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < uniqueValues.length; index += size) {
+    chunks.push(uniqueValues.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function listDocsByUserIds(
+  collectionName: string,
+  uids: string[]
+): Promise<admin.firestore.QueryDocumentSnapshot[]> {
+  const docs: admin.firestore.QueryDocumentSnapshot[] = [];
+  const chunks = chunkStringValues(uids, USER_DIRECTORY_IN_QUERY_LIMIT);
+
+  for (const chunk of chunks) {
+    const snapshot = await db
+      .collection(collectionName)
+      .where("userId", "in", chunk)
+      .get();
+    docs.push(...snapshot.docs);
+  }
+
+  return docs;
+}
+
+function hasModernDraftRenderState(data: Record<string, unknown> | null | undefined): boolean {
+  if (!data || typeof data !== "object") return false;
+  const secciones = Array.isArray(data.secciones) ? data.secciones : [];
+  const objetos = Array.isArray(data.objetos) ? data.objetos : [];
+  return secciones.length > 0 || objetos.length > 0;
+}
+
+function resolveUserDirectoryDraftName(
+  slug: string,
+  data: Record<string, unknown>
+): string | null {
+  return (
+    normalizeOptionalText(data.nombre) ||
+    normalizeOptionalText(data.slug) ||
+    normalizeOptionalText(slug)
+  );
+}
+
+function resolveUserDirectoryDraftLastUpdatedAt(
+  data: Record<string, unknown>
+): string | null {
+  return (
+    toISODateTime(data.ultimaEdicion) ||
+    toISODateTime(data.updatedAt) ||
+    toISODateTime(data.fechaActualizacion) ||
+    toISODateTime(data.creadoEn) ||
+    toISODateTime(data.createdAt)
+  );
+}
+
+function buildUserDirectoryDraftDetail(
+  docSnap: admin.firestore.QueryDocumentSnapshot
+): UserDirectoryDraftDetail | null {
+  const data = (docSnap.data() || {}) as Record<string, unknown>;
+  if (resolveDraftStateFromData(data) === DRAFT_STATES.TRASH) {
+    return null;
+  }
+
+  const slug = normalizeOptionalText(docSnap.id);
+  if (!slug) return null;
+
+  const isLegacy = !hasModernDraftRenderState(data);
+
+  return {
+    slug,
+    nombre: resolveUserDirectoryDraftName(slug, data),
+    lastUpdatedAt: resolveUserDirectoryDraftLastUpdatedAt(data),
+    isLegacy,
+    canOpenCanvas: !isLegacy,
+  };
+}
+
+function resolveUserDirectoryPublicationKey(
+  docId: string,
+  data: Record<string, unknown>
+): string {
+  return (
+    normalizeOptionalText(data.sourceSlug) ||
+    normalizeOptionalText(data.publicSlug) ||
+    normalizeOptionalText(data.slug) ||
+    normalizeOptionalText(docId) ||
+    docId
+  );
+}
+
+function resolveUserDirectoryPublicationName(
+  docId: string,
+  data: Record<string, unknown>
+): string | null {
+  return (
+    normalizeOptionalText(data.nombre) ||
+    normalizeOptionalText(data.slug) ||
+    normalizeOptionalText(data.sourceSlug) ||
+    normalizeOptionalText(docId)
+  );
+}
+
+function resolveUserDirectoryPublicationDates(
+  data: Record<string, unknown>
+): { publishedAt: string | null; expiresAt: string | null } {
+  return {
+    publishedAt:
+      toISODateTime(data.publicadaAt) ||
+      toISODateTime(data.publicadaEn) ||
+      null,
+    expiresAt:
+      toISODateTime(data.venceAt) ||
+      toISODateTime(data.vigenteHasta) ||
+      toISODateTime(data.expiresAt) ||
+      null,
+  };
+}
+
+function resolveUserDirectoryPublicationStatus(
+  data: Record<string, unknown>
+): UserDirectoryPublicationStatus | null {
+  if (isPublicationExpiredData(data)) {
+    return "expired";
+  }
+
+  const publicState = resolvePublicationPublicStateFromData(data);
+  if (publicState === "publicada_pausada") {
+    return "paused";
+  }
+  if (publicState === "publicada_activa") {
+    return "active";
+  }
+
+  return null;
+}
+
+function buildUserDirectoryPublicationDetail(
+  docId: string,
+  data: Record<string, unknown>,
+  status: UserDirectoryPublicationStatus
+): UserDirectoryPublicationDetail {
+  const dates = resolveUserDirectoryPublicationDates(data);
+
+  return {
+    publicSlug: resolveUserDirectoryPublicationKey(docId, data),
+    nombre: resolveUserDirectoryPublicationName(docId, data),
+    status,
+    publishedAt: dates.publishedAt,
+    expiresAt: dates.expiresAt,
+  };
+}
+
+function toSortTime(value: string | null): number {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function getUserDirectoryMetricsByUid(
+  uids: string[]
+): Promise<Map<string, UserDirectoryMetrics>> {
+  const uniqueUids = Array.from(
+    new Set(
+      uids
+        .map((uid) => normalizeOptionalText(uid))
+        .filter((uid): uid is string => Boolean(uid))
+    )
+  );
+
+  const metricsByUid = new Map<string, UserDirectoryMetrics>();
+  uniqueUids.forEach((uid) => {
+    metricsByUid.set(uid, createEmptyUserDirectoryMetrics());
+  });
+
+  if (!uniqueUids.length) {
+    return metricsByUid;
+  }
+
+  const expiredKeysByUid = new Map<string, Set<string>>();
+  const [draftDocs, activePublicationDocs, historyPublicationDocs] =
+    await Promise.all([
+      listDocsByUserIds("borradores", uniqueUids),
+      listDocsByUserIds("publicadas", uniqueUids),
+      listDocsByUserIds("publicadas_historial", uniqueUids),
+    ]);
+
+  draftDocs.forEach((docSnap) => {
+    const data = (docSnap.data() || {}) as Record<string, unknown>;
+    const uid = normalizeOptionalText(data.userId);
+    if (!uid || resolveDraftStateFromData(data) === DRAFT_STATES.TRASH) return;
+    const metrics = getUserDirectoryMetricsEntry(metricsByUid, uid);
+    metrics.drafts += 1;
+  });
+
+  activePublicationDocs.forEach((docSnap) => {
+    const data = (docSnap.data() || {}) as Record<string, unknown>;
+    const uid = normalizeOptionalText(data.userId);
+    if (!uid) return;
+
+    const status = resolveUserDirectoryPublicationStatus(data);
+    if (!status) return;
+
+    const metrics = getUserDirectoryMetricsEntry(metricsByUid, uid);
+    if (status === "active") {
+      metrics.publishedActive += 1;
+      return;
+    }
+    if (status === "paused") {
+      metrics.publishedPaused += 1;
+      return;
+    }
+
+    const publicationKey = resolveUserDirectoryPublicationKey(docSnap.id, data);
+    const expiredSet = getUserDirectoryExpiredSet(expiredKeysByUid, uid);
+    if (expiredSet.has(publicationKey)) return;
+    expiredSet.add(publicationKey);
+    metrics.publishedExpired += 1;
+  });
+
+  historyPublicationDocs.forEach((docSnap) => {
+    const data = (docSnap.data() || {}) as Record<string, unknown>;
+    const uid = normalizeOptionalText(data.userId);
+    if (!uid) return;
+
+    const publicationKey = resolveUserDirectoryPublicationKey(docSnap.id, data);
+    const expiredSet = getUserDirectoryExpiredSet(expiredKeysByUid, uid);
+    if (expiredSet.has(publicationKey)) return;
+
+    expiredSet.add(publicationKey);
+    const metrics = getUserDirectoryMetricsEntry(metricsByUid, uid);
+    metrics.publishedExpired += 1;
+  });
+
+  return metricsByUid;
+}
+
+async function getUserDirectoryDetailData(uid: string): Promise<{
+  metrics: UserDirectoryMetrics;
+  drafts: UserDirectoryDraftDetail[];
+  publications: UserDirectoryPublicationDetail[];
+}> {
+  const safeUid = normalizeOptionalText(uid);
+  if (!safeUid) {
+    return {
+      metrics: createEmptyUserDirectoryMetrics(),
+      drafts: [],
+      publications: [],
+    };
+  }
+
+  const [draftSnapshot, activePublicationSnapshot, historyPublicationSnapshot] =
+    await Promise.all([
+      db.collection("borradores").where("userId", "==", safeUid).get(),
+      db.collection("publicadas").where("userId", "==", safeUid).get(),
+      db.collection("publicadas_historial").where("userId", "==", safeUid).get(),
+    ]);
+
+  const metrics = createEmptyUserDirectoryMetrics();
+  const drafts = draftSnapshot.docs
+    .map((docSnap) => buildUserDirectoryDraftDetail(docSnap))
+    .filter((item): item is UserDirectoryDraftDetail => Boolean(item));
+
+  metrics.drafts = drafts.length;
+
+  const publications: UserDirectoryPublicationDetail[] = [];
+  const expiredKeys = new Set<string>();
+
+  activePublicationSnapshot.docs.forEach((docSnap) => {
+    const data = (docSnap.data() || {}) as Record<string, unknown>;
+    const status = resolveUserDirectoryPublicationStatus(data);
+    if (!status) return;
+
+    if (status === "active") {
+      metrics.publishedActive += 1;
+      publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, status));
+      return;
+    }
+
+    if (status === "paused") {
+      metrics.publishedPaused += 1;
+      publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, status));
+      return;
+    }
+
+    const publicationKey = resolveUserDirectoryPublicationKey(docSnap.id, data);
+    if (expiredKeys.has(publicationKey)) return;
+    expiredKeys.add(publicationKey);
+    metrics.publishedExpired += 1;
+    publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, "expired"));
+  });
+
+  historyPublicationSnapshot.docs.forEach((docSnap) => {
+    const data = (docSnap.data() || {}) as Record<string, unknown>;
+    const publicationKey = resolveUserDirectoryPublicationKey(docSnap.id, data);
+    if (expiredKeys.has(publicationKey)) return;
+    expiredKeys.add(publicationKey);
+    metrics.publishedExpired += 1;
+    publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, "expired"));
+  });
+
+  drafts.sort((a, b) => toSortTime(b.lastUpdatedAt) - toSortTime(a.lastUpdatedAt));
+  publications.sort((a, b) => {
+    const aSort = Math.max(toSortTime(a.publishedAt), toSortTime(a.expiresAt));
+    const bSort = Math.max(toSortTime(b.publishedAt), toSortTime(b.expiresAt));
+    return bSort - aSort;
+  });
+
+  return {
+    metrics,
+    drafts,
+    publications,
   };
 }
 
@@ -1929,13 +2341,18 @@ export const listUsersDirectory = onCall(
 
     const superAdminSet = new Set(getSuperAdminUids());
     const page = await admin.auth().listUsers(pageSize, pageToken);
-    const profileMap = await getProfileMapByUid(page.users.map((user) => user.uid));
+    const pageUserUids = page.users.map((user) => user.uid);
+    const [profileMap, metricsByUid] = await Promise.all([
+      getProfileMapByUid(pageUserUids),
+      getUserDirectoryMetricsByUid(pageUserUids),
+    ]);
 
     const items = page.users.map((userRecord) =>
       toUserDirectoryItem(
         userRecord,
         superAdminSet,
-        profileMap.get(userRecord.uid) || null
+        profileMap.get(userRecord.uid) || null,
+        metricsByUid.get(userRecord.uid) || createEmptyUserDirectoryMetrics()
       )
     );
 
@@ -1943,6 +2360,120 @@ export const listUsersDirectory = onCall(
       items,
       nextPageToken: page.pageToken || null,
       pageSize,
+    };
+  }
+);
+
+/**
+ * ================================
+ * Superadmin: detalle de usuario
+ * ================================
+ */
+export const getUserDirectoryDetail = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<{ uid?: string | null }>) => {
+    requireSuperAdmin(request);
+
+    const uid = normalizeOptionalText(request.data?.uid);
+    if (!uid) {
+      throw new HttpsError("invalid-argument", "Falta uid");
+    }
+
+    let userRecord: admin.auth.UserRecord;
+    try {
+      userRecord = await admin.auth().getUser(uid);
+    } catch (error: any) {
+      if (error?.code === "auth/user-not-found") {
+        throw new HttpsError("not-found", "Usuario no encontrado");
+      }
+      logger.error("Error obteniendo usuario para detalle de directorio", { uid, error });
+      throw new HttpsError("internal", "No se pudo cargar el usuario");
+    }
+
+    const superAdminSet = new Set(getSuperAdminUids());
+    const profileMap = await getProfileMapByUid([uid]);
+    const detail = await getUserDirectoryDetailData(uid);
+    const user = toUserDirectoryItem(
+      userRecord,
+      superAdminSet,
+      profileMap.get(uid) || null,
+      detail.metrics
+    );
+
+    return {
+      user,
+      metrics: detail.metrics,
+      drafts: detail.drafts,
+      publications: detail.publications,
+    };
+  }
+);
+
+/**
+ * ================================
+ * Superadmin: snapshot admin de borrador
+ * ================================
+ */
+export const getAdminDraftSnapshot = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<{ ownerUid?: string | null; slug?: string | null }>) => {
+    requireSuperAdmin(request);
+
+    const ownerUid = normalizeOptionalText(request.data?.ownerUid);
+    const slug = normalizeOptionalText(request.data?.slug);
+    if (!ownerUid || !slug) {
+      throw new HttpsError("invalid-argument", "Faltan ownerUid o slug");
+    }
+
+    const draftRef = db.collection("borradores").doc(slug);
+    const draftSnap = await draftRef.get();
+    if (!draftSnap.exists) {
+      throw new HttpsError("not-found", "Borrador no encontrado");
+    }
+
+    const draftData = (draftSnap.data() || {}) as Record<string, unknown>;
+    const draftOwnerUid = normalizeOptionalText(draftData.userId);
+    if (!draftOwnerUid || draftOwnerUid !== ownerUid) {
+      throw new HttpsError("permission-denied", "El borrador no pertenece al usuario indicado");
+    }
+
+    const draftName = resolveUserDirectoryDraftName(slug, draftData);
+    if (resolveDraftStateFromData(draftData) === DRAFT_STATES.TRASH) {
+      return {
+        slug,
+        ownerUid,
+        draftName,
+        status: "unavailable",
+        canOpenCanvas: false,
+        draft: null,
+      };
+    }
+
+    const isLegacy = !hasModernDraftRenderState(draftData);
+    if (isLegacy) {
+      return {
+        slug,
+        ownerUid,
+        draftName,
+        status: "legacy",
+        canOpenCanvas: false,
+        draft: null,
+      };
+    }
+
+    return {
+      slug,
+      ownerUid,
+      draftName,
+      status: "ok",
+      canOpenCanvas: true,
+      draft: serializeCallableValue(draftData),
     };
   }
 );

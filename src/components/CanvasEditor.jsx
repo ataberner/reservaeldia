@@ -132,6 +132,8 @@ export default function CanvasEditor({
   userId,
   onStartupStatusChange,
   canManageSite = false,
+  readOnly = false,
+  initialDraftData = null,
 }) {
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
@@ -294,6 +296,8 @@ export default function CanvasEditor({
   useBorradorSync({
     slug,
     userId,
+    readOnly,
+    initialDraftData,
 
     objetos,
     secciones,
@@ -848,18 +852,18 @@ export default function CanvasEditor({
   };
 
   useKeyboardShortcuts({
-    onDeshacer,
-    onRehacer,
-    onDuplicar,
-    onEliminar,
+    onDeshacer: readOnly ? () => {} : onDeshacer,
+    onRehacer: readOnly ? () => {} : onRehacer,
+    onDuplicar: readOnly ? () => {} : onDuplicar,
+    onEliminar: readOnly ? () => {} : onEliminar,
     onDeseleccionar: () => {
       if (elementosSeleccionados.length > 0) clearCanvasSelectionUi();
     },
-    onCopiar,
-    onPegar,
-    onCambiarAlineacion,
-    isEditing: !!editing.id,
-    tieneSeleccion: elementosSeleccionados.length > 0
+    onCopiar: readOnly ? () => {} : onCopiar,
+    onPegar: readOnly ? () => {} : onPegar,
+    onCambiarAlineacion: readOnly ? () => {} : onCambiarAlineacion,
+    isEditing: readOnly ? false : !!editing.id,
+    tieneSeleccion: readOnly ? false : elementosSeleccionados.length > 0
   });
 
 
@@ -1272,31 +1276,33 @@ export default function CanvasEditor({
             }}
           >
 
-            <SectionActionsOverlay
-              seccionActivaId={seccionActivaId}
-              seccionesOrdenadas={seccionesOrdenadas}
-              altoCanvas={altoCanvas}
-              seccionesAnimando={seccionesAnimando}
-              isMobile={isMobile}
-              mobileSectionActionsTop={mobileSectionActionsTop}
-              mobileSectionActionsOpen={mobileSectionActionsOpen}
-              setMobileSectionActionsOpen={setMobileSectionActionsOpen}
-              handleCrearSeccion={handleCrearSeccion}
-              moverSeccionConScroll={moverSeccionConScroll}
-              isDeletingSection={isDeletingSection}
-              cambiarColorFondoSeccion={cambiarColorFondoSeccion}
-              togglePantallaCompletaSeccion={togglePantallaCompletaSeccion}
-              secciones={secciones}
-              objetos={objetos}
-              setSecciones={setSecciones}
-              setObjetos={setObjetos}
-              setElementosSeleccionados={setElementosSeleccionados}
-              mobileBackgroundEditSectionId={mobileBackgroundEditSectionId}
-              setMobileBackgroundEditSectionId={setMobileBackgroundEditSectionId}
-              canManageSite={canManageSite}
-              refrescarPlantillasDeSeccion={refrescarPlantillasDeSeccion}
-              abrirModalBorrarSeccion={abrirModalBorrarSeccion}
-            />
+            {!readOnly && (
+              <SectionActionsOverlay
+                seccionActivaId={seccionActivaId}
+                seccionesOrdenadas={seccionesOrdenadas}
+                altoCanvas={altoCanvas}
+                seccionesAnimando={seccionesAnimando}
+                isMobile={isMobile}
+                mobileSectionActionsTop={mobileSectionActionsTop}
+                mobileSectionActionsOpen={mobileSectionActionsOpen}
+                setMobileSectionActionsOpen={setMobileSectionActionsOpen}
+                handleCrearSeccion={handleCrearSeccion}
+                moverSeccionConScroll={moverSeccionConScroll}
+                isDeletingSection={isDeletingSection}
+                cambiarColorFondoSeccion={cambiarColorFondoSeccion}
+                togglePantallaCompletaSeccion={togglePantallaCompletaSeccion}
+                secciones={secciones}
+                objetos={objetos}
+                setSecciones={setSecciones}
+                setObjetos={setObjetos}
+                setElementosSeleccionados={setElementosSeleccionados}
+                mobileBackgroundEditSectionId={mobileBackgroundEditSectionId}
+                setMobileBackgroundEditSectionId={setMobileBackgroundEditSectionId}
+                canManageSite={canManageSite}
+                refrescarPlantillasDeSeccion={refrescarPlantillasDeSeccion}
+                abrirModalBorrarSeccion={abrirModalBorrarSeccion}
+              />
+            )}
 
 
             <div
@@ -1304,6 +1310,7 @@ export default function CanvasEditor({
                 position: "relative",
                 width: 800,
                 height: altoCanvasDinamico,
+                pointerEvents: readOnly ? "none" : "auto",
               }}
             >
 
@@ -1388,18 +1395,20 @@ export default function CanvasEditor({
 
             </div>
 
-            <CanvasInlineEditingLayer
-              editing={editing}
-              elementRefs={elementRefs}
-              objetos={objetos}
-              escalaVisual={escalaVisual}
-              textEditController={textEditInteractionController}
-              textEditBackendController={textEditBackendController}
-              isMobile={isMobile}
-              zoom={zoom}
-              altoCanvasDinamico={altoCanvasDinamico}
-              seccionesOrdenadas={seccionesOrdenadas}
-            />
+            {!readOnly && (
+              <CanvasInlineEditingLayer
+                editing={editing}
+                elementRefs={elementRefs}
+                objetos={objetos}
+                escalaVisual={escalaVisual}
+                textEditController={textEditInteractionController}
+                textEditBackendController={textEditBackendController}
+                isMobile={isMobile}
+                zoom={zoom}
+                altoCanvasDinamico={altoCanvasDinamico}
+                seccionesOrdenadas={seccionesOrdenadas}
+              />
+            )}
 
 
           </div>
@@ -1413,55 +1422,57 @@ export default function CanvasEditor({
 
 
       {/* ? BotÃ³n de opciones PEGADO a la esquina superior derecha del elemento */}
-      <CanvasEditorOverlays
-        elementosSeleccionados={elementosSeleccionados}
-        editingId={editing.id}
-        isSelectionRotating={isSelectionRotating}
-        botonOpcionesRef={botonOpcionesRef}
-        optionButtonSize={optionButtonSize}
-        togglePanelOpciones={togglePanelOpciones}
-        isMobile={isMobile}
-        canManageSite={canManageSite}
-        templateAuthoringStatusClass={templateAuthoringStatusClass}
-        templateAuthoring={templateAuthoring}
-        templateAuthoringStatus={templateAuthoringStatus}
-        templateAuthoringStatusLabel={templateAuthoringStatusLabel}
-        editorOverlayRootRef={editorOverlayRootRef}
-        stageRef={stageRef}
-        elementRefs={elementRefs}
-        hoverId={hoverId}
-        mostrarPanelZ={mostrarPanelZ}
-        objetos={objetos}
-        onCopiar={onCopiar}
-        onPegar={onPegar}
-        onDuplicar={onDuplicar}
-        onEliminar={onEliminar}
-        moverElemento={moverElemento}
-        setMostrarPanelZ={setMostrarPanelZ}
-        reemplazarFondo={reemplazarFondo}
-        secciones={secciones}
-        setSecciones={setSecciones}
-        setObjetos={setObjetos}
-        setElementosSeleccionados={setElementosSeleccionados}
-        abrirPanelRsvp={abrirPanelRsvp}
-        canRenderTemplateAuthoringMenu={canRenderTemplateAuthoringMenu}
-        handleViewTemplateFieldUsage={handleViewTemplateFieldUsage}
-        objetoSeleccionado={objetoSeleccionado}
-        mostrarSelectorFuente={mostrarSelectorFuente}
-        setMostrarSelectorFuente={setMostrarSelectorFuente}
-        mostrarSelectorTamano={mostrarSelectorTamano}
-        setMostrarSelectorTamano={setMostrarSelectorTamano}
-        allFonts={ALL_FONTS}
-        fontManager={fontManager}
-        tamaniosDisponibles={tamaniosDisponibles}
-        onCambiarAlineacion={onCambiarAlineacion}
-        deleteSectionModal={deleteSectionModal}
-        seccionPendienteEliminar={seccionPendienteEliminar}
-        cantidadElementosSeccionPendiente={cantidadElementosSeccionPendiente}
-        isDeletingSection={isDeletingSection}
-        cerrarModalBorrarSeccion={cerrarModalBorrarSeccion}
-        confirmarBorrarSeccion={confirmarBorrarSeccion}
-      />
+      {!readOnly && (
+        <CanvasEditorOverlays
+          elementosSeleccionados={elementosSeleccionados}
+          editingId={editing.id}
+          isSelectionRotating={isSelectionRotating}
+          botonOpcionesRef={botonOpcionesRef}
+          optionButtonSize={optionButtonSize}
+          togglePanelOpciones={togglePanelOpciones}
+          isMobile={isMobile}
+          canManageSite={canManageSite}
+          templateAuthoringStatusClass={templateAuthoringStatusClass}
+          templateAuthoring={templateAuthoring}
+          templateAuthoringStatus={templateAuthoringStatus}
+          templateAuthoringStatusLabel={templateAuthoringStatusLabel}
+          editorOverlayRootRef={editorOverlayRootRef}
+          stageRef={stageRef}
+          elementRefs={elementRefs}
+          hoverId={hoverId}
+          mostrarPanelZ={mostrarPanelZ}
+          objetos={objetos}
+          onCopiar={onCopiar}
+          onPegar={onPegar}
+          onDuplicar={onDuplicar}
+          onEliminar={onEliminar}
+          moverElemento={moverElemento}
+          setMostrarPanelZ={setMostrarPanelZ}
+          reemplazarFondo={reemplazarFondo}
+          secciones={secciones}
+          setSecciones={setSecciones}
+          setObjetos={setObjetos}
+          setElementosSeleccionados={setElementosSeleccionados}
+          abrirPanelRsvp={abrirPanelRsvp}
+          canRenderTemplateAuthoringMenu={canRenderTemplateAuthoringMenu}
+          handleViewTemplateFieldUsage={handleViewTemplateFieldUsage}
+          objetoSeleccionado={objetoSeleccionado}
+          mostrarSelectorFuente={mostrarSelectorFuente}
+          setMostrarSelectorFuente={setMostrarSelectorFuente}
+          mostrarSelectorTamano={mostrarSelectorTamano}
+          setMostrarSelectorTamano={setMostrarSelectorTamano}
+          allFonts={ALL_FONTS}
+          fontManager={fontManager}
+          tamaniosDisponibles={tamaniosDisponibles}
+          onCambiarAlineacion={onCambiarAlineacion}
+          deleteSectionModal={deleteSectionModal}
+          seccionPendienteEliminar={seccionPendienteEliminar}
+          cantidadElementosSeccionPendiente={cantidadElementosSeccionPendiente}
+          isDeletingSection={isDeletingSection}
+          cerrarModalBorrarSeccion={cerrarModalBorrarSeccion}
+          confirmarBorrarSeccion={confirmarBorrarSeccion}
+        />
+      )}
 
 
 

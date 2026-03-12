@@ -25,6 +25,8 @@ export default function DashboardLayout({
   isSuperAdmin,
   loadingAdminAccess,
   lockMainScroll = false,
+  editorReadOnly = false,
+  draftDisplayName = "",
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
@@ -70,6 +72,8 @@ export default function DashboardLayout({
         canManageSite={canManageSite}
         isSuperAdmin={isSuperAdmin}
         loadingAdminAccess={loadingAdminAccess}
+        editorReadOnly={editorReadOnly}
+        draftDisplayName={draftDisplayName}
       />
 
       {/* Sidebar */}

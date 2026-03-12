@@ -132,6 +132,8 @@ function normalizeFlushRequestDetail(detail) {
 export default function useBorradorSync({
   slug,
   userId,
+  readOnly = false,
+  initialDraftData = null,
 
   // estado actual
   objetos,
@@ -198,6 +200,14 @@ export default function useBorradorSync({
     async ({ reason = "autosave", immediate = false } = {}) => {
       const state = latestStateRef.current;
       const safeSlug = normalizeText(state.slug);
+
+      if (readOnly) {
+        return {
+          ok: false,
+          reason: "read-only",
+          error: "El borrador esta abierto en modo solo lectura.",
+        };
+      }
 
       if (!safeSlug) {
         return {
@@ -333,6 +343,13 @@ export default function useBorradorSync({
   useEffect(() => {
     if (!slug) return;
 
+    if (
+      readOnly &&
+      (!initialDraftData || typeof initialDraftData !== "object")
+    ) {
+      return;
+    }
+
     if (persistTimeoutRef.current) {
       clearTimeout(persistTimeoutRef.current);
       persistTimeoutRef.current = null;
@@ -346,10 +363,21 @@ export default function useBorradorSync({
 
       try {
         const ref = doc(db, "borradores", slug);
-        const snap = await getDoc(ref);
+        const hasInjectedDraft =
+          initialDraftData && typeof initialDraftData === "object";
+        let exists = false;
+        let data = {};
 
-        if (snap.exists()) {
-          const data = snap.data() || {};
+        if (hasInjectedDraft) {
+          exists = true;
+          data = initialDraftData;
+        } else {
+          const snap = await getDoc(ref);
+          exists = snap.exists();
+          data = snap.exists() ? snap.data() || {} : {};
+        }
+
+        if (exists) {
           const renderState = normalizeDraftRenderState(data);
           const plantillaId =
             typeof data?.plantillaId === "string" ? data.plantillaId.trim() : "";
@@ -367,7 +395,7 @@ export default function useBorradorSync({
                 const plantillaData = plantillaSnap.data() || {};
                 tipoInvitacion = normalizeInvitationType(plantillaData?.tipo);
 
-                if (tipoInvitacion) {
+                if (tipoInvitacion && !readOnly) {
                   await updateDoc(ref, {
                     tipoInvitacion,
                   });
@@ -447,6 +475,7 @@ export default function useBorradorSync({
             slug,
             objetos: objsMigrados.length,
             secciones: seccionesRefrescadas.length,
+            source: hasInjectedDraft ? "injected-readonly" : "firestore",
           });
 
           // Setear primera seccion activa si no hay
@@ -481,12 +510,13 @@ export default function useBorradorSync({
 
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [initialDraftData, readOnly, slug]);
 
   // 2) Guardar en Firestore con debounce cuando cambian objetos/secciones/rsvp.
   useEffect(() => {
     if (!cargado) return;
     if (!slug) return;
+    if (readOnly) return;
 
     // Evita write + thumbnail justo al terminar la carga inicial.
     if (skipNextPersistRef.current) {
@@ -527,6 +557,7 @@ export default function useBorradorSync({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    if (readOnly) return undefined;
 
     const handleFlushRequest = async (event) => {
       const detail = normalizeFlushRequestDetail(event?.detail);
@@ -563,7 +594,7 @@ export default function useBorradorSync({
     return () => {
       window.removeEventListener(DRAFT_FLUSH_REQUEST_EVENT, handleFlushRequest);
     };
-  }, [persistDraftNow]);
+  }, [persistDraftNow, readOnly]);
 
   useEffect(
     () => () => {

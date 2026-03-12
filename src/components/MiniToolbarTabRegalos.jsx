@@ -470,31 +470,35 @@ function GiftPreviewModal({ open, config, onClose }) {
         aria-modal="true"
         aria-labelledby="gift-preview-title"
         aria-describedby="gift-preview-intro"
-        className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-rose-200/80 bg-[#fffdfa] shadow-[0_28px_80px_rgba(15,23,42,0.28)]"
+        className="relative w-full max-w-[540px] overflow-hidden rounded-[30px] border border-rose-200/70 bg-[#fffaf7] shadow-[0_36px_90px_rgba(15,23,42,0.26)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[102px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.88),_transparent_58%),linear-gradient(135deg,rgba(254,205,211,0.95),rgba(255,241,242,0.92)_48%,rgba(254,249,195,0.78))] sm:h-[112px]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[84px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.9),_transparent_62%),linear-gradient(135deg,rgba(254,205,211,0.82),rgba(255,244,246,0.72)_52%,rgba(254,249,195,0.56))] sm:h-[92px]" />
 
         <button
           ref={closeButtonRef}
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-200 bg-white/95 text-slate-600 shadow-sm transition hover:bg-rose-50 sm:right-4 sm:top-4"
+          className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/90 text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-px hover:bg-white sm:right-4 sm:top-4"
           aria-label="Cerrar"
         >
           <X className="h-4 w-4" />
         </button>
 
-        <div className="relative max-h-[84vh] overflow-y-auto px-4 pb-4 pt-9 sm:px-6 sm:pb-6 sm:pt-10">
-          <div className="flex min-h-[78px] flex-col items-center justify-center px-2 pb-3 pt-0.5 text-center sm:min-h-[86px] sm:px-6 sm:pb-4 sm:pt-1">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/80 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-rose-700 shadow-sm">
-              <Gift className="h-3.5 w-3.5" />
+        <div className="relative max-h-[84vh] overflow-y-auto px-5 pb-5 pt-8 sm:px-7 sm:pb-7 sm:pt-9">
+          <div className="flex flex-col items-center text-center">
+            <div
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-700 shadow-[0_8px_24px_rgba(244,114,182,0.12)]"
+              style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+            >
+              <Gift className="h-3 w-3" />
               Regalos
             </div>
 
             <h5
               id="gift-preview-title"
-              className="mt-3 max-w-[420px] text-[20px] font-semibold leading-[1.06] text-slate-900 sm:text-[22px]"
+              className="mt-5 max-w-[430px] text-[33px] font-semibold leading-[0.98] tracking-[-0.02em] text-slate-900 sm:text-[38px]"
+              style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}
             >
               Un gesto con amor
             </h5>
@@ -502,39 +506,49 @@ function GiftPreviewModal({ open, config, onClose }) {
 
           <p
             id="gift-preview-intro"
-            className="mx-auto mb-3.5 max-w-[430px] px-1 text-center text-[12px] leading-[1.75] text-slate-600 sm:mb-4 sm:text-[13px]"
+            className="mx-auto mt-5 max-w-[442px] text-center text-[14px] leading-[1.85] text-slate-500 sm:text-[15px]"
+            style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
           >
             {config?.introText}
           </p>
 
-          <div className="space-y-2">
+          <div className="mx-auto mb-6 mt-6 h-px w-full max-w-[456px] bg-gradient-to-r from-transparent via-rose-200/80 to-transparent" />
+
+          <div className="space-y-3.5 sm:space-y-4">
             {visibleBankFields.map((field) => {
               const value = String(config?.bank?.[field.key] || "").trim();
               const isCopied = Boolean(copiedFields[field.key]);
               return (
                 <article
                   key={field.key}
-                  className="rounded-[16px] border border-rose-100 bg-white/95 p-2 shadow-[0_6px_18px_rgba(244,63,94,0.06)]"
+                  className="rounded-[22px] border border-rose-100/80 bg-[#fffdfb] px-4 py-4 shadow-[0_16px_38px_rgba(244,63,94,0.08)]"
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-600">
+                      <div
+                        className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-500"
+                        style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+                      >
                         {field.label}
                       </div>
-                      <div className="mt-0.5 break-all text-[12px] font-medium leading-[1.45] text-slate-800">
+                      <div
+                        className="mt-2 break-all text-[15px] font-medium leading-[1.55] text-slate-900 sm:text-[16px]"
+                        style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+                      >
                         {value}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleCopy(field.key, value)}
-                      className={`inline-flex min-h-[34px] shrink-0 items-center gap-1.5 rounded-[12px] border px-2.5 py-1.5 text-[12px] font-semibold transition ${
+                      className={`inline-flex min-h-[46px] w-full shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-semibold transition sm:w-auto sm:min-w-[126px] ${
                         isCopied
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                          : "border-rose-200 bg-rose-50/90 text-rose-700 hover:bg-rose-100"
                       }`}
+                      style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
                     >
-                      {isCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                       {isCopied ? "Copiado" : "Copiar"}
                     </button>
                   </div>
@@ -547,15 +561,19 @@ function GiftPreviewModal({ open, config, onClose }) {
                 href={config.giftListUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-slate-900 px-4 py-2.5 text-[12px] font-semibold text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
+                className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-[20px] border border-slate-900/10 bg-slate-900 px-4 py-3 text-[13px] font-semibold text-white shadow-[0_16px_34px_rgba(15,23,42,0.18)] transition hover:bg-slate-800"
+                style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
               >
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="h-3.5 w-3.5" />
                 Ver lista de regalos
               </a>
             ) : null}
 
             {!hasVisibleMethods ? (
-              <div className="rounded-[16px] border border-dashed border-rose-200 bg-white/80 px-4 py-3.5 text-center text-[12px] leading-relaxed text-slate-500">
+              <div
+                className="rounded-[22px] border border-dashed border-rose-200 bg-[#fffdfb] px-4 py-5 text-center text-[13px] leading-[1.8] text-slate-500"
+                style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+              >
                 Pueden acompanarnos con un detalle cuando quieran. Cuando agreguen alias, CBU o una lista externa, apareceran aqui.
               </div>
             ) : null}

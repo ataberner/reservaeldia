@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/router";
-import CountdownPresetBuilderPage from "@/components/admin/countdown/CountdownPresetBuilderPage";
+import CreativePanelBoard from "@/components/admin/CreativePanelBoard";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 
-export default function AdminCountdownPresetsPage() {
+export default function AdminPanelCreativoPage() {
   const router = useRouter();
   const redirectingRef = useRef(false);
   const [authUser, setAuthUser] = useState(null);
@@ -26,7 +26,7 @@ export default function AdminCountdownPresetsPage() {
     if (redirectingRef.current) return;
 
     redirectingRef.current = true;
-    alert("No tenes permisos para acceder a presets de countdown.");
+    alert("No tenes permisos para acceder al panel creativo.");
     router.replace("/dashboard");
   }, [authUser, canManageSite, checkingAuth, loadingAdminAccess, router]);
 
@@ -39,8 +39,11 @@ export default function AdminCountdownPresetsPage() {
   }
 
   return (
-    <main className="min-h-dvh overflow-y-auto bg-slate-50 px-2 sm:px-3 lg:h-dvh lg:overflow-hidden lg:px-4">
-      <CountdownPresetBuilderPage />
+    <main className="min-h-dvh overflow-y-auto bg-slate-50 px-2 sm:px-3 lg:px-4">
+      <CreativePanelBoard
+        canManageSite={canManageSite}
+        loadingAdminAccess={loadingAdminAccess}
+      />
     </main>
   );
 }

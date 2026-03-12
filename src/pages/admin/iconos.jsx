@@ -13,7 +13,6 @@ export default function AdminIconos() {
   const {
     loadingAdminAccess,
     canManageSite,
-    isSuperAdmin,
   } = useAdminAccess(authUser);
 
   useEffect(() => {
@@ -45,7 +44,7 @@ export default function AdminIconos() {
 
   return (
     <main className="h-dvh overflow-hidden bg-slate-50">
-      <IconCatalogAdminPage isSuperAdmin={isSuperAdmin} />
+      <IconCatalogAdminPage />
     </main>
   );
 }

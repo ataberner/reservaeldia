@@ -1,6 +1,6 @@
 ﻿import * as admin from "firebase-admin";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { requireAdmin, requireSuperAdmin } from "../auth/adminAuth";
+import { requireAdmin } from "../auth/adminAuth";
 import {
   DECOR_CATALOG_CALLABLE_OPTIONS,
   DECOR_CATALOG_DEFAULT_LIST_LIMIT,
@@ -278,7 +278,7 @@ export const adminRevalidateDecorV1 = onCall(
       archiveOnReject?: unknown;
     }>
   ) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAdmin(request);
     const decorId = normalizeString(request.data?.decorId);
     if (!decorId) {
       throw new HttpsError("invalid-argument", "decorId es obligatorio.");

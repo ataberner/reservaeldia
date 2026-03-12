@@ -33,7 +33,7 @@ function FlashMessage({ message, onClose }) {
   );
 }
 
-export default function IconCatalogAdminPage({ isSuperAdmin }) {
+export default function IconCatalogAdminPage() {
   const {
     loadingList,
     reloadingList,
@@ -89,7 +89,7 @@ export default function IconCatalogAdminPage({ isSuperAdmin }) {
     updatePriorityForIcon,
     revalidateIconFromGrid,
     clearFlashMessage,
-  } = useIconCatalogAdminState({ isSuperAdmin });
+  } = useIconCatalogAdminState();
   const scrollContainerRef = useRef(null);
   const autoLoadLockRef = useRef(false);
   const restoreScrollTopRef = useRef(null);
@@ -232,7 +232,6 @@ export default function IconCatalogAdminPage({ isSuperAdmin }) {
             items={visibleItems}
             technicalView={technicalView}
             forceBlack={forceBlack}
-            isSuperAdmin={isSuperAdmin}
             selectedIconIds={selectedIconIds}
             bulkActionBusy={bulkActionBusy}
             busyById={busyById}

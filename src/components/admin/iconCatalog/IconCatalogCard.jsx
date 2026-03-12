@@ -95,7 +95,6 @@ export default function IconCatalogCard({
   icon,
   technicalView,
   forceBlack,
-  isSuperAdmin,
   selected,
   selectionDisabled,
   busyState,
@@ -261,8 +260,8 @@ export default function IconCatalogCard({
         <button
           type="button"
           onClick={() => onRevalidate?.(icon)}
-          disabled={!isSuperAdmin || busy?.revalidate === true}
-          title={!isSuperAdmin ? "Solo superadmin puede revalidar manualmente." : ""}
+          disabled={busy?.revalidate === true}
+          title="Revalidar manualmente"
           className="h-6 rounded-md border border-cyan-600 bg-cyan-600 px-1 text-[9px] font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
         >
           {busy?.revalidate ? "..." : "Rev"}

@@ -19,7 +19,6 @@ export default function DecorCatalogGrid({
   items,
   technicalView,
   forceBlack,
-  isSuperAdmin,
   selectedIconIds,
   bulkActionBusy,
   busyById,
@@ -76,7 +75,6 @@ export default function DecorCatalogGrid({
             icon={icon}
             technicalView={technicalView}
             forceBlack={forceBlack}
-            isSuperAdmin={isSuperAdmin}
             selected={selectedIconIds?.has?.(icon.id) === true}
             selectionDisabled={bulkActionBusy}
             busyState={busyById?.[icon.id] || {}}

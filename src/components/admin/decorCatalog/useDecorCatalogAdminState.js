@@ -203,7 +203,7 @@ function parsePageInfo(pageInfo) {
   };
 }
 
-export function useDecorCatalogAdminState({ isSuperAdmin = false } = {}) {
+export function useDecorCatalogAdminState() {
   const [items, setItems] = useState([]);
   const [catalogTotals, setCatalogTotals] = useState({
     active: null,
@@ -1278,14 +1278,6 @@ export function useDecorCatalogAdminState({ isSuperAdmin = false } = {}) {
       const normalizedId = normalizeString(icon?.id);
       if (!normalizedId) return;
 
-      if (!isSuperAdmin) {
-        pushFlashMessage(
-          "warning",
-          "Solo superadmin puede forzar revalidaciones manuales."
-        );
-        return;
-      }
-
       setBusy(normalizedId, "revalidate", true);
       try {
         await revalidateIcon({
@@ -1304,7 +1296,7 @@ export function useDecorCatalogAdminState({ isSuperAdmin = false } = {}) {
         setBusy(normalizedId, "revalidate", false);
       }
     },
-    [isSuperAdmin, pushFlashMessage, reload, setBusy]
+    [pushFlashMessage, reload, setBusy]
   );
 
   const loadMore = useCallback(async () => {

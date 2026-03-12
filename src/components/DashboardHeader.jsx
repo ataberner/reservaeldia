@@ -235,6 +235,10 @@ export default function DashboardHeader({
         window.dispatchEvent(new CustomEvent("dashboard-crear-plantilla"));
     };
 
+    const abrirPanelCreativo = () => {
+        router.push("/admin/panel-creativo");
+    };
+
     const subtleHeaderButton =
         "inline-flex items-center gap-1.5 rounded-xl border border-[#e6dbf8] bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_26px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
     const primaryHeaderButton =
@@ -484,6 +488,16 @@ export default function DashboardHeader({
                         </button>
 
                         {!loadingAdminAccess && canManageSite && (
+                            <button
+                                onClick={abrirPanelCreativo}
+                                className={`${dashboardModeButton} border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]`}
+                                title="Abrir panel creativo"
+                            >
+                                Panel creativo
+                            </button>
+                        )}
+
+                        {!loadingAdminAccess && isSuperAdmin && (
                             <button
                                 onClick={() =>
                                     onCambiarVista(

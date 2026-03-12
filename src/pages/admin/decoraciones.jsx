@@ -10,7 +10,7 @@ export default function AdminDecoraciones() {
   const [authUser, setAuthUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  const { loadingAdminAccess, canManageSite, isSuperAdmin } = useAdminAccess(authUser);
+  const { loadingAdminAccess, canManageSite } = useAdminAccess(authUser);
 
   useEffect(() => {
     const auth = getAuth();
@@ -41,7 +41,7 @@ export default function AdminDecoraciones() {
 
   return (
     <main className="h-dvh overflow-hidden bg-slate-50">
-      <DecorCatalogAdminPage isSuperAdmin={isSuperAdmin} />
+      <DecorCatalogAdminPage />
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import * as admin from "firebase-admin";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { requireAdmin, requireSuperAdmin } from "../auth/adminAuth";
+import { requireAdmin } from "../auth/adminAuth";
 import {
   ICON_CATALOG_CALLABLE_OPTIONS,
   ICON_CATALOG_DEFAULT_LIST_LIMIT,
@@ -278,7 +278,7 @@ export const adminRevalidateIconV2 = onCall(
       archiveOnReject?: unknown;
     }>
   ) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAdmin(request);
     const iconId = normalizeString(request.data?.iconId);
     if (!iconId) {
       throw new HttpsError("invalid-argument", "iconId es obligatorio.");

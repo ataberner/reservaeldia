@@ -5,7 +5,7 @@ import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
 import { JSDOM } from "jsdom";
-import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
+import { requireAdmin, requireAuth } from "../auth/adminAuth";
 
 type Estado = "draft" | "published" | "archived";
 type Unit = "days" | "hours" | "minutes" | "seconds";
@@ -913,7 +913,7 @@ function buildLegacyCanvasPatch(params: {
 export const saveCountdownPresetDraft = onCall(
   OPTIONS,
   async (request: CallableRequest<SaveInput>) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAdmin(request);
 
     const nombre = text(request.data?.nombre, 120);
     if (!nombre) fail("nombre es obligatorio.");
@@ -1054,7 +1054,7 @@ export const saveCountdownPresetDraft = onCall(
 export const publishCountdownPresetDraft = onCall(
   OPTIONS,
   async (request: CallableRequest<PublishInput>) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAdmin(request);
 
     const presetId = parseId(request.data?.presetId);
     if (!presetId) fail("presetId es obligatorio.");
@@ -1176,7 +1176,7 @@ export const publishCountdownPresetDraft = onCall(
 export const syncLegacyCountdownPresets = onCall(
   OPTIONS,
   async (request: CallableRequest<SyncLegacyInput>) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAdmin(request);
     const legacyPresets = normalizeSyncLegacyPayload(request.data?.presets);
     const database = db();
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -1289,7 +1289,7 @@ export const syncLegacyCountdownPresets = onCall(
 export const archiveCountdownPreset = onCall(
   OPTIONS,
   async (request: CallableRequest<ArchiveInput>) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAdmin(request);
     const presetId = parseId(request.data?.presetId);
     if (!presetId) fail("presetId es obligatorio.");
 
@@ -1326,7 +1326,7 @@ export const archiveCountdownPreset = onCall(
 export const deleteCountdownPreset = onCall(
   OPTIONS,
   async (request: CallableRequest<DeleteInput>) => {
-    requireSuperAdmin(request);
+    requireAdmin(request);
     const presetId = parseId(request.data?.presetId);
     if (!presetId) fail("presetId es obligatorio.");
 
@@ -1360,7 +1360,7 @@ export const deleteCountdownPreset = onCall(
 export const listCountdownPresetsAdmin = onCall(
   OPTIONS,
   async (request: CallableRequest<Record<string, never>>) => {
-    requireSuperAdmin(request);
+    requireAdmin(request);
 
     const snap = await db().collection(COLLECTION).get();
     const items = snap.docs

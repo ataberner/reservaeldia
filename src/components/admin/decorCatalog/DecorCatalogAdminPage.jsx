@@ -33,7 +33,7 @@ function FlashMessage({ message, onClose }) {
   );
 }
 
-export default function DecorCatalogAdminPage({ isSuperAdmin }) {
+export default function DecorCatalogAdminPage() {
   const {
     loadingList,
     reloadingList,
@@ -89,7 +89,7 @@ export default function DecorCatalogAdminPage({ isSuperAdmin }) {
     updatePriorityForIcon,
     revalidateIconFromGrid,
     clearFlashMessage,
-  } = useDecorCatalogAdminState({ isSuperAdmin });
+  } = useDecorCatalogAdminState();
   const scrollContainerRef = useRef(null);
   const autoLoadLockRef = useRef(false);
   const restoreScrollTopRef = useRef(null);
@@ -232,7 +232,6 @@ export default function DecorCatalogAdminPage({ isSuperAdmin }) {
             items={visibleItems}
             technicalView={technicalView}
             forceBlack={forceBlack}
-            isSuperAdmin={isSuperAdmin}
             selectedIconIds={selectedIconIds}
             bulkActionBusy={bulkActionBusy}
             busyById={busyById}

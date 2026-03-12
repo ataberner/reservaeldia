@@ -4,7 +4,6 @@ import DiscountCodesManager from "@/components/admin/DiscountCodesManager";
 import UsersDirectoryManager from "@/components/admin/UsersDirectoryManager";
 
 export default function SiteManagementBoard({
-  canManageSite,
   isSuperAdmin,
   loadingAdminAccess,
 }) {
@@ -12,7 +11,7 @@ export default function SiteManagementBoard({
   const isAdminsOpen = openPanel === "admins";
   const isDiscountsOpen = openPanel === "discounts";
   const isUsersOpen = openPanel === "users";
-  const canAccessSiteManagement = canManageSite === true;
+  const canAccessSiteManagement = isSuperAdmin === true;
 
   const togglePanel = (panelKey) => {
     setOpenPanel((prev) => (prev === panelKey ? null : panelKey));
@@ -21,9 +20,9 @@ export default function SiteManagementBoard({
   return (
     <section className="mx-auto w-full max-w-6xl py-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Tablero de gestion</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Gestion del sitio</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Espacio de administracion interna del sitio.
+          Espacio de administracion interna reservado para superadmin.
         </p>
       </header>
 
@@ -35,264 +34,164 @@ export default function SiteManagementBoard({
 
       {!loadingAdminAccess && !canAccessSiteManagement && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
-          No tenes permisos para acceder a este tablero.
+          Solo superadmin puede acceder a este tablero.
         </div>
       )}
 
       {!loadingAdminAccess && canAccessSiteManagement && (
         <div className="space-y-4">
-          <article className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-sky-50 p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isDiscountsOpen
+                ? "bg-gradient-to-r from-amber-500 to-orange-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("discounts")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isDiscountsOpen
+                  ? "bg-gradient-to-r from-amber-50 to-orange-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
               <div>
-                <h2 className="text-lg font-semibold text-indigo-900">
-                  Gestionar iconos
-                </h2>
-                <p className="mt-1 text-sm text-indigo-700">
-                  Acceso al panel de iconos para editar categoria, keywords y destacados.
-                </p>
-                <p className="mt-2 text-xs text-indigo-700">
-                  Ruta: https://reservaeldia.com.ar/admin/iconos/
-                </p>
-              </div>
-              <a
-                href="/admin/iconos/"
-                className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-              >
-                Abrir panel de iconos
-              </a>
-            </div>
-          </article>
-
-          <article className="rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-teal-900">
-                  Gestionar decoraciones
-                </h2>
-                <p className="mt-1 text-sm text-teal-700">
-                  Acceso al panel de imagenes decorativas para categorias, orden, estado y metadatos.
-                </p>
-                <p className="mt-2 text-xs text-teal-700">
-                  Ruta: https://reservaeldia.com.ar/admin/decoraciones/
-                </p>
-              </div>
-              <a
-                href="/admin/decoraciones/"
-                className="inline-flex items-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-700"
-              >
-                Abrir panel de decoraciones
-              </a>
-            </div>
-          </article>
-
-          <article className="rounded-xl border border-cyan-200 bg-gradient-to-r from-cyan-50 to-sky-50 p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-cyan-900">
-                  Presets de texto
-                </h2>
-                <p className="mt-1 text-sm text-cyan-700">
-                  Gestiona presets simples y combinaciones para el menu Texto del editor.
-                </p>
-                <p className="mt-2 text-xs text-cyan-700">
-                  Ruta: https://reservaeldia.com.ar/admin/presets-texto/
-                </p>
-              </div>
-              <a
-                href="/admin/presets-texto/"
-                className="inline-flex items-center rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-700"
-              >
-                Abrir presets de texto
-              </a>
-            </div>
-          </article>
-
-          {isSuperAdmin && (
-            <article className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-rose-50 p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-fuchsia-900">
-                    Presets de countdown
-                  </h2>
-                  <p className="mt-1 text-sm text-fuchsia-700">
-                    Constructor profesional para crear, versionar y publicar presets globales del countdown.
-                  </p>
-                  <p className="mt-2 text-xs text-fuchsia-700">
-                    Ruta: https://reservaeldia.com.ar/admin/countdown-presets/
-                  </p>
-                </div>
-                <a
-                  href="/admin/countdown-presets/"
-                  className="inline-flex items-center rounded-lg bg-fuchsia-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-fuchsia-700"
+                <h2
+                  className={`text-lg font-semibold ${
+                    isDiscountsOpen ? "text-amber-900" : "text-gray-800"
+                  }`}
                 >
-                  Abrir constructor
-                </a>
+                  Codigos de descuento
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isDiscountsOpen ? "text-amber-700" : "text-gray-600"
+                  }`}
+                >
+                  Crear codigos, configurar descuentos y revisar usos.
+                </p>
+                {isDiscountsOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                    Seccion abierta
+                  </span>
+                )}
               </div>
-            </article>
-          )}
-
-          {isSuperAdmin && (
-            <>
-              <div
-                className={`rounded-xl p-[1px] transition-all ${
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
                   isDiscountsOpen
-                    ? "bg-gradient-to-r from-amber-500 to-orange-500 shadow-md"
-                    : "border border-gray-200 bg-white shadow-sm"
+                    ? "bg-amber-600 text-white"
+                    : "bg-gray-100 text-gray-700"
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => togglePanel("discounts")}
-                  className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
-                    isDiscountsOpen
-                      ? "bg-gradient-to-r from-amber-50 to-orange-50"
-                      : "bg-white hover:bg-gray-50"
+                {isDiscountsOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
+
+          {isDiscountsOpen && <DiscountCodesManager />}
+
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isAdminsOpen
+                ? "bg-gradient-to-r from-purple-500 to-indigo-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("admins")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isAdminsOpen
+                  ? "bg-gradient-to-r from-purple-50 to-indigo-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div>
+                <h2
+                  className={`text-lg font-semibold ${
+                    isAdminsOpen ? "text-purple-900" : "text-gray-800"
                   }`}
                 >
-                  <div>
-                    <h2
-                      className={`text-lg font-semibold ${
-                        isDiscountsOpen ? "text-amber-900" : "text-gray-800"
-                      }`}
-                    >
-                      Codigos de descuento
-                    </h2>
-                    <p
-                      className={`mt-1 text-sm ${
-                        isDiscountsOpen ? "text-amber-700" : "text-gray-600"
-                      }`}
-                    >
-                      Crear codigos, configurar descuentos y revisar usos.
-                    </p>
-                    {isDiscountsOpen && (
-                      <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                        Seccion abierta
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                      isDiscountsOpen
-                        ? "bg-amber-600 text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {isDiscountsOpen ? "^" : "v"}
+                  Administrar admins
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isAdminsOpen ? "text-purple-700" : "text-gray-600"
+                  }`}
+                >
+                  Alta, baja y control de permisos administrativos.
+                </p>
+                {isAdminsOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-purple-700">
+                    Seccion abierta
                   </span>
-                </button>
+                )}
               </div>
-
-              {isDiscountsOpen && <DiscountCodesManager />}
-
-              <div
-                className={`rounded-xl p-[1px] transition-all ${
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
                   isAdminsOpen
-                    ? "bg-gradient-to-r from-purple-500 to-indigo-500 shadow-md"
-                    : "border border-gray-200 bg-white shadow-sm"
+                    ? "bg-purple-600 text-white"
+                    : "bg-gray-100 text-gray-700"
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => togglePanel("admins")}
-                  className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
-                    isAdminsOpen
-                      ? "bg-gradient-to-r from-purple-50 to-indigo-50"
-                      : "bg-white hover:bg-gray-50"
+                {isAdminsOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
+
+          {isAdminsOpen && <AdminUsersManager />}
+
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isUsersOpen
+                ? "bg-gradient-to-r from-emerald-500 to-cyan-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("users")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isUsersOpen
+                  ? "bg-gradient-to-r from-emerald-50 to-cyan-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div>
+                <h2
+                  className={`text-lg font-semibold ${
+                    isUsersOpen ? "text-emerald-900" : "text-gray-800"
                   }`}
                 >
-                  <div>
-                    <h2
-                      className={`text-lg font-semibold ${
-                        isAdminsOpen ? "text-purple-900" : "text-gray-800"
-                      }`}
-                    >
-                      Administrar admins
-                    </h2>
-                    <p
-                      className={`mt-1 text-sm ${
-                        isAdminsOpen ? "text-purple-700" : "text-gray-600"
-                      }`}
-                    >
-                      Alta, baja y control de permisos administrativos.
-                    </p>
-                    {isAdminsOpen && (
-                      <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-purple-700">
-                        Seccion abierta
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                      isAdminsOpen
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {isAdminsOpen ? "^" : "v"}
+                  Administrar usuarios
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isUsersOpen ? "text-emerald-700" : "text-gray-600"
+                  }`}
+                >
+                  Estadisticas globales y listado paginado de usuarios.
+                </p>
+                {isUsersOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    Seccion abierta
                   </span>
-                </button>
+                )}
               </div>
-
-              {isAdminsOpen && <AdminUsersManager />}
-
-              <div
-                className={`rounded-xl p-[1px] transition-all ${
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
                   isUsersOpen
-                    ? "bg-gradient-to-r from-emerald-500 to-cyan-500 shadow-md"
-                    : "border border-gray-200 bg-white shadow-sm"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-gray-100 text-gray-700"
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => togglePanel("users")}
-                  className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
-                    isUsersOpen
-                      ? "bg-gradient-to-r from-emerald-50 to-cyan-50"
-                      : "bg-white hover:bg-gray-50"
-                  }`}
-                >
-                  <div>
-                    <h2
-                      className={`text-lg font-semibold ${
-                        isUsersOpen ? "text-emerald-900" : "text-gray-800"
-                      }`}
-                    >
-                      Administrar usuarios
-                    </h2>
-                    <p
-                      className={`mt-1 text-sm ${
-                        isUsersOpen ? "text-emerald-700" : "text-gray-600"
-                      }`}
-                    >
-                      Estadisticas globales y listado paginado de usuarios.
-                    </p>
-                    {isUsersOpen && (
-                      <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                        Seccion abierta
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                      isUsersOpen
-                        ? "bg-emerald-600 text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {isUsersOpen ? "^" : "v"}
-                  </span>
-                </button>
-              </div>
+                {isUsersOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
 
-              {isUsersOpen && <UsersDirectoryManager />}
-            </>
-          )}
-
-          {!isSuperAdmin && (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-800 shadow-sm">
-              Tu rol permite gestionar iconos. La administracion de usuarios y admins esta reservada para superadmin.
-            </div>
-          )}
+          {isUsersOpen && <UsersDirectoryManager />}
         </div>
       )}
     </section>

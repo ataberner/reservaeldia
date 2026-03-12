@@ -2176,13 +2176,13 @@ export default function Dashboard() {
     if (checkingAuth || slugInvitacion) return;
     if (vista !== "gestion") return;
     if (loadingAdminAccess) return;
-    if (canManageSite) return;
+    if (isSuperAdmin) return;
 
     setVista("home");
-    alert("No tenes permisos para acceder al tablero de gestion.");
+    alert("Solo superadmin puede acceder al tablero de gestion.");
   }, [
     checkingAuth,
-    canManageSite,
+    isSuperAdmin,
     loadingAdminAccess,
     slugInvitacion,
     vista,
@@ -2556,10 +2556,9 @@ export default function Dashboard() {
 
 
       {/* Invitation editor */}
-      {!slugInvitacion && vista === "gestion" && canManageSite && (
+      {!slugInvitacion && vista === "gestion" && isSuperAdmin && (
         <div className="w-full px-4 pb-8">
           <SiteManagementBoard
-            canManageSite={canManageSite}
             isSuperAdmin={isSuperAdmin}
             loadingAdminAccess={loadingAdminAccess}
           />

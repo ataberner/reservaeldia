@@ -317,7 +317,18 @@ function AdvancedSettingsModal({
 
 function renderPreviewField(question, value, onChange) {
   const baseClass =
-    "w-full min-h-[44px] rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100";
+    "w-full min-h-[52px] rounded-[18px] border border-slate-200/90 bg-white px-4 py-3 text-[14px] text-slate-800 shadow-[0_8px_20px_rgba(15,23,42,0.05),inset_0_1px_0_rgba(255,255,255,0.7)] transition placeholder:text-slate-400 focus:border-violet-300 focus:outline-none focus:ring-4 focus:ring-violet-100/80";
+  const selectStyle = {
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    paddingRight: "44px",
+    backgroundImage:
+      'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2714%27 height=%2714%27 viewBox=%270 0 20 20%27 fill=%27none%27%3E%3Cpath d=%27M5 7.5L10 12.5L15 7.5%27 stroke=%2764748B%27 stroke-width=%271.8%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")',
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 16px center",
+    backgroundSize: "14px 14px",
+  };
 
   if (question.type === "long_text") {
     return (
@@ -325,7 +336,7 @@ function renderPreviewField(question, value, onChange) {
         rows={3}
         value={value}
         onChange={(event) => onChange(question.id, event.target.value)}
-        className={`${baseClass} min-h-[106px] resize-y`}
+        className={`${baseClass} min-h-[124px] resize-y`}
         placeholder="Respuesta del invitado"
       />
     );
@@ -335,6 +346,7 @@ function renderPreviewField(question, value, onChange) {
     return (
       <select
         className={`${baseClass} bg-white`}
+        style={selectStyle}
         value={value}
         onChange={(event) => onChange(question.id, event.target.value)}
       >
@@ -352,6 +364,7 @@ function renderPreviewField(question, value, onChange) {
     return (
       <select
         className={`${baseClass} bg-white`}
+        style={selectStyle}
         value={value}
         onChange={(event) => onChange(question.id, event.target.value)}
       >
@@ -414,40 +427,62 @@ function RsvpPreviewModal({ open, config, onClose }) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-[520px] overflow-hidden rounded-[26px] border border-violet-200/80 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rsvp-preview-title"
+        aria-describedby="rsvp-preview-subtitle"
+        className="relative w-full max-w-[548px] overflow-hidden rounded-[30px] border border-violet-200/70 bg-[#fffafc] shadow-[0_36px_90px_rgba(15,23,42,0.26)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-violet-100 via-fuchsia-50 to-sky-100 sm:h-32" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[84px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.9),_transparent_62%),linear-gradient(135deg,rgba(237,233,254,0.82),rgba(250,232,255,0.74)_52%,rgba(224,242,254,0.58))] sm:h-[92px]" />
 
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:bg-slate-50 sm:right-4 sm:top-4"
+          className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/92 text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-px hover:bg-white sm:right-4 sm:top-4"
           aria-label="Cerrar"
         >
           <X className="h-4 w-4" />
         </button>
 
-        <div className="relative max-h-[84vh] overflow-y-auto px-4 pb-4 pt-9 sm:px-6 sm:pb-6 sm:pt-11">
-          <h5 className="pr-10 text-[20px] font-semibold leading-tight text-slate-900 sm:pr-12 sm:text-[22px]">
+        <div className="relative max-h-[84vh] overflow-y-auto px-5 pb-5 pt-8 sm:px-7 sm:pb-7 sm:pt-9">
+          <div
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700 shadow-[0_8px_24px_rgba(167,139,250,0.14)]"
+            style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+          >
+            Confirmar asistencia
+          </div>
+
+          <h5
+            id="rsvp-preview-title"
+            className="mt-5 max-w-[430px] text-[33px] font-semibold leading-[0.98] tracking-[-0.02em] text-slate-900 sm:text-[38px]"
+            style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}
+          >
             {config.modal.title}
           </h5>
           {config.modal.subtitle ? (
-            <p className="mt-2 pr-10 text-[13px] leading-relaxed text-slate-600 sm:pr-12 sm:text-sm">
+            <p
+              id="rsvp-preview-subtitle"
+              className="mt-5 max-w-[440px] text-[14px] leading-[1.85] text-slate-500 sm:text-[15px]"
+              style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+            >
               {config.modal.subtitle}
             </p>
           ) : null}
 
           <form
-            className="mt-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 sm:mt-5 sm:p-4"
+            className="mt-6 rounded-[24px] border border-violet-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.88))] p-5 shadow-[0_18px_40px_rgba(139,92,246,0.08)] sm:mt-7 sm:p-6"
             onSubmit={(event) => {
               event.preventDefault();
             }}
           >
-            <div className="space-y-3 sm:space-y-3.5">
+            <div className="space-y-4 sm:space-y-5">
               {activeQuestions.map((question) => (
-                <div key={question.id} className="space-y-1.5 sm:space-y-2">
-                  <label className="text-xs font-semibold text-slate-700">
+                <div key={question.id} className="space-y-2">
+                  <label
+                    className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+                    style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+                  >
                     {question.label}
                     {question.required ? " *" : ""}
                   </label>
@@ -461,16 +496,19 @@ function RsvpPreviewModal({ open, config, onClose }) {
             </div>
 
             {activeQuestions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-500">
+              <div
+                className="rounded-[18px] border border-dashed border-violet-200 bg-white/90 p-4 text-[13px] leading-relaxed text-slate-500"
+                style={{ fontFamily: '"Montserrat", "Segoe UI", sans-serif' }}
+              >
                 No hay preguntas activas para previsualizar.
               </div>
             ) : null}
 
-            <div className="pt-3">
+            <div className="pt-2">
               <button
                 type="button"
                 onClick={(event) => event.preventDefault()}
-                className="w-full rounded-xl px-3 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(29,78,216,0.24)]"
+                className="w-full rounded-full px-4 py-4 text-[14px] font-semibold text-white shadow-[0_18px_34px_rgba(139,92,246,0.26)] transition hover:-translate-y-px"
                 style={{ backgroundColor: config.modal.primaryColor || "#773dbe" }}
               >
                 {config.modal.submitLabel || "Enviar"}
@@ -606,11 +644,19 @@ export default function MiniToolbarTabRsvp({
             {activeQuestions.map((question, index) => (
               <article
                 key={question.id}
-                className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2 py-1.5"
+                className="flex min-h-[56px] items-center gap-2 rounded-lg border border-emerald-200 bg-white px-2 py-2"
               >
                 <GripVertical className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-slate-800" title={question.label}>
+                  <div
+                    className="overflow-hidden break-words text-xs font-medium leading-[1.2] text-slate-800"
+                    title={question.label}
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
                     {question.label}
                   </div>
                 </div>
@@ -669,10 +715,18 @@ export default function MiniToolbarTabRsvp({
               return (
                 <div
                   key={question.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-violet-200 bg-white px-2 py-1.5"
+                  className="flex min-h-[56px] items-center justify-between gap-2 rounded-lg border border-violet-200 bg-white px-2 py-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-medium text-slate-800" title={question.label}>
+                    <div
+                      className="overflow-hidden break-words text-xs font-medium leading-[1.2] text-slate-800"
+                      title={question.label}
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                      }}
+                    >
                       {question.label}
                     </div>
                   </div>

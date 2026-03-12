@@ -52,11 +52,11 @@ export function generarModalRSVPHTML(
   #modal-rsvp .rsvp-shell {
     position: relative;
     width: 100%;
-    max-width: 520px;
-    border-radius: 26px;
-    border: 1px solid #ddd6fecc;
-    background: linear-gradient(180deg, #ffffff 0%, #fcfcff 100%);
-    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35);
+    max-width: 548px;
+    border-radius: 30px;
+    border: 1px solid rgba(221, 214, 254, 0.72);
+    background: linear-gradient(180deg, #fffafc 0%, #fdfbff 100%);
+    box-shadow: 0 36px 90px rgba(15, 23, 42, 0.26);
     overflow: hidden;
   }
 
@@ -64,8 +64,8 @@ export function generarModalRSVPHTML(
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
-    height: 112px;
-    background: linear-gradient(120deg, #ede9fe 0%, #fae8ff 46%, #e0f2fe 100%);
+    height: 92px;
+    background: linear-gradient(135deg, rgba(237, 233, 254, 0.82), rgba(250, 232, 255, 0.74) 52%, rgba(224, 242, 254, 0.58));
     pointer-events: none;
   }
 
@@ -73,7 +73,23 @@ export function generarModalRSVPHTML(
     position: relative;
     max-height: 84vh;
     overflow-y: auto;
-    padding: 36px 20px 20px;
+    padding: 32px 24px 24px;
+  }
+
+  #modal-rsvp .rsvp-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.84);
+    padding: 7px 14px;
+    color: #6d28d9;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    box-shadow: 0 8px 24px rgba(167, 139, 250, 0.14);
   }
 
   #modal-rsvp .rsvp-close {
@@ -82,115 +98,148 @@ export function generarModalRSVPHTML(
     right: 14px;
     z-index: 2;
     display: inline-flex;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     align-items: center;
     justify-content: center;
-    border: 1px solid #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.72);
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.95);
-    color: #334155;
+    background: rgba(255, 255, 255, 0.92);
+    color: #64748b;
     font-size: 20px;
     line-height: 1;
     cursor: pointer;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    transition: transform 0.15s ease, background-color 0.15s ease;
   }
 
   #modal-rsvp .rsvp-close:hover {
-    background: #f8fafc;
+    background: #ffffff;
+    transform: translateY(-1px);
   }
 
   #modal-rsvp #rsvp-title {
-    margin: 0;
-    padding-right: 44px;
-    font-size: 22px;
-    line-height: 1.2;
+    margin: 20px 0 0;
+    max-width: 430px;
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 40px;
+    font-weight: 600;
+    line-height: 0.96;
+    letter-spacing: -0.02em;
     color: #0f172a;
   }
 
   #modal-rsvp #rsvp-subtitle {
-    margin: 8px 0 0;
-    padding-right: 44px;
-    font-size: 14px;
-    line-height: 1.55;
-    color: #475569;
+    margin: 20px 0 0;
+    max-width: 440px;
+    font-size: 15px;
+    line-height: 1.85;
+    color: #64748b;
+  }
+
+  #modal-rsvp .rsvp-form-shell {
+    margin-top: 28px;
+    border-radius: 24px;
+    border: 1px solid rgba(221, 214, 254, 0.82);
+    background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,250,252,0.88));
+    padding: 22px;
+    box-shadow: 0 18px 40px rgba(139, 92, 246, 0.08);
   }
 
   #modal-rsvp #rsvp-form {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    margin-top: 16px;
-    padding: 14px;
-    border-radius: 18px;
-    border: 1px solid #f1f5f9;
-    background: rgba(248, 250, 252, 0.72);
+    gap: 18px;
   }
 
   #modal-rsvp #rsvp-fields {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
   }
 
   #modal-rsvp .rsvp-field-wrap {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 9px;
   }
 
   #modal-rsvp .rsvp-label {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    color: #334155;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
   }
 
   #modal-rsvp .rsvp-control {
     width: 100%;
-    min-height: 44px;
-    padding: 10px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    min-height: 52px;
+    padding: 14px 16px;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    border-radius: 18px;
     font-size: 14px;
-    color: #1e293b;
+    color: #1f2937;
     background: #ffffff;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  }
+
+  #modal-rsvp .rsvp-control::placeholder {
+    color: #94a3b8;
   }
 
   #modal-rsvp .rsvp-control:focus {
     outline: none;
     border-color: #c4b5fd;
-    box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.3);
+    box-shadow: 0 0 0 4px rgba(196, 181, 253, 0.24);
   }
 
   #modal-rsvp textarea.rsvp-control {
-    min-height: 108px;
+    min-height: 124px;
     resize: vertical;
+  }
+
+  #modal-rsvp select.rsvp-control {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 46px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2364748B' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 14px 14px;
   }
 
   #modal-rsvp .rsvp-actions {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 2px;
+    gap: 12px;
+    margin-top: 4px;
   }
 
   #modal-rsvp #rsvp-send {
     width: 100%;
-    padding: 12px 14px;
+    min-height: 54px;
+    padding: 14px 18px;
     border: none;
-    border-radius: 12px;
+    border-radius: 9999px;
     color: #ffffff;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 12px 26px rgba(29, 78, 216, 0.24);
+    box-shadow: 0 18px 34px rgba(139, 92, 246, 0.26);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 
   #modal-rsvp #rsvp-send:disabled {
     opacity: 0.92;
     cursor: wait;
     filter: saturate(0.9);
+  }
+
+  #modal-rsvp #rsvp-send:hover:not(:disabled) {
+    transform: translateY(-1px);
   }
 
   #modal-rsvp .rsvp-inline-loader {
@@ -207,10 +256,11 @@ export function generarModalRSVPHTML(
 
   #modal-rsvp #rsvp-cancel {
     width: 100%;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid #e2e8f0;
-    background: #ffffff;
+    min-height: 46px;
+    padding: 12px 16px;
+    border-radius: 9999px;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.92);
     color: #475569;
     font-size: 13px;
     cursor: pointer;
@@ -230,11 +280,11 @@ export function generarModalRSVPHTML(
     display: none;
     align-items: flex-start;
     gap: 10px;
-    border-radius: 12px;
+    border-radius: 16px;
     border: 1px solid transparent;
-    padding: 10px 12px;
+    padding: 12px 14px;
     font-size: 13px;
-    line-height: 1.4;
+    line-height: 1.5;
   }
 
   #modal-rsvp .rsvp-status.show {
@@ -301,33 +351,40 @@ export function generarModalRSVPHTML(
     }
 
     #modal-rsvp .rsvp-content {
-      padding: 30px 14px 14px;
+      padding: 30px 18px 18px;
+    }
+
+    #modal-rsvp .rsvp-badge {
+      font-size: 9px;
+      padding: 7px 12px;
     }
 
     #modal-rsvp #rsvp-title {
-      font-size: 19px;
-      padding-right: 40px;
+      margin-top: 18px;
+      font-size: 33px;
     }
 
     #modal-rsvp #rsvp-subtitle {
-      margin-top: 7px;
-      font-size: 13px;
-      padding-right: 40px;
+      margin-top: 18px;
+      font-size: 14px;
+    }
+
+    #modal-rsvp .rsvp-form-shell {
+      margin-top: 24px;
+      padding: 18px;
+      border-radius: 22px;
     }
 
     #modal-rsvp #rsvp-form {
-      margin-top: 14px;
-      padding: 12px;
-      border-radius: 16px;
-      gap: 12px;
+      gap: 16px;
     }
 
     #modal-rsvp #rsvp-fields {
-      gap: 12px;
+      gap: 16px;
     }
 
     #modal-rsvp textarea.rsvp-control {
-      min-height: 96px;
+      min-height: 116px;
     }
   }
 </style>
@@ -337,17 +394,20 @@ export function generarModalRSVPHTML(
     <button id="rsvp-close" class="rsvp-close" type="button" aria-label="Cerrar">×</button>
 
     <div class="rsvp-content">
+      <div class="rsvp-badge">Confirmar asistencia</div>
       <h2 id="rsvp-title"></h2>
       <p id="rsvp-subtitle"></p>
 
-      <form id="rsvp-form">
-        <div id="rsvp-fields"></div>
-        <div id="rsvp-status" class="rsvp-status" role="status" aria-live="polite"></div>
-        <div class="rsvp-actions">
-          <button id="rsvp-send" type="submit"></button>
-          <button id="rsvp-cancel" type="button">Cerrar</button>
-        </div>
-      </form>
+      <div class="rsvp-form-shell">
+        <form id="rsvp-form">
+          <div id="rsvp-fields"></div>
+          <div id="rsvp-status" class="rsvp-status" role="status" aria-live="polite"></div>
+          <div class="rsvp-actions">
+            <button id="rsvp-send" type="submit"></button>
+            <button id="rsvp-cancel" type="button">Cerrar</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </div>

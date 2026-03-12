@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
 export default function useCanvasEditorFontPreload({
   objetos,
@@ -14,7 +15,7 @@ export default function useCanvasEditorFontPreload({
         (o) =>
           (o.tipo === "texto" ||
             o.tipo === "countdown" ||
-            o.tipo === "rsvp-boton" ||
+            isFunctionalCtaButton(o) ||
             (o.tipo === "forma" &&
               o.figura === "rect" &&
               typeof o.texto === "string")) &&

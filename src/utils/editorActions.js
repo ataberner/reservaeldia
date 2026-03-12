@@ -1,5 +1,10 @@
 // src/utils/editorActions.js
 
+import {
+  isFunctionalCtaButton,
+  shouldSkipFunctionalCtaDuplicate,
+} from "@/domain/functionalCtaButtons";
+
 export function ejecutarDeshacer({
   historial,
   setHistorial,
@@ -63,7 +68,9 @@ export function ejecutarRehacer({
 
 export function duplicarElemento({ objetos, elementosSeleccionados, setObjetos, setElementosSeleccionados }) {
   const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
-  const duplicables = seleccionados.filter((o) => o?.tipo !== "countdown");
+  const duplicables = seleccionados.filter(
+    (o) => o?.tipo !== "countdown" && !shouldSkipFunctionalCtaDuplicate(objetos, o)
+  );
 
   if (duplicables.length === 0) return;
 
@@ -114,6 +121,10 @@ export function pegarElemento({ objetos, setObjetos, setElementosSeleccionados }
       pastedCountdown = true;
     }
 
+    if (shouldSkipFunctionalCtaDuplicate(objetos, c) || nuevos.some((item) => item?.tipo === c?.tipo && isFunctionalCtaButton(c))) {
+      return;
+    }
+
     nuevos.push({
       ...c,
       id: `obj-${Date.now()}-${i}`,
@@ -138,13 +149,10 @@ export function cambiarAlineacionTexto({ objetos, elementosSeleccionados, setObj
         o.tipo === 'forma' &&
         o.figura === 'rect' &&
         typeof o.texto === 'string';
-      const esRsvpConTexto =
-        o.tipo === 'rsvp-boton' &&
-        typeof o.texto === 'string';
 
       if (
         !elementosSeleccionados.includes(o.id) ||
-        (!esTexto && !esRectConTexto && !esRsvpConTexto)
+        (!esTexto && !esRectConTexto && !isFunctionalCtaButton(o))
       ) {
         return o;
       }

@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
-import { FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
+import { FaGift, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -44,7 +44,7 @@ export default function DashboardSidebar({
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
     const modalCrear = useModalCrearSeccion();
-    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'efectos' | null
+    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
@@ -160,6 +160,18 @@ export default function DashboardSidebar({
 
         window.addEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
         return () => window.removeEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
+    }, []);
+
+    useEffect(() => {
+        const handleAbrirPanelRegalos = () => {
+            setBotonActivo("regalos");
+            setFijadoSidebar(true);
+            setHoverSidebar(true);
+            setRsvpForcePresetSelection(false);
+        };
+
+        window.addEventListener("abrir-panel-regalos", handleAbrirPanelRegalos);
+        return () => window.removeEventListener("abrir-panel-regalos", handleAbrirPanelRegalos);
     }, []);
 
     useEffect(() => {
@@ -344,6 +356,7 @@ export default function DashboardSidebar({
         imagen: "from-[#2f9a8f] to-[#247e74]",
         contador: "from-[#d27a47] to-[#b85b31]",
         rsvp: "from-[#2a8b6f] to-[#1d6f58]",
+        regalos: "from-[#d15b7f] to-[#b64568]",
         efectos: "from-[#7c6a24] to-[#a9852d]",
     };
 
@@ -499,6 +512,27 @@ export default function DashboardSidebar({
 
                     <div
                         className="flex flex-col items-center gap-1"
+                        onMouseEnter={() => openPanel("regalos")}
+                        onMouseLeave={(e) => {
+                            const panel = panelRef.current;
+                            if (safeContains(panel, e.relatedTarget)) return;
+                            scheduleClosePanel();
+                        }}
+                    >
+                        <button type="button"
+                            onClick={() => alternarSidebarConBoton("regalos")}
+                            className={getIconButtonClass("regalos")}
+                            title="Regalos"
+                        >
+                            <FaGift className="text-lg" />
+                        </button>
+                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                            Regalos
+                        </span>
+                    </div>
+
+                    <div
+                        className="flex flex-col items-center gap-1"
                         onMouseEnter={() => openPanel("efectos")}
                         onMouseLeave={(e) => {
                             const panel = panelRef.current;
@@ -517,11 +551,12 @@ export default function DashboardSidebar({
                             Efectos
                         </span>
                     </div>
+
                 </div>
 
                 {/* Movil: barra horizontal inferior */}
-                <div className="grid w-full grid-cols-6 items-start gap-1 rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-1.5 py-1 md:hidden">
-                    <div className="flex flex-col items-center gap-1">
+                <div className="flex w-full items-start gap-2 overflow-x-auto rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-2 py-1 md:hidden">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                         <button type="button"
                             onClick={() => alternarSidebarConBoton("texto")}
                             className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
@@ -532,7 +567,7 @@ export default function DashboardSidebar({
                         <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Texto</span>
                     </div>
 
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                         <button type="button"
                             onClick={() => alternarSidebarConBoton("forma")}
                             className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
@@ -543,7 +578,7 @@ export default function DashboardSidebar({
                         <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Elementos</span>
                     </div>
 
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                         <button type="button"
                             onClick={() => alternarSidebarConBoton("imagen")}
                             className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
@@ -554,7 +589,7 @@ export default function DashboardSidebar({
                         <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Imagenes</span>
                     </div>
 
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                         <button type="button"
                             onClick={() => alternarSidebarConBoton("contador")}
                             className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
@@ -565,7 +600,7 @@ export default function DashboardSidebar({
                         <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Contador</span>
                     </div>
 
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                         <button type="button"
                             onClick={() => {
                                 setRsvpForcePresetSelection(false);
@@ -579,7 +614,18 @@ export default function DashboardSidebar({
                         <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Asistencia</span>
                     </div>
 
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex shrink-0 flex-col items-center gap-1">
+                        <button type="button"
+                            onClick={() => alternarSidebarConBoton("regalos")}
+                            className={`${getIconButtonClass("regalos", { compact: true })} justify-self-center`}
+                            title="Regalos"
+                        >
+                            <FaGift className="text-base" />
+                        </button>
+                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Regalos</span>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-center gap-1">
                         <button type="button"
                             onClick={() => alternarSidebarConBoton("efectos")}
                             className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}

@@ -236,6 +236,7 @@ export function buildDraftPersonalizationPatch({
   const objetos = deepClone(renderState.objetos);
   const secciones = deepClone(renderState.secciones);
   let rsvp = renderState.rsvp ? deepClone(renderState.rsvp) : null;
+  let gifts = renderState.gifts ? deepClone(renderState.gifts) : null;
   const defaults = asObject(formState.defaults);
   const changedKeys = getChangedKeys({
     fields: formState.fields,
@@ -355,6 +356,7 @@ export function buildDraftPersonalizationPatch({
     objetos,
     secciones,
     rsvp: rsvp || null,
+    gifts: gifts || null,
     applyReport: {
       ...report,
       skippedFields: normalizedSkippedFields,

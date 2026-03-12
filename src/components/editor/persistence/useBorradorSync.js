@@ -4,6 +4,7 @@ import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { db, storage } from "@/firebase";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { normalizeGiftConfig } from "@/domain/gifts/config";
 import { normalizeInvitationType } from "@/domain/invitationTypes";
 import {
   buildDraftContentMeta,
@@ -139,12 +140,14 @@ export default function useBorradorSync({
   objetos,
   secciones,
   rsvp,
+  gifts,
   cargado,
 
   // setters
   setObjetos,
   setSecciones,
   setRsvp,
+  setGifts,
   setCargado,
   setSeccionActivaId,
   onDraftLoaded,
@@ -169,6 +172,7 @@ export default function useBorradorSync({
     objetos: [],
     secciones: [],
     rsvp: null,
+    gifts: null,
     cargado: false,
   });
   latestStateRef.current = {
@@ -177,6 +181,7 @@ export default function useBorradorSync({
     objetos,
     secciones,
     rsvp,
+    gifts,
     cargado,
   };
 
@@ -248,6 +253,10 @@ export default function useBorradorSync({
           state.rsvp && typeof state.rsvp === "object"
             ? state.rsvp
             : null;
+        const rawGifts =
+          state.gifts && typeof state.gifts === "object"
+            ? state.gifts
+            : null;
 
         // Validacion: lineas + normalizacion de textos
         const objetosValidados = rawObjetos.map((obj) => {
@@ -276,12 +285,16 @@ export default function useBorradorSync({
         const rsvpLimpio = rawRsvp
           ? limpiarUndefined(normalizeRsvpConfig(rawRsvp, { forceEnabled: false }))
           : null;
+        const giftsLimpios = rawGifts
+          ? limpiarUndefined(normalizeGiftConfig(rawGifts, { forceEnabled: false }))
+          : null;
 
         const ref = doc(db, "borradores", safeSlug);
         await updateDoc(ref, {
           objetos: objetosLimpios,
           secciones: seccionesLimpias,
           rsvp: rsvpLimpio,
+          gifts: giftsLimpios,
           draftContentMeta: {
             ...buildDraftContentMeta({
               lastWriter: "canvas",
@@ -321,6 +334,7 @@ export default function useBorradorSync({
             objetos: Array.isArray(state.objetos) ? state.objetos.length : null,
             secciones: Array.isArray(state.secciones) ? state.secciones.length : null,
             hasRsvp: Boolean(state.rsvp),
+            hasGifts: Boolean(state.gifts),
           },
           severity: "error",
         });
@@ -384,6 +398,7 @@ export default function useBorradorSync({
           const seccionesData = renderState.secciones;
           const objetosData = renderState.objetos;
           const rsvpData = renderState.rsvp;
+          const giftsData = renderState.gifts;
           const tipoDraftRaw =
             typeof data?.tipoInvitacion === "string" ? data.tipoInvitacion : "";
           let tipoInvitacion = normalizeInvitationType(tipoDraftRaw);
@@ -456,6 +471,13 @@ export default function useBorradorSync({
               setRsvp(null);
             }
           }
+          if (typeof setGifts === "function") {
+            if (giftsData && typeof giftsData === "object") {
+              setGifts(normalizeGiftConfig(giftsData, { forceEnabled: false }));
+            } else {
+              setGifts(null);
+            }
+          }
           if (typeof onDraftLoaded === "function") {
             onDraftLoaded({
               slug,
@@ -467,6 +489,7 @@ export default function useBorradorSync({
               objetos: objsMigrados,
               secciones: seccionesRefrescadas,
               rsvp: rsvpData && typeof rsvpData === "object" ? rsvpData : null,
+              gifts: giftsData && typeof giftsData === "object" ? giftsData : null,
               loadedAt: Date.now(),
             });
           }
@@ -492,6 +515,7 @@ export default function useBorradorSync({
               objetos: [],
               secciones: [],
               rsvp: null,
+              gifts: null,
               loadedAt: Date.now(),
             });
           }
@@ -553,7 +577,7 @@ export default function useBorradorSync({
         persistTimeoutRef.current = null;
       }
     };
-  }, [cargado, ignoreNextUpdateRef, objetos, persistDraftNow, rsvp, secciones, slug]);
+  }, [cargado, gifts, ignoreNextUpdateRef, objetos, persistDraftNow, rsvp, secciones, slug]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;

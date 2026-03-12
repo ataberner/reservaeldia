@@ -3,6 +3,7 @@ import {
   buildSelectionFramePolygon,
   getSelectionFramePadding,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
 export default function HoverIndicator({
   hoveredElement,
@@ -24,7 +25,7 @@ export default function HoverIndicator({
   const shouldUseRotatedFrame =
     hoveredObj?.tipo === "texto" ||
     hoveredObj?.tipo === "forma" ||
-    hoveredObj?.tipo === "rsvp-boton";
+    isFunctionalCtaButton(hoveredObj);
 
   if (suppressInlineTextHover) {
     return null;
@@ -50,7 +51,7 @@ export default function HoverIndicator({
       width: Number(hoveredObj.width),
       height: Number(hoveredObj.height),
     };
-  } else if (hoveredObj?.tipo === "rsvp-boton") {
+  } else if (isFunctionalCtaButton(hoveredObj)) {
     box = node.getClientRect({
       skipShadow: true,
       skipStroke: true,

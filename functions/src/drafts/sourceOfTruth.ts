@@ -33,10 +33,16 @@ function normalizeRsvp(value: unknown): UnknownRecord | null {
   return value as UnknownRecord;
 }
 
+function normalizeGifts(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as UnknownRecord;
+}
+
 export type DraftRenderState = {
   objetos: unknown[];
   secciones: unknown[];
   rsvp: UnknownRecord | null;
+  gifts: UnknownRecord | null;
 };
 
 export function normalizeDraftRenderState(rawDraft: unknown): DraftRenderState {
@@ -46,6 +52,7 @@ export function normalizeDraftRenderState(rawDraft: unknown): DraftRenderState {
     objetos: normalizeRenderArray(safeDraft.objetos),
     secciones: normalizeRenderArray(safeDraft.secciones),
     rsvp: normalizeRsvp(safeDraft.rsvp),
+    gifts: normalizeGifts(safeDraft.gifts),
   };
 }
 

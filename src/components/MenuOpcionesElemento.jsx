@@ -110,6 +110,7 @@ export default function MenuOpcionesElemento({
     setObjetos,
     setElementosSeleccionados,
     onConfigurarRsvp,
+    onConfigurarRegalos,
     canManageSite = false,
     templateAuthoring = null,
 }) {
@@ -143,6 +144,7 @@ export default function MenuOpcionesElemento({
 
     const esImagen = elementoSeleccionado?.tipo === "imagen";
     const esRsvp = elementoSeleccionado?.tipo === "rsvp-boton";
+    const esRegalo = elementoSeleccionado?.tipo === "regalo-boton";
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
@@ -745,6 +747,21 @@ export default function MenuOpcionesElemento({
                 >
                     <div className="w-4 h-4 rounded border border-violet-300 bg-violet-100" />
                     Editar confirmar asistencia
+                </button>
+            )}
+
+            {esRegalo && (
+                <button
+                    onClick={() => {
+                        if (typeof onConfigurarRegalos === "function") {
+                            onConfigurarRegalos();
+                        }
+                        onCerrar();
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                >
+                    <div className="w-4 h-4 rounded border border-amber-300 bg-amber-100" />
+                    Editar regalos
                 </button>
             )}
 

@@ -10,6 +10,10 @@ import { resolveRsvpButtonVisual } from "@/domain/rsvp/buttonStyles";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import { resolveKonvaFontStyle } from "@/components/editor/textSystem/metricsLayout/services/textFontStyleService";
 import {
+  getFunctionalCtaDefaultText,
+  isFunctionalCtaButton,
+} from "@/domain/functionalCtaButtons";
+import {
   getCurrentInlineEditingId,
   getWindowElementRefs,
   getWindowObjectResolver,
@@ -905,7 +909,7 @@ export default function ElementoCanvas({
     );
   }
 
-  if (obj.tipo === "rsvp-boton") {
+  if (isFunctionalCtaButton(obj)) {
     const fontFamily = obj.fontFamily || "sans-serif";
     const rsvpVisual = resolveRsvpButtonVisual(obj);
     const textOpacity = 1;
@@ -973,7 +977,7 @@ export default function ElementoCanvas({
           y={0}
           width={width}
           height={height}
-          text={obj.texto ?? "Confirmar asistencia"}
+          text={obj.texto ?? getFunctionalCtaDefaultText(obj)}
           fontSize={normalizeFontSize(obj.fontSize, 18)}
           fontFamily={fontFamily}
           fontStyle={resolveKonvaFontStyle(obj.fontStyle || "normal", obj.fontWeight || "bold")}

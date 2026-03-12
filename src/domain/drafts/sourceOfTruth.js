@@ -29,12 +29,18 @@ function normalizeRsvp(value) {
   return value;
 }
 
+function normalizeGifts(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value;
+}
+
 export function normalizeDraftRenderState(rawDraft) {
   const safeDraft = asObject(rawDraft);
   return {
     objetos: normalizeRenderArray(safeDraft.objetos),
     secciones: normalizeRenderArray(safeDraft.secciones),
     rsvp: normalizeRsvp(safeDraft.rsvp),
+    gifts: normalizeGifts(safeDraft.gifts),
   };
 }
 

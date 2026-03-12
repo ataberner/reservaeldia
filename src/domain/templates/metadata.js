@@ -95,6 +95,9 @@ function collectObjectTypes(template) {
   if (template?.rsvp?.enabled !== false && template?.rsvp) {
     types.add("rsvp-boton");
   }
+  if (template?.gifts?.enabled !== false && template?.gifts) {
+    types.add("regalo-boton");
+  }
 
   return types;
 }
@@ -109,7 +112,14 @@ function inferFeatures(template) {
   if (types.has("rsvp-boton") || types.has("rsvp")) inferred.push("Asistencia");
   if (types.has("galeria") || types.has("gallery")) inferred.push("Galeria");
   if (types.has("countdown")) inferred.push("Countdown");
-  if (types.has("regalos") || types.has("regalo") || types.has("gift")) inferred.push("Regalos");
+  if (
+    types.has("regalo-boton") ||
+    types.has("regalos") ||
+    types.has("regalo") ||
+    types.has("gift")
+  ) {
+    inferred.push("Regalos");
+  }
   if (types.has("musica") || types.has("music") || types.has("audio")) inferred.push("Musica");
   if (types.has("dresscode") || types.has("dress-code")) inferred.push("Dress code");
   if (

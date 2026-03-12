@@ -15,6 +15,7 @@ import {
   getWindowElementRefs,
   getWindowObjectResolver,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
+import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
 const FONT_SELECTOR_GAP = 12;
 const FONT_SELECTOR_PADDING = 8;
@@ -202,7 +203,7 @@ export default function FloatingTextToolbar({
   const esObjetivoTipografia = (item) => {
     if (!item) return false;
     if (item.tipo === "texto") return true;
-    if (item.tipo === "rsvp-boton") return true;
+    if (isFunctionalCtaButton(item)) return true;
     if (item.tipo === "forma" && item.figura === "rect" && typeof item.texto === "string") {
       return true;
     }
@@ -238,7 +239,7 @@ export default function FloatingTextToolbar({
   };
 
   const esTexto = objetoSeleccionado?.tipo === "texto";
-  const esRsvp = objetoSeleccionado?.tipo === "rsvp-boton";
+  const esRsvp = isFunctionalCtaButton(objetoSeleccionado);
   const esFormaConTexto =
     objetoSeleccionado?.tipo === "forma" &&
     objetoSeleccionado?.figura === "rect" &&
@@ -719,7 +720,7 @@ export default function FloatingTextToolbar({
       objetoSeleccionado?.tipo === "texto" ||
       objetoSeleccionado?.tipo === "forma" ||
       objetoSeleccionado?.tipo === "icono" ||
-      objetoSeleccionado?.tipo === "rsvp-boton"
+      isFunctionalCtaButton(objetoSeleccionado)
     )
   ) {
     return null;
@@ -775,7 +776,7 @@ export default function FloatingTextToolbar({
               triggerClassName="h-6 w-6 rounded border border-gray-300"
               onChange={(nextColor) => {
                 actualizarSeleccionados((o) => {
-                  if (o.tipo === "rsvp-boton") {
+                  if (isFunctionalCtaButton(o)) {
                     const parsedGradient = parseLinearGradientColors(nextColor);
                     if (parsedGradient) {
                       return {

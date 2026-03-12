@@ -30,6 +30,10 @@ import {
   buildSelectionFramePolygon,
   getSelectionFramePadding,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import {
+  getFunctionalCtaDefaultText,
+  isFunctionalCtaButton,
+} from "@/domain/functionalCtaButtons";
 
 const INLINE_INTENT_STALE_MS = 1500;
 
@@ -59,15 +63,11 @@ function isRectInlineEditableObject(obj) {
   );
 }
 
-function isRsvpInlineEditableObject(obj) {
-  return obj?.tipo === "rsvp-boton";
-}
-
 function isSemanticInlineEditableObject(obj) {
   return (
     obj?.tipo === "texto" ||
     isRectInlineEditableObject(obj) ||
-    isRsvpInlineEditableObject(obj)
+    isFunctionalCtaButton(obj)
   );
 }
 
@@ -337,7 +337,7 @@ export default function CanvasStageContent({
 
     const initialText = String(
       targetObj?.texto ??
-        (targetObj?.tipo === "rsvp-boton" ? "Confirmar asistencia" : "")
+        getFunctionalCtaDefaultText(targetObj)
     );
 
     armInlineActivation(id, "start-inline-decision", {

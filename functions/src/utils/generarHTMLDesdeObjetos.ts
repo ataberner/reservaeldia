@@ -88,7 +88,7 @@ function mapObjToDataType(obj: any): string {
   if (tipo === "icono" || tipo === "icono-svg" || tipo === "icon") return "icon";
   if (tipo === "galeria" || tipo === "gallery") return "gallery";
   if (tipo === "countdown") return "countdown";
-  if (tipo === "rsvp-boton" || tipo === "rsvp") return "rsvp";
+  if (tipo === "rsvp-boton" || tipo === "regalo-boton" || tipo === "rsvp") return "rsvp";
   if (tipo === "button" || tipo === "boton") return "button";
   if (tipo === "line" || tipo === "divider") return "divider";
   if (tipo === "forma" && figura === "line") return "divider";
@@ -158,7 +158,7 @@ function getLinkProps(obj: any) {
 
 function envolverSiEnlace(htmlElemento: string, obj: any): string {
   const htmlConData = appendMotionDataAttrs(htmlElemento, obj);
-  if (obj?.tipo === "rsvp-boton") return htmlConData;
+  if (obj?.tipo === "rsvp-boton" || obj?.tipo === "regalo-boton") return htmlConData;
 
   const link = getLinkProps(obj);
   if (!link) return htmlConData;
@@ -872,8 +872,10 @@ background: ${cell.bg};
       }
 
       // ---------------- RSVP BOTÓN ----------------
-      if (tipo === "rsvp-boton") {
-        const texto = escapeHTML(obj.texto || "Confirmar asistencia");
+      if (tipo === "rsvp-boton" || tipo === "regalo-boton") {
+        const isGiftButton = tipo === "regalo-boton";
+        const textoRaw = obj.texto || (isGiftButton ? "Ver regalos" : "Confirmar asistencia");
+        const texto = escapeHTML(textoRaw);
         const w = Number.isFinite(obj?.width)
           ? obj.width
           : (Number.isFinite(obj?.ancho) ? obj.ancho : 200);
@@ -917,13 +919,13 @@ cursor: pointer;
 `.trim();
 
         const htmlRsvp = `
-<div class="objeto is-interactive rsvp-boton"
-  id="abrirModalRSVP"
-  data-accion="abrir-rsvp"
-  data-rsvp-open
+<div class="objeto is-interactive ${isGiftButton ? "regalo-boton" : "rsvp-boton"}"
+  ${!isGiftButton ? 'id="abrirModalRSVP"' : ""}
+  data-accion="${isGiftButton ? "abrir-regalos" : "abrir-rsvp"}"
+  ${isGiftButton ? "data-gift-open" : "data-rsvp-open"}
   role="button"
   tabindex="0"
-  aria-label="Confirmar asistencia"
+  aria-label="${escapeAttr(textoRaw)}"
   style="${style}">
   ${texto}
 </div>

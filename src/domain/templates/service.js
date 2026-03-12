@@ -166,6 +166,7 @@ export async function createDraftFromTemplateWithInput({
     objetos: personalizationPatch.objetos,
     secciones: personalizationPatch.secciones,
     rsvp: personalizationPatch.rsvp,
+    gifts: personalizationPatch.gifts,
     templateInput: {
       initialValues: resolvedValues,
       values: resolvedValues,

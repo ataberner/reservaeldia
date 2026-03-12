@@ -7,11 +7,17 @@ import {
   normalizeRsvpConfig,
 } from "@/domain/rsvp/config";
 import {
+  createDefaultGiftConfig,
+  isGiftConfigV1,
+  normalizeGiftConfig,
+} from "@/domain/gifts/config";
+import {
   applyGlobalMotionPreset,
   clearAllMotionEffects,
   CLEAR_ALL_MOTION_PRESET_ID,
   sanitizeMotionEffect,
 } from "@/domain/motionEffects";
+import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
 const COUNTDOWN_STYLE_KEYS = [
   "fontFamily",
@@ -78,7 +84,10 @@ export default function useEditorEvents({
   setElementosSeleccionados,
   rsvpConfig,
   setRsvpConfig,
+  giftsConfig,
+  setGiftsConfig,
   onRequestRsvpSetup,
+  onRequestGiftSetup,
 
   normalizarAltoModo,
   ALTURA_PANTALLA_EDITOR,
@@ -203,11 +212,19 @@ export default function useEditorEvents({
             ? window._objetosActuales.find((o) => o?.tipo === "rsvp-boton")?.id
             : null)
           : null;
+      const existingGiftId =
+        nuevoConSeccion?.tipo === "regalo-boton"
+          ? (Array.isArray(window._objetosActuales)
+            ? window._objetosActuales.find((o) => o?.tipo === "regalo-boton")?.id
+            : null)
+          : null;
 
       setObjetos((prev) => {
         if (nuevoConSeccion?.tipo !== "countdown") {
-          if (nuevoConSeccion?.tipo === "rsvp-boton") {
-            const existingIndex = prev.findIndex((obj) => obj?.tipo === "rsvp-boton");
+          if (isFunctionalCtaButton(nuevoConSeccion)) {
+            const existingIndex = prev.findIndex(
+              (obj) => obj?.tipo === nuevoConSeccion?.tipo
+            );
             if (existingIndex >= 0) return prev;
           }
           return [...prev, nuevoConSeccion];
@@ -263,7 +280,8 @@ export default function useEditorEvents({
         return next;
       });
 
-      const selectedId = existingCountdownId || existingRsvpId || nuevoConSeccion.id;
+      const selectedId =
+        existingCountdownId || existingRsvpId || existingGiftId || nuevoConSeccion.id;
       setElementosSeleccionados([selectedId]);
 
       if (nuevoConSeccion?.tipo === "rsvp-boton" && !existingRsvpId && typeof setRsvpConfig === "function") {
@@ -280,6 +298,20 @@ export default function useEditorEvents({
           });
         }
       }
+
+      if (nuevoConSeccion?.tipo === "regalo-boton" && !existingGiftId && typeof setGiftsConfig === "function") {
+        const hasConfig = isGiftConfigV1(giftsConfig);
+        const baseConfig = hasConfig
+          ? normalizeGiftConfig(giftsConfig, { forceEnabled: false })
+          : createDefaultGiftConfig();
+
+        setGiftsConfig(baseConfig);
+        if (typeof onRequestGiftSetup === "function") {
+          onRequestGiftSetup({
+            source: "insert-gift-button",
+          });
+        }
+      }
     };
 
     window.addEventListener("insertar-elemento", handler);
@@ -291,7 +323,10 @@ export default function useEditorEvents({
     setElementosSeleccionados,
     rsvpConfig,
     setRsvpConfig,
+    giftsConfig,
+    setGiftsConfig,
     onRequestRsvpSetup,
+    onRequestGiftSetup,
     normalizarAltoModo,
     ALTURA_PANTALLA_EDITOR,
   ]);

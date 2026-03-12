@@ -213,5 +213,6 @@ export function buildTemplatePayloadFromAuthoring({
     fieldsSchema,
     defaults,
     ...(renderState.rsvp ? { rsvp: renderState.rsvp } : {}),
+    ...(renderState.gifts ? { gifts: renderState.gifts } : {}),
   };
 }

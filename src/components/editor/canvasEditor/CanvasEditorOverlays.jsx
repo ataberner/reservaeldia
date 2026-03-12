@@ -35,6 +35,7 @@ export default function CanvasEditorOverlays({
   setObjetos,
   setElementosSeleccionados,
   abrirPanelRsvp,
+  abrirPanelRegalos,
   canRenderTemplateAuthoringMenu,
   handleViewTemplateFieldUsage,
   objetoSeleccionado,
@@ -147,6 +148,7 @@ export default function CanvasEditorOverlays({
           setObjetos={setObjetos}
           setElementosSeleccionados={setElementosSeleccionados}
           onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
+          onConfigurarRegalos={() => abrirPanelRegalos()}
           canManageSite={canManageSite}
           templateAuthoring={
             canRenderTemplateAuthoringMenu

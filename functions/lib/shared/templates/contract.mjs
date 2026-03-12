@@ -464,6 +464,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
   const estado = normalizeState(source.estado);
   const updatedAt = source.updatedAt || source.actualizadoEn || null;
   const rsvp = source.rsvp && typeof source.rsvp === "object" ? source.rsvp : null;
+  const gifts = source.gifts && typeof source.gifts === "object" ? source.gifts : null;
 
   return {
     id,
@@ -486,6 +487,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
     estado,
     updatedAt,
     ...(rsvp ? { rsvp } : {}),
+    ...(gifts ? { gifts } : {}),
   };
 }
 

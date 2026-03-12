@@ -1,4 +1,5 @@
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { normalizeGiftConfig } from "@/domain/gifts/config";
 import { resolveTemplatePreviewSource as resolveTemplatePreviewSourceContract } from "../../../shared/templates/contract.js";
 
 function normalizeTemplateArrays(template) {
@@ -25,6 +26,14 @@ function buildRsvpPreviewConfig(rawRsvp) {
   );
 }
 
+function buildGiftPreviewConfig(rawGifts) {
+  const source = rawGifts && typeof rawGifts === "object" ? rawGifts : {};
+  return normalizeGiftConfig({
+    ...source,
+    enabled: source?.enabled !== false,
+  });
+}
+
 export async function generateTemplatePreviewHtml(template) {
   const safeTemplate = template && typeof template === "object" ? template : null;
   if (!safeTemplate) {
@@ -37,6 +46,7 @@ export async function generateTemplatePreviewHtml(template) {
   }
 
   const rsvpPreviewConfig = buildRsvpPreviewConfig(safeTemplate.rsvp);
+  const giftPreviewConfig = buildGiftPreviewConfig(safeTemplate.gifts);
   const { generarHTMLDesdeSecciones } = await import(
     "../../../functions/src/utils/generarHTMLDesdeSecciones"
   );
@@ -45,6 +55,7 @@ export async function generateTemplatePreviewHtml(template) {
   const html = generarHTMLDesdeSecciones(secciones, objetos, rsvpPreviewConfig, {
     slug: slugPreview,
     isPreview: true,
+    gifts: giftPreviewConfig,
   });
 
   if (!String(html || "").trim()) {

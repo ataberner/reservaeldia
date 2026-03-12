@@ -322,7 +322,7 @@ export default function computeInsertDefaults({
       fechaObjetivo: payload.fechaObjetivo || payload.targetISO || payload.fechaISO,
       ...presetProps,
     };
-  } else if (tipo === "rsvp-boton") {
+  } else if (tipo === "rsvp-boton" || tipo === "regalo-boton") {
     const width = incomingWidth ?? 200;
     const height = incomingHeight ?? 50;
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);

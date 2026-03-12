@@ -59,6 +59,21 @@ function Field({ label, children }) {
   );
 }
 
+function useCloseOnEscape(open, onClose) {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+}
+
 function AdvancedSettingsModal({
   open,
   config,
@@ -67,7 +82,10 @@ function AdvancedSettingsModal({
   maxQuestions,
   maxCustomQuestions,
 }) {
-  if (!open) return null;
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  useCloseOnEscape(open, onClose);
+
+  if (!open || !portalTarget) return null;
 
   const orderedQuestions = getOrderedQuestions(config);
   const activeQuestions = orderedQuestions.filter((question) => question.active);
@@ -81,9 +99,12 @@ function AdvancedSettingsModal({
     onChange(normalizeConfig(nextConfig));
   };
 
-  return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/45 p-4">
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl">
+  return createPortal(
+    <div className="fixed inset-0 z-[340] flex items-center justify-center bg-slate-950/45 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-violet-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-4 py-3">
           <div>
             <h4 className="text-sm font-semibold text-slate-900">Configuracion avanzada</h4>
@@ -289,7 +310,8 @@ function AdvancedSettingsModal({
           </section>
         </div>
       </div>
-    </div>
+    </div>,
+    portalTarget
   );
 }
 
@@ -367,6 +389,7 @@ function renderPreviewField(question, value, onChange) {
 
 function RsvpPreviewModal({ open, config, onClose }) {
   const [previewValues, setPreviewValues] = useState({});
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (!open) {

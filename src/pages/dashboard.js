@@ -27,6 +27,7 @@ import { isDraftTrashed } from "@/domain/drafts/state";
 import { requestEditorDraftFlush } from "@/domain/drafts/flushGate";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { normalizeGiftConfig } from "@/domain/gifts/config";
 import {
   createDraftFromTemplateWithInput,
   getTemplateById,
@@ -1934,6 +1935,7 @@ export default function Dashboard() {
       const objetosBase = renderState.objetos;
       const secciones = renderState.secciones;
       const rawRsvp = renderState.rsvp || {};
+      const rawGifts = renderState.gifts || null;
       const rsvpPreviewConfig = normalizeRsvpConfig(
         {
           ...rawRsvp,
@@ -1946,6 +1948,14 @@ export default function Dashboard() {
         },
         { forceEnabled: false }
       );
+      const hayRegaloBoton = objetosBase.some((obj) => obj?.tipo === "regalo-boton");
+      const giftPreviewConfig =
+        hayRegaloBoton || (rawGifts && typeof rawGifts === "object")
+          ? normalizeGiftConfig({
+              ...(rawGifts && typeof rawGifts === "object" ? rawGifts : {}),
+              enabled: rawGifts?.enabled !== false,
+            })
+          : null;
       let urlPublicaDetectada = "";
       let slugPublicoDetectado = "";
       const slugPublicoBorrador = String(data?.slugPublico || "").trim();
@@ -2090,6 +2100,7 @@ export default function Dashboard() {
         {
           slug: slugPreview,
           isPreview: true,
+          gifts: giftPreviewConfig,
         }
       );
 

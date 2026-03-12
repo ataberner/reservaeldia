@@ -5,6 +5,7 @@ import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
 import { type CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
+import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
 import { normalizeRsvpConfig, type RSVPConfig as ModalConfig } from "../rsvp/config";
 import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
 import {
@@ -1187,6 +1188,7 @@ function buildHistoryPayload(params: {
     motivoFinalizacion: reason,
     urlPublica: null,
     rsvp: publicationData.rsvp || null,
+    gifts: publicationData.gifts || null,
     rsvpSummary: summary,
     totalRsvpsHistorico: summary.totalResponses,
     htmlPublicadoEliminado: true,
@@ -2179,6 +2181,23 @@ function createRsvpConfig(data: Record<string, any>): ModalConfig {
   return JSON.parse(JSON.stringify(normalized)) as ModalConfig;
 }
 
+function createGiftConfig(data: Record<string, any>): GiftsConfig {
+  const rawGifts = data?.gifts && typeof data.gifts === "object"
+    ? data.gifts as Record<string, unknown>
+    : {};
+
+  const normalized = normalizeGiftConfig({
+    ...rawGifts,
+    enabled: rawGifts?.enabled !== false,
+    introText: rawGifts?.introText,
+    bank: rawGifts?.bank,
+    visibility: rawGifts?.visibility,
+    giftListUrl: rawGifts?.giftListUrl,
+  });
+
+  return JSON.parse(JSON.stringify(normalized)) as GiftsConfig;
+}
+
 function createSlugConflictError(message: string): HttpsError {
   return new HttpsError("already-exists", message);
 }
@@ -2296,14 +2315,30 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
   const objetos = draftRenderState.objetos;
   const secciones = draftRenderState.secciones;
   const objetosFinales = await resolveUrlsInObjects(objetos);
+  const hasGiftButton = objetosFinales.some(
+    (obj) => (obj as Record<string, unknown>)?.tipo === "regalo-boton"
+  );
   const rsvp = createRsvpConfig({
     ...(draftData as Record<string, unknown>),
     rsvp: draftRenderState.rsvp || {},
   } as Record<string, any>);
+  const gifts =
+    hasGiftButton || draftRenderState.gifts
+      ? createGiftConfig({
+          ...(draftData as Record<string, unknown>),
+          gifts: draftRenderState.gifts || {},
+        } as Record<string, any>)
+      : null;
 
-  const htmlFinal = generarHTMLDesdeSecciones(secciones as any[], objetosFinales as any[], rsvp, {
-    slug: normalizedPublicSlug,
-  });
+  const htmlFinal = generarHTMLDesdeSecciones(
+    secciones as any[],
+    objetosFinales as any[],
+    rsvp,
+    {
+      slug: normalizedPublicSlug,
+      gifts,
+    }
+  );
 
   const filePath = `publicadas/${normalizedPublicSlug}/index.html`;
   await bucket.file(filePath).save(htmlFinal, {
@@ -2358,6 +2393,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     portada: draftData.thumbnailUrl || null,
     invitadosCount: draftData.invitadosCount || 0,
     rsvp,
+    gifts,
     estado: normalizedEstado,
     publicadaAt: firstPublishedAtTimestamp,
     publicadaEn: firstPublishedAtTimestamp,

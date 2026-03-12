@@ -2,6 +2,8 @@ import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
 import { CANVAS_BASE } from "../models/dimensionesBase";
 import { generarModalRSVPHTML } from "./generarModalRSVP";
 import { type RSVPConfig as ModalConfig } from "../rsvp/config";
+import { generarModalRegalosHTML } from "./generarModalRegalos";
+import { type GiftsConfig } from "../gifts/config";
 import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGaleria";
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
 import { generarMotionEffectsRuntimeHTML } from "./generarMotionEffectsRuntime";
@@ -53,6 +55,7 @@ function buildGoogleFontsLink(fonts: string[]): string {
 type GenerarHTMLOpciones = {
   slug?: string;
   isPreview?: boolean;
+  gifts?: GiftsConfig | null;
 };
 
 function escapeAttr(str: string = ""): string {
@@ -143,7 +146,13 @@ export function generarHTMLDesdeSecciones(
   const fuentesUsadas = [
     ...new Set(
       objetos
-        .filter((o) => (o.tipo === "texto" || o.tipo === "countdown") && o.fontFamily)
+        .filter((o) =>
+          (o.tipo === "texto" ||
+            o.tipo === "countdown" ||
+            o.tipo === "rsvp-boton" ||
+            o.tipo === "regalo-boton") &&
+          o.fontFamily
+        )
         .map((o) => o.fontFamily)
     ),
   ];
@@ -151,11 +160,15 @@ export function generarHTMLDesdeSecciones(
   const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
 
   const hayRSVPEnCanvas = objetos?.some((o) => o.tipo === "rsvp-boton");
+  const hayRegalosEnCanvas = objetos?.some((o) => o.tipo === "regalo-boton");
   const botonRSVP = ""; // (si querés agregar un botón fijo fuera del canvas, hacelo acá)
   const modalRSVP =
     hayRSVPEnCanvas && rsvp?.enabled
       ? generarModalRSVPHTML(rsvp, { previewMode: isPreview })
       : "";
+  const modalRegalos = hayRegalosEnCanvas
+    ? generarModalRegalosHTML(opciones?.gifts as GiftsConfig)
+    : "";
   const modalGaleria = hayGaleriaConImagenes(objetos) ? generarModalGaleriaHTML() : "";
   const invitationLoaderRuntime = generarInvitationLoaderRuntimeHTML();
   const motionEffectsRuntime = generarMotionEffectsRuntimeHTML();
@@ -853,6 +866,7 @@ export function generarHTMLDesdeSecciones(
 
   ${botonRSVP}
   ${modalRSVP}
+  ${modalRegalos}
   ${modalGaleria}
   ${motionEffectsRuntime}
 

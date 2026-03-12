@@ -97,7 +97,7 @@ function canonicalType(element) {
   if (tipo === "icono" || tipo === "icon" || tipo === "icono-svg") return "icon";
   if (tipo === "galeria" || tipo === "gallery") return "gallery";
   if (tipo === "countdown") return "countdown";
-  if (tipo === "rsvp-boton" || tipo === "rsvp") return "rsvp";
+  if (tipo === "rsvp-boton" || tipo === "regalo-boton" || tipo === "rsvp") return "rsvp";
   if (tipo === "button" || tipo === "boton") return "button";
   if (tipo === "line" || tipo === "divider") return "divider";
   if (tipo === "forma" && figura === "line") return "divider";

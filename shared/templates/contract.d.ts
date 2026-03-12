@@ -91,6 +91,7 @@ export interface TemplateDocument {
   estado?: "active" | "archived";
   updatedAt?: unknown;
   rsvp?: Record<string, unknown> | null;
+  gifts?: Record<string, unknown> | null;
 }
 
 export interface TemplateCatalogDocument {

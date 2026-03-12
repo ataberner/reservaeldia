@@ -58,6 +58,7 @@ import useCanvasEditorGlobalsBridge from "@/components/editor/canvasEditor/useCa
 import { createLineIntersectionDetector } from "@/components/editor/canvasEditor/lineIntersectionUtils";
 import CanvasEditorOverlays from "@/components/editor/canvasEditor/CanvasEditorOverlays";
 import useCanvasEditorRsvpBridge from "@/components/editor/canvasEditor/useCanvasEditorRsvpBridge";
+import useCanvasEditorGiftBridge from "@/components/editor/canvasEditor/useCanvasEditorGiftBridge";
 import useCanvasEditorSectionUiSync from "@/components/editor/canvasEditor/useCanvasEditorSectionUiSync";
 import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/useCanvasEditorExternalCallbacks";
 import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEditor/useCanvasEditorOptionPanelOutsideClose";
@@ -66,6 +67,7 @@ import useCanvasEditorInteractionEffects from "@/components/editor/canvasEditor/
 import useCanvasEditorTextSystem from "@/components/editor/textSystem/runtime/useCanvasEditorTextSystem";
 import useTextEditInteractionController from "@/components/editor/textSystem/runtime/useTextEditInteractionController";
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
+import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
 
 
@@ -114,7 +116,7 @@ function isTypographyEditableCanvasObject(obj) {
     obj &&
       (
         obj.tipo === "texto" ||
-        obj.tipo === "rsvp-boton" ||
+        isFunctionalCtaButton(obj) ||
         (
           obj.tipo === "forma" &&
           obj.figura === "rect" &&
@@ -230,6 +232,7 @@ export default function CanvasEditor({
   const [isDeletingSection, setIsDeletingSection] = useState(false);
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
   const [rsvpConfig, setRsvpConfig] = useState(null);
+  const [giftsConfig, setGiftsConfig] = useState(null);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
 
@@ -289,6 +292,10 @@ export default function CanvasEditor({
     rsvpConfig,
     setRsvpConfig,
   });
+  const { abrirPanelRegalos } = useCanvasEditorGiftBridge({
+    giftsConfig,
+    setGiftsConfig,
+  });
 
 
 
@@ -302,11 +309,13 @@ export default function CanvasEditor({
     objetos,
     secciones,
     rsvp: rsvpConfig,
+    gifts: giftsConfig,
     cargado,
 
     setObjetos,
     setSecciones,
     setRsvp: setRsvpConfig,
+    setGifts: setGiftsConfig,
     setCargado,
     setSeccionActivaId,
     onDraftLoaded: (meta) => {
@@ -368,7 +377,10 @@ export default function CanvasEditor({
     setElementosSeleccionados,
     rsvpConfig,
     setRsvpConfig,
+    giftsConfig,
+    setGiftsConfig,
     onRequestRsvpSetup: abrirPanelRsvp,
+    onRequestGiftSetup: abrirPanelRegalos,
 
     normalizarAltoModo,
     ALTURA_PANTALLA_EDITOR,
@@ -1454,6 +1466,7 @@ export default function CanvasEditor({
           setObjetos={setObjetos}
           setElementosSeleccionados={setElementosSeleccionados}
           abrirPanelRsvp={abrirPanelRsvp}
+          abrirPanelRegalos={abrirPanelRegalos}
           canRenderTemplateAuthoringMenu={canRenderTemplateAuthoringMenu}
           handleViewTemplateFieldUsage={handleViewTemplateFieldUsage}
           objetoSeleccionado={objetoSeleccionado}

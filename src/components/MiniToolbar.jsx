@@ -6,6 +6,7 @@ import MiniToolbarTabContador from "@/components/MiniToolbarTabContador";
 import MiniToolbarTabMenu from "@/components/MiniToolbarTabMenu";
 import MiniToolbarTabEfectos from "@/components/MiniToolbarTabEfectos";
 import MiniToolbarTabRsvp from "@/components/MiniToolbarTabRsvp";
+import MiniToolbarTabRegalos from "@/components/MiniToolbarTabRegalos";
 
 
 export default function MiniToolbar({
@@ -95,6 +96,8 @@ export default function MiniToolbar({
           onPresetSelectionComplete={onRsvpPresetSelectionComplete}
         />
       )}
+
+      {botonActivo === "regalos" && <MiniToolbarTabRegalos />}
 
 
     </div>

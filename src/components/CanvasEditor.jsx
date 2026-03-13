@@ -515,24 +515,9 @@ export default function CanvasEditor({
     selectedElement: objetoSeleccionado,
     draftMeta,
   });
-  const templateAuthoringStatus = templateAuthoring.status || { isReady: true, issues: [] };
-  const templateAuthoringIssues = Array.isArray(templateAuthoringStatus.issues)
-    ? templateAuthoringStatus.issues
-    : [];
-  const templateAuthoringIssueCount = templateAuthoringIssues.length;
   const canRenderTemplateAuthoringMenu =
     canManageSite &&
     templateAuthoring.selectedIsSupportedElement;
-  const templateAuthoringStatusLabel = !templateAuthoring.canConfigure
-    ? "Schema deshabilitado"
-    : templateAuthoringStatus.isReady
-      ? "Listo para publicar"
-      : `No listo para publicar (${templateAuthoringIssueCount})`;
-  const templateAuthoringStatusClass = !templateAuthoring.canConfigure
-    ? "border-slate-300 bg-slate-100 text-slate-700"
-    : templateAuthoringStatus.isReady
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : "border-amber-300 bg-amber-50 text-amber-700";
   const templateWorkspace =
     draftMeta?.templateWorkspace && typeof draftMeta.templateWorkspace === "object"
       ? draftMeta.templateWorkspace
@@ -1520,10 +1505,7 @@ export default function CanvasEditor({
           togglePanelOpciones={togglePanelOpciones}
           isMobile={isMobile}
           canManageSite={canManageSite}
-          templateAuthoringStatusClass={templateAuthoringStatusClass}
           templateAuthoring={templateAuthoring}
-          templateAuthoringStatus={templateAuthoringStatus}
-          templateAuthoringStatusLabel={templateAuthoringStatusLabel}
           editorOverlayRootRef={editorOverlayRootRef}
           stageRef={stageRef}
           elementRefs={elementRefs}

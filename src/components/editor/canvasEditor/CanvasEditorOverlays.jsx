@@ -14,10 +14,7 @@ export default function CanvasEditorOverlays({
   togglePanelOpciones,
   isMobile,
   canManageSite,
-  templateAuthoringStatusClass,
   templateAuthoring,
-  templateAuthoringStatus,
-  templateAuthoringStatusLabel,
   editorOverlayRootRef,
   stageRef,
   elementRefs,
@@ -115,19 +112,6 @@ export default function CanvasEditorOverlays({
 
       {canManageSite && (
         <div className="absolute right-3 top-3 z-[70] flex max-w-[280px] flex-col items-end gap-2">
-          <div
-            className={`pointer-events-none rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm ${templateAuthoringStatusClass}`}
-            title={
-              !templateAuthoring.canConfigure
-                ? "Este borrador no tiene plantilla base para configurar schema."
-                : templateAuthoringStatus.isReady
-                ? "Schema dinamico listo para publicar."
-                : "Corrige inconsistencias de mapping antes de guardar plantilla."
-            }
-          >
-            {templateAuthoringStatusLabel}
-          </div>
-
           {canOpenTemplateEditorialPanel ? (
             <button
               type="button"

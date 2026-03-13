@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
-import { FaGift, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
+import { FaChevronRight, FaGift, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -23,9 +23,10 @@ function safeContains(container, maybeNode) {
 }
 
 const MOBILE_BREAKPOINT = 768;
-const MOBILE_BAR_HEIGHT_PX = 74;
+const MOBILE_BAR_HEIGHT_PX = 96;
 const MOBILE_PANEL_GUTTER_PX = 8;
 const MOBILE_PANEL_BOTTOM_EXTRA_PX = 2;
+const MOBILE_SCROLL_FADE_WIDTH_PX = 92;
 const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "contador", "efectos"]);
 
 
@@ -43,6 +44,7 @@ export default function DashboardSidebar({
     const [isMobileViewport, setIsMobileViewport] = useState(
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
+    const [showMobileScrollHint, setShowMobileScrollHint] = useState(false);
     const modalCrear = useModalCrearSeccion();
     const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
@@ -96,6 +98,7 @@ export default function DashboardSidebar({
     const closeTimerRef = useRef(null);
     const asideRef = useRef(null);
     const panelRef = useRef(null);
+    const mobileToolbarScrollRef = useRef(null);
 
     // Helpers para mostrar/ocultar con pequeno delay seguro
     const openPanel = (tipo) => {
@@ -119,6 +122,47 @@ export default function DashboardSidebar({
         }
     };
 
+    const syncMobileScrollHint = useCallback(() => {
+        const scrollContainer = mobileToolbarScrollRef.current;
+        if (!scrollContainer || !isMobileViewport) {
+            setShowMobileScrollHint(false);
+            return;
+        }
+
+        const scrollableDistance = scrollContainer.scrollWidth - scrollContainer.clientWidth;
+        const canScroll = scrollableDistance > 18;
+        const isNearEnd = scrollContainer.scrollLeft >= scrollableDistance - 12;
+        setShowMobileScrollHint(canScroll && !isNearEnd);
+    }, [isMobileViewport]);
+
+    const mobileToolbarViewportMaskStyle = showMobileScrollHint
+        ? {
+            // Fadea el viewport real para que el hint se mezcle con el fondo y no tape el contenido.
+            WebkitMaskImage: `linear-gradient(
+                to right,
+                rgba(0, 0, 0, 1) 0,
+                rgba(0, 0, 0, 1) calc(100% - ${MOBILE_SCROLL_FADE_WIDTH_PX}px),
+                rgba(0, 0, 0, 0.96) calc(100% - 76px),
+                rgba(0, 0, 0, 0.74) calc(100% - 46px),
+                rgba(0, 0, 0, 0.28) calc(100% - 18px),
+                rgba(0, 0, 0, 0) 100%
+            )`,
+            maskImage: `linear-gradient(
+                to right,
+                rgba(0, 0, 0, 1) 0,
+                rgba(0, 0, 0, 1) calc(100% - ${MOBILE_SCROLL_FADE_WIDTH_PX}px),
+                rgba(0, 0, 0, 0.96) calc(100% - 76px),
+                rgba(0, 0, 0, 0.74) calc(100% - 46px),
+                rgba(0, 0, 0, 0.28) calc(100% - 18px),
+                rgba(0, 0, 0, 0) 100%
+            )`,
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskSize: "100% 100%",
+            maskSize: "100% 100%",
+        }
+        : undefined;
+
     const closeSidebarPanel = useCallback(() => {
         setFijadoSidebar(false);
         setHoverSidebar(false);
@@ -135,6 +179,21 @@ export default function DashboardSidebar({
         if (!panelEl) return;
         panelEl.scrollTop = 0;
     }, [isMobileViewport, hoverSidebar, fijadoSidebar, botonActivo]);
+
+    useEffect(() => {
+        syncMobileScrollHint();
+
+        const scrollContainer = mobileToolbarScrollRef.current;
+        if (!scrollContainer) return;
+
+        scrollContainer.addEventListener("scroll", syncMobileScrollHint, { passive: true });
+        window.addEventListener("resize", syncMobileScrollHint);
+
+        return () => {
+            scrollContainer.removeEventListener("scroll", syncMobileScrollHint);
+            window.removeEventListener("resize", syncMobileScrollHint);
+        };
+    }, [syncMobileScrollHint]);
 
     useEffect(() => {
         if (!isMobileViewport) return;
@@ -341,7 +400,7 @@ export default function DashboardSidebar({
     };
 
     const sidebarShellClass = `
-    fixed bottom-0 left-0 z-50 h-[74px] w-full text-slate-700
+    fixed bottom-0 left-0 z-50 h-[96px] w-full text-slate-700
     md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-16
     flex items-center justify-center md:flex-col md:items-center md:justify-start
     border-t border-[#e6dbf8] md:border-t-0 md:border-r md:border-[#e6dbf8]
@@ -363,7 +422,7 @@ export default function DashboardSidebar({
     const getIconButtonClass = (boton, { compact = false } = {}) => {
         const isActive = fijadoSidebar && botonActivo === boton;
         const gradient = iconGradientByButton[boton] || iconGradientByButton.texto;
-        const shapeClass = compact ? "h-9 w-9 rounded-lg" : "h-10 w-10 rounded-xl";
+        const shapeClass = compact ? "h-11 w-11 rounded-xl" : "h-10 w-10 rounded-xl";
         return `group flex ${shapeClass} items-center justify-center border bg-gradient-to-br ${gradient} cursor-pointer transition-all duration-200 ${isActive
             ? "border-white/70 text-white ring-2 ring-white/55 shadow-[0_12px_24px_rgba(31,15,58,0.34)]"
             : "border-white/25 text-white/95 opacity-90 hover:-translate-y-[1px] hover:opacity-100 hover:border-white/40 hover:shadow-[0_12px_24px_rgba(31,15,58,0.28)]"
@@ -555,86 +614,103 @@ export default function DashboardSidebar({
                 </div>
 
                 {/* Movil: barra horizontal inferior */}
-                <div className="flex w-full items-start gap-2 overflow-x-auto rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] px-2 py-1 md:hidden">
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("texto")}
-                            className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
-                            title="Texto"
+                <div className="relative w-full md:hidden">
+                    <div className="overflow-hidden rounded-2xl border border-[#ede4fb] bg-gradient-to-r from-[#faf7ff] to-[#f4edff] shadow-[0_10px_24px_rgba(95,53,150,0.08)]">
+                        <div
+                            ref={mobileToolbarScrollRef}
+                            className="w-full overflow-x-auto scrollbar-hide"
+                            style={mobileToolbarViewportMaskStyle}
                         >
-                            <img src="/icons/texto.png" alt="Texto" className="h-5 w-5" />
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Texto</span>
-                    </div>
+                            <div className="flex min-w-max items-start gap-2.5 px-2.5 py-2 pr-3">
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => alternarSidebarConBoton("texto")}
+                                    className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
+                                    title="Texto"
+                                >
+                                    <img src="/icons/texto.png" alt="Texto" className="h-5 w-5" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Texto</span>
+                            </div>
 
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("forma")}
-                            className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
-                            title="Elementos"
-                        >
-                            <img src="/icons/forma.png" alt="Elementos" className="h-5 w-5" />
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Elementos</span>
-                    </div>
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => alternarSidebarConBoton("forma")}
+                                    className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
+                                    title="Elementos"
+                                >
+                                    <img src="/icons/forma.png" alt="Elementos" className="h-5 w-5" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Elementos</span>
+                            </div>
 
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("imagen")}
-                            className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
-                            title="Imagenes"
-                        >
-                            <img src="/icons/imagen.png" alt="Imagenes" className="h-5 w-5" />
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Imagenes</span>
-                    </div>
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => alternarSidebarConBoton("imagen")}
+                                    className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
+                                    title="Imagenes"
+                                >
+                                    <img src="/icons/imagen.png" alt="Imagenes" className="h-5 w-5" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Imagenes</span>
+                            </div>
 
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("contador")}
-                            className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
-                            title="Contador"
-                        >
-                            <FaRegClock className="text-base" />
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Contador</span>
-                    </div>
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => alternarSidebarConBoton("contador")}
+                                    className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
+                                    title="Contador"
+                                >
+                                    <FaRegClock className="text-lg" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Contador</span>
+                            </div>
 
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => {
-                                setRsvpForcePresetSelection(false);
-                                alternarSidebarConBoton("rsvp");
-                            }}
-                            className={`${getIconButtonClass("rsvp", { compact: true })} justify-self-center`}
-                            title="Asistencia"
-                        >
-                            <FaRegEnvelope className="text-base" />
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Asistencia</span>
-                    </div>
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => {
+                                        setRsvpForcePresetSelection(false);
+                                        alternarSidebarConBoton("rsvp");
+                                    }}
+                                    className={`${getIconButtonClass("rsvp", { compact: true })} justify-self-center`}
+                                    title="Asistencia"
+                                >
+                                    <FaRegEnvelope className="text-lg" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Asistencia</span>
+                            </div>
 
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("regalos")}
-                            className={`${getIconButtonClass("regalos", { compact: true })} justify-self-center`}
-                            title="Regalos"
-                        >
-                            <FaGift className="text-base" />
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Regalos</span>
-                    </div>
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => alternarSidebarConBoton("regalos")}
+                                    className={`${getIconButtonClass("regalos", { compact: true })} justify-self-center`}
+                                    title="Regalos"
+                                >
+                                    <FaGift className="text-lg" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Regalos</span>
+                            </div>
 
-                    <div className="flex shrink-0 flex-col items-center gap-1">
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("efectos")}
-                            className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}
-                            title="Efectos"
-                        >
-                            <span className="text-xs font-semibold">Fx</span>
-                        </button>
-                        <span className="text-[9px] font-semibold leading-none text-[#5f3596]">Efectos</span>
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button type="button"
+                                    onClick={() => alternarSidebarConBoton("efectos")}
+                                    className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}
+                                    title="Efectos"
+                                >
+                                    <span className="text-[13px] font-bold">Fx</span>
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Efectos</span>
+                            </div>
+                        </div>
                     </div>
+                    </div>
+                    {showMobileScrollHint && (
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1.5">
+                            <div className="relative flex h-6 w-6 items-center justify-center rounded-full border border-white/80 bg-white/78 text-[#7b57ac] shadow-[0_8px_18px_rgba(95,53,150,0.16)] backdrop-blur-[6px] animate-pulse">
+                                <FaChevronRight className="text-[9px]" />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </aside>
 

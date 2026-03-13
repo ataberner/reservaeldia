@@ -88,6 +88,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /analyticsExports/{document=**} {
+      allow read, write: if false;
+    }
+
     match /iconos/{iconId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();

@@ -107,9 +107,12 @@ import {
 } from "./templates/editorialService";
 import {
   adminRebuildBusinessAnalyticsV1 as adminRebuildBusinessAnalyticsV1Handler,
+  getBusinessAnalyticsRawExportStatusV1 as getBusinessAnalyticsRawExportStatusV1Handler,
   getBusinessAnalyticsOverviewV1 as getBusinessAnalyticsOverviewV1Handler,
   processPendingAnalyticsEventsV1 as processPendingAnalyticsEventsV1Handler,
+  requestBusinessAnalyticsRawExportV1 as requestBusinessAnalyticsRawExportV1Handler,
   recordBusinessAnalyticsEvent,
+  runBusinessAnalyticsExportJobsV1 as runBusinessAnalyticsExportJobsV1Handler,
   runBusinessAnalyticsRebuildJobsV1 as runBusinessAnalyticsRebuildJobsV1Handler,
 } from "./analytics/service";
 
@@ -161,8 +164,11 @@ export const adminOpenTemplateWorkspaceV1 = adminOpenTemplateWorkspaceV1Handler;
 export const adminCommitTemplateWorkspaceV1 = adminCommitTemplateWorkspaceV1Handler;
 export const adminCreateTemplateFromDraftV1 = adminCreateTemplateFromDraftV1Handler;
 export const getBusinessAnalyticsOverviewV1 = getBusinessAnalyticsOverviewV1Handler;
+export const requestBusinessAnalyticsRawExportV1 = requestBusinessAnalyticsRawExportV1Handler;
+export const getBusinessAnalyticsRawExportStatusV1 = getBusinessAnalyticsRawExportStatusV1Handler;
 export const adminRebuildBusinessAnalyticsV1 = adminRebuildBusinessAnalyticsV1Handler;
 export const processPendingAnalyticsEventsV1 = processPendingAnalyticsEventsV1Handler;
+export const runBusinessAnalyticsExportJobsV1 = runBusinessAnalyticsExportJobsV1Handler;
 export const runBusinessAnalyticsRebuildJobsV1 = runBusinessAnalyticsRebuildJobsV1Handler;
 
 setGlobalOptions({
@@ -221,6 +227,9 @@ type UserDirectoryMetrics = {
   publishedActive: number;
   publishedPaused: number;
   publishedExpired: number;
+  approvedPayments: number;
+  revenueTotalArs: number;
+  firstApprovedPaymentAt: string | null;
 };
 
 type AdminUserSummary = {
@@ -904,7 +913,35 @@ function createEmptyUserDirectoryMetrics(): UserDirectoryMetrics {
     publishedActive: 0,
     publishedPaused: 0,
     publishedExpired: 0,
+    approvedPayments: 0,
+    revenueTotalArs: 0,
+    firstApprovedPaymentAt: null,
   };
+}
+
+async function getAnalyticsUsersByUid(
+  uids: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const uniqueUids = Array.from(
+    new Set(
+      uids
+        .map((uid) => normalizeOptionalText(uid))
+        .filter((uid): uid is string => Boolean(uid))
+    )
+  );
+
+  const analyticsByUid = new Map<string, Record<string, unknown>>();
+  if (!uniqueUids.length) return analyticsByUid;
+
+  const refs = uniqueUids.map((uid) => db.collection("analyticsUsers").doc(uid));
+  const snapshots = await db.getAll(...refs);
+
+  snapshots.forEach((snapshot) => {
+    if (!snapshot.exists) return;
+    analyticsByUid.set(snapshot.id, (snapshot.data() || {}) as Record<string, unknown>);
+  });
+
+  return analyticsByUid;
 }
 
 function getUserDirectoryMetricsEntry(
@@ -1174,6 +1211,14 @@ async function getUserDirectoryMetricsByUid(
     metrics.publishedExpired += 1;
   });
 
+  const analyticsByUid = await getAnalyticsUsersByUid(uniqueUids);
+  analyticsByUid.forEach((analyticsData, uid) => {
+    const metrics = getUserDirectoryMetricsEntry(metricsByUid, uid);
+    metrics.approvedPayments = Number(analyticsData.approvedPaymentsCount || 0);
+    metrics.revenueTotalArs = Number(analyticsData.revenueTotalArs || 0);
+    metrics.firstApprovedPaymentAt = toISODateTime(analyticsData.firstApprovedPaymentAt);
+  });
+
   return metricsByUid;
 }
 
@@ -1191,11 +1236,12 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
     };
   }
 
-  const [draftSnapshot, activePublicationSnapshot, historyPublicationSnapshot] =
+  const [draftSnapshot, activePublicationSnapshot, historyPublicationSnapshot, analyticsUserSnap] =
     await Promise.all([
       db.collection("borradores").where("userId", "==", safeUid).get(),
       db.collection("publicadas").where("userId", "==", safeUid).get(),
       db.collection("publicadas_historial").where("userId", "==", safeUid).get(),
+      db.collection("analyticsUsers").doc(safeUid).get(),
     ]);
 
   const metrics = createEmptyUserDirectoryMetrics();
@@ -1240,6 +1286,15 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
     metrics.publishedExpired += 1;
     publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, "expired"));
   });
+
+  const analyticsUserData = analyticsUserSnap.exists
+    ? ((analyticsUserSnap.data() || {}) as Record<string, unknown>)
+    : null;
+  if (analyticsUserData) {
+    metrics.approvedPayments = Number(analyticsUserData.approvedPaymentsCount || 0);
+    metrics.revenueTotalArs = Number(analyticsUserData.revenueTotalArs || 0);
+    metrics.firstApprovedPaymentAt = toISODateTime(analyticsUserData.firstApprovedPaymentAt);
+  }
 
   drafts.sort((a, b) => toSortTime(b.lastUpdatedAt) - toSortTime(a.lastUpdatedAt));
   publications.sort((a, b) => {

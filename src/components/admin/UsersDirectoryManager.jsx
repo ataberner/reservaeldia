@@ -38,6 +38,14 @@ function formatDateTime(value) {
   }).format(parsed);
 }
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
 function buildPublicInvitationUrl(publicSlug) {
   const safeSlug = typeof publicSlug === "string" ? publicSlug.trim() : "";
   if (!safeSlug) return "";
@@ -66,6 +74,10 @@ function getMetrics(item) {
     publishedActive: Number(metrics.publishedActive || 0),
     publishedPaused: Number(metrics.publishedPaused || 0),
     publishedExpired: Number(metrics.publishedExpired || 0),
+    approvedPayments: Number(metrics.approvedPayments || 0),
+    revenueTotalArs: Number(metrics.revenueTotalArs || 0),
+    firstApprovedPaymentAt:
+      typeof metrics.firstApprovedPaymentAt === "string" ? metrics.firstApprovedPaymentAt : null,
   };
 }
 
@@ -97,6 +109,8 @@ function MetricPill({ label, value, tone = "slate" }) {
   const toneClass =
     tone === "emerald"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : tone === "blue"
+      ? "border-sky-200 bg-sky-50 text-sky-700"
       : tone === "amber"
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : tone === "rose"
@@ -577,7 +591,7 @@ export default function UsersDirectoryManager() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
                         <MetricPill label="Borradores" value={metrics.drafts} />
                         <MetricPill
                           label="Activas"
@@ -593,6 +607,16 @@ export default function UsersDirectoryManager() {
                           label="Vencidas"
                           value={metrics.publishedExpired}
                           tone="rose"
+                        />
+                        <MetricPill
+                          label="Pagos reales"
+                          value={metrics.approvedPayments}
+                          tone="blue"
+                        />
+                        <MetricPill
+                          label="Ingresos reales"
+                          value={formatCurrency(metrics.revenueTotalArs)}
+                          tone="emerald"
                         />
                       </div>
                     </div>
@@ -613,7 +637,7 @@ export default function UsersDirectoryManager() {
 
                         {detail && (
                           <div className="space-y-5">
-                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
                               <MetricPill
                                 label="Borradores"
                                 value={getMetrics(detail.user || detail).drafts}
@@ -633,7 +657,22 @@ export default function UsersDirectoryManager() {
                                 value={getMetrics(detail.user || detail).publishedExpired}
                                 tone="rose"
                               />
+                              <MetricPill
+                                label="Pagos reales"
+                                value={getMetrics(detail.user || detail).approvedPayments}
+                                tone="blue"
+                              />
+                              <MetricPill
+                                label="Ingresos reales"
+                                value={formatCurrency(getMetrics(detail.user || detail).revenueTotalArs)}
+                                tone="emerald"
+                              />
                             </div>
+
+                            <p className="text-xs text-slate-500">
+                              Primer pago aprobado:{" "}
+                              {formatDateTime(getMetrics(detail.user || detail).firstApprovedPaymentAt)}
+                            </p>
 
                             <div className="space-y-2">
                               <div>

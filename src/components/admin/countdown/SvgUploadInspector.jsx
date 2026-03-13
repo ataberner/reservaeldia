@@ -255,7 +255,7 @@ export default function SvgUploadInspector({
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-slate-900">Frame SVG</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Frame SVG opcional</h3>
             <div
               className="relative z-20"
               onMouseEnter={() => setInfoOpen(true)}
@@ -301,7 +301,7 @@ export default function SvgUploadInspector({
             </div>
           </div>
           <p className="text-[11px] text-slate-600">
-            Inspeccion automatica: datos del archivo + compatibilidad del frame.
+            Subilo solo si este preset necesita un marco vectorial. Si no, se guarda sin SVG.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -346,6 +346,12 @@ export default function SvgUploadInspector({
       {localError ? (
         <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {localError}
+        </div>
+      ) : null}
+
+      {!value ? (
+        <div className="mb-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          El frame SVG es opcional. Si no subes uno, el countdown usa solo el color de frame como borde de fallback.
         </div>
       ) : null}
 

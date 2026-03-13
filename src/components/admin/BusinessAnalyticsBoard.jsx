@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBusinessAnalytics } from "@/hooks/useBusinessAnalytics";
 
 const SERIES_OPTIONS = [
   { key: "daily", label: "Diario" },
   { key: "weekly", label: "Semanal" },
   { key: "monthly", label: "Mensual" },
+  { key: "annual", label: "Anual" },
 ];
 
 const DISTRIBUTION_LABELS = {
@@ -27,6 +28,14 @@ function formatPercent(value) {
   }).format(Number(value || 0));
 }
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
 function formatDuration(seconds) {
   if (!Number.isFinite(seconds) || seconds === null) return "Sin dato";
   if (seconds < 3600) {
@@ -36,6 +45,48 @@ function formatDuration(seconds) {
     return `${(seconds / 3600).toFixed(1)} h`;
   }
   return `${(seconds / 86400).toFixed(1)} d`;
+}
+
+function formatDateKeyLabel(value) {
+  if (typeof value !== "string" || !value.trim()) return "sin fecha";
+  const parsed = new Date(`${value.trim()}T12:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function isDateKey(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+}
+
+function getDateKeyDiffInDays(fromDate, toDate) {
+  const from = new Date(`${fromDate}T12:00:00.000Z`);
+  const to = new Date(`${toDate}T12:00:00.000Z`);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) return Number.NaN;
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+}
+
+function buildRangeValidationMessage(fromDate, toDate) {
+  if (!isDateKey(fromDate) || !isDateKey(toDate)) {
+    return "Completa ambas fechas en formato valido.";
+  }
+
+  const diffDays = getDateKeyDiffInDays(fromDate, toDate);
+  if (!Number.isFinite(diffDays)) {
+    return "No se pudo interpretar el rango de fechas.";
+  }
+  if (diffDays < 0) {
+    return "La fecha Desde no puede ser mayor que la fecha Hasta.";
+  }
+  if (diffDays + 1 > 365) {
+    return "El rango maximo permitido es de 365 dias.";
+  }
+
+  return "";
 }
 
 function getMetric(data, key) {
@@ -55,7 +106,7 @@ function MetricTooltip({ metric }) {
         <p className="mt-2 text-slate-200">{metric.definition}</p>
         <p className="mt-2 text-slate-300">Por que importa: {metric.whyItMatters}</p>
         <p className="mt-2 text-slate-300">Formula: {metric.formula}</p>
-        <p className="mt-2 text-slate-400">Source of truth: {metric.sourceOfTruth}</p>
+        <p className="mt-2 text-slate-400">Fuente de datos: {metric.sourceOfTruth}</p>
       </div>
     </div>
   );
@@ -168,15 +219,17 @@ function CohortHeatmap({ cohorts }) {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-800">Cohortes de activacion</h3>
+      <h3 className="text-sm font-semibold text-slate-800">Cohortes de publicacion y pago</h3>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full border-separate border-spacing-y-2 text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-[0.12em] text-slate-500">
               <th className="pr-4">Cohorte</th>
               <th className="pr-4">Usuarios</th>
-              <th className="pr-4">Act. creacion</th>
               <th className="pr-4">Act. publicacion</th>
+              <th className="pr-4">Publican</th>
+              <th className="pr-4">Clientes pagos</th>
+              <th className="pr-4">Conv. pago</th>
               {Array.from({ length: maxColumns }).map((_, index) => (
                 <th key={index} className="pr-3">{`M${index}`}</th>
               ))}
@@ -189,13 +242,15 @@ function CohortHeatmap({ cohorts }) {
                   {cohort.cohortMonth}
                 </td>
                 <td className="px-3 py-3">{formatNumber(cohort.users)}</td>
-                <td className="px-3 py-3">{formatPercent(cohort.activationCreatedRate)}</td>
                 <td className="px-3 py-3">{formatPercent(cohort.activationPublishedRate)}</td>
+                <td className="px-3 py-3">{formatNumber(cohort.usersWhoPublished)}</td>
+                <td className="px-3 py-3">{formatNumber(cohort.payingUsers)}</td>
+                <td className="px-3 py-3">{formatPercent(cohort.paymentConversionRate)}</td>
                 {Array.from({ length: maxColumns }).map((_, index) => {
                   const period = (cohort.periods || []).find(
                     (item) => Number(item.periodIndex) === index
                   );
-                  const rate = Number(period?.cumulativeActivationCreatedRate || 0);
+                  const rate = Number(period?.paymentConversionRate || 0);
                   const backgroundAlpha = Math.min(0.12 + rate * 0.75, 0.92);
 
                   return (
@@ -231,6 +286,8 @@ function TemplateTable({ templates }) {
               <th className="pb-3 pr-4">Plantilla</th>
               <th className="pb-3 pr-4">Creadas</th>
               <th className="pb-3 pr-4">Publicadas</th>
+              <th className="pb-3 pr-4">Pagos</th>
+              <th className="pb-3 pr-4">Ingresos</th>
               <th className="pb-3">Conversion</th>
             </tr>
           </thead>
@@ -238,6 +295,8 @@ function TemplateTable({ templates }) {
             {(templates || []).map((template) => {
               const created = Number(template.createdInvitations || 0);
               const published = Number(template.publishedInvitations || 0);
+              const payments = Number(template.paymentsApproved || 0);
+              const revenue = Number(template.revenueTotalArs || 0);
               const conversion = created > 0 ? published / created : 0;
 
               return (
@@ -247,6 +306,8 @@ function TemplateTable({ templates }) {
                   </td>
                   <td className="py-3 pr-4">{formatNumber(created)}</td>
                   <td className="py-3 pr-4">{formatNumber(published)}</td>
+                  <td className="py-3 pr-4">{formatNumber(payments)}</td>
+                  <td className="py-3 pr-4">{formatCurrency(revenue)}</td>
                   <td className="py-3">{formatPercent(conversion)}</td>
                 </tr>
               );
@@ -260,54 +321,154 @@ function TemplateTable({ templates }) {
 
 export default function BusinessAnalyticsBoard() {
   const [seriesView, setSeriesView] = useState("monthly");
-  const { data, loading, error, rebuilding, rebuildJob, refresh, rebuild } =
-    useBusinessAnalytics();
+  const [draftFromDate, setDraftFromDate] = useState("");
+  const [draftToDate, setDraftToDate] = useState("");
+  const [rangeError, setRangeError] = useState("");
+  const {
+    data,
+    loading,
+    error,
+    rebuilding,
+    rebuildJob,
+    filters,
+    exportJob,
+    exporting,
+    exportError,
+    refresh,
+    rebuild,
+    applyFilters,
+    resetFilters,
+    requestRawExport,
+    downloadRawExport,
+  } = useBusinessAnalytics();
 
+  useEffect(() => {
+    setDraftFromDate(filters?.fromDate || "");
+    setDraftToDate(filters?.toDate || "");
+    setRangeError("");
+  }, [filters?.fromDate, filters?.toDate]);
+
+  const appliedRange = data?.appliedRange || filters || {};
   const series = data?.series?.[seriesView] || [];
+  const newUsersMetricKey =
+    seriesView === "daily"
+      ? "new_users_daily"
+      : seriesView === "weekly"
+        ? "new_users_weekly"
+        : seriesView === "monthly"
+          ? "new_users_monthly"
+          : "new_users_annual";
+  const revenueMetricKey =
+    seriesView === "daily"
+      ? "revenue_daily"
+      : seriesView === "weekly"
+        ? "revenue_weekly"
+        : seriesView === "monthly"
+          ? "revenue_monthly"
+          : "revenue_annual";
   const summary = data?.summary || {};
-  const partialPeriods = data?.partialPeriods || {};
   const topTemplates = data?.templates?.topPublished || [];
-  const currentMonthIsPartial =
-    summary?.currentMonthKey && partialPeriods?.monthKey === summary.currentMonthKey;
   const rebuildStatus = rebuildJob?.status || "";
   const rebuildStage = rebuildJob?.stage || "";
   const rebuildCounters = rebuildJob?.counters || {};
   const rebuildFinishedAt = rebuildJob?.finishedAt || "";
+  const exportStatus = exportJob?.status || "";
   const rebuildButtonLabel =
     rebuildStatus === "queued"
       ? "Rebuild en cola"
       : rebuildStatus === "running"
         ? "Reconstruyendo..."
         : "Reconstruir historico";
+  const exportButtonLabel =
+    exportStatus === "queued" || exportStatus === "running"
+      ? "Exportando..."
+      : exportStatus === "succeeded"
+        ? "Descargar CSV"
+        : "Exportar raw CSV";
+  const rangeDescription = `Rango activo: ${formatDateKeyLabel(appliedRange?.fromDate)} a ${formatDateKeyLabel(appliedRange?.toDate)}.`;
 
   const executiveCards = useMemo(
     () => [
       {
-        title: "Invitaciones publicadas",
-        metric: getMetric(data, "published_invitations"),
-        value: formatNumber(summary?.publishedInvitations?.value),
-        detail: currentMonthIsPartial
-          ? "Mes actual parcial. KPI principal del negocio."
-          : "Ultimo mes agregado disponible.",
-        accent: "emerald",
+        title: "Usuarios registrados",
+        metric: getMetric(data, "total_registered_users"),
+        value: formatNumber(summary?.users?.totalRegisteredUsers),
+        detail: `${formatNumber(summary?.users?.newUsers)} nuevos en el rango seleccionado`,
+        accent: "blue",
       },
       {
-        title: "Activation Rate (creacion)",
-        metric: getMetric(data, "activation_rate_created"),
-        value: formatPercent(summary?.activationRateCreated?.value),
-        detail: `${formatNumber(summary?.activationRateCreated?.activatedUsers)} activados sobre ${formatNumber(summary?.activationRateCreated?.registeredUsers)} registrados`,
+        title: "Nuevos usuarios",
+        metric: getMetric(data, "new_users_monthly"),
+        value: formatNumber(summary?.users?.newUsers),
+        detail: `Rango anterior: ${formatNumber(summary?.users?.previousNewUsers)}`,
         accent: "amber",
       },
       {
-        title: "Activation Rate (publicacion)",
-        metric: getMetric(data, "activation_rate_published"),
-        value: formatPercent(summary?.activationRatePublished?.value),
-        detail: `${formatNumber(summary?.activationRatePublished?.activatedUsers)} usuarios ya publicaron`,
+        title: "Invitaciones publicadas",
+        metric: getMetric(data, "published_invitations"),
+        value: formatNumber(summary?.publishedInvitations?.value),
+        detail: `${formatNumber(summary?.publishedInvitations?.cumulativeValue)} acumuladas al cierre de ${formatDateKeyLabel(appliedRange?.toDate)}`,
+        accent: "emerald",
+      },
+      {
+        title: "Usuarios que publican",
+        metric: getMetric(data, "users_who_published"),
+        value: formatNumber(summary?.users?.usersWhoPublished),
+        detail: `${formatPercent(summary?.users?.publishedInvitationsPerUser)} invitaciones publicadas por usuario registrado`,
+        accent: "emerald",
+      },
+      {
+        title: "Clientes pagos",
+        metric: getMetric(data, "paying_users"),
+        value: formatNumber(summary?.payments?.payingUsers),
+        detail: `${formatNumber(summary?.payments?.paymentsApproved)} pagos aprobados en el rango`,
+        accent: "rose",
+      },
+      {
+        title: "Ingresos",
+        metric: getMetric(data, revenueMetricKey),
+        value: formatCurrency(summary?.payments?.revenue),
+        detail: `${formatCurrency(summary?.payments?.totalRevenue)} acumulados al cierre. Ticket promedio ${formatCurrency(summary?.payments?.averageOrderValue)}`,
+        accent: "amber",
+      },
+      {
+        title: "Conversion a pago",
+        metric: getMetric(data, "payment_conversion_rate"),
+        value: formatPercent(summary?.conversion?.paymentConversionRate),
+        detail: `${formatNumber(summary?.conversion?.payingUsers)} clientes pagos sobre ${formatNumber(summary?.conversion?.usersWhoPublished)} usuarios que publicaron`,
         accent: "blue",
       },
     ],
-    [currentMonthIsPartial, data, summary]
+    [appliedRange?.toDate, data, revenueMetricKey, summary]
   );
+
+  const handleApplyFilters = () => {
+    const validationMessage = buildRangeValidationMessage(draftFromDate, draftToDate);
+    if (validationMessage) {
+      setRangeError(validationMessage);
+      return;
+    }
+
+    setRangeError("");
+    applyFilters({
+      fromDate: draftFromDate,
+      toDate: draftToDate,
+    });
+  };
+
+  const handleResetFilters = () => {
+    setRangeError("");
+    resetFilters();
+  };
+
+  const handleExportAction = async () => {
+    if (exportStatus === "succeeded") {
+      await downloadRawExport();
+      return;
+    }
+
+    await requestRawExport();
+  };
 
   if (loading) {
     return (
@@ -320,41 +481,102 @@ export default function BusinessAnalyticsBoard() {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">Analytics del negocio</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Activation Rate, TTFV e invitaciones publicadas calculadas desde eventos canonicos.
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Analytics del negocio</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Usuarios, publicaciones y monetizacion calculados desde eventos canonicos y agregados ejecutivos.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => refresh()}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Actualizar
+              </button>
+              <button
+                type="button"
+                onClick={rebuild}
+                disabled={rebuilding}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {rebuildButtonLabel}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr_auto_auto_auto] xl:items-end">
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Desde</span>
+                <input
+                  type="date"
+                  value={draftFromDate}
+                  onChange={(event) => setDraftFromDate(event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-slate-400"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Hasta</span>
+                <input
+                  type="date"
+                  value={draftToDate}
+                  onChange={(event) => setDraftToDate(event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-slate-400"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleApplyFilters}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Aplicar
+              </button>
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Limpiar
+              </button>
+              <button
+                type="button"
+                onClick={handleExportAction}
+                disabled={exporting}
+                className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportButtonLabel}
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              {rangeDescription} El export raw usa exactamente este mismo rango.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={refresh}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Actualizar
-            </button>
-            <button
-              type="button"
-              onClick={rebuild}
-              disabled={rebuilding}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {rebuildButtonLabel}
-            </button>
-          </div>
         </div>
+
         {error ? (
           <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
+          </div>
+        ) : null}
+        {rangeError ? (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {rangeError}
+          </div>
+        ) : null}
+        {exportError ? (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {exportError}
           </div>
         ) : null}
         {rebuildStatus === "queued" || rebuildStatus === "running" ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {rebuildStatus === "queued"
               ? "La reconstruccion historica fue encolada. El sistema la procesara en background."
-              : `Reconstruccion en progreso. Etapa actual: ${rebuildStage || "procesando"}. Registros ${formatNumber(rebuildCounters?.registro_usuario)}, borradores ${formatNumber(rebuildCounters?.invitacion_creada)}, publicaciones ${formatNumber(rebuildCounters?.invitacion_publicada)}.`}
+              : `Reconstruccion en progreso. Etapa actual: ${rebuildStage || "procesando"}. Registros ${formatNumber(rebuildCounters?.registro_usuario)}, borradores ${formatNumber(rebuildCounters?.invitacion_creada)}, publicaciones ${formatNumber(rebuildCounters?.invitacion_publicada)}, pagos ${formatNumber(rebuildCounters?.pago_aprobado)}.`}
           </div>
         ) : null}
         {rebuildStatus === "failed" ? (
@@ -364,7 +586,24 @@ export default function BusinessAnalyticsBoard() {
         ) : null}
         {rebuildStatus === "succeeded" ? (
           <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Reconstruccion finalizada{rebuildFinishedAt ? ` (${new Date(rebuildFinishedAt).toLocaleString("es-AR")})` : ""}. Eventos sembrados: registro {formatNumber(rebuildCounters?.registro_usuario)}, borradores {formatNumber(rebuildCounters?.invitacion_creada)}, publicaciones {formatNumber(rebuildCounters?.invitacion_publicada)}.
+            Reconstruccion finalizada{rebuildFinishedAt ? ` (${new Date(rebuildFinishedAt).toLocaleString("es-AR")})` : ""}. Eventos sembrados: registro {formatNumber(rebuildCounters?.registro_usuario)}, borradores {formatNumber(rebuildCounters?.invitacion_creada)}, publicaciones {formatNumber(rebuildCounters?.invitacion_publicada)}, pagos {formatNumber(rebuildCounters?.pago_aprobado)}.
+          </div>
+        ) : null}
+        {exportStatus === "queued" || exportStatus === "running" ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {exportStatus === "queued"
+              ? "La exportacion raw fue encolada. El sistema la procesara en background."
+              : "La exportacion raw se esta generando. El estado se actualiza automaticamente."}
+          </div>
+        ) : null}
+        {exportStatus === "failed" ? (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            La exportacion raw fallo. {exportJob?.error || "Revisa logs de Functions."}
+          </div>
+        ) : null}
+        {exportStatus === "succeeded" ? (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            Exportacion raw lista. {formatNumber(exportJob?.rowCount)} filas generadas para el rango actual. Usa “Descargar CSV” para abrirla en Excel.
           </div>
         ) : null}
       </div>
@@ -373,7 +612,9 @@ export default function BusinessAnalyticsBoard() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Metricas ejecutivas</h3>
-            <p className="text-sm text-slate-600">Ingresos no forman parte de este bloque todavia; aqui vive la activacion y la publicacion del producto.</p>
+            <p className="text-sm text-slate-600">
+              Bloque principal para crecimiento, publicaciones y monetizacion dentro del rango seleccionado.
+            </p>
           </div>
           <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {SERIES_OPTIONS.map((option) => (
@@ -393,13 +634,20 @@ export default function BusinessAnalyticsBoard() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
           {executiveCards.map((card) => (
             <MetricCard key={card.title} {...card} />
           ))}
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-3">
+          <SeriesChart
+            title="Evolucion de nuevos usuarios"
+            metric={getMetric(data, newUsersMetricKey)}
+            points={series}
+            getValue={(point) => point?.executive?.users?.newUsers}
+            formatValue={(value) => formatNumber(value)}
+          />
           <SeriesChart
             title="Evolucion de invitaciones publicadas"
             metric={getMetric(data, "published_invitations")}
@@ -408,11 +656,11 @@ export default function BusinessAnalyticsBoard() {
             formatValue={(value) => formatNumber(value)}
           />
           <SeriesChart
-            title="Evolucion de Activation Rate (creacion)"
-            metric={getMetric(data, "activation_rate_created")}
+            title="Evolucion de ingresos"
+            metric={getMetric(data, revenueMetricKey)}
             points={series}
-            getValue={(point) => point?.executive?.activation?.activationRateCreated}
-            formatValue={(value) => formatPercent(value)}
+            getValue={(point) => point?.executive?.payments?.revenue}
+            formatValue={(value) => formatCurrency(value)}
           />
         </div>
       </section>
@@ -420,7 +668,7 @@ export default function BusinessAnalyticsBoard() {
       <section className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Metricas de producto</h3>
-          <p className="text-sm text-slate-600">Time To First Value para creacion y publicacion usando el periodo de registro como referencia.</p>
+          <p className="text-sm text-slate-600">Time To First Value para usuarios registrados dentro del rango activo.</p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-4">
@@ -471,7 +719,7 @@ export default function BusinessAnalyticsBoard() {
       <section className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Canal invitacion</h3>
-          <p className="text-sm text-slate-600">Performance por plantilla medida por publicaciones reales sobre invitaciones creadas.</p>
+          <p className="text-sm text-slate-600">Performance por plantilla dentro del rango seleccionado.</p>
         </div>
         <TemplateTable templates={topTemplates} />
       </section>

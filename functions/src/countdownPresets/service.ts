@@ -115,6 +115,7 @@ type SaveInput = {
   expectedDraftVersion?: unknown;
   config?: unknown;
   assets?: {
+    removeSvg?: unknown;
     svgFileName?: unknown;
     svgBase64?: unknown;
     thumbnailPngBase64?: unknown;
@@ -939,12 +940,19 @@ export const saveCountdownPresetDraft = onCall(
     const existingSvgRef = normalizeSvgRef(existingDraft?.svgRef) || normalizeSvgRef(existing?.svgRef);
 
     const assets = request.data?.assets || {};
+    const removeSvg = assets.removeSvg === true;
     const hasIncomingSvg = typeof assets.svgBase64 === "string" && assets.svgBase64.trim().length > 0;
     const hasIncomingThumb = typeof assets.thumbnailPngBase64 === "string" && assets.thumbnailPngBase64.trim().length > 0;
-    const allowFramelessDraft = Boolean(snap.exists && !existingSvgRef?.storagePath);
 
     let inspection: ReturnType<typeof inspectSvg> | null = null;
     let nextSvgRef: SvgRef | null = existingSvgRef;
+
+    if (removeSvg) {
+      nextSvgRef = createEmptySvgRef({
+        thumbnailPath: existingSvgRef?.thumbnailPath || null,
+        thumbnailUrl: existingSvgRef?.thumbnailUrl || null,
+      });
+    }
 
     if (hasIncomingSvg) {
       const svgFileName = text(assets.svgFileName, 180);
@@ -986,12 +994,12 @@ export const saveCountdownPresetDraft = onCall(
       nextSvgRef = createEmptySvgRef();
     }
 
-    if (!nextSvgRef.storagePath && !allowFramelessDraft) {
-      fail("Debes subir un SVG valido para guardar el borrador.");
-    }
-
-    const warnings = inspection?.warnings || existingDraft?.validationReport?.warnings || [];
-    const checks = inspection?.checks || existingDraft?.validationReport?.checks || {};
+    const warnings = removeSvg
+      ? []
+      : inspection?.warnings || existingDraft?.validationReport?.warnings || [];
+    const checks = removeSvg
+      ? {}
+      : inspection?.checks || existingDraft?.validationReport?.checks || {};
 
     const nextDraftVersion = (currentDraftVersion || 0) + 1;
     const now = admin.firestore.FieldValue.serverTimestamp();

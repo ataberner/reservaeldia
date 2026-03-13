@@ -13,6 +13,18 @@ function getErrorMessage(error, fallback) {
     return "Solo superadmin puede acceder a analytics del negocio.";
   }
 
+  if (code === "functions/invalid-argument" || code === "invalid-argument") {
+    return typeof message === "string" && message.trim()
+      ? message
+      : "Revisa el rango de fechas de analytics.";
+  }
+
+  if (code === "functions/not-found" || code === "not-found") {
+    return typeof message === "string" && message.trim()
+      ? message
+      : "No se encontro la exportacion solicitada.";
+  }
+
   if (
     code === "functions/internal" ||
     code === "internal" ||
@@ -32,15 +44,36 @@ function getErrorMessage(error, fallback) {
   return typeof message === "string" ? message : fallback;
 }
 
-export async function getBusinessAnalyticsOverview() {
+export async function getBusinessAnalyticsOverview({ fromDate, toDate } = {}) {
   const callable = httpsCallable(functions, "getBusinessAnalyticsOverviewV1");
-  const result = await callable({});
+  const result = await callable({
+    fromDate: fromDate || null,
+    toDate: toDate || null,
+  });
   return result?.data || {};
 }
 
 export async function rebuildBusinessAnalytics() {
   const callable = httpsCallable(functions, "adminRebuildBusinessAnalyticsV1");
   const result = await callable({});
+  return result?.data || {};
+}
+
+export async function requestBusinessAnalyticsRawExport({ fromDate, toDate, format = "csv" } = {}) {
+  const callable = httpsCallable(functions, "requestBusinessAnalyticsRawExportV1");
+  const result = await callable({
+    fromDate: fromDate || null,
+    toDate: toDate || null,
+    format,
+  });
+  return result?.data || {};
+}
+
+export async function getBusinessAnalyticsRawExportStatus({ exportId } = {}) {
+  const callable = httpsCallable(functions, "getBusinessAnalyticsRawExportStatusV1");
+  const result = await callable({
+    exportId: exportId || null,
+  });
   return result?.data || {};
 }
 

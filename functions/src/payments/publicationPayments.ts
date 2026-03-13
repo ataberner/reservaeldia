@@ -59,6 +59,7 @@ const DISCOUNT_USAGE_COLLECTION = "publication_discount_code_usage";
 const PUBLICADAS_COLLECTION = "publicadas";
 const PUBLICADAS_HISTORIAL_COLLECTION = "publicadas_historial";
 const BORRADORES_COLLECTION = "borradores";
+const UNKNOWN_TEMPLATE_ANALYTICS_ID = "unknown-template";
 const HISTORY_SCAN_PAGE_SIZE = 250;
 
 const FINALIZATION_REASON = Object.freeze({
@@ -2452,7 +2453,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
         timestamp: firstPublishedAt,
         userId: uid,
         invitacionId: draftSlug,
-        templateId: getString(draftData.plantillaId) || "__unknown__",
+        templateId: getString(draftData.plantillaId) || UNKNOWN_TEMPLATE_ANALYTICS_ID,
         metadata: {
           publicSlug: normalizedPublicSlug,
           firstPublishedAt: firstPublishedAt.toISOString(),
@@ -2536,6 +2537,62 @@ function buildReceipt(params: {
   };
 }
 
+async function recordApprovedPaymentAnalytics(params: {
+  sessionId: string;
+  paymentId: string;
+  approvedAt?: string;
+  sessionPayload: Record<string, unknown>;
+}) {
+  const { sessionId, paymentId, approvedAt, sessionPayload } = params;
+  const userId = getString(sessionPayload.uid);
+  const draftSlug = getString(sessionPayload.draftSlug);
+  const publicSlug = getString(sessionPayload.publicSlug);
+  if (!userId || !paymentId) return;
+
+  let templateId = UNKNOWN_TEMPLATE_ANALYTICS_ID;
+  let templateName = "";
+
+  if (draftSlug) {
+    const draftSnap = await db.collection(BORRADORES_COLLECTION).doc(draftSlug).get();
+    if (draftSnap.exists) {
+      const draftData = (draftSnap.data() || {}) as Record<string, unknown>;
+      templateId = getString(draftData.plantillaId) || templateId;
+      templateName = getString(draftData.nombre) || templateName;
+    }
+  }
+
+  if (publicSlug) {
+    const publishedSnap = await getPublicationRef(publicSlug).get();
+    if (publishedSnap.exists) {
+      const publishedData = (publishedSnap.data() || {}) as Record<string, unknown>;
+      templateId = getString(publishedData.plantillaId) || templateId;
+      templateName = getString(publishedData.nombre) || templateName;
+    }
+  }
+
+  const timestamp = approvedAt ? new Date(approvedAt) : new Date();
+  const safeTimestamp = Number.isFinite(timestamp.getTime()) ? timestamp : new Date();
+
+  await recordBusinessAnalyticsEvent({
+    eventId: `pago_aprobado:${paymentId}`,
+    eventName: "pago_aprobado",
+    timestamp: safeTimestamp,
+    userId,
+    invitacionId: draftSlug || null,
+    templateId,
+    metadata: {
+      paymentId,
+      paymentSessionId: sessionId,
+      publicSlug: publicSlug || null,
+      operation: normalizeOperation(sessionPayload.operation),
+      amountArs: toAmount(sessionPayload.amountArs, 0),
+      amountBaseArs: toAmount(sessionPayload.amountBaseArs, toAmount(sessionPayload.amountArs, 0)),
+      discountAmountArs: toAmount(sessionPayload.discountAmountArs, 0),
+      templateName,
+    },
+  });
+}
+
 function buildPaymentResultFromSession(data: Record<string, unknown>, paymentId = ""): CheckoutPaymentResult {
   return {
     sessionStatus: (getString(data.status) as CheckoutSessionStatus) || "payment_processing",
@@ -2597,6 +2654,24 @@ async function finalizeApprovedSession(params: {
   }
 
   const sessionPayload = sessionData as Record<string, unknown>;
+
+  try {
+    await recordApprovedPaymentAnalytics({
+      sessionId,
+      paymentId: fallbackPaymentId,
+      approvedAt,
+      sessionPayload,
+    });
+  } catch (analyticsError) {
+    logger.error("No se pudo registrar analytics de pago aprobado", {
+      sessionId,
+      paymentId: fallbackPaymentId,
+      error:
+        analyticsError instanceof Error
+          ? analyticsError.message
+          : String(analyticsError || ""),
+    });
+  }
 
   if (!shouldPublish) {
     const snap = await sessionRef.get();

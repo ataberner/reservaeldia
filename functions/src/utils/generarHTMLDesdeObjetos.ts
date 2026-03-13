@@ -75,6 +75,249 @@ function toCssNumber(value: number): string {
   return String(Math.round(value * 1000) / 1000);
 }
 
+const COUNTDOWN_UNIT_LABELS = Object.freeze({
+  days: "Dias",
+  hours: "Horas",
+  minutes: "Min",
+  seconds: "Seg",
+});
+
+const COUNTDOWN_DEFAULT_VISIBLE_UNITS = Object.freeze(["days", "hours", "minutes", "seconds"]);
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function toFiniteNumber(value: any, fallback: number): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizeCountdownUnits(value: any): string[] {
+  if (!Array.isArray(value) || value.length === 0) return [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
+
+  const normalized = value
+    .map((unit) => String(unit || "").trim())
+    .filter((unit) => Object.prototype.hasOwnProperty.call(COUNTDOWN_UNIT_LABELS, unit));
+
+  const unique: string[] = [];
+  normalized.forEach((unit) => {
+    if (!unique.includes(unit)) unique.push(unit);
+  });
+
+  return unique.length > 0 ? unique : [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
+}
+
+function estimateCountdownUnitHeightLikeCanvas({
+  tamanoBase = 320,
+  distribution = "centered",
+  unitsCount = 4,
+}: {
+  tamanoBase?: any;
+  distribution?: any;
+  unitsCount?: any;
+} = {}): number {
+  const base = clampNumber(toFiniteNumber(tamanoBase, 320), 220, 640);
+  const count = Math.max(1, Math.min(4, Number(unitsCount || 4)));
+  const mode = String(distribution || "centered").toLowerCase();
+
+  if (mode === "vertical") return Math.max(44, Math.round(base * 0.17));
+  if (mode === "grid") return Math.max(44, Math.round(base * 0.2));
+  if (mode === "editorial") return Math.max(44, Math.round(base * 0.16));
+
+  const centeredScale =
+    count <= 1 ? 0.34 : count === 2 ? 0.24 : count === 3 ? 0.18 : 0.15;
+  return Math.max(44, Math.round(base * centeredScale));
+}
+
+function transformCountdownLabel(label: string, transformMode: string): string {
+  const safe = String(label || "");
+  if (transformMode === "uppercase") return safe.toUpperCase();
+  if (transformMode === "lowercase") return safe.toLowerCase();
+  if (transformMode === "capitalize") {
+    return safe.replace(/\b\w/g, (match) => match.toUpperCase());
+  }
+  return safe;
+}
+
+function buildCountdownLayoutMetrics(obj: any) {
+  const units = normalizeCountdownUnits(obj?.visibleUnits);
+  const unitsCount = Math.max(1, units.length);
+  const frameSvgUrl = String(obj?.frameSvgUrl || "").trim();
+  const hasFrameConfigured = frameSvgUrl.length > 0;
+  const distribution = String(obj?.distribution || obj?.layoutType || "centered").toLowerCase();
+  const layoutType = String(obj?.layoutType || "singleFrame").toLowerCase();
+  const useSingleFrameLayout = layoutType === "singleframe" && hasFrameConfigured;
+  const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
+  const gap = Math.max(0, toFiniteNumber(obj?.gap, 8));
+  const framePadding = Math.max(0, toFiniteNumber(obj?.framePadding, 10));
+  const paddingY = Math.max(2, toFiniteNumber(obj?.paddingY, 6));
+  const paddingX = Math.max(2, toFiniteNumber(obj?.paddingX, 8));
+  const valueSize = Math.max(10, toFiniteNumber(obj?.fontSize, 16));
+  const labelSize = Math.max(8, toFiniteNumber(obj?.labelSize, 10));
+  const showLabels = obj?.showLabels !== false;
+  const baseChipW = Math.max(36, toFiniteNumber(obj?.chipWidth, 46) + paddingX * 2);
+  const textDrivenChipH = Math.max(
+    44,
+    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
+  );
+  const layoutDrivenChipH = estimateCountdownUnitHeightLikeCanvas({
+    tamanoBase: toFiniteNumber(obj?.tamanoBase, 320),
+    distribution,
+    unitsCount,
+  });
+  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+
+  const cols =
+    distribution === "vertical"
+      ? 1
+      : distribution === "grid"
+        ? Math.min(2, unitsCount)
+        : unitsCount;
+  const rows =
+    distribution === "vertical"
+      ? unitsCount
+      : distribution === "grid"
+        ? Math.ceil(unitsCount / cols)
+        : 1;
+
+  const editorialWidths =
+    distribution === "editorial"
+      ? Array.from({ length: unitsCount }, (_, index) =>
+          Math.max(34, Math.round(baseChipW * (index === 0 && unitsCount > 1 ? 1.25 : 0.88)))
+        )
+      : [];
+
+  const naturalW =
+    distribution === "vertical"
+      ? baseChipW
+      : distribution === "grid"
+        ? cols * baseChipW + gap * (cols - 1)
+        : distribution === "editorial"
+          ? editorialWidths.reduce((acc, width) => acc + width, 0) + gap * Math.max(0, unitsCount - 1)
+          : unitsCount * baseChipW + gap * (unitsCount - 1);
+
+  const naturalH =
+    distribution === "vertical" || distribution === "grid"
+      ? rows * chipH + gap * Math.max(0, rows - 1)
+      : chipH;
+
+  const containerW = Math.max(
+    toFiniteNumber(obj?.width, 0),
+    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0)
+  );
+  const containerH = Math.max(
+    toFiniteNumber(obj?.height, 0),
+    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
+  );
+
+  const contentBounds = {
+    x: useSingleFrameLayout ? framePadding : 0,
+    y: useSingleFrameLayout ? framePadding : 0,
+    width: Math.max(1, containerW - (useSingleFrameLayout ? framePadding * 2 : 0)),
+    height: Math.max(1, containerH - (useSingleFrameLayout ? framePadding * 2 : 0)),
+  };
+
+  const distributionW =
+    distribution === "grid"
+      ? cols * baseChipW + gap * (cols - 1)
+      : distribution === "vertical"
+        ? baseChipW
+        : naturalW;
+  const distributionH =
+    distribution === "vertical" || distribution === "grid"
+      ? rows * chipH + gap * Math.max(0, rows - 1)
+      : chipH;
+
+  const startX = contentBounds.x + (contentBounds.width - distributionW) / 2;
+  const startY = contentBounds.y + (contentBounds.height - distributionH) / 2;
+
+  const unitLayouts =
+    distribution === "vertical"
+      ? units.map((unit, index) => ({
+          unit,
+          x: contentBounds.x + (contentBounds.width - baseChipW) / 2,
+          y: startY + index * (chipH + gap),
+          width: baseChipW,
+          height: chipH,
+        }))
+      : distribution === "grid"
+        ? units.map((unit, index) => {
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            return {
+              unit,
+              x: startX + col * (baseChipW + gap),
+              y: startY + row * (chipH + gap),
+              width: baseChipW,
+              height: chipH,
+            };
+          })
+        : distribution === "editorial"
+          ? (() => {
+              let cursorX = startX;
+              return units.map((unit, index) => {
+                const width = editorialWidths[index] || baseChipW;
+                const item = {
+                  unit,
+                  x: cursorX,
+                  y: startY,
+                  width,
+                  height: chipH,
+                };
+                cursorX += width + gap;
+                return item;
+              });
+            })()
+          : units.map((unit, index) => ({
+              unit,
+              x: startX + index * (baseChipW + gap),
+              y: startY,
+              width: baseChipW,
+              height: chipH,
+            }));
+
+  const separatorText = String(obj?.separator || "");
+  const separatorFontSize = Math.max(10, Math.round(valueSize * 0.64));
+  const canRenderSeparators = Boolean(
+    separatorText && distribution !== "vertical" && distribution !== "grid" && unitLayouts.length > 1
+  );
+  const separatorLayouts = canRenderSeparators
+    ? unitLayouts.slice(0, -1).map((item, index) => {
+        const next = unitLayouts[index + 1];
+        const itemRight = item.x + item.width;
+        const midpointX = itemRight + (next.x - itemRight) / 2;
+        const width = Math.max(12, Math.round(separatorFontSize * 1.4));
+        return {
+          key: `${item.unit}-${next.unit}-${index}`,
+          x: midpointX - width / 2,
+          y: item.y + Math.max(4, item.height * 0.3),
+          width,
+        };
+      })
+    : [];
+
+  return {
+    units,
+    distribution,
+    layoutType,
+    frameSvgUrl,
+    hasFrameConfigured,
+    useSingleFrameLayout,
+    useMultiUnitFrame,
+    gap,
+    framePadding,
+    valueSize,
+    labelSize,
+    containerW,
+    containerH,
+    unitLayouts,
+    separatorText,
+    separatorFontSize,
+    separatorLayouts,
+  };
+}
+
 function normalizeRoleValue(value: any): string {
   return String(value || "").trim().toLowerCase();
 }
@@ -510,23 +753,10 @@ fill: ${escapeAttr(fill)};
         const schemaVersion = Number(obj.countdownSchemaVersion || 1);
 
         if (schemaVersion >= 2) {
-          const validUnits = ["days", "hours", "minutes", "seconds"];
-          const unitLabels: Record<string, string> = {
-            days: "Dias",
-            hours: "Horas",
-            minutes: "Min",
-            seconds: "Seg",
-          };
-          const units = Array.isArray(obj.visibleUnits)
-            ? obj.visibleUnits
-              .map((u: any) => String(u || "").trim())
-              .filter((u: string) => validUnits.includes(u))
-              .filter((u: string, i: number, arr: string[]) => arr.indexOf(u) === i)
-            : ["days", "hours", "minutes", "seconds"];
-          const safeUnits = units.length ? units : ["days", "hours", "minutes", "seconds"];
-
-          const distribution = String(obj.distribution || "centered").toLowerCase();
-          const layoutType = String(obj.layoutType || "singleFrame").toLowerCase();
+          const layout = buildCountdownLayoutMetrics(obj);
+          const safeUnits = layout.units;
+          const distribution = layout.distribution;
+          const layoutType = layout.layoutType;
           const frameColorMode = String(obj.frameColorMode || "fixed").toLowerCase();
           const labelTransform = String(obj.labelTransform || "uppercase").toLowerCase();
           const entryAnim = String(obj.entryAnimation || "none").toLowerCase();
@@ -534,103 +764,110 @@ fill: ${escapeAttr(fill)};
           const frameAnim = String(obj.frameAnimation || "none").toLowerCase();
           const showLabels = obj.showLabels !== false;
 
-          const transformLabel = (label: string): string => {
-            if (labelTransform === "lowercase") return label.toLowerCase();
-            if (labelTransform === "capitalize") return label.replace(/\b\w/g, (m) => m.toUpperCase());
-            if (labelTransform === "none") return label;
-            return label.toUpperCase();
-          };
-
           const baseStyle = stylePosBase(obj);
-          const wObj = Number.isFinite(obj?.width) ? Number(obj.width) : null;
-          const hObj = Number.isFinite(obj?.height) ? Number(obj.height) : null;
           const sChip = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
+          const sChipPx = (value: number): string => `calc(${sChip} * ${toCssNumber(value)}px)`;
           const numberPaint = sanitizeCssPaint(obj.color, "#111");
           const labelPaint = sanitizeCssPaint(obj.labelColor, "#6b7280");
           const unitBgPaint = sanitizeCssPaint(obj.boxBg, "transparent");
           const unitBorderPaint = sanitizeCssPaint(obj.boxBorder, "transparent");
 
-          const gridTemplateColumns =
-            distribution === "vertical"
-              ? "1fr"
-              : distribution === "grid"
-                ? `repeat(${Math.min(2, safeUnits.length)}, minmax(0, 1fr))`
-                : distribution === "editorial" && safeUnits.length > 2
-                  ? "minmax(0,1.35fr) repeat(2, minmax(0,1fr))"
-                  : `repeat(${safeUnits.length}, minmax(0, 1fr))`;
-
           const containerStyle = `
 ${baseStyle}
-${wObj ? `width: ${pxX(obj, wObj)};` : ""}
-${hObj ? `height: ${pxY(obj, hObj)};` : ""}
-display: grid;
-grid-template-columns: 1fr;
-align-items: stretch;
+width: ${pxX(obj, layout.containerW)};
+height: ${pxY(obj, layout.containerH)};
+display: block;
 font-family: ${obj.fontFamily || "Inter, system-ui, sans-serif"};
 color: ${numberPaint};
 `.trim();
 
           const gridStyle = `
-position: relative;
+position: absolute;
+inset: 0;
 z-index: 2;
-display: grid;
-grid-template-columns: ${gridTemplateColumns};
-align-items: stretch;
-gap: calc(${sChip} * ${Number.isFinite(obj.gap) ? Number(obj.gap) : 8}px);
-padding: calc(${sChip} * ${Number.isFinite(obj.framePadding) ? Number(obj.framePadding) : 10}px);
-`.trim();
-
-          const unitStyle = `
-position: relative;
-display: flex;
-align-items: center;
-justify-content: center;
-min-height: calc(${sChip} * 68px);
-overflow: hidden;
-border-radius: calc(${sChip} * ${Number.isFinite(obj.boxRadius) ? Number(obj.boxRadius) : 10}px);
-background: ${unitBgPaint};
-border: calc(${sChip} * 1px) solid ${unitBorderPaint};
+display: block;
+pointer-events: none;
 `.trim();
 
           const valueStyle = `
 font-weight: 700;
-font-size: calc(${sChip} * ${Number.isFinite(obj.fontSize) ? Number(obj.fontSize) : 28}px);
+font-size: ${sChipPx(layout.valueSize)};
 line-height: ${Number.isFinite(obj.lineHeight) ? Number(obj.lineHeight) : 1.05};
-letter-spacing: calc(${sChip} * ${Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
+letter-spacing: ${sChipPx(Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0)};
 ${buildTextPaintStyleCss(numberPaint, "#111")}
 `.trim();
 
           const labelStyle = `
-font-size: calc(${sChip} * ${Number.isFinite(obj.labelSize) ? Number(obj.labelSize) : 12}px);
+font-size: ${sChipPx(layout.labelSize)};
 line-height: 1;
-letter-spacing: calc(${sChip} * ${Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0}px);
+letter-spacing: ${sChipPx(Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0)};
 ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
 `.trim();
 
-          const frameUrl = typeof obj.frameSvgUrl === "string" ? obj.frameSvgUrl : "";
+          const frameUrl = layout.frameSvgUrl;
           const frameColor = sanitizeCssPaint(obj.frameColor, "#773dbe");
 
           const singleFrameHtml =
-            layoutType === "singleframe" && frameUrl
+            layout.useSingleFrameLayout && layout.hasFrameConfigured
               ? `<div class="cdv2-frame cdv2-frame--single" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
               : "";
 
-          const unitsHtml = safeUnits
-            .map((unit: string, index: number) => {
+          const unitsHtml = layout.unitLayouts
+            .map((item, index: number) => {
+              const unit = item.unit;
+              const cornerRadius = Math.min(
+                Number.isFinite(obj.boxRadius) ? Number(obj.boxRadius) : 8,
+                item.width / 2,
+                item.height / 2
+              );
+              const unitStyle = `
+position: absolute;
+left: ${sChipPx(item.x)};
+top: ${sChipPx(item.y)};
+width: ${sChipPx(item.width)};
+height: ${sChipPx(item.height)};
+display: flex;
+align-items: center;
+justify-content: center;
+overflow: hidden;
+border-radius: ${sChipPx(cornerRadius)};
+background: ${unitBgPaint};
+border: ${sChipPx(1)} solid ${unitBorderPaint};
+box-sizing: border-box;
+pointer-events: none;
+`.trim();
               const unitFrameHtml =
-                layoutType === "multiunit" && frameUrl
+                layout.useMultiUnitFrame && layout.hasFrameConfigured
                   ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
                   : "";
 
               return `
 <div class="cdv2-unit${distribution === "editorial" && index === 0 ? " cdv2-unit--hero" : ""}" data-unit="${escapeAttr(unit)}" style="${unitStyle}">
   ${unitFrameHtml}
-  <div class="cdv2-content" style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(${sChip} * 3px);padding:calc(${sChip} * 4px);">
+  <div class="cdv2-content" style="position:relative;z-index:2;display:flex;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:${sChipPx(3)};padding:${sChipPx(4)};box-sizing:border-box;">
     <span class="cdv2-val cd-val" style="${valueStyle}">00</span>
-    ${showLabels ? `<span class="cdv2-lab" style="${labelStyle}">${escapeAttr(transformLabel(unitLabels[unit] || unit))}</span>` : ""}
+    ${showLabels ? `<span class="cdv2-lab" style="${labelStyle}">${escapeAttr(transformCountdownLabel(COUNTDOWN_UNIT_LABELS[unit as keyof typeof COUNTDOWN_UNIT_LABELS] || unit, labelTransform))}</span>` : ""}
   </div>
 </div>`.trim();
             })
+            .join("");
+
+          const separatorPaint = sanitizeCssPaint(obj.separatorColor ?? obj.labelColor, "#6b7280");
+          const separatorStyle = `
+font-weight: 700;
+font-size: ${sChipPx(layout.separatorFontSize)};
+line-height: 1;
+text-align: center;
+white-space: pre;
+${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
+`.trim();
+
+          const separatorsHtml = layout.separatorLayouts
+            .map(
+              (item) => `
+<span class="cdv2-separator" aria-hidden="true" style="position:absolute;left:${sChipPx(item.x)};top:${sChipPx(item.y)};width:${sChipPx(item.width)};z-index:3;pointer-events:none;${separatorStyle}">${escapeAttr(layout.separatorText)}</span>
+`.trim()
+            )
             .join("");
 
           const htmlCountdownV2 = `
@@ -651,6 +888,7 @@ ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
   ${singleFrameHtml}
   <div class="cdv2-grid" style="${gridStyle}">
     ${unitsHtml}
+    ${separatorsHtml}
   </div>
 </div>
 `.trim();

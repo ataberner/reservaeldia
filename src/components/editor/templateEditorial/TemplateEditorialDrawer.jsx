@@ -155,8 +155,6 @@ export default function TemplateEditorialDrawer({
     [selectedState, selectedTags]
   );
 
-  if (!open || !templateId) return null;
-
   const selectedStateMeta = getTemplateEditorialStateMeta(selectedState);
   const canPersist = !readOnly && !saving;
   const canCreateTag =
@@ -305,6 +303,10 @@ export default function TemplateEditorialDrawer({
     selectedTags,
     templateId,
   ]);
+
+  // This drawer often mounts closed and opens later in the same tree.
+  // Keep the visibility guard after every hook to preserve hook order.
+  if (!open || !templateId) return null;
 
   let saveStatusLabel = "Los cambios se guardan automaticamente.";
   let saveStatusClass = "text-slate-500";

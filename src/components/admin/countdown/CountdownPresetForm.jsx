@@ -420,10 +420,12 @@ export default function CountdownPresetForm({
     }
 
     const svgTextForPayload = formState.svgAsset?.svgText || "";
-    if (!svgTextForPayload && !selectedPreset?.svgRef?.downloadUrl && !isLegacyPreset) {
-      setErrorMessage("Debes subir un SVG valido antes de guardar.");
-      return;
-    }
+    const removeSvg =
+      !formState.svgAsset &&
+      Boolean(
+        selectedPreset?.draft?.svgRef?.storagePath ||
+          selectedPreset?.svgRef?.storagePath
+      );
 
     try {
       const thumbnailDataUrl = await generateCountdownThumbnailDataUrl({
@@ -441,6 +443,7 @@ export default function CountdownPresetForm({
         expectedDraftVersion: selectedPreset?.draftVersion ?? null,
         config: { ...validation.normalized.config, svgRef: { colorMode: svgColorMode } },
         assets: {
+          removeSvg,
           svgFileName: formState.svgAsset?.isDirty ? formState.svgAsset?.fileName : null,
           svgBase64: formState.svgAsset?.isDirty ? formState.svgAsset?.svgBase64 : null,
           thumbnailPngBase64: dataUrlToBase64(thumbnailDataUrl),

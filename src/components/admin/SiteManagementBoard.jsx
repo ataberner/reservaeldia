@@ -1,12 +1,14 @@
 import { useState } from "react";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import DiscountCodesManager from "@/components/admin/DiscountCodesManager";
+import BusinessAnalyticsBoard from "@/components/admin/BusinessAnalyticsBoard";
 
 export default function SiteManagementBoard({
   isSuperAdmin,
   loadingAdminAccess,
 }) {
-  const [openPanel, setOpenPanel] = useState(null);
+  const [openPanel, setOpenPanel] = useState("analytics");
+  const isAnalyticsOpen = openPanel === "analytics";
   const isAdminsOpen = openPanel === "admins";
   const isDiscountsOpen = openPanel === "discounts";
   const canAccessSiteManagement = isSuperAdmin === true;
@@ -38,6 +40,57 @@ export default function SiteManagementBoard({
 
       {!loadingAdminAccess && canAccessSiteManagement && (
         <div className="space-y-4">
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isAnalyticsOpen
+                ? "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("analytics")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isAnalyticsOpen
+                  ? "bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div>
+                <h2
+                  className={`text-lg font-semibold ${
+                    isAnalyticsOpen ? "text-emerald-900" : "text-gray-800"
+                  }`}
+                >
+                  Analytics del negocio
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isAnalyticsOpen ? "text-emerald-700" : "text-gray-600"
+                  }`}
+                >
+                  Activation Rate, TTFV e invitaciones publicadas con cohortes y ranking por plantilla.
+                </p>
+                {isAnalyticsOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    Seccion abierta
+                  </span>
+                )}
+              </div>
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
+                  isAnalyticsOpen
+                    ? "bg-emerald-600 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {isAnalyticsOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
+
+          {isAnalyticsOpen && <BusinessAnalyticsBoard />}
+
           <div
             className={`rounded-xl p-[1px] transition-all ${
               isDiscountsOpen

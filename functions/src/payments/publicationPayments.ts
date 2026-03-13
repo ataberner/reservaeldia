@@ -39,6 +39,7 @@ import {
   buildDraftContentMeta,
   normalizeDraftRenderState,
 } from "../drafts/sourceOfTruth";
+import { recordBusinessAnalyticsEvent } from "../analytics/service";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -2283,6 +2284,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     }
   }
 
+  const isFirstPublication = !existingPublicSnap.exists;
   const now = new Date();
   const nowTimestamp = admin.firestore.Timestamp.fromDate(now);
   const firstPublishedAt =
@@ -2441,6 +2443,35 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     },
     { merge: true }
   );
+
+  if (isFirstPublication) {
+    try {
+      await recordBusinessAnalyticsEvent({
+        eventId: `invitacion_publicada:${draftSlug}`,
+        eventName: "invitacion_publicada",
+        timestamp: firstPublishedAt,
+        userId: uid,
+        invitacionId: draftSlug,
+        templateId: getString(draftData.plantillaId) || "__unknown__",
+        metadata: {
+          publicSlug: normalizedPublicSlug,
+          firstPublishedAt: firstPublishedAt.toISOString(),
+          templateName: getString(draftData.nombre) || normalizedPublicSlug,
+          operation,
+        },
+      });
+    } catch (analyticsError) {
+      logger.error("No se pudo registrar analytics de invitacion publicada", {
+        uid,
+        draftSlug,
+        publicSlug: normalizedPublicSlug,
+        error:
+          analyticsError instanceof Error
+            ? analyticsError.message
+            : String(analyticsError || ""),
+      });
+    }
+  }
 
   return {
     publicSlug: normalizedPublicSlug,

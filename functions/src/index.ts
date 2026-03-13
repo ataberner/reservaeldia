@@ -105,6 +105,13 @@ import {
   adminUpsertTemplateEditorialV1 as adminUpsertTemplateEditorialV1Handler,
   adminUpsertTemplateTagV1 as adminUpsertTemplateTagV1Handler,
 } from "./templates/editorialService";
+import {
+  adminRebuildBusinessAnalyticsV1 as adminRebuildBusinessAnalyticsV1Handler,
+  getBusinessAnalyticsOverviewV1 as getBusinessAnalyticsOverviewV1Handler,
+  processPendingAnalyticsEventsV1 as processPendingAnalyticsEventsV1Handler,
+  recordBusinessAnalyticsEvent,
+  runBusinessAnalyticsRebuildJobsV1 as runBusinessAnalyticsRebuildJobsV1Handler,
+} from "./analytics/service";
 
 import * as logger from "firebase-functions/logger";
 
@@ -153,6 +160,10 @@ export const adminHardDeleteTemplateFromTrashV1 = adminHardDeleteTemplateFromTra
 export const adminOpenTemplateWorkspaceV1 = adminOpenTemplateWorkspaceV1Handler;
 export const adminCommitTemplateWorkspaceV1 = adminCommitTemplateWorkspaceV1Handler;
 export const adminCreateTemplateFromDraftV1 = adminCreateTemplateFromDraftV1Handler;
+export const getBusinessAnalyticsOverviewV1 = getBusinessAnalyticsOverviewV1Handler;
+export const adminRebuildBusinessAnalyticsV1 = adminRebuildBusinessAnalyticsV1Handler;
+export const processPendingAnalyticsEventsV1 = processPendingAnalyticsEventsV1Handler;
+export const runBusinessAnalyticsRebuildJobsV1 = runBusinessAnalyticsRebuildJobsV1Handler;
 
 setGlobalOptions({
   region: "us-central1",
@@ -1823,6 +1834,31 @@ export const copiarPlantilla = onCall(
     });
 
 
+    try {
+      await recordBusinessAnalyticsEvent({
+        eventId: `invitacion_creada:${slug}`,
+        eventName: "invitacion_creada",
+        timestamp: new Date(),
+        userId: uid,
+        invitacionId: slug,
+        templateId: plantillaId,
+        metadata: {
+          templateName:
+            typeof datosPlantilla.nombre === "string" ? datosPlantilla.nombre : "",
+        },
+      });
+    } catch (analyticsError) {
+      logger.error("No se pudo registrar analytics de borrador creado", {
+        uid,
+        slug,
+        plantillaId,
+        error:
+          analyticsError instanceof Error
+            ? analyticsError.message
+            : String(analyticsError || ""),
+      });
+    }
+
     logger.info(`Borrador creado desde plantilla '${plantillaId}' con slug '${slug}'`);
     return { slug };
   }
@@ -2268,6 +2304,36 @@ export const upsertUserProfile = onCall(
 
     const updatedSnap = await profileRef.get();
     const updatedData = updatedSnap.data() || {};
+
+    if (!existingSnap.exists) {
+      const registrationTimestampIso =
+        toISODateTime(updatedData.createdAt) ||
+        toISODateTime(updatedData.updatedAt);
+      const registrationTimestamp = registrationTimestampIso
+        ? new Date(registrationTimestampIso)
+        : new Date();
+
+      try {
+        await recordBusinessAnalyticsEvent({
+          eventId: `registro_usuario:${uid}`,
+          eventName: "registro_usuario",
+          timestamp: registrationTimestamp,
+          userId: uid,
+          metadata: {
+            source,
+            emailDomain: normalizeOptionalText(email?.split("@")?.[1] || ""),
+          },
+        });
+      } catch (analyticsError) {
+        logger.error("No se pudo registrar analytics de usuario", {
+          uid,
+          error:
+            analyticsError instanceof Error
+              ? analyticsError.message
+              : String(analyticsError || ""),
+        });
+      }
+    }
 
     return {
       success: true,

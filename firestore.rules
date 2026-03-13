@@ -52,6 +52,42 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /analyticsEvents/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsUsers/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsInvitations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsDaily/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsWeekly/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsMonthly/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsTemplates/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsCohorts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsJobs/{document=**} {
+      allow read, write: if false;
+    }
+
     match /iconos/{iconId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();

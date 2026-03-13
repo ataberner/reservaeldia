@@ -33,6 +33,7 @@ import {
   getTemplateById,
   listTemplates,
 } from "@/domain/templates/service";
+import { getTemplateEditorDocument } from "@/domain/templates/adminService";
 import { normalizeTemplateMetadata } from "@/domain/templates/metadata";
 import {
   generateTemplatePreviewHtml,
@@ -355,6 +356,44 @@ async function resolveOwnedDraftSlugForEditor({ slug, uid }) {
 function hasModernDraftRenderState(rawDraft) {
   const renderState = normalizeDraftRenderState(rawDraft);
   return renderState.secciones.length > 0 || renderState.objetos.length > 0;
+}
+
+function normalizeTemplateWorkspaceFromDraft(rawDraft) {
+  const draftData = rawDraft && typeof rawDraft === "object" ? rawDraft : {};
+  const workspace =
+    draftData?.templateWorkspace && typeof draftData.templateWorkspace === "object"
+      ? draftData.templateWorkspace
+      : {};
+  const permissions =
+    workspace?.permissions && typeof workspace.permissions === "object"
+      ? workspace.permissions
+      : {};
+  const templateId =
+    typeof workspace?.templateId === "string" ? workspace.templateId.trim() : "";
+  const mode =
+    typeof workspace?.mode === "string" ? workspace.mode.trim() : "";
+  const draftName =
+    typeof draftData?.nombre === "string"
+      ? draftData.nombre.trim()
+      : typeof workspace?.templateName === "string"
+        ? workspace.templateName.trim()
+        : "";
+
+  return {
+    enabled: Boolean(templateId && mode === "template_edit"),
+    templateId,
+    readOnly: workspace?.readOnly === true || permissions?.readOnly === true,
+    draftName,
+    templateName:
+      typeof workspace?.templateName === "string"
+        ? workspace.templateName.trim()
+        : "",
+    estadoEditorial:
+      typeof workspace?.estadoEditorial === "string"
+        ? workspace.estadoEditorial.trim()
+        : "",
+    permissions,
+  };
 }
 
 async function resolveCompatibleDraftForDashboardEditor({ slug, uid }) {
@@ -702,6 +741,21 @@ export default function Dashboard() {
     draftData: null,
     draftName: "",
   });
+  const [templateWorkspaceView, setTemplateWorkspaceView] = useState({
+    enabled: false,
+    status: "idle",
+    templateId: "",
+    readOnly: false,
+    draftName: "",
+    templateName: "",
+    estadoEditorial: "",
+    permissions: {},
+    initialData: null,
+  });
+  const [editorSession, setEditorSession] = useState({
+    kind: null,
+    id: "",
+  });
   const resetAdminDraftView = useCallback(() => {
     setAdminDraftView({
       enabled: false,
@@ -712,8 +766,31 @@ export default function Dashboard() {
       draftName: "",
     });
   }, []);
+  const resetTemplateWorkspaceView = useCallback(() => {
+    setTemplateWorkspaceView({
+      enabled: false,
+      status: "idle",
+      templateId: "",
+      readOnly: false,
+      draftName: "",
+      templateName: "",
+      estadoEditorial: "",
+      permissions: {},
+      initialData: null,
+    });
+  }, []);
+  const resetEditorSession = useCallback(() => {
+    setEditorSession({
+      kind: null,
+      id: "",
+    });
+  }, []);
   const isAdminReadOnlyView =
     adminDraftView.enabled === true && adminDraftView.status === "ready";
+  const isTemplateWorkspaceReadOnly =
+    templateWorkspaceView.enabled === true && templateWorkspaceView.readOnly === true;
+  const isEditorReadOnly = isAdminReadOnlyView || isTemplateWorkspaceReadOnly;
+  const isTemplateEditorSession = editorSession.kind === "template";
   const selectedTemplateId =
     typeof selectedTemplate?.id === "string" ? selectedTemplate.id : "";
   const selectedTemplateMetadata = useMemo(
@@ -762,6 +839,8 @@ export default function Dashboard() {
 
     const rawSlugParam = getFirstQueryValue(router.query?.slug);
     const slugURL = sanitizeDraftSlug(rawSlugParam);
+    const rawTemplateIdParam = getFirstQueryValue(router.query?.templateId);
+    const templateIdURL = sanitizeDraftSlug(rawTemplateIdParam);
     const adminViewEnabled = isTruthyQueryFlag(router.query?.adminView);
     const ownerUidFromQuery = sanitizeUidValue(
       getFirstQueryValue(router.query?.ownerUid)
@@ -774,6 +853,10 @@ export default function Dashboard() {
       Boolean(rawSlugParam) &&
       Boolean(slugURL) &&
       (rawSlugParam !== slugURL || recoveredQueryKeys.length > 0);
+    const shouldNormalizeTemplateUrl =
+      Boolean(rawTemplateIdParam) &&
+      Boolean(templateIdURL) &&
+      rawTemplateIdParam !== templateIdURL;
 
     const syncEditorSlugFromQuery = async () => {
       const baseNextQuery = { ...router.query };
@@ -782,6 +865,7 @@ export default function Dashboard() {
       });
 
       if (adminViewEnabled) {
+        resetTemplateWorkspaceView();
         if (!slugURL || !ownerUidFromQuery) {
           const nextQuery = { ...baseNextQuery };
           delete nextQuery.slug;
@@ -789,6 +873,8 @@ export default function Dashboard() {
           delete nextQuery.ownerUid;
           void replaceDashboardQuerySafely(nextQuery, { shallow: true });
           resetAdminDraftView();
+          resetTemplateWorkspaceView();
+          resetEditorSession();
           setSlugInvitacion(null);
           setModoEditor(null);
           setVista("home");
@@ -806,6 +892,8 @@ export default function Dashboard() {
             ownerUid: ownerUidFromQuery,
           });
           resetAdminDraftView();
+          resetTemplateWorkspaceView();
+          resetEditorSession();
           setSlugInvitacion(null);
           setModoEditor(null);
           setVista("home");
@@ -870,6 +958,8 @@ export default function Dashboard() {
             }
 
             resetAdminDraftView();
+            resetTemplateWorkspaceView();
+            resetEditorSession();
             setSlugInvitacion(null);
             setModoEditor(null);
             setVista("home");
@@ -897,6 +987,11 @@ export default function Dashboard() {
           }
 
           setLegacyDraftNotice(null);
+          resetTemplateWorkspaceView();
+          setEditorSession({
+            kind: "draft",
+            id: normalizedSlug,
+          });
           setAdminDraftView({
             enabled: true,
             status: "ready",
@@ -926,6 +1021,108 @@ export default function Dashboard() {
           void replaceDashboardQuerySafely(nextQuery, { shallow: true });
 
           resetAdminDraftView();
+          resetTemplateWorkspaceView();
+          resetEditorSession();
+          setSlugInvitacion(null);
+          setModoEditor(null);
+          setVista("home");
+          return;
+        }
+      }
+
+      if (templateIdURL) {
+        resetAdminDraftView();
+
+        if (loadingAdminAccess) {
+          return;
+        }
+
+        if (!canManageSite) {
+          const nextQuery = { ...baseNextQuery };
+          delete nextQuery.templateId;
+          void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+          resetTemplateWorkspaceView();
+          resetEditorSession();
+          setSlugInvitacion(null);
+          setModoEditor(null);
+          setVista("home");
+          return;
+        }
+
+        setTemplateWorkspaceView({
+          enabled: true,
+          status: "loading",
+          templateId: templateIdURL,
+          readOnly: false,
+          draftName: "",
+          templateName: "",
+          estadoEditorial: "",
+          permissions: {},
+          initialData: null,
+        });
+
+        try {
+          const result = await getTemplateEditorDocument({
+            templateId: templateIdURL,
+          });
+          if (cancelled) return;
+
+          const editorDocument =
+            result?.editorDocument && typeof result.editorDocument === "object"
+              ? result.editorDocument
+              : null;
+          if (!editorDocument) {
+            throw new Error("No se pudo cargar la plantilla interna.");
+          }
+
+          const normalizedTemplateId =
+            sanitizeDraftSlug(
+              typeof result?.item?.id === "string"
+                ? result.item.id
+                : typeof editorDocument?.plantillaId === "string"
+                  ? editorDocument.plantillaId
+                  : templateIdURL
+            ) || templateIdURL;
+
+          if (
+            shouldNormalizeTemplateUrl ||
+            normalizedTemplateId !== templateIdURL
+          ) {
+            const nextQuery = {
+              ...baseNextQuery,
+              templateId: normalizedTemplateId,
+            };
+            delete nextQuery.slug;
+            void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+          }
+
+          const nextView = normalizeTemplateWorkspaceFromDraft(editorDocument);
+          setLegacyDraftNotice(null);
+          setTemplateWorkspaceView({
+            ...nextView,
+            enabled: true,
+            status: "ready",
+            templateId: normalizedTemplateId,
+            initialData: editorDocument,
+          });
+          setEditorSession({
+            kind: "template",
+            id: normalizedTemplateId,
+          });
+          setSlugInvitacion((prev) =>
+            prev === normalizedTemplateId ? prev : normalizedTemplateId
+          );
+          setModoEditor((prev) => (prev === "konva" ? prev : "konva"));
+          setVista((prev) => (prev === "editor" ? prev : "editor"));
+          return;
+        } catch (error) {
+          if (cancelled) return;
+          console.error("Error cargando plantilla interna:", error);
+          const nextQuery = { ...baseNextQuery };
+          delete nextQuery.templateId;
+          void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+          resetTemplateWorkspaceView();
+          resetEditorSession();
           setSlugInvitacion(null);
           setModoEditor(null);
           setVista("home");
@@ -934,6 +1131,8 @@ export default function Dashboard() {
       }
 
       resetAdminDraftView();
+      resetTemplateWorkspaceView();
+      resetEditorSession();
 
       let normalizedSlug = slugURL;
       let compatibilityStatus = slugURL ? "ok" : "idle";
@@ -989,12 +1188,25 @@ export default function Dashboard() {
 
       if (normalizedSlug) {
         setLegacyDraftNotice(null);
+        setTemplateWorkspaceView(
+          {
+            ...normalizeTemplateWorkspaceFromDraft(compatibleDraftData),
+            status: "ready",
+            initialData: null,
+          }
+        );
+        setEditorSession({
+          kind: "draft",
+          id: normalizedSlug,
+        });
         setSlugInvitacion((prev) => (prev === normalizedSlug ? prev : normalizedSlug));
         setModoEditor((prev) => (prev === "konva" ? prev : "konva"));
         setVista((prev) => (prev === "editor" ? prev : "editor"));
         return;
       }
 
+      resetTemplateWorkspaceView();
+      resetEditorSession();
       setSlugInvitacion(null);
       setModoEditor(null);
       setVista((prev) => (prev === "editor" ? "home" : prev));
@@ -1007,15 +1219,19 @@ export default function Dashboard() {
     };
   }, [
     adminDraftSnapshotCallable,
+    canManageSite,
     checkingAuth,
     isSuperAdmin,
     loadingAdminAccess,
     replaceDashboardQuerySafely,
     resetAdminDraftView,
+    resetEditorSession,
+    resetTemplateWorkspaceView,
     router.isReady,
     router.query?.adminView,
     router.query?.ownerUid,
     router.query?.slug,
+    router.query?.templateId,
     usuario?.uid,
   ]);
 
@@ -1566,6 +1782,8 @@ export default function Dashboard() {
           });
         }
 
+        resetTemplateWorkspaceView();
+        resetEditorSession();
         setSlugInvitacion(null);
         setModoEditor(null);
         setVista("home");
@@ -1573,6 +1791,11 @@ export default function Dashboard() {
       }
 
       setLegacyDraftNotice(null);
+      resetTemplateWorkspaceView();
+      setEditorSession({
+        kind: "draft",
+        id: compatibleDraft.slug,
+      });
       setSlugInvitacion(compatibleDraft.slug);
       setModoEditor("konva");
       setVista("editor");
@@ -1625,7 +1848,13 @@ export default function Dashboard() {
       }
       void replaceDashboardQuerySafely(nextQuery, { shallow: true });
     },
-    [replaceDashboardQuerySafely, router, usuario?.uid]
+    [
+      replaceDashboardQuerySafely,
+      resetEditorSession,
+      resetTemplateWorkspaceView,
+      router,
+      usuario?.uid,
+    ]
   );
 
   const resetTemplateFormState = useCallback((template) => {
@@ -1882,25 +2111,50 @@ export default function Dashboard() {
         return { ok: true };
       }
 
-      const result = await requestEditorDraftFlush({
-        slug: safeSlug,
-        reason,
-        timeoutMs: 6000,
-      });
+      let result;
+
+      if (
+        editorSession.kind === "template" &&
+        typeof window !== "undefined" &&
+        typeof window.canvasEditor?.flushPersistenceNow === "function"
+      ) {
+        try {
+          result = await window.canvasEditor.flushPersistenceNow({
+            reason,
+          });
+        } catch (flushError) {
+          result = {
+            ok: false,
+            reason: "direct-flush-failed",
+            error: getErrorMessage(
+              flushError,
+              "No se pudo ejecutar el guardado inmediato de la plantilla."
+            ),
+          };
+        }
+      } else {
+        result = await requestEditorDraftFlush({
+          slug: safeSlug,
+          reason,
+          timeoutMs: 6000,
+        });
+      }
 
       if (result.ok) return result;
 
       const detail = String(result?.error || result?.reason || "").trim();
+      const sourceLabel =
+        editorSession.kind === "template" ? "la plantilla" : "el borrador";
       const message = detail
-        ? `No se pudo confirmar el guardado reciente del borrador (${detail}). Intenta nuevamente.`
-        : "No se pudo confirmar el guardado reciente del borrador. Intenta nuevamente.";
+        ? `No se pudo confirmar el guardado reciente de ${sourceLabel} (${detail}). Intenta nuevamente.`
+        : `No se pudo confirmar el guardado reciente de ${sourceLabel}. Intenta nuevamente.`;
 
       return {
         ok: false,
         error: message,
       };
     },
-    [modoEditor, slugInvitacion]
+    [editorSession.kind, modoEditor, slugInvitacion]
   );
 
   const generarVistaPrevia = async () => {
@@ -1922,15 +2176,31 @@ export default function Dashboard() {
       setMostrarVistaPrevia(true); // Abrir modal primero
 
       // Generar HTML para vista previa
-      const ref = doc(db, "borradores", slugInvitacion);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        alert("No se encontro el borrador");
-        setMostrarVistaPrevia(false);
-        return;
+      let data = null;
+      if (editorSession.kind === "template") {
+        const result = await getTemplateEditorDocument({
+          templateId: slugInvitacion,
+        });
+        data =
+          result?.editorDocument && typeof result.editorDocument === "object"
+            ? result.editorDocument
+            : null;
+        if (!data) {
+          alert("No se encontro la plantilla.");
+          setMostrarVistaPrevia(false);
+          return;
+        }
+      } else {
+        const ref = doc(db, "borradores", slugInvitacion);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          alert("No se encontro el borrador");
+          setMostrarVistaPrevia(false);
+          return;
+        }
+        data = snap.data();
       }
 
-      const data = snap.data();
       const renderState = normalizeDraftRenderState(data);
       const objetosBase = renderState.objetos;
       const secciones = renderState.secciones;
@@ -1958,10 +2228,13 @@ export default function Dashboard() {
           : null;
       let urlPublicaDetectada = "";
       let slugPublicoDetectado = "";
-      const slugPublicoBorrador = String(data?.slugPublico || "").trim();
+      const slugPublicoBorrador =
+        editorSession.kind === "template"
+          ? ""
+          : String(data?.slugPublico || "").trim();
       let publicacionNoVigenteDetectada = false;
 
-      if (slugPublicoBorrador) {
+      if (editorSession.kind !== "template" && slugPublicoBorrador) {
         try {
           const snapPublicoPorSlug = await getDoc(doc(db, "publicadas", slugPublicoBorrador));
           if (snapPublicoPorSlug.exists()) {
@@ -1978,7 +2251,7 @@ export default function Dashboard() {
         } catch (_e) {}
       }
 
-      if (!urlPublicaDetectada && slugInvitacion) {
+      if (editorSession.kind !== "template" && !urlPublicaDetectada && slugInvitacion) {
         try {
           const snapPublicoDirecto = await getDoc(doc(db, "publicadas", slugInvitacion));
           if (snapPublicoDirecto.exists()) {
@@ -1995,7 +2268,7 @@ export default function Dashboard() {
         } catch (_e) {}
       }
 
-      if (!urlPublicaDetectada && slugInvitacion) {
+      if (editorSession.kind !== "template" && !urlPublicaDetectada && slugInvitacion) {
         try {
           const qPublicadaPorOriginal = query(
             collection(db, "publicadas"),
@@ -2119,6 +2392,7 @@ export default function Dashboard() {
   };
 
   const publicarDesdeVistaPrevia = async () => {
+    if (editorSession.kind === "template") return;
     if (!slugInvitacion) return;
 
     const flushResult = await ensureDraftFlushBeforeCriticalAction("checkout-before-open");
@@ -2202,7 +2476,25 @@ export default function Dashboard() {
     fetchPlantillas();
   }, [tipoSeleccionado]);
 
-  const isHomeView = !slugInvitacion && vista === "home";
+  const requestedRouteSlug = router.isReady
+    ? sanitizeDraftSlug(getFirstQueryValue(router.query?.slug))
+    : null;
+  const requestedRouteTemplateId = router.isReady
+    ? sanitizeDraftSlug(getFirstQueryValue(router.query?.templateId))
+    : null;
+  const requestedAdminView = router.isReady
+    ? isTruthyQueryFlag(router.query?.adminView)
+    : false;
+  const isResolvingEditorRoute =
+    router.isReady &&
+    !slugInvitacion &&
+    Boolean(requestedRouteSlug || requestedRouteTemplateId);
+  const pendingEditorRouteLabel = requestedRouteTemplateId
+    ? "Abriendo plantilla interna..."
+    : requestedAdminView
+      ? "Cargando vista administrativa del borrador..."
+      : "Abriendo editor...";
+  const isHomeView = !slugInvitacion && vista === "home" && !isResolvingEditorRoute;
 
   useEffect(() => {
     if (!isHomeView) return;
@@ -2586,9 +2878,9 @@ export default function Dashboard() {
   return (
     <>
       <DashboardLayout
-      mostrarMiniToolbar={!!slugInvitacion && !isAdminReadOnlyView}
+      mostrarMiniToolbar={!!slugInvitacion && !isEditorReadOnly}
       seccionActivaId={seccionActivaId}
-      modoSelector={!slugInvitacion && vista === "home"}
+      modoSelector={!slugInvitacion && vista === "home" && !isResolvingEditorRoute}
       slugInvitacion={slugInvitacion}
       setSlugInvitacion={setSlugInvitacion}
       setModoEditor={setModoEditor}
@@ -2604,14 +2896,18 @@ export default function Dashboard() {
         vista === "publicadas" ||
         vista === "papelera" ||
         vista === "gestion" ||
-        isAdminReadOnlyView
+        isEditorReadOnly ||
+        isResolvingEditorRoute
       }
       canManageSite={canManageSite}
       isSuperAdmin={isSuperAdmin}
       loadingAdminAccess={loadingAdminAccess}
       lockMainScroll={shouldRenderHomeStartupLoader || isTemplateModalOpen}
-      editorReadOnly={isAdminReadOnlyView}
-      draftDisplayName={adminDraftView.draftName || ""}
+      editorReadOnly={isEditorReadOnly}
+      draftDisplayName={adminDraftView.draftName || templateWorkspaceView.draftName || ""}
+      editorSession={editorSession}
+      templateSessionMeta={templateWorkspaceView}
+      ensureEditorFlushBeforeAction={ensureDraftFlushBeforeCriticalAction}
     >
       {editorIssueReport && (
         <EditorIssueBanner
@@ -2648,10 +2944,27 @@ export default function Dashboard() {
             Cargando vista administrativa del borrador...
           </div>
         )}
+
+      {isResolvingEditorRoute && (
+        <div className="mx-4 mt-4 flex min-h-[280px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.06)] sm:mx-6 lg:mx-8">
+          <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+            <div className="relative flex h-11 w-11 items-center justify-center">
+              <span className="absolute inset-0 animate-ping rounded-full border border-[#6f3bc0]/25" />
+              <span className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300/80 border-t-[#6f3bc0]" />
+            </div>
+            <p className="text-sm font-semibold text-slate-800">
+              {pendingEditorRouteLabel}
+            </p>
+            <p className="max-w-md text-sm text-slate-500">
+              Estamos preparando el canvas para evitar el salto visual del dashboard antes de entrar al editor.
+            </p>
+          </div>
+        </div>
+      )}
    
 
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
-      {!slugInvitacion && vista === "home" && (
+      {isHomeView && (
         <div className="relative w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
           {shouldRenderHomeStartupLoader && (
             <div
@@ -2808,6 +3121,7 @@ export default function Dashboard() {
               >
                 <CanvasEditor
                   slug={slugInvitacion}
+                  editorSession={editorSession}
                   zoom={zoom}
                   onHistorialChange={setHistorialExternos}
                   onFuturosChange={setFuturosExternos}
@@ -2815,8 +3129,13 @@ export default function Dashboard() {
                   secciones={[]}
                   onStartupStatusChange={handleEditorStartupStatusChange}
                   canManageSite={canManageSite && !isAdminReadOnlyView}
-                  readOnly={isAdminReadOnlyView}
+                  readOnly={isEditorReadOnly}
                   initialDraftData={isAdminReadOnlyView ? adminDraftView.draftData : null}
+                  initialEditorData={
+                    isAdminReadOnlyView
+                      ? adminDraftView.draftData
+                      : templateWorkspaceView.initialData || null
+                  }
                 />
               </div>
             )}
@@ -2877,18 +3196,19 @@ export default function Dashboard() {
         htmlContent={htmlVistaPrevia}
         publicUrl={urlPublicaVistaPrevia}
         onPublish={publicarDesdeVistaPrevia}
+        showPublishActions={!isTemplateEditorSession}
         publishing={false}
         publishError={publicacionVistaPreviaError}
         publishSuccess={publicacionVistaPreviaOk}
         publishedUrl={urlPublicadaReciente}
-        checkoutVisible={mostrarCheckoutPublicacion}
+        checkoutVisible={!isTemplateEditorSession && mostrarCheckoutPublicacion}
       />
 
 
       </DashboardLayout>
 
       <PublicationCheckoutModal
-        visible={mostrarCheckoutPublicacion}
+        visible={!isTemplateEditorSession && mostrarCheckoutPublicacion}
         onClose={() => setMostrarCheckoutPublicacion(false)}
         draftSlug={slugInvitacion}
         operation={operacionCheckoutPublicacion}

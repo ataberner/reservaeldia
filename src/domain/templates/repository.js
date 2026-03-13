@@ -17,6 +17,13 @@ function compareByName(left, right) {
   return 0;
 }
 
+function isTemplatePubliclyVisible(template) {
+  return (
+    template?.estado !== "archived" &&
+    template?.estadoEditorial === "publicada"
+  );
+}
+
 export async function listTemplates({ tipo } = {}) {
   const normalizedType = normalizeInvitationType(tipo);
   const templatesQuery = query(
@@ -26,16 +33,16 @@ export async function listTemplates({ tipo } = {}) {
   const snapshot = await getDocs(templatesQuery);
 
   const items = snapshot.docs
-    .map((docSnapshot) =>
-      normalizeTemplateCatalogDocument(
+    .map((docSnapshot) => {
+      return normalizeTemplateCatalogDocument(
         {
           id: docSnapshot.id,
           ...docSnapshot.data(),
         },
         docSnapshot.id
-      )
-    )
-    .filter((item) => item.estado !== "archived")
+      );
+    })
+    .filter((item) => isTemplatePubliclyVisible(item))
     .sort(compareByName);
 
   return items;
@@ -57,6 +64,6 @@ export async function getTemplateById(id) {
     templateSnap.id
   );
 
-  if (normalized.estado === "archived") return null;
+  if (!isTemplatePubliclyVisible(normalized)) return null;
   return normalized;
 }

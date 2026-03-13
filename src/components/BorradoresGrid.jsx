@@ -83,6 +83,11 @@ function getLifecycleState(borrador) {
 
 function isVisibleDraft(borrador) {
   if (isDraftTrashed(borrador)) return false;
+  const workspaceMode =
+    typeof borrador?.templateWorkspace?.mode === "string"
+      ? borrador.templateWorkspace.mode.trim()
+      : "";
+  if (workspaceMode === "template_edit") return false;
   return getLifecycleState(borrador) === "draft";
 }
 

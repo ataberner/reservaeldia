@@ -14,6 +14,44 @@ service cloud.firestore {
       );
     }
 
+    function isOwner(uid) {
+      return isSignedIn() && uid is string && request.auth.uid == uid;
+    }
+
+    function isDraftOwner() {
+      return isOwner(resource.data.userId);
+    }
+
+    function isDraftOwnerOnCreate() {
+      return isOwner(request.resource.data.userId);
+    }
+
+    function isPublishedTemplateResource() {
+      return (!("estado" in resource.data) || resource.data.estado != "archived") &&
+        (!("estadoEditorial" in resource.data) || resource.data.estadoEditorial == "publicada");
+    }
+
+    match /borradores/{draftId} {
+      allow create: if isDraftOwnerOnCreate();
+      allow read, delete: if isDraftOwner();
+      allow update: if isDraftOwner() &&
+        request.resource.data.userId == resource.data.userId;
+    }
+
+    match /plantillas/{templateId} {
+      allow read: if isSignedIn() && isPublishedTemplateResource();
+      allow create, update, delete: if false;
+    }
+
+    match /plantillas_catalog/{templateId} {
+      allow read: if isSignedIn() && isPublishedTemplateResource();
+      allow create, update, delete: if false;
+    }
+
+    match /plantillas_tags/{tagId} {
+      allow read, write: if false;
+    }
+
     match /iconos/{iconId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
@@ -47,8 +85,12 @@ service cloud.firestore {
     }
 
     // Compatibility fallback for the rest of current app documents.
-    match /{document=**} {
-      allow read, write: if isSignedIn();
+    match /{collection}/{document=**} {
+      allow read, write: if isSignedIn() &&
+        collection != "borradores" &&
+        collection != "plantillas" &&
+        collection != "plantillas_catalog" &&
+        collection != "plantillas_tags";
     }
   }
 }

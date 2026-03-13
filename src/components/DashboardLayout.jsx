@@ -27,6 +27,9 @@ export default function DashboardLayout({
   lockMainScroll = false,
   editorReadOnly = false,
   draftDisplayName = "",
+  editorSession = null,
+  templateSessionMeta = null,
+  ensureEditorFlushBeforeAction = null,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
@@ -74,6 +77,9 @@ export default function DashboardLayout({
         loadingAdminAccess={loadingAdminAccess}
         editorReadOnly={editorReadOnly}
         draftDisplayName={draftDisplayName}
+        editorSession={editorSession}
+        templateSessionMeta={templateSessionMeta}
+        ensureEditorFlushBeforeAction={ensureEditorFlushBeforeAction}
       />
 
       {/* Sidebar */}

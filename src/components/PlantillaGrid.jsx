@@ -1,8 +1,9 @@
 // src/components/PlantillaGrid.jsx
 import { useEffect, useState } from "react";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
-import DashboardCardDeleteButton from "@/components/DashboardCardDeleteButton";
+import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
+import TemplateCardShell from "@/components/templates/TemplateCardShell";
+import { moveTemplateToTrash } from "@/domain/templates/adminService";
 
 const HOME_READY_THUMBNAIL_TARGET = 2;
 const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
@@ -70,20 +71,18 @@ export default function PlantillaGrid({
     };
   }, [plantillas, thumbnailsSettledById]);
 
-  const borrarPlantilla = async () => {
+  const moverPlantillaAPapelera = async () => {
     const plantillaId = templatePendingDelete?.id;
     if (!plantillaId || deletingId) return;
 
     setDeletingId(plantillaId);
     try {
-      const functions = getFunctions();
-      const borrar = httpsCallable(functions, "borrarPlantilla");
-      await borrar({ plantillaId });
+      await moveTemplateToTrash({ templateId: plantillaId });
       onPlantillaBorrada?.(plantillaId);
       setTemplatePendingDelete(null);
     } catch (error) {
-      console.error("Error borrando plantilla:", error);
-      alert("No se pudo borrar la plantilla.");
+      console.error("Error moviendo plantilla a papelera:", error);
+      alert(error?.message || "No se pudo mover la plantilla a papelera.");
     } finally {
       setDeletingId(null);
     }
@@ -104,72 +103,38 @@ export default function PlantillaGrid({
           const nombrePlantilla = plantilla.nombre || "Plantilla";
 
           return (
-            <article
+            <TemplateCardShell
               key={plantilla.id}
-              className="group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#d9c8f5] hover:shadow-[0_14px_28px_rgba(111,59,192,0.14)] focus-within:-translate-y-0.5 focus-within:border-[#d9c8f5] focus-within:shadow-[0_14px_28px_rgba(111,59,192,0.14)]"
-            >
-              {isSuperAdmin && (
-                <DashboardCardDeleteButton
-                  title="Borrar plantilla"
-                  ariaLabel={`Borrar plantilla ${nombrePlantilla}`}
-                  isDeleting={deletingId === plantilla.id}
-                  disabled={Boolean(deletingId && deletingId !== plantilla.id)}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setTemplatePendingDelete({
-                      id: plantilla.id,
-                      nombre: nombrePlantilla,
-                    });
-                  }}
-                />
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectTemplate?.(plantilla);
-                }}
-                className="block w-full rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-2 disabled:cursor-not-allowed"
-                aria-label={`Abrir plantilla ${nombrePlantilla}`}
-              >
-                <div className="relative aspect-square overflow-hidden bg-gray-100">
-                  <img
-                    src={plantilla.portada || "/placeholder.jpg"}
-                    alt={`Vista previa de ${nombrePlantilla}`}
-                    className="h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.03] group-focus-within:scale-[1.03] motion-reduce:transition-none"
-                    loading={index < HOME_READY_THUMBNAIL_TARGET ? "eager" : "lazy"}
-                    decoding="async"
-                    fetchPriority={index < 2 ? "high" : "auto"}
-                    onLoad={() => {
-                      markThumbnailSettled(plantilla.id);
-                    }}
-                    onError={(event) => {
-                      const img = event.currentTarget;
-                      if (img.dataset.fallbackApplied === "1") {
-                        markThumbnailSettled(plantilla.id);
-                        return;
-                      }
-                      img.dataset.fallbackApplied = "1";
-                      img.src = "/placeholder.jpg";
+              title={nombrePlantilla}
+              imageSrc={plantilla.portada || "/placeholder.jpg"}
+              imageAlt={`Vista previa de ${nombrePlantilla}`}
+              onClick={() => {
+                onSelectTemplate?.(plantilla);
+              }}
+              actionLabel="ver invitacion"
+              eager={index < HOME_READY_THUMBNAIL_TARGET}
+              onImageSettled={() => {
+                markThumbnailSettled(plantilla.id);
+              }}
+              deleteControl={
+                isSuperAdmin ? (
+                  <DashboardCardTrashButton
+                    title="Mover plantilla a papelera"
+                    ariaLabel={`Mover plantilla ${nombrePlantilla} a papelera`}
+                    isPending={deletingId === plantilla.id}
+                    disabled={Boolean(deletingId && deletingId !== plantilla.id)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setTemplatePendingDelete({
+                        id: plantilla.id,
+                        nombre: nombrePlantilla,
+                      });
                     }}
                   />
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#2d1a4a]/18 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none" />
-                </div>
-
-                <div className="p-3">
-                  <h3
-                    className="truncate text-sm font-semibold text-gray-800 transition-colors duration-200 group-hover:text-[#4d2b86] group-focus-within:text-[#4d2b86]"
-                    title={nombrePlantilla}
-                  >
-                    {nombrePlantilla}
-                  </h3>
-                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#5a2daa] group-focus-within:translate-x-0.5 group-focus-within:text-[#5a2daa]">
-                    ver invitacion
-                  </p>
-                </div>
-              </button>
-            </article>
+                ) : null
+              }
+            />
           );
         })}
       </div>
@@ -179,11 +144,16 @@ export default function PlantillaGrid({
         itemTypeLabel="plantilla"
         itemName={templatePendingDelete?.nombre}
         isDeleting={Boolean(deletingId)}
+        dialogTitle="Mover plantilla a papelera"
+        dialogDescription={`"${templatePendingDelete?.nombre || "Esta plantilla"}" se movera a papelera.`}
+        warningText="Dejara de estar disponible en el dashboard y podra restaurarse desde la gestion interna."
+        confirmButtonText="Mover a papelera"
+        confirmingButtonText="Moviendo..."
         onCancel={() => {
           if (deletingId) return;
           setTemplatePendingDelete(null);
         }}
-        onConfirm={borrarPlantilla}
+        onConfirm={moverPlantillaAPapelera}
       />
     </>
   );

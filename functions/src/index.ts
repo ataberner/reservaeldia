@@ -89,6 +89,22 @@ import {
   buildTemplateCatalogFromContract,
   normalizeTemplateContractDocument,
 } from "./templates/contractLoader";
+import {
+  adminConvertDraftToTemplateV1 as adminConvertDraftToTemplateV1Handler,
+  adminCommitTemplateWorkspaceV1 as adminCommitTemplateWorkspaceV1Handler,
+  adminCreateTemplateFromDraftV1 as adminCreateTemplateFromDraftV1Handler,
+  adminGetTemplateEditorDocumentV1 as adminGetTemplateEditorDocumentV1Handler,
+  adminHardDeleteTemplateFromTrashV1 as adminHardDeleteTemplateFromTrashV1Handler,
+  adminListTemplatesV1 as adminListTemplatesV1Handler,
+  adminListTemplateTrashV1 as adminListTemplateTrashV1Handler,
+  adminListTemplateTagsV1 as adminListTemplateTagsV1Handler,
+  adminMoveTemplateToTrashV1 as adminMoveTemplateToTrashV1Handler,
+  adminOpenTemplateWorkspaceV1 as adminOpenTemplateWorkspaceV1Handler,
+  adminRestoreTemplateFromTrashV1 as adminRestoreTemplateFromTrashV1Handler,
+  adminSaveTemplateEditorDocumentV1 as adminSaveTemplateEditorDocumentV1Handler,
+  adminUpsertTemplateEditorialV1 as adminUpsertTemplateEditorialV1Handler,
+  adminUpsertTemplateTagV1 as adminUpsertTemplateTagV1Handler,
+} from "./templates/editorialService";
 
 import * as logger from "firebase-functions/logger";
 
@@ -123,6 +139,20 @@ export const adminSetTextPresetVisibilityV1 = adminSetTextPresetVisibilityV1Hand
 export const adminDeleteTextPresetV1 = adminDeleteTextPresetV1Handler;
 export const adminSyncLegacyTextPresetsV1 = adminSyncLegacyTextPresetsV1Handler;
 export const listTextPresetsPublicV1 = listTextPresetsPublicV1Handler;
+export const adminListTemplatesV1 = adminListTemplatesV1Handler;
+export const adminListTemplateTrashV1 = adminListTemplateTrashV1Handler;
+export const adminListTemplateTagsV1 = adminListTemplateTagsV1Handler;
+export const adminUpsertTemplateTagV1 = adminUpsertTemplateTagV1Handler;
+export const adminUpsertTemplateEditorialV1 = adminUpsertTemplateEditorialV1Handler;
+export const adminGetTemplateEditorDocumentV1 = adminGetTemplateEditorDocumentV1Handler;
+export const adminSaveTemplateEditorDocumentV1 = adminSaveTemplateEditorDocumentV1Handler;
+export const adminConvertDraftToTemplateV1 = adminConvertDraftToTemplateV1Handler;
+export const adminMoveTemplateToTrashV1 = adminMoveTemplateToTrashV1Handler;
+export const adminRestoreTemplateFromTrashV1 = adminRestoreTemplateFromTrashV1Handler;
+export const adminHardDeleteTemplateFromTrashV1 = adminHardDeleteTemplateFromTrashV1Handler;
+export const adminOpenTemplateWorkspaceV1 = adminOpenTemplateWorkspaceV1Handler;
+export const adminCommitTemplateWorkspaceV1 = adminCommitTemplateWorkspaceV1Handler;
+export const adminCreateTemplateFromDraftV1 = adminCreateTemplateFromDraftV1Handler;
 
 setGlobalOptions({
   region: "us-central1",
@@ -1731,6 +1761,23 @@ export const copiarPlantilla = onCall(
 
     if (!datos) throw new Error("Plantilla no encontrada");
 
+    const plantillaNormalizada = await normalizeTemplateContractDocument(
+      {
+        id: docPlantilla.id,
+        ...datos,
+      },
+      docPlantilla.id
+    );
+    if (
+      plantillaNormalizada?.estado === "archived" ||
+      plantillaNormalizada?.estadoEditorial !== "publicada"
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "La plantilla no esta disponible para uso publico."
+      );
+    }
+
     const datosPlantilla = datos as Record<string, unknown>;
     const tipoInvitacion = normalizeInvitationType(datosPlantilla.tipo);
     const assetCache: TemplateAssetCopyCache = new Map();
@@ -1792,12 +1839,24 @@ export const crearPlantilla = onCall(
   async (request: CallableRequest<{ id: string; datos: any }>) => {
     // Seguridad real: solo admins pueden crear plantillas base
     // La UI puede ocultar el botón, pero acá se valida de verdad.
-    requireAdmin(request);
+    const adminUid = requireAdmin(request);
 
     const { id, datos } = request.data;
     if (!id || !datos) throw new Error("Faltan datos");
 
     const datosPlantilla = (datos as Record<string, unknown>) || {};
+    const requestedEditorialState = normalizeOptionalText(
+      datosPlantilla.estadoEditorial
+    );
+    if (
+      requestedEditorialState === "publicada" &&
+      !isSuperAdmin(adminUid)
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "Solo superadmin puede crear plantillas publicadas."
+      );
+    }
     const previewBase64 =
       typeof datosPlantilla.previewBase64 === "string"
         ? datosPlantilla.previewBase64
@@ -1845,6 +1904,7 @@ export const crearPlantilla = onCall(
       {
         id,
         ...datosSinPreview,
+        estadoEditorial: requestedEditorialState || "en_proceso",
         portada: portadaNormalizada,
         objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
         secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
@@ -1888,13 +1948,46 @@ export const borrarPlantilla = onCall(
       throw new HttpsError("invalid-argument", "Falta plantillaId");
     }
 
+    const templateRef = db.collection("plantillas").doc(plantillaId);
+    const templateSnap = await templateRef.get();
+    if (!templateSnap.exists) {
+      throw new HttpsError("not-found", "Plantilla no encontrada.");
+    }
+
+    const templateData = templateSnap.data() || {};
+    const templateState =
+      typeof templateData.estado === "string" ? templateData.estado.trim().toLowerCase() : "";
+    if (templateState !== "archived") {
+      throw new HttpsError(
+        "failed-precondition",
+        "La plantilla debe estar en papelera antes del borrado definitivo."
+      );
+    }
+
     const batch = db.batch();
-    batch.delete(db.collection("plantillas").doc(plantillaId));
+    batch.delete(templateRef);
     batch.delete(db.collection("plantillas_catalog").doc(plantillaId));
     await batch.commit();
 
-    // (Opcional a futuro) limpiar assets en Storage / subdocs relacionados
-    // Por ahora: minimalista y seguro.
+    const cleanupResults = await Promise.allSettled([
+      bucket.deleteFiles({ prefix: `plantillas/${plantillaId}/` }),
+      bucket.file(`previews/plantillas/${plantillaId}.png`).delete(),
+    ]);
+
+    cleanupResults.forEach((result, index) => {
+      if (result.status === "fulfilled") return;
+      logger.warn("No se pudo limpiar storage de plantilla tras hard delete legacy", {
+        plantillaId,
+        target:
+          index === 0
+            ? `plantillas/${plantillaId}/`
+            : `previews/plantillas/${plantillaId}.png`,
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason || ""),
+      });
+    });
 
     logger.info(`Plantilla '${plantillaId}' borrada por admin`);
     return { success: true, plantillaId };

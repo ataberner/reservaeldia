@@ -1,10 +1,11 @@
-import { Settings } from "lucide-react";
+import { Settings, Tag } from "lucide-react";
 import MenuOpcionesElemento from "@/components/MenuOpcionesElemento";
 import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar";
 import TemplateFieldBadgeOverlay from "@/components/editor/templateAuthoring/TemplateFieldBadgeOverlay";
 import ConfirmDeleteSectionModal from "@/components/editor/sections/ConfirmDeleteSectionModal";
 
 export default function CanvasEditorOverlays({
+  readOnly,
   elementosSeleccionados,
   editingId,
   isSelectionRotating,
@@ -47,6 +48,9 @@ export default function CanvasEditorOverlays({
   fontManager,
   tamaniosDisponibles,
   onCambiarAlineacion,
+  canOpenTemplateEditorialPanel,
+  templateWorkspace,
+  onOpenTemplateEditorialPanel,
   deleteSectionModal,
   seccionPendienteEliminar,
   cantidadElementosSeccionPendiente,
@@ -54,9 +58,16 @@ export default function CanvasEditorOverlays({
   cerrarModalBorrarSeccion,
   confirmarBorrarSeccion,
 }) {
+  const workspaceStateLabel =
+    templateWorkspace?.estadoEditorial === "en_revision"
+      ? "En revision"
+      : templateWorkspace?.estadoEditorial === "en_proceso"
+        ? "En proceso"
+        : "Publicada";
+
   return (
     <>
-      {elementosSeleccionados.length === 1 && !editingId && !isSelectionRotating && (
+      {!readOnly && elementosSeleccionados.length === 1 && !editingId && !isSelectionRotating && (
         <div
           ref={botonOpcionesRef}
           data-option-button="true"
@@ -103,17 +114,33 @@ export default function CanvasEditorOverlays({
       )}
 
       {canManageSite && (
-        <div
-          className={`pointer-events-none absolute right-3 top-3 z-[70] rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm ${templateAuthoringStatusClass}`}
-          title={
-            !templateAuthoring.canConfigure
-              ? "Este borrador no tiene plantilla base para configurar schema."
-              : templateAuthoringStatus.isReady
-              ? "Schema dinamico listo para publicar."
-              : "Corrige inconsistencias de mapping antes de guardar plantilla."
-          }
-        >
-          {templateAuthoringStatusLabel}
+        <div className="absolute right-3 top-3 z-[70] flex max-w-[280px] flex-col items-end gap-2">
+          <div
+            className={`pointer-events-none rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm ${templateAuthoringStatusClass}`}
+            title={
+              !templateAuthoring.canConfigure
+                ? "Este borrador no tiene plantilla base para configurar schema."
+                : templateAuthoringStatus.isReady
+                ? "Schema dinamico listo para publicar."
+                : "Corrige inconsistencias de mapping antes de guardar plantilla."
+            }
+          >
+            {templateAuthoringStatusLabel}
+          </div>
+
+          {canOpenTemplateEditorialPanel ? (
+            <button
+              type="button"
+              onClick={onOpenTemplateEditorialPanel}
+              className="inline-flex items-center gap-2 rounded-full border border-[#d6c3f5] bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-[#6f3bc0] shadow-sm transition hover:bg-[#faf6ff]"
+            >
+              <Tag className="h-3.5 w-3.5" />
+              <span>Etiquetas y estado</span>
+              <span className="rounded-full border border-[#eadffd] bg-[#faf6ff] px-2 py-0.5 text-[10px] font-semibold text-[#6f3bc0]">
+                {workspaceStateLabel}
+              </span>
+            </button>
+          ) : null}
         </div>
       )}
 

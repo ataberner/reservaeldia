@@ -1,12 +1,53 @@
 // src/components/DashboardHeader.jsx
 import { useState, useRef, useEffect } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { ChevronDown, LogOut, Minus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
+import {
+    convertDraftToTemplate,
+    saveTemplateEditorDocument,
+} from "@/domain/templates/adminService";
+
+function normalizeText(value) {
+    return String(value || "").trim();
+}
+
+function normalizeEditorSession(value, fallbackId = "") {
+    const safeValue = value && typeof value === "object" ? value : {};
+    const kind =
+        normalizeText(safeValue.kind).toLowerCase() === "template"
+            ? "template"
+            : "draft";
+    const id = normalizeText(safeValue.id) || normalizeText(fallbackId);
+    return {
+        kind,
+        id,
+    };
+}
+
+function normalizeTemplateWorkspaceMeta(value) {
+    const safeValue = value && typeof value === "object" ? value : {};
+    const permissions =
+        safeValue.permissions && typeof safeValue.permissions === "object"
+            ? safeValue.permissions
+            : {};
+
+    return {
+        enabled: Boolean(
+            normalizeText(safeValue.templateId) &&
+            normalizeText(safeValue.mode) === "template_edit",
+        ),
+        templateId: normalizeText(safeValue.templateId),
+        templateName: normalizeText(safeValue.templateName) || "",
+        estadoEditorial: normalizeText(safeValue.estadoEditorial) || "publicada",
+        readOnly:
+            safeValue.readOnly === true || permissions?.readOnly === true,
+        permissions,
+    };
+}
 
 export default function DashboardHeader({
     slugInvitacion,
@@ -25,12 +66,18 @@ export default function DashboardHeader({
     loadingAdminAccess = false,
     editorReadOnly = false,
     draftDisplayName = "",
+    editorSession = null,
+    templateSessionMeta = null,
+    ensureEditorFlushBeforeAction = null,
 }) {
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
     const accionesMobileRef = useRef(null);
     const headerRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
+    const [templateWorkspaceMeta, setTemplateWorkspaceMeta] = useState(() =>
+        normalizeTemplateWorkspaceMeta(null)
+    );
     const router = useRouter();
     const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
     const emailNormalizado = String(usuario?.email || "").trim();
@@ -48,6 +95,11 @@ export default function DashboardHeader({
             .charAt(0)
             .toUpperCase() || "U";
     const [isMobile, setIsMobile] = useState(false);
+    const normalizedEditorSession = normalizeEditorSession(
+        editorSession,
+        slugInvitacion
+    );
+    const isTemplateSession = normalizedEditorSession.kind === "template";
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -103,9 +155,21 @@ export default function DashboardHeader({
     // Cargar nombre del borrador al montar o cambiar slug
     useEffect(() => {
         const cargarNombre = async () => {
-            if (!slugInvitacion) return;
-            if (editorReadOnly) {
-                setNombreBorrador(draftDisplayName || "Sin nombre");
+            if (!slugInvitacion) {
+                setNombreBorrador("");
+                setTemplateWorkspaceMeta(normalizeTemplateWorkspaceMeta(null));
+                return;
+            }
+
+            if (isTemplateSession) {
+                setNombreBorrador(
+                    normalizeText(templateSessionMeta?.templateName) ||
+                        normalizeText(draftDisplayName) ||
+                        "Plantilla"
+                );
+                setTemplateWorkspaceMeta(
+                    normalizeTemplateWorkspaceMeta(templateSessionMeta)
+                );
                 return;
             }
 
@@ -115,17 +179,21 @@ export default function DashboardHeader({
 
                 if (snap.exists()) {
                     const data = snap.data();
-
-                    // Si no tiene nombre, poner un valor temporal
-                    setNombreBorrador(data.nombre || "Sin nombre");
+                    setNombreBorrador(data?.nombre || draftDisplayName || "Sin nombre");
+                    setTemplateWorkspaceMeta(
+                        normalizeTemplateWorkspaceMeta(data?.templateWorkspace)
+                    );
+                    return;
                 }
             } catch (error) {
                 console.error("❌ Error cargando nombre del borrador:", error);
             }
+            setNombreBorrador(draftDisplayName || "Sin nombre");
+            setTemplateWorkspaceMeta(normalizeTemplateWorkspaceMeta(null));
         };
 
         cargarNombre();
-    }, [draftDisplayName, editorReadOnly, slugInvitacion]);
+    }, [draftDisplayName, editorReadOnly, isTemplateSession, slugInvitacion, templateSessionMeta]);
 
 
     // Cerrar menú si clic afuera
@@ -147,16 +215,27 @@ export default function DashboardHeader({
 
     // 🔹 Función para guardar plantilla
     const guardarPlantilla = async () => {
-        const nombre = prompt("Que nombre queres darle a la nueva plantilla?");
-        if (!nombre) return;
+        const templateId = normalizeText(slugInvitacion);
+        const nombre = isTemplateSession
+            ? normalizeText(templateWorkspaceMeta.templateName) || "Plantilla"
+            : prompt("Que nombre queres darle a la nueva plantilla?");
+        if (!nombre || !templateId) return;
 
         try {
-            const ref = doc(db, "borradores", slugInvitacion);
-            const snap = await getDoc(ref);
-            if (!snap.exists()) throw new Error("No se encontro el borrador.");
+            if (typeof ensureEditorFlushBeforeAction === "function") {
+                const flushResult = await ensureEditorFlushBeforeAction(
+                    isTemplateSession
+                        ? "template-save-before-preview"
+                        : "draft-convert-before-template"
+                );
+                if (!flushResult?.ok) {
+                    throw new Error(
+                        flushResult?.error ||
+                            "No se pudo confirmar el guardado reciente del editor."
+                    );
+                }
+            }
 
-            const data = snap.data();
-            const id = nombre.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
             const runtimeAuthoringStatus =
                 typeof window !== "undefined" &&
                 typeof window.canvasEditor?.getTemplateAuthoringStatus === "function"
@@ -167,18 +246,10 @@ export default function DashboardHeader({
                 typeof window.canvasEditor?.getTemplateAuthoringSnapshot === "function"
                     ? window.canvasEditor.getTemplateAuthoringSnapshot()
                     : null;
-            const stagedAuthoringSnapshot =
-                data?.templateAuthoringDraft && typeof data.templateAuthoringDraft === "object"
-                    ? data.templateAuthoringDraft
-                    : null;
-            const authoringStatusToValidate =
-                runtimeAuthoringStatus && typeof runtimeAuthoringStatus === "object"
-                    ? runtimeAuthoringStatus
-                    : stagedAuthoringSnapshot?.status || null;
 
-            if (authoringStatusToValidate && authoringStatusToValidate.isReady === false) {
-                const issues = Array.isArray(authoringStatusToValidate.issues)
-                    ? authoringStatusToValidate.issues
+            if (runtimeAuthoringStatus && runtimeAuthoringStatus.isReady === false) {
+                const issues = Array.isArray(runtimeAuthoringStatus.issues)
+                    ? runtimeAuthoringStatus.issues
                     : [];
                 const preview = issues.slice(0, 4);
                 const body = preview.length
@@ -202,22 +273,47 @@ export default function DashboardHeader({
             const blob = await res.blob();
 
             const storage = (await import("firebase/storage")).getStorage();
-            const storageRef = (await import("firebase/storage")).ref(
+            const previewRef = (await import("firebase/storage")).ref(
                 storage,
-                `previews/plantillas/${id}.png`
+                `previews/plantillas/${templateId}.png`
             );
-            await (await import("firebase/storage")).uploadBytes(storageRef, blob);
+            await (await import("firebase/storage")).uploadBytes(previewRef, blob);
 
-            const portada = await (await import("firebase/storage")).getDownloadURL(storageRef);
+            const portada = await (await import("firebase/storage")).getDownloadURL(previewRef);
+
+            if (isTemplateSession) {
+                await saveTemplateEditorDocument({
+                    templateId,
+                    document: {
+                        nombre,
+                        portada,
+                    },
+                });
+                alert("La plantilla se actualizo correctamente.");
+                return;
+            }
+
+            const ref = doc(db, "borradores", templateId);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) throw new Error("No se encontro el borrador.");
+
+            const data = snap.data();
+            const stagedAuthoringSnapshot =
+                data?.templateAuthoringDraft && typeof data.templateAuthoringDraft === "object"
+                    ? data.templateAuthoringDraft
+                    : null;
+            const authoringStatusToValidate =
+                runtimeAuthoringStatus && typeof runtimeAuthoringStatus === "object"
+                    ? runtimeAuthoringStatus
+                    : stagedAuthoringSnapshot?.status || null;
             const payload = buildTemplatePayloadFromAuthoring({
                 draftData: data,
                 authoringState: runtimeAuthoringSnapshot || stagedAuthoringSnapshot || null,
             });
 
-            const functions = getFunctions();
-            const crearPlantilla = httpsCallable(functions, "crearPlantilla");
-            await crearPlantilla({
-                id,
+            await convertDraftToTemplate({
+                draftSlug: templateId,
+                authoringStatus: authoringStatusToValidate || null,
                 datos: {
                     ...payload,
                     nombre,
@@ -225,11 +321,37 @@ export default function DashboardHeader({
                 },
             });
 
-            alert("La plantilla se guardo correctamente.");
+            await router.replace(
+                `/dashboard?templateId=${encodeURIComponent(templateId)}`
+            );
+            alert("El borrador se convirtio en plantilla en estado En proceso.");
         } catch (error) {
             console.error("Error al guardar plantilla:", error);
-            alert("Ocurrio un error al guardar la plantilla.");
+            alert(error?.message || "Ocurrio un error al guardar la plantilla.");
         }
+    };
+    const guardarNombreDocumento = async () => {
+        const currentId = normalizeText(slugInvitacion);
+        if (!currentId) return;
+
+        if (isTemplateSession) {
+            await saveTemplateEditorDocument({
+                templateId: currentId,
+                document: {
+                    nombre: nombreBorrador,
+                },
+            });
+            setTemplateWorkspaceMeta((previous) => ({
+                ...previous,
+                templateName: normalizeText(nombreBorrador) || previous.templateName,
+            }));
+            return;
+        }
+
+        const ref = doc(db, "borradores", currentId);
+        await updateDoc(ref, {
+            nombre: nombreBorrador,
+        });
     };
     const abrirModalCrearSeccion = () => {
         if (typeof window === "undefined") return;
@@ -257,6 +379,19 @@ export default function DashboardHeader({
         "cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-xs text-gray-400 shadow-none";
     const dashboardModeButton =
         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
+    const previewButtonLabel = isTemplateSession
+        ? "Vista previa"
+        : "Vista previa y publicar";
+    const documentNameLabel = isTemplateSession
+        ? "Nombre de la plantilla"
+        : "Nombre del borrador";
+    const documentNameTitle = isTemplateSession
+        ? "Editar nombre de la plantilla"
+        : "Editar nombre del borrador";
+    const canShowReadOnlyPreview = editorReadOnly && isTemplateSession;
+    const backNavigationTarget = isTemplateSession
+        ? "/admin/plantillas/"
+        : "/dashboard";
 
     return (
         <div
@@ -281,7 +416,7 @@ export default function DashboardHeader({
                             onCambiarVista?.("home");
 
                             // 2) Limpiar URL sin agregar historial nuevo
-                            router.replace("/dashboard", undefined, { shallow: true });
+                            router.replace(backNavigationTarget, undefined, { shallow: true });
                         }}
                         className={`${subtleHeaderButton} text-sm`}
                     >
@@ -378,7 +513,7 @@ export default function DashboardHeader({
                                 onClick={guardarPlantilla}
                                 className={templateHeaderButton}
                             >
-                                Guardar plantilla
+                                {isTemplateSession ? "Guardar cambios" : "Guardar plantilla"}
                             </button>
                         </div>
                     )}
@@ -386,31 +521,35 @@ export default function DashboardHeader({
                     {/* ----------------- ACCIONES (desktop) ----------------- */}
                     <div className="hidden sm:flex gap-2 ml-auto">
                         {editorReadOnly ? (
-                            <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                                Modo solo lectura
-                            </span>
+                            <>
+                                <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                                    Modo solo lectura
+                                </span>
+                                {canShowReadOnlyPreview ? (
+                                    <button
+                                        onClick={generarVistaPrevia}
+                                        className={primaryHeaderButton}
+                                    >
+                                        {previewButtonLabel}
+                                    </button>
+                                ) : null}
+                            </>
                         ) : (
                             <>
                                 <input
                                     type="text"
                                     value={nombreBorrador}
                                     onChange={(e) => setNombreBorrador(e.target.value)}
-                                    onBlur={async () => {
-                                        if (!slugInvitacion) return;
-                                        const ref = doc(db, "borradores", slugInvitacion);
-                                        await (await import("firebase/firestore")).updateDoc(ref, {
-                                            nombre: nombreBorrador,
-                                        });
-                                    }}
+                                    onBlur={() => void guardarNombreDocumento()}
                                     className="border border-gray-300 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                                    title="Editar nombre del borrador"
+                                    title={documentNameTitle}
                                 />
 
                                 <button
                                     onClick={generarVistaPrevia}
                                     className={primaryHeaderButton}
                                 >
-                                    Vista previa y publicar
+                                    {previewButtonLabel}
                                 </button>
                             </>
                         )}
@@ -419,9 +558,19 @@ export default function DashboardHeader({
                     {/* ----------------- ACCIONES (mobile) ----------------- */}
                     {editorReadOnly ? (
                         <div className="sm:hidden ml-auto">
-                            <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-600">
-                                Solo lectura
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-600">
+                                    Solo lectura
+                                </span>
+                                {canShowReadOnlyPreview ? (
+                                    <button
+                                        onClick={generarVistaPrevia}
+                                        className={primaryHeaderButton}
+                                    >
+                                        {previewButtonLabel}
+                                    </button>
+                                ) : null}
+                            </div>
                         </div>
                     ) : (
                         <div ref={accionesMobileRef} className="sm:hidden ml-auto relative">
@@ -446,18 +595,12 @@ export default function DashboardHeader({
                                     </button>
                                 </div>
 
-                                <label className="block text-[11px] text-gray-500 mb-1">Nombre del borrador</label>
+                                <label className="block text-[11px] text-gray-500 mb-1">{documentNameLabel}</label>
                                 <input
                                     type="text"
                                     value={nombreBorrador}
                                     onChange={(e) => setNombreBorrador(e.target.value)}
-                                    onBlur={async () => {
-                                        if (!slugInvitacion) return;
-                                        const ref = doc(db, "borradores", slugInvitacion);
-                                        await (await import("firebase/firestore")).updateDoc(ref, {
-                                            nombre: nombreBorrador,
-                                        });
-                                    }}
+                                    onBlur={() => void guardarNombreDocumento()}
                                     className="w-full border border-gray-300 rounded px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
                                     placeholder="Sin nombre"
                                 />
@@ -470,7 +613,7 @@ export default function DashboardHeader({
                                         }}
                                         className={`w-full justify-center ${primaryHeaderButton}`}
                                     >
-                                        Vista previa y publicar
+                                        {previewButtonLabel}
                                     </button>
                                 </div>
                             </div>

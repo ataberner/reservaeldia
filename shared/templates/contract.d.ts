@@ -70,6 +70,34 @@ export interface TemplateGalleryRules {
 
 export type TemplateDefaults = Record<string, unknown>;
 
+export interface TemplateAuthoringDraftStatus {
+  isReady: boolean;
+  issues: string[];
+}
+
+export interface TemplateAuthoringDraft {
+  version: number;
+  sourceTemplateId: string | null;
+  fieldsSchema: TemplateField[];
+  defaults: TemplateDefaults;
+  status: TemplateAuthoringDraftStatus;
+  updatedAt?: unknown;
+  updatedByUid?: string | null;
+}
+
+export interface TemplateTrashMetadata {
+  entityType: "template";
+  active: boolean;
+  deletedAt?: unknown;
+  deletedByUid?: string | null;
+  deletedByRole?: "admin" | "superadmin" | null;
+  previousEditorialStatus: "en_proceso" | "en_revision" | "publicada";
+  restoredAt?: unknown;
+  restoredByUid?: string | null;
+  restoredByRole?: "admin" | "superadmin" | null;
+  retentionPolicy: "manual";
+}
+
 export interface TemplateDocument {
   id: string;
   slug: string;
@@ -89,7 +117,10 @@ export interface TemplateDocument {
   objetos?: unknown[];
   secciones?: unknown[];
   estado?: "active" | "archived";
+  estadoEditorial?: "en_proceso" | "en_revision" | "publicada";
   updatedAt?: unknown;
+  trash?: TemplateTrashMetadata | null;
+  templateAuthoringDraft?: TemplateAuthoringDraft | null;
   rsvp?: Record<string, unknown> | null;
   gifts?: Record<string, unknown> | null;
 }
@@ -107,7 +138,9 @@ export interface TemplateCatalogDocument {
   preview: TemplatePreview;
   portada?: string | null;
   estado?: "active" | "archived";
+  estadoEditorial?: "en_proceso" | "en_revision" | "publicada";
   updatedAt?: unknown;
+  trash?: TemplateTrashMetadata | null;
 }
 
 export interface TemplatePreviewSource {
@@ -120,10 +153,22 @@ export declare function normalizeTemplateDocument(
   idOverride?: string
 ): TemplateDocument;
 
+export declare const TEMPLATE_EDITORIAL_STATES: readonly [
+  "en_proceso",
+  "en_revision",
+  "publicada",
+];
+
+export declare function normalizeTemplateEditorialState(
+  value: unknown
+): "en_proceso" | "en_revision" | "publicada";
+
 export declare function normalizeTemplateCatalogDocument(
   raw: unknown,
   idOverride?: string
 ): TemplateCatalogDocument;
+
+export declare function isTemplateTrashed(template: unknown): boolean;
 
 export declare function buildCatalogFromTemplate(
   fullTemplate: unknown

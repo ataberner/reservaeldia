@@ -49,6 +49,7 @@ function emptySnapshot() {
 export default function useTemplateFieldAuthoring({
   enabled = false,
   slug,
+  editorSession = null,
   userId,
   objetos,
   selectedElement,
@@ -150,6 +151,8 @@ export default function useTemplateFieldAuthoring({
             slug: safeSlug,
             uid: userId,
             state: payload,
+            templateId: sourceTemplateId || "",
+            editorSession,
           })
         )
         .catch((saveError) => {
@@ -169,7 +172,7 @@ export default function useTemplateFieldAuthoring({
 
       return saveQueueRef.current;
     },
-    [enabled, hydrateSnapshot, slug, userId]
+    [editorSession, enabled, hydrateSnapshot, slug, sourceTemplateId, userId]
   );
 
   const commitSnapshot = useCallback(
@@ -209,6 +212,7 @@ export default function useTemplateFieldAuthoring({
         const loaded = await loadAuthoringState({
           slug: safeSlug,
           templateId,
+          editorSession,
           preloadedDraft: {
             plantillaId: templateId || null,
             templateAuthoringDraft: draftMeta?.templateAuthoringDraft || null,
@@ -235,7 +239,7 @@ export default function useTemplateFieldAuthoring({
     return () => {
       cancelled = true;
     };
-  }, [draftMeta, enabled, hydrateSnapshot, safeObjetos, slug]);
+  }, [draftMeta, editorSession, enabled, hydrateSnapshot, safeObjetos, slug]);
 
   const canConfigure = enabled && Boolean(sourceTemplateId);
 

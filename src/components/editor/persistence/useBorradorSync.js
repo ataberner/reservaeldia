@@ -7,6 +7,10 @@ import { normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { normalizeGiftConfig } from "@/domain/gifts/config";
 import { normalizeInvitationType } from "@/domain/invitationTypes";
 import {
+  getTemplateEditorDocument,
+  saveTemplateEditorDocument,
+} from "@/domain/templates/adminService";
+import {
   buildDraftContentMeta,
   normalizeDraftRenderState,
 } from "@/domain/drafts/sourceOfTruth";
@@ -126,15 +130,31 @@ function normalizeFlushRequestDetail(detail) {
   return { requestId, slug, reason };
 }
 
+function normalizeEditorSession(value, fallbackSlug = "") {
+  const safeValue = value && typeof value === "object" ? value : {};
+  const kind =
+    normalizeText(safeValue.kind).toLowerCase() === "template"
+      ? "template"
+      : "draft";
+  const id = normalizeText(safeValue.id) || normalizeText(fallbackSlug);
+  return {
+    kind,
+    id,
+  };
+}
+
 /**
  * Hook de sincronizacion Firestore para el borrador (carga + guardado con debounce).
  * Incluye flush inmediato para acciones criticas (preview/publicacion).
  */
 export default function useBorradorSync({
   slug,
+  editorSession = null,
   userId,
   readOnly = false,
   initialDraftData = null,
+  initialEditorData = null,
+  onRegisterPersistenceBridge = null,
 
   // estado actual
   objetos,
@@ -168,6 +188,7 @@ export default function useBorradorSync({
   const persistInFlightRef = useRef(null);
   const latestStateRef = useRef({
     slug: null,
+    editorSession: { kind: "draft", id: null },
     userId: null,
     objetos: [],
     secciones: [],
@@ -177,6 +198,7 @@ export default function useBorradorSync({
   });
   latestStateRef.current = {
     slug,
+    editorSession: normalizeEditorSession(editorSession, slug),
     userId,
     objetos,
     secciones,
@@ -204,7 +226,8 @@ export default function useBorradorSync({
   const persistDraftNow = useCallback(
     async ({ reason = "autosave", immediate = false } = {}) => {
       const state = latestStateRef.current;
-      const safeSlug = normalizeText(state.slug);
+      const session = normalizeEditorSession(state.editorSession, state.slug);
+      const safeSlug = normalizeText(session.id || state.slug);
 
       if (readOnly) {
         return {
@@ -289,6 +312,20 @@ export default function useBorradorSync({
           ? limpiarUndefined(normalizeGiftConfig(rawGifts, { forceEnabled: false }))
           : null;
 
+        if (session.kind === "template") {
+          await saveTemplateEditorDocument({
+            templateId: safeSlug,
+            document: {
+              nombre: normalizeText(state.nombre) || undefined,
+              objetos: objetosLimpios,
+              secciones: seccionesLimpias,
+              rsvp: rsvpLimpio,
+              gifts: giftsLimpios,
+            },
+          });
+          return;
+        }
+
         const ref = doc(db, "borradores", safeSlug);
         await updateDoc(ref, {
           objetos: objetosLimpios,
@@ -331,6 +368,7 @@ export default function useBorradorSync({
             slug: safeSlug,
             reason,
             immediate,
+            sessionKind: session.kind,
             objetos: Array.isArray(state.objetos) ? state.objetos.length : null,
             secciones: Array.isArray(state.secciones) ? state.secciones.length : null,
             hasRsvp: Boolean(state.rsvp),
@@ -355,9 +393,11 @@ export default function useBorradorSync({
 
   // 1) Cargar borrador desde Firestore
   useEffect(() => {
-    if (!slug) return;
+    const session = normalizeEditorSession(editorSession, slug);
+    if (!session.id) return;
 
     if (
+      session.kind === "draft" &&
       readOnly &&
       (!initialDraftData || typeof initialDraftData !== "object")
     ) {
@@ -373,28 +413,54 @@ export default function useBorradorSync({
     skipNextPersistRef.current = true;
 
     const cargar = async () => {
-      pushEditorBreadcrumb("borrador-load-start", { slug });
+      pushEditorBreadcrumb("borrador-load-start", {
+        slug: session.id,
+        sessionKind: session.kind,
+      });
 
       try {
-        const ref = doc(db, "borradores", slug);
         const hasInjectedDraft =
-          initialDraftData && typeof initialDraftData === "object";
+          (session.kind === "template"
+            ? initialEditorData
+            : initialDraftData) &&
+          typeof (session.kind === "template"
+            ? initialEditorData
+            : initialDraftData) === "object";
         let exists = false;
         let data = {};
 
         if (hasInjectedDraft) {
           exists = true;
-          data = initialDraftData;
+          data =
+            session.kind === "template"
+              ? initialEditorData
+              : initialDraftData;
         } else {
-          const snap = await getDoc(ref);
-          exists = snap.exists();
-          data = snap.exists() ? snap.data() || {} : {};
+          if (session.kind === "template") {
+            const result = await getTemplateEditorDocument({
+              templateId: session.id,
+            });
+            data =
+              result?.editorDocument && typeof result.editorDocument === "object"
+                ? result.editorDocument
+                : {};
+            exists = Object.keys(data).length > 0;
+          } else {
+            const ref = doc(db, "borradores", session.id);
+            const snap = await getDoc(ref);
+            exists = snap.exists();
+            data = snap.exists() ? snap.data() || {} : {};
+          }
         }
 
         if (exists) {
           const renderState = normalizeDraftRenderState(data);
           const plantillaId =
-            typeof data?.plantillaId === "string" ? data.plantillaId.trim() : "";
+            session.kind === "template"
+              ? session.id
+              : typeof data?.plantillaId === "string"
+                ? data.plantillaId.trim()
+                : "";
           const seccionesData = renderState.secciones;
           const objetosData = renderState.objetos;
           const rsvpData = renderState.rsvp;
@@ -403,8 +469,9 @@ export default function useBorradorSync({
             typeof data?.tipoInvitacion === "string" ? data.tipoInvitacion : "";
           let tipoInvitacion = normalizeInvitationType(tipoDraftRaw);
 
-          if (!tipoDraftRaw && plantillaId) {
+          if (session.kind !== "template" && !tipoDraftRaw && plantillaId) {
             try {
+              const ref = doc(db, "borradores", session.id);
               const plantillaSnap = await getDoc(doc(db, "plantillas", plantillaId));
               if (plantillaSnap.exists()) {
                 const plantillaData = plantillaSnap.data() || {};
@@ -418,7 +485,7 @@ export default function useBorradorSync({
               }
             } catch (tipoError) {
               pushEditorBreadcrumb("tipo-invitacion-backfill-failed", {
-                slug,
+                slug: session.id,
                 plantillaId: plantillaId || null,
                 message: tipoError?.message || null,
               });
@@ -480,8 +547,12 @@ export default function useBorradorSync({
           }
           if (typeof onDraftLoaded === "function") {
             onDraftLoaded({
-              slug,
+              slug: session.id,
               plantillaId: plantillaId || null,
+              templateWorkspace:
+                data?.templateWorkspace && typeof data.templateWorkspace === "object"
+                  ? data.templateWorkspace
+                  : null,
               templateAuthoringDraft:
                 data?.templateAuthoringDraft && typeof data.templateAuthoringDraft === "object"
                   ? data.templateAuthoringDraft
@@ -495,10 +566,14 @@ export default function useBorradorSync({
           }
 
           pushEditorBreadcrumb("borrador-load-success", {
-            slug,
+            slug: session.id,
             objetos: objsMigrados.length,
             secciones: seccionesRefrescadas.length,
-            source: hasInjectedDraft ? "injected-readonly" : "firestore",
+            source: hasInjectedDraft
+              ? "injected-readonly"
+              : session.kind === "template"
+                ? "callable"
+                : "firestore",
           });
 
           // Setear primera seccion activa si no hay
@@ -506,11 +581,15 @@ export default function useBorradorSync({
             setSeccionActivaId((prev) => prev || seccionesRefrescadas[0].id);
           }
         } else {
-          pushEditorBreadcrumb("borrador-load-missing", { slug });
+          pushEditorBreadcrumb("borrador-load-missing", {
+            slug: session.id,
+            sessionKind: session.kind,
+          });
           if (typeof onDraftLoaded === "function") {
             onDraftLoaded({
-              slug,
+              slug: session.id,
               plantillaId: null,
+              templateWorkspace: null,
               templateAuthoringDraft: null,
               objetos: [],
               secciones: [],
@@ -524,7 +603,7 @@ export default function useBorradorSync({
         captureEditorIssue({
           source: "useBorradorSync.load",
           error,
-          detail: { slug },
+          detail: { slug: session.id, sessionKind: session.kind },
           severity: "fatal",
         });
       }
@@ -534,7 +613,7 @@ export default function useBorradorSync({
 
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialDraftData, readOnly, slug]);
+  }, [editorSession, initialDraftData, initialEditorData, readOnly, slug]);
 
   // 2) Guardar en Firestore con debounce cuando cambian objetos/secciones/rsvp.
   useEffect(() => {
@@ -619,6 +698,22 @@ export default function useBorradorSync({
       window.removeEventListener(DRAFT_FLUSH_REQUEST_EVENT, handleFlushRequest);
     };
   }, [persistDraftNow, readOnly]);
+
+  useEffect(() => {
+    if (typeof onRegisterPersistenceBridge !== "function") return undefined;
+
+    onRegisterPersistenceBridge({
+      flushNow: async ({ reason = "direct-bridge-flush" } = {}) =>
+        persistDraftNow({
+          reason,
+          immediate: true,
+        }),
+    });
+
+    return () => {
+      onRegisterPersistenceBridge(null);
+    };
+  }, [onRegisterPersistenceBridge, persistDraftNow]);
 
   useEffect(
     () => () => {

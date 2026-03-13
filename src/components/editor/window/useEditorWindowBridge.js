@@ -22,6 +22,7 @@ export default function useEditorWindowBridge({
   stageRef,
   getTemplateAuthoringSnapshot,
   getTemplateAuthoringStatus,
+  flushPersistenceNow,
 }) {
   const mergeCanvasEditor = (patch = {}) => {
     if (typeof window === "undefined") return;
@@ -65,6 +66,10 @@ export default function useEditorWindowBridge({
         typeof getTemplateAuthoringStatus === "function"
           ? getTemplateAuthoringStatus
           : undefined,
+      flushPersistenceNow:
+        typeof flushPersistenceNow === "function"
+          ? flushPersistenceNow
+          : undefined,
     });
   }, [
     cambiarColorFondoSeccion,
@@ -77,6 +82,7 @@ export default function useEditorWindowBridge({
     stageRef,
     getTemplateAuthoringSnapshot,
     getTemplateAuthoringStatus,
+    flushPersistenceNow,
   ]);
 
   useEffect(() => {
@@ -120,6 +126,7 @@ export default function useEditorWindowBridge({
         "getHistorial",
         "getTemplateAuthoringSnapshot",
         "getTemplateAuthoringStatus",
+        "flushPersistenceNow",
       ]);
     };
   }, []);

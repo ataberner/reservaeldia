@@ -43,6 +43,12 @@ const APPLY_TARGET_MODES = new Set(["set", "replace"]);
 
 const VIEWPORT_HINTS = new Set(["mobileFirst", "desktop", "responsive"]);
 const ACTIVE_STATES = new Set(["active", "archived"]);
+export const TEMPLATE_EDITORIAL_STATES = Object.freeze([
+  "en_proceso",
+  "en_revision",
+  "publicada",
+]);
+const TEMPLATE_EDITORIAL_STATE_SET = new Set(TEMPLATE_EDITORIAL_STATES);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -414,6 +420,52 @@ function normalizeState(value) {
   return token;
 }
 
+function normalizeTemplateTrashRole(value) {
+  const token = normalizeToken(value);
+  if (token === "admin" || token === "superadmin") return token;
+  return null;
+}
+
+function normalizeTemplateTrashMetadata(value, fallbackTemplate = {}) {
+  const source = asObject(value);
+  if (!Object.keys(source).length) return null;
+
+  const fallback = asObject(fallbackTemplate);
+  const active =
+    source.active === true ||
+    (typeof source.active === "undefined" && normalizeState(fallback.estado) === "archived");
+  const deletedAt = source.deletedAt || null;
+  const restoredAt = source.restoredAt || null;
+
+  return {
+    entityType: "template",
+    active,
+    deletedAt,
+    deletedByUid: normalizeText(source.deletedByUid) || null,
+    deletedByRole: normalizeTemplateTrashRole(source.deletedByRole),
+    previousEditorialStatus: normalizeTemplateEditorialState(
+      source.previousEditorialStatus || fallback.estadoEditorial
+    ),
+    restoredAt,
+    restoredByUid: normalizeText(source.restoredByUid) || null,
+    restoredByRole: normalizeTemplateTrashRole(source.restoredByRole),
+    retentionPolicy: "manual",
+  };
+}
+
+export function normalizeTemplateEditorialState(value) {
+  const token = normalizeToken(value).replace(/-/g, "_");
+  if (!token) return "publicada";
+  if (!TEMPLATE_EDITORIAL_STATE_SET.has(token)) return "publicada";
+  return token;
+}
+
+export function isTemplateTrashed(template) {
+  const source = asObject(template);
+  if (normalizeState(source.estado) === "archived") return true;
+  return normalizeTemplateTrashMetadata(source.trash, source)?.active === true;
+}
+
 function normalizeDefaultsValueByType(type, value) {
   if (type === "images") {
     return Array.isArray(value) ? value : [];
@@ -422,6 +474,34 @@ function normalizeDefaultsValueByType(type, value) {
     return "";
   }
   return value;
+}
+
+function normalizeTemplateAuthoringDraft(value, fallbackTemplateId = null) {
+  const source = asObject(value);
+  if (!Object.keys(source).length) return null;
+
+  const fieldsSchema = normalizeFieldsSchema(source.fieldsSchema);
+  const defaults = ensureDefaultsForSchema(fieldsSchema, source.defaults);
+  const rawStatus = asObject(source.status);
+  const issues = uniqueList(toStringList(rawStatus.issues));
+
+  return {
+    version: Number.isFinite(Number(source.version))
+      ? Math.max(1, Math.round(Number(source.version)))
+      : 1,
+    sourceTemplateId:
+      normalizeText(source.sourceTemplateId) ||
+      normalizeText(fallbackTemplateId) ||
+      null,
+    fieldsSchema,
+    defaults,
+    status: {
+      isReady: rawStatus.isReady !== false && issues.length === 0,
+      issues,
+    },
+    updatedAt: source.updatedAt || null,
+    updatedByUid: normalizeText(source.updatedByUid) || null,
+  };
 }
 
 export function ensureDefaultsForSchema(fieldsSchema, defaults) {
@@ -462,9 +542,15 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
   const objetos = Array.isArray(source.objetos) ? source.objetos : [];
   const secciones = Array.isArray(source.secciones) ? source.secciones : [];
   const estado = normalizeState(source.estado);
+  const estadoEditorial = normalizeTemplateEditorialState(source.estadoEditorial);
   const updatedAt = source.updatedAt || source.actualizadoEn || null;
+  const trash = normalizeTemplateTrashMetadata(source.trash, source);
   const rsvp = source.rsvp && typeof source.rsvp === "object" ? source.rsvp : null;
   const gifts = source.gifts && typeof source.gifts === "object" ? source.gifts : null;
+  const templateAuthoringDraft = normalizeTemplateAuthoringDraft(
+    source.templateAuthoringDraft,
+    id
+  );
 
   return {
     id,
@@ -485,7 +571,10 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
     objetos,
     secciones,
     estado,
+    estadoEditorial,
     updatedAt,
+    ...(trash ? { trash } : {}),
+    ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
     ...(rsvp ? { rsvp } : {}),
     ...(gifts ? { gifts } : {}),
   };
@@ -510,7 +599,9 @@ export function normalizeTemplateCatalogDocument(raw, idOverride = "") {
   const preview = normalizePreview(source);
   const portada = normalizeText(source.portada) || null;
   const estado = normalizeState(source.estado);
+  const estadoEditorial = normalizeTemplateEditorialState(source.estadoEditorial);
   const updatedAt = source.updatedAt || source.actualizadoEn || null;
+  const trash = normalizeTemplateTrashMetadata(source.trash, source);
 
   return {
     id,
@@ -525,7 +616,9 @@ export function normalizeTemplateCatalogDocument(raw, idOverride = "") {
     preview,
     portada,
     estado,
+    estadoEditorial,
     updatedAt,
+    ...(trash ? { trash } : {}),
   };
 }
 

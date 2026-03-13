@@ -86,6 +86,14 @@ export default function CreativePanelBoard({
             href="/admin/countdown-presets/"
             tone="border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-rose-50 text-fuchsia-900"
           />
+
+          <CreativePanelCard
+            title="Plantillas internas"
+            description="Gestion editorial de plantillas base con estados y acceso directo al editor interno."
+            route="https://reservaeldia.com.ar/admin/plantillas/"
+            href="/admin/plantillas/"
+            tone="border-violet-200 bg-gradient-to-r from-violet-50 to-indigo-50 text-violet-950"
+          />
         </div>
       )}
     </section>

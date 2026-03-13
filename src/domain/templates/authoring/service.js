@@ -2,6 +2,10 @@ import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
 import { getTemplateById } from "../repository.js";
+import {
+  getTemplateEditorDocument,
+  saveTemplateEditorDocument,
+} from "../adminService.js";
 import { validateAuthoringState } from "./validation.js";
 import {
   ensureDefaultsForSchema,
@@ -102,24 +106,54 @@ function normalizeStoredDraft(value) {
   };
 }
 
+function normalizeEditorSession(session, fallbackSlug = "", fallbackTemplateId = "") {
+  const safeSession = session && typeof session === "object" ? session : {};
+  const requestedKind =
+    normalizeText(safeSession.kind).toLowerCase() === "template"
+      ? "template"
+      : "draft";
+  const fallbackId =
+    requestedKind === "template"
+      ? normalizeText(fallbackTemplateId) || normalizeText(fallbackSlug)
+      : normalizeText(fallbackSlug) || normalizeText(fallbackTemplateId);
+  const id = normalizeText(safeSession.id) || fallbackId;
+  return {
+    kind: requestedKind,
+    id,
+  };
+}
+
 export async function loadAuthoringState({
   slug,
   templateId,
   preloadedDraft = null,
+  editorSession = null,
 } = {}) {
   const safeSlug = normalizeText(slug);
+  const session = normalizeEditorSession(editorSession, safeSlug, templateId);
   const preloaded = asObject(preloadedDraft);
   let draftData = preloaded;
 
   if (!Object.keys(draftData).length) {
-    if (!safeSlug) return buildEmptySnapshot(templateId);
-    const draftSnap = await getDoc(doc(db, "borradores", safeSlug));
-    draftData = draftSnap.exists() ? draftSnap.data() || {} : {};
+    if (!session.id) return buildEmptySnapshot(templateId);
+    if (session.kind === "template") {
+      const result = await getTemplateEditorDocument({
+        templateId: session.id,
+      });
+      draftData =
+        result?.editorDocument && typeof result.editorDocument === "object"
+          ? result.editorDocument
+          : {};
+    } else {
+      const draftSnap = await getDoc(doc(db, "borradores", session.id));
+      draftData = draftSnap.exists() ? draftSnap.data() || {} : {};
+    }
   }
 
   const draftRenderState = normalizeDraftRenderState(draftData);
   const sourceTemplateId =
     normalizeText(templateId) ||
+    (session.kind === "template" ? normalizeText(session.id) : "") ||
     normalizeText(draftData?.plantillaId) ||
     normalizeText(draftData?.templateAuthoringDraft?.sourceTemplateId) ||
     null;
@@ -159,9 +193,16 @@ export async function loadAuthoringState({
   );
 }
 
-export async function saveAuthoringDraft({ slug, state, uid } = {}) {
+export async function saveAuthoringDraft({
+  slug,
+  state,
+  uid,
+  templateId = "",
+  editorSession = null,
+} = {}) {
   const safeSlug = normalizeText(slug);
-  if (!safeSlug) {
+  const session = normalizeEditorSession(editorSession, safeSlug, templateId);
+  if (!session.id) {
     throw new Error("No se pudo guardar el authoring: slug invalido.");
   }
 
@@ -177,10 +218,22 @@ export async function saveAuthoringDraft({ slug, state, uid } = {}) {
     updatedByUid: safeUid,
   };
 
-  await updateDoc(doc(db, "borradores", safeSlug), {
-    templateAuthoringDraft: payload,
-    ultimaEdicion: serverTimestamp(),
-  });
+  if (session.kind === "template") {
+    await saveTemplateEditorDocument({
+      templateId: session.id,
+      document: {
+        templateAuthoringDraft: {
+          ...payload,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+  } else {
+    await updateDoc(doc(db, "borradores", session.id), {
+      templateAuthoringDraft: payload,
+      ultimaEdicion: serverTimestamp(),
+    });
+  }
 
   return payload;
 }

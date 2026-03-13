@@ -68,6 +68,7 @@ import useCanvasEditorTextSystem from "@/components/editor/textSystem/runtime/us
 import useTextEditInteractionController from "@/components/editor/textSystem/runtime/useTextEditInteractionController";
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
+import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
 
 
 
@@ -128,6 +129,7 @@ function isTypographyEditableCanvasObject(obj) {
 
 export default function CanvasEditor({
   slug,
+  editorSession = null,
   zoom = 1,
   onHistorialChange,
   onFuturosChange,
@@ -136,6 +138,7 @@ export default function CanvasEditor({
   canManageSite = false,
   readOnly = false,
   initialDraftData = null,
+  initialEditorData = null,
 }) {
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
@@ -218,15 +221,18 @@ export default function CanvasEditor({
   const previoAnimandoSeccionesRef = useRef(false);
   const seccionActivaIdRef = useRef(null);
   const ignoreNextUpdateRef = useRef(0);
+  const persistenceBridgeRef = useRef(null);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
   const [draftMeta, setDraftMeta] = useState({
     plantillaId: null,
+    templateWorkspace: null,
     templateAuthoringDraft: null,
     loadedAt: 0,
   });
+  const [templateEditorialPanelOpen, setTemplateEditorialPanelOpen] = useState(false);
   const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
@@ -263,9 +269,11 @@ export default function CanvasEditor({
   useEffect(() => {
     setDraftMeta({
       plantillaId: null,
+      templateWorkspace: null,
       templateAuthoringDraft: null,
       loadedAt: 0,
     });
+    setTemplateEditorialPanelOpen(false);
   }, [slug]);
 
   const isTextResizeDebugEnabled = () =>
@@ -296,15 +304,35 @@ export default function CanvasEditor({
     giftsConfig,
     setGiftsConfig,
   });
+  const registerPersistenceBridge = useCallback((bridge) => {
+    persistenceBridgeRef.current =
+      bridge && typeof bridge === "object" ? bridge : null;
+  }, []);
+
+  const flushEditorPersistence = useCallback((options = {}) => {
+    const flushNow = persistenceBridgeRef.current?.flushNow;
+    if (typeof flushNow !== "function") {
+      return Promise.resolve({
+        ok: false,
+        reason: "bridge-unavailable",
+        error: "El editor todavia no expuso un flush directo.",
+      });
+    }
+    return flushNow(options);
+  }, []);
+
 
 
 
 
   useBorradorSync({
     slug,
+    editorSession,
     userId,
     readOnly,
     initialDraftData,
+    initialEditorData,
+    onRegisterPersistenceBridge: registerPersistenceBridge,
 
     objetos,
     secciones,
@@ -323,6 +351,11 @@ export default function CanvasEditor({
       setDraftMeta({
         plantillaId:
           typeof safeMeta.plantillaId === "string" ? safeMeta.plantillaId : null,
+        templateWorkspace:
+          safeMeta.templateWorkspace &&
+          typeof safeMeta.templateWorkspace === "object"
+            ? safeMeta.templateWorkspace
+            : null,
         templateAuthoringDraft:
           safeMeta.templateAuthoringDraft &&
           typeof safeMeta.templateAuthoringDraft === "object"
@@ -476,6 +509,7 @@ export default function CanvasEditor({
   const templateAuthoring = useTemplateFieldAuthoring({
     enabled: canManageSite,
     slug,
+    editorSession,
     userId,
     objetos,
     selectedElement: objetoSeleccionado,
@@ -499,6 +533,14 @@ export default function CanvasEditor({
     : templateAuthoringStatus.isReady
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : "border-amber-300 bg-amber-50 text-amber-700";
+  const templateWorkspace =
+    draftMeta?.templateWorkspace && typeof draftMeta.templateWorkspace === "object"
+      ? draftMeta.templateWorkspace
+      : null;
+  const canOpenTemplateEditorialPanel =
+    canManageSite &&
+    Boolean(templateWorkspace?.templateId) &&
+    templateWorkspace?.mode === "template_edit";
 
   const handleViewTemplateFieldUsage = useCallback(
     (fieldKey) => {
@@ -511,6 +553,36 @@ export default function CanvasEditor({
     },
     [templateAuthoring]
   );
+  const handleTemplateEditorialSaved = useCallback((nextTemplate) => {
+    const safeTemplate =
+      nextTemplate && typeof nextTemplate === "object" ? nextTemplate : {};
+    const nextPermissions =
+      safeTemplate.permissions && typeof safeTemplate.permissions === "object"
+        ? safeTemplate.permissions
+        : templateWorkspace?.permissions || {};
+
+    setDraftMeta((previous) => ({
+      ...previous,
+      templateWorkspace: previous?.templateWorkspace
+        ? {
+            ...previous.templateWorkspace,
+            estadoEditorial: safeTemplate.estadoEditorial || previous.templateWorkspace.estadoEditorial || "publicada",
+            tags: Array.isArray(safeTemplate.tags)
+              ? safeTemplate.tags
+              : previous.templateWorkspace.tags || [],
+            templateName:
+              safeTemplate.nombre ||
+              previous.templateWorkspace.templateName ||
+              "Plantilla",
+            permissions: nextPermissions,
+            readOnly:
+              nextPermissions?.readOnly === true
+                ? true
+                : previous.templateWorkspace.readOnly === true,
+          }
+        : previous?.templateWorkspace || null,
+    }));
+  }, [templateWorkspace?.permissions]);
 
   const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
   const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
@@ -908,6 +980,7 @@ export default function CanvasEditor({
     stageRef,
     getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
+    flushPersistenceNow: flushEditorPersistence,
   });
 
 
@@ -1434,8 +1507,9 @@ export default function CanvasEditor({
 
 
       {/* ? BotÃ³n de opciones PEGADO a la esquina superior derecha del elemento */}
-      {!readOnly && (
+      {(!readOnly || canOpenTemplateEditorialPanel) && (
         <CanvasEditorOverlays
+          readOnly={readOnly}
           elementosSeleccionados={elementosSeleccionados}
           editingId={editing.id}
           isSelectionRotating={isSelectionRotating}
@@ -1478,6 +1552,9 @@ export default function CanvasEditor({
           fontManager={fontManager}
           tamaniosDisponibles={tamaniosDisponibles}
           onCambiarAlineacion={onCambiarAlineacion}
+          canOpenTemplateEditorialPanel={canOpenTemplateEditorialPanel}
+          templateWorkspace={templateWorkspace}
+          onOpenTemplateEditorialPanel={() => setTemplateEditorialPanelOpen(true)}
           deleteSectionModal={deleteSectionModal}
           seccionPendienteEliminar={seccionPendienteEliminar}
           cantidadElementosSeccionPendiente={cantidadElementosSeccionPendiente}
@@ -1486,6 +1563,13 @@ export default function CanvasEditor({
           confirmarBorrarSeccion={confirmarBorrarSeccion}
         />
       )}
+
+      <TemplateEditorialDrawer
+        open={templateEditorialPanelOpen}
+        onClose={() => setTemplateEditorialPanelOpen(false)}
+        templateWorkspace={templateWorkspace}
+        onSaved={handleTemplateEditorialSaved}
+      />
 
 
 

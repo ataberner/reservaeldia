@@ -66,6 +66,7 @@ export default function ModalVistaPrevia({
   htmlContent,
   publicUrl,
   onPublish,
+  showPublishActions = true,
   publishing = false,
   publishError = "",
   publishSuccess = "",
@@ -195,6 +196,7 @@ export default function ModalVistaPrevia({
   const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
 
   const confirmarPublicacion = () => {
+    if (!showPublishActions) return;
     if (typeof onPublish !== "function" || publishing) return;
     onPublish();
   };
@@ -389,50 +391,58 @@ export default function ModalVistaPrevia({
               </div>
 
               <div className="flex items-center gap-2">
-                {yaPublicada && confirmedPublicUrl && (
-                  <a
-                    href={confirmedPublicUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border border-[#ddd2f5] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6f3bc0] hover:bg-[#f4ecff] sm:text-xs"
-                    title="Abrir invitacion publicada"
-                  >
-                    Ver publicada
-                  </a>
-                )}
-                {!publishing && !checkoutVisible && (
-                  <span className="hidden items-center gap-1 rounded-full border border-[#d8ccea] bg-[#f7f2ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] sm:inline-flex">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#773dbe]" />
-                    {yaPublicada ? "Lista para actualizar" : "Lista para publicar"}
+                {showPublishActions ? (
+                  <>
+                    {yaPublicada && confirmedPublicUrl && (
+                      <a
+                        href={confirmedPublicUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-md border border-[#ddd2f5] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6f3bc0] hover:bg-[#f4ecff] sm:text-xs"
+                        title="Abrir invitacion publicada"
+                      >
+                        Ver publicada
+                      </a>
+                    )}
+                    {!publishing && !checkoutVisible && (
+                      <span className="hidden items-center gap-1 rounded-full border border-[#d8ccea] bg-[#f7f2ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] sm:inline-flex">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#773dbe]" />
+                        {yaPublicada ? "Lista para actualizar" : "Lista para publicar"}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={confirmarPublicacion}
+                      disabled={publishing || !htmlContent || checkoutVisible}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:text-xs ${
+                        publishing || !htmlContent || checkoutVisible
+                          ? "cursor-not-allowed bg-[#bda5e6]"
+                          : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_28px_rgba(111,59,192,0.34)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
+                      }`}
+                    >
+                      {yaPublicada && !publishing && !checkoutVisible ? <RefreshCw className="h-3.5 w-3.5" /> : null}
+                      {publishing
+                        ? yaPublicada
+                          ? "Actualizando..."
+                          : "Publicando..."
+                        : checkoutVisible
+                        ? "Checkout abierto"
+                        : yaPublicada
+                        ? "Actualizar invitacion"
+                        : "Publicar invitacion"}
+                    </button>
+                  </>
+                ) : (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-600 sm:text-xs">
+                    Vista previa editorial de plantilla
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={confirmarPublicacion}
-                  disabled={publishing || !htmlContent || checkoutVisible}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:text-xs ${
-                    publishing || !htmlContent || checkoutVisible
-                      ? "cursor-not-allowed bg-[#bda5e6]"
-                      : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_28px_rgba(111,59,192,0.34)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
-                  }`}
-                >
-                  {yaPublicada && !publishing && !checkoutVisible ? <RefreshCw className="h-3.5 w-3.5" /> : null}
-                  {publishing
-                    ? yaPublicada
-                      ? "Actualizando..."
-                      : "Publicando..."
-                    : checkoutVisible
-                    ? "Checkout abierto"
-                    : yaPublicada
-                    ? "Actualizar invitacion"
-                    : "Publicar invitacion"}
-                </button>
               </div>
             </div>
-            {publishError ? (
+            {showPublishActions && publishError ? (
               <p className="mt-1 text-[11px] text-red-600 sm:text-xs">{publishError}</p>
             ) : null}
-            {publishSuccess ? (
+            {showPublishActions && publishSuccess ? (
               <p className="mt-1 text-[11px] text-emerald-700 sm:text-xs">{publishSuccess}</p>
             ) : null}
           </div>

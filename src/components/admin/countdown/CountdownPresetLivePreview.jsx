@@ -343,7 +343,7 @@ export default function CountdownPresetLivePreview({
     editorialWidths,
   ]);
 
-  const displayTargetWidth = Math.max(220, Math.min(420, toFinite(safeConfig?.tamanoBase, 320)));
+  const displayTargetWidth = Math.max(220, Math.min(560, toFinite(safeConfig?.tamanoBase, 320)));
   const viewportWidth = Math.max(1, stageViewport.width || displayTargetWidth);
   const viewportHeight = Math.max(1, stageViewport.height || 280);
   const constrainedTargetWidth = Math.min(displayTargetWidth, viewportWidth);
@@ -379,7 +379,7 @@ export default function CountdownPresetLivePreview({
     resolveCanvasPaint(unidad.boxBorder, "transparent"),
     "transparent"
   );
-  const unitBoxRadius = Math.max(0, Math.min(120, Number(unidad.boxRadius || 10)));
+  const unitBoxRadius = Math.max(0, Math.min(999, Number(unidad.boxRadius || 10)));
   const unitBoxShadow = unidad.boxShadow === true;
   const numberColor = resolvePreviewPaint(
     colors.numberColor || previewPatch.color,
@@ -463,7 +463,7 @@ export default function CountdownPresetLivePreview({
                 src={safeFrameUrl}
                 alt=""
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 h-full w-full object-contain opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                className={`pointer-events-none absolute inset-0 h-full w-full object-fill opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
                 loading="lazy"
                 decoding="async"
               />
@@ -510,7 +510,7 @@ export default function CountdownPresetLivePreview({
                       src={safeFrameUrl}
                       alt=""
                       aria-hidden="true"
-                      className={`pointer-events-none absolute inset-0 h-full w-full object-contain opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                      className={`pointer-events-none absolute inset-0 h-full w-full object-fill opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
                       loading="lazy"
                       decoding="async"
                     />

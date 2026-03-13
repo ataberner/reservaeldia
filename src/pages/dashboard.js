@@ -2201,6 +2201,37 @@ export default function Dashboard() {
         data = snap.data();
       }
 
+      const liveObjetos =
+        typeof window !== "undefined" && Array.isArray(window._objetosActuales)
+          ? window._objetosActuales
+          : null;
+      const liveSecciones =
+        typeof window !== "undefined" && Array.isArray(window._seccionesOrdenadas)
+          ? window._seccionesOrdenadas
+          : null;
+      const liveRsvp =
+        typeof window !== "undefined" &&
+        window._rsvpConfigActual &&
+        typeof window._rsvpConfigActual === "object"
+          ? window._rsvpConfigActual
+          : null;
+      const liveGifts =
+        typeof window !== "undefined" &&
+        window._giftsConfigActual &&
+        typeof window._giftsConfigActual === "object"
+          ? window._giftsConfigActual
+          : null;
+
+      if (liveObjetos && liveSecciones) {
+        data = {
+          ...(data && typeof data === "object" ? data : {}),
+          objetos: liveObjetos,
+          secciones: liveSecciones,
+          rsvp: liveRsvp,
+          gifts: liveGifts,
+        };
+      }
+
       const renderState = normalizeDraftRenderState(data);
       const objetosBase = renderState.objetos;
       const secciones = renderState.secciones;

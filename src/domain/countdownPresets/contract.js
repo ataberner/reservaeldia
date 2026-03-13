@@ -63,14 +63,14 @@ export const COUNTDOWN_DEFAULT_CATEGORY = Object.freeze({
 });
 
 export const COUNTDOWN_NUMERIC_LIMITS = Object.freeze({
-  tamanoBase: { min: 220, max: 640, default: 320 },
+  tamanoBase: { min: 220, max: 960, default: 320 },
   gap: { min: 0, max: 48, default: 8 },
   framePadding: { min: 0, max: 64, default: 10 },
   numberSize: { min: 10, max: 120, default: 28 },
   labelSize: { min: 8, max: 72, default: 12 },
   letterSpacing: { min: -2, max: 12, default: 0 },
   lineHeight: { min: 0.8, max: 2, default: 1.05 },
-  boxRadius: { min: 0, max: 120, default: 10 },
+  boxRadius: { min: 0, max: 999, default: 10 },
 });
 
 function toTitleLike(text) {

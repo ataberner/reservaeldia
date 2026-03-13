@@ -225,7 +225,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
             src={frameUrl}
             alt=""
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-0 h-full w-full object-contain"
+            className="pointer-events-none absolute inset-0 z-0 h-full w-full object-fill"
             loading="lazy"
             decoding="async"
           />
@@ -257,7 +257,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
                     src={frameUrl}
                     alt=""
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-0 h-full w-full object-contain"
+                    className="pointer-events-none absolute inset-0 z-0 h-full w-full object-fill"
                     loading="lazy"
                     decoding="async"
                   />

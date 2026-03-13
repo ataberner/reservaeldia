@@ -137,7 +137,7 @@ export function estimateCountdownUnitHeight({
   distribution = "centered",
   unitsCount = 4,
 } = {}) {
-  const base = clamp(tamanoBase, 220, 640);
+  const base = clamp(tamanoBase, 220, 960);
   const count = Math.max(1, Math.min(4, Number(unitsCount || 4)));
   const mode = String(distribution || "centered").toLowerCase();
 
@@ -280,7 +280,7 @@ export async function generateCountdownThumbnailDataUrl({
   const separator = String(unitStyle.separator || "").slice(0, 3);
   const boxBg = resolveCanvasPaint(unitStyle.boxBg, "transparent");
   const boxBorder = resolveCanvasPaint(unitStyle.boxBorder, "transparent");
-  const boxRadius = clamp(unitStyle.boxRadius, 0, 120);
+  const boxRadius = clamp(unitStyle.boxRadius, 0, 999);
   const boxShadow = unitStyle.boxShadow === true;
   let frameImage = null;
 

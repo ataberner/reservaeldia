@@ -5,6 +5,8 @@ export default function useCanvasEditorGlobalsBridge({
   objetos,
   elementRefs,
   secciones,
+  rsvpConfig,
+  giftsConfig,
   altoCanvas,
   seccionActivaId,
   celdaGaleriaActiva,
@@ -17,6 +19,8 @@ export default function useCanvasEditorGlobalsBridge({
     window._objetosActuales = objetos;
     window._elementRefs = elementRefs.current;
     window._seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+    window._rsvpConfigActual = rsvpConfig && typeof rsvpConfig === "object" ? rsvpConfig : null;
+    window._giftsConfigActual = giftsConfig && typeof giftsConfig === "object" ? giftsConfig : null;
     window._altoCanvas = altoCanvas;
     window.dispatchEvent(
       new CustomEvent("editor-selection-change", {
@@ -31,6 +35,8 @@ export default function useCanvasEditorGlobalsBridge({
     elementosSeleccionados,
     objetos,
     secciones,
+    rsvpConfig,
+    giftsConfig,
     altoCanvas,
     seccionActivaId,
     celdaGaleriaActiva,

@@ -32,26 +32,62 @@ function calcCountdownInitialWidth(presetProps = {}) {
     .filter(Boolean);
   const n = Math.max(1, units.length || defaultUnits.length);
   const gap = toNumber(presetProps.gap, 8);
-  const paddingX = toNumber(presetProps.paddingX, 8);
-  const chipWidth = toNumber(presetProps.chipWidth, 46);
-  const chipW = chipWidth + paddingX * 2;
-  const tamanoBase = toNumber(presetProps.tamanoBase, 320);
+  const framePadding = Math.max(0, toNumber(presetProps.framePadding, 10));
+  const chipWidth = Math.max(34, toNumber(presetProps.chipWidth, 46));
+  const paddingX = Math.max(2, toNumber(presetProps.paddingX, 8));
+  const paddingY = toNumber(presetProps.paddingY, 6);
+  const valueSize = Math.max(10, toNumber(presetProps.fontSize, 16));
+  const labelSize = Math.max(8, toNumber(presetProps.labelSize, 10));
+  const showLabels = presetProps.showLabels !== false;
+  const layoutType = String(presetProps.layoutType || "singleFrame");
+  const hasFrameConfigured = String(presetProps.frameSvgUrl || "").trim().length > 0;
   const distribution = String(
     presetProps.distribution || presetProps.layoutType || "centered"
   ).toLowerCase();
+  const tamanoBase = toNumber(presetProps.tamanoBase, 320);
+  const useSingleFrameLayout =
+    layoutType === "singleFrame" && hasFrameConfigured;
+  const baseChipW = Math.max(36, chipWidth + paddingX * 2);
+  const textDrivenChipH = Math.max(
+    44,
+    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
+  );
+  const layoutDrivenChipH = estimateCountdownUnitHeight({
+    tamanoBase,
+    distribution,
+    unitsCount: n,
+  });
+  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+  const cols =
+    distribution === "vertical"
+      ? 1
+      : distribution === "grid"
+        ? Math.min(2, n)
+        : n;
+  const rows =
+    distribution === "vertical"
+      ? n
+      : distribution === "grid"
+        ? Math.ceil(n / cols)
+        : 1;
+  const editorialWidths =
+    distribution === "editorial"
+      ? Array.from({ length: n }, (_, index) =>
+          Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88)))
+        )
+      : [];
+  const naturalW =
+    distribution === "vertical"
+      ? baseChipW
+      : distribution === "grid"
+        ? cols * baseChipW + gap * (cols - 1)
+        : distribution === "editorial"
+          ? editorialWidths.reduce((acc, width) => acc + width, 0) +
+            gap * Math.max(0, n - 1)
+          : n * baseChipW + gap * (n - 1);
+  const containerW = naturalW + (useSingleFrameLayout ? framePadding * 2 : 0);
 
-  if (distribution === "vertical") {
-    return Math.max(160, Math.round(Math.max(chipW + 24, tamanoBase * 0.48)));
-  }
-  if (distribution === "grid") {
-    const cols = Math.min(2, n);
-    return Math.max(180, Math.round(cols * chipW + gap * (cols - 1)));
-  }
-  if (distribution === "editorial") {
-    return Math.max(220, Math.round(Math.max(chipW * n + gap * (n - 1), tamanoBase * 0.72)));
-  }
-
-  return Math.max(180, Math.round(n * chipW + gap * (n - 1)));
+  return Math.max(180, Math.round(containerW));
 }
 
 function calcCountdownInitialHeight(presetProps = {}) {
@@ -59,17 +95,31 @@ function calcCountdownInitialHeight(presetProps = {}) {
   const unitsRaw = Array.isArray(presetProps.visibleUnits)
     ? presetProps.visibleUnits
     : defaultUnits;
-  const n = Math.max(1, unitsRaw.length || defaultUnits.length);
+  const units = unitsRaw
+    .map((unit) => String(unit || "").trim())
+    .filter(Boolean);
+  const n = Math.max(1, units.length || defaultUnits.length);
   const gap = toNumber(presetProps.gap, 8);
+  const framePadding = Math.max(0, toNumber(presetProps.framePadding, 10));
+  const chipWidth = Math.max(34, toNumber(presetProps.chipWidth, 46));
+  const paddingX = Math.max(2, toNumber(presetProps.paddingX, 8));
   const paddingY = toNumber(presetProps.paddingY, 6);
-  const valueSize = toNumber(presetProps.fontSize, 16);
-  const labelSize = toNumber(presetProps.labelSize, 10);
+  const valueSize = Math.max(10, toNumber(presetProps.fontSize, 16));
+  const labelSize = Math.max(8, toNumber(presetProps.labelSize, 10));
   const showLabels = presetProps.showLabels !== false;
+  const layoutType = String(presetProps.layoutType || "singleFrame");
+  const hasFrameConfigured = String(presetProps.frameSvgUrl || "").trim().length > 0;
   const distribution = String(
     presetProps.distribution || presetProps.layoutType || "centered"
   ).toLowerCase();
   const tamanoBase = toNumber(presetProps.tamanoBase, 320);
-  const textDrivenChipH = paddingY * 2 + valueSize + (showLabels ? labelSize : 0) + 10;
+  const useSingleFrameLayout =
+    layoutType === "singleFrame" && hasFrameConfigured;
+  const baseChipW = Math.max(36, chipWidth + paddingX * 2);
+  const textDrivenChipH = Math.max(
+    44,
+    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
+  );
   const layoutDrivenChipH = estimateCountdownUnitHeight({
     tamanoBase,
     distribution,
@@ -78,18 +128,30 @@ function calcCountdownInitialHeight(presetProps = {}) {
   const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
 
   if (distribution === "vertical") {
-    return Math.max(120, Math.round(n * chipH + gap * (n - 1)));
+    return Math.max(
+      120,
+      Math.round(n * chipH + gap * (n - 1) + (useSingleFrameLayout ? framePadding * 2 : 0))
+    );
   }
   if (distribution === "grid") {
     const cols = Math.min(2, n);
     const rows = Math.ceil(n / cols);
-    return Math.max(110, Math.round(rows * chipH + gap * (rows - 1)));
+    return Math.max(
+      110,
+      Math.round(rows * chipH + gap * (rows - 1) + (useSingleFrameLayout ? framePadding * 2 : 0))
+    );
   }
   if (distribution === "editorial") {
-    return Math.max(110, Math.round(chipH * 1.35));
+    return Math.max(
+      110,
+      Math.round(chipH + (useSingleFrameLayout ? framePadding * 2 : 0))
+    );
   }
 
-  return Math.max(90, Math.round(chipH + 10));
+  return Math.max(
+    90,
+    Math.round(chipH + (useSingleFrameLayout ? framePadding * 2 : 0))
+  );
 }
 
 function inferTextVariant(variant = "texto", isMobile = false) {

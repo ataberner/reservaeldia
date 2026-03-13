@@ -1252,6 +1252,8 @@ export default function CanvasEditor({
     objetos,
     elementRefs,
     secciones,
+    rsvpConfig,
+    giftsConfig,
     altoCanvas,
     seccionActivaId,
     celdaGaleriaActiva,

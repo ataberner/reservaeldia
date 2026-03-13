@@ -329,11 +329,19 @@ export default function CountdownPresetForm({
   const [targetISO, setTargetISO] = useState(() => createFutureDateISO(45));
   const [errorMessage, setErrorMessage] = useState("");
   const [validationWarnings, setValidationWarnings] = useState([]);
+  const [draftSession, setDraftSession] = useState({
+    presetId: null,
+    draftVersion: null,
+  });
 
   useEffect(() => {
     setFormState(buildStateFromPreset(selectedPreset));
     setErrorMessage("");
     setValidationWarnings([]);
+    setDraftSession({
+      presetId: selectedPreset?.id || null,
+      draftVersion: selectedPreset?.draftVersion ?? null,
+    });
   }, [selectedPreset]);
 
   useEffect(() => {
@@ -368,7 +376,9 @@ export default function CountdownPresetForm({
     }));
 
   const visibleUnits = formState.config.layout.visibleUnits || [];
-  const canPublish = Boolean(selectedPreset?.id && selectedPreset?.draftVersion);
+  const effectivePresetId = draftSession.presetId || selectedPreset?.id || null;
+  const effectiveDraftVersion = draftSession.draftVersion ?? selectedPreset?.draftVersion ?? null;
+  const canPublish = Boolean(effectivePresetId && effectiveDraftVersion);
   const isPublished = selectedPreset?.estado === "published";
   const canDelete = Boolean(selectedPreset?.id && !isPublished);
   const isArchived = selectedPreset?.estado === "archived";
@@ -436,11 +446,11 @@ export default function CountdownPresetForm({
         size: 320,
         targetISO,
       });
-      await onSaveDraft?.({
-        presetId: selectedPreset?.id || null,
+      const response = await onSaveDraft?.({
+        presetId: effectivePresetId,
         nombre: validation.normalized.nombre,
         categoria: validation.normalized.categoria,
-        expectedDraftVersion: selectedPreset?.draftVersion ?? null,
+        expectedDraftVersion: effectiveDraftVersion,
         config: { ...validation.normalized.config, svgRef: { colorMode: svgColorMode } },
         assets: {
           removeSvg,
@@ -448,6 +458,10 @@ export default function CountdownPresetForm({
           svgBase64: formState.svgAsset?.isDirty ? formState.svgAsset?.svgBase64 : null,
           thumbnailPngBase64: dataUrlToBase64(thumbnailDataUrl),
         },
+      });
+      setDraftSession({
+        presetId: response?.presetId || effectivePresetId,
+        draftVersion: response?.draftVersion ?? effectiveDraftVersion,
       });
       setValidationWarnings(validation.warnings);
       setFormState((prev) => ({ ...prev, svgAsset: prev.svgAsset ? { ...prev.svgAsset, isDirty: false } : prev.svgAsset }));
@@ -458,14 +472,14 @@ export default function CountdownPresetForm({
 
   const handlePublish = async () => {
     setErrorMessage("");
-    if (!selectedPreset?.id || !selectedPreset?.draftVersion) {
+    if (!effectivePresetId || !effectiveDraftVersion) {
       setErrorMessage("No hay borrador pendiente para publicar.");
       return;
     }
     try {
       await onPublishDraft?.({
-        presetId: selectedPreset.id,
-        expectedDraftVersion: selectedPreset.draftVersion,
+        presetId: effectivePresetId,
+        expectedDraftVersion: effectiveDraftVersion,
       });
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "No se pudo publicar el preset."));
@@ -577,9 +591,15 @@ export default function CountdownPresetForm({
                 <span>Fuente base</span>
                 <input value={formState.config.tipografia.fontFamily} onChange={(e) => setConfigField("tipografia", "fontFamily", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" placeholder="Fuente" />
               </label>
-              <label className="space-y-1 text-[11px] font-medium text-slate-600">
-                <span>Tamano base ({formState.config.tamanoBase}px)</span>
-                <input type="range" min={220} max={640} value={formState.config.tamanoBase} onChange={(e) => setFormState((prev) => ({ ...prev, config: { ...prev.config, tamanoBase: Number(e.target.value) } }))} className="w-full" />
+              <label className="space-y-1 text-[11px] font-medium text-slate-600 sm:col-span-2">
+                <span>Tamano de caja/unidad ({formState.config.tamanoBase}px)</span>
+                <div className="flex items-center gap-2">
+                  <input type="range" min={220} max={960} value={formState.config.tamanoBase} onChange={(e) => setFormState((prev) => ({ ...prev, config: { ...prev.config, tamanoBase: Number(e.target.value) } }))} className="w-full" />
+                  <input type="number" min={220} max={960} value={formState.config.tamanoBase} onChange={(e) => setFormState((prev) => ({ ...prev, config: { ...prev.config, tamanoBase: Number(e.target.value) } }))} className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+                </div>
+                <span className="block text-[10px] text-slate-500">
+                  Controla el tamano visual de cada caja, pill o circulo del countdown.
+                </span>
               </label>
               <label className="space-y-1 text-[11px] font-medium text-slate-600">
                 <span>Tamano numero (px)</span>
@@ -643,7 +663,10 @@ export default function CountdownPresetForm({
               />
               <label className="space-y-1 text-[11px] font-medium text-slate-600">
                 <span>Radio de borde (px)</span>
-                <input type="number" min={0} max={120} value={formState.config.unidad.boxRadius} onChange={(e) => setConfigField("unidad", "boxRadius", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+                <input type="number" min={0} max={999} value={formState.config.unidad.boxRadius} onChange={(e) => setConfigField("unidad", "boxRadius", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+                <span className="block text-[10px] text-slate-500">
+                  Si supera la mitad del chip, el borde se redondea hasta verse como circulo o pill.
+                </span>
               </label>
               <label className="space-y-1 text-[11px] font-medium text-slate-600">
                 <span>Sombra de unidad</span>

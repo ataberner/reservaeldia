@@ -117,7 +117,7 @@ function estimateCountdownUnitHeightLikeCanvas({
   distribution?: any;
   unitsCount?: any;
 } = {}): number {
-  const base = clampNumber(toFiniteNumber(tamanoBase, 320), 220, 640);
+  const base = clampNumber(toFiniteNumber(tamanoBase, 320), 220, 960);
   const count = Math.max(1, Math.min(4, Number(unitsCount || 4)));
   const mode = String(distribution || "centered").toLowerCase();
 
@@ -809,7 +809,7 @@ ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
 
           const singleFrameHtml =
             layout.useSingleFrameLayout && layout.hasFrameConfigured
-              ? `<div class="cdv2-frame cdv2-frame--single" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
+              ? `<div class="cdv2-frame cdv2-frame--single" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:fill;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
               : "";
 
           const unitsHtml = layout.unitLayouts
@@ -838,7 +838,7 @@ pointer-events: none;
 `.trim();
               const unitFrameHtml =
                 layout.useMultiUnitFrame && layout.hasFrameConfigured
-                  ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
+                  ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:fill;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
                   : "";
 
               return `

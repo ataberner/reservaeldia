@@ -188,14 +188,14 @@ const COLOR_MODES = new Set(["currentColor", "fixed"]);
 const UNITS: Unit[] = ["days", "hours", "minutes", "seconds"];
 
 const RANGES: Record<string, Range> = {
-  tamanoBase: { min: 220, max: 640 },
+  tamanoBase: { min: 220, max: 960 },
   gap: { min: 0, max: 48 },
   framePadding: { min: 0, max: 64 },
   numberSize: { min: 10, max: 120 },
   labelSize: { min: 8, max: 72 },
   letterSpacing: { min: -2, max: 12 },
   lineHeight: { min: 0.8, max: 2 },
-  boxRadius: { min: 0, max: 120 },
+  boxRadius: { min: 0, max: 999 },
 };
 
 const DEFAULT_CATEGORY: Category = {

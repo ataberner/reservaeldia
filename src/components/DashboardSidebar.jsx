@@ -4,10 +4,15 @@ import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
 import { FaChevronRight, FaGift, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
+import { Redo2, Undo2 } from "lucide-react";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
+import {
+    triggerEditorRedo,
+    triggerEditorUndo,
+} from "@/utils/editorHistoryControls";
 
 
 /**
@@ -33,6 +38,9 @@ const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "contador", "
 export default function DashboardSidebar({
     modoSelector,
     seccionActivaId,
+    historialExternos = [],
+    futurosExternos = [],
+    editorReadOnly = false,
 }) {
     // --------------------------
     // Estados internos del sidebar
@@ -428,6 +436,14 @@ export default function DashboardSidebar({
             : "border-white/25 text-white/95 opacity-90 hover:-translate-y-[1px] hover:opacity-100 hover:border-white/40 hover:shadow-[0_12px_24px_rgba(31,15,58,0.28)]"
             }`;
     };
+    const mobileHistoryButtonBase =
+        "group flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-200";
+    const mobileHistoryButtonEnabled =
+        "border-[#e5d7fb] bg-white text-[#6f3bc0] shadow-[0_10px_20px_rgba(95,53,150,0.12)] hover:-translate-y-[1px] hover:border-[#d7c4f5] hover:bg-[#faf6ff]";
+    const mobileHistoryButtonDisabled =
+        "cursor-not-allowed border-[#ece7f7] bg-[#f5f3fa] text-slate-300 shadow-none";
+    const canUndo = !editorReadOnly && historialExternos.length > 1;
+    const canRedo = !editorReadOnly && futurosExternos.length > 0;
 
 
 
@@ -622,6 +638,44 @@ export default function DashboardSidebar({
                             style={mobileToolbarViewportMaskStyle}
                         >
                             <div className="flex min-w-max items-start gap-2.5 px-2.5 py-2 pr-3">
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={triggerEditorUndo}
+                                    disabled={!canUndo}
+                                    className={`${mobileHistoryButtonBase} ${
+                                        canUndo
+                                            ? mobileHistoryButtonEnabled
+                                            : mobileHistoryButtonDisabled
+                                    }`}
+                                    title="Deshacer"
+                                >
+                                    <Undo2 className="h-4 w-4" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
+                                    Deshacer
+                                </span>
+                            </div>
+
+                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={triggerEditorRedo}
+                                    disabled={!canRedo}
+                                    className={`${mobileHistoryButtonBase} ${
+                                        canRedo
+                                            ? mobileHistoryButtonEnabled
+                                            : mobileHistoryButtonDisabled
+                                    }`}
+                                    title="Rehacer"
+                                >
+                                    <Redo2 className="h-4 w-4" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
+                                    Rehacer
+                                </span>
+                            </div>
+
                             <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
                                 <button type="button"
                                     onClick={() => alternarSidebarConBoton("texto")}

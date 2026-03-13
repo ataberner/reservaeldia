@@ -390,7 +390,7 @@ export default function ModalVistaPrevia({
                 Vista escritorio ({DESKTOP_VIEWPORT_WIDTH}px) y movil ({MOBILE_VIEWPORT_WIDTH}px)
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 {showPublishActions ? (
                   <>
                     {yaPublicada && confirmedPublicUrl && (
@@ -398,7 +398,7 @@ export default function ModalVistaPrevia({
                         href={confirmedPublicUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-md border border-[#ddd2f5] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6f3bc0] hover:bg-[#f4ecff] sm:text-xs"
+                        className="w-full rounded-md border border-[#ddd2f5] bg-white px-2.5 py-2 text-center text-[11px] font-medium text-[#6f3bc0] hover:bg-[#f4ecff] sm:w-auto sm:py-1 sm:text-xs"
                         title="Abrir invitacion publicada"
                       >
                         Ver publicada
@@ -414,7 +414,7 @@ export default function ModalVistaPrevia({
                       type="button"
                       onClick={confirmarPublicacion}
                       disabled={publishing || !htmlContent || checkoutVisible}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:text-xs ${
+                      className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:w-auto sm:text-xs ${
                         publishing || !htmlContent || checkoutVisible
                           ? "cursor-not-allowed bg-[#bda5e6]"
                           : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_28px_rgba(111,59,192,0.34)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"

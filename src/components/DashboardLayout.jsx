@@ -88,6 +88,9 @@ export default function DashboardLayout({
           modoSelector={modoSelector}
           mostrarMiniToolbar={mostrarMiniToolbar}
           seccionActivaId={seccionActivaId}
+          historialExternos={historialExternos}
+          futurosExternos={futurosExternos}
+          editorReadOnly={editorReadOnly}
         />
       )}
 

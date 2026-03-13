@@ -166,6 +166,55 @@ function normalizeError(errorLike) {
   };
 }
 
+function collectIssueTokens(value, acc = []) {
+  if (value == null) return acc;
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    acc.push(String(value));
+    return acc;
+  }
+
+  if (value instanceof Error) {
+    if (value.name) acc.push(String(value.name));
+    if (value.message) acc.push(String(value.message));
+    if (value.stack) acc.push(String(value.stack));
+    return acc;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectIssueTokens(entry, acc));
+    return acc;
+  }
+
+  if (typeof value === "object") {
+    [
+      value.name,
+      value.message,
+      value.stack,
+      value.filename,
+      value.sourceURL,
+      value.reason,
+      value.error,
+      value.target?.src,
+      value.target?.href,
+    ].forEach((entry) => collectIssueTokens(entry, acc));
+  }
+
+  return acc;
+}
+
+function isExternalExtensionIssue(eventLike) {
+  const haystack = collectIssueTokens(eventLike)
+    .join("\n")
+    .toLowerCase();
+
+  return (
+    haystack.includes("chrome-extension://") ||
+    haystack.includes("moz-extension://") ||
+    haystack.includes("safari-web-extension://")
+  );
+}
+
 export function buildEditorIssueReport({
   source = "unknown",
   error = null,
@@ -240,6 +289,13 @@ export function installGlobalEditorIssueHandlers() {
   if (typeof window === "undefined") return () => {};
 
   const onWindowError = (event) => {
+    if (isExternalExtensionIssue(event)) {
+      pushEditorBreadcrumb("ignored-global-browser-extension-issue", {
+        source: "window.onerror",
+      });
+      return;
+    }
+
     captureEditorIssue({
       source: "window.onerror",
       error: event?.error || event?.message || event,
@@ -253,6 +309,13 @@ export function installGlobalEditorIssueHandlers() {
   };
 
   const onUnhandledRejection = (event) => {
+    if (isExternalExtensionIssue(event)) {
+      pushEditorBreadcrumb("ignored-global-browser-extension-issue", {
+        source: "window.unhandledrejection",
+      });
+      return;
+    }
+
     captureEditorIssue({
       source: "window.unhandledrejection",
       error: event?.reason || event,

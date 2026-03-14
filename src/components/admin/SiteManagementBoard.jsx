@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
+import DashboardHomeConfigPanel from "@/components/admin/DashboardHomeConfigPanel";
 import DiscountCodesManager from "@/components/admin/DiscountCodesManager";
 import BusinessAnalyticsBoard from "@/components/admin/BusinessAnalyticsBoard";
 
@@ -11,6 +12,7 @@ export default function SiteManagementBoard({
   const isAnalyticsOpen = openPanel === "analytics";
   const isAdminsOpen = openPanel === "admins";
   const isDiscountsOpen = openPanel === "discounts";
+  const isDashboardHomeOpen = openPanel === "dashboard-home";
   const canAccessSiteManagement = isSuperAdmin === true;
 
   const togglePanel = (panelKey) => {
@@ -90,6 +92,57 @@ export default function SiteManagementBoard({
           </div>
 
           {isAnalyticsOpen && <BusinessAnalyticsBoard />}
+
+          <div
+            className={`rounded-xl p-[1px] transition-all ${
+              isDashboardHomeOpen
+                ? "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500 shadow-md"
+                : "border border-gray-200 bg-white shadow-sm"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => togglePanel("dashboard-home")}
+              className={`flex w-full items-center justify-between gap-4 rounded-[11px] px-4 py-3 text-left transition-all ${
+                isDashboardHomeOpen
+                  ? "bg-gradient-to-r from-violet-50 via-fuchsia-50 to-rose-50"
+                  : "bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div>
+                <h2
+                  className={`text-lg font-semibold ${
+                    isDashboardHomeOpen ? "text-violet-900" : "text-gray-800"
+                  }`}
+                >
+                  Home del dashboard
+                </h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    isDashboardHomeOpen ? "text-violet-700" : "text-gray-600"
+                  }`}
+                >
+                  Configura Plantillas destacadas y el orden editorial de categorias usando etiquetas existentes.
+                </p>
+                {isDashboardHomeOpen && (
+                  <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                    Seccion abierta
+                  </span>
+                )}
+              </div>
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
+                  isDashboardHomeOpen
+                    ? "bg-violet-600 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {isDashboardHomeOpen ? "^" : "v"}
+              </span>
+            </button>
+          </div>
+
+          {isDashboardHomeOpen && <DashboardHomeConfigPanel />}
 
           <div
             className={`rounded-xl p-[1px] transition-all ${

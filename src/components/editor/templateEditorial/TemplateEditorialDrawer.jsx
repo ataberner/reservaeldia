@@ -64,10 +64,6 @@ export default function TemplateEditorialDrawer({
     () => normalizeWorkspace(templateWorkspace),
     [templateWorkspace]
   );
-  const workspaceTagsSignature = useMemo(
-    () => workspace.tags.map((entry) => normalizeLower(entry)).join("|"),
-    [workspace.tags]
-  );
   const templateId = workspace.templateId;
   const readOnly = workspace.readOnly || workspace?.permissions?.readOnly === true;
   const [loadingTags, setLoadingTags] = useState(false);
@@ -84,25 +80,69 @@ export default function TemplateEditorialDrawer({
   const failedSignatureRef = useRef("");
   const latestSelectedStateRef = useRef(selectedState);
   const latestSelectedTagsRef = useRef(selectedTags);
+  const latestWorkspaceRef = useRef(workspace);
+  const selectionRevisionRef = useRef(0);
+
+  const replaceLocalSelectedState = useCallback((nextValue) => {
+    const normalized = normalizeTemplateEditorialState(nextValue);
+    latestSelectedStateRef.current = normalized;
+    setSelectedState(normalized);
+    return normalized;
+  }, []);
+
+  const replaceLocalSelectedTags = useCallback((nextValue) => {
+    const nextTags = Array.isArray(nextValue) ? nextValue.filter(Boolean) : [];
+    latestSelectedTagsRef.current = nextTags;
+    setSelectedTags(nextTags);
+    return nextTags;
+  }, []);
+
+  const updateLocalSelectedState = useCallback((nextValue) => {
+    const previous = latestSelectedStateRef.current;
+    const normalized = normalizeTemplateEditorialState(nextValue);
+    if (normalized === previous) return previous;
+    selectionRevisionRef.current += 1;
+    latestSelectedStateRef.current = normalized;
+    setSelectedState(normalized);
+    return normalized;
+  }, []);
+
+  const updateLocalSelectedTags = useCallback((updater) => {
+    const previous = Array.isArray(latestSelectedTagsRef.current)
+      ? latestSelectedTagsRef.current
+      : [];
+    const candidate =
+      typeof updater === "function" ? updater(previous) : updater;
+    const nextTags = Array.isArray(candidate) ? candidate.filter(Boolean) : [];
+    const unchanged =
+      nextTags.length === previous.length &&
+      nextTags.every((entry, index) => entry === previous[index]);
+    if (unchanged) return previous;
+    selectionRevisionRef.current += 1;
+    latestSelectedTagsRef.current = nextTags;
+    setSelectedTags(nextTags);
+    return nextTags;
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
-    setSelectedTags(workspace.tags);
-    setSelectedState(workspace.estadoEditorial);
+    latestWorkspaceRef.current = workspace;
+  }, [workspace]);
+
+  useEffect(() => {
+    if (!open || !templateId) return;
+    const nextWorkspace = latestWorkspaceRef.current;
+    selectionRevisionRef.current = 0;
+    replaceLocalSelectedTags(nextWorkspace.tags);
+    replaceLocalSelectedState(nextWorkspace.estadoEditorial);
     setTagQuery("");
     setError("");
     setSaveStatus("idle");
     lastPersistedSignatureRef.current = buildEditorialSignature(
-      workspace.estadoEditorial,
-      workspace.tags
+      nextWorkspace.estadoEditorial,
+      nextWorkspace.tags
     );
     failedSignatureRef.current = "";
-  }, [open, workspace.estadoEditorial, workspaceTagsSignature]);
-
-  useEffect(() => {
-    latestSelectedStateRef.current = selectedState;
-    latestSelectedTagsRef.current = selectedTags;
-  }, [selectedState, selectedTags]);
+  }, [open, replaceLocalSelectedState, replaceLocalSelectedTags, templateId]);
 
   useEffect(() => {
     if (!open || !templateId) return;
@@ -168,7 +208,7 @@ export default function TemplateEditorialDrawer({
   const addTag = (label) => {
     const safeLabel = normalizeText(label);
     if (!safeLabel) return;
-    setSelectedTags((previous) => {
+    updateLocalSelectedTags((previous) => {
       if (previous.some((item) => normalizeLower(item) === normalizeLower(safeLabel))) {
         return previous;
       }
@@ -179,7 +219,7 @@ export default function TemplateEditorialDrawer({
 
   const removeTag = (label) => {
     const safeLabel = normalizeText(label);
-    setSelectedTags((previous) =>
+    updateLocalSelectedTags((previous) =>
       previous.filter((item) => normalizeLower(item) !== normalizeLower(safeLabel))
     );
   };
@@ -216,6 +256,7 @@ export default function TemplateEditorialDrawer({
     nextState,
     nextTags,
     requestSignature,
+    requestRevision,
   }) => {
     setSaving(true);
     setSaveStatus("saving");
@@ -240,14 +281,9 @@ export default function TemplateEditorialDrawer({
       lastPersistedSignatureRef.current = persistedSignature;
       failedSignatureRef.current = "";
 
-      if (
-        buildEditorialSignature(
-          latestSelectedStateRef.current,
-          latestSelectedTagsRef.current
-        ) === requestSignature
-      ) {
-        setSelectedState(persistedState);
-        setSelectedTags(persistedTags);
+      if (selectionRevisionRef.current === requestRevision) {
+        replaceLocalSelectedState(persistedState);
+        replaceLocalSelectedTags(persistedTags);
       }
 
       setSaveStatus("saved");
@@ -262,7 +298,12 @@ export default function TemplateEditorialDrawer({
     } finally {
       setSaving(false);
     }
-  }, [onSaved, templateId]);
+  }, [
+    onSaved,
+    replaceLocalSelectedState,
+    replaceLocalSelectedTags,
+    templateId,
+  ]);
 
   useEffect(() => {
     if (!open || !templateId || readOnly) return undefined;
@@ -280,11 +321,13 @@ export default function TemplateEditorialDrawer({
     setSaveStatus("pending");
     const nextState = selectedState;
     const nextTags = [...selectedTags];
+    const requestRevision = selectionRevisionRef.current;
     const timer = window.setTimeout(() => {
       void persistEditorialChanges({
         nextState,
         nextTags,
         requestSignature: selectedSignature,
+        requestRevision,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -383,9 +426,7 @@ export default function TemplateEditorialDrawer({
               value={selectedState}
               disabled={readOnly}
               onChange={(event) =>
-                setSelectedState(
-                  normalizeTemplateEditorialState(event.target.value)
-                )
+                updateLocalSelectedState(event.target.value)
               }
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#d0b8f4] focus:ring-2 focus:ring-[#eadffd] disabled:cursor-not-allowed disabled:bg-slate-100"
             >

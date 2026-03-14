@@ -115,6 +115,10 @@ import {
   runBusinessAnalyticsExportJobsV1 as runBusinessAnalyticsExportJobsV1Handler,
   runBusinessAnalyticsRebuildJobsV1 as runBusinessAnalyticsRebuildJobsV1Handler,
 } from "./analytics/service";
+import {
+  adminUpsertDashboardHomeConfigV1 as adminUpsertDashboardHomeConfigV1Handler,
+  getDashboardHomeConfigV1 as getDashboardHomeConfigV1Handler,
+} from "./dashboardHome/service";
 
 import * as logger from "firebase-functions/logger";
 
@@ -170,6 +174,8 @@ export const adminRebuildBusinessAnalyticsV1 = adminRebuildBusinessAnalyticsV1Ha
 export const processPendingAnalyticsEventsV1 = processPendingAnalyticsEventsV1Handler;
 export const runBusinessAnalyticsExportJobsV1 = runBusinessAnalyticsExportJobsV1Handler;
 export const runBusinessAnalyticsRebuildJobsV1 = runBusinessAnalyticsRebuildJobsV1Handler;
+export const getDashboardHomeConfigV1 = getDashboardHomeConfigV1Handler;
+export const adminUpsertDashboardHomeConfigV1 = adminUpsertDashboardHomeConfigV1Handler;
 
 setGlobalOptions({
   region: "us-central1",

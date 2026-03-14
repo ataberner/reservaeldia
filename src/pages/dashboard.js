@@ -4,10 +4,7 @@ import { db, functions as cloudFunctions } from '../firebase';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
-import TipoSelector from '../components/TipoSelector';
-import PlantillaGrid from '../components/PlantillaGrid';
-import BorradoresGrid from '@/components/BorradoresGrid';
-import DashboardPublicadasSection from "@/components/DashboardPublicadasSection";
+import DashboardHomeView from "@/components/dashboard/home/DashboardHomeView";
 import DashboardTrashSection from "@/components/DashboardTrashSection";
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
 import TemplatePreviewModal from "@/components/TemplatePreviewModal";
@@ -31,7 +28,6 @@ import { normalizeGiftConfig } from "@/domain/gifts/config";
 import {
   createDraftFromTemplateWithInput,
   getTemplateById,
-  listTemplates,
 } from "@/domain/templates/service";
 import { getTemplateEditorDocument } from "@/domain/templates/adminService";
 import { normalizeTemplateMetadata } from "@/domain/templates/metadata";
@@ -53,7 +49,6 @@ const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // disable server-side rendering for editor
   loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
 });
-const SHOW_TIPO_SELECTOR = false;
 const DEFAULT_TIPO_INVITACION = "boda";
 const IMAGE_PRELOAD_TIMEOUT_MS = 15000;
 const IMAGE_PRELOAD_BATCH_SIZE = 6;
@@ -604,17 +599,13 @@ function buildReportForTransport(report) {
 export default function Dashboard() {
   const [tipoSeleccionado, setTipoSeleccionado] = useState(DEFAULT_TIPO_INVITACION);
   const [slugInvitacion, setSlugInvitacion] = useState(null);
-  const [plantillas, setPlantillas] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isOpeningTemplateEditor, setIsOpeningTemplateEditor] = useState(false);
   const [templatePreviewCacheById, setTemplatePreviewCacheById] = useState({});
   const [templatePreviewStatus, setTemplatePreviewStatus] = useState({});
   const [templateFormState, setTemplateFormState] = useState(TEMPLATE_FORM_STATE_INITIAL);
-  const [homePublicationsReady, setHomePublicationsReady] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [homeDraftsReady, setHomeDraftsReady] = useState(false);
-  const [homeTemplatesReady, setHomeTemplatesReady] = useState(false);
+  const [homeViewReady, setHomeViewReady] = useState(false);
   const [homeLoaderForcedDone, setHomeLoaderForcedDone] = useState(false);
   const [holdHomeStartupLoader, setHoldHomeStartupLoader] = useState(false);
   const [zoom, setZoom] = useState(0.8);
@@ -2486,27 +2477,6 @@ export default function Dashboard() {
   };
 
   
-
-  // Load templates by type
-  useEffect(() => {
-    const fetchPlantillas = async () => {
-      if (!tipoSeleccionado) return;
-
-      setLoading(true);
-      try {
-        const datos = await listTemplates({ tipo: tipoSeleccionado });
-        setPlantillas(datos);
-      } catch (err) {
-        console.error('Error al cargar plantillas:', err);
-        setPlantillas([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPlantillas();
-  }, [tipoSeleccionado]);
-
   const requestedRouteSlug = router.isReady
     ? sanitizeDraftSlug(getFirstQueryValue(router.query?.slug))
     : null;
@@ -2529,24 +2499,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isHomeView) return;
-    setHomePublicationsReady(false);
-    setHomeDraftsReady(false);
-    setHomeTemplatesReady(false);
+    setHomeViewReady(false);
     setHomeLoaderForcedDone(false);
   }, [isHomeView, tipoSeleccionado]);
-
-  useEffect(() => {
-    if (!isHomeView) return;
-
-    if (loading) {
-      setHomeTemplatesReady(false);
-      return;
-    }
-
-    if (!Array.isArray(plantillas) || plantillas.length === 0) {
-      setHomeTemplatesReady(true);
-    }
-  }, [isHomeView, loading, plantillas]);
 
   useEffect(() => {
     if (!isHomeView) {
@@ -2558,8 +2513,7 @@ export default function Dashboard() {
       return;
     }
 
-    const waitingForHome =
-      loading || !homePublicationsReady || !homeDraftsReady || !homeTemplatesReady;
+    const waitingForHome = !homeViewReady;
 
     if (!waitingForHome) {
       if (homeLoaderForceTimerRef.current) {
@@ -2575,19 +2529,13 @@ export default function Dashboard() {
       homeLoaderForceTimerRef.current = null;
       setHomeLoaderForcedDone(true);
       console.warn("[dashboard-home-loader] Timeout forzado:", {
-        loading,
-        homePublicationsReady,
-        homeDraftsReady,
-        homeTemplatesReady,
+        homeViewReady,
       });
     }, HOME_DASHBOARD_LOADER_MAX_MS);
   }, [
-    homePublicationsReady,
-    homeDraftsReady,
     homeLoaderForcedDone,
-    homeTemplatesReady,
+    homeViewReady,
     isHomeView,
-    loading,
   ]);
 
   // Listen custom event to open a draft
@@ -2845,7 +2793,7 @@ export default function Dashboard() {
   const showHomeStartupLoader =
     isHomeView &&
     !homeLoaderForcedDone &&
-    (loading || !homePublicationsReady || !homeDraftsReady || !homeTemplatesReady);
+    !homeViewReady;
   const shouldRenderHomeStartupLoader = showHomeStartupLoader || holdHomeStartupLoader;
   const isHomeStartupLoaderExiting =
     !showHomeStartupLoader && holdHomeStartupLoader;
@@ -3030,84 +2978,13 @@ export default function Dashboard() {
                 : "opacity-100 transition-opacity duration-200"
             }
           >
-          <div className="mx-auto w-full max-w-7xl space-y-8">
-            {SHOW_TIPO_SELECTOR && (
-              <TipoSelector onSeleccionarTipo={setTipoSeleccionado} />
-            )}
-
-            <DashboardPublicadasSection
-              usuario={usuario}
-              onReadyChange={setHomePublicationsReady}
-            />
-
-            <section className="rounded-2xl border border-[#e9dcfb] bg-gradient-to-br from-white via-[#faf6ff] to-[#f5f9ff] p-4 sm:p-6">
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">
-                Tu espacio
-              </p>
-              <h2 className="mt-1 text-2xl font-semibold text-gray-900">Borradores</h2>
-              <p className="mt-1 text-sm text-gray-600">
-                Continua editando tus invitaciones donde las dejaste.
-              </p>
-
-              <div className="mt-5">
-                <BorradoresGrid
-                  mostrarTitulo={false}
-                  emptyMessage="Todavia no creaste borradores. Elige una plantilla para comenzar."
-                  onReadyChange={setHomeDraftsReady}
-                />
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-[#e6e6ef] bg-gradient-to-br from-white via-[#f9f8ff] to-[#f4f8ff] p-4 sm:p-6">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500">
-                    Coleccion
-                  </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-gray-900">
-                    Plantillas de boda
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Elige una tarjeta base para empezar tu diseno.
-                  </p>
-                </div>
-                <span className="rounded-full border border-[#ddd2f5] bg-white/80 px-3 py-1 text-xs font-medium text-[#6f3bc0]">
-                  Bodas
-                </span>
-              </div>
-
-              <div className="mt-5">
-                {loading ? (
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
-                    {Array.from({ length: 6 }).map((_, index) => (
-                      <div
-                        key={`skeleton-plantilla-${index}`}
-                        className="overflow-hidden rounded-xl border border-gray-200 bg-white"
-                      >
-                        <div className="aspect-square animate-pulse bg-gray-100" />
-                        <div className="space-y-2 p-3">
-                          <div className="h-3 animate-pulse rounded bg-gray-100" />
-                          <div className="h-8 animate-pulse rounded-full bg-gray-100" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <PlantillaGrid
-                    plantillas={plantillas}
-                    isSuperAdmin={isSuperAdmin}
-                    onReadyChange={setHomeTemplatesReady}
-                    onPlantillaBorrada={(plantillaId) => {
-                      setPlantillas((prev) => prev.filter((p) => p.id !== plantillaId));
-                    }}
-                    onSelectTemplate={(template) => {
-                      openModal(template);
-                    }}
-                  />
-                )}
-              </div>
-            </section>
-          </div>
+          <DashboardHomeView
+            usuario={usuario}
+            tipoInvitacion={tipoSeleccionado}
+            isSuperAdmin={isSuperAdmin}
+            onSelectTemplate={openModal}
+            onReadyChange={setHomeViewReady}
+          />
           </div>
         </div>
       )}

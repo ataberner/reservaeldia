@@ -1,46 +1,82 @@
+import { useEffect, useState } from "react";
 import { ArrowDownRight, Sparkles } from "lucide-react";
+import DashboardHeroCelebrationVisual from "@/components/dashboard/home/DashboardHeroCelebrationVisual";
+
+const HERO_ROTATING_PHRASES = [
+  "El evento empieza aqu\u00ED.",
+  "Todo gran evento empieza con una invitaci\u00F3n.",
+  "Dise\u00F1a el inicio de algo especial.",
+  "Empieza a crear tu evento.",
+  "Cada evento tiene un comienzo.",
+  "Hoy empieza tu evento.",
+];
 
 export default function DashboardHomeHero({
   onCreateInvitation,
 }) {
-  return (
-    <section className="overflow-hidden rounded-[34px] border border-[#eadffd] bg-[radial-gradient(circle_at_top_left,_rgba(244,231,255,0.96),_rgba(255,255,255,0.96)_44%,_rgba(241,247,255,0.96)_100%)] shadow-[0_24px_70px_rgba(111,59,192,0.12)]">
-      <div className="relative px-5 py-7 sm:px-8 sm:py-9 lg:px-10 lg:py-10">
-        <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-[#eadbff]/55 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-28 w-28 rounded-full bg-[#dcefff]/70 blur-3xl" />
+  const [heroPhrase, setHeroPhrase] = useState(HERO_ROTATING_PHRASES[0]);
+  const [isHeroPhraseVisible, setIsHeroPhraseVisible] = useState(false);
 
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#dcc8fb] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f3bc0] shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" />
+  useEffect(() => {
+    const randomPhrase =
+      HERO_ROTATING_PHRASES[
+        Math.floor(Math.random() * HERO_ROTATING_PHRASES.length)
+      ] || HERO_ROTATING_PHRASES[0];
+
+    setHeroPhrase(randomPhrase);
+    setIsHeroPhraseVisible(true);
+  }, []);
+
+  return (
+    <section className="group relative overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(135deg,_rgba(245,238,255,0.98)_0%,_rgba(252,249,255,0.97)_34%,_rgba(243,247,255,0.98)_100%)] shadow-[0_18px_44px_rgba(111,59,192,0.1)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white hover:shadow-[0_24px_56px_rgba(111,59,192,0.16)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_18%,_rgba(232,212,255,0.96),_rgba(255,255,255,0)_34%),radial-gradient(circle_at_34%_72%,_rgba(244,228,255,0.72),_rgba(255,255,255,0)_30%),radial-gradient(circle_at_82%_24%,_rgba(255,237,228,0.8),_rgba(255,255,255,0)_24%),radial-gradient(circle_at_86%_82%,_rgba(218,233,255,0.84),_rgba(255,255,255,0)_32%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(118deg,_rgba(255,255,255,0.16)_0%,_rgba(255,255,255,0.04)_28%,_rgba(255,255,255,0.18)_52%,_rgba(255,255,255,0.06)_100%)]" />
+      <div className="absolute inset-y-0 left-0 w-[56%] bg-[radial-gradient(circle_at_22%_50%,_rgba(240,226,255,0.6),_rgba(255,255,255,0)_64%)]" />
+      <div className="absolute inset-y-0 right-0 w-[58%] bg-[radial-gradient(circle_at_72%_48%,_rgba(225,238,255,0.54),_rgba(255,255,255,0)_62%)]" />
+      <div className="absolute left-[12%] top-12 h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.95)]" />
+      <div className="absolute left-[24%] top-20 h-1 w-1 rounded-full bg-[#eacfff]/90 shadow-[0_0_14px_rgba(234,207,255,0.95)]" />
+      <div className="absolute right-[26%] top-16 h-1.5 w-1.5 rounded-full bg-[#fff4e7]/95 shadow-[0_0_14px_rgba(255,244,231,0.95)]" />
+      <div className="absolute right-[16%] top-24 h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.95)]" />
+
+      <div className="relative mx-auto grid max-w-[860px] gap-4 px-4 py-4 sm:px-5 sm:py-5 lg:grid-cols-[minmax(0,388px)_minmax(280px,360px)] lg:items-center lg:gap-6 lg:px-6 lg:py-5 xl:max-w-[890px] xl:grid-cols-[minmax(0,404px)_minmax(300px,372px)]">
+        <div className="flex w-full max-w-[390px] flex-col items-center justify-center text-center lg:max-w-[410px]">
+          <div className="flex w-full max-w-sm justify-center">
+            <div className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-white/90 bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#6f3bc0] shadow-sm backdrop-blur transition-colors duration-300 group-hover:border-white group-hover:bg-white">
+              <Sparkles className="h-3 w-3" />
               Crear tu invitacion
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-[2.45rem]">
-              Tu invitaci&oacute;n, dise&ntilde;ada a tu estilo.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
-              Crea y publica tu invitaci&oacute;n digital en minutos.
-              <br />
-              Elige uno de nuestros dise&ntilde;os o crea el tuyo desde cero.
-              <br />
-              Lista para compartir.
-            </p>
           </div>
 
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={onCreateInvitation}
-              className="inline-flex items-center gap-2 rounded-2xl border border-[#7e4dc6]/35 bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6433b0] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(119,61,190,0.28)] transition hover:-translate-y-[1px] hover:shadow-[0_20px_36px_rgba(119,61,190,0.34)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5]"
+          <div className="mt-2.5 flex w-full max-w-sm flex-col items-center gap-2.5 sm:gap-3">
+            <h1
+              className={
+                "min-h-[4.2rem] w-full text-[1.8rem] font-semibold tracking-tight text-slate-900 transition-all duration-500 ease-out sm:min-h-[4.4rem] sm:text-[2.05rem] sm:leading-[1.04] " +
+                (isHeroPhraseVisible
+                  ? "translate-y-0 opacity-100"
+                  : "translate-y-1 opacity-0")
+              }
             >
-              Crear invitacion
-              <ArrowDownRight className="h-4 w-4" />
-            </button>
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-              Colecciones editoriales
+              {heroPhrase}
+            </h1>
+
+            <p className="w-full text-[13px] leading-[1.4rem] text-slate-600 sm:text-[14px] sm:leading-[1.45rem]">
+              Dise&ntilde;a la invitaci&oacute;n y comparte el inicio de algo especial.
             </p>
+
+            <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row sm:items-center sm:justify-center">
+              <button
+                type="button"
+                onClick={onCreateInvitation}
+                className="inline-flex items-center gap-2 rounded-[18px] border border-[#7e4dc6]/35 bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6433b0] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_24px_rgba(119,61,190,0.24)] transition hover:-translate-y-[1px] hover:shadow-[0_18px_28px_rgba(119,61,190,0.3)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5]"
+              >
+                Crear invitaci&oacute;n
+                <ArrowDownRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
+
+        <DashboardHeroCelebrationVisual />
       </div>
     </section>
   );

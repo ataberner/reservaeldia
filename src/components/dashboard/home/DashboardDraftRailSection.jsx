@@ -25,7 +25,7 @@ function DraftRailCard({ draft, onRequestDelete }) {
   };
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#d9c8f5] hover:shadow-[0_14px_28px_rgba(111,59,192,0.14)] focus-within:-translate-y-0.5 focus-within:border-[#d9c8f5] focus-within:shadow-[0_14px_28px_rgba(111,59,192,0.14)]">
+    <article className="group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white hover:ring-1 hover:ring-white hover:shadow-[0_16px_30px_rgba(111,59,192,0.16)] focus-within:-translate-y-0.5 focus-within:border-white focus-within:ring-1 focus-within:ring-white focus-within:shadow-[0_16px_30px_rgba(111,59,192,0.16)]">
       <a
         href={`/dashboard?slug=${encodeURIComponent(draft?.slug || "")}`}
         className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-2"

@@ -63,7 +63,7 @@ function PublicationRailCard({
 
   return (
     <article
-      className={`group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[#d9c8f5] hover:shadow-[0_14px_28px_rgba(111,59,192,0.14)] ${
+      className={`group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white hover:ring-1 hover:ring-white hover:shadow-[0_16px_30px_rgba(111,59,192,0.16)] focus-visible:-translate-y-0.5 focus-visible:border-white focus-visible:ring-1 focus-visible:ring-white focus-visible:shadow-[0_16px_30px_rgba(111,59,192,0.16)] ${
         item?.isPaused ? "bg-amber-50/35" : ""
       } ${canOpenPublicLink ? "cursor-pointer" : ""}`}
       onClick={() => {

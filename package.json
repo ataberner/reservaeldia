@@ -13,6 +13,8 @@
       "templates:editorial:backfill:apply": "node scripts/backfillTemplateEditorialWorkflow.cjs --apply",
       "templates:editorial:audit:legacy": "node scripts/auditLegacyTemplateWorkspaceDrafts.cjs",
       "templates:validate:mapping": "node scripts/validateTemplateMapping.cjs",
+      "pricing:seed:dry": "node scripts/seedPricingConfig.cjs --dry-run",
+      "pricing:seed:apply": "node scripts/seedPricingConfig.cjs --apply",
       "inline:probe": "node scripts/inlineOverlayMatrixProbe.mjs",
       "icons:categories:normalize:dry": "node scripts/normalizeIconCategoriesCase.cjs --dry-run",
       "icons:categories:normalize:apply": "node scripts/normalizeIconCategoriesCase.cjs --apply",

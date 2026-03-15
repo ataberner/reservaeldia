@@ -119,6 +119,11 @@ import {
   adminUpsertDashboardHomeConfigV1 as adminUpsertDashboardHomeConfigV1Handler,
   getDashboardHomeConfigV1 as getDashboardHomeConfigV1Handler,
 } from "./dashboardHome/service";
+import {
+  adminGetPricingConfigV1 as adminGetPricingConfigV1Handler,
+  adminListPricingHistoryV1 as adminListPricingHistoryV1Handler,
+  adminUpdatePricingConfigV1 as adminUpdatePricingConfigV1Handler,
+} from "./siteSettings/pricing";
 
 import * as logger from "firebase-functions/logger";
 
@@ -176,6 +181,9 @@ export const runBusinessAnalyticsExportJobsV1 = runBusinessAnalyticsExportJobsV1
 export const runBusinessAnalyticsRebuildJobsV1 = runBusinessAnalyticsRebuildJobsV1Handler;
 export const getDashboardHomeConfigV1 = getDashboardHomeConfigV1Handler;
 export const adminUpsertDashboardHomeConfigV1 = adminUpsertDashboardHomeConfigV1Handler;
+export const adminGetPricingConfigV1 = adminGetPricingConfigV1Handler;
+export const adminListPricingHistoryV1 = adminListPricingHistoryV1Handler;
+export const adminUpdatePricingConfigV1 = adminUpdatePricingConfigV1Handler;
 
 setGlobalOptions({
   region: "us-central1",

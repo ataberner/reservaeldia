@@ -92,6 +92,30 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /site_settings/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /app_config/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /publication_checkout_sessions/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /public_slug_reservations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /publication_discount_codes/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /publication_discount_code_usage/{document=**} {
+      allow read, write: if false;
+    }
+
     match /iconos/{iconId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
@@ -130,7 +154,13 @@ service cloud.firestore {
         collection != "borradores" &&
         collection != "plantillas" &&
         collection != "plantillas_catalog" &&
-        collection != "plantillas_tags";
+        collection != "plantillas_tags" &&
+        collection != "site_settings" &&
+        collection != "app_config" &&
+        collection != "publication_checkout_sessions" &&
+        collection != "public_slug_reservations" &&
+        collection != "publication_discount_codes" &&
+        collection != "publication_discount_code_usage";
     }
   }
 }

@@ -169,16 +169,16 @@ export default function PublicationCheckoutModal({
     [discountCodeInput]
   );
 
-  const defaultBaseAmount = isNewOperation ? 29900 : 1490;
-  const summaryBaseAmount = Number(sessionData?.amountBaseArs ?? defaultBaseAmount);
+  const hasSessionAmounts = Boolean(sessionData?.sessionId);
+  const summaryBaseAmount = Number(sessionData?.amountBaseArs ?? 0);
   const summaryDiscountAmount = Number(sessionData?.discountAmountArs ?? 0);
   const summaryFinalAmount = Number(
     sessionData?.amountArs ?? Math.max(0, summaryBaseAmount - summaryDiscountAmount)
   );
 
-  const amountLabel = formatArs(summaryFinalAmount);
-  const amountBaseLabel = formatArs(summaryBaseAmount);
-  const discountAmountLabel = formatArs(summaryDiscountAmount);
+  const amountLabel = hasSessionAmounts ? formatArs(summaryFinalAmount) : "";
+  const amountBaseLabel = hasSessionAmounts ? formatArs(summaryBaseAmount) : "";
+  const discountAmountLabel = hasSessionAmounts ? formatArs(summaryDiscountAmount) : "";
   const hasAppliedDiscount = summaryDiscountAmount > 0;
 
   const isReadyToCreateSession = isNewOperation
@@ -931,17 +931,36 @@ export default function PublicationCheckoutModal({
 
               {showPreSuccessFlow ? (
                 <div className="rounded-xl border border-[#d8ccea] bg-[#faf6ff] p-3 text-sm text-slate-700">
-                <p className="font-semibold text-[#6f3bc0]">{isNewOperation ? "Publicacion nueva" : "Actualizacion"} - Resumen</p>
-                <div className="mt-2 space-y-1 text-xs">
-                  <p>Precio base: <strong>{amountBaseLabel}</strong></p>
-                  <p>Descuento: <strong>-{discountAmountLabel}</strong></p>
                   <p className="font-semibold text-[#6f3bc0]">
-                    {showConflictFlow ? "Pago ya aprobado: " : "Total a pagar: "}
-                    {amountLabel}
+                    {isNewOperation ? "Publicacion nueva" : "Actualizacion"} - Resumen
                   </p>
-                  {showConflictFlow ? <p>No se realizara un nuevo cobro.</p> : null}
-                  {sessionData?.publicSlug ? <p>Enlace final: <strong>{sessionData.publicSlug}</strong></p> : null}
-                </div>
+                  <div className="mt-2 space-y-1 text-xs">
+                    {hasSessionAmounts ? (
+                      <>
+                        <p>
+                          Precio base: <strong>{amountBaseLabel}</strong>
+                        </p>
+                        <p>
+                          Descuento: <strong>-{discountAmountLabel}</strong>
+                        </p>
+                        <p className="font-semibold text-[#6f3bc0]">
+                          {showConflictFlow ? "Pago ya aprobado: " : "Total a pagar: "}
+                          {amountLabel}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p>El monto exacto se confirmara al preparar el checkout.</p>
+                        <p>El backend siempre define el precio vigente antes de crear el pago.</p>
+                      </>
+                    )}
+                    {showConflictFlow ? <p>No se realizara un nuevo cobro.</p> : null}
+                    {sessionData?.publicSlug ? (
+                      <p>
+                        Enlace final: <strong>{sessionData.publicSlug}</strong>
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

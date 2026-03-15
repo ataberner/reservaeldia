@@ -40,6 +40,10 @@ import {
   normalizeDraftRenderState,
 } from "../drafts/sourceOfTruth";
 import { recordBusinessAnalyticsEvent } from "../analytics/service";
+import {
+  getPricingForOperation,
+  loadCheckoutPricingConfig,
+} from "../siteSettings/pricing";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -51,7 +55,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const bucket = getStorage().bucket();
 
-const CONFIG_DOC_PATH = "app_config/publicationPayments";
+const CHECKOUT_CONFIG_DOC_PATH = "app_config/publicationPayments";
 const CHECKOUT_SESSIONS_COLLECTION = "publication_checkout_sessions";
 const SLUG_RESERVATIONS_COLLECTION = "public_slug_reservations";
 const DISCOUNT_CODES_COLLECTION = "publication_discount_codes";
@@ -90,13 +94,17 @@ export type CheckoutSessionStatus =
 
 type SlugReservationStatus = "active" | "consumed" | "released" | "expired";
 
-type PublicationPaymentConfig = {
+type PublicationCheckoutConfig = {
   enabled: boolean;
-  currency: "ARS";
-  publishAmountArs: number;
-  updateAmountArs: number;
   slugReservationTtlMinutes: number;
   enforcePayment: boolean;
+};
+
+type CheckoutPricingSnapshot = {
+  pricingVersion: number;
+  operationType: CheckoutOperation;
+  appliedPrice: number;
+  currency: "ARS";
 };
 
 type CheckoutSessionDoc = {
@@ -110,6 +118,7 @@ type CheckoutSessionDoc = {
   discountCode: string | null;
   discountDescription?: string | null;
   currency: "ARS";
+  pricingSnapshot: CheckoutPricingSnapshot;
   status: CheckoutSessionStatus;
   expiresAt: admin.firestore.Timestamp;
   mpPaymentId?: string;
@@ -250,11 +259,8 @@ type PublicationStateTransitionResult = {
   enPapeleraAt: string | null;
 };
 
-const DEFAULT_PAYMENT_CONFIG: PublicationPaymentConfig = {
+const DEFAULT_PAYMENT_CONFIG: PublicationCheckoutConfig = {
   enabled: true,
-  currency: "ARS",
-  publishAmountArs: 29900,
-  updateAmountArs: 1490,
   slugReservationTtlMinutes: 20,
   enforcePayment: true,
 };
@@ -611,15 +617,8 @@ function getNumber(value: unknown, fallback = 0): number {
   return numeric;
 }
 
-function getPublicationConfigFromData(data: Record<string, unknown>): PublicationPaymentConfig {
+function getPublicationConfigFromData(data: Record<string, unknown>): PublicationCheckoutConfig {
   const enabled = typeof data.enabled === "boolean" ? data.enabled : DEFAULT_PAYMENT_CONFIG.enabled;
-  const currency = data.currency === "ARS" ? "ARS" : DEFAULT_PAYMENT_CONFIG.currency;
-  const publishAmountArs = Number.isFinite(Number(data.publishAmountArs))
-    ? Math.max(0, Math.round(Number(data.publishAmountArs)))
-    : DEFAULT_PAYMENT_CONFIG.publishAmountArs;
-  const updateAmountArs = Number.isFinite(Number(data.updateAmountArs))
-    ? Math.max(0, Math.round(Number(data.updateAmountArs)))
-    : DEFAULT_PAYMENT_CONFIG.updateAmountArs;
   const slugReservationTtlMinutes = Number.isFinite(Number(data.slugReservationTtlMinutes))
     ? Math.max(5, Math.round(Number(data.slugReservationTtlMinutes)))
     : DEFAULT_PAYMENT_CONFIG.slugReservationTtlMinutes;
@@ -629,16 +628,13 @@ function getPublicationConfigFromData(data: Record<string, unknown>): Publicatio
 
   return {
     enabled,
-    currency,
-    publishAmountArs,
-    updateAmountArs,
     slugReservationTtlMinutes,
     enforcePayment,
   };
 }
 
-async function getPublicationPaymentConfig(): Promise<PublicationPaymentConfig> {
-  const snap = await db.doc(CONFIG_DOC_PATH).get();
+async function getPublicationPaymentConfig(): Promise<PublicationCheckoutConfig> {
+  const snap = await db.doc(CHECKOUT_CONFIG_DOC_PATH).get();
   if (!snap.exists) return DEFAULT_PAYMENT_CONFIG;
 
   const data = (snap.data() || {}) as Record<string, unknown>;
@@ -869,9 +865,10 @@ async function createMercadoPagoPreferenceForCheckout(params: {
   operation: CheckoutOperation;
   publicSlug: string;
   amountArs: number;
+  currency: "ARS";
   payerEmail: string;
 }): Promise<string> {
-  const { sessionId, operation, publicSlug, amountArs, payerEmail } = params;
+  const { sessionId, operation, publicSlug, amountArs, currency, payerEmail } = params;
   const preferenceClient = getMercadoPagoPreferenceClient();
   const safeAmount = Math.max(0, Math.round(amountArs));
 
@@ -891,7 +888,7 @@ async function createMercadoPagoPreferenceForCheckout(params: {
             ? `Publicacion de invitacion (${publicSlug})`
             : `Actualizacion de invitacion (${publicSlug})`,
         quantity: 1,
-        currency_id: "ARS",
+        currency_id: currency,
         unit_price: safeAmount,
       },
     ],
@@ -2517,6 +2514,7 @@ function buildReceipt(params: {
   discountAmountArs: number;
   discountCode?: string | null;
   discountDescription?: string | null;
+  currency: "ARS";
   paymentId: string;
   publicSlug: string;
   publicUrl?: string;
@@ -2529,7 +2527,7 @@ function buildReceipt(params: {
     discountAmountArs: params.discountAmountArs,
     discountCode: params.discountCode || null,
     discountDescription: params.discountDescription || null,
-    currency: "ARS",
+    currency: params.currency,
     approvedAt: params.approvedAt || toSafeIsoDate(new Date()),
     paymentId: params.paymentId,
     publicSlug: params.publicSlug,
@@ -2682,11 +2680,24 @@ async function finalizeApprovedSession(params: {
   const publicSlug = getString(sessionPayload.publicSlug);
   const uid = getString(sessionPayload.uid);
   const operation = normalizeOperation(sessionPayload.operation);
-  const amountArs = toAmount(sessionPayload.amountArs, operation === "new" ? 29900 : 1490);
-  const amountBaseArs = toAmount(sessionPayload.amountBaseArs, amountArs);
+  const pricingSnapshot =
+    sessionPayload.pricingSnapshot && typeof sessionPayload.pricingSnapshot === "object"
+      ? (sessionPayload.pricingSnapshot as Record<string, unknown>)
+      : {};
+  const amountArs = toAmount(sessionPayload.amountArs, 0);
+  const amountBaseArs = toAmount(
+    sessionPayload.amountBaseArs,
+    toAmount(pricingSnapshot.appliedPrice, amountArs)
+  );
   const discountAmountArs = toAmount(sessionPayload.discountAmountArs, 0);
   const discountCode = getString(sessionPayload.discountCode) || null;
   const discountDescription = getString(sessionPayload.discountDescription) || null;
+  const currency =
+    getString(sessionPayload.currency) === "ARS"
+      ? "ARS"
+      : getString(pricingSnapshot.currency) === "ARS"
+        ? "ARS"
+        : "ARS";
 
   try {
     const publication = await publishDraftToPublic({
@@ -2704,6 +2715,7 @@ async function finalizeApprovedSession(params: {
       discountAmountArs,
       discountCode,
       discountDescription,
+      currency,
       paymentId: fallbackPaymentId,
       publicSlug: publication.publicSlug,
       publicUrl: publication.publicUrl,
@@ -3115,6 +3127,12 @@ export async function createPublicationCheckoutSessionHandler(
   if (!config.enabled) {
     throw new HttpsError("failed-precondition", "La publicacion con pago esta deshabilitada");
   }
+  const pricingConfig = await loadCheckoutPricingConfig({
+    context: "createPublicationCheckoutSession",
+    operation,
+    uid,
+    draftSlug,
+  });
 
   const sessionId = randomUUID();
   const expiresAtMs = Date.now() + config.slugReservationTtlMinutes * 60_000;
@@ -3153,12 +3171,18 @@ export async function createPublicationCheckoutSessionHandler(
     publicSlug = existingSlug;
   }
 
-  const amountBaseArs = operation === "new" ? config.publishAmountArs : config.updateAmountArs;
+  const amountBaseArs = getPricingForOperation(pricingConfig, operation);
   const discount = await resolveDiscountForCheckout({
     operation,
     amountBaseArs,
     rawDiscountCode: request.data?.discountCode,
   });
+  const pricingSnapshot: CheckoutPricingSnapshot = {
+    pricingVersion: pricingConfig.version,
+    operationType: operation,
+    appliedPrice: amountBaseArs,
+    currency: pricingConfig.currency,
+  };
 
   const amountArs = discount.amountArs;
   const payerEmail = resolvePayerEmail(request);
@@ -3173,6 +3197,7 @@ export async function createPublicationCheckoutSessionHandler(
         operation,
         publicSlug,
         amountArs,
+        currency: pricingConfig.currency,
         payerEmail,
       });
     } catch (error) {
@@ -3197,7 +3222,8 @@ export async function createPublicationCheckoutSessionHandler(
     discountAmountArs: discount.discountAmountArs,
     discountCode: discount.discountCode,
     discountDescription: discount.discountDescription,
-    currency: "ARS",
+    currency: pricingConfig.currency,
+    pricingSnapshot,
     status: "awaiting_payment",
     expiresAt,
     mpPreferenceId,
@@ -3216,7 +3242,7 @@ export async function createPublicationCheckoutSessionHandler(
     discountAmountArs: discount.discountAmountArs,
     discountCode: discount.discountCode,
     discountDescription: discount.discountDescription,
-    currency: "ARS",
+    currency: pricingConfig.currency,
     expiresAt: new Date(expiresAtMs).toISOString(),
     mpPublicKey,
     mpPreferenceId,

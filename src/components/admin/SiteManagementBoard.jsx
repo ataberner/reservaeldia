@@ -195,6 +195,28 @@ export default function SiteManagementBoard({
 
           {isDiscountsOpen && <DiscountCodesManager />}
 
+          <a
+            href="/admin/pricing"
+            className="block rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 p-4 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-emerald-900">
+                  Precios de publicacion
+                </h2>
+                <p className="mt-1 text-sm text-emerald-700">
+                  Abre la pagina dedicada para administrar pricing canonico, moneda e historial.
+                </p>
+                <span className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  Pagina dedicada
+                </span>
+              </div>
+              <span className="inline-flex h-10 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white">
+                Abrir
+              </span>
+            </div>
+          </a>
+
           <div
             className={`rounded-xl p-[1px] transition-all ${
               isAdminsOpen

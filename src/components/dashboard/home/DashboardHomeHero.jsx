@@ -28,7 +28,7 @@ export default function DashboardHomeHero({
   }, []);
 
   return (
-    <section className="group relative overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(135deg,_rgba(245,238,255,0.98)_0%,_rgba(252,249,255,0.97)_34%,_rgba(243,247,255,0.98)_100%)] shadow-[0_18px_44px_rgba(111,59,192,0.1)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white hover:shadow-[0_24px_56px_rgba(111,59,192,0.16)]">
+    <section className="dashboard-invitation-card group relative overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(135deg,_rgba(245,238,255,0.98)_0%,_rgba(252,249,255,0.97)_34%,_rgba(243,247,255,0.98)_100%)] shadow-[0_18px_44px_rgba(111,59,192,0.1)]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_18%,_rgba(232,212,255,0.96),_rgba(255,255,255,0)_34%),radial-gradient(circle_at_34%_72%,_rgba(244,228,255,0.72),_rgba(255,255,255,0)_30%),radial-gradient(circle_at_82%_24%,_rgba(255,237,228,0.8),_rgba(255,255,255,0)_24%),radial-gradient(circle_at_86%_82%,_rgba(218,233,255,0.84),_rgba(255,255,255,0)_32%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(118deg,_rgba(255,255,255,0.16)_0%,_rgba(255,255,255,0.04)_28%,_rgba(255,255,255,0.18)_52%,_rgba(255,255,255,0.06)_100%)]" />
       <div className="absolute inset-y-0 left-0 w-[56%] bg-[radial-gradient(circle_at_22%_50%,_rgba(240,226,255,0.6),_rgba(255,255,255,0)_64%)]" />

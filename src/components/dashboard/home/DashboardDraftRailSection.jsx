@@ -25,10 +25,10 @@ function DraftRailCard({ draft, onRequestDelete }) {
   };
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white hover:ring-1 hover:ring-white hover:shadow-[0_16px_30px_rgba(111,59,192,0.16)] focus-within:-translate-y-0.5 focus-within:border-white focus-within:ring-1 focus-within:ring-white focus-within:shadow-[0_16px_30px_rgba(111,59,192,0.16)]">
+    <article className="dashboard-invitation-card group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)]">
       <a
         href={`/dashboard?slug=${encodeURIComponent(draft?.slug || "")}`}
-        className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-2"
+        className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-0"
         onClick={(event) => {
           event.preventDefault();
           handleOpen();
@@ -39,7 +39,7 @@ function DraftRailCard({ draft, onRequestDelete }) {
           <img
             src={previewSrc}
             alt={`Vista previa de ${draft?.nombre || draft?.slug || "borrador"}`}
-            className="h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.03] group-focus-within:scale-[1.03] motion-reduce:transition-none"
+            className="dashboard-invitation-card__media h-full w-full object-cover object-top motion-reduce:transition-none"
             loading="lazy"
             decoding="async"
             fetchPriority="auto"
@@ -48,12 +48,11 @@ function DraftRailCard({ draft, onRequestDelete }) {
               setImageIndex((previous) => previous + 1);
             }}
           />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#2d1a4a]/18 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none" />
         </div>
 
         <div className="p-3">
           <h3
-            className="truncate text-sm font-semibold text-gray-800 transition-colors duration-200 group-hover:text-[#4d2b86] group-focus-within:text-[#4d2b86]"
+            className="dashboard-invitation-card__title truncate text-sm font-semibold text-gray-800"
             title={draft?.nombre || draft?.slug || "Borrador"}
           >
             {draft?.nombre || draft?.slug || "Borrador"}
@@ -63,7 +62,7 @@ function DraftRailCard({ draft, onRequestDelete }) {
               Actualizado: {draft.updatedLabel}
             </p>
           ) : null}
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#5a2daa] group-focus-within:translate-x-0.5 group-focus-within:text-[#5a2daa]">
+          <p className="dashboard-invitation-card__action mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0]">
             Abrir borrador
           </p>
         </div>

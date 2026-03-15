@@ -41,7 +41,7 @@ export default function HorizontalRail({
         ref={handleViewportRef}
         onScroll={onScroll}
         onWheel={handleWheel}
-        className="overflow-x-auto overflow-y-hidden pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="-mt-3 overflow-x-auto overflow-y-hidden pb-3 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className={`flex gap-4 ${trackClassName}`}>{children}</div>
       </div>

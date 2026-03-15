@@ -63,7 +63,7 @@ function PublicationRailCard({
 
   return (
     <article
-      className={`group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-white hover:ring-1 hover:ring-white hover:shadow-[0_16px_30px_rgba(111,59,192,0.16)] focus-visible:-translate-y-0.5 focus-visible:border-white focus-visible:ring-1 focus-visible:ring-white focus-visible:shadow-[0_16px_30px_rgba(111,59,192,0.16)] ${
+      className={`dashboard-invitation-card group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-0 ${
         item?.isPaused ? "bg-amber-50/35" : ""
       } ${canOpenPublicLink ? "cursor-pointer" : ""}`}
       onClick={() => {
@@ -116,7 +116,7 @@ function PublicationRailCard({
           <img
             src={item.portada}
             alt={`Portada de ${item?.nombre || "invitacion"}`}
-            className={`h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none ${
+            className={`dashboard-invitation-card__media h-full w-full object-cover object-top motion-reduce:transition-none ${
               item?.isPaused ? "opacity-80 saturate-[0.9]" : ""
             }`}
             loading="lazy"
@@ -130,7 +130,10 @@ function PublicationRailCard({
 
       <div className="space-y-2 p-3">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="truncate text-sm font-semibold text-gray-800" title={item?.nombre || "Invitacion"}>
+          <h3
+            className="dashboard-invitation-card__title truncate text-sm font-semibold text-gray-800"
+            title={item?.nombre || "Invitacion"}
+          >
             {item?.nombre || "Invitacion"}
           </h3>
           <StatusBadge label={item?.statusLabel || "Activa"} />

@@ -114,6 +114,63 @@ body {
   box-sizing: border-box;
 }
 
+.dashboard-invitation-card {
+  --dashboard-card-duration: 160ms;
+  --dashboard-card-easing: cubic-bezier(0.22, 1, 0.36, 1);
+  --dashboard-card-shadow-hover: 0 0 0 2px #ffffff, 0 0 0 4px #6f3bc0, 0 8px 20px rgba(0, 0, 0, 0.08);
+  --dashboard-card-shadow-active: 0 0 0 1px #ffffff, 0 0 0 3px #6f3bc0, 0 6px 14px rgba(0, 0, 0, 0.07);
+  -webkit-tap-highlight-color: transparent;
+  transform: translateY(0) scale(1);
+  transition:
+    transform var(--dashboard-card-duration) var(--dashboard-card-easing),
+    box-shadow var(--dashboard-card-duration) var(--dashboard-card-easing);
+}
+
+.dashboard-invitation-card__media {
+  transform: scale(1);
+  transition: transform var(--dashboard-card-duration) var(--dashboard-card-easing);
+}
+
+.dashboard-invitation-card__overlay {
+  opacity: 0;
+  transition: opacity var(--dashboard-card-duration) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dashboard-invitation-card:is(:hover, :focus-within, :focus-visible) {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: var(--dashboard-card-shadow-hover);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .dashboard-invitation-card:active {
+    transform: scale(0.997);
+    box-shadow: var(--dashboard-card-shadow-active);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-invitation-card,
+  .dashboard-invitation-card__media,
+  .dashboard-invitation-card__overlay,
+  .dashboard-invitation-card__title,
+  .dashboard-invitation-card__action {
+    transition: none;
+  }
+
+  .dashboard-invitation-card,
+  .dashboard-invitation-card:active,
+  .dashboard-invitation-card:is(:hover, :focus-within, :focus-visible) {
+    transform: none;
+  }
+
+  .dashboard-invitation-card__media,
+  .dashboard-invitation-card:is(:hover, :focus-within, :focus-visible) .dashboard-invitation-card__media {
+    transform: none;
+  }
+}
+
 
 @keyframes spin {
   to {

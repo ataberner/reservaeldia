@@ -1,21 +1,21 @@
 export default function DashboardHeroCelebrationVisual() {
   return (
-    <div className="relative mx-auto h-full min-h-[180px] w-full max-w-[310px] sm:min-h-[205px] sm:max-w-[338px] lg:max-w-[364px] lg:min-h-[236px]">
-      <div className="absolute inset-x-[14%] top-[10%] h-24 rounded-full bg-[#f3ddff]/74 blur-3xl" />
-      <div className="absolute right-[4%] top-[18%] h-24 w-24 rounded-full bg-[#ffe8da]/56 blur-3xl" />
-      <div className="absolute bottom-[12%] left-[2%] h-20 w-20 rounded-full bg-[#d7ecff]/74 blur-3xl" />
-      <div className="absolute left-[8%] top-[8%] h-20 w-20 rounded-full bg-white/50 blur-3xl" />
-      <div className="absolute right-[8%] bottom-[8%] h-24 w-24 rounded-full bg-white/35 blur-3xl" />
-      <div className="absolute inset-x-[18%] top-[18%] h-px bg-white/55" />
-      <div className="absolute left-[17%] top-[19%] h-2.5 w-2.5 rounded-full bg-white/95 shadow-[0_0_18px_rgba(255,255,255,0.95)] motion-safe:animate-pulse motion-safe:[animation-duration:8s]" />
-      <div className="absolute right-[16%] top-[22%] h-2 w-2 rounded-full bg-[#f4ddff] shadow-[0_0_18px_rgba(244,221,255,0.95)] motion-safe:animate-pulse motion-safe:[animation-duration:10s]" />
-      <div className="absolute right-[22%] bottom-[19%] h-2 w-2 rounded-full bg-[#e0eeff] shadow-[0_0_18px_rgba(224,238,255,0.95)] motion-safe:animate-pulse motion-safe:[animation-duration:9s]" />
-      <div className="absolute left-[18%] bottom-[16%] h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.9)] motion-safe:animate-pulse motion-safe:[animation-duration:11s]" />
+    <div className="relative mx-auto h-full min-h-[96px] w-full max-w-[216px] sm:min-h-[205px] sm:max-w-[338px] lg:max-w-[364px] lg:min-h-[236px]">
+      <div className="absolute inset-x-[18%] top-[14%] h-16 rounded-full bg-[#f3ddff]/64 blur-3xl sm:inset-x-[14%] sm:top-[10%] sm:h-24 sm:bg-[#f3ddff]/82" />
+      <div className="absolute right-[8%] top-[22%] h-16 w-16 rounded-full bg-[#ffe8da]/52 blur-3xl sm:right-[4%] sm:top-[18%] sm:h-24 sm:w-24 sm:bg-[#ffe8da]/64" />
+      <div className="absolute bottom-[16%] left-[6%] h-14 w-14 rounded-full bg-[#d7ecff]/62 blur-3xl sm:bottom-[12%] sm:left-[2%] sm:h-20 sm:w-20 sm:bg-[#d7ecff]/82" />
+      <div className="absolute left-[10%] top-[12%] hidden h-14 w-14 rounded-full bg-white/32 blur-3xl sm:block sm:h-20 sm:w-20 sm:bg-white/58" />
+      <div className="absolute right-[10%] bottom-[10%] hidden h-16 w-16 rounded-full bg-white/24 blur-3xl sm:block sm:h-24 sm:w-24 sm:bg-white/42" />
+      <div className="absolute inset-x-[22%] top-[26%] h-px bg-white/42 sm:inset-x-[18%] sm:top-[18%] sm:bg-white/68" />
+      <div className="absolute left-[17%] top-[25%] h-1.5 w-1.5 rounded-full bg-white/88 shadow-[0_0_14px_rgba(255,255,255,0.78)] motion-safe:animate-pulse motion-safe:[animation-duration:8s] sm:h-2.5 sm:w-2.5 sm:bg-white/95 sm:shadow-[0_0_18px_rgba(255,255,255,0.95)]" />
+      <div className="absolute right-[16%] top-[28%] h-1.5 w-1.5 rounded-full bg-[#f4ddff]/82 shadow-[0_0_14px_rgba(244,221,255,0.8)] motion-safe:animate-pulse motion-safe:[animation-duration:10s] sm:h-2 sm:w-2 sm:bg-[#f4ddff] sm:shadow-[0_0_18px_rgba(244,221,255,0.95)]" />
+      <div className="absolute right-[22%] bottom-[25%] h-1.5 w-1.5 rounded-full bg-[#e0eeff]/82 shadow-[0_0_14px_rgba(224,238,255,0.8)] motion-safe:animate-pulse motion-safe:[animation-duration:9s] sm:h-2 sm:w-2 sm:bg-[#e0eeff] sm:shadow-[0_0_18px_rgba(224,238,255,0.95)]" />
+      <div className="absolute left-[18%] bottom-[21%] h-1 w-1 rounded-full bg-white/78 shadow-[0_0_10px_rgba(255,255,255,0.72)] motion-safe:animate-pulse motion-safe:[animation-duration:11s] sm:h-1.5 sm:w-1.5 sm:bg-white/90 sm:shadow-[0_0_16px_rgba(255,255,255,0.9)]" />
 
       <div className="hero-wave-drift absolute inset-0">
         <svg
           viewBox="0 0 360 260"
-          className="absolute inset-0 h-full w-full opacity-90"
+          className="absolute inset-0 h-full w-full opacity-[0.82] sm:opacity-[0.98]"
           aria-hidden="true"
         >
           <defs>
@@ -88,9 +88,9 @@ export default function DashboardHeroCelebrationVisual() {
         </svg>
       </div>
 
-      <div className="absolute inset-x-[14%] bottom-[8%] h-24 rounded-full bg-[radial-gradient(circle,_rgba(255,255,255,0.72),_rgba(255,255,255,0)_64%)] opacity-75" />
-      <div className="absolute inset-x-[20%] bottom-[14%] h-px bg-white/40" />
-      <div className="absolute bottom-[9%] left-[16%] right-[14%] h-[66px] rounded-full bg-[linear-gradient(180deg,_rgba(255,255,255,0.14),_rgba(255,255,255,0.02))] blur-[1px]" />
+      <div className="absolute inset-x-[20%] bottom-[10%] h-12 rounded-full bg-[radial-gradient(circle,_rgba(255,255,255,0.6),_rgba(255,255,255,0)_64%)] opacity-80 sm:inset-x-[14%] sm:bottom-[8%] sm:h-24 sm:bg-[radial-gradient(circle,_rgba(255,255,255,0.78),_rgba(255,255,255,0)_64%)] sm:opacity-85" />
+      <div className="absolute inset-x-[24%] bottom-[16%] h-px bg-white/36 sm:inset-x-[20%] sm:bottom-[14%] sm:bg-white/52" />
+      <div className="absolute bottom-[10%] left-[20%] right-[18%] h-[32px] rounded-full bg-[linear-gradient(180deg,_rgba(255,255,255,0.14),_rgba(255,255,255,0.03))] blur-[1px] sm:bottom-[9%] sm:left-[16%] sm:right-[14%] sm:h-[66px] sm:bg-[linear-gradient(180deg,_rgba(255,255,255,0.18),_rgba(255,255,255,0.03))]" />
 
       <style jsx>{`
         .hero-wave-drift {

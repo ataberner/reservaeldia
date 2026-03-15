@@ -38,19 +38,19 @@ export default function DashboardHomeHero({
       <div className="absolute right-[26%] top-16 h-1.5 w-1.5 rounded-full bg-[#fff4e7]/95 shadow-[0_0_14px_rgba(255,244,231,0.95)]" />
       <div className="absolute right-[16%] top-24 h-1.5 w-1.5 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.95)]" />
 
-      <div className="relative mx-auto grid max-w-[860px] gap-4 px-4 py-4 sm:px-5 sm:py-5 lg:grid-cols-[minmax(0,388px)_minmax(280px,360px)] lg:items-center lg:gap-6 lg:px-6 lg:py-5 xl:max-w-[890px] xl:grid-cols-[minmax(0,404px)_minmax(300px,372px)]">
+      <div className="relative mx-auto grid max-w-[860px] gap-2.5 px-4 py-3 sm:gap-4 sm:px-5 sm:py-5 lg:grid-cols-[minmax(0,388px)_minmax(280px,360px)] lg:items-center lg:gap-6 lg:px-6 lg:py-5 xl:max-w-[890px] xl:grid-cols-[minmax(0,404px)_minmax(300px,372px)]">
         <div className="flex w-full max-w-[390px] flex-col items-center justify-center text-center lg:max-w-[410px]">
           <div className="flex w-full max-w-sm justify-center">
-            <div className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-white/90 bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#6f3bc0] shadow-sm backdrop-blur transition-colors duration-300 group-hover:border-white group-hover:bg-white">
+            <div className="inline-flex w-fit max-w-full items-center gap-1 rounded-full border border-white/88 bg-white/86 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#6f3bc0] shadow-sm backdrop-blur transition-colors duration-300 group-hover:border-white group-hover:bg-white sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-[10px] sm:tracking-[0.15em]">
               <Sparkles className="h-3 w-3" />
               Crear tu invitacion
             </div>
           </div>
 
-          <div className="mt-2.5 flex w-full max-w-sm flex-col items-center gap-2.5 sm:gap-3">
+          <div className="mt-1.5 flex w-full max-w-sm flex-col items-center gap-1.5 sm:mt-2.5 sm:gap-3">
             <h1
               className={
-                "min-h-[4.2rem] w-full text-[1.8rem] font-semibold tracking-tight text-slate-900 transition-all duration-500 ease-out sm:min-h-[4.4rem] sm:text-[2.05rem] sm:leading-[1.04] " +
+                "min-h-[3.35rem] w-full text-[1.6rem] font-semibold tracking-tight text-slate-900 transition-all duration-500 ease-out leading-[0.98] sm:min-h-[4.8rem] sm:text-[2.35rem] sm:leading-[1.01] " +
                 (isHeroPhraseVisible
                   ? "translate-y-0 opacity-100"
                   : "translate-y-1 opacity-0")
@@ -59,15 +59,15 @@ export default function DashboardHomeHero({
               {heroPhrase}
             </h1>
 
-            <p className="w-full text-[13px] leading-[1.4rem] text-slate-600 sm:text-[14px] sm:leading-[1.45rem]">
+            <p className="w-full text-[13px] leading-[1.32rem] text-slate-700 sm:text-[15px] sm:leading-[1.55rem]">
               Dise&ntilde;a la invitaci&oacute;n y comparte el inicio de algo especial.
             </p>
 
-            <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row sm:items-center sm:justify-center">
+            <div className="flex w-full flex-col items-center justify-center gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={onCreateInvitation}
-                className="inline-flex items-center gap-2 rounded-[18px] border border-[#7e4dc6]/35 bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6433b0] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_24px_rgba(119,61,190,0.24)] transition hover:-translate-y-[1px] hover:shadow-[0_18px_28px_rgba(119,61,190,0.3)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5]"
+                className="inline-flex items-center gap-2 rounded-[16px] border border-[#7e4dc6]/35 bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6433b0] px-3.5 py-2.25 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(119,61,190,0.22)] transition hover:-translate-y-[1px] hover:shadow-[0_18px_28px_rgba(119,61,190,0.3)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5] sm:rounded-[18px] sm:px-4 sm:py-2.5 sm:shadow-[0_14px_24px_rgba(119,61,190,0.24)]"
               >
                 Crear invitaci&oacute;n
                 <ArrowDownRight className="h-4 w-4" />

@@ -470,3 +470,70 @@ export function deleteFieldIfOrphan({
     removed: true,
   };
 }
+
+export function sanitizeAuthoringSchema({
+  fieldsSchema,
+  defaults,
+  objetos,
+  dropOrphans = true,
+} = {}) {
+  const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const safeDefaults = { ...asObject(defaults) };
+  const objectIds = new Set(
+    (Array.isArray(objetos) ? objetos : [])
+      .map((objeto) => normalizeText(objeto?.id))
+      .filter(Boolean)
+  );
+
+  const removedFieldKeys = [];
+  const removedTargets = [];
+  let changed = false;
+
+  const nextFields = fields
+    .map((field, index) => {
+      const normalized = normalizeField(field, index);
+      const nextTargets = normalized.applyTargets.filter((target) => {
+        if (target.scope !== "objeto") return true;
+        const targetId = normalizeText(target.id);
+        if (!targetId || objectIds.has(targetId)) return true;
+
+        changed = true;
+        removedTargets.push({
+          fieldKey: normalized.key,
+          targetId,
+          path: normalizeText(target.path) || null,
+        });
+        return false;
+      });
+
+      if (nextTargets.length === normalized.applyTargets.length) {
+        return normalized;
+      }
+
+      return {
+        ...normalized,
+        applyTargets: nextTargets,
+      };
+    })
+    .filter((field) => {
+      if (!dropOrphans) return true;
+      if (Array.isArray(field.applyTargets) && field.applyTargets.length > 0) {
+        return true;
+      }
+
+      changed = true;
+      removedFieldKeys.push(field.key);
+      if (Object.prototype.hasOwnProperty.call(safeDefaults, field.key)) {
+        delete safeDefaults[field.key];
+      }
+      return false;
+    });
+
+  return {
+    fieldsSchema: nextFields,
+    defaults: safeDefaults,
+    changed,
+    removedFieldKeys,
+    removedTargets,
+  };
+}

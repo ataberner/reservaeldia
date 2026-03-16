@@ -994,6 +994,7 @@ export default function CanvasEditor({
     stageRef,
     getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
+    repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     flushPersistenceNow: flushEditorPersistence,
   });
 

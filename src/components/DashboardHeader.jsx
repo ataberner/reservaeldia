@@ -370,16 +370,62 @@ export default function DashboardHeader(props) {
                 }
             }
 
-            const runtimeAuthoringStatus =
+            let runtimeAuthoringStatus =
                 typeof window !== "undefined" &&
                 typeof window.canvasEditor?.getTemplateAuthoringStatus === "function"
                     ? window.canvasEditor.getTemplateAuthoringStatus()
                     : null;
-            const runtimeAuthoringSnapshot =
+            let runtimeAuthoringSnapshot =
                 typeof window !== "undefined" &&
                 typeof window.canvasEditor?.getTemplateAuthoringSnapshot === "function"
                     ? window.canvasEditor.getTemplateAuthoringSnapshot()
                     : null;
+            let authoringRepairSummary = "";
+
+            if (
+                runtimeAuthoringStatus &&
+                runtimeAuthoringStatus.isReady === false &&
+                typeof window !== "undefined" &&
+                typeof window.canvasEditor?.repairTemplateAuthoringState === "function"
+            ) {
+                const repairResult =
+                    await window.canvasEditor.repairTemplateAuthoringState({
+                        dropOrphans: true,
+                    });
+
+                if (repairResult && typeof repairResult === "object") {
+                    runtimeAuthoringStatus =
+                        repairResult.status && typeof repairResult.status === "object"
+                            ? repairResult.status
+                            : runtimeAuthoringStatus;
+                    runtimeAuthoringSnapshot =
+                        repairResult.snapshot && typeof repairResult.snapshot === "object"
+                            ? repairResult.snapshot
+                            : runtimeAuthoringSnapshot;
+
+                    const removedTargetCount = Array.isArray(repairResult.removedTargets)
+                        ? repairResult.removedTargets.length
+                        : 0;
+                    const removedFieldCount = Array.isArray(repairResult.removedFieldKeys)
+                        ? repairResult.removedFieldKeys.length
+                        : 0;
+
+                    if (removedTargetCount > 0 || removedFieldCount > 0) {
+                        const repairNotes = [];
+                        if (removedTargetCount > 0) {
+                            repairNotes.push(
+                                `${removedTargetCount} vinculo(s) roto(s)`
+                            );
+                        }
+                        if (removedFieldCount > 0) {
+                            repairNotes.push(
+                                `${removedFieldCount} campo(s) huerfano(s)`
+                            );
+                        }
+                        authoringRepairSummary = repairNotes.join(" y ");
+                    }
+                }
+            }
 
             if (runtimeAuthoringStatus && runtimeAuthoringStatus.isReady === false) {
                 const issues = Array.isArray(runtimeAuthoringStatus.issues)
@@ -428,6 +474,11 @@ export default function DashboardHeader(props) {
                     document: {
                         nombre,
                         portada,
+                        ...(runtimeAuthoringSnapshot
+                            ? {
+                                  templateAuthoringDraft: runtimeAuthoringSnapshot,
+                              }
+                            : {}),
                         ...(liveEditorSnapshot
                             ? {
                                   objetos: liveEditorSnapshot.objetos,
@@ -442,7 +493,11 @@ export default function DashboardHeader(props) {
                     templateId,
                     "template-persisted-document"
                 );
-                alert("La plantilla se actualizo correctamente.");
+                alert(
+                    authoringRepairSummary
+                        ? `La plantilla se actualizo correctamente.\n\nSe reparo el schema dinamico removiendo ${authoringRepairSummary}.`
+                        : "La plantilla se actualizo correctamente."
+                );
                 return;
             }
 

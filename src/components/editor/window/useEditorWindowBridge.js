@@ -23,6 +23,7 @@ export default function useEditorWindowBridge({
   stageRef,
   getTemplateAuthoringSnapshot,
   getTemplateAuthoringStatus,
+  repairTemplateAuthoringState,
   flushPersistenceNow,
 }) {
   const mergeCanvasEditor = (patch = {}) => {
@@ -67,6 +68,10 @@ export default function useEditorWindowBridge({
         typeof getTemplateAuthoringStatus === "function"
           ? getTemplateAuthoringStatus
           : undefined,
+      repairTemplateAuthoringState:
+        typeof repairTemplateAuthoringState === "function"
+          ? repairTemplateAuthoringState
+          : undefined,
       flushPersistenceNow:
         typeof flushPersistenceNow === "function"
           ? flushPersistenceNow
@@ -83,6 +88,7 @@ export default function useEditorWindowBridge({
     stageRef,
     getTemplateAuthoringSnapshot,
     getTemplateAuthoringStatus,
+    repairTemplateAuthoringState,
     flushPersistenceNow,
   ]);
 
@@ -137,6 +143,7 @@ export default function useEditorWindowBridge({
         "getHistorial",
         "getTemplateAuthoringSnapshot",
         "getTemplateAuthoringStatus",
+        "repairTemplateAuthoringState",
         "flushPersistenceNow",
       ]);
     };

@@ -6,6 +6,7 @@ import {
   deleteFieldIfOrphan,
   linkElementToField,
   resolveAuthoringTargetForElement,
+  sanitizeAuthoringSchema,
   isSupportedAuthoringElementType,
   unlinkElementFromField,
   updateFieldConfig,
@@ -441,6 +442,66 @@ export default function useTemplateFieldAuthoring({
     [fieldsSchema]
   );
 
+  const repairSnapshot = useCallback(
+    async ({ dropOrphans = true } = {}) => {
+      const repaired = sanitizeAuthoringSchema({
+        fieldsSchema,
+        defaults,
+        objetos: safeObjetos,
+        dropOrphans,
+      });
+      const nextDefaults = ensureDefaultsForSchema(
+        repaired.fieldsSchema,
+        repaired.defaults
+      );
+      const nextStatus = validateAuthoringState({
+        fieldsSchema: repaired.fieldsSchema,
+        defaults: nextDefaults,
+        objetos: safeObjetos,
+      });
+
+      if (!repaired.changed) {
+        return {
+          changed: false,
+          removedFieldKeys: [],
+          removedTargets: [],
+          status: nextStatus,
+          snapshot: {
+            version: AUTHORING_DRAFT_VERSION,
+            sourceTemplateId,
+            fieldsSchema,
+            defaults,
+            status,
+          },
+        };
+      }
+
+      const nextSnapshot = await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: repaired.fieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      return {
+        changed: true,
+        removedFieldKeys: repaired.removedFieldKeys,
+        removedTargets: repaired.removedTargets,
+        status: nextSnapshot.status,
+        snapshot: nextSnapshot,
+      };
+    },
+    [
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      safeObjetos,
+      snapshot,
+      sourceTemplateId,
+      status,
+    ]
+  );
+
   return {
     loading,
     saving,
@@ -462,6 +523,7 @@ export default function useTemplateFieldAuthoring({
     unlinkSelection,
     deleteField,
     getFieldUsage,
+    repairSnapshot,
     getSnapshot: () => ({
       version: AUTHORING_DRAFT_VERSION,
       sourceTemplateId,

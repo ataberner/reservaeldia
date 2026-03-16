@@ -4,42 +4,6 @@ import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { useCountdownPresetCatalog } from "@/hooks/useCountdownPresetCatalog";
 import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 
-const COUNTDOWN_STYLE_KEYS = [
-  "fontFamily",
-  "fontSize",
-  "color",
-  "labelColor",
-  "showLabels",
-  "boxBg",
-  "boxBorder",
-  "boxRadius",
-  "boxShadow",
-  "separator",
-  "gap",
-  "paddingX",
-  "paddingY",
-  "chipWidth",
-  "labelSize",
-  "padZero",
-  "layout",
-  "background",
-  "countdownSchemaVersion",
-  "presetVersion",
-  "tamanoBase",
-  "layoutType",
-  "distribution",
-  "visibleUnits",
-  "framePadding",
-  "frameSvgUrl",
-  "frameColorMode",
-  "frameColor",
-  "entryAnimation",
-  "tickAnimation",
-  "frameAnimation",
-  "labelTransform",
-  "presetPropsVersion",
-];
-
 function fechaStrToISO(str) {
   if (!str || typeof str !== "string") return null;
   let s = str.trim();
@@ -62,13 +26,6 @@ function fechaISOToInputDateTime(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours()
   )}:${pad(d.getMinutes())}`;
-}
-
-function buildCountdownDesignPatch(presetPropsSafe = {}) {
-  return COUNTDOWN_STYLE_KEYS.reduce((acc, key) => {
-    acc[key] = presetPropsSafe[key];
-    return acc;
-  }, {});
 }
 
 function describePaint(value) {
@@ -96,6 +53,16 @@ export default function MiniToolbarTabContador() {
   const [fechaEventoStr, setFechaEventoStr] = useState(ahoraMas30d);
   const [countdownSel, setCountdownSel] = useState(null);
   const [countdownEnBorrador, setCountdownEnBorrador] = useState(null);
+  const [, setPreviewTick] = useState(0);
+
+  useEffect(() => {
+    // Un solo timer compartido evita un intervalo por card en el catalogo.
+    const timer = window.setInterval(() => {
+      setPreviewTick((prev) => (prev + 1) % 86400);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const syncSelectedCountdown = () => {
@@ -164,6 +131,11 @@ export default function MiniToolbarTabContador() {
     if (!selectedUI.frameSvgUrl) return true;
     return selectedUI.frameColorMode === "currentcolor";
   }, [selectedUI]);
+
+  const selectedPresetId = useMemo(
+    () => String(countdownEnBorrador?.presetId || "").trim(),
+    [countdownEnBorrador?.presetId]
+  );
 
   const patchSelectedCountdown = (cambios) => {
     const id = selectedUI?.id;
@@ -333,7 +305,7 @@ export default function MiniToolbarTabContador() {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           {loadingCountdownPresets && (
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
               Cargando presets...
@@ -350,13 +322,28 @@ export default function MiniToolbarTabContador() {
             const isoPreview = fechaStrToISO(fechaEventoStr) || new Date().toISOString();
             const rawPresetProps = p?.presetPropsForCanvas || p?.props || {};
             const presetLabel = String(p?.nombre || p?.id || "Preset");
-            const presetCategory = String(p?.categoriaLabel || "General");
             const hasLivePresetPreview = Object.keys(rawPresetProps || {}).length > 0;
             const previewImageUrl = String(p?.thumbnailUrl || "").trim();
+            const isSelected = selectedPresetId.length > 0 && selectedPresetId === String(p?.id || "");
+            const cardClassName = [
+              "group flex h-[96px] w-full flex-col rounded-[18px] border-2 px-[14px] py-3 text-left transition-all duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/90 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+              isSelected
+                ? "border-[#773dbe] bg-[#faf7ff] shadow-[0_0_0_3px_rgba(119,61,190,0.15)]"
+                : "border-[#e8e2f1] bg-[linear-gradient(180deg,#ffffff_0%,#fcfbff_100%)] shadow-[0_4px_12px_rgba(15,23,42,0.04)] hover:-translate-y-[1px] hover:border-[#773dbe] hover:bg-[#faf7ff]",
+            ].join(" ");
+            const previewClassName = "flex flex-1 items-center justify-center overflow-hidden -translate-y-[2px]";
+            const nameClassName = isSelected
+              ? "truncate text-[12px] font-medium text-[#773dbe]"
+              : "truncate text-[12px] font-normal text-[#6b7280]";
 
             return (
               <button
                 key={p.id}
+                type="button"
+                aria-pressed={isSelected}
+                aria-label={`Aplicar preset ${presetLabel}`}
+                title={presetLabel}
                 onClick={() => {
                   const iso = fechaStrToISO(fechaEventoStr);
                   if (!iso) {
@@ -377,8 +364,6 @@ export default function MiniToolbarTabContador() {
                     ...presetPropsSafe
                   } = rawPresetProps;
 
-                  const designPatch = buildCountdownDesignPatch(presetPropsSafe);
-
                   window.dispatchEvent(
                     new CustomEvent("insertar-elemento", {
                       detail: {
@@ -391,29 +376,29 @@ export default function MiniToolbarTabContador() {
                     })
                   );
                 }}
-                className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-px hover:border-zinc-300 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                className={cardClassName}
               >
-                <div className="flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                  <div className="aspect-square w-full max-w-[220px] overflow-hidden rounded-lg">
-                    {hasLivePresetPreview ? (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
-                      </div>
-                    ) : previewImageUrl ? (
-                      <img
-                        src={previewImageUrl}
-                        alt={`${presetLabel} preview`}
-                        className="h-full w-full object-contain"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : null}
-                  </div>
+                <div className={previewClassName}>
+                  {hasLivePresetPreview ? (
+                    <CountdownPreview
+                      targetISO={isoPreview}
+                      preset={rawPresetProps}
+                      size="md"
+                      live={false}
+                    />
+                  ) : previewImageUrl ? (
+                    <img
+                      src={previewImageUrl}
+                      alt={`${presetLabel} preview`}
+                      className="h-full w-full object-contain"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div className="text-[11px] text-zinc-400">Sin preview</div>
+                  )}
                 </div>
-                <div className="mt-2">
-                  <p className="truncate text-xs font-semibold text-zinc-900">{presetLabel}</p>
-                  <p className="truncate text-[10px] text-zinc-500">{presetCategory}</p>
-                </div>
+                <p className={nameClassName}>{presetLabel}</p>
               </button>
             );
           })}

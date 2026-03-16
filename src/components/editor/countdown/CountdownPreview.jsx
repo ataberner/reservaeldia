@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getRemainingParts, fmt } from "./countdownUtils";
 import {
   buildTextPaintStyle,
@@ -40,13 +40,15 @@ function toFinite(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
-  const [tick, setTick] = useState(0);
+export default function CountdownPreview({ targetISO, preset, size = "sm", live = true }) {
+  const [, setTick] = useState(0);
 
   useEffect(() => {
+    // En catalogos grandes dejamos que el padre maneje el tick compartido.
+    if (!live) return undefined;
     const timer = setInterval(() => setTick((n) => (n + 1) % 60), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [live]);
 
   const SZ = useMemo(() => {
     const options = {
@@ -76,6 +78,21 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   const wrapperRef = useRef(null);
   const innerRef = useRef(null);
   const [scale, setScale] = useState(1);
+  const measureScale = useCallback(() => {
+    if (!wrapperRef.current || !innerRef.current) return;
+
+    const containerWidth = wrapperRef.current.offsetWidth;
+    const contentWidth = innerRef.current.scrollWidth;
+    if (!containerWidth || !contentWidth) return;
+
+    const marginFactor = 0.95;
+    const nextScale =
+      contentWidth > containerWidth
+        ? (containerWidth / contentWidth) * marginFactor
+        : 1 * marginFactor;
+
+    setScale(nextScale);
+  }, []);
 
   const isV2 = Number(preset?.countdownSchemaVersion || 1) >= 2;
   const legacyParts = [
@@ -105,16 +122,24 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   const previewParts = isV2 ? v2Parts : legacyParts;
 
   useLayoutEffect(() => {
-    if (!wrapperRef.current || !innerRef.current) return;
-    const containerWidth = wrapperRef.current.offsetWidth;
-    const contentWidth = innerRef.current.scrollWidth;
-    const marginFactor = 0.95;
-    const nextScale =
-      contentWidth > containerWidth
-        ? (containerWidth / contentWidth) * marginFactor
-        : 1 * marginFactor;
-    setScale(nextScale);
-  }, [previewParts.length, SZ, preset, tick]);
+    measureScale();
+  }, [measureScale, previewParts.length, SZ, preset]);
+
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return undefined;
+    if (!wrapperRef.current) return undefined;
+
+    const wrapperNode = wrapperRef.current;
+    const innerNode = innerRef.current;
+    const observer = new ResizeObserver(() => {
+      measureScale();
+    });
+
+    observer.observe(wrapperNode);
+    if (innerNode && innerNode !== wrapperNode) observer.observe(innerNode);
+
+    return () => observer.disconnect();
+  }, [measureScale]);
 
   if (state.invalid) return <div className="text-center text-red-500">Fecha invalida</div>;
   if (state.ended) return <div className="text-center text-green-600">Llego el dia</div>;

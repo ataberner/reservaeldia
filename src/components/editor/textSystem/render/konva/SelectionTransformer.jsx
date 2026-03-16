@@ -435,6 +435,15 @@ export default function SelectionBounds({
     return oldBox;
   };
 
+  const resolveStageBoundBox = (oldBox, nextBox) => {
+    // El texto puede sobresalir del canvas mientras rota; si no, el Transformer
+    // rebota al tocar el borde y la rotacion parece "trabarse".
+    if (esTexto && transformGestureRef.current?.isRotate) {
+      return nextBox;
+    }
+    return keepBoxInsideStage(oldBox, nextBox);
+  };
+
   useEffect(() => {
     const selectionKey = selectedElements.join(",");
 
@@ -931,7 +940,7 @@ export default function SelectionBounds({
           const cellH = cellW * cellRatio;
           const nextHeight = rows * cellH + gap * (rows - 1);
 
-          return keepBoxInsideStage(oldBox, {
+          return resolveStageBoundBox(oldBox, {
             ...newBox,
             width: nextWidth,
             height: Math.max(minSize, nextHeight),
@@ -959,7 +968,7 @@ export default function SelectionBounds({
             height = width / ratio;
           }
 
-          return keepBoxInsideStage(oldBox, {
+          return resolveStageBoundBox(oldBox, {
             ...newBox,
             width: Math.min(Math.max(width, minSize), maxSize),
             height: Math.min(Math.max(height, minSize), maxSize),
@@ -972,7 +981,7 @@ export default function SelectionBounds({
         ) {
           const size = Math.max(newBox.width, newBox.height);
           const finalSize = Math.min(size, maxSize);
-          return keepBoxInsideStage(oldBox, {
+          return resolveStageBoundBox(oldBox, {
             ...newBox,
             width: finalSize,
             height: finalSize,
@@ -989,7 +998,7 @@ export default function SelectionBounds({
           const width = Math.min(Math.max(safeOldW * uniformScale, minSize), maxSize);
           const height = Math.min(Math.max(safeOldH * uniformScale, minSize), maxSize);
 
-          return keepBoxInsideStage(oldBox, {
+          return resolveStageBoundBox(oldBox, {
             ...newBox,
             width,
             height,
@@ -1007,14 +1016,14 @@ export default function SelectionBounds({
           const newWidth = oldBox.width * uniformScale;
           const newHeight = oldBox.height * uniformScale;
 
-          return keepBoxInsideStage(oldBox, {
+          return resolveStageBoundBox(oldBox, {
             ...newBox,
             width: Math.min(Math.max(newWidth, minSize), maxSize),
             height: Math.min(Math.max(newHeight, minSize), maxSize),
           });
         }
 
-        return keepBoxInsideStage(oldBox, {
+        return resolveStageBoundBox(oldBox, {
           ...newBox,
           width: Math.min(newBox.width, maxSize),
           height: Math.min(newBox.height, maxSize),

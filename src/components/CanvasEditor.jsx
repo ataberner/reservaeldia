@@ -71,7 +71,6 @@ import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
 
 
-
 Konva.dragDistance = 8;
 
 function shouldUseLowPowerKonvaRaster() {
@@ -898,14 +897,44 @@ export default function CanvasEditor({
     obtenerMetricasTexto,
     medirAnchoTextoKonva,
     medirAltoTextoKonva,
-    calcularXTextoCentradoPorTamano,
-    calcularXTextoDesdeCentro,
-    calcularYTextoDesdeCentro,
     calcularPosTextoDesdeCentro,
     ajustarFontSizeAAnchoVisual,
     obtenerCentroVisualTextoX,
     calcularXTextoCentrado,
   } = textLayoutUtils;
+
+  const calcularPatchTextoDesdeCentro = useCallback(
+    (objTexto, nextFontSize, centerX, centerY) => {
+      if (!objTexto || objTexto.tipo !== "texto") return null;
+
+      const rotation = Number.isFinite(objTexto.rotation) ? objTexto.rotation : 0;
+      const positioned = calcularPosTextoDesdeCentro(
+        objTexto,
+        nextFontSize,
+        centerX,
+        centerY,
+        rotation
+      );
+      if (!positioned) return null;
+
+      const nextX = Number(positioned.x);
+      const nextYAbs = Number(positioned.y);
+      const nextY =
+        Number.isFinite(nextYAbs) && objTexto.seccionId
+          ? convertirAbsARel(nextYAbs, objTexto.seccionId, seccionesOrdenadas)
+          : null;
+
+      return {
+        x: Number.isFinite(nextX)
+          ? nextX
+          : (Number.isFinite(objTexto.x) ? objTexto.x : 0),
+        y: Number.isFinite(nextY)
+          ? nextY
+          : (Number.isFinite(objTexto.y) ? objTexto.y : 0),
+      };
+    },
+    [calcularPosTextoDesdeCentro, convertirAbsARel, seccionesOrdenadas]
+  );
 
   useCanvasEditorOptionPanelOutsideClose({
     logOptionButtonMenuDebug,
@@ -1536,6 +1565,8 @@ export default function CanvasEditor({
           fontManager={fontManager}
           tamaniosDisponibles={tamaniosDisponibles}
           onCambiarAlineacion={onCambiarAlineacion}
+          calcularPatchTextoDesdeCentro={calcularPatchTextoDesdeCentro}
+          obtenerCentroVisualTextoX={obtenerCentroVisualTextoX}
           canOpenTemplateEditorialPanel={canOpenTemplateEditorialPanel}
           templateWorkspace={templateWorkspace}
           onOpenTemplateEditorialPanel={() => setTemplateEditorialPanelOpen(true)}

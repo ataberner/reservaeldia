@@ -27,6 +27,10 @@ const CANVAS_WIDTH = 800;
 const SECTION_CENTER_X = CANVAS_WIDTH / 2;
 const SECTION_CENTER_EPSILON = 2;
 const TOOLBAR_TOP_OFFSET = "calc(var(--dashboard-header-height, 52px) + 8px)";
+const FONT_SIZE_CENTER_LOCK_WINDOW_MS = 700;
+const FONT_SIZE_POST_CORRECTION_DELAY_MS = 96;
+const CENTER_CORRECTION_EPSILON = 0.25;
+const PREDICTIVE_X_CORRECTION_EPSILON = 1;
 
 const clamp = (value, min, max) => {
   const safeMin = Number.isFinite(min) ? min : 0;
@@ -46,6 +50,8 @@ export default function FloatingTextToolbar({
   ALL_FONTS = [],
   tamaniosDisponibles = [],
   onCambiarAlineacion,
+  calcularPatchTextoDesdeCentro,
+  obtenerCentroVisualTextoX,
 }) {
   const [isMobile, setIsMobile] = useState(false);
   const [fontSelectorStyle, setFontSelectorStyle] = useState(null);
@@ -55,6 +61,11 @@ export default function FloatingTextToolbar({
   const latestFontChangeRef = useRef(0);
   const latestFontSizeChangeRef = useRef(0);
   const lastTypographyTargetsRef = useRef([]);
+  const fontSizeCenterLockRef = useRef({
+    key: "",
+    capturedAt: 0,
+    centers: new Map(),
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -139,7 +150,7 @@ export default function FloatingTextToolbar({
     return Number.isFinite(maxLineWidth) ? maxLineWidth : null;
   };
 
-  const obtenerCentroVisualXDesdeNodo = (id) => {
+  const obtenerCentroVisualDesdeNodo = (id) => {
     const refs = getWindowElementRefs();
     const node = refs?.[id];
     if (!node || typeof node.getClientRect !== "function") return null;
@@ -150,13 +161,32 @@ export default function FloatingTextToolbar({
         skipShadow: true,
         skipStroke: true,
       });
-      if (!rect || !Number.isFinite(rect.x) || !Number.isFinite(rect.width)) {
+      if (!rect) {
         return null;
       }
-      return rect.x + rect.width / 2;
+
+      const centerX =
+        Number.isFinite(rect.x) && Number.isFinite(rect.width)
+          ? rect.x + rect.width / 2
+          : null;
+      const centerY =
+        Number.isFinite(rect.y) && Number.isFinite(rect.height)
+          ? rect.y + rect.height / 2
+          : null;
+
+      if (!Number.isFinite(centerX) && !Number.isFinite(centerY)) {
+        return null;
+      }
+
+      return { centerX, centerY };
     } catch {
       return null;
     }
+  };
+
+  const obtenerCentroVisualXDesdeNodo = (id) => {
+    const center = obtenerCentroVisualDesdeNodo(id);
+    return Number.isFinite(center?.centerX) ? center.centerX : null;
   };
 
   const obtenerCentroFallbackDesdeObjeto = (obj, fontFamilyOverride) => {
@@ -172,9 +202,17 @@ export default function FloatingTextToolbar({
   const resolverCentroObjetivoCambioFuente = (obj) => {
     if (!obj || obj.tipo !== "texto") return null;
 
+    const refs = getWindowElementRefs();
+    const node = refs?.[obj.id] || null;
+    const centerDesdeUtilCompartida =
+      typeof obtenerCentroVisualTextoX === "function"
+        ? obtenerCentroVisualTextoX(obj, node)
+        : null;
     const centerDesdeNodo = obtenerCentroVisualXDesdeNodo(obj.id);
     const centerFallback = obtenerCentroFallbackDesdeObjeto(obj, obj.fontFamily);
-    const centerActual = Number.isFinite(centerDesdeNodo)
+    const centerActual = Number.isFinite(centerDesdeUtilCompartida)
+      ? centerDesdeUtilCompartida
+      : Number.isFinite(centerDesdeNodo)
       ? centerDesdeNodo
       : centerFallback;
 
@@ -219,6 +257,149 @@ export default function FloatingTextToolbar({
       })
     );
   };
+
+  const resolverCentroBloqueadoCambioTamano = useCallback(
+    (targetIds, getObjById) => {
+      const safeIds = Array.from(targetIds || []).filter(
+        (id) => id !== null && typeof id !== "undefined"
+      );
+      if (!safeIds.length) return new Map();
+
+      const selectionKey = safeIds.map(String).sort().join("|");
+      const now = Date.now();
+      const cached = fontSizeCenterLockRef.current;
+      const canReuseCachedCenters =
+        cached.key === selectionKey &&
+        cached.centers instanceof Map &&
+        cached.centers.size > 0 &&
+        now - Number(cached.capturedAt || 0) <= FONT_SIZE_CENTER_LOCK_WINDOW_MS;
+
+      if (canReuseCachedCenters) {
+        fontSizeCenterLockRef.current = {
+          key: selectionKey,
+          capturedAt: now,
+          centers: new Map(cached.centers),
+        };
+        return new Map(cached.centers);
+      }
+
+      const nextCenters = new Map();
+      safeIds.forEach((id) => {
+        const targetObj =
+          getObjById?.(id) || (objetoSeleccionado?.id === id ? objetoSeleccionado : null);
+        if (!targetObj) return;
+        if (!debeAnclarCentroTexto(targetObj)) return;
+
+        const centerObjetivo = obtenerCentroVisualDesdeNodo(id);
+        if (
+          Number.isFinite(centerObjetivo?.centerX) ||
+          Number.isFinite(centerObjetivo?.centerY)
+        ) {
+          nextCenters.set(id, centerObjetivo);
+        }
+      });
+
+      fontSizeCenterLockRef.current = {
+        key: selectionKey,
+        capturedAt: now,
+        centers: new Map(nextCenters),
+      };
+
+      return nextCenters;
+    },
+    [
+      objetoSeleccionado?.id,
+      objetoSeleccionado,
+      debeAnclarCentroTexto,
+      resolverCentroObjetivoCambioFuente,
+    ]
+  );
+
+  const aplicarCorreccionCentroTamano = useCallback(
+    ({ requestId, centerTargetById, expectedFontSizeById, predictivePatchById }) => {
+      if (!centerTargetById?.size) return;
+      if (latestFontSizeChangeRef.current !== requestId) return;
+
+      const deltaById = new Map();
+      centerTargetById.forEach((centerObjetivo, id) => {
+        if (!expectedFontSizeById.has(id)) return;
+        const centerActual = obtenerCentroVisualDesdeNodo(id);
+        if (!centerActual) return;
+        const predictivePatch = predictivePatchById?.get(id) || null;
+        const horizontalCorrectionEpsilon = predictivePatch?.x
+          ? PREDICTIVE_X_CORRECTION_EPSILON
+          : CENTER_CORRECTION_EPSILON;
+
+        const deltaX =
+          Number.isFinite(centerObjetivo?.centerX) && Number.isFinite(centerActual?.centerX)
+            ? centerObjetivo.centerX - centerActual.centerX
+            : null;
+        const deltaY =
+          Number.isFinite(centerObjetivo?.centerY) && Number.isFinite(centerActual?.centerY)
+            ? centerObjetivo.centerY - centerActual.centerY
+            : null;
+        const shouldCorrectX =
+          Number.isFinite(deltaX) && Math.abs(deltaX) > horizontalCorrectionEpsilon;
+        const shouldCorrectY =
+          Number.isFinite(deltaY) && Math.abs(deltaY) > CENTER_CORRECTION_EPSILON;
+
+        if (shouldCorrectX || shouldCorrectY) {
+          deltaById.set(id, { x: deltaX, y: deltaY });
+        }
+      });
+      if (!deltaById.size) return;
+
+      setObjetos((prev) =>
+        prev.map((o) => {
+          const delta = deltaById.get(o.id);
+          if (!delta) return o;
+          if (!debeAnclarCentroTexto(o)) return o;
+
+          const expectedSize = expectedFontSizeById.get(o.id);
+          const currentSize = normalizarFontSizeEntero(o.fontSize, 24);
+          if (Number.isFinite(expectedSize) && Math.abs(currentSize - expectedSize) > 0.01) {
+            return o;
+          }
+
+          const currentX = Number.isFinite(o.x) ? o.x : 0;
+          const currentY = Number.isFinite(o.y) ? o.y : 0;
+          const patch = {};
+
+          if (Number.isFinite(delta.x)) {
+            const nextX = currentX + delta.x;
+            if (
+              Number.isFinite(nextX) &&
+              Math.abs(nextX - currentX) > CENTER_CORRECTION_EPSILON
+            ) {
+              patch.x = nextX;
+            }
+          }
+
+          if (Number.isFinite(delta.y)) {
+            const nextY = currentY + delta.y;
+            if (
+              Number.isFinite(nextY) &&
+              Math.abs(nextY - currentY) > CENTER_CORRECTION_EPSILON
+            ) {
+              patch.y = nextY;
+            }
+          }
+
+          if (!Object.keys(patch).length) {
+            return o;
+          }
+
+          return { ...o, ...patch };
+        })
+      );
+    },
+    [
+      debeAnclarCentroTexto,
+      normalizarFontSizeEntero,
+      obtenerCentroVisualDesdeNodo,
+      setObjetos,
+    ]
+  );
 
   const toolbarContainerClass = `fixed z-50 bg-white border rounded shadow p-2 flex ${
     isMobile
@@ -457,21 +638,13 @@ export default function FloatingTextToolbar({
       if (!targetIds.size) return;
 
       const getObjById = getWindowObjectResolver();
-      const centerTargetById = new Map();
-
-      targetIds.forEach((id) => {
-        const targetObj =
-          getObjById?.(id) || (objetoSeleccionado?.id === id ? objetoSeleccionado : null);
-        if (!targetObj) return;
-        if (!debeAnclarCentroTexto(targetObj)) return;
-
-        const centerObjetivo = resolverCentroObjetivoCambioFuente(targetObj);
-        if (Number.isFinite(centerObjetivo)) {
-          centerTargetById.set(id, centerObjetivo);
-        }
-      });
+      const centerTargetById = resolverCentroBloqueadoCambioTamano(
+        targetIds,
+        getObjById
+      );
 
       const expectedFontSizeById = new Map();
+      const predictivePatchById = new Map();
       setObjetos((prev) =>
         prev.map((o) => {
           if (!targetIds.has(o.id)) return o;
@@ -488,23 +661,68 @@ export default function FloatingTextToolbar({
 
           expectedFontSizeById.set(o.id, nextSize);
           const patch = { fontSize: nextSize };
+          const predictivePatch = { x: false, y: false };
+          let nextPatchCompartido = null;
 
           if (debeAnclarCentroTexto(o)) {
             const centerObjetivo = centerTargetById.get(o.id);
             const debeAjustarPredictivo =
               !Number.isFinite(o.width) &&
               o.__autoWidth !== false;
-            if (Number.isFinite(centerObjetivo) && debeAjustarPredictivo) {
-              const nextWidth = medirAnchoTexto(o, { fontSizeOverride: nextSize });
-              const scaleX = normalizarEscalaX(o.scaleX);
-              if (Number.isFinite(nextWidth) && nextWidth > 0) {
-                const currentX = Number.isFinite(o.x) ? o.x : 0;
-                const nextX = centerObjetivo - (nextWidth * scaleX) / 2;
-                if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.25) {
-                  patch.x = nextX;
+            if (
+              centerObjetivo &&
+              debeAjustarPredictivo
+            ) {
+              const currentX = Number.isFinite(o.x) ? o.x : 0;
+              const currentY = Number.isFinite(o.y) ? o.y : 0;
+              nextPatchCompartido =
+                typeof calcularPatchTextoDesdeCentro === "function"
+                  ? calcularPatchTextoDesdeCentro(
+                      o,
+                      nextSize,
+                      centerObjetivo.centerX,
+                      centerObjetivo.centerY
+                    )
+                  : null;
+
+              if (
+                Number.isFinite(nextPatchCompartido?.x) &&
+                Math.abs(nextPatchCompartido.x - currentX) > CENTER_CORRECTION_EPSILON
+              ) {
+                patch.x = nextPatchCompartido.x;
+                predictivePatch.x = true;
+              }
+
+              if (
+                Number.isFinite(nextPatchCompartido?.y) &&
+                Math.abs(nextPatchCompartido.y - currentY) > CENTER_CORRECTION_EPSILON
+              ) {
+                patch.y = nextPatchCompartido.y;
+                predictivePatch.y = true;
+              }
+
+              if (
+                !Number.isFinite(patch.x) &&
+                Number.isFinite(centerObjetivo.centerX)
+              ) {
+                const nextWidth = medirAnchoTexto(o, { fontSizeOverride: nextSize });
+                const scaleX = normalizarEscalaX(o.scaleX);
+                if (Number.isFinite(nextWidth) && nextWidth > 0) {
+                  const nextX = centerObjetivo.centerX - (nextWidth * scaleX) / 2;
+                  if (
+                    Number.isFinite(nextX) &&
+                    Math.abs(nextX - currentX) > CENTER_CORRECTION_EPSILON
+                  ) {
+                    patch.x = nextX;
+                    predictivePatch.x = true;
+                  }
                 }
               }
             }
+          }
+
+          if (predictivePatch.x || predictivePatch.y) {
+            predictivePatchById.set(o.id, predictivePatch);
           }
 
           return { ...o, ...patch };
@@ -512,49 +730,30 @@ export default function FloatingTextToolbar({
       );
 
       if (!centerTargetById.size) return;
+      const runCenterCorrection = () =>
+        aplicarCorreccionCentroTamano({
+          requestId,
+          centerTargetById,
+          expectedFontSizeById,
+          predictivePatchById,
+        });
+
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (latestFontSizeChangeRef.current !== requestId) return;
-
-          const deltaById = new Map();
-          centerTargetById.forEach((centerObjetivo, id) => {
-            if (!expectedFontSizeById.has(id)) return;
-            const centerActual = obtenerCentroVisualXDesdeNodo(id);
-            if (!Number.isFinite(centerActual)) return;
-
-            const delta = centerObjetivo - centerActual;
-            if (Number.isFinite(delta) && Math.abs(delta) > 0.25) {
-              deltaById.set(id, delta);
-            }
-          });
-
-          if (!deltaById.size) return;
-
-          setObjetos((prev) =>
-            prev.map((o) => {
-              const delta = deltaById.get(o.id);
-              if (!Number.isFinite(delta)) return o;
-              if (!esObjetivoTipografia(o)) return o;
-
-              const expectedSize = expectedFontSizeById.get(o.id);
-              const currentSize = normalizarFontSizeEntero(o.fontSize, 24);
-              if (Number.isFinite(expectedSize) && Math.abs(currentSize - expectedSize) > 0.01) {
-                return o;
-              }
-
-              const currentX = Number.isFinite(o.x) ? o.x : 0;
-              const nextX = currentX + delta;
-              if (!Number.isFinite(nextX) || Math.abs(nextX - currentX) <= 0.25) {
-                return o;
-              }
-
-              return { ...o, x: nextX };
-            })
-          );
+          runCenterCorrection();
         });
       });
+
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          requestAnimationFrame(() => {
+            runCenterCorrection();
+          });
+        }, FONT_SIZE_POST_CORRECTION_DELAY_MS);
+      }
     },
     [
+      aplicarCorreccionCentroTamano,
       elementosSeleccionados,
       objetoSeleccionado?.id,
       objetoSeleccionado,
@@ -562,11 +761,11 @@ export default function FloatingTextToolbar({
       esObjetivoTipografia,
       debeMantenerCentroEnCambioDeFuente,
       debeAnclarCentroTexto,
-      resolverCentroObjetivoCambioFuente,
+      resolverCentroBloqueadoCambioTamano,
       medirAnchoTexto,
       normalizarEscalaX,
-      obtenerCentroVisualXDesdeNodo,
       normalizarFontSizeEntero,
+      calcularPatchTextoDesdeCentro,
     ]
   );
 

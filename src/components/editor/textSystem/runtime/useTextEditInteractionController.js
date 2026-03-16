@@ -27,6 +27,7 @@ import {
   createLogicalCaretRange,
   normalizeEditablePlainTextStructure,
   resolveEditorRangeTextPosition,
+  selectAllEditableContent,
 } from "@/components/editor/textSystem/services/textCaretPositionService";
 import {
   readClientPointFromCanvasEvent,
@@ -649,6 +650,29 @@ export default function useTextEditInteractionController({
     return focusEditorAtBoundary(boundary);
   }, [focusEditorAtBoundary, sessionValue.length]);
 
+  const focusEditorSelectingAll = useCallback(() => {
+    const editorEl = editorRef.current;
+    if (!editorEl) return false;
+
+    suppressNextFocusSyncRef.current = true;
+    pendingInitialCaretPointRef.current = null;
+    requestedLogicalOffsetRef.current = null;
+    logicalCaretOffsetRef.current = null;
+    focusSemanticEditor(editorEl);
+
+    const selectedAll = selectAllEditableContent(editorEl);
+    if (!selectedAll) return false;
+
+    setIsFocused(true);
+    setCaretBlinkVisible(true);
+    flushDecorationsSync();
+    window.requestAnimationFrame(syncDecorations);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(syncDecorations);
+    });
+    return true;
+  }, [flushDecorationsSync, syncDecorations]);
+
   useEffect(() => {
     restoreEditorSelectionRef.current = restoreEditorSelection;
   }, [restoreEditorSelection]);
@@ -908,6 +932,13 @@ export default function useTextEditInteractionController({
 
       if (!shouldApplyEntryPlacement) return;
 
+      const selectedAll = focusEditorSelectingAll();
+      entrySelectionAppliedRef.current = {
+        editingId,
+        applied: selectedAll,
+      };
+      if (selectedAll) return;
+
       const pendingPoint = pendingInitialCaretPointRef.current;
       if (pendingPoint) {
         pendingInitialCaretPointRef.current = null;
@@ -935,6 +966,7 @@ export default function useTextEditInteractionController({
   }, [
     backendRevision,
     editingId,
+    focusEditorSelectingAll,
     focusEditorFromViewportPoint,
   ]);
 

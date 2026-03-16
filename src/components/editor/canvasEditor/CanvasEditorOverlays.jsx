@@ -45,6 +45,8 @@ export default function CanvasEditorOverlays({
   fontManager,
   tamaniosDisponibles,
   onCambiarAlineacion,
+  calcularPatchTextoDesdeCentro,
+  obtenerCentroVisualTextoX,
   canOpenTemplateEditorialPanel,
   templateWorkspace,
   onOpenTemplateEditorialPanel,
@@ -198,6 +200,8 @@ export default function CanvasEditorOverlays({
         fontManager={fontManager}
         tamaniosDisponibles={tamaniosDisponibles}
         onCambiarAlineacion={onCambiarAlineacion}
+        calcularPatchTextoDesdeCentro={calcularPatchTextoDesdeCentro}
+        obtenerCentroVisualTextoX={obtenerCentroVisualTextoX}
       />
 
       <ConfirmDeleteSectionModal

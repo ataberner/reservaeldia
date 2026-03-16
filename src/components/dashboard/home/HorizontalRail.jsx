@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function setResolvedRef(ref, value) {
   if (!ref) return;
@@ -17,30 +17,44 @@ export default function HorizontalRail({
   onScroll,
 }) {
   const localViewportRef = useRef(null);
+  const [viewportNode, setViewportNode] = useState(null);
 
-  const handleViewportRef = (node) => {
+  const handleViewportRef = useCallback((node) => {
     localViewportRef.current = node;
+    setViewportNode(node);
     setResolvedRef(viewportRef, node);
-  };
+  }, [viewportRef]);
 
-  const handleWheel = (event) => {
-    const viewportNode = localViewportRef.current;
-    if (!viewportNode) return;
+  useEffect(() => {
+    if (!viewportNode) return undefined;
 
-    const hasHorizontalOverflow = viewportNode.scrollWidth > viewportNode.clientWidth + 8;
-    if (!hasHorizontalOverflow) return;
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    const handleWheel = (event) => {
+      const activeViewportNode = localViewportRef.current;
+      if (!activeViewportNode) return;
 
-    event.preventDefault();
-    viewportNode.scrollLeft += event.deltaY;
-  };
+      const hasHorizontalOverflow =
+        activeViewportNode.scrollWidth > activeViewportNode.clientWidth + 8;
+      if (!hasHorizontalOverflow) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      activeViewportNode.scrollLeft += event.deltaY;
+    };
+
+    viewportNode.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      viewportNode.removeEventListener("wheel", handleWheel);
+    };
+  }, [viewportNode]);
 
   return (
     <div className={`relative ${className}`}>
       <div
         ref={handleViewportRef}
         onScroll={onScroll}
-        onWheel={handleWheel}
         className="-mt-3 overflow-x-auto overflow-y-hidden pb-3 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className={`flex gap-4 ${trackClassName}`}>{children}</div>

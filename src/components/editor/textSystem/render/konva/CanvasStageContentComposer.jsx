@@ -34,6 +34,7 @@ import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
+import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 
 const INLINE_INTENT_STALE_MS = 1500;
 
@@ -425,10 +426,7 @@ export default function CanvasStageContent({
     const node = elementRefs.current[id];
     const nodeMetrics = obtenerMetricasNodoInline(node);
     const shouldKeepCenterXDuringEdit =
-      targetObj?.tipo === "texto" &&
-      !targetObj.__groupAlign &&
-      !Number.isFinite(targetObj.width) &&
-      targetObj.__autoWidth !== false;
+      shouldPreserveTextCenterPosition(targetObj);
     const centerXLock = shouldKeepCenterXDuringEdit
       ? obtenerCentroVisualTextoX(targetObj, node)
       : null;
@@ -1563,10 +1561,7 @@ export default function CanvasStageContent({
                             ? { ...obj, texto: textoPreview }
                             : obj;
                           const shouldKeepCenterPreview =
-                            obj.tipo === "texto" &&
-                            !obj.__groupAlign &&
-                            !Number.isFinite(obj.width) &&
-                            obj.__autoWidth !== false;
+                            shouldPreserveTextCenterPosition(obj);
 
                           if (shouldKeepCenterPreview && hasPreviewTextChanged) {
                             const lockedCenterX =

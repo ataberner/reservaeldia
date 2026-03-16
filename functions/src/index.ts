@@ -1918,6 +1918,8 @@ export const copiarPlantilla = onCall(
           templateName:
             typeof datosPlantilla.nombre === "string" ? datosPlantilla.nombre : "",
         },
+      }, {
+        processImmediately: false,
       });
     } catch (analyticsError) {
       logger.error("No se pudo registrar analytics de borrador creado", {

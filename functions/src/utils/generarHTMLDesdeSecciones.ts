@@ -344,6 +344,213 @@ export function generarHTMLDesdeSecciones(
     return base.split(find).join(replace);
   }
 
+  function parsePixelValue(value){
+    var numeric = Number.parseFloat(String(value == null ? "" : value));
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  function isAutoWidthTextElement(targetElement){
+    if (!targetElement) return false;
+    var isTextNode =
+      toText(targetElement.getAttribute("data-debug-texto")) === "1" ||
+      toText(targetElement.getAttribute("data-type")).toLowerCase() === "text";
+    if (!isTextNode) return false;
+    return !toText(targetElement.style.width);
+  }
+
+  function getTextTransformMatrix(targetElement){
+    var computedStyle = window.getComputedStyle ? window.getComputedStyle(targetElement) : null;
+    var rawTransform = String(
+      (computedStyle && computedStyle.transform) || targetElement?.style?.transform || ""
+    ).trim();
+
+    if (!rawTransform || rawTransform === "none") {
+      return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    }
+
+    try {
+      if (typeof DOMMatrix === "function") {
+        var domMatrix = new DOMMatrix(rawTransform);
+        return {
+          a: domMatrix.a,
+          b: domMatrix.b,
+          c: domMatrix.c,
+          d: domMatrix.d,
+          e: domMatrix.e,
+          f: domMatrix.f,
+        };
+      }
+      if (typeof WebKitCSSMatrix === "function") {
+        var webkitMatrix = new WebKitCSSMatrix(rawTransform);
+        return {
+          a: webkitMatrix.a,
+          b: webkitMatrix.b,
+          c: webkitMatrix.c,
+          d: webkitMatrix.d,
+          e: webkitMatrix.e,
+          f: webkitMatrix.f,
+        };
+      }
+    } catch (_error) {
+      // Fallback manual debajo.
+    }
+
+    var match = rawTransform.match(/^matrix\(([^)]+)\)$/i);
+    if (!match) {
+      return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    }
+
+    var parts = match[1]
+      .split(",")
+      .map(function(entry){
+        return Number.parseFloat(String(entry || "").trim());
+      });
+
+    if (parts.length < 6 || parts.some(function(value){ return !Number.isFinite(value); })) {
+      return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    }
+
+    return {
+      a: parts[0],
+      b: parts[1],
+      c: parts[2],
+      d: parts[3],
+      e: parts[4],
+      f: parts[5],
+    };
+  }
+
+  function getTextBoxSize(targetElement){
+    if (!targetElement) return { width: null, height: null };
+
+    var width = Number(
+      targetElement.scrollWidth ||
+      targetElement.offsetWidth ||
+      targetElement.clientWidth ||
+      0
+    );
+    var height = Number(
+      targetElement.scrollHeight ||
+      targetElement.offsetHeight ||
+      targetElement.clientHeight ||
+      0
+    );
+
+    if ((!Number.isFinite(width) || width <= 0) || (!Number.isFinite(height) || height <= 0)) {
+      var rect = targetElement.getBoundingClientRect ? targetElement.getBoundingClientRect() : null;
+      if (rect) {
+        if (!Number.isFinite(width) || width <= 0) width = Number(rect.width || 0);
+        if (!Number.isFinite(height) || height <= 0) height = Number(rect.height || 0);
+      }
+    }
+
+    return {
+      width: Number.isFinite(width) && width > 0 ? width : null,
+      height: Number.isFinite(height) && height > 0 ? height : null,
+    };
+  }
+
+  function getLocalElementPosition(targetElement){
+    if (!targetElement) return { left: null, top: null };
+
+    var offsetLeft = Number(targetElement.offsetLeft);
+    var offsetTop = Number(targetElement.offsetTop);
+    if (Number.isFinite(offsetLeft) && Number.isFinite(offsetTop)) {
+      return {
+        left: offsetLeft,
+        top: offsetTop,
+      };
+    }
+
+    var inlineLeft = parsePixelValue(targetElement.style && targetElement.style.left);
+    var inlineTop = parsePixelValue(targetElement.style && targetElement.style.top);
+    if (Number.isFinite(inlineLeft) && Number.isFinite(inlineTop)) {
+      return {
+        left: inlineLeft,
+        top: inlineTop,
+      };
+    }
+
+    var computedStyle = window.getComputedStyle ? window.getComputedStyle(targetElement) : null;
+    return {
+      left: parsePixelValue(computedStyle && computedStyle.left),
+      top: parsePixelValue(computedStyle && computedStyle.top),
+    };
+  }
+
+  function getTextCenterOffset(matrix, width, height){
+    var halfWidth = Number(width) / 2;
+    var halfHeight = Number(height) / 2;
+    return {
+      x: matrix.a * halfWidth + matrix.c * halfHeight + matrix.e,
+      y: matrix.b * halfWidth + matrix.d * halfHeight + matrix.f,
+    };
+  }
+
+  function captureTextElementCenter(targetElement){
+    if (!isAutoWidthTextElement(targetElement)) return null;
+
+    var position = getLocalElementPosition(targetElement);
+    var leftPx = position.left;
+    var topPx = position.top;
+    var size = getTextBoxSize(targetElement);
+
+    if (
+      !Number.isFinite(leftPx) ||
+      !Number.isFinite(topPx) ||
+      !Number.isFinite(size.width) ||
+      !Number.isFinite(size.height)
+    ) {
+      return null;
+    }
+
+    var matrix = getTextTransformMatrix(targetElement);
+    var offset = getTextCenterOffset(matrix, size.width, size.height);
+
+    return {
+      centerX: leftPx + offset.x,
+      centerY: topPx + offset.y,
+    };
+  }
+
+  function setTextContentPreservingCenter(targetElement, nextText){
+    if (!targetElement) return false;
+
+    var resolvedNextText = String(nextText == null ? "" : nextText);
+    var currentText = String(targetElement.textContent || "");
+    if (currentText === resolvedNextText) return false;
+
+    var lockedCenter = captureTextElementCenter(targetElement);
+    targetElement.textContent = resolvedNextText;
+
+    if (
+      !lockedCenter ||
+      !Number.isFinite(lockedCenter.centerX) ||
+      !Number.isFinite(lockedCenter.centerY)
+    ) {
+      return true;
+    }
+
+    var size = getTextBoxSize(targetElement);
+    if (!Number.isFinite(size.width) || !Number.isFinite(size.height)) {
+      return true;
+    }
+
+    var matrix = getTextTransformMatrix(targetElement);
+    var offset = getTextCenterOffset(matrix, size.width, size.height);
+    var nextLeftPx = Number(lockedCenter.centerX) - offset.x;
+    var nextTopPx = Number(lockedCenter.centerY) - offset.y;
+
+    if (Number.isFinite(nextLeftPx)) {
+      targetElement.style.left = nextLeftPx + "px";
+    }
+    if (Number.isFinite(nextTopPx)) {
+      targetElement.style.top = nextTopPx + "px";
+    }
+
+    return true;
+  }
+
   function findObjectElementById(id){
     var safeId = toText(id);
     if (!safeId) return null;
@@ -448,12 +655,10 @@ export function generarHTMLDesdeSecciones(
           replacedText = nextText;
         }
         if (replacedText === currentText) return false;
-        targetElement.textContent = replacedText;
-        return true;
+        return setTextContentPreservingCenter(targetElement, replacedText);
       }
       if (currentText === nextText) return false;
-      targetElement.textContent = nextText;
-      return true;
+      return setTextContentPreservingCenter(targetElement, nextText);
     }
 
     if (path === "src" || path === "url" || path === "mediaurl" || path === "fondoimagen") {
@@ -479,8 +684,9 @@ export function generarHTMLDesdeSecciones(
       var currentText = String(node.textContent || "");
       var nextText = replaceInText(currentText, findText, replaceText);
       if (nextText === currentText) continue;
-      node.textContent = nextText;
-      changed += 1;
+      if (setTextContentPreservingCenter(node, nextText)) {
+        changed += 1;
+      }
     }
 
     return changed > 0;

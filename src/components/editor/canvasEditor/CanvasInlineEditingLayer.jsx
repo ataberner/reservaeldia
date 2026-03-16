@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import HiddenSemanticTextBackend from "@/components/editor/textSystem/render/domSemantic/HiddenSemanticTextBackend";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
+import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 
 export default function CanvasInlineEditingLayer({
   editing,
@@ -19,10 +20,7 @@ export default function CanvasInlineEditingLayer({
       const objetoEnEdicion = objetos.find((o) => o.id === editing.id);
       const keepCenterDuringEdit =
         Boolean(objetoEnEdicion) &&
-        objetoEnEdicion.tipo === "texto" &&
-        !objetoEnEdicion.__groupAlign &&
-        !Number.isFinite(Number(objetoEnEdicion.width)) &&
-        objetoEnEdicion.__autoWidth !== false;
+        shouldPreserveTextCenterPosition(objetoEnEdicion);
 
         return (
           <HiddenSemanticTextBackend

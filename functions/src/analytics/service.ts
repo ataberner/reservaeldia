@@ -1891,8 +1891,11 @@ async function processAnalyticsEventById(eventId: string): Promise<void> {
   }
 }
 
-export async function recordBusinessAnalyticsEvent(input: QueueAnalyticsEventInput): Promise<void> {
-  await queueAnalyticsEvent(input);
+export async function recordBusinessAnalyticsEvent(
+  input: QueueAnalyticsEventInput,
+  options: QueueAnalyticsEventOptions = {}
+): Promise<void> {
+  await queueAnalyticsEvent(input, options);
 }
 
 function serializeAggregateDoc(periodKey: string, data: JsonMap): JsonMap {

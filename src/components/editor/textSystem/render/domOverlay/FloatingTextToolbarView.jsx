@@ -16,6 +16,7 @@ import {
   getWindowObjectResolver,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
+import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 
 const FONT_SELECTOR_GAP = 12;
 const FONT_SELECTOR_PADDING = 8;
@@ -230,10 +231,7 @@ export default function FloatingTextToolbar({
     obj?.tipo === "texto" &&
     !obj?.__groupAlign;
   const debeAjustarCentroPredictivo = (obj) =>
-    obj?.tipo === "texto" &&
-    !obj?.__groupAlign &&
-    !Number.isFinite(obj?.width) &&
-    obj?.__autoWidth !== false;
+    shouldPreserveTextCenterPosition(obj);
   const debeAnclarCentroTexto = (obj) =>
     obj?.tipo === "texto" &&
     !obj?.__groupAlign;
@@ -666,9 +664,7 @@ export default function FloatingTextToolbar({
 
           if (debeAnclarCentroTexto(o)) {
             const centerObjetivo = centerTargetById.get(o.id);
-            const debeAjustarPredictivo =
-              !Number.isFinite(o.width) &&
-              o.__autoWidth !== false;
+            const debeAjustarPredictivo = shouldPreserveTextCenterPosition(o);
             if (
               centerObjetivo &&
               debeAjustarPredictivo

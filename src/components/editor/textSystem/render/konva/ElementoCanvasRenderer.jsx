@@ -20,6 +20,12 @@ import {
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import resolveInlineCanvasVisibility from "@/components/editor/textSystem/adapters/konvaDom/resolveInlineCanvasVisibility";
 import { resolveKonvaImageCrop } from "@/components/editor/textSystem/render/konva/imageCropUtils";
+import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import {
+  getTemplateDraftDebugSession,
+  groupTemplateDraftDebug,
+  markTemplateDraftRenderLogged,
+} from "@/domain/templates/draftPersonalizationDebug";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -50,6 +56,31 @@ function isInlineDiagCompactEnabled() {
     if (normalized === "false") return false;
   }
   return true;
+}
+
+function resolveTextMeasureNode(node) {
+  if (!node) return null;
+  if (typeof node.getTextWidth === "function") return node;
+
+  try {
+    if (typeof node.findOne === "function") {
+      const nestedText = node.findOne((candidate) => candidate.getClassName?.() === "Text");
+      if (nestedText && typeof nestedText.getTextWidth === "function") {
+        return nestedText;
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+function resolveTextTransformOriginOffset(align, width) {
+  const safeWidth = Math.max(0, Number(width) || 0);
+  const normalizedAlign = String(align || "left").trim().toLowerCase();
+
+  if (normalizedAlign === "center") return safeWidth / 2;
+  if (normalizedAlign === "right") return safeWidth;
+  return 0;
 }
 
 function logInlineIntentEmitter(eventName, payload = {}) {
@@ -423,7 +454,8 @@ export default function ElementoCanvas({
     for (const [id, node] of Object.entries(refs)) {
       const o = getObj(id);
       if (!o || o.tipo !== "texto" || o.__groupId !== obj.__groupId) continue;
-      const w = node?.getTextWidth ? Math.ceil(node.getTextWidth()) : 0;
+      const textNode = resolveTextMeasureNode(node);
+      const w = textNode?.getTextWidth ? Math.ceil(textNode.getTextWidth()) : 0;
       if (id === obj.id) thisW = w;
       if (w > maxW) maxW = w;
     }
@@ -467,7 +499,7 @@ export default function ElementoCanvas({
     if (!obj || obj.tipo !== "texto") return;
     if (obj.__groupAlign) return;
 
-    const isAutoWidth = !obj.width && obj.__autoWidth !== false;
+    const isAutoWidth = shouldPreserveTextCenterPosition(obj);
     if (!isAutoWidth) return;
 
     let raf1 = null;
@@ -825,6 +857,44 @@ export default function ElementoCanvas({
 
     const wrapToUse = shouldWrapToCanvasEdge ? "char" : "none";
     const widthToUse = shouldWrapToCanvasEdge ? availableWidth : undefined;
+    const visualTextBoxWidth = Number.isFinite(widthToUse) ? widthToUse : realTextWidth;
+    const textOriginOffsetX = resolveTextTransformOriginOffset(
+      align,
+      visualTextBoxWidth
+    );
+    const templateDraftDebugSession = getTemplateDraftDebugSession();
+    const templateDraftDebugObject =
+      templateDraftDebugSession?.objectsById &&
+      Object.prototype.hasOwnProperty.call(templateDraftDebugSession.objectsById, obj.id)
+        ? templateDraftDebugSession.objectsById[obj.id]
+        : null;
+    if (
+      templateDraftDebugSession?.slug &&
+      templateDraftDebugObject &&
+      markTemplateDraftRenderLogged(templateDraftDebugSession.slug, obj.id)
+    ) {
+      groupTemplateDraftDebug(`konva-render:${obj.id}`, [
+        ["konva-render:session", templateDraftDebugSession],
+        ["konva-render:expected", templateDraftDebugObject],
+        ["konva-render:actual", {
+          id: obj.id,
+          text: safeText,
+          x: validX,
+          y: validY,
+          align,
+          wrapToUse,
+          widthToUse: Number.isFinite(widthToUse) ? widthToUse : null,
+          availableWidth,
+          realTextWidth,
+          visualTextBoxWidth,
+          textOriginOffsetX,
+          rotation: Number.isFinite(Number(obj.rotation)) ? Number(obj.rotation) : 0,
+          scaleX: Number.isFinite(Number(obj.scaleX)) ? Number(obj.scaleX) : 1,
+          scaleY: Number.isFinite(Number(obj.scaleY)) ? Number(obj.scaleY) : 1,
+          shouldPreserveCenter: shouldPreserveTextCenterPosition(obj),
+        }],
+      ]);
+    }
     // Durante inline edit mostramos el texto del overlay DOM y ocultamos el Konva
     // para evitar que cursor y glifos salgan de sincronía visual.
     const appliedOpacity = 1;
@@ -880,15 +950,16 @@ export default function ElementoCanvas({
         )}
         <Text
           {...commonProps}
+          id={obj.id}
           ref={(node) => {
-            textNodeRef.current = node;
-            handleRef(node); // registra + dispara "element-ref-registrado"
+            textNodeRef.current = node || null;
+            handleRef(node);
           }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          x={validX + textOriginOffsetX}
+          y={validY}
+          offsetX={textOriginOffsetX}
+          offsetY={0}
           text={safeText}
-          x={validX}
-          y={obj.y}
           wrap={wrapToUse}
           width={widthToUse}
           align={align}
@@ -900,8 +971,10 @@ export default function ElementoCanvas({
           lineHeight={lineHeight}
           letterSpacing={letterSpacing}
           fill={fillColor}
-          opacity={appliedOpacity}
           verticalAlign="top"
+          opacity={appliedOpacity}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         />
 
 

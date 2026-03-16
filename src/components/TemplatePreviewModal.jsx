@@ -8,6 +8,8 @@ import {
   buildPreviewOperationsForField,
   buildPreviewPatchMessage,
 } from "@/domain/templates/previewLivePatch";
+import { syncPreviewFrameAndCaptureTextPositions } from "@/domain/templates/previewTextPositionSnapshot";
+import { logTemplateDraftDebug } from "@/domain/templates/draftPersonalizationDebug";
 
 const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
 const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
@@ -239,6 +241,33 @@ export default function TemplatePreviewModal({
     onOpenEditorWithoutChanges?.();
   }, [isExpanded, onOpenEditorWithoutChanges]);
 
+  const handleSaveAndOpenWithPreview = useCallback(
+    async (payload) => {
+      let previewTextPositions = null;
+
+      if (canPatchPreview) {
+        try {
+          previewTextPositions = await syncPreviewFrameAndCaptureTextPositions({
+            iframe: previewFrameRef.current,
+            template,
+            formState,
+          });
+        } catch (error) {
+          logTemplateDraftDebug("preview-sync:error", {
+            message: String(error?.message || error || "unknown"),
+          });
+          previewTextPositions = null;
+        }
+      }
+
+      onOpenEditorWithChanges?.({
+        ...(payload && typeof payload === "object" ? payload : {}),
+        previewTextPositions,
+      });
+    },
+    [canPatchPreview, formState, onOpenEditorWithChanges, template]
+  );
+
   if (!visible || typeof document === "undefined") return null;
 
   return createPortal(
@@ -289,7 +318,7 @@ export default function TemplatePreviewModal({
                 {shouldShowGeneratedPreview ? (
                   <TemplatePreviewViewport
                     srcDoc={previewHtml}
-                    sandbox="allow-scripts"
+                    sandbox="allow-scripts allow-same-origin"
                     title={`Vista previa de ${title}`}
                     iframeRef={previewFrameRef}
                     onLoad={({ scale }) => {
@@ -418,7 +447,7 @@ export default function TemplatePreviewModal({
                 formState={formState}
                 onFormStateChange={onFormStateChange}
                 onLiveFieldUpdate={handleLiveFieldUpdate}
-                onSaveAndOpen={onOpenEditorWithChanges}
+                onSaveAndOpen={handleSaveAndOpenWithPreview}
                 openingEditor={openingEditor}
                 mode={mode}
               />

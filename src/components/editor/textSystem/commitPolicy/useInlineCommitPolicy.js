@@ -11,6 +11,7 @@ import {
   clearCurrentInlineEditingIdIfMatches,
   getCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
+import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 
 export default function useCanvasEditorInlineCommitHandlers({
   editing,
@@ -217,11 +218,7 @@ export default function useCanvasEditorInlineCommitHandlers({
 
     const actualizado = [...objetos];
     const patch = { texto: textoNuevoRaw };
-    const shouldKeepCenterX =
-      objeto.tipo === "texto" &&
-      !objeto.__groupAlign &&
-      !Number.isFinite(objeto.width) &&
-      objeto.__autoWidth !== false;
+    const shouldKeepCenterX = shouldPreserveTextCenterPosition(objeto);
     const lockedCenterX =
       inlineEditPreviewRef.current?.id === finishId &&
       Number.isFinite(inlineEditPreviewRef.current?.centerX)

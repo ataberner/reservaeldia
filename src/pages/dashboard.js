@@ -33,6 +33,10 @@ import {
   createDraftFromTemplateWithInput,
   getTemplateById,
 } from "@/domain/templates/service";
+import {
+  getTemplateDraftDebugSession,
+  groupTemplateDraftDebug,
+} from "@/domain/templates/draftPersonalizationDebug";
 import { getTemplateEditorDocument } from "@/domain/templates/adminService";
 import { normalizeTemplateMetadata } from "@/domain/templates/metadata";
 import {
@@ -252,6 +256,14 @@ function sanitizeDraftSlug(rawSlug) {
   if (!decoded) return null;
   const slug = decoded.split("?")[0].trim();
   return slug || null;
+}
+
+function delay(ms) {
+  const timeoutMs = Number(ms);
+  const safeMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 0;
+  return new Promise((resolve) => {
+    setTimeout(resolve, safeMs);
+  });
 }
 
 function sanitizeUidValue(rawUid) {
@@ -1780,7 +1792,7 @@ export default function Dashboard() {
       const safeSlug = sanitizeDraftSlug(slug);
       if (!safeSlug) return;
 
-      const compatibleDraft = usuario?.uid
+      let compatibleDraft = usuario?.uid
         ? await resolveCompatibleDraftForDashboardEditor({
             slug: safeSlug,
             uid: usuario.uid,
@@ -1790,6 +1802,26 @@ export default function Dashboard() {
             slug: safeSlug,
             draftData: null,
           };
+
+      if (
+        usuario?.uid &&
+        compatibleDraft.status !== "ok" &&
+        compatibleDraft.status !== "legacy"
+      ) {
+        for (const retryDelayMs of [180, 320, 520, 800]) {
+          await delay(retryDelayMs);
+          compatibleDraft = await resolveCompatibleDraftForDashboardEditor({
+            slug: safeSlug,
+            uid: usuario.uid,
+          });
+          if (
+            compatibleDraft.status === "ok" ||
+            compatibleDraft.status === "legacy"
+          ) {
+            break;
+          }
+        }
+      }
 
       if (compatibleDraft.status !== "ok" || !compatibleDraft.slug) {
         if (compatibleDraft.status === "legacy") {
@@ -1807,6 +1839,44 @@ export default function Dashboard() {
         setModoEditor(null);
         setVista("home");
         return;
+      }
+
+      const templateDraftDebugSession = getTemplateDraftDebugSession();
+      if (
+        templateDraftDebugSession?.slug &&
+        templateDraftDebugSession.slug === compatibleDraft.slug
+      ) {
+        const draftObjects = Array.isArray(compatibleDraft.draftData?.objetos)
+          ? compatibleDraft.draftData.objetos
+          : [];
+        const debugObjectsById = Object.fromEntries(
+          draftObjects
+            .filter((objeto) =>
+              Object.prototype.hasOwnProperty.call(
+                templateDraftDebugSession.objectsById || {},
+                String(objeto?.id || "")
+              )
+            )
+            .map((objeto) => [
+              String(objeto?.id || ""),
+              {
+                text: String(objeto?.texto || ""),
+                x: Number.isFinite(Number(objeto?.x)) ? Number(objeto.x) : null,
+                y: Number.isFinite(Number(objeto?.y)) ? Number(objeto.y) : null,
+                align: objeto?.align || null,
+                width: Number.isFinite(Number(objeto?.width)) ? Number(objeto.width) : null,
+                rotation: Number.isFinite(Number(objeto?.rotation)) ? Number(objeto.rotation) : 0,
+                scaleX: Number.isFinite(Number(objeto?.scaleX)) ? Number(objeto.scaleX) : 1,
+                scaleY: Number.isFinite(Number(objeto?.scaleY)) ? Number(objeto.scaleY) : 1,
+              },
+            ])
+            .filter(([id]) => id)
+        );
+
+        groupTemplateDraftDebug("dashboard:open-editor:draft-read", [
+          ["dashboard:open-editor:session", templateDraftDebugSession],
+          ["dashboard:open-editor:draft-objects", debugObjectsById],
+        ]);
       }
 
       setLegacyDraftNotice(null);
@@ -2053,6 +2123,7 @@ export default function Dashboard() {
     applyChanges,
     rawValues = {},
     galleryFilesByField = {},
+    previewTextPositions = null,
   }) => {
     const templateId = String(selectedTemplate?.id || "").trim();
     if (!templateId || isOpeningTemplateEditor) return;
@@ -2067,6 +2138,7 @@ export default function Dashboard() {
             ? rawValues
             : selectedTemplateFormState?.rawValues || {},
         galleryFilesByField,
+        previewTextPositions,
         applyChanges: applyChanges === true,
       });
       const slug = String(result?.slug || "").trim();
@@ -2120,6 +2192,11 @@ export default function Dashboard() {
         safePayload.galleryFilesByField && typeof safePayload.galleryFilesByField === "object"
           ? safePayload.galleryFilesByField
           : {},
+      previewTextPositions:
+        safePayload.previewTextPositions &&
+        typeof safePayload.previewTextPositions === "object"
+          ? safePayload.previewTextPositions
+          : null,
     });
   }, [openTemplateEditor]);
 

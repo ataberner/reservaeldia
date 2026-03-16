@@ -33,6 +33,7 @@ import {
 } from "./payments/publicationPayments";
 import { normalizePublicSlug } from "./utils/publicSlug";
 import { normalizeInvitationType } from "./utils/invitationType";
+import { normalizeCountdownGeometryDeep } from "./utils/normalizeCountdownGeometry";
 import {
   isPubliclyAccessible,
   resolvePublicationPublicStateFromData,
@@ -1887,7 +1888,9 @@ export const copiarPlantilla = onCall(
       userId: uid,
       plantillaId,
       editor: "konva",
-      objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
+      objetos: Array.isArray(objetosNormalizados)
+        ? (normalizeCountdownGeometryDeep(objetosNormalizados) as unknown[])
+        : [],
       secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
       portada: portadaNormalizada,
       tipoInvitacion,
@@ -2011,7 +2014,9 @@ export const crearPlantilla = onCall(
         ...datosSinPreview,
         estadoEditorial: requestedEditorialState || "en_proceso",
         portada: portadaNormalizada,
-        objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
+        objetos: Array.isArray(objetosNormalizados)
+          ? (normalizeCountdownGeometryDeep(objetosNormalizados) as unknown[])
+          : [],
         secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
       },
       id

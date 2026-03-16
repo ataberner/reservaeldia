@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { COUNTDOWN_PRESETS } from "@/config/countdownPresets";
+import {
+  COUNTDOWN_PRESET_CATALOG_UPDATED_EVENT,
+  COUNTDOWN_PRESET_CATALOG_UPDATED_STORAGE_KEY,
+} from "@/domain/countdownPresets/catalogInvalidation";
 import { listCountdownPresetsPublic } from "@/domain/countdownPresets/service";
 import { buildCountdownCanvasPatchFromPreset } from "@/domain/countdownPresets/toCanvasPatch";
 
@@ -104,6 +108,31 @@ export function useCountdownPresetCatalog() {
 
   useEffect(() => {
     loadCatalog();
+  }, [loadCatalog]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const forceReload = () => {
+      catalogCache = {
+        items: null,
+        updatedAt: 0,
+      };
+      loadCatalog({ force: true });
+    };
+
+    const handleStorage = (event) => {
+      if (event.key !== COUNTDOWN_PRESET_CATALOG_UPDATED_STORAGE_KEY) return;
+      forceReload();
+    };
+
+    window.addEventListener(COUNTDOWN_PRESET_CATALOG_UPDATED_EVENT, forceReload);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener(COUNTDOWN_PRESET_CATALOG_UPDATED_EVENT, forceReload);
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [loadCatalog]);
 
   const value = useMemo(

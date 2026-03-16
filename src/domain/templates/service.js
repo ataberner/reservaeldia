@@ -18,6 +18,7 @@ import {
   buildDraftContentMeta,
   normalizeDraftRenderState,
 } from "@/domain/drafts/sourceOfTruth";
+import { captureCountdownAuditDraftDocument } from "@/domain/countdownAudit/runtime";
 
 const copiarPlantillaCallable = httpsCallable(cloudFunctions, "copiarPlantilla");
 
@@ -78,6 +79,8 @@ export async function createDraftFromTemplate({ templateId, templateName }) {
   if (!createdSlug) {
     throw new Error("No se pudo crear el borrador desde la plantilla.");
   }
+
+  await captureCountdownAuditDraftDocument(createdSlug, "draft-created-from-template");
 
   return { slug: createdSlug };
 }
@@ -186,6 +189,8 @@ export async function createDraftFromTemplateWithInput({
     },
     ultimaEdicion: serverTimestamp(),
   });
+
+  await captureCountdownAuditDraftDocument(slug, "draft-created-from-template");
 
   return {
     slug,

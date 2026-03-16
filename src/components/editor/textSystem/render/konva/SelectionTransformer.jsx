@@ -8,6 +8,7 @@ import {
   SELECTION_FRAME_ACTIVE_STROKE,
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -1659,13 +1660,23 @@ export default function SelectionBounds({
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
             if (primerElemento?.tipo === "countdown") {
-              // Countdown: persistir escala real para que el resultado final
-              // sea exactamente el mismo que se ve al soltar.
-              finalData.scaleX = scaleX;
-              finalData.scaleY = scaleY;
+              // Countdown: aplanamos la escala sobre width/height para que la
+              // geometria persistida sea estable entre plantilla y borrador.
+              finalData.scaleX = 1;
+              finalData.scaleY = 1;
               const countdownSize = getCountdownScaledSize(node);
               finalData.width = countdownSize.width;
               finalData.height = countdownSize.height;
+
+              try {
+                if (typeof node.scaleX === "function") node.scaleX(1);
+                if (typeof node.scaleY === "function") node.scaleY(1);
+                if (typeof node.width === "function") node.width(finalData.width);
+                if (typeof node.height === "function") node.height(finalData.height);
+                node.getLayer()?.batchDraw();
+              } catch (err) {
+                console.warn("Error aplanando escala de countdown (sync):", err);
+              }
             } else if (esTriangulo) {
               const baseRadius = Number.isFinite(primerElemento?.radius)
                 ? primerElemento.radius
@@ -1739,6 +1750,21 @@ export default function SelectionBounds({
           }
 
           onTransform(finalData);
+          if (primerElemento?.tipo === "countdown") {
+            recordCountdownAuditSnapshot({
+              countdown: {
+                ...primerElemento,
+                ...finalData,
+              },
+              stage: "canvas-resize-commit",
+              renderer: "konva-render",
+              sourceDocument: "selection-transformer",
+              viewport: "editor",
+              wrapperScale: 1,
+              usesRasterThumbnail: false,
+              sourceLabel: "SelectionTransformer",
+            });
+          }
           circleAnchorRef.current = null;
 
 

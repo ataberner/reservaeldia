@@ -7,6 +7,7 @@ import {
   saveCountdownPresetDraft,
   syncLegacyCountdownPresets,
 } from "@/domain/countdownPresets/service";
+import { notifyCountdownPresetCatalogChanged } from "@/domain/countdownPresets/catalogInvalidation";
 
 function getErrorMessage(error, fallback) {
   const message =
@@ -30,7 +31,7 @@ export function useCountdownPresetBuilderState() {
   const [lastMessage, setLastMessage] = useState("");
 
   const reload = useCallback(
-    async ({ keepSelected = true } = {}) => {
+    async ({ keepSelected = true, preferredSelectedId = null } = {}) => {
       setLoadingList(true);
       setListError("");
       try {
@@ -38,6 +39,12 @@ export function useCountdownPresetBuilderState() {
         const nextItems = Array.isArray(response?.items) ? response.items : [];
         setItems(nextItems);
         setSelectedId((prev) => {
+          if (
+            preferredSelectedId &&
+            nextItems.some((item) => item.id === preferredSelectedId)
+          ) {
+            return preferredSelectedId;
+          }
           if (!keepSelected) return nextItems[0]?.id || null;
           if (prev && nextItems.some((item) => item.id === prev)) return prev;
           return nextItems[0]?.id || null;
@@ -68,8 +75,8 @@ export function useCountdownPresetBuilderState() {
       try {
         const response = await saveCountdownPresetDraft(payload);
         const presetId = response?.presetId || payload?.presetId || null;
-        await reload({ keepSelected: true });
-        if (presetId) setSelectedId(presetId);
+        await reload({ keepSelected: true, preferredSelectedId: presetId });
+        notifyCountdownPresetCatalogChanged();
         setLastMessage("Borrador guardado.");
         return response;
       } finally {
@@ -89,6 +96,7 @@ export function useCountdownPresetBuilderState() {
           expectedDraftVersion,
         });
         await reload({ keepSelected: true });
+        notifyCountdownPresetCatalogChanged();
         setLastMessage("Preset publicado.");
         return response;
       } finally {
@@ -105,6 +113,7 @@ export function useCountdownPresetBuilderState() {
       try {
         const response = await archiveCountdownPreset({ presetId, archived });
         await reload({ keepSelected: true });
+        notifyCountdownPresetCatalogChanged();
         setLastMessage(archived ? "Preset archivado." : "Preset restaurado.");
         return response;
       } finally {
@@ -122,6 +131,7 @@ export function useCountdownPresetBuilderState() {
       try {
         const response = await syncLegacyCountdownPresets({ presets });
         await reload({ keepSelected: true });
+        notifyCountdownPresetCatalogChanged();
         const created = Number(response?.created || 0);
         const skipped = Number(response?.skipped || 0);
         setLastMessage(
@@ -145,6 +155,7 @@ export function useCountdownPresetBuilderState() {
       try {
         const response = await deleteCountdownPreset({ presetId });
         await reload({ keepSelected: true });
+        notifyCountdownPresetCatalogChanged();
         setLastMessage("Preset eliminado.");
         return response;
       } finally {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CountdownPresetLivePreview from "@/components/admin/countdown/CountdownPresetLivePreview";
 import SvgUploadInspector from "@/components/admin/countdown/SvgUploadInspector";
 import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
@@ -8,6 +8,7 @@ import {
   COUNTDOWN_EVENT_CATEGORIES,
   COUNTDOWN_FRAME_ANIMATIONS,
   COUNTDOWN_LAYOUT_TYPES,
+  COUNTDOWN_NUMERIC_LIMITS,
   COUNTDOWN_STYLE_CATEGORIES,
   COUNTDOWN_TICK_ANIMATIONS,
   COUNTDOWN_UNITS,
@@ -329,18 +330,43 @@ export default function CountdownPresetForm({
   const [targetISO, setTargetISO] = useState(() => createFutureDateISO(45));
   const [errorMessage, setErrorMessage] = useState("");
   const [validationWarnings, setValidationWarnings] = useState([]);
+  const [localSaving, setLocalSaving] = useState(false);
+  const [localPublishing, setLocalPublishing] = useState(false);
+  const editorSessionIdRef = useRef("");
+  const saveInFlightRef = useRef(false);
+  const publishInFlightRef = useRef(false);
   const [draftSession, setDraftSession] = useState({
     presetId: null,
     draftVersion: null,
   });
 
+  if (!editorSessionIdRef.current) {
+    editorSessionIdRef.current =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `countdown-editor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
   useEffect(() => {
     setFormState(buildStateFromPreset(selectedPreset));
     setErrorMessage("");
     setValidationWarnings([]);
-    setDraftSession({
-      presetId: selectedPreset?.id || null,
-      draftVersion: selectedPreset?.draftVersion ?? null,
+    setDraftSession((prev) => {
+      const nextPresetId = selectedPreset?.id || null;
+      const nextDraftVersion = selectedPreset?.draftVersion ?? null;
+      if (
+        nextPresetId &&
+        prev?.presetId === nextPresetId &&
+        Number.isFinite(prev?.draftVersion) &&
+        Number.isFinite(nextDraftVersion) &&
+        nextDraftVersion < prev.draftVersion
+      ) {
+        return prev;
+      }
+      return {
+        presetId: nextPresetId,
+        draftVersion: nextDraftVersion,
+      };
     });
   }, [selectedPreset]);
 
@@ -375,9 +401,27 @@ export default function CountdownPresetForm({
       config: { ...prev.config, [section]: { ...prev.config[section], [key]: value } },
     }));
 
+  const setOptionalLayoutNumber = (key, rawValue) => {
+    setFormState((prev) => ({
+      ...prev,
+      config: {
+        ...prev.config,
+        layout: {
+          ...prev.config.layout,
+          [key]:
+            rawValue === ""
+              ? null
+              : Number(rawValue),
+        },
+      },
+    }));
+  };
+
   const visibleUnits = formState.config.layout.visibleUnits || [];
   const effectivePresetId = draftSession.presetId || selectedPreset?.id || null;
   const effectiveDraftVersion = draftSession.draftVersion ?? selectedPreset?.draftVersion ?? null;
+  const isSaveBusy = saving || localSaving;
+  const isPublishBusy = publishing || localPublishing;
   const canPublish = Boolean(effectivePresetId && effectiveDraftVersion);
   const isPublished = selectedPreset?.estado === "published";
   const canDelete = Boolean(selectedPreset?.id && !isPublished);
@@ -415,6 +459,9 @@ export default function CountdownPresetForm({
     });
 
   const handleSaveDraft = async () => {
+    if (saveInFlightRef.current || isSaveBusy) return;
+    saveInFlightRef.current = true;
+    setLocalSaving(true);
     setErrorMessage("");
     setValidationWarnings([]);
     const validation = validateCountdownPresetInput({
@@ -426,6 +473,8 @@ export default function CountdownPresetForm({
     if (!validation.valid) {
       setErrorMessage(validation.errors.join(" "));
       setValidationWarnings(validation.warnings);
+      setLocalSaving(false);
+      saveInFlightRef.current = false;
       return;
     }
 
@@ -451,6 +500,7 @@ export default function CountdownPresetForm({
         nombre: validation.normalized.nombre,
         categoria: validation.normalized.categoria,
         expectedDraftVersion: effectiveDraftVersion,
+        editorSessionId: editorSessionIdRef.current,
         config: { ...validation.normalized.config, svgRef: { colorMode: svgColorMode } },
         assets: {
           removeSvg,
@@ -467,13 +517,21 @@ export default function CountdownPresetForm({
       setFormState((prev) => ({ ...prev, svgAsset: prev.svgAsset ? { ...prev.svgAsset, isDirty: false } : prev.svgAsset }));
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "No se pudo guardar el borrador."));
+    } finally {
+      setLocalSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
   const handlePublish = async () => {
+    if (publishInFlightRef.current || isPublishBusy) return;
+    publishInFlightRef.current = true;
+    setLocalPublishing(true);
     setErrorMessage("");
     if (!effectivePresetId || !effectiveDraftVersion) {
       setErrorMessage("No hay borrador pendiente para publicar.");
+      setLocalPublishing(false);
+      publishInFlightRef.current = false;
       return;
     }
     try {
@@ -483,6 +541,9 @@ export default function CountdownPresetForm({
       });
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "No se pudo publicar el preset."));
+    } finally {
+      setLocalPublishing(false);
+      publishInFlightRef.current = false;
     }
   };
 
@@ -531,8 +592,8 @@ export default function CountdownPresetForm({
             </button>
           ) : null}
           {selectedPreset?.id ? <button type="button" onClick={handleArchiveToggle} disabled={archiving} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{archiving ? "Procesando..." : archiveActionLabel}</button> : null}
-          <button type="button" onClick={handleSaveDraft} disabled={saving} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">{saving ? "Guardando..." : "Guardar borrador"}</button>
-          <button type="button" onClick={handlePublish} disabled={!canPublish || publishing} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{publishing ? "Publicando..." : "Publicar version"}</button>
+          <button type="button" onClick={handleSaveDraft} disabled={isSaveBusy} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">{isSaveBusy ? "Guardando..." : "Guardar borrador"}</button>
+          <button type="button" onClick={handlePublish} disabled={!canPublish || isPublishBusy} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{isPublishBusy ? "Publicando..." : "Publicar version"}</button>
         </div>
       </header>
 
@@ -581,6 +642,21 @@ export default function CountdownPresetForm({
                 <span>Padding del frame (px)</span>
                 <input type="number" min={0} max={64} value={formState.config.layout.framePadding} onChange={(e) => setConfigField("layout", "framePadding", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
               </label>
+              <label className="space-y-1 text-[11px] font-medium text-slate-600">
+                <span>Ancho base del chip (px)</span>
+                <input
+                  type="number"
+                  min={COUNTDOWN_NUMERIC_LIMITS.chipWidth.min}
+                  max={COUNTDOWN_NUMERIC_LIMITS.chipWidth.max}
+                  value={Number.isFinite(formState.config.layout.chipWidth) ? formState.config.layout.chipWidth : ""}
+                  onChange={(e) => setOptionalLayoutNumber("chipWidth", e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs"
+                  placeholder="Automatico"
+                />
+                <span className="block text-[10px] text-slate-500">
+                  Si lo dejas vacio, el ancho se calcula automaticamente segun el tamano general y la distribucion.
+                </span>
+              </label>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">{COUNTDOWN_UNITS.map((unit) => <label key={unit} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"><input type="checkbox" checked={visibleUnits.includes(unit)} onChange={() => toggleUnit(unit)} />{unit}</label>)}</div>
           </Card>
@@ -598,7 +674,7 @@ export default function CountdownPresetForm({
                   <input type="number" min={220} max={960} value={formState.config.tamanoBase} onChange={(e) => setFormState((prev) => ({ ...prev, config: { ...prev.config, tamanoBase: Number(e.target.value) } }))} className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
                 </div>
                 <span className="block text-[10px] text-slate-500">
-                  Controla el tamano visual de cada caja, pill o circulo del countdown.
+                  Controla la escala general del countdown. Si quieres afinar solo el ancho del chip, usa el campo del layout.
                 </span>
               </label>
               <label className="space-y-1 text-[11px] font-medium text-slate-600">
@@ -665,7 +741,7 @@ export default function CountdownPresetForm({
                 <span>Radio de borde (px)</span>
                 <input type="number" min={0} max={999} value={formState.config.unidad.boxRadius} onChange={(e) => setConfigField("unidad", "boxRadius", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
                 <span className="block text-[10px] text-slate-500">
-                  Si supera la mitad del chip, el borde se redondea hasta verse como circulo o pill.
+                  Cuando supera media altura del chip, la preview lo compacta progresivamente hasta poder verse circular.
                 </span>
               </label>
               <label className="space-y-1 text-[11px] font-medium text-slate-600">

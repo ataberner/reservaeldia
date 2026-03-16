@@ -130,6 +130,37 @@ function estimateCountdownUnitHeightLikeCanvas({
   return Math.max(44, Math.round(base * centeredScale));
 }
 
+function resolveCountdownUnitWidthLikeCanvas({
+  width = 46,
+  height = 44,
+  boxRadius = 0,
+}: {
+  width?: any;
+  height?: any;
+  boxRadius?: any;
+} = {}): number {
+  const safeWidth = Math.max(1, toFiniteNumber(width, 46));
+  const safeHeight = Math.max(1, toFiniteNumber(height, 44));
+  const safeRadius = clampNumber(toFiniteNumber(boxRadius, 0), 0, 999);
+  const roundedThreshold = safeHeight / 2;
+
+  if (safeWidth <= safeHeight || safeRadius <= roundedThreshold) {
+    return Math.round(safeWidth);
+  }
+
+  const circleThreshold = safeHeight;
+  const blend =
+    circleThreshold <= roundedThreshold
+      ? 1
+      : clampNumber(
+          (safeRadius - roundedThreshold) / (circleThreshold - roundedThreshold),
+          0,
+          1
+        );
+
+  return Math.round(safeWidth + (safeHeight - safeWidth) * blend);
+}
+
 function transformCountdownLabel(label: string, transformMode: string): string {
   const safe = String(label || "");
   if (transformMode === "uppercase") return safe.toUpperCase();
@@ -156,7 +187,8 @@ function buildCountdownLayoutMetrics(obj: any) {
   const valueSize = Math.max(10, toFiniteNumber(obj?.fontSize, 16));
   const labelSize = Math.max(8, toFiniteNumber(obj?.labelSize, 10));
   const showLabels = obj?.showLabels !== false;
-  const baseChipW = Math.max(36, toFiniteNumber(obj?.chipWidth, 46) + paddingX * 2);
+  const unitBoxRadius = Math.max(0, toFiniteNumber(obj?.boxRadius, 8));
+  const requestedChipW = Math.max(36, toFiniteNumber(obj?.chipWidth, 46) + paddingX * 2);
   const textDrivenChipH = Math.max(
     44,
     paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
@@ -167,6 +199,11 @@ function buildCountdownLayoutMetrics(obj: any) {
     unitsCount,
   });
   const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+  const baseChipW = resolveCountdownUnitWidthLikeCanvas({
+    width: requestedChipW,
+    height: chipH,
+    boxRadius: unitBoxRadius,
+  });
 
   const cols =
     distribution === "vertical"
@@ -184,7 +221,11 @@ function buildCountdownLayoutMetrics(obj: any) {
   const editorialWidths =
     distribution === "editorial"
       ? Array.from({ length: unitsCount }, (_, index) =>
-          Math.max(34, Math.round(baseChipW * (index === 0 && unitsCount > 1 ? 1.25 : 0.88)))
+          resolveCountdownUnitWidthLikeCanvas({
+            width: Math.max(34, Math.round(baseChipW * (index === 0 && unitsCount > 1 ? 1.25 : 0.88))),
+            height: chipH,
+            boxRadius: unitBoxRadius,
+          })
         )
       : [];
 
@@ -307,10 +348,21 @@ function buildCountdownLayoutMetrics(obj: any) {
     useMultiUnitFrame,
     gap,
     framePadding,
+    paddingX,
+    paddingY,
+    chipWidth: toFiniteNumber(obj?.chipWidth, 46),
+    showLabels,
+    boxRadius: unitBoxRadius,
     valueSize,
     labelSize,
+    chipH,
+    baseChipW,
+    naturalW,
+    naturalH,
     containerW,
     containerH,
+    startX,
+    startY,
     unitLayouts,
     separatorText,
     separatorFontSize,
@@ -379,6 +431,65 @@ function appendMotionDataAttrs(htmlElemento: string, obj: any): string {
     /(<(?:div|img|svg)\b[^>]*\bclass="[^"]*\bobjeto\b[^"]*")/i,
     `$1 ${attrs}`
   );
+}
+
+function roundCountdownAuditMetric(value: any): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric * 1000) / 1000;
+}
+
+function compactCountdownAuditUnitLayouts(value: any): Array<Record<string, any>> {
+  if (!Array.isArray(value)) return [];
+  return value.map((item: any, index: number) => ({
+    key: String(item?.key || item?.unit || index),
+    unit: String(item?.unit || item?.key || ""),
+    x: roundCountdownAuditMetric(item?.x),
+    y: roundCountdownAuditMetric(item?.y),
+    width: roundCountdownAuditMetric(item?.width),
+    height: roundCountdownAuditMetric(item?.height),
+  }));
+}
+
+function compactCountdownAuditSeparatorLayouts(value: any): Array<Record<string, any>> {
+  if (!Array.isArray(value)) return [];
+  return value.map((item: any, index: number) => ({
+    key: String(item?.key || index),
+    x: roundCountdownAuditMetric(item?.x),
+    y: roundCountdownAuditMetric(item?.y),
+    width: roundCountdownAuditMetric(item?.width),
+  }));
+}
+
+function resolveCountdownAuditMeta(obj: any) {
+  const traceId = String(obj?.countdownAuditTraceId || "").trim();
+  const fixture = String(obj?.countdownAuditFixture || "").trim();
+  const label = String(obj?.countdownAuditLabel || "").trim();
+
+  return {
+    traceId: traceId || null,
+    fixture: fixture || null,
+    label: label || null,
+  };
+}
+
+function buildCountdownAuditAttrs(obj: any, payload: Record<string, any> | null): string {
+  const meta = resolveCountdownAuditMeta(obj);
+  if (!meta.traceId || !payload) return "";
+
+  const serialized = escapeAttr(
+    JSON.stringify({
+      ...payload,
+      fixture: meta.fixture,
+      label: meta.label,
+      sourceDocument: "generated-html",
+      renderer: "dom-generated",
+      wrapperScale: 1,
+      usesRasterThumbnail: false,
+    })
+  );
+
+  return ` data-countdown-audit-trace-id="${escapeAttr(meta.traceId)}" data-countdown-audit-payload="${serialized}"`;
 }
 
 function getLinkProps(obj: any) {
@@ -757,6 +868,7 @@ fill: ${escapeAttr(fill)};
           const safeUnits = layout.units;
           const distribution = layout.distribution;
           const layoutType = layout.layoutType;
+          const altoModo = altoModoPorSeccion.get(obj?.seccionId) || "fijo";
           const frameColorMode = String(obj.frameColorMode || "fixed").toLowerCase();
           const labelTransform = String(obj.labelTransform || "uppercase").toLowerCase();
           const entryAnim = String(obj.entryAnimation || "none").toLowerCase();
@@ -780,6 +892,45 @@ display: block;
 font-family: ${obj.fontFamily || "Inter, system-ui, sans-serif"};
 color: ${numberPaint};
 `.trim();
+          const countdownAuditAttrs = buildCountdownAuditAttrs(obj, {
+            id: String(obj?.id || "").trim() || null,
+            presetId: String(obj?.presetId || "").trim() || null,
+            countdownSchemaVersion: schemaVersion,
+            seccionId: String(obj?.seccionId || "").trim() || null,
+            altoModo: altoModo || null,
+            x: roundCountdownAuditMetric(obj?.x),
+            y: roundCountdownAuditMetric(obj?.y),
+            yNorm:
+              Number.isFinite(Number(obj?.yNorm)) ? roundCountdownAuditMetric(obj?.yNorm) : null,
+            width: roundCountdownAuditMetric(layout.containerW),
+            height: roundCountdownAuditMetric(layout.containerH),
+            scaleX: roundCountdownAuditMetric(obj?.scaleX ?? 1),
+            scaleY: roundCountdownAuditMetric(obj?.scaleY ?? 1),
+            rotation: roundCountdownAuditMetric(obj?.rotation ?? 0),
+            tamanoBase: roundCountdownAuditMetric(obj?.tamanoBase ?? 320),
+            layoutType,
+            distribution,
+            visibleUnits: [...safeUnits],
+            gap: roundCountdownAuditMetric(layout.gap),
+            framePadding: roundCountdownAuditMetric(layout.framePadding),
+            paddingX: roundCountdownAuditMetric(layout.paddingX),
+            paddingY: roundCountdownAuditMetric(layout.paddingY),
+            chipWidth: roundCountdownAuditMetric(layout.chipWidth),
+            fontSize: roundCountdownAuditMetric(layout.valueSize),
+            labelSize: roundCountdownAuditMetric(layout.labelSize),
+            boxRadius: roundCountdownAuditMetric(layout.boxRadius),
+            showLabels: layout.showLabels,
+            chipH: roundCountdownAuditMetric(layout.chipH),
+            baseChipW: roundCountdownAuditMetric(layout.baseChipW),
+            naturalW: roundCountdownAuditMetric(layout.naturalW),
+            naturalH: roundCountdownAuditMetric(layout.naturalH),
+            containerW: roundCountdownAuditMetric(layout.containerW),
+            containerH: roundCountdownAuditMetric(layout.containerH),
+            startX: roundCountdownAuditMetric(layout.startX),
+            startY: roundCountdownAuditMetric(layout.startY),
+            unitLayouts: compactCountdownAuditUnitLayouts(layout.unitLayouts),
+            separatorLayouts: compactCountdownAuditSeparatorLayouts(layout.separatorLayouts),
+          });
 
           const gridStyle = `
 position: absolute;
@@ -840,13 +991,14 @@ pointer-events: none;
                 layout.useMultiUnitFrame && layout.hasFrameConfigured
                   ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:fill;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
                   : "";
+              const labelOffsetStyle = showLabels ? `margin-top:${sChipPx(4)};` : "";
 
               return `
 <div class="cdv2-unit${distribution === "editorial" && index === 0 ? " cdv2-unit--hero" : ""}" data-unit="${escapeAttr(unit)}" style="${unitStyle}">
   ${unitFrameHtml}
-  <div class="cdv2-content" style="position:relative;z-index:2;display:flex;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:${sChipPx(3)};padding:${sChipPx(4)};box-sizing:border-box;">
+  <div class="cdv2-content" style="position:relative;z-index:2;display:flex;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;">
     <span class="cdv2-val cd-val" style="${valueStyle}">00</span>
-    ${showLabels ? `<span class="cdv2-lab" style="${labelStyle}">${escapeAttr(transformCountdownLabel(COUNTDOWN_UNIT_LABELS[unit as keyof typeof COUNTDOWN_UNIT_LABELS] || unit, labelTransform))}</span>` : ""}
+    ${showLabels ? `<span class="cdv2-lab" style="${labelStyle}${labelOffsetStyle}">${escapeAttr(transformCountdownLabel(COUNTDOWN_UNIT_LABELS[unit as keyof typeof COUNTDOWN_UNIT_LABELS] || unit, labelTransform))}</span>` : ""}
   </div>
 </div>`.trim();
             })
@@ -876,6 +1028,7 @@ ${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
   data-mobile-center="force"
   data-countdown
   data-countdown-v2="1"
+  ${countdownAuditAttrs}
   data-target="${escapeAttr(targetISO)}"
   data-layout-type="${escapeAttr(layoutType)}"
   data-distribution="${escapeAttr(distribution)}"
@@ -960,6 +1113,7 @@ ${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
             : 10;
 
         const chipRadiusFinal = Number.isFinite(obj.chipRadius) ? obj.chipRadius : containerRadius;
+        const altoModo = altoModoPorSeccion.get(obj?.seccionId) || "fijo";
 
         const baseStyle = stylePosBase(obj);
 
@@ -1008,6 +1162,58 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
 `.trim();
 
         const showLabels = obj.showLabels !== false;
+        const chipH =
+          hObj && hObj > 0
+            ? hObj
+            : Math.max(44, paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0));
+        const naturalW = n * Math.round(chipWTotal) + gap * Math.max(0, n - 1);
+        const unitLayouts = Array.from({ length: n }, (_, index) => ({
+          key: COUNTDOWN_DEFAULT_VISIBLE_UNITS[index] || String(index),
+          unit: COUNTDOWN_DEFAULT_VISIBLE_UNITS[index] || String(index),
+          x: index * (Math.round(chipWTotal) + gap),
+          y: 0,
+          width: Math.round(chipWTotal),
+          height: chipH,
+        }));
+        const countdownAuditAttrs = buildCountdownAuditAttrs(obj, {
+          id: String(obj?.id || "").trim() || null,
+          presetId: String(obj?.presetId || "").trim() || null,
+          countdownSchemaVersion: schemaVersion,
+          seccionId: String(obj?.seccionId || "").trim() || null,
+          altoModo: altoModo || null,
+          x: roundCountdownAuditMetric(obj?.x),
+          y: roundCountdownAuditMetric(obj?.y),
+          yNorm:
+            Number.isFinite(Number(obj?.yNorm)) ? roundCountdownAuditMetric(obj?.yNorm) : null,
+          width: roundCountdownAuditMetric(wObj || naturalW),
+          height: roundCountdownAuditMetric(hObj || chipH),
+          scaleX: roundCountdownAuditMetric(obj?.scaleX ?? 1),
+          scaleY: roundCountdownAuditMetric(obj?.scaleY ?? 1),
+          rotation: roundCountdownAuditMetric(obj?.rotation ?? 0),
+          tamanoBase: roundCountdownAuditMetric(obj?.tamanoBase ?? 320),
+          layoutType: String(obj?.layout || "pills"),
+          distribution: "centered",
+          visibleUnits: [...COUNTDOWN_DEFAULT_VISIBLE_UNITS],
+          gap: roundCountdownAuditMetric(gap),
+          framePadding: 0,
+          paddingX: roundCountdownAuditMetric(paddingX),
+          paddingY: roundCountdownAuditMetric(paddingY),
+          chipWidth: roundCountdownAuditMetric(chipWidth),
+          fontSize: roundCountdownAuditMetric(valueSize),
+          labelSize: roundCountdownAuditMetric(labelSize),
+          boxRadius: roundCountdownAuditMetric(chipRadiusFinal),
+          showLabels,
+          chipH: roundCountdownAuditMetric(chipH),
+          baseChipW: roundCountdownAuditMetric(Math.round(chipWTotal)),
+          naturalW: roundCountdownAuditMetric(naturalW),
+          naturalH: roundCountdownAuditMetric(chipH),
+          containerW: roundCountdownAuditMetric(wObj || naturalW),
+          containerH: roundCountdownAuditMetric(hObj || chipH),
+          startX: 0,
+          startY: 0,
+          unitLayouts: compactCountdownAuditUnitLayouts(unitLayouts),
+          separatorLayouts: [],
+        });
         const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
 
         const htmlCountdown = `
@@ -1015,6 +1221,7 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
   data-mobile-cluster="isolated"
   data-mobile-center="force"
   data-countdown
+  ${countdownAuditAttrs}
   data-target="${escapeAttr(targetISO)}"
   data-preset="${escapeAttr(
           preset

@@ -150,6 +150,33 @@ export function estimateCountdownUnitHeight({
   return Math.max(44, Math.round(base * centeredScale));
 }
 
+export function resolveCountdownUnitWidth({
+  width = 46,
+  height = 44,
+  boxRadius = 0,
+} = {}) {
+  const safeWidth = Math.max(1, Number(width) || 0);
+  const safeHeight = Math.max(1, Number(height) || 0);
+  const safeRadius = clamp(boxRadius, 0, 999);
+  const roundedThreshold = safeHeight / 2;
+
+  if (safeWidth <= safeHeight || safeRadius <= roundedThreshold) {
+    return Math.round(safeWidth);
+  }
+
+  const circleThreshold = safeHeight;
+  const blend =
+    circleThreshold <= roundedThreshold
+      ? 1
+      : clamp(
+          (safeRadius - roundedThreshold) / (circleThreshold - roundedThreshold),
+          0,
+          1
+        );
+
+  return Math.round(safeWidth + (safeHeight - safeWidth) * blend);
+}
+
 export function buildFrameSvgMarkup(svgText, { colorMode, frameColor }) {
   if (!svgText || typeof svgText !== "string") return "";
 
@@ -305,7 +332,6 @@ export async function generateCountdownThumbnailDataUrl({
   const distribution = baseConfig?.layout?.distribution || "centered";
   const gap = 8;
   const areaWidth = Math.round(size * 0.82);
-  const areaX = Math.round((size - areaWidth) / 2);
   const chipH = Math.round(size * 0.22);
   const numberSize = Math.max(10, Math.min(120, Number(baseConfig?.tipografia?.numberSize) || 28));
   const labelSize = Math.max(8, Math.min(72, Number(baseConfig?.tipografia?.labelSize) || 11));
@@ -317,8 +343,17 @@ export async function generateCountdownThumbnailDataUrl({
 
   const cols = distribution === "grid" ? Math.min(2, chipCount) : chipCount;
   const rows = distribution === "vertical" ? chipCount : distribution === "grid" ? Math.ceil(chipCount / cols) : 1;
-  const chipW = Math.round((areaWidth - gap * (cols - 1)) / cols);
+  const chipW = resolveCountdownUnitWidth({
+    width: Math.round((areaWidth - gap * (cols - 1)) / cols),
+    height: chipH,
+    boxRadius,
+  });
   const gridTotalH = rows * chipH + (rows - 1) * gap;
+  const totalW =
+    distribution === "vertical"
+      ? chipW
+      : cols * chipW + gap * Math.max(0, cols - 1);
+  const areaX = Math.round((size - totalW) / 2);
   const areaY = Math.round((size - gridTotalH) / 2);
   const canUseSeparators = separator && distribution !== "vertical" && distribution !== "grid";
 

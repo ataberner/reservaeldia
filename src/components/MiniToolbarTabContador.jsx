@@ -349,6 +349,10 @@ export default function MiniToolbarTabContador() {
           {!loadingCountdownPresets && countdownPresets.map((p) => {
             const isoPreview = fechaStrToISO(fechaEventoStr) || new Date().toISOString();
             const rawPresetProps = p?.presetPropsForCanvas || p?.props || {};
+            const presetLabel = String(p?.nombre || p?.id || "Preset");
+            const presetCategory = String(p?.categoriaLabel || "General");
+            const hasLivePresetPreview = Object.keys(rawPresetProps || {}).length > 0;
+            const previewImageUrl = String(p?.thumbnailUrl || "").trim();
 
             return (
               <button
@@ -389,7 +393,27 @@ export default function MiniToolbarTabContador() {
                 }}
                 className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-px hover:border-zinc-300 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
               >
-                <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
+                <div className="flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="aspect-square w-full max-w-[220px] overflow-hidden rounded-lg">
+                    {hasLivePresetPreview ? (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <CountdownPreview targetISO={isoPreview} preset={rawPresetProps} size="sm" />
+                      </div>
+                    ) : previewImageUrl ? (
+                      <img
+                        src={previewImageUrl}
+                        alt={`${presetLabel} preview`}
+                        className="h-full w-full object-contain"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="truncate text-xs font-semibold text-zinc-900">{presetLabel}</p>
+                  <p className="truncate text-[10px] text-zinc-500">{presetCategory}</p>
+                </div>
               </button>
             );
           })}

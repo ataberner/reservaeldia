@@ -55,6 +55,54 @@ const COUNTDOWN_STYLE_KEYS = [
   "presetPropsVersion",
 ];
 
+function toFiniteMetric(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function withDefinedMetrics(source = {}) {
+  return Object.fromEntries(
+    Object.entries(source).filter(([, value]) => typeof value !== "undefined")
+  );
+}
+
+function buildScaledCountdownStylePatch(source, nextWidth, nextHeight) {
+  const originalWidth = Math.max(1, toFiniteMetric(source?.width, 1));
+  const originalHeight = Math.max(1, toFiniteMetric(source?.height, 1));
+  const safeNextWidth = Math.max(1, toFiniteMetric(nextWidth, originalWidth));
+  const safeNextHeight = Math.max(1, toFiniteMetric(nextHeight, originalHeight));
+  const scaleX = safeNextWidth / originalWidth;
+  const scaleY = safeNextHeight / originalHeight;
+  const safeScaleX = Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1;
+  const safeScaleY = Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
+  const uniformScale = safeScaleX || safeScaleY || 1;
+
+  const scaleMetric = (value, { min = null } = {}) => {
+    const numeric = toFiniteMetric(value, null);
+    if (!Number.isFinite(numeric)) return undefined;
+    let scaled = numeric * uniformScale;
+    if (Number.isFinite(min)) scaled = Math.max(min, scaled);
+    return scaled;
+  };
+
+  return withDefinedMetrics({
+    width: safeNextWidth,
+    height: safeNextHeight,
+    scaleX: 1,
+    scaleY: 1,
+    tamanoBase: scaleMetric(source?.tamanoBase, { min: 40 }),
+    chipWidth: scaleMetric(source?.chipWidth, { min: 10 }),
+    fontSize: scaleMetric(source?.fontSize, { min: 6 }),
+    labelSize: scaleMetric(source?.labelSize, { min: 6 }),
+    gap: scaleMetric(source?.gap, { min: 0 }),
+    framePadding: scaleMetric(source?.framePadding, { min: 0 }),
+    paddingX: scaleMetric(source?.paddingX, { min: 2 }),
+    paddingY: scaleMetric(source?.paddingY, { min: 2 }),
+    boxRadius: scaleMetric(source?.boxRadius, { min: 0 }),
+    letterSpacing: scaleMetric(source?.letterSpacing),
+  });
+}
+
 function pickCountdownStylePatch(source = {}) {
   return COUNTDOWN_STYLE_KEYS.reduce((acc, key) => {
     acc[key] = source[key];
@@ -241,36 +289,29 @@ export default function useEditorEvents({
 
         const primaryIndex = countdownIndexes[0];
         const existingCountdown = prev[primaryIndex];
-        const stylePatch = pickCountdownStylePatch(nuevoConSeccion);
-        const shouldMoveToTargetSection =
-          typeof nuevoConSeccion?.seccionId === "string" &&
-          !!nuevoConSeccion.seccionId &&
-          existingCountdown?.seccionId !== nuevoConSeccion.seccionId;
-
-        const relocationPatch = shouldMoveToTargetSection
-          ? {
-              seccionId: nuevoConSeccion.seccionId,
-              x: nuevoConSeccion.x,
-              y: nuevoConSeccion.y,
-              width: nuevoConSeccion.width ?? existingCountdown.width,
-              height: nuevoConSeccion.height ?? existingCountdown.height,
-            }
-          : {};
+        const targetWidth = toFiniteMetric(
+          existingCountdown?.width,
+          nuevoConSeccion?.width
+        );
+        const targetHeight = toFiniteMetric(
+          existingCountdown?.height,
+          nuevoConSeccion?.height
+        );
+        const stylePatch = {
+          ...pickCountdownStylePatch(nuevoConSeccion),
+          ...buildScaledCountdownStylePatch(
+            nuevoConSeccion,
+            targetWidth,
+            targetHeight
+          ),
+        };
 
         const nextCountdown = {
           ...existingCountdown,
           ...stylePatch,
-          ...relocationPatch,
           fechaObjetivo: nuevoConSeccion.fechaObjetivo ?? existingCountdown.fechaObjetivo,
           presetId: nuevoConSeccion.presetId,
         };
-        if (shouldMoveToTargetSection) {
-          if (Number.isFinite(nuevoConSeccion.yNorm)) {
-            nextCountdown.yNorm = nuevoConSeccion.yNorm;
-          } else if (Object.prototype.hasOwnProperty.call(nextCountdown, "yNorm")) {
-            delete nextCountdown.yNorm;
-          }
-        }
 
         // Enforce global uniqueness: mantenemos solo un countdown por borrador.
         const next = prev.filter(

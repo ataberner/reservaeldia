@@ -2,10 +2,15 @@ import '../../styles/globals.css';
 import '../../styles/styles.css';
 import Head from 'next/head';
 import { useEffect } from 'react';
+import { initializeCountdownAuditRuntime } from "@/domain/countdownAudit/runtime";
 
 const VIEWPORT_CONTENT = 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover';
 
 export default function MyApp({ Component, pageProps }) {
+  useEffect(() => {
+    initializeCountdownAuditRuntime();
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 

@@ -18,6 +18,7 @@ import {
   captureEditorIssue,
   pushEditorBreadcrumb,
 } from "@/lib/monitoring/editorIssueReporter";
+import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 
 const PERSIST_DEBOUNCE_MS = 500;
 const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
@@ -141,6 +142,34 @@ function normalizeEditorSession(value, fallbackSlug = "") {
     kind,
     id,
   };
+}
+
+function normalizeCountdownObjectGeometry(obj) {
+  if (!obj || obj.tipo !== "countdown") return obj;
+
+  const scaleX = Number(obj.scaleX);
+  const scaleY = Number(obj.scaleY);
+  const hasScaleX = Number.isFinite(scaleX) && scaleX !== 1;
+  const hasScaleY = Number.isFinite(scaleY) && scaleY !== 1;
+
+  if (!hasScaleX && !hasScaleY) return obj;
+
+  const next = { ...obj };
+  const width = Number(obj.width);
+  const height = Number(obj.height);
+
+  if (Number.isFinite(width) && Number.isFinite(scaleX)) {
+    next.width = Math.abs(width * scaleX);
+  }
+
+  if (Number.isFinite(height) && Number.isFinite(scaleY)) {
+    next.height = Math.abs(height * scaleY);
+  }
+
+  next.scaleX = 1;
+  next.scaleY = 1;
+
+  return next;
 }
 
 /**
@@ -283,6 +312,10 @@ export default function useBorradorSync({
 
         // Validacion: lineas + normalizacion de textos
         const objetosValidados = rawObjetos.map((obj) => {
+          if (obj?.tipo === "countdown") {
+            return normalizeCountdownObjectGeometry(obj);
+          }
+
           if (obj?.tipo === "forma" && obj?.figura === "line") {
             return validarPuntosLinea(obj);
           }
@@ -305,6 +338,7 @@ export default function useBorradorSync({
 
         const seccionesLimpias = limpiarUndefined(rawSecciones);
         const objetosLimpios = limpiarUndefined(objetosValidados);
+        const countdownForAudit = objetosValidados.find((item) => item?.tipo === "countdown") || null;
         const rsvpLimpio = rawRsvp
           ? limpiarUndefined(normalizeRsvpConfig(rawRsvp, { forceEnabled: false }))
           : null;
@@ -341,6 +375,23 @@ export default function useBorradorSync({
           },
           ultimaEdicion: serverTimestamp(),
         });
+
+        if (countdownForAudit) {
+          const sectionMode = String(
+            seccionesLimpias.find((section) => section?.id === countdownForAudit?.seccionId)?.altoModo || ""
+          ).trim().toLowerCase();
+          recordCountdownAuditSnapshot({
+            countdown: countdownForAudit,
+            stage: "draft-persist-write",
+            renderer: "persisted-document",
+            sourceDocument: "borradores",
+            viewport: "editor",
+            wrapperScale: 1,
+            usesRasterThumbnail: false,
+            altoModo: sectionMode,
+            sourceLabel: safeSlug,
+          });
+        }
 
         if (!immediate && stageRef?.current && state.userId && safeSlug) {
           // En mobile pesado, generar thumbnail al vuelo puede tumbar la pestana.
@@ -519,6 +570,27 @@ export default function useBorradorSync({
 
           setObjetos(objsMigrados);
           setSecciones(seccionesRefrescadas);
+          const countdownForAudit =
+            objsMigrados.find((item) => item?.tipo === "countdown") || null;
+          if (countdownForAudit) {
+            const sectionMode = String(
+              seccionesRefrescadas.find((section) => section?.id === countdownForAudit?.seccionId)?.altoModo || ""
+            ).trim().toLowerCase();
+            recordCountdownAuditSnapshot({
+              countdown: countdownForAudit,
+              stage:
+                session.kind === "template"
+                  ? "template-persisted-document"
+                  : "draft-load-document",
+              renderer: "persisted-document",
+              sourceDocument: session.kind === "template" ? "template-editor-document" : "borradores",
+              viewport: "editor",
+              wrapperScale: 1,
+              usesRasterThumbnail: false,
+              altoModo: sectionMode,
+              sourceLabel: session.id,
+            });
+          }
           if (typeof window !== "undefined") {
             window._draftTipoInvitacion = tipoInvitacion || "general";
             window._tipoInvitacionActual = tipoInvitacion || "general";

@@ -64,6 +64,7 @@ export const COUNTDOWN_DEFAULT_CATEGORY = Object.freeze({
 
 export const COUNTDOWN_NUMERIC_LIMITS = Object.freeze({
   tamanoBase: { min: 220, max: 960, default: 320 },
+  chipWidth: { min: 34, max: 520, default: 72 },
   gap: { min: 0, max: 48, default: 8 },
   framePadding: { min: 0, max: 64, default: 10 },
   numberSize: { min: 10, max: 120, default: 28 },
@@ -95,6 +96,7 @@ export function createDefaultCountdownPresetConfig() {
       type: "singleFrame",
       distribution: "centered",
       visibleUnits: [...COUNTDOWN_DEFAULT_VISIBLE_UNITS],
+      chipWidth: null,
       gap: COUNTDOWN_NUMERIC_LIMITS.gap.default,
       framePadding: COUNTDOWN_NUMERIC_LIMITS.framePadding.default,
     },

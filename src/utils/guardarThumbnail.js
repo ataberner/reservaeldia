@@ -3,6 +3,27 @@ import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage"
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import Konva from "konva";
+import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+
+function resolveCountdownAuditStageSnapshot() {
+  if (typeof window === "undefined") {
+    return { countdown: null, altoModo: "" };
+  }
+
+  const objetos = Array.isArray(window._objetosActuales) ? window._objetosActuales : [];
+  const countdown = objetos.find((item) => item?.tipo === "countdown") || null;
+  const secciones = Array.isArray(window._seccionesOrdenadas) ? window._seccionesOrdenadas : [];
+  const altoModo = countdown
+    ? String(secciones.find((section) => section?.id === countdown?.seccionId)?.altoModo || "")
+        .trim()
+        .toLowerCase()
+    : "";
+
+  return {
+    countdown,
+    altoModo,
+  };
+}
 
 /**
  * Genera y guarda un thumbnail del Stage SIN hacer parpadear la UI del editor.
@@ -96,6 +117,20 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
       thumbnailUrl: urlFinal,
       thumbnailUpdatedAt: serverTimestamp(),
     });
+    const { countdown, altoModo } = resolveCountdownAuditStageSnapshot();
+    if (countdown) {
+      recordCountdownAuditSnapshot({
+        countdown,
+        stage: "draft-thumbnail-card",
+        renderer: "raster-thumbnail",
+        sourceDocument: "draft-thumbnail",
+        viewport: "dashboard",
+        wrapperScale: 1,
+        usesRasterThumbnail: true,
+        altoModo,
+        sourceLabel: slug,
+      });
+    }
   } catch (error) {
     console.error("❌ Error al generar o subir thumbnail:", error);
   } finally {

@@ -23,6 +23,10 @@ import {
     saveTemplateEditorDocument,
 } from "@/domain/templates/adminService";
 import {
+    captureCountdownAuditTemplateDocument,
+    recordCountdownAuditSnapshot,
+} from "@/domain/countdownAudit/runtime";
+import {
     triggerEditorRedo,
     triggerEditorUndo,
 } from "@/utils/editorHistoryControls";
@@ -64,6 +68,63 @@ function normalizeTemplateWorkspaceMeta(value) {
         readOnly: safeValue.readOnly === true || permissions?.readOnly === true,
         permissions,
     };
+}
+
+function getLiveEditorRenderSnapshot() {
+    if (typeof window === "undefined") return null;
+
+    const objetos = Array.isArray(window._objetosActuales)
+        ? window._objetosActuales
+        : null;
+    const secciones = Array.isArray(window._seccionesOrdenadas)
+        ? window._seccionesOrdenadas
+        : null;
+    const rsvp =
+        window._rsvpConfigActual && typeof window._rsvpConfigActual === "object"
+            ? window._rsvpConfigActual
+            : null;
+    const gifts =
+        window._giftsConfigActual && typeof window._giftsConfigActual === "object"
+            ? window._giftsConfigActual
+            : null;
+
+    if (!objetos || !secciones) return null;
+
+    return {
+        objetos,
+        secciones,
+        rsvp,
+        gifts,
+    };
+}
+
+function recordTemplateDashboardCardSnapshot(renderSnapshot, sourceLabel = "") {
+    const objetos = Array.isArray(renderSnapshot?.objetos)
+        ? renderSnapshot.objetos
+        : [];
+    const secciones = Array.isArray(renderSnapshot?.secciones)
+        ? renderSnapshot.secciones
+        : [];
+    const countdown = objetos.find((item) => item?.tipo === "countdown") || null;
+    if (!countdown) return;
+
+    const altoModo = String(
+        secciones.find((section) => section?.id === countdown?.seccionId)?.altoModo || ""
+    )
+        .trim()
+        .toLowerCase();
+
+    recordCountdownAuditSnapshot({
+        countdown,
+        stage: "template-dashboard-card",
+        renderer: "raster-thumbnail",
+        sourceDocument: "template-portada",
+        viewport: "dashboard",
+        wrapperScale: 1,
+        usesRasterThumbnail: true,
+        altoModo,
+        sourceLabel,
+    });
 }
 
 function AccountSummary({
@@ -356,6 +417,10 @@ export default function DashboardHeader(props) {
             const portada = await (
                 await import("firebase/storage")
             ).getDownloadURL(previewRef);
+            const liveEditorSnapshot = getLiveEditorRenderSnapshot();
+            if (liveEditorSnapshot) {
+                recordTemplateDashboardCardSnapshot(liveEditorSnapshot, templateId);
+            }
 
             if (isTemplateSession) {
                 await saveTemplateEditorDocument({
@@ -363,8 +428,20 @@ export default function DashboardHeader(props) {
                     document: {
                         nombre,
                         portada,
+                        ...(liveEditorSnapshot
+                            ? {
+                                  objetos: liveEditorSnapshot.objetos,
+                                  secciones: liveEditorSnapshot.secciones,
+                                  rsvp: liveEditorSnapshot.rsvp,
+                                  gifts: liveEditorSnapshot.gifts,
+                              }
+                            : {}),
                     },
                 });
+                await captureCountdownAuditTemplateDocument(
+                    templateId,
+                    "template-persisted-document"
+                );
                 alert("La plantilla se actualizo correctamente.");
                 return;
             }
@@ -373,7 +450,17 @@ export default function DashboardHeader(props) {
             const snap = await getDoc(ref);
             if (!snap.exists()) throw new Error("No se encontro el borrador.");
 
-            const data = snap.data();
+            const dataBase = snap.data();
+            const data =
+                liveEditorSnapshot && dataBase && typeof dataBase === "object"
+                    ? {
+                          ...dataBase,
+                          objetos: liveEditorSnapshot.objetos,
+                          secciones: liveEditorSnapshot.secciones,
+                          rsvp: liveEditorSnapshot.rsvp,
+                          gifts: liveEditorSnapshot.gifts,
+                      }
+                    : dataBase;
             const stagedAuthoringSnapshot =
                 data?.templateAuthoringDraft &&
                 typeof data.templateAuthoringDraft === "object"
@@ -388,6 +475,7 @@ export default function DashboardHeader(props) {
                 authoringState:
                     runtimeAuthoringSnapshot || stagedAuthoringSnapshot || null,
             });
+            recordTemplateDashboardCardSnapshot(data, templateId);
 
             await convertDraftToTemplate({
                 draftSlug: templateId,
@@ -398,6 +486,10 @@ export default function DashboardHeader(props) {
                     portada,
                 },
             });
+            await captureCountdownAuditTemplateDocument(
+                templateId,
+                "template-persisted-document"
+            );
 
             await router.replace(
                 `/dashboard?templateId=${encodeURIComponent(templateId)}`

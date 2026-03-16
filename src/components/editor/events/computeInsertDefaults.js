@@ -1,5 +1,9 @@
 import { sanitizeMotionEffect } from "@/domain/motionEffects";
-import { estimateCountdownUnitHeight } from "@/domain/countdownPresets/renderModel";
+import {
+  estimateCountdownUnitHeight,
+  resolveCountdownUnitWidth,
+} from "@/domain/countdownPresets/renderModel";
+import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
@@ -39,6 +43,7 @@ function calcCountdownInitialWidth(presetProps = {}) {
   const valueSize = Math.max(10, toNumber(presetProps.fontSize, 16));
   const labelSize = Math.max(8, toNumber(presetProps.labelSize, 10));
   const showLabels = presetProps.showLabels !== false;
+  const boxRadius = Math.max(0, toNumber(presetProps.boxRadius, 10));
   const layoutType = String(presetProps.layoutType || "singleFrame");
   const hasFrameConfigured = String(presetProps.frameSvgUrl || "").trim().length > 0;
   const distribution = String(
@@ -47,7 +52,6 @@ function calcCountdownInitialWidth(presetProps = {}) {
   const tamanoBase = toNumber(presetProps.tamanoBase, 320);
   const useSingleFrameLayout =
     layoutType === "singleFrame" && hasFrameConfigured;
-  const baseChipW = Math.max(36, chipWidth + paddingX * 2);
   const textDrivenChipH = Math.max(
     44,
     paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
@@ -58,6 +62,11 @@ function calcCountdownInitialWidth(presetProps = {}) {
     unitsCount: n,
   });
   const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+  const baseChipW = resolveCountdownUnitWidth({
+    width: Math.max(36, chipWidth + paddingX * 2),
+    height: chipH,
+    boxRadius,
+  });
   const cols =
     distribution === "vertical"
       ? 1
@@ -73,7 +82,11 @@ function calcCountdownInitialWidth(presetProps = {}) {
   const editorialWidths =
     distribution === "editorial"
       ? Array.from({ length: n }, (_, index) =>
-          Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88)))
+          resolveCountdownUnitWidth({
+            width: Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88))),
+            height: chipH,
+            boxRadius,
+          })
         )
       : [];
   const naturalW =
@@ -445,6 +458,20 @@ export default function computeInsertDefaults({
     targetISO: _targetISO,
     ...persistable
   } = next;
+
+  if (persistable?.tipo === "countdown") {
+    recordCountdownAuditSnapshot({
+      countdown: persistable,
+      stage: "canvas-insert-defaults",
+      renderer: "persisted-document",
+      sourceDocument: "compute-insert-defaults",
+      viewport: "editor",
+      wrapperScale: 1,
+      usesRasterThumbnail: false,
+      altoModo: seccion?.altoModo || "",
+      sourceLabel: "insert-defaults",
+    });
+  }
 
   return stripUndefined(persistable);
 }

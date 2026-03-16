@@ -1,3 +1,6 @@
+import {
+  COUNTDOWN_NUMERIC_LIMITS,
+} from "@/domain/countdownPresets/contract";
 import { normalizeVisibleUnits } from "@/domain/countdownPresets/renderModel";
 
 function toFinite(value, fallback) {
@@ -33,7 +36,13 @@ export function buildCountdownCanvasPatchFromPreset({
   const distribution = layout.distribution || "centered";
   const gap = toFinite(layout.gap, 8);
   const framePadding = toFinite(layout.framePadding, 10);
-  const chipWidth = Math.max(34, estimateChipWidth(tamanoBase, visibleUnits, distribution));
+  const requestedChipWidth = Number(layout.chipWidth);
+  const chipWidth = Number.isFinite(requestedChipWidth)
+    ? Math.max(
+        COUNTDOWN_NUMERIC_LIMITS.chipWidth.min,
+        Math.min(COUNTDOWN_NUMERIC_LIMITS.chipWidth.max, requestedChipWidth)
+      )
+    : Math.max(34, estimateChipWidth(tamanoBase, visibleUnits, distribution));
   const numberSize = Math.max(10, toFinite(tipografia.numberSize, 28));
   const labelSize = Math.max(8, toFinite(tipografia.labelSize, 12));
 

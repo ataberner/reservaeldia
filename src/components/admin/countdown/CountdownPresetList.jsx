@@ -45,6 +45,15 @@ export default function CountdownPresetList({
           <div className="space-y-1.5">
             {safeItems.map((item) => {
               const isSelected = item.id === selectedId;
+              const hasDraft = Boolean(item?.draftVersion && item?.draft);
+              const displayName =
+                item?.draft?.nombre ||
+                item?.nombre ||
+                item?.id;
+              const displayCategoryLabel =
+                item?.draft?.categoria?.label ||
+                item?.categoria?.label ||
+                "General / Minimal";
               const sourceTag =
                 String(item?.metadata?.migrationSource || "").toLowerCase() === "legacy-config-v1"
                   ? "legacy"
@@ -57,8 +66,8 @@ export default function CountdownPresetList({
                     : "bg-amber-100 text-amber-700";
 
               const previewThumb =
-                item?.svgRef?.thumbnailUrl ||
                 item?.draft?.svgRef?.thumbnailUrl ||
+                item?.svgRef?.thumbnailUrl ||
                 null;
 
               return (
@@ -76,7 +85,7 @@ export default function CountdownPresetList({
                     {previewThumb ? (
                       <img
                         src={previewThumb}
-                        alt={`${item.nombre} thumbnail`}
+                        alt={`${displayName} thumbnail`}
                         className="h-11 w-11 shrink-0 rounded-lg border border-slate-200 object-cover"
                         loading="lazy"
                       />
@@ -89,9 +98,14 @@ export default function CountdownPresetList({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="truncate text-[13px] font-semibold text-slate-900">
-                          {item.nombre || item.id}
+                          {displayName}
                         </p>
                         <div className="flex items-center gap-1">
+                          {hasDraft ? (
+                            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                              draft
+                            </span>
+                          ) : null}
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                             {sourceTag}
                           </span>
@@ -101,7 +115,7 @@ export default function CountdownPresetList({
                         </div>
                       </div>
                       <p className="mt-0.5 truncate text-[11px] text-slate-600">
-                        {item?.categoria?.label || "General / Minimal"}
+                        {displayCategoryLabel}
                       </p>
                       <p className="mt-0.5 text-[10px] text-slate-500">
                         v{Number(item.activeVersion || 0)} activa

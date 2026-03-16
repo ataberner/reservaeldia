@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
+import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
 
 const MOBILE_VIEWPORT_WIDTH = 390;
 const MOBILE_VIEWPORT_HEIGHT = 844;
@@ -17,6 +18,7 @@ function PreviewFrame({
   viewportHeight,
   scaledWidth,
   scaledHeight,
+  onLoad,
 }) {
   return (
     <div
@@ -40,6 +42,12 @@ function PreviewFrame({
             srcDoc={htmlContent}
             sandbox="allow-scripts"
             title={iframeTitle}
+            onLoad={(event) => {
+              onLoad?.({
+                event,
+                scale,
+              });
+            }}
             style={{
               width: "100%",
               height: "100%",
@@ -344,6 +352,19 @@ export default function ModalVistaPrevia({
                       viewportHeight={DESKTOP_VIEWPORT_HEIGHT}
                       scaledWidth={desktopScaledWidth}
                       scaledHeight={desktopScaledHeight}
+                      onLoad={({ scale }) => {
+                        if (!htmlContent) return;
+                        captureCountdownAuditFromHtmlString(htmlContent, {
+                          stage: showPublishActions
+                            ? "draft-preview-desktop"
+                            : "template-preview-desktop",
+                          renderer: "dom-generated",
+                          sourceDocument: "preview-modal",
+                          viewport: "desktop",
+                          wrapperScale: scale,
+                          usesRasterThumbnail: false,
+                        });
+                      }}
                     />
                   </div>
                 </div>
@@ -377,6 +398,19 @@ export default function ModalVistaPrevia({
                       viewportHeight={MOBILE_VIEWPORT_HEIGHT}
                       scaledWidth={mobileScaledWidth}
                       scaledHeight={mobileScaledHeight}
+                      onLoad={({ scale }) => {
+                        if (!htmlContent) return;
+                        captureCountdownAuditFromHtmlString(htmlContent, {
+                          stage: showPublishActions
+                            ? "draft-preview-mobile"
+                            : "template-preview-mobile",
+                          renderer: "dom-generated",
+                          sourceDocument: "preview-modal",
+                          viewport: "mobile",
+                          wrapperScale: scale,
+                          usesRasterThumbnail: false,
+                        });
+                      }}
                     />
                   </div>
                 </div>

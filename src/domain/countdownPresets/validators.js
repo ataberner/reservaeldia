@@ -21,6 +21,13 @@ function clampNumber(value, range) {
   return Math.max(range.min, Math.min(range.max, parsed));
 }
 
+function optionalClampNumber(value, range) {
+  if (value === null || typeof value === "undefined" || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(range.min, Math.min(range.max, parsed));
+}
+
 function hasValueInSet(value, setValues) {
   return setValues.includes(value);
 }
@@ -107,6 +114,7 @@ export function normalizeCountdownPresetConfig(rawConfig = {}) {
         ? layout.distribution
         : base.layout.distribution,
       visibleUnits: normalizeVisibleUnits(layout.visibleUnits),
+      chipWidth: optionalClampNumber(layout.chipWidth, COUNTDOWN_NUMERIC_LIMITS.chipWidth),
       gap: clampNumber(layout.gap, COUNTDOWN_NUMERIC_LIMITS.gap),
       framePadding: clampNumber(layout.framePadding, COUNTDOWN_NUMERIC_LIMITS.framePadding),
     },

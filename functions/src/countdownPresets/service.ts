@@ -29,6 +29,7 @@ type Config = {
     type: LayoutType;
     distribution: Distribution;
     visibleUnits: Unit[];
+    chipWidth: number | null;
     gap: number;
     framePadding: number;
   };
@@ -113,6 +114,7 @@ type SaveInput = {
   nombre?: unknown;
   categoria?: unknown;
   expectedDraftVersion?: unknown;
+  editorSessionId?: unknown;
   config?: unknown;
   assets?: {
     removeSvg?: unknown;
@@ -189,6 +191,7 @@ const UNITS: Unit[] = ["days", "hours", "minutes", "seconds"];
 
 const RANGES: Record<string, Range> = {
   tamanoBase: { min: 220, max: 960 },
+  chipWidth: { min: 34, max: 520 },
   gap: { min: 0, max: 48 },
   framePadding: { min: 0, max: 64 },
   numberSize: { min: 10, max: 120 },
@@ -290,6 +293,14 @@ function isTransparentColor(value: unknown): boolean {
 }
 
 function numberInRange(value: unknown, range: Range, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) fail(`${label} debe ser numerico.`);
+  if (parsed < range.min || parsed > range.max) fail(`${label} fuera de rango (${range.min}..${range.max}).`);
+  return parsed;
+}
+
+function optionalNumberInRange(value: unknown, range: Range, label: string): number | null {
+  if (value === null || typeof value === "undefined" || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) fail(`${label} debe ser numerico.`);
   if (parsed < range.min || parsed > range.max) fail(`${label} fuera de rango (${range.min}..${range.max}).`);
@@ -427,6 +438,7 @@ function normalizeConfig(value: unknown): Config {
       type: oneOf<LayoutType>(layoutRaw.type, LAYOUT_TYPES, "config.layout.type"),
       distribution: oneOf<Distribution>(layoutRaw.distribution, DISTRIBUTIONS, "config.layout.distribution"),
       visibleUnits: normalizeVisibleUnits(layoutRaw.visibleUnits),
+      chipWidth: optionalNumberInRange(layoutRaw.chipWidth, RANGES.chipWidth, "config.layout.chipWidth"),
       gap: numberInRange(layoutRaw.gap, RANGES.gap, "config.layout.gap"),
       framePadding: numberInRange(layoutRaw.framePadding, RANGES.framePadding, "config.layout.framePadding"),
     },
@@ -522,6 +534,7 @@ function buildConfigFromLegacyProps(legacyProps: LegacyCanvasProps): Config {
       type: "singleFrame",
       distribution: "centered",
       visibleUnits: [...UNITS],
+      chipWidth: null,
       gap: clampNumber(legacyProps.gap, RANGES.gap.min, RANGES.gap.max, 8),
       framePadding: 10,
     },
@@ -815,7 +828,9 @@ function buildCanvasPatch(params: {
 }) {
   const { presetId, activeVersion, config, svgRef } = params;
   const visibleUnits = config.layout.visibleUnits.length ? config.layout.visibleUnits : [...UNITS];
-  const chipWidth = Math.max(34, estimateChipWidth(config.tamanoBase, visibleUnits, config.layout.distribution));
+  const chipWidth = Number.isFinite(config.layout.chipWidth)
+    ? Math.max(RANGES.chipWidth.min, Math.min(RANGES.chipWidth.max, Number(config.layout.chipWidth)))
+    : Math.max(34, estimateChipWidth(config.tamanoBase, visibleUnits, config.layout.distribution));
   const unitStyle = config.unidad || {
     showLabels: true,
     separator: "",
@@ -923,17 +938,34 @@ export const saveCountdownPresetDraft = onCall(
     const config = normalizeConfig(request.data?.config);
     const expectedDraftVersion = parseExpectedDraftVersion(request.data?.expectedDraftVersion);
     const requestedId = parseId(request.data?.presetId);
+    const editorSessionId = text(request.data?.editorSessionId, 120);
 
     const { presetId, ref } = await resolveDocRef(requestedId, nombre);
     const snap = await ref.get();
     const existing = (snap.exists ? (snap.data() as PresetDoc) : null) || null;
 
     const currentDraftVersion = intOrNull(existing?.draftVersion);
+    const metadata =
+      existing?.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+    const currentDraftEditorSessionId = text(
+      (metadata as Record<string, unknown>)?.draftEditorSessionId,
+      120
+    );
+    const lastUpdatedByUid = text((metadata as Record<string, unknown>)?.updatedByUid, 128);
+    const canReuseDraftSession =
+      !!editorSessionId &&
+      (
+        currentDraftEditorSessionId === editorSessionId ||
+        (!currentDraftEditorSessionId && lastUpdatedByUid === uid)
+      );
+
     if (expectedDraftVersion !== currentDraftVersion) {
+      if (!canReuseDraftSession) {
       throw new HttpsError(
         "failed-precondition",
         "El borrador fue modificado por otra sesion. Recarga antes de guardar."
       );
+      }
     }
 
     const existingDraft = existing?.draft || null;
@@ -1019,7 +1051,6 @@ export const saveCountdownPresetDraft = onCall(
     };
 
     const hasActiveVersion = Number(existing?.activeVersion || 0) > 0;
-    const metadata = existing?.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
 
     await ref.set(
       {
@@ -1041,6 +1072,7 @@ export const saveCountdownPresetDraft = onCall(
           ...metadata,
           schemaVersion: SCHEMA_VERSION,
           renderContractVersion: RENDER_CONTRACT_VERSION,
+          draftEditorSessionId: editorSessionId || currentDraftEditorSessionId || null,
           updatedAt: now,
           updatedByUid: uid,
           ...(snap.exists ? {} : { createdAt: now, createdByUid: uid }),
@@ -1401,16 +1433,18 @@ export const listCountdownPresetsPublic = onCall(
         const data = (doc.data() || {}) as PresetDoc;
 
         try {
+          const draftVersion = intOrNull(data.draftVersion);
+          const draft = draftVersion && data.draft ? data.draft : null;
           const config = normalizeConfig({
-            layout: data.layout,
-            tipografia: data.tipografia,
-            colores: data.colores,
-            animaciones: data.animaciones,
-            unidad: data.unidad,
-            tamanoBase: data.tamanoBase,
+            layout: draft?.layout || data.layout,
+            tipografia: draft?.tipografia || data.tipografia,
+            colores: draft?.colores || data.colores,
+            animaciones: draft?.animaciones || data.animaciones,
+            unidad: draft?.unidad || data.unidad,
+            tamanoBase: draft?.tamanoBase ?? data.tamanoBase,
           });
 
-          const svgRef = normalizeSvgRef(data.svgRef) || {
+          const svgRef = normalizeSvgRef(draft?.svgRef) || normalizeSvgRef(data.svgRef) || {
             storagePath: null,
             downloadUrl: null,
             thumbnailPath: null,
@@ -1421,7 +1455,11 @@ export const listCountdownPresetsPublic = onCall(
             colorMode: "fixed" as ColorMode,
           };
 
-          const categoria = data.categoria ? normalizeCategory(data.categoria) : DEFAULT_CATEGORY;
+          const categoria = draft?.categoria
+            ? normalizeCategory(draft.categoria)
+            : data.categoria
+              ? normalizeCategory(data.categoria)
+              : DEFAULT_CATEGORY;
           const activeVersion = Math.max(1, Number(data.activeVersion || 1));
           const migrationSource = text(
             (data.metadata as Record<string, unknown> | undefined)?.migrationSource,
@@ -1429,14 +1467,18 @@ export const listCountdownPresetsPublic = onCall(
           );
           const legacyProps = normalizeLegacyCanvasProps(data.legacyPresetProps);
           const shouldUseLegacyPatch =
-            migrationSource === LEGACY_SYNC_SOURCE && activeVersion <= 1 && Boolean(legacyProps);
+            !draft &&
+            migrationSource === LEGACY_SYNC_SOURCE &&
+            activeVersion <= 1 &&
+            Boolean(legacyProps);
 
           return {
             id: doc.id,
-            nombre: text(data.nombre, 120) || doc.id,
+            nombre: text(draft?.nombre, 120) || text(data.nombre, 120) || doc.id,
             categoria: { label: categoria.label },
             thumbnailUrl: svgRef.thumbnailUrl,
             activeVersion,
+            draftVersion,
             presetPropsForCanvas: shouldUseLegacyPatch && legacyProps
               ? buildLegacyCanvasPatch({
                   presetId: doc.id,

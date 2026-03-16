@@ -7,6 +7,7 @@ import {
   estimateCountdownUnitHeight,
   getCountdownParts,
   normalizeVisibleUnits,
+  resolveCountdownUnitWidth,
   resolveCanvasPaint,
   resolvePreviewPaint,
   transformLabel,
@@ -198,7 +199,7 @@ export default function CountdownPresetLivePreview({
   const framePadding = Math.max(0, toFinite(previewPatch.framePadding, 10));
   const paddingX = Math.max(2, toFinite(previewPatch.paddingX, 8));
   const paddingY = Math.max(2, toFinite(previewPatch.paddingY, 6));
-  const baseChipW = Math.max(36, toFinite(previewPatch.chipWidth, 46) + paddingX * 2);
+  const requestedChipW = Math.max(36, toFinite(previewPatch.chipWidth, 46) + paddingX * 2);
   const textDrivenChipH = Math.max(
     44,
     paddingY * 2 + numberSize + (showLabels ? labelSize + 6 : 0)
@@ -210,6 +211,12 @@ export default function CountdownPresetLivePreview({
     unitsCount: itemCount,
   });
   const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+  const unitBoxRadius = Math.max(0, Math.min(999, toFinite(previewPatch.boxRadius, 10)));
+  const baseChipW = resolveCountdownUnitWidth({
+    width: requestedChipW,
+    height: chipH,
+    boxRadius: unitBoxRadius,
+  });
 
   const cols =
     distribution === "vertical"
@@ -227,7 +234,14 @@ export default function CountdownPresetLivePreview({
   const editorialWidths =
     distribution === "editorial"
       ? Array.from({ length: itemCount }, (_, index) =>
-          Math.max(34, Math.round(baseChipW * (index === 0 && itemCount > 1 ? 1.25 : 0.88)))
+          resolveCountdownUnitWidth({
+            width: Math.max(
+              34,
+              Math.round(baseChipW * (index === 0 && itemCount > 1 ? 1.25 : 0.88))
+            ),
+            height: chipH,
+            boxRadius: unitBoxRadius,
+          })
         )
       : [];
 
@@ -379,7 +393,6 @@ export default function CountdownPresetLivePreview({
     resolveCanvasPaint(unidad.boxBorder, "transparent"),
     "transparent"
   );
-  const unitBoxRadius = Math.max(0, Math.min(999, Number(unidad.boxRadius || 10)));
   const unitBoxShadow = unidad.boxShadow === true;
   const numberColor = resolvePreviewPaint(
     colors.numberColor || previewPatch.color,

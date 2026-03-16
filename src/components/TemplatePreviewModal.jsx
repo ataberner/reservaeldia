@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
 import { resolveTemplatePreviewSource } from "@/domain/templates/preview";
+import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
 import TemplateEventForm from "@/components/templates/TemplateEventForm";
 import {
   buildPreviewOperationsForField,
@@ -31,6 +32,7 @@ function TemplatePreviewViewport({
   sandbox,
   title,
   onError,
+  onLoad,
 }) {
   const stageRef = useRef(null);
   const [stageWidth, setStageWidth] = useState(0);
@@ -99,6 +101,12 @@ function TemplatePreviewViewport({
             title={title}
             className="block h-full w-full border-0"
             onError={onError}
+            onLoad={(event) => {
+              onLoad?.({
+                event,
+                scale,
+              });
+            }}
           />
         </div>
       </div>
@@ -284,6 +292,17 @@ export default function TemplatePreviewModal({
                     sandbox="allow-scripts"
                     title={`Vista previa de ${title}`}
                     iframeRef={previewFrameRef}
+                    onLoad={({ scale }) => {
+                      if (!previewHtml) return;
+                      captureCountdownAuditFromHtmlString(previewHtml, {
+                        stage: "template-preview-desktop",
+                        renderer: "dom-generated",
+                        sourceDocument: "template-preview-modal",
+                        viewport: "desktop",
+                        wrapperScale: scale,
+                        usesRasterThumbnail: false,
+                      });
+                    }}
                   />
                 ) : null}
 

@@ -1,5 +1,6 @@
 ﻿// src/components/editor/window/useEditorWindowBridge.js
 import { useEffect } from "react";
+import { registerCountdownAuditContext } from "@/domain/countdownAudit/runtime";
 
 /**
  * Puente con window:
@@ -84,6 +85,16 @@ export default function useEditorWindowBridge({
     getTemplateAuthoringStatus,
     flushPersistenceNow,
   ]);
+
+  useEffect(() => {
+    registerCountdownAuditContext({
+      getCurrentCountdown: () =>
+        (Array.isArray(objetos) ? objetos : []).find((item) => item?.tipo === "countdown") || null,
+      getCurrentSections: () => (Array.isArray(seccionesOrdenadas) ? [...seccionesOrdenadas] : []),
+      stageRef,
+      seccionActivaId,
+    });
+  }, [objetos, seccionesOrdenadas, stageRef, seccionActivaId]);
 
   useEffect(() => {
     window.__getSeccionInfo = (id) => {

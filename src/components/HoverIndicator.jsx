@@ -5,6 +5,32 @@ import {
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
+function getCountdownHoverBox(node) {
+  try {
+    const hitbox = node?.findOne?.(".countdown-hitbox");
+    if (hitbox?.getClientRect) {
+      const rect = hitbox.getClientRect({
+        skipTransform: false,
+        skipShadow: true,
+        skipStroke: true,
+      });
+      if (Number.isFinite(rect?.width) && Number.isFinite(rect?.height)) {
+        return rect;
+      }
+    }
+  } catch {}
+
+  try {
+    return node?.getClientRect?.({
+      skipTransform: false,
+      skipShadow: true,
+      skipStroke: true,
+    });
+  } catch {}
+
+  return null;
+}
+
 export default function HoverIndicator({
   hoveredElement,
   elementRefs,
@@ -51,6 +77,8 @@ export default function HoverIndicator({
       width: Number(hoveredObj.width),
       height: Number(hoveredObj.height),
     };
+  } else if (hoveredObj?.tipo === "countdown") {
+    box = getCountdownHoverBox(node);
   } else if (isFunctionalCtaButton(hoveredObj)) {
     box = node.getClientRect({
       skipShadow: true,

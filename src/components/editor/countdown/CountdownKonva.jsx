@@ -1,13 +1,16 @@
 // src/components/editor/countdown/CountdownKonva.jsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { Group, Image as KonvaImage, Rect, Text } from "react-konva";
 import useImage from "use-image";
 import { getRemainingParts, fmt } from "./countdownUtils";
 import { calcularOffsetY } from "@/utils/layout";
 import {
   estimateCountdownUnitHeight,
+  resolveCountdownUnitWidth,
   resolveCanvasPaint,
 } from "@/domain/countdownPresets/renderModel";
+import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 
 import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
@@ -62,7 +65,8 @@ function resolvePointerType(evt) {
 }
 
 function getDragIntentThreshold(pointerType) {
-  return pointerType === "touch" || pointerType === "pen" ? 8 : 3;
+  if (pointerType === "touch" || pointerType === "pen") return 4;
+  return 1;
 }
 
 function buildKonvaTextFillProps(fillMeta, fallback = "#111827") {
@@ -185,7 +189,7 @@ export default function CountdownKonva({
   const unitStrokeColor = resolveCanvasPaint(obj.boxBorder, "transparent");
   const backgroundColor = resolveCanvasPaint(obj.background, "transparent");
 
-  const baseChipW = Math.max(36, toFinite(obj.chipWidth, 46) + paddingX * 2);
+  const requestedChipW = Math.max(36, toFinite(obj.chipWidth, 46) + paddingX * 2);
   const textDrivenChipH = Math.max(
     44,
     paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
@@ -196,6 +200,12 @@ export default function CountdownKonva({
     unitsCount: n,
   });
   const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
+  const unitBoxRadius = Math.max(0, toFinite(obj.boxRadius, 8));
+  const baseChipW = resolveCountdownUnitWidth({
+    width: requestedChipW,
+    height: chipH,
+    boxRadius: unitBoxRadius,
+  });
 
   const cols =
     distribution === 'vertical'
@@ -208,7 +218,11 @@ export default function CountdownKonva({
   const editorialWidths =
     distribution === 'editorial'
       ? Array.from({ length: n }, (_, index) =>
-          Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88)))
+          resolveCountdownUnitWidth({
+            width: Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88))),
+            height: chipH,
+            boxRadius: unitBoxRadius,
+          })
         )
       : [];
 
@@ -338,6 +352,59 @@ export default function CountdownKonva({
     });
   }, [canRenderSeparators, unitLayouts, separatorFontSize]);
 
+  useEffect(() => {
+    const sectionMode = String(
+      seccionesOrdenadas.find((section) => section?.id === obj?.seccionId)?.altoModo || ""
+    ).trim().toLowerCase();
+
+    recordCountdownAuditSnapshot({
+      countdown: obj,
+      stage: "canvas-konva-render",
+      renderer: "konva-render",
+      sourceDocument: "canvas-konva",
+      viewport: "editor",
+      wrapperScale: 1,
+      usesRasterThumbnail: false,
+      altoModo: sectionMode,
+      sourceLabel: "CountdownKonva",
+    });
+  }, [
+    obj,
+    obj?.x,
+    obj?.y,
+    obj?.yNorm,
+    obj?.width,
+    obj?.height,
+    obj?.scaleX,
+    obj?.scaleY,
+    obj?.rotation,
+    obj?.seccionId,
+    obj?.tamanoBase,
+    obj?.distribution,
+    obj?.layoutType,
+    obj?.gap,
+    obj?.framePadding,
+    obj?.paddingX,
+    obj?.paddingY,
+    obj?.chipWidth,
+    obj?.fontSize,
+    obj?.labelSize,
+    obj?.boxRadius,
+    obj?.showLabels,
+    obj?.separator,
+    seccionesOrdenadas,
+    chipH,
+    baseChipW,
+    naturalW,
+    naturalH,
+    containerW,
+    containerH,
+    startX,
+    startY,
+    unitLayouts,
+    separatorLayouts,
+  ]);
+
   const [frameImageWithCors] = useImage(hasFrameConfigured ? frameSvgUrl : null, "anonymous");
   const [frameImageDirect] = useImage(hasFrameConfigured ? frameSvgUrl : null);
   const frameImage = frameImageWithCors || frameImageDirect;
@@ -376,7 +443,10 @@ export default function CountdownKonva({
       if (!pressRef.current.active) return;
       if (pressRef.current.startedDrag) return;
 
-      if (ev?.cancelable) {
+      if (
+        ev?.cancelable &&
+        (ev?.pointerType === "touch" || ev?.touches || ev?.changedTouches)
+      ) {
         try { ev.preventDefault(); } catch {}
       }
 
@@ -398,35 +468,8 @@ export default function CountdownKonva({
       if (!node) return;
 
       // Corregimos posición inicial con el delta real para evitar “arrastre atrasado”.
-      let deltaX = dxClient;
-      let deltaY = dyClient;
-      try {
-        const stage = node.getStage();
-        if (stage?.setPointersPositions) {
-          stage.setPointersPositions(ev);
-        }
-        const stagePoint = stage?.getPointerPosition?.();
-        if (
-          Number.isFinite(stagePoint?.x) &&
-          Number.isFinite(stagePoint?.y) &&
-          Number.isFinite(pressRef.current.startStageX) &&
-          Number.isFinite(pressRef.current.startStageY)
-        ) {
-          deltaX = stagePoint.x - pressRef.current.startStageX;
-          deltaY = stagePoint.y - pressRef.current.startStageY;
-          if (dragStartPos) {
-            dragStartPos.current = { x: stagePoint.x, y: stagePoint.y };
-          }
-        }
-      } catch {}
-
-      try {
-        node.position({
-          x: pressRef.current.startNodeX + deltaX,
-          y: pressRef.current.startNodeY + deltaY,
-        });
-        node.getLayer()?.batchDraw();
-      } catch {}
+      // Dejamos que Konva arranque el drag nativo desde la posiciÃ³n actual
+      // para evitar el salto del reposicionamiento manual previo.
 
       // Habilitar drag solo ahora
       try { node.draggable(true); } catch {}
@@ -484,10 +527,8 @@ export default function CountdownKonva({
     };
 
     window.addEventListener("pointermove", onMove, true);
-    window.addEventListener("mousemove", onMove, true);
     window.addEventListener("touchmove", onMove, { capture: true, passive: false });
     window.addEventListener("pointerup", onUp, true);
-    window.addEventListener("mouseup", onUp, true);
     window.addEventListener("touchend", onUp, true);
     window.addEventListener("touchcancel", onUp, true);
     window.addEventListener("pointercancel", onUp, true);
@@ -495,10 +536,8 @@ export default function CountdownKonva({
 
     cleanupGlobalRef.current = () => {
       window.removeEventListener("pointermove", onMove, true);
-      window.removeEventListener("mousemove", onMove, true);
       window.removeEventListener("touchmove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
-      window.removeEventListener("mouseup", onUp, true);
       window.removeEventListener("touchend", onUp, true);
       window.removeEventListener("touchcancel", onUp, true);
       window.removeEventListener("pointercancel", onUp, true);
@@ -514,6 +553,12 @@ export default function CountdownKonva({
       e.cancelBubble = true;
       if (e?.evt) e.evt.cancelBubble = true;
       if (pressRef.current.active) return;
+
+      if (typeof onHover === "function") {
+        flushSync(() => {
+          onHover(null);
+        });
+      }
 
       const node = e.currentTarget;
       const ev = e.evt;
@@ -553,7 +598,7 @@ export default function CountdownKonva({
 
       attachGlobalListeners();
     },
-    [attachGlobalListeners, hasDragged]
+    [attachGlobalListeners, hasDragged, onHover]
   );
 
   const handleClick = useCallback(
@@ -716,7 +761,7 @@ export default function CountdownKonva({
 
           {unitLayouts.map((it) => {
             const itemLabel = applyLabelTransform(it.label, labelTransform);
-            const cornerRadius = Math.min(obj.boxRadius ?? 8, it.width / 2, it.height / 2);
+            const cornerRadius = Math.min(unitBoxRadius, it.width / 2, it.height / 2);
             const valueBlockHeight = Math.max(1, valueSize * lineHeight);
             const labelBlockHeight = Math.max(1, labelSize);
             const valueTextFill = resolveKonvaFill(obj.color, it.width, valueBlockHeight, "#111827");

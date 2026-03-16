@@ -14,6 +14,7 @@ import {
   normalizeTemplateAssetsDeep,
   type TemplateAssetCopyCache,
 } from "./storageAssets";
+import { normalizeCountdownGeometryDeep } from "../utils/normalizeCountdownGeometry";
 
 const OPTIONS = {
   region: "us-central1" as const,
@@ -507,7 +508,9 @@ async function writeTemplateAndCatalog(params: {
   const preparedPayload: Record<string, unknown> = {
     ...sourcePayload,
     portada: portadaNormalizada,
-    objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
+    objetos: Array.isArray(objetosNormalizados)
+      ? (normalizeCountdownGeometryDeep(objetosNormalizados) as unknown[])
+      : [],
     secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
   };
 

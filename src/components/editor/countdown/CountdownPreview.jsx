@@ -1,6 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getRemainingParts, fmt } from "./countdownUtils";
-import { buildTextPaintStyle, resolvePreviewPaint } from "@/domain/countdownPresets/renderModel";
+import {
+  buildTextPaintStyle,
+  estimateCountdownUnitHeight,
+  resolveCountdownUnitWidth,
+  resolvePreviewPaint,
+} from "@/domain/countdownPresets/renderModel";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -33,15 +38,6 @@ function applyLabelTransform(label, mode) {
 function toFinite(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function getGridTemplate(distribution, count) {
-  if (distribution === "vertical") return "1fr";
-  if (distribution === "grid") return `repeat(${Math.min(2, count)}, minmax(0, 1fr))`;
-  if (distribution === "editorial" && count > 1) {
-    return `minmax(0,1.25fr) repeat(${Math.max(0, count - 1)}, minmax(0,1fr))`;
-  }
-  return `repeat(${count}, minmax(0, 1fr))`;
 }
 
 export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
@@ -128,6 +124,27 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   const labelColor = resolvePreviewPaint(preset?.labelColor, "#6b7280");
   const numberTextPaintStyle = buildTextPaintStyle(numberColor, "#111");
   const labelTextPaintStyle = buildTextPaintStyle(labelColor, "#6b7280");
+  const legacyGap = Math.max(0, toFinite(preset?.gap, SZ.gap));
+  const legacyPaddingX = Math.max(2, toFinite(preset?.paddingX, SZ.chipPx));
+  const legacyPaddingY = Math.max(2, toFinite(preset?.paddingY, SZ.chipPy));
+  const legacyValueSize = Math.max(10, toFinite(preset?.fontSize, SZ.valueFs));
+  const legacyLabelSize = Math.max(8, toFinite(preset?.labelSize, SZ.labelFs - 2));
+  const legacyShowLabels = preset?.showLabels !== false;
+  const legacyChipRadius = Math.max(0, toFinite(preset?.boxRadius, 12));
+  const legacyRequestedChipW = Math.max(
+    36,
+    toFinite(preset?.chipWidth, SZ.chipMinW) + legacyPaddingX * 2
+  );
+  const legacyChipH = Math.max(
+    44,
+    legacyPaddingY * 2 + legacyValueSize + (legacyShowLabels ? legacyLabelSize + 6 : 0)
+  );
+  const legacyChipW = resolveCountdownUnitWidth({
+    width: legacyRequestedChipW,
+    height: legacyChipH,
+    boxRadius: legacyChipRadius,
+  });
+  const legacySeparatorFontSize = Math.max(10, Math.round(legacyValueSize * 0.64));
 
   if (!isV2) {
     return (
@@ -137,7 +154,7 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
           className="flex items-center justify-center"
           style={{
             fontFamily,
-            gap: SZ.gap,
+            gap: legacyGap,
             transform: `scale(${scale})`,
             transformOrigin: "center",
           }}
@@ -154,17 +171,27 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
                   style={{
                     background: preset?.boxBg || "#fff",
                     border: `1px solid ${preset?.boxBorder || "#e5e7eb"}`,
-                    borderRadius: preset?.boxRadius ?? 12,
+                    borderRadius: legacyChipRadius,
                     boxShadow: preset?.boxShadow ? "0 2px 6px rgba(0,0,0,0.15)" : "none",
-                    minWidth: SZ.chipMinW,
-                    padding: `${SZ.chipPy}px ${SZ.chipPx}px`,
+                    width: legacyChipW,
+                    minWidth: legacyChipW,
+                    height: legacyChipH,
+                    boxSizing: "border-box",
+                    padding: `${legacyPaddingY}px ${legacyPaddingX}px`,
                   }}
                 >
-                  <span className="font-bold" style={{ ...numberTextPaintStyle, fontSize: SZ.valueFs }}>
+                  <span
+                    className="font-bold"
+                    style={{ ...numberTextPaintStyle, fontSize: legacyValueSize }}
+                  >
                     {item.value}
                   </span>
-                  {preset?.showLabels !== false ? (
-                    <span style={{ ...labelTextPaintStyle, fontSize: SZ.labelFs - 2 }}>{item.label}</span>
+                  {legacyShowLabels ? (
+                    <span
+                      style={{ ...labelTextPaintStyle, fontSize: legacyLabelSize }}
+                    >
+                      {item.label}
+                    </span>
                   ) : null}
                   {preset?.layout === "flip" ? (
                     <span
@@ -176,7 +203,10 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
               )}
 
               {preset?.separator && index < legacyParts.length - 1 ? (
-                <span className="mx-1 font-bold" style={{ ...numberTextPaintStyle }}>
+                <span
+                  className="mx-1 font-bold"
+                  style={{ ...numberTextPaintStyle, fontSize: legacySeparatorFontSize }}
+                >
                   {preset.separator}
                 </span>
               ) : null}
@@ -195,19 +225,159 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
   const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
   const framePadding = Math.max(0, toFinite(preset?.framePadding, SZ.framePadding));
   const gap = Math.max(0, toFinite(preset?.gap, SZ.gap));
-  const chipW = Math.max(36, toFinite(preset?.chipWidth, SZ.chipMinW));
-  const chipPx = Math.max(4, toFinite(preset?.paddingX, SZ.chipPx));
-  const chipPy = Math.max(3, toFinite(preset?.paddingY, SZ.chipPy));
+  const chipPx = Math.max(2, toFinite(preset?.paddingX, SZ.chipPx));
+  const chipPy = Math.max(2, toFinite(preset?.paddingY, SZ.chipPy));
   const chipRadius = Math.max(0, toFinite(preset?.boxRadius, 10));
   const showLabels = preset?.showLabels !== false;
   const separator = String(preset?.separator || "").slice(0, 3);
   const labelTransform = String(preset?.labelTransform || "uppercase").toLowerCase();
   const isMinimal = String(preset?.layout || "pills").toLowerCase() === "minimal";
   const canDrawSeparators = Boolean(separator && distribution !== "vertical" && distribution !== "grid");
-  const gridTemplateColumns = getGridTemplate(distribution, Math.max(1, v2Parts.length));
-
-  const valueSize = Math.max(11, Math.round(SZ.valueFs * 0.95));
-  const unitLabelSize = Math.max(8, Math.round(SZ.labelFs * 0.9));
+  const itemCount = Math.max(1, v2Parts.length);
+  const valueSize = Math.max(10, toFinite(preset?.fontSize, 28));
+  const unitLabelSize = Math.max(8, toFinite(preset?.labelSize, 12));
+  const lineHeight = Math.max(0.8, toFinite(preset?.lineHeight, 1.05));
+  const letterSpacing = toFinite(preset?.letterSpacing, 0);
+  const requestedChipW = Math.max(36, toFinite(preset?.chipWidth, SZ.chipMinW) + chipPx * 2);
+  const textDrivenChipH = Math.max(
+    44,
+    chipPy * 2 + valueSize + (showLabels ? unitLabelSize + 6 : 0)
+  );
+  const layoutDrivenChipH = estimateCountdownUnitHeight({
+    tamanoBase: toFinite(preset?.tamanoBase, 320),
+    distribution,
+    unitsCount: itemCount,
+  });
+  const chipOuterH = Math.max(textDrivenChipH, layoutDrivenChipH);
+  const baseChipW = resolveCountdownUnitWidth({
+    width: requestedChipW,
+    height: chipOuterH,
+    boxRadius: chipRadius,
+  });
+  const cols =
+    distribution === "vertical"
+      ? 1
+      : distribution === "grid"
+        ? Math.min(2, itemCount)
+        : itemCount;
+  const rows =
+    distribution === "vertical"
+      ? itemCount
+      : distribution === "grid"
+        ? Math.ceil(itemCount / cols)
+        : 1;
+  const editorialWidths =
+    distribution === "editorial"
+      ? Array.from({ length: itemCount }, (_, index) =>
+          resolveCountdownUnitWidth({
+            width: Math.max(
+              34,
+              Math.round(baseChipW * (index === 0 && itemCount > 1 ? 1.25 : 0.88))
+            ),
+            height: chipOuterH,
+            boxRadius: chipRadius,
+          })
+        )
+      : [];
+  const naturalW =
+    distribution === "vertical"
+      ? baseChipW
+      : distribution === "grid"
+        ? cols * baseChipW + gap * (cols - 1)
+        : distribution === "editorial"
+          ? editorialWidths.reduce((acc, width) => acc + width, 0) +
+            gap * Math.max(0, itemCount - 1)
+          : itemCount * baseChipW + gap * (itemCount - 1);
+  const naturalH =
+    distribution === "vertical" || distribution === "grid"
+      ? rows * chipOuterH + gap * Math.max(0, rows - 1)
+      : chipOuterH;
+  const containerW = Math.max(
+    1,
+    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0)
+  );
+  const containerH = Math.max(
+    1,
+    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
+  );
+  const contentBounds = {
+    x: useSingleFrameLayout ? framePadding : 0,
+    y: useSingleFrameLayout ? framePadding : 0,
+    width: Math.max(1, containerW - (useSingleFrameLayout ? framePadding * 2 : 0)),
+    height: Math.max(1, containerH - (useSingleFrameLayout ? framePadding * 2 : 0)),
+  };
+  const distributionW =
+    distribution === "grid"
+      ? cols * baseChipW + gap * (cols - 1)
+      : distribution === "vertical"
+        ? baseChipW
+        : naturalW;
+  const distributionH =
+    distribution === "vertical" || distribution === "grid"
+      ? rows * chipOuterH + gap * Math.max(0, rows - 1)
+      : chipOuterH;
+  const startX = contentBounds.x + (contentBounds.width - distributionW) / 2;
+  const startY = contentBounds.y + (contentBounds.height - distributionH) / 2;
+  const unitLayouts =
+    distribution === "vertical"
+      ? v2Parts.map((item, index) => ({
+          ...item,
+          x: contentBounds.x + (contentBounds.width - baseChipW) / 2,
+          y: startY + index * (chipOuterH + gap),
+          width: baseChipW,
+          height: chipOuterH,
+        }))
+      : distribution === "grid"
+        ? v2Parts.map((item, index) => {
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            return {
+              ...item,
+              x: startX + col * (baseChipW + gap),
+              y: startY + row * (chipOuterH + gap),
+              width: baseChipW,
+              height: chipOuterH,
+            };
+          })
+        : distribution === "editorial"
+          ? (() => {
+              let cursorX = startX;
+              return v2Parts.map((item, index) => {
+                const width = editorialWidths[index] || baseChipW;
+                const layout = {
+                  ...item,
+                  x: cursorX,
+                  y: startY,
+                  width,
+                  height: chipOuterH,
+                };
+                cursorX += width + gap;
+                return layout;
+              });
+            })()
+          : v2Parts.map((item, index) => ({
+              ...item,
+              x: startX + index * (baseChipW + gap),
+              y: startY,
+              width: baseChipW,
+              height: chipOuterH,
+            }));
+  const separatorFontSize = Math.max(10, Math.round(valueSize * 0.64));
+  const separatorLayouts =
+    canDrawSeparators && unitLayouts.length > 1
+      ? unitLayouts.slice(0, -1).map((item, index) => {
+          const next = unitLayouts[index + 1];
+          const itemRight = item.x + item.width;
+          const midpointX = itemRight + (next.x - itemRight) / 2;
+          const width = Math.max(12, Math.round(separatorFontSize * 1.4));
+          return {
+            key: `${item.key}-${next.key}-${index}`,
+            x: midpointX - width / 2,
+            y: item.y + Math.max(4, item.height * 0.3),
+            width,
+          };
+        })
+      : [];
 
   return (
     <div ref={wrapperRef} className="flex w-full justify-center overflow-hidden">
@@ -215,6 +385,8 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
         ref={innerRef}
         className="relative"
         style={{
+          width: containerW,
+          height: containerH,
           fontFamily,
           transform: `scale(${scale})`,
           transformOrigin: "center",
@@ -231,20 +403,22 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
           />
         ) : null}
 
-        <div
-          className="relative z-[1] grid"
-          style={{
-            gridTemplateColumns,
-            gap: `${gap}px`,
-            padding: useSingleFrameLayout ? `${framePadding}px` : 0,
-          }}
-        >
-          {v2Parts.map((item, index) => (
-            <div key={item.key} className="relative flex items-center">
+        <div className="relative z-[1]" style={{ width: containerW, height: containerH }}>
+          {unitLayouts.map((item) => (
+            <div
+              key={item.key}
+              className="absolute flex items-center"
+              style={{
+                left: item.x,
+                top: item.y,
+                width: item.width,
+                height: item.height,
+              }}
+            >
               <div
-                className="relative flex min-w-0 flex-col items-center justify-center leading-none"
+                className="relative flex h-full w-full min-w-0 flex-col items-center justify-center leading-none"
                 style={{
-                  minWidth: chipW,
+                  boxSizing: "border-box",
                   padding: `${chipPy}px ${chipPx}px`,
                   borderRadius: chipRadius,
                   background: isMinimal ? "transparent" : (preset?.boxBg || "transparent"),
@@ -274,13 +448,24 @@ export default function CountdownPreview({ targetISO, preset, size = "sm" }) {
                   ) : null}
                 </div>
               </div>
-
-              {canDrawSeparators && index < v2Parts.length - 1 ? (
-                <span className="mx-1 font-bold" style={{ ...numberTextPaintStyle, fontSize: valueSize }}>
-                  {separator}
-                </span>
-              ) : null}
             </div>
+          ))}
+          {separatorLayouts.map((item) => (
+            <span
+              key={item.key}
+              className="pointer-events-none absolute z-[2] flex items-center justify-center font-bold"
+              style={{
+                left: item.x,
+                top: item.y,
+                width: item.width,
+                ...numberTextPaintStyle,
+                fontSize: separatorFontSize,
+                lineHeight,
+                letterSpacing: `${letterSpacing}px`,
+              }}
+            >
+              {separator}
+            </span>
           ))}
         </div>
       </div>

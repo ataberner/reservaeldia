@@ -37,6 +37,54 @@ import {
 
 const INLINE_INTENT_STALE_MS = 1500;
 
+function toFiniteMetric(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function withDefinedMetrics(source = {}) {
+  return Object.fromEntries(
+    Object.entries(source).filter(([, value]) => typeof value !== "undefined")
+  );
+}
+
+function buildScaledCountdownResizeAttrs(source, nextWidth, nextHeight) {
+  const originalWidth = Math.max(1, toFiniteMetric(source?.width, 1));
+  const originalHeight = Math.max(1, toFiniteMetric(source?.height, 1));
+  const safeNextWidth = Math.max(1, toFiniteMetric(nextWidth, originalWidth));
+  const safeNextHeight = Math.max(1, toFiniteMetric(nextHeight, originalHeight));
+  const scaleX = safeNextWidth / originalWidth;
+  const scaleY = safeNextHeight / originalHeight;
+  const safeScaleX = Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1;
+  const safeScaleY = Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
+  const uniformScale = safeScaleX || safeScaleY || 1;
+
+  const scaleMetric = (value, { min = null } = {}) => {
+    const numeric = toFiniteMetric(value, null);
+    if (!Number.isFinite(numeric)) return undefined;
+    let scaled = numeric * uniformScale;
+    if (Number.isFinite(min)) scaled = Math.max(min, scaled);
+    return scaled;
+  };
+
+  return withDefinedMetrics({
+    width: safeNextWidth,
+    height: safeNextHeight,
+    scaleX: 1,
+    scaleY: 1,
+    tamanoBase: scaleMetric(source?.tamanoBase, { min: 40 }),
+    chipWidth: scaleMetric(source?.chipWidth, { min: 10 }),
+    fontSize: scaleMetric(source?.fontSize, { min: 6 }),
+    labelSize: scaleMetric(source?.labelSize, { min: 6 }),
+    gap: scaleMetric(source?.gap, { min: 0 }),
+    framePadding: scaleMetric(source?.framePadding, { min: 0 }),
+    paddingX: scaleMetric(source?.paddingX, { min: 2 }),
+    paddingY: scaleMetric(source?.paddingY, { min: 2 }),
+    boxRadius: scaleMetric(source?.boxRadius, { min: 0 }),
+    letterSpacing: scaleMetric(source?.letterSpacing),
+  });
+}
+
 function isInlineIntentDebugEnabled() {
   if (typeof window === "undefined") return false;
   return window.__DBG_INLINE_INTENT === true;
@@ -1974,11 +2022,12 @@ export default function CanvasStageContent({
                                 } else if (objOriginal.tipo === "countdown") {
                                   finalAttrs = {
                                     ...finalAttrs,
-                                    scaleX: Number.isFinite(cleanAttrs.scaleX) ? cleanAttrs.scaleX : (objOriginal.scaleX ?? 1),
-                                    scaleY: Number.isFinite(cleanAttrs.scaleY) ? cleanAttrs.scaleY : (objOriginal.scaleY ?? 1),
+                                    ...buildScaledCountdownResizeAttrs(
+                                      objOriginal,
+                                      cleanAttrs.width,
+                                      cleanAttrs.height
+                                    ),
                                   };
-                                  delete finalAttrs.width;
-                                  delete finalAttrs.height;
                                 } else if (objOriginal.tipo === "forma" && objOriginal.figura === "circle") {
                                   finalAttrs = {
                                     ...finalAttrs,

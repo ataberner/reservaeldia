@@ -26,6 +26,10 @@ import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { normalizeGiftConfig } from "@/domain/gifts/config";
 import {
+  captureCountdownAuditFromHtmlString,
+  captureCountdownAuditPublicationHtml,
+} from "@/domain/countdownAudit/runtime";
+import {
   createDraftFromTemplateWithInput,
   getTemplateById,
 } from "@/domain/templates/service";
@@ -104,6 +108,30 @@ const TEMPLATE_FORM_STATE_INITIAL = Object.freeze({
   rawValues: {},
   touchedKeys: [],
 });
+
+function schedulePublishedCountdownAuditCapture(publicUrl, fallbackHtml = "") {
+  const safePublicUrl = String(publicUrl || "").trim();
+  const safeFallbackHtml = String(fallbackHtml || "").trim();
+
+  if (safeFallbackHtml) {
+    captureCountdownAuditFromHtmlString(safeFallbackHtml, {
+      stage: "published-html",
+      renderer: "dom-generated",
+      sourceDocument: "publish-preview-html",
+      viewport: "public",
+      wrapperScale: 1,
+      usesRasterThumbnail: false,
+    });
+  }
+
+  if (typeof window === "undefined" || !safePublicUrl) return;
+
+  [900, 2200, 5000].forEach((delayMs) => {
+    window.setTimeout(() => {
+      void captureCountdownAuditPublicationHtml(safePublicUrl).catch(() => {});
+    }, delayMs);
+  });
+}
 
 function createEditorPreloadState(overrides = {}) {
   return {
@@ -2452,7 +2480,8 @@ export default function Dashboard() {
         ? "Invitacion actualizada correctamente."
         : "Invitacion publicada correctamente."
     );
-  }, []);
+    schedulePublishedCountdownAuditCapture(publicUrl, htmlVistaPrevia);
+  }, [htmlVistaPrevia]);
 
   const handleCompleteProfile = async (payload) => {
     const upsertUserProfileCallable = httpsCallable(cloudFunctions, "upsertUserProfile");

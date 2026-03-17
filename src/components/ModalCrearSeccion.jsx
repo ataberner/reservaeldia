@@ -3,6 +3,67 @@ import { useState, useEffect } from "react";
 import usePlantillasDeSeccion from "@/hooks/usePlantillasDeSeccion";
 import { subirImagenPublica } from "@/utils/imagenes";
 import { ALTURAS_SECCIONES } from "functions/src/models/dimensionesBase";
+import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
+
+function renderTemplatePreview(plantilla) {
+  const backgroundModel = normalizeSectionBackgroundModel(plantilla, {
+    sectionHeight: plantilla?.altura || 400,
+  });
+  const previewScale = 0.2;
+
+  return (
+    <div className="preview w-40 h-24 relative rounded overflow-hidden border text-[8px] bg-white">
+      <div
+        className="absolute inset-0"
+        style={{
+          background: backgroundModel.base.fondo || "#ffffff",
+          backgroundImage:
+            backgroundModel.base.fondoTipo === "imagen" && backgroundModel.base.fondoImagen
+              ? `url(${backgroundModel.base.fondoImagen})`
+              : undefined,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }}
+      />
+
+      {backgroundModel.decoraciones.map((decoracion) => (
+        <img
+          key={`${plantilla?.id || plantilla?.nombre || "plantilla"}-${decoracion.id}`}
+          src={decoracion.src}
+          alt=""
+          className="pointer-events-none absolute object-contain"
+          style={{
+            left: decoracion.x * previewScale,
+            top: decoracion.y * previewScale,
+            width: decoracion.width * previewScale,
+            height: decoracion.height * previewScale,
+            transform: `rotate(${decoracion.rotation || 0}deg)`,
+            transformOrigin: "top left",
+          }}
+        />
+      ))}
+
+      {plantilla?.objetos?.map((obj, i) =>
+        obj.tipo === "texto" ? (
+          <div
+            key={i}
+            className="absolute truncate"
+            style={{
+              top: (obj.y || 0) * previewScale,
+              left: (obj.x || 0) * previewScale,
+              fontSize: (obj.fontSize || 12) * previewScale,
+              color: obj.color || "#000",
+              fontFamily: obj.fontFamily || "sans-serif",
+            }}
+          >
+            {obj.texto}
+          </div>
+        ) : null
+      )}
+    </div>
+  );
+}
 
 export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
   const [modo, setModo] = useState("vacia"); // "vacia" o "plantilla"
@@ -196,30 +257,7 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
                     />
                     <div>
                       <div className="font-medium mb-1">{p.nombre}</div>
-                      <div className="preview w-40 h-24 relative rounded overflow-hidden border text-[8px]">
-                        <div
-                          className="absolute inset-0"
-                          style={{ backgroundColor: p.fondo }}
-                        >
-                          {p.objetos?.map((obj, i) =>
-                            obj.tipo === "texto" ? (
-                              <div
-                                key={i}
-                                className="absolute truncate"
-                                style={{
-                                  top: (obj.y || 0) * 0.2,
-                                  left: (obj.x || 0) * 0.2,
-                                  fontSize: (obj.fontSize || 12) * 0.2,
-                                  color: obj.color || "#000",
-                                  fontFamily: obj.fontFamily || "sans-serif"
-                                }}
-                              >
-                                {obj.texto}
-                              </div>
-                            ) : null
-                          )}
-                        </div>
-                      </div>
+                      {renderTemplatePreview(p)}
                     </div>
                   </div>
                 </label>
@@ -239,11 +277,35 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
           <button
             onClick={() => {
               if (modo === "plantilla" && plantillaSeleccionada) {
+                const backgroundModel = normalizeSectionBackgroundModel(plantillaSeleccionada, {
+                  sectionHeight: plantillaSeleccionada.altura || 400,
+                });
                 onConfirm({
                   id: `sec-${Date.now()}`,
                   altura: plantillaSeleccionada.altura,
                   fondo: plantillaSeleccionada.fondo || "#ffffff",
+                  fondoTipo: plantillaSeleccionada.fondoTipo || null,
+                  fondoImagen: plantillaSeleccionada.fondoImagen || null,
+                  fondoImagenOffsetX: Number.isFinite(
+                    Number(plantillaSeleccionada.fondoImagenOffsetX)
+                  )
+                    ? Number(plantillaSeleccionada.fondoImagenOffsetX)
+                    : 0,
+                  fondoImagenOffsetY: Number.isFinite(
+                    Number(plantillaSeleccionada.fondoImagenOffsetY)
+                  )
+                    ? Number(plantillaSeleccionada.fondoImagenOffsetY)
+                    : 0,
                   tipo: plantillaSeleccionada.tipo || "custom",
+                  altoModo: plantillaSeleccionada.altoModo || "fijo",
+                  alturaFijoBackup: Number.isFinite(
+                    Number(plantillaSeleccionada.alturaFijoBackup)
+                  )
+                    ? Number(plantillaSeleccionada.alturaFijoBackup)
+                    : null,
+                  decoracionesFondo: {
+                    items: backgroundModel.decoraciones,
+                  },
                   objetos: (plantillaSeleccionada.objetos || []).map(obj => ({
                     ...obj,
                     seccionId: `sec-${Date.now()}`

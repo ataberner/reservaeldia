@@ -3,6 +3,7 @@ import { collection, addDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { getAuth } from "firebase/auth";
 import { subirImagenPublica } from "@/utils/subirImagenPublica";
+import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
 
 /**
  * 💾 Guarda una sección como plantilla en Firestore
@@ -40,10 +41,29 @@ export const guardarSeccionComoPlantilla = async ({
   const nombre = prompt("Nombre de la plantilla:");
   if (!nombre) return;
 
+  const backgroundModel = normalizeSectionBackgroundModel(seccion, {
+    sectionHeight: seccion.altura,
+  });
+
   const plantilla = {
     nombre,
     altura: seccion.altura,
     fondo: seccion.fondo,
+    fondoTipo: seccion.fondoTipo || null,
+    fondoImagen: seccion.fondoImagen || null,
+    fondoImagenOffsetX: Number.isFinite(Number(seccion.fondoImagenOffsetX))
+      ? Number(seccion.fondoImagenOffsetX)
+      : 0,
+    fondoImagenOffsetY: Number.isFinite(Number(seccion.fondoImagenOffsetY))
+      ? Number(seccion.fondoImagenOffsetY)
+      : 0,
+    altoModo: seccion.altoModo || "fijo",
+    alturaFijoBackup: Number.isFinite(Number(seccion.alturaFijoBackup))
+      ? Number(seccion.alturaFijoBackup)
+      : null,
+    decoracionesFondo: {
+      items: backgroundModel.decoraciones,
+    },
     tipo: seccion.tipo,
     objetos: objetosFinales,
   };

@@ -172,6 +172,22 @@ function parseNullableNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseSectionDecorationHints(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const slots = Array.isArray(raw.slots)
+    ? raw.slots
+        .map((entry) => normalizeString(entry).toLowerCase())
+        .filter((entry) => entry === "superior" || entry === "inferior")
+    : [];
+
+  return {
+    enabled: raw.enabled !== false,
+    slots: slots.length ? [...new Set(slots)] : ["superior", "inferior"],
+    defaultWidth: parseNullableNumber(raw.defaultWidth),
+    defaultHeight: parseNullableNumber(raw.defaultHeight),
+  };
+}
+
 export function mapDecorDocToViewModel(doc, source = "active") {
   const categories = parseCategoriesInput([
     ...toList(doc?.categorias),
@@ -225,6 +241,7 @@ export function mapDecorDocToViewModel(doc, source = "active") {
     hasAlpha: typeof doc?.hasAlpha === "boolean" ? doc.hasAlpha : null,
     bytes: parseBytes(doc?.bytes),
     thumbnails: doc?.thumbnails || null,
+    sectionDecorationHints: parseSectionDecorationHints(doc?.sectionDecorationHints),
     searchTokens: Array.isArray(doc?.searchTokens) ? doc.searchTokens : [],
     raw: doc || {},
   };

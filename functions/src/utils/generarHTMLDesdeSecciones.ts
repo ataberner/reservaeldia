@@ -8,6 +8,7 @@ import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGa
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
 import { generarMotionEffectsRuntimeHTML } from "./generarMotionEffectsRuntime";
 import { generarInvitationLoaderRuntimeHTML } from "./generarInvitationLoaderRuntime";
+import { normalizeSectionBackgroundModel } from "./sectionBackground";
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
@@ -66,14 +67,15 @@ function escapeAttr(str: string = ""): string {
     .replace(/>/g, "&gt;");
 }
 
-function buildFondoStyle(seccion: any): string {
-  const fondoValue = seccion?.fondo || "transparent";
-  const esImagenFondo = seccion?.fondoTipo === "imagen" && seccion?.fondoImagen;
+function buildFondoStyle(seccion: any, backgroundModel = normalizeSectionBackgroundModel(seccion)): string {
+  const fondoValue = backgroundModel.base.fondo || "transparent";
+  const esImagenFondo =
+    backgroundModel.base.fondoTipo === "imagen" && backgroundModel.base.fondoImagen;
 
   let estilosFondo = "";
 
   if (esImagenFondo) {
-    let imageUrl = seccion.fondoImagen;
+    let imageUrl = backgroundModel.base.fondoImagen;
 
     if (
       imageUrl &&
@@ -86,11 +88,11 @@ function buildFondoStyle(seccion: any): string {
     let backgroundPosition = "center center";
 
     if (
-      seccion.fondoImagenOffsetX !== undefined ||
-      seccion.fondoImagenOffsetY !== undefined
+      backgroundModel.base.fondoImagenOffsetX !== undefined ||
+      backgroundModel.base.fondoImagenOffsetY !== undefined
     ) {
-      const offsetX = seccion.fondoImagenOffsetX || 0;
-      const offsetY = seccion.fondoImagenOffsetY || 0;
+      const offsetX = backgroundModel.base.fondoImagenOffsetX || 0;
+      const offsetY = backgroundModel.base.fondoImagenOffsetY || 0;
 
       const offsetXPercent = offsetX !== 0 ? `calc(50% - ${-offsetX}px)` : "50%";
       const offsetYPercent = offsetY !== 0 ? `calc(50% - ${-offsetY}px)` : "50%";
@@ -122,14 +124,72 @@ function buildFondoStyle(seccion: any): string {
 }
 
 function hasImageBackground(seccion: any): boolean {
-  if (seccion?.fondoTipo === "imagen" && seccion?.fondoImagen) return true;
+  const backgroundModel = normalizeSectionBackgroundModel(seccion);
+  if (backgroundModel.base.fondoTipo === "imagen" && backgroundModel.base.fondoImagen) return true;
 
-  const fondoValue = typeof seccion?.fondo === "string" ? seccion.fondo.trim() : "";
+  const fondoValue =
+    typeof backgroundModel.base.fondo === "string" ? backgroundModel.base.fondo.trim() : "";
   return (
     fondoValue.startsWith("http") ||
     fondoValue.startsWith("data:") ||
     fondoValue.startsWith("blob:")
   );
+}
+
+function buildSectionDecorationScaleVar(mode: string): string {
+  return String(mode || "").toLowerCase() === "pantalla" ? "var(--sfinal)" : "var(--sx)";
+}
+
+function buildSectionDecorationTopCss(top: number, mode: string): string {
+  const scaleVar = buildSectionDecorationScaleVar(mode);
+  if (String(mode || "").toLowerCase() === "pantalla") {
+    return `calc(var(--pantalla-y-base, 0px) + (${scaleVar} * ${top}px) + (${scaleVar} * var(--pantalla-y-offset, 0px)))`;
+  }
+  return `calc(${scaleVar} * ${top}px)`;
+}
+
+function buildSectionDecorationStyle(decoration: any, mode: string): string {
+  const left = Number(decoration?.x) || 0;
+  const top = Number(decoration?.y) || 0;
+  const width = Math.max(1, Number(decoration?.width) || 1);
+  const height = Math.max(1, Number(decoration?.height) || 1);
+  const rotation = Number(decoration?.rotation) || 0;
+  const scaleVar = buildSectionDecorationScaleVar(mode);
+
+  return [
+    `left:calc(${scaleVar} * ${left}px)`,
+    `top:${buildSectionDecorationTopCss(top, mode)}`,
+    `width:calc(${scaleVar} * ${width}px)`,
+    `height:calc(${scaleVar} * ${height}px)`,
+    `transform:rotate(${rotation}deg)`,
+    "transform-origin:center center",
+  ].join(";");
+}
+
+function renderSectionDecorations(decorations: any[], mode: string): string {
+  const items = (Array.isArray(decorations) ? decorations : [])
+    .map((decoration) => {
+      const src = escapeAttr(String(decoration?.src || "").trim());
+      if (!src) return "";
+
+      const itemStyle = escapeAttr(buildSectionDecorationStyle(decoration, mode));
+      return `
+        <div class="sec-decor-item" style="${itemStyle}">
+          <img src="${src}" alt="" loading="lazy" decoding="async" />
+        </div>
+      `.trim();
+    })
+    .filter(Boolean);
+
+  if (!items.length) return "";
+
+  return `
+    <div class="sec-decor-layer">
+      <div class="sec-decor-content">
+        ${items.join("\n")}
+      </div>
+    </div>
+  `.trim();
 }
 
 export function generarHTMLDesdeSecciones(
@@ -765,6 +825,7 @@ export function generarHTMLDesdeSecciones(
 
   const htmlSecciones = seccionesOrdenadas
     .map((seccion) => {
+      const backgroundModel = normalizeSectionBackgroundModel(seccion);
       const modo = String(seccion?.altoModo || "fijo").toLowerCase();
       const hbase = Number.isFinite(seccion?.altura) ? Number(seccion.altura) : 600;
       const fondoEsImagen = hasImageBackground(seccion);
@@ -779,7 +840,8 @@ export function generarHTMLDesdeSecciones(
         (o) => String(o?.anclaje || "").toLowerCase() !== "fullbleed"
       );
 
-      const fondoStyle = buildFondoStyle(seccion);
+      const fondoStyle = buildFondoStyle(seccion, backgroundModel);
+      const htmlDecoraciones = renderSectionDecorations(backgroundModel.decoraciones, modo);
 
       const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas);
       const htmlContenido = generarHTMLDesdeObjetos(objsContenido, seccionesOrdenadas);
@@ -789,6 +851,7 @@ export function generarHTMLDesdeSecciones(
 <section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" style="--hbase:${hbase}">
   <div class="sec-zoom">
     <div class="sec-bg" style="${fondoStyle}"></div>
+    ${htmlDecoraciones}
     <div class="sec-bleed">${htmlBleed}</div>
     <div class="sec-content">${htmlContenido}</div>
   </div>
@@ -942,6 +1005,41 @@ export function generarHTMLDesdeSecciones(
       pointer-events: none;
     }
 
+    .sec-decor-layer{
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .sec-decor-content{
+      position: relative;
+      z-index: 1;
+      width: var(--content-w);
+      height: 100%;
+      margin: 0 auto;
+      pointer-events: none;
+    }
+
+    .sec[data-modo="pantalla"] .sec-decor-content{
+      width: var(--content-w-pantalla, var(--content-w));
+    }
+
+    .sec-decor-item{
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .sec-decor-item img{
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      user-select: none;
+    }
+
     .sec-content{
       position: relative;
       z-index: 3;
@@ -958,6 +1056,14 @@ export function generarHTMLDesdeSecciones(
 
     @media (max-width: 767px){
       .sec-content{
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        padding-left: var(--safe-left);
+        padding-right: var(--safe-right);
+      }
+
+      .sec-decor-content{
         width: 100%;
         margin: 0;
         box-sizing: border-box;

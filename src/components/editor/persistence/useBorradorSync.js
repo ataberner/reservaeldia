@@ -19,6 +19,7 @@ import {
   pushEditorBreadcrumb,
 } from "@/lib/monitoring/editorIssueReporter";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+import { buildSectionDecorationsPayload } from "@/domain/sections/backgrounds";
 
 const PERSIST_DEBOUNCE_MS = 500;
 const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
@@ -170,6 +171,17 @@ function normalizeCountdownObjectGeometry(obj) {
   next.scaleY = 1;
 
   return next;
+}
+
+function normalizeSectionPersistenceShape(section) {
+  if (!section || typeof section !== "object" || Array.isArray(section)) return section;
+
+  return {
+    ...section,
+    decoracionesFondo: buildSectionDecorationsPayload(section, {
+      sectionHeight: section.altura,
+    }),
+  };
 }
 
 /**
@@ -336,7 +348,9 @@ export default function useBorradorSync({
           return obj;
         });
 
-        const seccionesLimpias = limpiarUndefined(rawSecciones);
+        const seccionesLimpias = limpiarUndefined(
+          rawSecciones.map((section) => normalizeSectionPersistenceShape(section))
+        );
         const objetosLimpios = limpiarUndefined(objetosValidados);
         const countdownForAudit = objetosValidados.find((item) => item?.tipo === "countdown") || null;
         const rsvpLimpio = rawRsvp
@@ -569,12 +583,17 @@ export default function useBorradorSync({
           });
 
           setObjetos(objsMigrados);
-          setSecciones(seccionesRefrescadas);
+          const seccionesNormalizadas = (Array.isArray(seccionesRefrescadas)
+            ? seccionesRefrescadas
+            : []
+          ).map((section) => normalizeSectionPersistenceShape(section));
+
+          setSecciones(seccionesNormalizadas);
           const countdownForAudit =
             objsMigrados.find((item) => item?.tipo === "countdown") || null;
           if (countdownForAudit) {
             const sectionMode = String(
-              seccionesRefrescadas.find((section) => section?.id === countdownForAudit?.seccionId)?.altoModo || ""
+              seccionesNormalizadas.find((section) => section?.id === countdownForAudit?.seccionId)?.altoModo || ""
             ).trim().toLowerCase();
             recordCountdownAuditSnapshot({
               countdown: countdownForAudit,
@@ -630,7 +649,7 @@ export default function useBorradorSync({
                   ? data.templateAuthoringDraft
                   : null,
               objetos: objsMigrados,
-              secciones: seccionesRefrescadas,
+              secciones: seccionesNormalizadas,
               rsvp: rsvpData && typeof rsvpData === "object" ? rsvpData : null,
               gifts: giftsData && typeof giftsData === "object" ? giftsData : null,
               loadedAt: Date.now(),
@@ -640,7 +659,7 @@ export default function useBorradorSync({
           pushEditorBreadcrumb("borrador-load-success", {
             slug: session.id,
             objetos: objsMigrados.length,
-            secciones: seccionesRefrescadas.length,
+            secciones: seccionesNormalizadas.length,
             source: hasInjectedDraft
               ? "injected-readonly"
               : session.kind === "template"
@@ -649,8 +668,8 @@ export default function useBorradorSync({
           });
 
           // Setear primera seccion activa si no hay
-          if (typeof setSeccionActivaId === "function" && seccionesRefrescadas.length > 0) {
-            setSeccionActivaId((prev) => prev || seccionesRefrescadas[0].id);
+          if (typeof setSeccionActivaId === "function" && seccionesNormalizadas.length > 0) {
+            setSeccionActivaId((prev) => prev || seccionesNormalizadas[0].id);
           }
         } else {
           pushEditorBreadcrumb("borrador-load-missing", {

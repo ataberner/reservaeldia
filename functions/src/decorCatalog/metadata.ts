@@ -17,6 +17,12 @@ export type NormalizedDecorMetadata = {
   popular: boolean;
   assetType: "decoracion";
   format: string | null;
+  sectionDecorationHints: {
+    enabled: boolean;
+    slots: ("superior" | "inferior")[];
+    defaultWidth: number | null;
+    defaultHeight: number | null;
+  } | null;
 };
 
 function normalizeToken(value: unknown): string {
@@ -83,6 +89,31 @@ function guessFormat(params: {
   const ext = clean.split(".").pop() || "";
   if (!ext) return null;
   return ext === "jpeg" ? "jpg" : ext;
+}
+
+function parseOptionalPositiveNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function normalizeSectionDecorationHints(
+  value: unknown
+): NormalizedDecorMetadata["sectionDecorationHints"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const slotSource = Array.isArray(raw.slots) ? raw.slots : [raw.slots];
+  const slots = slotSource
+    .map((entry) => normalizeToken(entry))
+    .filter((entry): entry is "superior" | "inferior" =>
+      entry === "superior" || entry === "inferior"
+    );
+
+  return {
+    enabled: raw.enabled !== false,
+    slots: slots.length ? [...new Set(slots)] : ["superior", "inferior"],
+    defaultWidth: parseOptionalPositiveNumber(raw.defaultWidth),
+    defaultHeight: parseOptionalPositiveNumber(raw.defaultHeight),
+  };
 }
 
 function derivePriority(rawPriority: unknown, rawPopular: unknown): {
@@ -158,6 +189,7 @@ export function normalizeDecorMetadata(raw: Record<string, unknown>): Normalized
     popular,
     assetType: DECOR_CATALOG_ASSET_TYPE,
     format,
+    sectionDecorationHints: normalizeSectionDecorationHints(raw.sectionDecorationHints),
   };
 }
 
@@ -175,6 +207,7 @@ export function mergeLegacyMetadata(
     popular: normalized.popular,
     assetType: normalized.assetType,
     format: normalized.format,
+    sectionDecorationHints: normalized.sectionDecorationHints,
     searchTokens: normalized.searchTokens,
     searchText: normalized.searchText,
   };

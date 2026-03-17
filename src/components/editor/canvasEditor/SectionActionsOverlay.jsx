@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Trash2,
@@ -5,30 +6,39 @@ import {
   MoveUp,
   MoveDown,
   PlusCircle,
-  Unlink2,
   Monitor,
   ChevronDown,
   ChevronUp,
+  Image as ImageIcon,
+  ImageOff,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
-import SelectorColorSeccion from "@/components/SelectorColorSeccion";
-import { toCssBackground } from "@/domain/colors/presets";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
-import { desanclarImagenDeFondo as desanclarFondo } from "@/utils/accionesFondo";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
+import {
+  convertirDecoracionFondoEnImagen,
+  desanclarImagenDeFondo,
+} from "@/utils/accionesFondo";
+import SectionBackgroundDecorationsPanel from "@/components/editor/sectionBackground/SectionBackgroundDecorationsPanel";
+import {
+  normalizeSectionBackgroundModel,
+  removeBackgroundDecoration,
+  reorderBackgroundDecoration,
+} from "@/domain/sections/backgrounds";
 
 const DESKTOP_PANEL_WIDTH = 76;
 const DESKTOP_PANEL_RIGHT = 12;
 
 const DESKTOP_TOOLTIP_LABELS = Object.freeze({
-  moveUp: "Subir sección",
-  moveDown: "Bajar sección",
-  add: "Añadir sección",
-  background: "Cambiar fondo",
+  moveUp: "Subir seccion",
+  moveDown: "Bajar seccion",
+  add: "Anadir seccion",
+  decorations: "Decoraciones del fondo",
   fullscreen: "Pantalla completa",
-  detachBackground: "Desanclar imagen de fondo",
   saveTemplate: "Guardar como plantilla",
-  delete: "Eliminar sección",
+  delete: "Eliminar seccion",
+  backgroundColor: "Color de fondo",
+  detachBackground: "Desanclar fondo",
 });
 
 const DESKTOP_BUTTON_BASE =
@@ -47,6 +57,16 @@ const DESKTOP_BUTTON_VARIANTS = Object.freeze({
   danger:
     "border-rose-300 bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-[0_10px_22px_rgba(225,29,72,0.28)] hover:-translate-y-[1px] hover:from-rose-600 hover:to-red-700 hover:shadow-[0_14px_28px_rgba(225,29,72,0.36)]",
 });
+
+function resolveColorInputValue(value) {
+  const safe = String(value || "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(safe)) return safe;
+  if (/^#[0-9a-f]{3}$/i.test(safe)) {
+    const [, a = "f", b = "f", c = "f"] = safe;
+    return `#${a}${a}${b}${b}${c}${c}`;
+  }
+  return "#ffffff";
+}
 
 function DesktopSectionActionButton({ action }) {
   const variantClassName = action.disabled
@@ -69,6 +89,30 @@ function DesktopSectionActionButton({ action }) {
   );
 }
 
+function DesktopColorControl({ value, disabled = false, onChange }) {
+  return (
+    <label
+      title={DESKTOP_TOOLTIP_LABELS.backgroundColor}
+      aria-label={DESKTOP_TOOLTIP_LABELS.backgroundColor}
+      className={`${DESKTOP_BUTTON_BASE} ${
+        disabled ? DESKTOP_BUTTON_DISABLED : DESKTOP_BUTTON_VARIANTS.neutral
+      } cursor-pointer`}
+    >
+      <input
+        type="color"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="sr-only"
+      />
+      <span
+        className="h-5 w-5 rounded-full border border-white/80 shadow-inner"
+        style={{ background: value }}
+      />
+    </label>
+  );
+}
+
 export default function SectionActionsOverlay({
   seccionActivaId,
   seccionesOrdenadas,
@@ -88,35 +132,72 @@ export default function SectionActionsOverlay({
   setSecciones,
   setObjetos,
   setElementosSeleccionados,
-  mobileBackgroundEditSectionId,
-  setMobileBackgroundEditSectionId,
+  sectionDecorationEdit,
+  setSectionDecorationEdit,
   canManageSite,
   refrescarPlantillasDeSeccion,
   abrirModalBorrarSeccion,
+  setSeccionActivaId,
 }) {
-  if (!seccionActivaId) return null;
+  const [decorationsPanelOpen, setDecorationsPanelOpen] = useState(false);
+  const overlayRootRef = useRef(null);
+
+  useEffect(() => {
+    setDecorationsPanelOpen(false);
+  }, [seccionActivaId]);
 
   const activeSectionIndex = seccionesOrdenadas.findIndex((seccion) => seccion.id === seccionActivaId);
-  if (activeSectionIndex === -1) return null;
+  const seccion = activeSectionIndex === -1 ? null : seccionesOrdenadas[activeSectionIndex];
+  const backgroundModel = seccion
+    ? normalizeSectionBackgroundModel(seccion, {
+        sectionHeight: seccion.altura,
+      })
+    : { base: { fondo: "#ffffff" }, decoraciones: [] };
+  const decoraciones = Array.isArray(backgroundModel.decoraciones)
+    ? backgroundModel.decoraciones
+    : [];
+  const decoracionesCount = decoraciones.length;
+  const hasBaseImage =
+    backgroundModel.base.fondoTipo === "imagen" &&
+    typeof backgroundModel.base.fondoImagen === "string" &&
+    backgroundModel.base.fondoImagen.trim().length > 0;
 
-  const seccion = seccionesOrdenadas[activeSectionIndex];
+  useEffect(() => {
+    if (!seccionActivaId || activeSectionIndex === -1 || !decoracionesCount) {
+      setDecorationsPanelOpen(false);
+    }
+  }, [activeSectionIndex, decoracionesCount, seccionActivaId]);
+
+  useEffect(() => {
+    if (!decorationsPanelOpen) return undefined;
+
+    const handlePointerOutside = (event) => {
+      const root = overlayRootRef.current;
+      if (!root || root.contains(event.target)) return;
+      setDecorationsPanelOpen(false);
+    };
+
+    window.addEventListener("mousedown", handlePointerOutside);
+    window.addEventListener("touchstart", handlePointerOutside, { passive: true });
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerOutside);
+      window.removeEventListener("touchstart", handlePointerOutside);
+    };
+  }, [decorationsPanelOpen]);
+
+  if (!seccionActivaId || !seccion || activeSectionIndex === -1) return null;
+
+  const activeDecorationId =
+    sectionDecorationEdit?.sectionId === seccion.id ? sectionDecorationEdit.decorationId : null;
+
   const offsetY = calcularOffsetY(seccionesOrdenadas, activeSectionIndex, altoCanvas);
   const esPrimera = activeSectionIndex === 0;
   const esUltima = activeSectionIndex === seccionesOrdenadas.length - 1;
   const estaAnimando = seccionesAnimando.includes(seccion.id);
   const modoSeccion = normalizarAltoModo(seccion.altoModo);
   const esPantalla = modoSeccion === "pantalla";
-  const tieneFondoImagen = seccion.fondoTipo === "imagen";
-
-  const handleDesanclarFondo = () =>
-    desanclarFondo({
-      seccionId: seccion.id,
-      secciones,
-      objetos,
-      setSecciones,
-      setObjetos,
-      setElementosSeleccionados,
-    });
+  const colorInputValue = resolveColorInputValue(backgroundModel.base.fondo);
 
   const handleGuardarComoPlantilla = () =>
     guardarSeccionComoPlantilla({
@@ -130,8 +211,95 @@ export default function SectionActionsOverlay({
     if (isMobile) {
       setMobileSectionActionsOpen(false);
     }
+    setDecorationsPanelOpen(false);
     abrirModalBorrarSeccion(seccion.id);
   };
+
+  const handleDetachBaseImage = () => {
+    setSectionDecorationEdit(null);
+    desanclarImagenDeFondo({
+      seccionId: seccion.id,
+      secciones,
+      objetos,
+      setSecciones,
+      setObjetos,
+      setElementosSeleccionados,
+    });
+  };
+
+  const handleToggleDecorationAdjust = (decorationId) => {
+    const isClosingCurrentDecoration = activeDecorationId === decorationId;
+    setElementosSeleccionados([]);
+    if (!isClosingCurrentDecoration) {
+      setDecorationsPanelOpen(false);
+      if (isMobile) {
+        setMobileSectionActionsOpen(false);
+      }
+    }
+    setSectionDecorationEdit((previous) => {
+      if (
+        previous?.sectionId === seccion.id &&
+        previous?.decorationId === decorationId
+      ) {
+      return null;
+      }
+      return {
+        sectionId: seccion.id,
+        decorationId,
+        overlayReady: false,
+      };
+    });
+  };
+
+  const handleReorderDecoration = (decorationId, direction) => {
+    setSecciones((previous) =>
+      reorderBackgroundDecoration(previous, seccion.id, decorationId, direction)
+    );
+  };
+
+  const handleRemoveDecoration = (decorationId) => {
+    setSecciones((previous) =>
+      removeBackgroundDecoration(previous, seccion.id, decorationId)
+    );
+    setSectionDecorationEdit((previous) => {
+      if (
+        previous?.sectionId === seccion.id &&
+        previous?.decorationId === decorationId
+      ) {
+        return null;
+      }
+      return previous;
+    });
+  };
+
+  const handleConvertDecorationToImage = (decorationId) => {
+    convertirDecoracionFondoEnImagen({
+      seccionId: seccion.id,
+      decorationId,
+      secciones,
+      objetos,
+      setSecciones,
+      setObjetos,
+      setElementosSeleccionados,
+      setSectionDecorationEdit,
+      setSeccionActivaId,
+    });
+  };
+
+  const renderDecorationsPanel = (mobile = false) => (
+    <SectionBackgroundDecorationsPanel
+      decorations={decoraciones}
+      activeDecorationId={activeDecorationId}
+      disabled={estaAnimando || isDeletingSection}
+      isMobile={mobile}
+      onClose={() => setDecorationsPanelOpen(false)}
+      onAdjust={handleToggleDecorationAdjust}
+      onMoveUp={(decorationId) => handleReorderDecoration(decorationId, "up")}
+      onMoveDown={(decorationId) => handleReorderDecoration(decorationId, "down")}
+      onRemove={handleRemoveDecoration}
+      onConvertToImage={handleConvertDecorationToImage}
+    />
+  );
 
   const mobileButtonBase =
     "px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-2 focus-visible:ring-[#dccaf7]";
@@ -155,6 +323,20 @@ export default function SectionActionsOverlay({
 
   const mobileActionButtons = (
     <>
+      <label className="flex items-center justify-between gap-3 rounded-xl border border-[#e4d7f6] bg-white/95 px-3 py-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <span className="text-xs font-semibold text-[#5f3596]">Color de fondo</span>
+        <span className="inline-flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-500">{colorInputValue.toUpperCase()}</span>
+          <input
+            type="color"
+            value={colorInputValue}
+            disabled={estaAnimando || isDeletingSection}
+            onChange={(event) => cambiarColorFondoSeccion(seccion.id, event.target.value)}
+            className="h-9 w-11 cursor-pointer rounded-lg border border-[#dac7f7] bg-white p-1"
+          />
+        </span>
+      </label>
+
       <button
         type="button"
         onClick={() =>
@@ -204,70 +386,54 @@ export default function SectionActionsOverlay({
         {renderMobileActionContent(PlusCircle, "Anadir seccion")}
       </button>
 
-      <div
-        className={`${mobileButtonBase} ${mobileButtonNeutral} flex items-center justify-between gap-2`}
-        title="Cambiar color de fondo de esta seccion"
-      >
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="h-3.5 w-3.5 rounded border border-white/80 shadow-sm"
-            style={{ background: toCssBackground(seccion.fondo, "#ffffff") }}
-          />
-          Fondo seccion
-        </span>
-        <SelectorColorSeccion
-          seccion={seccion}
-          disabled={estaAnimando || isDeletingSection}
-          onChange={(id, color) => cambiarColorFondoSeccion(id, color)}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
+      {hasBaseImage ? (
         <button
           type="button"
-          onClick={() => togglePantallaCompletaSeccion(seccion.id)}
-          className={`${mobileButtonBase} ${esPantalla ? mobileButtonPrimary : mobileButtonNeutral}`}
-          title="Pantalla completa de la seccion"
-          aria-label={esPantalla ? "Pantalla completa activada" : "Pantalla completa desactivada"}
+          onClick={handleDetachBaseImage}
+          disabled={estaAnimando || isDeletingSection}
+          className={`${mobileButtonBase} ${
+            estaAnimando || isDeletingSection ? mobileButtonDisabled : mobileButtonNeutral
+          } ${estaAnimando || isDeletingSection ? "animate-pulse" : ""}`}
+          title="Desanclar la imagen de fondo"
+          aria-label="Desanclar fondo"
+        >
+          {renderMobileActionContent(ImageOff, "Desanclar fondo")}
+        </button>
+      ) : null}
+
+      {decoracionesCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setDecorationsPanelOpen((previous) => !previous)}
+          className={`${mobileButtonBase} ${
+            decorationsPanelOpen ? mobileButtonPrimary : mobileButtonNeutral
+          }`}
+          title="Decoraciones del fondo"
+          aria-label="Decoraciones del fondo"
         >
           {renderMobileActionContent(
-            Monitor,
-            esPantalla ? "Pantalla completa: ON" : "Pantalla completa: OFF"
+            ImageIcon,
+            decorationsPanelOpen
+              ? `Decoraciones (${decoracionesCount}): ON`
+              : `Decoraciones (${decoracionesCount})`
           )}
         </button>
+      ) : null}
 
-        {tieneFondoImagen && (
-          <button
-            type="button"
-            onClick={handleDesanclarFondo}
-            className={`${mobileButtonBase} ${mobileButtonNeutral}`}
-            title="Desanclar imagen de fondo"
-            aria-label="Desanclar imagen de fondo"
-          >
-            {renderMobileActionContent(Unlink2, "Desanclar fondo")}
-          </button>
+      <button
+        type="button"
+        onClick={() => togglePantallaCompletaSeccion(seccion.id)}
+        className={`${mobileButtonBase} ${esPantalla ? mobileButtonPrimary : mobileButtonNeutral}`}
+        title="Pantalla completa de la seccion"
+        aria-label={esPantalla ? "Pantalla completa activada" : "Pantalla completa desactivada"}
+      >
+        {renderMobileActionContent(
+          Monitor,
+          esPantalla ? "Pantalla completa: ON" : "Pantalla completa: OFF"
         )}
+      </button>
 
-        {tieneFondoImagen && isMobile && (
-          <button
-            type="button"
-            onClick={() => {
-              setMobileBackgroundEditSectionId((prev) => (prev === seccion.id ? null : seccion.id));
-            }}
-            className={`${mobileButtonBase} ${
-              mobileBackgroundEditSectionId === seccion.id
-                ? "border-indigo-300 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-[0_10px_22px_rgba(79,70,229,0.28)] hover:-translate-y-[1px] hover:from-indigo-600 hover:to-indigo-700 hover:shadow-[0_14px_28px_rgba(79,70,229,0.36)]"
-                : mobileButtonNeutral
-            }`}
-            title="Modo mover fondo en mobile"
-            aria-label="Modo mover fondo"
-          >
-            {mobileBackgroundEditSectionId === seccion.id ? "Mover fondo: ON" : "Mover fondo"}
-          </button>
-        )}
-      </div>
-
-      {canManageSite && (
+      {canManageSite ? (
         <button
           type="button"
           onClick={handleGuardarComoPlantilla}
@@ -280,7 +446,7 @@ export default function SectionActionsOverlay({
         >
           {renderMobileActionContent(Layers, "Plantilla")}
         </button>
-      )}
+      ) : null}
 
       <button
         type="button"
@@ -302,6 +468,7 @@ export default function SectionActionsOverlay({
 
     return createPortal(
       <div
+        ref={overlayRootRef}
         className="fixed z-[90] flex flex-col items-end gap-2"
         style={{
           top: mobileSectionActionsTop,
@@ -310,7 +477,7 @@ export default function SectionActionsOverlay({
       >
         <button
           type="button"
-          onClick={() => setMobileSectionActionsOpen((prev) => !prev)}
+          onClick={() => setMobileSectionActionsOpen((previous) => !previous)}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-[#ccb6ef] bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6737b3] text-white shadow-[0_10px_22px_rgba(119,61,190,0.35)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#7f4fc5] hover:via-[#6f3bbc] hover:to-[#5f31a8] hover:shadow-[0_14px_28px_rgba(119,61,190,0.42)]"
           title="Acciones de seccion"
         >
@@ -321,11 +488,18 @@ export default function SectionActionsOverlay({
           )}
         </button>
 
-        {mobileSectionActionsOpen && (
-          <div className="w-[min(84vw,230px)] max-h-[62vh] overflow-y-auto rounded-xl border border-purple-200 bg-white/95 p-2 shadow-2xl backdrop-blur">
-            <div className="flex flex-col gap-2">{mobileActionButtons}</div>
+        {mobileSectionActionsOpen ? (
+          <div
+            className={`max-h-[72vh] overflow-x-hidden overflow-y-auto rounded-xl border border-purple-200 bg-white/95 p-2 shadow-2xl backdrop-blur ${
+              decorationsPanelOpen ? "w-[min(94vw,420px)]" : "w-[min(84vw,230px)]"
+            }`}
+          >
+            <div className="flex flex-col gap-2">
+              {mobileActionButtons}
+              {decorationsPanelOpen ? <div className="pt-1">{renderDecorationsPanel(true)}</div> : null}
+            </div>
           </div>
-        )}
+        ) : null}
       </div>,
       document.body,
       `orden-mobile-${seccion.id}`
@@ -379,16 +553,24 @@ export default function SectionActionsOverlay({
           pulse: estaAnimando,
           onClick: handleCrearSeccion,
         },
+        ...(decoracionesCount > 0
+          ? [
+              {
+                id: "decorations",
+                icon: ImageIcon,
+                title: `${DESKTOP_TOOLTIP_LABELS.decorations} (${decoracionesCount})`,
+                ariaLabel: DESKTOP_TOOLTIP_LABELS.decorations,
+                variant: decorationsPanelOpen ? "active" : "neutral",
+                pressed: decorationsPanelOpen,
+                onClick: () => setDecorationsPanelOpen((previous) => !previous),
+              },
+            ]
+          : []),
       ],
     },
     {
-      id: "appearance",
+      id: "display",
       items: [
-        {
-          id: "background",
-          type: "color-picker",
-          title: DESKTOP_TOOLTIP_LABELS.background,
-        },
         {
           id: "fullscreen",
           icon: Monitor,
@@ -398,15 +580,17 @@ export default function SectionActionsOverlay({
           pressed: esPantalla,
           onClick: () => togglePantallaCompletaSeccion(seccion.id),
         },
-        ...(tieneFondoImagen
+        ...(hasBaseImage
           ? [
               {
                 id: "detach-background",
-                icon: Unlink2,
+                icon: ImageOff,
                 title: DESKTOP_TOOLTIP_LABELS.detachBackground,
                 ariaLabel: DESKTOP_TOOLTIP_LABELS.detachBackground,
                 variant: "neutral",
-                onClick: handleDesanclarFondo,
+                disabled: estaAnimando || isDeletingSection,
+                pulse: estaAnimando || isDeletingSection,
+                onClick: handleDetachBaseImage,
               },
             ]
           : []),
@@ -450,6 +634,7 @@ export default function SectionActionsOverlay({
 
   return (
     <div
+      ref={overlayRootRef}
       className="absolute"
       style={{
         top: offsetY + 20,
@@ -460,6 +645,12 @@ export default function SectionActionsOverlay({
         willChange: "top, opacity, box-shadow",
       }}
     >
+      {decorationsPanelOpen ? (
+        <div className="absolute right-[calc(100%+14px)] top-0 z-[32]">
+          {renderDecorationsPanel(false)}
+        </div>
+      ) : null}
+
       <div
         key={seccion.id}
         className={`relative overflow-hidden rounded-2xl border bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(249,245,255,0.97)_100%)] px-2 py-2.5 backdrop-blur-[10px] ${
@@ -482,41 +673,20 @@ export default function SectionActionsOverlay({
         />
 
         <div className="relative flex flex-col items-center gap-2">
-          <div className="flex flex-col items-center gap-1 pb-0.5">
-            <span className="inline-flex items-center gap-1 rounded-full border border-[#eadff9] bg-white/90 px-2 py-0.5 shadow-[0_4px_10px_rgba(90,52,156,0.08)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#7a44ce]" />
-              <span className="text-[9px] font-semibold tracking-[0.22em] text-[#6b43a8]">
-                SECCIÓN
-              </span>
-            </span>
-          </div>
+          <DesktopColorControl
+            value={colorInputValue}
+            disabled={estaAnimando || isDeletingSection}
+            onChange={(nextColor) => cambiarColorFondoSeccion(seccion.id, nextColor)}
+          />
 
-          {desktopActionGroups.map((group, groupIndex) => (
-            <div key={group.id} className="flex w-full flex-col items-center gap-2">
-              <div className="flex w-full flex-col items-center gap-1.5">
-                {group.items.map((action) =>
-                  action.type === "color-picker" ? (
-                    <div key={action.id} className="flex w-full justify-center">
-                      <SelectorColorSeccion
-                        compact
-                        seccion={seccion}
-                        title={action.title}
-                        disabled={estaAnimando || isDeletingSection}
-                        onChange={(id, color) => cambiarColorFondoSeccion(id, color)}
-                      />
-                    </div>
-                  ) : (
-                    <DesktopSectionActionButton key={action.id} action={action} />
-                  )
-                )}
-              </div>
-
-              {groupIndex < desktopActionGroups.length - 1 ? (
-                <div
-                  aria-hidden="true"
-                  className="h-px w-9 bg-gradient-to-r from-transparent via-[#ddcff5] to-transparent"
-                />
-              ) : null}
+          {desktopActionGroups.map((group) => (
+            <div
+              key={group.id}
+              className="flex flex-col items-center gap-2 border-t border-[#ece3f9] pt-2 first:border-t-0 first:pt-0"
+            >
+              {group.items.map((action) => (
+                <DesktopSectionActionButton key={action.id} action={action} />
+              ))}
             </div>
           ))}
         </div>

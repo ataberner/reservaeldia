@@ -14,7 +14,10 @@ import ShapeToolbar from './ShapeToolbar';
 import useEditorHandlers from '@/hooks/useEditorHandlers';
 import FontSelector from './FontSelector';
 import { reemplazarFondoSeccion as reemplazarFondo } from "@/utils/accionesFondo";
-import { desanclarImagenDeFondo as desanclarFondo } from "@/utils/accionesFondo";
+import {
+  convertirDecoracionFondoEnImagen,
+  convertirImagenEnDecoracionFondo,
+} from "@/utils/accionesFondo";
 import { validarPuntosLinea } from "./editor/selection/selectionUtils";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import useGuiasCentrado from '@/hooks/useGuiasCentrado';
@@ -69,6 +72,11 @@ import useTextEditInteractionController from "@/components/editor/textSystem/run
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
+import {
+  applySectionSolidBackground,
+  normalizeSectionBackgroundModel,
+  removeBackgroundDecoration,
+} from "@/domain/sections/backgrounds";
 
 
 Konva.dragDistance = 8;
@@ -238,6 +246,7 @@ export default function CanvasEditor({
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const [giftsConfig, setGiftsConfig] = useState(null);
+  const [sectionDecorationEdit, setSectionDecorationEdit] = useState(null);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
 
@@ -273,7 +282,28 @@ export default function CanvasEditor({
       loadedAt: 0,
     });
     setTemplateEditorialPanelOpen(false);
+    setSectionDecorationEdit(null);
   }, [slug]);
+
+  useEffect(() => {
+    setSectionDecorationEdit((previous) => {
+      if (!previous?.sectionId || !previous?.decorationId) return previous;
+      const targetSection = secciones.find((section) => section?.id === previous.sectionId);
+      if (!targetSection) return null;
+      const decoration = normalizeSectionBackgroundModel(targetSection, {
+        sectionHeight: targetSection.altura,
+      }).decoraciones.find((item) => item.id === previous.decorationId);
+      return decoration ? previous : null;
+    });
+  }, [secciones]);
+
+  useEffect(() => {
+    setSectionDecorationEdit((previous) => {
+      if (!previous?.sectionId || !seccionActivaId) return previous;
+      if (previous.sectionId === seccionActivaId) return previous;
+      return null;
+    });
+  }, [seccionActivaId]);
 
   const isTextResizeDebugEnabled = () =>
     typeof window !== "undefined" && Boolean(window.__DBG_TEXT_RESIZE);
@@ -955,6 +985,10 @@ export default function CanvasEditor({
     onDuplicar: readOnly ? () => {} : onDuplicar,
     onEliminar: readOnly ? () => {} : onEliminar,
     onDeseleccionar: () => {
+      if (sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) {
+        setSectionDecorationEdit(null);
+        return;
+      }
       if (elementosSeleccionados.length > 0) clearCanvasSelectionUi();
     },
     onCopiar: readOnly ? () => {} : onCopiar,
@@ -966,14 +1000,130 @@ export default function CanvasEditor({
 
 
   const cambiarColorFondoSeccion = useCallback((seccionId, nuevoColor) => {
-
-    setSecciones(prev =>
-      prev.map(s => {
-        if (s.id !== seccionId) return s;
-        return { ...s, fondo: nuevoColor };
-      })
+    setSectionDecorationEdit((previous) =>
+      previous?.sectionId === seccionId ? null : previous
     );
+    setSecciones((prev) => applySectionSolidBackground(prev, seccionId, nuevoColor));
   }, [setSecciones]);
+
+  const usarImagenComoDecoracionFondo = useCallback((elementoImagen) => {
+    convertirImagenEnDecoracionFondo({
+      elementoImagen,
+      secciones,
+      objetos,
+      setSecciones,
+      setObjetos,
+      setElementosSeleccionados,
+      setSeccionActivaId,
+      setSectionDecorationEdit,
+      setMostrarPanelZ,
+    });
+  }, [
+    objetos,
+    secciones,
+    setElementosSeleccionados,
+    setObjetos,
+    setSeccionActivaId,
+    setSecciones,
+    setSectionDecorationEdit,
+    setMostrarPanelZ,
+  ]);
+
+  const activeBackgroundDecorationMenuItem = useMemo(() => {
+    if (!sectionDecorationEdit?.sectionId || !sectionDecorationEdit?.decorationId) return null;
+
+    const sectionIndex = seccionesOrdenadas.findIndex(
+      (section) => section?.id === sectionDecorationEdit.sectionId
+    );
+    if (sectionIndex === -1) return null;
+
+    const targetSection = seccionesOrdenadas[sectionIndex];
+    const decoration = normalizeSectionBackgroundModel(targetSection, {
+      sectionHeight: targetSection.altura,
+    }).decoraciones.find((item) => item.id === sectionDecorationEdit.decorationId);
+
+    if (!decoration) return null;
+
+    const offsetY = calcularOffsetY(seccionesOrdenadas, sectionIndex, altoCanvas);
+
+    return {
+      id: `decoracion-fondo:${targetSection.id}:${decoration.id}`,
+      tipo: "decoracion-fondo",
+      nombre: decoration.nombre || "Decoracion del fondo",
+      src: decoration.src,
+      seccionId: targetSection.id,
+      decorationId: decoration.id,
+      x: decoration.x,
+      y: offsetY + decoration.y,
+      width: decoration.width,
+      height: decoration.height,
+      rotation: decoration.rotation || 0,
+    };
+  }, [altoCanvas, sectionDecorationEdit, seccionesOrdenadas]);
+
+  const handleConvertirDecoracionFondoEnImagen = useCallback(() => {
+    if (!activeBackgroundDecorationMenuItem) return;
+
+    convertirDecoracionFondoEnImagen({
+      seccionId: activeBackgroundDecorationMenuItem.seccionId,
+      decorationId: activeBackgroundDecorationMenuItem.decorationId,
+      secciones,
+      objetos,
+      setSecciones,
+      setObjetos,
+      setElementosSeleccionados,
+      setSectionDecorationEdit,
+      setSeccionActivaId,
+    });
+    setMostrarPanelZ(false);
+  }, [
+    activeBackgroundDecorationMenuItem,
+    objetos,
+    secciones,
+    setElementosSeleccionados,
+    setObjetos,
+    setSeccionActivaId,
+    setSecciones,
+    setSectionDecorationEdit,
+    setMostrarPanelZ,
+  ]);
+
+  const handleEliminarDecoracionFondo = useCallback(() => {
+    if (!activeBackgroundDecorationMenuItem) return;
+
+    setSecciones((previous) =>
+      removeBackgroundDecoration(
+        previous,
+        activeBackgroundDecorationMenuItem.seccionId,
+        activeBackgroundDecorationMenuItem.decorationId
+      )
+    );
+    setSectionDecorationEdit((previous) => {
+      if (
+        previous?.sectionId === activeBackgroundDecorationMenuItem.seccionId &&
+        previous?.decorationId === activeBackgroundDecorationMenuItem.decorationId
+      ) {
+        return null;
+      }
+      return previous;
+    });
+    setMostrarPanelZ(false);
+  }, [
+    activeBackgroundDecorationMenuItem,
+    setSecciones,
+    setSectionDecorationEdit,
+    setMostrarPanelZ,
+  ]);
+
+  const handleFinalizarAjusteDecoracionFondo = useCallback(() => {
+    setSectionDecorationEdit(null);
+    setMostrarPanelZ(false);
+  }, [setSectionDecorationEdit, setMostrarPanelZ]);
+
+  useEffect(() => {
+    if (sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) return;
+    setMostrarPanelZ(false);
+  }, [sectionDecorationEdit]);
 
 
   useEditorWindowBridge({
@@ -1062,6 +1212,7 @@ export default function CanvasEditor({
     layoutRootRef: editorOverlayRootRef,
     elementRefs,
     elementosSeleccionados,
+    backgroundDecorationSelection: activeBackgroundDecorationMenuItem,
     stageRef,
     escalaVisual,
     escalaActiva,
@@ -1400,6 +1551,9 @@ export default function CanvasEditor({
                 setElementosSeleccionados={setElementosSeleccionados}
                 mobileBackgroundEditSectionId={mobileBackgroundEditSectionId}
                 setMobileBackgroundEditSectionId={setMobileBackgroundEditSectionId}
+                sectionDecorationEdit={sectionDecorationEdit}
+                setSectionDecorationEdit={setSectionDecorationEdit}
+                setSeccionActivaId={setSeccionActivaId}
                 canManageSite={canManageSite}
                 refrescarPlantillasDeSeccion={refrescarPlantillasDeSeccion}
                 abrirModalBorrarSeccion={abrirModalBorrarSeccion}
@@ -1492,6 +1646,9 @@ export default function CanvasEditor({
                 handleTransformInteractionEnd={handleTransformInteractionEnd}
                 normalizarMedidasGaleria={normalizarMedidasGaleria}
                 setElementosSeleccionados={setElementosSeleccionados}
+                setSecciones={setSecciones}
+                sectionDecorationEdit={sectionDecorationEdit}
+                setSectionDecorationEdit={setSectionDecorationEdit}
               />
 
 
@@ -1553,6 +1710,9 @@ export default function CanvasEditor({
           setSecciones={setSecciones}
           setObjetos={setObjetos}
           setElementosSeleccionados={setElementosSeleccionados}
+          setSeccionActivaId={setSeccionActivaId}
+          setSectionDecorationEdit={setSectionDecorationEdit}
+          usarComoDecoracionFondo={usarImagenComoDecoracionFondo}
           abrirPanelRsvp={abrirPanelRsvp}
           abrirPanelRegalos={abrirPanelRegalos}
           canRenderTemplateAuthoringMenu={canRenderTemplateAuthoringMenu}
@@ -1577,6 +1737,11 @@ export default function CanvasEditor({
           isDeletingSection={isDeletingSection}
           cerrarModalBorrarSeccion={cerrarModalBorrarSeccion}
           confirmarBorrarSeccion={confirmarBorrarSeccion}
+          sectionDecorationEdit={sectionDecorationEdit}
+          activeBackgroundDecorationMenuItem={activeBackgroundDecorationMenuItem}
+          onConvertirDecoracionFondoEnImagen={handleConvertirDecoracionFondoEnImagen}
+          onEliminarDecoracionFondo={handleEliminarDecoracionFondo}
+          onFinalizarAjusteDecoracionFondo={handleFinalizarAjusteDecoracionFondo}
         />
       )}
 

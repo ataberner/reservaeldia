@@ -44,6 +44,10 @@ import {
   getPricingForOperation,
   loadCheckoutPricingConfig,
 } from "../siteSettings/pricing";
+import {
+  listSectionVisualAssets,
+  normalizeSectionBackgroundModel,
+} from "../utils/sectionBackground";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -2137,25 +2141,89 @@ async function resolveUrlsInObjects(objetos: unknown[]): Promise<unknown[]> {
         obj.src &&
         !obj.src.startsWith("http")
       ) {
-        try {
-          const [url] = await bucket.file(obj.src).getSignedUrl({
-            action: "read",
-            expires: Date.now() + 1000 * 60 * 60 * 24 * 365,
-          });
+        const resolvedUrl = await resolveStorageReadUrl(obj.src);
+        if (resolvedUrl) {
           return {
             ...obj,
-            src: url,
+            src: resolvedUrl,
           };
-        } catch (error) {
-          logger.warn("No se pudo resolver URL de objeto en publicacion", {
-            src: obj.src,
-            error: error instanceof Error ? error.message : String(error || ""),
-          });
-          return obj;
         }
+        return obj;
       }
 
       return obj;
+    })
+  );
+}
+
+async function resolveStorageReadUrl(
+  rawPathOrUrl: unknown,
+  storagePathOverride: unknown = null
+): Promise<string | null> {
+  const directValue = getString(rawPathOrUrl);
+  const storagePath = directValue && !directValue.startsWith("http")
+    ? directValue
+    : getString(storagePathOverride);
+
+  if (!storagePath) {
+    return directValue || null;
+  }
+
+  try {
+    const [url] = await bucket.file(storagePath).getSignedUrl({
+      action: "read",
+      expires: Date.now() + 1000 * 60 * 60 * 24 * 365,
+    });
+    return url;
+  } catch (error) {
+    logger.warn("No se pudo resolver URL de seccion en publicacion", {
+      storagePath,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+    return directValue || storagePath;
+  }
+}
+
+async function resolveUrlsInSections(secciones: unknown[]): Promise<unknown[]> {
+  const list = Array.isArray(secciones) ? secciones : [];
+
+  return Promise.all(
+    list.map(async (section: any) => {
+      if (!section || typeof section !== "object") return section;
+
+      const nextSection: Record<string, unknown> = {
+        ...section,
+      };
+      const backgroundModel = normalizeSectionBackgroundModel(section);
+      const nextDecoraciones = backgroundModel.decoraciones.map((decoration) => ({
+        ...decoration,
+      }));
+
+      for (const asset of listSectionVisualAssets(section)) {
+        const resolvedUrl = await resolveStorageReadUrl(asset.imageUrl, asset.storagePath);
+        if (!resolvedUrl) continue;
+
+        if (asset.kind === "base") {
+          nextSection.fondoImagen = resolvedUrl;
+          continue;
+        }
+
+        const decorationIndex = nextDecoraciones.findIndex(
+          (decoration) => decoration.id === asset.decorationId
+        );
+        if (decorationIndex >= 0) {
+          nextDecoraciones[decorationIndex] = {
+            ...nextDecoraciones[decorationIndex],
+            src: resolvedUrl,
+          };
+        }
+      }
+
+      nextSection.decoracionesFondo = {
+        items: nextDecoraciones,
+      };
+
+      return nextSection;
     })
   );
 }
@@ -2315,6 +2383,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
   const objetos = draftRenderState.objetos;
   const secciones = draftRenderState.secciones;
   const objetosFinales = await resolveUrlsInObjects(objetos);
+  const seccionesFinales = await resolveUrlsInSections(secciones);
   const hasGiftButton = objetosFinales.some(
     (obj) => (obj as Record<string, unknown>)?.tipo === "regalo-boton"
   );
@@ -2331,7 +2400,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
       : null;
 
   const htmlFinal = generarHTMLDesdeSecciones(
-    secciones as any[],
+    seccionesFinales as any[],
     objetosFinales as any[],
     rsvp,
     {

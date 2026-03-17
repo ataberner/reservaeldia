@@ -2,6 +2,63 @@ import { useState, useRef, useEffect } from "react";
 import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
 import useImage from "use-image";
 import { resolveKonvaFill } from "@/domain/colors/presets";
+import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
+
+function SectionDecorationImage({
+  sectionId,
+  decoration,
+  offsetY,
+  hidden = false,
+  onBackgroundImageStatusChange,
+}) {
+  const src = typeof decoration?.src === "string" ? decoration.src : "";
+  const decorationId = typeof decoration?.id === "string" ? decoration.id : "decoracion";
+  const [image, imageStatus] = useImage(src || null, "anonymous");
+  const width = Math.max(1, Number(decoration?.width) || image?.width || 1);
+  const height = Math.max(1, Number(decoration?.height) || image?.height || 1);
+  const centerX = (Number(decoration?.x) || 0) + width / 2;
+  const centerY = offsetY + (Number(decoration?.y) || 0) + height / 2;
+
+  useEffect(() => {
+    if (typeof onBackgroundImageStatusChange !== "function") return;
+
+    const hasBackgroundImage = Boolean(src);
+    const status = !hasBackgroundImage
+      ? "none"
+      : imageStatus === "loaded" || image
+        ? "loaded"
+        : imageStatus === "failed"
+          ? "failed"
+          : "loading";
+
+    onBackgroundImageStatusChange({
+      assetKey: `${sectionId}:decoracion:${decorationId}`,
+      sectionId,
+      kind: "background-decoration",
+      decorationId,
+      imageUrl: src,
+      hasBackgroundImage,
+      status,
+    });
+  }, [decorationId, image, imageStatus, onBackgroundImageStatusChange, sectionId, src]);
+
+  if (!src || !image) return null;
+
+  return (
+    <KonvaImage
+      image={image}
+      x={centerX}
+      y={centerY}
+      width={width}
+      height={height}
+      offsetX={width / 2}
+      offsetY={height / 2}
+      rotation={Number(decoration?.rotation) || 0}
+      listening={false}
+      opacity={hidden ? 0 : 1}
+    />
+  );
+}
 
 export default function FondoSeccion({
   seccion,
@@ -12,8 +69,13 @@ export default function FondoSeccion({
   isMobile = false,
   mobileBackgroundEditEnabled = false,
   onBackgroundImageStatusChange,
+  editingDecorationId = null,
 }) {
-  const [fondoImage, fondoImageStatus] = useImage(seccion.fondoImagen, "anonymous");
+  const backgroundModel = normalizeSectionBackgroundModel(seccion, {
+    sectionHeight: alturaPx,
+  });
+  const baseImageUrl = backgroundModel.base.fondoImagen;
+  const [fondoImage, fondoImageStatus] = useImage(baseImageUrl || null, "anonymous");
   const [modoMoverFondo, setModoMoverFondo] = useState(false);
   const imagenRef = useRef(null);
 
@@ -28,7 +90,9 @@ export default function FondoSeccion({
     if (typeof onBackgroundImageStatusChange !== "function") return;
 
     const hasBackgroundImage =
-      typeof seccion?.fondoImagen === "string" && seccion.fondoImagen.trim().length > 0;
+      backgroundModel.base.fondoTipo === "imagen" &&
+      typeof baseImageUrl === "string" &&
+      baseImageUrl.trim().length > 0;
 
     const status = !hasBackgroundImage
       ? "none"
@@ -39,16 +103,20 @@ export default function FondoSeccion({
           : "loading";
 
     onBackgroundImageStatusChange({
+      assetKey: `${seccion.id}:base`,
       sectionId: seccion.id,
-      imageUrl: hasBackgroundImage ? seccion.fondoImagen : "",
+      kind: "base",
+      decorationId: null,
+      imageUrl: hasBackgroundImage ? baseImageUrl : "",
       hasBackgroundImage,
       status,
     });
   }, [
+    backgroundModel.base.fondoTipo,
+    baseImageUrl,
     fondoImage,
     fondoImageStatus,
     onBackgroundImageStatusChange,
-    seccion?.fondoImagen,
     seccion?.id,
   ]);
 
@@ -105,48 +173,23 @@ export default function FondoSeccion({
     setModoMoverFondo(false);
   }, [allowBackgroundEdit, modoMoverFondo]);
 
-  if (!seccion.fondoImagen || !fondoImage) {
-    return (
-      <Rect
-        id={seccion.id}
-        x={0}
-        y={offsetY}
-        width={800}
-        height={alturaPx}
-        fill={fallbackFill.fillColor}
-        fillPriority={fallbackFill.hasGradient ? "linear-gradient" : "color"}
-        fillLinearGradientStartPoint={fallbackFill.hasGradient ? fallbackFill.startPoint : undefined}
-        fillLinearGradientEndPoint={fallbackFill.hasGradient ? fallbackFill.endPoint : undefined}
-        fillLinearGradientColorStops={
-          fallbackFill.hasGradient
-            ? [0, fallbackFill.gradientFrom, 1, fallbackFill.gradientTo]
-            : undefined
-        }
-        listening={true}
-        preventDefault={false}
-        onClick={onSelect}
-        onTap={onSelect}
-      />
-    );
-  }
-
   const canvasWidth = 800;
   const canvasHeight = alturaPx;
-  const imageWidth = fondoImage.width;
-  const imageHeight = fondoImage.height;
+  const hasBaseImage = Boolean(baseImageUrl && fondoImage);
+  const imageWidth = hasBaseImage ? fondoImage.width : 0;
+  const imageHeight = hasBaseImage ? fondoImage.height : 0;
+  const scaleX = hasBaseImage ? canvasWidth / imageWidth : 1;
+  const scaleY = hasBaseImage ? canvasHeight / imageHeight : 1;
+  const scale = hasBaseImage ? Math.max(scaleX, scaleY) : 1;
 
-  const scaleX = canvasWidth / imageWidth;
-  const scaleY = canvasHeight / imageHeight;
-  const scale = Math.max(scaleX, scaleY);
+  const scaledWidth = hasBaseImage ? imageWidth * scale : 0;
+  const scaledHeight = hasBaseImage ? imageHeight * scale : 0;
 
-  const scaledWidth = imageWidth * scale;
-  const scaledHeight = imageHeight * scale;
+  const offsetXCentrado = hasBaseImage ? (canvasWidth - scaledWidth) / 2 : 0;
+  const offsetYCentrado = hasBaseImage ? (canvasHeight - scaledHeight) / 2 : 0;
 
-  const offsetXCentrado = (canvasWidth - scaledWidth) / 2;
-  const offsetYCentrado = (canvasHeight - scaledHeight) / 2;
-
-  const offsetXFinal = offsetXCentrado + (seccion.fondoImagenOffsetX || 0);
-  const offsetYFinal = offsetYCentrado + (seccion.fondoImagenOffsetY || 0);
+  const offsetXFinal = offsetXCentrado + (backgroundModel.base.fondoImagenOffsetX || 0);
+  const offsetYFinal = offsetYCentrado + (backgroundModel.base.fondoImagenOffsetY || 0);
 
   return (
     <Group id={seccion.id}>
@@ -171,7 +214,7 @@ export default function FondoSeccion({
         onTap={onSelect}
       />
 
-      {modoMoverFondo && (
+      {hasBaseImage && modoMoverFondo && (
         <Rect
           x={-200}
           y={offsetY - 200}
@@ -188,66 +231,82 @@ export default function FondoSeccion({
         clipWidth={modoMoverFondo ? undefined : 800}
         clipHeight={modoMoverFondo ? undefined : alturaPx}
       >
-        <KonvaImage
-          ref={imagenRef}
-          image={fondoImage}
-          x={offsetXFinal}
-          y={offsetY + offsetYFinal}
-          width={scaledWidth}
-          height={scaledHeight}
-          draggable={allowBackgroundEdit && modoMoverFondo}
-          opacity={modoMoverFondo ? 0.9 : 1}
-          shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
-          shadowBlur={modoMoverFondo ? 10 : 0}
-          listening={true}
-          preventDefault={allowBackgroundEdit && modoMoverFondo}
-          onClick={(e) => {
-            if (modoMoverFondo) {
+        {hasBaseImage ? (
+          <KonvaImage
+            ref={imagenRef}
+            image={fondoImage}
+            x={offsetXFinal}
+            y={offsetY + offsetYFinal}
+            width={scaledWidth}
+            height={scaledHeight}
+            draggable={allowBackgroundEdit && modoMoverFondo}
+            opacity={modoMoverFondo ? 0.9 : 1}
+            shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
+            shadowBlur={modoMoverFondo ? 10 : 0}
+            listening={true}
+            preventDefault={allowBackgroundEdit && modoMoverFondo}
+            onClick={(e) => {
+              if (modoMoverFondo) {
+                e.cancelBubble = true;
+                return;
+              }
+              onSelect?.();
+            }}
+            onTap={(e) => {
+              if (modoMoverFondo) {
+                e.cancelBubble = true;
+              }
+            }}
+            onMouseDown={(e) => {
+              if (modoMoverFondo) e.cancelBubble = true;
+            }}
+            onDblClick={allowBackgroundEdit ? (e) => {
               e.cancelBubble = true;
-              return;
-            }
-            onSelect?.();
-          }}
-          onTap={(e) => {
-            if (modoMoverFondo) {
+              setModoMoverFondo(true);
+              document.body.style.cursor = "move";
+            } : undefined}
+            onDblTap={allowBackgroundEdit ? (e) => {
               e.cancelBubble = true;
-            }
-          }}
-          onMouseDown={(e) => {
-            if (modoMoverFondo) e.cancelBubble = true;
-          }}
-          onDblClick={allowBackgroundEdit ? (e) => {
-            e.cancelBubble = true;
-            setModoMoverFondo(true);
-            document.body.style.cursor = "move";
-          } : undefined}
-          onDblTap={allowBackgroundEdit ? (e) => {
-            e.cancelBubble = true;
-            setModoMoverFondo(true);
-            document.body.style.cursor = "move";
-          } : undefined}
-          onDragMove={(e) => {
-            const node = e.target;
-            const nuevaX = node.x();
-            const nuevaY = node.y() - offsetY;
-            const nuevoOffsetX = nuevaX - offsetXCentrado;
-            const nuevoOffsetY = nuevaY - offsetYCentrado;
-            onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, true);
-          }}
-          onDragEnd={(e) => {
-            const node = e.target;
-            const nuevaX = node.x();
-            const nuevaY = node.y() - offsetY;
-            const nuevoOffsetX = nuevaX - offsetXCentrado;
-            const nuevoOffsetY = nuevaY - offsetYCentrado;
-            onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
+              setModoMoverFondo(true);
+              document.body.style.cursor = "move";
+            } : undefined}
+            onDragMove={(e) => {
+              const node = e.target;
+              const nuevaX = node.x();
+              const nuevaY = node.y() - offsetY;
+              const nuevoOffsetX = nuevaX - offsetXCentrado;
+              const nuevoOffsetY = nuevaY - offsetYCentrado;
+              onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, true);
+            }}
+            onDragEnd={(e) => {
+              const node = e.target;
+              const nuevaX = node.x();
+              const nuevaY = node.y() - offsetY;
+              const nuevoOffsetX = nuevaX - offsetXCentrado;
+              const nuevoOffsetY = nuevaY - offsetYCentrado;
+              onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
 
-            setModoMoverFondo(false);
-            document.body.style.cursor = "default";
-          }}
-        />
+              setModoMoverFondo(false);
+              document.body.style.cursor = "default";
+            }}
+          />
+        ) : null}
+      </Group>
 
-        {allowBackgroundEdit && modoMoverFondo && (
+      <Group clipX={0} clipY={offsetY} clipWidth={800} clipHeight={alturaPx}>
+        {backgroundModel.decoraciones.map((decoration) => (
+          <SectionDecorationImage
+            key={decoration.id}
+            sectionId={seccion.id}
+            decoration={decoration}
+            offsetY={offsetY}
+            hidden={editingDecorationId === decoration.id}
+            onBackgroundImageStatusChange={onBackgroundImageStatusChange}
+          />
+        ))}
+      </Group>
+
+      {allowBackgroundEdit && modoMoverFondo && hasBaseImage && (
           <Transformer
             nodes={[imagenRef.current]}
             enabledAnchors={["bottom-right"]}
@@ -280,8 +339,7 @@ export default function FondoSeccion({
               onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
             }}
           />
-        )}
-      </Group>
+      )}
     </Group>
   );
 }

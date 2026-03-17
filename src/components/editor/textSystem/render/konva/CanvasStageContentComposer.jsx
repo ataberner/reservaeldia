@@ -6,6 +6,7 @@ import FondoSeccion from "@/components/editor/FondoSeccion";
 import GaleriaKonva from "@/components/editor/GaleriaKonva";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import ElementoCanvas from "@/components/ElementoCanvas";
+import SectionDecorationEditorOverlay from "@/components/editor/SectionDecorationEditorOverlay";
 import SelectionBounds from "@/components/SelectionBounds";
 import ImageCropOverlay from "@/components/editor/textSystem/render/konva/ImageCropOverlay";
 import InlineTextEditDecorationsLayer from "@/components/editor/textSystem/render/konva/InlineTextEditDecorationsLayer";
@@ -34,6 +35,7 @@ import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
+import { updateBackgroundDecorationTransform } from "@/domain/sections/backgrounds";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 
 const INLINE_INTENT_STALE_MS = 1500;
@@ -247,6 +249,9 @@ export default function CanvasStageContent({
   handleTransformInteractionEnd,
   normalizarMedidasGaleria,
   setElementosSeleccionados,
+  setSecciones,
+  sectionDecorationEdit,
+  setSectionDecorationEdit,
 }) {
   const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
   const inlineActivationRef = useRef({
@@ -1128,7 +1133,7 @@ export default function CanvasStageContent({
 
                     const elementos = [
                       // Fondo de secciÃ³n - puede ser color o imagen
-                      seccion.fondoTipo === "imagen" ? (
+                      true ? (
                         <FondoSeccion
                           key={`fondo-${seccion.id}`}
                           seccion={seccion}
@@ -1139,6 +1144,12 @@ export default function CanvasStageContent({
                           isMobile={isMobile}
                           mobileBackgroundEditEnabled={mobileBackgroundEditSectionId === seccion.id}
                           onBackgroundImageStatusChange={handleBackgroundImageStatusChange}
+                          editingDecorationId={
+                            sectionDecorationEdit?.sectionId === seccion.id &&
+                            sectionDecorationEdit?.overlayReady === true
+                              ? sectionDecorationEdit.decorationId
+                              : null
+                          }
                         />
                       ) : (
                         <Rect
@@ -1818,6 +1829,60 @@ export default function CanvasStageContent({
                     />
                   )}
 
+                  {sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId && (() => {
+                    const editedSectionIndex = seccionesOrdenadas.findIndex(
+                      (section) => section?.id === sectionDecorationEdit.sectionId
+                    );
+                    if (editedSectionIndex === -1) return null;
+
+                    const editedSection = seccionesOrdenadas[editedSectionIndex];
+                    const editedSectionOffsetY = calcularOffsetY(
+                      seccionesOrdenadas,
+                      editedSectionIndex,
+                      altoCanvas
+                    );
+
+                    return (
+                      <SectionDecorationEditorOverlay
+                        seccion={editedSection}
+                        decorationId={sectionDecorationEdit.decorationId}
+                        offsetY={editedSectionOffsetY}
+                        alturaPx={editedSection.altura}
+                        isMobile={isMobile}
+                        onCommit={(nextDecoration) => {
+                          setSecciones((prev) =>
+                            updateBackgroundDecorationTransform(
+                              prev,
+                              editedSection.id,
+                              sectionDecorationEdit.decorationId,
+                              nextDecoration,
+                              editedSection.altura,
+                              800
+                            )
+                          );
+                        }}
+                        onImageReadyChange={(isReady) => {
+                          setSectionDecorationEdit((previous) => {
+                            if (
+                              previous?.sectionId !== editedSection.id ||
+                              previous?.decorationId !== sectionDecorationEdit.decorationId
+                            ) {
+                              return previous;
+                            }
+                            if (previous?.overlayReady === Boolean(isReady)) {
+                              return previous;
+                            }
+                            return {
+                              ...previous,
+                              overlayReady: Boolean(isReady),
+                            };
+                          });
+                        }}
+                        onExit={() => setSectionDecorationEdit(null)}
+                      />
+                    );
+                  })()}
+
 
 
                   {seleccionActiva && areaSeleccion && (
@@ -1835,7 +1900,7 @@ export default function CanvasStageContent({
                   )}
 
 
-                  {!editing.id && elementosSeleccionados.length > 0 && (() => {
+                  {!editing.id && !sectionDecorationEdit && elementosSeleccionados.length > 0 && (() => {
                     return (
                       <SelectionBounds
                         selectedElements={elementosSeleccionados}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listSectionVisualAssets } from "@/domain/sections/backgrounds";
 
 export default function useCanvasEditorStartupStatus({
   slug,
@@ -7,17 +8,22 @@ export default function useCanvasEditorStartupStatus({
   cargado,
   onStartupStatusChange,
 }) {
-  const [backgroundLoadBySection, setBackgroundLoadBySection] = useState({});
+  const [backgroundLoadByAsset, setBackgroundLoadByAsset] = useState({});
   const startupStatusFinalizedRef = useRef(false);
 
   useEffect(() => {
-    setBackgroundLoadBySection({});
+    setBackgroundLoadByAsset({});
     startupStatusFinalizedRef.current = false;
   }, [slug]);
 
   const handleBackgroundImageStatusChange = useCallback((payload) => {
-    const sectionId = payload?.sectionId;
-    if (!sectionId) return;
+    const assetKey =
+      typeof payload?.assetKey === "string" && payload.assetKey.trim()
+        ? payload.assetKey.trim()
+        : typeof payload?.sectionId === "string" && payload.sectionId.trim()
+          ? payload.sectionId.trim()
+          : "";
+    if (!assetKey) return;
 
     const hasBackgroundImage = payload?.hasBackgroundImage === true;
     const imageUrl = typeof payload?.imageUrl === "string" ? payload.imageUrl : "";
@@ -28,8 +34,8 @@ export default function useCanvasEditorStartupStatus({
         : "loading"
       : "none";
 
-    setBackgroundLoadBySection((prev) => {
-      const current = prev[sectionId];
+    setBackgroundLoadByAsset((prev) => {
+      const current = prev[assetKey];
       if (
         current &&
         current.status === status &&
@@ -41,7 +47,7 @@ export default function useCanvasEditorStartupStatus({
 
       return {
         ...prev,
-        [sectionId]: {
+        [assetKey]: {
           status,
           hasBackgroundImage,
           imageUrl,
@@ -51,19 +57,14 @@ export default function useCanvasEditorStartupStatus({
   }, []);
 
   const backgroundLoadSummary = useMemo(() => {
-    const sectionsWithBackgroundImage = (secciones || []).filter(
-      (seccion) =>
-        seccion?.fondoTipo === "imagen" &&
-        typeof seccion?.fondoImagen === "string" &&
-        seccion.fondoImagen.trim().length > 0
-    );
+    const sectionAssets = (secciones || []).flatMap((seccion) => listSectionVisualAssets(seccion));
 
     let loaded = 0;
     let failed = 0;
     let pending = 0;
 
-    sectionsWithBackgroundImage.forEach((seccion) => {
-      const status = backgroundLoadBySection[seccion.id]?.status;
+    sectionAssets.forEach((asset) => {
+      const status = backgroundLoadByAsset[asset.assetKey]?.status;
 
       if (!status || status === "loading") {
         pending += 1;
@@ -84,27 +85,25 @@ export default function useCanvasEditorStartupStatus({
     });
 
     return {
-      total: sectionsWithBackgroundImage.length,
+      total: sectionAssets.length,
       loaded,
       failed,
       pending,
     };
-  }, [backgroundLoadBySection, secciones]);
+  }, [backgroundLoadByAsset, secciones]);
 
   const firstSectionBackgroundReady = useMemo(() => {
     const firstSection = seccionesOrdenadas[0];
     if (!firstSection) return true;
 
-    const hasBackgroundImage =
-      firstSection?.fondoTipo === "imagen" &&
-      typeof firstSection?.fondoImagen === "string" &&
-      firstSection.fondoImagen.trim().length > 0;
+    const assets = listSectionVisualAssets(firstSection);
+    if (!assets.length) return true;
 
-    if (!hasBackgroundImage) return true;
-
-    const status = backgroundLoadBySection[firstSection.id]?.status;
-    return status === "loaded" || status === "failed";
-  }, [backgroundLoadBySection, seccionesOrdenadas]);
+    return assets.every((asset) => {
+      const status = backgroundLoadByAsset[asset.assetKey]?.status;
+      return status === "loaded" || status === "failed";
+    });
+  }, [backgroundLoadByAsset, seccionesOrdenadas]);
 
   const startupReady = cargado === true && firstSectionBackgroundReady;
 

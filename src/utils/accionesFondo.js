@@ -1,7 +1,20 @@
-// src/utils/accionesFondo.js
+import {
+  addBackgroundDecorationFromImageObject,
+  applySectionBaseImage,
+  buildImageObjectFromBackgroundDecoration,
+  clearSectionBaseImage,
+  findBackgroundDecoration,
+  removeBackgroundDecoration,
+} from "@/domain/sections/backgrounds";
+
+function closeFloatingMenu(closePanel) {
+  if (typeof closePanel === "function") {
+    closePanel(false);
+  }
+}
 
 /**
- * 🎨 Reemplazar imagen seleccionada como fondo de sección
+ * Reemplaza una imagen seleccionada como fondo base de la seccion.
  */
 export const reemplazarFondoSeccion = ({
   elementoImagen,
@@ -10,33 +23,29 @@ export const reemplazarFondoSeccion = ({
   setSecciones,
   setObjetos,
   setElementosSeleccionados,
+  setSeccionActivaId,
+  setSectionDecorationEdit,
   setMostrarPanelZ,
 }) => {
   if (!elementoImagen || elementoImagen.tipo !== "imagen") {
-    console.warn("❌ El elemento no es una imagen válida");
+    console.warn("El elemento no es una imagen valida");
     return;
   }
 
   if (!elementoImagen.seccionId) {
-    console.warn("❌ La imagen no tiene sección asignada");
+    console.warn("La imagen no tiene seccion asignada");
     return;
   }
 
   try {
-    console.log("🎨 Convirtiendo imagen a fondo de sección:", elementoImagen.id);
-
-    const seccionesActualizadas = secciones.map((seccion) =>
-      seccion.id === elementoImagen.seccionId
-        ? {
-            ...seccion,
-            fondo: "#ffffff",
-            fondoTipo: "imagen",
-            fondoImagen: elementoImagen.src,
-            fondoImagenOffsetX: 0,
-            fondoImagenOffsetY: 0,
-            fondoImagenDraggable: true,
-          }
-        : seccion
+    const seccionesActualizadas = applySectionBaseImage(
+      secciones.map((seccion) =>
+        seccion.id === elementoImagen.seccionId
+          ? { ...seccion, fondo: "#ffffff" }
+          : seccion
+      ),
+      elementoImagen.seccionId,
+      elementoImagen.src
     );
 
     const objetosFiltrados = objetos.filter((obj) => obj.id !== elementoImagen.id);
@@ -44,18 +53,120 @@ export const reemplazarFondoSeccion = ({
     setSecciones(seccionesActualizadas);
     setObjetos(objetosFiltrados);
     setElementosSeleccionados([]);
-    setMostrarPanelZ(false);
-
-    console.log("✅ Fondo de sección actualizado con imagen");
+    setSeccionActivaId?.(elementoImagen.seccionId);
+    setSectionDecorationEdit?.(null);
+    closeFloatingMenu(setMostrarPanelZ);
   } catch (error) {
-    console.error("❌ Error al reemplazar fondo de sección:", error);
-    alert("Ocurrió un error al cambiar el fondo. Inténtalo de nuevo.");
+    console.error("Error al reemplazar fondo de seccion:", error);
+    alert("Ocurrio un error al cambiar el fondo. Intentalo de nuevo.");
   }
 };
 
+/**
+ * Mueve una imagen del canvas al sistema especial de decoraciones del fondo.
+ */
+export const convertirImagenEnDecoracionFondo = ({
+  elementoImagen,
+  secciones,
+  objetos,
+  setSecciones,
+  setObjetos,
+  setElementosSeleccionados,
+  setSeccionActivaId,
+  setSectionDecorationEdit,
+  setMostrarPanelZ,
+}) => {
+  if (!elementoImagen || elementoImagen.tipo !== "imagen") {
+    console.warn("El elemento no es una imagen valida");
+    return;
+  }
+
+  if (!elementoImagen.seccionId) {
+    console.warn("La imagen no tiene seccion asignada");
+    return;
+  }
+
+  try {
+    const result = addBackgroundDecorationFromImageObject(secciones, elementoImagen, 800);
+    if (!result?.decorationId || !Array.isArray(result.sections)) {
+      return;
+    }
+
+    setSecciones(result.sections);
+    setObjetos(objetos.filter((obj) => obj.id !== elementoImagen.id));
+    setElementosSeleccionados([]);
+    setSeccionActivaId?.(result.sectionId);
+    setSectionDecorationEdit?.({
+      sectionId: result.sectionId,
+      decorationId: result.decorationId,
+      overlayReady: false,
+    });
+    closeFloatingMenu(setMostrarPanelZ);
+  } catch (error) {
+    console.error("Error al convertir la imagen en decoracion del fondo:", error);
+    alert("Ocurrio un error al mover la imagen al fondo. Intentalo de nuevo.");
+  }
+};
 
 /**
- * 🔄 Desanclar imagen de fondo y convertirla en objeto editable
+ * Convierte una decoracion del fondo en una imagen editable del canvas.
+ */
+export const convertirDecoracionFondoEnImagen = ({
+  seccionId,
+  decorationId,
+  secciones,
+  objetos,
+  setSecciones,
+  setObjetos,
+  setElementosSeleccionados,
+  setSectionDecorationEdit,
+  setSeccionActivaId,
+}) => {
+  const seccion = (Array.isArray(secciones) ? secciones : []).find((item) => item?.id === seccionId);
+  if (!seccion) {
+    console.warn("No se encontro la seccion de la decoracion");
+    return;
+  }
+
+  const decoration = findBackgroundDecoration(seccion, decorationId, {
+    sectionHeight: seccion.altura,
+  });
+  if (!decoration) {
+    console.warn("No se encontro la decoracion del fondo");
+    return;
+  }
+
+  const nuevoElementoImagen = buildImageObjectFromBackgroundDecoration(decoration, {
+    sectionId: seccionId,
+    sectionHeight: seccion.altura,
+    canvasWidth: 800,
+  });
+
+  if (!nuevoElementoImagen) {
+    console.warn("No se pudo reconstruir la imagen desde la decoracion");
+    return;
+  }
+
+  const seccionesActualizadas = removeBackgroundDecoration(secciones, seccionId, decorationId);
+  const objetosActualizados = [...(Array.isArray(objetos) ? objetos : []), nuevoElementoImagen];
+
+  setSecciones(seccionesActualizadas);
+  setObjetos(objetosActualizados);
+  setElementosSeleccionados([nuevoElementoImagen.id]);
+  setSectionDecorationEdit?.((previous) => {
+    if (
+      previous?.sectionId === seccionId &&
+      previous?.decorationId === decorationId
+    ) {
+      return null;
+    }
+    return previous;
+  });
+  setSeccionActivaId?.(seccionId);
+};
+
+/**
+ * Desancla la imagen base de una seccion y la devuelve como imagen editable.
  */
 export const desanclarImagenDeFondo = ({
   seccionId,
@@ -65,9 +176,9 @@ export const desanclarImagenDeFondo = ({
   setObjetos,
   setElementosSeleccionados,
 }) => {
-  const seccion = secciones.find(s => s.id === seccionId);
+  const seccion = secciones.find((s) => s.id === seccionId);
   if (!seccion || seccion.fondoTipo !== "imagen") {
-    console.warn("❌ La sección no tiene imagen de fondo para desanclar");
+    console.warn("La seccion no tiene imagen de fondo para desanclar");
     return;
   }
 
@@ -77,43 +188,38 @@ export const desanclarImagenDeFondo = ({
     img.src = seccion.fondoImagen;
 
     img.onload = () => {
-  const originalWidth = img.naturalWidth || img.width;
-  const originalHeight = img.naturalHeight || img.height;
+      const originalWidth = img.naturalWidth || img.width;
+      const originalHeight = img.naturalHeight || img.height;
 
-  const maxWidth = 450;
-  const scale = Math.min(1, maxWidth / originalWidth);
+      const maxWidth = 450;
+      const scale = Math.min(1, maxWidth / originalWidth);
 
-  const finalWidth = originalWidth * scale;
-  const finalHeight = originalHeight * scale;
+      const finalWidth = originalWidth * scale;
+      const finalHeight = originalHeight * scale;
 
-  const nuevoElementoImagen = {
-    id: `img-fondo-${Date.now()}`,
-    tipo: "imagen",
-    src: seccion.fondoImagen,
-    x: Math.max(0, (800 - finalWidth) / 2),
-    y: 50,
-    width: finalWidth,
-    height: finalHeight,
-    rotation: 0,
-    scaleX: 1,
-    scaleY: 1,
-    seccionId,
-  };
+      const nuevoElementoImagen = {
+        id: `img-fondo-${Date.now()}`,
+        tipo: "imagen",
+        src: seccion.fondoImagen,
+        x: Math.max(0, (800 - finalWidth) / 2),
+        y: 50,
+        width: finalWidth,
+        height: finalHeight,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        seccionId,
+      };
 
-  const seccionesActualizadas = limpiarFondoImagen(secciones, seccionId);
-  const objetosActualizados = [...objetos, nuevoElementoImagen];
+      const seccionesActualizadas = limpiarFondoImagen(secciones, seccionId);
+      const objetosActualizados = [...objetos, nuevoElementoImagen];
 
-  setSecciones(seccionesActualizadas);
-  setObjetos(objetosActualizados);
-  setElementosSeleccionados([nuevoElementoImagen.id]);
-
-  console.log("✅ Imagen desanclada con tamaño ajustado");
-};
-
+      setSecciones(seccionesActualizadas);
+      setObjetos(objetosActualizados);
+      setElementosSeleccionados([nuevoElementoImagen.id]);
+    };
 
     img.onerror = () => {
-      console.warn("⚠️ No se pudo cargar la imagen, usando tamaño por defecto");
-
       const nuevoElementoImagen = {
         id: `img-fondo-${Date.now()}`,
         tipo: "imagen",
@@ -134,26 +240,15 @@ export const desanclarImagenDeFondo = ({
       setSecciones(seccionesActualizadas);
       setObjetos(objetosActualizados);
       setElementosSeleccionados([nuevoElementoImagen.id]);
-
-      console.log("✅ Imagen desanclada con tamaño por defecto");
     };
   } catch (error) {
-    console.error("❌ Error al desanclar imagen:", error);
-    alert("Ocurrió un error al desanclar la imagen.");
+    console.error("Error al desanclar imagen:", error);
+    alert("Ocurrio un error al desanclar la imagen.");
   }
 };
 
-// 🧼 Helper para limpiar campos de imagen de fondo de una sección
 function limpiarFondoImagen(secciones, seccionId) {
-  return secciones.map(s => {
-    if (s.id !== seccionId) return s;
-
-    const limpio = { ...s, fondo: "#ffffff" };
-    delete limpio.fondoTipo;
-    delete limpio.fondoImagen;
-    delete limpio.fondoImagenOffsetX;
-    delete limpio.fondoImagenOffsetY;
-    delete limpio.fondoImagenDraggable;
-    return limpio;
-  });
+  return secciones.map((seccion) =>
+    seccion.id !== seccionId ? seccion : { ...clearSectionBaseImage(seccion), fondo: "#ffffff" }
+  );
 }

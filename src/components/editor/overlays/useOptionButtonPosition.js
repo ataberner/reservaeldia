@@ -25,6 +25,41 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function resolveRotatedBoundingSize(width, height, rotation) {
+  const safeWidth = Math.max(1, Number(width) || 1);
+  const safeHeight = Math.max(1, Number(height) || 1);
+  const radians = (Math.PI / 180) * (Number(rotation) || 0);
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+
+  return {
+    width: safeWidth * cos + safeHeight * sin,
+    height: safeWidth * sin + safeHeight * cos,
+  };
+}
+
+function resolveBackgroundDecorationStageBox(selection) {
+  if (!selection || typeof selection !== "object") return null;
+
+  const width = Math.max(1, Number(selection.width) || 1);
+  const height = Math.max(1, Number(selection.height) || 1);
+  const top = Number(selection.y);
+  const left = Number(selection.x);
+
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
+
+  const bounding = resolveRotatedBoundingSize(width, height, selection.rotation);
+  const centerX = left + width / 2;
+  const centerY = top + height / 2;
+
+  return {
+    x: centerX - bounding.width / 2,
+    y: centerY - bounding.height / 2,
+    width: bounding.width,
+    height: bounding.height,
+  };
+}
+
 function describeEventTarget(target) {
   if (target === window) return "window";
   if (target === document) return "document";
@@ -97,6 +132,7 @@ export default function useOptionButtonPosition({
   layoutRootRef = null,
   elementRefs,
   elementosSeleccionados,
+  backgroundDecorationSelection = null,
   stageRef,
   escalaVisual,
   escalaActiva,
@@ -156,36 +192,59 @@ export default function useOptionButtonPosition({
     if (typeof window === "undefined") return;
     if (!botonOpcionesRef.current) return;
 
-    if (elementosSeleccionados.length !== 1) {
+    const hasObjectSelection = elementosSeleccionados.length === 1;
+    const hasBackgroundDecorationSelection = Boolean(backgroundDecorationSelection?.id);
+
+    if (!hasObjectSelection && !hasBackgroundDecorationSelection) {
       ocultarBotonOpciones("selection-count", {
         source,
         count: elementosSeleccionados.length,
+        hasBackgroundDecorationSelection,
       });
       return;
     }
 
-    const nodeRef = elementRefs.current[elementosSeleccionados[0]];
     const stage = stageRef.current;
-    if (!nodeRef || !stage) {
+    const nodeRef = hasObjectSelection
+      ? elementRefs.current[elementosSeleccionados[0]]
+      : null;
+    if ((!nodeRef && !hasBackgroundDecorationSelection) || !stage) {
       ocultarBotonOpciones("missing-node-or-stage", {
         source,
         hasNode: Boolean(nodeRef),
         hasStage: Boolean(stage),
+        hasBackgroundDecorationSelection,
       });
       return;
     }
 
     try {
-      const box = nodeRef.getClientRect({
-        relativeTo: stage,
-        skipShadow: true,
-      });
-      const nodeAbsolutePosition =
-        typeof nodeRef.getAbsolutePosition === "function"
-          ? nodeRef.getAbsolutePosition()
-          : {
-            x: typeof nodeRef.x === "function" ? nodeRef.x() : null,
-            y: typeof nodeRef.y === "function" ? nodeRef.y() : null,
+      const box = hasObjectSelection
+        ? nodeRef.getClientRect({
+            relativeTo: stage,
+            skipShadow: true,
+          })
+        : resolveBackgroundDecorationStageBox(backgroundDecorationSelection);
+      if (!box) {
+        ocultarBotonOpciones("missing-box", {
+          source,
+          hasObjectSelection,
+          hasBackgroundDecorationSelection,
+        });
+        return;
+      }
+      const nodeAbsolutePosition = hasObjectSelection
+        ? (
+            typeof nodeRef.getAbsolutePosition === "function"
+              ? nodeRef.getAbsolutePosition()
+              : {
+                  x: typeof nodeRef.x === "function" ? nodeRef.x() : null,
+                  y: typeof nodeRef.y === "function" ? nodeRef.y() : null,
+                }
+          )
+        : {
+            x: Number(backgroundDecorationSelection?.x) || 0,
+            y: Number(backgroundDecorationSelection?.y) || 0,
           };
       const stageContainer =
         typeof stage.container === "function"
@@ -209,7 +268,7 @@ export default function useOptionButtonPosition({
       const nudgeY = isMobile ? BUTTON_VERTEX_NUDGE_Y_MOBILE : BUTTON_VERTEX_NUDGE_Y_DESKTOP;
 
       const anchorStageY =
-        Number.isFinite(nodeAbsolutePosition?.y)
+        hasObjectSelection && Number.isFinite(nodeAbsolutePosition?.y)
           ? Math.min(box.y, nodeAbsolutePosition.y)
           : box.y;
 
@@ -289,8 +348,11 @@ export default function useOptionButtonPosition({
           typeof stage?.height === "function" ? Number(stage.height()) : Number(stage?.attrs?.height);
         debugLog("position", {
           source,
-          selectedId: elementosSeleccionados[0],
+          selectedId: hasObjectSelection
+            ? elementosSeleccionados[0]
+            : backgroundDecorationSelection?.id || null,
           isMobile,
+          selectionKind: hasObjectSelection ? "object" : "background-decoration",
           pointerType: nativeEvent?.pointerType ?? null,
           nativeEventType: nativeEvent?.type ?? null,
           eventTarget: {
@@ -390,6 +452,7 @@ export default function useOptionButtonPosition({
       ocultarBotonOpciones("exception", { source, error: message });
     }
   }, [
+    backgroundDecorationSelection,
     botonOpcionesRef,
     elementosSeleccionados,
     elementRefs,
@@ -404,7 +467,10 @@ export default function useOptionButtonPosition({
   ]);
 
   useEffect(() => {
-    if (elementosSeleccionados.length !== 1) {
+    const hasAnchoredTarget =
+      elementosSeleccionados.length === 1 || Boolean(backgroundDecorationSelection?.id);
+
+    if (!hasAnchoredTarget) {
       ocultarBotonOpciones();
       return undefined;
     }
@@ -445,7 +511,18 @@ export default function useOptionButtonPosition({
       if (rafB) window.cancelAnimationFrame(rafB);
       if (settleRaf) window.cancelAnimationFrame(settleRaf);
     };
-  }, [elementosSeleccionados, actualizarPosicionBotonOpciones, ocultarBotonOpciones, isMobile]);
+  }, [
+    backgroundDecorationSelection?.height,
+    backgroundDecorationSelection?.id,
+    backgroundDecorationSelection?.rotation,
+    backgroundDecorationSelection?.width,
+    backgroundDecorationSelection?.x,
+    backgroundDecorationSelection?.y,
+    elementosSeleccionados,
+    actualizarPosicionBotonOpciones,
+    ocultarBotonOpciones,
+    isMobile,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -456,7 +533,7 @@ export default function useOptionButtonPosition({
     const hasRelativeRoot = Boolean(layoutRootRef?.current);
 
     const syncPosition = (source = "sync", nativeEvent = null) => {
-      if (elementosSeleccionados.length === 1) {
+      if (elementosSeleccionados.length === 1 || backgroundDecorationSelection?.id) {
         actualizarPosicionBotonOpciones(
           source,
           nativeEvent,
@@ -539,6 +616,7 @@ export default function useOptionButtonPosition({
       });
     };
   }, [
+    backgroundDecorationSelection?.id,
     stageRef,
     layoutRootRef,
     elementosSeleccionados.length,

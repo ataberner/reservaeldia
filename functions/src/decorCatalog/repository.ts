@@ -208,6 +208,33 @@ function parseThumbnails(raw: unknown): DecorThumbnails | null {
   return raw as DecorThumbnails;
 }
 
+function parseSectionDecorationHints(
+  raw: unknown
+): DecorCatalogDocWithId["sectionDecorationHints"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const safeRaw = raw as Record<string, unknown>;
+  const slots = Array.isArray(safeRaw.slots)
+    ? safeRaw.slots
+        .map((item) => String(item || "").trim().toLowerCase())
+        .filter(
+          (item): item is "superior" | "inferior" =>
+            item === "superior" || item === "inferior"
+        )
+    : [];
+
+  return {
+    enabled: safeRaw.enabled !== false,
+    slots: slots.length ? [...new Set(slots)] : ["superior", "inferior"],
+    defaultWidth: Number.isFinite(Number(safeRaw.defaultWidth)) && Number(safeRaw.defaultWidth) > 0
+      ? Number(safeRaw.defaultWidth)
+      : null,
+    defaultHeight:
+      Number.isFinite(Number(safeRaw.defaultHeight)) && Number(safeRaw.defaultHeight) > 0
+        ? Number(safeRaw.defaultHeight)
+      : null,
+  };
+}
+
 function mapSnapshotToDecorDoc(
   snap: FirebaseFirestore.DocumentSnapshot
 ): DecorCatalogDocWithId {
@@ -245,6 +272,7 @@ function mapSnapshotToDecorDoc(
     height: Number.isFinite(Number(data.height)) ? Number(data.height) : null,
     hasAlpha: typeof data.hasAlpha === "boolean" ? data.hasAlpha : null,
     thumbnails: parseThumbnails(data.thumbnails),
+    sectionDecorationHints: parseSectionDecorationHints(data.sectionDecorationHints),
     searchText: typeof data.searchText === "string" ? data.searchText : "",
     searchTokens: Array.isArray(data.searchTokens)
       ? data.searchTokens.map((item) => String(item || "").trim()).filter(Boolean)

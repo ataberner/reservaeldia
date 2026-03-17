@@ -10,6 +10,7 @@ export default function GaleriaDeImagenes({
   borrarImagen,
   hayMas,
   onInsertar,
+  onSelectImage,
   onSeleccionadasChange,
 }) {
   const [seleccionadas, setSeleccionadas] = useState([]);
@@ -98,6 +99,11 @@ export default function GaleriaDeImagenes({
               className="relative bg-white rounded shadow overflow-hidden cursor-pointer hover:scale-105 transition w-full aspect-square group"
               onClick={() => {
                 if (typeof img.url !== "string") return;
+
+                if (typeof onSelectImage === "function") {
+                  onSelectImage(img);
+                  return;
+                }
 
                 onInsertar({
                   id: `img-${Date.now()}`,

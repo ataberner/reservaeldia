@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useState, useRef } from
 import { createPortal } from "react-dom";
 import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
-    Link2, X
+    Link2, X, Image as ImageIcon, Check
 } from "lucide-react";
 import {
     getAllowedMotionEffectsForElement,
@@ -109,6 +109,12 @@ export default function MenuOpcionesElemento({
     setSecciones,
     setObjetos,
     setElementosSeleccionados,
+    setSeccionActivaId,
+    setSectionDecorationEdit,
+    usarComoDecoracionFondo,
+    onConvertirDecoracionFondoEnImagen,
+    onEliminarDecoracionFondo,
+    onFinalizarAjusteDecoracionFondo,
     onConfigurarRsvp,
     onConfigurarRegalos,
     canManageSite = false,
@@ -145,6 +151,7 @@ export default function MenuOpcionesElemento({
     const esImagen = elementoSeleccionado?.tipo === "imagen";
     const esRsvp = elementoSeleccionado?.tipo === "rsvp-boton";
     const esRegalo = elementoSeleccionado?.tipo === "regalo-boton";
+    const esDecoracionFondo = elementoSeleccionado?.tipo === "decoracion-fondo";
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
@@ -484,6 +491,60 @@ export default function MenuOpcionesElemento({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
         >
+            {esDecoracionFondo ? (
+                <>
+                    <div className="mb-2 flex items-center gap-3 rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
+                        {elementoSeleccionado?.src ? (
+                            <div className="h-11 w-11 overflow-hidden rounded-lg border border-[#dccaf7] bg-white">
+                                <img
+                                    src={elementoSeleccionado.src}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                />
+                            </div>
+                        ) : null}
+                        <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-[#5f3596]">
+                                {elementoSeleccionado?.nombre || "Decoracion del fondo"}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                                Opciones de la decoracion
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => {
+                            onConvertirDecoracionFondoEnImagen?.();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <ImageIcon className="w-4 h-4" /> Volver a imagen
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            onEliminarDecoracionFondo?.();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <Trash2 className="w-4 h-4 text-red-500" /> Quitar decoracion
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            onFinalizarAjusteDecoracionFondo?.();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <Check className="w-4 h-4 text-emerald-600" /> Terminar ajuste
+                    </button>
+                </>
+            ) : (
+                <>
             {/* Copiar */}
             <button
                 onClick={() => {
@@ -725,6 +786,8 @@ export default function MenuOpcionesElemento({
                             setSecciones,
                             setObjetos,
                             setElementosSeleccionados,
+                            setSeccionActivaId,
+                            setSectionDecorationEdit,
                             setMostrarPanelZ: onCerrar, // reutilizamos onCerrar para cerrar el menú
                         });
                     }}
@@ -732,6 +795,18 @@ export default function MenuOpcionesElemento({
                 >
                     <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded" />
                     Usar como fondo
+                </button>
+            )}
+
+            {esImagen && typeof usarComoDecoracionFondo === "function" && (
+                <button
+                    onClick={() => {
+                        usarComoDecoracionFondo(elementoSeleccionado);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                >
+                    <div className="w-4 h-4 rounded border border-[#dccaf7] bg-gradient-to-br from-[#f7f1ff] to-[#e8dcff]" />
+                    Usar como decoracion del fondo
                 </button>
             )}
 
@@ -856,6 +931,8 @@ export default function MenuOpcionesElemento({
 
 
             </div>
+                </>
+            )}
         </div>,
         portalTarget
     );

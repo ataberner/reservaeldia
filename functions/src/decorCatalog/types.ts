@@ -55,6 +55,15 @@ export type DecorThumbnails = {
   thumb: DecorThumbVariant | null;
 };
 
+export type DecorSectionDecorationSlot = "superior" | "inferior";
+
+export type DecorSectionDecorationHints = {
+  enabled: boolean;
+  slots: DecorSectionDecorationSlot[];
+  defaultWidth: number | null;
+  defaultHeight: number | null;
+};
+
 export type DecorQualityData = {
   ratio: number | null;
   megapixels: number | null;
@@ -101,6 +110,7 @@ export type DecorCatalogDoc = {
   height: number | null;
   hasAlpha: boolean | null;
   thumbnails: DecorThumbnails | null;
+  sectionDecorationHints: DecorSectionDecorationHints | null;
   searchText: string;
   searchTokens: string[];
   validation: DecorValidationReport | null;

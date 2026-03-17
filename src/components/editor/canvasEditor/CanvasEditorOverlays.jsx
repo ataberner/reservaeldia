@@ -32,6 +32,9 @@ export default function CanvasEditorOverlays({
   setSecciones,
   setObjetos,
   setElementosSeleccionados,
+  setSeccionActivaId,
+  setSectionDecorationEdit,
+  usarComoDecoracionFondo,
   abrirPanelRsvp,
   abrirPanelRegalos,
   canRenderTemplateAuthoringMenu,
@@ -56,6 +59,11 @@ export default function CanvasEditorOverlays({
   isDeletingSection,
   cerrarModalBorrarSeccion,
   confirmarBorrarSeccion,
+  sectionDecorationEdit,
+  activeBackgroundDecorationMenuItem,
+  onConvertirDecoracionFondoEnImagen,
+  onEliminarDecoracionFondo,
+  onFinalizarAjusteDecoracionFondo,
 }) {
   const workspaceStateLabel =
     templateWorkspace?.estadoEditorial === "en_revision"
@@ -65,10 +73,22 @@ export default function CanvasEditorOverlays({
         : "Publicada";
   const shouldShowTemplateFieldBadge =
     canManageSite && templateWorkspace?.mode === "template_edit";
+  const isBackgroundDecorationEditing =
+    Boolean(sectionDecorationEdit?.sectionId) &&
+    Boolean(sectionDecorationEdit?.decorationId) &&
+    Boolean(activeBackgroundDecorationMenuItem);
+  const shouldShowOptionButton =
+    !readOnly &&
+    !editingId &&
+    !isSelectionRotating &&
+    (elementosSeleccionados.length === 1 || isBackgroundDecorationEditing);
+  const menuSelection = isBackgroundDecorationEditing
+    ? activeBackgroundDecorationMenuItem
+    : objetos.find((o) => o.id === elementosSeleccionados[0]);
 
   return (
     <>
-      {!readOnly && elementosSeleccionados.length === 1 && !editingId && !isSelectionRotating && (
+      {shouldShowOptionButton && (
         <div
           ref={botonOpcionesRef}
           data-option-button="true"
@@ -102,8 +122,8 @@ export default function CanvasEditorOverlays({
               togglePanelOpciones("gear-keyboard-click", e.nativeEvent || e);
             }}
             className="hover:bg-purple-50 w-full h-full rounded-full flex items-center justify-center transition-colors"
-            title="Opciones del elemento"
-            aria-label="Opciones del elemento"
+            title={isBackgroundDecorationEditing ? "Opciones de la decoracion" : "Opciones del elemento"}
+            aria-label={isBackgroundDecorationEditing ? "Opciones de la decoracion" : "Opciones del elemento"}
             style={{ touchAction: "manipulation" }}
           >
             <Settings
@@ -149,7 +169,7 @@ export default function CanvasEditorOverlays({
         <MenuOpcionesElemento
           isOpen={mostrarPanelZ}
           botonOpcionesRef={botonOpcionesRef}
-          elementoSeleccionado={objetos.find((o) => o.id === elementosSeleccionados[0])}
+          elementoSeleccionado={menuSelection}
           onCopiar={onCopiar}
           onPegar={onPegar}
           onDuplicar={onDuplicar}
@@ -162,6 +182,12 @@ export default function CanvasEditorOverlays({
           setSecciones={setSecciones}
           setObjetos={setObjetos}
           setElementosSeleccionados={setElementosSeleccionados}
+          setSeccionActivaId={setSeccionActivaId}
+          setSectionDecorationEdit={setSectionDecorationEdit}
+          usarComoDecoracionFondo={usarComoDecoracionFondo}
+          onConvertirDecoracionFondoEnImagen={onConvertirDecoracionFondoEnImagen}
+          onEliminarDecoracionFondo={onEliminarDecoracionFondo}
+          onFinalizarAjusteDecoracionFondo={onFinalizarAjusteDecoracionFondo}
           onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
           onConfigurarRegalos={() => abrirPanelRegalos()}
           canManageSite={canManageSite}

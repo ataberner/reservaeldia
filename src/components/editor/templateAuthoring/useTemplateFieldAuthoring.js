@@ -324,11 +324,20 @@ export default function useTemplateFieldAuthoring({
       });
       if (!linkResult.changed) return false;
 
+      const repairedResult = sanitizeAuthoringSchema({
+        fieldsSchema: linkResult.fieldsSchema,
+        defaults,
+        objetos: safeObjetos,
+        dropOrphans: true,
+      });
+      const nextFieldsSchema = repairedResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, repairedResult.defaults);
+
       await commitSnapshot({
         ...snapshot,
         sourceTemplateId,
-        fieldsSchema: linkResult.fieldsSchema,
-        defaults: ensureDefaultsForSchema(linkResult.fieldsSchema, defaults),
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
       });
       return true;
     },
@@ -337,6 +346,7 @@ export default function useTemplateFieldAuthoring({
       commitSnapshot,
       defaults,
       fieldsSchema,
+      safeObjetos,
       selectedElementId,
       selectedElementFieldPath,
       selectedElementType,

@@ -1,3 +1,8 @@
+import {
+  buildSuggestedTemplateTargetTransform,
+  normalizeTemplateTargetTransform,
+} from "@/domain/templates/fieldValueResolver.js";
+
 const TEXT_FIELD_TYPES = new Set([
   "text",
   "textarea",
@@ -69,12 +74,27 @@ function asObject(value) {
   return value;
 }
 
+function stripUndefinedTransform(target) {
+  if (!target || typeof target !== "object") return target;
+  if (target.transform) return target;
+  const { transform: _unusedTransform, ...rest } = target;
+  return rest;
+}
+
+function resolveSuggestedTransformForTarget(fieldType, path) {
+  return buildSuggestedTemplateTargetTransform({
+    fieldType,
+    path,
+  });
+}
+
 function normalizeApplyTarget(rawTarget) {
   const source = asObject(rawTarget);
   const scope = normalizeText(source.scope).toLowerCase();
   const id = normalizeText(source.id);
   const path = normalizeText(source.path);
   const mode = normalizeText(source.mode).toLowerCase() === "replace" ? "replace" : "set";
+  const transform = normalizeTemplateTargetTransform(source.transform);
 
   if (!scope || !path) return null;
   if ((scope === "objeto" || scope === "seccion") && !id) return null;
@@ -84,6 +104,7 @@ function normalizeApplyTarget(rawTarget) {
     ...(id ? { id } : {}),
     path,
     mode,
+    ...(transform ? { transform } : {}),
   };
 }
 
@@ -107,7 +128,16 @@ function normalizeField(field, index = 0) {
     type,
     group,
     optional,
-    applyTargets,
+    applyTargets: applyTargets
+      .map((target) => {
+        const suggestedTransform =
+          normalizeTemplateTargetTransform(target.transform) ||
+          resolveSuggestedTransformForTarget(type, target.path);
+        return stripUndefinedTransform({
+          ...target,
+          ...(suggestedTransform ? { transform: suggestedTransform } : {}),
+        });
+      }),
   };
 }
 
@@ -215,6 +245,13 @@ export function buildFieldFromElement({
         id: elementId,
         path: targetConfig.path,
         mode: "set",
+        ...(() => {
+          const suggestedTransform = resolveSuggestedTransformForTarget(
+            normalizedType,
+            targetConfig.path
+          );
+          return suggestedTransform ? { transform: suggestedTransform } : {};
+        })(),
       },
     ],
   };
@@ -294,6 +331,7 @@ export function linkElementToField({
       target.id === safeElementId &&
       target.path === safePath
   );
+  const suggestedTransform = resolveSuggestedTransformForTarget(targetField.type, safePath);
 
   if (!alreadyLinked) {
     changed = true;
@@ -306,8 +344,36 @@ export function linkElementToField({
           id: safeElementId,
           path: safePath,
           mode: "set",
+          ...(suggestedTransform ? { transform: suggestedTransform } : {}),
         },
       ],
+    };
+  } else {
+    const nextTargets = targetField.applyTargets.map((target) => {
+      if (
+        target.scope !== "objeto" ||
+        target.id !== safeElementId ||
+        target.path !== safePath
+      ) {
+        return target;
+      }
+
+      const normalizedTransform = normalizeTemplateTargetTransform(target.transform);
+      const sameTransform =
+        (normalizedTransform?.kind || "") === (suggestedTransform?.kind || "") &&
+        (normalizedTransform?.preset || "") === (suggestedTransform?.preset || "");
+      if (sameTransform) return target;
+
+      changed = true;
+      return stripUndefinedTransform({
+        ...target,
+        ...(suggestedTransform ? { transform: suggestedTransform } : {}),
+      });
+    });
+
+    nextFields[targetIndex] = {
+      ...targetField,
+      applyTargets: nextTargets,
     };
   }
 
@@ -395,12 +461,21 @@ export function updateFieldConfig({
         : normalized.optional,
       normalized.optional
     );
+    const nextTargets = normalized.applyTargets.map((target) =>
+      stripUndefinedTransform({
+        ...target,
+        ...(resolveSuggestedTransformForTarget(nextType, target.path)
+          ? { transform: resolveSuggestedTransformForTarget(nextType, target.path) }
+          : {}),
+      })
+    );
 
     if (
       nextLabel !== normalized.label ||
       nextType !== normalized.type ||
       nextGroup !== normalized.group ||
-      nextOptional !== normalized.optional
+      nextOptional !== normalized.optional ||
+      JSON.stringify(nextTargets) !== JSON.stringify(normalized.applyTargets)
     ) {
       changed = true;
     }
@@ -411,6 +486,7 @@ export function updateFieldConfig({
       type: nextType,
       group: nextGroup,
       optional: nextOptional,
+      applyTargets: nextTargets,
     };
   });
 

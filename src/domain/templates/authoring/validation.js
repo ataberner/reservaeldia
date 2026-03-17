@@ -1,3 +1,9 @@
+import {
+  isDateLikeTemplateFieldType,
+  isTextualTemplateTargetPath,
+  normalizeTemplateTargetTransform,
+} from "@/domain/templates/fieldValueResolver.js";
+
 const ALLOWED_FIELD_TYPES = new Set([
   "text",
   "textarea",
@@ -106,6 +112,7 @@ export function validateAuthoringState({
       const scope = normalizeText(safeTarget.scope).toLowerCase();
       const targetId = normalizeText(safeTarget.id);
       const path = normalizeText(safeTarget.path);
+      const transform = normalizeTemplateTargetTransform(safeTarget.transform);
 
       if (!scope || !path) {
         issues.push(`Campo '${key}': applyTarget #${targetIndex + 1} invalido (scope/path).`);
@@ -117,6 +124,32 @@ export function validateAuthoringState({
           `Campo '${key}': applyTarget #${targetIndex + 1} invalido (falta id para scope '${scope}').`
         );
         return;
+      }
+
+      if (transform?.kind === "date_to_countdown_iso") {
+        if (!isDateLikeTemplateFieldType(type)) {
+          issues.push(
+            `Campo '${key}': applyTarget #${targetIndex + 1} usa countdown sin ser campo fecha.`
+          );
+        }
+        if (path.toLowerCase() !== "fechaobjetivo") {
+          issues.push(
+            `Campo '${key}': applyTarget #${targetIndex + 1} countdown debe apuntar a 'fechaObjetivo'.`
+          );
+        }
+      }
+
+      if (transform?.kind === "date_to_text") {
+        if (!isDateLikeTemplateFieldType(type)) {
+          issues.push(
+            `Campo '${key}': applyTarget #${targetIndex + 1} formatea fecha sin ser campo fecha.`
+          );
+        }
+        if (!isTextualTemplateTargetPath(path)) {
+          issues.push(
+            `Campo '${key}': applyTarget #${targetIndex + 1} date_to_text requiere un path textual.`
+          );
+        }
       }
 
       if (scope === "objeto") {

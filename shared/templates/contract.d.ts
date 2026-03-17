@@ -24,11 +24,22 @@ export interface TemplateFieldValidation {
 
 export type TemplateFieldUpdateMode = "input" | "blur" | "confirm";
 
+export type TemplateFieldApplyTargetTransformKind =
+  | "identity"
+  | "date_to_countdown_iso"
+  | "date_to_text";
+
+export interface TemplateFieldApplyTargetTransform {
+  kind: TemplateFieldApplyTargetTransformKind;
+  preset?: string;
+}
+
 export interface TemplateFieldApplyTarget {
   scope: "objeto" | "seccion" | "rsvp";
   id?: string;
   path: string;
   mode?: "set" | "replace";
+  transform?: TemplateFieldApplyTargetTransform;
 }
 
 export interface TemplateField {

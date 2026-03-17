@@ -646,6 +646,19 @@ export function generarHTMLDesdeSecciones(
       return applyGalleryCells(targetElement, nextValue);
     }
 
+    if (path === "fechaobjetivo") {
+      var nextIso = toText(nextValue);
+      var currentIso = toText(targetElement.getAttribute("data-target"));
+      if (currentIso === nextIso) return false;
+      if (nextIso) {
+        targetElement.setAttribute("data-target", nextIso);
+      } else {
+        targetElement.removeAttribute("data-target");
+      }
+      tickOne(targetElement);
+      return true;
+    }
+
     if (path === "texto" || path === "text" || path === "title" || path === "label") {
       var currentText = String(targetElement.textContent || "");
       var nextText = String(nextValue == null ? "" : nextValue);

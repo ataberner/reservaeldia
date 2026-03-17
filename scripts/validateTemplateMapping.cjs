@@ -6,6 +6,8 @@ const { pathToFileURL } = require("url");
 const TEMPLATE_COLLECTION = "plantillas";
 const DEFAULT_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET || "reservaeldia-7a440.firebasestorage.app";
+const DATE_LIKE_FIELD_TYPES = new Set(["date", "datetime"]);
+const TEXTUAL_TARGET_PATHS = new Set(["texto", "text", "title", "label"]);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -46,6 +48,7 @@ function collectEntityIds(list) {
 function validateFieldMapping(field, context) {
   const safeField = field && typeof field === "object" ? field : {};
   const key = normalizeText(safeField.key) || "campo_sin_key";
+  const type = normalizeText(safeField.type).toLowerCase();
   const targets = Array.isArray(safeField.applyTargets) ? safeField.applyTargets : [];
   const objectIds = context?.objectIds instanceof Set ? context.objectIds : new Set();
   const sectionIds = context?.sectionIds instanceof Set ? context.sectionIds : new Set();
@@ -63,6 +66,11 @@ function validateFieldMapping(field, context) {
     const scope = normalizeText(safeTarget.scope).toLowerCase();
     const targetId = normalizeText(safeTarget.id);
     const path = normalizeText(safeTarget.path);
+    const transform =
+      safeTarget.transform && typeof safeTarget.transform === "object"
+        ? safeTarget.transform
+        : null;
+    const transformKind = normalizeText(transform?.kind).toLowerCase();
 
     if (!scope || !path) {
       return {
@@ -78,6 +86,42 @@ function validateFieldMapping(field, context) {
         key,
         reason: "Target invalido (falta id)",
       };
+    }
+
+    if (transformKind === "date_to_countdown_iso") {
+      if (!DATE_LIKE_FIELD_TYPES.has(type)) {
+        return {
+          valid: false,
+          key,
+          reason: "Transform countdown requiere campo date/datetime",
+        };
+      }
+
+      if (path.toLowerCase() !== "fechaobjetivo") {
+        return {
+          valid: false,
+          key,
+          reason: "Transform countdown requiere path fechaObjetivo",
+        };
+      }
+    }
+
+    if (transformKind === "date_to_text") {
+      if (!DATE_LIKE_FIELD_TYPES.has(type)) {
+        return {
+          valid: false,
+          key,
+          reason: "Transform date_to_text requiere campo date/datetime",
+        };
+      }
+
+      if (!TEXTUAL_TARGET_PATHS.has(path.toLowerCase())) {
+        return {
+          valid: false,
+          key,
+          reason: "Transform date_to_text requiere path textual",
+        };
+      }
     }
 
     if (scope === "objeto" && targetId && !objectIds.has(targetId)) {

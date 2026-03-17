@@ -1,5 +1,6 @@
 import { buildTemplateFormState, getChangedKeys } from "./formModel.js";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
+import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 import { measureTextPositionFromPreviewSemantics } from "@/lib/templatePreviewTextMeasure";
 import { logTemplateDraftDebug } from "./draftPersonalizationDebug.js";
@@ -65,36 +66,6 @@ function setByPath(root, path, value) {
 
   current[segments[segments.length - 1]] = value;
   return true;
-}
-
-function normalizeCountdownDateValue(value) {
-  const raw = normalizeText(value);
-  if (!raw) return "";
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const parsed = new Date(`${raw}T00:00:00`);
-    if (Number.isNaN(parsed.getTime())) return raw;
-    return parsed.toISOString();
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) {
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return raw;
-    return parsed.toISOString();
-  }
-
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toISOString();
-}
-
-function normalizeValueForTargetPath(path, value) {
-  const safePath = normalizeText(path);
-  if (!safePath) return value;
-  if (safePath === "fechaObjetivo") {
-    return normalizeCountdownDateValue(value);
-  }
-  return value;
 }
 
 function sanitizeImageUrls(value) {
@@ -404,10 +375,8 @@ function applyTarget({
   const safePath = normalizeText(path);
   if (!safePath) return { applied: false };
 
-  const normalizedNextValue = normalizeValueForTargetPath(safePath, nextValue);
-
-  if (safePath === "cells" && Array.isArray(normalizedNextValue)) {
-    return { applied: applyGalleryCells(target, normalizedNextValue) };
+  if (safePath === "cells" && Array.isArray(nextValue)) {
+    return { applied: applyGalleryCells(target, nextValue) };
   }
 
   const currentValue = getByPath(target, safePath);
@@ -419,12 +388,12 @@ function applyTarget({
           applied: setValueAtPath(target, safePath, replaced, textMeasurementOptions),
         };
       }
-      if (normalizeText(normalizedNextValue) && normalizeText(defaultValue) === "") {
+      if (normalizeText(nextValue) && normalizeText(defaultValue) === "") {
         return {
           applied: setValueAtPath(
             target,
             safePath,
-            String(normalizedNextValue),
+            String(nextValue),
             textMeasurementOptions
           ),
         };
@@ -434,7 +403,7 @@ function applyTarget({
   }
 
   return {
-    applied: setValueAtPath(target, safePath, normalizedNextValue, textMeasurementOptions),
+    applied: setValueAtPath(target, safePath, nextValue, textMeasurementOptions),
   };
 }
 
@@ -527,6 +496,12 @@ export function buildDraftPersonalizationPatch({
       const path = target?.path;
       const mode = normalizeText(target?.mode).toLowerCase() === "replace" ? "replace" : "set";
       const targetId = target?.id;
+      const resolvedTargetValues = resolveTemplateTargetValuePair({
+        field,
+        target,
+        nextValue,
+        defaultValue,
+      });
 
       if (scope === "objeto") {
         const objeto = findObjetoById(objetos, targetId);
@@ -535,8 +510,8 @@ export function buildDraftPersonalizationPatch({
           target: objeto,
           path,
           mode,
-          nextValue,
-          defaultValue,
+          nextValue: resolvedTargetValues.nextValue,
+          defaultValue: resolvedTargetValues.defaultValue,
           textMeasurementOptions,
         });
         if (result.applied) {
@@ -553,8 +528,8 @@ export function buildDraftPersonalizationPatch({
           target: seccion,
           path,
           mode,
-          nextValue,
-          defaultValue,
+          nextValue: resolvedTargetValues.nextValue,
+          defaultValue: resolvedTargetValues.defaultValue,
           textMeasurementOptions,
         });
         if (result.applied) {
@@ -570,8 +545,8 @@ export function buildDraftPersonalizationPatch({
           target: rsvpTarget,
           path,
           mode,
-          nextValue,
-          defaultValue,
+          nextValue: resolvedTargetValues.nextValue,
+          defaultValue: resolvedTargetValues.defaultValue,
           textMeasurementOptions,
         });
         if (result.applied) {

@@ -63,6 +63,8 @@ export default function CanvasEditorOverlays({
       : templateWorkspace?.estadoEditorial === "en_proceso"
         ? "En proceso"
         : "Publicada";
+  const shouldShowTemplateFieldBadge =
+    canManageSite && templateWorkspace?.mode === "template_edit";
 
   return (
     <>
@@ -130,7 +132,7 @@ export default function CanvasEditorOverlays({
         </div>
       )}
 
-      {canManageSite && (
+      {shouldShowTemplateFieldBadge && (
         <TemplateFieldBadgeOverlay
           layoutRootRef={editorOverlayRootRef}
           stageRef={stageRef}

@@ -1,4 +1,5 @@
 import { buildTemplateFormState, resolveTemplateFieldByKey } from "./formModel.js";
+import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -32,6 +33,9 @@ function normalizeTargets(field) {
         ...(id ? { id } : {}),
         path,
         mode,
+        ...(target?.transform && typeof target.transform === "object"
+          ? { transform: target.transform }
+          : {}),
       };
     })
     .filter(Boolean);
@@ -59,12 +63,22 @@ export function buildPreviewOperationsForField({
   const targets = normalizeTargets(field);
 
   if (targets.length > 0) {
-    return targets.map((target) => ({
-      ...target,
-      fieldKey: field.key,
-      value: field.type === "images" ? sanitizeImageUrls(value) : value,
-      defaultValue,
-    }));
+    return targets.map((target) => {
+      const incomingValue = field.type === "images" ? sanitizeImageUrls(value) : value;
+      const resolvedValues = resolveTemplateTargetValuePair({
+        field,
+        target,
+        nextValue: incomingValue,
+        defaultValue,
+      });
+
+      return {
+        ...target,
+        fieldKey: field.key,
+        value: resolvedValues.nextValue,
+        defaultValue: resolvedValues.defaultValue,
+      };
+    });
   }
 
   if (field.type === "images") {

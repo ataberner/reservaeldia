@@ -1,4 +1,5 @@
 import { ensureDefaultsForSchema } from "../../../shared/templates/contract.js";
+import { normalizeTemplateInputValueForFieldType } from "./fieldValueResolver.js";
 
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -51,12 +52,26 @@ function normalizeField(field, index) {
   };
 }
 
+function hasRenderableTargets(field) {
+  const source = asObject(field);
+  if (!Object.prototype.hasOwnProperty.call(source, "applyTargets")) {
+    return true;
+  }
+
+  const targets = Array.isArray(source.applyTargets) ? source.applyTargets : [];
+  return targets.some((target) => {
+    const safeTarget = asObject(target);
+    return normalizeText(safeTarget.scope) && normalizeText(safeTarget.path);
+  });
+}
+
 function normalizeFieldsSchema(fieldsSchema) {
   if (!Array.isArray(fieldsSchema)) return [];
   const seen = new Set();
   const out = [];
 
   fieldsSchema.forEach((field, index) => {
+    if (!hasRenderableTargets(field)) return;
     const normalized = normalizeField(field, index);
     if (!normalized.key || seen.has(normalized.key)) return;
     seen.add(normalized.key);
@@ -93,6 +108,20 @@ function compareValues(left, right) {
   return String(left ?? "") === String(right ?? "");
 }
 
+function normalizeEditableFieldValue(field, value) {
+  const fieldType = normalizeFieldType(field?.type);
+
+  if (fieldType === "images") {
+    return sanitizeImagesValue(value);
+  }
+
+  if (fieldType === "date" || fieldType === "datetime") {
+    return normalizeTemplateInputValueForFieldType(fieldType, value);
+  }
+
+  return valueToEditableString(value);
+}
+
 export function getTemplateFields(template) {
   const safeTemplate = asObject(template);
   return normalizeFieldsSchema(safeTemplate.fieldsSchema);
@@ -119,22 +148,29 @@ export function groupTemplateFields(fields) {
 export function buildTemplateFormState(template, existingState = null) {
   const safeTemplate = asObject(template);
   const fields = getTemplateFields(safeTemplate);
-  const defaults = ensureDefaultsForSchema(fields, safeTemplate.defaults);
+  const schemaDefaults = ensureDefaultsForSchema(fields, safeTemplate.defaults);
+  const defaults = {};
   const existing = asObject(existingState);
   const existingRawValues = asObject(existing.rawValues);
   const rawValues = {};
 
   fields.forEach((field) => {
     const key = field.key;
+    defaults[key] = normalizeEditableFieldValue(field, schemaDefaults[key]);
+
+    const preferred = existingRawValues[key];
     if (field.type === "images") {
-      rawValues[key] = sanitizeImagesValue(existingRawValues[key] ?? defaults[key]);
+      rawValues[key] = normalizeEditableFieldValue(
+        field,
+        typeof preferred === "undefined" ? defaults[key] : preferred
+      );
       return;
     }
-    const preferred = existingRawValues[key];
+
     rawValues[key] =
       typeof preferred === "string" || typeof preferred === "number" || typeof preferred === "boolean"
-        ? String(preferred)
-        : valueToEditableString(defaults[key]);
+        ? normalizeEditableFieldValue(field, preferred)
+        : defaults[key];
   });
 
   const touchedKeys = Array.isArray(existing.touchedKeys)
@@ -159,7 +195,7 @@ export function resolveTemplateInputValues({
 }) {
   const formState = buildTemplateFormState(template, { rawValues });
   const defaults = formState.defaults;
-  const safeRawValues = asObject(rawValues);
+  const safeRawValues = asObject(formState.rawValues);
   const safeGalleryUrlsByField = asObject(galleryUrlsByField);
   const resolvedValues = {};
 

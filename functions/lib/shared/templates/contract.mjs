@@ -40,6 +40,12 @@ const FIELD_TYPES = new Set([
 const FIELD_UPDATE_MODES = new Set(["input", "blur", "confirm"]);
 const APPLY_TARGET_SCOPES = new Set(["objeto", "seccion", "rsvp"]);
 const APPLY_TARGET_MODES = new Set(["set", "replace"]);
+const APPLY_TARGET_TRANSFORM_KINDS = new Set([
+  "identity",
+  "date_to_countdown_iso",
+  "date_to_text",
+]);
+const DEFAULT_DATE_TEXT_TRANSFORM_PRESET = "event_date_long_es_ar";
 
 const VIEWPORT_HINTS = new Set(["mobileFirst", "desktop", "responsive"]);
 const ACTIVE_STATES = new Set(["active", "archived"]);
@@ -204,6 +210,21 @@ function normalizeApplyTargetMode(value) {
   return token;
 }
 
+function normalizeApplyTargetTransform(raw) {
+  const source = asObject(raw);
+  const kind = normalizeText(source.kind).toLowerCase();
+  if (!kind || !APPLY_TARGET_TRANSFORM_KINDS.has(kind)) return undefined;
+
+  if (kind === "date_to_text") {
+    return {
+      kind,
+      preset: normalizeText(source.preset) || DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
+    };
+  }
+
+  return { kind };
+}
+
 function normalizeFieldApplyTarget(raw) {
   const source = asObject(raw);
   const scope = normalizeApplyTargetScope(source.scope);
@@ -216,12 +237,14 @@ function normalizeFieldApplyTarget(raw) {
   if ((scope === "objeto" || scope === "seccion") && !id) return null;
 
   const mode = normalizeApplyTargetMode(source.mode);
+  const transform = normalizeApplyTargetTransform(source.transform);
 
   return {
     scope,
     ...(id ? { id } : {}),
     path,
     mode,
+    ...(transform ? { transform } : {}),
   };
 }
 
@@ -233,7 +256,9 @@ function normalizeFieldApplyTargets(value) {
   for (const raw of value) {
     const item = normalizeFieldApplyTarget(raw);
     if (!item) continue;
-    const key = `${item.scope}|${item.id || ""}|${item.path}|${item.mode}`;
+    const key = `${item.scope}|${item.id || ""}|${item.path}|${item.mode}|${
+      item.transform?.kind || ""
+    }|${item.transform?.preset || ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);

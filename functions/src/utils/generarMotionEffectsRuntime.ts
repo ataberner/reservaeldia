@@ -269,7 +269,20 @@ export function generarMotionEffectsRuntimeHTML(): string {
   var LOADER_WAIT_TIMEOUT_MS = 2400;
   var READY_TIMEOUT_MS = 2600;
   var FONTS_TIMEOUT_MS = 1200;
+  var DECOR_PARALLAX_MODES = { none: 1, soft: 1, dynamic: 1 };
+  var DECOR_PARALLAX_DISTANCE = {
+    soft: { mobile: 10, desktop: 14 },
+    dynamic: { mobile: 14, desktop: 22 }
+  };
   var bootStarted = false;
+  var decorParallaxEntries = [];
+  var decorParallaxFrame = 0;
+  var decorParallaxStarted = false;
+  var decorParallaxScrollWatchTimer = 0;
+  var decorParallaxLastScrollTop = -1;
+  var decorParallaxLastScheduleSource = "boot";
+  var decorParallaxLastDebugLogAt = 0;
+  var decorParallaxNativeScrollSeen = false;
 
   function normalizeEffect(value){
     var normalized = String(value || "").trim().toLowerCase();
@@ -278,6 +291,117 @@ export function generarMotionEffectsRuntimeHTML(): string {
 
   function normalizeType(value){
     return String(value || "").trim().toLowerCase();
+  }
+
+  function normalizeDecorParallax(value){
+    var normalized = String(value || "").trim().toLowerCase();
+    return DECOR_PARALLAX_MODES[normalized] ? normalized : "none";
+  }
+
+  function clampNumber(value, min, max){
+    var numeric = Number(value);
+    if (!isFinite(numeric)) return min;
+    return Math.min(Math.max(numeric, min), max);
+  }
+
+  function toPositiveNumber(value){
+    var numeric = Number(value);
+    return isFinite(numeric) && numeric > 0 ? numeric : 0;
+  }
+
+  function minPositive(values, fallback){
+    var valid = (Array.isArray(values) ? values : []).filter(function(value){
+      return isFinite(value) && value > 0;
+    });
+    if (!valid.length) return fallback;
+    return Math.min.apply(null, valid);
+  }
+
+  function detectEmbeddedContext(){
+    try {
+      return window.self !== window.top;
+    } catch (_error) {
+      return true;
+    }
+  }
+
+  function getViewportWidth(){
+    var docEl = document.documentElement;
+    var embeddedContext = detectEmbeddedContext();
+    var docWidth = toPositiveNumber(docEl && docEl.clientWidth);
+    var innerWidthValue = toPositiveNumber(window.innerWidth);
+    var visualViewportWidth = 0;
+
+    try {
+      visualViewportWidth = toPositiveNumber(window.visualViewport && window.visualViewport.width);
+    } catch (_error) {
+      visualViewportWidth = 0;
+    }
+
+    if (embeddedContext) {
+      return minPositive(
+        [docWidth, innerWidthValue, visualViewportWidth],
+        docWidth || innerWidthValue || visualViewportWidth || 0
+      );
+    }
+
+    return docWidth || innerWidthValue || visualViewportWidth || 0;
+  }
+
+  function getViewportHeight(){
+    var docEl = document.documentElement;
+    var embeddedContext = detectEmbeddedContext();
+    var docHeight = toPositiveNumber(docEl && docEl.clientHeight);
+    var innerHeightValue = toPositiveNumber(window.innerHeight);
+    var visualViewportHeight = 0;
+
+    try {
+      visualViewportHeight = toPositiveNumber(window.visualViewport && window.visualViewport.height);
+    } catch (_error) {
+      visualViewportHeight = 0;
+    }
+
+    if (embeddedContext) {
+      return minPositive(
+        [docHeight, innerHeightValue, visualViewportHeight],
+        innerHeightValue || docHeight || visualViewportHeight || 0
+      );
+    }
+
+    return visualViewportHeight || innerHeightValue || docHeight || 0;
+  }
+
+  function isMobileViewport(){
+    var viewportWidth = getViewportWidth();
+    return viewportWidth <= 767;
+  }
+
+  function pickDecorParallaxDistance(mode){
+    var config = DECOR_PARALLAX_DISTANCE[normalizeDecorParallax(mode)];
+    if (!config) return 0;
+    return isMobileViewport() ? config.mobile : config.desktop;
+  }
+
+  function getDecorParallaxPreviewScale(){
+    if (!isDecorParallaxPreviewDocument()) return 1;
+
+    var previewRoot = document.documentElement;
+    var previewBody = document.body;
+    return clampNumber(
+      String(previewRoot && previewRoot.getAttribute && previewRoot.getAttribute("data-preview-scale") || "").trim() ||
+        String(previewBody && previewBody.getAttribute && previewBody.getAttribute("data-preview-scale") || "").trim() ||
+        1,
+      0.32,
+      1
+    );
+  }
+
+  function getDecorParallaxDistanceMultiplier(){
+    if (!isDecorParallaxPreviewDocument()) return 1;
+    var previewScale = getDecorParallaxPreviewScale();
+    var scaleCompensation = 1 / previewScale;
+    var perceptualBoost = previewScale < 0.5 ? 1.55 : 1;
+    return clampNumber(scaleCompensation * perceptualBoost, 1, 5);
   }
 
   function setPreparingState(active){
@@ -423,6 +547,286 @@ export function generarMotionEffectsRuntimeHTML(): string {
       window.addEventListener(LOADER_HIDDEN_EVENT, done, { once: true });
       window.setTimeout(done, LOADER_WAIT_TIMEOUT_MS);
     });
+  }
+
+  function collectDecorParallaxSections(){
+    return Array.from(document.querySelectorAll(".sec[data-decor-parallax]"))
+      .map(function(section){
+        var mode = normalizeDecorParallax(section.getAttribute("data-decor-parallax"));
+        if (mode === "none") return null;
+
+        var items = Array.from(section.querySelectorAll(".sec-decor-item[data-decor-depth]"))
+          .map(function(item){
+            return {
+              node: item,
+              depth: clampNumber(item.getAttribute("data-decor-depth"), 0.1, 1.1)
+            };
+          })
+          .filter(function(entry){
+            return !!entry.node;
+          });
+
+        if (!items.length) return null;
+
+        return {
+          node: section,
+          mode: mode,
+          items: items
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function updateDecorParallax(){
+    decorParallaxFrame = 0;
+    if (!decorParallaxEntries.length) return;
+
+    var viewportHeight = getViewportHeight() || 1;
+    var viewportCenter = viewportHeight / 2;
+    var previewScale = getDecorParallaxPreviewScale();
+    var distanceMultiplier = getDecorParallaxDistanceMultiplier();
+    var debugEnabled = isDecorParallaxDebugEnabled();
+    var debugSections = debugEnabled ? [] : null;
+
+    decorParallaxEntries.forEach(function(entry){
+      if (!entry || !entry.node) return;
+
+      var baseDistance = pickDecorParallaxDistance(entry.mode);
+      var distance = baseDistance * distanceMultiplier;
+      if (!distance) return;
+
+      var rect = entry.node.getBoundingClientRect();
+      var sectionCenter = rect.top + (rect.height / 2);
+      var progress = clampNumber((viewportCenter - sectionCenter) / viewportHeight, -1, 1);
+      var debugItems = debugEnabled ? [] : null;
+
+      entry.items.forEach(function(itemEntry, itemIndex){
+        if (!itemEntry || !itemEntry.node) return;
+        var translateY = progress * distance * itemEntry.depth;
+        itemEntry.node.style.transform = "translate3d(0, " + translateY.toFixed(2) + "px, 0)";
+
+        if (debugEnabled && itemIndex < 3) {
+          debugItems.push({
+            depth: Number(itemEntry.depth.toFixed(2)),
+            translateY: Number(translateY.toFixed(2))
+          });
+        }
+      });
+
+      if (debugEnabled) {
+        debugSections.push({
+          mode: entry.mode,
+          baseDistance: baseDistance,
+          distance: Number(distance.toFixed(2)),
+          sectionTop: Number(rect.top.toFixed(2)),
+          sectionHeight: Number(rect.height.toFixed(2)),
+          progress: Number(progress.toFixed(4)),
+          itemCount: entry.items.length,
+          items: debugItems
+        });
+      }
+    });
+
+    if (debugEnabled) {
+      var primarySection = debugSections[0] || null;
+      var primaryItem = primarySection && primarySection.items && primarySection.items[0]
+        ? primarySection.items[0]
+        : null;
+      var debugPayload = {
+        source: decorParallaxLastScheduleSource,
+        preview: isDecorParallaxPreviewDocument(),
+        embedded: detectEmbeddedContext(),
+        previewScale: Number(previewScale.toFixed(3)),
+        distanceMultiplier: Number(distanceMultiplier.toFixed(3)),
+        viewportHeight: Number(viewportHeight.toFixed(2)),
+        scrollY: Number(toPositiveNumber(window.scrollY).toFixed(2)),
+        pageYOffset: Number(toPositiveNumber(window.pageYOffset).toFixed(2)),
+        docScrollTop: Number(toPositiveNumber(document.documentElement && document.documentElement.scrollTop).toFixed(2)),
+        bodyScrollTop: Number(toPositiveNumber(document.body && document.body.scrollTop).toFixed(2)),
+        scrollingElementScrollTop: Number(toPositiveNumber(document.scrollingElement && document.scrollingElement.scrollTop).toFixed(2)),
+        primaryMode: primarySection ? primarySection.mode : null,
+        primaryProgress: primarySection ? primarySection.progress : null,
+        primaryDistance: primarySection ? primarySection.distance : null,
+        primaryBaseDistance: primarySection ? primarySection.baseDistance : null,
+        primaryDepth: primaryItem ? primaryItem.depth : null,
+        primaryTranslateY: primaryItem ? primaryItem.translateY : null,
+        primaryVisibleTranslateY: primaryItem
+          ? Number((primaryItem.translateY * previewScale).toFixed(2))
+          : null,
+        sections: debugSections
+      };
+
+      storeDecorParallaxDebugState(debugPayload);
+      maybeLogDecorParallaxUpdate(debugPayload);
+    }
+  }
+
+  function scheduleDecorParallax(source){
+    if (source) {
+      decorParallaxLastScheduleSource = source;
+      if (isDecorParallaxNativeScrollSource(source)) {
+        decorParallaxNativeScrollSeen = true;
+        stopDecorParallaxScrollWatch();
+      }
+    }
+    if (decorParallaxFrame) return;
+    decorParallaxFrame = requestAnimationFrame(updateDecorParallax);
+  }
+
+  function getDecorParallaxScrollTop(){
+    return Math.max(
+      toPositiveNumber(window.scrollY),
+      toPositiveNumber(window.pageYOffset),
+      toPositiveNumber(document.documentElement && document.documentElement.scrollTop),
+      toPositiveNumber(document.body && document.body.scrollTop),
+      toPositiveNumber(document.scrollingElement && document.scrollingElement.scrollTop)
+    );
+  }
+
+  function isDecorParallaxPreviewDocument(){
+    var previewRoot = document.documentElement;
+    var previewBody = document.body;
+
+    return (
+      String(previewRoot && previewRoot.getAttribute && previewRoot.getAttribute("data-preview") || "").trim() === "1" ||
+      String(previewBody && previewBody.getAttribute && previewBody.getAttribute("data-preview") || "").trim() === "1"
+    );
+  }
+
+  function shouldWatchDecorParallaxScroll(){
+    return detectEmbeddedContext() || isDecorParallaxPreviewDocument();
+  }
+
+  function stopDecorParallaxScrollWatch(){
+    if (!decorParallaxScrollWatchTimer) return;
+    window.clearInterval(decorParallaxScrollWatchTimer);
+    decorParallaxScrollWatchTimer = 0;
+  }
+
+  function isDecorParallaxNativeScrollSource(source){
+    var normalized = String(source || "").trim().toLowerCase();
+    return (
+      normalized === "window-scroll" ||
+      normalized === "document-scroll" ||
+      normalized === "document-element-scroll" ||
+      normalized === "body-scroll" ||
+      normalized === "scrolling-element-scroll" ||
+      normalized === "visual-viewport-scroll"
+    );
+  }
+
+  function isDecorParallaxDebugEnabled(){
+    try {
+      return window.__decorParallaxDebugEnabled === true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function storeDecorParallaxDebugState(detail){
+    try {
+      window.__decorParallaxDebug = detail || null;
+    } catch (_error) {
+      // noop
+    }
+  }
+
+  function logDecorParallaxDebug(eventName, detail){
+    if (!isDecorParallaxDebugEnabled()) return;
+    try {
+      console.info("[decor-parallax]", eventName, detail || {});
+    } catch (_error) {
+      // noop
+    }
+    try {
+      if (window.parent && window.parent !== window && window.parent.postMessage) {
+        window.parent.postMessage({
+          type: "preview:decor-parallax-debug",
+          eventName: eventName,
+          detail: detail || {}
+        }, "*");
+      }
+    } catch (_error) {
+      // noop
+    }
+  }
+
+  function maybeLogDecorParallaxUpdate(detail){
+    if (!isDecorParallaxDebugEnabled()) return;
+    var now = Date.now();
+    if ((now - decorParallaxLastDebugLogAt) < 180) return;
+    decorParallaxLastDebugLogAt = now;
+    logDecorParallaxDebug("update", detail);
+  }
+
+  function startDecorParallaxScrollWatch(){
+    if (decorParallaxScrollWatchTimer || !shouldWatchDecorParallaxScroll()) return;
+
+    decorParallaxLastScrollTop = getDecorParallaxScrollTop();
+    decorParallaxScrollWatchTimer = window.setInterval(function(){
+      if (decorParallaxNativeScrollSeen) {
+        stopDecorParallaxScrollWatch();
+        return;
+      }
+      var nextScrollTop = getDecorParallaxScrollTop();
+      if (nextScrollTop === decorParallaxLastScrollTop) return;
+      decorParallaxLastScrollTop = nextScrollTop;
+      scheduleDecorParallax("scroll-watch");
+    }, 90);
+  }
+
+  function attachDecorParallaxScrollSource(target, source){
+    if (!target || !target.addEventListener) return;
+    target.addEventListener("scroll", function(){
+      scheduleDecorParallax(source || "scroll");
+    }, { passive: true });
+  }
+
+  function bootDecorParallax(){
+    if (decorParallaxStarted) return;
+    decorParallaxStarted = true;
+    decorParallaxNativeScrollSeen = false;
+
+    if (isReducedMotion()) return;
+
+    decorParallaxEntries = collectDecorParallaxSections();
+    if (!decorParallaxEntries.length) return;
+
+    logDecorParallaxDebug("boot", {
+      preview: isDecorParallaxPreviewDocument(),
+      embedded: detectEmbeddedContext(),
+      sectionCount: decorParallaxEntries.length,
+      previewScale: Number(getDecorParallaxPreviewScale().toFixed(3)),
+      distanceMultiplier: Number(getDecorParallaxDistanceMultiplier().toFixed(3)),
+      viewportWidth: Number(getViewportWidth().toFixed(2)),
+      viewportHeight: Number(getViewportHeight().toFixed(2))
+    });
+
+    attachDecorParallaxScrollSource(window, "window-scroll");
+    window.addEventListener("resize", function(){
+      scheduleDecorParallax("window-resize");
+    }, { passive: true });
+    document.addEventListener("scroll", function(){
+      scheduleDecorParallax("document-scroll");
+    }, { passive: true, capture: true });
+    attachDecorParallaxScrollSource(document.documentElement, "document-element-scroll");
+    attachDecorParallaxScrollSource(document.body, "body-scroll");
+    attachDecorParallaxScrollSource(document.scrollingElement, "scrolling-element-scroll");
+
+    if (window.visualViewport && window.visualViewport.addEventListener) {
+      window.visualViewport.addEventListener("scroll", function(){
+        scheduleDecorParallax("visual-viewport-scroll");
+      }, { passive: true });
+      window.visualViewport.addEventListener("resize", function(){
+        scheduleDecorParallax("visual-viewport-resize");
+      }, { passive: true });
+    }
+
+    scheduleDecorParallax("boot");
+    window.setTimeout(function(){
+      scheduleDecorParallax("boot-timeout");
+    }, 180);
+    startDecorParallaxScrollWatch();
   }
 
   function prepareGalleryStagger(element){
@@ -581,6 +985,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
           requestAnimationFrame(function(){
             requestAnimationFrame(function(){
               boot(preparedElements);
+              bootDecorParallax();
             });
           });
         });

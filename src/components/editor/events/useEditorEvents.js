@@ -13,10 +13,12 @@ import {
 } from "@/domain/gifts/config";
 import {
   applyGlobalMotionPreset,
+  applyGlobalMotionPresetToSections,
   clearAllMotionEffects,
   CLEAR_ALL_MOTION_PRESET_ID,
   sanitizeMotionEffect,
 } from "@/domain/motionEffects";
+import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
 const COUNTDOWN_STYLE_KEYS = [
@@ -125,6 +127,7 @@ export default function useEditorEvents({
   celdaGaleriaActiva,
   setCeldaGaleriaActiva,
   setObjetos,
+  setSecciones,
 
   secciones,
   seccionActivaId,
@@ -424,6 +427,8 @@ export default function useEditorEvents({
         presetId: normalizedPresetId,
         total: 0,
         changed: 0,
+        totalSections: 0,
+        changedSections: 0,
       };
 
       setObjetos((prev) => {
@@ -444,6 +449,39 @@ export default function useEditorEvents({
         return next;
       });
 
+      if (typeof setSecciones === "function") {
+        setSecciones((prev) => {
+          const currentSections = Array.isArray(prev) ? prev : [];
+          const nextSections = applyGlobalMotionPresetToSections(currentSections, {
+            presetId: normalizedPresetId,
+          });
+
+          summary.totalSections = currentSections.reduce((acc, section) => {
+            const backgroundModel = normalizeSectionBackgroundModel(section, {
+              sectionHeight: section?.altura,
+            });
+            return acc + (backgroundModel.decoraciones.length > 0 ? 1 : 0);
+          }, 0);
+
+          summary.changedSections = nextSections.reduce((acc, section, index) => {
+            const currentSection = currentSections[index];
+            const currentBackgroundModel = normalizeSectionBackgroundModel(currentSection, {
+              sectionHeight: currentSection?.altura,
+            });
+
+            if (!currentBackgroundModel.decoraciones.length) return acc;
+
+            const nextBackgroundModel = normalizeSectionBackgroundModel(section, {
+              sectionHeight: section?.altura,
+            });
+
+            return acc + (currentBackgroundModel.parallax !== nextBackgroundModel.parallax ? 1 : 0);
+          }, 0);
+
+          return nextSections;
+        });
+      }
+
       requestAnimationFrame(() => {
         window.dispatchEvent(
           new CustomEvent("motion-effects-applied", {
@@ -455,7 +493,7 @@ export default function useEditorEvents({
 
     window.addEventListener("aplicar-estilo-efectos", handler);
     return () => window.removeEventListener("aplicar-estilo-efectos", handler);
-  }, [setObjetos, secciones]);
+  }, [setObjetos, setSecciones, secciones]);
 
   // ------------------------------------------------------------
   // 5) Evento global: agregar-cuadro-texto

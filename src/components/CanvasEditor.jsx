@@ -432,6 +432,7 @@ export default function CanvasEditor({
     celdaGaleriaActiva,
     setCeldaGaleriaActiva,
     setObjetos,
+    setSecciones,
 
     secciones,
     seccionActivaId,

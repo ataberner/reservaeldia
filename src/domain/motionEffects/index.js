@@ -1,3 +1,8 @@
+import {
+  buildSectionDecorationsPayload,
+  normalizeSectionBackgroundModel,
+} from "@/domain/sections/backgrounds";
+
 const DEFAULT_CANVAS_WIDTH = 800;
 
 export const MOTION_EFFECT_VALUES = Object.freeze([
@@ -86,6 +91,14 @@ function toFiniteNumber(value, fallback = 0) {
 function normalizePresetId(value) {
   const normalized = toLowerText(value);
   return PRESET_IDS.has(normalized) ? normalized : "soft_elegant";
+}
+
+function resolveBackgroundParallaxForPreset(presetId) {
+  if (toLowerText(presetId) === CLEAR_ALL_MOTION_PRESET_ID) return "none";
+  const normalizedPresetId = normalizePresetId(presetId);
+  if (normalizedPresetId === "modern_dynamic") return "dynamic";
+  if (normalizedPresetId === "soft_elegant") return "soft";
+  return "none";
 }
 
 function canonicalType(element) {
@@ -379,5 +392,39 @@ export function applyGlobalMotionPreset(elements, options = {}) {
     });
 
     return { ...element, motionEffect: sanitizeMotionEffect(effect) };
+  });
+}
+
+export function applyGlobalMotionPresetToSections(secciones, options = {}) {
+  const list = Array.isArray(secciones) ? secciones : [];
+  const nextParallax = resolveBackgroundParallaxForPreset(options?.presetId);
+
+  return list.map((section) => {
+    if (!section || typeof section !== "object") return section;
+
+    const backgroundModel = normalizeSectionBackgroundModel(section, {
+      sectionHeight: section?.altura,
+    });
+
+    if (!Array.isArray(backgroundModel.decoraciones) || !backgroundModel.decoraciones.length) {
+      return section;
+    }
+
+    if (backgroundModel.parallax === nextParallax) {
+      return section;
+    }
+
+    return {
+      ...section,
+      decoracionesFondo: buildSectionDecorationsPayload(
+        {
+          items: backgroundModel.decoraciones,
+          parallax: nextParallax,
+        },
+        {
+          sectionHeight: section?.altura,
+        }
+      ),
+    };
   });
 }

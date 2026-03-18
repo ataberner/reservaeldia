@@ -4,6 +4,14 @@ const DEFAULT_DECORATION_WIDTH = 220;
 const DEFAULT_DECORATION_HEIGHT = 160;
 const MIN_DECORATION_SIZE = 32;
 const MIN_VISIBLE_DECORATION_PORTION = 24;
+export const BACKGROUND_DECORATION_PARALLAX_VALUES = Object.freeze([
+  "none",
+  "soft",
+  "dynamic",
+]);
+const BACKGROUND_DECORATION_PARALLAX_SET = new Set(
+  BACKGROUND_DECORATION_PARALLAX_VALUES
+);
 
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -12,6 +20,20 @@ function asObject(value) {
 
 function normalizeText(value) {
   return String(value || "").trim();
+}
+
+export function sanitizeBackgroundDecorationParallax(value, fallback = "none") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (BACKGROUND_DECORATION_PARALLAX_SET.has(normalized)) {
+    return normalized;
+  }
+
+  const fallbackNormalized = normalizeText(fallback).toLowerCase();
+  if (BACKGROUND_DECORATION_PARALLAX_SET.has(fallbackNormalized)) {
+    return fallbackNormalized;
+  }
+
+  return "none";
 }
 
 function toPositiveNumber(value, fallback = null) {
@@ -87,6 +109,13 @@ function normalizeDecorationOrder(items = []) {
       ...item,
       orden: index,
     }));
+}
+
+function resolveBackgroundDecorationParallax(rawDecoracionesFondo, fallback = "none") {
+  return sanitizeBackgroundDecorationParallax(
+    asObject(rawDecoracionesFondo).parallax,
+    fallback
+  );
 }
 
 export function createBackgroundDecorationId(seed = Date.now()) {
@@ -206,18 +235,17 @@ export function buildSectionDecorationsPayload(
   } = {}
 ) {
   const safeSource = asObject(sectionOrDecoraciones);
+  const decorationsSource = safeSource.decoracionesFondo ?? safeSource;
   const safeSectionHeight = resolveSectionHeight(
     safeSource.altura ?? sectionHeight
   );
 
   return {
-    items: normalizeBackgroundDecorations(
-      safeSource.decoracionesFondo ?? safeSource,
-      {
-        sectionHeight: safeSectionHeight,
-        canvasWidth,
-      }
-    ),
+    items: normalizeBackgroundDecorations(decorationsSource, {
+      sectionHeight: safeSectionHeight,
+      canvasWidth,
+    }),
+    parallax: resolveBackgroundDecorationParallax(decorationsSource),
   };
 }
 
@@ -242,6 +270,7 @@ export function normalizeSectionBackgroundModel(
       fondoImagenOffsetX: toFiniteNumber(safeSection.fondoImagenOffsetX, 0),
       fondoImagenOffsetY: toFiniteNumber(safeSection.fondoImagenOffsetY, 0),
     },
+    parallax: resolveBackgroundDecorationParallax(safeSection.decoracionesFondo),
     decoraciones: normalizeBackgroundDecorations(safeSection.decoracionesFondo, {
       sectionHeight: safeSectionHeight,
       canvasWidth: safeCanvasWidth,
@@ -311,21 +340,25 @@ function updateSectionDecorationsCollection(
   return (Array.isArray(sections) ? sections : []).map((section) => {
     if (section?.id !== sectionId) return section;
 
-    const items = normalizeBackgroundDecorations(
-      {
-        items: Array.isArray(nextDecorations) ? nextDecorations : [],
-      },
-      {
-        sectionHeight: toPositiveNumber(section?.altura, sectionHeight) || sectionHeight,
-        canvasWidth,
-      }
-    );
+    const safeSectionHeight =
+      toPositiveNumber(section?.altura, sectionHeight) || sectionHeight;
+    const currentBackgroundModel = normalizeSectionBackgroundModel(section, {
+      sectionHeight: safeSectionHeight,
+      canvasWidth,
+    });
 
     return {
       ...section,
-      decoracionesFondo: {
-        items,
-      },
+      decoracionesFondo: buildSectionDecorationsPayload(
+        {
+          items: Array.isArray(nextDecorations) ? nextDecorations : [],
+          parallax: currentBackgroundModel.parallax,
+        },
+        {
+          sectionHeight: safeSectionHeight,
+          canvasWidth,
+        }
+      ),
     };
   });
 }
@@ -375,10 +408,11 @@ export function updateBackgroundDecorationTransform(
     if (section?.id !== sectionId) return section;
 
     const safeSectionHeight = toPositiveNumber(section?.altura, sectionHeight) || sectionHeight;
-    const currentDecorations = normalizeSectionBackgroundModel(section, {
+    const currentBackgroundModel = normalizeSectionBackgroundModel(section, {
       sectionHeight: safeSectionHeight,
       canvasWidth,
-    }).decoraciones;
+    });
+    const currentDecorations = currentBackgroundModel.decoraciones;
 
     const nextDecorations = currentDecorations.map((decoration) => {
       if (decoration.id !== targetId) return decoration;
@@ -398,9 +432,16 @@ export function updateBackgroundDecorationTransform(
 
     return {
       ...section,
-      decoracionesFondo: {
-        items: normalizeDecorationOrder(nextDecorations.filter(Boolean)),
-      },
+      decoracionesFondo: buildSectionDecorationsPayload(
+        {
+          items: normalizeDecorationOrder(nextDecorations.filter(Boolean)),
+          parallax: currentBackgroundModel.parallax,
+        },
+        {
+          sectionHeight: safeSectionHeight,
+          canvasWidth,
+        }
+      ),
     };
   });
 }
@@ -419,9 +460,10 @@ export function reorderBackgroundDecoration(
   return (Array.isArray(sections) ? sections : []).map((section) => {
     if (section?.id !== sectionId) return section;
 
-    const currentDecorations = normalizeSectionBackgroundModel(section, {
+    const currentBackgroundModel = normalizeSectionBackgroundModel(section, {
       sectionHeight: section?.altura,
-    }).decoraciones;
+    });
+    const currentDecorations = currentBackgroundModel.decoraciones;
     const currentIndex = currentDecorations.findIndex((item) => item.id === decorationId);
     if (currentIndex === -1) return section;
 
@@ -435,9 +477,15 @@ export function reorderBackgroundDecoration(
 
     return {
       ...section,
-      decoracionesFondo: {
-        items: normalizeDecorationOrder(reordered),
-      },
+      decoracionesFondo: buildSectionDecorationsPayload(
+        {
+          items: normalizeDecorationOrder(reordered),
+          parallax: currentBackgroundModel.parallax,
+        },
+        {
+          sectionHeight: section?.altura,
+        }
+      ),
     };
   });
 }
@@ -449,17 +497,68 @@ export function removeBackgroundDecoration(sections, sectionId, decorationId) {
   return (Array.isArray(sections) ? sections : []).map((section) => {
     if (section?.id !== sectionId) return section;
 
-    const currentDecorations = normalizeSectionBackgroundModel(section, {
+    const currentBackgroundModel = normalizeSectionBackgroundModel(section, {
       sectionHeight: section?.altura,
-    }).decoraciones;
+    });
+    const currentDecorations = currentBackgroundModel.decoraciones;
 
     return {
       ...section,
-      decoracionesFondo: {
-        items: normalizeDecorationOrder(
-          currentDecorations.filter((decoration) => decoration.id !== targetId)
-        ),
-      },
+      decoracionesFondo: buildSectionDecorationsPayload(
+        {
+          items: normalizeDecorationOrder(
+            currentDecorations.filter((decoration) => decoration.id !== targetId)
+          ),
+          parallax: currentBackgroundModel.parallax,
+        },
+        {
+          sectionHeight: section?.altura,
+        }
+      ),
+    };
+  });
+}
+
+export function updateBackgroundDecorationsParallax(
+  sections,
+  sectionId,
+  nextParallax,
+  {
+    sectionHeight = DEFAULT_SECTION_HEIGHT,
+    canvasWidth = CANVAS_WIDTH,
+  } = {}
+) {
+  const targetSectionId = normalizeText(sectionId);
+  if (!targetSectionId) return Array.isArray(sections) ? sections : [];
+
+  const safeParallax = sanitizeBackgroundDecorationParallax(nextParallax);
+
+  return (Array.isArray(sections) ? sections : []).map((section) => {
+    if (section?.id !== targetSectionId) return section;
+
+    const safeSectionHeight =
+      toPositiveNumber(section?.altura, sectionHeight) || sectionHeight;
+    const currentBackgroundModel = normalizeSectionBackgroundModel(section, {
+      sectionHeight: safeSectionHeight,
+      canvasWidth,
+    });
+
+    if (currentBackgroundModel.parallax === safeParallax) {
+      return section;
+    }
+
+    return {
+      ...section,
+      decoracionesFondo: buildSectionDecorationsPayload(
+        {
+          items: currentBackgroundModel.decoraciones,
+          parallax: safeParallax,
+        },
+        {
+          sectionHeight: safeSectionHeight,
+          canvasWidth,
+        }
+      ),
     };
   });
 }

@@ -8,6 +8,24 @@ import {
   X,
 } from "lucide-react";
 
+const BACKGROUND_MOTION_OPTIONS = Object.freeze([
+  {
+    value: "none",
+    label: "Sin movimiento",
+    description: "Los adornos quedan quietos.",
+  },
+  {
+    value: "soft",
+    label: "Suave",
+    description: "Se mueven apenas.",
+  },
+  {
+    value: "dynamic",
+    label: "Marcado",
+    description: "Se nota mas al recorrer la invitacion.",
+  },
+]);
+
 function IconActionButton({
   label,
   icon: Icon,
@@ -137,6 +155,7 @@ function DecorationRow({
 export default function SectionBackgroundDecorationsPanel({
   decorations = [],
   activeDecorationId = null,
+  motionMode = "none",
   disabled = false,
   isMobile = false,
   onClose,
@@ -145,6 +164,7 @@ export default function SectionBackgroundDecorationsPanel({
   onMoveDown,
   onRemove,
   onConvertToImage,
+  onMotionModeChange,
 }) {
   const safeDecorations = Array.isArray(decorations) ? decorations : [];
 
@@ -175,6 +195,42 @@ export default function SectionBackgroundDecorationsPanel({
             <X className="h-4 w-4" />
           </button>
         ) : null}
+      </div>
+
+      <div className="mb-3 rounded-2xl border border-[#e7dcf8] bg-[#faf7ff] p-3">
+        <div className="mb-2">
+          <h4 className="text-xs font-semibold text-[#5f3596]">Efectos</h4>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Elige si los adornos del fondo se mueven al recorrer la invitacion.
+          </p>
+        </div>
+
+        <div className="grid gap-2">
+          {BACKGROUND_MOTION_OPTIONS.map((option) => {
+            const isActive = motionMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onMotionModeChange?.(option.value)}
+                disabled={disabled}
+                className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-left transition ${
+                  disabled
+                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-55"
+                    : isActive
+                      ? "border-[#ccb6ef] bg-white text-[#6b41a7] shadow-[0_8px_18px_rgba(119,61,190,0.10)]"
+                      : "border-white/80 bg-white/70 text-slate-700 hover:border-[#d9c8f5] hover:bg-white"
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block text-[11px] font-semibold">{option.label}</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">{option.description}</span>
+                </span>
+                {isActive ? <Check className="h-4 w-4 shrink-0" /> : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex max-h-[320px] flex-col gap-2 overflow-x-hidden overflow-y-auto pr-1">

@@ -153,7 +153,6 @@ function buildSectionDecorationStyle(decoration: any, mode: string): string {
   const top = Number(decoration?.y) || 0;
   const width = Math.max(1, Number(decoration?.width) || 1);
   const height = Math.max(1, Number(decoration?.height) || 1);
-  const rotation = Number(decoration?.rotation) || 0;
   const scaleVar = buildSectionDecorationScaleVar(mode);
 
   return [
@@ -161,21 +160,33 @@ function buildSectionDecorationStyle(decoration: any, mode: string): string {
     `top:${buildSectionDecorationTopCss(top, mode)}`,
     `width:calc(${scaleVar} * ${width}px)`,
     `height:calc(${scaleVar} * ${height}px)`,
-    `transform:rotate(${rotation}deg)`,
-    "transform-origin:center center",
   ].join(";");
+}
+
+function buildSectionDecorationInnerStyle(decoration: any): string {
+  const rotation = Number(decoration?.rotation) || 0;
+  return [`transform:rotate(${rotation}deg)`, "transform-origin:center center"].join(";");
+}
+
+function buildSectionDecorationDepth(index: number): string {
+  const depth = Math.min(1.1, 0.65 + Math.max(0, index) * 0.15);
+  return depth.toFixed(2);
 }
 
 function renderSectionDecorations(decorations: any[], mode: string): string {
   const items = (Array.isArray(decorations) ? decorations : [])
-    .map((decoration) => {
+    .map((decoration, index) => {
       const src = escapeAttr(String(decoration?.src || "").trim());
       if (!src) return "";
 
       const itemStyle = escapeAttr(buildSectionDecorationStyle(decoration, mode));
+      const innerStyle = escapeAttr(buildSectionDecorationInnerStyle(decoration));
+      const depth = escapeAttr(buildSectionDecorationDepth(index));
       return `
-        <div class="sec-decor-item" style="${itemStyle}">
-          <img src="${src}" alt="" loading="lazy" decoding="async" />
+        <div class="sec-decor-item" data-decor-depth="${depth}" style="${itemStyle}">
+          <div class="sec-decor-item-inner" style="${innerStyle}">
+            <img src="${src}" alt="" loading="lazy" decoding="async" />
+          </div>
         </div>
       `.trim();
     })
@@ -848,7 +859,7 @@ export function generarHTMLDesdeSecciones(
 
 
       return `
-<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" style="--hbase:${hbase}">
+<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}" style="--hbase:${hbase}">
   <div class="sec-zoom">
     <div class="sec-bg" style="${fondoStyle}"></div>
     ${htmlDecoraciones}
@@ -890,6 +901,16 @@ export function generarHTMLDesdeSecciones(
       background: white;
       overflow-x: hidden;
       font-family: sans-serif;
+    }
+
+    html[data-preview="1"],
+    body[data-preview="1"]{
+      height: auto;
+      min-height: 100%;
+    }
+
+    body[data-preview="1"]{
+      overflow-y: auto;
     }
 
     /* ✅ SOLO MOBILE: evita “auto-resize / font boosting” del texto */
@@ -1029,6 +1050,14 @@ export function generarHTMLDesdeSecciones(
     .sec-decor-item{
       position: absolute;
       pointer-events: none;
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
+    }
+
+    .sec-decor-item-inner{
+      width: 100%;
+      height: 100%;
+      transform-origin: center center;
     }
 
     .sec-decor-item img{
@@ -1069,6 +1098,12 @@ export function generarHTMLDesdeSecciones(
         box-sizing: border-box;
         padding-left: var(--safe-left);
         padding-right: var(--safe-right);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .sec-decor-item{
+        transform: translate3d(0, 0, 0) !important;
       }
     }
 

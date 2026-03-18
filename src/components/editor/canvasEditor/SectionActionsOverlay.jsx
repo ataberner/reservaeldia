@@ -24,6 +24,7 @@ import {
   normalizeSectionBackgroundModel,
   removeBackgroundDecoration,
   reorderBackgroundDecoration,
+  updateBackgroundDecorationsParallax,
 } from "@/domain/sections/backgrounds";
 
 const DESKTOP_PANEL_WIDTH = 76;
@@ -152,7 +153,7 @@ export default function SectionActionsOverlay({
     ? normalizeSectionBackgroundModel(seccion, {
         sectionHeight: seccion.altura,
       })
-    : { base: { fondo: "#ffffff" }, decoraciones: [] };
+    : { base: { fondo: "#ffffff" }, parallax: "none", decoraciones: [] };
   const decoraciones = Array.isArray(backgroundModel.decoraciones)
     ? backgroundModel.decoraciones
     : [];
@@ -286,10 +287,19 @@ export default function SectionActionsOverlay({
     });
   };
 
+  const handleChangeDecorationMotion = (nextMotionMode) => {
+    setSecciones((previous) =>
+      updateBackgroundDecorationsParallax(previous, seccion.id, nextMotionMode, {
+        sectionHeight: seccion.altura,
+      })
+    );
+  };
+
   const renderDecorationsPanel = (mobile = false) => (
     <SectionBackgroundDecorationsPanel
       decorations={decoraciones}
       activeDecorationId={activeDecorationId}
+      motionMode={backgroundModel.parallax}
       disabled={estaAnimando || isDeletingSection}
       isMobile={mobile}
       onClose={() => setDecorationsPanelOpen(false)}
@@ -298,6 +308,7 @@ export default function SectionActionsOverlay({
       onMoveDown={(decorationId) => handleReorderDecoration(decorationId, "down")}
       onRemove={handleRemoveDecoration}
       onConvertToImage={handleConvertDecorationToImage}
+      onMotionModeChange={handleChangeDecorationMotion}
     />
   );
 

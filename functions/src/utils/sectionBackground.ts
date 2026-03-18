@@ -4,6 +4,16 @@ const DEFAULT_DECORATION_WIDTH = 220;
 const DEFAULT_DECORATION_HEIGHT = 160;
 const MIN_DECORATION_SIZE = 32;
 const MIN_VISIBLE_DECORATION_PORTION = 24;
+export const BACKGROUND_DECORATION_PARALLAX_VALUES = [
+  "none",
+  "soft",
+  "dynamic",
+] as const;
+export type BackgroundDecorationParallaxMode =
+  (typeof BACKGROUND_DECORATION_PARALLAX_VALUES)[number];
+const BACKGROUND_DECORATION_PARALLAX_SET = new Set<string>(
+  BACKGROUND_DECORATION_PARALLAX_VALUES
+);
 
 export type BackgroundDecorationItem = {
   id: string;
@@ -19,6 +29,11 @@ export type BackgroundDecorationItem = {
   orden: number;
 };
 
+export type BackgroundDecorationsPayload = {
+  items: BackgroundDecorationItem[];
+  parallax: BackgroundDecorationParallaxMode;
+};
+
 type SectionBackgroundModel = {
   base: {
     fondo: string;
@@ -27,6 +42,7 @@ type SectionBackgroundModel = {
     fondoImagenOffsetX: number;
     fondoImagenOffsetY: number;
   };
+  parallax: BackgroundDecorationParallaxMode;
   decoraciones: BackgroundDecorationItem[];
 };
 
@@ -37,6 +53,23 @@ function asObject(value: unknown): Record<string, unknown> {
 
 function normalizeText(value: unknown): string {
   return String(value || "").trim();
+}
+
+export function sanitizeBackgroundDecorationParallax(
+  value: unknown,
+  fallback: BackgroundDecorationParallaxMode = "none"
+): BackgroundDecorationParallaxMode {
+  const normalized = normalizeText(value).toLowerCase();
+  if (BACKGROUND_DECORATION_PARALLAX_SET.has(normalized)) {
+    return normalized as BackgroundDecorationParallaxMode;
+  }
+
+  const fallbackNormalized = normalizeText(fallback).toLowerCase();
+  if (BACKGROUND_DECORATION_PARALLAX_SET.has(fallbackNormalized)) {
+    return fallbackNormalized as BackgroundDecorationParallaxMode;
+  }
+
+  return "none";
 }
 
 function toFiniteNumber(value: unknown, fallback = 0): number {
@@ -124,6 +157,16 @@ function normalizeDecorationOrder(items: BackgroundDecorationItem[]): Background
       ...item,
       orden: index,
     }));
+}
+
+function resolveBackgroundDecorationParallax(
+  rawDecoracionesFondo: unknown,
+  fallback: BackgroundDecorationParallaxMode = "none"
+): BackgroundDecorationParallaxMode {
+  return sanitizeBackgroundDecorationParallax(
+    asObject(rawDecoracionesFondo).parallax,
+    fallback
+  );
 }
 
 export function clampBackgroundDecorationToBounds(
@@ -244,6 +287,29 @@ export function normalizeBackgroundDecorations(
   return normalizeDecorationOrder(normalized);
 }
 
+export function buildSectionDecorationsPayload(
+  sectionOrDecoraciones: unknown,
+  {
+    sectionHeight = DEFAULT_SECTION_HEIGHT,
+    canvasWidth = CANVAS_WIDTH,
+  }: {
+    sectionHeight?: number;
+    canvasWidth?: number;
+  } = {}
+): BackgroundDecorationsPayload {
+  const safeSource = asObject(sectionOrDecoraciones);
+  const decorationsSource = safeSource.decoracionesFondo ?? safeSource;
+  const safeSectionHeight = resolveSectionHeight(safeSource.altura ?? sectionHeight);
+
+  return {
+    items: normalizeBackgroundDecorations(decorationsSource, {
+      sectionHeight: safeSectionHeight,
+      canvasWidth,
+    }),
+    parallax: resolveBackgroundDecorationParallax(decorationsSource),
+  };
+}
+
 export function normalizeSectionBackgroundModel(section: unknown): SectionBackgroundModel {
   const safeSection = asObject(section);
   const sectionHeight = resolveSectionHeight(safeSection.altura);
@@ -256,6 +322,7 @@ export function normalizeSectionBackgroundModel(section: unknown): SectionBackgr
       fondoImagenOffsetX: toFiniteNumber(safeSection.fondoImagenOffsetX, 0),
       fondoImagenOffsetY: toFiniteNumber(safeSection.fondoImagenOffsetY, 0),
     },
+    parallax: resolveBackgroundDecorationParallax(safeSection.decoracionesFondo),
     decoraciones: normalizeBackgroundDecorations(safeSection.decoracionesFondo, {
       sectionHeight,
       canvasWidth: CANVAS_WIDTH,

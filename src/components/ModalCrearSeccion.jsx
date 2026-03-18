@@ -3,7 +3,10 @@ import { useState, useEffect } from "react";
 import usePlantillasDeSeccion from "@/hooks/usePlantillasDeSeccion";
 import { subirImagenPublica } from "@/utils/imagenes";
 import { ALTURAS_SECCIONES } from "functions/src/models/dimensionesBase";
-import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
+import {
+  buildSectionDecorationsPayload,
+  normalizeSectionBackgroundModel,
+} from "@/domain/sections/backgrounds";
 
 function renderTemplatePreview(plantilla) {
   const backgroundModel = normalizeSectionBackgroundModel(plantilla, {
@@ -303,9 +306,15 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
                   )
                     ? Number(plantillaSeleccionada.alturaFijoBackup)
                     : null,
-                  decoracionesFondo: {
-                    items: backgroundModel.decoraciones,
-                  },
+                  decoracionesFondo: buildSectionDecorationsPayload(
+                    {
+                      items: backgroundModel.decoraciones,
+                      parallax: backgroundModel.parallax,
+                    },
+                    {
+                      sectionHeight: plantillaSeleccionada.altura || 400,
+                    }
+                  ),
                   objetos: (plantillaSeleccionada.objetos || []).map(obj => ({
                     ...obj,
                     seccionId: `sec-${Date.now()}`

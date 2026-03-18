@@ -45,6 +45,7 @@ import {
   loadCheckoutPricingConfig,
 } from "../siteSettings/pricing";
 import {
+  buildSectionDecorationsPayload,
   listSectionVisualAssets,
   normalizeSectionBackgroundModel,
 } from "../utils/sectionBackground";
@@ -2219,9 +2220,15 @@ async function resolveUrlsInSections(secciones: unknown[]): Promise<unknown[]> {
         }
       }
 
-      nextSection.decoracionesFondo = {
-        items: nextDecoraciones,
-      };
+      nextSection.decoracionesFondo = buildSectionDecorationsPayload(
+        {
+          items: nextDecoraciones,
+          parallax: backgroundModel.parallax,
+        },
+        {
+          sectionHeight: getNumber(section?.altura, 600),
+        }
+      );
 
       return nextSection;
     })

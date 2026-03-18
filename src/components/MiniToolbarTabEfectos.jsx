@@ -40,6 +40,8 @@ export default function MiniToolbarTabEfectos() {
         presetId: String(detail.presetId || ""),
         changed: Number(detail.changed || 0),
         total: Number(detail.total || 0),
+        changedSections: Number(detail.changedSections || 0),
+        totalSections: Number(detail.totalSections || 0),
       });
     };
 
@@ -52,7 +54,10 @@ export default function MiniToolbarTabEfectos() {
     const copy = PRESET_COPY[lastSummary.presetId];
     if (!copy) return "";
 
-    return `Aplicado: ${copy.title}. ${lastSummary.changed} de ${lastSummary.total} elementos actualizados.`;
+    const baseText = `Aplicado: ${copy.title}. ${lastSummary.changed} de ${lastSummary.total} elementos actualizados.`;
+    if (!lastSummary.totalSections) return baseText;
+
+    return `${baseText} ${lastSummary.changedSections} de ${lastSummary.totalSections} secciones con adornos del fondo actualizadas.`;
   }, [lastSummary]);
 
   const applyPreset = (presetId) => {
@@ -66,15 +71,16 @@ export default function MiniToolbarTabEfectos() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-zinc-600">
-        Elige un estilo global. Se asigna un efecto por elemento y se guarda en
-        el borrador automaticamente.
+        Elige un estilo global. Se asigna un efecto por elemento y, si hay
+        adornos en el fondo, tambien se ajusta su movimiento.
       </p>
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
         Para ajustar un elemento puntual, selecciona ese elemento en el canvas y
         abre su menu de opciones para editar sus Efectos.
       </div>
       <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-        Los efectos tambien se muestran en la vista previa de la invitacion.
+        Los efectos y el movimiento del fondo tambien se muestran en la vista
+        previa de la invitacion.
       </div>
 
       {PRESET_ORDER.map((preset) => {

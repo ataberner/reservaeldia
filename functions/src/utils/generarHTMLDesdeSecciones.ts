@@ -884,6 +884,286 @@ export function generarHTMLDesdeSecciones(
     fitMinFillRatio: 0.9,
   });
 
+  const previewMobileScrollRuntime = `
+<script>
+(function(){
+  function detectEmbeddedContext(){
+    try {
+      return window.self !== window.top;
+    } catch(_error) {
+      return true;
+    }
+  }
+
+  function isPreviewDocument(){
+    var htmlPreview = "";
+    var bodyPreview = "";
+    try {
+      htmlPreview = String(
+        document && document.documentElement && document.documentElement.dataset
+          ? document.documentElement.dataset.preview || ""
+          : ""
+      ).toLowerCase();
+    } catch(_error1) {}
+    try {
+      bodyPreview = String(
+        document && document.body && document.body.dataset
+          ? document.body.dataset.preview || ""
+          : ""
+      ).toLowerCase();
+    } catch(_error2) {}
+    return (
+      htmlPreview === "1" ||
+      htmlPreview === "true" ||
+      bodyPreview === "1" ||
+      bodyPreview === "true"
+    );
+  }
+
+  function getPreviewViewportKind(){
+    var htmlViewport = "";
+    var bodyViewport = "";
+    var runtimeViewport = "";
+    try {
+      htmlViewport = String(
+        document && document.documentElement && document.documentElement.dataset
+          ? document.documentElement.dataset.previewViewport || ""
+          : ""
+      ).toLowerCase();
+    } catch(_error1) {}
+    try {
+      bodyViewport = String(
+        document && document.body && document.body.dataset
+          ? document.body.dataset.previewViewport || ""
+          : ""
+      ).toLowerCase();
+    } catch(_error2) {}
+    try {
+      runtimeViewport = String(window.__previewViewportKind || "").toLowerCase();
+    } catch(_error3) {}
+    return runtimeViewport || htmlViewport || bodyViewport;
+  }
+
+  function toPositiveNumber(value){
+    var numeric = Number(value);
+    return isFinite(numeric) && numeric > 0 ? numeric : 0;
+  }
+
+  var started = false;
+  var normalizingScrollRoot = false;
+
+  function shouldStart(){
+    return isPreviewDocument() && detectEmbeddedContext() && getPreviewViewportKind() === "mobile";
+  }
+
+  function getRootScrollTop(){
+    var docEl = document.documentElement;
+    var scrollingElement = document.scrollingElement;
+    return Math.max(
+      toPositiveNumber(window.scrollY),
+      toPositiveNumber(window.pageYOffset),
+      toPositiveNumber(docEl && docEl.scrollTop),
+      toPositiveNumber(scrollingElement && scrollingElement.scrollTop)
+    );
+  }
+
+  function clamp(value, min, max){
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function getRootScrollingElement(){
+    return document.scrollingElement || document.documentElement || document.body || null;
+  }
+
+  function getMaxRootScrollTop(){
+    var docEl = document.documentElement;
+    var body = document.body;
+    var scrollingElement = getRootScrollingElement();
+    var scrollHeight = Math.max(
+      toPositiveNumber(scrollingElement && scrollingElement.scrollHeight),
+      toPositiveNumber(docEl && docEl.scrollHeight),
+      toPositiveNumber(body && body.scrollHeight)
+    );
+    var clientHeight = Math.max(
+      toPositiveNumber(window.innerHeight),
+      toPositiveNumber(docEl && docEl.clientHeight),
+      toPositiveNumber(scrollingElement && scrollingElement.clientHeight)
+    );
+    return Math.max(0, scrollHeight - clientHeight);
+  }
+
+  function setRootScrollTop(nextTop){
+    var targetTop = Math.max(0, toPositiveNumber(nextTop));
+    var docEl = document.documentElement;
+    var body = document.body;
+    var scrollingElement = getRootScrollingElement();
+
+    if (typeof window.scrollTo === "function") {
+      window.scrollTo(0, targetTop);
+    }
+    if (scrollingElement && scrollingElement !== body) {
+      scrollingElement.scrollTop = targetTop;
+    }
+    if (docEl) {
+      docEl.scrollTop = targetTop;
+    }
+    if (body && body !== scrollingElement) {
+      body.scrollTop = 0;
+    }
+    return targetTop;
+  }
+
+  function normalizeWheelDelta(delta, deltaMode){
+    var value = Number(delta);
+    if (!isFinite(value) || value === 0) return 0;
+    if (Number(deltaMode) === 1) {
+      return value * 16;
+    }
+    if (Number(deltaMode) === 2) {
+      return value * Math.max(
+        1,
+        toPositiveNumber(window.innerHeight),
+        toPositiveNumber(document.documentElement && document.documentElement.clientHeight)
+      );
+    }
+    return value;
+  }
+
+  function canElementConsumeWheel(element, deltaY){
+    if (!element) return false;
+    if (
+      element === document.body ||
+      element === document.documentElement ||
+      element === document.scrollingElement
+    ) {
+      return false;
+    }
+
+    var computedStyle = null;
+    try {
+      computedStyle = window.getComputedStyle ? window.getComputedStyle(element) : null;
+    } catch(_error) {
+      computedStyle = null;
+    }
+
+    var overflowY = String(computedStyle && computedStyle.overflowY || "").toLowerCase();
+    if (!/(auto|scroll|overlay)/.test(overflowY)) return false;
+
+    var scrollHeight = toPositiveNumber(element.scrollHeight);
+    var clientHeight = toPositiveNumber(element.clientHeight);
+    if (scrollHeight <= clientHeight + 1) return false;
+
+    var scrollTop = toPositiveNumber(element.scrollTop);
+    if (deltaY < 0) return scrollTop > 0.5;
+    if (deltaY > 0) return scrollTop + clientHeight < scrollHeight - 0.5;
+    return true;
+  }
+
+  function findWheelScrollableAncestor(target, deltaY){
+    var current = target;
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (current.nodeType === 1 && canElementConsumeWheel(current, deltaY)) {
+        return current;
+      }
+      current = current.parentElement || current.parentNode || null;
+    }
+    return null;
+  }
+
+  function redirectWheelToRoot(nativeEvent){
+    if (!shouldStart() || !nativeEvent || nativeEvent.defaultPrevented) return false;
+    if (nativeEvent.ctrlKey || nativeEvent.metaKey) return false;
+
+    var deltaY = normalizeWheelDelta(nativeEvent.deltaY, nativeEvent.deltaMode);
+    var deltaX = normalizeWheelDelta(nativeEvent.deltaX, nativeEvent.deltaMode);
+    if (Math.abs(deltaY) < 0.5 && Math.abs(deltaX) < 0.5) return false;
+
+    if (findWheelScrollableAncestor(nativeEvent.target, deltaY)) {
+      return false;
+    }
+
+    var rootBefore = getRootScrollTop();
+    var rootTarget = clamp(rootBefore + deltaY, 0, getMaxRootScrollTop());
+    if (Math.abs(rootTarget - rootBefore) < 0.5) return false;
+
+    if (nativeEvent.cancelable) {
+      nativeEvent.preventDefault();
+    }
+    setRootScrollTop(rootTarget);
+    return true;
+  }
+
+  function normalizeBodyScrollToRoot(){
+    if (!shouldStart() || normalizingScrollRoot) return false;
+
+    var body = document.body;
+    var docEl = document.documentElement;
+    var scrollingElement = document.scrollingElement;
+    if (!body || !docEl) return false;
+    if (body === scrollingElement || body === docEl) return false;
+
+    var bodyTop = toPositiveNumber(body.scrollTop);
+    if (bodyTop <= 0.5) return false;
+
+    var rootTop = getRootScrollTop();
+    var targetTop = Math.max(rootTop, rootTop + bodyTop);
+
+    normalizingScrollRoot = true;
+    try {
+      if (typeof window.scrollTo === "function") {
+        window.scrollTo(0, targetTop);
+      }
+      if (scrollingElement && scrollingElement !== body) {
+        scrollingElement.scrollTop = targetTop;
+      }
+      docEl.scrollTop = targetTop;
+      body.scrollTop = 0;
+    } catch(_error) {
+      normalizingScrollRoot = false;
+      return false;
+    }
+
+    var raf = window.requestAnimationFrame || function(cb){
+      return window.setTimeout(cb, 16);
+    };
+    raf(function(){
+      normalizingScrollRoot = false;
+    });
+    return true;
+  }
+
+  function boot(){
+    if (started || !shouldStart()) return;
+    started = true;
+
+    document.addEventListener("wheel", function(nativeEvent){
+      redirectWheelToRoot(nativeEvent);
+    }, { passive: false, capture: true });
+
+    document.addEventListener("scroll", function(){
+      normalizeBodyScrollToRoot();
+    }, { passive: true, capture: true });
+
+    if (document.body && document.body.addEventListener) {
+      document.body.addEventListener("scroll", function(){
+        normalizeBodyScrollToRoot();
+      }, { passive: true });
+    }
+  }
+
+  window.addEventListener("preview:mobile-scroll:enable", boot);
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function(){
+      window.setTimeout(boot, 0);
+    }, { once: true });
+  } else {
+    window.setTimeout(boot, 0);
+  }
+})();
+</script>
+`.trim();
+
   return `
 <!DOCTYPE html>
 <html lang="es"${slug ? ` data-slug="${escapeAttr(slug)}"` : ""}${isPreview ? ' data-preview="1"' : ""}>
@@ -909,8 +1189,13 @@ export function generarHTMLDesdeSecciones(
       min-height: 100%;
     }
 
-    body[data-preview="1"]{
+    html[data-preview="1"]{
       overflow-y: auto;
+      overscroll-behavior-y: contain;
+    }
+
+    body[data-preview="1"]{
+      overflow-y: visible;
     }
 
     /* ✅ SOLO MOBILE: evita “auto-resize / font boosting” del texto */
@@ -1232,11 +1517,57 @@ export function generarHTMLDesdeSecciones(
 
   ${scriptCountdown}
   ${scriptTemplatePreviewPatch}
+  ${previewMobileScrollRuntime}
 
   <script>
     (function(){
       function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
       function smoothstep01(t){ return t * t * (3 - 2 * t); }
+      function detectEmbeddedContext(){
+        try {
+          return window.self !== window.top;
+        } catch(_e) {
+          return true;
+        }
+      }
+      function isPreviewDocument(){
+        var htmlPreview = "";
+        var bodyPreview = "";
+        try {
+          htmlPreview = String(
+            document && document.documentElement && document.documentElement.dataset
+              ? document.documentElement.dataset.preview || ""
+              : ""
+          ).toLowerCase();
+        } catch(_e1) {}
+        try {
+          bodyPreview = String(
+            document && document.body && document.body.dataset
+              ? document.body.dataset.preview || ""
+              : ""
+          ).toLowerCase();
+        } catch(_e2) {}
+        return (
+          htmlPreview === "1" ||
+          htmlPreview === "true" ||
+          bodyPreview === "1" ||
+          bodyPreview === "true"
+        );
+      }
+      function shouldLimitVisualViewportScrollCompute(){
+        return isPreviewDocument() || detectEmbeddedContext();
+      }
+      function updateVisualViewportSnapshot(){
+        var vv = window.visualViewport;
+        var nextWidth = Number(vv && vv.width) || 0;
+        var nextHeight = Number(vv && vv.height) || 0;
+        var changed =
+          Math.abs(nextWidth - visualViewportSnapshot.width) > 0.5 ||
+          Math.abs(nextHeight - visualViewportSnapshot.height) > 0.5;
+        visualViewportSnapshot.width = nextWidth;
+        visualViewportSnapshot.height = nextHeight;
+        return changed;
+      }
 
       function compute(){
         var docEl = document.documentElement;
@@ -1253,14 +1584,6 @@ export function generarHTMLDesdeSecciones(
           });
           if (!valid.length) return fallback;
           return Math.min.apply(null, valid);
-        }
-
-        function detectEmbeddedContext(){
-          try {
-            return window.self !== window.top;
-          } catch(_e) {
-            return true;
-          }
         }
 
         function getScreenShortSide(){
@@ -1478,6 +1801,7 @@ export function generarHTMLDesdeSecciones(
       }
 
       var computeRafId = 0;
+      var visualViewportSnapshot = { width: 0, height: 0 };
       function scheduleCompute(){
         if (computeRafId) return;
         computeRafId = window.requestAnimationFrame(function(){
@@ -1490,8 +1814,19 @@ export function generarHTMLDesdeSecciones(
       window.addEventListener("resize", scheduleCompute);
 
       if (window.visualViewport){
-        window.visualViewport.addEventListener("resize", scheduleCompute);
-        window.visualViewport.addEventListener("scroll", scheduleCompute);
+        updateVisualViewportSnapshot();
+        window.visualViewport.addEventListener("resize", function(){
+          updateVisualViewportSnapshot();
+          scheduleCompute();
+        });
+        window.visualViewport.addEventListener("scroll", function(){
+          if (!shouldLimitVisualViewportScrollCompute()) {
+            scheduleCompute();
+            return;
+          }
+          if (!updateVisualViewportSnapshot()) return;
+          scheduleCompute();
+        });
       }
 
       window.addEventListener("orientationchange", function(){

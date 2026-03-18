@@ -9,21 +9,41 @@ const DESKTOP_VIEWPORT_HEIGHT = 820;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-function applyPreviewFrameScale(event, scale) {
+function applyPreviewFrameScale(event, scale, previewViewport = "") {
   const safeScale = Number(scale);
   const frameDocument = event?.target?.contentDocument;
   const frameWindow = event?.target?.contentWindow;
   if (!frameDocument || !Number.isFinite(safeScale) || safeScale <= 0) return;
 
   const scaleValue = String(safeScale);
+  const viewportValue = String(previewViewport || "").trim().toLowerCase();
   frameDocument.documentElement?.setAttribute?.("data-preview-scale", scaleValue);
   frameDocument.body?.setAttribute?.("data-preview-scale", scaleValue);
+  if (viewportValue) {
+    frameDocument.documentElement?.setAttribute?.("data-preview-viewport", viewportValue);
+    frameDocument.body?.setAttribute?.("data-preview-viewport", viewportValue);
+  }
 
   try {
     frameDocument.documentElement.style.scrollbarWidth = "none";
     frameDocument.documentElement.style.msOverflowStyle = "none";
     frameDocument.body.style.scrollbarWidth = "none";
     frameDocument.body.style.msOverflowStyle = "none";
+    if (viewportValue === "mobile") {
+      frameDocument.documentElement.style.height = "auto";
+      frameDocument.documentElement.style.minHeight = "100%";
+      frameDocument.documentElement.style.overflowX = "hidden";
+      frameDocument.documentElement.style.overflowY = "auto";
+      frameDocument.documentElement.style.overscrollBehavior = "contain";
+      frameDocument.documentElement.style.overscrollBehaviorY = "contain";
+      frameDocument.documentElement.style.scrollBehavior = "auto";
+      frameDocument.body.style.height = "auto";
+      frameDocument.body.style.minHeight = "100%";
+      frameDocument.body.style.overflowX = "hidden";
+      frameDocument.body.style.overflowY = "hidden";
+      frameDocument.body.style.overscrollBehavior = "none";
+      frameDocument.body.style.overscrollBehaviorY = "none";
+    }
 
     const styleId = "preview-frame-hide-scrollbars";
     let styleNode = frameDocument.getElementById(styleId);
@@ -31,6 +51,23 @@ function applyPreviewFrameScale(event, scale) {
       styleNode = frameDocument.createElement("style");
       styleNode.id = styleId;
       styleNode.textContent = `
+        html[data-preview-viewport="mobile"] {
+          height: auto !important;
+          min-height: 100% !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          overscroll-behavior-y: contain !important;
+          scroll-behavior: auto !important;
+        }
+        body[data-preview-viewport="mobile"] {
+          height: auto !important;
+          min-height: 100% !important;
+          overflow-x: hidden !important;
+          overflow-y: hidden !important;
+          overscroll-behavior: none !important;
+          overscroll-behavior-y: none !important;
+        }
         html::-webkit-scrollbar,
         body::-webkit-scrollbar {
           display: none !important;
@@ -39,6 +76,16 @@ function applyPreviewFrameScale(event, scale) {
         }
       `;
       frameDocument.head?.appendChild(styleNode);
+    }
+  } catch (_error) {
+    // noop
+  }
+
+  try {
+    if (frameWindow) {
+      frameWindow.__previewScale = safeScale;
+      frameWindow.__previewViewportKind = viewportValue;
+      frameWindow.dispatchEvent(new frameWindow.Event("preview:mobile-scroll:enable"));
     }
   } catch (_error) {
     // noop
@@ -194,34 +241,6 @@ export default function ModalVistaPrevia({
     observer.observe(target);
 
     return () => observer.disconnect();
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible || typeof window === "undefined") return undefined;
-
-    const onMessage = (event) => {
-      const payload = event?.data;
-      if (!payload || payload.type !== "preview:decor-parallax-debug") return;
-
-      try {
-        window.__decorParallaxDebug = payload.detail || null;
-      } catch (_error) {
-        // noop
-      }
-
-      try {
-        console.info(
-          "[decor-parallax][preview-frame]",
-          payload.eventName || "message",
-          payload.detail || {}
-        );
-      } catch (_error) {
-        // noop
-      }
-    };
-
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
   }, [visible]);
 
   const previewUrl = String(publicUrl || "").trim() || "https://reservaeldia.com.ar/i/....";
@@ -385,8 +404,11 @@ export default function ModalVistaPrevia({
 
           <div
             ref={stageRef}
-            className="flex-1 overflow-auto px-2 py-4 sm:px-5 sm:py-8"
+            className={`flex-1 overscroll-contain px-2 py-4 sm:px-5 sm:py-8 ${
+              sideBySide ? "overflow-hidden" : "overflow-auto"
+            }`}
             style={{
+              overscrollBehavior: "contain",
               background:
                 "radial-gradient(1000px 520px at 8% -5%, rgba(221,210,245,0.68), rgba(250,246,255,0.88) 46%, rgba(250,246,255,0.35) 78%), radial-gradient(920px 500px at 88% 92%, rgba(209,226,255,0.55), rgba(244,248,255,0.86) 52%, rgba(244,248,255,0.32) 82%), linear-gradient(135deg, #ffffff 0%, #faf6ff 46%, #f4f8ff 100%)",
             }}
@@ -427,7 +449,7 @@ export default function ModalVistaPrevia({
                       scaledHeight={desktopScaledHeight}
                       onLoad={({ event, scale }) => {
                         if (!htmlContent) return;
-                        applyPreviewFrameScale(event, scale);
+                        applyPreviewFrameScale(event, scale, "desktop");
                         captureCountdownAuditFromHtmlString(htmlContent, {
                           stage: showPublishActions
                             ? "draft-preview-desktop"
@@ -448,7 +470,7 @@ export default function ModalVistaPrevia({
               </div>
 
               <div
-                className="relative"
+                className="relative flex flex-col items-center"
                 style={overlayPhone ? { marginLeft: -phoneOffsetX, marginTop: phoneOffsetY } : undefined}
               >
                 <div className="absolute -inset-4 rounded-[42px] bg-[#d7e7ff]/70 blur-2xl" />
@@ -474,7 +496,7 @@ export default function ModalVistaPrevia({
                       scaledHeight={mobileScaledHeight}
                       onLoad={({ event, scale }) => {
                         if (!htmlContent) return;
-                        applyPreviewFrameScale(event, scale);
+                        applyPreviewFrameScale(event, scale, "mobile");
                         captureCountdownAuditFromHtmlString(htmlContent, {
                           stage: showPublishActions
                             ? "draft-preview-mobile"

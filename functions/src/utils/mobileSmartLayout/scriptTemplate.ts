@@ -1192,7 +1192,10 @@ export function buildScript(cfg: NormalizedConfig): string {
 
   if(window.visualViewport){
     window.visualViewport.addEventListener("resize", runOnce);
-    window.visualViewport.addEventListener("scroll", runOnce);
+    window.visualViewport.addEventListener("scroll", function(){
+      if (isPreviewDocument() && detectEmbeddedContext()) return;
+      runOnce();
+    });
   }
 
   if(document.readyState !== "loading") boot();

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Line, Rect, Text, Group, Circle } from "react-konva";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
 import FondoSeccion from "@/components/editor/FondoSeccion";
@@ -12,6 +11,7 @@ import ImageCropOverlay from "@/components/editor/textSystem/render/konva/ImageC
 import InlineTextEditDecorationsLayer from "@/components/editor/textSystem/render/konva/InlineTextEditDecorationsLayer";
 import HoverIndicator from "@/components/HoverIndicator";
 import LineControls from "@/components/LineControls";
+import CanvasGuideLayer from "@/components/editor/canvasEditor/CanvasGuideLayer";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import {
@@ -24,6 +24,10 @@ import {
 import {
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
+import {
+  buildCanvasDragPerfDiff,
+  trackCanvasDragPerf,
+} from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
   readClientPointFromCanvasEvent,
 } from "@/components/editor/textSystem/services/textCanvasPointerService";
@@ -203,10 +207,10 @@ export default function CanvasStageContent({
   registerRef,
   celdaGaleriaActiva,
   setCeldaGaleriaActiva,
+  prepararGuias,
   mostrarGuias,
   elementRefs,
   actualizarPosicionBotonOpciones,
-  setIsDragging,
   limpiarGuias,
   dragStartPos,
   hasDragged,
@@ -244,7 +248,8 @@ export default function CanvasStageContent({
   hoverId,
   isDragging,
   actualizarLinea,
-  guiaLineas,
+  guiaLineas = [],
+  guideOverlayRef,
   handleTransformInteractionStart,
   handleTransformInteractionEnd,
   normalizarMedidasGaleria,
@@ -258,6 +263,14 @@ export default function CanvasStageContent({
     openingId: null,
     openingAtMs: 0,
   });
+  const canvasStageRenderCountRef = useRef(0);
+  const canvasStageRenderSnapshotRef = useRef(null);
+  const canvasStageObjectsRef = useRef(null);
+  const canvasStageObjectsVersionRef = useRef(0);
+  const dragLayerRef = useRef(null);
+  const deferredDragSelectionIdRef = useRef(null);
+  const dragGuideObjectsRef = useRef(objetos);
+  const guideDragFrameRef = useRef({ rafId: 0, payload: null });
   const [isImageCropInteracting, setIsImageCropInteracting] = useState(false);
   const activeInlineEditingId =
     editing.id ||
@@ -267,9 +280,217 @@ export default function CanvasStageContent({
     null;
 
   useEffect(() => {
+    canvasStageRenderCountRef.current += 1;
+    if (typeof window === "undefined") return;
+
+    if (canvasStageObjectsRef.current !== objetos) {
+      canvasStageObjectsRef.current = objetos;
+      canvasStageObjectsVersionRef.current += 1;
+    }
+
+    const isInteractionActive =
+      window._isDragging ||
+      window._grupoLider ||
+      window._resizeData?.isResizing ||
+      isImageCropInteracting;
+    if (!isInteractionActive) return;
+
+    const nextSnapshot = {
+      objetosVersion: canvasStageObjectsVersionRef.current,
+      selectedIds: elementosSeleccionados.join(","),
+      preselectedIds: elementosPreSeleccionados.join(","),
+      hoverId: hoverId || null,
+      activeInlineEditingId: activeInlineEditingId || null,
+      selectionBoxActive: Boolean(seleccionActiva || areaSeleccion),
+      imageCropInteracting: Boolean(isImageCropInteracting),
+      sectionDecorationEditKey: sectionDecorationEdit
+        ? `${sectionDecorationEdit.sectionId || "?"}:${sectionDecorationEdit.decorationId || "?"}`
+        : null,
+      activeSectionId: seccionActivaId || null,
+      isDraggingProp: Boolean(isDragging),
+      guidesCount: guideOverlayRef?.current?.getGuideLinesCount?.() || 0,
+      pendingDragSelectionId:
+        (typeof window !== "undefined" && window._pendingDragSelectionId) ||
+        deferredDragSelectionIdRef.current ||
+        null,
+    };
+    const diff = buildCanvasDragPerfDiff(
+      canvasStageRenderSnapshotRef.current,
+      nextSnapshot
+    );
+    canvasStageRenderSnapshotRef.current = nextSnapshot;
+
+    trackCanvasDragPerf("render:CanvasStageContent", {
+      renderCount: canvasStageRenderCountRef.current,
+      objectsCount: objetos.length,
+      selectedCount: elementosSeleccionados.length,
+      dragging: Boolean(window._isDragging),
+      groupLeader: window._grupoLider || null,
+      resizing: Boolean(window._resizeData?.isResizing),
+      changedKeys: diff.changedKeys,
+      changes: diff.changes,
+      ...nextSnapshot,
+    }, {
+      throttleMs: 120,
+      throttleKey: "render:CanvasStageContent",
+    });
+  });
+
+  useEffect(() => {
+    dragGuideObjectsRef.current = objetos;
+  }, [objetos]);
+
+  useEffect(() => {
     if (!hoverId || !activeInlineEditingId || hoverId !== activeInlineEditingId) return;
     setHoverId(null);
   }, [activeInlineEditingId, hoverId, setHoverId]);
+
+  useEffect(() => {
+    const stage = stageRef?.current?.getStage?.() || stageRef?.current || null;
+    if (!stage || stage.__canvasStageBatchPerfInstrumented) return undefined;
+
+    const originalBatchDraw =
+      typeof stage.batchDraw === "function" ? stage.batchDraw : null;
+    if (!originalBatchDraw) return undefined;
+
+    stage.batchDraw = function patchedStageBatchDraw(...args) {
+      const activeSession =
+        typeof window !== "undefined" ? window.__CANVAS_DRAG_PERF_ACTIVE_SESSION : null;
+      if (activeSession) {
+        trackCanvasDragPerf(
+          "stage:batch-draw-request",
+          {
+            elementId: activeSession.elementId || null,
+            tipo: activeSession.tipo || null,
+            layerCount: typeof this.getLayers === "function" ? this.getLayers().length : null,
+          },
+          {
+            throttleMs: 50,
+            throttleKey: `stage:batch-draw-request:${activeSession.elementId || "unknown"}`,
+          }
+        );
+      }
+
+      return originalBatchDraw.apply(this, args);
+    };
+
+    stage.__canvasStageBatchPerfInstrumented = true;
+
+    return () => {
+      if (!stage) return;
+      stage.batchDraw = originalBatchDraw;
+      delete stage.__canvasStageBatchPerfInstrumented;
+    };
+  }, [stageRef]);
+
+  const cancelScheduledGuideEvaluation = useCallback(() => {
+    const current = guideDragFrameRef.current;
+    if (
+      current.rafId &&
+      typeof window !== "undefined" &&
+      typeof window.cancelAnimationFrame === "function"
+    ) {
+      window.cancelAnimationFrame(current.rafId);
+    }
+    guideDragFrameRef.current = { rafId: 0, payload: null };
+  }, []);
+
+  const flushScheduledGuideEvaluation = useCallback(() => {
+    const current = guideDragFrameRef.current;
+    const payload = current.payload;
+    guideDragFrameRef.current = { rafId: 0, payload: null };
+    if (!payload) return;
+
+    mostrarGuias(
+      payload.pos,
+      payload.elementId,
+      dragGuideObjectsRef.current,
+      elementRefs
+    );
+  }, [elementRefs, mostrarGuias]);
+
+  const scheduleGuideEvaluation = useCallback((pos, elementId) => {
+    const current = guideDragFrameRef.current;
+    current.payload = { pos, elementId };
+
+    if (
+      current.rafId ||
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      return;
+    }
+
+    current.rafId = window.requestAnimationFrame(() => {
+      flushScheduledGuideEvaluation();
+    });
+  }, [flushScheduledGuideEvaluation]);
+
+  useEffect(() => (
+    () => {
+      cancelScheduledGuideEvaluation();
+    }
+  ), [cancelScheduledGuideEvaluation]);
+
+  const deferSelectionToDragEnd = useCallback((dragId, seleccionActual, tipo = null) => {
+    const currentSelection = Array.isArray(seleccionActual) ? seleccionActual : [];
+    if (currentSelection.includes(dragId)) {
+      deferredDragSelectionIdRef.current = null;
+      if (typeof window !== "undefined") {
+        window._pendingDragSelectionId = null;
+      }
+      trackCanvasDragPerf("selection:defer-skipped", {
+        elementId: dragId,
+        tipo,
+        reason: "already-selected",
+        selectedSnapshot: currentSelection.join(","),
+      }, {
+        throttleMs: 40,
+        throttleKey: `selection:defer-skipped:${dragId}`,
+      });
+      return false;
+    }
+
+    deferredDragSelectionIdRef.current = dragId;
+    if (typeof window !== "undefined") {
+      window._pendingDragSelectionId = dragId;
+    }
+
+    trackCanvasDragPerf("selection:defer-dragstart", {
+      elementId: dragId,
+      tipo,
+      selectedSnapshot: currentSelection.join(","),
+    }, {
+      throttleMs: 40,
+      throttleKey: `selection:defer-dragstart:${dragId}`,
+    });
+    return true;
+  }, []);
+
+  const commitDeferredSelectionAfterDrag = useCallback((dragId, tipo = null) => {
+    if (deferredDragSelectionIdRef.current !== dragId) return false;
+
+    deferredDragSelectionIdRef.current = null;
+    if (typeof window !== "undefined") {
+      window._pendingDragSelectionId = null;
+    }
+
+    setElementosSeleccionados((current) => {
+      if (Array.isArray(current) && current.length === 1 && current[0] === dragId) {
+        return current;
+      }
+      return [dragId];
+    });
+
+    trackCanvasDragPerf("selection:commit-dragend", {
+      elementId: dragId,
+      tipo,
+    }, {
+      throttleMs: 40,
+      throttleKey: `selection:commit-dragend:${dragId}`,
+    });
+    return true;
+  }, [setElementosSeleccionados]);
 
   const logInlineIntent = useCallback((eventName, payload = {}) => {
     if (!isInlineIntentDebugEnabled()) return;
@@ -1087,6 +1308,409 @@ export default function CanvasStageContent({
     }
   }, [editing.id, elementosSeleccionados, objetos]);
 
+  const sectionIndexById = useMemo(() => {
+    const next = new Map();
+    seccionesOrdenadas.forEach((section, index) => {
+      if (section?.id) {
+        next.set(section.id, index);
+      }
+    });
+    return next;
+  }, [seccionesOrdenadas]);
+
+  const resolveObjectStageY = useCallback((objectPreview) => {
+    const sectionIndex = sectionIndexById.get(objectPreview?.seccionId);
+    const safeSectionIndex = Number.isInteger(sectionIndex) ? sectionIndex : 0;
+    const offsetY = calcularOffsetY(seccionesOrdenadas, safeSectionIndex, altoCanvas);
+    const yLocal = esSeccionPantallaById(objectPreview?.seccionId)
+      ? (
+        Number.isFinite(objectPreview?.yNorm)
+          ? objectPreview.yNorm * ALTURA_PANTALLA_EDITOR
+          : objectPreview?.y
+      )
+      : objectPreview?.y;
+
+    return (Number.isFinite(yLocal) ? yLocal : 0) + (Number.isFinite(offsetY) ? offsetY : 0);
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    altoCanvas,
+    esSeccionPantallaById,
+    sectionIndexById,
+    seccionesOrdenadas,
+  ]);
+
+  const renderCanvasObject = (obj) => {
+    const isInlineEditableObject = obj.tipo === "texto";
+    const isInEditMode =
+      isInlineEditableObject &&
+      editing.id === obj.id &&
+      elementosSeleccionados[0] === obj.id;
+
+    if (obj.tipo === "galeria") {
+      return (
+        <GaleriaKonva
+          key={obj.id}
+          obj={obj}
+          registerRef={registerRef}
+          onHover={setHoverId}
+          isSelected={elementosSeleccionados.includes(obj.id)}
+          celdaGaleriaActiva={celdaGaleriaActiva}
+          onPickCell={(info) => setCeldaGaleriaActiva(info)}
+          seccionesOrdenadas={seccionesOrdenadas}
+          altoCanvas={altoCanvas}
+          onSelect={(id, e) => {
+            e?.evt && (e.evt.cancelBubble = true);
+            clearInlineIntent("non-inline-select", { id, tipo: "galeria" });
+            setElementosSeleccionados([id]);
+          }}
+          onDragMovePersonalizado={(pos, id) => {
+            window._isDragging = true;
+            scheduleGuideEvaluation(pos, id);
+          }}
+          onDragStartPersonalizado={(dragId = obj.id) => {
+            clearInlineIntent("drag-start", { dragId, tipo: "galeria" });
+            deferSelectionToDragEnd(dragId, elementosSeleccionados, "galeria");
+            cancelScheduledGuideEvaluation();
+            prepararGuias?.(dragId, objetos, elementRefs);
+          }}
+          onDragEndPersonalizado={() => {
+            commitDeferredSelectionAfterDrag(obj.id, "galeria");
+            cancelScheduledGuideEvaluation();
+            limpiarGuias();
+            if (typeof actualizarPosicionBotonOpciones === "function") {
+              actualizarPosicionBotonOpciones();
+            }
+          }}
+          onChange={(id, nuevo) => {
+            setObjetos((prev) => {
+              const index = prev.findIndex((o) => o.id === id);
+              if (index === -1) return prev;
+              const updated = [...prev];
+              updated[index] = { ...updated[index], ...nuevo };
+              return updated;
+            });
+          }}
+        />
+      );
+    }
+
+    if (obj.tipo === "countdown") {
+      return (
+        <CountdownKonva
+          key={obj.id}
+          obj={obj}
+          registerRef={registerRef}
+          onHover={setHoverId}
+          isSelected={elementosSeleccionados.includes(obj.id)}
+          seccionesOrdenadas={seccionesOrdenadas}
+          altoCanvas={altoCanvas}
+          onSelect={(id, e) => {
+            e?.evt && (e.evt.cancelBubble = true);
+            clearInlineIntent("non-inline-select", { id, tipo: "countdown" });
+            setElementosSeleccionados([id]);
+          }}
+          onDragStartPersonalizado={(dragId = obj.id) => {
+            clearInlineIntent("drag-start", { dragId, tipo: "countdown" });
+            deferSelectionToDragEnd(dragId, elementosSeleccionados, "countdown");
+            cancelScheduledGuideEvaluation();
+            prepararGuias?.(dragId, objetos, elementRefs);
+          }}
+          onDragMovePersonalizado={(pos, id) => {
+            scheduleGuideEvaluation(pos, id);
+          }}
+          onDragEndPersonalizado={() => {
+            commitDeferredSelectionAfterDrag(obj.id, "countdown");
+            cancelScheduledGuideEvaluation();
+            limpiarGuias();
+            if (typeof actualizarPosicionBotonOpciones === "function") {
+              actualizarPosicionBotonOpciones();
+            }
+          }}
+          dragStartPos={dragStartPos}
+          hasDragged={hasDragged}
+          onChange={(id, cambios) => {
+            setObjetos((prev) => {
+              const index = prev.findIndex((o) => o.id === id);
+              if (index === -1) return prev;
+
+              const objOriginal = prev[index];
+
+              if (!cambios.finalizoDrag) {
+                const updated = [...prev];
+                updated[index] = { ...updated[index], ...cambios };
+                return updated;
+              }
+
+              const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+                cambios.y,
+                objOriginal.seccionId,
+                seccionesOrdenadas
+              );
+
+              let next = { ...cambios };
+              delete next.finalizoDrag;
+
+              if (nuevaSeccion) {
+                next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
+              } else {
+                next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
+              }
+
+              const updated = [...prev];
+              updated[index] = { ...updated[index], ...next };
+              return updated;
+            });
+          }}
+        />
+      );
+    }
+
+    const supportsInlinePreview = isSemanticInlineEditableObject(obj);
+    const objPreview =
+      editing.id === obj.id && supportsInlinePreview
+        ? (() => {
+          const textoPreview = String(editing.value ?? "");
+          const textoOriginal = String(obj.texto ?? "");
+          const hasPreviewTextChanged = textoPreview !== textoOriginal;
+          const previewObj = hasPreviewTextChanged
+            ? { ...obj, texto: textoPreview }
+            : obj;
+          const shouldKeepCenterPreview = shouldPreserveTextCenterPosition(obj);
+
+          if (shouldKeepCenterPreview && hasPreviewTextChanged) {
+            const lockedCenterX =
+              inlineEditPreviewRef.current?.id === obj.id &&
+              Number.isFinite(inlineEditPreviewRef.current?.centerX)
+                ? inlineEditPreviewRef.current.centerX
+                : null;
+            const previewX = calcularXTextoCentrado(
+              obj,
+              textoPreview,
+              lockedCenterX
+            );
+            if (Number.isFinite(previewX)) {
+              previewObj.x = previewX;
+            }
+          }
+
+          return previewObj;
+        })()
+        : obj;
+
+    return (
+      <ElementoCanvas
+        key={obj.id}
+        obj={{
+          ...objPreview,
+          y: resolveObjectStageY(objPreview),
+        }}
+        anchoCanvas={800}
+        isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
+        selectionCount={elementosSeleccionados.length}
+        preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
+        isInEditMode={isInEditMode}
+        onHover={isInEditMode ? null : setHoverId}
+        registerRef={registerRef}
+        editingId={editing.id}
+        inlineOverlayMountedId={inlineOverlayMountedId}
+        inlineOverlayMountSession={inlineOverlayMountSession}
+        inlineVisibilityMode={inlineDebugAB.visibilitySource}
+        inlineOverlayEngine={inlineDebugAB.overlayEngine}
+        finishInlineEdit={finishEdit}
+        onInlineEditPointer={
+          isInEditMode ? onInlineEditCanvasPointer : null
+        }
+        onSelect={isInEditMode ? null : handleElementSelectIntent}
+        onChange={(id, nuevo) => {
+          if (nuevo.isDragPreview) {
+            setObjetos((prev) => {
+              const index = prev.findIndex((o) => o.id === id);
+              if (index === -1) return prev;
+
+              const updated = [...prev];
+              const { isDragPreview, skipHistorial, ...cleanNuevo } = nuevo;
+              updated[index] = { ...updated[index], ...cleanNuevo };
+              return updated;
+            });
+            return;
+          }
+
+          if (nuevo.isBatchUpdateFinal && id === "BATCH_UPDATE_GROUP_FINAL") {
+            const { elementos, dragInicial, deltaX, deltaY } = nuevo;
+
+            setObjetos((prev) => {
+              return prev.map((objeto) => {
+                if (elementos.includes(objeto.id) && dragInicial && dragInicial[objeto.id]) {
+                  const posInicial = dragInicial[objeto.id];
+                  return {
+                    ...objeto,
+                    x: posInicial.x + deltaX,
+                    y: posInicial.y + deltaY,
+                  };
+                }
+                return objeto;
+              });
+            });
+            return;
+          }
+
+          if (nuevo.fromTransform) {
+            return;
+          }
+
+          const objOriginal = objetos.find((o) => o.id === id);
+          if (!objOriginal) return;
+
+          if (nuevo.finalizoDrag) {
+            const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+              nuevo.y,
+              objOriginal.seccionId,
+              seccionesOrdenadas
+            );
+
+            let coordenadasFinales = { ...nuevo };
+            delete coordenadasFinales.finalizoDrag;
+
+            if (nuevaSeccion) {
+              coordenadasFinales = {
+                ...coordenadasFinales,
+                ...coordenadasAjustadas,
+                seccionId: nuevaSeccion,
+              };
+            } else {
+              coordenadasFinales.y = convertirAbsARel(
+                nuevo.y,
+                objOriginal.seccionId,
+                seccionesOrdenadas
+              );
+            }
+
+            const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
+            const yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
+
+            if (esSeccionPantallaById(seccionFinalId)) {
+              const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
+              coordenadasFinales.yNorm = yNorm;
+              delete coordenadasFinales.y;
+            } else {
+              coordenadasFinales.y = yRelPx;
+              delete coordenadasFinales.yNorm;
+            }
+
+            setObjetos((prev) => {
+              const index = prev.findIndex((o) => o.id === id);
+              if (index === -1) return prev;
+
+              const updated = [...prev];
+              updated[index] = { ...updated[index], ...coordenadasFinales };
+              return updated;
+            });
+
+            return;
+          }
+
+          const hayDiferencias = Object.keys(nuevo).some((key) => {
+            const valorAnterior = objOriginal[key];
+            const valorNuevo = nuevo[key];
+
+            if (typeof valorAnterior === "number" && typeof valorNuevo === "number") {
+              return Math.abs(valorAnterior - valorNuevo) > 0.01;
+            }
+
+            return valorAnterior !== valorNuevo;
+          });
+
+          if (!hayDiferencias) return;
+
+          const seccionId = nuevo.seccionId || objOriginal.seccionId;
+          const seccion = seccionesOrdenadas.find((s) => s.id === seccionId);
+          if (!seccion) return;
+
+          setObjetos((prev) => {
+            const index = prev.findIndex((o) => o.id === id);
+            if (index === -1) return prev;
+
+            const updated = [...prev];
+            updated[index] = { ...updated[index], ...nuevo };
+            return updated;
+          });
+        }}
+        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id) => {
+          clearInlineIntent("drag-start", { dragId });
+          const seleccionActual = Array.isArray(window._elementosSeleccionados)
+            ? window._elementosSeleccionados
+            : elementosSeleccionados;
+          const preselectedSnapshot = Array.isArray(elementosPreSeleccionados)
+            ? [...elementosPreSeleccionados]
+            : [];
+          const hoverSnapshot = hoverId || null;
+
+          if (typeof window !== "undefined") {
+            const nowMs =
+              typeof performance !== "undefined" && typeof performance.now === "function"
+                ? performance.now()
+                : Date.now();
+            window.__CANVAS_DRAG_ANALYSIS_UNTIL = nowMs + 900;
+          }
+
+          trackCanvasDragPerf("drag:start-context", {
+            elementId: dragId,
+            tipo: obj.tipo || null,
+            selectedSnapshot: Array.isArray(seleccionActual)
+              ? seleccionActual.join(",")
+              : "",
+            wasSelected: Array.isArray(seleccionActual)
+              ? seleccionActual.includes(dragId)
+              : false,
+            hoverId: hoverSnapshot,
+            preselectedIds: preselectedSnapshot.join(","),
+            preselectedCount: preselectedSnapshot.length,
+            activeInlineEditingId: activeInlineEditingId || null,
+          }, {
+            throttleMs: 40,
+            throttleKey: `drag:start-context:${dragId}`,
+          });
+
+          deferSelectionToDragEnd(dragId, seleccionActual, obj.tipo || null);
+
+          trackCanvasDragPerf("drag:start-ui-cleanup", {
+            elementId: dragId,
+            tipo: obj.tipo || null,
+            hoverBefore: hoverSnapshot,
+            willClearHover: false,
+            preselectedBefore: preselectedSnapshot.join(","),
+            willClearPreselected: preselectedSnapshot.length > 0,
+          }, {
+            throttleMs: 40,
+            throttleKey: `drag:start-ui-cleanup:${dragId}`,
+          });
+
+          setElementosPreSeleccionados((current) => (
+            Array.isArray(current) && current.length === 0 ? current : []
+          ));
+          cancelScheduledGuideEvaluation();
+          prepararGuias?.(dragId, objetos, elementRefs);
+        }}
+        onDragEndPersonalizado={isInEditMode ? null : () => {
+          commitDeferredSelectionAfterDrag(obj.id, obj.tipo || null);
+          cancelScheduledGuideEvaluation();
+          configurarDragEnd([]);
+        }}
+        onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
+          scheduleGuideEvaluation(pos, elementId);
+        }}
+        dragLayerRef={dragLayerRef}
+        dragStartPos={dragStartPos}
+        hasDragged={hasDragged}
+      />
+    );
+  };
+
+  const isAnyCanvasDragActive =
+    Boolean(isDragging) ||
+    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
+    (typeof window !== "undefined" && Boolean(window._grupoLider));
+
   return (
               <Stage
                 ref={stageRef}
@@ -1117,7 +1741,7 @@ export default function CanvasStageContent({
 
                 onMouseUp={stageGestures.onMouseUp}
               >
-                <CanvasElementsLayer>
+                <CanvasElementsLayer perfLabel="sections-base">
 
                   {seccionesOrdenadas.flatMap((seccion, index) => {
                     const alturaPx = seccion.altura;
@@ -1187,6 +1811,7 @@ export default function CanvasStageContent({
                   })}
 
 
+                
                   {/* Control de altura para secciÃ³n activa */}
                   {seccionActivaId && seccionesOrdenadas.map((seccion, index) => {
                     if (seccion.id !== seccionActivaId) return null;
@@ -1401,7 +2026,14 @@ export default function CanvasStageContent({
 
 
 
-                  {objetos.map((obj, i) => {
+                </CanvasElementsLayer>
+
+                <CanvasElementsLayer perfLabel="objects-main">
+                  {objetos.map((obj) => renderCanvasObject(obj))}
+                </CanvasElementsLayer>
+
+                <CanvasElementsLayer perfLabel="ui-overlay">
+                  {false && objetos.map((obj, i) => {
                     // ?? Determinar si estÃ¡ en modo ediciÃ³n
                     const isInlineEditableObject = obj.tipo === "texto";
                     const isInEditMode =
@@ -1430,12 +2062,7 @@ export default function CanvasStageContent({
                           }}
                           onDragMovePersonalizado={(pos, id) => {
                             window._isDragging = true;
-                            mostrarGuias(pos, id, objetos, elementRefs);
-                            requestAnimationFrame(() => {
-                              if (typeof actualizarPosicionBotonOpciones === "function") {
-                                actualizarPosicionBotonOpciones();
-                              }
-                            });
+                            scheduleGuideEvaluation(pos, id);
                           }}
                           onDragStartPersonalizado={(dragId = obj.id) => {
                             clearInlineIntent("drag-start", { dragId, tipo: "galeria" });
@@ -1443,10 +2070,13 @@ export default function CanvasStageContent({
                               setElementosSeleccionados([dragId]);
                             }
                             setHoverId(null);
+                            cancelScheduledGuideEvaluation();
+                            prepararGuias?.(dragId, objetos, elementRefs);
                             setIsDragging(true);
                           }}
                           onDragEndPersonalizado={() => {
                             setIsDragging(false);
+                            cancelScheduledGuideEvaluation();
                             limpiarGuias();
                             if (typeof actualizarPosicionBotonOpciones === "function") {
                               actualizarPosicionBotonOpciones();
@@ -1492,20 +2122,18 @@ export default function CanvasStageContent({
                               setElementosSeleccionados([dragId]);
                             }
                             setHoverId(null);
+                            cancelScheduledGuideEvaluation();
+                            prepararGuias?.(dragId, objetos, elementRefs);
                             setIsDragging(true);
                           }}
                           onDragMovePersonalizado={(pos, id) => {
-                            mostrarGuias(pos, id, objetos, elementRefs);
-                            requestAnimationFrame(() => {
-                              if (typeof actualizarPosicionBotonOpciones === "function") {
-                                actualizarPosicionBotonOpciones();
-                              }
-                            });
+                            scheduleGuideEvaluation(pos, id);
                           }}
 
                           // ? FIN de drag: limpiar guÃ­as / UI auxiliar
                           onDragEndPersonalizado={() => {
                             setIsDragging(false);
+                            cancelScheduledGuideEvaluation();
                             limpiarGuias();
                             if (typeof actualizarPosicionBotonOpciones === "function") {
                               actualizarPosicionBotonOpciones();
@@ -1784,25 +2412,19 @@ export default function CanvasStageContent({
                             setElementosSeleccionados([dragId]);
                           }
 
-                          flushSync(() => {
-                            setHoverId(null);
-                            setElementosPreSeleccionados([]);
-                            setIsDragging(true);
-                          });
+                          setHoverId(null);
+                          setElementosPreSeleccionados([]);
+                          cancelScheduledGuideEvaluation();
+                          prepararGuias?.(dragId, objetos, elementRefs);
+                          setIsDragging(true);
                         }}
                         onDragEndPersonalizado={isInEditMode ? null : () => {
                           setIsDragging(false);
+                          cancelScheduledGuideEvaluation();
                           configurarDragEnd([]);
                         }}
                         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                          mostrarGuias(pos, elementId, objetos, elementRefs);
-                          if (elementosSeleccionados.includes(elementId)) {
-                            requestAnimationFrame(() => {
-                              if (typeof actualizarPosicionBotonOpciones === 'function') {
-                                actualizarPosicionBotonOpciones();
-                              }
-                            });
-                          }
+                          scheduleGuideEvaluation(pos, elementId);
                         }}
                         dragStartPos={dragStartPos}
                         hasDragged={hasDragged}
@@ -1906,7 +2528,7 @@ export default function CanvasStageContent({
                         selectedElements={elementosSeleccionados}
                         elementRefs={elementRefs}
                         objetos={objetos}
-                        isDragging={isDragging}
+                        isDragging={false}
                         isInteractionLocked={isImageCropInteracting}
                         isMobile={isMobile}
                         onTransformInteractionStart={handleTransformInteractionStartWithInlineIntent}
@@ -2306,15 +2928,10 @@ export default function CanvasStageContent({
                     );
                   })}
 
-
-                </CanvasElementsLayer>
-
-                {/* ? Overlay superior: borde de secciÃ³n activa SIEMPRE arriba de todo */}
-                <CanvasElementsLayer>
                   {(() => {
-                    if (!seccionActivaId) return null;
+                    if (isAnyCanvasDragActive || !seccionActivaId) return null;
 
-                    const index = seccionesOrdenadas.findIndex(s => s.id === seccionActivaId);
+                    const index = seccionesOrdenadas.findIndex((s) => s.id === seccionActivaId);
                     if (index === -1) return null;
 
                     const seccion = seccionesOrdenadas[index];
@@ -2336,6 +2953,45 @@ export default function CanvasStageContent({
                         shadowBlur={estaAnimando ? 16 : 12}
                         shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
                         listening={false}
+                        perfectDrawEnabled={false}
+                      />
+                    );
+                  })()}
+
+
+                </CanvasElementsLayer>
+
+                <CanvasGuideLayer ref={guideOverlayRef} />
+
+                {/* ? Overlay superior: borde de secciÃ³n activa SIEMPRE arriba de todo */}
+                <CanvasElementsLayer ref={dragLayerRef} perfLabel="drag-overlay">
+                  {(() => {
+                    if (!isAnyCanvasDragActive || !seccionActivaId) return null;
+
+                    const index = seccionesOrdenadas.findIndex(s => s.id === seccionActivaId);
+                    if (index === -1) return null;
+
+                    const seccion = seccionesOrdenadas[index];
+                    const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+                    const estaAnimando = seccionesAnimando.includes(seccion.id);
+
+                    return (
+                      <Rect
+                        key={`overlay-border-seccion-${seccion.id}`}
+                        x={0}
+                        y={offsetY}
+                        width={800}
+                        height={seccion.altura}
+                        fill="transparent"
+                        stroke="#773dbe"
+                        strokeWidth={estaAnimando ? 4 : 3}
+                        cornerRadius={0}
+                        shadowColor="rgba(0, 0, 0, 0)"
+                        shadowBlur={0}
+                        shadowOffset={{ x: 0, y: 0 }}
+                        shadowEnabled={false}
+                        listening={false}
+                        perfectDrawEnabled={false}
                       />
                     );
                   })()}

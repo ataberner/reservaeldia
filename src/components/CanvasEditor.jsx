@@ -67,6 +67,10 @@ import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/u
 import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEditor/useCanvasEditorOptionPanelOutsideClose";
 import useCanvasEditorSectionFlow from "@/components/editor/canvasEditor/useCanvasEditorSectionFlow";
 import useCanvasEditorInteractionEffects from "@/components/editor/canvasEditor/useCanvasEditorInteractionEffects";
+import {
+  buildCanvasDragPerfDiff,
+  trackCanvasDragPerf,
+} from "@/components/editor/canvasEditor/canvasDragPerf";
 import useCanvasEditorTextSystem from "@/components/editor/textSystem/runtime/useCanvasEditorTextSystem";
 import useTextEditInteractionController from "@/components/editor/textSystem/runtime/useTextEditInteractionController";
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
@@ -155,7 +159,7 @@ export default function CanvasEditor({
   const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
   const [cargado, setCargado] = useState(false);
   const stageRef = useRef(null);
-  const { dragStartPos, hasDragged, isDragging, setIsDragging } = useCanvasInteractionState();
+  const { dragStartPos, hasDragged, isDragging } = useCanvasInteractionState();
   const imperativeObjects = useImperativeObjects();
   const [animandoSeccion, setAnimandoSeccion] = useState(null);
   const [seccionActivaId, setSeccionActivaId] = useState(null);
@@ -164,6 +168,7 @@ export default function CanvasEditor({
   const [areaSeleccion, setAreaSeleccion] = useState(null);
   const [elementosPreSeleccionados, setElementosPreSeleccionados] = useState([]);
   const guiaLayerRef = useRef(null);
+  const guideOverlayRef = useRef(null);
   const [hoverId, setHoverId] = useState(null);
   const altoCanvas = secciones.reduce((acc, s) => acc + s.altura, 0) || 800;
   const [seccionesAnimando, setSeccionesAnimando] = useState([]);
@@ -179,6 +184,13 @@ export default function CanvasEditor({
   const logInlineSnapshotRef = useRef(null);
   const pendingInlineStartRef = useRef(0);
   const inlineRenderValueRef = useRef({ id: null, value: "" });
+  const canvasEditorRenderCountRef = useRef(0);
+  const canvasEditorRenderSnapshotRef = useRef(null);
+  const canvasEditorObjetosRef = useRef(null);
+  const canvasEditorObjetosVersionRef = useRef(0);
+  const canvasEditorSeccionesRef = useRef(null);
+  const canvasEditorSeccionesVersionRef = useRef(0);
+  const canvasEditorStateTraceRef = useRef(null);
   const [inlineOverlayMountedId, setInlineOverlayMountedId] = useState(null);
   const [inlineOverlayMountSession, setInlineOverlayMountSession] = useState({
     id: null,
@@ -217,6 +229,37 @@ export default function CanvasEditor({
       previous === mountedId ? previous : mountedId
     ));
   }, [inlineOverlayMountSession]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (window.__DBG_CANVAS_DRAG_PERF === undefined) {
+      window.__DBG_CANVAS_DRAG_PERF = false;
+    }
+    if (window.__CANVAS_DRAG_PERF_EXPANDED === undefined) {
+      window.__CANVAS_DRAG_PERF_EXPANDED = false;
+    }
+    if (window.__EDITOR_PRELOAD_DEBUG === undefined) {
+      window.__EDITOR_PRELOAD_DEBUG = false;
+    }
+    if (window.__INLINE_DEBUG === undefined) {
+      window.__INLINE_DEBUG = false;
+    }
+    if (window.__DBG_INLINE_INTENT === undefined) {
+      window.__DBG_INLINE_INTENT = false;
+    }
+    if (window.__INLINE_FOCUS_RCA === undefined) {
+      window.__INLINE_FOCUS_RCA = false;
+    }
+    if (window.__INLINE_DIAG_ALIGNMENT === undefined) {
+      window.__INLINE_DIAG_ALIGNMENT = false;
+    }
+    if (window.__INLINE_DIAG_ALIGNMENT_EXTENDED === undefined) {
+      window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
+    }
+    if (window.__INLINE_DIAG_COMPACT === undefined) {
+      window.__INLINE_DIAG_COMPACT = true;
+    }
+  }, []);
   const contenedorRef = useRef(null);
   const editorOverlayRootRef = useRef(null);
   const autoSectionViewportRef = useRef(null);
@@ -251,28 +294,126 @@ export default function CanvasEditor({
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
 
   useEffect(() => {
+    canvasEditorRenderCountRef.current += 1;
     if (typeof window === "undefined") return;
-    window.__DBG_INLINE_INTENT = true;
-    window.__INLINE_DEBUG = true;
-    window.__INLINE_DIAG_ALIGNMENT = true;
-    window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
-    window.__INLINE_DIAG_COMPACT = true;
-    window.__INLINE_FOCUS_RCA = true;
-    if (!Array.isArray(window.__INLINE_FOCUS_RCA_TRACE)) {
-      window.__INLINE_FOCUS_RCA_TRACE = [];
+
+    if (canvasEditorObjetosRef.current !== objetos) {
+      canvasEditorObjetosRef.current = objetos;
+      canvasEditorObjetosVersionRef.current += 1;
     }
-    if (!window.__INLINE_FOCUS_RCA_SESSION || typeof window.__INLINE_FOCUS_RCA_SESSION !== "object") {
-      window.__INLINE_FOCUS_RCA_SESSION = {};
+    if (canvasEditorSeccionesRef.current !== secciones) {
+      canvasEditorSeccionesRef.current = secciones;
+      canvasEditorSeccionesVersionRef.current += 1;
     }
-    console.log("[INLINE][DEBUG] flags enabled", {
-      DBG_INLINE_INTENT: window.__DBG_INLINE_INTENT,
-      INLINE_DEBUG: window.__INLINE_DEBUG,
-      INLINE_DIAG_ALIGNMENT: window.__INLINE_DIAG_ALIGNMENT,
-      INLINE_DIAG_ALIGNMENT_EXTENDED: window.__INLINE_DIAG_ALIGNMENT_EXTENDED,
-      INLINE_DIAG_COMPACT: window.__INLINE_DIAG_COMPACT,
-      INLINE_FOCUS_RCA: window.__INLINE_FOCUS_RCA,
+
+    const isInteractionActive =
+      window._isDragging ||
+      window._grupoLider ||
+      window._resizeData?.isResizing;
+    if (!isInteractionActive) return;
+
+    const nextSnapshot = {
+      objetosVersion: canvasEditorObjetosVersionRef.current,
+      seccionesVersion: canvasEditorSeccionesVersionRef.current,
+      selectedIds: elementosSeleccionados.join(","),
+      preselectedIds: elementosPreSeleccionados.join(","),
+      hoverId: hoverId || null,
+      editingId: editing.id || null,
+      inlineOverlayMountedId: inlineOverlayMountedId || null,
+      inlineOverlayPhase: inlineOverlayMountSession?.phase || null,
+      activeSectionId: seccionActivaId || null,
+      selectionBoxActive: Boolean(seleccionActiva || areaSeleccion),
+      sectionDecorationEditKey: sectionDecorationEdit
+        ? `${sectionDecorationEdit.sectionId || "?"}:${sectionDecorationEdit.decorationId || "?"}`
+        : null,
+    };
+    const diff = buildCanvasDragPerfDiff(
+      canvasEditorRenderSnapshotRef.current,
+      nextSnapshot
+    );
+    canvasEditorRenderSnapshotRef.current = nextSnapshot;
+
+    trackCanvasDragPerf("render:CanvasEditor", {
+      renderCount: canvasEditorRenderCountRef.current,
+      objectsCount: objetos.length,
+      sectionsCount: secciones.length,
+      selectedCount: elementosSeleccionados.length,
+      dragging: Boolean(window._isDragging),
+      groupLeader: window._grupoLider || null,
+      resizing: Boolean(window._resizeData?.isResizing),
+      changedKeys: diff.changedKeys,
+      changes: diff.changes,
+      ...nextSnapshot,
+    }, {
+      throttleMs: 120,
+      throttleKey: "render:CanvasEditor",
     });
-  }, []);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const prevSnapshot = canvasEditorStateTraceRef.current;
+    const nextSnapshot = {
+      selectedIds: elementosSeleccionados.join(","),
+      preselectedIds: elementosPreSeleccionados.join(","),
+      hoverId: hoverId || null,
+    };
+    canvasEditorStateTraceRef.current = nextSnapshot;
+
+    if (!prevSnapshot) return;
+
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const analysisWindowUntil = Number(window.__CANVAS_DRAG_ANALYSIS_UNTIL || 0);
+    const isAnalysisActive =
+      Boolean(window._isDragging) ||
+      Boolean(window._grupoLider) ||
+      Boolean(window._resizeData?.isResizing) ||
+      analysisWindowUntil > nowMs;
+    if (!isAnalysisActive) return;
+
+    if (prevSnapshot.hoverId !== nextSnapshot.hoverId) {
+      trackCanvasDragPerf("state:hover-change", {
+        previousHoverId: prevSnapshot.hoverId,
+        nextHoverId: nextSnapshot.hoverId,
+        selectedIds: nextSnapshot.selectedIds,
+        preselectedIds: nextSnapshot.preselectedIds,
+        dragging: Boolean(window._isDragging),
+      }, {
+        throttleMs: 40,
+        throttleKey: "state:hover-change",
+      });
+    }
+
+    if (prevSnapshot.preselectedIds !== nextSnapshot.preselectedIds) {
+      trackCanvasDragPerf("state:preselect-change", {
+        previousPreselectedIds: prevSnapshot.preselectedIds,
+        nextPreselectedIds: nextSnapshot.preselectedIds,
+        hoverId: nextSnapshot.hoverId,
+        selectedIds: nextSnapshot.selectedIds,
+        dragging: Boolean(window._isDragging),
+      }, {
+        throttleMs: 40,
+        throttleKey: "state:preselect-change",
+      });
+    }
+
+    if (prevSnapshot.selectedIds !== nextSnapshot.selectedIds) {
+      trackCanvasDragPerf("state:selection-change", {
+        previousSelectedIds: prevSnapshot.selectedIds,
+        nextSelectedIds: nextSnapshot.selectedIds,
+        hoverId: nextSnapshot.hoverId,
+        preselectedIds: nextSnapshot.preselectedIds,
+        dragging: Boolean(window._isDragging),
+      }, {
+        throttleMs: 40,
+        throttleKey: "state:selection-change",
+      });
+    }
+  }, [elementosPreSeleccionados, elementosSeleccionados, hoverId]);
 
   useEffect(() => {
     setDraftMeta({
@@ -830,7 +971,6 @@ export default function CanvasEditor({
 
   useCanvasEditorStageInteraction({
     stageRef,
-    setIsDragging,
     isMobile,
   });
 
@@ -1187,8 +1327,12 @@ export default function CanvasEditor({
     normalizarAltoModo,
   });
   // ?? NUEVO HOOK PARA GUÃAS
+  const publishGuideLines = useCallback((nextLines = []) => {
+    guideOverlayRef.current?.setGuideLines?.(nextLines);
+  }, []);
+
   const {
-    guiaLineas,
+    prepararGuias,
     mostrarGuias,
     limpiarGuias,
     configurarDragEnd
@@ -1204,7 +1348,8 @@ export default function CanvasEditor({
     sectionLineTolerance: 0.75,
     snapToEdges: true,
     snapToCenters: true,
-    seccionesOrdenadas
+    seccionesOrdenadas,
+    onGuideLinesChange: publishGuideLines,
   });
 
   // ?? FunciÃ³n para actualizar posiciÃ³n del botÃ³n SIN re-render
@@ -1230,9 +1375,7 @@ export default function CanvasEditor({
     setIsSelectionRotating,
     setMostrarPanelZ,
     actualizarPosicionBotonOpciones,
-    setHoverId,
     setElementosPreSeleccionados,
-    setIsDragging,
     objetos,
     elementRefs,
   });
@@ -1601,10 +1744,10 @@ export default function CanvasEditor({
                 registerRef={registerRef}
                 celdaGaleriaActiva={celdaGaleriaActiva}
                 setCeldaGaleriaActiva={setCeldaGaleriaActiva}
+                prepararGuias={prepararGuias}
                 mostrarGuias={mostrarGuias}
                 elementRefs={elementRefs}
                 actualizarPosicionBotonOpciones={actualizarPosicionBotonOpciones}
-                setIsDragging={setIsDragging}
                 limpiarGuias={limpiarGuias}
                 dragStartPos={dragStartPos}
                 hasDragged={hasDragged}
@@ -1642,7 +1785,8 @@ export default function CanvasEditor({
                 hoverId={hoverId}
                 isDragging={isDragging}
                 actualizarLinea={actualizarLinea}
-                guiaLineas={guiaLineas}
+                guiaLineas={[]}
+                guideOverlayRef={guideOverlayRef}
                 handleTransformInteractionStart={handleTransformInteractionStart}
                 handleTransformInteractionEnd={handleTransformInteractionEnd}
                 normalizarMedidasGaleria={normalizarMedidasGaleria}

@@ -1,5 +1,4 @@
 import { useCallback, useEffect } from "react";
-import { flushSync } from "react-dom";
 
 export default function useCanvasEditorInteractionEffects({
   elementosSeleccionados,
@@ -7,9 +6,7 @@ export default function useCanvasEditorInteractionEffects({
   setIsSelectionRotating,
   setMostrarPanelZ,
   actualizarPosicionBotonOpciones,
-  setHoverId,
   setElementosPreSeleccionados,
-  setIsDragging,
   objetos,
   elementRefs,
 }) {
@@ -37,11 +34,9 @@ export default function useCanvasEditorInteractionEffects({
 
   useEffect(() => {
     const onDragStartGlobal = () => {
-      flushSync(() => {
-        setHoverId(null);
-        setElementosPreSeleccionados([]);
-        setIsDragging(true);
-      });
+      setElementosPreSeleccionados((current) => (
+        Array.isArray(current) && current.length === 0 ? current : []
+      ));
     };
     const onDragEndGlobal = () => {};
 
@@ -51,7 +46,7 @@ export default function useCanvasEditorInteractionEffects({
       window.removeEventListener("dragging-start", onDragStartGlobal);
       window.removeEventListener("dragging-end", onDragEndGlobal);
     };
-  }, [setElementosPreSeleccionados, setHoverId, setIsDragging]);
+  }, [setElementosPreSeleccionados]);
 
   useEffect(() => {
     if (window._lineIntersectionCache) {

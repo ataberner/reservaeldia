@@ -3,7 +3,6 @@ import Konva from "konva";
 
 export default function useCanvasEditorStageInteraction({
   stageRef,
-  setIsDragging,
   isMobile,
 }) {
   useEffect(() => {
@@ -21,29 +20,16 @@ export default function useCanvasEditorStageInteraction({
       content.style.touchAction = "none";
     };
 
-    const onDragStart = () => {
-      setIsDragging(true);
-    };
-
-    const onDragEnd = () => {
-      setIsDragging(false);
-    };
-
     const stopDragging = () => {
-      setIsDragging(false);
       setScrollMode();
     };
 
     setScrollMode();
-    setIsDragging(false);
     content.style.WebkitUserSelect = "none";
     content.style.WebkitTouchCallout = "none";
 
     stage.on("dragstart", setEditMode);
     stage.on("dragend", setScrollMode);
-
-    stage.on("dragstart", onDragStart);
-    stage.on("dragend", onDragEnd);
 
     stage.on("touchend", stopDragging);
     stage.on("pointerup", stopDragging);
@@ -54,15 +40,12 @@ export default function useCanvasEditorStageInteraction({
       stage.off("dragstart", setEditMode);
       stage.off("dragend", setScrollMode);
 
-      stage.off("dragstart", onDragStart);
-      stage.off("dragend", onDragEnd);
-
       stage.off("touchend", stopDragging);
       stage.off("pointerup", stopDragging);
       stage.off("mouseup", stopDragging);
       stage.off("touchcancel", stopDragging);
     };
-  }, [setIsDragging, stageRef]);
+  }, [stageRef]);
 
   useEffect(() => {
     const stage = stageRef.current?.getStage?.() || stageRef.current;

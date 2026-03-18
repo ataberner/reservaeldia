@@ -3,6 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { Transformer, Rect, Group, Text } from "react-konva";
 import SelectionBoundsIndicator from "@/components/editor/textSystem/render/konva/SelectionBoundsIndicator";
 import {
+  buildCanvasDragPerfDiff,
+  startCanvasDragPerfSpan,
+  trackCanvasDragPerf,
+} from "@/components/editor/canvasEditor/canvasDragPerf";
+import {
   getSelectionFramePadding,
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_ACTIVE_STROKE,
@@ -97,7 +102,12 @@ export default function SelectionBounds({
   isMobile = false,
 }) {
   const transformerRef = useRef(null);
+  const renderCountRef = useRef(0);
+  const renderSnapshotRef = useRef(null);
   const [transformTick, setTransformTick] = useState(0);
+  const [runtimeDragActive, setRuntimeDragActive] = useState(() => (
+    typeof window !== "undefined" && Boolean(window._isDragging)
+  ));
   const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
@@ -187,6 +197,104 @@ export default function SelectionBounds({
   const hayLineas = elementosSeleccionadosData.some(
     (obj) => obj.tipo === "forma" && obj.figura === "line"
   );
+  const pendingDragSelectionId =
+    typeof window !== "undefined" ? window._pendingDragSelectionId || null : null;
+  const effectiveDragging = Boolean(
+    isDragging ||
+    runtimeDragActive ||
+    (typeof window !== "undefined" && window._isDragging)
+  );
+  const shouldSuppressDuringDeferredDrag = Boolean(
+    effectiveDragging &&
+    pendingDragSelectionId &&
+    !selectedElements.includes(pendingDragSelectionId)
+  );
+
+  useEffect(() => {
+    renderCountRef.current += 1;
+    if (typeof window === "undefined") return;
+    const isInteractionActive =
+      effectiveDragging ||
+      window._isDragging ||
+      window._grupoLider ||
+      window._resizeData?.isResizing;
+    if (!isInteractionActive) return;
+
+    const nextSnapshot = {
+      selectedIds: selectedElements.join(","),
+      effectiveDragging: Boolean(effectiveDragging),
+      runtimeDragActive: Boolean(runtimeDragActive),
+      interactionLocked: Boolean(interactionLocked),
+      resizeActive: Boolean(isResizeGestureActive),
+      resizeHintPhase,
+      transformTick,
+      pendingDragSelectionId,
+      suppressDuringDeferredDrag: shouldSuppressDuringDeferredDrag,
+      primerElementoId: primerElemento?.id || null,
+      primerElementoTipo: primerElemento?.tipo || null,
+    };
+    const diff = buildCanvasDragPerfDiff(
+      renderSnapshotRef.current,
+      nextSnapshot
+    );
+    renderSnapshotRef.current = nextSnapshot;
+
+    trackCanvasDragPerf("render:SelectionTransformer", {
+      renderCount: renderCountRef.current,
+      selectedCount: selectedElements.length,
+      dragging: Boolean(effectiveDragging || window._isDragging),
+      groupLeader: window._grupoLider || null,
+      resizing: Boolean(window._resizeData?.isResizing),
+      changedKeys: diff.changedKeys,
+      changes: diff.changes,
+      ...nextSnapshot,
+    }, {
+      throttleMs: 120,
+      throttleKey: "render:SelectionTransformer",
+    });
+  }, [
+    effectiveDragging,
+    pendingDragSelectionId,
+    primerElemento?.id,
+    primerElemento?.tipo,
+    selectedElements.length,
+    shouldSuppressDuringDeferredDrag,
+    transformTick,
+  ]);
+
+  useEffect(() => {
+    const firstId = selectedElements?.[0];
+    if (!firstId) {
+      setRuntimeDragActive(false);
+      return;
+    }
+
+    const firstNode = elementRefs.current?.[firstId];
+    const stage = firstNode?.getStage?.();
+    if (!stage) {
+      setRuntimeDragActive(
+        Boolean(typeof window !== "undefined" && window._isDragging)
+      );
+      return;
+    }
+
+    const syncDragState = () => {
+      setRuntimeDragActive(
+        Boolean(typeof window !== "undefined" && window._isDragging)
+      );
+    };
+    const onStageDragStart = () => setRuntimeDragActive(true);
+    const onStageDragEnd = () => syncDragState();
+
+    stage.on("dragstart.selection-runtime", onStageDragStart);
+    stage.on("dragend.selection-runtime", onStageDragEnd);
+    syncDragState();
+
+    return () => {
+      stage.off("dragstart.selection-runtime", onStageDragStart);
+      stage.off("dragend.selection-runtime", onStageDragEnd);
+    };
+  }, [elementRefs, selectedElements.join(",")]);
 
   const elementosTransformables = elementosSeleccionadosData.filter(
     (obj) => !(obj.tipo === "forma" && obj.figura === "line")
@@ -459,7 +567,7 @@ export default function SelectionBounds({
       return;
     }
 
-    if (isDragging || isResizeGestureActive || isTransformingResizeRef.current) {
+    if (effectiveDragging || isResizeGestureActive || isTransformingResizeRef.current) {
       stopResizeHintPulse();
       return;
     }
@@ -496,7 +604,7 @@ export default function SelectionBounds({
   }, [
     selectedElements.join(","),
     deberiaUsarTransformer,
-    isDragging,
+    effectiveDragging,
     isResizeGestureActive,
     isMobile,
   ]);
@@ -545,12 +653,12 @@ export default function SelectionBounds({
       setPressedResizeAnchorName((current) => (current ? null : current));
       return;
     }
-    if (isDragging && !isTransformingResizeRef.current) {
+    if (effectiveDragging && !isTransformingResizeRef.current) {
       stopResizeHintPulse();
       setIsResizeGestureActive(false);
       setPressedResizeAnchorName((current) => (current ? null : current));
     }
-  }, [selectedElements.length, isDragging, deberiaUsarTransformer]);
+  }, [selectedElements.length, effectiveDragging, deberiaUsarTransformer]);
 
   useEffect(() => {
     if (!interactionLocked) return;
@@ -569,7 +677,7 @@ export default function SelectionBounds({
     const nativeTransforming = Boolean(tr.isTransforming?.());
     TRDBG("EFFECT start", {
       selKey,
-      isDragging,
+      isDragging: effectiveDragging,
       deberiaUsarTransformer,
       hasGallery,
       elementosTransformablesLen: elementosTransformables.length,
@@ -681,36 +789,78 @@ export default function SelectionBounds({
     const firstNode = elementRefs.current?.[firstId];
     const stage = firstNode?.getStage?.();
     if (!stage) return;
+    const shouldSyncOnDragMove = !(
+      selectedElements.length === 1 &&
+      esImagenSeleccionada
+    );
 
     let rafId = null;
-    const syncTransformer = () => {
+    const syncTransformer = (source = "unknown") => {
       if (rafId != null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
         const tr = transformerRef.current;
         if (!tr) return;
+        const finishPerf = startCanvasDragPerfSpan("transformer:sync", {
+          selectedCount: selectedElements.length,
+          source,
+        }, {
+          throttleMs: 180,
+          throttleKey: `transformer:sync:${source}`,
+        });
         try {
-          if (tr.isTransforming?.()) return;
+          if (tr.isTransforming?.()) {
+            finishPerf?.({ reason: "is-transforming" });
+            return;
+          }
         } catch {}
         try { tr.forceUpdate?.(); } catch { }
         tr.getLayer?.()?.batchDraw?.();
+        finishPerf?.({
+          elementId: firstId,
+          elementType: primerElemento?.tipo || null,
+        });
       });
     };
 
-    stage.on("dragmove", syncTransformer);
-    stage.on("dragend", syncTransformer);
+    const onStageDragMove = () => syncTransformer("dragmove");
+    const onStageDragEnd = () => syncTransformer("dragend");
+
+    if (shouldSyncOnDragMove) {
+      stage.on("dragmove", onStageDragMove);
+    } else {
+      trackCanvasDragPerf("transformer:skip-dragmove-sync", {
+        selectedCount: selectedElements.length,
+        elementId: firstId,
+        elementType: primerElemento?.tipo || null,
+      }, {
+        throttleMs: 400,
+        throttleKey: "transformer:skip-dragmove-sync",
+      });
+    }
+    stage.on("dragend", onStageDragEnd);
 
     return () => {
-      stage.off("dragmove", syncTransformer);
-      stage.off("dragend", syncTransformer);
+      if (shouldSyncOnDragMove) {
+        stage.off("dragmove", onStageDragMove);
+      }
+      stage.off("dragend", onStageDragEnd);
       if (rafId != null) cancelAnimationFrame(rafId);
     };
-  }, [selectedElements.join(","), elementRefs]);
+  }, [
+    selectedElements,
+    selectedElements.join(","),
+    elementRefs,
+    esImagenSeleccionada,
+    primerElemento?.tipo,
+  ]);
 
 
 
 
   // ðŸ”¥ Render
+
+  if (shouldSuppressDuringDeferredDrag) return null;
 
   if (selectedElements.length === 0) return null;
 
@@ -802,11 +952,11 @@ export default function SelectionBounds({
 
       // âŒ nodos y rotaciÃ³n OFF durante drag
       enabledAnchors={
-        interactionLocked || (isDragging && !isResizeGestureActive)
+        interactionLocked || (effectiveDragging && !isResizeGestureActive)
           ? []
           : ["bottom-right"]
       }
-      rotateEnabled={!interactionLocked && !isDragging && !esGaleria}
+      rotateEnabled={!interactionLocked && !effectiveDragging && !esGaleria}
       onMouseDown={handleResizeAnchorPressStart}
       onTouchStart={handleResizeAnchorPressStart}
       onPointerDown={handleResizeAnchorPressStart}
@@ -919,7 +1069,7 @@ export default function SelectionBounds({
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
       centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
-      resizeEnabled={!interactionLocked && (!isDragging || isResizeGestureActive)}
+      resizeEnabled={!interactionLocked && (!effectiveDragging || isResizeGestureActive)}
       rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
       rotateAnchorOffset={transformerRotateOffset}
       rotationSnapTolerance={transformerRotationSnapTolerance}

@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
+import {
+  startCanvasDragPerfSpan,
+  trackCanvasDragPerf,
+} from "@/components/editor/canvasEditor/canvasDragPerf";
 
 const FALLBACK_BUTTON_SIZE_DESKTOP = 28;
 const FALLBACK_BUTTON_SIZE_MOBILE = 24;
@@ -189,8 +193,46 @@ export default function useOptionButtonPosition({
     nativeEvent = null,
     eventTargetLabel = null
   ) => {
-    if (typeof window === "undefined") return;
-    if (!botonOpcionesRef.current) return;
+    const finishPerf = startCanvasDragPerfSpan("toolbar:sync", {
+      source,
+    }, {
+      throttleMs: 180,
+      throttleKey: `toolbar:sync:${source}`,
+    });
+
+    if (typeof window === "undefined") {
+      finishPerf?.({ reason: "missing-window" });
+      return;
+    }
+    if (!botonOpcionesRef.current) {
+      finishPerf?.({ reason: "missing-button-ref" });
+      return;
+    }
+
+    const isInteractionActive =
+      window._isDragging ||
+      window._grupoLider ||
+      window._resizeData?.isResizing;
+
+    if (isInteractionActive) {
+      ocultarBotonOpciones("interaction-active", {
+        source,
+        isDragging: Boolean(window._isDragging),
+        groupLeader: window._grupoLider || null,
+        isResizing: Boolean(window._resizeData?.isResizing),
+      });
+      trackCanvasDragPerf("toolbar:hidden-interaction", {
+        source,
+        isDragging: Boolean(window._isDragging),
+        groupLeader: window._grupoLider || null,
+        isResizing: Boolean(window._resizeData?.isResizing),
+      }, {
+        throttleMs: 180,
+        throttleKey: "toolbar:hidden-interaction",
+      });
+      finishPerf?.({ reason: "interaction-active" });
+      return;
+    }
 
     const hasObjectSelection = elementosSeleccionados.length === 1;
     const hasBackgroundDecorationSelection = Boolean(backgroundDecorationSelection?.id);
@@ -201,6 +243,7 @@ export default function useOptionButtonPosition({
         count: elementosSeleccionados.length,
         hasBackgroundDecorationSelection,
       });
+      finishPerf?.({ reason: "selection-count" });
       return;
     }
 
@@ -215,6 +258,7 @@ export default function useOptionButtonPosition({
         hasStage: Boolean(stage),
         hasBackgroundDecorationSelection,
       });
+      finishPerf?.({ reason: "missing-node-or-stage" });
       return;
     }
 
@@ -231,6 +275,7 @@ export default function useOptionButtonPosition({
           hasObjectSelection,
           hasBackgroundDecorationSelection,
         });
+        finishPerf?.({ reason: "missing-box" });
         return;
       }
       const nodeAbsolutePosition = hasObjectSelection
@@ -252,6 +297,7 @@ export default function useOptionButtonPosition({
           : stage.getStage?.()?.container?.();
       if (!stageContainer) {
         ocultarBotonOpciones("missing-stage-container", { source });
+        finishPerf?.({ reason: "missing-stage-container" });
         return;
       }
 
@@ -299,6 +345,7 @@ export default function useOptionButtonPosition({
           },
           viewport: { width: viewportWidth, height: viewportHeight },
         });
+        finishPerf?.({ reason: "element-outside-viewport" });
         return;
       }
 
@@ -339,6 +386,9 @@ export default function useOptionButtonPosition({
       botonOpcionesRef.current.style.left = `${Math.round(renderX)}px`;
       botonOpcionesRef.current.style.top = `${Math.round(renderY)}px`;
       botonOpcionesRef.current.style.display = "flex";
+      finishPerf?.({
+        selectionKind: hasObjectSelection ? "object" : "background-decoration",
+      });
 
       if (isOptionButtonDebugEnabled()) {
         const debugScrollTarget = getScrollableAncestors(stageContainer)[0] || window;
@@ -450,6 +500,7 @@ export default function useOptionButtonPosition({
         error: message,
       }, true);
       ocultarBotonOpciones("exception", { source, error: message });
+      finishPerf?.({ reason: "exception", message });
     }
   }, [
     backgroundDecorationSelection,
@@ -585,20 +636,24 @@ export default function useOptionButtonPosition({
     detach.push(() => window.removeEventListener("orientationchange", onOrientationChange));
 
     if (stage?.on && stage?.off) {
-      const onStageDragMove = (event) => syncPosition("stage-dragmove", event?.evt || null);
+      const onStageDragStart = () => {
+        ocultarBotonOpciones("stage-dragstart");
+      };
       const onStageDragEnd = (event) => syncPosition("stage-dragend", event?.evt || null);
-      const onStageTransform = (event) => syncPosition("stage-transform", event?.evt || null);
+      const onStageTransformStart = () => {
+        ocultarBotonOpciones("stage-transformstart");
+      };
       const onStageTransformEnd = (event) =>
         syncPosition("stage-transformend", event?.evt || null);
 
-      stage.on("dragmove.option-button", onStageDragMove);
+      stage.on("dragstart.option-button", onStageDragStart);
       stage.on("dragend.option-button", onStageDragEnd);
-      stage.on("transform.option-button", onStageTransform);
+      stage.on("transformstart.option-button", onStageTransformStart);
       stage.on("transformend.option-button", onStageTransformEnd);
       detach.push(() => {
-        stage.off("dragmove.option-button", onStageDragMove);
+        stage.off("dragstart.option-button", onStageDragStart);
         stage.off("dragend.option-button", onStageDragEnd);
-        stage.off("transform.option-button", onStageTransform);
+        stage.off("transformstart.option-button", onStageTransformStart);
         stage.off("transformend.option-button", onStageTransformEnd);
       });
     }

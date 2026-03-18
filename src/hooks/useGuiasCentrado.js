@@ -1,5 +1,31 @@
 // hooks/useGuiasCentrado.js
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import {
+    startCanvasDragPerfSpan,
+    trackCanvasDragPerf,
+} from "@/components/editor/canvasEditor/canvasDragPerf";
+
+function roundGuideMetric(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "n";
+    return Math.round(numeric * 100) / 100;
+}
+
+function getGuidePerfNow() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+        return performance.now();
+    }
+    return Date.now();
+}
+
+function buildGuideLinesSignature(lines = []) {
+    return lines.map((line) => [
+        line?.type || "",
+        line?.priority || "",
+        line?.style || "",
+        ...(Array.isArray(line?.points) ? line.points.map(roundGuideMetric) : []),
+    ].join(":")).join("|");
+}
 
 /**
  * Guías con:
@@ -19,9 +45,158 @@ export default function useGuiasCentrado({
     sectionSnapStrength = null,   // null => snapStrength
     elementSnapStrength = null,   // null => snapStrength
     sectionLineTolerance = 0.75,  // solo mostrar guía de sección cuando está realmente centrado
-    seccionesOrdenadas = []
+    seccionesOrdenadas = [],
+    onGuideLinesChange = null,
 }) {
-    const [guiaLineas, setGuiaLineas] = useState([]);
+    const guideLinesRafRef = useRef(null);
+    const pendingGuideLinesRef = useRef(null);
+    const lastGuideSignatureRef = useRef("");
+    const objectCacheRef = useRef({
+        source: null,
+        byId: new Map(),
+        bySection: new Map(),
+    });
+    const sectionCacheRef = useRef({
+        source: null,
+        byId: new Map(),
+    });
+    const sectionGuideTargetsCacheRef = useRef({
+        source: null,
+        stage: null,
+        selfId: null,
+        targets: [],
+    });
+
+    const publishGuideLines = useCallback((nextLines = []) => {
+        if (typeof onGuideLinesChange === "function") {
+            onGuideLinesChange(nextLines);
+        }
+    }, [onGuideLinesChange]);
+
+    const commitGuideLines = useCallback((nextLines = []) => {
+        const safeLines = Array.isArray(nextLines) ? nextLines : [];
+        const nextSignature = buildGuideLinesSignature(safeLines);
+
+        if (nextSignature === lastGuideSignatureRef.current) {
+            trackCanvasDragPerf("guides:commit-skip", {
+                lines: safeLines.length,
+                signatureSize: nextSignature.length,
+                reason: "same-signature",
+            }, {
+                throttleMs: 180,
+                throttleKey: "guides:commit-skip",
+            });
+            pendingGuideLinesRef.current = null;
+            return;
+        }
+
+        pendingGuideLinesRef.current = {
+            lines: safeLines,
+            signature: nextSignature,
+        };
+
+        if (guideLinesRafRef.current != null) return;
+
+        if (typeof window === "undefined") {
+            lastGuideSignatureRef.current = nextSignature;
+            publishGuideLines(safeLines);
+            pendingGuideLinesRef.current = null;
+            return;
+        }
+
+        guideLinesRafRef.current = window.requestAnimationFrame(() => {
+            guideLinesRafRef.current = null;
+            const pending = pendingGuideLinesRef.current;
+            if (!pending) return;
+            pendingGuideLinesRef.current = null;
+
+            if (pending.signature === lastGuideSignatureRef.current) {
+                trackCanvasDragPerf("guides:commit-skip", {
+                    lines: pending.lines.length,
+                    signatureSize: pending.signature.length,
+                    reason: "raf-same-signature",
+                }, {
+                    throttleMs: 180,
+                    throttleKey: "guides:commit-skip",
+                });
+                return;
+            }
+
+            lastGuideSignatureRef.current = pending.signature;
+            trackCanvasDragPerf("guides:commit", {
+                lines: pending.lines.length,
+                signatureSize: pending.signature.length,
+            }, {
+                throttleMs: 180,
+                throttleKey: "guides:commit",
+            });
+            publishGuideLines(pending.lines);
+        });
+    }, [publishGuideLines]);
+
+    const clearGuideLines = useCallback(() => {
+        commitGuideLines([]);
+    }, [commitGuideLines]);
+
+    useEffect(() => () => {
+        if (
+            guideLinesRafRef.current != null &&
+            typeof window !== "undefined"
+        ) {
+            window.cancelAnimationFrame(guideLinesRafRef.current);
+        }
+    }, []);
+
+    const getObjectCache = useCallback((objetos = []) => {
+        if (objectCacheRef.current.source === objetos) {
+            return objectCacheRef.current;
+        }
+
+        const byId = new Map();
+        const bySection = new Map();
+
+        objetos.forEach((obj) => {
+            if (!obj?.id) return;
+            byId.set(obj.id, obj);
+
+            if (!obj.seccionId) return;
+
+            const sectionItems = bySection.get(obj.seccionId);
+            if (sectionItems) {
+                sectionItems.push(obj);
+                return;
+            }
+
+            bySection.set(obj.seccionId, [obj]);
+        });
+
+        objectCacheRef.current = {
+            source: objetos,
+            byId,
+            bySection,
+        };
+
+        return objectCacheRef.current;
+    }, []);
+
+    const getSectionById = useCallback((sectionId) => {
+        if (!sectionId) return null;
+
+        if (sectionCacheRef.current.source !== seccionesOrdenadas) {
+            const byId = new Map();
+            seccionesOrdenadas.forEach((section) => {
+                if (!section?.id) return;
+                byId.set(section.id, section);
+            });
+
+            sectionCacheRef.current = {
+                source: seccionesOrdenadas,
+                byId,
+            };
+        }
+
+        return sectionCacheRef.current.byId.get(sectionId) || null;
+    }, [seccionesOrdenadas]);
 
 
     const effElementMagnetRadius = elementMagnetRadius ?? magnetRadius;
@@ -38,12 +213,6 @@ export default function useGuiasCentrado({
             offsetY += s.altura;
         }
         return offsetY;
-    }, [seccionesOrdenadas]);
-
-    const obtenerSeccionElemento = useCallback((objId, objetos) => {
-        const obj = objetos.find(o => o.id === objId);
-        if (!obj?.seccionId) return null;
-        return seccionesOrdenadas.find(s => s.id === obj.seccionId) || null;
     }, [seccionesOrdenadas]);
 
     // ---- Segmentos "reach" entre cajas (va hasta el otro elemento) ----
@@ -183,23 +352,85 @@ export default function useGuiasCentrado({
         }
     };
 
-    const buildSameSectionGuides = (node, stage, objetos, elementRefs, idSelf, seccionId, objById) => {
-        const selfObj = objById.get(idSelf) || null;
-        const selfBox = getNodeBox(node, stage, selfObj);
-        if (!selfBox) return [];
-        const candidates = objetos
-            .filter(o => o.id !== idSelf && o.seccionId === seccionId) // 🔒 MISMA SECCIÓN
-            .map(o => {
-                const n = elementRefs.current?.[o.id];
-                if (!n) return null;
-                try {
-                    const b = getNodeBox(n, stage, objById.get(o.id) || null);
-                    if (!b) return null;
-                    const d = Math.abs((selfBox.x + selfBox.width / 2) - (b.x + b.width / 2))
-                        + Math.abs((selfBox.y + selfBox.height / 2) - (b.y + b.height / 2));
-                    return { box: b, d };
-                } catch { return null; }
+    const getSectionGuideTargets = useCallback((stage, objetosSeccion, elementRefs, idSelf, objById) => {
+        if (!stage || !Array.isArray(objetosSeccion) || objetosSeccion.length === 0) {
+            return {
+                targets: [],
+                cacheHit: false,
+            };
+        }
+
+        const cached = sectionGuideTargetsCacheRef.current;
+        if (
+            cached.source === objetosSeccion &&
+            cached.stage === stage &&
+            cached.selfId === idSelf
+        ) {
+            trackCanvasDragPerf("guides:targets-cache-hit", {
+                elementId: idSelf,
+                sectionCandidates: objetosSeccion.length,
+                targets: cached.targets.length,
+            }, {
+                throttleMs: 180,
+                throttleKey: `guides:targets-cache-hit:${idSelf}`,
+            });
+            return {
+                targets: cached.targets,
+                cacheHit: true,
+            };
+        }
+
+        const targets = objetosSeccion
+            .filter((obj) => obj?.id && obj.id !== idSelf)
+            .map((obj) => {
+                const node = elementRefs.current?.[obj.id];
+                if (!node) return null;
+                const box = getNodeBox(node, stage, objById.get(obj.id) || obj || null);
+                if (!box) return null;
+                return {
+                    id: obj.id,
+                    box,
+                    centerX: box.x + box.width / 2,
+                    centerY: box.y + box.height / 2,
+                };
             })
+            .filter(Boolean);
+
+        sectionGuideTargetsCacheRef.current = {
+            source: objetosSeccion,
+            stage,
+            selfId: idSelf,
+            targets,
+        };
+
+        trackCanvasDragPerf("guides:targets-cache-build", {
+            elementId: idSelf,
+            sectionCandidates: objetosSeccion.length,
+            targets: targets.length,
+        }, {
+            throttleMs: 180,
+            throttleKey: `guides:targets-cache-build:${idSelf}`,
+        });
+
+        return {
+            targets,
+            cacheHit: false,
+        };
+    }, []);
+
+    const buildSameSectionGuides = (selfBox, guideTargets) => {
+        if (!selfBox || !Array.isArray(guideTargets) || guideTargets.length === 0) {
+            return [];
+        }
+        const selfCenterX = selfBox.x + selfBox.width / 2;
+        const selfCenterY = selfBox.y + selfBox.height / 2;
+        const candidates = guideTargets
+            .map((target) => ({
+                box: target.box,
+                d:
+                    Math.abs(selfCenterX - target.centerX) +
+                    Math.abs(selfCenterY - target.centerY),
+            }))
             .filter(Boolean)
             .sort((a, b) => a.d - b.d)
             .slice(0, 3); // pocos vecinos → menos ruido
@@ -288,13 +519,33 @@ export default function useGuiasCentrado({
 
     // ---- Mostrar guías durante el drag ----
     const mostrarGuias = useCallback((pos, idActual, objetos, elementRefs) => {
+        const perfStartedAt = getGuidePerfNow();
+        let perfLastAt = perfStartedAt;
+        const perfBreakdown = {};
+        const capturePerfPhase = (phaseName) => {
+            const now = getGuidePerfNow();
+            perfBreakdown[phaseName] = roundGuideMetric(now - perfLastAt);
+            perfLastAt = now;
+        };
+        const finishPerf = startCanvasDragPerfSpan("guides:evaluate", {
+            elementId: idActual,
+        }, {
+            throttleMs: 180,
+            throttleKey: `guides:evaluate:${idActual}`,
+        });
         const node = elementRefs.current?.[idActual];
-        if (!node) return;
+        if (!node) {
+            finishPerf?.({ reason: "missing-node" });
+            return;
+        }
         const stage = node.getStage?.();
-        if (!stage) return;
+        if (!stage) {
+            finishPerf?.({ reason: "missing-stage" });
+            return;
+        }
 
         try {
-            const objById = new Map(objetos.map((o) => [o.id, o]));
+            const { byId: objById, bySection } = getObjectCache(objetos);
             const objActual = objById.get(idActual) || null;
             const isGroupLeader = window._grupoLider && idActual === window._grupoLider;
             const rawGroupIds = Array.isArray(window._grupoElementos) && window._grupoElementos.length > 1
@@ -308,18 +559,25 @@ export default function useGuiasCentrado({
             const selfBoxBefore = isGroupDrag
                 ? getUnionBox(groupIds, stage, elementRefs, objById)
                 : getNodeBox(node, stage, objActual);
-            if (!selfBoxBefore) return;
+            if (!selfBoxBefore) {
+                finishPerf?.({ reason: "missing-self-box-before" });
+                return;
+            }
+            capturePerfPhase("selfBoxResolveMs");
             const selfCx = selfBoxBefore.x + selfBoxBefore.width / 2;
             const selfCy = selfBoxBefore.y + selfBoxBefore.height / 2;
 
-            const seccion = obtenerSeccionElemento(idActual, objetos);
+            const seccion = getSectionById(objActual?.seccionId);
             if (!seccion) {
-                setGuiaLineas([]);
+                clearGuideLines();
+                finishPerf?.({ reason: "missing-section" });
                 return;
             }
             const offY = calcularOffsetSeccion(seccion.id);
             const secCx = anchoCanvas / 2;
             const secCy = offY + seccion.altura / 2;
+            const sectionItems = bySection.get(seccion.id) || [];
+            capturePerfPhase("sectionResolveMs");
 
             const lines = [];
 
@@ -328,17 +586,20 @@ export default function useGuiasCentrado({
             const distSecY = Math.abs(selfCy - secCy);
 
             // 2) ELEMENTOS (MISMA SECCIÓN): elegir mejor candidato por eje
-            const elementGuides = isGroupDrag
-                ? []
-                : buildSameSectionGuides(
-                    node,
+            const { targets: sectionGuideTargets, cacheHit: guideCacheHit } = isGroupDrag
+                ? { targets: [], cacheHit: false }
+                : getSectionGuideTargets(
                     stage,
-                    objetos,
+                    sectionItems,
                     elementRefs,
                     idActual,
-                    seccion.id,
                     objById
                 );
+            capturePerfPhase("targetsLookupMs");
+
+            const elementGuides = isGroupDrag
+                ? []
+                : buildSameSectionGuides(selfBoxBefore, sectionGuideTargets);
 
             const bestElX = isGroupDrag
                 ? null
@@ -353,6 +614,7 @@ export default function useGuiasCentrado({
                     .filter(g => g.axis === "y")
                     .map(g => ({ g, dist: distForGuide("y", g.value, selfBoxBefore) }))
                     .sort((a, b) => a.dist - b.dist)[0];
+            capturePerfPhase("guideBuildMs");
 
             // Decidir qué guía “gana” por eje (sección vs elemento)
             const decidirSnap = (secDistCenter, bestEl) => {
@@ -371,20 +633,72 @@ export default function useGuiasCentrado({
 
             const decisionX = decidirSnap(distSecX, bestElX);
             const decisionY = decidirSnap(distSecY, bestElY);
+            capturePerfPhase("decisionMs");
 
+            trackCanvasDragPerf("guides:snapshot", {
+                elementId: idActual,
+                isGroupDrag,
+                sectionId: seccion.id,
+                sectionCandidates: sectionItems.length,
+                sectionGuideTargetsCount: sectionGuideTargets.length,
+                elementGuidesCount: elementGuides.length,
+                guideCacheHit,
+                distSecX: roundGuideMetric(distSecX),
+                distSecY: roundGuideMetric(distSecY),
+                bestElXDist: roundGuideMetric(bestElX?.dist),
+                bestElYDist: roundGuideMetric(bestElY?.dist),
+                decisionX: decisionX?.source || "none",
+                decisionY: decisionY?.source || "none",
+            }, {
+                throttleMs: 120,
+                throttleKey: `guides:snapshot:${idActual}`,
+            });
+
+            const finishSnapPerf = startCanvasDragPerfSpan("guides:snap-apply", {
+                elementId: idActual,
+                sectionId: seccion.id,
+                isGroupDrag,
+            }, {
+                throttleMs: 120,
+                throttleKey: `guides:snap-apply:${idActual}`,
+            });
 
             const applySnap = (axis, decision) => {
-                if (!decision) return { snapped: false };
+                if (!decision) {
+                    return {
+                        snapped: false,
+                        source: "none",
+                        axis,
+                        deltaApplied: 0,
+                        distBefore: null,
+                        strength: null,
+                        targetValue: null,
+                        nearType: null,
+                    };
+                }
                 const fresh = isGroupDrag
                     ? getUnionBox(groupIds, stage, elementRefs, objById)
                     : getNodeBox(node, stage, objActual);
-                if (!fresh) return { snapped: false };
+                if (!fresh) {
+                    return {
+                        snapped: false,
+                        source: decision.source || "none",
+                        axis,
+                        deltaApplied: 0,
+                        distBefore: null,
+                        strength: null,
+                        targetValue: null,
+                        nearType: decision?.near?.g?.type || null,
+                        reason: "missing-fresh-box",
+                    };
+                }
 
                 if (decision.source === "seccion") {
                     const nextCenter = axis === "x"
                         ? fresh.x + fresh.width / 2
                         : fresh.y + fresh.height / 2;
                     const targetCenter = axis === "x" ? secCx : secCy;
+                    const distBefore = Math.abs(targetCenter - nextCenter);
                     const delta = (targetCenter - nextCenter) * effSectionSnapStrength;
 
                     if (axis === "x") {
@@ -394,27 +708,77 @@ export default function useGuiasCentrado({
                         if (isGroupDrag) shiftNodes(groupIds, "y", delta, elementRefs);
                         else node.y(node.y() + delta);
                     }
-                    return { snapped: true, source: "seccion" };
+                    return {
+                        snapped: true,
+                        source: "seccion",
+                        axis,
+                        deltaApplied: roundGuideMetric(delta),
+                        distBefore: roundGuideMetric(distBefore),
+                        strength: roundGuideMetric(effSectionSnapStrength),
+                        targetValue: roundGuideMetric(targetCenter),
+                        nearType: null,
+                    };
                 }
 
-                if (isGroupDrag) return { snapped: false };
+                if (isGroupDrag) {
+                    return {
+                        snapped: false,
+                        source: "elemento",
+                        axis,
+                        deltaApplied: 0,
+                        distBefore: roundGuideMetric(decision?.near?.dist),
+                        strength: roundGuideMetric(effElementSnapStrength),
+                        targetValue: roundGuideMetric(decision?.near?.g?.value),
+                        nearType: decision?.near?.g?.type || null,
+                        reason: "group-element-snap-disabled",
+                    };
+                }
 
                 const delta = deltaForGuide(axis, decision.near.g.value, fresh);
-                if (axis === "x") node.x(node.x() + delta * effElementSnapStrength);
-                else node.y(node.y() + delta * effElementSnapStrength);
-                return { snapped: true, source: "elemento", near: decision.near };
+                const appliedDelta = delta * effElementSnapStrength;
+                if (axis === "x") node.x(node.x() + appliedDelta);
+                else node.y(node.y() + appliedDelta);
+                return {
+                    snapped: true,
+                    source: "elemento",
+                    axis,
+                    deltaApplied: roundGuideMetric(appliedDelta),
+                    distBefore: roundGuideMetric(decision?.near?.dist),
+                    strength: roundGuideMetric(effElementSnapStrength),
+                    targetValue: roundGuideMetric(decision?.near?.g?.value),
+                    nearType: decision?.near?.g?.type || null,
+                    near: decision.near,
+                };
             };
 
             const snapResX = applySnap("x", decisionX);
             const snapResY = applySnap("y", decisionY);
+            capturePerfPhase("snapApplyMs");
 
             // Recalcular box luego del snap para dibujar reach exacta
             const selfBoxAfter = isGroupDrag
                 ? getUnionBox(groupIds, stage, elementRefs, objById)
                 : getNodeBox(node, stage, objActual);
-            if (!selfBoxAfter) return;
+            if (!selfBoxAfter) {
+                finishPerf?.({ reason: "missing-self-box-after" });
+                return;
+            }
             const selfCxAfter = selfBoxAfter.x + selfBoxAfter.width / 2;
             const selfCyAfter = selfBoxAfter.y + selfBoxAfter.height / 2;
+            const computeSnapAfterDistance = (axis, snapRes) => {
+                if (!snapRes?.snapped) return null;
+                if (snapRes.source === "seccion") {
+                    const nextCenter = axis === "x" ? selfCxAfter : selfCyAfter;
+                    const targetCenter = axis === "x" ? secCx : secCy;
+                    return roundGuideMetric(Math.abs(nextCenter - targetCenter));
+                }
+                if (snapRes.source === "elemento" && snapRes.targetValue != null) {
+                    return roundGuideMetric(
+                        distForGuide(axis, snapRes.targetValue, selfBoxAfter)
+                    );
+                }
+                return null;
+            };
 
             // 2) SECCIÓN: mostrar guía SOLO cuando quedó efectivamente alineado.
             if (
@@ -458,26 +822,98 @@ export default function useGuiasCentrado({
                     points: reachHorizontal(snapResY.near.g.value, selfBoxAfter, snapResY.near.g.targetBox)
                 });
             }
+            capturePerfPhase("lineBuildMs");
 
+            if (decisionX || decisionY) {
+                finishSnapPerf?.({
+                    sectionId: seccion.id,
+                    isGroupDrag,
+                    xSource: snapResX.source || "none",
+                    ySource: snapResY.source || "none",
+                    xAppliedDelta: snapResX.deltaApplied ?? null,
+                    yAppliedDelta: snapResY.deltaApplied ?? null,
+                    xStrength: snapResX.strength ?? null,
+                    yStrength: snapResY.strength ?? null,
+                    xDistBefore: snapResX.distBefore ?? null,
+                    yDistBefore: snapResY.distBefore ?? null,
+                    xDistAfter: computeSnapAfterDistance("x", snapResX),
+                    yDistAfter: computeSnapAfterDistance("y", snapResY),
+                    xTargetType: snapResX.nearType || null,
+                    yTargetType: snapResY.nearType || null,
+                    linesPlanned: lines.length,
+                });
+            }
 
-            setGuiaLineas(lines);
+            const commitStartedAt = getGuidePerfNow();
+            commitGuideLines(lines);
+            perfBreakdown.commitEnqueueMs = roundGuideMetric(getGuidePerfNow() - commitStartedAt);
+            finishPerf?.({
+                isGroupDrag,
+                lines: lines.length,
+                sectionId: seccion.id,
+                guideCacheHit,
+                snapXSource: snapResX.source || "none",
+                snapYSource: snapResY.source || "none",
+                totalElapsedMs: roundGuideMetric(getGuidePerfNow() - perfStartedAt),
+                ...perfBreakdown,
+            });
         } catch (e) {
+            finishPerf?.({
+                reason: "error",
+                message: e?.message || String(e),
+                totalElapsedMs: roundGuideMetric(getGuidePerfNow() - perfStartedAt),
+                ...perfBreakdown,
+            });
             // silencioso para no cortar el drag
         }
     }, [
         anchoCanvas, altoCanvas,
         magnetRadius, sectionShowRadius, snapStrength,
         seccionesOrdenadas,
-        obtenerSeccionElemento, calcularOffsetSeccion,
+        calcularOffsetSeccion, getSectionById,
         elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias,
-        sectionSnapStrength, elementSnapStrength, sectionLineTolerance
+        sectionSnapStrength, elementSnapStrength, sectionLineTolerance,
+        clearGuideLines, commitGuideLines, getObjectCache, getSectionGuideTargets
     ]);
 
-    const limpiarGuias = useCallback(() => setGuiaLineas([]), []);
-    const configurarDragEnd = useCallback(() => setGuiaLineas([]), []);
+    const prepararGuias = useCallback((idActual, objetos, elementRefs) => {
+        const node = elementRefs.current?.[idActual];
+        const stage = node?.getStage?.();
+        if (!node || !stage) return;
+
+        try {
+            const { byId: objById, bySection } = getObjectCache(objetos);
+            const objActual = objById.get(idActual) || null;
+            if (!objActual?.seccionId) return;
+
+            const sectionItems = bySection.get(objActual.seccionId) || [];
+            const { targets } = getSectionGuideTargets(
+                stage,
+                sectionItems,
+                elementRefs,
+                idActual,
+                objById
+            );
+
+            trackCanvasDragPerf("guides:prewarm", {
+                elementId: idActual,
+                sectionId: objActual.seccionId,
+                sectionCandidates: sectionItems.length,
+                targets: targets.length,
+            }, {
+                throttleMs: 180,
+                throttleKey: `guides:prewarm:${idActual}`,
+            });
+        } catch {
+            // silencioso para no cortar el drag
+        }
+    }, [getObjectCache, getSectionGuideTargets]);
+
+    const limpiarGuias = useCallback(() => clearGuideLines(), [clearGuideLines]);
+    const configurarDragEnd = useCallback(() => clearGuideLines(), [clearGuideLines]);
 
     return {
-        guiaLineas,
+        prepararGuias,
         mostrarGuias,
         limpiarGuias,
         configurarDragEnd

@@ -38,10 +38,7 @@ const USE_EMULATORS =
 
 // ✅ SOLO en localhost + flag true
 if (USE_EMULATORS) {
-  console.log("[Firebase] Functions → EMULATOR");
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-} else {
-  console.log("[Firebase] Functions → CLOUD");
 }
 
 

@@ -26,6 +26,13 @@ import {
   markTemplateDraftRenderLogged,
 } from "@/domain/templates/draftPersonalizationDebug";
 import useSharedImage from "@/hooks/useSharedImage";
+import {
+  buildCanvasDragPerfDiff,
+  endCanvasDragPerfSession,
+  startCanvasDragPerfSession,
+  startCanvasDragPerfSpan,
+  trackCanvasDragPerf,
+} from "@/components/editor/canvasEditor/canvasDragPerf";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -55,6 +62,320 @@ function isInlineDiagCompactEnabled() {
     if (normalized === "true") return true;
     if (normalized === "false") return false;
   }
+  return true;
+}
+
+function supportsPointerEvents() {
+  return typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+}
+
+function getPerfNow() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function roundPerfMetric(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const precision = 10 ** digits;
+  return Math.round(numeric * precision) / precision;
+}
+
+function buildImagePerfPayload(obj, img, imageCrop, node) {
+  if (!obj || !img || !imageCrop) return null;
+
+  const naturalWidth = Number(img?.naturalWidth || img?.width || 0) || 0;
+  const naturalHeight = Number(img?.naturalHeight || img?.height || 0) || 0;
+  const sourceWidth = Number(imageCrop?.sourceWidth || naturalWidth || 0) || 0;
+  const sourceHeight = Number(imageCrop?.sourceHeight || naturalHeight || 0) || 0;
+  const displayWidth = Number(imageCrop?.width || obj?.width || 0) || 0;
+  const displayHeight = Number(imageCrop?.height || obj?.height || 0) || 0;
+  const crop = imageCrop?.crop || null;
+  const cropWidth = Number(crop?.width || sourceWidth || 0) || 0;
+  const cropHeight = Number(crop?.height || sourceHeight || 0) || 0;
+  const cropX = Number(crop?.x || 0) || 0;
+  const cropY = Number(crop?.y || 0) || 0;
+  const cropPixels = cropWidth * cropHeight;
+  const sourcePixels = sourceWidth * sourceHeight;
+  const displayPixels = displayWidth * displayHeight;
+  const layer = node?.getLayer?.() || null;
+  const layerCanvasHandle =
+    layer && typeof layer.getCanvas === "function" ? layer.getCanvas() : null;
+  const layerCanvas = layerCanvasHandle?._canvas || null;
+
+  return {
+    elementId: obj.id,
+    tipo: obj.tipo,
+    src: obj.src || obj.url || null,
+    naturalWidth: naturalWidth || null,
+    naturalHeight: naturalHeight || null,
+    sourceWidth: sourceWidth || null,
+    sourceHeight: sourceHeight || null,
+    displayWidth: displayWidth || null,
+    displayHeight: displayHeight || null,
+    cropX: cropX || 0,
+    cropY: cropY || 0,
+    cropWidth: cropWidth || null,
+    cropHeight: cropHeight || null,
+    sourceMp: roundPerfMetric(sourcePixels / 1000000, 3),
+    cropMp: roundPerfMetric(cropPixels / 1000000, 3),
+    displayMp: roundPerfMetric(displayPixels / 1000000, 3),
+    cropCoverage: sourcePixels > 0 ? roundPerfMetric(cropPixels / sourcePixels, 4) : null,
+    cropScaleX: displayWidth > 0 ? roundPerfMetric(cropWidth / displayWidth, 3) : null,
+    cropScaleY: displayHeight > 0 ? roundPerfMetric(cropHeight / displayHeight, 3) : null,
+    rotation: Number(obj?.rotation || 0) || 0,
+    opacity: Number.isFinite(Number(obj?.opacity)) ? Number(obj.opacity) : 1,
+    nodeCached: typeof node?.isCached === "function" ? node.isCached() : null,
+    layerCanvasWidth: Number(layerCanvas?.width || 0) || null,
+    layerCanvasHeight: Number(layerCanvas?.height || 0) || null,
+  };
+}
+
+function ensureLayerDrawPerfInstrumentation(layer) {
+  if (!layer || layer.__canvasImageDragPerfInstrumented) return;
+
+  const originalDrawScene =
+    typeof layer.drawScene === "function" ? layer.drawScene : null;
+  const originalDrawHit =
+    typeof layer.drawHit === "function" ? layer.drawHit : null;
+
+  if (originalDrawScene) {
+    layer.drawScene = function patchedDrawScene(...args) {
+      const activePayload = this.__canvasActiveImageDragPerf || null;
+      if (!activePayload) {
+        return originalDrawScene.apply(this, args);
+      }
+
+      const startedAt = getPerfNow();
+      const result = originalDrawScene.apply(this, args);
+      const durationMs = getPerfNow() - startedAt;
+      const canvasHandle =
+        typeof this.getCanvas === "function" ? this.getCanvas() : null;
+      const canvas = canvasHandle?._canvas || null;
+
+      trackCanvasDragPerf("image:layer-draw-scene", {
+        ...activePayload,
+        durationMs: roundPerfMetric(durationMs),
+        layerChildren: typeof this.getChildren === "function" ? this.getChildren().length : null,
+        canvasWidth: Number(canvas?.width || 0) || null,
+        canvasHeight: Number(canvas?.height || 0) || null,
+      }, {
+        throttleMs: 90,
+        throttleKey: `image:layer-draw-scene:${activePayload.elementId}`,
+      });
+
+      return result;
+    };
+  }
+
+  if (originalDrawHit) {
+    layer.drawHit = function patchedDrawHit(...args) {
+      const activePayload = this.__canvasActiveImageDragPerf || null;
+      if (!activePayload) {
+        return originalDrawHit.apply(this, args);
+      }
+
+      const startedAt = getPerfNow();
+      const result = originalDrawHit.apply(this, args);
+      const durationMs = getPerfNow() - startedAt;
+
+      trackCanvasDragPerf("image:layer-draw-hit", {
+        ...activePayload,
+        durationMs: roundPerfMetric(durationMs),
+      }, {
+        throttleMs: 120,
+        throttleKey: `image:layer-draw-hit:${activePayload.elementId}`,
+      });
+
+      return result;
+    };
+  }
+
+  layer.__canvasImageDragPerfInstrumented = true;
+}
+
+function shouldApplyImageDragCache(payload) {
+  if (!payload) return false;
+  return (
+    Number(payload.sourceMp || 0) >= 0.5 ||
+    Number(payload.displayMp || 0) >= 0.08 ||
+    Number(payload.cropScaleX || 1) > 1.25 ||
+    Number(payload.cropScaleY || 1) > 1.25
+  );
+}
+
+function getImageDragCacheConfig(payload) {
+  const displayMp = Number(payload?.displayMp || 0);
+  const sourceMp = Number(payload?.sourceMp || 0);
+  const heavyImage = displayMp >= 0.2 || sourceMp >= 2;
+
+  return {
+    pixelRatio: heavyImage ? 1 : 1.5,
+    hitCanvasPixelRatio: 1,
+    imageSmoothingEnabled: true,
+  };
+}
+
+function activateImageLayerPerf(node, payload) {
+  const layer = node?.getLayer?.();
+  if (!layer || !payload) return;
+  ensureLayerDrawPerfInstrumentation(layer);
+  let activePayload = payload;
+  layer.__canvasActiveImageDragPerf = activePayload;
+
+  if (
+    typeof node?.cache === "function" &&
+    typeof node?.clearCache === "function" &&
+    shouldApplyImageDragCache(payload)
+  ) {
+    const wasCached = typeof node.isCached === "function" ? node.isCached() : false;
+    node.__canvasDragCacheWasCached = wasCached;
+    if (!wasCached) {
+      const cacheConfig = getImageDragCacheConfig(payload);
+      const startedAt = getPerfNow();
+      try {
+        node.cache(cacheConfig);
+        node.__canvasDragCacheApplied = true;
+        activePayload = {
+          ...activePayload,
+          nodeCached: true,
+          cachePixelRatio: cacheConfig.pixelRatio,
+        };
+        layer.__canvasActiveImageDragPerf = activePayload;
+        trackCanvasDragPerf("image:drag-cache-enabled", {
+          ...activePayload,
+          cachePixelRatio: cacheConfig.pixelRatio,
+          hitCanvasPixelRatio: cacheConfig.hitCanvasPixelRatio,
+          durationMs: roundPerfMetric(getPerfNow() - startedAt),
+        }, {
+          throttleMs: 60,
+          throttleKey: `image:drag-cache-enabled:${payload.elementId}`,
+        });
+      } catch (error) {
+        node.__canvasDragCacheApplied = false;
+        trackCanvasDragPerf("image:drag-cache-failed", {
+          ...payload,
+          durationMs: roundPerfMetric(getPerfNow() - startedAt),
+          message: error?.message || String(error),
+        }, {
+          throttleMs: 60,
+          throttleKey: `image:drag-cache-failed:${payload.elementId}`,
+        });
+      }
+    } else {
+      activePayload = {
+        ...activePayload,
+        nodeCached: true,
+      };
+      layer.__canvasActiveImageDragPerf = activePayload;
+      trackCanvasDragPerf("image:drag-cache-reused", activePayload, {
+        throttleMs: 60,
+        throttleKey: `image:drag-cache-reused:${payload.elementId}`,
+      });
+    }
+  }
+}
+
+function deactivateImageLayerPerf(node, elementId) {
+  const layer = node?.getLayer?.();
+
+  if (
+    node?.__canvasDragCacheApplied === true &&
+    typeof node.clearCache === "function"
+  ) {
+    const startedAt = getPerfNow();
+    try {
+      node.clearCache();
+      trackCanvasDragPerf("image:drag-cache-cleared", {
+        elementId,
+        durationMs: roundPerfMetric(getPerfNow() - startedAt),
+      }, {
+        throttleMs: 60,
+        throttleKey: `image:drag-cache-cleared:${elementId}`,
+      });
+    } catch {}
+  }
+
+  if (node) {
+    node.__canvasDragCacheApplied = false;
+    node.__canvasDragCacheWasCached = false;
+  }
+
+  if (!layer) return;
+  if (!elementId || layer.__canvasActiveImageDragPerf?.elementId === elementId) {
+    layer.__canvasActiveImageDragPerf = null;
+  }
+}
+
+function liftNodeToDragLayer(node, dragLayerRef, payload) {
+  const dragLayer = dragLayerRef?.current || null;
+  const currentLayer = node?.getLayer?.() || null;
+  const parent = node?.getParent?.() || null;
+  if (!node || !dragLayer || !currentLayer || !parent || currentLayer === dragLayer) {
+    return false;
+  }
+
+  if (node.__canvasDragLiftParent) {
+    return true;
+  }
+
+  node.__canvasDragLiftParent = parent;
+  node.__canvasDragLiftZIndex =
+    typeof node.zIndex === "function" ? node.zIndex() : null;
+  node.__canvasDragLiftLayer = currentLayer;
+
+  node.moveTo(dragLayer);
+  if (typeof node.moveToTop === "function") {
+    node.moveToTop();
+  }
+
+  currentLayer.batchDraw?.();
+  dragLayer.batchDraw?.();
+
+  trackCanvasDragPerf("image:drag-layer-lifted", {
+    ...payload,
+    fromLayerChildren: typeof currentLayer.getChildren === "function"
+      ? currentLayer.getChildren().length
+      : null,
+    toLayerChildren: typeof dragLayer.getChildren === "function"
+      ? dragLayer.getChildren().length
+      : null,
+  }, {
+    throttleMs: 60,
+    throttleKey: `image:drag-layer-lifted:${payload?.elementId || "unknown"}`,
+  });
+
+  return true;
+}
+
+function restoreNodeFromDragLayer(node, elementId = null) {
+  const parent = node?.__canvasDragLiftParent || null;
+  const dragLayer = node?.getLayer?.() || null;
+  if (!node || !parent) return false;
+
+  node.moveTo(parent);
+  if (Number.isInteger(node.__canvasDragLiftZIndex) && typeof node.zIndex === "function") {
+    node.zIndex(node.__canvasDragLiftZIndex);
+  }
+
+  parent.getLayer?.()?.batchDraw?.();
+  dragLayer?.batchDraw?.();
+
+  trackCanvasDragPerf("image:drag-layer-restored", {
+    elementId,
+    restoredToLayerChildren: typeof parent.getChildren === "function"
+      ? parent.getChildren().length
+      : null,
+  }, {
+    throttleMs: 60,
+    throttleKey: `image:drag-layer-restored:${elementId || "unknown"}`,
+  });
+
+  node.__canvasDragLiftParent = null;
+  node.__canvasDragLiftZIndex = null;
+  node.__canvasDragLiftLayer = null;
   return true;
 }
 
@@ -200,15 +521,135 @@ export default function ElementoCanvas({
   inlineVisibilityMode = "reactive",
   inlineOverlayEngine = "phase_atomic_v2",
   onInlineEditPointer = null,
+  dragLayerRef = null,
 }) {
   const [img] = useSharedImage(obj.src || null, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
   const [debugTextClientRect, setDebugTextClientRect] = useState(null);
 
+  const elementNodeRef = useRef(null);
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
+  const dragLifecycleRef = useRef({
+    lastStartAt: 0,
+    lastStartId: null,
+  });
+  const renderCountRef = useRef(0);
+  const renderSnapshotRef = useRef(null);
+  const objRefSnapshotRef = useRef(null);
+  const objRefVersionRef = useRef(0);
+  const lastImagePerfSignatureRef = useRef("");
   const inlineEditPointerActive =
     isInEditMode && typeof onInlineEditPointer === "function";
+  const hasPointerEvents = supportsPointerEvents();
+  const imageCropData = useMemo(() => {
+    if (obj.tipo !== "imagen" || !img) return null;
+    return resolveKonvaImageCrop(obj, img);
+  }, [img, obj]);
+
+  useEffect(() => {
+    renderCountRef.current += 1;
+    if (typeof window === "undefined") return;
+
+    if (objRefSnapshotRef.current !== obj) {
+      objRefSnapshotRef.current = obj;
+      objRefVersionRef.current += 1;
+    }
+
+    const isInteractionActive =
+      window._isDragging ||
+      window._grupoLider ||
+      window._resizeData?.isResizing;
+    const shouldLogRender =
+      isInteractionActive &&
+      (isSelected || obj.id === window._grupoLider || obj.tipo === "imagen");
+
+    if (!shouldLogRender) return;
+
+    const nextSnapshot = {
+      objRefVersion: objRefVersionRef.current,
+      objSignature: [
+        obj.id || "",
+        obj.seccionId || "",
+        obj.x ?? 0,
+        obj.y ?? 0,
+        obj.width ?? "",
+        obj.height ?? "",
+        obj.scaleX ?? 1,
+        obj.scaleY ?? 1,
+        obj.rotation ?? 0,
+      ].join(":"),
+      isSelected: Boolean(isSelected),
+      preSeleccionado: Boolean(preSeleccionado),
+      selectionCount,
+      isInEditMode: Boolean(isInEditMode),
+      editingId: editingId || null,
+      inlineOverlayMountedId: inlineOverlayMountedId || null,
+    };
+    const diff = buildCanvasDragPerfDiff(
+      renderSnapshotRef.current,
+      nextSnapshot
+    );
+    renderSnapshotRef.current = nextSnapshot;
+
+    trackCanvasDragPerf("render:ElementoCanvas", {
+      renderCount: renderCountRef.current,
+      elementId: obj.id,
+      tipo: obj.tipo,
+      dragging: Boolean(window._isDragging),
+      groupLeader: window._grupoLider || null,
+      resizing: Boolean(window._resizeData?.isResizing),
+      x: obj.x ?? 0,
+      y: obj.y ?? 0,
+      width: obj.width ?? null,
+      height: obj.height ?? null,
+      scaleX: obj.scaleX ?? 1,
+      scaleY: obj.scaleY ?? 1,
+      rotation: obj.rotation ?? 0,
+      changedKeys: diff.changedKeys,
+      changes: diff.changes,
+      ...nextSnapshot,
+    }, {
+      throttleMs: 120,
+      throttleKey: `render:ElementoCanvas:${obj.id}`,
+    });
+  });
+
+  useEffect(() => {
+    if (obj.tipo !== "imagen" || !img || !imageCropData) return;
+    const nextPayload = buildImagePerfPayload(
+      obj,
+      img,
+      imageCropData,
+      elementNodeRef.current
+    );
+    if (!nextPayload) return;
+
+    const signature = JSON.stringify([
+      nextPayload.src || "",
+      nextPayload.sourceWidth || 0,
+      nextPayload.sourceHeight || 0,
+      nextPayload.displayWidth || 0,
+      nextPayload.displayHeight || 0,
+      nextPayload.cropX || 0,
+      nextPayload.cropY || 0,
+      nextPayload.cropWidth || 0,
+      nextPayload.cropHeight || 0,
+    ]);
+
+    if (signature === lastImagePerfSignatureRef.current) return;
+    lastImagePerfSignatureRef.current = signature;
+
+    trackCanvasDragPerf("image:asset-profile", nextPayload, {
+      throttleMs: 60,
+      throttleKey: `image:asset-profile:${obj.id}`,
+    });
+  }, [imageCropData, img, obj, obj.id, obj.tipo]);
+
+  useEffect(() => () => {
+    deactivateImageLayerPerf(elementNodeRef.current, obj.id);
+    restoreNodeFromDragLayer(elementNodeRef.current, obj.id);
+  }, [obj.id]);
 
 
   // Ã°Å¸â€Â¥ PREVENIR onChange RECURSIVO PARA AUTOFIX
@@ -218,6 +659,7 @@ export default function ElementoCanvas({
   }, [onChange]);
 
   const handleRef = useCallback((node) => {
+    elementNodeRef.current = node || null;
     if (registerRef) {
       registerRef(obj.id, node || null);
       // Ã¢ÂÅ’ NO despachar "element-ref-registrado" acÃƒÂ¡
@@ -281,7 +723,7 @@ export default function ElementoCanvas({
     draggable: !editingMode && !inlineEditPointerActive,
     listening: !isInEditMode || inlineEditPointerActive,
 
-    onMouseDown: (e) => {
+    onMouseDown: !hasPointerEvents ? (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
       if (inlineEditPointerActive) {
@@ -290,9 +732,9 @@ export default function ElementoCanvas({
       }
 
       e.currentTarget?.draggable(true);
-    },
+    } : undefined,
 
-    onTouchStart: (e) => {
+    onTouchStart: !hasPointerEvents ? (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
       if (inlineEditPointerActive) {
@@ -301,7 +743,7 @@ export default function ElementoCanvas({
       }
 
       e.currentTarget?.draggable(true);
-    },
+    } : undefined,
 
     onPointerDown: (e) => {
       e.cancelBubble = true;
@@ -314,17 +756,17 @@ export default function ElementoCanvas({
       e.currentTarget?.draggable(true);
     },
 
-    onMouseUp: (e) => {
+    onMouseUp: !hasPointerEvents ? (e) => {
       if (e.currentTarget?.draggable && !hasDragged.current) {
         e.currentTarget.draggable(false);
       }
-    },
+    } : undefined,
 
-    onTouchEnd: (e) => {
+    onTouchEnd: !hasPointerEvents ? (e) => {
       if (e.currentTarget?.draggable && !hasDragged.current) {
         e.currentTarget.draggable(false);
       }
-    },
+    } : undefined,
 
     onPointerUp: (e) => {
       if (e.currentTarget?.draggable && !hasDragged.current) {
@@ -338,8 +780,78 @@ export default function ElementoCanvas({
     onDblTap: handleDoubleClick,
 
     onDragStart: (e) => {
+      const nowMs =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const lastDragStart = dragLifecycleRef.current;
+      const isDuplicateDragStart =
+        lastDragStart.lastStartId === obj.id &&
+        nowMs - Number(lastDragStart.lastStartAt || 0) < 80;
 
+      if (isDuplicateDragStart) {
+        trackCanvasDragPerf("drag:start-duplicate-ignored", {
+          elementId: obj.id,
+          tipo: obj.tipo,
+          elapsedSinceLastStartMs: Math.round(nowMs - Number(lastDragStart.lastStartAt || 0)),
+        }, {
+          throttleMs: 120,
+          throttleKey: `drag:start-duplicate-ignored:${obj.id}`,
+        });
+        return;
+      }
+
+      dragLifecycleRef.current = {
+        lastStartAt: nowMs,
+        lastStartId: obj.id,
+      };
+
+      const dragNode = e?.target;
+      startCanvasDragPerfSession({
+        elementId: obj.id,
+        tipo: obj.tipo,
+        isSelected,
+        selectionCount,
+      });
+      const finishDragStartPerf = startCanvasDragPerfSpan("drag:handler-start", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+      }, {
+        throttleMs: 60,
+        throttleKey: `drag:handler-start:${obj.id}`,
+      });
       onDragStartPersonalizado?.(obj.id, e);
+      trackCanvasDragPerf("drag:start", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+        isSelected,
+        selectionCount,
+        x: typeof dragNode?.x === "function" ? dragNode.x() : obj.x ?? 0,
+        y: typeof dragNode?.y === "function" ? dragNode.y() : obj.y ?? 0,
+        width: obj.width ?? null,
+        height: obj.height ?? null,
+        scaleX: obj.scaleX ?? 1,
+        scaleY: obj.scaleY ?? 1,
+        rotation: obj.rotation ?? 0,
+      });
+
+      if (obj.tipo === "imagen" && img && imageCropData) {
+        liftNodeToDragLayer(dragNode || elementNodeRef.current, dragLayerRef, {
+          elementId: obj.id,
+          tipo: obj.tipo,
+        });
+        const imageDragPayload = buildImagePerfPayload(
+          obj,
+          img,
+          imageCropData,
+          dragNode || elementNodeRef.current
+        );
+        activateImageLayerPerf(dragNode || elementNodeRef.current, imageDragPayload);
+        trackCanvasDragPerf("image:drag-profile-start", imageDragPayload, {
+          throttleMs: 60,
+          throttleKey: `image:drag-profile-start:${obj.id}`,
+        });
+      }
 
       window._dragCount = 0;
       window._lastMouse = null;
@@ -347,6 +859,16 @@ export default function ElementoCanvas({
 
       hasDragged.current = true;
       window._isDragging = true;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("dragging-start", {
+            detail: {
+              id: obj.id,
+              tipo: obj.tipo || null,
+            },
+          })
+        );
+      }
 
 
       // Ã°Å¸â€Â¥ Intentar drag grupal
@@ -354,23 +876,73 @@ export default function ElementoCanvas({
       if (!fueGrupal) {
         startDragIndividual(e, dragStartPos);
       }
+      finishDragStartPerf?.({
+        branch: fueGrupal ? "group" : "individual",
+        selectionCount,
+        isSelected,
+        imageDragPerfActive: obj.tipo === "imagen" && img && imageCropData ? true : false,
+      });
     },
 
 
     onDragMove: (e) => {
       hasDragged.current = true;
+      const finishDragMovePerf = startCanvasDragPerfSpan("drag:handler-move", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+      }, {
+        throttleMs: 120,
+        throttleKey: `drag:handler-move:${obj.id}`,
+      });
 
       const stage = e.target.getStage();
       const mousePos = stage.getPointerPosition();
       const elementPos = { x: e.target.x(), y: e.target.y() };
+      const prevMousePos = window._lastMouse;
+      const prevElementPos = window._lastElement;
 
       window._lastMouse = mousePos;
       window._lastElement = elementPos;
+      trackCanvasDragPerf("drag:move", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+        isSelected,
+        selectionCount,
+        groupLeader: window._grupoLider || null,
+        pointerX: mousePos?.x ?? null,
+        pointerY: mousePos?.y ?? null,
+        elementX: elementPos.x,
+        elementY: elementPos.y,
+        pointerDx:
+          mousePos && prevMousePos
+            ? Number(mousePos.x) - Number(prevMousePos.x)
+            : null,
+        pointerDy:
+          mousePos && prevMousePos
+            ? Number(mousePos.y) - Number(prevMousePos.y)
+            : null,
+        elementDx:
+          prevElementPos
+            ? Number(elementPos.x) - Number(prevElementPos.x)
+            : null,
+        elementDy:
+          prevElementPos
+            ? Number(elementPos.y) - Number(prevElementPos.y)
+            : null,
+      }, {
+        throttleMs: 120,
+        throttleKey: `drag:move:${obj.id}`,
+      });
 
       // Ã°Å¸â€Â¥ DRAG GRUPAL - SOLO EL LÃƒÂDER PROCESA
       if (window._grupoLider && obj.id === window._grupoLider) {
         previewDragGrupal(e, obj, onChange);
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
+        finishDragMovePerf?.({
+          branch: "group-leader",
+          selectionCount,
+          isSelected,
+        });
 
         return;
       }
@@ -379,6 +951,11 @@ export default function ElementoCanvas({
       if (window._grupoLider) {
         const elementosSeleccionados = window._elementosSeleccionados || [];
         if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
+          finishDragMovePerf?.({
+            branch: "group-follower-skip",
+            selectionCount,
+            isSelected,
+          });
           return;
         }
       }
@@ -387,26 +964,89 @@ export default function ElementoCanvas({
       if (!window._grupoLider) {
         previewDragIndividual(e, obj, onDragMovePersonalizado);
       }
+      finishDragMovePerf?.({
+        branch: window._grupoLider ? "group-nonleader" : "individual",
+        selectionCount,
+        isSelected,
+      });
     },
 
 
 
 
     onDragEnd: (e) => {
+      const finishDragEndPerf = startCanvasDragPerfSpan("drag:handler-end", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+      }, {
+        throttleMs: 60,
+        throttleKey: `drag:handler-end:${obj.id}`,
+      });
 
       window._isDragging = false;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("dragging-end", {
+            detail: {
+              id: obj.id,
+              tipo: obj.tipo || null,
+            },
+          })
+        );
+      }
+      dragLifecycleRef.current = {
+        lastStartAt: 0,
+        lastStartId: null,
+      };
+      trackCanvasDragPerf("drag:end", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+        isSelected,
+        selectionCount,
+        finalX: typeof e?.currentTarget?.x === "function" ? e.currentTarget.x() : obj.x ?? 0,
+        finalY: typeof e?.currentTarget?.y === "function" ? e.currentTarget.y() : obj.y ?? 0,
+      });
+
+      if (obj.tipo === "imagen") {
+        deactivateImageLayerPerf(e?.currentTarget || elementNodeRef.current, obj.id);
+      }
 
       const node = e.currentTarget;
+      if (obj.tipo === "imagen") {
+        restoreNodeFromDragLayer(node, obj.id);
+      }
 
       // Ã°Å¸â€Â¥ Intentar drag grupal
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged);
       if (fueGrupal) {
         onDragEndPersonalizado?.();
+        finishDragEndPerf?.({
+          branch: "group",
+          selectionCount,
+          isSelected,
+          reason: "group-drag-end",
+        });
+        endCanvasDragPerfSession({
+          elementId: obj.id,
+          tipo: obj.tipo,
+          reason: "group-drag-end",
+        });
         return;
       }
 
       // Ã°Å¸â€â€ž DRAG INDIVIDUAL (no cambiÃƒÂ³)
       endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+      finishDragEndPerf?.({
+        branch: "individual",
+        selectionCount,
+        isSelected,
+        reason: "drag-end",
+      });
+      endCanvasDragPerfSession({
+        elementId: obj.id,
+        tipo: obj.tipo,
+        reason: "drag-end",
+      });
 
 
     },
@@ -425,6 +1065,10 @@ export default function ElementoCanvas({
     onDragEndPersonalizado,
     dragStartPos,
     hasDragged,
+    hasPointerEvents,
+    imageCropData,
+    img,
+    dragLayerRef,
     onChange,
   ]);
 
@@ -1070,7 +1714,7 @@ export default function ElementoCanvas({
 
 
   if (obj.tipo === "imagen" && img) {
-    const imageCrop = resolveKonvaImageCrop(obj, img);
+    const imageCrop = imageCropData || resolveKonvaImageCrop(obj, img);
     const mostrarBordeSeleccionImagen = preSeleccionado && !isSelected;
     return (
       <KonvaImage
@@ -1084,6 +1728,7 @@ export default function ElementoCanvas({
         crop={imageCrop.crop}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        perfectDrawEnabled={false}
         stroke={mostrarBordeSeleccionImagen ? "#773dbe" : undefined}
         strokeWidth={mostrarBordeSeleccionImagen ? 1 : 0}
       />

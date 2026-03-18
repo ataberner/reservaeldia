@@ -33,6 +33,7 @@ export default function TemplateFieldBadgeOverlay({
   fieldsSchema,
   isMobile = false,
 }) {
+  const [runtimeDragActive, setRuntimeDragActive] = useState(false);
   const [badgeState, setBadgeState] = useState({
     visible: false,
     text: "",
@@ -57,6 +58,26 @@ export default function TemplateFieldBadgeOverlay({
   }, [safeFieldsSchema]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const syncDragState = () => {
+      setRuntimeDragActive(Boolean(window._isDragging));
+    };
+
+    const onDragStart = () => setRuntimeDragActive(true);
+    const onDragEnd = () => syncDragState();
+
+    window.addEventListener("dragging-start", onDragStart);
+    window.addEventListener("dragging-end", onDragEnd);
+    syncDragState();
+
+    return () => {
+      window.removeEventListener("dragging-start", onDragStart);
+      window.removeEventListener("dragging-end", onDragEnd);
+    };
+  }, []);
+
+  useEffect(() => {
     const root = layoutRootRef?.current;
     if (!root || typeof window === "undefined") {
       setBadgeState((prev) => ({ ...prev, visible: false }));
@@ -64,6 +85,13 @@ export default function TemplateFieldBadgeOverlay({
     }
 
     const sync = () => {
+      if (runtimeDragActive) {
+        setBadgeState((prev) =>
+          prev.visible ? { ...prev, visible: false } : prev
+        );
+        return;
+      }
+
       const candidateIds = [normalizeText(selectedElementId), normalizeText(hoveredElementId)].filter(Boolean);
       const candidateId = candidateIds.find(
         (id) => normalizeText(safeFieldIndexByElementId[id])
@@ -147,6 +175,7 @@ export default function TemplateFieldBadgeOverlay({
     safeFieldIndexByElementId,
     selectedElementId,
     stageRef,
+    runtimeDragActive,
   ]);
 
   if (!badgeState.visible) return null;

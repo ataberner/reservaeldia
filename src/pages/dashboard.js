@@ -113,6 +113,40 @@ const TEMPLATE_FORM_STATE_INITIAL = Object.freeze({
   touchedKeys: [],
 });
 
+function ensureDefaultEditorConsoleDebugFlags() {
+  if (typeof window === "undefined") return;
+
+  if (typeof window.__DBG_CANVAS_DRAG_PERF === "undefined") {
+    window.__DBG_CANVAS_DRAG_PERF = false;
+  }
+  if (typeof window.__CANVAS_DRAG_PERF_EXPANDED === "undefined") {
+    window.__CANVAS_DRAG_PERF_EXPANDED = false;
+  }
+  if (typeof window.__EDITOR_PRELOAD_DEBUG === "undefined") {
+    window.__EDITOR_PRELOAD_DEBUG = false;
+  }
+  if (typeof window.__INLINE_DEBUG === "undefined") {
+    window.__INLINE_DEBUG = false;
+  }
+  if (typeof window.__DBG_INLINE_INTENT === "undefined") {
+    window.__DBG_INLINE_INTENT = false;
+  }
+  if (typeof window.__INLINE_FOCUS_RCA === "undefined") {
+    window.__INLINE_FOCUS_RCA = false;
+  }
+  if (typeof window.__INLINE_DIAG_ALIGNMENT === "undefined") {
+    window.__INLINE_DIAG_ALIGNMENT = false;
+  }
+  if (typeof window.__INLINE_DIAG_ALIGNMENT_EXTENDED === "undefined") {
+    window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
+  }
+  if (typeof window.__INLINE_DIAG_COMPACT === "undefined") {
+    window.__INLINE_DIAG_COMPACT = true;
+  }
+}
+
+ensureDefaultEditorConsoleDebugFlags();
+
 function schedulePublishedCountdownAuditCapture(publicUrl, fallbackHtml = "") {
   const safePublicUrl = String(publicUrl || "").trim();
   const safeFallbackHtml = String(fallbackHtml || "").trim();
@@ -193,6 +227,7 @@ function withTimeout(promise, timeoutMs, timeoutResult) {
 }
 
 function logEditorPreload(step, payload = {}) {
+  if (typeof window === "undefined" || window.__EDITOR_PRELOAD_DEBUG !== true) return;
   try {
     console.log("[editor-preload]", {
       step,

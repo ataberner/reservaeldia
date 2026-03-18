@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Rect, Group, Line } from "react-konva";
 import {
   buildSelectionFramePolygon,
@@ -38,6 +39,29 @@ export default function HoverIndicator({
   activeInlineEditingId = null,
   isMobile = false,
 }) {
+  const [runtimeDragActive, setRuntimeDragActive] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const syncDragState = () => {
+      setRuntimeDragActive(Boolean(window._isDragging));
+    };
+
+    const onDragStart = () => setRuntimeDragActive(true);
+    const onDragEnd = () => syncDragState();
+
+    window.addEventListener("dragging-start", onDragStart);
+    window.addEventListener("dragging-end", onDragEnd);
+    syncDragState();
+
+    return () => {
+      window.removeEventListener("dragging-start", onDragStart);
+      window.removeEventListener("dragging-end", onDragEnd);
+    };
+  }, []);
+
+  if (runtimeDragActive) return null;
   if (!hoveredElement || !elementRefs?.current?.[hoveredElement]) return null;
 
   const node = elementRefs.current[hoveredElement];

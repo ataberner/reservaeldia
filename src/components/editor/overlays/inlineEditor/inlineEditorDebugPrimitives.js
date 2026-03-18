@@ -1,5 +1,5 @@
 export function isInlineDebugEnabled() {
-  return typeof window !== "undefined" && window.__INLINE_DEBUG !== false;
+  return typeof window !== "undefined" && window.__INLINE_DEBUG === true;
 }
 
 export function isInlineBoxDebugEnabled() {

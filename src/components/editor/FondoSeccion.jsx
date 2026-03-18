@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
-import useImage from "use-image";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
+import useSharedImage from "@/hooks/useSharedImage";
 
 function SectionDecorationImage({
   sectionId,
@@ -13,7 +13,7 @@ function SectionDecorationImage({
 }) {
   const src = typeof decoration?.src === "string" ? decoration.src : "";
   const decorationId = typeof decoration?.id === "string" ? decoration.id : "decoracion";
-  const [image, imageStatus] = useImage(src || null, "anonymous");
+  const [image, imageStatus] = useSharedImage(src || null, "anonymous");
   const width = Math.max(1, Number(decoration?.width) || image?.width || 1);
   const height = Math.max(1, Number(decoration?.height) || image?.height || 1);
   const centerX = (Number(decoration?.x) || 0) + width / 2;
@@ -75,7 +75,7 @@ export default function FondoSeccion({
     sectionHeight: alturaPx,
   });
   const baseImageUrl = backgroundModel.base.fondoImagen;
-  const [fondoImage, fondoImageStatus] = useImage(baseImageUrl || null, "anonymous");
+  const [fondoImage, fondoImageStatus] = useSharedImage(baseImageUrl || null, "anonymous");
   const [modoMoverFondo, setModoMoverFondo] = useState(false);
   const imagenRef = useRef(null);
 

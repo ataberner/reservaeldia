@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Group, Rect, Text, Transformer, Image as KonvaImage } from "react-konva";
-import useImage from "use-image";
 import {
   clampBackgroundDecorationToBounds,
   findBackgroundDecoration,
 } from "@/domain/sections/backgrounds";
+import useSharedImage from "@/hooks/useSharedImage";
 
 const CANVAS_WIDTH = 800;
 const MIN_DECORATION_SIZE = 32;
@@ -162,7 +162,7 @@ export default function SectionDecorationEditorOverlay({
   });
   const label = "Ajustando decoracion del fondo";
   const finishLabel = "Listo";
-  const [image] = useImage(decoration?.src || null, "anonymous");
+  const [image] = useSharedImage(decoration?.src || null, "anonymous");
 
   const handleExitInteraction = (event) => {
     if (event) {

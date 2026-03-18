@@ -48,8 +48,11 @@ export default function HoverIndicator({
     : null;
   const suppressInlineTextHover =
     hoveredObj?.tipo === "texto" && hoveredElement === activeInlineEditingId;
+  const isImageHoverTarget =
+    hoveredObj?.tipo === "imagen" && !hoveredObj?.esFondo;
   const shouldUseRotatedFrame =
     hoveredObj?.tipo === "texto" ||
+    isImageHoverTarget ||
     hoveredObj?.tipo === "forma" ||
     isFunctionalCtaButton(hoveredObj);
 
@@ -88,7 +91,9 @@ export default function HoverIndicator({
     box = node.getClientRect();
   }
 
-  const framePadding = getSelectionFramePadding(isMobile);
+  const framePadding = isImageHoverTarget
+    ? 0
+    : getSelectionFramePadding(isMobile);
   const framePoints =
     shouldUseRotatedFrame
       ? buildSelectionFramePolygon(node, framePadding)

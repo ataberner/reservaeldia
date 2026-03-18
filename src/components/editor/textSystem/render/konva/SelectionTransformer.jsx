@@ -120,12 +120,18 @@ export default function SelectionBounds({
   const esTexto = primerElemento?.tipo === "texto";
   const esCountdown = primerElemento?.tipo === "countdown";
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
+  const esImagenSeleccionada =
+    selectedElements.length === 1 &&
+    primerElemento?.tipo === "imagen" &&
+    !primerElemento?.esFondo;
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
   const transformerAnchorSize = isMobile ? 32 : 14; //tamaÃ±o visual del nodo (mÃ¡s grande en mobile).
   const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotaciÃ³n al borde.
   const transformerAnchorRadius = 999; //radio de esquina del nodo (999 lo hace circular).
-  const transformerPadding = getSelectionFramePadding(isMobile); // espacio extra entre borde del transformer y elemento.
+  const transformerPadding = esImagenSeleccionada
+    ? 0
+    : getSelectionFramePadding(isMobile); // espacio extra entre borde del transformer y elemento.
   const transformerBorderStrokeWidth = getSelectionFrameStrokeWidth(isMobile); //grosor del borde del transformer.
   const transformerAnchorFillColor = "#9333EA";
   const transformerAnchorStrokeWidth = isMobile ? 1.4 : 2.5; //grosor del borde del nodo.

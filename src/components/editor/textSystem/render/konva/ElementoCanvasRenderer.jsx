@@ -1,6 +1,5 @@
 // ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
 import { Text, Image as KonvaImage, Rect, Circle, Line, RegularPolygon, Path, Group } from "react-konva";
-import useImage from "use-image";
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
 import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
@@ -26,6 +25,7 @@ import {
   groupTemplateDraftDebug,
   markTemplateDraftRenderLogged,
 } from "@/domain/templates/draftPersonalizationDebug";
+import useSharedImage from "@/hooks/useSharedImage";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -201,7 +201,7 @@ export default function ElementoCanvas({
   inlineOverlayEngine = "phase_atomic_v2",
   onInlineEditPointer = null,
 }) {
-  const [img] = useImage(obj.src || null, "anonymous");
+  const [img] = useSharedImage(obj.src || null, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
   const [debugTextClientRect, setDebugTextClientRect] = useState(null);
 
@@ -1071,6 +1071,7 @@ export default function ElementoCanvas({
 
   if (obj.tipo === "imagen" && img) {
     const imageCrop = resolveKonvaImageCrop(obj, img);
+    const mostrarBordeSeleccionImagen = preSeleccionado && !isSelected;
     return (
       <KonvaImage
         {...commonProps}
@@ -1083,8 +1084,8 @@ export default function ElementoCanvas({
         crop={imageCrop.crop}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        stroke={isSelected || preSeleccionado ? "#773dbe" : undefined}
-        strokeWidth={isSelected || preSeleccionado ? 1 : 0}
+        stroke={mostrarBordeSeleccionImagen ? "#773dbe" : undefined}
+        strokeWidth={mostrarBordeSeleccionImagen ? 1 : 0}
       />
     );
   }
@@ -1151,7 +1152,7 @@ export default function ElementoCanvas({
       obj.formato === "avif"
     )
   ) {
-    const [img] = useImage(obj.url, "anonymous");
+    const [img] = useSharedImage(obj.url, "anonymous");
 
     return (
       <KonvaImage

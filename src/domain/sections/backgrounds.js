@@ -76,6 +76,80 @@ function resolveImageObjectDimension(value, scaledValue, fallback) {
   return fallback;
 }
 
+function rotatePoint(x, y, rotationDeg = 0) {
+  const radians = (Math.PI / 180) * toFiniteNumber(rotationDeg, 0);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
+}
+
+// Image objects rotate from top-left; background decorations rotate from center.
+function imagePoseToBackgroundDecorationPose(
+  { x, y, width, height, rotation } = {}
+) {
+  const safeWidth = Math.max(
+    MIN_DECORATION_SIZE,
+    toPositiveNumber(width, DEFAULT_DECORATION_WIDTH) || DEFAULT_DECORATION_WIDTH
+  );
+  const safeHeight = Math.max(
+    MIN_DECORATION_SIZE,
+    toPositiveNumber(height, DEFAULT_DECORATION_HEIGHT) || DEFAULT_DECORATION_HEIGHT
+  );
+  const safeRotation = toFiniteNumber(rotation, 0);
+  const half = {
+    x: safeWidth / 2,
+    y: safeHeight / 2,
+  };
+  const rotatedHalf = rotatePoint(half.x, half.y, safeRotation);
+  const center = {
+    x: toFiniteNumber(x, 0) + rotatedHalf.x,
+    y: toFiniteNumber(y, 0) + rotatedHalf.y,
+  };
+
+  return {
+    x: center.x - half.x,
+    y: center.y - half.y,
+    width: safeWidth,
+    height: safeHeight,
+    rotation: safeRotation,
+  };
+}
+
+function backgroundDecorationPoseToImagePose(
+  { x, y, width, height, rotation } = {}
+) {
+  const safeWidth = Math.max(
+    MIN_DECORATION_SIZE,
+    toPositiveNumber(width, DEFAULT_DECORATION_WIDTH) || DEFAULT_DECORATION_WIDTH
+  );
+  const safeHeight = Math.max(
+    MIN_DECORATION_SIZE,
+    toPositiveNumber(height, DEFAULT_DECORATION_HEIGHT) || DEFAULT_DECORATION_HEIGHT
+  );
+  const safeRotation = toFiniteNumber(rotation, 0);
+  const half = {
+    x: safeWidth / 2,
+    y: safeHeight / 2,
+  };
+  const rotatedHalf = rotatePoint(half.x, half.y, safeRotation);
+  const center = {
+    x: toFiniteNumber(x, 0) + half.x,
+    y: toFiniteNumber(y, 0) + half.y,
+  };
+
+  return {
+    x: center.x - rotatedHalf.x,
+    y: center.y - rotatedHalf.y,
+    width: safeWidth,
+    height: safeHeight,
+    rotation: safeRotation,
+  };
+}
+
 function ensureDecorationBounds(width, height, sectionHeight, canvasWidth) {
   let nextWidth = Math.max(MIN_DECORATION_SIZE, Math.round(toPositiveNumber(width, DEFAULT_DECORATION_WIDTH) || DEFAULT_DECORATION_WIDTH));
   let nextHeight = Math.max(MIN_DECORATION_SIZE, Math.round(toPositiveNumber(height, DEFAULT_DECORATION_HEIGHT) || DEFAULT_DECORATION_HEIGHT));
@@ -586,6 +660,13 @@ export function buildBackgroundDecorationFromImageObject(
     safeImage.scaleY,
     DEFAULT_DECORATION_HEIGHT
   );
+  const decorationPose = imagePoseToBackgroundDecorationPose({
+    x: safeImage.x,
+    y: safeImage.y,
+    width,
+    height,
+    rotation: safeImage.rotation,
+  });
 
   return normalizeBackgroundDecoration(
     {
@@ -594,11 +675,11 @@ export function buildBackgroundDecorationFromImageObject(
       src,
       storagePath: normalizeText(safeImage.storagePath) || null,
       nombre: normalizeText(safeImage.nombre || safeImage.label) || "Decoracion",
-      x: toFiniteNumber(safeImage.x, 0),
-      y: toFiniteNumber(safeImage.y, 0),
-      width,
-      height,
-      rotation: toFiniteNumber(safeImage.rotation, 0),
+      x: decorationPose.x,
+      y: decorationPose.y,
+      width: decorationPose.width,
+      height: decorationPose.height,
+      rotation: decorationPose.rotation,
       orden: toOrderNumber(order, 0),
     },
     {
@@ -682,16 +763,17 @@ export function buildImageObjectFromBackgroundDecoration(
     canvasWidth,
   });
   if (!normalizedDecoration?.src) return null;
+  const imagePose = backgroundDecorationPoseToImagePose(normalizedDecoration);
 
   return {
     id: normalizeText(id) || `imagen-${Date.now().toString(36)}`,
     tipo: "imagen",
     src: normalizedDecoration.src,
-    x: normalizedDecoration.x,
-    y: normalizedDecoration.y,
-    width: normalizedDecoration.width,
-    height: normalizedDecoration.height,
-    rotation: normalizedDecoration.rotation || 0,
+    x: imagePose.x,
+    y: imagePose.y,
+    width: imagePose.width,
+    height: imagePose.height,
+    rotation: imagePose.rotation,
     scaleX: 1,
     scaleY: 1,
     seccionId: normalizeText(sectionId) || null,

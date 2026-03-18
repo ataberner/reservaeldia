@@ -2582,6 +2582,22 @@ export default function Dashboard() {
     }
   };
 
+  const previewDisplayUrl = (() => {
+    if (isTemplateEditorSession) return "";
+
+    const explicitPublicUrl = String(
+      urlPublicadaReciente || urlPublicaVistaPrevia || ""
+    ).trim();
+    if (explicitPublicUrl) return explicitPublicUrl;
+
+    const previewSlug = String(
+      slugPublicoVistaPrevia || sanitizeDraftSlug(slugInvitacion) || ""
+    ).trim();
+    return previewSlug
+      ? `https://reservaeldia.com.ar/i/${previewSlug}`
+      : "https://reservaeldia.com.ar/i/...";
+  })();
+
   
   const requestedRouteSlug = router.isReady
     ? sanitizeDraftSlug(getFirstQueryValue(router.query?.slug))
@@ -3209,6 +3225,7 @@ export default function Dashboard() {
         }}
         htmlContent={htmlVistaPrevia}
         publicUrl={urlPublicaVistaPrevia}
+        previewDisplayUrl={previewDisplayUrl}
         onPublish={publicarDesdeVistaPrevia}
         showPublishActions={!isTemplateEditorSession}
         publishing={false}

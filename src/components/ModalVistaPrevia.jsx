@@ -1,13 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
+import {
+  ExternalLink,
+  Link2,
+  Maximize2,
+  Monitor,
+  RefreshCw,
+  Smartphone,
+  X,
+} from "lucide-react";
 import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
+import {
+  computeModalVistaPreviaLayout,
+  DESKTOP_VIEWPORT_HEIGHT,
+  DESKTOP_VIEWPORT_WIDTH,
+  MOBILE_VIEWPORT_HEIGHT,
+  MOBILE_VIEWPORT_WIDTH,
+} from "@/components/preview/modalVistaPreviaLayout";
 
-const MOBILE_VIEWPORT_WIDTH = 390;
-const MOBILE_VIEWPORT_HEIGHT = 844;
-const DESKTOP_VIEWPORT_WIDTH = 1280;
-const DESKTOP_VIEWPORT_HEIGHT = 820;
+const SECONDARY_TOOLBAR_BUTTON_CLASS =
+  "inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#ddd2f5] bg-white/90 px-3 text-sm font-medium text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
 
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const ICON_TOOLBAR_BUTTON_CLASS =
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd2f5] bg-white/92 text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
 
 function applyPreviewFrameScale(event, scale, previewViewport = "") {
   const safeScale = Number(scale);
@@ -160,11 +174,156 @@ function PreviewFrame({
   );
 }
 
+function PreviewLinkChip({
+  text,
+  href = "",
+  clickable = false,
+  className = "",
+}) {
+  const Component = clickable ? "a" : "div";
+  const safeText = String(text || "").trim();
+
+  return (
+    <Component
+      {...(clickable
+        ? {
+            href,
+            target: "_blank",
+            rel: "noreferrer",
+          }
+        : {})}
+      className={`inline-flex h-9 min-w-0 max-w-full items-center gap-2 rounded-full border border-[#e3d8f6] bg-white/84 px-2.5 text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)] backdrop-blur-sm ${
+        clickable
+          ? "transition hover:border-[#d4c2f1] hover:bg-[#faf6ff]"
+          : ""
+      } ${className}`}
+      title={safeText}
+    >
+      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#e7ddfa] bg-[#faf6ff] text-[#6f3bc0]">
+        <Link2 className="h-3.5 w-3.5" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12px] font-medium sm:text-[13px]">
+        {safeText}
+      </span>
+      {clickable ? (
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#e7ddfa] bg-white text-[#6f3bc0]">
+          <ExternalLink className="h-3 w-3" />
+        </span>
+      ) : null}
+    </Component>
+  );
+}
+
+function DesktopPreviewShell({
+  cardWidth,
+  cardHeight,
+  frameWidth,
+  frameHeight,
+  htmlContent,
+  iframeKey,
+  onLoad,
+  scale,
+  variant = "compact",
+  showFrameLabel = false,
+}) {
+  const isShowcase = variant === "showcase";
+  const shellClass = isShowcase
+    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,244,255,0.96))] shadow-[0_32px_80px_rgba(111,59,192,0.18)]"
+    : variant === "stacked"
+      ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(251,248,255,0.96))] shadow-[0_16px_38px_rgba(111,59,192,0.12)]"
+      : "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,246,255,0.96))] shadow-[0_22px_52px_rgba(111,59,192,0.14)]";
+
+  return (
+    <div className="relative max-w-full" style={{ width: cardWidth, height: cardHeight }}>
+      <div
+        className={`absolute inset-0 overflow-hidden rounded-[28px] border border-white/75 ${shellClass}`}
+      >
+        <div className="absolute inset-x-0 top-0 flex h-[28px] items-center justify-between px-3">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[#ccb9ef]" />
+            <span className="h-2 w-2 rounded-full bg-[#bed8fb]" />
+            <span className="h-2 w-2 rounded-full bg-[#caecef]" />
+          </div>
+          {showFrameLabel ? (
+            <span className="rounded-full border border-[#e5daf8] bg-white/82 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#6f3bc0]">
+              Escritorio
+            </span>
+          ) : null}
+        </div>
+
+        <div
+          className="absolute bottom-[6px] left-[6px] right-[6px] top-[28px] overflow-hidden rounded-[18px] border border-[#e4daf7] bg-white"
+        >
+          <PreviewFrame
+            htmlContent={htmlContent}
+            iframeKey={iframeKey}
+            iframeTitle="Vista previa escritorio"
+            scale={scale}
+            viewportWidth={DESKTOP_VIEWPORT_WIDTH}
+            viewportHeight={DESKTOP_VIEWPORT_HEIGHT}
+            scaledWidth={frameWidth}
+            scaledHeight={frameHeight}
+            onLoad={onLoad}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobilePreviewShell({
+  cardWidth,
+  cardHeight,
+  frameWidth,
+  frameHeight,
+  htmlContent,
+  iframeKey,
+  onLoad,
+  scale,
+  variant = "compact",
+}) {
+  const shellClass =
+    variant === "showcase"
+      ? "shadow-[0_26px_54px_rgba(111,59,192,0.18)]"
+      : variant === "stacked"
+        ? "shadow-[0_14px_32px_rgba(111,59,192,0.14)]"
+        : "shadow-[0_18px_38px_rgba(111,59,192,0.16)]";
+
+  return (
+    <div className="relative max-w-full" style={{ width: cardWidth, height: cardHeight }}>
+      <div
+        className={`absolute inset-0 overflow-hidden rounded-[34px] border border-[#d9cbed] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,242,255,0.96))] ${shellClass}`}
+        style={{ borderWidth: 6 }}
+      >
+        <div className="absolute left-1/2 top-[4px] h-[5px] w-16 -translate-x-1/2 rounded-full bg-[#baa8d8]" />
+        <div className="absolute right-[18px] top-[5px] h-[5px] w-[5px] rounded-full bg-[#ab98cb]" />
+
+        <div
+          className="absolute bottom-[6px] left-[6px] right-[6px] top-[10px] overflow-hidden rounded-[23px] border border-[#dfd4f1] bg-white"
+        >
+          <PreviewFrame
+            htmlContent={htmlContent}
+            iframeKey={iframeKey}
+            iframeTitle="Vista previa movil"
+            scale={scale}
+            viewportWidth={MOBILE_VIEWPORT_WIDTH}
+            viewportHeight={MOBILE_VIEWPORT_HEIGHT}
+            scaledWidth={frameWidth}
+            scaledHeight={frameHeight}
+            onLoad={onLoad}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ModalVistaPrevia({
   visible,
   onClose,
   htmlContent,
   publicUrl,
+  previewDisplayUrl = "",
   onPublish,
   showPublishActions = true,
   publishing = false,
@@ -178,7 +337,7 @@ export default function ModalVistaPrevia({
   const [fullscreenIframeKey, setFullscreenIframeKey] = useState(0);
   const [windowHeight, setWindowHeight] = useState(820);
   const [windowWidth, setWindowWidth] = useState(0);
-  const [stageWidth, setStageWidth] = useState(0);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const stageRef = useRef(null);
 
   useEffect(() => {
@@ -231,69 +390,61 @@ export default function ModalVistaPrevia({
     const target = stageRef.current;
     if (!target) return;
 
-    setStageWidth(target.clientWidth || 0);
+    const measure = () => {
+      setStageSize({
+        width: target.clientWidth || 0,
+        height: target.clientHeight || 0,
+      });
+    };
 
-    if (typeof ResizeObserver === "undefined") return;
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
     const observer = new ResizeObserver((entries) => {
-      const nextWidth = entries?.[0]?.contentRect?.width || 0;
-      setStageWidth(nextWidth);
+      const rect = entries?.[0]?.contentRect;
+      if (!rect) {
+        measure();
+        return;
+      }
+
+      setStageSize({
+        width: rect.width || target.clientWidth || 0,
+        height: rect.height || target.clientHeight || 0,
+      });
     });
     observer.observe(target);
 
     return () => observer.disconnect();
   }, [visible]);
 
-  const previewUrl = String(publicUrl || "").trim() || "https://reservaeldia.com.ar/i/....";
-  const confirmedPublicUrl = String(publishedUrl || "").trim() || previewUrl;
-  const yaPublicada = Boolean(String(publicUrl || "").trim());
-
-  const safeStageWidth = Math.max(stageWidth || windowWidth - 64, 320);
-  const sideBySide = safeStageWidth >= 1020 || windowWidth >= 1240;
-
-  const desktopWidthBudget = sideBySide
-    ? Math.max(560, safeStageWidth - 300)
-    : Math.max(320, safeStageWidth - 28);
-  const desktopHeightBudget = sideBySide
-    ? Math.max(280, windowHeight - 280)
-    : Math.max(260, windowHeight - 430);
-
-  const desktopScale = clamp(
-    Math.min(
-      1,
-      desktopWidthBudget / DESKTOP_VIEWPORT_WIDTH,
-      desktopHeightBudget / DESKTOP_VIEWPORT_HEIGHT
-    ),
-    0.2,
-    1
-  );
-
-  const desktopScaledWidth = Math.round(DESKTOP_VIEWPORT_WIDTH * desktopScale);
-  const desktopScaledHeight = Math.round(DESKTOP_VIEWPORT_HEIGHT * desktopScale);
-
-  const mobileWidthBudget = sideBySide
-    ? Math.min(350, Math.max(220, safeStageWidth * 0.3))
-    : Math.min(420, Math.max(220, safeStageWidth - 56));
-  const mobileHeightBudget = sideBySide
-    ? Math.max(280, windowHeight - 360)
-    : Math.max(280, windowHeight - 410);
-
-  const mobileScale = clamp(
-    Math.min(
-      1,
-      mobileWidthBudget / MOBILE_VIEWPORT_WIDTH,
-      mobileHeightBudget / MOBILE_VIEWPORT_HEIGHT
-    ),
-    0.32,
-    1
-  );
-
-  const mobileScaledWidth = Math.round(MOBILE_VIEWPORT_WIDTH * mobileScale);
-  const mobileScaledHeight = Math.round(MOBILE_VIEWPORT_HEIGHT * mobileScale);
-
-  const overlayPhone = sideBySide && safeStageWidth >= 1220;
-  const phoneOffsetX = overlayPhone ? Math.round(Math.min(120, desktopScaledWidth * 0.18)) : 0;
-  const phoneOffsetY = overlayPhone ? Math.round(Math.min(120, desktopScaledHeight * 0.24)) : 0;
+  const previewUrl =
+    String(previewDisplayUrl || "").trim() || "https://reservaeldia.com.ar/i/...";
+  const confirmedPublicUrl = String(publishedUrl || publicUrl || "").trim();
+  const yaPublicada = Boolean(confirmedPublicUrl);
   const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
+  const layout = computeModalVistaPreviaLayout({
+    stageWidth: stageSize.width,
+    stageHeight: stageSize.height,
+    fallbackWidth: Math.max(windowWidth - 32, 320),
+    fallbackHeight: Math.max(windowHeight - 180, 380),
+  });
+  const toolbarInline = layout.toolbarMode === "inline";
+  const desktopVariant =
+    layout.mode === "showcase-overlap"
+      ? "showcase"
+      : layout.mode === "stacked-priority"
+        ? "stacked"
+        : "compact";
+  const mobileVariant =
+    layout.mode === "showcase-overlap"
+      ? "showcase"
+      : layout.mode === "stacked-priority"
+        ? "stacked"
+        : "compact";
 
   const confirmarPublicacion = () => {
     if (!showPublishActions) return;
@@ -309,6 +460,65 @@ export default function ModalVistaPrevia({
   const cerrarPantallaCompleta = () => {
     setFullscreenPreview(false);
   };
+
+  const handleDesktopLoad = ({ event, scale }) => {
+    if (!htmlContent) return;
+    applyPreviewFrameScale(event, scale, "desktop");
+    captureCountdownAuditFromHtmlString(htmlContent, {
+      stage: showPublishActions
+        ? "draft-preview-desktop"
+        : "template-preview-desktop",
+      renderer: "dom-generated",
+      sourceDocument: "preview-modal",
+      viewport: "desktop",
+      wrapperScale: scale,
+      usesRasterThumbnail: false,
+    });
+  };
+
+  const handleMobileLoad = ({ event, scale }) => {
+    if (!htmlContent) return;
+    applyPreviewFrameScale(event, scale, "mobile");
+    captureCountdownAuditFromHtmlString(htmlContent, {
+      stage: showPublishActions
+        ? "draft-preview-mobile"
+        : "template-preview-mobile",
+      renderer: "dom-generated",
+      sourceDocument: "preview-modal",
+      viewport: "mobile",
+      wrapperScale: scale,
+      usesRasterThumbnail: false,
+    });
+  };
+
+  const desktopPreview = (
+    <DesktopPreviewShell
+      cardWidth={layout.desktopCardWidth}
+      cardHeight={layout.desktopCardHeight}
+      frameWidth={layout.desktopFrame.scaledWidth}
+      frameHeight={layout.desktopFrame.scaledHeight}
+      htmlContent={htmlContent}
+      iframeKey={`desktop-${iframeKey}`}
+      scale={layout.desktopFrame.scale}
+      variant={desktopVariant}
+      showFrameLabel={layout.mode !== "stacked-priority"}
+      onLoad={handleDesktopLoad}
+    />
+  );
+
+  const mobilePreview = (
+    <MobilePreviewShell
+      cardWidth={layout.mobileCardWidth}
+      cardHeight={layout.mobileCardHeight}
+      frameWidth={layout.mobileFrame.scaledWidth}
+      frameHeight={layout.mobileFrame.scaledHeight}
+      htmlContent={htmlContent}
+      iframeKey={`mobile-${iframeKey}`}
+      scale={layout.mobileFrame.scale}
+      variant={mobileVariant}
+      onLoad={handleMobileLoad}
+    />
+  );
 
   if (!visible) return null;
   if (fullscreenPreview) {
@@ -354,228 +564,221 @@ export default function ModalVistaPrevia({
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-[#f7f4ff]/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] bg-[rgba(247,244,255,0.68)] backdrop-blur-[6px]">
       <div className="flex h-full w-full items-center justify-center p-2 sm:p-5">
-        <div className="flex h-full w-full max-w-[1540px] flex-col overflow-hidden rounded-2xl border border-[#e9dcfb] bg-white text-slate-800 shadow-[0_30px_84px_rgba(111,59,192,0.18)]">
-          <div className="flex items-center justify-between gap-3 border-b border-[#e7dcf8] bg-gradient-to-r from-white via-[#faf6ff] to-[#f4f8ff] px-3 py-3 sm:px-4">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 sm:text-base">Vista previa</p>
-              <p className="truncate text-[11px] text-[#6f3bc0]/80 sm:text-xs">{previewUrl}</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="hidden items-center gap-2 text-[11px] text-[#6f3bc0]/80 sm:flex">
-                <span className="inline-flex items-center gap-1 rounded-md border border-[#ddd2f5] bg-[#faf6ff] px-2 py-1">
-                  <Monitor className="h-3.5 w-3.5" />
-                  Escritorio
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-md border border-[#ddd2f5] bg-[#faf6ff] px-2 py-1">
-                  <Smartphone className="h-3.5 w-3.5" />
-                  Movil
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={abrirPantallaCompleta}
-                disabled={!htmlContent}
-                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium sm:text-xs ${
-                  htmlContent
-                    ? "border-[#ddd2f5] bg-white text-[#6f3bc0] hover:bg-[#f4ecff]"
-                    : "cursor-not-allowed border-[#ece4fb] bg-[#fbf9ff] text-[#ab93d2]"
-                }`}
-                aria-label="Abrir vista previa en pantalla completa"
-                title={`Abrir vista previa en pantalla completa (${isMobileViewport ? "movil" : "escritorio"})`}
-              >
-                <Maximize2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Pantalla completa</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-[#ddd2f5] bg-white p-2 text-[#6f3bc0] hover:bg-[#f4ecff]"
-                aria-label="Cerrar vista previa"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div
-            ref={stageRef}
-            className={`flex-1 overscroll-contain px-2 py-4 sm:px-5 sm:py-8 ${
-              sideBySide ? "overflow-hidden" : "overflow-auto"
-            }`}
-            style={{
-              overscrollBehavior: "contain",
-              background:
-                "radial-gradient(1000px 520px at 8% -5%, rgba(221,210,245,0.68), rgba(250,246,255,0.88) 46%, rgba(250,246,255,0.35) 78%), radial-gradient(920px 500px at 88% 92%, rgba(209,226,255,0.55), rgba(244,248,255,0.86) 52%, rgba(244,248,255,0.32) 82%), linear-gradient(135deg, #ffffff 0%, #faf6ff 46%, #f4f8ff 100%)",
-            }}
-          >
-            <div
-              className={`mx-auto flex max-w-[1400px] ${
-                sideBySide ? "items-end justify-center gap-8" : "flex-col items-center gap-6"
-              }`}
-            >
-              <div className="relative">
-                <div className="absolute -inset-5 rounded-[34px] bg-[#ddd2f5]/70 blur-2xl" />
-
-                <div className="relative rounded-[28px] border border-[#e3d8f6] bg-white/95 p-4 shadow-[0_24px_64px_rgba(111,59,192,0.14)]">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 px-1">
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#c8b0ef]" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#b9d4f9]" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#bfe7ed]" />
-                    </div>
-                    <span className="inline-flex items-center gap-1 rounded-md border border-[#ddd2f5] bg-[#faf6ff] px-2 py-1 text-[10px] text-[#6f3bc0]">
-                      <Monitor className="h-3 w-3" />
-                      Escritorio
-                    </span>
-                  </div>
-
-                  <div
-                    className="mx-auto overflow-hidden rounded-xl border border-[#e2d7f4] bg-white shadow-[0_18px_44px_rgba(111,59,192,0.16)]"
-                    style={{ width: desktopScaledWidth, height: desktopScaledHeight }}
-                  >
-                    <PreviewFrame
-                      htmlContent={htmlContent}
-                      iframeKey={`desktop-${iframeKey}`}
-                      iframeTitle="Vista previa escritorio"
-                      scale={desktopScale}
-                      viewportWidth={DESKTOP_VIEWPORT_WIDTH}
-                      viewportHeight={DESKTOP_VIEWPORT_HEIGHT}
-                      scaledWidth={desktopScaledWidth}
-                      scaledHeight={desktopScaledHeight}
-                      onLoad={({ event, scale }) => {
-                        if (!htmlContent) return;
-                        applyPreviewFrameScale(event, scale, "desktop");
-                        captureCountdownAuditFromHtmlString(htmlContent, {
-                          stage: showPublishActions
-                            ? "draft-preview-desktop"
-                            : "template-preview-desktop",
-                          renderer: "dom-generated",
-                          sourceDocument: "preview-modal",
-                          viewport: "desktop",
-                          wrapperScale: scale,
-                          usesRasterThumbnail: false,
-                        });
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="mx-auto h-3 w-44 rounded-b-xl bg-[#d8ccea]" />
-                <div className="mx-auto mt-1 h-2 w-64 rounded-full bg-[#c7badf]" />
-              </div>
-
+        <div className="flex h-full w-full max-w-[1560px] flex-col overflow-hidden rounded-[30px] border border-[#e9dcfb] bg-[linear-gradient(180deg,#ffffff_0%,#fbf8ff_34%,#f5f9ff_100%)] text-slate-800 shadow-[0_30px_84px_rgba(111,59,192,0.18)]">
+          <div className="shrink-0 border-b border-[#e7dcf8]/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(250,246,255,0.92)_100%)]">
+            <div className="px-3 py-2.5 sm:px-4 sm:py-3">
               <div
-                className="relative flex flex-col items-center"
-                style={overlayPhone ? { marginLeft: -phoneOffsetX, marginTop: phoneOffsetY } : undefined}
+                className={
+                  toolbarInline
+                    ? "flex items-center gap-3"
+                    : "flex flex-col gap-2.5"
+                }
               >
-                <div className="absolute -inset-4 rounded-[42px] bg-[#d7e7ff]/70 blur-2xl" />
+                <div
+                  className={
+                    toolbarInline
+                      ? "flex min-w-0 flex-1 items-center gap-3"
+                      : "space-y-1.5"
+                  }
+                >
+                  <span className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#e5d8f8] bg-white/92 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#6f3bc0] shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
+                    Vista previa
+                  </span>
 
-                <div className="relative rounded-[38px] border-[10px] border-[#d9cbed] bg-[#f8f5ff] p-2.5 shadow-[0_24px_56px_rgba(111,59,192,0.2)]">
-                  <div className="mb-2 flex items-center justify-center gap-2">
-                    <span className="h-1.5 w-14 rounded-full bg-[#baa8d8]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#ab98cb]" />
-                  </div>
-
-                  <div
-                    className="overflow-hidden rounded-[26px] border border-[#dfd4f1] bg-white"
-                    style={{ width: mobileScaledWidth, height: mobileScaledHeight }}
-                  >
-                    <PreviewFrame
-                      htmlContent={htmlContent}
-                      iframeKey={`mobile-${iframeKey}`}
-                      iframeTitle="Vista previa movil"
-                      scale={mobileScale}
-                      viewportWidth={MOBILE_VIEWPORT_WIDTH}
-                      viewportHeight={MOBILE_VIEWPORT_HEIGHT}
-                      scaledWidth={mobileScaledWidth}
-                      scaledHeight={mobileScaledHeight}
-                      onLoad={({ event, scale }) => {
-                        if (!htmlContent) return;
-                        applyPreviewFrameScale(event, scale, "mobile");
-                        captureCountdownAuditFromHtmlString(htmlContent, {
-                          stage: showPublishActions
-                            ? "draft-preview-mobile"
-                            : "template-preview-mobile",
-                          renderer: "dom-generated",
-                          sourceDocument: "preview-modal",
-                          viewport: "mobile",
-                          wrapperScale: scale,
-                          usesRasterThumbnail: false,
-                        });
-                      }}
+                  {showPublishActions ? (
+                    <PreviewLinkChip
+                      text={previewUrl}
+                      href={confirmedPublicUrl}
+                      clickable={yaPublicada}
+                      className={
+                        toolbarInline
+                          ? "min-w-0 max-w-[min(52vw,680px)] flex-1"
+                          : "w-full"
+                      }
                     />
-                  </div>
+                  ) : null}
                 </div>
-              </div>
-            </div>
-          </div>
 
-          <div className="border-t border-[#e7dcf8] bg-white/80 px-3 py-2 sm:px-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-[11px] text-[#6f3bc0]/80 sm:text-xs">
-                Vista escritorio ({DESKTOP_VIEWPORT_WIDTH}px) y movil ({MOBILE_VIEWPORT_WIDTH}px)
-              </div>
-
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                {showPublishActions ? (
-                  <>
-                    {yaPublicada && confirmedPublicUrl && (
-                      <a
-                        href={confirmedPublicUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full rounded-md border border-[#ddd2f5] bg-white px-2.5 py-2 text-center text-[11px] font-medium text-[#6f3bc0] hover:bg-[#f4ecff] sm:w-auto sm:py-1 sm:text-xs"
-                        title="Abrir invitacion publicada"
+                {toolbarInline ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    {showPublishActions ? (
+                      <button
+                        type="button"
+                        onClick={confirmarPublicacion}
+                        disabled={publishing || !htmlContent || checkoutVisible}
+                        className={`inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold text-white transition-all ${
+                          publishing || !htmlContent || checkoutVisible
+                            ? "cursor-not-allowed bg-[#bda5e6]"
+                            : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_26px_rgba(111,59,192,0.28)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
+                        }`}
                       >
-                        Ver publicada
-                      </a>
-                    )}
-                    {!publishing && !checkoutVisible && (
-                      <span className="hidden items-center gap-1 rounded-full border border-[#d8ccea] bg-[#f7f2ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6f3bc0] sm:inline-flex">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#773dbe]" />
-                        {yaPublicada ? "Lista para actualizar" : "Lista para publicar"}
-                      </span>
-                    )}
+                        {yaPublicada && !publishing && !checkoutVisible ? (
+                          <RefreshCw className="h-4 w-4" />
+                        ) : null}
+                        {publishing
+                          ? yaPublicada
+                            ? "Actualizando..."
+                            : "Publicando..."
+                          : checkoutVisible
+                            ? "Checkout abierto"
+                            : yaPublicada
+                              ? "Actualizar invitacion"
+                              : "Publicar invitacion"}
+                      </button>
+                    ) : null}
+
                     <button
                       type="button"
-                      onClick={confirmarPublicacion}
-                      disabled={publishing || !htmlContent || checkoutVisible}
-                      className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-semibold text-white transition-all sm:w-auto sm:text-xs ${
-                        publishing || !htmlContent || checkoutVisible
-                          ? "cursor-not-allowed bg-[#bda5e6]"
-                          : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_28px_rgba(111,59,192,0.34)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
+                      onClick={abrirPantallaCompleta}
+                      disabled={!htmlContent}
+                      className={`${SECONDARY_TOOLBAR_BUTTON_CLASS} ${
+                        htmlContent
+                          ? ""
+                          : "cursor-not-allowed border-[#ece4fb] bg-[#fbf9ff] text-[#ab93d2] shadow-none hover:bg-[#fbf9ff]"
                       }`}
+                      aria-label="Abrir vista previa en pantalla completa"
+                      title={`Abrir vista previa en pantalla completa (${isMobileViewport ? "movil" : "escritorio"})`}
                     >
-                      {yaPublicada && !publishing && !checkoutVisible ? <RefreshCw className="h-3.5 w-3.5" /> : null}
-                      {publishing
-                        ? yaPublicada
-                          ? "Actualizando..."
-                          : "Publicando..."
-                        : checkoutVisible
-                        ? "Checkout abierto"
-                        : yaPublicada
-                        ? "Actualizar invitacion"
-                        : "Publicar invitacion"}
+                      <Maximize2 className="h-4 w-4" />
+                      <span>Pantalla completa</span>
                     </button>
-                  </>
+
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className={ICON_TOOLBAR_BUTTON_CLASS}
+                      aria-label="Cerrar vista previa"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 ) : (
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-600 sm:text-xs">
-                    Vista previa editorial de plantilla
-                  </span>
+                  <div className="flex flex-col gap-2">
+                    {showPublishActions ? (
+                      <button
+                        type="button"
+                        onClick={confirmarPublicacion}
+                        disabled={publishing || !htmlContent || checkoutVisible}
+                        className={`inline-flex h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold text-white transition-all ${
+                          publishing || !htmlContent || checkoutVisible
+                            ? "cursor-not-allowed bg-[#bda5e6]"
+                            : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] shadow-[0_14px_26px_rgba(111,59,192,0.26)] ring-1 ring-[#ceb8ef] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] focus-visible:ring-offset-1"
+                        }`}
+                      >
+                        {yaPublicada && !publishing && !checkoutVisible ? (
+                          <RefreshCw className="h-4 w-4" />
+                        ) : null}
+                        {publishing
+                          ? yaPublicada
+                            ? "Actualizando..."
+                            : "Publicando..."
+                          : checkoutVisible
+                            ? "Checkout abierto"
+                            : yaPublicada
+                              ? "Actualizar invitacion"
+                              : "Publicar invitacion"}
+                      </button>
+                    ) : null}
+
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={abrirPantallaCompleta}
+                        disabled={!htmlContent}
+                        className={`${SECONDARY_TOOLBAR_BUTTON_CLASS} ${
+                          htmlContent
+                            ? ""
+                            : "cursor-not-allowed border-[#ece4fb] bg-[#fbf9ff] text-[#ab93d2] shadow-none hover:bg-[#fbf9ff]"
+                        }`}
+                        aria-label="Abrir vista previa en pantalla completa"
+                        title={`Abrir vista previa en pantalla completa (${isMobileViewport ? "movil" : "escritorio"})`}
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                        {!layout.isCompactToolbar ? (
+                          <span>Pantalla completa</span>
+                        ) : null}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className={ICON_TOOLBAR_BUTTON_CLASS}
+                        aria-label="Cerrar vista previa"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
+
+              {showPublishActions && publishError ? (
+                <p className="mt-2 text-[12px] font-medium text-red-600">{publishError}</p>
+              ) : null}
+              {showPublishActions && publishSuccess ? (
+                <p className="mt-2 text-[12px] font-medium text-emerald-700">{publishSuccess}</p>
+              ) : null}
             </div>
-            {showPublishActions && publishError ? (
-              <p className="mt-1 text-[11px] text-red-600 sm:text-xs">{publishError}</p>
-            ) : null}
-            {showPublishActions && publishSuccess ? (
-              <p className="mt-1 text-[11px] text-emerald-700 sm:text-xs">{publishSuccess}</p>
-            ) : null}
+          </div>
+
+          <div ref={stageRef} className="relative flex-1 min-h-0 overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_16%,rgba(232,214,255,0.95),rgba(255,255,255,0)_34%),radial-gradient(circle_at_82%_20%,rgba(224,238,255,0.82),rgba(255,255,255,0)_28%),radial-gradient(circle_at_78%_84%,rgba(243,247,255,0.92),rgba(255,255,255,0)_40%),radial-gradient(circle_at_30%_78%,rgba(248,235,255,0.55),rgba(255,255,255,0)_32%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.9)_0%,rgba(251,247,255,0.72)_46%,rgba(244,248,255,0.78)_100%)]" />
+            <div className="absolute inset-x-[12%] bottom-[6%] h-[32%] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.7),rgba(255,255,255,0)_72%)] blur-3xl" />
+
+            {layout.mode === "showcase-overlap" ? (
+              <div
+                className="relative flex h-full items-center justify-center"
+                style={{
+                  padding: `${layout.stagePaddingY}px ${layout.stagePaddingX}px`,
+                }}
+              >
+                <div className="relative" style={{ width: layout.sceneWidth, height: layout.sceneHeight }}>
+                  <div className="absolute -inset-8 rounded-[48px] bg-[radial-gradient(circle_at_22%_22%,rgba(235,220,255,0.56),rgba(255,255,255,0)_54%),radial-gradient(circle_at_86%_82%,rgba(217,233,255,0.48),rgba(255,255,255,0)_52%)] blur-3xl" />
+                  <div className="absolute left-0 top-0">{desktopPreview}</div>
+                  <div
+                    className="absolute"
+                    style={{ left: layout.mobileLeft, top: layout.mobileTop }}
+                  >
+                    {mobilePreview}
+                  </div>
+                </div>
+              </div>
+            ) : layout.mode === "dual-column-compact" ? (
+              <div
+                className="relative grid h-full min-h-0 items-center"
+                style={{
+                  padding: `${layout.stagePaddingY}px ${layout.stagePaddingX}px`,
+                  gap: layout.gap,
+                  gridTemplateColumns: `minmax(0,1fr) ${layout.mobileColumnWidth}px`,
+                }}
+              >
+                <div className="flex min-h-0 min-w-0 items-center justify-center">
+                  {desktopPreview}
+                </div>
+                <div className="flex min-h-0 min-w-0 items-center justify-center">
+                  {mobilePreview}
+                </div>
+              </div>
+            ) : (
+              <div
+                className="relative grid h-full min-h-0 justify-items-center"
+                style={{
+                  padding: `${layout.stagePaddingY}px ${layout.stagePaddingX}px`,
+                  gap: layout.gap,
+                  gridTemplateRows: `${layout.desktopSlotHeight}px ${layout.mobileSlotHeight}px`,
+                }}
+              >
+                <div className="flex min-h-0 min-w-0 w-full items-center justify-center">
+                  {desktopPreview}
+                </div>
+                <div className="flex min-h-0 min-w-0 w-full items-center justify-center">
+                  {mobilePreview}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

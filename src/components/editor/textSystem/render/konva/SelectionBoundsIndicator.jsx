@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Rect } from "react-konva";
 import {
   getSelectionFramePaddingForSelection,
@@ -6,30 +6,13 @@ import {
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 
-export default function SelectionBoundsIndicator({
+function resolveSelectionBounds({
   selectedElements,
   elementRefs,
   objetos,
-  isMobile = false,
-  debugLog = () => {},
+  isMobile,
+  debugLog,
 }) {
-  const [forceUpdate, setForceUpdate] = useState(0);
-
-  useEffect(() => {
-    const firstRef = elementRefs.current?.[selectedElements[0]];
-    const stage = firstRef?.getStage?.();
-    if (!stage) return;
-
-    const handleDragMove = () => {
-      setForceUpdate((p) => p + 1);
-    };
-
-    stage.on("dragmove", handleDragMove);
-    return () => {
-      stage.off("dragmove", handleDragMove);
-    };
-  }, [selectedElements.join(",")]);
-
   const elementosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -77,7 +60,6 @@ export default function SelectionBoundsIndicator({
           skipShadow: true,
           skipStroke: true,
         });
-        const r = box;
         const sx = node?.scaleX?.() ?? 1;
         const sy = node?.scaleY?.() ?? 1;
         debugLog(
@@ -86,7 +68,7 @@ export default function SelectionBoundsIndicator({
           `tipo=${obj.tipo}`,
           `sx=${sx.toFixed(3)}`,
           `sy=${sy.toFixed(3)}`,
-          `rect(w=${r.width.toFixed(1)},h=${r.height.toFixed(1)})`
+          `rect(w=${box.width.toFixed(1)},h=${box.height.toFixed(1)})`
         );
 
         const realX = box.x;
@@ -128,24 +110,106 @@ export default function SelectionBoundsIndicator({
   }
 
   const padding = getSelectionFramePaddingForSelection(elementosData, isMobile);
-  const finalX = minX - padding;
-  const finalY = minY - padding;
-  const finalWidth = maxX - minX + padding * 2;
-  const finalHeight = maxY - minY + padding * 2;
-  const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
 
-  void forceUpdate;
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: maxX - minX + padding * 2,
+    height: maxY - minY + padding * 2,
+    strokeWidth: getSelectionFrameStrokeWidth(isMobile),
+  };
+}
+
+export default function SelectionBoundsIndicator({
+  selectedElements,
+  elementRefs,
+  objetos,
+  isMobile = false,
+  debugLog = () => {},
+}) {
+  const rectRef = useRef(null);
+
+  const syncIndicatorBounds = useCallback(() => {
+    const rectNode = rectRef.current;
+    if (!rectNode) return;
+
+    const nextBounds = resolveSelectionBounds({
+      selectedElements,
+      elementRefs,
+      objetos,
+      isMobile,
+      debugLog,
+    });
+
+    if (!nextBounds) return;
+
+    const didChange =
+      rectNode.x() !== nextBounds.x ||
+      rectNode.y() !== nextBounds.y ||
+      rectNode.width() !== nextBounds.width ||
+      rectNode.height() !== nextBounds.height ||
+      rectNode.strokeWidth() !== nextBounds.strokeWidth;
+
+    if (!didChange) return;
+
+    rectNode.setAttrs(nextBounds);
+    rectNode.getLayer?.()?.batchDraw?.();
+  }, [debugLog, elementRefs, isMobile, objetos, selectedElements]);
+
+  useEffect(() => {
+    const selectedNodes = selectedElements
+      .map((id) => elementRefs.current?.[id] || null)
+      .filter(Boolean);
+    const stage =
+      selectedNodes.find((node) => typeof node?.getStage === "function")?.getStage?.() ||
+      null;
+
+    if (selectedNodes.length === 0 && !stage) return;
+
+    selectedNodes.forEach((node) => {
+      node.on("dragmove.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("transform.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("xChange.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("yChange.selection-bounds-indicator", syncIndicatorBounds);
+    });
+
+    stage?.on("dragmove.selection-bounds-indicator", syncIndicatorBounds);
+    syncIndicatorBounds();
+
+    return () => {
+      selectedNodes.forEach((node) => {
+        node.off("dragmove.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("transform.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("xChange.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("yChange.selection-bounds-indicator", syncIndicatorBounds);
+      });
+      stage?.off("dragmove.selection-bounds-indicator", syncIndicatorBounds);
+    };
+  }, [debugLog, elementRefs, isMobile, objetos, selectedElements, syncIndicatorBounds]);
+
+  const bounds = resolveSelectionBounds({
+    selectedElements,
+    elementRefs,
+    objetos,
+    isMobile,
+    debugLog,
+  });
+
+  if (!bounds) {
+    return null;
+  }
 
   return (
     <Rect
+      ref={rectRef}
       name="ui"
-      x={finalX}
-      y={finalY}
-      width={finalWidth}
-      height={finalHeight}
+      x={bounds.x}
+      y={bounds.y}
+      width={bounds.width}
+      height={bounds.height}
       fill="transparent"
       stroke={SELECTION_FRAME_STROKE}
-      strokeWidth={strokeWidth}
+      strokeWidth={bounds.strokeWidth}
       listening={false}
       opacity={0.7}
     />

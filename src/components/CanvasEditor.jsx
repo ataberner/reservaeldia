@@ -292,6 +292,10 @@ export default function CanvasEditor({
   const [sectionDecorationEdit, setSectionDecorationEdit] = useState(null);
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+  const isHoverSuppressed =
+    typeof window !== "undefined" &&
+    Boolean(window._isDragging || window._grupoLider || window._resizeData?.isResizing);
+  const effectiveHoverId = isHoverSuppressed ? null : hoverId;
 
   useEffect(() => {
     canvasEditorRenderCountRef.current += 1;
@@ -317,7 +321,7 @@ export default function CanvasEditor({
       seccionesVersion: canvasEditorSeccionesVersionRef.current,
       selectedIds: elementosSeleccionados.join(","),
       preselectedIds: elementosPreSeleccionados.join(","),
-      hoverId: hoverId || null,
+      hoverId: effectiveHoverId || null,
       editingId: editing.id || null,
       inlineOverlayMountedId: inlineOverlayMountedId || null,
       inlineOverlayPhase: inlineOverlayMountSession?.phase || null,
@@ -353,16 +357,6 @@ export default function CanvasEditor({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const prevSnapshot = canvasEditorStateTraceRef.current;
-    const nextSnapshot = {
-      selectedIds: elementosSeleccionados.join(","),
-      preselectedIds: elementosPreSeleccionados.join(","),
-      hoverId: hoverId || null,
-    };
-    canvasEditorStateTraceRef.current = nextSnapshot;
-
-    if (!prevSnapshot) return;
-
     const nowMs =
       typeof performance !== "undefined" && typeof performance.now === "function"
         ? performance.now()
@@ -373,6 +367,17 @@ export default function CanvasEditor({
       Boolean(window._grupoLider) ||
       Boolean(window._resizeData?.isResizing) ||
       analysisWindowUntil > nowMs;
+    const tracedHoverId = isAnalysisActive ? null : (hoverId || null);
+
+    const prevSnapshot = canvasEditorStateTraceRef.current;
+    const nextSnapshot = {
+      selectedIds: elementosSeleccionados.join(","),
+      preselectedIds: elementosPreSeleccionados.join(","),
+      hoverId: tracedHoverId,
+    };
+    canvasEditorStateTraceRef.current = nextSnapshot;
+
+    if (!prevSnapshot) return;
     if (!isAnalysisActive) return;
 
     if (prevSnapshot.hoverId !== nextSnapshot.hoverId) {
@@ -1808,7 +1813,7 @@ export default function CanvasEditor({
                 textResizeDebug={textResizeDebug}
                 isTextResizeDebugEnabled={isTextResizeDebugEnabled}
                 actualizarObjeto={actualizarObjeto}
-                hoverId={hoverId}
+                hoverId={effectiveHoverId}
                 isDragging={isDragging}
                 setIsDragging={setIsDragging}
                 actualizarLinea={actualizarLinea}
@@ -1868,7 +1873,7 @@ export default function CanvasEditor({
           editorOverlayRootRef={editorOverlayRootRef}
           stageRef={stageRef}
           elementRefs={elementRefs}
-          hoverId={hoverId}
+          hoverId={effectiveHoverId}
           mostrarPanelZ={mostrarPanelZ}
           objetos={objetos}
           onCopiar={onCopiar}

@@ -66,6 +66,19 @@ export default function useGuiasCentrado({
         selfId: null,
         targets: [],
     });
+    const snapLockRef = useRef({
+        ownerId: null,
+        x: null,
+        y: null,
+    });
+
+    const resetSnapLocks = useCallback(() => {
+        snapLockRef.current = {
+            ownerId: null,
+            x: null,
+            y: null,
+        };
+    }, []);
 
     const publishGuideLines = useCallback((nextLines = []) => {
         if (typeof onGuideLinesChange === "function") {
@@ -135,8 +148,9 @@ export default function useGuiasCentrado({
     }, [publishGuideLines]);
 
     const clearGuideLines = useCallback(() => {
+        resetSnapLocks();
         commitGuideLines([]);
-    }, [commitGuideLines]);
+    }, [commitGuideLines, resetSnapLocks]);
 
     useEffect(() => () => {
         if (
@@ -203,6 +217,10 @@ export default function useGuiasCentrado({
     const effSectionMagnetRadius = sectionMagnetRadius ?? magnetRadius;
     const effSectionSnapStrength = sectionSnapStrength ?? snapStrength;
     const effElementSnapStrength = elementSnapStrength ?? snapStrength;
+    const effElementReleaseRadius = effElementMagnetRadius + 8;
+    const effSectionReleaseRadius = effSectionMagnetRadius + 8;
+    const snapLockMinMs = 120;
+    const snapSoftReleaseMultiplier = 1.75;
 
 
     // ---- Utilidades de secciones ----
@@ -556,6 +574,14 @@ export default function useGuiasCentrado({
                 : [];
             const isGroupDrag = isGroupLeader && groupIds.length > 1;
 
+            if (snapLockRef.current.ownerId !== idActual) {
+                snapLockRef.current = {
+                    ownerId: idActual,
+                    x: null,
+                    y: null,
+                };
+            }
+
             const selfBoxBefore = isGroupDrag
                 ? getUnionBox(groupIds, stage, elementRefs, objById)
                 : getNodeBox(node, stage, objActual);
@@ -616,6 +642,80 @@ export default function useGuiasCentrado({
                     .sort((a, b) => a.dist - b.dist)[0];
             capturePerfPhase("guideBuildMs");
 
+            const resolveLockedDecision = (axis, secDistCenter, bestEl) => {
+                const axisLock = snapLockRef.current?.[axis];
+                if (!axisLock) return null;
+                const lockAgeMs = Number.isFinite(Number(axisLock.lockedAtMs))
+                    ? getGuidePerfNow() - Number(axisLock.lockedAtMs)
+                    : Infinity;
+                const releaseMultiplier = lockAgeMs <= snapLockMinMs
+                    ? snapSoftReleaseMultiplier
+                    : 1;
+
+                if (axisLock.source === "seccion") {
+                    const releaseRadius =
+                        Number(axisLock.releaseRadius || effSectionReleaseRadius) * releaseMultiplier;
+                    if (secDistCenter <= releaseRadius) {
+                        return {
+                            source: "seccion",
+                            locked: true,
+                            lockAgeMs: roundGuideMetric(lockAgeMs),
+                        };
+                    }
+                    return null;
+                }
+
+                if (isGroupDrag) return null;
+
+                const matchingGuide = elementGuides
+                    .filter((guide) => guide.axis === axis)
+                    .map((guide) => ({
+                        g: guide,
+                        dist: distForGuide(axis, guide.value, selfBoxBefore),
+                    }))
+                    .filter(({ g }) => (
+                        g.type === axisLock.nearType &&
+                        Math.abs((g.value ?? 0) - (axisLock.targetValue ?? 0)) <= 0.5
+                    ))
+                    .sort((a, b) => a.dist - b.dist)[0];
+
+                const lockedDist = matchingGuide?.dist ?? (
+                    Number.isFinite(Number(axisLock.targetValue))
+                        ? distForGuide(axis, axisLock.targetValue, selfBoxBefore)
+                        : Infinity
+                );
+
+                const releaseRadius =
+                    Number(axisLock.releaseRadius || effElementReleaseRadius) * releaseMultiplier;
+
+                if (!Number.isFinite(lockedDist) || lockedDist > releaseRadius) {
+                    return null;
+                }
+
+                if (matchingGuide) {
+                    return {
+                        source: "elemento",
+                        near: matchingGuide,
+                        locked: true,
+                        lockAgeMs: roundGuideMetric(lockAgeMs),
+                    };
+                }
+
+                return {
+                    source: "elemento",
+                    near: bestEl || {
+                        g: {
+                            value: axisLock.targetValue,
+                            type: axisLock.nearType || null,
+                            targetBox: null,
+                        },
+                        dist: lockedDist,
+                    },
+                    locked: true,
+                    lockAgeMs: roundGuideMetric(lockAgeMs),
+                };
+            };
+
             // Decidir qué guía “gana” por eje (sección vs elemento)
             const decidirSnap = (secDistCenter, bestEl) => {
                 const secOk = secDistCenter <= effSectionMagnetRadius;
@@ -631,8 +731,8 @@ export default function useGuiasCentrado({
                     : { source: "seccion" };
             };
 
-            const decisionX = decidirSnap(distSecX, bestElX);
-            const decisionY = decidirSnap(distSecY, bestElY);
+            const decisionX = resolveLockedDecision("x", distSecX, bestElX) || decidirSnap(distSecX, bestElX);
+            const decisionY = resolveLockedDecision("y", distSecY, bestElY) || decidirSnap(distSecY, bestElY);
             capturePerfPhase("decisionMs");
 
             trackCanvasDragPerf("guides:snapshot", {
@@ -755,6 +855,54 @@ export default function useGuiasCentrado({
             const snapResY = applySnap("y", decisionY);
             capturePerfPhase("snapApplyMs");
 
+            const updateSnapLock = (axis, snapRes, decision) => {
+                if (!snapRes?.snapped) {
+                    snapLockRef.current[axis] = null;
+                    return;
+                }
+
+                const previousLock = snapLockRef.current?.[axis] || null;
+                const nextTargetValue = snapRes.targetValue ?? null;
+                const nextNearType = snapRes.nearType || decision?.near?.g?.type || null;
+                const sameLock =
+                    previousLock &&
+                    previousLock.source === snapRes.source &&
+                    previousLock.nearType === nextNearType &&
+                    (
+                        (previousLock.targetValue == null && nextTargetValue == null) ||
+                        (
+                            previousLock.targetValue != null &&
+                            nextTargetValue != null &&
+                            Math.abs(Number(previousLock.targetValue) - Number(nextTargetValue)) <= 0.5
+                        )
+                    );
+                const lockedAtMs = sameLock && Number.isFinite(Number(previousLock?.lockedAtMs))
+                    ? Number(previousLock.lockedAtMs)
+                    : getGuidePerfNow();
+
+                if (snapRes.source === "seccion") {
+                    snapLockRef.current[axis] = {
+                        source: "seccion",
+                        targetValue: nextTargetValue,
+                        nearType: null,
+                        releaseRadius: effSectionReleaseRadius,
+                        lockedAtMs,
+                    };
+                    return;
+                }
+
+                snapLockRef.current[axis] = {
+                    source: "elemento",
+                    targetValue: nextTargetValue,
+                    nearType: nextNearType,
+                    releaseRadius: effElementReleaseRadius,
+                    lockedAtMs,
+                };
+            };
+
+            updateSnapLock("x", snapResX, decisionX);
+            updateSnapLock("y", snapResY, decisionY);
+
             // Recalcular box luego del snap para dibujar reach exacta
             const selfBoxAfter = isGroupDrag
                 ? getUnionBox(groupIds, stage, elementRefs, objById)
@@ -780,6 +928,10 @@ export default function useGuiasCentrado({
                 return null;
             };
 
+            
+
+                
+            
             // 2) SECCIÓN: mostrar guía SOLO cuando quedó efectivamente alineado.
             if (
                 snapResX.snapped &&
@@ -873,7 +1025,9 @@ export default function useGuiasCentrado({
         calcularOffsetSeccion, getSectionById,
         elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias,
         sectionSnapStrength, elementSnapStrength, sectionLineTolerance,
-        clearGuideLines, commitGuideLines, getObjectCache, getSectionGuideTargets
+        clearGuideLines, commitGuideLines, getObjectCache, getSectionGuideTargets,
+        effElementReleaseRadius, effSectionReleaseRadius,
+        snapLockMinMs, snapSoftReleaseMultiplier
     ]);
 
     const prepararGuias = useCallback((idActual, objetos, elementRefs) => {

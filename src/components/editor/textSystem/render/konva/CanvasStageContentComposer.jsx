@@ -286,6 +286,12 @@ export default function CanvasStageContent({
     (inlineOverlayMountSession?.mounted ? inlineOverlayMountSession.id : null) ||
     inlineOverlayMountedId ||
     null;
+  const isHoverSuppressed =
+    Boolean(isDragging) ||
+    isImageCropInteracting ||
+    (typeof window !== "undefined" &&
+      Boolean(window._isDragging || window._grupoLider || window._resizeData?.isResizing));
+  const effectiveHoverId = isHoverSuppressed ? null : hoverId;
 
   const setHoverIdWhenIdle = useCallback((nextHoverId) => {
     const dragActive =
@@ -322,7 +328,7 @@ export default function CanvasStageContent({
       objetosVersion: canvasStageObjectsVersionRef.current,
       selectedIds: elementosSeleccionados.join(","),
       preselectedIds: elementosPreSeleccionados.join(","),
-      hoverId: hoverId || null,
+      hoverId: effectiveHoverId || null,
       activeInlineEditingId: activeInlineEditingId || null,
       selectionBoxActive: Boolean(seleccionActiva || areaSeleccion),
       imageCropInteracting: Boolean(isImageCropInteracting),
@@ -357,7 +363,25 @@ export default function CanvasStageContent({
       throttleMs: 120,
       throttleKey: "render:CanvasStageContent",
     });
-  });
+  }, [
+    activeInlineEditingId,
+    areaSeleccion,
+    editing.id,
+    effectiveHoverId,
+    elementosPreSeleccionados,
+    elementosSeleccionados,
+    guideOverlayRef,
+    hoverId,
+    inlineOverlayMountSession?.phase,
+    inlineOverlayMountSession?.mounted,
+    inlineOverlayMountedId,
+    isDragging,
+    isImageCropInteracting,
+    objetos,
+    sectionDecorationEdit,
+    seccionActivaId,
+    seleccionActiva,
+  ]);
 
   useEffect(() => {
     dragGuideObjectsRef.current = objetos;
@@ -433,21 +457,13 @@ export default function CanvasStageContent({
   }, [elementRefs, mostrarGuias]);
 
   const scheduleGuideEvaluation = useCallback((pos, elementId) => {
-    const current = guideDragFrameRef.current;
-    current.payload = { pos, elementId };
-
-    if (
-      current.rafId ||
-      typeof window === "undefined" ||
-      typeof window.requestAnimationFrame !== "function"
-    ) {
-      return;
-    }
-
-    current.rafId = window.requestAnimationFrame(() => {
-      flushScheduledGuideEvaluation();
-    });
-  }, [flushScheduledGuideEvaluation]);
+    cancelScheduledGuideEvaluation();
+    guideDragFrameRef.current = {
+      rafId: 0,
+      payload: { pos, elementId },
+    };
+    flushScheduledGuideEvaluation();
+  }, [cancelScheduledGuideEvaluation, flushScheduledGuideEvaluation]);
 
   useEffect(() => (
     () => {
@@ -1780,6 +1796,7 @@ export default function CanvasStageContent({
             tipo: obj.tipo || null,
             hoverBefore: hoverSnapshot,
             willClearHover: false,
+            willSuppressHover: hoverSnapshot !== null,
             preselectedBefore: preselectedSnapshot.join(","),
             willClearPreselected: preselectedSnapshot.length > 0,
           }, {
@@ -2978,7 +2995,7 @@ export default function CanvasStageContent({
                     !window._isDragging &&
                     !window._grupoLider && (
                     <HoverIndicator
-                      hoveredElement={hoverId}
+                      hoveredElement={effectiveHoverId}
                       elementRefs={elementRefs}
                       objetos={objetos}
                       activeInlineEditingId={activeInlineEditingId}

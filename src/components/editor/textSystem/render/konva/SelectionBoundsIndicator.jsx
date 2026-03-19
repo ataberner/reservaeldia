@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import { Rect } from "react-konva";
+import {
+  getSelectionFramePaddingForSelection,
+  getSelectionFrameStrokeWidth,
+  SELECTION_FRAME_STROKE,
+} from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 
 export default function SelectionBoundsIndicator({
   selectedElements,
   elementRefs,
   objetos,
+  isMobile = false,
   debugLog = () => {},
 }) {
   const [forceUpdate, setForceUpdate] = useState(0);
@@ -121,11 +127,12 @@ export default function SelectionBoundsIndicator({
     maxY = minY + 50;
   }
 
-  const padding = 10;
+  const padding = getSelectionFramePaddingForSelection(elementosData, isMobile);
   const finalX = minX - padding;
   const finalY = minY - padding;
   const finalWidth = maxX - minX + padding * 2;
   const finalHeight = maxY - minY + padding * 2;
+  const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
 
   void forceUpdate;
 
@@ -137,8 +144,8 @@ export default function SelectionBoundsIndicator({
       width={finalWidth}
       height={finalHeight}
       fill="transparent"
-      stroke="#9333EA"
-      strokeWidth={1}
+      stroke={SELECTION_FRAME_STROKE}
+      strokeWidth={strokeWidth}
       listening={false}
       opacity={0.7}
     />

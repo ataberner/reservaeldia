@@ -71,6 +71,12 @@ export default function useStageGestures({
   );
 
   const clearSelectionUI = useCallback(() => {
+    if (
+      typeof window !== "undefined" &&
+      (window._isDragging || window._grupoLider || window._resizeData?.isResizing)
+    ) {
+      return;
+    }
     setElementosSeleccionados([]);
     cerrarMenusFlotantes?.();
   }, [setElementosSeleccionados, cerrarMenusFlotantes]);

@@ -8,7 +8,7 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
-  getSelectionFramePadding,
+  getSelectionFramePaddingForSelection,
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_ACTIVE_STROKE,
   SELECTION_FRAME_STROKE,
@@ -139,9 +139,10 @@ export default function SelectionBounds({
   const transformerAnchorSize = isMobile ? 32 : 14; //tamaÃ±o visual del nodo (mÃ¡s grande en mobile).
   const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotaciÃ³n al borde.
   const transformerAnchorRadius = 999; //radio de esquina del nodo (999 lo hace circular).
-  const transformerPadding = esImagenSeleccionada
-    ? 0
-    : getSelectionFramePadding(isMobile); // espacio extra entre borde del transformer y elemento.
+  const transformerPadding = getSelectionFramePaddingForSelection(
+    elementosSeleccionadosData,
+    isMobile
+  ); // espacio extra entre borde del transformer y elemento.
   const transformerBorderStrokeWidth = getSelectionFrameStrokeWidth(isMobile); //grosor del borde del transformer.
   const transformerAnchorFillColor = "#9333EA";
   const transformerAnchorStrokeWidth = isMobile ? 1.4 : 2.5; //grosor del borde del nodo.
@@ -208,6 +209,11 @@ export default function SelectionBounds({
     effectiveDragging &&
     pendingDragSelectionId &&
     !selectedElements.includes(pendingDragSelectionId)
+  );
+  const shouldHideTransformerDuringDrag = Boolean(
+    effectiveDragging &&
+    !isResizeGestureActive &&
+    !isTransformingResizeRef.current
   );
 
   useEffect(() => {
@@ -795,6 +801,12 @@ export default function SelectionBounds({
     );
 
     let rafId = null;
+    const cancelPendingSync = () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
     const syncTransformer = (source = "unknown") => {
       if (rafId != null) return;
       rafId = requestAnimationFrame(() => {
@@ -824,7 +836,9 @@ export default function SelectionBounds({
     };
 
     const onStageDragMove = () => syncTransformer("dragmove");
+    const onStageDragStart = () => cancelPendingSync();
     const onStageDragEnd = () => syncTransformer("dragend");
+    const onGlobalDraggingStart = () => cancelPendingSync();
 
     if (shouldSyncOnDragMove) {
       stage.on("dragmove", onStageDragMove);
@@ -838,14 +852,18 @@ export default function SelectionBounds({
         throttleKey: "transformer:skip-dragmove-sync",
       });
     }
+    stage.on("dragstart", onStageDragStart);
     stage.on("dragend", onStageDragEnd);
+    window.addEventListener("dragging-start", onGlobalDraggingStart);
 
     return () => {
       if (shouldSyncOnDragMove) {
         stage.off("dragmove", onStageDragMove);
       }
+      stage.off("dragstart", onStageDragStart);
       stage.off("dragend", onStageDragEnd);
-      if (rafId != null) cancelAnimationFrame(rafId);
+      window.removeEventListener("dragging-start", onGlobalDraggingStart);
+      cancelPendingSync();
     };
   }, [
     selectedElements,
@@ -860,7 +878,7 @@ export default function SelectionBounds({
 
   // ðŸ”¥ Render
 
-  if (shouldSuppressDuringDeferredDrag) return null;
+  if (shouldSuppressDuringDeferredDrag || shouldHideTransformerDuringDrag) return null;
 
   if (selectedElements.length === 0) return null;
 
@@ -870,6 +888,7 @@ export default function SelectionBounds({
         selectedElements={selectedElements}
         elementRefs={elementRefs}
         objetos={objetos}
+        isMobile={isMobile}
         debugLog={slog}
       />
     );
@@ -881,6 +900,7 @@ export default function SelectionBounds({
         selectedElements={selectedElements}
         elementRefs={elementRefs}
         objetos={objetos}
+        isMobile={isMobile}
         debugLog={slog}
       />
     );

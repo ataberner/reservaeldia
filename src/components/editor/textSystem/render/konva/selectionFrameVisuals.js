@@ -5,6 +5,25 @@ export function getSelectionFramePadding(isMobile = false) {
   return isMobile ? 18 : 8;
 }
 
+export function shouldUseTightSelectionFrame(selectedObjects = []) {
+  const selection = Array.isArray(selectedObjects)
+    ? selectedObjects.filter(Boolean)
+    : [selectedObjects].filter(Boolean);
+  const firstSelectedObject = selection[0] || null;
+
+  return (
+    selection.length === 1 &&
+    firstSelectedObject?.tipo === "imagen" &&
+    !firstSelectedObject?.esFondo
+  );
+}
+
+export function getSelectionFramePaddingForSelection(selectedObjects = [], isMobile = false) {
+  return shouldUseTightSelectionFrame(selectedObjects)
+    ? 0
+    : getSelectionFramePadding(isMobile);
+}
+
 export function getSelectionFrameStrokeWidth(isMobile = false) {
   return isMobile ? 1.5 : 1;
 }

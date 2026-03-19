@@ -11,7 +11,11 @@ function getCanvasElementsLayerPerfNow() {
 }
 
 const CanvasElementsLayer = forwardRef(function CanvasElementsLayer(
-  { children, perfLabel = "elements-layer" },
+  {
+    children,
+    perfLabel = "elements-layer",
+    listening = true,
+  },
   ref
 ) {
   const layerRef = useRef(null);
@@ -115,6 +119,7 @@ const CanvasElementsLayer = forwardRef(function CanvasElementsLayer(
 
   return (
     <Layer
+      listening={listening}
       ref={(node) => {
         layerRef.current = node;
         if (typeof ref === "function") {

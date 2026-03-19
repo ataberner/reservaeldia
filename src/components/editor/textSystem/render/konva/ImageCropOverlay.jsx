@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Rect } from "react-konva";
 import {
   MIN_IMAGE_CROP_DISPLAY_SIZE,
@@ -157,6 +157,10 @@ export default function ImageCropOverlay({
   const dragRef = useRef(null);
   const detachListenersRef = useRef(() => {});
   const handleRefs = useRef({});
+  const [runtimeDragActive, setRuntimeDragActive] = useState(() => (
+    typeof window !== "undefined" &&
+    Boolean(window._isDragging || window._grupoLider)
+  ));
   const selectedObject = useMemo(
     () => objetos.find((obj) => obj?.id === selectedElementId) || null,
     [objetos, selectedElementId]
@@ -198,8 +202,33 @@ export default function ImageCropOverlay({
     return buildHandleDefinitions(selectedNode, cropState);
   }, [cropState, selectedNode, selectedObject]);
 
+  const setHandleNodesVisible = useCallback((nextVisible) => {
+    let shouldBatchDraw = false;
+
+    Object.values(handleRefs.current).forEach((node) => {
+      if (!node || typeof node.visible !== "function") return;
+
+      const currentVisible =
+        typeof node.visible === "function" ? Boolean(node.visible()) : true;
+      if (currentVisible === nextVisible) return;
+
+      node.visible(nextVisible);
+      shouldBatchDraw = true;
+    });
+
+    if (!shouldBatchDraw) return;
+    const layer = selectedNode?.getLayer?.() || null;
+    layer?.batchDraw?.();
+  }, [selectedNode]);
+
   const syncHandleNodes = useCallback(() => {
+    const dragActive =
+      runtimeDragActive ||
+      (typeof window !== "undefined" &&
+        Boolean(window._isDragging || window._grupoLider));
+
     if (
+      dragActive ||
       !selectedObject ||
       selectedObject.tipo !== "imagen" ||
       selectedObject.esFondo ||
@@ -248,9 +277,24 @@ export default function ImageCropOverlay({
     handleCornerRadius,
     handleLength,
     handleThickness,
+    runtimeDragActive,
     selectedNode,
     selectedObject,
   ]);
+
+  const syncRuntimeDragState = useCallback(() => {
+    const nextDragActive =
+      typeof window !== "undefined" &&
+      Boolean(window._isDragging || window._grupoLider);
+
+    setRuntimeDragActive((current) => (
+      current === nextDragActive ? current : nextDragActive
+    ));
+
+    if (nextDragActive) {
+      setHandleNodesVisible(false);
+    }
+  }, [setHandleNodesVisible]);
 
   const clearInteractionState = useCallback(() => {
     dragRef.current = null;
@@ -487,6 +531,38 @@ export default function ImageCropOverlay({
   }, [syncHandleNodes]);
 
   useEffect(() => {
+    const stage = stageRef?.current || selectedNode?.getStage?.() || null;
+
+    const handleStageDragStart = () => {
+      setHandleNodesVisible(false);
+      setRuntimeDragActive(true);
+    };
+    const handleDragStateSync = () => {
+      syncRuntimeDragState();
+    };
+
+    stage?.on?.("dragstart.image-crop-overlay-visibility", handleStageDragStart);
+    stage?.on?.("dragend.image-crop-overlay-visibility", handleDragStateSync);
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("dragging-start", handleStageDragStart);
+      window.addEventListener("dragging-end", handleDragStateSync);
+    }
+
+    syncRuntimeDragState();
+
+    return () => {
+      stage?.off?.("dragstart.image-crop-overlay-visibility", handleStageDragStart);
+      stage?.off?.("dragend.image-crop-overlay-visibility", handleDragStateSync);
+
+      if (typeof window !== "undefined") {
+        window.removeEventListener("dragging-start", handleStageDragStart);
+        window.removeEventListener("dragging-end", handleDragStateSync);
+      }
+    };
+  }, [selectedNode, setHandleNodesVisible, stageRef, syncRuntimeDragState]);
+
+  useEffect(() => {
     return () => {
       window._resizeData = null;
       clearInteractionState();
@@ -494,6 +570,8 @@ export default function ImageCropOverlay({
   }, [clearInteractionState]);
 
   if (
+    runtimeDragActive ||
+    (typeof window !== "undefined" && Boolean(window._isDragging || window._grupoLider)) ||
     !selectedObject ||
     selectedObject.tipo !== "imagen" ||
     selectedObject.esFondo ||

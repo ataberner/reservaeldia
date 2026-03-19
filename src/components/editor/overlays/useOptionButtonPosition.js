@@ -144,6 +144,11 @@ export default function useOptionButtonPosition({
   buttonSize = FALLBACK_BUTTON_SIZE_DESKTOP,
 }) {
   const lastLogByEventRef = useRef({});
+  const pendingPositionSyncRafsRef = useRef({
+    rafA: 0,
+    rafB: 0,
+    settleRaf: 0,
+  });
 
   const debugLog = useCallback((eventName, payload = {}, force = false) => {
     if (!isOptionButtonDebugEnabled()) return;
@@ -187,6 +192,22 @@ export default function useOptionButtonPosition({
       false
     );
   }, [botonOpcionesRef, debugLog, elementosSeleccionados, isMobile]);
+
+  const cancelPendingPositionSyncRafs = useCallback(() => {
+    const pending = pendingPositionSyncRafsRef.current;
+    if (pending.rafA) {
+      window.cancelAnimationFrame(pending.rafA);
+      pending.rafA = 0;
+    }
+    if (pending.rafB) {
+      window.cancelAnimationFrame(pending.rafB);
+      pending.rafB = 0;
+    }
+    if (pending.settleRaf) {
+      window.cancelAnimationFrame(pending.settleRaf);
+      pending.settleRaf = 0;
+    }
+  }, []);
 
   const actualizarPosicionBotonOpciones = useCallback((
     source = "manual",
@@ -546,21 +567,27 @@ export default function useOptionButtonPosition({
       actualizarPosicionBotonOpciones("settle-loop");
       if (now - settleStartTs < settleDurationMs) {
         settleRaf = window.requestAnimationFrame(settleTick);
+        pendingPositionSyncRafsRef.current.settleRaf = settleRaf;
       }
     };
 
+    cancelPendingPositionSyncRafs();
+
     rafA = window.requestAnimationFrame(() => {
+      pendingPositionSyncRafsRef.current.rafA = 0;
       rafB = window.requestAnimationFrame(() => {
+        pendingPositionSyncRafsRef.current.rafB = 0;
         actualizarPosicionBotonOpciones("raf-init", null, "raf");
         settleRaf = window.requestAnimationFrame(settleTick);
+        pendingPositionSyncRafsRef.current.settleRaf = settleRaf;
       });
+      pendingPositionSyncRafsRef.current.rafB = rafB;
     });
+    pendingPositionSyncRafsRef.current.rafA = rafA;
 
     return () => {
       cancelled = true;
-      if (rafA) window.cancelAnimationFrame(rafA);
-      if (rafB) window.cancelAnimationFrame(rafB);
-      if (settleRaf) window.cancelAnimationFrame(settleRaf);
+      cancelPendingPositionSyncRafs();
     };
   }, [
     backgroundDecorationSelection?.height,
@@ -571,6 +598,7 @@ export default function useOptionButtonPosition({
     backgroundDecorationSelection?.y,
     elementosSeleccionados,
     actualizarPosicionBotonOpciones,
+    cancelPendingPositionSyncRafs,
     ocultarBotonOpciones,
     isMobile,
   ]);
@@ -637,6 +665,7 @@ export default function useOptionButtonPosition({
 
     if (stage?.on && stage?.off) {
       const onStageDragStart = () => {
+        cancelPendingPositionSyncRafs();
         ocultarBotonOpciones("stage-dragstart");
       };
       const onStageDragEnd = (event) => syncPosition("stage-dragend", event?.evt || null);
@@ -658,6 +687,13 @@ export default function useOptionButtonPosition({
       });
     }
 
+    const onGlobalDraggingStart = () => {
+      cancelPendingPositionSyncRafs();
+      ocultarBotonOpciones("global-dragging-start");
+    };
+    window.addEventListener("dragging-start", onGlobalDraggingStart);
+    detach.push(() => window.removeEventListener("dragging-start", onGlobalDraggingStart));
+
     // Primer sync inmediato por si hay cambio de scroll entre renders.
     syncPosition("initial-sync");
 
@@ -676,6 +712,7 @@ export default function useOptionButtonPosition({
     layoutRootRef,
     elementosSeleccionados.length,
     actualizarPosicionBotonOpciones,
+    cancelPendingPositionSyncRafs,
     ocultarBotonOpciones,
   ]);
 

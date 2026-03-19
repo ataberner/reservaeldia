@@ -74,8 +74,37 @@ function isCanvasDragPerfExpanded() {
   return false;
 }
 
+function isCanvasDragPerfVerboseConsoleEnabled() {
+  if (typeof window === "undefined") return false;
+  if (typeof window.__CANVAS_DRAG_PERF_VERBOSE_CONSOLE !== "undefined") {
+    return parseDebugFlag(window.__CANVAS_DRAG_PERF_VERBOSE_CONSOLE, false);
+  }
+  return false;
+}
+
+function isHighFrequencyCanvasDragPerfEvent(eventName) {
+  return (
+    eventName === "drag:move" ||
+    eventName === "drag:handler-move" ||
+    eventName === "stage:layer-draw-scene" ||
+    eventName === "stage:layer-draw-hit" ||
+    eventName === "image:layer-draw-scene" ||
+    eventName === "image:layer-draw-hit" ||
+    eventName === "guides:targets-cache-hit" ||
+    eventName === "guides:snapshot" ||
+    eventName === "guides:snap-apply" ||
+    eventName === "guides:commit" ||
+    eventName === "guides:commit-skip" ||
+    eventName === "guides:layer-draw-scene" ||
+    eventName === "guides:layer-draw-hit"
+  );
+}
+
 function shouldEmitCanvasDragPerfConsole(eventName) {
-  if (isCanvasDragPerfExpanded()) return true;
+  if (isCanvasDragPerfExpanded()) {
+    if (isCanvasDragPerfVerboseConsoleEnabled()) return true;
+    return !isHighFrequencyCanvasDragPerfEvent(eventName);
+  }
 
   return (
     eventName === "drag:timing-summary" ||
@@ -251,15 +280,73 @@ function createCanvasDragPerfSession(payload = {}, nowMs = getNowMs()) {
   };
 }
 
+function getSessionOverlapDurationMs(startTime, durationMs, sessionStartedAt) {
+  const numericStartTime = Number(startTime);
+  const numericDuration = Number(durationMs);
+  const numericSessionStartedAt = Number(sessionStartedAt);
+  if (
+    !Number.isFinite(numericStartTime) ||
+    !Number.isFinite(numericDuration) ||
+    !Number.isFinite(numericSessionStartedAt)
+  ) {
+    return null;
+  }
+
+  const entryEndTime = numericStartTime + numericDuration;
+  const overlapDurationMs = entryEndTime - Math.max(numericStartTime, numericSessionStartedAt);
+  return roundMetric(Math.max(0, overlapDurationMs));
+}
+
+function getSessionOverlapBetweenMs(startTime, endTime, sessionStartedAt) {
+  const numericStartTime = Number(startTime);
+  const numericEndTime = Number(endTime);
+  const numericSessionStartedAt = Number(sessionStartedAt);
+  if (
+    !Number.isFinite(numericStartTime) ||
+    !Number.isFinite(numericEndTime) ||
+    !Number.isFinite(numericSessionStartedAt)
+  ) {
+    return null;
+  }
+
+  const overlapDurationMs = numericEndTime - Math.max(numericStartTime, numericSessionStartedAt);
+  return roundMetric(Math.max(0, overlapDurationMs));
+}
+
+function isDragRelevantEventTimingName(name) {
+  const normalizedName = String(name || "")
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedName) return false;
+
+  return (
+    normalizedName.includes("move") ||
+    normalizedName.includes("drag")
+  );
+}
+
 function createObserverRecord(entry, sessionStartedAt) {
   const startTime = Number(entry?.startTime);
-  const duration = normalizeDuration(entry?.duration);
+  const numericSessionStartedAt = Number(sessionStartedAt);
+  const rawDurationMs = normalizeDuration(entry?.duration);
+  const overlapStartTime =
+    Number.isFinite(startTime) && Number.isFinite(numericSessionStartedAt)
+      ? Math.max(startTime, numericSessionStartedAt)
+      : startTime;
+  const overlapDurationMs = getSessionOverlapDurationMs(
+    startTime,
+    rawDurationMs,
+    sessionStartedAt
+  );
   return {
     name: entry?.name || null,
     entryType: entry?.entryType || null,
     startTime: roundMetric(startTime),
-    offsetMs: roundMetric(startTime - sessionStartedAt),
-    durationMs: roundMetric(duration),
+    offsetMs: roundMetric(overlapStartTime - numericSessionStartedAt),
+    rawOffsetMs: roundMetric(startTime - numericSessionStartedAt),
+    durationMs: overlapDurationMs,
+    rawDurationMs: roundMetric(rawDurationMs),
   };
 }
 
@@ -418,6 +505,7 @@ function pushSessionLongTask(session, entry) {
   if (!session || !entry) return;
   const observedAtMs = getNowMs();
   const record = createObserverRecord(entry, session.startedAt);
+  if (!Number.isFinite(Number(record.durationMs)) || Number(record.durationMs) <= 0) return;
   const firstAttribution =
     Array.isArray(entry?.attribution) && entry.attribution.length > 0
       ? entry.attribution[0]
@@ -447,6 +535,8 @@ function pushSessionLongTask(session, entry) {
     elementId: session.elementId,
     tipo: session.tipo,
     durationMs: record.durationMs,
+    rawDurationMs:
+      record.rawDurationMs !== record.durationMs ? record.rawDurationMs : undefined,
     offsetMs: record.offsetMs,
     attribution: record.attribution || null,
   });
@@ -455,18 +545,21 @@ function pushSessionLongTask(session, entry) {
 function pushSessionSlowEvent(session, entry) {
   if (!session || !entry) return;
   const record = createObserverRecord(entry, session.startedAt);
+  if (!Number.isFinite(Number(record.durationMs)) || Number(record.durationMs) <= 0) return;
+  if (!isDragRelevantEventTimingName(record.name)) return;
   const processingStart = Number(entry?.processingStart);
   const processingEnd = Number(entry?.processingEnd);
+  const eventStart = Number(entry?.startTime);
   record.interactionId = Number.isFinite(Number(entry?.interactionId))
     ? Number(entry.interactionId)
     : null;
   record.inputDelayMs =
-    Number.isFinite(processingStart) && Number.isFinite(Number(entry?.startTime))
-      ? roundMetric(processingStart - Number(entry.startTime))
+    Number.isFinite(processingStart) && Number.isFinite(eventStart)
+      ? getSessionOverlapBetweenMs(eventStart, processingStart, session.startedAt)
       : null;
   record.handlingDurationMs =
     Number.isFinite(processingEnd) && Number.isFinite(processingStart)
-      ? roundMetric(processingEnd - processingStart)
+      ? getSessionOverlapBetweenMs(processingStart, processingEnd, session.startedAt)
       : null;
 
   session.slowEvents.push(record);
@@ -485,6 +578,10 @@ function pushSessionSlowEvent(session, entry) {
     tipo: session.tipo,
     source: record.name,
     durationMs: record.durationMs,
+    rawDurationMs:
+      record.rawDurationMs !== record.durationMs ? record.rawDurationMs : undefined,
+    rawOffsetMs:
+      record.rawOffsetMs !== record.offsetMs ? record.rawOffsetMs : undefined,
     inputDelayMs: record.inputDelayMs,
     handlingDurationMs: record.handlingDurationMs,
     offsetMs: record.offsetMs,

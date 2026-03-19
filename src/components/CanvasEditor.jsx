@@ -159,7 +159,7 @@ export default function CanvasEditor({
   const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
   const [cargado, setCargado] = useState(false);
   const stageRef = useRef(null);
-  const { dragStartPos, hasDragged, isDragging } = useCanvasInteractionState();
+  const { dragStartPos, hasDragged, isDragging, setIsDragging } = useCanvasInteractionState();
   const imperativeObjects = useImperativeObjects();
   const [animandoSeccion, setAnimandoSeccion] = useState(null);
   const [seccionActivaId, setSeccionActivaId] = useState(null);
@@ -169,7 +169,7 @@ export default function CanvasEditor({
   const [elementosPreSeleccionados, setElementosPreSeleccionados] = useState([]);
   const guiaLayerRef = useRef(null);
   const guideOverlayRef = useRef(null);
-  const [hoverId, setHoverId] = useState(null);
+  const [hoverId, setHoverIdState] = useState(null);
   const altoCanvas = secciones.reduce((acc, s) => acc + s.altura, 0) || 800;
   const [seccionesAnimando, setSeccionesAnimando] = useState([]);
   const { refrescar: refrescarPlantillasDeSeccion } = usePlantillasDeSeccion();
@@ -648,13 +648,33 @@ export default function CanvasEditor({
     }
   }, []);
 
+  const setHoverId = useCallback((nextHoverId) => {
+    setHoverIdState((currentHoverId) => {
+      if (
+        typeof window !== "undefined" &&
+        (window._isDragging || window._grupoLider || window._resizeData?.isResizing)
+      ) {
+        return currentHoverId;
+      }
+
+      const resolvedHoverId =
+        typeof nextHoverId === "function"
+          ? nextHoverId(currentHoverId)
+          : nextHoverId;
+
+      return Object.is(currentHoverId, resolvedHoverId)
+        ? currentHoverId
+        : resolvedHoverId;
+    });
+  }, []);
+
   const cerrarMenusFlotantes = useCallback(() => {
     setMostrarPanelZ(false);
     setMostrarSubmenuCapa(false);
     setMostrarSelectorFuente(false);
     setMostrarSelectorTamano(false);
     setHoverId(null);
-  }, []);
+  }, [setHoverId]);
 
   const clearCanvasSelectionUi = useCallback(() => {
     setElementosSeleccionados([]);
@@ -1518,6 +1538,12 @@ export default function CanvasEditor({
       Boolean(targetElement?.closest?.(PRESERVE_CANVAS_SELECTION_SELECTOR));
 
     const handlePointerOutsideCanvas = (event) => {
+      if (
+        typeof window !== "undefined" &&
+        (window._isDragging || window._grupoLider || window._resizeData?.isResizing)
+      ) {
+        return;
+      }
       const targetElement = resolveTargetElement(event.target);
       if (!targetElement) return;
       if (isInsideCanvasStage(targetElement)) return;
@@ -1784,6 +1810,7 @@ export default function CanvasEditor({
                 actualizarObjeto={actualizarObjeto}
                 hoverId={hoverId}
                 isDragging={isDragging}
+                setIsDragging={setIsDragging}
                 actualizarLinea={actualizarLinea}
                 guiaLineas={[]}
                 guideOverlayRef={guideOverlayRef}

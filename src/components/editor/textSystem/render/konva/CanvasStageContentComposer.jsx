@@ -2059,9 +2059,16 @@ export default function CanvasStageContent({
             return updated;
           });
         }}
-        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id) => {
+        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id, _event = null, meta = null) => {
+          const isGroupPipeline = meta?.pipeline === "group";
           clearInlineIntent("drag-start", { dragId });
           const interactionEpoch = beginCanvasDragGesture(dragId, obj.tipo || null);
+          cancelScheduledGuideEvaluation();
+
+          if (isGroupPipeline) {
+            return;
+          }
+
           const seleccionActual = Array.isArray(window._elementosSeleccionados)
             ? window._elementosSeleccionados
             : elementosSeleccionados;
@@ -2120,19 +2127,22 @@ export default function CanvasStageContent({
           setElementosPreSeleccionados((current) => (
             Array.isArray(current) && current.length === 0 ? current : []
           ));
-          cancelScheduledGuideEvaluation();
           prepararGuias?.(dragId, objetos, elementRefs);
         }}
-        onDragEndPersonalizado={isInEditMode ? null : () => {
+        onDragEndPersonalizado={isInEditMode ? null : (dragId = obj.id, meta = null) => {
+          const isGroupPipeline = meta?.pipeline === "group";
           cancelScheduledGuideEvaluation();
-          queuePostDragUiRefresh(obj.id, obj.tipo || null, "element-drag-end");
+          if (!isGroupPipeline) {
+            queuePostDragUiRefresh(obj.id, obj.tipo || null, "element-drag-end");
+          }
           endCanvasInteraction("drag", {
-            dragId: obj.id,
+            dragId,
             tipo: obj.tipo || null,
-            source: "element-drag-end",
+            source: isGroupPipeline ? "group-drag-end" : "element-drag-end",
           });
         }}
-        onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
+        onDragMovePersonalizado={isInEditMode ? null : (pos, elementId, meta = null) => {
+          if (meta?.pipeline === "group") return;
           scheduleGuideEvaluation(pos, elementId);
         }}
         dragLayerRef={dragLayerRef}

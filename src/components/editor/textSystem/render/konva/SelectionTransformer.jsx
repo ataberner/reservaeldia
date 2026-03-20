@@ -435,6 +435,16 @@ export default function SelectionBounds({
     typeof window !== "undefined" ? Boolean(window._isDragging) : false;
   const groupDragging =
     typeof window !== "undefined" ? Boolean(window._grupoLider) : false;
+  const manualGroupSession =
+    typeof window !== "undefined" ? window._groupDragSession || null : null;
+  const manualGroupSessionId =
+    manualGroupSession?.engine === "manual-pointer"
+      ? manualGroupSession.sessionId || null
+      : null;
+  const manualGroupPhase =
+    manualGroupSession?.engine === "manual-pointer"
+      ? manualGroupSession.phase || null
+      : null;
   const runtimeResizeActive =
     typeof window !== "undefined" ? Boolean(window._resizeData?.isResizing) : false;
   const effectiveDragging = Boolean(isDragging || globalDragging || groupDragging);
@@ -461,6 +471,8 @@ export default function SelectionBounds({
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
       attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      manualGroupSessionId,
+      manualGroupPhase,
       isResizeGestureActive: Boolean(isResizeGestureActive),
       isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
       interactionLocked: Boolean(interactionLocked),
@@ -486,6 +498,8 @@ export default function SelectionBounds({
       effectiveDragging: Boolean(effectiveDragging),
       globalDragging,
       groupDragging,
+      manualGroupSessionId,
+      manualGroupPhase,
       pendingDragSelectionId,
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
@@ -502,6 +516,8 @@ export default function SelectionBounds({
     effectiveDragging,
     globalDragging,
     groupDragging,
+    manualGroupSessionId,
+    manualGroupPhase,
     pendingDragSelectionId,
     shouldSuppressDuringDeferredDrag,
     shouldHideTransformerDuringDrag,

@@ -8,6 +8,7 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import { shouldSuppressIndividualDragForElement } from "@/drag/dragGrupal";
 
 function resolveNodeId(node, fallback = null) {
   if (!node) return fallback;
@@ -24,6 +25,9 @@ function buildPreviewSampleKey(nodeId) {
 export function startDragIndividual(e, dragStartPos) {
   const node = e?.currentTarget || e?.target || null;
   const nodeId = resolveNodeId(node);
+  if (shouldSuppressIndividualDragForElement(nodeId)) {
+    return;
+  }
   const pointerPosition = e?.target?.getStage?.()?.getPointerPosition?.() || null;
   dragStartPos.current = pointerPosition;
   resetCanvasInteractionLogSample(buildPreviewSampleKey(nodeId));
@@ -37,11 +41,14 @@ export function startDragIndividual(e, dragStartPos) {
   try { document.body.style.cursor = "grabbing"; } catch {}
 }
 
-export function previewDragIndividual(e, obj, onDragMovePersonalizado) {
+export function previewDragIndividual(e, obj, onDragMovePersonalizado, dragMeta = null) {
   const node = e.currentTarget || e.target;
+  const elementId = obj?.id || resolveNodeId(node);
+  if (shouldSuppressIndividualDragForElement(elementId)) {
+    return;
+  }
   if (node?.position) {
     const nuevaPos = node.position();
-    const elementId = obj?.id || resolveNodeId(node);
     const sample = sampleCanvasInteractionLog(buildPreviewSampleKey(elementId), {
       firstCount: 3,
       throttleMs: 120,
@@ -61,12 +68,24 @@ export function previewDragIndividual(e, obj, onDragMovePersonalizado) {
       });
     }
 
-    if (onDragMovePersonalizado) onDragMovePersonalizado(nuevaPos, obj.id);
+    if (onDragMovePersonalizado) onDragMovePersonalizado(nuevaPos, obj.id, dragMeta);
   }
 }
 
-export function endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged) {
+export function endDragIndividual(
+  obj,
+  node,
+  onChange,
+  onDragEndPersonalizado,
+  hasDragged,
+  dragMeta = null
+) {
   const elementId = obj?.id || resolveNodeId(node);
+  if (shouldSuppressIndividualDragForElement(elementId)) {
+    resetCanvasInteractionLogSample(buildPreviewSampleKey(elementId));
+    setTimeout(() => { hasDragged.current = false; }, 30);
+    return;
+  }
   const previewSampleKey = buildPreviewSampleKey(elementId);
   try { document.body.style.cursor = "default"; } catch {}
 
@@ -78,7 +97,7 @@ export function endDragIndividual(obj, node, onChange, onDragEndPersonalizado, h
     });
     try { node.setAttr("_muteNextEnd", false); } catch {}
     resetCanvasInteractionLogSample(previewSampleKey);
-    if (onDragEndPersonalizado) onDragEndPersonalizado();
+    if (onDragEndPersonalizado) onDragEndPersonalizado(obj.id, dragMeta);
     setTimeout(() => { hasDragged.current = false; }, 30);
     return;
   }
@@ -101,7 +120,7 @@ export function endDragIndividual(obj, node, onChange, onDragEndPersonalizado, h
     });
     try { window._skipIndividualEnd.delete(obj.id); } catch {}
     resetCanvasInteractionLogSample(previewSampleKey);
-    if (onDragEndPersonalizado) onDragEndPersonalizado();
+    if (onDragEndPersonalizado) onDragEndPersonalizado(obj.id, dragMeta);
     setTimeout(() => { hasDragged.current = false; }, 30);
     return;
   }
@@ -128,6 +147,6 @@ export function endDragIndividual(obj, node, onChange, onDragEndPersonalizado, h
 
   resetCanvasInteractionLogSample(previewSampleKey);
   onChange(obj.id, nextChange);
-  if (onDragEndPersonalizado) onDragEndPersonalizado();
+  if (onDragEndPersonalizado) onDragEndPersonalizado(obj.id, dragMeta);
   setTimeout(() => { hasDragged.current = false; }, 30);
 }

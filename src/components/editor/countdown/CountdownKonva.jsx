@@ -626,12 +626,35 @@ export default function CountdownKonva({
   // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
   const handleDragStart = useCallback(
     (e) => {
-      onDragStartPersonalizado?.(obj.id, e);
       // Arranque de tu lógica grupal/individual
-      const esGrupal = startDragGrupalLider(e, obj);
-      if (!esGrupal) startDragIndividual(e, dragStartPos);
+      const groupDragResult = startDragGrupalLider(e, obj);
+      if (groupDragResult.mode === "follower-ignored") {
+        const node = e?.currentTarget || e?.target || null;
+        try { e?.target?.stopDrag?.(); } catch {}
+        try { node?.stopDrag?.(); } catch {}
+        try {
+          if (groupDragResult.restorePose && typeof node?.position === "function") {
+            node.position({
+              x: groupDragResult.restorePose.x,
+              y: groupDragResult.restorePose.y,
+            });
+          }
+        } catch {}
+        try { node?.draggable?.(false); } catch {}
+        try { node?.getLayer?.()?.batchDraw?.(); } catch {}
+        if (hasDragged?.current != null) hasDragged.current = false;
+        return;
+      }
+      if (groupDragResult.mode === "duplicate-leader-ignored") {
+        return;
+      }
+
+      onDragStartPersonalizado?.(obj.id, e);
+      if (groupDragResult.mode !== "started") {
+        startDragIndividual(e, dragStartPos);
+      }
     },
-    [obj, dragStartPos, onDragStartPersonalizado]
+    [dragStartPos, hasDragged, obj, onDragStartPersonalizado]
   );
 
   const handleDragMove = useCallback(
@@ -651,13 +674,41 @@ export default function CountdownKonva({
   const handleDragEnd = useCallback(
     (e) => {
       const node = e.currentTarget;
-      notePostDragSelectionGuard();
+      const groupDragResult = endDragGrupal(e, obj, onChange, hasDragged, () => {});
 
-      // Commit final
-      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});
-      if (fueGrupal) {
-        onDragEndPersonalizado?.();
+      if (groupDragResult.role === "follower") {
+        try { node.draggable(false); } catch {}
+        pressRef.current.active = false;
+        pressRef.current.movedEnough = false;
+        pressRef.current.startedDrag = false;
+        setTimeout(() => {
+          pressRef.current.suppressClick = false;
+          if (hasDragged?.current != null) hasDragged.current = false;
+        }, 0);
+        cleanupGlobal();
+        return;
+      }
+
+      if (groupDragResult.role === "leader" && groupDragResult.completed) {
+        notePostDragSelectionGuard();
+        if (typeof window !== "undefined" && groupDragResult.shouldDispatchDraggingEnd) {
+          window.dispatchEvent(
+            new CustomEvent("dragging-end", {
+              detail: {
+                id: obj.id,
+                tipo: obj.tipo || null,
+                group: true,
+                sessionId: groupDragResult.sessionId || null,
+                leaderId: groupDragResult.leaderId || null,
+              },
+            })
+          );
+        }
+        if (groupDragResult.shouldRunPersonalizedEnd) {
+          onDragEndPersonalizado?.();
+        }
       } else {
+        notePostDragSelectionGuard();
         endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
       }
 

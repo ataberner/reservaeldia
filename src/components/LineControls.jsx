@@ -1,6 +1,6 @@
 import { Circle, Group, Line, Rect, Text } from "react-konva";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { startDragGrupalLider } from "@/drag/dragGrupal";
+import { getActiveGroupDragSession, startDragGrupalLider } from "@/drag/dragGrupal";
 import useIsTouchLike from "@/components/editor/mobile/useIsTouchLike";
 
 const batchDraw = (node) => node?.getLayer?.() && node.getLayer().batchDraw();
@@ -153,8 +153,24 @@ export default function LineControls({
       const selectedIds = window._elementosSeleccionados || [];
       if (selectedIds.length > 1 && selectedIds.includes(lineId)) {
         try {
-          const isGroupLeader = startDragGrupalLider(event, lineElement);
-          if (!isGroupLeader) {
+          const groupDragResult = startDragGrupalLider(event, lineElement);
+          if (groupDragResult.mode === "follower-ignored") {
+            try { event?.target?.stopDrag?.(); } catch {}
+            try { nodeRef?.stopDrag?.(); } catch {}
+            try {
+              if (groupDragResult.restorePose && typeof nodeRef?.position === "function") {
+                nodeRef.position({
+                  x: groupDragResult.restorePose.x,
+                  y: groupDragResult.restorePose.y,
+                });
+              }
+            } catch {}
+            try { nodeRef?.draggable?.(false); } catch {}
+            batchDraw(nodeRef);
+            return;
+          }
+
+          if (groupDragResult.mode !== "started") {
             setTimeout(() => {
               if (nodeRef?.draggable) {
                 nodeRef.draggable(false);
@@ -172,6 +188,14 @@ export default function LineControls({
       setLineBeingDragged(false);
 
       setTimeout(() => {
+        const activeSession = getActiveGroupDragSession();
+        const isActiveFollower = Boolean(
+          activeSession?.active &&
+          activeSession.leaderId !== lineId &&
+          Array.isArray(activeSession.elementIds) &&
+          activeSession.elementIds.includes(lineId)
+        );
+        if (isActiveFollower) return;
         if (nodeRef?.draggable) {
           nodeRef.draggable(true);
         }

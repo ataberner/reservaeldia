@@ -198,6 +198,8 @@ export function getKonvaNodeDebugInfo(node) {
       typeof node.name === "function" ? node.name() || null : node?.attrs?.name || null,
     draggable:
       typeof node.draggable === "function" ? Boolean(node.draggable()) : null,
+    listening:
+      typeof node.listening === "function" ? Boolean(node.listening()) : null,
     x: roundMetric(canonicalPose?.x),
     y: roundMetric(canonicalPose?.y),
     rotation: roundMetric(canonicalPose?.rotation),

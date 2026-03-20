@@ -4,6 +4,10 @@ import {
     startCanvasDragPerfSpan,
     trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
+import {
+    getActiveGroupDragSession,
+    shouldSuppressIndividualDragForElement,
+} from "@/drag/dragGrupal";
 
 function roundGuideMetric(value) {
     const numeric = Number(value);
@@ -559,6 +563,22 @@ export default function useGuiasCentrado({
         const stage = node.getStage?.();
         if (!stage) {
             finishPerf?.({ reason: "missing-stage" });
+            return;
+        }
+
+        const activeGroupSession = getActiveGroupDragSession();
+        const shouldSuppressForGroupLeader = Boolean(
+            activeGroupSession?.active &&
+            activeGroupSession.leaderId === idActual
+        );
+        if (shouldSuppressForGroupLeader || shouldSuppressIndividualDragForElement(idActual)) {
+            clearGuideLines();
+            finishPerf?.({
+                reason: shouldSuppressForGroupLeader
+                    ? "group-leader-suppressed"
+                    : "group-drag-guard-suppressed",
+                sessionId: activeGroupSession?.sessionId || null,
+            });
             return;
         }
 

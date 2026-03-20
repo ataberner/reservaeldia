@@ -1,8 +1,20 @@
-// ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
+﻿// ElementoCanvas.jsx - REEMPLAZAR TODO EL ARCHIVO
 import { Text, Image as KonvaImage, Rect, Circle, Line, RegularPolygon, Path, Group } from "react-konva";
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { LINE_CONSTANTS } from '@/models/lineConstants';
-import { previewDragGrupal, startDragGrupalLider, endDragGrupal } from "@/drag/dragGrupal";
+import {
+  armManualGroupDragSession,
+  endDragGrupal,
+  finishManualGroupDragSession,
+  getAnyGroupDragSession,
+  getManualGroupDragPreviewPose,
+  isManualGroupDragMemberLocked,
+  previewDragGrupal,
+  resolveSessionLeaderNode,
+  shouldSuppressIndividualDragForElement,
+  startDragGrupalLider,
+  updateManualGroupDragSession,
+} from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
 import { getCenteredTextPosition } from "@/utils/getTextMetrics";
 import { resolveRsvpButtonVisual } from "@/domain/rsvp/buttonStyles";
@@ -286,6 +298,32 @@ export default function ElementoCanvas({
   const dragLifecycleRef = useRef({
     lastStartAt: 0,
     lastStartId: null,
+    activeMode: "idle",
+    activeGroupSessionId: null,
+    leaderId: null,
+    suppressIndividualUntilMs: 0,
+    suppressSelectionUntilMs: 0,
+  });
+  const manualGroupListenersRef = useRef({
+    sessionId: null,
+    detach: null,
+    startHandled: false,
+  });
+  const manualGroupRuntimeRef = useRef({
+    finishPointerSession: null,
+    detachWindowListeners: null,
+    finishRetryTimeoutId: 0,
+    finishRetrySessionId: null,
+  });
+  const latestObjRef = useRef(obj);
+  const latestOnChangeRef = useRef(onChange);
+  const latestOnDragStartPersonalizadoRef = useRef(onDragStartPersonalizado);
+  const latestOnDragEndPersonalizadoRef = useRef(onDragEndPersonalizado);
+  const latestSelectionStateRef = useRef({
+    isSelected,
+    selectionCount,
+    tipo: obj.tipo || null,
+    elementId: obj.id,
   });
   const renderCountRef = useRef(0);
   const renderSnapshotRef = useRef(null);
@@ -563,25 +601,173 @@ export default function ElementoCanvas({
     });
   }, [cancelPendingTransformerRestore, obj.id, obj.tipo]);
 
+  const getActiveGroupInteractionState = useCallback(() => {
+    const activeGroupSession = getAnyGroupDragSession();
+    const isManualGroupMember = Boolean(
+      activeGroupSession?.active &&
+      activeGroupSession?.engine === "manual-pointer" &&
+      Array.isArray(activeGroupSession.elementIds) &&
+      activeGroupSession.elementIds.includes(obj.id)
+    );
+    const isManualGroupLeader = Boolean(
+      isManualGroupMember && activeGroupSession?.leaderId === obj.id
+    );
+    const isActiveGroupFollower = Boolean(
+      activeGroupSession?.active &&
+      activeGroupSession.leaderId !== obj.id &&
+      Array.isArray(activeGroupSession.elementIds) &&
+      activeGroupSession.elementIds.includes(obj.id)
+    );
+
+    return {
+      activeGroupSession,
+      isActiveGroupFollower,
+      isManualGroupMember,
+      isManualGroupLeader,
+    };
+  }, [obj.id]);
+
+  const shouldUseManualGroupDrag = useCallback(() => (
+    Boolean(
+      isSelected &&
+      selectionCount > 1 &&
+      !editingMode &&
+      !isInEditMode &&
+      !inlineEditPointerActive
+    )
+  ), [
+    editingMode,
+    inlineEditPointerActive,
+    isInEditMode,
+    isSelected,
+    selectionCount,
+  ]);
+
+  const resolveInteractionDraggableEnabled = useCallback(() => {
+    const { isActiveGroupFollower, isManualGroupMember } = getActiveGroupInteractionState();
+    return (
+      !editingMode &&
+      !inlineEditPointerActive &&
+      !isActiveGroupFollower &&
+      !isManualGroupMember &&
+      !shouldUseManualGroupDrag()
+    );
+  }, [
+    editingMode,
+    getActiveGroupInteractionState,
+    inlineEditPointerActive,
+    shouldUseManualGroupDrag,
+  ]);
+
+  const resolveInteractionListeningEnabled = useCallback(() => {
+    const { isActiveGroupFollower } = getActiveGroupInteractionState();
+    return (!isInEditMode || inlineEditPointerActive) && !isActiveGroupFollower;
+  }, [getActiveGroupInteractionState, inlineEditPointerActive, isInEditMode]);
+
+  const isActiveGroupFollowerInteractionSuppressed = useCallback(() => {
+    const { isActiveGroupFollower } = getActiveGroupInteractionState();
+    return isActiveGroupFollower;
+  }, [getActiveGroupInteractionState]);
+
   const syncInteractionDraggableState = useCallback((node) => {
-    if (!node || typeof node.draggable !== "function") return;
-    node.draggable(!editingMode && !inlineEditPointerActive);
+    if (!node) return;
+    const nextDraggable = resolveInteractionDraggableEnabled();
+    const nextListening = resolveInteractionListeningEnabled();
+    if (typeof node.draggable === "function") {
+      node.draggable(nextDraggable);
+    }
+    if (typeof node.listening === "function") {
+      node.listening(nextListening);
+    }
     logSelectedDragDebug("element:sync-draggable", {
       elementId: obj.id,
       tipo: obj.tipo,
       isSelected,
       selectionCount,
-      nextDraggable: !editingMode && !inlineEditPointerActive,
+      nextDraggable,
+      nextListening,
       node: getKonvaNodeDebugInfo(node),
     });
   }, [
-    editingMode,
-    inlineEditPointerActive,
     isSelected,
     obj.id,
     obj.tipo,
+    resolveInteractionDraggableEnabled,
+    resolveInteractionListeningEnabled,
     selectionCount,
   ]);
+
+  const ignoreActiveGroupFollowerDragStart = useCallback((event, groupDragResult) => {
+    const node = event?.currentTarget || event?.target || null;
+    const restorePose = groupDragResult?.restorePose || null;
+
+    try {
+      if (typeof node?.isDragging === "function" && node.isDragging()) {
+        node.stopDrag?.();
+      }
+    } catch {}
+    try {
+      if (restorePose && typeof node?.position === "function") {
+        node.position({
+          x: restorePose.x,
+          y: restorePose.y,
+        });
+      }
+    } catch {}
+    try {
+      node?.draggable?.(false);
+    } catch {}
+    try {
+      node?.listening?.(false);
+    } catch {}
+    try {
+      node?.getLayer?.()?.batchDraw?.();
+    } catch {}
+  }, []);
+
+  const shouldSuppressIndividualPipeline = useCallback((elementId = obj.id, nowMs = null) => {
+    const dragLifecycle = dragLifecycleRef.current || {};
+    const currentNowMs =
+      Number.isFinite(Number(nowMs))
+        ? Number(nowMs)
+        : (
+            typeof performance !== "undefined" && typeof performance.now === "function"
+              ? performance.now()
+              : Date.now()
+          );
+
+    const localSuppressed =
+      dragLifecycle.lastStartId === elementId &&
+      Number(dragLifecycle.suppressIndividualUntilMs || 0) > currentNowMs;
+
+    return localSuppressed || shouldSuppressIndividualDragForElement(elementId);
+  }, [obj.id]);
+
+  const shouldSuppressSelectionGesture = useCallback((nowMs = null) => {
+    const dragLifecycle = dragLifecycleRef.current || {};
+    const currentNowMs =
+      Number.isFinite(Number(nowMs))
+        ? Number(nowMs)
+        : (
+            typeof performance !== "undefined" && typeof performance.now === "function"
+              ? performance.now()
+              : Date.now()
+          );
+    const activeSession = getAnyGroupDragSession();
+    const isManualSessionForElement = Boolean(
+      activeSession?.active &&
+      activeSession?.engine === "manual-pointer" &&
+      Array.isArray(activeSession.elementIds) &&
+      activeSession.elementIds.includes(obj.id)
+    );
+    return (
+      isManualSessionForElement ||
+      (
+        dragLifecycle.lastStartId === obj.id &&
+        Number(dragLifecycle.suppressSelectionUntilMs || 0) > currentNowMs
+      )
+    );
+  }, [obj.id]);
 
   const logElementGestureDebug = useCallback((eventName, event, extra = {}) => {
     logSelectedDragDebug(eventName, {
@@ -608,6 +794,409 @@ export default function ElementoCanvas({
     obj.tipo,
     selectionCount,
   ]);
+
+  useEffect(() => {
+    latestObjRef.current = obj;
+    latestOnChangeRef.current = onChange;
+    latestOnDragStartPersonalizadoRef.current = onDragStartPersonalizado;
+    latestOnDragEndPersonalizadoRef.current = onDragEndPersonalizado;
+    latestSelectionStateRef.current = {
+      isSelected,
+      selectionCount,
+      tipo: obj.tipo || null,
+      elementId: obj.id,
+    };
+  }, [
+    isSelected,
+    obj,
+    onChange,
+    onDragEndPersonalizado,
+    onDragStartPersonalizado,
+    selectionCount,
+  ]);
+
+  const cancelManualGroupFinishRetry = useCallback(() => {
+    const runtime = manualGroupRuntimeRef.current;
+    if (runtime.finishRetryTimeoutId) {
+      clearTimeout(runtime.finishRetryTimeoutId);
+    }
+    runtime.finishRetryTimeoutId = 0;
+    runtime.finishRetrySessionId = null;
+  }, []);
+
+  const detachManualGroupWindowListeners = useCallback(() => {
+    const current = manualGroupListenersRef.current;
+    try {
+      current?.detach?.();
+    } catch {}
+    manualGroupListenersRef.current = {
+      sessionId: null,
+      detach: null,
+      startHandled: false,
+    };
+    manualGroupRuntimeRef.current.detachWindowListeners = null;
+  }, []);
+
+  const finishManualGroupPointerSession = useCallback((nativeEvent = null, reason = "pointerup", options = {}) => {
+    const session = getAnyGroupDragSession();
+    const latestObj = latestObjRef.current;
+    const latestSelectionState = latestSelectionStateRef.current || {};
+    if (!session?.active || session.engine !== "manual-pointer" || session.leaderId !== latestObj?.id) {
+      cancelManualGroupFinishRetry();
+      detachManualGroupWindowListeners();
+      return null;
+    }
+
+    const forceFinish = options?.force === true;
+    const leaderNodeBeforeFinish = resolveSessionLeaderNode(session);
+    const shouldRetryForUnmount = reason === "leader-unmount" && !forceFinish;
+    const shouldRetryForMissingLeader =
+      !forceFinish &&
+      !leaderNodeBeforeFinish &&
+      (
+        reason === "pointerup" ||
+        reason === "pointercancel" ||
+        reason === "mouseup" ||
+        reason === "touchend" ||
+        reason === "touchcancel"
+      );
+
+    if (shouldRetryForUnmount || shouldRetryForMissingLeader) {
+      const retrySessionId = session.sessionId;
+      cancelManualGroupFinishRetry();
+      manualGroupRuntimeRef.current.finishRetrySessionId = retrySessionId;
+      manualGroupRuntimeRef.current.finishRetryTimeoutId = setTimeout(() => {
+        const activeSession = getAnyGroupDragSession();
+        const runtime = manualGroupRuntimeRef.current;
+        runtime.finishRetryTimeoutId = 0;
+        runtime.finishRetrySessionId = null;
+
+        if (
+          !activeSession?.active ||
+          activeSession.engine !== "manual-pointer" ||
+          activeSession.sessionId !== retrySessionId ||
+          activeSession.leaderId !== latestObjRef.current?.id
+        ) {
+          return;
+        }
+
+        const resolvedLeaderNode = resolveSessionLeaderNode(activeSession);
+        if (resolvedLeaderNode && reason === "leader-unmount") {
+          logSelectedDragDebug("drag:group:leader-ref-recovered", {
+            sessionId: activeSession.sessionId,
+            leaderId: activeSession.leaderId,
+            reason,
+            node: getKonvaNodeDebugInfo(resolvedLeaderNode),
+          });
+          return;
+        }
+
+        const nextReason = resolvedLeaderNode
+          ? reason
+          : (reason === "leader-unmount" ? "leader-unmount" : "timeout-retry-exhausted");
+        runtime.finishPointerSession?.(nativeEvent, nextReason, {
+          force: true,
+        });
+      }, 40);
+
+      logSelectedDragDebug("drag:group:finish-retry-scheduled", {
+        sessionId: session.sessionId,
+        leaderId: session.leaderId,
+        reason,
+        leaderResolvedById: Boolean(leaderNodeBeforeFinish),
+      });
+      return {
+        handled: true,
+        role: "leader",
+        mode: "finish-retry-scheduled",
+        sessionId: session.sessionId,
+        leaderId: session.leaderId,
+        completed: false,
+      };
+    }
+
+    const finishDragEndPerf = startCanvasDragPerfSpan("drag:handler-end", {
+      elementId: latestObj?.id || null,
+      tipo: latestObj?.tipo || null,
+    }, {
+      throttleMs: 60,
+      throttleKey: `drag:handler-end:${latestObj?.id || "unknown"}`,
+    });
+    cancelManualGroupFinishRetry();
+    const leaderNodeForMetrics = resolveSessionLeaderNode(session) || elementNodeRef.current;
+    const finalNodeX =
+      typeof leaderNodeForMetrics?.x === "function"
+        ? leaderNodeForMetrics.x()
+        : latestObj?.x ?? 0;
+    const finalNodeY =
+      typeof leaderNodeForMetrics?.y === "function"
+        ? leaderNodeForMetrics.y()
+        : latestObj?.y ?? 0;
+
+    const finishResult = finishManualGroupDragSession(nativeEvent, {
+      reason,
+      obj: latestObj,
+      onChange: latestOnChangeRef.current,
+      hasDragged,
+    });
+
+    detachManualGroupWindowListeners();
+    cancelPendingTransformerRestore();
+    preDetachedSelectionTransformerRef.current = false;
+
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    dragLifecycleRef.current = {
+      lastStartAt: nowMs,
+      lastStartId: latestObj?.id || null,
+      activeMode: "idle",
+      activeGroupSessionId: null,
+      leaderId: null,
+      suppressIndividualUntilMs: nowMs + 120,
+      suppressSelectionUntilMs: nowMs + 120,
+    };
+
+    if (finishResult?.completed) {
+      notePostDragSelectionGuard();
+      if (typeof window !== "undefined" && finishResult.shouldDispatchDraggingEnd) {
+        window.dispatchEvent(
+          new CustomEvent("dragging-end", {
+            detail: {
+              id: latestObj?.id || null,
+              tipo: latestObj?.tipo || null,
+              group: true,
+              engine: "manual-pointer",
+              sessionId: finishResult.sessionId || null,
+              leaderId: finishResult.leaderId || null,
+            },
+          })
+        );
+      }
+      trackCanvasDragPerf("drag:end", {
+        elementId: latestObj?.id || null,
+        tipo: latestObj?.tipo || null,
+        isSelected: Boolean(latestSelectionState?.isSelected),
+        selectionCount: latestSelectionState?.selectionCount ?? 0,
+        finalX: finalNodeX,
+        finalY: finalNodeY,
+      });
+      if (finishResult.shouldRunPersonalizedEnd) {
+        latestOnDragEndPersonalizadoRef.current?.(latestObj?.id, {
+          pipeline: "group",
+          engine: "manual-pointer",
+          sessionId: finishResult.sessionId || null,
+          leaderId: finishResult.leaderId || latestObj?.id,
+        });
+      }
+      finishDragEndPerf?.({
+        branch: "group-manual",
+        selectionCount: latestSelectionState?.selectionCount ?? 0,
+        isSelected: Boolean(latestSelectionState?.isSelected),
+        reason: "group-manual-end",
+      });
+      endCanvasDragPerfSession({
+        elementId: latestObj?.id || null,
+        tipo: latestObj?.tipo || null,
+        reason: "group-manual-end",
+      });
+      return finishResult;
+    }
+
+    queueTransformerRestoreAfterPredragCancel();
+    finishDragEndPerf?.({
+      branch: "group-manual-cancel",
+      selectionCount: latestSelectionState?.selectionCount ?? 0,
+      isSelected: Boolean(latestSelectionState?.isSelected),
+      reason,
+    });
+    endCanvasDragPerfSession({
+      elementId: latestObj?.id || null,
+      tipo: latestObj?.tipo || null,
+      reason: "group-manual-cancel",
+    });
+    return finishResult;
+  }, [
+    cancelPendingTransformerRestore,
+    cancelManualGroupFinishRetry,
+    detachManualGroupWindowListeners,
+    hasDragged,
+    queueTransformerRestoreAfterPredragCancel,
+  ]);
+
+  const attachManualGroupWindowListeners = useCallback((sessionId) => {
+    if (typeof window === "undefined") return;
+    if (manualGroupListenersRef.current.sessionId === sessionId) return;
+
+    detachManualGroupWindowListeners();
+
+    const handlePointerMove = (nativeEvent) => {
+      const session = getAnyGroupDragSession();
+      if (!session?.active || session.engine !== "manual-pointer" || session.sessionId !== sessionId) {
+        detachManualGroupWindowListeners();
+        return;
+      }
+      if (session.leaderId !== obj.id) return;
+
+      const updateResult = updateManualGroupDragSession(nativeEvent);
+      if (!updateResult?.handled) return;
+
+      if (updateResult.activatedNow && !manualGroupListenersRef.current.startHandled) {
+        const latestObj = latestObjRef.current;
+        const latestSelectionState = latestSelectionStateRef.current || {};
+        manualGroupListenersRef.current.startHandled = true;
+        hasDragged.current = true;
+        window._dragCount = 0;
+        window._lastMouse = null;
+        window._lastElement = null;
+        const nowMs =
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
+        dragLifecycleRef.current = {
+          lastStartAt: nowMs,
+          lastStartId: latestObj?.id || null,
+          activeMode: "group-manual",
+          activeGroupSessionId: updateResult.sessionId || sessionId,
+          leaderId: latestObj?.id || null,
+          suppressIndividualUntilMs: 0,
+          suppressSelectionUntilMs: nowMs + 120,
+        };
+        logElementGestureDebug("element:group-manual-start", {
+          target: resolveSessionLeaderNode(session) || elementNodeRef.current,
+          currentTarget: resolveSessionLeaderNode(session) || elementNodeRef.current,
+          evt: nativeEvent,
+        }, {
+          sessionId: updateResult.sessionId || sessionId,
+        });
+        startCanvasDragPerfSession({
+          elementId: latestObj?.id || null,
+          tipo: latestObj?.tipo || null,
+          isSelected: Boolean(latestSelectionState?.isSelected),
+          selectionCount: latestSelectionState?.selectionCount ?? 0,
+        });
+        latestOnDragStartPersonalizadoRef.current?.(latestObj?.id, {
+          target: resolveSessionLeaderNode(session) || elementNodeRef.current,
+          currentTarget: resolveSessionLeaderNode(session) || elementNodeRef.current,
+          evt: nativeEvent,
+        }, {
+          pipeline: "group",
+          engine: "manual-pointer",
+          sessionId: updateResult.sessionId || sessionId,
+          leaderId: latestObj?.id || null,
+        });
+      }
+
+      if (updateResult.mode === "activated" || updateResult.mode === "preview") {
+        if (nativeEvent?.cancelable) {
+          try {
+            nativeEvent.preventDefault();
+          } catch {}
+        }
+      }
+    };
+
+    const handlePointerEnd = (nativeEvent, reason) => {
+      const session = getAnyGroupDragSession();
+      if (!session?.active || session.engine !== "manual-pointer" || session.sessionId !== sessionId) {
+        detachManualGroupWindowListeners();
+        return;
+      }
+      if (session.leaderId !== obj.id) return;
+      finishManualGroupPointerSession(nativeEvent, reason);
+    };
+
+    if (hasPointerEvents) {
+      const onPointerMoveWindow = (event) => handlePointerMove(event);
+      const onPointerUpWindow = (event) => handlePointerEnd(event, "pointerup");
+      const onPointerCancelWindow = (event) => handlePointerEnd(event, "pointercancel");
+      window.addEventListener("pointermove", onPointerMoveWindow);
+      window.addEventListener("pointerup", onPointerUpWindow);
+      window.addEventListener("pointercancel", onPointerCancelWindow);
+      manualGroupListenersRef.current = {
+        sessionId,
+        startHandled: false,
+        detach: () => {
+          window.removeEventListener("pointermove", onPointerMoveWindow);
+          window.removeEventListener("pointerup", onPointerUpWindow);
+          window.removeEventListener("pointercancel", onPointerCancelWindow);
+        },
+      };
+      return;
+    }
+
+    const onMouseMoveWindow = (event) => handlePointerMove(event);
+    const onMouseUpWindow = (event) => handlePointerEnd(event, "mouseup");
+    const onTouchMoveWindow = (event) => handlePointerMove(event);
+    const onTouchEndWindow = (event) => handlePointerEnd(event, "touchend");
+    const onTouchCancelWindow = (event) => handlePointerEnd(event, "touchcancel");
+    window.addEventListener("mousemove", onMouseMoveWindow);
+    window.addEventListener("mouseup", onMouseUpWindow);
+    window.addEventListener("touchmove", onTouchMoveWindow, { passive: false });
+    window.addEventListener("touchend", onTouchEndWindow);
+    window.addEventListener("touchcancel", onTouchCancelWindow);
+    manualGroupListenersRef.current = {
+      sessionId,
+      startHandled: false,
+      detach: () => {
+        window.removeEventListener("mousemove", onMouseMoveWindow);
+        window.removeEventListener("mouseup", onMouseUpWindow);
+        window.removeEventListener("touchmove", onTouchMoveWindow);
+        window.removeEventListener("touchend", onTouchEndWindow);
+        window.removeEventListener("touchcancel", onTouchCancelWindow);
+      },
+    };
+  }, [
+    detachManualGroupWindowListeners,
+    finishManualGroupPointerSession,
+    hasDragged,
+    hasPointerEvents,
+    logElementGestureDebug,
+  ]);
+
+  const tryArmManualGroupDrag = useCallback((e) => {
+    if (!shouldUseManualGroupDrag()) return null;
+    const result = armManualGroupDragSession(e, obj);
+    if (result?.mode !== "armed") return result;
+
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    dragLifecycleRef.current = {
+      lastStartAt: nowMs,
+      lastStartId: obj.id,
+      activeMode: "group-manual-armed",
+      activeGroupSessionId: result.sessionId || null,
+      leaderId: obj.id,
+      suppressIndividualUntilMs: 0,
+      suppressSelectionUntilMs: nowMs + 120,
+    };
+    e?.currentTarget?.draggable?.(false);
+    attachManualGroupWindowListeners(result.sessionId);
+    return result;
+  }, [
+    attachManualGroupWindowListeners,
+    obj,
+    shouldUseManualGroupDrag,
+  ]);
+
+  useEffect(() => {
+    manualGroupRuntimeRef.current.finishPointerSession = finishManualGroupPointerSession;
+    manualGroupRuntimeRef.current.detachWindowListeners = detachManualGroupWindowListeners;
+  }, [detachManualGroupWindowListeners, finishManualGroupPointerSession]);
+
+  useEffect(() => () => {
+    const session = getAnyGroupDragSession();
+    const runtime = manualGroupRuntimeRef.current;
+    if (session?.active && session.engine === "manual-pointer" && session.leaderId === obj.id) {
+      runtime.finishPointerSession?.(null, "leader-unmount");
+      return;
+    }
+    cancelManualGroupFinishRetry();
+    runtime.detachWindowListeners?.();
+  }, [cancelManualGroupFinishRetry, obj.id]);
 
   const prepareSelectedElementForPossibleDrag = useCallback((e) => {
     if (!isSelected || selectionCount !== 1) return;
@@ -637,6 +1226,15 @@ export default function ElementoCanvas({
     e && (e.cancelBubble = true);
     e?.evt && (e.evt.cancelBubble = true);
 
+    if (shouldSuppressSelectionGesture()) {
+      logInlineIntentEmitter("skip-due-manual-group-session", {
+        id: obj.id,
+        tipo: obj.tipo,
+        gesture,
+      });
+      return;
+    }
+
     if (hasDragged.current) {
       logInlineIntentEmitter("skip-due-drag", {
         id: obj.id,
@@ -662,7 +1260,7 @@ export default function ElementoCanvas({
     });
 
     onSelect(obj.id, obj, e, { gesture });
-  }, [hasDragged, logElementGestureDebug, obj, onSelect]);
+  }, [hasDragged, logElementGestureDebug, obj, onSelect, shouldSuppressSelectionGesture]);
 
   const handleClick = useCallback(
     (e) => {
@@ -678,20 +1276,27 @@ export default function ElementoCanvas({
     [emitSelectionGesture]
   );
 
+  const manualGroupPreviewPose = getManualGroupDragPreviewPose(obj.id);
+  const manualGroupPreviewSignature = manualGroupPreviewPose?.signature || "";
 
 
   // Ã°Å¸â€Â¥ MEMOIZAR PROPIEDADES COMUNES
   const commonProps = useMemo(() => ({
-    x: obj.x ?? 0,
-    y: obj.y ?? 0,
+    x: manualGroupPreviewPose?.x ?? (obj.x ?? 0),
+    y: manualGroupPreviewPose?.y ?? (obj.y ?? 0),
     rotation: obj.rotation || 0,
     scaleX: obj.scaleX || 1,
     scaleY: obj.scaleY || 1,
-    draggable: !editingMode && !inlineEditPointerActive,
-    listening: !isInEditMode || inlineEditPointerActive,
+    draggable: resolveInteractionDraggableEnabled(),
+    listening: resolveInteractionListeningEnabled(),
 
     onMouseDown: !hasPointerEvents ? (e) => {
       e.cancelBubble = true;
+      if (isActiveGroupFollowerInteractionSuppressed()) {
+        e.currentTarget?.draggable?.(false);
+        e.currentTarget?.listening?.(false);
+        return;
+      }
       hasDragged.current = false;
       logElementGestureDebug("element:mousedown", e);
       if (inlineEditPointerActive) {
@@ -699,12 +1304,23 @@ export default function ElementoCanvas({
         return;
       }
 
-      e.currentTarget?.draggable(true);
+       const manualGroupResult = tryArmManualGroupDrag(e);
+       if (manualGroupResult?.handled) {
+         return;
+       }
+
+      e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
+      e.currentTarget?.listening?.(resolveInteractionListeningEnabled());
       prepareSelectedElementForPossibleDrag(e);
     } : undefined,
 
     onTouchStart: !hasPointerEvents ? (e) => {
       e.cancelBubble = true;
+      if (isActiveGroupFollowerInteractionSuppressed()) {
+        e.currentTarget?.draggable?.(false);
+        e.currentTarget?.listening?.(false);
+        return;
+      }
       hasDragged.current = false;
       logElementGestureDebug("element:touchstart", e);
       if (inlineEditPointerActive) {
@@ -712,12 +1328,23 @@ export default function ElementoCanvas({
         return;
       }
 
-      e.currentTarget?.draggable(true);
+      const manualGroupResult = tryArmManualGroupDrag(e);
+      if (manualGroupResult?.handled) {
+        return;
+      }
+
+      e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
+      e.currentTarget?.listening?.(resolveInteractionListeningEnabled());
       prepareSelectedElementForPossibleDrag(e);
     } : undefined,
 
     onPointerDown: (e) => {
       e.cancelBubble = true;
+      if (isActiveGroupFollowerInteractionSuppressed()) {
+        e.currentTarget?.draggable?.(false);
+        e.currentTarget?.listening?.(false);
+        return;
+      }
       hasDragged.current = false;
       logElementGestureDebug("element:pointerdown", e);
       if (inlineEditPointerActive) {
@@ -725,11 +1352,26 @@ export default function ElementoCanvas({
         return;
       }
 
-      e.currentTarget?.draggable(true);
+      const manualGroupResult = tryArmManualGroupDrag(e);
+      if (manualGroupResult?.handled) {
+        return;
+      }
+
+      e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
+      e.currentTarget?.listening?.(resolveInteractionListeningEnabled());
       prepareSelectedElementForPossibleDrag(e);
     },
 
     onMouseUp: !hasPointerEvents ? (e) => {
+      const dragLifecycle = dragLifecycleRef.current || {};
+      if (
+        isActiveGroupFollowerInteractionSuppressed() ||
+        isManualGroupDragMemberLocked(obj.id) ||
+        String(dragLifecycle.activeMode || "").startsWith("group-manual")
+      ) {
+        syncInteractionDraggableState(e.currentTarget);
+        return;
+      }
       if (!hasDragged.current) {
         logElementGestureDebug("element:mouseup", e);
         syncInteractionDraggableState(e.currentTarget);
@@ -738,6 +1380,15 @@ export default function ElementoCanvas({
     } : undefined,
 
     onTouchEnd: !hasPointerEvents ? (e) => {
+      const dragLifecycle = dragLifecycleRef.current || {};
+      if (
+        isActiveGroupFollowerInteractionSuppressed() ||
+        isManualGroupDragMemberLocked(obj.id) ||
+        String(dragLifecycle.activeMode || "").startsWith("group-manual")
+      ) {
+        syncInteractionDraggableState(e.currentTarget);
+        return;
+      }
       if (!hasDragged.current) {
         logElementGestureDebug("element:touchend", e);
         syncInteractionDraggableState(e.currentTarget);
@@ -746,6 +1397,15 @@ export default function ElementoCanvas({
     } : undefined,
 
     onPointerUp: (e) => {
+      const dragLifecycle = dragLifecycleRef.current || {};
+      if (
+        isActiveGroupFollowerInteractionSuppressed() ||
+        isManualGroupDragMemberLocked(obj.id) ||
+        String(dragLifecycle.activeMode || "").startsWith("group-manual")
+      ) {
+        syncInteractionDraggableState(e.currentTarget);
+        return;
+      }
       if (!hasDragged.current) {
         logElementGestureDebug("element:pointerup", e);
         syncInteractionDraggableState(e.currentTarget);
@@ -759,11 +1419,32 @@ export default function ElementoCanvas({
     onDblTap: handleDoubleClick,
 
     onDragStart: (e) => {
+      const manualSession = getAnyGroupDragSession();
+      if (
+        manualSession?.active &&
+        manualSession.engine === "manual-pointer" &&
+        Array.isArray(manualSession.elementIds) &&
+        manualSession.elementIds.includes(obj.id)
+      ) {
+        try {
+          if (typeof e?.target?.isDragging === "function" && e.target.isDragging()) {
+            e.target.stopDrag?.();
+          }
+        } catch {}
+        logElementGestureDebug("drag:group:native-drag-blocked", e, {
+          sessionId: manualSession.sessionId || null,
+          leaderId: manualSession.leaderId || null,
+          phase: manualSession.phase || null,
+        });
+        return;
+      }
+
       const nowMs =
         typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
           : Date.now();
-      const lastDragStart = dragLifecycleRef.current;
+      const dragLifecycle = dragLifecycleRef.current || {};
+      const lastDragStart = dragLifecycle;
       const isDuplicateDragStart =
         lastDragStart.lastStartId === obj.id &&
         nowMs - Number(lastDragStart.lastStartAt || 0) < 80;
@@ -785,14 +1466,54 @@ export default function ElementoCanvas({
         return;
       }
 
+      const dragNode = e?.target || e?.currentTarget || elementNodeRef.current;
+      const shouldBlockNativeGroupStart =
+        shouldUseManualGroupDrag() ||
+        dragLifecycle.activeMode === "group-manual-armed" ||
+        dragLifecycle.activeMode === "group-manual";
+
+      if (shouldBlockNativeGroupStart) {
+        try {
+          dragNode?.stopDrag?.();
+        } catch {}
+        syncInteractionDraggableState(dragNode);
+        logElementGestureDebug("drag:group:native-start-blocked", e, {
+          reason: "manual-group-eligible",
+          activeMode: dragLifecycle.activeMode || "idle",
+        });
+        return;
+      }
+
+      const groupDragResult = startDragGrupalLider(e, obj);
+      if (groupDragResult.mode === "follower-ignored") {
+        ignoreActiveGroupFollowerDragStart(e, groupDragResult);
+        return;
+      }
+      if (groupDragResult.mode === "duplicate-leader-ignored") {
+        return;
+      }
+
+      const startedGroupDrag = groupDragResult.mode === "started";
+      if (!startedGroupDrag && shouldSuppressIndividualPipeline(obj.id, nowMs)) {
+        logElementGestureDebug("element:dragstart-individual-suppressed", e, {
+          suppressUntilMs: Number(dragLifecycleRef.current?.suppressIndividualUntilMs || 0),
+          recentGroupGuard: shouldSuppressIndividualDragForElement(obj.id),
+        });
+        return;
+      }
+
       dragLifecycleRef.current = {
         lastStartAt: nowMs,
         lastStartId: obj.id,
+        activeMode: startedGroupDrag ? "group" : "individual",
+        activeGroupSessionId: startedGroupDrag ? groupDragResult.sessionId || null : null,
+        leaderId: startedGroupDrag ? groupDragResult.leaderId || obj.id : null,
+        suppressIndividualUntilMs: 0,
+        suppressSelectionUntilMs: 0,
       };
       cancelPendingTransformerRestore();
       logElementGestureDebug("element:dragstart", e);
 
-      const dragNode = e?.target;
       startCanvasDragPerfSession({
         elementId: obj.id,
         tipo: obj.tipo,
@@ -806,7 +1527,18 @@ export default function ElementoCanvas({
         throttleMs: 60,
         throttleKey: `drag:handler-start:${obj.id}`,
       });
-      onDragStartPersonalizado?.(obj.id, e);
+      const dragPipelineMeta = startedGroupDrag
+        ? {
+            pipeline: "group",
+            sessionId: groupDragResult.sessionId || null,
+            leaderId: groupDragResult.leaderId || obj.id,
+          }
+        : {
+            pipeline: "individual",
+            sessionId: null,
+            leaderId: null,
+          };
+      onDragStartPersonalizado?.(obj.id, e, dragPipelineMeta);
       trackCanvasDragPerf("drag:start", {
         elementId: obj.id,
         tipo: obj.tipo,
@@ -821,7 +1553,7 @@ export default function ElementoCanvas({
         rotation: obj.rotation ?? 0,
       });
 
-      if (obj.tipo === "imagen" && img && imageCropData) {
+      if (!startedGroupDrag && obj.tipo === "imagen" && img && imageCropData) {
         const imageDragNode = dragNode || elementNodeRef.current;
 
         if (preDetachedSelectionTransformerRef.current) {
@@ -864,35 +1596,45 @@ export default function ElementoCanvas({
       window._lastElement = null;
 
       hasDragged.current = true;
-      window._isDragging = true;
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("dragging-start", {
-            detail: {
-              id: obj.id,
-              tipo: obj.tipo || null,
-            },
-          })
-        );
-      }
-
-
-      // Ã°Å¸â€Â¥ Intentar drag grupal
-      const fueGrupal = startDragGrupalLider(e, obj);
-      if (!fueGrupal) {
+      if (!startedGroupDrag) {
+        window._isDragging = true;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("dragging-start", {
+              detail: {
+                id: obj.id,
+                tipo: obj.tipo || null,
+              },
+            })
+          );
+        }
         startDragIndividual(e, dragStartPos);
       }
       finishDragStartPerf?.({
-        branch: fueGrupal ? "group" : "individual",
+        branch: startedGroupDrag ? "group" : "individual",
         selectionCount,
         isSelected,
-        imageDragPerfActive: obj.tipo === "imagen" && img && imageCropData ? true : false,
+        imageDragPerfActive:
+          !startedGroupDrag && obj.tipo === "imagen" && img && imageCropData
+            ? true
+            : false,
       });
     },
 
 
     onDragMove: (e) => {
+      const manualSession = getAnyGroupDragSession();
+      if (
+        manualSession?.active &&
+        manualSession.engine === "manual-pointer" &&
+        Array.isArray(manualSession.elementIds) &&
+        manualSession.elementIds.includes(obj.id)
+      ) {
+        return;
+      }
+
       hasDragged.current = true;
+      const dragLifecycle = dragLifecycleRef.current || {};
       const finishDragMovePerf = startCanvasDragPerfSpan("drag:handler-move", {
         elementId: obj.id,
         tipo: obj.tipo,
@@ -940,10 +1682,8 @@ export default function ElementoCanvas({
         throttleKey: `drag:move:${obj.id}`,
       });
 
-      // Ã°Å¸â€Â¥ DRAG GRUPAL - SOLO EL LÃƒÂDER PROCESA
-      if (window._grupoLider && obj.id === window._grupoLider) {
+      if (dragLifecycle.activeMode === "group" && dragLifecycle.leaderId === obj.id) {
         previewDragGrupal(e, obj, onChange);
-        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
         finishDragMovePerf?.({
           branch: "group-leader",
           selectionCount,
@@ -953,10 +1693,9 @@ export default function ElementoCanvas({
         return;
       }
 
-      // Ã°Å¸â€Â¥ SI ES SEGUIDOR DEL GRUPO, NO PROCESAR
-      if (window._grupoLider) {
+      if (dragLifecycle.activeMode === "group") {
         const elementosSeleccionados = window._elementosSeleccionados || [];
-        if (elementosSeleccionados.includes(obj.id) && obj.id !== window._grupoLider) {
+        if (elementosSeleccionados.includes(obj.id) && obj.id !== dragLifecycle.leaderId) {
           finishDragMovePerf?.({
             branch: "group-follower-skip",
             selectionCount,
@@ -966,12 +1705,22 @@ export default function ElementoCanvas({
         }
       }
 
-      // Ã°Å¸â€â€ž DRAG INDIVIDUAL - Solo si no hay drag grupal activo
-      if (!window._grupoLider) {
-        previewDragIndividual(e, obj, onDragMovePersonalizado);
+      if (shouldSuppressIndividualPipeline(obj.id)) {
+        finishDragMovePerf?.({
+          branch: "individual-suppressed",
+          selectionCount,
+          isSelected,
+        });
+        return;
       }
+
+      previewDragIndividual(e, obj, onDragMovePersonalizado, {
+        pipeline: "individual",
+        sessionId: null,
+        leaderId: null,
+      });
       finishDragMovePerf?.({
-        branch: window._grupoLider ? "group-nonleader" : "individual",
+        branch: "individual",
         selectionCount,
         isSelected,
       });
@@ -981,10 +1730,27 @@ export default function ElementoCanvas({
 
 
     onDragEnd: (e) => {
+      const manualSession = getAnyGroupDragSession();
+      if (
+        manualSession?.active &&
+        manualSession.engine === "manual-pointer" &&
+        Array.isArray(manualSession.elementIds) &&
+        manualSession.elementIds.includes(obj.id)
+      ) {
+        logElementGestureDebug("drag:group:native-drag-blocked", e, {
+          sessionId: manualSession.sessionId || null,
+          leaderId: manualSession.leaderId || null,
+          phase: manualSession.phase || null,
+          reason: "native-dragend-ignored",
+        });
+        return;
+      }
+
+      const dragLifecycle = dragLifecycleRef.current || {};
       logElementGestureDebug("element:dragend", e, {
         wasDragging: Boolean(window._isDragging),
+        dragMode: dragLifecycle.activeMode || "idle",
       });
-      notePostDragSelectionGuard();
       const finishDragEndPerf = startCanvasDragPerfSpan("drag:handler-end", {
         elementId: obj.id,
         tipo: obj.tipo,
@@ -992,6 +1758,107 @@ export default function ElementoCanvas({
         throttleMs: 60,
         throttleKey: `drag:handler-end:${obj.id}`,
       });
+      const groupDragResult = endDragGrupal(e, obj, onChange, hasDragged);
+
+      if (groupDragResult.role === "follower") {
+        finishDragEndPerf?.({
+          branch: "group-follower-ignored",
+          selectionCount,
+          isSelected,
+          reason: "group-follower-end-ignored",
+        });
+        return;
+      }
+
+      if (groupDragResult.role === "leader" && groupDragResult.completed) {
+        notePostDragSelectionGuard();
+        window._isDragging = false;
+        if (typeof window !== "undefined" && groupDragResult.shouldDispatchDraggingEnd) {
+          window.dispatchEvent(
+            new CustomEvent("dragging-end", {
+              detail: {
+                id: obj.id,
+                tipo: obj.tipo || null,
+                group: true,
+                sessionId: groupDragResult.sessionId || null,
+                leaderId: groupDragResult.leaderId || null,
+              },
+            })
+          );
+        }
+        cancelPendingTransformerRestore();
+        preDetachedSelectionTransformerRef.current = false;
+        const nowMs =
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
+        dragLifecycleRef.current = {
+          lastStartAt: nowMs,
+          lastStartId: obj.id,
+          activeMode: "idle",
+          activeGroupSessionId: null,
+          leaderId: null,
+          suppressIndividualUntilMs: nowMs + 120,
+          suppressSelectionUntilMs: nowMs + 120,
+        };
+        trackCanvasDragPerf("drag:end", {
+          elementId: obj.id,
+          tipo: obj.tipo,
+          isSelected,
+          selectionCount,
+          finalX: typeof e?.currentTarget?.x === "function" ? e.currentTarget.x() : obj.x ?? 0,
+          finalY: typeof e?.currentTarget?.y === "function" ? e.currentTarget.y() : obj.y ?? 0,
+        });
+        if (groupDragResult.shouldRunPersonalizedEnd) {
+          onDragEndPersonalizado?.(obj.id, {
+            pipeline: "group",
+            sessionId: groupDragResult.sessionId || null,
+            leaderId: groupDragResult.leaderId || obj.id,
+          });
+        }
+        finishDragEndPerf?.({
+          branch: "group",
+          selectionCount,
+          isSelected,
+          reason: "group-drag-end",
+        });
+        endCanvasDragPerfSession({
+          elementId: obj.id,
+          tipo: obj.tipo,
+          reason: "group-drag-end",
+        });
+        return;
+      }
+
+      if (dragLifecycle.activeMode === "group") {
+        const nowMs =
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
+        dragLifecycleRef.current = {
+          lastStartAt: nowMs,
+          lastStartId: obj.id,
+          activeMode: "idle",
+          activeGroupSessionId: null,
+          leaderId: null,
+          suppressIndividualUntilMs: nowMs + 120,
+          suppressSelectionUntilMs: nowMs + 120,
+        };
+        finishDragEndPerf?.({
+          branch: "group-suppressed-fallback",
+          selectionCount,
+          isSelected,
+          reason: groupDragResult.mode || "group-session-missing",
+        });
+        endCanvasDragPerfSession({
+          elementId: obj.id,
+          tipo: obj.tipo,
+          reason: "group-drag-fallback-suppressed",
+        });
+        return;
+      }
+
+      notePostDragSelectionGuard();
 
       window._isDragging = false;
       if (typeof window !== "undefined") {
@@ -1009,6 +1876,11 @@ export default function ElementoCanvas({
       dragLifecycleRef.current = {
         lastStartAt: 0,
         lastStartId: null,
+        activeMode: "idle",
+        activeGroupSessionId: null,
+        leaderId: null,
+        suppressIndividualUntilMs: 0,
+        suppressSelectionUntilMs: 0,
       };
       trackCanvasDragPerf("drag:end", {
         elementId: obj.id,
@@ -1030,26 +1902,19 @@ export default function ElementoCanvas({
         });
       }
 
-      // Ã°Å¸â€Â¥ Intentar drag grupal
-      const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged);
-      if (fueGrupal) {
-        onDragEndPersonalizado?.();
-        finishDragEndPerf?.({
-          branch: "group",
-          selectionCount,
-          isSelected,
-          reason: "group-drag-end",
-        });
-        endCanvasDragPerfSession({
-          elementId: obj.id,
-          tipo: obj.tipo,
-          reason: "group-drag-end",
-        });
-        return;
-      }
-
       // Ã°Å¸â€â€ž DRAG INDIVIDUAL (no cambiÃƒÂ³)
-      endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+      endDragIndividual(
+        obj,
+        node,
+        onChange,
+        onDragEndPersonalizado,
+        hasDragged,
+        {
+          pipeline: "individual",
+          sessionId: null,
+          leaderId: null,
+        }
+      );
       finishDragEndPerf?.({
         branch: "individual",
         selectionCount,
@@ -1073,7 +1938,10 @@ export default function ElementoCanvas({
     isInEditMode,
     handleClick,
     handleDoubleClick,
+    isActiveGroupFollowerInteractionSuppressed,
     logElementGestureDebug,
+    resolveInteractionDraggableEnabled,
+    resolveInteractionListeningEnabled,
     syncInteractionDraggableState,
     onInlineEditPointer,
     onDragMovePersonalizado,
@@ -1090,8 +1958,13 @@ export default function ElementoCanvas({
     onChange,
     onHover,
     cancelPendingTransformerRestore,
+    ignoreActiveGroupFollowerDragStart,
     queueTransformerRestoreAfterPredragCancel,
     prepareSelectedElementForPossibleDrag,
+    shouldSuppressIndividualPipeline,
+    tryArmManualGroupDrag,
+    shouldUseManualGroupDrag,
+    manualGroupPreviewSignature,
   ]);
 
   // Ã°Å¸â€Â¥ MEMOIZAR HANDLERS HOVER
@@ -2243,6 +3116,7 @@ export default function ElementoCanvas({
 
   return null;
 }
+
 
 
 

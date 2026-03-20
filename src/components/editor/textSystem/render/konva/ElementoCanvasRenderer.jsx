@@ -64,6 +64,19 @@ import {
   clearCanonicalPoseMetadata,
   markTextOriginOffsetCanonicalPose,
 } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import {
+  getImageResizeNodeSnapshot,
+  trackImageResizeDebug,
+} from "@/components/editor/canvasEditor/imageResizeDebug";
+import { trackImageRotationDebug } from "@/components/editor/canvasEditor/imageRotationDebug";
+import {
+  clearImageResizeSessionActive,
+  clearPendingImageTransformCommit,
+  getImageResizeSession,
+  getPendingImageTransformCommit,
+  hasImageTransformCommitSettled,
+  resolveImageObjectWithPendingCommit,
+} from "@/components/editor/canvasEditor/imagePendingTransformCommit";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -98,6 +111,38 @@ function isInlineDiagCompactEnabled() {
 
 function supportsPointerEvents() {
   return typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+}
+
+function isNativePressStillActive(nativeEvent) {
+  if (!nativeEvent) return false;
+
+  const touches = nativeEvent.touches;
+  if (touches && typeof touches.length === "number") {
+    return touches.length > 0;
+  }
+
+  const buttons = Number(nativeEvent.buttons);
+  if (Number.isFinite(buttons)) {
+    return buttons !== 0;
+  }
+
+  const which = Number(nativeEvent.which);
+  if (Number.isFinite(which)) {
+    return which > 0;
+  }
+
+  const pressure = Number(nativeEvent.pressure);
+  if (Number.isFinite(pressure)) {
+    return pressure > 0;
+  }
+
+  const eventType =
+    typeof nativeEvent.type === "string" ? nativeEvent.type.toLowerCase() : "";
+  if (eventType.endsWith("up") || eventType.endsWith("cancel")) {
+    return false;
+  }
+
+  return true;
 }
 
 function detachSelectionTransformerForNode(node, payload = null) {
@@ -309,6 +354,9 @@ export default function ElementoCanvas({
     detach: null,
     startHandled: false,
   });
+  const predragReleaseListenersRef = useRef({
+    detach: null,
+  });
   const manualGroupRuntimeRef = useRef({
     finishPointerSession: null,
     detachWindowListeners: null,
@@ -325,10 +373,19 @@ export default function ElementoCanvas({
     tipo: obj.tipo || null,
     elementId: obj.id,
   });
+  const pendingPrimarySelectionClickGuardRef = useRef({
+    elementId: null,
+    expiresAt: 0,
+  });
   const renderCountRef = useRef(0);
   const renderSnapshotRef = useRef(null);
   const objRefSnapshotRef = useRef(null);
   const objRefVersionRef = useRef(0);
+  const imageSelectionTransitionDebugRef = useRef({
+    isSelected: null,
+    pendingCommitActive: false,
+    resizeSessionActive: false,
+  });
   const lastImagePerfSignatureRef = useRef("");
   const preDetachedSelectionTransformerRef = useRef(false);
   const pendingTransformerRestoreRafRef = useRef(0);
@@ -336,10 +393,216 @@ export default function ElementoCanvas({
   const inlineEditPointerActive =
     isInEditMode && typeof onInlineEditPointer === "function";
   const hasPointerEvents = supportsPointerEvents();
+  const imageResizeSession =
+    obj.tipo === "imagen"
+      ? getImageResizeSession(elementNodeRef.current)
+      : null;
+  const pendingImageTransformCommit =
+    obj.tipo === "imagen"
+      ? getPendingImageTransformCommit(elementNodeRef.current)
+      : null;
+  const isImageResizeGestureActive =
+    typeof window !== "undefined"
+      ? Boolean(window._resizeData?.isResizing)
+      : false;
+
+  const renderImageObject =
+    obj.tipo === "imagen" &&
+    pendingImageTransformCommit &&
+    !hasImageTransformCommitSettled(obj, pendingImageTransformCommit)
+      ? resolveImageObjectWithPendingCommit(obj, pendingImageTransformCommit)
+      : obj;
+
   const imageCropData = useMemo(() => {
-    if (obj.tipo !== "imagen" || !img) return null;
-    return resolveKonvaImageCrop(obj, img);
-  }, [img, obj]);
+    if (renderImageObject.tipo !== "imagen" || !img) return null;
+    return resolveKonvaImageCrop(renderImageObject, img);
+  }, [img, renderImageObject]);
+
+  useEffect(() => {
+    if (obj.tipo !== "imagen") return;
+
+    const previous = imageSelectionTransitionDebugRef.current || {};
+    const nextIsSelected = Boolean(isSelected);
+    const nextPendingCommitActive = Boolean(pendingImageTransformCommit);
+    const nextResizeSessionActive = Boolean(imageResizeSession);
+    const selectionChanged =
+      previous.isSelected !== null && previous.isSelected !== nextIsSelected;
+    const pendingCommitChanged =
+      previous.pendingCommitActive !== nextPendingCommitActive;
+    const resizeSessionChanged =
+      previous.resizeSessionActive !== nextResizeSessionActive;
+
+    imageSelectionTransitionDebugRef.current = {
+      isSelected: nextIsSelected,
+      pendingCommitActive: nextPendingCommitActive,
+      resizeSessionActive: nextResizeSessionActive,
+    };
+
+    if (
+      !selectionChanged &&
+      !pendingCommitChanged &&
+      !resizeSessionChanged &&
+      !nextIsSelected &&
+      !nextPendingCommitActive
+    ) {
+      return;
+    }
+
+    trackImageRotationDebug("image-rotate:renderer-selection-state", {
+      elementId: obj.id,
+      isSelected: nextIsSelected,
+      previousIsSelected:
+        previous.isSelected == null ? null : Boolean(previous.isSelected),
+      selectionChanged,
+      selectionCount,
+      pendingCommitActive: nextPendingCommitActive,
+      pendingCommitChanged,
+      resizeSessionActive: nextResizeSessionActive,
+      resizeSessionChanged,
+      object: {
+        x: obj.x ?? null,
+        y: obj.y ?? null,
+        yNorm: obj.yNorm ?? null,
+        width: obj.width ?? null,
+        height: obj.height ?? null,
+        rotation: obj.rotation ?? null,
+        scaleX: obj.scaleX ?? 1,
+        scaleY: obj.scaleY ?? 1,
+        cropX: obj.cropX ?? null,
+        cropY: obj.cropY ?? null,
+        cropWidth: obj.cropWidth ?? null,
+        cropHeight: obj.cropHeight ?? null,
+      },
+      renderObject: {
+        x: renderImageObject?.x ?? null,
+        y: renderImageObject?.y ?? null,
+        yNorm: renderImageObject?.yNorm ?? null,
+        width: renderImageObject?.width ?? null,
+        height: renderImageObject?.height ?? null,
+        rotation: renderImageObject?.rotation ?? null,
+        scaleX: renderImageObject?.scaleX ?? 1,
+        scaleY: renderImageObject?.scaleY ?? 1,
+      },
+      pendingCommit: pendingImageTransformCommit
+        ? {
+            x: pendingImageTransformCommit.x ?? null,
+            y: pendingImageTransformCommit.y ?? null,
+            width: pendingImageTransformCommit.width ?? null,
+            height: pendingImageTransformCommit.height ?? null,
+            rotation: pendingImageTransformCommit.rotation ?? null,
+            scaleX: pendingImageTransformCommit.scaleX ?? null,
+            scaleY: pendingImageTransformCommit.scaleY ?? null,
+            createdAtMs: pendingImageTransformCommit.createdAtMs ?? null,
+          }
+        : null,
+      node: getImageResizeNodeSnapshot(elementNodeRef.current),
+    }, {
+      throttleMs: 40,
+      throttleKey: `image-rotate:renderer-selection-state:${obj.id}`,
+    });
+  }, [
+    imageResizeSession,
+    isSelected,
+    obj.cropHeight,
+    obj.cropWidth,
+    obj.cropX,
+    obj.cropY,
+    obj.height,
+    obj.id,
+    obj.rotation,
+    obj.scaleX,
+    obj.scaleY,
+    obj.tipo,
+    obj.width,
+    obj.x,
+    obj.y,
+    pendingImageTransformCommit,
+    renderImageObject,
+    selectionCount,
+  ]);
+
+  useEffect(() => {
+    if (obj.tipo !== "imagen") return;
+
+    const node = elementNodeRef.current;
+    if (!node) return;
+
+    if (!isSelected) {
+      const commitSettled = hasImageTransformCommitSettled(obj, pendingImageTransformCommit);
+      trackImageRotationDebug("image-rotate:deselect-before-clear", {
+        elementId: obj.id,
+        selectionCount,
+        commitSettled,
+        pendingCommitActive: Boolean(pendingImageTransformCommit),
+        resizeSessionActive: Boolean(imageResizeSession),
+        object: {
+          x: obj.x ?? null,
+          y: obj.y ?? null,
+          yNorm: obj.yNorm ?? null,
+          width: obj.width ?? null,
+          height: obj.height ?? null,
+          rotation: obj.rotation ?? null,
+          scaleX: obj.scaleX ?? 1,
+          scaleY: obj.scaleY ?? 1,
+        },
+        renderObject: {
+          x: renderImageObject?.x ?? null,
+          y: renderImageObject?.y ?? null,
+          yNorm: renderImageObject?.yNorm ?? null,
+          width: renderImageObject?.width ?? null,
+          height: renderImageObject?.height ?? null,
+          rotation: renderImageObject?.rotation ?? null,
+          scaleX: renderImageObject?.scaleX ?? 1,
+          scaleY: renderImageObject?.scaleY ?? 1,
+        },
+        pendingCommit: pendingImageTransformCommit
+          ? {
+              x: pendingImageTransformCommit.x ?? null,
+              y: pendingImageTransformCommit.y ?? null,
+              width: pendingImageTransformCommit.width ?? null,
+              height: pendingImageTransformCommit.height ?? null,
+              rotation: pendingImageTransformCommit.rotation ?? null,
+            }
+          : null,
+        node: getImageResizeNodeSnapshot(node),
+      });
+
+      clearImageResizeSessionActive(node);
+      if (commitSettled) {
+        clearPendingImageTransformCommit(node);
+      }
+
+      trackImageRotationDebug("image-rotate:deselect-after-clear", {
+        elementId: obj.id,
+        selectionCount,
+        commitSettled,
+        pendingCommitActive: Boolean(getPendingImageTransformCommit(node)),
+        resizeSessionActive: Boolean(getImageResizeSession(node)),
+        node: getImageResizeNodeSnapshot(node),
+      });
+      return;
+    }
+
+    if (hasImageTransformCommitSettled(obj, pendingImageTransformCommit)) {
+      clearImageResizeSessionActive(node);
+      clearPendingImageTransformCommit(node);
+    }
+  }, [
+    imageResizeSession,
+    isSelected,
+    obj,
+    obj.height,
+    obj.id,
+    obj.rotation,
+    obj.scaleX,
+    obj.scaleY,
+    obj.width,
+    obj.x,
+    obj.y,
+    pendingImageTransformCommit,
+    renderImageObject,
+    selectionCount,
+  ]);
 
   useEffect(() => {
     renderCountRef.current += 1;
@@ -447,7 +710,10 @@ export default function ElementoCanvas({
       !imageCropData ||
       !isSelected ||
       selectionCount !== 1 ||
-      isInEditMode
+      isInEditMode ||
+      isImageResizeGestureActive ||
+      imageResizeSession ||
+      pendingImageTransformCommit
     ) {
       if (
         selectionImageCacheWarmupRafRef.current &&
@@ -498,7 +764,9 @@ export default function ElementoCanvas({
     imageCropData,
     img,
     isInEditMode,
+    isImageResizeGestureActive,
     isSelected,
+    imageResizeSession,
     obj.id,
     obj.src,
     obj.tipo,
@@ -508,6 +776,7 @@ export default function ElementoCanvas({
     obj.cropY,
     obj.cropWidth,
     obj.cropHeight,
+    pendingImageTransformCommit,
     selectionCount,
   ]);
 
@@ -531,6 +800,7 @@ export default function ElementoCanvas({
       cacheStateKey: "canvasSelectionCache",
       manageActivePayload: false,
     });
+    clearImageResizeSessionActive(elementNodeRef.current);
     deactivateImageLayerPerf(elementNodeRef.current, obj.id);
       restoreNodeFromOverlayLayer(elementNodeRef.current, obj.id, {
         eventPrefix: "image:drag-layer",
@@ -640,6 +910,62 @@ export default function ElementoCanvas({
     inlineEditPointerActive,
     isInEditMode,
     isSelected,
+    selectionCount,
+  ]);
+
+  useEffect(() => {
+    if (obj.tipo !== "imagen" || !isSelected) return;
+
+    trackImageResizeDebug("renderer:selected-image-sync", {
+      elementId: obj.id,
+      isSelected: Boolean(isSelected),
+      selectionCount,
+      resizeActive:
+        typeof window !== "undefined"
+          ? Boolean(window._resizeData?.isResizing)
+          : false,
+      resizeSessionActive: Boolean(imageResizeSession),
+      object: {
+        width: obj.width ?? null,
+        height: obj.height ?? null,
+        scaleX: obj.scaleX ?? 1,
+        scaleY: obj.scaleY ?? 1,
+        cropX: obj.cropX ?? null,
+        cropY: obj.cropY ?? null,
+        cropWidth: obj.cropWidth ?? null,
+        cropHeight: obj.cropHeight ?? null,
+        rotation: obj.rotation ?? null,
+      },
+      imageCrop: imageCropData
+        ? {
+            width: imageCropData.width ?? null,
+            height: imageCropData.height ?? null,
+            cropX: imageCropData.crop?.x ?? null,
+            cropY: imageCropData.crop?.y ?? null,
+            cropWidth: imageCropData.crop?.width ?? null,
+            cropHeight: imageCropData.crop?.height ?? null,
+          }
+        : null,
+      node: getImageResizeNodeSnapshot(elementNodeRef.current),
+    }, {
+      throttleMs: 40,
+      throttleKey: `renderer:selected-image-sync:${obj.id}`,
+    });
+  }, [
+    imageCropData,
+    isSelected,
+    obj.cropHeight,
+    obj.cropWidth,
+    obj.cropX,
+    obj.cropY,
+    obj.height,
+    obj.id,
+    obj.rotation,
+    obj.scaleX,
+    obj.scaleY,
+    obj.tipo,
+    obj.width,
+    imageResizeSession,
     selectionCount,
   ]);
 
@@ -795,6 +1121,67 @@ export default function ElementoCanvas({
     selectionCount,
   ]);
 
+  const armPrimarySelectionClickGuard = useCallback(() => {
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    pendingPrimarySelectionClickGuardRef.current = {
+      elementId: obj.id,
+      expiresAt: nowMs + 500,
+    };
+  }, [obj.id]);
+
+  const consumePrimarySelectionClickGuard = useCallback(() => {
+    const guard = pendingPrimarySelectionClickGuardRef.current || {};
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const active =
+      guard.elementId === obj.id &&
+      Number.isFinite(Number(guard.expiresAt)) &&
+      Number(guard.expiresAt) >= nowMs;
+
+    pendingPrimarySelectionClickGuardRef.current = {
+      elementId: null,
+      expiresAt: 0,
+    };
+
+    return active;
+  }, [obj.id]);
+
+  const maybeSelectElementOnPress = useCallback((event) => {
+    if (!onSelect) return false;
+    if (isSelected) return false;
+    if (selectionCount > 1) return false;
+    if (inlineEditPointerActive) return false;
+    if (shouldSuppressSelectionGesture()) return false;
+
+    const nativeEvent = event?.evt || null;
+    if (nativeEvent?.button != null && Number(nativeEvent.button) !== 0) {
+      return false;
+    }
+
+    armPrimarySelectionClickGuard();
+    logElementGestureDebug("element:selection-press", event, {
+      shift: Boolean(nativeEvent?.shiftKey),
+      ctrl: Boolean(nativeEvent?.ctrlKey),
+      meta: Boolean(nativeEvent?.metaKey),
+    });
+    onSelect(obj.id, obj, event, { gesture: "primary" });
+    return true;
+  }, [
+    armPrimarySelectionClickGuard,
+    inlineEditPointerActive,
+    isSelected,
+    logElementGestureDebug,
+    obj,
+    onSelect,
+    selectionCount,
+    shouldSuppressSelectionGesture,
+  ]);
+
   useEffect(() => {
     latestObjRef.current = obj;
     latestOnChangeRef.current = onChange;
@@ -836,6 +1223,73 @@ export default function ElementoCanvas({
     };
     manualGroupRuntimeRef.current.detachWindowListeners = null;
   }, []);
+
+  const detachPredragReleaseListeners = useCallback(() => {
+    const current = predragReleaseListenersRef.current;
+    try {
+      current?.detach?.();
+    } catch {}
+    predragReleaseListenersRef.current = {
+      detach: null,
+    };
+  }, []);
+
+  const cancelPendingNativePredrag = useCallback((
+    nativeEvent = null,
+    reason = "pointerup",
+    explicitNode = null
+  ) => {
+    detachPredragReleaseListeners();
+
+    const node = explicitNode || elementNodeRef.current;
+    if (!node) return;
+
+    const dragLifecycle = dragLifecycleRef.current || {};
+    if (String(dragLifecycle.activeMode || "idle").startsWith("group")) {
+      return;
+    }
+
+    if (hasDragged.current) {
+      return;
+    }
+
+    try {
+      node.stopDrag?.();
+    } catch {}
+    try {
+      node.draggable?.(false);
+    } catch {}
+    try {
+      node.getLayer?.()?.batchDraw?.();
+    } catch {}
+
+    syncInteractionDraggableState(node);
+    if (typeof window !== "undefined") {
+      window._isDragging = false;
+    }
+
+    logSelectedDragDebug("element:predrag-cancel", {
+      elementId: obj.id,
+      tipo: obj.tipo,
+      reason,
+      nativeEventType: nativeEvent?.type ?? null,
+      buttons:
+        nativeEvent && Number.isFinite(Number(nativeEvent.buttons))
+          ? Number(nativeEvent.buttons)
+          : null,
+      hasDragged: Boolean(hasDragged.current),
+      node: getKonvaNodeDebugInfo(node),
+    });
+
+    queueTransformerRestoreAfterPredragCancel();
+  }, [
+    detachPredragReleaseListeners,
+    hasDragged,
+    obj.id,
+    obj.tipo,
+    queueTransformerRestoreAfterPredragCancel,
+    syncInteractionDraggableState,
+  ]);
 
   const finishManualGroupPointerSession = useCallback((nativeEvent = null, reason = "pointerup", options = {}) => {
     const session = getAnyGroupDragSession();
@@ -954,8 +1408,8 @@ export default function ElementoCanvas({
       activeMode: "idle",
       activeGroupSessionId: null,
       leaderId: null,
-      suppressIndividualUntilMs: nowMs + 120,
-      suppressSelectionUntilMs: nowMs + 120,
+      suppressIndividualUntilMs: finishResult?.completed ? nowMs + 120 : 0,
+      suppressSelectionUntilMs: finishResult?.completed ? nowMs + 120 : 0,
     };
 
     if (finishResult?.completed) {
@@ -1038,6 +1492,13 @@ export default function ElementoCanvas({
         return;
       }
       if (session.leaderId !== obj.id) return;
+
+      if (!isNativePressStillActive(nativeEvent)) {
+        finishManualGroupPointerSession(nativeEvent, "implicit-pointerup", {
+          force: true,
+        });
+        return;
+      }
 
       const updateResult = updateManualGroupDragSession(nativeEvent);
       if (!updateResult?.handled) return;
@@ -1155,6 +1616,97 @@ export default function ElementoCanvas({
     logElementGestureDebug,
   ]);
 
+  const armPredragReleaseListeners = useCallback((event) => {
+    if (typeof window === "undefined") return;
+    if (!isSelected || selectionCount !== 1 || shouldUseManualGroupDrag()) return;
+
+    detachPredragReleaseListeners();
+
+    const node = event?.currentTarget || event?.target || elementNodeRef.current || null;
+    if (!node) return;
+
+    const cancel = (nativeEvent = null, reason = "pointerup") => {
+      cancelPendingNativePredrag(nativeEvent, reason, node);
+    };
+
+    if (hasPointerEvents) {
+      const onPointerMoveWindow = (nativeEvent) => {
+        if (hasDragged.current) {
+          detachPredragReleaseListeners();
+          return;
+        }
+        if (!isNativePressStillActive(nativeEvent)) {
+          cancel(nativeEvent, "implicit-pointerup");
+        }
+      };
+      const onPointerUpWindow = (nativeEvent) => cancel(nativeEvent, "pointerup");
+      const onPointerCancelWindow = (nativeEvent) => cancel(nativeEvent, "pointercancel");
+      const onBlurWindow = () => cancel(null, "window-blur");
+
+      window.addEventListener("pointermove", onPointerMoveWindow);
+      window.addEventListener("pointerup", onPointerUpWindow);
+      window.addEventListener("pointercancel", onPointerCancelWindow);
+      window.addEventListener("blur", onBlurWindow);
+      predragReleaseListenersRef.current = {
+        detach: () => {
+          window.removeEventListener("pointermove", onPointerMoveWindow);
+          window.removeEventListener("pointerup", onPointerUpWindow);
+          window.removeEventListener("pointercancel", onPointerCancelWindow);
+          window.removeEventListener("blur", onBlurWindow);
+        },
+      };
+      return;
+    }
+
+    const onMouseMoveWindow = (nativeEvent) => {
+      if (hasDragged.current) {
+        detachPredragReleaseListeners();
+        return;
+      }
+      if (!isNativePressStillActive(nativeEvent)) {
+        cancel(nativeEvent, "implicit-mouseup");
+      }
+    };
+    const onMouseUpWindow = (nativeEvent) => cancel(nativeEvent, "mouseup");
+    const onTouchMoveWindow = (nativeEvent) => {
+      if (hasDragged.current) {
+        detachPredragReleaseListeners();
+        return;
+      }
+      if (!isNativePressStillActive(nativeEvent)) {
+        cancel(nativeEvent, "implicit-touchend");
+      }
+    };
+    const onTouchEndWindow = (nativeEvent) => cancel(nativeEvent, "touchend");
+    const onTouchCancelWindow = (nativeEvent) => cancel(nativeEvent, "touchcancel");
+    const onBlurWindow = () => cancel(null, "window-blur");
+
+    window.addEventListener("mousemove", onMouseMoveWindow);
+    window.addEventListener("mouseup", onMouseUpWindow);
+    window.addEventListener("touchmove", onTouchMoveWindow, { passive: false });
+    window.addEventListener("touchend", onTouchEndWindow);
+    window.addEventListener("touchcancel", onTouchCancelWindow);
+    window.addEventListener("blur", onBlurWindow);
+    predragReleaseListenersRef.current = {
+      detach: () => {
+        window.removeEventListener("mousemove", onMouseMoveWindow);
+        window.removeEventListener("mouseup", onMouseUpWindow);
+        window.removeEventListener("touchmove", onTouchMoveWindow);
+        window.removeEventListener("touchend", onTouchEndWindow);
+        window.removeEventListener("touchcancel", onTouchCancelWindow);
+        window.removeEventListener("blur", onBlurWindow);
+      },
+    };
+  }, [
+    cancelPendingNativePredrag,
+    detachPredragReleaseListeners,
+    hasDragged,
+    hasPointerEvents,
+    isSelected,
+    selectionCount,
+    shouldUseManualGroupDrag,
+  ]);
+
   const tryArmManualGroupDrag = useCallback((e) => {
     if (!shouldUseManualGroupDrag()) return null;
     const result = armManualGroupDragSession(e, obj);
@@ -1171,7 +1723,7 @@ export default function ElementoCanvas({
       activeGroupSessionId: result.sessionId || null,
       leaderId: obj.id,
       suppressIndividualUntilMs: 0,
-      suppressSelectionUntilMs: nowMs + 120,
+      suppressSelectionUntilMs: 0,
     };
     e?.currentTarget?.draggable?.(false);
     attachManualGroupWindowListeners(result.sessionId);
@@ -1195,8 +1747,9 @@ export default function ElementoCanvas({
       return;
     }
     cancelManualGroupFinishRetry();
+    detachPredragReleaseListeners();
     runtime.detachWindowListeners?.();
-  }, [cancelManualGroupFinishRetry, obj.id]);
+  }, [cancelManualGroupFinishRetry, detachPredragReleaseListeners, obj.id]);
 
   const prepareSelectedElementForPossibleDrag = useCallback((e) => {
     if (!isSelected || selectionCount !== 1) return;
@@ -1209,7 +1762,9 @@ export default function ElementoCanvas({
       elementId: obj.id,
       tipo: obj.tipo,
     });
+    armPredragReleaseListeners(e);
   }, [
+    armPredragReleaseListeners,
     cancelPendingTransformerRestore,
     isSelected,
     obj.id,
@@ -1225,6 +1780,15 @@ export default function ElementoCanvas({
 
     e && (e.cancelBubble = true);
     e?.evt && (e.evt.cancelBubble = true);
+
+    if (gesture === "primary" && consumePrimarySelectionClickGuard()) {
+      logInlineIntentEmitter("skip-due-press-selection-guard", {
+        id: obj.id,
+        tipo: obj.tipo,
+        gesture,
+      });
+      return;
+    }
 
     if (shouldSuppressSelectionGesture()) {
       logInlineIntentEmitter("skip-due-manual-group-session", {
@@ -1260,7 +1824,14 @@ export default function ElementoCanvas({
     });
 
     onSelect(obj.id, obj, e, { gesture });
-  }, [hasDragged, logElementGestureDebug, obj, onSelect, shouldSuppressSelectionGesture]);
+  }, [
+    consumePrimarySelectionClickGuard,
+    hasDragged,
+    logElementGestureDebug,
+    obj,
+    onSelect,
+    shouldSuppressSelectionGesture,
+  ]);
 
   const handleClick = useCallback(
     (e) => {
@@ -1278,15 +1849,16 @@ export default function ElementoCanvas({
 
   const manualGroupPreviewPose = getManualGroupDragPreviewPose(obj.id);
   const manualGroupPreviewSignature = manualGroupPreviewPose?.signature || "";
+  const visualRenderObject = obj.tipo === "imagen" ? renderImageObject : obj;
 
 
   // Ã°Å¸â€Â¥ MEMOIZAR PROPIEDADES COMUNES
   const commonProps = useMemo(() => ({
-    x: manualGroupPreviewPose?.x ?? (obj.x ?? 0),
-    y: manualGroupPreviewPose?.y ?? (obj.y ?? 0),
-    rotation: obj.rotation || 0,
-    scaleX: obj.scaleX || 1,
-    scaleY: obj.scaleY || 1,
+    x: manualGroupPreviewPose?.x ?? (visualRenderObject.x ?? 0),
+    y: manualGroupPreviewPose?.y ?? (visualRenderObject.y ?? 0),
+    rotation: visualRenderObject.rotation || 0,
+    scaleX: visualRenderObject.scaleX || 1,
+    scaleY: visualRenderObject.scaleY || 1,
     draggable: resolveInteractionDraggableEnabled(),
     listening: resolveInteractionListeningEnabled(),
 
@@ -1308,6 +1880,8 @@ export default function ElementoCanvas({
        if (manualGroupResult?.handled) {
          return;
        }
+
+      maybeSelectElementOnPress(e);
 
       e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
       e.currentTarget?.listening?.(resolveInteractionListeningEnabled());
@@ -1333,6 +1907,8 @@ export default function ElementoCanvas({
         return;
       }
 
+      maybeSelectElementOnPress(e);
+
       e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
       e.currentTarget?.listening?.(resolveInteractionListeningEnabled());
       prepareSelectedElementForPossibleDrag(e);
@@ -1357,6 +1933,8 @@ export default function ElementoCanvas({
         return;
       }
 
+      maybeSelectElementOnPress(e);
+
       e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
       e.currentTarget?.listening?.(resolveInteractionListeningEnabled());
       prepareSelectedElementForPossibleDrag(e);
@@ -1374,8 +1952,7 @@ export default function ElementoCanvas({
       }
       if (!hasDragged.current) {
         logElementGestureDebug("element:mouseup", e);
-        syncInteractionDraggableState(e.currentTarget);
-        queueTransformerRestoreAfterPredragCancel();
+        cancelPendingNativePredrag(e?.evt || null, "mouseup", e.currentTarget);
       }
     } : undefined,
 
@@ -1391,8 +1968,7 @@ export default function ElementoCanvas({
       }
       if (!hasDragged.current) {
         logElementGestureDebug("element:touchend", e);
-        syncInteractionDraggableState(e.currentTarget);
-        queueTransformerRestoreAfterPredragCancel();
+        cancelPendingNativePredrag(e?.evt || null, "touchend", e.currentTarget);
       }
     } : undefined,
 
@@ -1408,8 +1984,7 @@ export default function ElementoCanvas({
       }
       if (!hasDragged.current) {
         logElementGestureDebug("element:pointerup", e);
-        syncInteractionDraggableState(e.currentTarget);
-        queueTransformerRestoreAfterPredragCancel();
+        cancelPendingNativePredrag(e?.evt || null, "pointerup", e.currentTarget);
       }
     },
 
@@ -1419,6 +1994,7 @@ export default function ElementoCanvas({
     onDblTap: handleDoubleClick,
 
     onDragStart: (e) => {
+      detachPredragReleaseListeners();
       const manualSession = getAnyGroupDragSession();
       if (
         manualSession?.active &&
@@ -1730,6 +2306,7 @@ export default function ElementoCanvas({
 
 
     onDragEnd: (e) => {
+      detachPredragReleaseListeners();
       const manualSession = getAnyGroupDragSession();
       if (
         manualSession?.active &&
@@ -1933,6 +2510,7 @@ export default function ElementoCanvas({
 
   }), [
     obj,
+    visualRenderObject,
     editingMode,
     inlineEditPointerActive,
     isInEditMode,
@@ -1940,6 +2518,7 @@ export default function ElementoCanvas({
     handleDoubleClick,
     isActiveGroupFollowerInteractionSuppressed,
     logElementGestureDebug,
+    maybeSelectElementOnPress,
     resolveInteractionDraggableEnabled,
     resolveInteractionListeningEnabled,
     syncInteractionDraggableState,
@@ -1958,6 +2537,8 @@ export default function ElementoCanvas({
     onChange,
     onHover,
     cancelPendingTransformerRestore,
+    cancelPendingNativePredrag,
+    detachPredragReleaseListeners,
     ignoreActiveGroupFollowerDragStart,
     queueTransformerRestoreAfterPredragCancel,
     prepareSelectedElementForPossibleDrag,

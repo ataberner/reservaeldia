@@ -1065,15 +1065,15 @@ export default function CanvasEditor({
 
 
   const actualizarObjeto = (index, nuevo) => {
-    const nuevos = applyObjectUpdateAtIndex(objetos, index, nuevo);
-    setObjetos(nuevos);
+    setObjetos((prev) => applyObjectUpdateAtIndex(prev, index, nuevo));
   };
 
   const actualizarObjetoPorId = (id, cambios) => {
-    const index = objetos.findIndex((o) => o.id === id);
-    if (index === -1) return console.warn("? No se encontrÃ³ el objeto con ID:", id);
-    const nuevos = applyObjectUpdateById(objetos, id, cambios);
-    setObjetos(nuevos);
+    setObjetos((prev) => {
+      const index = prev.findIndex((o) => o.id === id);
+      if (index === -1) return console.warn("? No se encontrÃ³ el objeto con ID:", id), prev;
+      return applyObjectUpdateById(prev, id, cambios);
+    });
   };
 
   const normalizarMedidasGaleria = useCallback((galeria, widthCandidate, xCandidate) => {

@@ -25,7 +25,24 @@ function resolveCacheStateKeys(options = {}) {
   return {
     appliedKey: `__${normalizedStateKey}Applied`,
     wasCachedKey: `__${normalizedStateKey}WasCached`,
+    signatureKey: `__${normalizedStateKey}Signature`,
   };
+}
+
+function buildImageCacheSignature(payload = null) {
+  if (!payload) return "";
+
+  return JSON.stringify([
+    payload.src || "",
+    Number(payload.sourceWidth || 0) || 0,
+    Number(payload.sourceHeight || 0) || 0,
+    Number(payload.displayWidth || 0) || 0,
+    Number(payload.displayHeight || 0) || 0,
+    Number(payload.cropX || 0) || 0,
+    Number(payload.cropY || 0) || 0,
+    Number(payload.cropWidth || 0) || 0,
+    Number(payload.cropHeight || 0) || 0,
+  ]);
 }
 
 export function buildImagePerfPayload(obj, img, imageCrop, node) {
@@ -220,7 +237,7 @@ function getImageLayerCacheConfig(payload) {
 export function activateImageLayerPerf(node, payload, options = {}) {
   const layer = node?.getLayer?.();
   const manageActivePayload = options?.manageActivePayload !== false;
-  const { appliedKey, wasCachedKey } = resolveCacheStateKeys(options);
+  const { appliedKey, wasCachedKey, signatureKey } = resolveCacheStateKeys(options);
   if (!layer || !payload) {
     return {
       cacheApplied: false,
@@ -234,14 +251,33 @@ export function activateImageLayerPerf(node, payload, options = {}) {
   let activePayload = payload;
   let cacheApplied = false;
   let cacheReused = false;
+  let cacheInvalidated = false;
+  const nextSignature = buildImageCacheSignature(payload);
+  const shouldCache = shouldApplyImageLayerCache(payload);
   if (manageActivePayload) {
     layer.__canvasActiveImageDragPerf = activePayload;
   }
 
   if (
+    node?.[appliedKey] === true &&
+    typeof node?.clearCache === "function" &&
+    (
+      !shouldCache ||
+      node?.[signatureKey] !== nextSignature
+    )
+  ) {
+    try {
+      node.clearCache();
+      cacheInvalidated = true;
+    } catch {}
+    node[appliedKey] = false;
+    node[signatureKey] = "";
+  }
+
+  if (
     typeof node?.cache === "function" &&
     typeof node?.clearCache === "function" &&
-    shouldApplyImageLayerCache(payload)
+    shouldCache
   ) {
     const wasCached = typeof node.isCached === "function" ? node.isCached() : false;
     node[wasCachedKey] = wasCached;
@@ -251,6 +287,7 @@ export function activateImageLayerPerf(node, payload, options = {}) {
       try {
         node.cache(cacheConfig);
         node[appliedKey] = true;
+        node[signatureKey] = nextSignature;
         cacheApplied = true;
         activePayload = {
           ...activePayload,
@@ -281,6 +318,7 @@ export function activateImageLayerPerf(node, payload, options = {}) {
         });
       }
     } else {
+      node[signatureKey] = nextSignature;
       activePayload = {
         ...activePayload,
         nodeCached: true,
@@ -296,6 +334,10 @@ export function activateImageLayerPerf(node, payload, options = {}) {
     }
   }
 
+  if (cacheInvalidated || cacheApplied) {
+    layer.batchDraw?.();
+  }
+
   return {
     cacheApplied,
     cacheReused,
@@ -307,7 +349,7 @@ export function deactivateImageLayerPerf(node, elementId, options = {}) {
   const layer = node?.getLayer?.();
   const cacheEventPrefix = options?.cacheEventPrefix || "image:drag-cache";
   const manageActivePayload = options?.manageActivePayload !== false;
-  const { appliedKey, wasCachedKey } = resolveCacheStateKeys(options);
+  const { appliedKey, wasCachedKey, signatureKey } = resolveCacheStateKeys(options);
   let cacheCleared = false;
 
   if (
@@ -318,6 +360,7 @@ export function deactivateImageLayerPerf(node, elementId, options = {}) {
     try {
       node.clearCache();
       cacheCleared = true;
+      layer?.batchDraw?.();
       trackCanvasDragPerf(`${cacheEventPrefix}-cleared`, {
         elementId,
         durationMs: roundPerfMetric(getPerfNow() - startedAt),
@@ -331,6 +374,7 @@ export function deactivateImageLayerPerf(node, elementId, options = {}) {
   if (node) {
     node[appliedKey] = false;
     node[wasCachedKey] = false;
+    node[signatureKey] = "";
   }
 
   if (

@@ -41,6 +41,15 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import {
+  getImageResizeNodeSnapshot,
+  trackImageResizeDebug,
+} from "@/components/editor/canvasEditor/imageResizeDebug";
+import {
+  clearImageResizeSessionActive,
+  setImageResizeSessionActive,
+  setPendingImageTransformCommit,
+} from "@/components/editor/canvasEditor/imagePendingTransformCommit";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -164,6 +173,89 @@ function snapRotationOnCommit(angle, toleranceDeg = 0, snapAngles = ROTATION_SNA
     snapped: bestDelta <= numericTolerance,
     rotation: bestDelta <= numericTolerance ? roundNodeMetric(bestRotation, 3) : numericAngle,
     deltaDeg: roundNodeMetric(bestDelta, 3) || 0,
+  };
+}
+
+function getNodeRenderedSize(node) {
+  if (!node) return { width: null, height: null };
+
+  const baseWidth =
+    typeof node.width === "function"
+      ? Number(node.width() || 0)
+      : Number(node?.attrs?.width || 0);
+  const baseHeight =
+    typeof node.height === "function"
+      ? Number(node.height() || 0)
+      : Number(node?.attrs?.height || 0);
+  const scaleX =
+    typeof node.scaleX === "function"
+      ? Number(node.scaleX() || 1)
+      : Number(node?.attrs?.scaleX || 1);
+  const scaleY =
+    typeof node.scaleY === "function"
+      ? Number(node.scaleY() || 1)
+      : Number(node?.attrs?.scaleY || 1);
+
+  const width = baseWidth * Math.abs(scaleX || 1);
+  const height = baseHeight * Math.abs(scaleY || 1);
+
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : null,
+    height: Number.isFinite(height) && height > 0 ? height : null,
+  };
+}
+
+function resolveRotatedCenterFromPose(pose, size) {
+  const x = Number(pose?.x);
+  const y = Number(pose?.y);
+  const rotationDeg = Number(pose?.rotation);
+  const width = Number(size?.width);
+  const height = Number(size?.height);
+
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(rotationDeg) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
+    return null;
+  }
+
+  const rotationRad = (rotationDeg * Math.PI) / 180;
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+
+  return {
+    centerX: x + (halfWidth * Math.cos(rotationRad)) - (halfHeight * Math.sin(rotationRad)),
+    centerY: y + (halfWidth * Math.sin(rotationRad)) + (halfHeight * Math.cos(rotationRad)),
+  };
+}
+
+function resolvePoseFromRotatedCenter(center, size, rotationDeg) {
+  const centerX = Number(center?.centerX);
+  const centerY = Number(center?.centerY);
+  const width = Number(size?.width);
+  const height = Number(size?.height);
+  const rotation = Number(rotationDeg);
+
+  if (
+    !Number.isFinite(centerX) ||
+    !Number.isFinite(centerY) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    !Number.isFinite(rotation)
+  ) {
+    return null;
+  }
+
+  const rotationRad = (rotation * Math.PI) / 180;
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+
+  return {
+    x: centerX - (halfWidth * Math.cos(rotationRad)) + (halfHeight * Math.sin(rotationRad)),
+    y: centerY - (halfWidth * Math.sin(rotationRad)) - (halfHeight * Math.cos(rotationRad)),
   };
 }
 
@@ -2495,6 +2587,22 @@ export default function SelectionBounds({
           isRotate: isRotateGesture,
           activeAnchor: activeAnchor ?? null,
         };
+        if (!isRotateGesture && esImagenSeleccionada) {
+          const imageNode = typeof tr?.nodes === "function" ? (tr.nodes() || [])[0] || null : null;
+          setImageResizeSessionActive(imageNode, {
+            activeAnchor: activeAnchor ?? null,
+          });
+          deactivateImageLayerPerf(imageNode, primerElemento?.id ?? null, {
+            cacheEventPrefix: "image:selection-cache",
+            cacheStateKey: "canvasSelectionCache",
+            manageActivePayload: false,
+          });
+          trackImageResizeDebug("transform-start:image-cache-cleared", {
+            elementId: primerElemento?.id ?? null,
+            activeAnchor: activeAnchor ?? null,
+            node: getImageResizeNodeSnapshot(imageNode),
+          });
+        }
         if (isRotateGesture) {
           const interactionId = `${
             primerElemento?.id || selectedElements.join(",") || "selection"
@@ -3424,6 +3532,39 @@ export default function SelectionBounds({
                 snapDeltaDeg: rotationCommitSnap.deltaDeg,
               });
             }
+
+            const renderedSize = getNodeRenderedSize(node);
+            const visualCenter = resolveRotatedCenterFromPose(pose, renderedSize);
+            const stabilizedPose = resolvePoseFromRotatedCenter(
+              visualCenter,
+              renderedSize,
+              finalData.rotation
+            );
+
+            if (stabilizedPose) {
+              finalData.x = stabilizedPose.x;
+              finalData.y = stabilizedPose.y;
+              try {
+                if (typeof node.x === "function") {
+                  node.x(stabilizedPose.x);
+                }
+                if (typeof node.y === "function") {
+                  node.y(stabilizedPose.y);
+                }
+                node.getLayer?.()?.batchDraw?.();
+              } catch {}
+              trackImageRotationDebug("image-rotate:commit-pose-stabilized", {
+                elementId: primerElemento?.id ?? null,
+                activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+                width: roundNodeMetric(renderedSize.width, 3),
+                height: roundNodeMetric(renderedSize.height, 3),
+                centerX: roundNodeMetric(visualCenter?.centerX, 3),
+                centerY: roundNodeMetric(visualCenter?.centerY, 3),
+                finalRotation: roundNodeMetric(finalData.rotation),
+                finalX: roundNodeMetric(finalData.x, 3),
+                finalY: roundNodeMetric(finalData.y, 3),
+              });
+            }
           }
 
           if (transformGestureRef.current?.isRotate) {
@@ -3433,6 +3574,35 @@ export default function SelectionBounds({
                 finalData,
               })
             );
+          }
+
+          if (esImagenSeleccionada) {
+            deactivateImageLayerPerf(node, primerElemento?.id ?? null, {
+              cacheEventPrefix: "image:selection-cache",
+              cacheStateKey: "canvasSelectionCache",
+              manageActivePayload: false,
+            });
+            setPendingImageTransformCommit(node, finalData);
+            trackImageResizeDebug("transform-end:image-cache-cleared", {
+              elementId: primerElemento?.id ?? null,
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              node: getImageResizeNodeSnapshot(node),
+            });
+            trackImageResizeDebug("transform-end:image-final", {
+              elementId: primerElemento?.id ?? null,
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              finalData: {
+                x: finalData.x ?? null,
+                y: finalData.y ?? null,
+                width: finalData.width ?? null,
+                height: finalData.height ?? null,
+                rotation: finalData.rotation ?? null,
+                scaleX: finalData.scaleX ?? null,
+                scaleY: finalData.scaleY ?? null,
+              },
+              node: getImageResizeNodeSnapshot(node),
+              resizeActive: Boolean(window._resizeData?.isResizing),
+            });
           }
 
           onTransform(finalData);
@@ -3485,6 +3655,9 @@ export default function SelectionBounds({
               cacheCleared: rotationPerfRelease?.cacheRelease?.cacheCleared === true,
               overlayRestored: rotationPerfRelease?.overlayRestored === true,
             });
+          }
+          if (esImagenSeleccionada) {
+            clearImageResizeSessionActive(node);
           }
           window._resizeData = null;
         } finally {

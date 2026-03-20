@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Stage, Line, Rect, Text, Group, Circle } from "react-konva";
 import CanvasElementsLayer from "@/components/canvas/CanvasElementsLayer";
 import FondoSeccion from "@/components/editor/FondoSeccion";
@@ -17,6 +18,7 @@ import { calcularOffsetY } from "@/utils/layout";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import {
   getCurrentInlineEditingId,
+  getWindowObjectResolver,
   setCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import {
@@ -42,6 +44,10 @@ import {
   trackImageRotationCommit,
   trackImageRotationDebug,
 } from "@/components/editor/canvasEditor/imageRotationDebug";
+import {
+  getImageResizeNodeSnapshot,
+  trackImageResizeDebug,
+} from "@/components/editor/canvasEditor/imageResizeDebug";
 import { isPostDragSelectionGuardActive } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import {
   readClientPointFromCanvasEvent,
@@ -2658,6 +2664,7 @@ export default function CanvasStageContent({
                                   // sin tocar estado React para evitar desincronizaciÃ³n con Transformer.
                                   if (
                                     elemento.tipo === "countdown" ||
+                                    elemento.tipo === "imagen" ||
                                     (
                                       elemento.tipo === "forma" &&
                                       (elemento.figura === "circle" || elemento.figura === "triangle")
@@ -2885,6 +2892,25 @@ export default function CanvasStageContent({
                                   };
                                 }
 
+                                const finalSectionId = finalAttrs.seccionId || objOriginal.seccionId;
+                                const finalSectionUsesYNorm = esSeccionPantallaById(finalSectionId);
+                                const finalYRel = Number.isFinite(Number(finalAttrs.y))
+                                  ? Number(finalAttrs.y)
+                                  : (Number.isFinite(Number(objOriginal.y)) ? Number(objOriginal.y) : null);
+
+                                if (Number.isFinite(finalYRel)) {
+                                  finalAttrs.y = finalYRel;
+                                }
+
+                                if (finalSectionUsesYNorm && Number.isFinite(finalYRel)) {
+                                  finalAttrs.yNorm = Math.max(
+                                    0,
+                                    Math.min(1, finalYRel / ALTURA_PANTALLA_EDITOR)
+                                  );
+                                } else if (!finalSectionUsesYNorm) {
+                                  delete finalAttrs.yNorm;
+                                }
+
                                 // ? offsetY solo para debug (evita ReferenceError)
                                 let offsetY = 0;
                                 try {
@@ -2910,6 +2936,45 @@ export default function CanvasStageContent({
                                     }
                                     : null;
 
+                                if (objOriginal.tipo === "imagen" && !objOriginal.esFondo) {
+                                  trackImageResizeDebug("composer:image-commit-request", {
+                                    elementId: objOriginal?.id ?? null,
+                                    objBefore: {
+                                      x: objOriginal?.x ?? null,
+                                      y: objOriginal?.y ?? null,
+                                      width: objOriginal?.width ?? null,
+                                      height: objOriginal?.height ?? null,
+                                      cropX: objOriginal?.cropX ?? null,
+                                      cropY: objOriginal?.cropY ?? null,
+                                      cropWidth: objOriginal?.cropWidth ?? null,
+                                      cropHeight: objOriginal?.cropHeight ?? null,
+                                    },
+                                    cleanAttrs: {
+                                      x: cleanAttrs?.x ?? null,
+                                      y: cleanAttrs?.y ?? null,
+                                      width: cleanAttrs?.width ?? null,
+                                      height: cleanAttrs?.height ?? null,
+                                      rotation: cleanAttrs?.rotation ?? null,
+                                      scaleX: cleanAttrs?.scaleX ?? null,
+                                      scaleY: cleanAttrs?.scaleY ?? null,
+                                    },
+                                    finalAttrs: {
+                                      x: finalAttrs?.x ?? null,
+                                      y: finalAttrs?.y ?? null,
+                                      yNorm: finalAttrs?.yNorm ?? null,
+                                      width: finalAttrs?.width ?? null,
+                                      height: finalAttrs?.height ?? null,
+                                      cropX: finalAttrs?.cropX ?? null,
+                                      cropY: finalAttrs?.cropY ?? null,
+                                      cropWidth: finalAttrs?.cropWidth ?? null,
+                                      cropHeight: finalAttrs?.cropHeight ?? null,
+                                    },
+                                    nodeBeforeCommit: getImageResizeNodeSnapshot(
+                                      elementRefs.current?.[objOriginal.id] || null
+                                    ),
+                                  });
+                                }
+
                                 if (imageRotationCommitContext) {
                                   trackImageRotationCommit({
                                     ...imageRotationCommitContext,
@@ -2918,8 +2983,15 @@ export default function CanvasStageContent({
                                       finalAttrs.rotation ?? objOriginal?.rotation ?? 0
                                     ),
                                     finalX: roundRotationMetric(finalAttrs.x ?? objOriginal?.x ?? 0),
-                                    finalYRel: roundRotationMetric(finalAttrs.y ?? objOriginal?.y ?? 0),
+                                    finalYRel: roundRotationMetric(
+                                      finalYRel ?? finalAttrs.y ?? objOriginal?.y ?? 0
+                                    ),
+                                    finalYNorm: roundRotationMetric(
+                                      finalAttrs.yNorm ?? objOriginal?.yNorm ?? null,
+                                      4
+                                    ),
                                     finalYAbs: roundRotationMetric(cleanAttrs.y ?? null),
+                                    finalSectionUsesYNorm,
                                     width: roundRotationMetric(
                                       finalAttrs.width ?? objOriginal?.width ?? null,
                                       3
@@ -2959,7 +3031,11 @@ export default function CanvasStageContent({
                                     }
                                     : null;
 
-                                if (objOriginal.tipo === "countdown" || objOriginal.tipo === "texto") {
+                                if (
+                                  objOriginal.tipo === "countdown" ||
+                                  objOriginal.tipo === "texto" ||
+                                  objOriginal.tipo === "imagen"
+                                ) {
                                   if (objOriginal.tipo === "texto") {
                                     const commitSnapshot = {
                                       id: objOriginal?.id ?? null,
@@ -3022,8 +3098,61 @@ export default function CanvasStageContent({
                                       });
                                     }
                                   }
-                                  actualizarObjeto(objIndex, finalAttrs);
+                                  if (objOriginal.tipo === "imagen") {
+                                    flushSync(() => {
+                                      actualizarObjeto(objIndex, finalAttrs);
+                                    });
+                                  } else {
+                                    actualizarObjeto(objIndex, finalAttrs);
+                                  }
                                   finalizeImageRotationDebugAfterCommit?.();
+
+                                  if (objOriginal.tipo === "imagen" && !objOriginal.esFondo) {
+                                    const objectResolver = getWindowObjectResolver();
+                                    requestAnimationFrame(() => {
+                                      const resolvedObject =
+                                        typeof objectResolver === "function"
+                                          ? objectResolver(objOriginal.id)
+                                          : null;
+                                      trackImageResizeDebug("composer:image-commit-raf1", {
+                                        elementId: objOriginal?.id ?? null,
+                                        resolvedObject: {
+                                          width: resolvedObject?.width ?? null,
+                                          height: resolvedObject?.height ?? null,
+                                          cropX: resolvedObject?.cropX ?? null,
+                                          cropY: resolvedObject?.cropY ?? null,
+                                          cropWidth: resolvedObject?.cropWidth ?? null,
+                                          cropHeight: resolvedObject?.cropHeight ?? null,
+                                        },
+                                        node: getImageResizeNodeSnapshot(
+                                          elementRefs.current?.[objOriginal.id] || null
+                                        ),
+                                        resizeActive: Boolean(window._resizeData?.isResizing),
+                                      });
+
+                                      requestAnimationFrame(() => {
+                                        const resolvedObject2 =
+                                          typeof objectResolver === "function"
+                                            ? objectResolver(objOriginal.id)
+                                            : null;
+                                        trackImageResizeDebug("composer:image-commit-raf2", {
+                                          elementId: objOriginal?.id ?? null,
+                                          resolvedObject: {
+                                            width: resolvedObject2?.width ?? null,
+                                            height: resolvedObject2?.height ?? null,
+                                            cropX: resolvedObject2?.cropX ?? null,
+                                            cropY: resolvedObject2?.cropY ?? null,
+                                            cropWidth: resolvedObject2?.cropWidth ?? null,
+                                            cropHeight: resolvedObject2?.cropHeight ?? null,
+                                          },
+                                          node: getImageResizeNodeSnapshot(
+                                            elementRefs.current?.[objOriginal.id] || null
+                                          ),
+                                          resizeActive: Boolean(window._resizeData?.isResizing),
+                                        });
+                                      });
+                                    });
+                                  }
                                 } else {
                                   requestAnimationFrame(() => {
                                     actualizarObjeto(objIndex, finalAttrs);
@@ -3135,7 +3264,17 @@ export default function CanvasStageContent({
                   perfLabel="drag-overlay"
                 >
                   {(() => {
-                    if (editing.id || sectionDecorationEdit || !isAnyCanvasDragActive) return null;
+                    // Este overlay existe para mantener visible la seleccion durante drag
+                    // cuando el Transformer principal puede ocultarse. En transform/rotate
+                    // el Transformer sigue pintando su borde, asi que mostrar ambos genera
+                    // un doble recuadro desalineado.
+                    if (
+                      editing.id ||
+                      sectionDecorationEdit ||
+                      !isCanvasDragGestureActive
+                    ) {
+                      return null;
+                    }
 
                     const indicatorSelectionIds =
                       dragVisualSelectionIds.length > 0

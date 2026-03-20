@@ -1,6 +1,17 @@
 const IMAGE_ROTATION_FRAME_BUDGET_MS = 16.7;
 const IMAGE_ROTATION_GAP_ANOMALY_MS = 120;
 
+function readExplicitDebugFlag(rawValue) {
+  if (rawValue === true || rawValue === 1 || rawValue === "1") return true;
+  if (rawValue === false || rawValue === 0 || rawValue === "0") return false;
+  if (typeof rawValue === "string") {
+    const normalized = rawValue.trim().toLowerCase();
+    if (normalized === "true" || normalized === "on" || normalized === "yes") return true;
+    if (normalized === "false" || normalized === "off" || normalized === "no") return false;
+  }
+  return null;
+}
+
 function parseDebugFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
   if (value === true || value === 1 || value === "1") return true;
@@ -11,6 +22,19 @@ function parseDebugFlag(value, fallback = false) {
     if (normalized === "false") return false;
   }
   return fallback;
+}
+
+function isLocalDebugHostname(hostname) {
+  const normalizedHost = String(hostname || "").trim().toLowerCase();
+  if (!normalizedHost) return true;
+
+  return (
+    normalizedHost === "localhost" ||
+    normalizedHost === "127.0.0.1" ||
+    normalizedHost === "0.0.0.0" ||
+    normalizedHost === "::1" ||
+    normalizedHost.endsWith(".local")
+  );
 }
 
 function getNowMs() {
@@ -186,10 +210,28 @@ function isImageRotationDebugEnabled() {
 
 function isImageRotationVerboseConsoleEnabled() {
   if (typeof window === "undefined") return false;
-  if (typeof window.__DBG_IMAGE_ROTATION_VERBOSE_CONSOLE === "undefined") {
-    return false;
+
+  const explicitWindowFlag = readExplicitDebugFlag(
+    window.__DBG_IMAGE_ROTATION_VERBOSE_CONSOLE
+  );
+  if (explicitWindowFlag !== null) return explicitWindowFlag;
+
+  let storageRawValue = null;
+  try {
+    storageRawValue = window.sessionStorage?.getItem?.(
+      "debug:image-rotation:verbose"
+    );
+  } catch {
+    storageRawValue = null;
   }
-  return parseDebugFlag(window.__DBG_IMAGE_ROTATION_VERBOSE_CONSOLE, false);
+
+  const explicitStorageFlag = readExplicitDebugFlag(storageRawValue);
+  if (explicitStorageFlag !== null) return explicitStorageFlag;
+
+  return (
+    process.env.NODE_ENV !== "production" ||
+    isLocalDebugHostname(window.location?.hostname)
+  );
 }
 
 function shouldEmitImageRotationConsole(eventName) {
@@ -206,6 +248,10 @@ function shouldEmitImageRotationConsole(eventName) {
     eventName === "image-rotate:focus" ||
     eventName === "image-rotate:blur" ||
     eventName === "image-rotate:commit-snap" ||
+    eventName === "image-rotate:commit-pose-stabilized" ||
+    eventName === "image-rotate:renderer-selection-state" ||
+    eventName === "image-rotate:deselect-before-clear" ||
+    eventName === "image-rotate:deselect-after-clear" ||
     eventName === "image-rotate:commit" ||
     eventName === "image-rotate:overlay-restore" ||
     eventName === "image-rotate:source-layer-thaw" ||
@@ -305,6 +351,11 @@ export function trackImageRotationDebug(eventName, payload = {}, options = {}) {
 
   if (typeof window !== "undefined") {
     window.__IMAGE_ROTATION_DEBUG_TRACE = store.trace;
+    window.__IMAGE_ROTATION_DEBUG_LAST = entry;
+    window.__IMAGE_ROTATION_DEBUG_TRACE_TEXT = store.trace
+      .map((item) => JSON.stringify(item, null, 2))
+      .join("\n\n");
+    window.__IMAGE_ROTATION_DEBUG_LAST_TEXT = JSON.stringify(entry, null, 2);
   }
 
   if (!shouldEmitImageRotationConsole(safeEventName)) {
@@ -312,14 +363,8 @@ export function trackImageRotationDebug(eventName, payload = {}, options = {}) {
   }
 
   const summary = buildImageRotationDebugSummary(safeEventName, entry, nextCount);
-  if (typeof console.group === "function") {
-    console.group(summary);
-    console.log(entry);
-    console.groupEnd();
-    return entry;
-  }
-
-  console.log(summary, entry);
+  const formattedEntry = JSON.stringify(entry, null, 2);
+  console.log(`${summary}\n${formattedEntry}`);
   return entry;
 }
 

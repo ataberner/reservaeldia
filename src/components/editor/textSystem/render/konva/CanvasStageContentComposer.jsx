@@ -30,6 +30,13 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
+  finishImageRotationDebugSession,
+  noteImageRotationOptionButtonSkip,
+  noteImageRotationReactPreviewSkipped,
+  trackImageRotationCommit,
+  trackImageRotationDebug,
+} from "@/components/editor/canvasEditor/imageRotationDebug";
+import {
   readClientPointFromCanvasEvent,
 } from "@/components/editor/textSystem/services/textCanvasPointerService";
 import {
@@ -48,6 +55,56 @@ const INLINE_INTENT_STALE_MS = 1500;
 function toFiniteMetric(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function roundRotationMetric(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const factor = 10 ** digits;
+  return Math.round(numeric * factor) / factor;
+}
+
+function getImageRotationNodeSnapshot(node) {
+  if (!node) {
+    return {
+      nodePresentAfterCommit: false,
+    };
+  }
+
+  const layer = node?.getLayer?.() || null;
+  const canvasHandle =
+    layer && typeof layer.getCanvas === "function" ? layer.getCanvas() : null;
+  const canvas = canvasHandle?._canvas || null;
+  const scaleX = typeof node?.scaleX === "function" ? node.scaleX() || 1 : 1;
+  const scaleY = typeof node?.scaleY === "function" ? node.scaleY() || 1 : 1;
+
+  return {
+    nodePresentAfterCommit: true,
+    committedNodeX:
+      typeof node?.x === "function" ? roundRotationMetric(node.x()) : null,
+    committedNodeY:
+      typeof node?.y === "function" ? roundRotationMetric(node.y()) : null,
+    committedNodeRotation:
+      typeof node?.rotation === "function"
+        ? roundRotationMetric(node.rotation() || 0)
+        : null,
+    committedNodeScaleX: roundRotationMetric(scaleX, 3),
+    committedNodeScaleY: roundRotationMetric(scaleY, 3),
+    committedNodeWidth:
+      typeof node?.width === "function"
+        ? roundRotationMetric(node.width() * Math.abs(scaleX || 1), 3)
+        : null,
+    committedNodeHeight:
+      typeof node?.height === "function"
+        ? roundRotationMetric(node.height() * Math.abs(scaleY || 1), 3)
+        : null,
+    committedNodeCached:
+      typeof node?.isCached === "function" ? node.isCached() : null,
+    committedLayerChildren:
+      typeof layer?.getChildren === "function" ? layer.getChildren().length : null,
+    committedLayerCanvasWidth: Number(canvas?.width || 0) || null,
+    committedLayerCanvasHeight: Number(canvas?.height || 0) || null,
+  };
 }
 
 function withDefinedMetrics(source = {}) {
@@ -276,6 +333,12 @@ export default function CanvasStageContent({
     startedSelected: false,
     selectionSnapshot: [],
   });
+  const activeTransformInteractionRef = useRef({
+    isRotate: false,
+    activeAnchor: null,
+    pointerType: null,
+  });
+  const [isImageRotateInteractionActive, setIsImageRotateInteractionActive] = useState(false);
   const dragGuideObjectsRef = useRef(objetos);
   const guideDragFrameRef = useRef({ rafId: 0, payload: null });
   const [isImageCropInteracting, setIsImageCropInteracting] = useState(false);
@@ -292,6 +355,10 @@ export default function CanvasStageContent({
     (typeof window !== "undefined" &&
       Boolean(window._isDragging || window._grupoLider || window._resizeData?.isResizing));
   const effectiveHoverId = isHoverSuppressed ? null : hoverId;
+  const selectedPrimaryObject =
+    elementosSeleccionados.length === 1
+      ? objetos.find((obj) => obj.id === elementosSeleccionados[0]) || null
+      : null;
 
   const setHoverIdWhenIdle = useCallback((nextHoverId) => {
     const dragActive =
@@ -1222,7 +1289,17 @@ export default function CanvasStageContent({
     stageGestures,
   ]);
 
-  const handleTransformInteractionStartWithInlineIntent = useCallback((...args) => {
+  const handleTransformInteractionStartWithInlineIntent = useCallback((payload = {}) => {
+    const isImageRotateInteraction =
+      payload?.isRotate === true &&
+      selectedPrimaryObject?.tipo === "imagen" &&
+      !selectedPrimaryObject?.esFondo;
+    activeTransformInteractionRef.current = {
+      isRotate: payload?.isRotate === true,
+      activeAnchor: payload?.activeAnchor ?? null,
+      pointerType: payload?.pointerType ?? null,
+    };
+    setIsImageRotateInteractionActive(isImageRotateInteraction);
     clearInlineActivation("transform-start", {
       selected: [...elementosSeleccionados],
     });
@@ -1230,11 +1307,11 @@ export default function CanvasStageContent({
       selected: [...elementosSeleccionados],
     });
     if (typeof handleTransformInteractionStart === "function") {
-      handleTransformInteractionStart(...args);
+      handleTransformInteractionStart(payload);
     }
-  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionStart]);
+  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionStart, selectedPrimaryObject?.esFondo, selectedPrimaryObject?.tipo]);
 
-  const handleTransformInteractionEndWithInlineIntent = useCallback((...args) => {
+  const handleTransformInteractionEndWithInlineIntent = useCallback((payload = {}) => {
     clearInlineActivation("transform-end", {
       selected: [...elementosSeleccionados],
     });
@@ -1242,9 +1319,33 @@ export default function CanvasStageContent({
       selected: [...elementosSeleccionados],
     });
     if (typeof handleTransformInteractionEnd === "function") {
-      handleTransformInteractionEnd(...args);
+      handleTransformInteractionEnd(payload);
     }
+    activeTransformInteractionRef.current = {
+      isRotate: false,
+      activeAnchor: null,
+      pointerType: null,
+    };
+    setIsImageRotateInteractionActive(false);
   }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionEnd]);
+
+  useEffect(() => {
+    if (
+      isImageRotateInteractionActive &&
+      !(
+        activeTransformInteractionRef.current?.isRotate === true &&
+        selectedPrimaryObject?.tipo === "imagen" &&
+        !selectedPrimaryObject?.esFondo
+      )
+    ) {
+      setIsImageRotateInteractionActive(false);
+    }
+  }, [
+    isImageRotateInteractionActive,
+    selectedPrimaryObject?.esFondo,
+    selectedPrimaryObject?.tipo,
+    elementosSeleccionados.join(","),
+  ]);
 
   const handleImageCropPreview = useCallback((cropAttrs = {}) => {
     if (elementosSeleccionados.length !== 1) return;
@@ -1831,6 +1932,8 @@ export default function CanvasStageContent({
     Boolean(isDragging) ||
     (typeof window !== "undefined" && Boolean(window._isDragging)) ||
     (typeof window !== "undefined" && Boolean(window._grupoLider));
+  const shouldDisableObjectsMainListening =
+    isAnyCanvasDragActive || isImageRotateInteractionActive;
 
   return (
               <Stage
@@ -1932,6 +2035,36 @@ export default function CanvasStageContent({
 
                     return elementos;
                   })}
+
+                  {(() => {
+                    if (!seccionActivaId) return null;
+
+                    const index = seccionesOrdenadas.findIndex((s) => s.id === seccionActivaId);
+                    if (index === -1) return null;
+
+                    const seccion = seccionesOrdenadas[index];
+                    const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
+                    const estaAnimando = seccionesAnimando.includes(seccion.id);
+
+                    return (
+                      <Rect
+                        key={`base-border-seccion-${seccion.id}`}
+                        x={0}
+                        y={offsetY}
+                        width={800}
+                        height={seccion.altura}
+                        fill="transparent"
+                        stroke="#773dbe"
+                        strokeWidth={estaAnimando ? 4 : 3}
+                        cornerRadius={0}
+                        shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
+                        shadowBlur={estaAnimando ? 16 : 12}
+                        shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
+                        listening={false}
+                        perfectDrawEnabled={false}
+                      />
+                    );
+                  })()}
 
 
                 
@@ -2153,14 +2286,14 @@ export default function CanvasStageContent({
 
                 <CanvasElementsLayer
                   perfLabel="objects-main"
-                  listening={!isAnyCanvasDragActive}
+                  listening={!shouldDisableObjectsMainListening}
                 >
                   {objetos.map((obj) => renderCanvasObject(obj))}
                 </CanvasElementsLayer>
 
                 <CanvasElementsLayer
                   perfLabel="ui-overlay"
-                  listening={!isAnyCanvasDragActive}
+                  listening={!isAnyCanvasDragActive && !isImageRotateInteractionActive}
                 >
                   {false && objetos.map((obj, i) => {
                     // ?? Determinar si estÃ¡ en modo ediciÃ³n
@@ -2658,6 +2791,7 @@ export default function CanvasStageContent({
                         isDragging={isAnyCanvasDragActive}
                         isInteractionLocked={isImageCropInteracting}
                         isMobile={isMobile}
+                        dragLayerRef={dragLayerRef}
                         onTransformInteractionStart={handleTransformInteractionStartWithInlineIntent}
                         onTransformInteractionEnd={handleTransformInteractionEndWithInlineIntent}
                         onTransform={(newAttrs) => {
@@ -2672,6 +2806,10 @@ export default function CanvasStageContent({
                                 setObjetos(prev => {
                                   const nuevos = [...prev];
                                   const elemento = nuevos[objIndex];
+                                  const isImageRotatePreview =
+                                    activeTransformInteractionRef.current?.isRotate === true &&
+                                    elemento?.tipo === "imagen" &&
+                                    !elemento?.esFondo;
                                   // Countdown: durante preview dejamos que Konva escale el nodo
                                   // sin tocar estado React para evitar desincronizaciÃ³n con Transformer.
                                   if (
@@ -2681,6 +2819,22 @@ export default function CanvasStageContent({
                                       (elemento.figura === "circle" || elemento.figura === "triangle")
                                     )
                                   ) {
+                                    return prev;
+                                  }
+
+                                  if (isImageRotatePreview) {
+                                    // En rotacion pura, Konva ya renderiza el giro en vivo.
+                                    // Reescribir React en cada frame vuelve la interaccion pesada.
+                                    noteImageRotationReactPreviewSkipped({
+                                      elementId: elemento?.id ?? null,
+                                      activeAnchor:
+                                        activeTransformInteractionRef.current?.activeAnchor ?? null,
+                                      pointerType:
+                                        activeTransformInteractionRef.current?.pointerType ?? null,
+                                      incomingRotation: roundRotationMetric(
+                                        newAttrs.rotation ?? elemento?.rotation ?? 0
+                                      ),
+                                    });
                                     return prev;
                                   }
 
@@ -2721,11 +2875,19 @@ export default function CanvasStageContent({
                                 });
 
                                 // ?? ACTUALIZAR POSICIÃ“N DEL BOTÃ“N DURANTE TRANSFORM
-                                requestAnimationFrame(() => {
-                                  if (typeof actualizarPosicionBotonOpciones === 'function') {
-                                    actualizarPosicionBotonOpciones();
-                                  }
-                                });
+                                if (!activeTransformInteractionRef.current?.isRotate) {
+                                  requestAnimationFrame(() => {
+                                    if (typeof actualizarPosicionBotonOpciones === 'function') {
+                                      actualizarPosicionBotonOpciones();
+                                    }
+                                  });
+                                } else {
+                                  noteImageRotationOptionButtonSkip({
+                                    elementId: elementosSeleccionados[0] || null,
+                                    activeAnchor:
+                                      activeTransformInteractionRef.current?.activeAnchor ?? null,
+                                  });
+                                }
 
                               } else if (newAttrs.isFinal) {
                                 // Final: actualizaciÃ³n completa
@@ -2891,6 +3053,68 @@ export default function CanvasStageContent({
                                   offsetY = 0;
                                 }
 
+                                const imageRotationCommitContext =
+                                  objOriginal.tipo === "imagen" &&
+                                  !objOriginal.esFondo &&
+                                  activeTransformInteractionRef.current?.isRotate === true
+                                    ? {
+                                      elementId: objOriginal?.id ?? null,
+                                      activeAnchor:
+                                        activeTransformInteractionRef.current?.activeAnchor ?? null,
+                                      pointerType:
+                                        activeTransformInteractionRef.current?.pointerType ?? null,
+                                    }
+                                    : null;
+
+                                if (imageRotationCommitContext) {
+                                  trackImageRotationCommit({
+                                    ...imageRotationCommitContext,
+                                    previousRotation: roundRotationMetric(objOriginal?.rotation ?? 0),
+                                    finalRotation: roundRotationMetric(
+                                      finalAttrs.rotation ?? objOriginal?.rotation ?? 0
+                                    ),
+                                    finalX: roundRotationMetric(finalAttrs.x ?? objOriginal?.x ?? 0),
+                                    finalYRel: roundRotationMetric(finalAttrs.y ?? objOriginal?.y ?? 0),
+                                    finalYAbs: roundRotationMetric(cleanAttrs.y ?? null),
+                                    width: roundRotationMetric(
+                                      finalAttrs.width ?? objOriginal?.width ?? null,
+                                      3
+                                    ),
+                                    height: roundRotationMetric(
+                                      finalAttrs.height ?? objOriginal?.height ?? null,
+                                      3
+                                    ),
+                                  });
+                                }
+
+                                const finalizeImageRotationDebugAfterCommit =
+                                  imageRotationCommitContext
+                                    ? () => {
+                                      requestAnimationFrame(() => {
+                                        requestAnimationFrame(() => {
+                                          const committedNode =
+                                            elementRefs.current?.[imageRotationCommitContext.elementId] || null;
+                                          const committedNodeSnapshot =
+                                            getImageRotationNodeSnapshot(committedNode);
+
+                                          trackImageRotationDebug("image-rotate:post-commit-node", {
+                                            ...imageRotationCommitContext,
+                                            ...committedNodeSnapshot,
+                                          });
+
+                                          finishImageRotationDebugSession({
+                                            ...imageRotationCommitContext,
+                                            ...committedNodeSnapshot,
+                                            finalRotation: roundRotationMetric(
+                                              finalAttrs.rotation ?? objOriginal?.rotation ?? 0
+                                            ),
+                                            reason: "state-commit",
+                                          });
+                                        });
+                                      });
+                                    }
+                                    : null;
+
                                 if (objOriginal.tipo === "countdown" || objOriginal.tipo === "texto") {
                                   if (objOriginal.tipo === "texto") {
                                     const commitSnapshot = {
@@ -2955,9 +3179,11 @@ export default function CanvasStageContent({
                                     }
                                   }
                                   actualizarObjeto(objIndex, finalAttrs);
+                                  finalizeImageRotationDebugAfterCommit?.();
                                 } else {
                                   requestAnimationFrame(() => {
                                     actualizarObjeto(objIndex, finalAttrs);
+                                    finalizeImageRotationDebugAfterCommit?.();
                                   });
                                 }
 
@@ -2971,7 +3197,7 @@ export default function CanvasStageContent({
 
 
                   {/* No mostrar hover durante drag/resize/ediciÃ³n NI cuando hay lÃ­der de grupo */}
-                  {!editing.id && !isAnyCanvasDragActive && (
+                  {!editing.id && !isAnyCanvasDragActive && !isImageRotateInteractionActive && (
                     <ImageCropOverlay
                       selectedElementId={
                         elementosSeleccionados.length === 1 ? elementosSeleccionados[0] : null
@@ -3006,7 +3232,7 @@ export default function CanvasStageContent({
 
 
                   {/* ?? Controles especiales para lÃ­neas seleccionadas */}
-                  {!isAnyCanvasDragActive && elementosSeleccionados.length === 1 && (() => {
+                  {!isAnyCanvasDragActive && !isImageRotateInteractionActive && elementosSeleccionados.length === 1 && (() => {
                     const elementoSeleccionado = objetos.find(obj => obj.id === elementosSeleccionados[0]);
                     if (elementoSeleccionado?.tipo === 'forma' && elementoSeleccionado?.figura === 'line') {
                       return (
@@ -3032,7 +3258,7 @@ export default function CanvasStageContent({
 
 
                   {/* LÃ­neas de guÃ­a dinÃ¡micas mejoradas */}
-                  {guiaLineas.map((linea, i) => {
+                  {!isImageRotateInteractionActive && guiaLineas.map((linea, i) => {
                     // Determinar el estilo visual segÃºn el tipo
                     const esLineaSeccion = linea.priority === 'seccion';
 
@@ -3054,37 +3280,6 @@ export default function CanvasStageContent({
                       />
                     );
                   })}
-
-                  {(() => {
-                    if (isAnyCanvasDragActive || !seccionActivaId) return null;
-
-                    const index = seccionesOrdenadas.findIndex((s) => s.id === seccionActivaId);
-                    if (index === -1) return null;
-
-                    const seccion = seccionesOrdenadas[index];
-                    const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
-                    const estaAnimando = seccionesAnimando.includes(seccion.id);
-
-                    return (
-                      <Rect
-                        key={`overlay-border-seccion-${seccion.id}`}
-                        x={0}
-                        y={offsetY}
-                        width={800}
-                        height={seccion.altura}
-                        fill="transparent"
-                        stroke="#773dbe"
-                        strokeWidth={estaAnimando ? 4 : 3}
-                        cornerRadius={0}
-                        shadowColor={estaAnimando ? "rgba(119, 61, 190, 0.4)" : "rgba(119, 61, 190, 0.25)"}
-                        shadowBlur={estaAnimando ? 16 : 12}
-                        shadowOffset={{ x: 0, y: estaAnimando ? 4 : 3 }}
-                        listening={false}
-                        perfectDrawEnabled={false}
-                      />
-                    );
-                  })()}
-
 
                 </CanvasElementsLayer>
 
@@ -3111,40 +3306,11 @@ export default function CanvasStageContent({
                         elementRefs={elementRefs}
                         objetos={objetos}
                         isMobile={isMobile}
+                        bringToFront
                       />
                     );
                   })()}
 
-                  {(() => {
-                    if (!isAnyCanvasDragActive || !seccionActivaId) return null;
-
-                    const index = seccionesOrdenadas.findIndex(s => s.id === seccionActivaId);
-                    if (index === -1) return null;
-
-                    const seccion = seccionesOrdenadas[index];
-                    const offsetY = calcularOffsetY(seccionesOrdenadas, index, altoCanvas);
-                    const estaAnimando = seccionesAnimando.includes(seccion.id);
-
-                    return (
-                      <Rect
-                        key={`overlay-border-seccion-${seccion.id}`}
-                        x={0}
-                        y={offsetY}
-                        width={800}
-                        height={seccion.altura}
-                        fill="transparent"
-                        stroke="#773dbe"
-                        strokeWidth={estaAnimando ? 4 : 3}
-                        cornerRadius={0}
-                        shadowColor="rgba(0, 0, 0, 0)"
-                        shadowBlur={0}
-                        shadowOffset={{ x: 0, y: 0 }}
-                        shadowEnabled={false}
-                        listening={false}
-                        perfectDrawEnabled={false}
-                      />
-                    );
-                  })()}
                 </CanvasElementsLayer>
 
               </Stage>

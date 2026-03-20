@@ -8,6 +8,25 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
+  finishImageRotationDebugSession,
+  startImageRotationDebugSession,
+  trackImageRotationDebug,
+  trackImageRotationPreview,
+} from "@/components/editor/canvasEditor/imageRotationDebug";
+import {
+  activateImageLayerPerf,
+  buildImagePerfPayloadFromNode,
+  deactivateImageLayerPerf,
+} from "@/components/editor/canvasEditor/imageLayerPerf";
+import {
+  activateKonvaLayerFreeze,
+  deactivateKonvaLayerFreeze,
+} from "@/components/editor/canvasEditor/konvaLayerFreeze";
+import {
+  liftNodeToOverlayLayer,
+  restoreNodeFromOverlayLayer,
+} from "@/components/editor/canvasEditor/imageOverlayLayerLift";
+import {
   getSelectionFramePaddingForSelection,
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_ACTIVE_STROKE,
@@ -33,6 +52,8 @@ const TXTDBG = (...args) => {
   if (!window.__DBG_TEXT_RESIZE) return;
   console.log("[TEXT-TR]", ...args);
 };
+
+const ROTATION_SNAP_ANGLES = Object.freeze([0, 45, 90, 135, 180, 225, 270, 315]);
 
 
 function rectFromNodes(nodes) {
@@ -81,12 +102,53 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function roundNodeMetric(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const precision = 10 ** digits;
+  return Math.round(numeric * precision) / precision;
+}
+
 function normalizeRotationIndicatorDegrees(angle) {
   if (!Number.isFinite(angle)) return 0;
   let normalized = angle % 360;
   if (normalized < 0) normalized += 360;
   const rounded = Math.round(normalized);
   return rounded >= 360 ? 0 : rounded;
+}
+
+function snapRotationOnCommit(angle, toleranceDeg = 0, snapAngles = ROTATION_SNAP_ANGLES) {
+  const numericAngle = Number(angle);
+  const numericTolerance = Number(toleranceDeg);
+  if (!Number.isFinite(numericAngle) || !Number.isFinite(numericTolerance) || numericTolerance <= 0) {
+    return {
+      snapped: false,
+      rotation: numericAngle,
+      deltaDeg: 0,
+    };
+  }
+
+  let bestRotation = numericAngle;
+  let bestDelta = Infinity;
+
+  snapAngles.forEach((snapAngle) => {
+    const numericSnap = Number(snapAngle);
+    if (!Number.isFinite(numericSnap)) return;
+
+    const turns = Math.round((numericAngle - numericSnap) / 360);
+    const candidate = numericSnap + (turns * 360);
+    const delta = Math.abs(candidate - numericAngle);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestRotation = candidate;
+    }
+  });
+
+  return {
+    snapped: bestDelta <= numericTolerance,
+    rotation: bestDelta <= numericTolerance ? roundNodeMetric(bestRotation, 3) : numericAngle,
+    deltaDeg: roundNodeMetric(bestDelta, 3) || 0,
+  };
 }
 
 
@@ -100,6 +162,7 @@ export default function SelectionBounds({
   isDragging,
   isInteractionLocked = false,
   isMobile = false,
+  dragLayerRef = null,
 }) {
   const transformerRef = useRef(null);
   const renderCountRef = useRef(0);
@@ -108,10 +171,40 @@ export default function SelectionBounds({
   const [runtimeDragActive, setRuntimeDragActive] = useState(() => (
     typeof window !== "undefined" && Boolean(window._isDragging)
   ));
+  const [isImageRotateGestureActive, setIsImageRotateGestureActive] = useState(false);
   const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
   const rotationIndicatorGroupRef = useRef(null);
+  const rotationIndicatorLabelRef = useRef(null);
+  const rotationIndicatorVisualStateRef = useRef({
+    x: null,
+    y: null,
+    text: null,
+    visible: false,
+  });
+  const rotationIndicatorRafRef = useRef(0);
+  const rotationIndicatorPendingStateRef = useRef(null);
+  const deferredSourceLayerThawRef = useRef({
+    raf1: 0,
+    raf2: 0,
+    layer: null,
+    node: null,
+    elementId: null,
+    sourceLayerLabel: null,
+    overlayLifted: false,
+    logOverlayRestore: false,
+  });
+  const imageRotationPerfRef = useRef({
+    node: null,
+    elementId: null,
+    cacheApplied: false,
+    cacheReused: false,
+    overlayLifted: false,
+    sourceLayer: null,
+    sourceLayerFrozen: false,
+    sourceLayerLabel: null,
+  });
   const resizeHintTimersRef = useRef([]);
   const lastResizeHintSelectionKeyRef = useRef("");
   const transformGestureRef = useRef({
@@ -180,7 +273,11 @@ export default function SelectionBounds({
   const transformerAnchorHintHitStrokeWidth = isMobile ? 84 : 22;
   const transformerHintBorderStrongStrokeWidth = isMobile ? 2.8 : 1.6;
   const transformerHintBorderSoftStrokeWidth = isMobile ? 2.2 : 1.25;
-  const transformerRotationSnapTolerance = isMobile ? 8 : 5; //tolerancia para â€œencajarâ€ rotaciÃ³n en Ã¡ngulos fijos.
+  const transformerRotationSnapTolerance = esImagenSeleccionada
+    ? (isMobile ? 4 : 2)
+    : (isMobile ? 8 : 5); //tolerancia para encajar rotacion en angulos fijos.
+  const imageRotationCommitSnapTolerance = isMobile ? 2.5 : 1.5;
+  const transformerRotationSnaps = esImagenSeleccionada ? [] : ROTATION_SNAP_ANGLES;
   const rotationIndicatorWidth = isMobile ? 92 : 72;
   const rotationIndicatorHeight = isMobile ? 38 : 30;
   const rotationIndicatorOffsetX = isMobile ? 26 : 22;
@@ -350,11 +447,440 @@ export default function SelectionBounds({
     };
   };
 
-  const hideRotationIndicator = () => {
+  const getImageRotationNodeMetrics = (node, pose = getTransformPose(node)) => {
+    const scaleX = typeof node?.scaleX === "function" ? node.scaleX() || 1 : 1;
+    const scaleY = typeof node?.scaleY === "function" ? node.scaleY() || 1 : 1;
+    const baseWidth =
+      typeof node?.width === "function"
+        ? Number(node.width() || 0)
+        : Number(node?.attrs?.width || 0);
+    const baseHeight =
+      typeof node?.height === "function"
+        ? Number(node.height() || 0)
+        : Number(node?.attrs?.height || 0);
+    const layer = node?.getLayer?.() || null;
+    const canvasHandle =
+      layer && typeof layer.getCanvas === "function" ? layer.getCanvas() : null;
+    const canvas = canvasHandle?._canvas || null;
+    const stage = node?.getStage?.() || null;
+
+    return {
+      x: roundNodeMetric(pose?.x),
+      y: roundNodeMetric(pose?.y),
+      rotation: roundNodeMetric(pose?.rotation),
+      scaleX: roundNodeMetric(scaleX, 3),
+      scaleY: roundNodeMetric(scaleY, 3),
+      baseWidth: roundNodeMetric(baseWidth, 3),
+      baseHeight: roundNodeMetric(baseHeight, 3),
+      width: roundNodeMetric(baseWidth * Math.abs(scaleX || 1), 3),
+      height: roundNodeMetric(baseHeight * Math.abs(scaleY || 1), 3),
+      layerChildren:
+        typeof layer?.getChildren === "function" ? layer.getChildren().length : null,
+      layerCanvasWidth: Number(canvas?.width || 0) || null,
+      layerCanvasHeight: Number(canvas?.height || 0) || null,
+      stageWidth:
+        typeof stage?.width === "function" ? Number(stage.width() || 0) || null : null,
+      stageHeight:
+        typeof stage?.height === "function" ? Number(stage.height() || 0) || null : null,
+      nodeCached: typeof node?.isCached === "function" ? node.isCached() : null,
+    };
+  };
+
+  const resetImageRotationPerfState = () => {
+    imageRotationPerfRef.current = {
+      node: null,
+      elementId: null,
+      cacheApplied: false,
+      cacheReused: false,
+      overlayLifted: false,
+      sourceLayer: null,
+      sourceLayerFrozen: false,
+      sourceLayerLabel: null,
+    };
+  };
+
+  const clearDeferredSourceLayerThaw = ({ thaw = false } = {}) => {
+    const current = deferredSourceLayerThawRef.current;
+    if (current.raf1 && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(current.raf1);
+    }
+    if (current.raf2 && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(current.raf2);
+    }
+
+    const pendingLayer = current.layer || null;
+    const pendingNode = current.node || null;
+    const pendingElementId = current.elementId || null;
+    const pendingSourceLayerLabel = current.sourceLayerLabel || null;
+    const pendingOverlayLifted = current.overlayLifted === true;
+    const pendingLogOverlayRestore = current.logOverlayRestore === true;
+
+    deferredSourceLayerThawRef.current = {
+      raf1: 0,
+      raf2: 0,
+      layer: null,
+      node: null,
+      elementId: null,
+      sourceLayerLabel: null,
+      overlayLifted: false,
+      logOverlayRestore: false,
+    };
+
+    if (!thaw || (!pendingLayer && !pendingNode)) {
+      return {
+        thawed: false,
+        overlayRestored: false,
+      };
+    }
+
+    const shouldRestoreOverlayNode = Boolean(pendingNode && pendingOverlayLifted);
+    const sourceLayerRelease = pendingLayer
+      ? deactivateKonvaLayerFreeze(pendingLayer, {
+          batchDraw: !shouldRestoreOverlayNode,
+        })
+      : {
+          thawed: false,
+        };
+    let overlayRestored = false;
+
+    if (shouldRestoreOverlayNode) {
+      overlayRestored = restoreNodeFromOverlayLayer(pendingNode, pendingElementId, {
+        eventPrefix: "image:rotate-overlay",
+        drawSourceLayer: true,
+        drawOverlayLayer: true,
+      });
+
+      if (pendingLogOverlayRestore) {
+        trackImageRotationDebug("image-rotate:overlay-restore", {
+          elementId: pendingElementId,
+          overlayLifted: true,
+          overlayRestored,
+        });
+      }
+    }
+
+    if (pendingLayer) {
+      trackImageRotationDebug("image-rotate:source-layer-thaw", {
+        elementId: pendingElementId,
+        sourceLayerFrozen: true,
+        sourceLayerThawed: sourceLayerRelease?.thawed === true,
+        sourceLayerLabel: pendingSourceLayerLabel,
+      });
+    }
+
+    return {
+      ...sourceLayerRelease,
+      overlayRestored,
+    };
+  };
+
+  const releaseImageRotationPerf = ({
+    logCacheRelease = false,
+    logOverlayRestore = false,
+    deferSourceLayerRedraw = false,
+  } = {}) => {
+    const currentNode = imageRotationPerfRef.current?.node || null;
+    const currentElementId = imageRotationPerfRef.current?.elementId || null;
+    const cacheApplied = imageRotationPerfRef.current?.cacheApplied === true;
+    const cacheReused = imageRotationPerfRef.current?.cacheReused === true;
+    const overlayLifted = imageRotationPerfRef.current?.overlayLifted === true;
+    const sourceLayer = imageRotationPerfRef.current?.sourceLayer || null;
+    const sourceLayerFrozen = imageRotationPerfRef.current?.sourceLayerFrozen === true;
+    const sourceLayerLabel = imageRotationPerfRef.current?.sourceLayerLabel || null;
+
+    const cacheRelease = deactivateImageLayerPerf(
+      currentNode,
+      currentElementId,
+      { cacheEventPrefix: "image:rotate-cache" }
+    );
+    clearDeferredSourceLayerThaw();
+    let sourceLayerRelease = null;
+    let overlayRestored = false;
+    if (
+      sourceLayerFrozen &&
+      deferSourceLayerRedraw &&
+      sourceLayer &&
+      typeof requestAnimationFrame === "function"
+    ) {
+      deferredSourceLayerThawRef.current = {
+        raf1: requestAnimationFrame(() => {
+          deferredSourceLayerThawRef.current.raf1 = 0;
+          deferredSourceLayerThawRef.current.raf2 = requestAnimationFrame(() => {
+            deferredSourceLayerThawRef.current.raf2 = 0;
+            clearDeferredSourceLayerThaw({ thaw: true });
+          });
+        }),
+        raf2: 0,
+        layer: sourceLayer,
+        node: currentNode,
+        elementId: currentElementId,
+        sourceLayerLabel,
+        overlayLifted,
+        logOverlayRestore,
+      };
+      sourceLayerRelease = {
+        thawed: false,
+        deferred: true,
+      };
+    } else {
+      sourceLayerRelease = deactivateKonvaLayerFreeze(sourceLayer, {
+        batchDraw: !(overlayLifted && currentNode),
+      });
+      overlayRestored = restoreNodeFromOverlayLayer(currentNode, currentElementId, {
+        eventPrefix: "image:rotate-overlay",
+        drawSourceLayer: !sourceLayerRelease?.deferred,
+        drawOverlayLayer: true,
+      });
+    }
+
+    if (logOverlayRestore && overlayLifted && !sourceLayerRelease?.deferred) {
+      trackImageRotationDebug("image-rotate:overlay-restore", {
+        elementId: currentElementId,
+        overlayLifted,
+        overlayRestored,
+      });
+    }
+
+    if (sourceLayerFrozen && !sourceLayerRelease?.deferred) {
+      trackImageRotationDebug("image-rotate:source-layer-thaw", {
+        elementId: currentElementId,
+        sourceLayerFrozen: true,
+        sourceLayerThawed: sourceLayerRelease?.thawed === true,
+        sourceLayerLabel,
+      });
+    }
+
+    if (logCacheRelease) {
+      trackImageRotationDebug("image-rotate:cache-release", {
+        elementId: currentElementId ?? primerElemento?.id ?? null,
+        cacheApplied,
+        cacheReused,
+        cacheCleared: cacheRelease?.cacheCleared === true,
+      });
+    }
+
+    resetImageRotationPerfState();
+
+    return {
+      cacheRelease,
+      overlayRestored,
+      cacheApplied,
+      cacheReused,
+      overlayLifted,
+      sourceLayerFrozen,
+      sourceLayerThawed: sourceLayerRelease?.thawed === true,
+      sourceLayerLabel,
+      elementId: currentElementId,
+    };
+  };
+
+  const syncRotationIndicatorLayer = ({
+    useDragOverlay = false,
+    forceTop = false,
+  } = {}) => {
     const indicator = rotationIndicatorGroupRef.current;
-    if (!indicator || !indicator.visible()) return;
-    indicator.visible(false);
-    indicator.getLayer?.()?.batchDraw?.();
+    if (!indicator) return false;
+
+    const isLifted = Boolean(indicator.__canvasOverlayLiftParent);
+    const shouldUseDragOverlay =
+      useDragOverlay &&
+      dragLayerRef &&
+      (dragLayerRef.current || dragLayerRef);
+
+    if (shouldUseDragOverlay) {
+      const lifted = liftNodeToOverlayLayer(
+        indicator,
+        dragLayerRef,
+        {
+          elementId: primerElemento?.id ?? null,
+          tipo: "rotation-indicator",
+        },
+        {
+          eventPrefix: "image:rotate-indicator-overlay",
+          syncDrawSourceLayer: true,
+          syncDrawOverlayLayer: true,
+        }
+      );
+
+      if (forceTop) {
+        const parent = indicator.getParent?.() || null;
+        const childCount =
+          typeof parent?.getChildren === "function"
+            ? parent.getChildren().length
+            : null;
+        const currentZIndex =
+          typeof indicator.zIndex === "function" ? indicator.zIndex() : null;
+        const isAlreadyTop =
+          Number.isInteger(childCount) &&
+          Number.isInteger(currentZIndex) &&
+          childCount > 0 &&
+          currentZIndex === childCount - 1;
+
+        if (!isAlreadyTop && typeof indicator.moveToTop === "function") {
+          indicator.moveToTop();
+          indicator.getLayer?.()?.batchDraw?.();
+        }
+      }
+
+      return lifted;
+    }
+
+    if (isLifted) {
+      if (typeof indicator.visible === "function") {
+        indicator.visible(false);
+      }
+      rotationIndicatorVisualStateRef.current = {
+        ...rotationIndicatorVisualStateRef.current,
+        visible: false,
+      };
+      rotationIndicatorPendingStateRef.current = null;
+      restoreNodeFromOverlayLayer(indicator, primerElemento?.id ?? null, {
+        eventPrefix: "image:rotate-indicator-overlay",
+        drawSourceLayer: true,
+        drawOverlayLayer: true,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const syncTransformerLayer = ({
+    useDragOverlay = false,
+    forceTop = false,
+  } = {}) => {
+    const transformer = transformerRef.current;
+    if (!transformer) return false;
+
+    const isLifted = Boolean(transformer.__canvasOverlayLiftParent);
+    const shouldUseDragOverlay =
+      useDragOverlay &&
+      dragLayerRef &&
+      (dragLayerRef.current || dragLayerRef);
+
+    if (shouldUseDragOverlay) {
+      const lifted = liftNodeToOverlayLayer(
+        transformer,
+        dragLayerRef,
+        {
+          elementId: primerElemento?.id ?? null,
+          tipo: "selection-transformer",
+        },
+        {
+          eventPrefix: "image:rotate-transformer-overlay",
+          syncDrawSourceLayer: true,
+          syncDrawOverlayLayer: true,
+        }
+      );
+
+      if (forceTop && typeof transformer.moveToTop === "function") {
+        transformer.moveToTop();
+      }
+
+      try {
+        transformer.forceUpdate?.();
+        transformer.getLayer?.()?.batchDraw?.();
+      } catch {}
+
+      return lifted;
+    }
+
+    if (isLifted) {
+      const restored = restoreNodeFromOverlayLayer(transformer, primerElemento?.id ?? null, {
+        eventPrefix: "image:rotate-transformer-overlay",
+        drawSourceLayer: true,
+        drawOverlayLayer: true,
+      });
+
+      try {
+        transformer.forceUpdate?.();
+        transformer.getLayer?.()?.batchDraw?.();
+      } catch {}
+
+      return restored;
+    }
+
+    return false;
+  };
+
+  const flushRotationIndicatorState = () => {
+    rotationIndicatorRafRef.current = 0;
+    const indicator = rotationIndicatorGroupRef.current;
+    const label = rotationIndicatorLabelRef.current;
+    const pendingState = rotationIndicatorPendingStateRef.current;
+    if (!indicator || !pendingState) return;
+
+    const currentState = rotationIndicatorVisualStateRef.current;
+    let visualChanged = false;
+
+    if (pendingState.visible !== currentState.visible) {
+      indicator.visible(Boolean(pendingState.visible));
+      visualChanged = true;
+    }
+
+    if (pendingState.visible) {
+      if (
+        pendingState.x !== currentState.x ||
+        pendingState.y !== currentState.y
+      ) {
+        indicator.position({
+          x: pendingState.x,
+          y: pendingState.y,
+        });
+        visualChanged = true;
+      }
+
+      if (pendingState.text !== currentState.text && label) {
+        label.text(pendingState.text);
+        visualChanged = true;
+      }
+    }
+
+    rotationIndicatorVisualStateRef.current = pendingState;
+    rotationIndicatorPendingStateRef.current = null;
+
+    if (visualChanged) {
+      indicator.getLayer?.()?.batchDraw?.();
+    }
+  };
+
+  const scheduleRotationIndicatorState = (nextState) => {
+    rotationIndicatorPendingStateRef.current = nextState;
+    if (rotationIndicatorRafRef.current || typeof requestAnimationFrame !== "function") {
+      if (!rotationIndicatorRafRef.current && nextState) {
+        flushRotationIndicatorState();
+      }
+      return;
+    }
+
+    rotationIndicatorRafRef.current = requestAnimationFrame(() => {
+      flushRotationIndicatorState();
+    });
+  };
+
+  const hideRotationIndicator = () => {
+    if (
+      rotationIndicatorRafRef.current &&
+      typeof cancelAnimationFrame === "function"
+    ) {
+      cancelAnimationFrame(rotationIndicatorRafRef.current);
+      rotationIndicatorRafRef.current = 0;
+    }
+
+    rotationIndicatorPendingStateRef.current = null;
+
+    const indicator = rotationIndicatorGroupRef.current;
+    if (indicator && typeof indicator.visible === "function") {
+      indicator.visible(false);
+      indicator.getLayer?.()?.batchDraw?.();
+    }
+
+    rotationIndicatorVisualStateRef.current = {
+      ...rotationIndicatorVisualStateRef.current,
+      visible: false,
+    };
+
+    syncRotationIndicatorLayer({ useDragOverlay: false });
   };
 
   const updateRotationIndicator = (node) => {
@@ -411,10 +937,30 @@ export default function SelectionBounds({
     const degreeText =
       String(normalizeRotationIndicatorDegrees(pose.rotation)) + String.fromCharCode(176);
 
-    indicator.position({ x: nextX, y: nextY });
-    indicator.visible(true);
-    indicator.findOne(".rotation-angle-label")?.text(degreeText);
-    indicator.getLayer?.()?.batchDraw?.();
+    syncRotationIndicatorLayer({
+      useDragOverlay: esImagenSeleccionada,
+      forceTop: esImagenSeleccionada,
+    });
+
+    const currentState = rotationIndicatorVisualStateRef.current;
+    const shouldUpdatePosition =
+      !Number.isFinite(currentState.x) ||
+      !Number.isFinite(currentState.y) ||
+      Math.abs(Number(currentState.x) - nextX) >= 1 ||
+      Math.abs(Number(currentState.y) - nextY) >= 1;
+    const shouldUpdateText = currentState.text !== degreeText;
+    const shouldShow = currentState.visible !== true;
+
+    if (!shouldUpdatePosition && !shouldUpdateText && !shouldShow) {
+      return;
+    }
+
+    scheduleRotationIndicatorState({
+      x: shouldUpdatePosition ? nextX : currentState.x,
+      y: shouldUpdatePosition ? nextY : currentState.y,
+      text: shouldUpdateText ? degreeText : currentState.text,
+      visible: true,
+    });
   };
   const clearResizeAnchorPressFeedback = () => {
     if (isTransformingResizeRef.current) return;
@@ -556,13 +1102,38 @@ export default function SelectionBounds({
   };
 
   const resolveStageBoundBox = (oldBox, nextBox) => {
-    // El texto puede sobresalir del canvas mientras rota; si no, el Transformer
-    // rebota al tocar el borde y la rotacion parece "trabarse".
-    if (esTexto && transformGestureRef.current?.isRotate) {
+    // Al rotar, el bounding box crece y se achica segun el angulo.
+    // Si lo limitamos contra el canvas en vivo, el Transformer rebota y el giro
+    // se siente trabado aunque la posicion del elemento no haya cambiado.
+    if (transformGestureRef.current?.isRotate) {
       return nextBox;
     }
     return keepBoxInsideStage(oldBox, nextBox);
   };
+
+  useEffect(() => {
+    if (!esImagenSeleccionada) {
+      setIsImageRotateGestureActive(false);
+      syncRotationIndicatorLayer({ useDragOverlay: false });
+      syncTransformerLayer({ useDragOverlay: false });
+    }
+  }, [esImagenSeleccionada, selectedElements.join(",")]);
+
+  useEffect(() => {
+    return () => {
+      if (
+        rotationIndicatorRafRef.current &&
+        typeof cancelAnimationFrame === "function"
+      ) {
+        cancelAnimationFrame(rotationIndicatorRafRef.current);
+        rotationIndicatorRafRef.current = 0;
+      }
+      rotationIndicatorPendingStateRef.current = null;
+      clearDeferredSourceLayerThaw({ thaw: true });
+      releaseImageRotationPerf();
+      syncTransformerLayer({ useDragOverlay: false });
+    };
+  }, []);
 
   useEffect(() => {
     const selectionKey = selectedElements.join(",");
@@ -910,14 +1481,27 @@ export default function SelectionBounds({
     resizeHintPhase > 0 &&
     !isResizeGestureActive &&
     !isTransformingResizeRef.current;
+  const shouldUseLightweightRotateOverlay =
+    esImagenSeleccionada && isImageRotateGestureActive;
   const transformerBorderStroke = isResizeHintVisible
     ? SELECTION_FRAME_ACTIVE_STROKE
     : SELECTION_FRAME_STROKE;
-  const transformerBorderVisualWidth = isResizeHintVisible
+  const transformerBorderVisualWidth = shouldUseLightweightRotateOverlay
+    ? (isMobile ? 1.35 : 1)
+    : isResizeHintVisible
     ? resizeHintPhase === 2
       ? transformerHintBorderStrongStrokeWidth
       : transformerHintBorderSoftStrokeWidth
     : transformerBorderStrokeWidth;
+  const transformerPaddingForRender = shouldUseLightweightRotateOverlay
+    ? Math.max(6, transformerPadding - (isMobile ? 2 : 1))
+    : transformerPadding;
+  const rotationIndicatorShadowBlur = shouldUseLightweightRotateOverlay
+    ? 0
+    : (isMobile ? 12 : 8);
+  const rotationIndicatorShadowOffset = shouldUseLightweightRotateOverlay
+    ? { x: 0, y: 0 }
+    : { x: 0, y: isMobile ? 4 : 3 };
 
   return (
     <>
@@ -937,11 +1521,13 @@ export default function SelectionBounds({
           stroke="#A855F7"
           strokeWidth={isMobile ? 1.5 : 1}
           shadowColor="rgba(76, 29, 149, 0.28)"
-          shadowBlur={isMobile ? 12 : 8}
-          shadowOffset={{ x: 0, y: isMobile ? 4 : 3 }}
-          shadowOpacity={1}
+          shadowBlur={rotationIndicatorShadowBlur}
+          shadowOffset={rotationIndicatorShadowOffset}
+          shadowOpacity={rotationIndicatorShadowBlur > 0 ? 1 : 0}
+          perfectDrawEnabled={false}
         />
         <Text
+          ref={rotationIndicatorLabelRef}
           name="rotation-angle-label"
           x={0}
           y={0}
@@ -954,6 +1540,7 @@ export default function SelectionBounds({
           fontStyle="bold"
           text={"0" + String.fromCharCode(176)}
           listening={false}
+          perfectDrawEnabled={false}
         />
       </Group>
 
@@ -962,18 +1549,20 @@ export default function SelectionBounds({
       ref={transformerRef}
 
       // ðŸ”µ borde siempre visible
-      borderEnabled={true}
+      borderEnabled={!shouldUseLightweightRotateOverlay}
 
       borderStroke={transformerBorderStroke}
 
 
       borderStrokeWidth={transformerBorderVisualWidth}
-      padding={transformerPadding}
+      padding={transformerPaddingForRender}
 
       // âŒ nodos y rotaciÃ³n OFF durante drag
       enabledAnchors={
         interactionLocked || (effectiveDragging && !isResizeGestureActive)
           ? []
+          : shouldUseLightweightRotateOverlay
+            ? []
           : ["bottom-right"]
       }
       rotateEnabled={!interactionLocked && !effectiveDragging && !esGaleria}
@@ -1000,6 +1589,7 @@ export default function SelectionBounds({
             ? String(anchor.name() || "").split(" ")[0]
             : "";
         const isResizeAnchorNode = Boolean(anchorName);
+        const isRotateAnchorNode = anchorName === "rotater";
         const isResizeActiveFallback =
           isResizeGestureActive ||
           isTransformingResizeRef.current ||
@@ -1021,6 +1611,34 @@ export default function SelectionBounds({
           : isResizeHintAnchor
             ? transformerAnchorHintFillColor
             : transformerAnchorFillColor;
+        if (shouldUseLightweightRotateOverlay) {
+          if (isRotateAnchorNode) {
+            anchor.fill("rgba(147, 51, 234, 0.001)");
+            anchor.stroke("rgba(147, 51, 234, 0.001)");
+            anchor.strokeWidth(0.01);
+            anchor.shadowEnabled(false);
+            anchor.shadowForStrokeEnabled(false);
+            anchor.shadowOpacity(0);
+            anchor.shadowBlur(0);
+            anchor.shadowOffset({ x: 0, y: 0 });
+            anchor.hitStrokeWidth(isMobile ? 28 : 14);
+            anchor.opacity(0.01);
+            anchor.scale({ x: 0.12, y: 0.12 });
+            return;
+          }
+          anchor.fill(transformerAnchorFillColor);
+          anchor.shadowEnabled(false);
+          anchor.shadowForStrokeEnabled(false);
+          anchor.shadowOpacity(0);
+          anchor.shadowBlur(0);
+          anchor.shadowOffset({ x: 0, y: 0 });
+          anchor.hitStrokeWidth(isMobile ? 48 : 20);
+          anchor.stroke(transformerAnchorStrokeColor);
+          anchor.strokeWidth(isMobile ? 1.8 : 1.4);
+          anchor.opacity(0.96);
+          anchor.scale({ x: 1, y: 1 });
+          return;
+        }
         let anchorShadowColor = isPressedResizeAnchor
           ? transformerAnchorPressedShadowColor
           : isResizeHintAnchor
@@ -1090,8 +1708,9 @@ export default function SelectionBounds({
       centeredScaling={selectedElements.length === 1 && esTexto}
       flipEnabled={false}
       resizeEnabled={!interactionLocked && (!effectiveDragging || isResizeGestureActive)}
-      rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
+      rotationSnaps={transformerRotationSnaps}
       rotateAnchorOffset={transformerRotateOffset}
+      rotateLineVisible={!shouldUseLightweightRotateOverlay}
       rotationSnapTolerance={transformerRotationSnapTolerance}
       boundBoxFunc={(oldBox, newBox) => {
         const minSize = esTexto ? 20 : 10;
@@ -1221,8 +1840,106 @@ export default function SelectionBounds({
         };
         if (isRotateGesture) {
           const nodes = typeof tr?.nodes === "function" ? tr.nodes() || [] : [];
-          updateRotationIndicator(nodes[0] || null);
+          if (esImagenSeleccionada) {
+            clearDeferredSourceLayerThaw({ thaw: true });
+            setIsImageRotateGestureActive(true);
+            const imageNode = nodes[0] || null;
+            const imagePose = getTransformPose(imageNode);
+            const rotationDebugSession = startImageRotationDebugSession({
+              elementId: primerElemento?.id ?? null,
+              tipo: primerElemento?.tipo ?? null,
+              selectedCount: nodes.length,
+              activeAnchor: activeAnchor ?? null,
+              pointerType: e?.evt?.pointerType ?? null,
+              ...getImageRotationNodeMetrics(imageNode, imagePose),
+            });
+            const overlayLifted = liftNodeToOverlayLayer(imageNode, dragLayerRef, {
+              elementId: primerElemento?.id ?? null,
+              tipo: primerElemento?.tipo ?? null,
+            }, {
+              eventPrefix: "image:rotate-overlay",
+              syncDrawSourceLayer: true,
+              syncDrawOverlayLayer: true,
+            });
+            const sourceLayer =
+              overlayLifted ? imageNode?.__canvasOverlayLiftLayer || null : null;
+            const sourceLayerFreeze = overlayLifted
+              ? activateKonvaLayerFreeze(sourceLayer)
+              : { frozen: false, layerLabel: null };
+            if (overlayLifted) {
+              syncTransformerLayer({
+                useDragOverlay: true,
+                forceTop: true,
+              });
+              try {
+                tr.forceUpdate?.();
+                tr.getLayer?.()?.batchDraw?.();
+              } catch {}
+              syncRotationIndicatorLayer({
+                useDragOverlay: true,
+                forceTop: true,
+              });
+              trackImageRotationDebug("image-rotate:overlay-lift", {
+                elementId: primerElemento?.id ?? null,
+                sessionId: rotationDebugSession?.sessionId || null,
+                overlayLifted: true,
+              });
+            }
+            if (sourceLayerFreeze?.frozen) {
+              trackImageRotationDebug("image-rotate:source-layer-freeze", {
+                elementId: primerElemento?.id ?? null,
+                sessionId: rotationDebugSession?.sessionId || null,
+                sourceLayerFrozen: true,
+                sourceLayerLabel: sourceLayerFreeze?.layerLabel || null,
+              });
+            }
+            const imagePerfPayloadBase = buildImagePerfPayloadFromNode(
+              primerElemento,
+              imageNode
+            );
+            const imagePerfPayload = imagePerfPayloadBase
+              ? {
+                  ...imagePerfPayloadBase,
+                  rotationDebugSessionId: rotationDebugSession?.sessionId || null,
+                }
+              : imagePerfPayloadBase;
+            const cacheState = activateImageLayerPerf(imageNode, imagePerfPayload, {
+              cacheEventPrefix: "image:rotate-cache",
+            });
+            imageRotationPerfRef.current = {
+              node: imageNode,
+              elementId: primerElemento?.id ?? null,
+              cacheApplied: cacheState?.cacheApplied === true,
+              cacheReused: cacheState?.cacheReused === true,
+              overlayLifted,
+              sourceLayer,
+              sourceLayerFrozen: sourceLayerFreeze?.frozen === true,
+              sourceLayerLabel: sourceLayerFreeze?.layerLabel || null,
+            };
+            trackImageRotationDebug("image-rotate:cache-state", {
+              elementId: primerElemento?.id ?? null,
+              sessionId:
+                typeof window !== "undefined"
+                  ? window.__IMAGE_ROTATION_DEBUG_ACTIVE_SESSION?.sessionId || null
+                  : null,
+              cacheApplied: cacheState?.cacheApplied === true,
+              cacheReused: cacheState?.cacheReused === true,
+              nodeCached: cacheState?.payload?.nodeCached ?? null,
+              cachePixelRatio: cacheState?.payload?.cachePixelRatio ?? null,
+              sourceMp: cacheState?.payload?.sourceMp ?? null,
+              displayMp: cacheState?.payload?.displayMp ?? null,
+              cropScaleX: cacheState?.payload?.cropScaleX ?? null,
+              cropScaleY: cacheState?.payload?.cropScaleY ?? null,
+              overlayLifted,
+              sourceLayerFrozen: sourceLayerFreeze?.frozen === true,
+              sourceLayerLabel: sourceLayerFreeze?.layerLabel || null,
+            });
+            updateRotationIndicator(imageNode);
+          } else {
+            updateRotationIndicator(nodes[0] || null);
+          }
         } else {
+          setIsImageRotateGestureActive(false);
           hideRotationIndicator();
         }
         setIsResizeGestureActive(true);
@@ -1355,7 +2072,31 @@ export default function SelectionBounds({
         }
 
         try {
+          const transformStartedAt =
+            typeof performance !== "undefined" && typeof performance.now === "function"
+              ? performance.now()
+              : Date.now();
           const pose = getTransformPose(node);
+          const stage = node?.getStage?.() || null;
+          const pointer =
+            stage && typeof stage.getPointerPosition === "function"
+              ? stage.getPointerPosition()
+              : null;
+          if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
+            trackImageRotationPreview({
+              elementId: primerElemento?.id ?? null,
+              tipo: primerElemento?.tipo ?? null,
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              pointerType: e?.evt?.pointerType ?? null,
+              pointerX: Number.isFinite(Number(pointer?.x)) ? roundNodeMetric(pointer.x) : null,
+              pointerY: Number.isFinite(Number(pointer?.y)) ? roundNodeMetric(pointer.y) : null,
+              handlerDurationMs:
+                typeof performance !== "undefined" && typeof performance.now === "function"
+                  ? roundNodeMetric(performance.now() - transformStartedAt)
+                  : roundNodeMetric(Date.now() - transformStartedAt),
+              ...getImageRotationNodeMetrics(node, pose),
+            });
+          }
           const transformData = {
             x: pose.x,
             y: pose.y,
@@ -1651,7 +2392,20 @@ export default function SelectionBounds({
         // SINGLE-SELECCIÃ“N
         // -------------------------
         const node = nodes[0];
-        if (!node) return;
+        if (!node) {
+          if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
+            const rotationPerfRelease = releaseImageRotationPerf({
+              logOverlayRestore: true,
+            });
+            finishImageRotationDebugSession({
+              elementId: primerElemento?.id ?? null,
+              reason: "transform-end-missing-node",
+              cacheCleared: rotationPerfRelease?.cacheRelease?.cacheCleared === true,
+              overlayRestored: rotationPerfRelease?.overlayRestored === true,
+            });
+          }
+          return;
+        }
 
         const pose = getTransformPose(node);
         const finalData = {
@@ -1934,6 +2688,29 @@ export default function SelectionBounds({
             }
           }
 
+          if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
+            const rotationCommitSnap = snapRotationOnCommit(
+              finalData.rotation,
+              imageRotationCommitSnapTolerance
+            );
+            if (rotationCommitSnap.snapped) {
+              finalData.rotation = rotationCommitSnap.rotation;
+              try {
+                if (typeof node.rotation === "function") {
+                  node.rotation(rotationCommitSnap.rotation);
+                }
+                node.getLayer?.()?.batchDraw?.();
+              } catch {}
+              trackImageRotationDebug("image-rotate:commit-snap", {
+                elementId: primerElemento?.id ?? null,
+                activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+                rotation: roundNodeMetric(rotationCommitSnap.rotation),
+                finalRotation: roundNodeMetric(rotationCommitSnap.rotation),
+                snapDeltaDeg: rotationCommitSnap.deltaDeg,
+              });
+            }
+          }
+
           onTransform(finalData);
           if (primerElemento?.tipo === "countdown") {
             recordCountdownAuditSnapshot({
@@ -2063,9 +2840,30 @@ export default function SelectionBounds({
 
         } catch (error) {
           console.warn("Error en onTransformEnd:", error);
+          if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
+            const rotationPerfRelease = releaseImageRotationPerf({
+              logOverlayRestore: true,
+            });
+            finishImageRotationDebugSession({
+              elementId: primerElemento?.id ?? null,
+              reason: "transform-end-error",
+              message: error?.message || String(error),
+              cacheCleared: rotationPerfRelease?.cacheRelease?.cacheCleared === true,
+              overlayRestored: rotationPerfRelease?.overlayRestored === true,
+            });
+          }
           window._resizeData = null;
         } finally {
+          if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
+            releaseImageRotationPerf({
+              logCacheRelease: true,
+              logOverlayRestore: true,
+              deferSourceLayerRedraw: true,
+            });
+          }
           hideRotationIndicator();
+          syncTransformerLayer({ useDragOverlay: false });
+          setIsImageRotateGestureActive(false);
           isTransformingResizeRef.current = false;
           setIsResizeGestureActive(false);
           clearResizeAnchorPressFeedback();

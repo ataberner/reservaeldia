@@ -1,10 +1,46 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Rect } from "react-konva";
+import { Group, Line, Rect } from "react-konva";
 import {
+  buildSelectionFramePolygon,
   getSelectionFramePaddingForSelection,
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+
+function hasFinitePolygonPoints(points) {
+  return (
+    Array.isArray(points) &&
+    points.length === 8 &&
+    points.every((value) => Number.isFinite(Number(value)))
+  );
+}
+
+function arePointArraysEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (Number(left[index]) !== Number(right[index])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function shouldUseRotatedSelectionBounds(selectedObjects = []) {
+  const selection = Array.isArray(selectedObjects)
+    ? selectedObjects.filter(Boolean)
+    : [selectedObjects].filter(Boolean);
+  const firstSelectedObject = selection[0] || null;
+
+  return (
+    selection.length === 1 &&
+    firstSelectedObject?.tipo === "imagen" &&
+    !firstSelectedObject?.esFondo
+  );
+}
 
 function resolveSelectionBounds({
   selectedElements,
@@ -19,6 +55,24 @@ function resolveSelectionBounds({
 
   if (elementosData.length === 0) {
     return null;
+  }
+
+  const padding = getSelectionFramePaddingForSelection(elementosData, isMobile);
+  const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
+  const shouldUseRotatedFrame = shouldUseRotatedSelectionBounds(elementosData);
+
+  if (shouldUseRotatedFrame) {
+    const selectedObject = elementosData[0] || null;
+    const selectedNode = selectedObject ? elementRefs.current?.[selectedObject.id] : null;
+    const rotatedPoints = buildSelectionFramePolygon(selectedNode, padding);
+
+    if (hasFinitePolygonPoints(rotatedPoints)) {
+      return {
+        kind: "polygon",
+        points: rotatedPoints,
+        strokeWidth,
+      };
+    }
   }
 
   let minX = Infinity;
@@ -109,14 +163,13 @@ function resolveSelectionBounds({
     maxY = minY + 50;
   }
 
-  const padding = getSelectionFramePaddingForSelection(elementosData, isMobile);
-
   return {
+    kind: "rect",
     x: minX - padding,
     y: minY - padding,
     width: maxX - minX + padding * 2,
     height: maxY - minY + padding * 2,
-    strokeWidth: getSelectionFrameStrokeWidth(isMobile),
+    strokeWidth,
   };
 }
 
@@ -126,12 +179,17 @@ export default function SelectionBoundsIndicator({
   objetos,
   isMobile = false,
   debugLog = () => {},
+  bringToFront = false,
 }) {
+  const groupRef = useRef(null);
   const rectRef = useRef(null);
+  const polygonRef = useRef(null);
 
   const syncIndicatorBounds = useCallback(() => {
+    const groupNode = groupRef.current;
     const rectNode = rectRef.current;
-    if (!rectNode) return;
+    const polygonNode = polygonRef.current;
+    if (!groupNode || !rectNode || !polygonNode) return;
 
     const nextBounds = resolveSelectionBounds({
       selectedElements,
@@ -143,18 +201,59 @@ export default function SelectionBoundsIndicator({
 
     if (!nextBounds) return;
 
-    const didChange =
-      rectNode.x() !== nextBounds.x ||
-      rectNode.y() !== nextBounds.y ||
-      rectNode.width() !== nextBounds.width ||
-      rectNode.height() !== nextBounds.height ||
-      rectNode.strokeWidth() !== nextBounds.strokeWidth;
+    let didChange = false;
 
-    if (!didChange) return;
+    if (nextBounds.kind === "polygon") {
+      if (
+        !polygonNode.visible() ||
+        !arePointArraysEqual(polygonNode.points(), nextBounds.points) ||
+        polygonNode.strokeWidth() !== nextBounds.strokeWidth
+      ) {
+        polygonNode.visible(true);
+        polygonNode.points(nextBounds.points);
+        polygonNode.strokeWidth(nextBounds.strokeWidth);
+        didChange = true;
+      }
 
-    rectNode.setAttrs(nextBounds);
-    rectNode.getLayer?.()?.batchDraw?.();
-  }, [debugLog, elementRefs, isMobile, objetos, selectedElements]);
+      if (rectNode.visible()) {
+        rectNode.visible(false);
+        didChange = true;
+      }
+    } else {
+      if (
+        !rectNode.visible() ||
+        rectNode.x() !== nextBounds.x ||
+        rectNode.y() !== nextBounds.y ||
+        rectNode.width() !== nextBounds.width ||
+        rectNode.height() !== nextBounds.height ||
+        rectNode.strokeWidth() !== nextBounds.strokeWidth
+      ) {
+        rectNode.visible(true);
+        rectNode.setAttrs({
+          x: nextBounds.x,
+          y: nextBounds.y,
+          width: nextBounds.width,
+          height: nextBounds.height,
+          strokeWidth: nextBounds.strokeWidth,
+        });
+        didChange = true;
+      }
+
+      if (polygonNode.visible()) {
+        polygonNode.visible(false);
+        didChange = true;
+      }
+    }
+
+    if (bringToFront && typeof groupNode.moveToTop === "function") {
+      groupNode.moveToTop();
+      didChange = true;
+    }
+
+    if (didChange) {
+      groupNode.getLayer?.()?.batchDraw?.();
+    }
+  }, [bringToFront, debugLog, elementRefs, isMobile, objetos, selectedElements]);
 
   useEffect(() => {
     const selectedNodes = selectedElements
@@ -171,6 +270,9 @@ export default function SelectionBoundsIndicator({
       node.on("transform.selection-bounds-indicator", syncIndicatorBounds);
       node.on("xChange.selection-bounds-indicator", syncIndicatorBounds);
       node.on("yChange.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("rotationChange.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("scaleXChange.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("scaleYChange.selection-bounds-indicator", syncIndicatorBounds);
     });
 
     stage?.on("dragmove.selection-bounds-indicator", syncIndicatorBounds);
@@ -182,6 +284,9 @@ export default function SelectionBoundsIndicator({
         node.off("transform.selection-bounds-indicator", syncIndicatorBounds);
         node.off("xChange.selection-bounds-indicator", syncIndicatorBounds);
         node.off("yChange.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("rotationChange.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("scaleXChange.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("scaleYChange.selection-bounds-indicator", syncIndicatorBounds);
       });
       stage?.off("dragmove.selection-bounds-indicator", syncIndicatorBounds);
     };
@@ -200,18 +305,32 @@ export default function SelectionBoundsIndicator({
   }
 
   return (
-    <Rect
-      ref={rectRef}
-      name="ui"
-      x={bounds.x}
-      y={bounds.y}
-      width={bounds.width}
-      height={bounds.height}
-      fill="transparent"
-      stroke={SELECTION_FRAME_STROKE}
-      strokeWidth={bounds.strokeWidth}
-      listening={false}
-      opacity={0.7}
-    />
+    <Group ref={groupRef} name="ui selection-bounds-indicator" listening={false}>
+      <Line
+        ref={polygonRef}
+        points={bounds.kind === "polygon" ? bounds.points : []}
+        closed
+        visible={bounds.kind === "polygon"}
+        fillEnabled={false}
+        stroke={SELECTION_FRAME_STROKE}
+        strokeWidth={bounds.strokeWidth}
+        listening={false}
+        perfectDrawEnabled={false}
+      />
+      <Rect
+        ref={rectRef}
+        x={bounds.kind === "rect" ? bounds.x : 0}
+        y={bounds.kind === "rect" ? bounds.y : 0}
+        width={bounds.kind === "rect" ? bounds.width : 0}
+        height={bounds.kind === "rect" ? bounds.height : 0}
+        visible={bounds.kind === "rect"}
+        fill="transparent"
+        stroke={SELECTION_FRAME_STROKE}
+        strokeWidth={bounds.strokeWidth}
+        listening={false}
+        perfectDrawEnabled={false}
+        strokeScaleEnabled={false}
+      />
+    </Group>
   );
 }

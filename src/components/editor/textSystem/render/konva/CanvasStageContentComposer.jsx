@@ -34,6 +34,7 @@ import {
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
+import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
 import {
   finishImageRotationDebugSession,
   noteImageRotationOptionButtonSkip,
@@ -117,6 +118,19 @@ function withDefinedMetrics(source = {}) {
   return Object.fromEntries(
     Object.entries(source).filter(([, value]) => typeof value !== "undefined")
   );
+}
+
+function createEmptyDragSettleSession() {
+  return {
+    dragId: null,
+    tipo: null,
+    startedSelected: false,
+    selectionSnapshot: [],
+    needsDeferredCommit: false,
+    hadVisualSelection: false,
+    needsGuideCleanup: false,
+    interactionEpoch: 0,
+  };
 }
 
 function buildScaledCountdownResizeAttrs(source, nextWidth, nextHeight) {
@@ -317,6 +331,7 @@ export default function CanvasStageContent({
   guideOverlayRef,
   handleTransformInteractionStart,
   handleTransformInteractionEnd,
+  canvasInteractionCoordinator = null,
   normalizarMedidasGaleria,
   setElementosSeleccionados,
   setSecciones,
@@ -333,22 +348,35 @@ export default function CanvasStageContent({
   const canvasStageObjectsRef = useRef(null);
   const canvasStageObjectsVersionRef = useRef(0);
   const dragLayerRef = useRef(null);
-  const deferredDragSelectionIdRef = useRef(null);
-  const dragSelectionGuardRef = useRef({
-    dragId: null,
-    startedSelected: false,
-    selectionSnapshot: [],
-  });
+  const dragSettleSessionRef = useRef(createEmptyDragSettleSession());
   const activeTransformInteractionRef = useRef({
     isRotate: false,
     activeAnchor: null,
     pointerType: null,
   });
+  const canvasInteractionApi = canvasInteractionCoordinator || {};
+  const canvasInteractionEpoch = Number(canvasInteractionApi.interactionEpoch || 0);
+  const canvasInteractionActive =
+    canvasInteractionApi.isInteractionActive === true;
+  const canvasInteractionSettling = canvasInteractionApi.isSettling === true;
+  const beginCanvasInteraction =
+    typeof canvasInteractionApi.beginCanvasInteraction === "function"
+      ? canvasInteractionApi.beginCanvasInteraction
+      : () => 0;
+  const endCanvasInteraction =
+    typeof canvasInteractionApi.endCanvasInteraction === "function"
+      ? canvasInteractionApi.endCanvasInteraction
+      : () => 0;
+  const scheduleCanvasUiAfterSettle =
+    typeof canvasInteractionApi.scheduleCanvasUiAfterSettle === "function"
+      ? canvasInteractionApi.scheduleCanvasUiAfterSettle
+      : null;
   const [isImageRotateInteractionActive, setIsImageRotateInteractionActive] = useState(false);
   const dragGuideObjectsRef = useRef(objetos);
   const guideDragFrameRef = useRef({ rafId: 0, payload: null });
   const [isImageCropInteracting, setIsImageCropInteracting] = useState(false);
   const [dragVisualSelectionIds, setDragVisualSelectionIds] = useState([]);
+  const dragVisualSelectionIdsRef = useRef([]);
   const activeInlineEditingId =
     editing.id ||
     getCurrentInlineEditingId() ||
@@ -357,6 +385,8 @@ export default function CanvasStageContent({
     null;
   const isHoverSuppressed =
     Boolean(isDragging) ||
+    canvasInteractionActive ||
+    canvasInteractionSettling ||
     isImageCropInteracting ||
     (typeof window !== "undefined" &&
       Boolean(window._isDragging || window._grupoLider || window._resizeData?.isResizing));
@@ -369,6 +399,8 @@ export default function CanvasStageContent({
   const setHoverIdWhenIdle = useCallback((nextHoverId) => {
     const dragActive =
       Boolean(isDragging) ||
+      canvasInteractionActive ||
+      canvasInteractionSettling ||
       (typeof window !== "undefined" &&
         Boolean(window._isDragging || window._grupoLider));
 
@@ -379,7 +411,7 @@ export default function CanvasStageContent({
         ? nextHoverId(currentHoverId)
         : nextHoverId
     ));
-  }, [isDragging, setHoverId]);
+  }, [canvasInteractionActive, canvasInteractionSettling, isDragging, setHoverId]);
 
   useEffect(() => {
     canvasStageRenderCountRef.current += 1;
@@ -413,7 +445,11 @@ export default function CanvasStageContent({
       guidesCount: guideOverlayRef?.current?.getGuideLinesCount?.() || 0,
       pendingDragSelectionId:
         (typeof window !== "undefined" && window._pendingDragSelectionId) ||
-        deferredDragSelectionIdRef.current ||
+        (
+          dragSettleSessionRef.current?.needsDeferredCommit
+            ? dragSettleSessionRef.current.dragId
+            : null
+        ) ||
         null,
     };
     const diff = buildCanvasDragPerfDiff(
@@ -544,10 +580,29 @@ export default function CanvasStageContent({
     }
   ), [cancelScheduledGuideEvaluation]);
 
-  const deferSelectionToDragEnd = useCallback((dragId, seleccionActual, tipo = null) => {
+  const startDragSettleSession = useCallback((
+    dragId,
+    seleccionActual,
+    tipo = null,
+    interactionEpoch = 0
+  ) => {
     const currentSelection = Array.isArray(seleccionActual) ? seleccionActual : [];
-    if (currentSelection.includes(dragId)) {
-      deferredDragSelectionIdRef.current = null;
+    const startedSelected = currentSelection.includes(dragId);
+    const nextSession = {
+      dragId,
+      tipo,
+      startedSelected,
+      selectionSnapshot: [...currentSelection],
+      needsDeferredCommit: !startedSelected,
+      hadVisualSelection:
+        currentSelection.length > 0 || Boolean(dragId),
+      needsGuideCleanup: true,
+      interactionEpoch: Number(interactionEpoch || 0),
+    };
+
+    dragSettleSessionRef.current = nextSession;
+
+    if (!nextSession.needsDeferredCommit) {
       if (typeof window !== "undefined") {
         window._pendingDragSelectionId = null;
       }
@@ -560,10 +615,9 @@ export default function CanvasStageContent({
         throttleMs: 40,
         throttleKey: `selection:defer-skipped:${dragId}`,
       });
-      return false;
+      return nextSession;
     }
 
-    deferredDragSelectionIdRef.current = dragId;
     if (typeof window !== "undefined") {
       window._pendingDragSelectionId = dragId;
     }
@@ -576,16 +630,7 @@ export default function CanvasStageContent({
       throttleMs: 40,
       throttleKey: `selection:defer-dragstart:${dragId}`,
     });
-    return true;
-  }, []);
-
-  const beginDragSelectionGuard = useCallback((dragId, seleccionActual) => {
-    const currentSelection = Array.isArray(seleccionActual) ? [...seleccionActual] : [];
-    dragSelectionGuardRef.current = {
-      dragId,
-      startedSelected: currentSelection.includes(dragId),
-      selectionSnapshot: currentSelection,
-    };
+    return nextSession;
   }, []);
 
   const beginDragVisualSelection = useCallback((dragId, seleccionActual) => {
@@ -603,114 +648,175 @@ export default function CanvasStageContent({
       ) {
         return current;
       }
+      dragVisualSelectionIdsRef.current = nextSelection;
       return nextSelection;
     });
   }, []);
 
   const clearDragVisualSelection = useCallback(() => {
+    dragVisualSelectionIdsRef.current = [];
     setDragVisualSelectionIds((current) => (
       Array.isArray(current) && current.length === 0 ? current : []
     ));
   }, []);
 
-  const restoreSelectionIfLostAfterDrag = useCallback((dragId, tipo = null) => {
-    const guard = dragSelectionGuardRef.current;
-    if (!guard || guard.dragId !== dragId) return false;
-
-    dragSelectionGuardRef.current = {
-      dragId: null,
-      startedSelected: false,
-      selectionSnapshot: [],
+  const resolveDragSettleOutcome = useCallback((session) => {
+    const safeSession =
+      session && session.dragId
+        ? session
+        : createEmptyDragSettleSession();
+    const outcome = {
+      dragId: safeSession.dragId || null,
+      tipo: safeSession.tipo || null,
+      interactionEpoch: Number(safeSession.interactionEpoch || 0),
+      committedDeferredSelection: false,
+      restoredSelectionAfterDrag: false,
+      clearedVisualSelection: false,
+      cleanedGuides: false,
+      currentSelectionSnapshot: [],
+      nextSelectionSnapshot: [],
+      hasWork: false,
     };
 
-    if (!guard.startedSelected) {
-      return false;
-    }
-
-    let restored = false;
-    let currentSelectionSnapshot = [];
-    let nextSelectionSnapshot = [];
-    setElementosSeleccionados((current) => {
-      const currentSelection = Array.isArray(current) ? current : [];
-      currentSelectionSnapshot = [...currentSelection];
-      if (currentSelection.includes(dragId)) {
-        nextSelectionSnapshot = [...currentSelection];
-        return current;
+    if (!safeSession.dragId) {
+      dragSettleSessionRef.current = createEmptyDragSettleSession();
+      if (typeof window !== "undefined") {
+        window._pendingDragSelectionId = null;
       }
-
-      restored = true;
-      nextSelectionSnapshot =
-        guard.selectionSnapshot.length > 0 ? [...guard.selectionSnapshot] : [dragId];
-      return nextSelectionSnapshot;
-    });
-
-    logSelectedDragDebug("selection:restore-after-drag-check", {
-      elementId: dragId,
-      tipo,
-      guardStartedSelected: Boolean(guard.startedSelected),
-      guardSelectionSnapshot: guard.selectionSnapshot,
-      currentSelectionSnapshot,
-      nextSelectionSnapshot,
-      restored,
-    });
-
-    if (restored) {
-      trackCanvasDragPerf("selection:restore-after-drag", {
-        elementId: dragId,
-        tipo,
-        selectionSnapshot: guard.selectionSnapshot.join(","),
-      }, {
-        throttleMs: 40,
-        throttleKey: `selection:restore-after-drag:${dragId}`,
-      });
+      return outcome;
     }
 
-    return restored;
-  }, [setElementosSeleccionados]);
-
-  const commitDeferredSelectionAfterDrag = useCallback((dragId, tipo = null) => {
-    if (deferredDragSelectionIdRef.current !== dragId) {
-      logSelectedDragDebug("selection:commit-dragend-skip", {
-        elementId: dragId,
-        tipo,
-        deferredDragSelectionId: deferredDragSelectionIdRef.current || null,
-      });
-      return false;
-    }
-
-    deferredDragSelectionIdRef.current = null;
     if (typeof window !== "undefined") {
       window._pendingDragSelectionId = null;
     }
 
-    let currentSelectionSnapshot = [];
-    let nextSelectionSnapshot = [dragId];
-    setElementosSeleccionados((current) => {
-      currentSelectionSnapshot = Array.isArray(current) ? [...current] : [];
-      if (Array.isArray(current) && current.length === 1 && current[0] === dragId) {
-        nextSelectionSnapshot = [...current];
-        return current;
+    if (safeSession.needsDeferredCommit) {
+      setElementosSeleccionados((current) => {
+        const currentSelection = Array.isArray(current) ? current : [];
+        outcome.currentSelectionSnapshot = [...currentSelection];
+        if (currentSelection.length === 1 && currentSelection[0] === safeSession.dragId) {
+          outcome.nextSelectionSnapshot = [...currentSelection];
+          return current;
+        }
+
+        outcome.committedDeferredSelection = true;
+        outcome.nextSelectionSnapshot = [safeSession.dragId];
+        return [safeSession.dragId];
+      });
+    } else if (safeSession.startedSelected) {
+      setElementosSeleccionados((current) => {
+        const currentSelection = Array.isArray(current) ? current : [];
+        outcome.currentSelectionSnapshot = [...currentSelection];
+        if (currentSelection.includes(safeSession.dragId)) {
+          outcome.nextSelectionSnapshot = [...currentSelection];
+          return current;
+        }
+
+        outcome.restoredSelectionAfterDrag = true;
+        outcome.nextSelectionSnapshot =
+          safeSession.selectionSnapshot.length > 0
+            ? [...safeSession.selectionSnapshot]
+            : [safeSession.dragId];
+        return outcome.nextSelectionSnapshot;
+      });
+    }
+
+    const shouldClearVisualSelection =
+      safeSession.hadVisualSelection &&
+      Array.isArray(dragVisualSelectionIdsRef.current) &&
+      dragVisualSelectionIdsRef.current.length > 0;
+    if (shouldClearVisualSelection) {
+      outcome.clearedVisualSelection = true;
+      clearDragVisualSelection();
+    }
+
+    const hasGuideCleanupWork =
+      safeSession.needsGuideCleanup &&
+      (
+        Boolean(guideDragFrameRef.current?.payload) ||
+        (guideOverlayRef?.current?.getGuideLinesCount?.() || 0) > 0
+      );
+    if (hasGuideCleanupWork) {
+      outcome.cleanedGuides = true;
+      cancelScheduledGuideEvaluation();
+      limpiarGuias?.();
+      configurarDragEnd([]);
+    }
+
+    outcome.hasWork = Boolean(
+      outcome.committedDeferredSelection ||
+      outcome.restoredSelectionAfterDrag ||
+      outcome.clearedVisualSelection ||
+      outcome.cleanedGuides
+    );
+
+    dragSettleSessionRef.current = createEmptyDragSettleSession();
+    return outcome;
+  }, [
+    cancelScheduledGuideEvaluation,
+    clearDragVisualSelection,
+    configurarDragEnd,
+    guideOverlayRef,
+    limpiarGuias,
+    setElementosSeleccionados,
+  ]);
+
+  const beginCanvasDragGesture = useCallback((dragId, tipo = null) => {
+    return beginCanvasInteraction("drag", {
+      dragId,
+      tipo,
+      source: "canvas-object",
+    });
+  }, [beginCanvasInteraction]);
+
+  const queuePostDragUiRefresh = useCallback((dragId, tipo = null, source = "element-drag-end") => {
+    const runPostDragUi = () => {
+      const session = dragSettleSessionRef.current;
+      if (!session?.dragId || session.dragId !== dragId) {
+        if (typeof window !== "undefined") {
+          window._pendingDragSelectionId = null;
+        }
+        dragSettleSessionRef.current = createEmptyDragSettleSession();
+        return;
       }
-      nextSelectionSnapshot = [dragId];
-      return [dragId];
-    });
 
-    logSelectedDragDebug("selection:commit-dragend", {
-      elementId: dragId,
-      tipo,
-      currentSelectionSnapshot,
-      nextSelectionSnapshot,
-    });
+      const outcome = resolveDragSettleOutcome(session);
+      if (!outcome.hasWork) return;
 
-    trackCanvasDragPerf("selection:commit-dragend", {
-      elementId: dragId,
-      tipo,
-    }, {
-      throttleMs: 40,
-      throttleKey: `selection:commit-dragend:${dragId}`,
-    });
-    return true;
-  }, [setElementosSeleccionados]);
+      logSelectedDragDebug("selection:post-drag-ui-refresh", {
+        elementId: dragId,
+        tipo,
+        source,
+        interactionEpoch: outcome.interactionEpoch,
+        committedDeferredSelection: outcome.committedDeferredSelection,
+        restoredSelectionAfterDrag: outcome.restoredSelectionAfterDrag,
+        clearedVisualSelection: outcome.clearedVisualSelection,
+        cleanedGuides: outcome.cleanedGuides,
+        currentSelectionSnapshot: outcome.currentSelectionSnapshot,
+        nextSelectionSnapshot: outcome.nextSelectionSnapshot,
+        selectedIdsFromWindow:
+          typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+            ? [...window._elementosSeleccionados]
+            : [...elementosSeleccionados],
+        globalDragging:
+          typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+        canvasInteractionEpoch,
+      });
+    };
+
+    const taskKey = `post-drag-ui:${source}:${dragId}`;
+    if (typeof scheduleCanvasUiAfterSettle === "function") {
+      scheduleCanvasUiAfterSettle(taskKey, runPostDragUi);
+      return;
+    }
+
+    requestAnimationFrame(runPostDragUi);
+  }, [
+    canvasInteractionEpoch,
+    elementosSeleccionados,
+    resolveDragSettleOutcome,
+    scheduleCanvasUiAfterSettle,
+  ]);
 
   const logInlineIntent = useCallback((eventName, payload = {}) => {
     if (!isInlineIntentDebugEnabled()) return;
@@ -1360,10 +1466,24 @@ export default function CanvasStageContent({
     clearInlineIntent("transform-start", {
       selected: [...elementosSeleccionados],
     });
+    beginCanvasInteraction("transform", {
+      selectedIds: [...elementosSeleccionados],
+      isRotate: payload?.isRotate === true,
+      activeAnchor: payload?.activeAnchor ?? null,
+      pointerType: payload?.pointerType ?? null,
+    });
     if (typeof handleTransformInteractionStart === "function") {
       handleTransformInteractionStart(payload);
     }
-  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionStart, selectedPrimaryObject?.esFondo, selectedPrimaryObject?.tipo]);
+  }, [
+    beginCanvasInteraction,
+    clearInlineActivation,
+    clearInlineIntent,
+    elementosSeleccionados,
+    handleTransformInteractionStart,
+    selectedPrimaryObject?.esFondo,
+    selectedPrimaryObject?.tipo,
+  ]);
 
   const handleTransformInteractionEndWithInlineIntent = useCallback((payload = {}) => {
     clearInlineActivation("transform-end", {
@@ -1375,13 +1495,25 @@ export default function CanvasStageContent({
     if (typeof handleTransformInteractionEnd === "function") {
       handleTransformInteractionEnd(payload);
     }
+    endCanvasInteraction("transform", {
+      selectedIds: [...elementosSeleccionados],
+      isRotate: payload?.isRotate === true,
+      activeAnchor: payload?.activeAnchor ?? null,
+      pointerType: payload?.pointerType ?? null,
+    });
     activeTransformInteractionRef.current = {
       isRotate: false,
       activeAnchor: null,
       pointerType: null,
     };
     setIsImageRotateInteractionActive(false);
-  }, [clearInlineActivation, clearInlineIntent, elementosSeleccionados, handleTransformInteractionEnd]);
+  }, [
+    clearInlineActivation,
+    clearInlineIntent,
+    elementosSeleccionados,
+    endCanvasInteraction,
+    handleTransformInteractionEnd,
+  ]);
 
   useEffect(() => {
     if (
@@ -1636,19 +1768,25 @@ export default function CanvasStageContent({
           }}
           onDragStartPersonalizado={(dragId = obj.id) => {
             clearInlineIntent("drag-start", { dragId, tipo: "galeria" });
+            const interactionEpoch = beginCanvasDragGesture(dragId, "galeria");
+            startDragSettleSession(
+              dragId,
+              elementosSeleccionados,
+              "galeria",
+              interactionEpoch
+            );
             beginDragVisualSelection(dragId, elementosSeleccionados);
-            deferSelectionToDragEnd(dragId, elementosSeleccionados, "galeria");
             cancelScheduledGuideEvaluation();
             prepararGuias?.(dragId, objetos, elementRefs);
           }}
           onDragEndPersonalizado={() => {
-            commitDeferredSelectionAfterDrag(obj.id, "galeria");
-            clearDragVisualSelection();
             cancelScheduledGuideEvaluation();
-            limpiarGuias();
-            if (typeof actualizarPosicionBotonOpciones === "function") {
-              actualizarPosicionBotonOpciones();
-            }
+            queuePostDragUiRefresh(obj.id, "galeria", "gallery-drag-end");
+            endCanvasInteraction("drag", {
+              dragId: obj.id,
+              tipo: "galeria",
+              source: "gallery-drag-end",
+            });
           }}
           onChange={(id, nuevo) => {
             setObjetos((prev) => {
@@ -1680,8 +1818,14 @@ export default function CanvasStageContent({
           }}
           onDragStartPersonalizado={(dragId = obj.id) => {
             clearInlineIntent("drag-start", { dragId, tipo: "countdown" });
+            const interactionEpoch = beginCanvasDragGesture(dragId, "countdown");
+            startDragSettleSession(
+              dragId,
+              elementosSeleccionados,
+              "countdown",
+              interactionEpoch
+            );
             beginDragVisualSelection(dragId, elementosSeleccionados);
-            deferSelectionToDragEnd(dragId, elementosSeleccionados, "countdown");
             cancelScheduledGuideEvaluation();
             prepararGuias?.(dragId, objetos, elementRefs);
           }}
@@ -1689,13 +1833,13 @@ export default function CanvasStageContent({
             scheduleGuideEvaluation(pos, id);
           }}
           onDragEndPersonalizado={() => {
-            commitDeferredSelectionAfterDrag(obj.id, "countdown");
-            clearDragVisualSelection();
             cancelScheduledGuideEvaluation();
-            limpiarGuias();
-            if (typeof actualizarPosicionBotonOpciones === "function") {
-              actualizarPosicionBotonOpciones();
-            }
+            queuePostDragUiRefresh(obj.id, "countdown", "countdown-drag-end");
+            endCanvasInteraction("drag", {
+              dragId: obj.id,
+              tipo: "countdown",
+              source: "countdown-drag-end",
+            });
           }}
           dragStartPos={dragStartPos}
           hasDragged={hasDragged}
@@ -1813,10 +1957,19 @@ export default function CanvasStageContent({
               return prev.map((objeto) => {
                 if (elementos.includes(objeto.id) && dragInicial && dragInicial[objeto.id]) {
                   const posInicial = dragInicial[objeto.id];
-                  return {
-                    ...objeto,
+                  const node = elementRefs.current?.[objeto.id] || null;
+                  const canonicalPose = resolveCanonicalNodePose(node, objeto, {
                     x: posInicial.x + deltaX,
                     y: posInicial.y + deltaY,
+                    rotation:
+                      typeof node?.rotation === "function"
+                        ? node.rotation()
+                        : objeto.rotation || 0,
+                  });
+                  return {
+                    ...objeto,
+                    x: canonicalPose.x,
+                    y: canonicalPose.y,
                   };
                 }
                 return objeto;
@@ -1908,6 +2061,7 @@ export default function CanvasStageContent({
         }}
         onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id) => {
           clearInlineIntent("drag-start", { dragId });
+          const interactionEpoch = beginCanvasDragGesture(dragId, obj.tipo || null);
           const seleccionActual = Array.isArray(window._elementosSeleccionados)
             ? window._elementosSeleccionados
             : elementosSeleccionados;
@@ -1942,9 +2096,13 @@ export default function CanvasStageContent({
             throttleKey: `drag:start-context:${dragId}`,
           });
 
-          beginDragSelectionGuard(dragId, seleccionActual);
+          startDragSettleSession(
+            dragId,
+            seleccionActual,
+            obj.tipo || null,
+            interactionEpoch
+          );
           beginDragVisualSelection(dragId, seleccionActual);
-          deferSelectionToDragEnd(dragId, seleccionActual, obj.tipo || null);
 
           trackCanvasDragPerf("drag:start-ui-cleanup", {
             elementId: dragId,
@@ -1966,41 +2124,13 @@ export default function CanvasStageContent({
           prepararGuias?.(dragId, objetos, elementRefs);
         }}
         onDragEndPersonalizado={isInEditMode ? null : () => {
-          const committedDeferredSelection = commitDeferredSelectionAfterDrag(
-            obj.id,
-            obj.tipo || null
-          );
-          const restoredSelectionAfterDrag = restoreSelectionIfLostAfterDrag(
-            obj.id,
-            obj.tipo || null
-          );
-          clearDragVisualSelection();
           cancelScheduledGuideEvaluation();
-          configurarDragEnd([]);
-          logSelectedDragDebug("selection:post-drag-ui-refresh", {
-            elementId: obj.id,
+          queuePostDragUiRefresh(obj.id, obj.tipo || null, "element-drag-end");
+          endCanvasInteraction("drag", {
+            dragId: obj.id,
             tipo: obj.tipo || null,
-            committedDeferredSelection,
-            restoredSelectionAfterDrag,
-            selectedIdsFromWindow:
-              typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
-                ? [...window._elementosSeleccionados]
-                : [...elementosSeleccionados],
-            globalDragging:
-              typeof window !== "undefined" ? Boolean(window._isDragging) : false,
-            optionButtonRefreshScheduled:
-              typeof actualizarPosicionBotonOpciones === "function",
+            source: "element-drag-end",
           });
-          if (typeof actualizarPosicionBotonOpciones === "function") {
-            requestAnimationFrame(() => {
-              logSelectedDragDebug("selection:option-button-refresh", {
-                elementId: obj.id,
-                tipo: obj.tipo || null,
-                source: "element-drag-end",
-              });
-              actualizarPosicionBotonOpciones("element-drag-end");
-            });
-          }
         }}
         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
           scheduleGuideEvaluation(pos, elementId);
@@ -2013,6 +2143,12 @@ export default function CanvasStageContent({
   };
 
   const isAnyCanvasDragActive =
+    Boolean(isDragging) ||
+    canvasInteractionActive ||
+    canvasInteractionSettling ||
+    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
+    (typeof window !== "undefined" && Boolean(window._grupoLider));
+  const isCanvasDragGestureActive =
     Boolean(isDragging) ||
     (typeof window !== "undefined" && Boolean(window._isDragging)) ||
     (typeof window !== "undefined" && Boolean(window._grupoLider));
@@ -2379,426 +2515,6 @@ export default function CanvasStageContent({
                   perfLabel="ui-overlay"
                   listening={!isAnyCanvasDragActive && !isImageRotateInteractionActive}
                 >
-                  {false && objetos.map((obj, i) => {
-                    // ?? Determinar si estÃ¡ en modo ediciÃ³n
-                    const isInlineEditableObject = obj.tipo === "texto";
-                    const isInEditMode =
-                      isInlineEditableObject &&
-                      editing.id === obj.id &&
-                      elementosSeleccionados[0] === obj.id;
-
-                    // ??? Caso especial: la galerÃ­a la renderizamos acÃ¡ (no usa ElementoCanvas)
-                    if (obj.tipo === "galeria") {
-
-                      return (
-                        <GaleriaKonva
-                          key={obj.id}
-                          obj={obj}
-                          registerRef={registerRef}
-                          onHover={setHoverIdWhenIdle}
-                          isSelected={elementosSeleccionados.includes(obj.id)}
-                          celdaGaleriaActiva={celdaGaleriaActiva}
-                          onPickCell={(info) => setCeldaGaleriaActiva(info)}
-                          seccionesOrdenadas={seccionesOrdenadas}
-                          altoCanvas={altoCanvas}
-                          onSelect={(id, e) => {
-                            e?.evt && (e.evt.cancelBubble = true);
-                            clearInlineIntent("non-inline-select", { id, tipo: "galeria" });
-                            setElementosSeleccionados([id]);
-                          }}
-                          onDragMovePersonalizado={(pos, id) => {
-                            window._isDragging = true;
-                            scheduleGuideEvaluation(pos, id);
-                          }}
-                          onDragStartPersonalizado={(dragId = obj.id) => {
-                            clearInlineIntent("drag-start", { dragId, tipo: "galeria" });
-                            if (!elementosSeleccionados.includes(dragId)) {
-                              setElementosSeleccionados([dragId]);
-                            }
-                            cancelScheduledGuideEvaluation();
-                            prepararGuias?.(dragId, objetos, elementRefs);
-                            setIsDragging(true);
-                          }}
-                          onDragEndPersonalizado={() => {
-                            setIsDragging(false);
-                            cancelScheduledGuideEvaluation();
-                            limpiarGuias();
-                            if (typeof actualizarPosicionBotonOpciones === "function") {
-                              actualizarPosicionBotonOpciones();
-                            }
-                          }}
-                          onChange={(id, nuevo) => {
-                            setObjetos((prev) => {
-                              const i = prev.findIndex((o) => o.id === id);
-                              if (i === -1) return prev;
-                              const updated = [...prev];
-                              updated[i] = { ...updated[i], ...nuevo };
-                              return updated;
-                            });
-                          }}
-                        />
-
-                      );
-                    }
-
-
-                    if (obj.tipo === "countdown") {
-                      return (
-                        <CountdownKonva
-                          key={obj.id}
-                          obj={obj}
-                          registerRef={registerRef}
-                          onHover={setHoverIdWhenIdle}
-                          isSelected={elementosSeleccionados.includes(obj.id)}
-                          seccionesOrdenadas={seccionesOrdenadas}
-                          altoCanvas={altoCanvas}
-
-                          // ? selecciÃ³n
-                          onSelect={(id, e) => {
-                            e?.evt && (e.evt.cancelBubble = true);
-                            clearInlineIntent("non-inline-select", { id, tipo: "countdown" });
-                            setElementosSeleccionados([id]);
-                          }}
-
-                          // ? PREVIEW liviano (no tocar estado del objeto para que no haya lag)
-                          onDragStartPersonalizado={(dragId = obj.id) => {
-                            clearInlineIntent("drag-start", { dragId, tipo: "countdown" });
-                            if (!elementosSeleccionados.includes(dragId)) {
-                              setElementosSeleccionados([dragId]);
-                            }
-                            cancelScheduledGuideEvaluation();
-                            prepararGuias?.(dragId, objetos, elementRefs);
-                            setIsDragging(true);
-                          }}
-                          onDragMovePersonalizado={(pos, id) => {
-                            scheduleGuideEvaluation(pos, id);
-                          }}
-
-                          // ? FIN de drag: limpiar guÃ­as / UI auxiliar
-                          onDragEndPersonalizado={() => {
-                            setIsDragging(false);
-                            cancelScheduledGuideEvaluation();
-                            limpiarGuias();
-                            if (typeof actualizarPosicionBotonOpciones === "function") {
-                              actualizarPosicionBotonOpciones();
-                            }
-                          }}
-
-                          // ? refs para el motor de drag
-                          dragStartPos={dragStartPos}
-                          hasDragged={hasDragged}
-
-                          // ? Â¡Clave! Al finalizar, tratamos x/y absolutas como en ElementoCanvas:
-                          onChange={(id, cambios) => {
-                            setObjetos(prev => {
-                              const i = prev.findIndex(o => o.id === id);
-                              if (i === -1) return prev;
-
-                              const objOriginal = prev[i];
-
-                              // ?? Si no es final de drag, mergeamos sin mÃ¡s (no tocar coords)
-                              if (!cambios.finalizoDrag) {
-                                const updated = [...prev];
-                                updated[i] = { ...updated[i], ...cambios };
-                                return updated;
-                              }
-
-                              // ?? Final de drag: 'cambios.y' viene ABSOLUTA (Stage coords)
-                              const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-                                cambios.y,
-                                objOriginal.seccionId,
-                                seccionesOrdenadas
-                              );
-
-                              let next = { ...cambios };
-                              delete next.finalizoDrag;
-
-                              if (nuevaSeccion) {
-                                next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
-                              } else {
-                                // convertir y absoluta ? y relativa a la secciÃ³n actual
-                                next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
-                              }
-
-                              const updated = [...prev];
-                              updated[i] = { ...updated[i], ...next };
-                              return updated;
-                            });
-                          }}
-                        />
-                      );
-                    }
-
-
-
-
-
-                    const supportsInlinePreview = isSemanticInlineEditableObject(obj);
-                    const objPreview =
-                      editing.id === obj.id && supportsInlinePreview
-                        ? (() => {
-                          const textoPreview = String(editing.value ?? "");
-                          const textoOriginal = String(obj.texto ?? "");
-                          const hasPreviewTextChanged = textoPreview !== textoOriginal;
-                          const previewObj = hasPreviewTextChanged
-                            ? { ...obj, texto: textoPreview }
-                            : obj;
-                          const shouldKeepCenterPreview =
-                            shouldPreserveTextCenterPosition(obj);
-
-                          if (shouldKeepCenterPreview && hasPreviewTextChanged) {
-                            const lockedCenterX =
-                              inlineEditPreviewRef.current?.id === obj.id &&
-                              Number.isFinite(inlineEditPreviewRef.current?.centerX)
-                                ? inlineEditPreviewRef.current.centerX
-                                : null;
-                            const previewX = calcularXTextoCentrado(
-                              obj,
-                              textoPreview,
-                              lockedCenterX
-                            );
-                            if (Number.isFinite(previewX)) {
-                              previewObj.x = previewX;
-                            }
-                          }
-
-                          return previewObj;
-                        })()
-                        : obj;
-
-                    return (
-                      <ElementoCanvas
-                        key={obj.id}
-                        obj={{
-                          ...objPreview,
-                          // ?? yLocal: en secciÃ³n pantalla usamos yNorm * 500
-                          // fallback legacy: si no hay yNorm, usamos obj.y
-                          y: (() => {
-                            const idxSec = seccionesOrdenadas.findIndex(s => s.id === objPreview.seccionId);
-                            const offsetY = calcularOffsetY(seccionesOrdenadas, idxSec);
-
-                            const yLocal = esSeccionPantallaById(objPreview.seccionId)
-                              ? (Number.isFinite(objPreview.yNorm) ? (objPreview.yNorm * ALTURA_PANTALLA_EDITOR) : objPreview.y)
-                              : objPreview.y;
-
-                            return yLocal + offsetY;
-                          })(),
-                        }}
-                        anchoCanvas={800}
-                        isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
-                        selectionCount={elementosSeleccionados.length}
-                        preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
-                        isInEditMode={isInEditMode} // ?? NUEVA PROP
-                        onHover={isInEditMode ? null : setHoverIdWhenIdle}
-                        registerRef={registerRef}
-                        editingId={editing.id}
-                        inlineOverlayMountedId={inlineOverlayMountedId}
-                        inlineOverlayMountSession={inlineOverlayMountSession}
-                        inlineVisibilityMode={inlineDebugAB.visibilitySource}
-                        inlineOverlayEngine={inlineDebugAB.overlayEngine}
-                        finishInlineEdit={finishEdit}
-                        onInlineEditPointer={
-                          isInEditMode ? onInlineEditCanvasPointer : null
-                        }
-                        onSelect={isInEditMode ? null : handleElementSelectIntent}
-
-
-                        onChange={(id, nuevo) => {
-
-
-                          // ?? NUEVO: Manejar preview inmediato de drag grupal
-                          if (nuevo.isDragPreview) {
-
-                            setObjetos(prev => {
-                              const index = prev.findIndex(o => o.id === id);
-                              if (index === -1) return prev;
-
-                              const updated = [...prev];
-                              const { isDragPreview, skipHistorial, ...cleanNuevo } = nuevo;
-                              updated[index] = { ...updated[index], ...cleanNuevo };
-                              return updated;
-                            });
-                            return;
-                          }
-
-                          // ?? MANEJAR SOLO batch update final de drag grupal
-                          if (nuevo.isBatchUpdateFinal && id === 'BATCH_UPDATE_GROUP_FINAL') {
-
-                            const { elementos, dragInicial, deltaX, deltaY } = nuevo;
-
-                            setObjetos(prev => {
-                              return prev.map(objeto => {
-                                if (elementos.includes(objeto.id)) {
-                                  if (dragInicial && dragInicial[objeto.id]) {
-                                    const posInicial = dragInicial[objeto.id];
-                                    return {
-                                      ...objeto,
-                                      x: posInicial.x + deltaX,
-                                      y: posInicial.y + deltaY
-                                    };
-                                  }
-                                }
-                                return objeto;
-                              });
-                            });
-                            return;
-                          }
-
-                          // ?? NO procesar si viene del Transform
-                          if (nuevo.fromTransform) {
-
-                            return;
-                          }
-
-                          const objOriginal = objetos.find((o) => o.id === id);
-                          if (!objOriginal) return;
-
-                          // ?? Para drag final, procesar inmediatamente
-                          if (nuevo.finalizoDrag) {
-
-                            const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-                              nuevo.y,
-                              objOriginal.seccionId,
-                              seccionesOrdenadas
-                            );
-
-                            let coordenadasFinales = { ...nuevo };
-                            delete coordenadasFinales.finalizoDrag;
-
-                            if (nuevaSeccion) {
-                              coordenadasFinales = {
-                                ...coordenadasFinales,
-                                ...coordenadasAjustadas,
-                                seccionId: nuevaSeccion
-                              };
-                            } else {
-                              coordenadasFinales.y = convertirAbsARel(
-                                nuevo.y,
-                                objOriginal.seccionId,
-                                seccionesOrdenadas
-                              );
-                            }
-
-                            // 1) Determinar secciÃ³n final
-                            const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
-
-                            // 2) Obtener yRelPx (y relativa dentro de la secciÃ³n en px)
-                            let yRelPx;
-
-                            if (nuevaSeccion) {
-                              // coordenadasAjustadas normalmente ya trae y relativa
-                              yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
-                            } else {
-                              // si no cambiÃ³ de secciÃ³n, convertimos desde y absoluta
-                              yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
-                            }
-
-                            // 3) Aplicar polÃ­tica pantalla: guardar yNorm
-                            if (esSeccionPantallaById(seccionFinalId)) {
-                              const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
-                              coordenadasFinales.yNorm = yNorm;
-                              delete coordenadasFinales.y; // ? clave: evitamos mezclar sistemas
-                            } else {
-                              // fijo: guardar y en px
-                              coordenadasFinales.y = yRelPx;
-                              delete coordenadasFinales.yNorm;
-                            }
-
-
-
-                            // Actualizar inmediatamente
-                            setObjetos(prev => {
-                              const index = prev.findIndex(o => o.id === id);
-                              if (index === -1) return prev;
-
-                              const updated = [...prev];
-                              updated[index] = { ...updated[index], ...coordenadasFinales };
-                              return updated;
-                            });
-
-                            return;
-                          }
-
-                          // ?? Para otros cambios (transform, etc.)
-                          const hayDiferencias = Object.keys(nuevo).some(key => {
-                            const valorAnterior = objOriginal[key];
-                            const valorNuevo = nuevo[key];
-
-                            if (typeof valorAnterior === 'number' && typeof valorNuevo === 'number') {
-                              return Math.abs(valorAnterior - valorNuevo) > 0.01;
-                            }
-
-                            return valorAnterior !== valorNuevo;
-                          });
-
-                          if (!hayDiferencias) return;
-
-                          const seccionId = nuevo.seccionId || objOriginal.seccionId;
-                          const seccion = seccionesOrdenadas.find((s) => s.id === seccionId);
-                          if (!seccion) return;
-
-                          setObjetos(prev => {
-                            const index = prev.findIndex(o => o.id === id);
-                            if (index === -1) return prev;
-
-                            const updated = [...prev];
-                            updated[index] = { ...updated[index], ...nuevo };
-                            return updated;
-                          });
-                        }}
-                        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id, e) => {
-                          clearInlineIntent("drag-start", { dragId });
-                          const seleccionActual = Array.isArray(window._elementosSeleccionados)
-                            ? window._elementosSeleccionados
-                            : elementosSeleccionados;
-
-                          if (!seleccionActual.includes(dragId)) {
-                            setElementosSeleccionados([dragId]);
-                          }
-
-                          setElementosPreSeleccionados([]);
-                          cancelScheduledGuideEvaluation();
-                          prepararGuias?.(dragId, objetos, elementRefs);
-                        }}
-                        onDragEndPersonalizado={isInEditMode ? null : () => {
-                          cancelScheduledGuideEvaluation();
-                          configurarDragEnd([]);
-                          logSelectedDragDebug("selection:post-drag-ui-refresh", {
-                            elementId: obj.id,
-                            tipo: obj.tipo || null,
-                            source: "legacy-element-branch",
-                            selectedIdsFromWindow:
-                              typeof window !== "undefined" &&
-                              Array.isArray(window._elementosSeleccionados)
-                                ? [...window._elementosSeleccionados]
-                                : [...elementosSeleccionados],
-                            globalDragging:
-                              typeof window !== "undefined"
-                                ? Boolean(window._isDragging)
-                                : false,
-                            optionButtonRefreshScheduled:
-                              typeof actualizarPosicionBotonOpciones === "function",
-                          });
-                          if (typeof actualizarPosicionBotonOpciones === "function") {
-                            requestAnimationFrame(() => {
-                              logSelectedDragDebug("selection:option-button-refresh", {
-                                elementId: obj.id,
-                                tipo: obj.tipo || null,
-                                source: "element-drag-end",
-                              });
-                              actualizarPosicionBotonOpciones("element-drag-end");
-                            });
-                          }
-                        }}
-                        onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
-                          scheduleGuideEvaluation(pos, elementId);
-                        }}
-                        dragStartPos={dragStartPos}
-                        hasDragged={hasDragged}
-                      />
-                    );
-                  })}
-
                   {editing.id && (
                     <InlineTextEditDecorationsLayer
                       isMobile={isMobile}
@@ -2897,10 +2613,17 @@ export default function CanvasStageContent({
                         selectedElements={elementosSeleccionados}
                         elementRefs={elementRefs}
                         objetos={objetos}
-                        isDragging={isAnyCanvasDragActive}
+                        isDragging={isCanvasDragGestureActive}
                         isInteractionLocked={isImageCropInteracting}
                         isMobile={isMobile}
                         dragLayerRef={dragLayerRef}
+                        canvasInteractionEpoch={canvasInteractionEpoch}
+                        canvasInteractionActive={canvasInteractionActive}
+                        canvasInteractionSettling={canvasInteractionSettling}
+                        scheduleCanvasUiAfterSettle={scheduleCanvasUiAfterSettle}
+                        cancelCanvasUiAfterSettle={
+                          canvasInteractionApi.cancelCanvasUiAfterSettle
+                        }
                         onTransformInteractionStart={handleTransformInteractionStartWithInlineIntent}
                         onTransformInteractionEnd={handleTransformInteractionEndWithInlineIntent}
                         onTransform={(newAttrs) => {
@@ -2915,8 +2638,10 @@ export default function CanvasStageContent({
                                 setObjetos(prev => {
                                   const nuevos = [...prev];
                                   const elemento = nuevos[objIndex];
+                                  const isPureRotatePreview =
+                                    activeTransformInteractionRef.current?.isRotate === true;
                                   const isImageRotatePreview =
-                                    activeTransformInteractionRef.current?.isRotate === true &&
+                                    isPureRotatePreview &&
                                     elemento?.tipo === "imagen" &&
                                     !elemento?.esFondo;
                                   // Countdown: durante preview dejamos que Konva escale el nodo
@@ -2931,19 +2656,19 @@ export default function CanvasStageContent({
                                     return prev;
                                   }
 
-                                  if (isImageRotatePreview) {
-                                    // En rotacion pura, Konva ya renderiza el giro en vivo.
-                                    // Reescribir React en cada frame vuelve la interaccion pesada.
-                                    noteImageRotationReactPreviewSkipped({
-                                      elementId: elemento?.id ?? null,
-                                      activeAnchor:
-                                        activeTransformInteractionRef.current?.activeAnchor ?? null,
-                                      pointerType:
-                                        activeTransformInteractionRef.current?.pointerType ?? null,
-                                      incomingRotation: roundRotationMetric(
-                                        newAttrs.rotation ?? elemento?.rotation ?? 0
-                                      ),
-                                    });
+                                  if (isPureRotatePreview) {
+                                    if (isImageRotatePreview) {
+                                      noteImageRotationReactPreviewSkipped({
+                                        elementId: elemento?.id ?? null,
+                                        activeAnchor:
+                                          activeTransformInteractionRef.current?.activeAnchor ?? null,
+                                        pointerType:
+                                          activeTransformInteractionRef.current?.pointerType ?? null,
+                                        incomingRotation: roundRotationMetric(
+                                          newAttrs.rotation ?? elemento?.rotation ?? 0
+                                        ),
+                                      });
+                                    }
                                     return prev;
                                   }
 

@@ -1,10 +1,9 @@
 ﻿// SelectionBounds.jsx
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Transformer, Rect, Group, Text } from "react-konva";
 import SelectionBoundsIndicator from "@/components/editor/textSystem/render/konva/SelectionBoundsIndicator";
 import {
   buildCanvasDragPerfDiff,
-  startCanvasDragPerfSpan,
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
@@ -34,10 +33,14 @@ import {
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import {
+  getCanvasSelectionDebugInfo,
   getCanvasPointerDebugInfo,
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
+  resetCanvasInteractionLogSample,
+  sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
+import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -164,6 +167,48 @@ function snapRotationOnCommit(angle, toleranceDeg = 0, snapAngles = ROTATION_SNA
   };
 }
 
+function describeRotationSnapState(
+  angle,
+  toleranceDeg = 0,
+  snapAngles = ROTATION_SNAP_ANGLES
+) {
+  const numericAngle = Number(angle);
+  const numericTolerance = Number(toleranceDeg);
+  if (!Number.isFinite(numericAngle)) {
+    return {
+      snapCandidate: null,
+      snapDistance: null,
+      insideSnapBand: false,
+    };
+  }
+
+  let bestRotation = null;
+  let bestDelta = Infinity;
+
+  snapAngles.forEach((snapAngle) => {
+    const numericSnap = Number(snapAngle);
+    if (!Number.isFinite(numericSnap)) return;
+
+    const turns = Math.round((numericAngle - numericSnap) / 360);
+    const candidate = numericSnap + (turns * 360);
+    const delta = Math.abs(candidate - numericAngle);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestRotation = candidate;
+    }
+  });
+
+  return {
+    snapCandidate: roundNodeMetric(bestRotation, 3),
+    snapDistance: Number.isFinite(bestDelta) ? roundNodeMetric(bestDelta, 3) : null,
+    insideSnapBand:
+      Number.isFinite(numericTolerance) &&
+      numericTolerance > 0 &&
+      Number.isFinite(bestDelta) &&
+      bestDelta <= numericTolerance,
+  };
+}
+
 
 export default function SelectionBounds({
   selectedElements,
@@ -176,16 +221,22 @@ export default function SelectionBounds({
   isInteractionLocked = false,
   isMobile = false,
   dragLayerRef = null,
+  canvasInteractionEpoch = 0,
+  canvasInteractionActive = false,
+  canvasInteractionSettling = false,
+  scheduleCanvasUiAfterSettle = null,
+  cancelCanvasUiAfterSettle = null,
 }) {
   const transformerRef = useRef(null);
   const renderCountRef = useRef(0);
   const renderSnapshotRef = useRef(null);
+  const lastAttachedNodeIdsRef = useRef("");
+  const lastTransformerSyncSnapshotRef = useRef({
+    attachedNodeIds: "",
+    selectedGeomKey: "",
+  });
   const [transformTick, setTransformTick] = useState(0);
-  const [runtimeDragActive, setRuntimeDragActive] = useState(() => (
-    typeof window !== "undefined" && Boolean(window._isDragging)
-  ));
   const [isImageRotateGestureActive, setIsImageRotateGestureActive] = useState(false);
-  const lastNodesRef = useRef([]);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
   const rotationIndicatorGroupRef = useRef(null);
@@ -224,6 +275,25 @@ export default function SelectionBounds({
     isRotate: false,
     activeAnchor: null,
   });
+  const rotationLifecycleDebugRef = useRef({
+    interactionId: null,
+    previewCount: 0,
+  });
+  const pendingRotatePreviewRef = useRef({
+    rafId: 0,
+    payload: null,
+  });
+  const lastProcessedRotatePreviewRef = useRef({
+    rotation: null,
+    pointerX: null,
+    pointerY: null,
+    roundedDegrees: null,
+    snapCandidate: null,
+    snapDistance: null,
+    insideSnapBand: false,
+  });
+  const lastVisibilitySnapshotRef = useRef(null);
+  const pendingUiRestoreEpochRef = useRef(0);
   const isTransformingResizeRef = useRef(false);
   const [isResizeGestureActive, setIsResizeGestureActive] = useState(false);
   const [pressedResizeAnchorName, setPressedResizeAnchorName] = useState(null);
@@ -240,6 +310,35 @@ export default function SelectionBounds({
     selectedElements.length === 1 &&
     primerElemento?.tipo === "imagen" &&
     !primerElemento?.esFondo;
+
+  const buildRotationPreviewSampleKey = (interactionId = null) =>
+    `transform-rotate-preview:${interactionId || primerElemento?.id || "selection"}`;
+
+  const resetRotationLifecycleDebug = () => {
+    const interactionId = rotationLifecycleDebugRef.current?.interactionId || null;
+    resetCanvasInteractionLogSample(buildRotationPreviewSampleKey(interactionId));
+    rotationLifecycleDebugRef.current = {
+      interactionId: null,
+      previewCount: 0,
+    };
+  };
+
+  const buildRotationDebugPayload = (event, node, extra = {}) => ({
+    interactionId: rotationLifecycleDebugRef.current?.interactionId || null,
+    previewCount: rotationLifecycleDebugRef.current?.previewCount || 0,
+    selectedIds: selectedElements,
+    selectedCount: selectedElements.length,
+    primerElementoId: primerElemento?.id || null,
+    primerElementoTipo: primerElemento?.tipo || null,
+    isImageRotateGesture: Boolean(esImagenSeleccionada),
+    activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+    pointer: getCanvasPointerDebugInfo(event),
+    node: getKonvaNodeDebugInfo(node),
+    selection: getCanvasSelectionDebugInfo(),
+    ...extra,
+  });
+  const selectionKey = selectedElements.join(",");
+
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
   const transformerAnchorSize = isMobile ? 32 : 14; //tamaÃ±o visual del nodo (mÃ¡s grande en mobile).
@@ -327,19 +426,22 @@ export default function SelectionBounds({
     primerElemento?.tipo === "forma" &&
     primerElemento?.figura === "triangle";
 
-  const hasGallery = elementosSeleccionadosData.some(
-    (o) => o.tipo === "galeria"
-  );
-
   const hayLineas = elementosSeleccionadosData.some(
     (obj) => obj.tipo === "forma" && obj.figura === "line"
   );
   const pendingDragSelectionId =
     typeof window !== "undefined" ? window._pendingDragSelectionId || null : null;
-  const effectiveDragging = Boolean(
-    isDragging ||
-    runtimeDragActive ||
-    (typeof window !== "undefined" && window._isDragging)
+  const globalDragging =
+    typeof window !== "undefined" ? Boolean(window._isDragging) : false;
+  const groupDragging =
+    typeof window !== "undefined" ? Boolean(window._grupoLider) : false;
+  const runtimeResizeActive =
+    typeof window !== "undefined" ? Boolean(window._resizeData?.isResizing) : false;
+  const effectiveDragging = Boolean(isDragging || globalDragging || groupDragging);
+  const isTransformerAttachSuppressed = Boolean(
+    effectiveDragging ||
+    canvasInteractionSettling ||
+    (canvasInteractionActive && !runtimeResizeActive)
   );
   const shouldSuppressDuringDeferredDrag = Boolean(
     effectiveDragging &&
@@ -353,30 +455,61 @@ export default function SelectionBounds({
   );
 
   useEffect(() => {
+    const visibilitySnapshot = {
+      selectionKey,
+      pendingDragSelectionId,
+      shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
+      shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      isResizeGestureActive: Boolean(isResizeGestureActive),
+      isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
+      interactionLocked: Boolean(interactionLocked),
+    };
+    const previousSnapshot = lastVisibilitySnapshotRef.current;
+    const visibilityChanged =
+      !previousSnapshot ||
+      Object.keys(visibilitySnapshot).some(
+        (key) => previousSnapshot[key] !== visibilitySnapshot[key]
+      );
+
+    if (!visibilityChanged) {
+      return;
+    }
+
+    lastVisibilitySnapshotRef.current = visibilitySnapshot;
+
     logSelectedDragDebug("transformer:visibility-state", {
       selectedIds: selectedElements,
       selectedCount: selectedElements.length,
       primerElementoId: primerElemento?.id || null,
       primerElementoTipo: primerElemento?.tipo || null,
       effectiveDragging: Boolean(effectiveDragging),
-      runtimeDragActive: Boolean(runtimeDragActive),
-      globalDragging:
-        typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+      globalDragging,
+      groupDragging,
       pendingDragSelectionId,
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      canvasInteractionActive: Boolean(canvasInteractionActive),
+      canvasInteractionSettling: Boolean(canvasInteractionSettling),
+      attachSuppressed: Boolean(isTransformerAttachSuppressed),
       isResizeGestureActive: Boolean(isResizeGestureActive),
+      isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
       isTransformingResize: Boolean(isTransformingResizeRef.current),
       isInteractionLocked: Boolean(isInteractionLocked),
     });
   }, [
-    selectedElements.join(","),
+    selectionKey,
     effectiveDragging,
-    runtimeDragActive,
+    globalDragging,
+    groupDragging,
     pendingDragSelectionId,
     shouldSuppressDuringDeferredDrag,
     shouldHideTransformerDuringDrag,
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    isTransformerAttachSuppressed,
     isResizeGestureActive,
+    isImageRotateGestureActive,
     isInteractionLocked,
     primerElemento?.id,
     primerElemento?.tipo,
@@ -393,10 +526,11 @@ export default function SelectionBounds({
     if (!isInteractionActive) return;
 
     const nextSnapshot = {
-      selectedIds: selectedElements.join(","),
+      selectedIds: selectionKey,
       effectiveDragging: Boolean(effectiveDragging),
-      runtimeDragActive: Boolean(runtimeDragActive),
       interactionLocked: Boolean(interactionLocked),
+      canvasInteractionActive: Boolean(canvasInteractionActive),
+      canvasInteractionSettling: Boolean(canvasInteractionSettling),
       resizeActive: Boolean(isResizeGestureActive),
       resizeHintPhase,
       transformTick,
@@ -430,64 +564,12 @@ export default function SelectionBounds({
     primerElemento?.id,
     primerElemento?.tipo,
     selectedElements.length,
+    selectionKey,
     shouldSuppressDuringDeferredDrag,
+    canvasInteractionActive,
+    canvasInteractionSettling,
     transformTick,
   ]);
-
-  useEffect(() => {
-    const firstId = selectedElements?.[0];
-    if (!firstId) {
-      setRuntimeDragActive(false);
-      return;
-    }
-
-    const firstNode = elementRefs.current?.[firstId];
-    const stage = firstNode?.getStage?.();
-    if (!stage) {
-      setRuntimeDragActive(
-        Boolean(typeof window !== "undefined" && window._isDragging)
-      );
-      return;
-    }
-
-    const syncDragState = (source = "unknown") => {
-      const nextRuntimeDragActive =
-        Boolean(typeof window !== "undefined" && window._isDragging);
-      logSelectedDragDebug("transformer:runtime-drag-sync", {
-        source,
-        selectedIds: selectedElements,
-        stagePresent: Boolean(stage),
-        nextRuntimeDragActive,
-        globalDragging:
-          typeof window !== "undefined" ? Boolean(window._isDragging) : false,
-      });
-      setRuntimeDragActive(nextRuntimeDragActive);
-    };
-    const onStageDragStart = () => {
-      logSelectedDragDebug("transformer:runtime-drag-sync", {
-        source: "stage-dragstart",
-        selectedIds: selectedElements,
-        stagePresent: Boolean(stage),
-        nextRuntimeDragActive: true,
-        globalDragging:
-          typeof window !== "undefined" ? Boolean(window._isDragging) : false,
-      });
-      setRuntimeDragActive(true);
-    };
-    const onStageDragEnd = () => syncDragState("stage-dragend");
-    const onGlobalDraggingEnd = () => syncDragState("window-dragging-end");
-
-    stage.on("dragstart.selection-runtime", onStageDragStart);
-    stage.on("dragend.selection-runtime", onStageDragEnd);
-    window.addEventListener("dragging-end", onGlobalDraggingEnd);
-    syncDragState("effect-init");
-
-    return () => {
-      stage.off("dragstart.selection-runtime", onStageDragStart);
-      stage.off("dragend.selection-runtime", onStageDragEnd);
-      window.removeEventListener("dragging-end", onGlobalDraggingEnd);
-    };
-  }, [elementRefs, selectedElements.join(",")]);
 
   const elementosTransformables = elementosSeleccionadosData.filter(
     (obj) => !(obj.tipo === "forma" && obj.figura === "line")
@@ -522,19 +604,139 @@ export default function SelectionBounds({
     if (esGaleria && typeof node.getParent === "function") {
       const parent = node.getParent();
       if (parent) {
+        const parentPose = resolveCanonicalNodePose(parent, null);
         return {
-          x: typeof parent.x === "function" ? parent.x() : 0,
-          y: typeof parent.y === "function" ? parent.y() : 0,
-          rotation: typeof parent.rotation === "function" ? parent.rotation() || 0 : 0,
+          x: parentPose.x,
+          y: parentPose.y,
+          rotation: parentPose.rotation,
         };
       }
     }
 
+    const canonicalPose = resolveCanonicalNodePose(node, primerElemento);
     return {
-      x: typeof node.x === "function" ? node.x() : 0,
-      y: typeof node.y === "function" ? node.y() : 0,
-      rotation: typeof node.rotation === "function" ? node.rotation() || 0 : 0,
+      x: canonicalPose.x,
+      y: canonicalPose.y,
+      rotation: canonicalPose.rotation,
     };
+  };
+
+  const getTransformNodeId = (node) =>
+    typeof node?.id === "function" ? node.id() || null : node?.attrs?.id || null;
+
+  const buildAttachedNodeIdsKey = (nodes = []) =>
+    nodes
+      .map((node) => getTransformNodeId(node))
+      .filter(Boolean)
+      .join("|");
+
+  const resolveTransformableNodes = () => {
+    let nodosTransformables = elementosTransformables
+      .map((obj) => elementRefs.current?.[obj.id])
+      .filter(Boolean);
+
+    if (selectedElements.length === 1) {
+      const selectedId = selectedElements[0];
+      const refNode = elementRefs.current?.[selectedId] || null;
+      if (refNode && typeof refNode.getClientRect === "function") {
+        if (esGaleria && typeof refNode.findOne === "function") {
+          const galleryFrame = refNode.findOne(".gallery-transform-frame");
+          if (galleryFrame && typeof galleryFrame.getClientRect === "function") {
+            nodosTransformables = [galleryFrame];
+          } else {
+            nodosTransformables = [refNode];
+          }
+        } else {
+          nodosTransformables = [refNode];
+        }
+      }
+    }
+
+    return nodosTransformables;
+  };
+
+  const syncAttachedTransformerNodes = (
+    nodosTransformables,
+    { source = "unknown", force = false, logEvent = "transformer:attach" } = {}
+  ) => {
+    const tr = transformerRef.current;
+    if (!tr || !Array.isArray(nodosTransformables) || nodosTransformables.length === 0) {
+      return false;
+    }
+
+    const nextAttachedNodeIds = buildAttachedNodeIdsKey(nodosTransformables);
+    const currentAttachedNodeIds = buildAttachedNodeIdsKey(
+      typeof tr.nodes === "function" ? tr.nodes() || [] : []
+    );
+
+    if (
+      !force &&
+      nextAttachedNodeIds &&
+      nextAttachedNodeIds === currentAttachedNodeIds &&
+      nextAttachedNodeIds === lastAttachedNodeIdsRef.current
+    ) {
+      return false;
+    }
+
+    tr.nodes(nodosTransformables);
+    lastAttachedNodeIdsRef.current = nextAttachedNodeIds;
+
+    if (logEvent) {
+      logSelectedDragDebug(logEvent, {
+        source,
+        selectedIds: selectedElements,
+        selectedCount: selectedElements.length,
+        effectiveDragging: Boolean(effectiveDragging),
+        pendingDragSelectionId,
+        attachedNodeIds: nodosTransformables.map((node) => getTransformNodeId(node)),
+        attachedNodes: nodosTransformables.map((node) => getKonvaNodeDebugInfo(node)),
+      });
+    }
+
+    lastTransformerSyncSnapshotRef.current = {
+      attachedNodeIds: nextAttachedNodeIds,
+      selectedGeomKey,
+    };
+
+    try {
+      tr.forceUpdate?.();
+    } catch {}
+    tr.getLayer?.()?.batchDraw?.();
+    return true;
+  };
+
+  const syncTransformerGeometryNow = (source = "unknown") => {
+    const tr = transformerRef.current;
+    if (!tr) return false;
+
+    try {
+      if (tr.isTransforming?.()) return false;
+    } catch {}
+
+    try {
+      tr.forceUpdate?.();
+    } catch {}
+    tr.getLayer?.()?.batchDraw?.();
+
+    lastTransformerSyncSnapshotRef.current = {
+      attachedNodeIds: buildAttachedNodeIdsKey(
+        typeof tr.nodes === "function" ? tr.nodes() || [] : []
+      ),
+      selectedGeomKey,
+    };
+
+    trackCanvasDragPerf(
+      "transformer:sync",
+      {
+        selectedCount: selectedElements.length,
+        source,
+      },
+      {
+        throttleMs: 180,
+        throttleKey: `transformer:sync:${source}`,
+      }
+    );
+    return true;
   };
 
   const getImageRotationNodeMetrics = (node, pose = getTransformPose(node)) => {
@@ -1052,10 +1254,357 @@ export default function SelectionBounds({
       visible: true,
     });
   };
-  const clearResizeAnchorPressFeedback = () => {
-    if (isTransformingResizeRef.current) return;
-    setIsResizeGestureActive(false);
+
+  const clearPendingRotatePreview = () => {
+    if (
+      pendingRotatePreviewRef.current.rafId &&
+      typeof cancelAnimationFrame === "function"
+    ) {
+      cancelAnimationFrame(pendingRotatePreviewRef.current.rafId);
+    }
+    pendingRotatePreviewRef.current = {
+      rafId: 0,
+      payload: null,
+    };
+  };
+
+  const resetProcessedRotatePreview = () => {
+    lastProcessedRotatePreviewRef.current = {
+      rotation: null,
+      pointerX: null,
+      pointerY: null,
+      roundedDegrees: null,
+      snapCandidate: null,
+      snapDistance: null,
+      insideSnapBand: false,
+    };
+  };
+
+  const shouldProcessRotatePreview = (payload, { force = false } = {}) => {
+    if (force) return true;
+    if (!payload) return false;
+
+    const previous = lastProcessedRotatePreviewRef.current || {};
+    const rotationThreshold = isMobile ? 0.6 : 0.35;
+    const pointerThreshold = isMobile ? 2.5 : 1.5;
+    const hysteresisThreshold = isMobile ? 0.75 : 0.45;
+    const snapTolerance = esImagenSeleccionada
+      ? imageRotationCommitSnapTolerance
+      : transformerRotationSnapTolerance;
+    const nextRoundedDegrees = normalizeRotationIndicatorDegrees(payload.rotation);
+    const nextSnapState = describeRotationSnapState(
+      payload.rotation,
+      snapTolerance
+    );
+    const stableInsideSnapBand =
+      previous.insideSnapBand === true &&
+      nextSnapState.insideSnapBand === true &&
+      previous.snapCandidate === nextSnapState.snapCandidate;
+    const roundedDegreeChanged =
+      previous.roundedDegrees !== nextRoundedDegrees;
+    const snapCandidateChanged =
+      previous.snapCandidate !== nextSnapState.snapCandidate;
+    const snapBandChanged =
+      Boolean(previous.insideSnapBand) !== Boolean(nextSnapState.insideSnapBand);
+
+    const hasRotationDelta =
+      !Number.isFinite(previous.rotation) ||
+      !Number.isFinite(payload.rotation) ||
+      Math.abs(payload.rotation - previous.rotation) >= rotationThreshold;
+    const hasPointerXDelta =
+      !Number.isFinite(previous.pointerX) ||
+      !Number.isFinite(payload.pointerX) ||
+      Math.abs(payload.pointerX - previous.pointerX) >= pointerThreshold;
+    const hasPointerYDelta =
+      !Number.isFinite(previous.pointerY) ||
+      !Number.isFinite(payload.pointerY) ||
+      Math.abs(payload.pointerY - previous.pointerY) >= pointerThreshold;
+
+    if (
+      stableInsideSnapBand &&
+      !roundedDegreeChanged &&
+      Number.isFinite(nextSnapState.snapDistance) &&
+      nextSnapState.snapDistance <= hysteresisThreshold
+    ) {
+      return false;
+    }
+
+    return (
+      hasRotationDelta ||
+      hasPointerXDelta ||
+      hasPointerYDelta ||
+      roundedDegreeChanged ||
+      snapCandidateChanged ||
+      snapBandChanged
+    );
+  };
+
+  const flushPendingRotatePreview = ({ force = false } = {}) => {
+    const pendingPayload = pendingRotatePreviewRef.current.payload;
+    pendingRotatePreviewRef.current.payload = null;
+    pendingRotatePreviewRef.current.rafId = 0;
+
+    if (!pendingPayload || !shouldProcessRotatePreview(pendingPayload, { force })) {
+      return false;
+    }
+
+    const {
+      node,
+      transformData,
+      pointerType = null,
+      pointerX = null,
+      pointerY = null,
+      scheduledAtMs = null,
+    } = pendingPayload;
+    const roundedDegrees = normalizeRotationIndicatorDegrees(transformData?.rotation);
+    const snapTolerance = esImagenSeleccionada
+      ? imageRotationCommitSnapTolerance
+      : transformerRotationSnapTolerance;
+    const snapState = describeRotationSnapState(
+      transformData?.rotation,
+      snapTolerance
+    );
+
+    lastProcessedRotatePreviewRef.current = {
+      rotation: transformData?.rotation,
+      pointerX,
+      pointerY,
+      roundedDegrees,
+      snapCandidate: snapState.snapCandidate,
+      snapDistance: snapState.snapDistance,
+      insideSnapBand: snapState.insideSnapBand,
+    };
+
+    updateRotationIndicator(node);
+
+    if (esImagenSeleccionada) {
+      const pose = getTransformPose(node);
+      trackImageRotationPreview({
+        elementId: primerElemento?.id ?? null,
+        tipo: primerElemento?.tipo ?? null,
+        activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+        pointerType,
+        pointerX,
+        pointerY,
+        handlerDurationMs:
+          Number.isFinite(scheduledAtMs) &&
+          typeof performance !== "undefined" &&
+          typeof performance.now === "function"
+            ? roundNodeMetric(performance.now() - scheduledAtMs)
+            : null,
+        ...getImageRotationNodeMetrics(node, pose),
+      });
+    }
+
+    const interactionId =
+      rotationLifecycleDebugRef.current?.interactionId ||
+      `${primerElemento?.id || selectionKey || "selection"}:adhoc`;
+    const sample = sampleCanvasInteractionLog(
+      buildRotationPreviewSampleKey(interactionId),
+      {
+        firstCount: 3,
+        throttleMs: 120,
+      }
+    );
+    rotationLifecycleDebugRef.current.previewCount = sample.sampleCount;
+
+    if (sample.shouldLog) {
+      logSelectedDragDebug(
+        "transform:rotate:preview",
+        buildRotationDebugPayload(null, node, {
+          pointer: {
+            pointerType,
+            x: pointerX,
+            y: pointerY,
+          },
+          transformData,
+          previewCount: sample.sampleCount,
+        })
+      );
+    }
+
+    return true;
+  };
+
+  const scheduleRotatePreview = (payload) => {
+    pendingRotatePreviewRef.current.payload = payload;
+
+    if (pendingRotatePreviewRef.current.rafId) {
+      return;
+    }
+
+    if (typeof requestAnimationFrame !== "function") {
+      flushPendingRotatePreview();
+      return;
+    }
+
+    pendingRotatePreviewRef.current.rafId = requestAnimationFrame(() => {
+      flushPendingRotatePreview();
+    });
+  };
+
+  const clearResizeAnchorPressFeedback = useCallback(() => {
     setPressedResizeAnchorName((current) => (current ? null : current));
+  }, []);
+
+  const resetTransformerGestureUiState = useCallback(({
+    syncOverlay = true,
+    clearRotatePreviewState = true,
+  } = {}) => {
+    hideRotationIndicator();
+    if (clearRotatePreviewState) {
+      clearPendingRotatePreview();
+      resetProcessedRotatePreview();
+    }
+    if (syncOverlay) {
+      syncTransformerLayer({ useDragOverlay: false });
+    }
+    setIsImageRotateGestureActive((current) => (current ? false : current));
+    isTransformingResizeRef.current = false;
+    setIsResizeGestureActive((current) => (current ? false : current));
+    clearResizeAnchorPressFeedback();
+  }, [clearResizeAnchorPressFeedback, hideRotationIndicator, syncTransformerLayer]);
+
+  const runTextTransformCommitDebug = (selectedId, textPreviewEndSnapshot) => {
+    if (!textPreviewEndSnapshot || typeof requestAnimationFrame !== "function") {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const freshNode = selectedId ? elementRefs.current?.[selectedId] : null;
+      if (!freshNode) return;
+
+      try {
+        const postRect = freshNode.getClientRect({
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        });
+        TXTDBG("post-commit:raf1", {
+          id: selectedId,
+          pre: textPreviewEndSnapshot,
+          post: {
+            x: typeof freshNode?.x === "function" ? freshNode.x() : null,
+            y: typeof freshNode?.y === "function" ? freshNode.y() : null,
+            scaleX: typeof freshNode?.scaleX === "function" ? freshNode.scaleX() : null,
+            scaleY: typeof freshNode?.scaleY === "function" ? freshNode.scaleY() : null,
+            fontSize: typeof freshNode?.fontSize === "function" ? freshNode.fontSize() : null,
+            rectWidth: Number.isFinite(postRect?.width) ? postRect.width : null,
+            rectHeight: Number.isFinite(postRect?.height) ? postRect.height : null,
+          },
+          delta: {
+            width:
+              Number.isFinite(postRect?.width) &&
+              Number.isFinite(textPreviewEndSnapshot.rectWidth)
+                ? (postRect.width - textPreviewEndSnapshot.rectWidth)
+                : null,
+            height:
+              Number.isFinite(postRect?.height) &&
+              Number.isFinite(textPreviewEndSnapshot.rectHeight)
+                ? (postRect.height - textPreviewEndSnapshot.rectHeight)
+                : null,
+          },
+        });
+      } catch {}
+
+      requestAnimationFrame(() => {
+        const freshNode2 = selectedId ? elementRefs.current?.[selectedId] : null;
+        if (!freshNode2) return;
+        try {
+          const postRect2 = freshNode2.getClientRect({
+            skipTransform: false,
+            skipShadow: true,
+            skipStroke: true,
+          });
+          TXTDBG("post-commit:raf2", {
+            id: selectedId,
+            post: {
+              x: typeof freshNode2?.x === "function" ? freshNode2.x() : null,
+              y: typeof freshNode2?.y === "function" ? freshNode2.y() : null,
+              scaleX: typeof freshNode2?.scaleX === "function" ? freshNode2.scaleX() : null,
+              scaleY: typeof freshNode2?.scaleY === "function" ? freshNode2.scaleY() : null,
+              fontSize: typeof freshNode2?.fontSize === "function" ? freshNode2.fontSize() : null,
+              rectWidth: Number.isFinite(postRect2?.width) ? postRect2.width : null,
+              rectHeight: Number.isFinite(postRect2?.height) ? postRect2.height : null,
+            },
+            deltaFromPre: {
+              width:
+                Number.isFinite(postRect2?.width) &&
+                Number.isFinite(textPreviewEndSnapshot.rectWidth)
+                  ? (postRect2.width - textPreviewEndSnapshot.rectWidth)
+                  : null,
+              height:
+                Number.isFinite(postRect2?.height) &&
+                Number.isFinite(textPreviewEndSnapshot.rectHeight)
+                  ? (postRect2.height - textPreviewEndSnapshot.rectHeight)
+                  : null,
+            },
+          });
+        } catch {}
+      });
+    });
+  };
+
+  const transformerRestoreKey = `transformer:restore:${selectionKey || "empty"}`;
+
+  const scheduleTransformerRestoreAfterSettle = (
+    source = "unknown",
+    { textPreviewEndSnapshot = null, forceAttach = false } = {}
+  ) => {
+    const restoreEpoch = canvasInteractionEpoch;
+    const runRestore = () => {
+      if (pendingUiRestoreEpochRef.current !== restoreEpoch) {
+        return;
+      }
+
+      const tr = transformerRef.current;
+      if (!tr) return;
+
+      const nodosTransformables = resolveTransformableNodes();
+      if (nodosTransformables.length === 0) return;
+      const nextAttachedNodeIds = buildAttachedNodeIdsKey(nodosTransformables);
+      const currentAttachedNodeIds = buildAttachedNodeIdsKey(
+        typeof tr.nodes === "function" ? tr.nodes() || [] : []
+      );
+      const lastStableSnapshot = lastTransformerSyncSnapshotRef.current || {};
+
+      if (
+        currentAttachedNodeIds &&
+        currentAttachedNodeIds === nextAttachedNodeIds &&
+        lastStableSnapshot.attachedNodeIds === nextAttachedNodeIds &&
+        lastStableSnapshot.selectedGeomKey === selectedGeomKey
+      ) {
+        return;
+      }
+
+      const attached = syncAttachedTransformerNodes(nodosTransformables, {
+        source,
+        force: forceAttach,
+        logEvent: "transformer:restore",
+      });
+
+      if (!attached) {
+        syncTransformerGeometryNow(`restore:${source}`);
+      }
+
+      if (textPreviewEndSnapshot && selectedElements.length === 1) {
+        runTextTransformCommitDebug(selectedElements[0], textPreviewEndSnapshot);
+      }
+    };
+
+    pendingUiRestoreEpochRef.current = restoreEpoch;
+
+    if (typeof scheduleCanvasUiAfterSettle === "function") {
+      scheduleCanvasUiAfterSettle(transformerRestoreKey, runRestore);
+      return;
+    }
+
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(runRestore);
+      return;
+    }
+
+    runRestore();
   };
 
   const clearResizeHintTimers = () => {
@@ -1213,11 +1762,18 @@ export default function SelectionBounds({
 
   useEffect(() => {
     if (!esImagenSeleccionada) {
-      setIsImageRotateGestureActive(false);
+      resetTransformerGestureUiState({
+        syncOverlay: true,
+        clearRotatePreviewState: true,
+      });
       syncRotationIndicatorLayer({ useDragOverlay: false });
-      syncTransformerLayer({ useDragOverlay: false });
     }
-  }, [esImagenSeleccionada, selectedElements.join(",")]);
+  }, [
+    esImagenSeleccionada,
+    resetTransformerGestureUiState,
+    selectionKey,
+    syncRotationIndicatorLayer,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1231,13 +1787,20 @@ export default function SelectionBounds({
       rotationIndicatorPendingStateRef.current = null;
       clearDeferredSourceLayerThaw({ thaw: true });
       releaseImageRotationPerf();
-      syncTransformerLayer({ useDragOverlay: false });
+      resetTransformerGestureUiState({
+        syncOverlay: true,
+        clearRotatePreviewState: true,
+      });
     };
-  }, []);
+  }, [resetTransformerGestureUiState]);
+
+  useEffect(() => () => {
+    if (typeof cancelCanvasUiAfterSettle === "function") {
+      cancelCanvasUiAfterSettle(transformerRestoreKey);
+    }
+  }, [cancelCanvasUiAfterSettle, transformerRestoreKey]);
 
   useEffect(() => {
-    const selectionKey = selectedElements.join(",");
-
     if (!selectionKey || !deberiaUsarTransformer) {
       stopResizeHintPulse();
       lastResizeHintSelectionKeyRef.current = selectionKey;
@@ -1279,7 +1842,7 @@ export default function SelectionBounds({
       clearResizeHintTimers();
     };
   }, [
-    selectedElements.join(","),
+    selectionKey,
     deberiaUsarTransformer,
     effectiveDragging,
     isResizeGestureActive,
@@ -1296,7 +1859,7 @@ export default function SelectionBounds({
     }, isMobile ? 900 : 700);
 
     return () => clearTimeout(cleanupId);
-  }, [isResizeGestureActive, isMobile, selectedElements.join(",")]);
+  }, [isResizeGestureActive, isMobile, selectionKey]);
 
   useEffect(() => {
     const tr = transformerRef.current;
@@ -1324,6 +1887,7 @@ export default function SelectionBounds({
 
   useEffect(() => {
     if (selectedElements.length === 0 || !deberiaUsarTransformer) {
+      lastAttachedNodeIdsRef.current = "";
       stopResizeHintPulse();
       stopNativeTransformerIfActive();
       setIsResizeGestureActive(false);
@@ -1345,61 +1909,50 @@ export default function SelectionBounds({
     hideRotationIndicator();
   }, [interactionLocked]);
 
-  // ðŸ”¥ Efecto principal del Transformer (SIN retry / SIN flicker)
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
 
-    const selKey = selectedElements.join(",");
-    const nativeTransforming = Boolean(tr.isTransforming?.());
-    TRDBG("EFFECT start", {
-      selKey,
+    let nativeTransforming = false;
+    try {
+      nativeTransforming = Boolean(tr.isTransforming?.());
+    } catch {}
+
+    TRDBG("ATTACH effect start", {
+      selKey: selectionKey,
       isDragging: effectiveDragging,
       deberiaUsarTransformer,
-      hasGallery,
       elementosTransformablesLen: elementosTransformables.length,
       transformTick,
-      editingId: window.editing?.id || null,
+      attachSuppressed: isTransformerAttachSuppressed,
       nativeTransforming,
     });
 
-    // Evita re-attach del transformer mientras Konva esta en medio del gesto.
     if (nativeTransforming || isTransformingResizeRef.current) {
-      TRDBG("EFFECT exit: transform in flight", { selKey, nativeTransforming });
+      TRDBG("ATTACH effect exit: transform in flight", {
+        selKey: selectionKey,
+        nativeTransforming,
+      });
       return;
     }
 
-    // Si no corresponde transformer, no hagas detach agresivo (evita flicker)
     if (!deberiaUsarTransformer) {
-      TRDBG("EFFECT exit: no transformer or gallery", { selKey });
+      lastAttachedNodeIdsRef.current = "";
+      TRDBG("ATTACH effect exit: transformer disabled", { selKey: selectionKey });
       return;
     }
 
-
-    // Resolver nodes desde refs (fuente de verdad)
-    let nodosTransformables = elementosTransformables
-      .map((o) => elementRefs.current?.[o.id])
-      .filter(Boolean);
-
-    // Single select: usar ref fresco SIEMPRE
-    if (selectedElements.length === 1) {
-      const idSel = selectedElements[0];
-      const refNode = elementRefs.current?.[idSel] || null;
-      if (refNode && typeof refNode.getClientRect === "function") {
-        if (esGaleria && typeof refNode.findOne === "function") {
-          const galleryFrame = refNode.findOne(".gallery-transform-frame");
-          if (galleryFrame && typeof galleryFrame.getClientRect === "function") {
-            nodosTransformables = [galleryFrame];
-          } else {
-            nodosTransformables = [refNode];
-          }
-        } else {
-          nodosTransformables = [refNode];
-        }
-      }
+    if (isTransformerAttachSuppressed) {
+      TRDBG("ATTACH effect exit: suppressed", {
+        selKey: selectionKey,
+        canvasInteractionActive,
+        canvasInteractionSettling,
+        effectiveDragging,
+      });
+      return;
     }
 
-    // Si aÃºn no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
+    const nodosTransformables = resolveTransformableNodes();
     if (nodosTransformables.length === 0) {
       logSelectedDragDebug("transformer:attach-skip-no-nodes", {
         selectedIds: selectedElements,
@@ -1409,55 +1962,52 @@ export default function SelectionBounds({
         ),
         effectiveDragging: Boolean(effectiveDragging),
       });
-      TRDBG("EFFECT exit: no nodes yet", {
-        selKey,
+      TRDBG("ATTACH effect exit: no nodes yet", {
+        selKey: selectionKey,
         wantedIds: elementosTransformables.map(o => o.id),
         refsPresent: elementosTransformables.map(o => !!elementRefs.current?.[o.id]),
       });
       return;
     }
 
-
-    // Attach estable
-    TRDBG("ATTACH try", {
-      selKey,
-      nodesCount: nodosTransformables.length,
-      nodeIds: nodosTransformables.map(n => (typeof n.id === "function" ? n.id() : n.attrs?.id)),
+    const attached = syncAttachedTransformerNodes(nodosTransformables, {
+      source: "selection-effect",
     });
 
-    tr.nodes(nodosTransformables);
-    logSelectedDragDebug("transformer:attach", {
-      selectedIds: selectedElements,
-      selectedCount: selectedElements.length,
-      effectiveDragging: Boolean(effectiveDragging),
-      pendingDragSelectionId,
-      attachedNodeIds: nodosTransformables.map((node) =>
-        typeof node?.id === "function" ? node.id() || null : node?.attrs?.id || null
-      ),
-      attachedNodes: nodosTransformables.map((node) => getKonvaNodeDebugInfo(node)),
+    TRDBG("ATTACH effect done", {
+      selKey: selectionKey,
+      attached,
+      attachedNodeIdsKey: buildAttachedNodeIdsKey(nodosTransformables),
     });
-
-    TRDBG("ATTACH done", {
-      selKey,
-      trNodesCount: tr.nodes?.()?.length || 0,
-    });
-
-    try { tr.forceUpdate?.(); } catch { }
-    tr.getLayer()?.batchDraw();
-
   }, [
-    // Dependencias mÃ­nimas reales
-    selectedElements.join(","),
+    selectionKey,
     deberiaUsarTransformer,
-    hasGallery,
     elementosTransformables.length,
-    selectedGeomKey,
     transformTick,
-    elementRefs,
     effectiveDragging,
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    isTransformerAttachSuppressed,
   ]);
 
+  useEffect(() => {
+    if (!deberiaUsarTransformer || isTransformerAttachSuppressed) return;
+    const tr = transformerRef.current;
+    if (!tr) return;
 
+    const attachedNodeIds = buildAttachedNodeIdsKey(
+      typeof tr.nodes === "function" ? tr.nodes() || [] : []
+    );
+    if (!attachedNodeIds) return;
+
+    syncTransformerGeometryNow("selected-geom");
+  }, [
+    selectionKey,
+    deberiaUsarTransformer,
+    isTransformerAttachSuppressed,
+    selectedGeomKey,
+    transformTick,
+  ]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -1467,7 +2017,7 @@ export default function SelectionBounds({
       TRDBG("REF event", {
         id,
         isSelected: selectedElements.includes(id),
-        selKey: selectedElements.join(","),
+        selKey: selectionKey,
       });
 
       if (!selectedElements.includes(id)) return;
@@ -1476,92 +2026,7 @@ export default function SelectionBounds({
 
     window.addEventListener("element-ref-registrado", handler);
     return () => window.removeEventListener("element-ref-registrado", handler);
-  }, [selectedElements.join(",")]);
-
-  useEffect(() => {
-    const firstId = selectedElements?.[0];
-    if (!firstId) return;
-
-    const firstNode = elementRefs.current?.[firstId];
-    const stage = firstNode?.getStage?.();
-    if (!stage) return;
-    const shouldSyncOnDragMove = !(
-      selectedElements.length === 1 &&
-      esImagenSeleccionada
-    );
-
-    let rafId = null;
-    const cancelPendingSync = () => {
-      if (rafId != null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-    };
-    const syncTransformer = (source = "unknown") => {
-      if (rafId != null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        const tr = transformerRef.current;
-        if (!tr) return;
-        const finishPerf = startCanvasDragPerfSpan("transformer:sync", {
-          selectedCount: selectedElements.length,
-          source,
-        }, {
-          throttleMs: 180,
-          throttleKey: `transformer:sync:${source}`,
-        });
-        try {
-          if (tr.isTransforming?.()) {
-            finishPerf?.({ reason: "is-transforming" });
-            return;
-          }
-        } catch {}
-        try { tr.forceUpdate?.(); } catch { }
-        tr.getLayer?.()?.batchDraw?.();
-        finishPerf?.({
-          elementId: firstId,
-          elementType: primerElemento?.tipo || null,
-        });
-      });
-    };
-
-    const onStageDragMove = () => syncTransformer("dragmove");
-    const onStageDragStart = () => cancelPendingSync();
-    const onStageDragEnd = () => syncTransformer("dragend");
-    const onGlobalDraggingStart = () => cancelPendingSync();
-
-    if (shouldSyncOnDragMove) {
-      stage.on("dragmove", onStageDragMove);
-    } else {
-      trackCanvasDragPerf("transformer:skip-dragmove-sync", {
-        selectedCount: selectedElements.length,
-        elementId: firstId,
-        elementType: primerElemento?.tipo || null,
-      }, {
-        throttleMs: 400,
-        throttleKey: "transformer:skip-dragmove-sync",
-      });
-    }
-    stage.on("dragstart", onStageDragStart);
-    stage.on("dragend", onStageDragEnd);
-    window.addEventListener("dragging-start", onGlobalDraggingStart);
-
-    return () => {
-      if (shouldSyncOnDragMove) {
-        stage.off("dragmove", onStageDragMove);
-      }
-      stage.off("dragstart", onStageDragStart);
-      stage.off("dragend", onStageDragEnd);
-      window.removeEventListener("dragging-start", onGlobalDraggingStart);
-      cancelPendingSync();
-    };
-  }, [
-    selectedElements,
-    selectedElements.join(","),
-    elementRefs,
-    esImagenSeleccionada,
-    primerElemento?.tipo,
-  ]);
+  }, [selectionKey, selectedElements]);
 
 
 
@@ -1998,6 +2463,12 @@ export default function SelectionBounds({
         stopResizeHintPulse();
         isTransformingResizeRef.current = true;
         window._resizeData = { isResizing: true };
+        pendingUiRestoreEpochRef.current = 0;
+        if (typeof cancelCanvasUiAfterSettle === "function") {
+          cancelCanvasUiAfterSettle(transformerRestoreKey);
+        }
+        clearPendingRotatePreview();
+        resetProcessedRotatePreview();
         const tr = transformerRef.current;
         const activeAnchor =
           typeof tr?.getActiveAnchor === "function" ? tr.getActiveAnchor() : null;
@@ -2009,7 +2480,27 @@ export default function SelectionBounds({
           activeAnchor: activeAnchor ?? null,
         };
         if (isRotateGesture) {
+          const interactionId = `${
+            primerElemento?.id || selectedElements.join(",") || "selection"
+          }:${Date.now()}`;
+          rotationLifecycleDebugRef.current = {
+            interactionId,
+            previewCount: 0,
+          };
+          resetCanvasInteractionLogSample(buildRotationPreviewSampleKey(interactionId));
+        } else {
+          resetRotationLifecycleDebug();
+        }
+        if (isRotateGesture) {
           const nodes = typeof tr?.nodes === "function" ? tr.nodes() || [] : [];
+          logSelectedDragDebug("transform:rotate:start", buildRotationDebugPayload(
+            e,
+            nodes[0] || null,
+            {
+              pointerType: e?.evt?.pointerType ?? null,
+              activeAnchor: activeAnchor ?? null,
+            }
+          ));
           if (esImagenSeleccionada) {
             clearDeferredSourceLayerThaw({ thaw: true });
             setIsImageRotateGestureActive(true);
@@ -2109,8 +2600,10 @@ export default function SelectionBounds({
             updateRotationIndicator(nodes[0] || null);
           }
         } else {
-          setIsImageRotateGestureActive(false);
-          hideRotationIndicator();
+          resetTransformerGestureUiState({
+            syncOverlay: false,
+            clearRotatePreviewState: true,
+          });
         }
         setIsResizeGestureActive(true);
         if (activeAnchor) {
@@ -2235,38 +2728,23 @@ export default function SelectionBounds({
         const nodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
         const node = nodes[0]; // âœ… nodo real (single select)
         if (!node) return;
-        if (transformGestureRef.current?.isRotate) {
-          updateRotationIndicator(node);
-        } else {
+        if (!transformGestureRef.current?.isRotate) {
           hideRotationIndicator();
         }
 
         try {
-          const transformStartedAt =
-            typeof performance !== "undefined" && typeof performance.now === "function"
-              ? performance.now()
-              : Date.now();
           const pose = getTransformPose(node);
           const stage = node?.getStage?.() || null;
           const pointer =
             stage && typeof stage.getPointerPosition === "function"
               ? stage.getPointerPosition()
               : null;
-          if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
-            trackImageRotationPreview({
-              elementId: primerElemento?.id ?? null,
-              tipo: primerElemento?.tipo ?? null,
-              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
-              pointerType: e?.evt?.pointerType ?? null,
-              pointerX: Number.isFinite(Number(pointer?.x)) ? roundNodeMetric(pointer.x) : null,
-              pointerY: Number.isFinite(Number(pointer?.y)) ? roundNodeMetric(pointer.y) : null,
-              handlerDurationMs:
-                typeof performance !== "undefined" && typeof performance.now === "function"
-                  ? roundNodeMetric(performance.now() - transformStartedAt)
-                  : roundNodeMetric(Date.now() - transformStartedAt),
-              ...getImageRotationNodeMetrics(node, pose),
-            });
-          }
+          const pointerX = Number.isFinite(Number(pointer?.x))
+            ? roundNodeMetric(pointer.x)
+            : null;
+          const pointerY = Number.isFinite(Number(pointer?.y))
+            ? roundNodeMetric(pointer.y)
+            : null;
           const transformData = {
             x: pose.x,
             y: pose.y,
@@ -2411,7 +2889,21 @@ export default function SelectionBounds({
             }
           }
 
-          onTransform(transformData);
+          if (transformGestureRef.current?.isRotate) {
+            scheduleRotatePreview({
+              node,
+              transformData,
+              pointerType: e?.evt?.pointerType ?? null,
+              pointerX,
+              pointerY,
+              scheduledAtMs:
+                typeof performance !== "undefined" && typeof performance.now === "function"
+                  ? performance.now()
+                  : null,
+            });
+          } else {
+            onTransform(transformData);
+          }
 
           // --- LOG COMPACTO (opcional) ---
           const id = (typeof node.id === "function" ? node.id() : node.attrs?.id) || "âˆ…";
@@ -2452,6 +2944,7 @@ export default function SelectionBounds({
 
         try {
           if (!transformerRef.current || !onTransform) return;
+          flushPendingRotatePreview({ force: true });
           hideRotationIndicator();
 
           const tr = transformerRef.current;
@@ -2477,11 +2970,12 @@ export default function SelectionBounds({
                 const obj = (objetos || []).find((o) => o.id === id);
                 if (!obj) return null;
 
+                const canonicalPose = resolveCanonicalNodePose(n, obj);
                 const upd = {
                   id,
-                  x: typeof n.x === "function" ? n.x() : obj.x,
-                  y: typeof n.y === "function" ? n.y() : obj.y,
-                  rotation: typeof n.rotation === "function" ? n.rotation() || 0 : (obj.rotation || 0),
+                  x: canonicalPose.x,
+                  y: canonicalPose.y,
+                  rotation: canonicalPose.rotation,
                 };
 
                 if (obj.tipo === "texto") {
@@ -2537,6 +3031,21 @@ export default function SelectionBounds({
               })
               .filter(Boolean);
 
+            if (transformGestureRef.current?.isRotate) {
+              logSelectedDragDebug("transform:rotate:end", {
+                interactionId: rotationLifecycleDebugRef.current?.interactionId || null,
+                previewCount: rotationLifecycleDebugRef.current?.previewCount || 0,
+                selectedIds: selectedElements,
+                selectedCount: selectedElements.length,
+                primerElementoId: primerElemento?.id || null,
+                primerElementoTipo: primerElemento?.tipo || null,
+                isImageRotateGesture: Boolean(esImagenSeleccionada),
+                activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+                batch: updates,
+                selection: getCanvasSelectionDebugInfo(),
+              });
+            }
+
             onTransform({ isFinal: true, batch: updates });
 
             if (typeof tr.scaleX === "function") {
@@ -2544,6 +3053,9 @@ export default function SelectionBounds({
               tr.scaleY(1);
             }
             tr.getLayer()?.batchDraw();
+            scheduleTransformerRestoreAfterSettle("transform-end-multi", {
+              forceAttach: true,
+            });
 
             window._resizeData = { isResizing: false };
             setTimeout(() => {
@@ -2563,6 +3075,19 @@ export default function SelectionBounds({
         // -------------------------
         const node = nodes[0];
         if (!node) {
+          if (transformGestureRef.current?.isRotate) {
+            logSelectedDragDebug("transform:rotate:end-missing-node", {
+              interactionId: rotationLifecycleDebugRef.current?.interactionId || null,
+              previewCount: rotationLifecycleDebugRef.current?.previewCount || 0,
+              selectedIds: selectedElements,
+              selectedCount: selectedElements.length,
+              primerElementoId: primerElemento?.id || null,
+              primerElementoTipo: primerElemento?.tipo || null,
+              isImageRotateGesture: Boolean(esImagenSeleccionada),
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              selection: getCanvasSelectionDebugInfo(),
+            });
+          }
           if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
             const rotationPerfRelease = releaseImageRotationPerf({
               logOverlayRestore: true,
@@ -2666,10 +3191,15 @@ export default function SelectionBounds({
             if (Number.isFinite(visualWidth) && visualWidth > 0) {
               finalData.textVisualWidth = visualWidth;
             }
+            const endPoseSnapshot = resolveCanonicalNodePose(node, primerElemento);
             textPreviewEndSnapshot = {
               id: primerElemento?.id ?? null,
-              x: typeof node?.x === "function" ? node.x() : null,
-              y: typeof node?.y === "function" ? node.y() : null,
+              x: endPoseSnapshot.x,
+              y: endPoseSnapshot.y,
+              rawX: endPoseSnapshot.rawX,
+              rawY: endPoseSnapshot.rawY,
+              rawOffsetX: endPoseSnapshot.rawOffsetX,
+              rawOffsetY: endPoseSnapshot.rawOffsetY,
               scaleX,
               scaleY,
               fontSize: typeof node?.fontSize === "function" ? node.fontSize() : null,
@@ -2699,8 +3229,10 @@ export default function SelectionBounds({
               textCenterY: finalData.textCenterY ?? null,
               textVisualWidth: finalData.textVisualWidth ?? null,
               nodeRectWidth: visualWidthFromRect,
-              nodeX: typeof node?.x === "function" ? node.x() : null,
-              nodeY: typeof node?.y === "function" ? node.y() : null,
+              nodeX: endPoseSnapshot.x,
+              nodeY: endPoseSnapshot.y,
+              rawNodeX: endPoseSnapshot.rawX,
+              rawNodeY: endPoseSnapshot.rawY,
             });
 
             // Aplanar escala del texto en el release para evitar doble escalado
@@ -2754,12 +3286,9 @@ export default function SelectionBounds({
             }
 
             if (!canUseRectScale) {
-              if (typeof node?.x === "function") {
-                finalData.x = node.x();
-              }
-              if (typeof node?.y === "function") {
-                finalData.y = node.y();
-              }
+              const committedPose = resolveCanonicalNodePose(node, primerElemento);
+              finalData.x = committedPose.x;
+              finalData.y = committedPose.y;
             }
 
             // Para texto evitamos aplanar antes del commit en React,
@@ -2881,6 +3410,15 @@ export default function SelectionBounds({
             }
           }
 
+          if (transformGestureRef.current?.isRotate) {
+            logSelectedDragDebug(
+              "transform:rotate:end",
+              buildRotationDebugPayload(e, node, {
+                finalData,
+              })
+            );
+          }
+
           onTransform(finalData);
           if (primerElemento?.tipo === "countdown") {
             recordCountdownAuditSnapshot({
@@ -2898,118 +3436,28 @@ export default function SelectionBounds({
             });
           }
           circleAnchorRef.current = null;
-
-
-          // âœ… Reatachar 1 vez, con ref fresco, en el prÃ³ximo frame
-          try {
-            const tr2 = transformerRef.current;
-            if (!tr2) return;
-
-            TRDBG("onTransformEnd -> schedule RAF reattach", {
-              selKey: selectedElements.join(","),
-              idSel: selectedElements?.[0] || null
-            });
-
-            requestAnimationFrame(() => {
-              const idSel = selectedElements?.[0];
-              const freshNode = idSel ? elementRefs.current?.[idSel] : null;
-
-              TRDBG("onTransformEnd RAF", {
-                idSel,
-                hasFresh: !!freshNode,
-                destroyed: !!freshNode?._destroyed,
-                hasStage: !!freshNode?.getStage?.(),
-              });
-
-              // Si el nodo no estÃ¡ listo, despegar y salir
-              if (!freshNode || freshNode._destroyed || !freshNode.getStage?.()) {
-                TRDBG("onTransformEnd RAF -> DETACH nodes([])", { idSel });
-                try { tr2.nodes([]); tr2.getLayer?.()?.batchDraw(); } catch { }
-                return;
-              }
-
-              try {
-                TRDBG("onTransformEnd RAF -> DETACH nodes([])", { idSel });
-                tr2.nodes([freshNode]);
-                tr2.forceUpdate();
-                tr2.getLayer?.()?.batchDraw();
-
-                if (textPreviewEndSnapshot && freshNode) {
-                  try {
-                    const postRect = freshNode.getClientRect({
-                      skipTransform: false,
-                      skipShadow: true,
-                      skipStroke: true,
-                    });
-                    TXTDBG("post-commit:raf1", {
-                      id: idSel,
-                      pre: textPreviewEndSnapshot,
-                      post: {
-                        x: typeof freshNode?.x === "function" ? freshNode.x() : null,
-                        y: typeof freshNode?.y === "function" ? freshNode.y() : null,
-                        scaleX: typeof freshNode?.scaleX === "function" ? freshNode.scaleX() : null,
-                        scaleY: typeof freshNode?.scaleY === "function" ? freshNode.scaleY() : null,
-                        fontSize: typeof freshNode?.fontSize === "function" ? freshNode.fontSize() : null,
-                        rectWidth: Number.isFinite(postRect?.width) ? postRect.width : null,
-                        rectHeight: Number.isFinite(postRect?.height) ? postRect.height : null,
-                      },
-                      delta: {
-                        width:
-                          Number.isFinite(postRect?.width) &&
-                          Number.isFinite(textPreviewEndSnapshot.rectWidth)
-                            ? (postRect.width - textPreviewEndSnapshot.rectWidth)
-                            : null,
-                        height:
-                          Number.isFinite(postRect?.height) &&
-                          Number.isFinite(textPreviewEndSnapshot.rectHeight)
-                            ? (postRect.height - textPreviewEndSnapshot.rectHeight)
-                            : null,
-                      },
-                    });
-                  } catch {}
-                  requestAnimationFrame(() => {
-                    const freshNode2 = idSel ? elementRefs.current?.[idSel] : null;
-                    if (!freshNode2) return;
-                    try {
-                      const postRect2 = freshNode2.getClientRect({
-                        skipTransform: false,
-                        skipShadow: true,
-                        skipStroke: true,
-                      });
-                      TXTDBG("post-commit:raf2", {
-                        id: idSel,
-                        post: {
-                          x: typeof freshNode2?.x === "function" ? freshNode2.x() : null,
-                          y: typeof freshNode2?.y === "function" ? freshNode2.y() : null,
-                          scaleX: typeof freshNode2?.scaleX === "function" ? freshNode2.scaleX() : null,
-                          scaleY: typeof freshNode2?.scaleY === "function" ? freshNode2.scaleY() : null,
-                          fontSize: typeof freshNode2?.fontSize === "function" ? freshNode2.fontSize() : null,
-                          rectWidth: Number.isFinite(postRect2?.width) ? postRect2.width : null,
-                          rectHeight: Number.isFinite(postRect2?.height) ? postRect2.height : null,
-                        },
-                        deltaFromPre: {
-                          width:
-                            Number.isFinite(postRect2?.width) &&
-                            Number.isFinite(textPreviewEndSnapshot.rectWidth)
-                              ? (postRect2.width - textPreviewEndSnapshot.rectWidth)
-                              : null,
-                          height:
-                            Number.isFinite(postRect2?.height) &&
-                            Number.isFinite(textPreviewEndSnapshot.rectHeight)
-                              ? (postRect2.height - textPreviewEndSnapshot.rectHeight)
-                              : null,
-                        },
-                      });
-                    } catch {}
-                  });
-                }
-              } catch { }
-            });
-          } catch { }
+          scheduleTransformerRestoreAfterSettle("transform-end-single", {
+            textPreviewEndSnapshot,
+            forceAttach: true,
+          });
 
 
         } catch (error) {
           console.warn("Error en onTransformEnd:", error);
+          if (transformGestureRef.current?.isRotate) {
+            logSelectedDragDebug("transform:rotate:error", {
+              interactionId: rotationLifecycleDebugRef.current?.interactionId || null,
+              previewCount: rotationLifecycleDebugRef.current?.previewCount || 0,
+              selectedIds: selectedElements,
+              selectedCount: selectedElements.length,
+              primerElementoId: primerElemento?.id || null,
+              primerElementoTipo: primerElemento?.tipo || null,
+              isImageRotateGesture: Boolean(esImagenSeleccionada),
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              message: error?.message || String(error),
+              selection: getCanvasSelectionDebugInfo(),
+            });
+          }
           if (transformGestureRef.current?.isRotate && esImagenSeleccionada) {
             const rotationPerfRelease = releaseImageRotationPerf({
               logOverlayRestore: true,
@@ -3031,13 +3479,12 @@ export default function SelectionBounds({
               deferSourceLayerRedraw: true,
             });
           }
-          hideRotationIndicator();
-          syncTransformerLayer({ useDragOverlay: false });
-          setIsImageRotateGestureActive(false);
-          isTransformingResizeRef.current = false;
-          setIsResizeGestureActive(false);
-          clearResizeAnchorPressFeedback();
+          resetTransformerGestureUiState({
+            syncOverlay: true,
+            clearRotatePreviewState: true,
+          });
           notifyTransformInteractionEnd();
+          resetRotationLifecycleDebug();
         }
       }}
 

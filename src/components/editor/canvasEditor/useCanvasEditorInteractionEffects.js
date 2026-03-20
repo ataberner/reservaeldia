@@ -5,7 +5,6 @@ export default function useCanvasEditorInteractionEffects({
   editingId,
   setIsSelectionRotating,
   setMostrarPanelZ,
-  actualizarPosicionBotonOpciones,
   setElementosPreSeleccionados,
   objetos,
   elementRefs,
@@ -20,12 +19,7 @@ export default function useCanvasEditorInteractionEffects({
 
   const handleTransformInteractionEnd = useCallback(() => {
     setIsSelectionRotating(false);
-    requestAnimationFrame(() => {
-      if (typeof actualizarPosicionBotonOpciones === "function") {
-        actualizarPosicionBotonOpciones("transform-interaction-end");
-      }
-    });
-  }, [actualizarPosicionBotonOpciones, setIsSelectionRotating]);
+  }, [setIsSelectionRotating]);
 
   useEffect(() => {
     if (elementosSeleccionados.length === 1 && !editingId) return;

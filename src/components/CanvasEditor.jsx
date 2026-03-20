@@ -67,6 +67,7 @@ import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/u
 import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEditor/useCanvasEditorOptionPanelOutsideClose";
 import useCanvasEditorSectionFlow from "@/components/editor/canvasEditor/useCanvasEditorSectionFlow";
 import useCanvasEditorInteractionEffects from "@/components/editor/canvasEditor/useCanvasEditorInteractionEffects";
+import useCanvasInteractionCoordinator from "@/components/editor/canvasEditor/useCanvasInteractionCoordinator";
 import {
   buildCanvasDragPerfDiff,
   trackCanvasDragPerf,
@@ -207,6 +208,7 @@ export default function CanvasEditor({
     caretVisible: false,
     paintStable: false,
   });
+  const canvasInteractionCoordinator = useCanvasInteractionCoordinator();
   const inlineSwapAckSeqRef = useRef(0);
   const [inlineSwapAck, setInlineSwapAck] = useState({
     id: null,
@@ -1389,6 +1391,8 @@ export default function CanvasEditor({
     escalaActiva,
     isMobile,
     buttonSize: optionButtonSize,
+    canvasUiSuppressed: canvasInteractionCoordinator.isCanvasUiSuppressed(),
+    canvasInteractionEpoch: canvasInteractionCoordinator.interactionEpoch,
   });
 
   const {
@@ -1399,7 +1403,6 @@ export default function CanvasEditor({
     editingId: editing.id,
     setIsSelectionRotating,
     setMostrarPanelZ,
-    actualizarPosicionBotonOpciones,
     setElementosPreSeleccionados,
     objetos,
     elementRefs,
@@ -1821,6 +1824,7 @@ export default function CanvasEditor({
                 guideOverlayRef={guideOverlayRef}
                 handleTransformInteractionStart={handleTransformInteractionStart}
                 handleTransformInteractionEnd={handleTransformInteractionEnd}
+                canvasInteractionCoordinator={canvasInteractionCoordinator}
                 normalizarMedidasGaleria={normalizarMedidasGaleria}
                 setElementosSeleccionados={setElementosSeleccionados}
                 setSecciones={setSecciones}

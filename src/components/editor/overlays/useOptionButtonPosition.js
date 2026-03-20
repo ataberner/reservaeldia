@@ -142,6 +142,8 @@ export default function useOptionButtonPosition({
   escalaActiva,
   isMobile = false,
   buttonSize = FALLBACK_BUTTON_SIZE_DESKTOP,
+  canvasUiSuppressed = false,
+  canvasInteractionEpoch = 0,
 }) {
   const lastLogByEventRef = useRef({});
   const pendingPositionSyncRafsRef = useRef({
@@ -149,6 +151,76 @@ export default function useOptionButtonPosition({
     rafB: 0,
     settleRaf: 0,
   });
+  const lastInteractionEpochRef = useRef(canvasInteractionEpoch);
+  const lastAnchorSignatureRef = useRef({
+    anchorSignature: null,
+    renderSignature: null,
+  });
+
+  const buildAnchorSignature = useCallback(() => {
+    if (typeof window === "undefined") return null;
+
+    const hasObjectSelection = elementosSeleccionados.length === 1;
+    const hasBackgroundDecorationSelection = Boolean(backgroundDecorationSelection?.id);
+    if (!hasObjectSelection && !hasBackgroundDecorationSelection) return null;
+
+    const stage = stageRef.current;
+    const nodeRef = hasObjectSelection
+      ? elementRefs.current[elementosSeleccionados[0]]
+      : null;
+    if ((!nodeRef && !hasBackgroundDecorationSelection) || !stage) return null;
+
+    try {
+      const box = hasObjectSelection
+        ? nodeRef.getClientRect({
+            relativeTo: stage,
+            skipShadow: true,
+          })
+        : resolveBackgroundDecorationStageBox(backgroundDecorationSelection);
+      if (!box) return null;
+
+      const nodeAbsolutePosition = hasObjectSelection
+        ? (
+            typeof nodeRef.getAbsolutePosition === "function"
+              ? nodeRef.getAbsolutePosition()
+              : {
+                  x: typeof nodeRef.x === "function" ? nodeRef.x() : null,
+                  y: typeof nodeRef.y === "function" ? nodeRef.y() : null,
+                }
+          )
+        : {
+            x: Number(backgroundDecorationSelection?.x) || 0,
+            y: Number(backgroundDecorationSelection?.y) || 0,
+          };
+      const rotation = hasObjectSelection
+        ? (
+            typeof nodeRef?.rotation === "function"
+              ? Number(nodeRef.rotation() || 0)
+              : Number(nodeRef?.attrs?.rotation || 0)
+          )
+        : Number(backgroundDecorationSelection?.rotation || 0);
+      const anchorStageY =
+        hasObjectSelection && Number.isFinite(nodeAbsolutePosition?.y)
+          ? Math.min(box.y, nodeAbsolutePosition.y)
+          : box.y;
+      const selectedId = hasObjectSelection
+        ? elementosSeleccionados[0]
+        : backgroundDecorationSelection?.id || "background-decoration";
+      const round = (value) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
+      };
+
+      return `anchor:${selectedId}:x=${round(box.x)}:y=${round(anchorStageY)}:w=${round(box.width)}:h=${round(box.height)}:r=${round(rotation)}`;
+    } catch {
+      return null;
+    }
+  }, [
+    backgroundDecorationSelection,
+    elementosSeleccionados,
+    elementRefs,
+    stageRef,
+  ]);
 
   const debugLog = useCallback((eventName, payload = {}, force = false) => {
     if (!isOptionButtonDebugEnabled()) return;
@@ -231,6 +303,7 @@ export default function useOptionButtonPosition({
     }
 
     const isInteractionActive =
+      canvasUiSuppressed ||
       window._isDragging ||
       window._grupoLider ||
       window._resizeData?.isResizing;
@@ -238,6 +311,7 @@ export default function useOptionButtonPosition({
     if (isInteractionActive) {
       ocultarBotonOpciones("interaction-active", {
         source,
+        canvasUiSuppressed,
         isDragging: Boolean(window._isDragging),
         groupLeader: window._grupoLider || null,
         isResizing: Boolean(window._resizeData?.isResizing),
@@ -407,6 +481,13 @@ export default function useOptionButtonPosition({
       botonOpcionesRef.current.style.left = `${Math.round(renderX)}px`;
       botonOpcionesRef.current.style.top = `${Math.round(renderY)}px`;
       botonOpcionesRef.current.style.display = "flex";
+      const anchorSignature = buildAnchorSignature();
+      lastAnchorSignatureRef.current = {
+        anchorSignature,
+        renderSignature: anchorSignature
+          ? `${anchorSignature}:epoch=${canvasInteractionEpoch}`
+          : null,
+      };
       finishPerf?.({
         selectionKind: hasObjectSelection ? "object" : "background-decoration",
       });
@@ -536,11 +617,23 @@ export default function useOptionButtonPosition({
     layoutRootRef,
     isMobile,
     buttonSize,
+    canvasUiSuppressed,
+    buildAnchorSignature,
+    canvasInteractionEpoch,
   ]);
 
   useEffect(() => {
     const hasAnchoredTarget =
       elementosSeleccionados.length === 1 || Boolean(backgroundDecorationSelection?.id);
+
+    if (canvasUiSuppressed) {
+      cancelPendingPositionSyncRafs();
+      ocultarBotonOpciones("canvas-ui-suppressed", {
+        canvasInteractionEpoch,
+      });
+      lastInteractionEpochRef.current = canvasInteractionEpoch;
+      return undefined;
+    }
 
     if (!hasAnchoredTarget) {
       ocultarBotonOpciones();
@@ -551,7 +644,16 @@ export default function useOptionButtonPosition({
     let rafB = 0;
     let settleRaf = 0;
     let cancelled = false;
-    const settleDurationMs = isMobile ? POSITION_SETTLE_MS_MOBILE : POSITION_SETTLE_MS_DESKTOP;
+    const interactionEpochChanged =
+      Number(lastInteractionEpochRef.current) !== Number(canvasInteractionEpoch);
+    const currentAnchorSignature = buildAnchorSignature();
+    const stableAnchorAfterInteraction =
+      interactionEpochChanged &&
+      currentAnchorSignature &&
+      currentAnchorSignature === lastAnchorSignatureRef.current?.anchorSignature;
+    const settleDurationMs = interactionEpochChanged
+      ? 0
+      : (isMobile ? POSITION_SETTLE_MS_MOBILE : POSITION_SETTLE_MS_DESKTOP);
     const settleStartTs =
       typeof performance !== "undefined" && typeof performance.now === "function"
         ? performance.now()
@@ -573,17 +675,29 @@ export default function useOptionButtonPosition({
 
     cancelPendingPositionSyncRafs();
 
+    if (stableAnchorAfterInteraction) {
+      actualizarPosicionBotonOpciones("stable-anchor-release", null, "stable-anchor");
+      lastInteractionEpochRef.current = canvasInteractionEpoch;
+      return () => {
+        cancelled = true;
+        cancelPendingPositionSyncRafs();
+      };
+    }
+
     rafA = window.requestAnimationFrame(() => {
       pendingPositionSyncRafsRef.current.rafA = 0;
       rafB = window.requestAnimationFrame(() => {
         pendingPositionSyncRafsRef.current.rafB = 0;
         actualizarPosicionBotonOpciones("raf-init", null, "raf");
-        settleRaf = window.requestAnimationFrame(settleTick);
-        pendingPositionSyncRafsRef.current.settleRaf = settleRaf;
+        if (settleDurationMs > 0) {
+          settleRaf = window.requestAnimationFrame(settleTick);
+          pendingPositionSyncRafsRef.current.settleRaf = settleRaf;
+        }
       });
       pendingPositionSyncRafsRef.current.rafB = rafB;
     });
     pendingPositionSyncRafsRef.current.rafA = rafA;
+    lastInteractionEpochRef.current = canvasInteractionEpoch;
 
     return () => {
       cancelled = true;
@@ -598,6 +712,9 @@ export default function useOptionButtonPosition({
     backgroundDecorationSelection?.y,
     elementosSeleccionados,
     actualizarPosicionBotonOpciones,
+    buildAnchorSignature,
+    canvasInteractionEpoch,
+    canvasUiSuppressed,
     cancelPendingPositionSyncRafs,
     ocultarBotonOpciones,
     isMobile,
@@ -612,6 +729,13 @@ export default function useOptionButtonPosition({
     const hasRelativeRoot = Boolean(layoutRootRef?.current);
 
     const syncPosition = (source = "sync", nativeEvent = null) => {
+      if (canvasUiSuppressed) {
+        ocultarBotonOpciones("canvas-ui-suppressed", {
+          source,
+          canvasInteractionEpoch,
+        });
+        return;
+      }
       if (elementosSeleccionados.length === 1 || backgroundDecorationSelection?.id) {
         actualizarPosicionBotonOpciones(
           source,
@@ -708,6 +832,8 @@ export default function useOptionButtonPosition({
     };
   }, [
     backgroundDecorationSelection?.id,
+    canvasInteractionEpoch,
+    canvasUiSuppressed,
     stageRef,
     layoutRootRef,
     elementosSeleccionados.length,

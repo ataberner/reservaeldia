@@ -1,5 +1,14 @@
 // C:\Reservaeldia\src\drag\dragGrupal.js
 import { determinarNuevaSeccion } from "@/utils/layout";
+import {
+  getCanvasPointerDebugInfo,
+  getCanvasSelectionDebugInfo,
+  getKonvaNodeDebugInfo,
+  logSelectedDragDebug,
+  resetCanvasInteractionLogSample,
+  sampleCanvasInteractionLog,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
+import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
 
 const isDragGrupalDebugEnabled = () =>
   typeof window !== "undefined" && window.__DBG_DRAG_GRUPAL === true;
@@ -19,6 +28,17 @@ function getGrupoElementos() {
     return window._grupoElementos;
   }
   return window._elementosSeleccionados || [];
+}
+
+function buildGroupPreviewSampleKey(leaderId) {
+  return `drag-group-preview:${leaderId || "unknown"}`;
+}
+
+function buildSelectionSnapshot() {
+  return {
+    ...getCanvasSelectionDebugInfo(),
+    dragStartPos: window._dragStartPos || null,
+  };
 }
 
 function calcularDeltaGrupal(stage) {
@@ -98,6 +118,14 @@ function applyPreviewDragGrupal(stage, leaderId, deltaX, deltaY) {
 }
 
 export function startDragGrupalLider(e, obj) {
+  logSelectedDragDebug("drag:group:attempt", {
+    elementId: obj?.id || null,
+    tipo: obj?.tipo || null,
+    figura: obj?.figura || null,
+    pointer: getCanvasPointerDebugInfo(e),
+    node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+    selection: buildSelectionSnapshot(),
+  });
   dlog("🚀 [DRAG GRUPAL] Iniciando drag grupal - Objeto:", {
     id: obj.id,
     tipo: obj.tipo,
@@ -173,6 +201,7 @@ export function startDragGrupalLider(e, obj) {
       window._grupoElementos = [...seleccion];
       window._grupoSeguidores = seleccion.filter((id) => id !== obj.id);
       window._dragStartPos = e.target.getStage().getPointerPosition();
+      resetCanvasInteractionLogSample(buildGroupPreviewSampleKey(obj.id));
       window._dragInicial = {};
       window._skipIndividualEnd = new Set(seleccion);
       window._skipUntil = 0;
@@ -245,6 +274,14 @@ export function startDragGrupalLider(e, obj) {
     } else {
       dlog("⚠️ [DRAG GRUPAL] Ya hay un líder activo:", window._grupoLider);
     }
+    logSelectedDragDebug("drag:group:start", {
+      elementId: obj?.id || null,
+      tipo: obj?.tipo || null,
+      figura: obj?.figura || null,
+      pointer: getCanvasPointerDebugInfo(e),
+      node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+      selection: buildSelectionSnapshot(),
+    });
     return true;
   }
   // 🔍 DEBUG CLAVE: si NO se inicia drag grupal, NO deberíamos tocar estado global
@@ -259,6 +296,15 @@ export function startDragGrupalLider(e, obj) {
   });
 
   dlog("❌ [DRAG GRUPAL] Condiciones no cumplidas para drag grupal");
+  logSelectedDragDebug("drag:group:skip", {
+    elementId: obj?.id || null,
+    tipo: obj?.tipo || null,
+    figura: obj?.figura || null,
+    pointer: getCanvasPointerDebugInfo(e),
+    node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+    selection: buildSelectionSnapshot(),
+    reason: "selection-not-eligible",
+  });
   return false;
 }
 
@@ -274,7 +320,23 @@ export function previewDragGrupal(e, obj, onChange) {
   const deltaData = calcularDeltaGrupal(stage);
   if (!deltaData) return;
 
-  const { deltaX, deltaY } = deltaData;
+  const { deltaX, deltaY, source } = deltaData;
+  const sample = sampleCanvasInteractionLog(buildGroupPreviewSampleKey(obj?.id), {
+    firstCount: 3,
+    throttleMs: 120,
+  });
+  if (sample.shouldLog) {
+    logSelectedDragDebug("drag:group:preview", {
+      elementId: obj?.id || null,
+      previewCount: sample.sampleCount,
+      deltaX,
+      deltaY,
+      deltaSource: source || null,
+      pointer: getCanvasPointerDebugInfo(e),
+      node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+      selection: buildSelectionSnapshot(),
+    });
+  }
   applyPreviewDragGrupal(stage, obj.id, deltaX, deltaY);
 }
 
@@ -295,6 +357,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
 
     const stage = e.target.getStage();
     const deltaData = window._dragInicial ? calcularDeltaGrupal(stage) : null;
+    const appliedChanges = [];
 
     if (deltaData && window._dragInicial) {
       if (window._groupPreviewRaf) {
@@ -331,23 +394,66 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
           objeto.seccionId,
           window._seccionesOrdenadas || []
         );
+        const canonicalPose = resolveCanonicalNodePose(node, objeto, {
+          x: nuevaX,
+          y: nuevaY,
+          rotation:
+            typeof node?.rotation === "function"
+              ? node.rotation()
+              : objeto.rotation || 0,
+        });
+        const committedX = Number.isFinite(canonicalPose?.x)
+          ? canonicalPose.x
+          : nuevaX;
+        const committedY = Number.isFinite(canonicalPose?.y)
+          ? canonicalPose.y
+          : nuevaY;
 
         try {
           node?.setAttr && node.setAttr("_muteNextEnd", true);
         } catch { }
 
         const cambios = {
-          x: nuevaX,
-          y: nuevaY,
+          x: committedX,
+          y: committedY,
           ...(nuevaSeccion ? { seccionId: nuevaSeccion } : {}),
           finalizoDrag: true,
           causa: "drag-grupal"
         };
 
+        appliedChanges.push({
+          elementId,
+          initialPosition: posInicial,
+          nextPosition: {
+            x: committedX,
+            y: committedY,
+          },
+          nextSectionId: nuevaSeccion || null,
+          node: getKonvaNodeDebugInfo(node),
+        });
         onChange(elementId, cambios);
+      });
+      logSelectedDragDebug("drag:group:end", {
+        elementId: obj?.id || null,
+        deltaX,
+        deltaY,
+        deltaSource: source || null,
+        appliedChanges,
+        pointer: getCanvasPointerDebugInfo(e),
+        node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+        selection: buildSelectionSnapshot(),
       });
     } else {
       dwarn("⚠️ [DRAG GRUPAL] No se pudo calcular delta final del grupo");
+    }
+
+    if (!deltaData || !window._dragInicial) {
+      logSelectedDragDebug("drag:group:end-no-delta", {
+        elementId: obj?.id || null,
+        pointer: getCanvasPointerDebugInfo(e),
+        node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+        selection: buildSelectionSnapshot(),
+      });
     }
 
     // Cleanup
@@ -388,6 +494,7 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
     }, 450);
 
     setTimeout(() => { hasDragged.current = false; }, 40);
+    resetCanvasInteractionLogSample(buildGroupPreviewSampleKey(obj?.id));
     return true;
   }
 
@@ -395,6 +502,11 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
   if (window._grupoLider) {
     const seleccion = window._elementosSeleccionados || [];
     if (seleccion.includes(obj.id)) {
+      logSelectedDragDebug("drag:group:follower-end-skip", {
+        elementId: obj?.id || null,
+        node: getKonvaNodeDebugInfo(e?.currentTarget || e?.target || null),
+        selection: buildSelectionSnapshot(),
+      });
       setTimeout(() => { hasDragged.current = false; }, 40);
       return true;
     }
@@ -402,6 +514,3 @@ export function endDragGrupal(e, obj, onChange, hasDragged, setIsDragging) {
 
   return false;
 }
-
-
-

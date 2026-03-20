@@ -1,3 +1,5 @@
+import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+
 function readExplicitDebugFlag(rawValue) {
   if (rawValue === true || rawValue === 1 || rawValue === "1") return true;
   if (rawValue === false || rawValue === 0 || rawValue === "0") return false;
@@ -59,8 +61,110 @@ function roundMetric(value, digits = 2) {
   return Math.round(numeric * precision) / precision;
 }
 
+function getDebugNowMs() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function getCanvasInteractionDebugStore() {
+  if (typeof window === "undefined") return null;
+  if (!window.__CANVAS_INTERACTION_DEBUG_STORE) {
+    window.__CANVAS_INTERACTION_DEBUG_STORE = {
+      sampleCounts: {},
+      sampleLastLogAt: {},
+    };
+  }
+  return window.__CANVAS_INTERACTION_DEBUG_STORE;
+}
+
+export function sampleCanvasInteractionLog(sampleKey, options = {}) {
+  if (!isSelectedDragDebugEnabled()) {
+    return {
+      shouldLog: false,
+      sampleCount: 0,
+      nowMs: null,
+    };
+  }
+
+  const store = getCanvasInteractionDebugStore();
+  if (!store) {
+    return {
+      shouldLog: false,
+      sampleCount: 0,
+      nowMs: null,
+    };
+  }
+
+  const safeSampleKey = String(sampleKey || "canvas-interaction");
+  const firstCount = Math.max(0, Number(options?.firstCount ?? 3) || 0);
+  const throttleMs = Math.max(0, Number(options?.throttleMs ?? 120) || 0);
+  const nowMs = getDebugNowMs();
+  const nextCount = Number(store.sampleCounts[safeSampleKey] || 0) + 1;
+  store.sampleCounts[safeSampleKey] = nextCount;
+
+  const lastLogAt = Number(store.sampleLastLogAt[safeSampleKey] || 0);
+  const shouldLog =
+    nextCount <= firstCount ||
+    throttleMs === 0 ||
+    nowMs - lastLogAt >= throttleMs;
+
+  if (shouldLog) {
+    store.sampleLastLogAt[safeSampleKey] = nowMs;
+  }
+
+  return {
+    shouldLog,
+    sampleCount: nextCount,
+    nowMs: roundMetric(nowMs),
+  };
+}
+
+export function resetCanvasInteractionLogSample(sampleKey) {
+  if (typeof window === "undefined") return;
+  const store = getCanvasInteractionDebugStore();
+  if (!store) return;
+
+  const safeSampleKey = String(sampleKey || "canvas-interaction");
+  delete store.sampleCounts[safeSampleKey];
+  delete store.sampleLastLogAt[safeSampleKey];
+}
+
+export function getCanvasSelectionDebugInfo() {
+  if (typeof window === "undefined") {
+    return {
+      selectedIds: [],
+      selectedCount: 0,
+      groupLeader: null,
+      groupElementIds: [],
+      groupFollowerIds: [],
+    };
+  }
+
+  const selectedIds = Array.isArray(window._elementosSeleccionados)
+    ? [...window._elementosSeleccionados]
+    : [];
+  const groupElementIds = Array.isArray(window._grupoElementos)
+    ? [...window._grupoElementos]
+    : [];
+  const groupFollowerIds = Array.isArray(window._grupoSeguidores)
+    ? [...window._grupoSeguidores]
+    : [];
+
+  return {
+    selectedIds,
+    selectedCount: selectedIds.length,
+    groupLeader: window._grupoLider || null,
+    groupElementIds,
+    groupFollowerIds,
+  };
+}
+
 export function getKonvaNodeDebugInfo(node) {
   if (!node) return null;
+
+  const canonicalPose = resolveCanonicalNodePose(node);
 
   let absolutePosition = null;
   try {
@@ -72,6 +176,20 @@ export function getKonvaNodeDebugInfo(node) {
     absolutePosition = null;
   }
 
+  let clientRect = null;
+  try {
+    clientRect =
+      typeof node.getClientRect === "function"
+        ? node.getClientRect({
+            skipTransform: false,
+            skipShadow: true,
+            skipStroke: true,
+          })
+        : null;
+  } catch {
+    clientRect = null;
+  }
+
   return {
     className:
       typeof node.getClassName === "function" ? node.getClassName() : null,
@@ -80,10 +198,32 @@ export function getKonvaNodeDebugInfo(node) {
       typeof node.name === "function" ? node.name() || null : node?.attrs?.name || null,
     draggable:
       typeof node.draggable === "function" ? Boolean(node.draggable()) : null,
-    x: typeof node.x === "function" ? roundMetric(node.x()) : null,
-    y: typeof node.y === "function" ? roundMetric(node.y()) : null,
+    x: roundMetric(canonicalPose?.x),
+    y: roundMetric(canonicalPose?.y),
+    rotation: roundMetric(canonicalPose?.rotation),
+    rawX: roundMetric(canonicalPose?.rawX),
+    rawY: roundMetric(canonicalPose?.rawY),
+    rawRotation: roundMetric(canonicalPose?.rawRotation),
+    rawOffsetX: roundMetric(canonicalPose?.rawOffsetX),
+    rawOffsetY: roundMetric(canonicalPose?.rawOffsetY),
+    canonicalPoseMode: canonicalPose?.canonicalPoseMode || null,
+    canonicalUsesOriginOffset: canonicalPose?.usesOriginOffset === true,
+    scaleX:
+      typeof node.scaleX === "function" ? roundMetric(node.scaleX(), 3) : null,
+    scaleY:
+      typeof node.scaleY === "function" ? roundMetric(node.scaleY(), 3) : null,
+    width:
+      typeof node.width === "function" ? roundMetric(node.width(), 3) : null,
+    height:
+      typeof node.height === "function" ? roundMetric(node.height(), 3) : null,
+    radius:
+      typeof node.radius === "function" ? roundMetric(node.radius(), 3) : null,
     absoluteX: roundMetric(absolutePosition?.x),
     absoluteY: roundMetric(absolutePosition?.y),
+    clientRectX: roundMetric(clientRect?.x),
+    clientRectY: roundMetric(clientRect?.y),
+    clientRectWidth: roundMetric(clientRect?.width, 3),
+    clientRectHeight: roundMetric(clientRect?.height, 3),
   };
 }
 

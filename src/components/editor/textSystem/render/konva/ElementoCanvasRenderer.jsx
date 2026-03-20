@@ -48,6 +48,10 @@ import {
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
+import {
+  clearCanonicalPoseMetadata,
+  markTextOriginOffsetCanonicalPose,
+} from "@/components/editor/canvasEditor/konvaCanonicalPose";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -504,12 +508,15 @@ export default function ElementoCanvas({
 
   const handleRef = useCallback((node) => {
     elementNodeRef.current = node || null;
+    if (node && obj.tipo !== "texto") {
+      clearCanonicalPoseMetadata(node);
+    }
     if (registerRef) {
       registerRef(obj.id, node || null);
       // Ã¢ÂÅ’ NO despachar "element-ref-registrado" acÃƒÂ¡
       // CanvasEditor.registerRef ya lo hace.
     }
-  }, [obj.id, registerRef]);
+  }, [obj.id, obj.tipo, registerRef]);
 
   const cancelPendingTransformerRestore = useCallback(() => {
     if (
@@ -1612,6 +1619,9 @@ export default function ElementoCanvas({
           id={obj.id}
           ref={(node) => {
             textNodeRef.current = node || null;
+            if (node) {
+              markTextOriginOffsetCanonicalPose(node);
+            }
             handleRef(node);
           }}
           x={validX + textOriginOffsetX}

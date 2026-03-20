@@ -38,10 +38,16 @@ import {
   buildImagePerfPayload,
   deactivateImageLayerPerf,
 } from "@/components/editor/canvasEditor/imageLayerPerf";
+import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import {
   liftNodeToOverlayLayer,
   restoreNodeFromOverlayLayer,
 } from "@/components/editor/canvasEditor/imageOverlayLayerLift";
+import {
+  getCanvasPointerDebugInfo,
+  getKonvaNodeDebugInfo,
+  logSelectedDragDebug,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -282,7 +288,7 @@ export default function ElementoCanvas({
   const objRefSnapshotRef = useRef(null);
   const objRefVersionRef = useRef(0);
   const lastImagePerfSignatureRef = useRef("");
-  const preDetachedImageTransformerRef = useRef(false);
+  const preDetachedSelectionTransformerRef = useRef(false);
   const pendingTransformerRestoreRafRef = useRef(0);
   const selectionImageCacheWarmupRafRef = useRef(0);
   const inlineEditPointerActive =
@@ -518,7 +524,7 @@ export default function ElementoCanvas({
   }, []);
 
   const queueTransformerRestoreAfterPredragCancel = useCallback(() => {
-    if (!preDetachedImageTransformerRef.current) return;
+    if (!preDetachedSelectionTransformerRef.current) return;
 
     cancelPendingTransformerRestore();
 
@@ -526,13 +532,13 @@ export default function ElementoCanvas({
       typeof window === "undefined" ||
       typeof requestAnimationFrame !== "function"
     ) {
-      preDetachedImageTransformerRef.current = false;
+      preDetachedSelectionTransformerRef.current = false;
       return;
     }
 
     pendingTransformerRestoreRafRef.current = requestAnimationFrame(() => {
       pendingTransformerRestoreRafRef.current = 0;
-      preDetachedImageTransformerRef.current = false;
+      preDetachedSelectionTransformerRef.current = false;
 
       trackCanvasDragPerf("transformer:restore-after-predrag-cancel", {
         elementId: obj.id,
@@ -550,29 +556,65 @@ export default function ElementoCanvas({
     });
   }, [cancelPendingTransformerRestore, obj.id, obj.tipo]);
 
-  const prepareSelectedImageForPossibleDrag = useCallback((e) => {
-    if (
-      obj.tipo !== "imagen" ||
-      !isSelected ||
-      selectionCount !== 1 ||
-      !img ||
-      !imageCropData
-    ) {
-      return;
-    }
+  const syncInteractionDraggableState = useCallback((node) => {
+    if (!node || typeof node.draggable !== "function") return;
+    node.draggable(!editingMode && !inlineEditPointerActive);
+    logSelectedDragDebug("element:sync-draggable", {
+      elementId: obj.id,
+      tipo: obj.tipo,
+      isSelected,
+      selectionCount,
+      nextDraggable: !editingMode && !inlineEditPointerActive,
+      node: getKonvaNodeDebugInfo(node),
+    });
+  }, [
+    editingMode,
+    inlineEditPointerActive,
+    isSelected,
+    obj.id,
+    obj.tipo,
+    selectionCount,
+  ]);
+
+  const logElementGestureDebug = useCallback((eventName, event, extra = {}) => {
+    logSelectedDragDebug(eventName, {
+      elementId: obj.id,
+      tipo: obj.tipo,
+      isSelected,
+      selectionCount,
+      editingMode: Boolean(editingMode),
+      isInEditMode: Boolean(isInEditMode),
+      inlineEditPointerActive: Boolean(inlineEditPointerActive),
+      hasDragged: Boolean(hasDragged?.current),
+      target: getKonvaNodeDebugInfo(event?.target),
+      currentTarget: getKonvaNodeDebugInfo(event?.currentTarget),
+      pointer: getCanvasPointerDebugInfo(event),
+      ...extra,
+    });
+  }, [
+    editingMode,
+    hasDragged,
+    inlineEditPointerActive,
+    isInEditMode,
+    isSelected,
+    obj.id,
+    obj.tipo,
+    selectionCount,
+  ]);
+
+  const prepareSelectedElementForPossibleDrag = useCallback((e) => {
+    if (!isSelected || selectionCount !== 1) return;
 
     const node = e?.currentTarget || e?.target || elementNodeRef.current;
     if (!node) return;
 
     cancelPendingTransformerRestore();
-    preDetachedImageTransformerRef.current = detachSelectionTransformerForNode(node, {
+    preDetachedSelectionTransformerRef.current = detachSelectionTransformerForNode(node, {
       elementId: obj.id,
       tipo: obj.tipo,
     });
   }, [
     cancelPendingTransformerRestore,
-    imageCropData,
-    img,
     isSelected,
     obj.id,
     obj.tipo,
@@ -605,9 +647,15 @@ export default function ElementoCanvas({
       ctrl: Boolean(e?.evt?.ctrlKey),
       meta: Boolean(e?.evt?.metaKey),
     });
+    logElementGestureDebug("element:selection-gesture", e, {
+      gesture,
+      shift: Boolean(e?.evt?.shiftKey),
+      ctrl: Boolean(e?.evt?.ctrlKey),
+      meta: Boolean(e?.evt?.metaKey),
+    });
 
     onSelect(obj.id, obj, e, { gesture });
-  }, [hasDragged, obj, onSelect]);
+  }, [hasDragged, logElementGestureDebug, obj, onSelect]);
 
   const handleClick = useCallback(
     (e) => {
@@ -638,62 +686,62 @@ export default function ElementoCanvas({
     onMouseDown: !hasPointerEvents ? (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
+      logElementGestureDebug("element:mousedown", e);
       if (inlineEditPointerActive) {
         onInlineEditPointer(e, obj);
         return;
       }
 
       e.currentTarget?.draggable(true);
-      prepareSelectedImageForPossibleDrag(e);
+      prepareSelectedElementForPossibleDrag(e);
     } : undefined,
 
     onTouchStart: !hasPointerEvents ? (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
+      logElementGestureDebug("element:touchstart", e);
       if (inlineEditPointerActive) {
         onInlineEditPointer(e, obj);
         return;
       }
 
       e.currentTarget?.draggable(true);
-      prepareSelectedImageForPossibleDrag(e);
+      prepareSelectedElementForPossibleDrag(e);
     } : undefined,
 
     onPointerDown: (e) => {
       e.cancelBubble = true;
       hasDragged.current = false;
+      logElementGestureDebug("element:pointerdown", e);
       if (inlineEditPointerActive) {
         onInlineEditPointer(e, obj);
         return;
       }
 
       e.currentTarget?.draggable(true);
-      prepareSelectedImageForPossibleDrag(e);
+      prepareSelectedElementForPossibleDrag(e);
     },
 
     onMouseUp: !hasPointerEvents ? (e) => {
-      if (e.currentTarget?.draggable && !hasDragged.current) {
-        e.currentTarget.draggable(false);
-      }
       if (!hasDragged.current) {
+        logElementGestureDebug("element:mouseup", e);
+        syncInteractionDraggableState(e.currentTarget);
         queueTransformerRestoreAfterPredragCancel();
       }
     } : undefined,
 
     onTouchEnd: !hasPointerEvents ? (e) => {
-      if (e.currentTarget?.draggable && !hasDragged.current) {
-        e.currentTarget.draggable(false);
-      }
       if (!hasDragged.current) {
+        logElementGestureDebug("element:touchend", e);
+        syncInteractionDraggableState(e.currentTarget);
         queueTransformerRestoreAfterPredragCancel();
       }
     } : undefined,
 
     onPointerUp: (e) => {
-      if (e.currentTarget?.draggable && !hasDragged.current) {
-        e.currentTarget.draggable(false);
-      }
       if (!hasDragged.current) {
+        logElementGestureDebug("element:pointerup", e);
+        syncInteractionDraggableState(e.currentTarget);
         queueTransformerRestoreAfterPredragCancel();
       }
     },
@@ -714,6 +762,11 @@ export default function ElementoCanvas({
         nowMs - Number(lastDragStart.lastStartAt || 0) < 80;
 
       if (isDuplicateDragStart) {
+        logElementGestureDebug("element:dragstart-duplicate-ignored", e, {
+          elapsedSinceLastStartMs: Math.round(
+            nowMs - Number(lastDragStart.lastStartAt || 0)
+          ),
+        });
         trackCanvasDragPerf("drag:start-duplicate-ignored", {
           elementId: obj.id,
           tipo: obj.tipo,
@@ -730,6 +783,7 @@ export default function ElementoCanvas({
         lastStartId: obj.id,
       };
       cancelPendingTransformerRestore();
+      logElementGestureDebug("element:dragstart", e);
 
       const dragNode = e?.target;
       startCanvasDragPerfSession({
@@ -763,8 +817,8 @@ export default function ElementoCanvas({
       if (obj.tipo === "imagen" && img && imageCropData) {
         const imageDragNode = dragNode || elementNodeRef.current;
 
-        if (preDetachedImageTransformerRef.current) {
-          preDetachedImageTransformerRef.current = false;
+        if (preDetachedSelectionTransformerRef.current) {
+          preDetachedSelectionTransformerRef.current = false;
           trackCanvasDragPerf("transformer:predetach-reused", {
             elementId: obj.id,
             tipo: obj.tipo,
@@ -920,6 +974,10 @@ export default function ElementoCanvas({
 
 
     onDragEnd: (e) => {
+      logElementGestureDebug("element:dragend", e, {
+        wasDragging: Boolean(window._isDragging),
+      });
+      notePostDragSelectionGuard();
       const finishDragEndPerf = startCanvasDragPerfSpan("drag:handler-end", {
         elementId: obj.id,
         tipo: obj.tipo,
@@ -940,7 +998,7 @@ export default function ElementoCanvas({
         );
       }
       cancelPendingTransformerRestore();
-      preDetachedImageTransformerRef.current = false;
+      preDetachedSelectionTransformerRef.current = false;
       dragLifecycleRef.current = {
         lastStartAt: 0,
         lastStartId: null,
@@ -1008,6 +1066,8 @@ export default function ElementoCanvas({
     isInEditMode,
     handleClick,
     handleDoubleClick,
+    logElementGestureDebug,
+    syncInteractionDraggableState,
     onInlineEditPointer,
     onDragMovePersonalizado,
     onDragStartPersonalizado,
@@ -1024,7 +1084,7 @@ export default function ElementoCanvas({
     onHover,
     cancelPendingTransformerRestore,
     queueTransformerRestoreAfterPredragCancel,
-    prepareSelectedImageForPossibleDrag,
+    prepareSelectedElementForPossibleDrag,
   ]);
 
   // Ã°Å¸â€Â¥ MEMOIZAR HANDLERS HOVER

@@ -29,7 +29,19 @@ function arePointArraysEqual(left, right) {
   return true;
 }
 
-function shouldUseRotatedSelectionBounds(selectedObjects = []) {
+function hasMeaningfulRotation(node, objectData) {
+  const rawRotation =
+    typeof node?.rotation === "function"
+      ? Number(node.rotation() || 0)
+      : Number(objectData?.rotation || 0);
+
+  if (!Number.isFinite(rawRotation)) return false;
+
+  const normalizedRotation = Math.abs(rawRotation % 360);
+  return normalizedRotation > 0.01 && Math.abs(normalizedRotation - 360) > 0.01;
+}
+
+function shouldUseRotatedSelectionBounds(selectedObjects = [], selectedNode = null) {
   const selection = Array.isArray(selectedObjects)
     ? selectedObjects.filter(Boolean)
     : [selectedObjects].filter(Boolean);
@@ -37,8 +49,11 @@ function shouldUseRotatedSelectionBounds(selectedObjects = []) {
 
   return (
     selection.length === 1 &&
-    firstSelectedObject?.tipo === "imagen" &&
-    !firstSelectedObject?.esFondo
+    !firstSelectedObject?.esFondo &&
+    (
+      firstSelectedObject?.tipo === "imagen" ||
+      hasMeaningfulRotation(selectedNode, firstSelectedObject)
+    )
   );
 }
 
@@ -59,11 +74,14 @@ function resolveSelectionBounds({
 
   const padding = getSelectionFramePaddingForSelection(elementosData, isMobile);
   const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
-  const shouldUseRotatedFrame = shouldUseRotatedSelectionBounds(elementosData);
+  const selectedObject = elementosData[0] || null;
+  const selectedNode = selectedObject ? elementRefs.current?.[selectedObject.id] : null;
+  const shouldUseRotatedFrame = shouldUseRotatedSelectionBounds(
+    elementosData,
+    selectedNode
+  );
 
   if (shouldUseRotatedFrame) {
-    const selectedObject = elementosData[0] || null;
-    const selectedNode = selectedObject ? elementRefs.current?.[selectedObject.id] : null;
     const rotatedPoints = buildSelectionFramePolygon(selectedNode, padding);
 
     if (hasFinitePolygonPoints(rotatedPoints)) {
@@ -130,10 +148,11 @@ function resolveSelectionBounds({
         let width = box.width;
         let height = box.height;
 
-        if (obj.tipo === "texto" && node.getTextHeight) {
-          const textHeight = node.getTextHeight();
-          if (textHeight) {
-            height = textHeight;
+        if (obj.tipo === "texto" && typeof node.height === "function") {
+          const computedTextHeight = Number(node.height());
+          const scaledTextHeight = computedTextHeight * Math.abs(Number(sy) || 1);
+          if (Number.isFinite(scaledTextHeight) && scaledTextHeight > 0) {
+            height = scaledTextHeight;
           }
         }
 

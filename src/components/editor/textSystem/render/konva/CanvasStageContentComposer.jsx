@@ -30,12 +30,18 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
+  getCanvasPointerDebugInfo,
+  getKonvaNodeDebugInfo,
+  logSelectedDragDebug,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
+import {
   finishImageRotationDebugSession,
   noteImageRotationOptionButtonSkip,
   noteImageRotationReactPreviewSkipped,
   trackImageRotationCommit,
   trackImageRotationDebug,
 } from "@/components/editor/canvasEditor/imageRotationDebug";
+import { isPostDragSelectionGuardActive } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import {
   readClientPointFromCanvasEvent,
 } from "@/components/editor/textSystem/services/textCanvasPointerService";
@@ -622,14 +628,30 @@ export default function CanvasStageContent({
     }
 
     let restored = false;
+    let currentSelectionSnapshot = [];
+    let nextSelectionSnapshot = [];
     setElementosSeleccionados((current) => {
       const currentSelection = Array.isArray(current) ? current : [];
+      currentSelectionSnapshot = [...currentSelection];
       if (currentSelection.includes(dragId)) {
+        nextSelectionSnapshot = [...currentSelection];
         return current;
       }
 
       restored = true;
-      return guard.selectionSnapshot.length > 0 ? guard.selectionSnapshot : [dragId];
+      nextSelectionSnapshot =
+        guard.selectionSnapshot.length > 0 ? [...guard.selectionSnapshot] : [dragId];
+      return nextSelectionSnapshot;
+    });
+
+    logSelectedDragDebug("selection:restore-after-drag-check", {
+      elementId: dragId,
+      tipo,
+      guardStartedSelected: Boolean(guard.startedSelected),
+      guardSelectionSnapshot: guard.selectionSnapshot,
+      currentSelectionSnapshot,
+      nextSelectionSnapshot,
+      restored,
     });
 
     if (restored) {
@@ -647,18 +669,37 @@ export default function CanvasStageContent({
   }, [setElementosSeleccionados]);
 
   const commitDeferredSelectionAfterDrag = useCallback((dragId, tipo = null) => {
-    if (deferredDragSelectionIdRef.current !== dragId) return false;
+    if (deferredDragSelectionIdRef.current !== dragId) {
+      logSelectedDragDebug("selection:commit-dragend-skip", {
+        elementId: dragId,
+        tipo,
+        deferredDragSelectionId: deferredDragSelectionIdRef.current || null,
+      });
+      return false;
+    }
 
     deferredDragSelectionIdRef.current = null;
     if (typeof window !== "undefined") {
       window._pendingDragSelectionId = null;
     }
 
+    let currentSelectionSnapshot = [];
+    let nextSelectionSnapshot = [dragId];
     setElementosSeleccionados((current) => {
+      currentSelectionSnapshot = Array.isArray(current) ? [...current] : [];
       if (Array.isArray(current) && current.length === 1 && current[0] === dragId) {
+        nextSelectionSnapshot = [...current];
         return current;
       }
+      nextSelectionSnapshot = [dragId];
       return [dragId];
+    });
+
+    logSelectedDragDebug("selection:commit-dragend", {
+      elementId: dragId,
+      tipo,
+      currentSelectionSnapshot,
+      nextSelectionSnapshot,
     });
 
     trackCanvasDragPerf("selection:commit-dragend", {
@@ -1216,6 +1257,18 @@ export default function CanvasStageContent({
       meta,
       selectionSnapshot,
     });
+    logSelectedDragDebug("selection:intent-decision", {
+      elementId: id,
+      tipo: obj?.tipo || null,
+      gesture,
+      decision: decision?.decision || null,
+      reason: decision?.reason || null,
+      selectionSnapshot,
+      target: getKonvaNodeDebugInfo(event?.target),
+      currentTarget: getKonvaNodeDebugInfo(event?.currentTarget),
+      pointer: getCanvasPointerDebugInfo(event),
+      editingId: editing.id || null,
+    });
 
     applyInlineIntentDecision({
       id,
@@ -1234,6 +1287,7 @@ export default function CanvasStageContent({
   ]);
 
   const selectSectionAndClearInlineIntent = useCallback((sectionId, reason = "section-select") => {
+    if (isPostDragSelectionGuardActive()) return;
     clearInlineActivation(reason, {
       sectionId: sectionId || null,
     });
@@ -1912,11 +1966,41 @@ export default function CanvasStageContent({
           prepararGuias?.(dragId, objetos, elementRefs);
         }}
         onDragEndPersonalizado={isInEditMode ? null : () => {
-          commitDeferredSelectionAfterDrag(obj.id, obj.tipo || null);
-          restoreSelectionIfLostAfterDrag(obj.id, obj.tipo || null);
+          const committedDeferredSelection = commitDeferredSelectionAfterDrag(
+            obj.id,
+            obj.tipo || null
+          );
+          const restoredSelectionAfterDrag = restoreSelectionIfLostAfterDrag(
+            obj.id,
+            obj.tipo || null
+          );
           clearDragVisualSelection();
           cancelScheduledGuideEvaluation();
           configurarDragEnd([]);
+          logSelectedDragDebug("selection:post-drag-ui-refresh", {
+            elementId: obj.id,
+            tipo: obj.tipo || null,
+            committedDeferredSelection,
+            restoredSelectionAfterDrag,
+            selectedIdsFromWindow:
+              typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+                ? [...window._elementosSeleccionados]
+                : [...elementosSeleccionados],
+            globalDragging:
+              typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+            optionButtonRefreshScheduled:
+              typeof actualizarPosicionBotonOpciones === "function",
+          });
+          if (typeof actualizarPosicionBotonOpciones === "function") {
+            requestAnimationFrame(() => {
+              logSelectedDragDebug("selection:option-button-refresh", {
+                elementId: obj.id,
+                tipo: obj.tipo || null,
+                source: "element-drag-end",
+              });
+              actualizarPosicionBotonOpciones("element-drag-end");
+            });
+          }
         }}
         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
           scheduleGuideEvaluation(pos, elementId);
@@ -2679,6 +2763,32 @@ export default function CanvasStageContent({
                         onDragEndPersonalizado={isInEditMode ? null : () => {
                           cancelScheduledGuideEvaluation();
                           configurarDragEnd([]);
+                          logSelectedDragDebug("selection:post-drag-ui-refresh", {
+                            elementId: obj.id,
+                            tipo: obj.tipo || null,
+                            source: "legacy-element-branch",
+                            selectedIdsFromWindow:
+                              typeof window !== "undefined" &&
+                              Array.isArray(window._elementosSeleccionados)
+                                ? [...window._elementosSeleccionados]
+                                : [...elementosSeleccionados],
+                            globalDragging:
+                              typeof window !== "undefined"
+                                ? Boolean(window._isDragging)
+                                : false,
+                            optionButtonRefreshScheduled:
+                              typeof actualizarPosicionBotonOpciones === "function",
+                          });
+                          if (typeof actualizarPosicionBotonOpciones === "function") {
+                            requestAnimationFrame(() => {
+                              logSelectedDragDebug("selection:option-button-refresh", {
+                                elementId: obj.id,
+                                tipo: obj.tipo || null,
+                                source: "element-drag-end",
+                              });
+                              actualizarPosicionBotonOpciones("element-drag-end");
+                            });
+                          }
                         }}
                         onDragMovePersonalizado={isInEditMode ? null : (pos, elementId) => {
                           scheduleGuideEvaluation(pos, elementId);
@@ -2781,8 +2891,7 @@ export default function CanvasStageContent({
 
                   {!editing.id &&
                     !sectionDecorationEdit &&
-                    elementosSeleccionados.length > 0 &&
-                    !isAnyCanvasDragActive && (() => {
+                    elementosSeleccionados.length > 0 && (() => {
                     return (
                       <SelectionBounds
                         selectedElements={elementosSeleccionados}

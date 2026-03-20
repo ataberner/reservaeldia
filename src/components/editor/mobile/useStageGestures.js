@@ -1,5 +1,7 @@
 ﻿import { useCallback, useRef } from "react";
 
+import { isPostDragSelectionGuardActive } from "@/components/editor/canvasEditor/postDragSelectionGuard";
+
 const TOUCH_MOVE_PX = 16;
 const TOUCH_SCROLL_PX = 2;
 
@@ -70,6 +72,16 @@ export default function useStageGestures({
     [secciones]
   );
 
+  const resetSelectionMarquee = useCallback(() => {
+    setElementosPreSeleccionados([]);
+    setSeleccionActiva(false);
+    setAreaSeleccion(null);
+
+    if (window._selectionThrottle) window._selectionThrottle = false;
+    if (window._boundsUpdateThrottle) window._boundsUpdateThrottle = false;
+    window._lineIntersectionCache = {};
+  }, [setAreaSeleccion, setElementosPreSeleccionados, setSeleccionActiva]);
+
   const clearSelectionUI = useCallback(() => {
     if (
       typeof window !== "undefined" &&
@@ -77,6 +89,7 @@ export default function useStageGestures({
     ) {
       return;
     }
+    if (isPostDragSelectionGuardActive()) return;
     setElementosSeleccionados([]);
     cerrarMenusFlotantes?.();
   }, [setElementosSeleccionados, cerrarMenusFlotantes]);
@@ -202,6 +215,7 @@ export default function useStageGestures({
 
   const onTouchEnd = useCallback((e) => {
     const g = touchGestureRef.current;
+    if (isPostDragSelectionGuardActive()) return;
     const clientPoint = getClientPointFromNativeEvent(e?.evt);
     const endClientX = clientPoint?.x ?? g.startClientX;
     const endClientY = clientPoint?.y ?? g.startClientY;
@@ -307,6 +321,10 @@ export default function useStageGestures({
     (e) => {
       const stage = e.target.getStage();
       if (window._grupoLider) return;
+      if (isPostDragSelectionGuardActive()) {
+        resetSelectionMarquee();
+        return;
+      }
       if (!seleccionActiva || !areaSeleccion) return;
 
       const nuevaSeleccion = objetos.filter((obj) => {
@@ -331,13 +349,7 @@ export default function useStageGestures({
       });
 
       setElementosSeleccionados(nuevaSeleccion.map((obj) => obj.id));
-      setElementosPreSeleccionados([]);
-      setSeleccionActiva(false);
-      setAreaSeleccion(null);
-
-      if (window._selectionThrottle) window._selectionThrottle = false;
-      if (window._boundsUpdateThrottle) window._boundsUpdateThrottle = false;
-      window._lineIntersectionCache = {};
+      resetSelectionMarquee();
     },
     [
       seleccionActiva,
@@ -346,9 +358,7 @@ export default function useStageGestures({
       elementRefs,
       detectarInterseccionLinea,
       setElementosSeleccionados,
-      setElementosPreSeleccionados,
-      setSeleccionActiva,
-      setAreaSeleccion,
+      resetSelectionMarquee,
     ]
   );
 

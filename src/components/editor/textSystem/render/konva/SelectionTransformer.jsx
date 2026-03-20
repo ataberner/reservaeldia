@@ -33,6 +33,11 @@ import {
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+import {
+  getCanvasPointerDebugInfo,
+  getKonvaNodeDebugInfo,
+  logSelectedDragDebug,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -54,6 +59,14 @@ const TXTDBG = (...args) => {
 };
 
 const ROTATION_SNAP_ANGLES = Object.freeze([0, 45, 90, 135, 180, 225, 270, 315]);
+
+function resolveRotateAnchorOffset({ padding = 0, isMobile = false } = {}) {
+  const targetDistanceFromElement = isMobile ? 52 : 30;
+  const minimumOffset = isMobile ? 34 : 24;
+  const safePadding = Number.isFinite(Number(padding)) ? Number(padding) : 0;
+
+  return Math.max(minimumOffset, targetDistanceFromElement - safePadding);
+}
 
 
 function rectFromNodes(nodes) {
@@ -230,12 +243,15 @@ export default function SelectionBounds({
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
   const transformerAnchorSize = isMobile ? 32 : 14; //tamaÃ±o visual del nodo (mÃ¡s grande en mobile).
-  const transformerRotateOffset = isMobile ? 34 : 24; // distancia del handle de rotaciÃ³n al borde.
   const transformerAnchorRadius = 999; //radio de esquina del nodo (999 lo hace circular).
   const transformerPadding = getSelectionFramePaddingForSelection(
     elementosSeleccionadosData,
     isMobile
   ); // espacio extra entre borde del transformer y elemento.
+  const transformerRotateOffset = resolveRotateAnchorOffset({
+    padding: transformerPadding,
+    isMobile,
+  });
   const transformerBorderStrokeWidth = getSelectionFrameStrokeWidth(isMobile); //grosor del borde del transformer.
   const transformerAnchorFillColor = "#9333EA";
   const transformerAnchorStrokeWidth = isMobile ? 1.4 : 2.5; //grosor del borde del nodo.
@@ -271,6 +287,29 @@ export default function SelectionBounds({
   const transformerAnchorHintStrongShadowBlur = isMobile ? 54 : 24;
   const transformerAnchorHintSoftShadowBlur = isMobile ? 34 : 14;
   const transformerAnchorHintHitStrokeWidth = isMobile ? 84 : 22;
+  const transformerRotateAnchorFillColor = isMobile
+    ? "rgba(255, 255, 255, 0.97)"
+    : "rgba(255, 255, 255, 0.98)";
+  const transformerRotateAnchorStrokeColor = "#9333EA";
+  const transformerRotateAnchorStrokeWidth = isMobile ? 2.2 : 1.9;
+  const transformerRotateAnchorShadowColor = isMobile
+    ? "rgba(147, 51, 234, 0.24)"
+    : "rgba(147, 51, 234, 0.18)";
+  const transformerRotateAnchorShadowBlur = isMobile ? 20 : 12;
+  const transformerRotateAnchorShadowOffsetY = isMobile ? 4 : 2;
+  const transformerRotateAnchorScale = isMobile ? 0.88 : 0.9;
+  const transformerRotateAnchorHitStrokeWidth = isMobile ? 88 : 28;
+  const transformerRotateAnchorPressedFillColor = isMobile
+    ? "rgba(245, 238, 255, 0.99)"
+    : "rgba(250, 245, 255, 0.99)";
+  const transformerRotateAnchorPressedStrokeColor = "#7E22CE";
+  const transformerRotateAnchorPressedStrokeWidth = isMobile ? 2.8 : 2.2;
+  const transformerRotateAnchorPressedShadowColor = isMobile
+    ? "rgba(126, 34, 206, 0.34)"
+    : "rgba(126, 34, 206, 0.28)";
+  const transformerRotateAnchorPressedShadowBlur = isMobile ? 30 : 16;
+  const transformerRotateAnchorPressedShadowOffsetY = isMobile ? 5 : 3;
+  const transformerRotateAnchorPressedScale = isMobile ? 0.94 : 0.96;
   const transformerHintBorderStrongStrokeWidth = isMobile ? 2.8 : 1.6;
   const transformerHintBorderSoftStrokeWidth = isMobile ? 2.2 : 1.25;
   const transformerRotationSnapTolerance = esImagenSeleccionada
@@ -312,6 +351,36 @@ export default function SelectionBounds({
     !isResizeGestureActive &&
     !isTransformingResizeRef.current
   );
+
+  useEffect(() => {
+    logSelectedDragDebug("transformer:visibility-state", {
+      selectedIds: selectedElements,
+      selectedCount: selectedElements.length,
+      primerElementoId: primerElemento?.id || null,
+      primerElementoTipo: primerElemento?.tipo || null,
+      effectiveDragging: Boolean(effectiveDragging),
+      runtimeDragActive: Boolean(runtimeDragActive),
+      globalDragging:
+        typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+      pendingDragSelectionId,
+      shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
+      shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      isResizeGestureActive: Boolean(isResizeGestureActive),
+      isTransformingResize: Boolean(isTransformingResizeRef.current),
+      isInteractionLocked: Boolean(isInteractionLocked),
+    });
+  }, [
+    selectedElements.join(","),
+    effectiveDragging,
+    runtimeDragActive,
+    pendingDragSelectionId,
+    shouldSuppressDuringDeferredDrag,
+    shouldHideTransformerDuringDrag,
+    isResizeGestureActive,
+    isInteractionLocked,
+    primerElemento?.id,
+    primerElemento?.tipo,
+  ]);
 
   useEffect(() => {
     renderCountRef.current += 1;
@@ -381,21 +450,42 @@ export default function SelectionBounds({
       return;
     }
 
-    const syncDragState = () => {
-      setRuntimeDragActive(
-        Boolean(typeof window !== "undefined" && window._isDragging)
-      );
+    const syncDragState = (source = "unknown") => {
+      const nextRuntimeDragActive =
+        Boolean(typeof window !== "undefined" && window._isDragging);
+      logSelectedDragDebug("transformer:runtime-drag-sync", {
+        source,
+        selectedIds: selectedElements,
+        stagePresent: Boolean(stage),
+        nextRuntimeDragActive,
+        globalDragging:
+          typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+      });
+      setRuntimeDragActive(nextRuntimeDragActive);
     };
-    const onStageDragStart = () => setRuntimeDragActive(true);
-    const onStageDragEnd = () => syncDragState();
+    const onStageDragStart = () => {
+      logSelectedDragDebug("transformer:runtime-drag-sync", {
+        source: "stage-dragstart",
+        selectedIds: selectedElements,
+        stagePresent: Boolean(stage),
+        nextRuntimeDragActive: true,
+        globalDragging:
+          typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+      });
+      setRuntimeDragActive(true);
+    };
+    const onStageDragEnd = () => syncDragState("stage-dragend");
+    const onGlobalDraggingEnd = () => syncDragState("window-dragging-end");
 
     stage.on("dragstart.selection-runtime", onStageDragStart);
     stage.on("dragend.selection-runtime", onStageDragEnd);
-    syncDragState();
+    window.addEventListener("dragging-end", onGlobalDraggingEnd);
+    syncDragState("effect-init");
 
     return () => {
       stage.off("dragstart.selection-runtime", onStageDragStart);
       stage.off("dragend.selection-runtime", onStageDragEnd);
+      window.removeEventListener("dragging-end", onGlobalDraggingEnd);
     };
   }, [elementRefs, selectedElements.join(",")]);
 
@@ -1023,6 +1113,16 @@ export default function SelectionBounds({
         anchorName = activeAnchor;
       }
     }
+    logSelectedDragDebug("transformer:pointerdown", {
+      selectedIds: selectedElements,
+      target: getKonvaNodeDebugInfo(event?.target),
+      currentTarget: getKonvaNodeDebugInfo(event?.currentTarget),
+      pointer: getCanvasPointerDebugInfo(event),
+      resolvedAnchorName: anchorName,
+      effectiveDragging: Boolean(effectiveDragging),
+      interactionLocked: Boolean(interactionLocked),
+      resizeGestureActive: Boolean(isResizeGestureActive),
+    });
     if (!anchorName) return;
     setIsResizeGestureActive(true);
     setPressedResizeAnchorName((current) =>
@@ -1301,6 +1401,14 @@ export default function SelectionBounds({
 
     // Si aÃºn no hay nodos (imagen cargando, etc.), NO despegar (evita parpadeo)
     if (nodosTransformables.length === 0) {
+      logSelectedDragDebug("transformer:attach-skip-no-nodes", {
+        selectedIds: selectedElements,
+        wantedIds: elementosTransformables.map((obj) => obj.id),
+        refsPresent: elementosTransformables.map((obj) =>
+          Boolean(elementRefs.current?.[obj.id])
+        ),
+        effectiveDragging: Boolean(effectiveDragging),
+      });
       TRDBG("EFFECT exit: no nodes yet", {
         selKey,
         wantedIds: elementosTransformables.map(o => o.id),
@@ -1318,6 +1426,16 @@ export default function SelectionBounds({
     });
 
     tr.nodes(nodosTransformables);
+    logSelectedDragDebug("transformer:attach", {
+      selectedIds: selectedElements,
+      selectedCount: selectedElements.length,
+      effectiveDragging: Boolean(effectiveDragging),
+      pendingDragSelectionId,
+      attachedNodeIds: nodosTransformables.map((node) =>
+        typeof node?.id === "function" ? node.id() || null : node?.attrs?.id || null
+      ),
+      attachedNodes: nodosTransformables.map((node) => getKonvaNodeDebugInfo(node)),
+    });
 
     TRDBG("ATTACH done", {
       selKey,
@@ -1336,6 +1454,7 @@ export default function SelectionBounds({
     selectedGeomKey,
     transformTick,
     elementRefs,
+    effectiveDragging,
   ]);
 
 
@@ -1516,11 +1635,11 @@ export default function SelectionBounds({
           y={0}
           width={rotationIndicatorWidth}
           height={rotationIndicatorHeight}
-          cornerRadius={isMobile ? 14 : 10}
-          fill="rgba(88, 28, 135, 0.94)"
-          stroke="#A855F7"
+          cornerRadius={999}
+          fill="rgba(255, 255, 255, 0.97)"
+          stroke="rgba(147, 51, 234, 0.24)"
           strokeWidth={isMobile ? 1.5 : 1}
-          shadowColor="rgba(76, 29, 149, 0.28)"
+          shadowColor="rgba(88, 28, 135, 0.16)"
           shadowBlur={rotationIndicatorShadowBlur}
           shadowOffset={rotationIndicatorShadowOffset}
           shadowOpacity={rotationIndicatorShadowBlur > 0 ? 1 : 0}
@@ -1535,7 +1654,7 @@ export default function SelectionBounds({
           height={rotationIndicatorHeight}
           align="center"
           verticalAlign="middle"
-          fill="#FFFFFF"
+          fill="#6B21A8"
           fontSize={rotationIndicatorFontSize}
           fontStyle="bold"
           text={"0" + String.fromCharCode(176)}
@@ -1588,8 +1707,8 @@ export default function SelectionBounds({
           typeof anchor?.name === "function"
             ? String(anchor.name() || "").split(" ")[0]
             : "";
-        const isResizeAnchorNode = Boolean(anchorName);
         const isRotateAnchorNode = anchorName === "rotater";
+        const isResizeAnchorNode = Boolean(anchorName) && !isRotateAnchorNode;
         const isResizeActiveFallback =
           isResizeGestureActive ||
           isTransformingResizeRef.current ||
@@ -1604,13 +1723,12 @@ export default function SelectionBounds({
           !isResizeActiveFallback &&
           isResizeAnchorNode &&
           resizeHintPhase > 0;
+        const isPressedRotateAnchor =
+          isResizeActiveFallback &&
+          isRotateAnchorNode &&
+          (!pressedResizeAnchorName || anchorName === pressedResizeAnchorName);
         const isStrongResizeHint = isResizeHintAnchor && resizeHintPhase === 2;
 
-        const anchorFillColor = isPressedResizeAnchor
-          ? transformerAnchorPressedFillColor
-          : isResizeHintAnchor
-            ? transformerAnchorHintFillColor
-            : transformerAnchorFillColor;
         if (shouldUseLightweightRotateOverlay) {
           if (isRotateAnchorNode) {
             anchor.fill("rgba(147, 51, 234, 0.001)");
@@ -1639,6 +1757,58 @@ export default function SelectionBounds({
           anchor.scale({ x: 1, y: 1 });
           return;
         }
+        if (isRotateAnchorNode) {
+          anchor.shadowColor(
+            isPressedRotateAnchor
+              ? transformerRotateAnchorPressedShadowColor
+              : transformerRotateAnchorShadowColor
+          );
+          anchor.fill(
+            isPressedRotateAnchor
+              ? transformerRotateAnchorPressedFillColor
+              : transformerRotateAnchorFillColor
+          );
+          anchor.shadowEnabled(true);
+          anchor.shadowForStrokeEnabled(true);
+          anchor.shadowOpacity(1);
+          anchor.shadowBlur(
+            isPressedRotateAnchor
+              ? transformerRotateAnchorPressedShadowBlur
+              : transformerRotateAnchorShadowBlur
+          );
+          anchor.shadowOffset({
+            x: 0,
+            y: isPressedRotateAnchor
+              ? transformerRotateAnchorPressedShadowOffsetY
+              : transformerRotateAnchorShadowOffsetY,
+          });
+          anchor.hitStrokeWidth(transformerRotateAnchorHitStrokeWidth);
+          anchor.stroke(
+            isPressedRotateAnchor
+              ? transformerRotateAnchorPressedStrokeColor
+              : transformerRotateAnchorStrokeColor
+          );
+          anchor.strokeWidth(
+            isPressedRotateAnchor
+              ? transformerRotateAnchorPressedStrokeWidth
+              : transformerRotateAnchorStrokeWidth
+          );
+          anchor.opacity(isPressedRotateAnchor ? 1 : 0.98);
+          anchor.scale({
+            x: isPressedRotateAnchor
+              ? transformerRotateAnchorPressedScale
+              : transformerRotateAnchorScale,
+            y: isPressedRotateAnchor
+              ? transformerRotateAnchorPressedScale
+              : transformerRotateAnchorScale,
+          });
+          return;
+        }
+        const anchorFillColor = isPressedResizeAnchor
+          ? transformerAnchorPressedFillColor
+          : isResizeHintAnchor
+            ? transformerAnchorHintFillColor
+            : transformerAnchorFillColor;
         let anchorShadowColor = isPressedResizeAnchor
           ? transformerAnchorPressedShadowColor
           : isResizeHintAnchor

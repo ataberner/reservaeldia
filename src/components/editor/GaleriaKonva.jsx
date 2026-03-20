@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
 import useImage from "use-image";
+import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import { calcGalleryLayout } from "@/utils/calcGrid";
 import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
 
@@ -322,6 +323,7 @@ export default function GaleriaKonva({
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
       }}
       onDragEnd={(e) => {
+        notePostDragSelectionGuard();
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
 
         const finalX = e.target.x();

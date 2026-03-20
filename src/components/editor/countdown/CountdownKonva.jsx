@@ -12,6 +12,7 @@ import {
 } from "@/domain/countdownPresets/renderModel";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { resolveKonvaFill } from "@/domain/colors/presets";
+import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 
 import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
@@ -650,6 +651,7 @@ export default function CountdownKonva({
   const handleDragEnd = useCallback(
     (e) => {
       const node = e.currentTarget;
+      notePostDragSelectionGuard();
 
       // Commit final
       const fueGrupal = endDragGrupal(e, obj, onChange, hasDragged, () => {});

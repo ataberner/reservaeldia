@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useState, useRef } from
 import { createPortal } from "react-dom";
 import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
-    Link2, X, Image as ImageIcon, Check
+    Link2, X, Image as ImageIcon, ImageOff, Check
 } from "lucide-react";
 import {
     getAllowedMotionEffectsForElement,
@@ -33,6 +33,18 @@ const DEFAULT_MENU_SIZE_WITH_AUTHORING = { width: 320, height: 360 };
 const DEFAULT_LINK_FLYOUT_SIZE = { width: 320, height: 180 };
 const DEFAULT_EFFECTS_FLYOUT_SIZE = { width: 300, height: 320 };
 const DEFAULT_LAYER_FLYOUT_SIZE = { width: 224, height: 180 };
+const BACKGROUND_MOTION_EFFECT_OPTIONS = Object.freeze([
+    {
+        value: "none",
+        label: "Sin movimiento",
+        description: "El fondo queda quieto.",
+    },
+    {
+        value: "dynamic",
+        label: "Con movimiento",
+        description: "Se mueve de forma bien visible al recorrer la invitacion.",
+    },
+]);
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -115,6 +127,9 @@ export default function MenuOpcionesElemento({
     onConvertirDecoracionFondoEnImagen,
     onEliminarDecoracionFondo,
     onFinalizarAjusteDecoracionFondo,
+    onActualizarMovimientoDecoracionFondo,
+    onDesanclarImagenFondoBase,
+    onFinalizarAjusteFondoBase,
     onConfigurarRsvp,
     onConfigurarRegalos,
     canManageSite = false,
@@ -152,6 +167,7 @@ export default function MenuOpcionesElemento({
     const esRsvp = elementoSeleccionado?.tipo === "rsvp-boton";
     const esRegalo = elementoSeleccionado?.tipo === "regalo-boton";
     const esDecoracionFondo = elementoSeleccionado?.tipo === "decoracion-fondo";
+    const esImagenFondoSeccion = elementoSeleccionado?.tipo === "imagen-fondo-seccion";
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
@@ -219,6 +235,9 @@ export default function MenuOpcionesElemento({
 
     const allowedMotionEffects = getAllowedMotionEffectsForElement(elementoSeleccionado);
     const currentMotionEffect = sanitizeMotionEffect(elementoSeleccionado?.motionEffect);
+    const backgroundMotionModeRaw = elementoSeleccionado?.backgroundMotionMode || "none";
+    const backgroundMotionMode =
+        backgroundMotionModeRaw === "none" ? "none" : "dynamic";
 
     // Al abrir el menú, pre-cargar la URL actual del elemento (si tiene)
     useEffect(() => {
@@ -354,6 +373,84 @@ export default function MenuOpcionesElemento({
         setMostrarSubmenuEfectos(false);
         onCerrar();
     };
+
+    const actualizarMovimientoDecoracionFondo = (nextMode) => {
+        if (typeof onActualizarMovimientoDecoracionFondo !== "function") return;
+
+        setMostrarSubmenuCapa(false);
+        setMostrarSubmenuEnlace(false);
+        setMostrarSubmenuEfectos(false);
+        onActualizarMovimientoDecoracionFondo(nextMode);
+        onCerrar();
+    };
+
+    const renderBackgroundMotionMenu = (description) => (
+        <div className="relative">
+            <button
+                ref={btnEfectosRef}
+                onClick={() => {
+                    setMostrarSubmenuCapa(false);
+                    setMostrarSubmenuEnlace(false);
+                    setMostrarSubmenuEfectos((prev) => !prev);
+                }}
+                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+            >
+                <span className="inline-flex h-4 w-4 items-center justify-center text-[11px] font-semibold">Fx</span>
+                Efectos del fondo
+            </button>
+
+            {mostrarSubmenuEfectos &&
+                createPortal(
+                    <div
+                        ref={submenuEfectosRef}
+                        className="fixed z-[60] bg-white border rounded shadow-lg p-2 space-y-1 menu-z-index"
+                        style={{
+                            left: efectosPos.x,
+                            top: efectosPos.y,
+                            width: efectosPos.width,
+                            maxWidth: "calc(100vw - 16px)",
+                            maxHeight: 320,
+                            overflowY: "auto",
+                            visibility: efectosReady ? "visible" : "hidden",
+                            borderColor: "#773dbe",
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-2 pb-1 text-xs font-semibold text-zinc-700">
+                            Movimiento del fondo
+                        </div>
+                        <p className="px-2 pb-1 text-[11px] text-zinc-500">
+                            {description}
+                        </p>
+
+                        {BACKGROUND_MOTION_EFFECT_OPTIONS.map((option) => {
+                            const isActive = backgroundMotionMode === option.value;
+                            return (
+                                <button
+                                    key={option.value}
+                                    onClick={() => actualizarMovimientoDecoracionFondo(option.value)}
+                                    className={`flex w-full items-center justify-between gap-2 rounded px-3 py-2 text-left text-sm transition ${isActive
+                                        ? "bg-purple-50 text-purple-800"
+                                        : "hover:bg-gray-100"
+                                        }`}
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block">{option.label}</span>
+                                        <span className="mt-0.5 block text-[11px] text-zinc-500">
+                                            {option.description}
+                                        </span>
+                                    </span>
+                                    {isActive ? <span className="text-xs font-semibold">Activo</span> : null}
+                                </button>
+                            );
+                        })}
+                    </div>,
+                    document.body
+                )
+            }
+        </div>
+    );
 
 
 
@@ -491,7 +588,53 @@ export default function MenuOpcionesElemento({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
         >
-            {esDecoracionFondo ? (
+            {esImagenFondoSeccion ? (
+                <>
+                    <div className="mb-2 flex items-center gap-3 rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
+                        {elementoSeleccionado?.src ? (
+                            <div className="h-11 w-11 overflow-hidden rounded-lg border border-[#dccaf7] bg-white">
+                                <img
+                                    src={elementoSeleccionado.src}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                />
+                            </div>
+                        ) : null}
+                        <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-[#5f3596]">
+                                {elementoSeleccionado?.nombre || "Imagen de fondo"}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                                Opciones del fondo
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => {
+                            onDesanclarImagenFondoBase?.();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <ImageOff className="w-4 h-4" /> Desanclar fondo
+                    </button>
+
+                    {renderBackgroundMotionMenu(
+                        "Activa un movimiento claro en la imagen de fondo al recorrer la invitacion."
+                    )}
+
+                    <button
+                        onClick={() => {
+                            onFinalizarAjusteFondoBase?.();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <Check className="w-4 h-4 text-emerald-600" /> Terminar ajuste
+                    </button>
+                </>
+            ) : esDecoracionFondo ? (
                 <>
                     <div className="mb-2 flex items-center gap-3 rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
                         {elementoSeleccionado?.src ? (
@@ -522,6 +665,10 @@ export default function MenuOpcionesElemento({
                     >
                         <ImageIcon className="w-4 h-4" /> Volver a imagen
                     </button>
+
+                    {renderBackgroundMotionMenu(
+                        "Activa un movimiento claro en el fondo al recorrer la invitacion."
+                    )}
 
                     <button
                         onClick={() => {

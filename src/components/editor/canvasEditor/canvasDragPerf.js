@@ -178,6 +178,14 @@ function getCanvasDragPerfSummary(eventName, payload = {}, count = null) {
   return `[CANVAS-DRAG-PERF] ${eventName}${summary.length ? ` ${summary.join(" ")}` : ""}`;
 }
 
+function formatCanvasDragPerfEntry(entry) {
+  try {
+    return JSON.stringify(entry, null, 2);
+  } catch {
+    return String(entry);
+  }
+}
+
 function getCanvasDragPerfStore() {
   if (typeof window === "undefined") return null;
   if (!window.__CANVAS_DRAG_PERF_STORE) {
@@ -1060,7 +1068,7 @@ export function trackCanvasDragPerf(eventName, payload = {}, options = {}) {
   const summary = getCanvasDragPerfSummary(safeEventName, entry, nextCount);
   if (isCanvasDragPerfExpanded() && typeof console.group === "function") {
     console.group(summary);
-    console.log(entry);
+    console.log(formatCanvasDragPerfEntry(entry));
     console.groupEnd();
     return;
   }

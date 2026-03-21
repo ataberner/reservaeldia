@@ -1,7 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
 import { resolveKonvaFill } from "@/domain/colors/presets";
-import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
+import {
+  buildSectionBaseImagePatchFromRenderBox,
+  normalizeSectionBackgroundModel,
+  resolveSectionBaseImageLayout,
+} from "@/domain/sections/backgrounds";
 import useSharedImage from "@/hooks/useSharedImage";
 
 function SectionDecorationImage({
@@ -10,6 +14,8 @@ function SectionDecorationImage({
   offsetY,
   hidden = false,
   onBackgroundImageStatusChange,
+  onSelect,
+  onRequestEdit,
 }) {
   const src = typeof decoration?.src === "string" ? decoration.src : "";
   const decorationId = typeof decoration?.id === "string" ? decoration.id : "decoracion";
@@ -44,6 +50,11 @@ function SectionDecorationImage({
 
   if (!src || !image) return null;
 
+  const handleRequestEdit = (event) => {
+    event.cancelBubble = true;
+    onRequestEdit?.(sectionId, decorationId);
+  };
+
   return (
     <KonvaImage
       image={image}
@@ -54,10 +65,26 @@ function SectionDecorationImage({
       offsetX={width / 2}
       offsetY={height / 2}
       rotation={Number(decoration?.rotation) || 0}
-      listening={false}
+      listening={!hidden}
       opacity={hidden ? 0 : 1}
+      onClick={() => {
+        onSelect?.();
+      }}
+      onTap={() => {
+        onSelect?.();
+      }}
+      onDblClick={typeof onRequestEdit === "function" ? handleRequestEdit : undefined}
+      onDblTap={typeof onRequestEdit === "function" ? handleRequestEdit : undefined}
     />
   );
+}
+
+function updateBodyCursor(nextCursor) {
+  try {
+    document.body.style.cursor = nextCursor;
+  } catch {
+    // no-op
+  }
 }
 
 export default function FondoSeccion({
@@ -67,24 +94,42 @@ export default function FondoSeccion({
   onSelect,
   onUpdateFondoOffset,
   isMobile = false,
-  mobileBackgroundEditEnabled = false,
+  isEditing = false,
+  onRequestEdit,
   onBackgroundImageStatusChange,
   editingDecorationId = null,
+  onRegisterBackgroundNode,
+  onInteractionChange,
+  onRequestDecorationEdit,
 }) {
   const backgroundModel = normalizeSectionBackgroundModel(seccion, {
     sectionHeight: alturaPx,
   });
   const baseImageUrl = backgroundModel.base.fondoImagen;
   const [fondoImage, fondoImageStatus] = useSharedImage(baseImageUrl || null, "anonymous");
-  const [modoMoverFondo, setModoMoverFondo] = useState(false);
   const imagenRef = useRef(null);
-
-  const allowBackgroundEdit = !isMobile || mobileBackgroundEditEnabled;
+  const transformerRef = useRef(null);
+  const canvasWidth = 800;
+  const canvasHeight = alturaPx;
   const transformerAnchorSize = isMobile ? 24 : 14;
   const transformerPadding = isMobile ? 10 : 4;
   const transformerBorderStrokeWidth = isMobile ? 1.5 : 1;
   const transformerAnchorStrokeWidth = isMobile ? 2.5 : 2;
-  const fallbackFill = resolveKonvaFill(seccion.fondo, 800, alturaPx, "#f0f0f0");
+  const hasBaseImage =
+    backgroundModel.base.fondoTipo === "imagen" &&
+    Boolean(baseImageUrl) &&
+    Boolean(fondoImage);
+  const fallbackFill = resolveKonvaFill(seccion.fondo, canvasWidth, alturaPx, "#f0f0f0");
+  const baseImageLayout = useMemo(() => {
+    if (!hasBaseImage) return null;
+
+    return resolveSectionBaseImageLayout(seccion, {
+      imageWidth: fondoImage.width,
+      imageHeight: fondoImage.height,
+      canvasWidth,
+      sectionHeight: canvasHeight,
+    });
+  }, [canvasHeight, fondoImage, hasBaseImage, seccion]);
 
   useEffect(() => {
     if (typeof onBackgroundImageStatusChange !== "function") return;
@@ -121,75 +166,55 @@ export default function FondoSeccion({
   ]);
 
   useEffect(() => {
-    if (!modoMoverFondo) return;
-
-    const handleClickGlobal = (e) => {
-      const stage = imagenRef.current?.getStage?.();
-      if (!stage) return;
-      const container = stage.container();
-      if (!container.contains(e.target)) {
-        setModoMoverFondo(false);
-        document.body.style.cursor = "default";
-      }
-    };
-
-    window.addEventListener("mousedown", handleClickGlobal);
-    window.addEventListener("touchstart", handleClickGlobal, { passive: true });
+    if (typeof onRegisterBackgroundNode !== "function") return undefined;
+    onRegisterBackgroundNode(seccion.id, hasBaseImage ? imagenRef.current : null);
     return () => {
-      window.removeEventListener("mousedown", handleClickGlobal);
-      window.removeEventListener("touchstart", handleClickGlobal);
+      onRegisterBackgroundNode(seccion.id, null);
     };
-  }, [modoMoverFondo]);
+  }, [hasBaseImage, onRegisterBackgroundNode, seccion.id]);
 
   useEffect(() => {
-    const onActivate = (e) => {
-      if (e?.detail?.sectionId !== seccion.id) return;
-      setModoMoverFondo(true);
-      try {
-        document.body.style.cursor = "move";
-      } catch {}
-    };
+    const transformer = transformerRef.current;
+    const imageNode = imagenRef.current;
+    if (!transformer) return;
 
-    const onExit = (e) => {
-      const targetSectionId = e?.detail?.sectionId;
-      if (targetSectionId && targetSectionId !== seccion.id) return;
-      setModoMoverFondo(false);
-      try {
-        document.body.style.cursor = "default";
-      } catch {}
-    };
-
-    window.addEventListener("activar-modo-mover-fondo", onActivate);
-    window.addEventListener("salir-modo-mover-fondo", onExit);
-    return () => {
-      window.removeEventListener("activar-modo-mover-fondo", onActivate);
-      window.removeEventListener("salir-modo-mover-fondo", onExit);
-    };
-  }, [seccion.id]);
+    transformer.nodes(isEditing && imageNode ? [imageNode] : []);
+    transformer.getLayer()?.batchDraw?.();
+  }, [isEditing, hasBaseImage, baseImageLayout?.renderedWidth, baseImageLayout?.renderedHeight]);
 
   useEffect(() => {
-    if (allowBackgroundEdit) return;
-    if (!modoMoverFondo) return;
-    setModoMoverFondo(false);
-  }, [allowBackgroundEdit, modoMoverFondo]);
+    if (!isEditing) return undefined;
+    updateBodyCursor("move");
+    return () => {
+      updateBodyCursor("default");
+    };
+  }, [isEditing]);
 
-  const canvasWidth = 800;
-  const canvasHeight = alturaPx;
-  const hasBaseImage = Boolean(baseImageUrl && fondoImage);
-  const imageWidth = hasBaseImage ? fondoImage.width : 0;
-  const imageHeight = hasBaseImage ? fondoImage.height : 0;
-  const scaleX = hasBaseImage ? canvasWidth / imageWidth : 1;
-  const scaleY = hasBaseImage ? canvasHeight / imageHeight : 1;
-  const scale = hasBaseImage ? Math.max(scaleX, scaleY) : 1;
+  const handleRequestEdit = (event) => {
+    event.cancelBubble = true;
+    onRequestEdit?.(seccion.id);
+    updateBodyCursor("move");
+  };
 
-  const scaledWidth = hasBaseImage ? imageWidth * scale : 0;
-  const scaledHeight = hasBaseImage ? imageHeight * scale : 0;
+  const commitBackgroundTransform = (node, isPreview = false) => {
+    if (!node || !fondoImage || !baseImageLayout) return;
 
-  const offsetXCentrado = hasBaseImage ? (canvasWidth - scaledWidth) / 2 : 0;
-  const offsetYCentrado = hasBaseImage ? (canvasHeight - scaledHeight) / 2 : 0;
+    const patch = buildSectionBaseImagePatchFromRenderBox(seccion, {
+      imageWidth: fondoImage.width,
+      imageHeight: fondoImage.height,
+      x: node.x(),
+      y: node.y() - offsetY,
+      width: node.width(),
+      height: node.height(),
+      canvasWidth,
+      sectionHeight: canvasHeight,
+    });
 
-  const offsetXFinal = offsetXCentrado + (backgroundModel.base.fondoImagenOffsetX || 0);
-  const offsetYFinal = offsetYCentrado + (backgroundModel.base.fondoImagenOffsetY || 0);
+    onUpdateFondoOffset?.(seccion.id, patch, isPreview);
+  };
+
+  const minCoverWidth = hasBaseImage ? fondoImage.width * baseImageLayout.coverScale : 0;
+  const minCoverHeight = hasBaseImage ? fondoImage.height * baseImageLayout.coverScale : 0;
 
   return (
     <Group id={seccion.id}>
@@ -197,7 +222,7 @@ export default function FondoSeccion({
         id={seccion.id}
         x={0}
         y={offsetY}
-        width={800}
+        width={canvasWidth}
         height={alturaPx}
         fill={fallbackFill.fillColor}
         fillPriority={fallbackFill.hasGradient ? "linear-gradient" : "color"}
@@ -214,7 +239,7 @@ export default function FondoSeccion({
         onTap={onSelect}
       />
 
-      {hasBaseImage && modoMoverFondo && (
+      {hasBaseImage && isEditing ? (
         <Rect
           x={-200}
           y={offsetY - 200}
@@ -223,77 +248,70 @@ export default function FondoSeccion({
           fill="rgba(0,0,0,0.05)"
           listening={false}
         />
-      )}
+      ) : null}
 
       <Group
-        clipX={modoMoverFondo ? undefined : 0}
-        clipY={modoMoverFondo ? undefined : offsetY}
-        clipWidth={modoMoverFondo ? undefined : 800}
-        clipHeight={modoMoverFondo ? undefined : alturaPx}
+        clipX={isEditing ? undefined : 0}
+        clipY={isEditing ? undefined : offsetY}
+        clipWidth={isEditing ? undefined : canvasWidth}
+        clipHeight={isEditing ? undefined : alturaPx}
       >
-        {hasBaseImage ? (
+        {hasBaseImage && baseImageLayout ? (
           <KonvaImage
             ref={imagenRef}
             image={fondoImage}
-            x={offsetXFinal}
-            y={offsetY + offsetYFinal}
-            width={scaledWidth}
-            height={scaledHeight}
-            draggable={allowBackgroundEdit && modoMoverFondo}
-            opacity={modoMoverFondo ? 0.9 : 1}
-            shadowColor={modoMoverFondo ? "#773dbe" : "transparent"}
-            shadowBlur={modoMoverFondo ? 10 : 0}
+            x={baseImageLayout.x}
+            y={offsetY + baseImageLayout.y}
+            width={baseImageLayout.renderedWidth}
+            height={baseImageLayout.renderedHeight}
+            draggable={isEditing}
+            opacity={isEditing ? 0.9 : 1}
+            shadowColor={isEditing ? "#773dbe" : "transparent"}
+            shadowBlur={isEditing ? 10 : 0}
             listening={true}
-            preventDefault={allowBackgroundEdit && modoMoverFondo}
-            onClick={(e) => {
-              if (modoMoverFondo) {
-                e.cancelBubble = true;
+            preventDefault={isEditing}
+            onClick={(event) => {
+              if (isEditing) {
+                event.cancelBubble = true;
                 return;
               }
               onSelect?.();
             }}
-            onTap={(e) => {
-              if (modoMoverFondo) {
-                e.cancelBubble = true;
+            onTap={(event) => {
+              if (isEditing) {
+                event.cancelBubble = true;
+                return;
               }
+              onSelect?.();
             }}
-            onMouseDown={(e) => {
-              if (modoMoverFondo) e.cancelBubble = true;
+            onMouseDown={(event) => {
+              if (isEditing) event.cancelBubble = true;
             }}
-            onDblClick={allowBackgroundEdit ? (e) => {
-              e.cancelBubble = true;
-              setModoMoverFondo(true);
-              document.body.style.cursor = "move";
-            } : undefined}
-            onDblTap={allowBackgroundEdit ? (e) => {
-              e.cancelBubble = true;
-              setModoMoverFondo(true);
-              document.body.style.cursor = "move";
-            } : undefined}
-            onDragMove={(e) => {
-              const node = e.target;
-              const nuevaX = node.x();
-              const nuevaY = node.y() - offsetY;
-              const nuevoOffsetX = nuevaX - offsetXCentrado;
-              const nuevoOffsetY = nuevaY - offsetYCentrado;
-              onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, true);
+            onTouchStart={(event) => {
+              if (isEditing) event.cancelBubble = true;
             }}
-            onDragEnd={(e) => {
-              const node = e.target;
-              const nuevaX = node.x();
-              const nuevaY = node.y() - offsetY;
-              const nuevoOffsetX = nuevaX - offsetXCentrado;
-              const nuevoOffsetY = nuevaY - offsetYCentrado;
-              onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
-
-              setModoMoverFondo(false);
-              document.body.style.cursor = "default";
+            onDblClick={typeof onRequestEdit === "function" ? handleRequestEdit : undefined}
+            onDblTap={typeof onRequestEdit === "function" ? handleRequestEdit : undefined}
+            onDragStart={(event) => {
+              event.cancelBubble = true;
+              onInteractionChange?.(true);
+              updateBodyCursor("move");
+            }}
+            onDragMove={(event) => {
+              event.cancelBubble = true;
+              commitBackgroundTransform(event.target, true);
+            }}
+            onDragEnd={(event) => {
+              event.cancelBubble = true;
+              commitBackgroundTransform(event.target, false);
+              onInteractionChange?.(false);
+              updateBodyCursor("move");
             }}
           />
         ) : null}
       </Group>
 
-      <Group clipX={0} clipY={offsetY} clipWidth={800} clipHeight={alturaPx}>
+      <Group clipX={0} clipY={offsetY} clipWidth={canvasWidth} clipHeight={alturaPx}>
         {backgroundModel.decoraciones.map((decoration) => (
           <SectionDecorationImage
             key={decoration.id}
@@ -302,44 +320,66 @@ export default function FondoSeccion({
             offsetY={offsetY}
             hidden={editingDecorationId === decoration.id}
             onBackgroundImageStatusChange={onBackgroundImageStatusChange}
+            onSelect={onSelect}
+            onRequestEdit={onRequestDecorationEdit}
           />
         ))}
       </Group>
 
-      {allowBackgroundEdit && modoMoverFondo && hasBaseImage && (
-          <Transformer
-            nodes={[imagenRef.current]}
-            enabledAnchors={["bottom-right"]}
-            borderStroke="#773dbe"
-            borderStrokeWidth={transformerBorderStrokeWidth}
-            padding={transformerPadding}
-            anchorFill="#773dbe"
-            anchorStroke="#ffffff"
-            anchorStrokeWidth={transformerAnchorStrokeWidth}
-            anchorSize={transformerAnchorSize}
-            anchorCornerRadius={999}
-            keepRatio={true}
-            onTransform={() => {
-              const node = imagenRef.current;
-              if (!node) return;
-              const sx = node.scaleX();
-              const sy = node.scaleY();
-              node.width(node.width() * sx);
-              node.height(node.height() * sy);
-              node.scaleX(1);
-              node.scaleY(1);
-            }}
-            onTransformEnd={() => {
-              const node = imagenRef.current;
-              if (!node) return;
-              const nuevaX = node.x();
-              const nuevaY = node.y() - offsetY;
-              const nuevoOffsetX = nuevaX - offsetXCentrado;
-              const nuevoOffsetY = nuevaY - offsetYCentrado;
-              onUpdateFondoOffset?.(seccion.id, { offsetX: nuevoOffsetX, offsetY: nuevoOffsetY }, false);
-            }}
-          />
-      )}
+      {isEditing && hasBaseImage ? (
+        <Transformer
+          ref={transformerRef}
+          enabledAnchors={["bottom-right"]}
+          rotateEnabled={false}
+          flipEnabled={false}
+          borderStroke="#773dbe"
+          borderStrokeWidth={transformerBorderStrokeWidth}
+          padding={transformerPadding}
+          anchorFill="#773dbe"
+          anchorStroke="#ffffff"
+          anchorStrokeWidth={transformerAnchorStrokeWidth}
+          anchorSize={transformerAnchorSize}
+          anchorCornerRadius={999}
+          keepRatio={true}
+          boundBoxFunc={(oldBox, newBox) => {
+            if (!minCoverWidth || !minCoverHeight) return oldBox;
+
+            const nextScale = Math.max(
+              1,
+              Number(newBox?.width) / minCoverWidth || 1,
+              Number(newBox?.height) / minCoverHeight || 1
+            );
+
+            return {
+              ...newBox,
+              width: minCoverWidth * nextScale,
+              height: minCoverHeight * nextScale,
+            };
+          }}
+          onTransformStart={() => {
+            onInteractionChange?.(true);
+          }}
+          onTransform={() => {
+            const node = imagenRef.current;
+            if (!node) return;
+
+            const scaleX = node.scaleX();
+            const scaleY = node.scaleY();
+            node.width(node.width() * scaleX);
+            node.height(node.height() * scaleY);
+            node.scaleX(1);
+            node.scaleY(1);
+          }}
+          onTransformEnd={() => {
+            const node = imagenRef.current;
+            if (!node) return;
+
+            commitBackgroundTransform(node, false);
+            onInteractionChange?.(false);
+            updateBodyCursor("move");
+          }}
+        />
+      ) : null}
     </Group>
   );
 }

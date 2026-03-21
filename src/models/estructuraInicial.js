@@ -22,6 +22,7 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
     fondoImagen,
     fondoImagenOffsetX,
     fondoImagenOffsetY,
+    fondoImagenScale,
     fondoImagenDraggable,
     altoModo,
     alturaFijoBackup,
@@ -43,6 +44,9 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
       : {}),
     ...(Number.isFinite(Number(fondoImagenOffsetY))
       ? { fondoImagenOffsetY: Number(fondoImagenOffsetY) }
+      : {}),
+    ...(Number.isFinite(Number(fondoImagenScale))
+      ? { fondoImagenScale: Math.max(1, Number(fondoImagenScale)) }
       : {}),
     ...(typeof fondoImagenDraggable === "boolean"
       ? { fondoImagenDraggable }

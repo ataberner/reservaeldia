@@ -161,7 +161,6 @@ export default function SectionDecorationEditorOverlay({
     sectionHeight: alturaPx,
   });
   const label = "Ajustando decoracion del fondo";
-  const finishLabel = "Listo";
   const [image] = useSharedImage(decoration?.src || null, "anonymous");
 
   const handleExitInteraction = (event) => {
@@ -357,33 +356,6 @@ export default function SectionDecorationEditorOverlay({
           x={12}
           y={8}
           text={label}
-          fontSize={12}
-          fontStyle="bold"
-          fill="#5f3596"
-        />
-      </Group>
-
-      <Group
-        x={CANVAS_WIDTH - 102}
-        y={offsetY + 14}
-        onMouseDown={handleExitInteraction}
-        onTouchStart={handleExitInteraction}
-        onClick={handleExitInteraction}
-        onTap={handleExitInteraction}
-      >
-        <Rect
-          width={88}
-          height={30}
-          fill="rgba(255,255,255,0.96)"
-          stroke="rgba(119, 61, 190, 0.25)"
-          cornerRadius={999}
-          shadowColor="rgba(15,23,42,0.12)"
-          shadowBlur={8}
-        />
-        <Text
-          x={25}
-          y={8}
-          text={finishLabel}
           fontSize={12}
           fontStyle="bold"
           fill="#5f3596"

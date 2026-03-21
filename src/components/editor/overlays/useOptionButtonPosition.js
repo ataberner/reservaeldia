@@ -11,12 +11,14 @@ const BUTTON_VERTEX_NUDGE_X_DESKTOP = 20;
 const BUTTON_VERTEX_NUDGE_Y_DESKTOP = 20;
 const BUTTON_VERTEX_NUDGE_X_MOBILE = 20;
 const BUTTON_VERTEX_NUDGE_Y_MOBILE = 20;
+const BUTTON_VERTEX_NUDGE_Y_SECTION_BG_DESKTOP = 8;
+const BUTTON_VERTEX_NUDGE_Y_SECTION_BG_MOBILE = 10;
 const LOG_THROTTLE_MS = 120;
 const POSITION_SETTLE_MS_DESKTOP = 120;
 const POSITION_SETTLE_MS_MOBILE = 320;
 
 function isOptionButtonDebugEnabled() {
-  return typeof window !== "undefined" && window.__DBG_OPTION_BUTTON === true;
+  return false;
 }
 
 function resolveScale(escalaVisual, escalaActiva) {
@@ -131,12 +133,33 @@ function getScrollableAncestors(startNode) {
   return Array.from(new Set(targets));
 }
 
+function resolveDashboardHeaderBottom() {
+  if (typeof window === "undefined" || typeof document === "undefined") return 0;
+
+  let headerBottom = 0;
+  const headerNode = document.querySelector('[data-dashboard-header="true"]');
+  if (headerNode && typeof headerNode.getBoundingClientRect === "function") {
+    headerBottom = Math.max(0, Number(headerNode.getBoundingClientRect().bottom) || 0);
+  }
+
+  const cssValue = window
+    .getComputedStyle(document.documentElement)
+    .getPropertyValue("--dashboard-header-height");
+  const cssHeight = Number.parseFloat(cssValue);
+  if (Number.isFinite(cssHeight) && cssHeight > 0) {
+    headerBottom = Math.max(headerBottom, cssHeight);
+  }
+
+  return headerBottom;
+}
+
 export default function useOptionButtonPosition({
   botonOpcionesRef,
   layoutRootRef = null,
   elementRefs,
   elementosSeleccionados,
-  backgroundDecorationSelection = null,
+  overlaySelection = null,
+  overlayNodeRefs = null,
   stageRef,
   escalaVisual,
   escalaActiva,
@@ -160,26 +183,47 @@ export default function useOptionButtonPosition({
   const buildAnchorSignature = useCallback(() => {
     if (typeof window === "undefined") return null;
 
-    const hasObjectSelection = elementosSeleccionados.length === 1;
-    const hasBackgroundDecorationSelection = Boolean(backgroundDecorationSelection?.id);
-    if (!hasObjectSelection && !hasBackgroundDecorationSelection) return null;
+    const overlayKind = overlaySelection?.kind || null;
+    const overlayMenuItem = overlaySelection?.menuItem || null;
+    const hasObjectSelection =
+      overlayKind === "canvas-object" && elementosSeleccionados.length === 1;
+    const hasBackgroundDecorationSelection =
+      overlayKind === "background-decoration" && Boolean(overlayMenuItem?.id);
+    const hasSectionBaseImageSelection =
+      overlayKind === "section-base-image" && Boolean(overlaySelection?.sectionId);
+    if (
+      !hasObjectSelection &&
+      !hasBackgroundDecorationSelection &&
+      !hasSectionBaseImageSelection
+    ) {
+      return null;
+    }
 
     const stage = stageRef.current;
+    const selectionKind = hasObjectSelection
+      ? "object"
+      : hasSectionBaseImageSelection
+        ? "section-base-image"
+        : "background-decoration";
     const nodeRef = hasObjectSelection
       ? elementRefs.current[elementosSeleccionados[0]]
+      : hasSectionBaseImageSelection
+        ? overlayNodeRefs?.current?.[overlaySelection.sectionId] || null
       : null;
     if ((!nodeRef && !hasBackgroundDecorationSelection) || !stage) return null;
 
     try {
-      const box = hasObjectSelection
+      const box =
+        hasObjectSelection || hasSectionBaseImageSelection
         ? nodeRef.getClientRect({
             relativeTo: stage,
             skipShadow: true,
           })
-        : resolveBackgroundDecorationStageBox(backgroundDecorationSelection);
+        : resolveBackgroundDecorationStageBox(overlayMenuItem);
       if (!box) return null;
 
-      const nodeAbsolutePosition = hasObjectSelection
+      const nodeAbsolutePosition =
+        hasObjectSelection || hasSectionBaseImageSelection
         ? (
             typeof nodeRef.getAbsolutePosition === "function"
               ? nodeRef.getAbsolutePosition()
@@ -189,23 +233,27 @@ export default function useOptionButtonPosition({
                 }
           )
         : {
-            x: Number(backgroundDecorationSelection?.x) || 0,
-            y: Number(backgroundDecorationSelection?.y) || 0,
+            x: Number(overlayMenuItem?.x) || 0,
+            y: Number(overlayMenuItem?.y) || 0,
           };
-      const rotation = hasObjectSelection
+      const rotation =
+        hasObjectSelection || hasSectionBaseImageSelection
         ? (
             typeof nodeRef?.rotation === "function"
               ? Number(nodeRef.rotation() || 0)
               : Number(nodeRef?.attrs?.rotation || 0)
           )
-        : Number(backgroundDecorationSelection?.rotation || 0);
+        : Number(overlayMenuItem?.rotation || 0);
       const anchorStageY =
-        hasObjectSelection && Number.isFinite(nodeAbsolutePosition?.y)
+        (hasObjectSelection || hasSectionBaseImageSelection) &&
+        Number.isFinite(nodeAbsolutePosition?.y)
           ? Math.min(box.y, nodeAbsolutePosition.y)
           : box.y;
       const selectedId = hasObjectSelection
         ? elementosSeleccionados[0]
-        : backgroundDecorationSelection?.id || "background-decoration";
+        : hasSectionBaseImageSelection
+          ? overlayMenuItem?.id || `section-base-image:${overlaySelection.sectionId}`
+          : overlayMenuItem?.id || "background-decoration";
       const round = (value) => {
         const numeric = Number(value);
         return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
@@ -216,9 +264,10 @@ export default function useOptionButtonPosition({
       return null;
     }
   }, [
-    backgroundDecorationSelection,
     elementosSeleccionados,
     elementRefs,
+    overlayNodeRefs,
+    overlaySelection,
     stageRef,
   ]);
 
@@ -263,7 +312,12 @@ export default function useOptionButtonPosition({
       },
       false
     );
-  }, [botonOpcionesRef, debugLog, elementosSeleccionados, isMobile]);
+  }, [
+    botonOpcionesRef,
+    debugLog,
+    elementosSeleccionados,
+    isMobile,
+  ]);
 
   const cancelPendingPositionSyncRafs = useCallback(() => {
     const pending = pendingPositionSyncRafsRef.current;
@@ -329,14 +383,33 @@ export default function useOptionButtonPosition({
       return;
     }
 
-    const hasObjectSelection = elementosSeleccionados.length === 1;
-    const hasBackgroundDecorationSelection = Boolean(backgroundDecorationSelection?.id);
+    const overlayKind = overlaySelection?.kind || null;
+    const overlayMenuItem = overlaySelection?.menuItem || null;
+    const selectionKind =
+      overlayKind === "canvas-object"
+        ? "object"
+        : overlayKind === "section-base-image"
+          ? "section-base-image"
+          : overlayKind === "background-decoration"
+            ? "background-decoration"
+            : "none";
+    const hasObjectSelection =
+      overlayKind === "canvas-object" && elementosSeleccionados.length === 1;
+    const hasBackgroundDecorationSelection =
+      overlayKind === "background-decoration" && Boolean(overlayMenuItem?.id);
+    const hasSectionBaseImageSelection =
+      overlayKind === "section-base-image" && Boolean(overlaySelection?.sectionId);
 
-    if (!hasObjectSelection && !hasBackgroundDecorationSelection) {
+    if (
+      !hasObjectSelection &&
+      !hasBackgroundDecorationSelection &&
+      !hasSectionBaseImageSelection
+    ) {
       ocultarBotonOpciones("selection-count", {
         source,
         count: elementosSeleccionados.length,
         hasBackgroundDecorationSelection,
+        hasSectionBaseImageSelection,
       });
       finishPerf?.({ reason: "selection-count" });
       return;
@@ -345,6 +418,8 @@ export default function useOptionButtonPosition({
     const stage = stageRef.current;
     const nodeRef = hasObjectSelection
       ? elementRefs.current[elementosSeleccionados[0]]
+      : hasSectionBaseImageSelection
+        ? overlayNodeRefs?.current?.[overlaySelection.sectionId] || null
       : null;
     if ((!nodeRef && !hasBackgroundDecorationSelection) || !stage) {
       ocultarBotonOpciones("missing-node-or-stage", {
@@ -352,28 +427,32 @@ export default function useOptionButtonPosition({
         hasNode: Boolean(nodeRef),
         hasStage: Boolean(stage),
         hasBackgroundDecorationSelection,
+        hasSectionBaseImageSelection,
       });
       finishPerf?.({ reason: "missing-node-or-stage" });
       return;
     }
 
     try {
-      const box = hasObjectSelection
+      const box =
+        hasObjectSelection || hasSectionBaseImageSelection
         ? nodeRef.getClientRect({
             relativeTo: stage,
             skipShadow: true,
           })
-        : resolveBackgroundDecorationStageBox(backgroundDecorationSelection);
+        : resolveBackgroundDecorationStageBox(overlayMenuItem);
       if (!box) {
         ocultarBotonOpciones("missing-box", {
           source,
           hasObjectSelection,
           hasBackgroundDecorationSelection,
+          hasSectionBaseImageSelection,
         });
         finishPerf?.({ reason: "missing-box" });
         return;
       }
-      const nodeAbsolutePosition = hasObjectSelection
+      const nodeAbsolutePosition =
+        hasObjectSelection || hasSectionBaseImageSelection
         ? (
             typeof nodeRef.getAbsolutePosition === "function"
               ? nodeRef.getAbsolutePosition()
@@ -383,8 +462,8 @@ export default function useOptionButtonPosition({
                 }
           )
         : {
-            x: Number(backgroundDecorationSelection?.x) || 0,
-            y: Number(backgroundDecorationSelection?.y) || 0,
+            x: Number(overlayMenuItem?.x) || 0,
+            y: Number(overlayMenuItem?.y) || 0,
           };
       const stageContainer =
         typeof stage.container === "function"
@@ -406,10 +485,13 @@ export default function useOptionButtonPosition({
             : FALLBACK_BUTTON_SIZE_DESKTOP;
       const overlapPx = targetButtonSize * BUTTON_VERTEX_OVERLAP_RATIO;
       const nudgeX = isMobile ? BUTTON_VERTEX_NUDGE_X_MOBILE : BUTTON_VERTEX_NUDGE_X_DESKTOP;
-      const nudgeY = isMobile ? BUTTON_VERTEX_NUDGE_Y_MOBILE : BUTTON_VERTEX_NUDGE_Y_DESKTOP;
+      const nudgeY = selectionKind === "section-base-image"
+        ? (isMobile ? BUTTON_VERTEX_NUDGE_Y_SECTION_BG_MOBILE : BUTTON_VERTEX_NUDGE_Y_SECTION_BG_DESKTOP)
+        : (isMobile ? BUTTON_VERTEX_NUDGE_Y_MOBILE : BUTTON_VERTEX_NUDGE_Y_DESKTOP);
 
       const anchorStageY =
-        hasObjectSelection && Number.isFinite(nodeAbsolutePosition?.y)
+        (hasObjectSelection || hasSectionBaseImageSelection) &&
+        Number.isFinite(nodeAbsolutePosition?.y)
           ? Math.min(box.y, nodeAbsolutePosition.y)
           : box.y;
 
@@ -422,6 +504,11 @@ export default function useOptionButtonPosition({
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const viewportPadding = isMobile ? 8 : 4;
+      const headerSafeOffset = resolveDashboardHeaderBottom();
+      const topSafeViewportY = Math.max(
+        viewportPadding,
+        Math.ceil(headerSafeOffset + (isMobile ? 8 : 6))
+      );
 
       const elementoVisible =
         elementoX + anchoElemento >= 0 &&
@@ -458,7 +545,10 @@ export default function useOptionButtonPosition({
         preferredX + targetButtonSize > viewportWidth - viewportPadding &&
         fallbackNearVertexX >= minX;
       const fallbackNearVertexY = elementoY + 1;
-      const useFallbackNearVertexY = preferredY < minY && fallbackNearVertexY <= maxY;
+      const useFallbackNearVertexY =
+        preferredY < topSafeViewportY &&
+        fallbackNearVertexY >= minY &&
+        fallbackNearVertexY <= maxY;
 
       const placementModeX = useFallbackNearVertexX ? "fallback-left-of-vertex" : "vertex";
       const placementModeY = useFallbackNearVertexY ? "fallback-below-vertex" : "vertex";
@@ -476,6 +566,18 @@ export default function useOptionButtonPosition({
         const rootRect = layoutRootRef.current.getBoundingClientRect();
         renderX = botonX - rootRect.left;
         renderY = botonY - rootRect.top;
+        const minRenderY = Math.max(
+          viewportPadding,
+          Math.ceil(headerSafeOffset + (isMobile ? 8 : 6) - rootRect.top)
+        );
+        renderY = Math.max(renderY, minRenderY);
+      } else {
+        const minViewportY = Math.max(
+          viewportPadding,
+          Math.ceil(headerSafeOffset + (isMobile ? 8 : 6))
+        );
+        botonY = Math.max(botonY, minViewportY);
+        renderY = botonY;
       }
 
       botonOpcionesRef.current.style.left = `${Math.round(renderX)}px`;
@@ -489,7 +591,11 @@ export default function useOptionButtonPosition({
           : null,
       };
       finishPerf?.({
-        selectionKind: hasObjectSelection ? "object" : "background-decoration",
+        selectionKind: hasObjectSelection
+          ? "object"
+          : hasSectionBaseImageSelection
+            ? "section-base-image"
+            : "background-decoration",
       });
 
       if (isOptionButtonDebugEnabled()) {
@@ -502,9 +608,15 @@ export default function useOptionButtonPosition({
           source,
           selectedId: hasObjectSelection
             ? elementosSeleccionados[0]
-            : backgroundDecorationSelection?.id || null,
+            : hasSectionBaseImageSelection
+              ? overlayMenuItem?.id || overlaySelection?.sectionId || null
+              : overlayMenuItem?.id || null,
           isMobile,
-          selectionKind: hasObjectSelection ? "object" : "background-decoration",
+          selectionKind: hasObjectSelection
+            ? "object"
+            : hasSectionBaseImageSelection
+              ? "section-base-image"
+              : "background-decoration",
           pointerType: nativeEvent?.pointerType ?? null,
           nativeEventType: nativeEvent?.type ?? null,
           eventTarget: {
@@ -605,10 +717,11 @@ export default function useOptionButtonPosition({
       finishPerf?.({ reason: "exception", message });
     }
   }, [
-    backgroundDecorationSelection,
     botonOpcionesRef,
     elementosSeleccionados,
     elementRefs,
+    overlayNodeRefs,
+    overlaySelection,
     stageRef,
     escalaVisual,
     escalaActiva,
@@ -624,7 +737,13 @@ export default function useOptionButtonPosition({
 
   useEffect(() => {
     const hasAnchoredTarget =
-      elementosSeleccionados.length === 1 || Boolean(backgroundDecorationSelection?.id);
+      overlaySelection?.kind === "canvas-object"
+        ? elementosSeleccionados.length === 1
+        : overlaySelection?.kind === "background-decoration"
+          ? Boolean(overlaySelection?.menuItem?.id)
+          : overlaySelection?.kind === "section-base-image"
+            ? Boolean(overlaySelection?.sectionId)
+            : false;
 
     if (canvasUiSuppressed) {
       cancelPendingPositionSyncRafs();
@@ -704,12 +823,6 @@ export default function useOptionButtonPosition({
       cancelPendingPositionSyncRafs();
     };
   }, [
-    backgroundDecorationSelection?.height,
-    backgroundDecorationSelection?.id,
-    backgroundDecorationSelection?.rotation,
-    backgroundDecorationSelection?.width,
-    backgroundDecorationSelection?.x,
-    backgroundDecorationSelection?.y,
     elementosSeleccionados,
     actualizarPosicionBotonOpciones,
     buildAnchorSignature,
@@ -718,6 +831,7 @@ export default function useOptionButtonPosition({
     cancelPendingPositionSyncRafs,
     ocultarBotonOpciones,
     isMobile,
+    overlaySelection,
   ]);
 
   useEffect(() => {
@@ -736,7 +850,13 @@ export default function useOptionButtonPosition({
         });
         return;
       }
-      if (elementosSeleccionados.length === 1 || backgroundDecorationSelection?.id) {
+      if (
+        (overlaySelection?.kind === "canvas-object" && elementosSeleccionados.length === 1) ||
+        (overlaySelection?.kind === "background-decoration" &&
+          overlaySelection?.menuItem?.id) ||
+        (overlaySelection?.kind === "section-base-image" &&
+          overlaySelection?.sectionId)
+      ) {
         actualizarPosicionBotonOpciones(
           source,
           nativeEvent,
@@ -831,7 +951,6 @@ export default function useOptionButtonPosition({
       });
     };
   }, [
-    backgroundDecorationSelection?.id,
     canvasInteractionEpoch,
     canvasUiSuppressed,
     stageRef,
@@ -840,6 +959,7 @@ export default function useOptionButtonPosition({
     actualizarPosicionBotonOpciones,
     cancelPendingPositionSyncRafs,
     ocultarBotonOpciones,
+    overlaySelection,
   ]);
 
   return {

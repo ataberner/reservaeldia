@@ -60,6 +60,9 @@ export const guardarSeccionComoPlantilla = async ({
     fondoImagenOffsetY: Number.isFinite(Number(seccion.fondoImagenOffsetY))
       ? Number(seccion.fondoImagenOffsetY)
       : 0,
+    fondoImagenScale: Number.isFinite(Number(seccion.fondoImagenScale))
+      ? Math.max(1, Number(seccion.fondoImagenScale))
+      : 1,
     altoModo: seccion.altoModo || "fijo",
     alturaFijoBackup: Number.isFinite(Number(seccion.alturaFijoBackup))
       ? Number(seccion.alturaFijoBackup)

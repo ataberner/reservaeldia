@@ -204,8 +204,8 @@ function attachImageRotationSessionObservers(session) {
 
 function isImageRotationDebugEnabled() {
   if (typeof window === "undefined") return false;
-  if (typeof window.__DBG_IMAGE_ROTATION === "undefined") return true;
-  return parseDebugFlag(window.__DBG_IMAGE_ROTATION, true);
+  if (typeof window.__DBG_IMAGE_ROTATION === "undefined") return false;
+  return parseDebugFlag(window.__DBG_IMAGE_ROTATION, false);
 }
 
 function isImageRotationVerboseConsoleEnabled() {

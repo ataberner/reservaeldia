@@ -190,18 +190,16 @@ export const desanclarImagenDeFondo = ({
     img.onload = () => {
       const originalWidth = img.naturalWidth || img.width;
       const originalHeight = img.naturalHeight || img.height;
-
       const maxWidth = 450;
       const scale = Math.min(1, maxWidth / originalWidth);
-
-      const finalWidth = originalWidth * scale;
-      const finalHeight = originalHeight * scale;
+      const finalWidth = Math.round(originalWidth * scale);
+      const finalHeight = Math.round(originalHeight * scale);
 
       const nuevoElementoImagen = {
         id: `img-fondo-${Date.now()}`,
         tipo: "imagen",
         src: seccion.fondoImagen,
-        x: Math.max(0, (800 - finalWidth) / 2),
+        x: Math.max(0, Math.round((800 - finalWidth) / 2)),
         y: 50,
         width: finalWidth,
         height: finalHeight,

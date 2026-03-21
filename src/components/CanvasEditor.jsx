@@ -13,8 +13,9 @@ import useInlineEditor from "@/hooks/useInlineEditor";
 import ShapeToolbar from './ShapeToolbar';
 import useEditorHandlers from '@/hooks/useEditorHandlers';
 import FontSelector from './FontSelector';
-import { reemplazarFondoSeccion as reemplazarFondo } from "@/utils/accionesFondo";
 import {
+  desanclarImagenDeFondo,
+  reemplazarFondoSeccion as reemplazarFondo,
   convertirDecoracionFondoEnImagen,
   convertirImagenEnDecoracionFondo,
 } from "@/utils/accionesFondo";
@@ -81,6 +82,7 @@ import {
   applySectionSolidBackground,
   normalizeSectionBackgroundModel,
   removeBackgroundDecoration,
+  updateBackgroundDecorationsParallax,
 } from "@/domain/sections/backgrounds";
 
 
@@ -176,12 +178,14 @@ export default function CanvasEditor({
   const { refrescar: refrescarPlantillasDeSeccion } = usePlantillasDeSeccion();
   const [elementoCopiado, setElementoCopiado] = useState(null);
   const elementRefs = useRef({});
+  const backgroundEditNodeRefs = useRef({});
   const inlineEditPreviewRef = useRef({ id: null, centerX: null });
   const inlineCommitDebugRef = useRef({ id: null });
   const inlineSnapshotHistoryRef = useRef({});
   const inlineVisibilitySnapshotRef = useRef({});
   const inlineKonvaDrawMetaRef = useRef({ seq: 0, nowMs: null, source: null });
   const inlinePaintApproxRef = useRef({ lastPaintApproxMs: null, pending: false });
+  const requestInlineEditFinishRef = useRef(() => false);
   const logInlineSnapshotRef = useRef(null);
   const pendingInlineStartRef = useRef(0);
   const inlineRenderValueRef = useRef({ id: null, value: "" });
@@ -235,10 +239,10 @@ export default function CanvasEditor({
     if (typeof window === "undefined") return;
 
     if (window.__DBG_CANVAS_DRAG_PERF === undefined) {
-      window.__DBG_CANVAS_DRAG_PERF = false;
+      window.__DBG_CANVAS_DRAG_PERF = true;
     }
     if (window.__CANVAS_DRAG_PERF_EXPANDED === undefined) {
-      window.__CANVAS_DRAG_PERF_EXPANDED = false;
+      window.__CANVAS_DRAG_PERF_EXPANDED = true;
     }
     if (window.__EDITOR_PRELOAD_DEBUG === undefined) {
       window.__EDITOR_PRELOAD_DEBUG = false;
@@ -285,7 +289,8 @@ export default function CanvasEditor({
     loadedAt: 0,
   });
   const [templateEditorialPanelOpen, setTemplateEditorialPanelOpen] = useState(false);
-  const [mobileBackgroundEditSectionId, setMobileBackgroundEditSectionId] = useState(null);
+  const [backgroundEditSectionId, setBackgroundEditSectionId] = useState(null);
+  const [isBackgroundEditInteracting, setIsBackgroundEditInteracting] = useState(false);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
@@ -689,12 +694,16 @@ export default function CanvasEditor({
     setSeleccionActiva(false);
     setInicioSeleccion(null);
     setAreaSeleccion(null);
+    setBackgroundEditSectionId(null);
+    setIsBackgroundEditInteracting(false);
     cerrarMenusFlotantes();
   }, [
     cerrarMenusFlotantes,
     setAreaSeleccion,
+    setBackgroundEditSectionId,
     setElementosPreSeleccionados,
     setInicioSeleccion,
+    setIsBackgroundEditInteracting,
     setSeleccionActiva,
   ]);
 
@@ -860,6 +869,9 @@ export default function CanvasEditor({
         if (nuevosOffsets.offsetY !== undefined && nuevosOffsets.offsetY !== null) {
           seccionActualizada.fondoImagenOffsetY = nuevosOffsets.offsetY;
         }
+        if (Number.isFinite(Number(nuevosOffsets.scale))) {
+          seccionActualizada.fondoImagenScale = Math.max(1, Number(nuevosOffsets.scale));
+        }
 
         return seccionActualizada;
       })
@@ -900,11 +912,7 @@ export default function CanvasEditor({
   const [isSelectionRotating, setIsSelectionRotating] = useState(false);
 
   const logOptionButtonMenuDebug = useCallback((eventName, payload = {}) => {
-    if (typeof window === "undefined" || window.__DBG_OPTION_BUTTON !== true) return;
-    console.log(`[OPTION-BUTTON][MENU] ${eventName}`, {
-      ts: new Date().toISOString(),
-      ...payload,
-    });
+    return undefined;
   }, []);
 
   const togglePanelOpciones = useCallback((source = "unknown", nativeEvent = null) => {
@@ -1010,7 +1018,8 @@ export default function CanvasEditor({
   useCanvasEditorSectionUiSync({
     seccionActivaIdRef,
     seccionActivaId,
-    mobileBackgroundEditSectionId,
+    backgroundEditSectionId,
+    setBackgroundEditSectionId,
   });
 
 
@@ -1157,13 +1166,23 @@ export default function CanvasEditor({
         setSectionDecorationEdit(null);
         return;
       }
+      if (backgroundEditSectionId) {
+        setBackgroundEditSectionId(null);
+        setIsBackgroundEditInteracting(false);
+        return;
+      }
       if (elementosSeleccionados.length > 0) clearCanvasSelectionUi();
     },
     onCopiar: readOnly ? () => {} : onCopiar,
     onPegar: readOnly ? () => {} : onPegar,
     onCambiarAlineacion: readOnly ? () => {} : onCambiarAlineacion,
     isEditing: readOnly ? false : !!editing.id,
-    tieneSeleccion: readOnly ? false : elementosSeleccionados.length > 0
+    tieneSeleccion:
+      readOnly
+        ? false
+        : elementosSeleccionados.length > 0 ||
+          Boolean(sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) ||
+          Boolean(backgroundEditSectionId)
   });
 
 
@@ -1175,8 +1194,60 @@ export default function CanvasEditor({
   }, [setSecciones]);
 
   const usarImagenComoDecoracionFondo = useCallback((elementoImagen) => {
+    const safeImage = elementoImagen && typeof elementoImagen === "object" ? elementoImagen : null;
+    const selectedNode = safeImage?.id ? elementRefs.current?.[safeImage.id] || null : null;
+    const targetSectionIndex = seccionesOrdenadas.findIndex(
+      (section) => section?.id === safeImage?.seccionId
+    );
+    const targetSection =
+      targetSectionIndex >= 0 ? seccionesOrdenadas[targetSectionIndex] : null;
+    const sectionOffsetY =
+      targetSectionIndex >= 0
+        ? calcularOffsetY(seccionesOrdenadas, targetSectionIndex, altoCanvas)
+        : 0;
+    const fallbackLocalY =
+      normalizarAltoModo(targetSection?.altoModo) === "pantalla" &&
+      Number.isFinite(Number(safeImage?.yNorm))
+        ? Number(safeImage.yNorm) * ALTURA_PANTALLA_EDITOR
+        : safeImage?.y;
+    const renderedImageSnapshot =
+      safeImage && targetSection
+        ? {
+            ...safeImage,
+            x:
+              typeof selectedNode?.x === "function" && Number.isFinite(Number(selectedNode.x()))
+                ? Number(selectedNode.x())
+                : safeImage.x,
+            y:
+              typeof selectedNode?.y === "function" && Number.isFinite(Number(selectedNode.y()))
+                ? Number(selectedNode.y()) - sectionOffsetY
+                : fallbackLocalY,
+            width:
+              typeof selectedNode?.width === "function" && Number.isFinite(Number(selectedNode.width()))
+                ? Number(selectedNode.width())
+                : safeImage.width,
+            height:
+              typeof selectedNode?.height === "function" && Number.isFinite(Number(selectedNode.height()))
+                ? Number(selectedNode.height())
+                : safeImage.height,
+            scaleX:
+              typeof selectedNode?.scaleX === "function" && Number.isFinite(Number(selectedNode.scaleX()))
+                ? Number(selectedNode.scaleX())
+                : safeImage.scaleX,
+            scaleY:
+              typeof selectedNode?.scaleY === "function" && Number.isFinite(Number(selectedNode.scaleY()))
+                ? Number(selectedNode.scaleY())
+                : safeImage.scaleY,
+            rotation:
+              typeof selectedNode?.rotation === "function" &&
+              Number.isFinite(Number(selectedNode.rotation()))
+                ? Number(selectedNode.rotation())
+                : safeImage.rotation,
+          }
+        : elementoImagen;
+
     convertirImagenEnDecoracionFondo({
-      elementoImagen,
+      elementoImagen: renderedImageSnapshot,
       secciones,
       objetos,
       setSecciones,
@@ -1187,13 +1258,65 @@ export default function CanvasEditor({
       setMostrarPanelZ,
     });
   }, [
+    ALTURA_PANTALLA_EDITOR,
+    altoCanvas,
+    elementRefs,
     objetos,
+    seccionesOrdenadas,
     secciones,
     setElementosSeleccionados,
     setObjetos,
     setSeccionActivaId,
     setSecciones,
     setSectionDecorationEdit,
+    setMostrarPanelZ,
+  ]);
+
+  const registerBackgroundEditNode = useCallback((sectionId, node) => {
+    const safeSectionId = String(sectionId || "").trim();
+    if (!safeSectionId) return;
+
+    if (node) {
+      backgroundEditNodeRefs.current[safeSectionId] = node;
+      return;
+    }
+
+    delete backgroundEditNodeRefs.current[safeSectionId];
+  }, []);
+
+  const handleBackgroundEditInteractionChange = useCallback((isActive) => {
+    setIsBackgroundEditInteracting(Boolean(isActive));
+  }, []);
+
+  const requestBackgroundEdit = useCallback((sectionId) => {
+    const safeSectionId = String(sectionId || "").trim();
+    if (!safeSectionId) return;
+
+    if (editing.id) {
+      requestInlineEditFinishRef.current?.("section-base-image-edit");
+    }
+
+    setMostrarPanelZ(false);
+    setElementosSeleccionados([]);
+    setElementosPreSeleccionados([]);
+    setSeleccionActiva(false);
+    setInicioSeleccion(null);
+    setAreaSeleccion(null);
+    setSectionDecorationEdit(null);
+    setIsBackgroundEditInteracting(false);
+    setSeccionActivaId(safeSectionId);
+    setBackgroundEditSectionId(safeSectionId);
+  }, [
+    editing.id,
+    setAreaSeleccion,
+    setBackgroundEditSectionId,
+    setElementosPreSeleccionados,
+    setElementosSeleccionados,
+    setInicioSeleccion,
+    setIsBackgroundEditInteracting,
+    setSectionDecorationEdit,
+    setSeleccionActiva,
+    setSeccionActivaId,
     setMostrarPanelZ,
   ]);
 
@@ -1206,9 +1329,12 @@ export default function CanvasEditor({
     if (sectionIndex === -1) return null;
 
     const targetSection = seccionesOrdenadas[sectionIndex];
-    const decoration = normalizeSectionBackgroundModel(targetSection, {
+    const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
       sectionHeight: targetSection.altura,
-    }).decoraciones.find((item) => item.id === sectionDecorationEdit.decorationId);
+    });
+    const decoration = backgroundModel.decoraciones.find(
+      (item) => item.id === sectionDecorationEdit.decorationId
+    );
 
     if (!decoration) return null;
 
@@ -1226,8 +1352,114 @@ export default function CanvasEditor({
       width: decoration.width,
       height: decoration.height,
       rotation: decoration.rotation || 0,
+      backgroundMotionMode: backgroundModel.parallax || "none",
     };
   }, [altoCanvas, sectionDecorationEdit, seccionesOrdenadas]);
+
+  const activeBaseBackgroundMenuItem = useMemo(() => {
+    if (!backgroundEditSectionId) return null;
+
+    const targetSection = seccionesOrdenadas.find(
+      (section) => section?.id === backgroundEditSectionId
+    );
+    if (!targetSection) return null;
+
+    const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
+      sectionHeight: targetSection.altura,
+    });
+    if (
+      backgroundModel.base.fondoTipo !== "imagen" ||
+      !backgroundModel.base.fondoImagen
+    ) {
+      return null;
+    }
+
+    return {
+      id: `imagen-fondo-seccion:${targetSection.id}`,
+      tipo: "imagen-fondo-seccion",
+      nombre: "Imagen de fondo",
+      src: backgroundModel.base.fondoImagen,
+      seccionId: targetSection.id,
+      backgroundMotionMode: backgroundModel.parallax || "none",
+    };
+  }, [backgroundEditSectionId, seccionesOrdenadas]);
+
+  const activeBackgroundMotionSectionId =
+    activeBackgroundDecorationMenuItem?.seccionId ||
+    activeBaseBackgroundMenuItem?.seccionId ||
+    null;
+
+  const overlaySelection = useMemo(() => {
+    if (activeBackgroundDecorationMenuItem) {
+      return {
+        kind: "background-decoration",
+        menuItem: activeBackgroundDecorationMenuItem,
+      };
+    }
+
+    if (activeBaseBackgroundMenuItem) {
+      return {
+        kind: "section-base-image",
+        sectionId: activeBaseBackgroundMenuItem.seccionId,
+        menuItem: activeBaseBackgroundMenuItem,
+      };
+    }
+
+    if (elementosSeleccionados.length !== 1) return null;
+    const selectedObject = objetos.find((item) => item.id === elementosSeleccionados[0]) || null;
+    if (!selectedObject) return null;
+
+    return {
+      kind: "canvas-object",
+      objectId: selectedObject.id,
+      menuItem: selectedObject,
+    };
+  }, [
+    activeBackgroundDecorationMenuItem,
+    activeBaseBackgroundMenuItem,
+    elementosSeleccionados,
+    objetos,
+  ]);
+
+  const handleDesanclarImagenFondoBase = useCallback(() => {
+    if (!activeBaseBackgroundMenuItem?.seccionId) return;
+
+    setSectionDecorationEdit(null);
+    setBackgroundEditSectionId(null);
+    setIsBackgroundEditInteracting(false);
+    setSeccionActivaId(activeBaseBackgroundMenuItem.seccionId);
+    desanclarImagenDeFondo({
+      seccionId: activeBaseBackgroundMenuItem.seccionId,
+      secciones,
+      objetos,
+      setSecciones,
+      setObjetos,
+      setElementosSeleccionados,
+    });
+    setMostrarPanelZ(false);
+  }, [
+    activeBaseBackgroundMenuItem,
+    objetos,
+    secciones,
+    setBackgroundEditSectionId,
+    setElementosSeleccionados,
+    setIsBackgroundEditInteracting,
+    setObjetos,
+    setSeccionActivaId,
+    setSecciones,
+    setSectionDecorationEdit,
+    setMostrarPanelZ,
+  ]);
+
+  const handleFinalizarAjusteFondoBase = useCallback(() => {
+    setBackgroundEditSectionId(null);
+    setIsBackgroundEditInteracting(false);
+    setMostrarPanelZ(false);
+  }, [
+    setBackgroundEditSectionId,
+    setIsBackgroundEditInteracting,
+    setMostrarPanelZ,
+  ]);
 
   const handleConvertirDecoracionFondoEnImagen = useCallback(() => {
     if (!activeBackgroundDecorationMenuItem) return;
@@ -1288,10 +1520,84 @@ export default function CanvasEditor({
     setMostrarPanelZ(false);
   }, [setSectionDecorationEdit, setMostrarPanelZ]);
 
+  const handleActualizarMovimientoDecoracionFondo = useCallback((nextMotionMode) => {
+    if (!activeBackgroundMotionSectionId) return;
+
+    const normalizedMode =
+      String(nextMotionMode || "").trim().toLowerCase() === "none"
+        ? "none"
+        : "dynamic";
+
+    setSecciones((previous) =>
+      updateBackgroundDecorationsParallax(
+        previous,
+        activeBackgroundMotionSectionId,
+        normalizedMode,
+        {
+          sectionHeight: secciones.find(
+            (section) => section?.id === activeBackgroundMotionSectionId
+          )?.altura,
+        }
+      )
+    );
+  }, [
+    activeBackgroundMotionSectionId,
+    secciones,
+    setSecciones,
+  ]);
+
   useEffect(() => {
-    if (sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) return;
+    if (!backgroundEditSectionId) {
+      setIsBackgroundEditInteracting(false);
+      return;
+    }
+
+    const targetSection = secciones.find((section) => section?.id === backgroundEditSectionId);
+    if (!targetSection) {
+      setBackgroundEditSectionId(null);
+      setIsBackgroundEditInteracting(false);
+      return;
+    }
+
+    const baseBackground = normalizeSectionBackgroundModel(targetSection, {
+      sectionHeight: targetSection.altura,
+    }).base;
+    if (baseBackground.fondoTipo !== "imagen" || !baseBackground.fondoImagen) {
+      setBackgroundEditSectionId(null);
+      setIsBackgroundEditInteracting(false);
+      return;
+    }
+
+    if (sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) {
+      setBackgroundEditSectionId(null);
+      setIsBackgroundEditInteracting(false);
+      return;
+    }
+
+    if (elementosSeleccionados.length > 0) {
+      setBackgroundEditSectionId(null);
+      setIsBackgroundEditInteracting(false);
+      return;
+    }
+
+    if (seccionActivaId && seccionActivaId !== backgroundEditSectionId) {
+      setBackgroundEditSectionId(null);
+      setIsBackgroundEditInteracting(false);
+    }
+  }, [
+    backgroundEditSectionId,
+    elementosSeleccionados.length,
+    seccionActivaId,
+    secciones,
+    sectionDecorationEdit,
+    setBackgroundEditSectionId,
+    setIsBackgroundEditInteracting,
+  ]);
+
+  useEffect(() => {
+    if (overlaySelection?.menuItem) return;
     setMostrarPanelZ(false);
-  }, [sectionDecorationEdit]);
+  }, [overlaySelection]);
 
 
   useEditorWindowBridge({
@@ -1385,13 +1691,16 @@ export default function CanvasEditor({
     layoutRootRef: editorOverlayRootRef,
     elementRefs,
     elementosSeleccionados,
-    backgroundDecorationSelection: activeBackgroundDecorationMenuItem,
+    overlaySelection,
+    overlayNodeRefs: backgroundEditNodeRefs,
     stageRef,
     escalaVisual,
     escalaActiva,
     isMobile,
     buttonSize: optionButtonSize,
-    canvasUiSuppressed: canvasInteractionCoordinator.isCanvasUiSuppressed(),
+    canvasUiSuppressed:
+      canvasInteractionCoordinator.isCanvasUiSuppressed() ||
+      isBackgroundEditInteracting,
     canvasInteractionEpoch: canvasInteractionCoordinator.interactionEpoch,
   });
 
@@ -1524,6 +1833,10 @@ export default function CanvasEditor({
     }
     return handled;
   }, [editing.id, onInlineFinish, textEditInteractionController.requestFinish]);
+
+  useEffect(() => {
+    requestInlineEditFinishRef.current = requestInlineEditFinish;
+  }, [requestInlineEditFinish]);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -1727,10 +2040,9 @@ export default function CanvasEditor({
                 setSecciones={setSecciones}
                 setObjetos={setObjetos}
                 setElementosSeleccionados={setElementosSeleccionados}
-                mobileBackgroundEditSectionId={mobileBackgroundEditSectionId}
-                setMobileBackgroundEditSectionId={setMobileBackgroundEditSectionId}
                 sectionDecorationEdit={sectionDecorationEdit}
                 setSectionDecorationEdit={setSectionDecorationEdit}
+                setBackgroundEditSectionId={setBackgroundEditSectionId}
                 setSeccionActivaId={setSeccionActivaId}
                 canManageSite={canManageSite}
                 refrescarPlantillasDeSeccion={refrescarPlantillasDeSeccion}
@@ -1759,7 +2071,8 @@ export default function CanvasEditor({
                 onSelectSeccion={onSelectSeccion}
                 actualizarOffsetFondo={actualizarOffsetFondo}
                 isMobile={isMobile}
-                mobileBackgroundEditSectionId={mobileBackgroundEditSectionId}
+                backgroundEditSectionId={backgroundEditSectionId}
+                onRequestBackgroundEdit={requestBackgroundEdit}
                 handleBackgroundImageStatusChange={handleBackgroundImageStatusChange}
                 controlandoAltura={controlandoAltura}
                 normalizarAltoModo={normalizarAltoModo}
@@ -1830,6 +2143,8 @@ export default function CanvasEditor({
                 setSecciones={setSecciones}
                 sectionDecorationEdit={sectionDecorationEdit}
                 setSectionDecorationEdit={setSectionDecorationEdit}
+                onRegisterBackgroundEditNode={registerBackgroundEditNode}
+                onBackgroundEditInteractionChange={handleBackgroundEditInteractionChange}
               />
 
 
@@ -1866,6 +2181,7 @@ export default function CanvasEditor({
         <CanvasEditorOverlays
           readOnly={readOnly}
           elementosSeleccionados={elementosSeleccionados}
+          overlaySelection={overlaySelection}
           editingId={editing.id}
           isSelectionRotating={isSelectionRotating}
           botonOpcionesRef={botonOpcionesRef}
@@ -1919,10 +2235,12 @@ export default function CanvasEditor({
           cerrarModalBorrarSeccion={cerrarModalBorrarSeccion}
           confirmarBorrarSeccion={confirmarBorrarSeccion}
           sectionDecorationEdit={sectionDecorationEdit}
-          activeBackgroundDecorationMenuItem={activeBackgroundDecorationMenuItem}
           onConvertirDecoracionFondoEnImagen={handleConvertirDecoracionFondoEnImagen}
           onEliminarDecoracionFondo={handleEliminarDecoracionFondo}
           onFinalizarAjusteDecoracionFondo={handleFinalizarAjusteDecoracionFondo}
+          onActualizarMovimientoDecoracionFondo={handleActualizarMovimientoDecoracionFondo}
+          onDesanclarImagenFondoBase={handleDesanclarImagenFondoBase}
+          onFinalizarAjusteFondoBase={handleFinalizarAjusteFondoBase}
         />
       )}
 

@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Trash2,
@@ -9,23 +8,11 @@ import {
   Monitor,
   ChevronDown,
   ChevronUp,
-  Image as ImageIcon,
-  ImageOff,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
-import {
-  convertirDecoracionFondoEnImagen,
-  desanclarImagenDeFondo,
-} from "@/utils/accionesFondo";
-import SectionBackgroundDecorationsPanel from "@/components/editor/sectionBackground/SectionBackgroundDecorationsPanel";
-import {
-  normalizeSectionBackgroundModel,
-  removeBackgroundDecoration,
-  reorderBackgroundDecoration,
-  updateBackgroundDecorationsParallax,
-} from "@/domain/sections/backgrounds";
+import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
 
 const DESKTOP_PANEL_WIDTH = 76;
 const DESKTOP_PANEL_RIGHT = 12;
@@ -34,12 +21,10 @@ const DESKTOP_TOOLTIP_LABELS = Object.freeze({
   moveUp: "Subir seccion",
   moveDown: "Bajar seccion",
   add: "Anadir seccion",
-  decorations: "Decoraciones del fondo",
   fullscreen: "Pantalla completa",
   saveTemplate: "Guardar como plantilla",
   delete: "Eliminar seccion",
   backgroundColor: "Color de fondo",
-  detachBackground: "Desanclar fondo",
 });
 
 const DESKTOP_BUTTON_BASE =
@@ -130,23 +115,10 @@ export default function SectionActionsOverlay({
   togglePantallaCompletaSeccion,
   secciones,
   objetos,
-  setSecciones,
-  setObjetos,
-  setElementosSeleccionados,
-  sectionDecorationEdit,
-  setSectionDecorationEdit,
   canManageSite,
   refrescarPlantillasDeSeccion,
   abrirModalBorrarSeccion,
-  setSeccionActivaId,
 }) {
-  const [decorationsPanelOpen, setDecorationsPanelOpen] = useState(false);
-  const overlayRootRef = useRef(null);
-
-  useEffect(() => {
-    setDecorationsPanelOpen(false);
-  }, [seccionActivaId]);
-
   const activeSectionIndex = seccionesOrdenadas.findIndex((seccion) => seccion.id === seccionActivaId);
   const seccion = activeSectionIndex === -1 ? null : seccionesOrdenadas[activeSectionIndex];
   const backgroundModel = seccion
@@ -154,43 +126,8 @@ export default function SectionActionsOverlay({
         sectionHeight: seccion.altura,
       })
     : { base: { fondo: "#ffffff" }, parallax: "none", decoraciones: [] };
-  const decoraciones = Array.isArray(backgroundModel.decoraciones)
-    ? backgroundModel.decoraciones
-    : [];
-  const decoracionesCount = decoraciones.length;
-  const hasBaseImage =
-    backgroundModel.base.fondoTipo === "imagen" &&
-    typeof backgroundModel.base.fondoImagen === "string" &&
-    backgroundModel.base.fondoImagen.trim().length > 0;
-
-  useEffect(() => {
-    if (!seccionActivaId || activeSectionIndex === -1 || !decoracionesCount) {
-      setDecorationsPanelOpen(false);
-    }
-  }, [activeSectionIndex, decoracionesCount, seccionActivaId]);
-
-  useEffect(() => {
-    if (!decorationsPanelOpen) return undefined;
-
-    const handlePointerOutside = (event) => {
-      const root = overlayRootRef.current;
-      if (!root || root.contains(event.target)) return;
-      setDecorationsPanelOpen(false);
-    };
-
-    window.addEventListener("mousedown", handlePointerOutside);
-    window.addEventListener("touchstart", handlePointerOutside, { passive: true });
-
-    return () => {
-      window.removeEventListener("mousedown", handlePointerOutside);
-      window.removeEventListener("touchstart", handlePointerOutside);
-    };
-  }, [decorationsPanelOpen]);
 
   if (!seccionActivaId || !seccion || activeSectionIndex === -1) return null;
-
-  const activeDecorationId =
-    sectionDecorationEdit?.sectionId === seccion.id ? sectionDecorationEdit.decorationId : null;
 
   const offsetY = calcularOffsetY(seccionesOrdenadas, activeSectionIndex, altoCanvas);
   const esPrimera = activeSectionIndex === 0;
@@ -212,105 +149,8 @@ export default function SectionActionsOverlay({
     if (isMobile) {
       setMobileSectionActionsOpen(false);
     }
-    setDecorationsPanelOpen(false);
     abrirModalBorrarSeccion(seccion.id);
   };
-
-  const handleDetachBaseImage = () => {
-    setSectionDecorationEdit(null);
-    desanclarImagenDeFondo({
-      seccionId: seccion.id,
-      secciones,
-      objetos,
-      setSecciones,
-      setObjetos,
-      setElementosSeleccionados,
-    });
-  };
-
-  const handleToggleDecorationAdjust = (decorationId) => {
-    const isClosingCurrentDecoration = activeDecorationId === decorationId;
-    setElementosSeleccionados([]);
-    if (!isClosingCurrentDecoration) {
-      setDecorationsPanelOpen(false);
-      if (isMobile) {
-        setMobileSectionActionsOpen(false);
-      }
-    }
-    setSectionDecorationEdit((previous) => {
-      if (
-        previous?.sectionId === seccion.id &&
-        previous?.decorationId === decorationId
-      ) {
-      return null;
-      }
-      return {
-        sectionId: seccion.id,
-        decorationId,
-        overlayReady: false,
-      };
-    });
-  };
-
-  const handleReorderDecoration = (decorationId, direction) => {
-    setSecciones((previous) =>
-      reorderBackgroundDecoration(previous, seccion.id, decorationId, direction)
-    );
-  };
-
-  const handleRemoveDecoration = (decorationId) => {
-    setSecciones((previous) =>
-      removeBackgroundDecoration(previous, seccion.id, decorationId)
-    );
-    setSectionDecorationEdit((previous) => {
-      if (
-        previous?.sectionId === seccion.id &&
-        previous?.decorationId === decorationId
-      ) {
-        return null;
-      }
-      return previous;
-    });
-  };
-
-  const handleConvertDecorationToImage = (decorationId) => {
-    convertirDecoracionFondoEnImagen({
-      seccionId: seccion.id,
-      decorationId,
-      secciones,
-      objetos,
-      setSecciones,
-      setObjetos,
-      setElementosSeleccionados,
-      setSectionDecorationEdit,
-      setSeccionActivaId,
-    });
-  };
-
-  const handleChangeDecorationMotion = (nextMotionMode) => {
-    setSecciones((previous) =>
-      updateBackgroundDecorationsParallax(previous, seccion.id, nextMotionMode, {
-        sectionHeight: seccion.altura,
-      })
-    );
-  };
-
-  const renderDecorationsPanel = (mobile = false) => (
-    <SectionBackgroundDecorationsPanel
-      decorations={decoraciones}
-      activeDecorationId={activeDecorationId}
-      motionMode={backgroundModel.parallax}
-      disabled={estaAnimando || isDeletingSection}
-      isMobile={mobile}
-      onClose={() => setDecorationsPanelOpen(false)}
-      onAdjust={handleToggleDecorationAdjust}
-      onMoveUp={(decorationId) => handleReorderDecoration(decorationId, "up")}
-      onMoveDown={(decorationId) => handleReorderDecoration(decorationId, "down")}
-      onRemove={handleRemoveDecoration}
-      onConvertToImage={handleConvertDecorationToImage}
-      onMotionModeChange={handleChangeDecorationMotion}
-    />
-  );
 
   const mobileButtonBase =
     "px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-2 focus-visible:ring-[#dccaf7]";
@@ -397,40 +237,6 @@ export default function SectionActionsOverlay({
         {renderMobileActionContent(PlusCircle, "Anadir seccion")}
       </button>
 
-      {hasBaseImage ? (
-        <button
-          type="button"
-          onClick={handleDetachBaseImage}
-          disabled={estaAnimando || isDeletingSection}
-          className={`${mobileButtonBase} ${
-            estaAnimando || isDeletingSection ? mobileButtonDisabled : mobileButtonNeutral
-          } ${estaAnimando || isDeletingSection ? "animate-pulse" : ""}`}
-          title="Desanclar la imagen de fondo"
-          aria-label="Desanclar fondo"
-        >
-          {renderMobileActionContent(ImageOff, "Desanclar fondo")}
-        </button>
-      ) : null}
-
-      {decoracionesCount > 0 ? (
-        <button
-          type="button"
-          onClick={() => setDecorationsPanelOpen((previous) => !previous)}
-          className={`${mobileButtonBase} ${
-            decorationsPanelOpen ? mobileButtonPrimary : mobileButtonNeutral
-          }`}
-          title="Decoraciones del fondo"
-          aria-label="Decoraciones del fondo"
-        >
-          {renderMobileActionContent(
-            ImageIcon,
-            decorationsPanelOpen
-              ? `Decoraciones (${decoracionesCount}): ON`
-              : `Decoraciones (${decoracionesCount})`
-          )}
-        </button>
-      ) : null}
-
       <button
         type="button"
         onClick={() => togglePantallaCompletaSeccion(seccion.id)}
@@ -501,14 +307,9 @@ export default function SectionActionsOverlay({
 
         {mobileSectionActionsOpen ? (
           <div
-            className={`max-h-[72vh] overflow-x-hidden overflow-y-auto rounded-xl border border-purple-200 bg-white/95 p-2 shadow-2xl backdrop-blur ${
-              decorationsPanelOpen ? "w-[min(94vw,420px)]" : "w-[min(84vw,230px)]"
-            }`}
+            className="w-[min(84vw,230px)] max-h-[72vh] overflow-x-hidden overflow-y-auto rounded-xl border border-purple-200 bg-white/95 p-2 shadow-2xl backdrop-blur"
           >
-            <div className="flex flex-col gap-2">
-              {mobileActionButtons}
-              {decorationsPanelOpen ? <div className="pt-1">{renderDecorationsPanel(true)}</div> : null}
-            </div>
+            <div className="flex flex-col gap-2">{mobileActionButtons}</div>
           </div>
         ) : null}
       </div>,
@@ -564,19 +365,6 @@ export default function SectionActionsOverlay({
           pulse: estaAnimando,
           onClick: handleCrearSeccion,
         },
-        ...(decoracionesCount > 0
-          ? [
-              {
-                id: "decorations",
-                icon: ImageIcon,
-                title: `${DESKTOP_TOOLTIP_LABELS.decorations} (${decoracionesCount})`,
-                ariaLabel: DESKTOP_TOOLTIP_LABELS.decorations,
-                variant: decorationsPanelOpen ? "active" : "neutral",
-                pressed: decorationsPanelOpen,
-                onClick: () => setDecorationsPanelOpen((previous) => !previous),
-              },
-            ]
-          : []),
       ],
     },
     {
@@ -591,20 +379,6 @@ export default function SectionActionsOverlay({
           pressed: esPantalla,
           onClick: () => togglePantallaCompletaSeccion(seccion.id),
         },
-        ...(hasBaseImage
-          ? [
-              {
-                id: "detach-background",
-                icon: ImageOff,
-                title: DESKTOP_TOOLTIP_LABELS.detachBackground,
-                ariaLabel: DESKTOP_TOOLTIP_LABELS.detachBackground,
-                variant: "neutral",
-                disabled: estaAnimando || isDeletingSection,
-                pulse: estaAnimando || isDeletingSection,
-                onClick: handleDetachBaseImage,
-              },
-            ]
-          : []),
       ],
     },
     ...(canManageSite
@@ -645,7 +419,6 @@ export default function SectionActionsOverlay({
 
   return (
     <div
-      ref={overlayRootRef}
       className="absolute"
       style={{
         top: offsetY + 20,
@@ -656,12 +429,6 @@ export default function SectionActionsOverlay({
         willChange: "top, opacity, box-shadow",
       }}
     >
-      {decorationsPanelOpen ? (
-        <div className="absolute right-[calc(100%+14px)] top-0 z-[32]">
-          {renderDecorationsPanel(false)}
-        </div>
-      ) : null}
-
       <div
         key={seccion.id}
         className={`relative overflow-hidden rounded-2xl border bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(249,245,255,0.97)_100%)] px-2 py-2.5 backdrop-blur-[10px] ${

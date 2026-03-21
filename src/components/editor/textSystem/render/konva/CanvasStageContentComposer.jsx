@@ -77,6 +77,17 @@ function roundRotationMetric(value, digits = 2) {
   return Math.round(numeric * factor) / factor;
 }
 
+function sanitizeSelectionIds(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id) => id !== null && typeof id !== "undefined" && id !== "");
+}
+
+function areSelectionIdListsEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  return left.every((id, index) => id === right[index]);
+}
+
 function getImageRotationNodeSnapshot(node) {
   if (!node) {
     return {
@@ -272,7 +283,8 @@ export default function CanvasStageContent({
   onSelectSeccion,
   actualizarOffsetFondo,
   isMobile,
-  mobileBackgroundEditSectionId,
+  backgroundEditSectionId,
+  onRequestBackgroundEdit,
   handleBackgroundImageStatusChange,
   controlandoAltura,
   normalizarAltoModo,
@@ -343,6 +355,8 @@ export default function CanvasStageContent({
   setSecciones,
   sectionDecorationEdit,
   setSectionDecorationEdit,
+  onRegisterBackgroundEditNode,
+  onBackgroundEditInteractionChange,
 }) {
   const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
   const inlineActivationRef = useRef({
@@ -391,6 +405,7 @@ export default function CanvasStageContent({
     null;
   const isHoverSuppressed =
     Boolean(isDragging) ||
+    Boolean(backgroundEditSectionId) ||
     canvasInteractionActive ||
     canvasInteractionSettling ||
     isImageCropInteracting ||
@@ -401,6 +416,16 @@ export default function CanvasStageContent({
     elementosSeleccionados.length === 1
       ? objetos.find((obj) => obj.id === elementosSeleccionados[0]) || null
       : null;
+  const isAnyCanvasDragActive =
+    Boolean(isDragging) ||
+    canvasInteractionActive ||
+    canvasInteractionSettling ||
+    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
+    (typeof window !== "undefined" && Boolean(window._grupoLider));
+  const isCanvasDragGestureActive =
+    Boolean(isDragging) ||
+    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
+    (typeof window !== "undefined" && Boolean(window._grupoLider));
 
   const setHoverIdWhenIdle = useCallback((nextHoverId) => {
     const dragActive =
@@ -611,6 +636,7 @@ export default function CanvasStageContent({
     if (!nextSession.needsDeferredCommit) {
       if (typeof window !== "undefined") {
         window._pendingDragSelectionId = null;
+        window._pendingDragSelectionPhase = null;
       }
       trackCanvasDragPerf("selection:defer-skipped", {
         elementId: dragId,
@@ -626,6 +652,7 @@ export default function CanvasStageContent({
 
     if (typeof window !== "undefined") {
       window._pendingDragSelectionId = dragId;
+      window._pendingDragSelectionPhase = "deferred-drag";
     }
 
     trackCanvasDragPerf("selection:defer-dragstart", {
@@ -666,6 +693,22 @@ export default function CanvasStageContent({
     ));
   }, []);
 
+  const getPostDragSelectionSnapshots = useCallback(() => {
+    const selectionFromState = sanitizeSelectionIds(elementosSeleccionados);
+    const selectionFromWindow =
+      typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+        ? sanitizeSelectionIds(window._elementosSeleccionados)
+        : [];
+    const effectiveSelection =
+      selectionFromWindow.length > 0 ? selectionFromWindow : selectionFromState;
+
+    return {
+      selectionFromState,
+      selectionFromWindow,
+      effectiveSelection,
+    };
+  }, [elementosSeleccionados]);
+
   const resolveDragSettleOutcome = useCallback((session) => {
     const safeSession =
       session && session.dragId
@@ -678,9 +721,13 @@ export default function CanvasStageContent({
       committedDeferredSelection: false,
       restoredSelectionAfterDrag: false,
       clearedVisualSelection: false,
+      deferredVisualSelectionCleanup: false,
       cleanedGuides: false,
+      selectionSnapshotFromState: [],
+      selectionSnapshotFromWindow: [],
       currentSelectionSnapshot: [],
       nextSelectionSnapshot: [],
+      visualSelectionSnapshot: [],
       hasWork: false,
     };
 
@@ -688,53 +735,52 @@ export default function CanvasStageContent({
       dragSettleSessionRef.current = createEmptyDragSettleSession();
       if (typeof window !== "undefined") {
         window._pendingDragSelectionId = null;
+        window._pendingDragSelectionPhase = null;
       }
       return outcome;
     }
 
     if (typeof window !== "undefined") {
       window._pendingDragSelectionId = null;
+      window._pendingDragSelectionPhase = null;
     }
+
+    const {
+      selectionFromState,
+      selectionFromWindow,
+      effectiveSelection,
+    } = getPostDragSelectionSnapshots();
+    outcome.selectionSnapshotFromState = [...selectionFromState];
+    outcome.selectionSnapshotFromWindow = [...selectionFromWindow];
+    outcome.currentSelectionSnapshot = [...effectiveSelection];
+
+    let nextSelectionSnapshot = [...effectiveSelection];
 
     if (safeSession.needsDeferredCommit) {
-      setElementosSeleccionados((current) => {
-        const currentSelection = Array.isArray(current) ? current : [];
-        outcome.currentSelectionSnapshot = [...currentSelection];
-        if (currentSelection.length === 1 && currentSelection[0] === safeSession.dragId) {
-          outcome.nextSelectionSnapshot = [...currentSelection];
-          return current;
-        }
-
+      if (!(effectiveSelection.length === 1 && effectiveSelection[0] === safeSession.dragId)) {
         outcome.committedDeferredSelection = true;
-        outcome.nextSelectionSnapshot = [safeSession.dragId];
-        return [safeSession.dragId];
-      });
+        nextSelectionSnapshot = [safeSession.dragId];
+        setElementosSeleccionados(nextSelectionSnapshot);
+      }
     } else if (safeSession.startedSelected) {
-      setElementosSeleccionados((current) => {
-        const currentSelection = Array.isArray(current) ? current : [];
-        outcome.currentSelectionSnapshot = [...currentSelection];
-        if (currentSelection.includes(safeSession.dragId)) {
-          outcome.nextSelectionSnapshot = [...currentSelection];
-          return current;
-        }
-
+      if (!effectiveSelection.includes(safeSession.dragId)) {
         outcome.restoredSelectionAfterDrag = true;
-        outcome.nextSelectionSnapshot =
+        nextSelectionSnapshot =
           safeSession.selectionSnapshot.length > 0
-            ? [...safeSession.selectionSnapshot]
+            ? sanitizeSelectionIds(safeSession.selectionSnapshot)
             : [safeSession.dragId];
-        return outcome.nextSelectionSnapshot;
-      });
+        setElementosSeleccionados(nextSelectionSnapshot);
+      }
     }
+    outcome.nextSelectionSnapshot = [...nextSelectionSnapshot];
 
-    const shouldClearVisualSelection =
-      safeSession.hadVisualSelection &&
-      Array.isArray(dragVisualSelectionIdsRef.current) &&
-      dragVisualSelectionIdsRef.current.length > 0;
-    if (shouldClearVisualSelection) {
-      outcome.clearedVisualSelection = true;
-      clearDragVisualSelection();
-    }
+    const visualSelectionSnapshot = sanitizeSelectionIds(
+      dragVisualSelectionIdsRef.current
+    );
+    outcome.visualSelectionSnapshot = [...visualSelectionSnapshot];
+    outcome.deferredVisualSelectionCleanup = Boolean(
+      safeSession.hadVisualSelection && visualSelectionSnapshot.length > 0
+    );
 
     const hasGuideCleanupWork =
       safeSession.needsGuideCleanup &&
@@ -752,7 +798,7 @@ export default function CanvasStageContent({
     outcome.hasWork = Boolean(
       outcome.committedDeferredSelection ||
       outcome.restoredSelectionAfterDrag ||
-      outcome.clearedVisualSelection ||
+      outcome.deferredVisualSelectionCleanup ||
       outcome.cleanedGuides
     );
 
@@ -760,8 +806,8 @@ export default function CanvasStageContent({
     return outcome;
   }, [
     cancelScheduledGuideEvaluation,
-    clearDragVisualSelection,
     configurarDragEnd,
+    getPostDragSelectionSnapshots,
     guideOverlayRef,
     limpiarGuias,
     setElementosSeleccionados,
@@ -781,6 +827,7 @@ export default function CanvasStageContent({
       if (!session?.dragId || session.dragId !== dragId) {
         if (typeof window !== "undefined") {
           window._pendingDragSelectionId = null;
+          window._pendingDragSelectionPhase = null;
         }
         dragSettleSessionRef.current = createEmptyDragSettleSession();
         return;
@@ -797,9 +844,13 @@ export default function CanvasStageContent({
         committedDeferredSelection: outcome.committedDeferredSelection,
         restoredSelectionAfterDrag: outcome.restoredSelectionAfterDrag,
         clearedVisualSelection: outcome.clearedVisualSelection,
+        deferredVisualSelectionCleanup: outcome.deferredVisualSelectionCleanup,
         cleanedGuides: outcome.cleanedGuides,
+        selectionSnapshotFromState: outcome.selectionSnapshotFromState,
+        selectionSnapshotFromWindow: outcome.selectionSnapshotFromWindow,
         currentSelectionSnapshot: outcome.currentSelectionSnapshot,
         nextSelectionSnapshot: outcome.nextSelectionSnapshot,
+        visualSelectionSnapshot: outcome.visualSelectionSnapshot,
         selectedIdsFromWindow:
           typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
             ? [...window._elementosSeleccionados]
@@ -822,6 +873,37 @@ export default function CanvasStageContent({
     elementosSeleccionados,
     resolveDragSettleOutcome,
     scheduleCanvasUiAfterSettle,
+  ]);
+
+  useEffect(() => {
+    if (dragVisualSelectionIds.length === 0) return;
+    if (isAnyCanvasDragActive || canvasInteractionActive || canvasInteractionSettling) {
+      return;
+    }
+
+    const selectionFromState = sanitizeSelectionIds(elementosSeleccionados);
+    const selectionFromWindow =
+      typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+        ? sanitizeSelectionIds(window._elementosSeleccionados)
+        : [];
+
+    logSelectedDragDebug("selection:drag-visual-cleanup", {
+      source: "idle-handoff",
+      visualSelectionSnapshot: [...dragVisualSelectionIds],
+      selectedIdsFromState: selectionFromState,
+      selectedIdsFromWindow: selectionFromWindow,
+      sameAsState: areSelectionIdListsEqual(dragVisualSelectionIds, selectionFromState),
+      sameAsWindow: areSelectionIdListsEqual(dragVisualSelectionIds, selectionFromWindow),
+    });
+
+    clearDragVisualSelection();
+  }, [
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    clearDragVisualSelection,
+    dragVisualSelectionIds,
+    elementosSeleccionados,
+    isAnyCanvasDragActive,
   ]);
 
   const logInlineIntent = useCallback((eventName, payload = {}) => {
@@ -1103,6 +1185,12 @@ export default function CanvasStageContent({
     const supportsLegacyDoubleInline = isLegacyDoubleInlineEditableObject(obj);
     const semanticValid = isInlineSemanticContextValid({ obj, event });
     const runtimeInteraction = getRuntimeInteractionState();
+    const selectionOrigin = meta?.selectionOrigin === "press" ? "press" : "gesture";
+    const allowSameGestureDragRequested =
+      selectionOrigin === "press" &&
+      meta?.allowSameGestureDrag === true &&
+      gesture === "primary" &&
+      !shift;
     const selectionIsSingleSame =
       Array.isArray(selectionSnapshot) &&
       selectionSnapshot.length === 1 &&
@@ -1137,6 +1225,8 @@ export default function CanvasStageContent({
       selectionIsSingleSame,
       selectionHasConflict,
       selectionAllowsInline,
+      selectionOrigin,
+      allowSameGestureDragRequested,
       dragging: runtimeInteraction.dragging || Boolean(isDragging),
       resizing: runtimeInteraction.resizing,
       seleccionActiva: Boolean(seleccionActiva),
@@ -1152,9 +1242,11 @@ export default function CanvasStageContent({
 
     if (!supportsSemanticInline && !supportsLegacyDoubleInline) {
       return {
-        decision: "select_only",
+        decision: allowSameGestureDragRequested ? "select_and_drag" : "select_only",
         gesture,
-        reason: "non-inline-target",
+        reason: allowSameGestureDragRequested
+          ? "press-select-drag-non-inline-target"
+          : "non-inline-target",
       };
     }
 
@@ -1187,9 +1279,11 @@ export default function CanvasStageContent({
     }
 
     return {
-      decision: "select_only",
+      decision: allowSameGestureDragRequested ? "select_and_drag" : "select_only",
       gesture,
-      reason: "select-first-gesture",
+      reason: allowSameGestureDragRequested
+        ? "press-select-drag"
+        : "select-first-gesture",
     };
   }, [
     editing.id,
@@ -1248,6 +1342,10 @@ export default function CanvasStageContent({
         if (prev.includes(id)) return prev.filter((x) => x !== id);
         return [...prev, id];
       });
+      if (typeof window !== "undefined") {
+        window._pendingDragSelectionId = null;
+        window._pendingDragSelectionPhase = null;
+      }
       clearInlineIntent("multiselect-toggle", { id, gesture });
       emitInlineFocusRcaEvent("intent-multiselect-toggle", {
         editingId: id,
@@ -1257,34 +1355,58 @@ export default function CanvasStageContent({
           reason: reason || null,
         },
       });
-      return;
+      return { decision };
     }
 
-    if (decision === "select_only") {
+    if (decision === "select_only" || decision === "select_and_drag") {
+      const nextSelection = [id];
       setElementosSeleccionados((prev) =>
         prev.length === 1 && prev[0] === id ? prev : [id]
       );
+      if (typeof window !== "undefined") {
+        window._pendingDragSelectionId =
+          decision === "select_and_drag" ? id : null;
+        window._pendingDragSelectionPhase =
+          decision === "select_and_drag" ? "predrag" : null;
+      }
+      if (decision === "select_and_drag" && typeof window !== "undefined") {
+        window._elementosSeleccionados = nextSelection;
+      }
       if (isSemanticInlineEditableObject(obj)) {
         armInlineIntent(id, "first-valid-selection", { gesture });
       } else {
         clearInlineIntent("non-inline-selection", { id, gesture });
       }
-      logInlineIntent("gate-select-only", { id, gesture });
-      emitInlineFocusRcaEvent("intent-select-only", {
-        editingId: id,
-        extra: {
-          gesture,
-          decision,
-          reason: reason || null,
-        },
-      });
-      return;
+      logInlineIntent(
+        decision === "select_and_drag" ? "gate-select-and-drag" : "gate-select-only",
+        { id, gesture, reason: reason || null }
+      );
+      emitInlineFocusRcaEvent(
+        decision === "select_and_drag" ? "intent-select-and-drag" : "intent-select-only",
+        {
+          editingId: id,
+          extra: {
+            gesture,
+            decision,
+            reason: reason || null,
+          },
+        }
+      );
+      return {
+        decision,
+        selectionIds: nextSelection,
+        allowSameGestureDrag: decision === "select_and_drag",
+      };
     }
 
     if (decision === "start_inline") {
       setElementosSeleccionados((prev) =>
         prev.length === 1 && prev[0] === id ? prev : [id]
       );
+      if (typeof window !== "undefined") {
+        window._pendingDragSelectionId = null;
+        window._pendingDragSelectionPhase = null;
+      }
       clearInlineIntent("start-inline", { id, gesture });
       logInlineIntent("gate-start-inline", {
         id,
@@ -1309,6 +1431,7 @@ export default function CanvasStageContent({
           stageRef.current?.getStage?.() || stageRef.current || null
         ),
       });
+      return { decision };
     }
   }, [
     armInlineIntent,
@@ -1373,6 +1496,8 @@ export default function CanvasStageContent({
       elementId: id,
       tipo: obj?.tipo || null,
       gesture,
+      selectionOrigin: meta?.selectionOrigin || "gesture",
+      allowSameGestureDragRequested: meta?.allowSameGestureDrag === true,
       decision: decision?.decision || null,
       reason: decision?.reason || null,
       selectionSnapshot,
@@ -1382,7 +1507,7 @@ export default function CanvasStageContent({
       editingId: editing.id || null,
     });
 
-    applyInlineIntentDecision({
+    return applyInlineIntentDecision({
       id,
       obj,
       event,
@@ -1410,6 +1535,41 @@ export default function CanvasStageContent({
       onSelectSeccion(sectionId);
     }
   }, [clearInlineActivation, clearInlineIntent, onSelectSeccion]);
+
+  const requestBackgroundDecorationEdit = useCallback((sectionId, decorationId) => {
+    const safeSectionId = String(sectionId || "").trim();
+    const safeDecorationId = String(decorationId || "").trim();
+    if (!safeSectionId || !safeDecorationId) return;
+
+    if (editing.id) {
+      requestInlineEditFinish?.("background-decoration-edit");
+    }
+
+    selectSectionAndClearInlineIntent(safeSectionId, "background-decoration-edit");
+    setElementosSeleccionados([]);
+    setElementosPreSeleccionados([]);
+    setSectionDecorationEdit((previous) => {
+      if (
+        previous?.sectionId === safeSectionId &&
+        previous?.decorationId === safeDecorationId
+      ) {
+        return previous;
+      }
+
+      return {
+        sectionId: safeSectionId,
+        decorationId: safeDecorationId,
+        overlayReady: false,
+      };
+    });
+  }, [
+    editing.id,
+    requestInlineEditFinish,
+    selectSectionAndClearInlineIntent,
+    setElementosPreSeleccionados,
+    setElementosSeleccionados,
+    setSectionDecorationEdit,
+  ]);
 
   const handleStageMouseDownWithInlineIntent = useCallback((e) => {
     clearInlineActivation("canvas-mousedown", {
@@ -2158,16 +2318,6 @@ export default function CanvasStageContent({
     );
   };
 
-  const isAnyCanvasDragActive =
-    Boolean(isDragging) ||
-    canvasInteractionActive ||
-    canvasInteractionSettling ||
-    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
-    (typeof window !== "undefined" && Boolean(window._grupoLider));
-  const isCanvasDragGestureActive =
-    Boolean(isDragging) ||
-    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
-    (typeof window !== "undefined" && Boolean(window._grupoLider));
   const shouldDisableObjectsMainListening =
     isAnyCanvasDragActive || isImageRotateInteractionActive;
 
@@ -2228,7 +2378,8 @@ export default function CanvasStageContent({
                           onSelect={() => selectSectionAndClearInlineIntent(seccion.id, "section-bg-image-select")}
                           onUpdateFondoOffset={actualizarOffsetFondo}
                           isMobile={isMobile}
-                          mobileBackgroundEditEnabled={mobileBackgroundEditSectionId === seccion.id}
+                          isEditing={backgroundEditSectionId === seccion.id}
+                          onRequestEdit={() => onRequestBackgroundEdit?.(seccion.id)}
                           onBackgroundImageStatusChange={handleBackgroundImageStatusChange}
                           editingDecorationId={
                             sectionDecorationEdit?.sectionId === seccion.id &&
@@ -2236,6 +2387,9 @@ export default function CanvasStageContent({
                               ? sectionDecorationEdit.decorationId
                               : null
                           }
+                          onRegisterBackgroundNode={onRegisterBackgroundEditNode}
+                          onInteractionChange={onBackgroundEditInteractionChange}
+                          onRequestDecorationEdit={requestBackgroundDecorationEdit}
                         />
                       ) : (
                         <Rect

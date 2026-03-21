@@ -523,6 +523,8 @@ export default function SelectionBounds({
   );
   const pendingDragSelectionId =
     typeof window !== "undefined" ? window._pendingDragSelectionId || null : null;
+  const pendingDragSelectionPhase =
+    typeof window !== "undefined" ? window._pendingDragSelectionPhase || null : null;
   const globalDragging =
     typeof window !== "undefined" ? Boolean(window._isDragging) : false;
   const groupDragging =
@@ -545,6 +547,16 @@ export default function SelectionBounds({
     canvasInteractionSettling ||
     (canvasInteractionActive && !runtimeResizeActive)
   );
+  const shouldSuppressBeforeFirstDragStart = Boolean(
+    pendingDragSelectionPhase === "predrag" &&
+    pendingDragSelectionId &&
+    !effectiveDragging &&
+    selectedElements.length === 1 &&
+    selectedElements[0] === pendingDragSelectionId
+  );
+  const isTransformerAttachBlocked = Boolean(
+    isTransformerAttachSuppressed || shouldSuppressBeforeFirstDragStart
+  );
   const shouldSuppressDuringDeferredDrag = Boolean(
     effectiveDragging &&
     pendingDragSelectionId &&
@@ -560,9 +572,13 @@ export default function SelectionBounds({
     const visibilitySnapshot = {
       selectionKey,
       pendingDragSelectionId,
+      pendingDragSelectionPhase,
+      shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
-      attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      attachSuppressed: Boolean(
+        isTransformerAttachSuppressed || shouldSuppressBeforeFirstDragStart
+      ),
       manualGroupSessionId,
       manualGroupPhase,
       isResizeGestureActive: Boolean(isResizeGestureActive),
@@ -593,11 +609,15 @@ export default function SelectionBounds({
       manualGroupSessionId,
       manualGroupPhase,
       pendingDragSelectionId,
+      pendingDragSelectionPhase,
+      shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
       canvasInteractionActive: Boolean(canvasInteractionActive),
       canvasInteractionSettling: Boolean(canvasInteractionSettling),
-      attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      attachSuppressed: Boolean(
+        isTransformerAttachSuppressed || shouldSuppressBeforeFirstDragStart
+      ),
       isResizeGestureActive: Boolean(isResizeGestureActive),
       isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
       isTransformingResize: Boolean(isTransformingResizeRef.current),
@@ -611,6 +631,8 @@ export default function SelectionBounds({
     manualGroupSessionId,
     manualGroupPhase,
     pendingDragSelectionId,
+    pendingDragSelectionPhase,
+    shouldSuppressBeforeFirstDragStart,
     shouldSuppressDuringDeferredDrag,
     shouldHideTransformerDuringDrag,
     canvasInteractionActive,
@@ -643,6 +665,8 @@ export default function SelectionBounds({
       resizeHintPhase,
       transformTick,
       pendingDragSelectionId,
+      pendingDragSelectionPhase,
+      suppressBeforeFirstDragStart: shouldSuppressBeforeFirstDragStart,
       suppressDuringDeferredDrag: shouldSuppressDuringDeferredDrag,
       primerElementoId: primerElemento?.id || null,
       primerElementoTipo: primerElemento?.tipo || null,
@@ -669,10 +693,12 @@ export default function SelectionBounds({
   }, [
     effectiveDragging,
     pendingDragSelectionId,
+    pendingDragSelectionPhase,
     primerElemento?.id,
     primerElemento?.tipo,
     selectedElements.length,
     selectionKey,
+    shouldSuppressBeforeFirstDragStart,
     shouldSuppressDuringDeferredDrag,
     canvasInteractionActive,
     canvasInteractionSettling,
@@ -2032,7 +2058,7 @@ export default function SelectionBounds({
       deberiaUsarTransformer,
       elementosTransformablesLen: elementosTransformables.length,
       transformTick,
-      attachSuppressed: isTransformerAttachSuppressed,
+      attachSuppressed: isTransformerAttachBlocked,
       nativeTransforming,
     });
 
@@ -2050,12 +2076,14 @@ export default function SelectionBounds({
       return;
     }
 
-    if (isTransformerAttachSuppressed) {
+    if (isTransformerAttachBlocked) {
       TRDBG("ATTACH effect exit: suppressed", {
         selKey: selectionKey,
         canvasInteractionActive,
         canvasInteractionSettling,
         effectiveDragging,
+        pendingDragSelectionPhase,
+        suppressBeforeFirstDragStart: shouldSuppressBeforeFirstDragStart,
       });
       return;
     }
@@ -2095,11 +2123,13 @@ export default function SelectionBounds({
     effectiveDragging,
     canvasInteractionActive,
     canvasInteractionSettling,
-    isTransformerAttachSuppressed,
+    isTransformerAttachBlocked,
+    pendingDragSelectionPhase,
+    shouldSuppressBeforeFirstDragStart,
   ]);
 
   useEffect(() => {
-    if (!deberiaUsarTransformer || isTransformerAttachSuppressed) return;
+    if (!deberiaUsarTransformer || isTransformerAttachBlocked) return;
     const tr = transformerRef.current;
     if (!tr) return;
 
@@ -2112,7 +2142,7 @@ export default function SelectionBounds({
   }, [
     selectionKey,
     deberiaUsarTransformer,
-    isTransformerAttachSuppressed,
+    isTransformerAttachBlocked,
     selectedGeomKey,
     transformTick,
   ]);
@@ -2141,7 +2171,13 @@ export default function SelectionBounds({
 
   // ðŸ”¥ Render
 
-  if (shouldSuppressDuringDeferredDrag || shouldHideTransformerDuringDrag) return null;
+  if (
+    shouldSuppressBeforeFirstDragStart ||
+    shouldSuppressDuringDeferredDrag ||
+    shouldHideTransformerDuringDrag
+  ) {
+    return null;
+  }
 
   if (selectedElements.length === 0) return null;
 

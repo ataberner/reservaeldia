@@ -67,6 +67,18 @@ function escapeAttr(str: string = ""): string {
     .replace(/>/g, "&gt;");
 }
 
+function normalizeImageBackgroundUrl(url: string = ""): string {
+  let imageUrl = String(url || "").trim();
+  if (
+    imageUrl &&
+    imageUrl.includes("firebasestorage.googleapis.com") &&
+    !imageUrl.includes("alt=media")
+  ) {
+    imageUrl = imageUrl + (imageUrl.includes("?") ? "&" : "?") + "alt=media";
+  }
+  return imageUrl;
+}
+
 function buildFondoStyle(seccion: any, backgroundModel = normalizeSectionBackgroundModel(seccion)): string {
   const fondoValue = backgroundModel.base.fondo || "transparent";
   const esImagenFondo =
@@ -75,45 +87,15 @@ function buildFondoStyle(seccion: any, backgroundModel = normalizeSectionBackgro
   let estilosFondo = "";
 
   if (esImagenFondo) {
-    let imageUrl = backgroundModel.base.fondoImagen;
-
-    if (
-      imageUrl &&
-      imageUrl.includes("firebasestorage.googleapis.com") &&
-      !imageUrl.includes("alt=media")
-    ) {
-      imageUrl = imageUrl + (imageUrl.includes("?") ? "&" : "?") + "alt=media";
-    }
-
-    let backgroundPosition = "center center";
-
-    if (
-      backgroundModel.base.fondoImagenOffsetX !== undefined ||
-      backgroundModel.base.fondoImagenOffsetY !== undefined
-    ) {
-      const offsetX = backgroundModel.base.fondoImagenOffsetX || 0;
-      const offsetY = backgroundModel.base.fondoImagenOffsetY || 0;
-
-      const offsetXPercent = offsetX !== 0 ? `calc(50% - ${-offsetX}px)` : "50%";
-      const offsetYPercent = offsetY !== 0 ? `calc(50% - ${-offsetY}px)` : "50%";
-
-      backgroundPosition = `${offsetXPercent} ${offsetYPercent}`;
-    }
-
-    estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: ${backgroundPosition}; background-repeat: no-repeat;`;
+    estilosFondo = `background: ${fondoValue};`;
   } else if (
     fondoValue.startsWith("http") ||
     fondoValue.startsWith("data:") ||
     fondoValue.startsWith("blob:")
   ) {
-    let imageUrl = fondoValue.replace("url(", "").replace(")", "");
-
-    if (
-      imageUrl.includes("firebasestorage.googleapis.com") &&
-      !imageUrl.includes("alt=media")
-    ) {
-      imageUrl = imageUrl + (imageUrl.includes("?") ? "&" : "?") + "alt=media";
-    }
+    const imageUrl = normalizeImageBackgroundUrl(
+      fondoValue.replace("url(", "").replace(")", "")
+    );
 
     estilosFondo = `background-image: url('${imageUrl}'); background-size: cover; background-position: center center; background-repeat: no-repeat;`;
   } else {
@@ -121,6 +103,30 @@ function buildFondoStyle(seccion: any, backgroundModel = normalizeSectionBackgro
   }
 
   return estilosFondo.replace(/\s+/g, " ").trim();
+}
+
+function renderSectionBackgroundLayer(
+  seccion: any,
+  backgroundModel = normalizeSectionBackgroundModel(seccion)
+): string {
+  const fondoStyle = buildFondoStyle(seccion, backgroundModel);
+  const hasBaseImage =
+    backgroundModel.base.fondoTipo === "imagen" && backgroundModel.base.fondoImagen;
+
+  if (!hasBaseImage) {
+    return `<div class="sec-bg" style="${fondoStyle}"></div>`;
+  }
+
+  const imageUrl = normalizeImageBackgroundUrl(backgroundModel.base.fondoImagen);
+  const offsetX = Number(backgroundModel.base.fondoImagenOffsetX) || 0;
+  const offsetY = Number(backgroundModel.base.fondoImagenOffsetY) || 0;
+  const imageScale = Math.max(1, Number(backgroundModel.base.fondoImagenScale) || 1);
+
+  return `
+<div class="sec-bg" data-bg-kind="image" data-bg-offset-x="${escapeAttr(String(offsetX))}" data-bg-offset-y="${escapeAttr(String(offsetY))}" data-bg-scale="${escapeAttr(String(imageScale))}" style="${fondoStyle}">
+  <img class="sec-bg-image" data-bg-parallax-item="true" src="${escapeAttr(imageUrl)}" alt="" decoding="async" loading="eager" draggable="false" />
+</div>
+`.trim();
 }
 
 function hasImageBackground(seccion: any): boolean {
@@ -647,6 +653,13 @@ export function generarHTMLDesdeSecciones(
   function setImageSource(targetElement, nextUrl){
     var safeUrl = toText(nextUrl);
     if (!safeUrl || !targetElement) return false;
+    var sectionBackgroundImage =
+      targetElement.querySelector && targetElement.querySelector(".sec-bg-image");
+    if (sectionBackgroundImage) {
+      if (toText(sectionBackgroundImage.getAttribute("src")) === safeUrl) return false;
+      sectionBackgroundImage.setAttribute("src", safeUrl);
+      return true;
+    }
     var imageNode = targetElement.tagName && targetElement.tagName.toLowerCase() === "img"
       ? targetElement
       : targetElement.querySelector("img");
@@ -851,7 +864,7 @@ export function generarHTMLDesdeSecciones(
         (o) => String(o?.anclaje || "").toLowerCase() !== "fullbleed"
       );
 
-      const fondoStyle = buildFondoStyle(seccion, backgroundModel);
+      const fondoLayerHtml = renderSectionBackgroundLayer(seccion, backgroundModel);
       const htmlDecoraciones = renderSectionDecorations(backgroundModel.decoraciones, modo);
 
       const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas);
@@ -861,7 +874,7 @@ export function generarHTMLDesdeSecciones(
       return `
 <section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}" style="--hbase:${hbase}">
   <div class="sec-zoom">
-    <div class="sec-bg" style="${fondoStyle}"></div>
+    ${fondoLayerHtml}
     ${htmlDecoraciones}
     <div class="sec-bleed">${htmlBleed}</div>
     <div class="sec-content">${htmlContenido}</div>
@@ -1290,6 +1303,24 @@ export function generarHTMLDesdeSecciones(
       inset: 0;
       z-index: 0;
       pointer-events: none;
+      overflow: hidden;
+    }
+
+    .sec-bg-image{
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: none;
+      max-height: none;
+      object-fit: cover;
+      transform-origin: top left;
+      transform: translate3d(var(--bg-image-left, 0px), calc(var(--bg-image-top, 0px) + var(--bg-parallax-y, 0px)), 0);
+      will-change: transform;
+      pointer-events: none;
+      user-select: none;
     }
 
     /* ✅ Fondo agrandable solo en pantalla (acompaña el zoom hero) */
@@ -1569,6 +1600,49 @@ export function generarHTMLDesdeSecciones(
         return changed;
       }
 
+      function layoutSectionBackgroundImages(scheduleCompute){
+        var nodes = Array.from(document.querySelectorAll(".sec-bg[data-bg-kind='image']"));
+        nodes.forEach(function(bgNode){
+          var imageNode = bgNode.querySelector(".sec-bg-image");
+          if (!imageNode) return;
+
+          var naturalWidth = Number(imageNode.naturalWidth || imageNode.width || 0);
+          var naturalHeight = Number(imageNode.naturalHeight || imageNode.height || 0);
+          if (!(naturalWidth > 0 && naturalHeight > 0)) {
+            if (!imageNode.__bgLayoutBound) {
+              imageNode.__bgLayoutBound = true;
+              imageNode.addEventListener("load", function(){
+                imageNode.__bgLayoutBound = false;
+                scheduleCompute();
+              }, { once: true });
+            }
+            return;
+          }
+
+          var containerWidth = Number(bgNode.clientWidth || bgNode.offsetWidth || 0);
+          var containerHeight = Number(bgNode.clientHeight || bgNode.offsetHeight || 0);
+          if (!(containerWidth > 0 && containerHeight > 0)) return;
+
+          var coverScale = Math.max(
+            containerWidth / naturalWidth,
+            containerHeight / naturalHeight
+          );
+          var imageScale = Math.max(1, Number(bgNode.getAttribute("data-bg-scale")) || 1);
+          var offsetX = Number(bgNode.getAttribute("data-bg-offset-x")) || 0;
+          var offsetY = Number(bgNode.getAttribute("data-bg-offset-y")) || 0;
+          var renderWidth = naturalWidth * coverScale * imageScale;
+          var renderHeight = naturalHeight * coverScale * imageScale;
+          var left = ((containerWidth - renderWidth) / 2) + offsetX;
+          var top = ((containerHeight - renderHeight) / 2) + offsetY;
+
+          imageNode.style.width = renderWidth + "px";
+          imageNode.style.height = renderHeight + "px";
+          imageNode.style.removeProperty("transform");
+          imageNode.style.setProperty("--bg-image-left", left.toFixed(2) + "px");
+          imageNode.style.setProperty("--bg-image-top", top.toFixed(2) + "px");
+        });
+      }
+
       function compute(){
         var docEl = document.documentElement;
         var vv = window.visualViewport;
@@ -1796,6 +1870,8 @@ export function generarHTMLDesdeSecciones(
           sec.style.setProperty("--pantalla-y-compact", String(pantallaYCompact));
           sec.style.setProperty("--pantalla-y-base", pantallaYBasePx + "px");
         });
+
+        layoutSectionBackgroundImages(scheduleCompute);
 
 
       }

@@ -47,6 +47,12 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+export function resolveSectionBaseImageScale(value, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return parsed;
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -343,12 +349,111 @@ export function normalizeSectionBackgroundModel(
       fondoImagen: normalizeText(safeSection.fondoImagen) || "",
       fondoImagenOffsetX: toFiniteNumber(safeSection.fondoImagenOffsetX, 0),
       fondoImagenOffsetY: toFiniteNumber(safeSection.fondoImagenOffsetY, 0),
+      fondoImagenScale: resolveSectionBaseImageScale(safeSection.fondoImagenScale, 1),
     },
     parallax: resolveBackgroundDecorationParallax(safeSection.decoracionesFondo),
     decoraciones: normalizeBackgroundDecorations(safeSection.decoracionesFondo, {
       sectionHeight: safeSectionHeight,
       canvasWidth: safeCanvasWidth,
     }),
+  };
+}
+
+export function resolveSectionBaseImageLayout(
+  section,
+  {
+    imageWidth,
+    imageHeight,
+    canvasWidth = CANVAS_WIDTH,
+    sectionHeight = DEFAULT_SECTION_HEIGHT,
+  } = {}
+) {
+  const safeSectionHeight = resolveSectionHeight(
+    asObject(section).altura ?? sectionHeight
+  );
+  const safeCanvasWidth = resolveCanvasWidth(canvasWidth);
+  const safeImageWidth = Math.max(1, toPositiveNumber(imageWidth, 1) || 1);
+  const safeImageHeight = Math.max(1, toPositiveNumber(imageHeight, 1) || 1);
+  const backgroundModel = normalizeSectionBackgroundModel(section, {
+    canvasWidth: safeCanvasWidth,
+    sectionHeight: safeSectionHeight,
+  });
+  const coverScale = Math.max(
+    safeCanvasWidth / safeImageWidth,
+    safeSectionHeight / safeImageHeight
+  );
+  const imageScale = resolveSectionBaseImageScale(
+    backgroundModel.base.fondoImagenScale,
+    1
+  );
+  const renderScale = coverScale * imageScale;
+  const renderedWidth = safeImageWidth * renderScale;
+  const renderedHeight = safeImageHeight * renderScale;
+  const centeredOffsetX = (safeCanvasWidth - renderedWidth) / 2;
+  const centeredOffsetY = (safeSectionHeight - renderedHeight) / 2;
+  const offsetX = toFiniteNumber(backgroundModel.base.fondoImagenOffsetX, 0);
+  const offsetY = toFiniteNumber(backgroundModel.base.fondoImagenOffsetY, 0);
+
+  return {
+    coverScale,
+    imageScale,
+    renderScale,
+    renderedWidth,
+    renderedHeight,
+    centeredOffsetX,
+    centeredOffsetY,
+    offsetX,
+    offsetY,
+    x: centeredOffsetX + offsetX,
+    y: centeredOffsetY + offsetY,
+  };
+}
+
+export function buildSectionBaseImagePatchFromRenderBox(
+  section,
+  {
+    imageWidth,
+    imageHeight,
+    x = 0,
+    y = 0,
+    width,
+    height,
+    canvasWidth = CANVAS_WIDTH,
+    sectionHeight = DEFAULT_SECTION_HEIGHT,
+  } = {}
+) {
+  const safeSectionHeight = resolveSectionHeight(
+    asObject(section).altura ?? sectionHeight
+  );
+  const safeCanvasWidth = resolveCanvasWidth(canvasWidth);
+  const safeImageWidth = Math.max(1, toPositiveNumber(imageWidth, 1) || 1);
+  const safeImageHeight = Math.max(1, toPositiveNumber(imageHeight, 1) || 1);
+  const coverScale = Math.max(
+    safeCanvasWidth / safeImageWidth,
+    safeSectionHeight / safeImageHeight
+  );
+  const coverWidth = safeImageWidth * coverScale;
+  const coverHeight = safeImageHeight * coverScale;
+  const widthScale = toPositiveNumber(width, coverWidth)
+    ? Number(width) / coverWidth
+    : 1;
+  const heightScale = toPositiveNumber(height, coverHeight)
+    ? Number(height) / coverHeight
+    : 1;
+  const nextScale = Math.max(
+    1,
+    Number.isFinite(widthScale) ? widthScale : 1,
+    Number.isFinite(heightScale) ? heightScale : 1
+  );
+  const renderedWidth = coverWidth * nextScale;
+  const renderedHeight = coverHeight * nextScale;
+  const centeredOffsetX = (safeCanvasWidth - renderedWidth) / 2;
+  const centeredOffsetY = (safeSectionHeight - renderedHeight) / 2;
+
+  return {
+    offsetX: toFiniteNumber(x, 0) - centeredOffsetX,
+    offsetY: toFiniteNumber(y, 0) - centeredOffsetY,
+    scale: nextScale,
   };
 }
 
@@ -795,6 +900,7 @@ export function applySectionBaseImage(sections, sectionId, imageUrl) {
       fondoImagen: src,
       fondoImagenOffsetX: 0,
       fondoImagenOffsetY: 0,
+      fondoImagenScale: 1,
       fondoImagenDraggable: true,
     };
   });
@@ -808,6 +914,7 @@ export function clearSectionBaseImage(section) {
   delete next.fondoImagen;
   delete next.fondoImagenOffsetX;
   delete next.fondoImagenOffsetY;
+  delete next.fondoImagenScale;
   delete next.fondoImagenDraggable;
   return next;
 }

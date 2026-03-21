@@ -100,22 +100,22 @@ export default function useStageGestures({
       if (!stage) return;
 
       const rootHit = findRootHit(e.target, elementRefs);
+      const esTransformer =
+        e.target.getClassName?.() === "Transformer" ||
+        e.target.parent?.getClassName?.() === "Transformer" ||
+        e.target.attrs?.name?.includes("_anchor");
       if (rootHit) return;
 
       const clickedOnStage = e.target === stage;
       const tappedSectionId = resolveSectionIdFromTarget(e.target);
 
-      if (!clickedOnStage && e.target.getClassName?.() !== "Image") {
+      if (!esTransformer && e.target.getClassName?.() !== "Image") {
         window.dispatchEvent(new Event("salir-modo-mover-fondo"));
       }
 
       dragStartPos.current = stage.getPointerPosition();
       hasDragged.current = false;
 
-      const esTransformer =
-        e.target.getClassName?.() === "Transformer" ||
-        e.target.parent?.getClassName?.() === "Transformer" ||
-        e.target.attrs?.name?.includes("_anchor");
       if (esTransformer) return;
 
       const esStage = clickedOnStage;
@@ -188,7 +188,7 @@ export default function useStageGestures({
 
       if (rootHit || esTransformer) return;
 
-      if (!clickedOnStage && e.target.getClassName?.() !== "Image") {
+      if (!esTransformer && e.target.getClassName?.() !== "Image") {
         window.dispatchEvent(new Event("salir-modo-mover-fondo"));
       }
     },

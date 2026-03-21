@@ -41,6 +41,7 @@ type SectionBackgroundModel = {
     fondoImagen: string;
     fondoImagenOffsetX: number;
     fondoImagenOffsetY: number;
+    fondoImagenScale: number;
   };
   parallax: BackgroundDecorationParallaxMode;
   decoraciones: BackgroundDecorationItem[];
@@ -75,6 +76,12 @@ export function sanitizeBackgroundDecorationParallax(
 function toFiniteNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function resolveSectionBaseImageScale(value: unknown, fallback = 1): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return parsed;
 }
 
 function toPositiveNumber(value: unknown, fallback: number | null): number | null {
@@ -321,6 +328,7 @@ export function normalizeSectionBackgroundModel(section: unknown): SectionBackgr
       fondoImagen: normalizeText(safeSection.fondoImagen),
       fondoImagenOffsetX: toFiniteNumber(safeSection.fondoImagenOffsetX, 0),
       fondoImagenOffsetY: toFiniteNumber(safeSection.fondoImagenOffsetY, 0),
+      fondoImagenScale: resolveSectionBaseImageScale(safeSection.fondoImagenScale, 1),
     },
     parallax: resolveBackgroundDecorationParallax(safeSection.decoracionesFondo),
     decoraciones: normalizeBackgroundDecorations(safeSection.decoracionesFondo, {

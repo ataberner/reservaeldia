@@ -299,6 +299,11 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
                   )
                     ? Number(plantillaSeleccionada.fondoImagenOffsetY)
                     : 0,
+                  fondoImagenScale: Number.isFinite(
+                    Number(plantillaSeleccionada.fondoImagenScale)
+                  )
+                    ? Math.max(1, Number(plantillaSeleccionada.fondoImagenScale))
+                    : 1,
                   tipo: plantillaSeleccionada.tipo || "custom",
                   altoModo: plantillaSeleccionada.altoModo || "fijo",
                   alturaFijoBackup: Number.isFinite(

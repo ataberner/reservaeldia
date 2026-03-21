@@ -486,6 +486,12 @@ export function generarMotionEffectsRuntimeHTML(): string {
     var bgNode = firstSection.querySelector(".sec-bg");
     if (!bgNode) return "";
 
+    var bgImageNode = bgNode.querySelector(".sec-bg-image");
+    if (bgImageNode) {
+      var imageSrc = String(bgImageNode.getAttribute("src") || "").trim();
+      if (imageSrc) return imageSrc;
+    }
+
     var inlineUrl = extractFirstUrl(bgNode.getAttribute("style"));
     if (inlineUrl) return inlineUrl;
 
@@ -555,16 +561,33 @@ export function generarMotionEffectsRuntimeHTML(): string {
         var mode = normalizeDecorParallax(section.getAttribute("data-decor-parallax"));
         if (mode === "none") return null;
 
-        var items = Array.from(section.querySelectorAll(".sec-decor-item[data-decor-depth]"))
+        var items = [];
+        var baseImageNode = section.querySelector(".sec-bg-image[data-bg-parallax-item='true']");
+        if (baseImageNode) {
+          items.push({
+            node: baseImageNode,
+            depth: 1,
+            kind: "base",
+            apply: function(node, translateY){
+              node.style.setProperty("--bg-parallax-y", translateY.toFixed(2) + "px");
+            }
+          });
+        }
+
+        items = items.concat(Array.from(section.querySelectorAll(".sec-decor-item[data-decor-depth]"))
           .map(function(item){
             return {
               node: item,
-              depth: clampNumber(item.getAttribute("data-decor-depth"), 0.1, 1.1)
+              depth: clampNumber(item.getAttribute("data-decor-depth"), 0.1, 1.1),
+              kind: "decor",
+              apply: function(node, translateY){
+                node.style.transform = "translate3d(0, " + translateY.toFixed(2) + "px, 0)";
+              }
             };
           })
           .filter(function(entry){
             return !!entry.node;
-          });
+          }));
 
         if (!items.length) return null;
 
@@ -603,10 +626,13 @@ export function generarMotionEffectsRuntimeHTML(): string {
       entry.items.forEach(function(itemEntry, itemIndex){
         if (!itemEntry || !itemEntry.node) return;
         var translateY = progress * distance * itemEntry.depth;
-        itemEntry.node.style.transform = "translate3d(0, " + translateY.toFixed(2) + "px, 0)";
+        if (typeof itemEntry.apply === "function") {
+          itemEntry.apply(itemEntry.node, translateY);
+        }
 
         if (debugEnabled && itemIndex < 3) {
           debugItems.push({
+            kind: itemEntry.kind || "decor",
             depth: Number(itemEntry.depth.toFixed(2)),
             translateY: Number(translateY.toFixed(2))
           });

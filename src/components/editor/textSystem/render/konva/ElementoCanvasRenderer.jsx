@@ -170,6 +170,45 @@ function getSelectAndDragIntentThreshold(pointerType) {
   return 1;
 }
 
+function getStageContentNode(node) {
+  const stage = node?.getStage?.() || null;
+  return stage?.content || stage?.container?.() || null;
+}
+
+function syncStagePointerFromNativeEvent(node, nativeEvent) {
+  const stage = node?.getStage?.() || null;
+  if (!stage || typeof stage.setPointersPositions !== "function" || !nativeEvent) {
+    return false;
+  }
+
+  try {
+    stage.setPointersPositions(nativeEvent);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getStagePointerPoint(node) {
+  const stage = node?.getStage?.() || null;
+  if (!stage || typeof stage.getPointerPosition !== "function") {
+    return null;
+  }
+
+  try {
+    const point = stage.getPointerPosition();
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) {
+      return null;
+    }
+    return {
+      x: point.x,
+      y: point.y,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function detachSelectionTransformerForNode(node, payload = null) {
   const stage = node?.getStage?.() || null;
   if (!stage || typeof stage.findOne !== "function") return false;
@@ -357,6 +396,8 @@ export default function ElementoCanvas({
   inlineOverlayEngine = "phase_atomic_v2",
   onInlineEditPointer = null,
   dragLayerRef = null,
+  onPredragVisualSelectionStart = null,
+  onPredragVisualSelectionCancel = null,
 }) {
   const [img] = useSharedImage(obj.src || null, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
@@ -402,11 +443,22 @@ export default function ElementoCanvas({
     elementId: null,
     expiresAt: 0,
   });
+  const selectedTextPrimaryReleaseRef = useRef({
+    armed: false,
+    suppressNativeClickUntilMs: 0,
+  });
   const selectAndDragFastStartRef = useRef({
     active: false,
     pressAtMs: 0,
     pointerType: null,
     thresholdPx: null,
+    pointSpace: null,
+    pressPoint: null,
+  });
+  const selectAndDragTouchActionRef = useRef({
+    active: false,
+    content: null,
+    previousTouchAction: "",
   });
   const renderCountRef = useRef(0);
   const renderSnapshotRef = useRef(null);
@@ -1182,12 +1234,121 @@ export default function ElementoCanvas({
     return active;
   }, [obj.id]);
 
+  const shouldArmSelectedTextPrimaryOnRelease = useCallback((nativeEvent = null) => {
+    const runtimeSelectedIds =
+      typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+        ? window._elementosSeleccionados.filter(Boolean)
+        : [];
+    const effectiveIsSelected =
+      isSelected || runtimeSelectedIds.includes(obj.id);
+    const effectiveSelectionCount =
+      runtimeSelectedIds.length > 0 ? runtimeSelectedIds.length : selectionCount;
+    const hasDisallowedModifiers =
+      Boolean(nativeEvent?.shiftKey) ||
+      Boolean(nativeEvent?.ctrlKey) ||
+      Boolean(nativeEvent?.metaKey) ||
+      Boolean(nativeEvent?.altKey);
+
+    return (
+      obj.tipo === "texto" &&
+      effectiveIsSelected &&
+      effectiveSelectionCount === 1 &&
+      !editingMode &&
+      !inlineEditPointerActive &&
+      !hasDisallowedModifiers
+    );
+  }, [
+    editingMode,
+    inlineEditPointerActive,
+    isSelected,
+    obj.id,
+    obj.tipo,
+    selectionCount,
+  ]);
+
+  const armSelectedTextPrimaryOnRelease = useCallback((event, source = "pointerdown") => {
+    const nativeEvent = event?.evt || null;
+    const armed = shouldArmSelectedTextPrimaryOnRelease(nativeEvent);
+    selectedTextPrimaryReleaseRef.current = {
+      armed,
+      suppressNativeClickUntilMs: 0,
+    };
+    logInlineIntentEmitter("selected-text-release-arm", {
+      id: obj.id,
+      tipo: obj.tipo,
+      source,
+      armed,
+      isSelectedProp: Boolean(isSelected),
+      selectionCount,
+      runtimeSelectedIds:
+        typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+          ? window._elementosSeleccionados.filter(Boolean)
+          : [],
+    });
+    return armed;
+  }, [
+    isSelected,
+    obj.id,
+    obj.tipo,
+    selectionCount,
+    shouldArmSelectedTextPrimaryOnRelease,
+  ]);
+
   const maybeSelectElementOnPress = useCallback((event) => {
-    if (!onSelect) return false;
-    if (isSelected) return false;
-    if (selectionCount > 1) return false;
-    if (inlineEditPointerActive) return false;
-    if (shouldSuppressSelectionGesture()) return false;
+    if (!onSelect) {
+      logInlineIntentEmitter("press-selection-skip", {
+        id: obj.id,
+        tipo: obj.tipo,
+        reason: "missing-onSelect",
+      });
+      return false;
+    }
+    const runtimeSelectedIds =
+      typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+        ? window._elementosSeleccionados.filter(Boolean)
+        : [];
+    const effectiveIsSelected =
+      isSelected || runtimeSelectedIds.includes(obj.id);
+    const effectiveSelectionCount =
+      runtimeSelectedIds.length > 0 ? runtimeSelectedIds.length : selectionCount;
+
+    if (effectiveIsSelected) {
+      logInlineIntentEmitter("press-selection-skip", {
+        id: obj.id,
+        tipo: obj.tipo,
+        reason: "already-selected",
+        isSelectedProp: Boolean(isSelected),
+        runtimeSelectedIds,
+        effectiveSelectionCount,
+      });
+      return false;
+    }
+    if (effectiveSelectionCount > 1) {
+      logInlineIntentEmitter("press-selection-skip", {
+        id: obj.id,
+        tipo: obj.tipo,
+        reason: "multiselection-active",
+        runtimeSelectedIds,
+        effectiveSelectionCount,
+      });
+      return false;
+    }
+    if (inlineEditPointerActive) {
+      logInlineIntentEmitter("press-selection-skip", {
+        id: obj.id,
+        tipo: obj.tipo,
+        reason: "inline-edit-pointer-active",
+      });
+      return false;
+    }
+    if (shouldSuppressSelectionGesture()) {
+      logInlineIntentEmitter("press-selection-skip", {
+        id: obj.id,
+        tipo: obj.tipo,
+        reason: "selection-gesture-suppressed",
+      });
+      return false;
+    }
 
     const nativeEvent = event?.evt || null;
     if (nativeEvent?.button != null && Number(nativeEvent.button) !== 0) {
@@ -1210,6 +1371,15 @@ export default function ElementoCanvas({
       gesture: "primary",
       selectionOrigin: "press",
       allowSameGestureDrag,
+    });
+    logInlineIntentEmitter("press-selection-result", {
+      id: obj.id,
+      tipo: obj.tipo,
+      decision: selectionIntent?.decision || null,
+      didSelectOnPress: Boolean(selectionIntent),
+      allowSameGestureDrag,
+      runtimeSelectedIds,
+      effectiveSelectionCount,
     });
     const shouldAllowSameGestureDrag =
       selectionIntent?.decision === "select_and_drag";
@@ -1292,15 +1462,26 @@ export default function ElementoCanvas({
     };
   }, []);
 
+  const restoreSelectAndDragPredragTouchAction = useCallback((restore = true) => {
+    const current = selectAndDragTouchActionRef.current;
+    if (current?.active && current.content && restore) {
+      try {
+        current.content.style.touchAction = current.previousTouchAction || "pan-y";
+      } catch {}
+    }
+    selectAndDragTouchActionRef.current = {
+      active: false,
+      content: null,
+      previousTouchAction: "",
+    };
+  }, []);
+
   const cancelPendingNativePredrag = useCallback((
     nativeEvent = null,
     reason = "pointerup",
     explicitNode = null
   ) => {
     detachPredragReleaseListeners();
-
-    const node = explicitNode || elementNodeRef.current;
-    if (!node) return;
 
     const dragLifecycle = dragLifecycleRef.current || {};
     if (String(dragLifecycle.activeMode || "idle").startsWith("group")) {
@@ -1310,6 +1491,11 @@ export default function ElementoCanvas({
     if (hasDragged.current) {
       return;
     }
+
+    onPredragVisualSelectionCancel?.(obj.id);
+
+    const node = explicitNode || elementNodeRef.current;
+    if (!node) return;
 
     try {
       node.stopDrag?.();
@@ -1357,20 +1543,25 @@ export default function ElementoCanvas({
       } catch {}
     }
 
+    restoreSelectAndDragPredragTouchAction(true);
     selectAndDragFastStartRef.current = {
       active: false,
       pressAtMs: 0,
       pointerType: null,
       thresholdPx: null,
+      pointSpace: null,
+      pressPoint: null,
     };
 
     queueTransformerRestoreAfterPredragCancel();
   }, [
     detachPredragReleaseListeners,
     hasDragged,
+    onPredragVisualSelectionCancel,
     obj.id,
     obj.tipo,
     queueTransformerRestoreAfterPredragCancel,
+    restoreSelectAndDragPredragTouchAction,
     syncInteractionDraggableState,
   ]);
 
@@ -1713,7 +1904,11 @@ export default function ElementoCanvas({
     if (!node) return;
 
     const pointerType = resolvePointerType(event?.evt);
-    const pressPoint = getClientPoint(event?.evt);
+    const pressPointerSynced = syncStagePointerFromNativeEvent(node, event?.evt);
+    const pressStagePoint = pressPointerSynced ? getStagePointerPoint(node) : null;
+    const pressClientPoint = getClientPoint(event?.evt);
+    const pressPoint = pressStagePoint || pressClientPoint;
+    const pointSpace = pressStagePoint ? "stage" : (pressClientPoint ? "client" : null);
     const pressAtMs =
       typeof performance !== "undefined" && typeof performance.now === "function"
         ? performance.now()
@@ -1727,10 +1922,93 @@ export default function ElementoCanvas({
       pressAtMs,
       pointerType,
       thresholdPx: Number.isFinite(fastStartThresholdPx) ? fastStartThresholdPx : null,
+      pointSpace,
+      pressPoint,
     };
+    const pointerLooksTouchLike = pointerType === "touch" || pointerType === "pen";
+    if (fastStartSelectAndDrag && pointerLooksTouchLike) {
+      const content = getStageContentNode(node);
+      if (content) {
+        selectAndDragTouchActionRef.current = {
+          active: true,
+          content,
+          previousTouchAction: content.style.touchAction || "",
+        };
+        try {
+          content.style.touchAction = "none";
+        } catch {}
+      }
+      if (event?.evt?.cancelable) {
+        try {
+          event.evt.preventDefault();
+        } catch {}
+      }
+    } else {
+      restoreSelectAndDragPredragTouchAction(false);
+    }
+
+    const selectedPredragVisualThresholdPx =
+      !fastStartSelectAndDrag &&
+      isSelected &&
+      selectionCount === 1 &&
+      pressPoint
+        ? getSelectAndDragIntentThreshold(pointerType)
+        : null;
+    let selectedPredragVisualPrimed = false;
 
     const cancel = (nativeEvent = null, reason = "pointerup") => {
       cancelPendingNativePredrag(nativeEvent, reason, node);
+    };
+
+    const maybePrimeSelectedPredragVisual = (nativeEvent = null) => {
+      if (
+        selectedPredragVisualPrimed ||
+        !pressPoint ||
+        !Number.isFinite(selectedPredragVisualThresholdPx)
+      ) {
+        return false;
+      }
+      if (hasDragged.current) return false;
+
+      const stagePointerSynced = syncStagePointerFromNativeEvent(node, nativeEvent);
+      const currentStagePoint = stagePointerSynced ? getStagePointerPoint(node) : null;
+      const currentClientPoint = getClientPoint(nativeEvent);
+      const currentPoint =
+        pointSpace === "stage" && currentStagePoint
+          ? currentStagePoint
+          : currentClientPoint;
+      if (!currentPoint) return false;
+
+      const distancePx = Math.hypot(
+        currentPoint.x - pressPoint.x,
+        currentPoint.y - pressPoint.y
+      );
+      if (distancePx < selectedPredragVisualThresholdPx) return false;
+
+      selectedPredragVisualPrimed = true;
+      const selectionSnapshot =
+        typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+          ? window._elementosSeleccionados.filter(Boolean)
+          : [obj.id];
+
+      onPredragVisualSelectionStart?.(obj.id, selectionSnapshot);
+      preDetachedSelectionTransformerRef.current = detachSelectionTransformerForNode(node, {
+        elementId: obj.id,
+        tipo: obj.tipo,
+      });
+
+      logSelectedDragDebug("element:selected-predrag-visual-start", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+        distancePx: Math.round(distancePx * 100) / 100,
+        thresholdPx: selectedPredragVisualThresholdPx,
+        pointSpace: pointSpace || null,
+        pressPoint,
+        currentPoint,
+        stagePointerSynced,
+        detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
+      });
+      return true;
     };
 
     const maybeFastStartDrag = (nativeEvent = null) => {
@@ -1740,35 +2018,84 @@ export default function ElementoCanvas({
       }
       if (hasDragged.current) return false;
 
-      const currentPoint = getClientPoint(nativeEvent);
+      const pointerLooksTouchLike =
+        fastStartState.pointerType === "touch" ||
+        fastStartState.pointerType === "pen" ||
+        Boolean(nativeEvent?.touches || nativeEvent?.changedTouches);
+      if (pointerLooksTouchLike && nativeEvent?.cancelable) {
+        try {
+          nativeEvent.preventDefault();
+        } catch {}
+      }
+
+      const stagePointerSynced = syncStagePointerFromNativeEvent(node, nativeEvent);
+      const currentStagePoint = stagePointerSynced ? getStagePointerPoint(node) : null;
+      const currentClientPoint = getClientPoint(nativeEvent);
+      const currentPoint =
+        fastStartState.pointSpace === "stage" && currentStagePoint
+          ? currentStagePoint
+          : currentClientPoint;
       if (!currentPoint) return false;
 
       const distancePx = Math.hypot(
-        currentPoint.x - pressPoint.x,
-        currentPoint.y - pressPoint.y
+        currentPoint.x - fastStartState.pressPoint.x,
+        currentPoint.y - fastStartState.pressPoint.y
       );
       if (distancePx < fastStartThresholdPx) return false;
+
+      const selectionSnapshot =
+        typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+          ? window._elementosSeleccionados.filter(Boolean)
+          : [obj.id];
+
+      onPredragVisualSelectionStart?.(obj.id, selectionSnapshot);
+      if (!preDetachedSelectionTransformerRef.current) {
+        preDetachedSelectionTransformerRef.current = detachSelectionTransformerForNode(node, {
+          elementId: obj.id,
+          tipo: obj.tipo,
+        });
+      }
+
+      logSelectedDragDebug("element:select-and-drag-predrag-visual-start", {
+        elementId: obj.id,
+        tipo: obj.tipo,
+        distancePx: Math.round(distancePx * 100) / 100,
+        thresholdPx: fastStartThresholdPx,
+        pointSpace: fastStartState.pointSpace || null,
+        pressPoint: fastStartState.pressPoint || null,
+        currentPoint,
+        stagePointerSynced,
+        detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
+        mirroredSelection: selectionSnapshot,
+      });
 
       let startedDrag = false;
       try {
         node.draggable?.(true);
       } catch {}
       try {
-        node.startDrag?.();
+        node.startDrag?.({ evt: nativeEvent });
         startedDrag =
           typeof node.isDragging === "function" ? Boolean(node.isDragging()) : true;
       } catch {
         startedDrag = false;
       }
 
-      if (!startedDrag) return false;
+      if (!startedDrag) {
+        onPredragVisualSelectionCancel?.(obj.id);
+        queueTransformerRestoreAfterPredragCancel();
+        return false;
+      }
 
       hasDragged.current = true;
+      restoreSelectAndDragPredragTouchAction(false);
       selectAndDragFastStartRef.current = {
         active: false,
         pressAtMs: fastStartState.pressAtMs,
         pointerType: fastStartState.pointerType,
         thresholdPx: fastStartState.thresholdPx,
+        pointSpace: fastStartState.pointSpace,
+        pressPoint: fastStartState.pressPoint,
       };
       logSelectedDragDebug("element:select-and-drag-faststart", {
         elementId: obj.id,
@@ -1776,6 +2103,11 @@ export default function ElementoCanvas({
         pointerType: fastStartState.pointerType || pointerType,
         thresholdPx: fastStartState.thresholdPx,
         distancePx: Math.round(distancePx * 100) / 100,
+        pointSpace: fastStartState.pointSpace || null,
+        pressPoint: fastStartState.pressPoint || null,
+        currentPoint,
+        stagePointerSynced,
+        touchActionPredragActive: pointerLooksTouchLike,
         pressToFastStartMs: Math.round(
           (
             (
@@ -1796,6 +2128,7 @@ export default function ElementoCanvas({
           detachPredragReleaseListeners();
           return;
         }
+        maybePrimeSelectedPredragVisual(nativeEvent);
         if (maybeFastStartDrag(nativeEvent)) {
           return;
         }
@@ -1827,6 +2160,7 @@ export default function ElementoCanvas({
         detachPredragReleaseListeners();
         return;
       }
+      maybePrimeSelectedPredragVisual(nativeEvent);
       if (maybeFastStartDrag(nativeEvent)) {
         return;
       }
@@ -1840,6 +2174,7 @@ export default function ElementoCanvas({
         detachPredragReleaseListeners();
         return;
       }
+      maybePrimeSelectedPredragVisual(nativeEvent);
       if (maybeFastStartDrag(nativeEvent)) {
         return;
       }
@@ -1873,8 +2208,12 @@ export default function ElementoCanvas({
     hasDragged,
     hasPointerEvents,
     isSelected,
+    onPredragVisualSelectionCancel,
+    onPredragVisualSelectionStart,
     obj.id,
     obj.tipo,
+    queueTransformerRestoreAfterPredragCancel,
+    restoreSelectAndDragPredragTouchAction,
     selectionCount,
     shouldUseManualGroupDrag,
   ]);
@@ -1920,8 +2259,9 @@ export default function ElementoCanvas({
     }
     cancelManualGroupFinishRetry();
     detachPredragReleaseListeners();
+    restoreSelectAndDragPredragTouchAction(false);
     runtime.detachWindowListeners?.();
-  }, [cancelManualGroupFinishRetry, detachPredragReleaseListeners, obj.id]);
+  }, [cancelManualGroupFinishRetry, detachPredragReleaseListeners, obj.id, restoreSelectAndDragPredragTouchAction]);
 
   const prepareSelectedElementForPossibleDrag = useCallback((e, options = {}) => {
     const assumeSingleSelection = options?.assumeSingleSelection === true;
@@ -1934,10 +2274,8 @@ export default function ElementoCanvas({
     if (!node) return;
 
     cancelPendingTransformerRestore();
-    preDetachedSelectionTransformerRef.current = detachSelectionTransformerForNode(node, {
-      elementId: obj.id,
-      tipo: obj.tipo,
-    });
+    // Keep the visible selection frame on press; detach only when drag truly starts.
+    preDetachedSelectionTransformerRef.current = false;
     armPredragReleaseListeners(e, {
       assumeSingleSelection,
       fastStartSelectAndDrag,
@@ -1946,8 +2284,6 @@ export default function ElementoCanvas({
     armPredragReleaseListeners,
     cancelPendingTransformerRestore,
     isSelected,
-    obj.id,
-    obj.tipo,
     selectionCount,
   ]);
 
@@ -1959,6 +2295,28 @@ export default function ElementoCanvas({
 
     e && (e.cancelBubble = true);
     e?.evt && (e.evt.cancelBubble = true);
+
+    if (gesture === "primary") {
+      const nowMs =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const suppressNativeClickUntilMs = Number(
+        selectedTextPrimaryReleaseRef.current?.suppressNativeClickUntilMs || 0
+      );
+      if (suppressNativeClickUntilMs > nowMs) {
+        selectedTextPrimaryReleaseRef.current = {
+          armed: false,
+          suppressNativeClickUntilMs: 0,
+        };
+        logInlineIntentEmitter("skip-due-manual-release-inline", {
+          id: obj.id,
+          tipo: obj.tipo,
+          gesture,
+        });
+        return;
+      }
+    }
 
     if (gesture === "primary" && consumePrimarySelectionClickGuard()) {
       logInlineIntentEmitter("skip-due-press-selection-guard", {
@@ -2012,6 +2370,37 @@ export default function ElementoCanvas({
     shouldSuppressSelectionGesture,
   ]);
 
+  const maybeEmitSelectedTextPrimaryOnRelease = useCallback((event) => {
+    const current = selectedTextPrimaryReleaseRef.current || {};
+    if (!current.armed || hasDragged.current) {
+      selectedTextPrimaryReleaseRef.current = {
+        armed: false,
+        suppressNativeClickUntilMs: Number(current.suppressNativeClickUntilMs || 0),
+      };
+      return false;
+    }
+
+    emitSelectionGesture("primary", event);
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    selectedTextPrimaryReleaseRef.current = {
+      armed: false,
+      suppressNativeClickUntilMs: nowMs + 250,
+    };
+    logInlineIntentEmitter("emit-primary-from-release", {
+      id: obj.id,
+      tipo: obj.tipo,
+    });
+    return true;
+  }, [
+    emitSelectionGesture,
+    hasDragged,
+    obj.id,
+    obj.tipo,
+  ]);
+
   const handleClick = useCallback(
     (e) => {
       emitSelectionGesture("primary", e);
@@ -2060,6 +2449,7 @@ export default function ElementoCanvas({
          return;
        }
 
+      armSelectedTextPrimaryOnRelease(e, "mousedown");
       const pressSelectionResult = maybeSelectElementOnPress(e);
 
       e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
@@ -2089,6 +2479,7 @@ export default function ElementoCanvas({
         return;
       }
 
+      armSelectedTextPrimaryOnRelease(e, "touchstart");
       const pressSelectionResult = maybeSelectElementOnPress(e);
 
       e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
@@ -2118,6 +2509,7 @@ export default function ElementoCanvas({
         return;
       }
 
+      armSelectedTextPrimaryOnRelease(e, "pointerdown");
       const pressSelectionResult = maybeSelectElementOnPress(e);
 
       e.currentTarget?.draggable(resolveInteractionDraggableEnabled());
@@ -2141,6 +2533,7 @@ export default function ElementoCanvas({
       if (!hasDragged.current) {
         logElementGestureDebug("element:mouseup", e);
         cancelPendingNativePredrag(e?.evt || null, "mouseup", e.currentTarget);
+        maybeEmitSelectedTextPrimaryOnRelease(e);
       }
     } : undefined,
 
@@ -2157,6 +2550,7 @@ export default function ElementoCanvas({
       if (!hasDragged.current) {
         logElementGestureDebug("element:touchend", e);
         cancelPendingNativePredrag(e?.evt || null, "touchend", e.currentTarget);
+        maybeEmitSelectedTextPrimaryOnRelease(e);
       }
     } : undefined,
 
@@ -2173,6 +2567,7 @@ export default function ElementoCanvas({
       if (!hasDragged.current) {
         logElementGestureDebug("element:pointerup", e);
         cancelPendingNativePredrag(e?.evt || null, "pointerup", e.currentTarget);
+        maybeEmitSelectedTextPrimaryOnRelease(e);
       }
     },
 
@@ -2276,6 +2671,16 @@ export default function ElementoCanvas({
         suppressSelectionUntilMs: 0,
       };
       cancelPendingTransformerRestore();
+      restoreSelectAndDragPredragTouchAction(false);
+      logInlineIntentEmitter("selected-text-release-clear-on-dragstart", {
+        id: obj.id,
+        tipo: obj.tipo,
+        wasArmed: Boolean(selectedTextPrimaryReleaseRef.current?.armed),
+      });
+      selectedTextPrimaryReleaseRef.current = {
+        armed: false,
+        suppressNativeClickUntilMs: 0,
+      };
       logElementGestureDebug("element:dragstart", e);
       const fastStartState = selectAndDragFastStartRef.current || {};
       const pressToDragStartMs =
@@ -2388,6 +2793,8 @@ export default function ElementoCanvas({
         pressAtMs: 0,
         pointerType: null,
         thresholdPx: null,
+        pointSpace: null,
+        pressPoint: null,
       };
       finishDragStartPerf?.({
         branch: startedGroupDrag ? "group" : "individual",
@@ -2721,6 +3128,8 @@ export default function ElementoCanvas({
     handleDoubleClick,
     isActiveGroupFollowerInteractionSuppressed,
     logElementGestureDebug,
+    armSelectedTextPrimaryOnRelease,
+    maybeEmitSelectedTextPrimaryOnRelease,
     maybeSelectElementOnPress,
     resolveInteractionDraggableEnabled,
     resolveInteractionListeningEnabled,

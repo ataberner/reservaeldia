@@ -199,6 +199,7 @@ export default function SelectionBoundsIndicator({
   isMobile = false,
   debugLog = () => {},
   bringToFront = false,
+  onVisualReadyChange = null,
 }) {
   const groupRef = useRef(null);
   const rectRef = useRef(null);
@@ -318,6 +319,16 @@ export default function SelectionBoundsIndicator({
     isMobile,
     debugLog,
   });
+  const hasBounds = Boolean(bounds);
+
+  useEffect(() => {
+    if (typeof onVisualReadyChange !== "function") return;
+    onVisualReadyChange(hasBounds);
+
+    return () => {
+      onVisualReadyChange(false);
+    };
+  }, [hasBounds, onVisualReadyChange]);
 
   if (!bounds) {
     return null;

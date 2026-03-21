@@ -238,33 +238,16 @@ export default function CanvasEditor({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (window.__DBG_CANVAS_DRAG_PERF === undefined) {
-      window.__DBG_CANVAS_DRAG_PERF = true;
-    }
-    if (window.__CANVAS_DRAG_PERF_EXPANDED === undefined) {
-      window.__CANVAS_DRAG_PERF_EXPANDED = true;
-    }
-    if (window.__EDITOR_PRELOAD_DEBUG === undefined) {
-      window.__EDITOR_PRELOAD_DEBUG = false;
-    }
-    if (window.__INLINE_DEBUG === undefined) {
-      window.__INLINE_DEBUG = false;
-    }
-    if (window.__DBG_INLINE_INTENT === undefined) {
-      window.__DBG_INLINE_INTENT = false;
-    }
-    if (window.__INLINE_FOCUS_RCA === undefined) {
-      window.__INLINE_FOCUS_RCA = false;
-    }
-    if (window.__INLINE_DIAG_ALIGNMENT === undefined) {
-      window.__INLINE_DIAG_ALIGNMENT = false;
-    }
-    if (window.__INLINE_DIAG_ALIGNMENT_EXTENDED === undefined) {
-      window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
-    }
-    if (window.__INLINE_DIAG_COMPACT === undefined) {
-      window.__INLINE_DIAG_COMPACT = true;
-    }
+    window.__DBG_CANVAS_DRAG_PERF = false;
+    window.__CANVAS_DRAG_PERF_EXPANDED = false;
+    window.__DEBUG_SELECTED_DRAG = true;
+    window.__EDITOR_PRELOAD_DEBUG = false;
+    window.__INLINE_DEBUG = false;
+    window.__DBG_INLINE_INTENT = true;
+    window.__INLINE_FOCUS_RCA = false;
+    window.__INLINE_DIAG_ALIGNMENT = false;
+    window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
+    window.__INLINE_DIAG_COMPACT = false;
   }, []);
   const contenedorRef = useRef(null);
   const editorOverlayRootRef = useRef(null);

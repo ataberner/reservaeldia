@@ -318,6 +318,9 @@ export default function SelectionBounds({
   canvasInteractionSettling = false,
   scheduleCanvasUiAfterSettle = null,
   cancelCanvasUiAfterSettle = null,
+  predragVisualSelectionActive = false,
+  dragSelectionOverlayVisible = false,
+  dragSelectionOverlayVisualReady = false,
 }) {
   const transformerRef = useRef(null);
   const renderCountRef = useRef(0);
@@ -544,6 +547,7 @@ export default function SelectionBounds({
   const effectiveDragging = Boolean(isDragging || globalDragging || groupDragging);
   const isTransformerAttachSuppressed = Boolean(
     effectiveDragging ||
+    predragVisualSelectionActive ||
     canvasInteractionSettling ||
     (canvasInteractionActive && !runtimeResizeActive)
   );
@@ -554,9 +558,7 @@ export default function SelectionBounds({
     selectedElements.length === 1 &&
     selectedElements[0] === pendingDragSelectionId
   );
-  const isTransformerAttachBlocked = Boolean(
-    isTransformerAttachSuppressed || shouldSuppressBeforeFirstDragStart
-  );
+  const isTransformerAttachBlocked = Boolean(isTransformerAttachSuppressed);
   const shouldSuppressDuringDeferredDrag = Boolean(
     effectiveDragging &&
     pendingDragSelectionId &&
@@ -564,6 +566,15 @@ export default function SelectionBounds({
   );
   const shouldHideTransformerDuringDrag = Boolean(
     effectiveDragging &&
+    dragSelectionOverlayVisible &&
+    dragSelectionOverlayVisualReady &&
+    !isResizeGestureActive &&
+    !isTransformingResizeRef.current
+  );
+  const shouldSuppressTransformerVisualsForDragOverlay = Boolean(
+    dragSelectionOverlayVisible &&
+    dragSelectionOverlayVisualReady &&
+    !shouldHideTransformerDuringDrag &&
     !isResizeGestureActive &&
     !isTransformingResizeRef.current
   );
@@ -576,14 +587,18 @@ export default function SelectionBounds({
       shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
-      attachSuppressed: Boolean(
-        isTransformerAttachSuppressed || shouldSuppressBeforeFirstDragStart
+      shouldSuppressTransformerVisualsForDragOverlay: Boolean(
+        shouldSuppressTransformerVisualsForDragOverlay
       ),
+      dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
+      attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      predragVisualSelectionActive: Boolean(predragVisualSelectionActive),
       manualGroupSessionId,
       manualGroupPhase,
       isResizeGestureActive: Boolean(isResizeGestureActive),
       isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
       interactionLocked: Boolean(interactionLocked),
+      dragSelectionOverlayVisible: Boolean(dragSelectionOverlayVisible),
     };
     const previousSnapshot = lastVisibilitySnapshotRef.current;
     const visibilityChanged =
@@ -613,15 +628,19 @@ export default function SelectionBounds({
       shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      shouldSuppressTransformerVisualsForDragOverlay: Boolean(
+        shouldSuppressTransformerVisualsForDragOverlay
+      ),
+      dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
       canvasInteractionActive: Boolean(canvasInteractionActive),
       canvasInteractionSettling: Boolean(canvasInteractionSettling),
-      attachSuppressed: Boolean(
-        isTransformerAttachSuppressed || shouldSuppressBeforeFirstDragStart
-      ),
+      attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      predragVisualSelectionActive: Boolean(predragVisualSelectionActive),
       isResizeGestureActive: Boolean(isResizeGestureActive),
       isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
       isTransformingResize: Boolean(isTransformingResizeRef.current),
       isInteractionLocked: Boolean(isInteractionLocked),
+      dragSelectionOverlayVisible: Boolean(dragSelectionOverlayVisible),
     });
   }, [
     selectionKey,
@@ -635,12 +654,16 @@ export default function SelectionBounds({
     shouldSuppressBeforeFirstDragStart,
     shouldSuppressDuringDeferredDrag,
     shouldHideTransformerDuringDrag,
+    shouldSuppressTransformerVisualsForDragOverlay,
+    dragSelectionOverlayVisualReady,
     canvasInteractionActive,
     canvasInteractionSettling,
     isTransformerAttachSuppressed,
+    predragVisualSelectionActive,
     isResizeGestureActive,
     isImageRotateGestureActive,
     isInteractionLocked,
+    dragSelectionOverlayVisible,
     primerElemento?.id,
     primerElemento?.tipo,
   ]);
@@ -668,6 +691,12 @@ export default function SelectionBounds({
       pendingDragSelectionPhase,
       suppressBeforeFirstDragStart: shouldSuppressBeforeFirstDragStart,
       suppressDuringDeferredDrag: shouldSuppressDuringDeferredDrag,
+      dragSelectionOverlayVisible: Boolean(dragSelectionOverlayVisible),
+      dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
+      predragVisualSelectionActive: Boolean(predragVisualSelectionActive),
+      transformerVisualSuppressedForOverlay: Boolean(
+        shouldSuppressTransformerVisualsForDragOverlay
+      ),
       primerElementoId: primerElemento?.id || null,
       primerElementoTipo: primerElemento?.tipo || null,
     };
@@ -702,6 +731,10 @@ export default function SelectionBounds({
     shouldSuppressDuringDeferredDrag,
     canvasInteractionActive,
     canvasInteractionSettling,
+    predragVisualSelectionActive,
+    dragSelectionOverlayVisible,
+    dragSelectionOverlayVisualReady,
+    shouldSuppressTransformerVisualsForDragOverlay,
     transformTick,
   ]);
 
@@ -2172,7 +2205,6 @@ export default function SelectionBounds({
   // ðŸ”¥ Render
 
   if (
-    shouldSuppressBeforeFirstDragStart ||
     shouldSuppressDuringDeferredDrag ||
     shouldHideTransformerDuringDrag
   ) {
@@ -2275,9 +2307,13 @@ export default function SelectionBounds({
       <Transformer
       name="ui"
       ref={transformerRef}
+      visible={!shouldSuppressTransformerVisualsForDragOverlay}
 
       // ðŸ”µ borde siempre visible
-      borderEnabled={!shouldUseLightweightRotateOverlay}
+      borderEnabled={
+        !shouldUseLightweightRotateOverlay &&
+        !shouldSuppressTransformerVisualsForDragOverlay
+      }
 
       borderStroke={transformerBorderStroke}
 
@@ -2287,13 +2323,20 @@ export default function SelectionBounds({
 
       // âŒ nodos y rotaciÃ³n OFF durante drag
       enabledAnchors={
-        interactionLocked || (effectiveDragging && !isResizeGestureActive)
+        shouldSuppressTransformerVisualsForDragOverlay ||
+        interactionLocked ||
+        (effectiveDragging && !isResizeGestureActive)
           ? []
           : shouldUseLightweightRotateOverlay
             ? []
           : ["bottom-right"]
       }
-      rotateEnabled={!interactionLocked && !effectiveDragging && !esGaleria}
+      rotateEnabled={
+        !shouldSuppressTransformerVisualsForDragOverlay &&
+        !interactionLocked &&
+        !effectiveDragging &&
+        !esGaleria
+      }
       onMouseDown={handleResizeAnchorPressStart}
       onTouchStart={handleResizeAnchorPressStart}
       onPointerDown={handleResizeAnchorPressStart}

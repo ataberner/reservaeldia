@@ -397,6 +397,8 @@ export default function CanvasStageContent({
   const [isImageCropInteracting, setIsImageCropInteracting] = useState(false);
   const [dragVisualSelectionIds, setDragVisualSelectionIds] = useState([]);
   const dragVisualSelectionIdsRef = useRef([]);
+  const [isPredragVisualSelectionActive, setIsPredragVisualSelectionActive] = useState(false);
+  const [isDragSelectionOverlayVisualReady, setIsDragSelectionOverlayVisualReady] = useState(false);
   const activeInlineEditingId =
     editing.id ||
     getCurrentInlineEditingId() ||
@@ -426,6 +428,31 @@ export default function CanvasStageContent({
     Boolean(isDragging) ||
     (typeof window !== "undefined" && Boolean(window._isDragging)) ||
     (typeof window !== "undefined" && Boolean(window._grupoLider));
+  const canvasInteractionLastBegin =
+    typeof window !== "undefined" ? window.__CANVAS_INTERACTION_LAST_BEGIN || null : null;
+  const isCanvasDragCoordinatorActive = Boolean(
+    canvasInteractionActive &&
+    Number(canvasInteractionLastBegin?.interactionEpoch || 0) === canvasInteractionEpoch &&
+    canvasInteractionLastBegin?.kind === "drag"
+  );
+  const shouldShowDragSelectionOverlay = Boolean(
+    isPredragVisualSelectionActive ||
+    isCanvasDragCoordinatorActive ||
+    (dragVisualSelectionIds.length > 0 &&
+      (isCanvasDragGestureActive ||
+        canvasInteractionActive ||
+        canvasInteractionSettling))
+  );
+  const handleDragSelectionOverlayReadyChange = useCallback((isReady) => {
+    setIsDragSelectionOverlayVisualReady((current) => (
+      current === Boolean(isReady) ? current : Boolean(isReady)
+    ));
+  }, []);
+
+  useEffect(() => {
+    if (shouldShowDragSelectionOverlay) return;
+    setIsDragSelectionOverlayVisualReady((current) => (current ? false : current));
+  }, [shouldShowDragSelectionOverlay]);
 
   const setHoverIdWhenIdle = useCallback((nextHoverId) => {
     const dragActive =
@@ -686,7 +713,68 @@ export default function CanvasStageContent({
     });
   }, []);
 
+  useEffect(() => {
+    if (!isPredragVisualSelectionActive) return;
+
+    if (dragVisualSelectionIds.length === 0) {
+      setIsPredragVisualSelectionActive((current) => (current ? false : current));
+      return;
+    }
+
+    if (
+      !isCanvasDragGestureActive &&
+      !isCanvasDragCoordinatorActive &&
+      !canvasInteractionActive &&
+      !canvasInteractionSettling
+    ) {
+      return;
+    }
+
+    setIsPredragVisualSelectionActive((current) => (current ? false : current));
+  }, [
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    dragVisualSelectionIds.length,
+    isCanvasDragCoordinatorActive,
+    isCanvasDragGestureActive,
+    isPredragVisualSelectionActive,
+  ]);
+
+  const beginPredragVisualSelection = useCallback((dragId, seleccionActual) => {
+    const run = () => {
+      const currentSelection = Array.isArray(seleccionActual)
+        ? seleccionActual.filter(Boolean)
+        : [];
+      const nextSelection =
+        currentSelection.length > 0
+          ? currentSelection
+          : (dragId ? [dragId] : []);
+
+      setIsPredragVisualSelectionActive((current) => (current ? current : true));
+      setDragVisualSelectionIds((current) => {
+        if (
+          Array.isArray(current) &&
+          current.length === nextSelection.length &&
+          current.every((id, index) => id === nextSelection[index])
+        ) {
+          dragVisualSelectionIdsRef.current = nextSelection;
+          return current;
+        }
+        dragVisualSelectionIdsRef.current = nextSelection;
+        return nextSelection;
+      });
+    };
+
+    if (typeof flushSync === "function") {
+      flushSync(run);
+      return;
+    }
+
+    run();
+  }, []);
+
   const clearDragVisualSelection = useCallback(() => {
+    setIsPredragVisualSelectionActive((current) => (current ? false : current));
     dragVisualSelectionIdsRef.current = [];
     setDragVisualSelectionIds((current) => (
       Array.isArray(current) && current.length === 0 ? current : []
@@ -877,6 +965,7 @@ export default function CanvasStageContent({
 
   useEffect(() => {
     if (dragVisualSelectionIds.length === 0) return;
+    if (isPredragVisualSelectionActive) return;
     if (isAnyCanvasDragActive || canvasInteractionActive || canvasInteractionSettling) {
       return;
     }
@@ -904,6 +993,7 @@ export default function CanvasStageContent({
     dragVisualSelectionIds,
     elementosSeleccionados,
     isAnyCanvasDragActive,
+    isPredragVisualSelectionActive,
   ]);
 
   const logInlineIntent = useCallback((eventName, payload = {}) => {
@@ -1492,6 +1582,18 @@ export default function CanvasStageContent({
       meta,
       selectionSnapshot,
     });
+    logInlineIntent("selection-intent-decision", {
+      id,
+      tipo: obj?.tipo || null,
+      gesture,
+      selectionOrigin: meta?.selectionOrigin || "gesture",
+      allowSameGestureDragRequested: meta?.allowSameGestureDrag === true,
+      decision: decision?.decision || null,
+      reason: decision?.reason || null,
+      selectionSnapshot,
+      editingId: editing.id || null,
+      pointer: getCanvasPointerDebugInfo(event),
+    });
     logSelectedDragDebug("selection:intent-decision", {
       elementId: id,
       tipo: obj?.tipo || null,
@@ -1536,6 +1638,18 @@ export default function CanvasStageContent({
     }
   }, [clearInlineActivation, clearInlineIntent, onSelectSeccion]);
 
+  const isInlineIntentElementTarget = useCallback((target) => {
+    if (!target || !elementRefs?.current) return false;
+    const roots = Object.values(elementRefs.current || {}).filter(Boolean);
+    if (roots.length === 0) return false;
+
+    try {
+      return Boolean(target.findAncestor?.((node) => roots.includes(node), true));
+    } catch {
+      return false;
+    }
+  }, [elementRefs]);
+
   const requestBackgroundDecorationEdit = useCallback((sectionId, decorationId) => {
     const safeSectionId = String(sectionId || "").trim();
     const safeDecorationId = String(decorationId || "").trim();
@@ -1572,11 +1686,24 @@ export default function CanvasStageContent({
   ]);
 
   const handleStageMouseDownWithInlineIntent = useCallback((e) => {
+    const target = e?.target || null;
+    const targetClass = target?.getClassName?.() || null;
+
+    if (isInlineIntentElementTarget(target)) {
+      logInlineIntent("preserve-intent-on-element-mousedown", {
+        targetClass,
+      });
+      if (typeof stageGestures?.onMouseDown === "function") {
+        stageGestures.onMouseDown(e);
+      }
+      return;
+    }
+
     clearInlineActivation("canvas-mousedown", {
-      targetClass: e?.target?.getClassName?.() || null,
+      targetClass,
     });
     clearInlineIntent("canvas-mousedown", {
-      targetClass: e?.target?.getClassName?.() || null,
+      targetClass,
     });
     if (editing.id) {
       requestInlineEditFinish?.("canvas-mousedown");
@@ -1589,16 +1716,31 @@ export default function CanvasStageContent({
     clearInlineActivation,
     clearInlineIntent,
     editing.id,
+    isInlineIntentElementTarget,
+    logInlineIntent,
     requestInlineEditFinish,
     stageGestures,
   ]);
 
   const handleStageTouchStartWithInlineIntent = useCallback((e) => {
+    const target = e?.target || null;
+    const targetClass = target?.getClassName?.() || null;
+
+    if (isInlineIntentElementTarget(target)) {
+      logInlineIntent("preserve-intent-on-element-touchstart", {
+        targetClass,
+      });
+      if (typeof stageGestures?.onTouchStart === "function") {
+        stageGestures.onTouchStart(e);
+      }
+      return;
+    }
+
     clearInlineActivation("canvas-touchstart", {
-      targetClass: e?.target?.getClassName?.() || null,
+      targetClass,
     });
     clearInlineIntent("canvas-touchstart", {
-      targetClass: e?.target?.getClassName?.() || null,
+      targetClass,
     });
     if (editing.id) {
       requestInlineEditFinish?.("canvas-touchstart");
@@ -1611,6 +1753,8 @@ export default function CanvasStageContent({
     clearInlineActivation,
     clearInlineIntent,
     editing.id,
+    isInlineIntentElementTarget,
+    logInlineIntent,
     requestInlineEditFinish,
     stageGestures,
   ]);
@@ -2101,6 +2245,8 @@ export default function CanvasStageContent({
         onInlineEditPointer={
           isInEditMode ? onInlineEditCanvasPointer : null
         }
+        onPredragVisualSelectionStart={beginPredragVisualSelection}
+        onPredragVisualSelectionCancel={clearDragVisualSelection}
         onSelect={isInEditMode ? null : handleElementSelectIntent}
         onChange={(id, nuevo) => {
           if (nuevo.isDragPreview) {
@@ -2790,6 +2936,11 @@ export default function CanvasStageContent({
                         canvasInteractionEpoch={canvasInteractionEpoch}
                         canvasInteractionActive={canvasInteractionActive}
                         canvasInteractionSettling={canvasInteractionSettling}
+                        predragVisualSelectionActive={isPredragVisualSelectionActive}
+                        dragSelectionOverlayVisible={shouldShowDragSelectionOverlay}
+                        dragSelectionOverlayVisualReady={
+                          shouldShowDragSelectionOverlay && isDragSelectionOverlayVisualReady
+                        }
                         scheduleCanvasUiAfterSettle={scheduleCanvasUiAfterSettle}
                         cancelCanvasUiAfterSettle={
                           canvasInteractionApi.cancelCanvasUiAfterSettle
@@ -3425,7 +3576,7 @@ export default function CanvasStageContent({
                     if (
                       editing.id ||
                       sectionDecorationEdit ||
-                      !isCanvasDragGestureActive
+                      !shouldShowDragSelectionOverlay
                     ) {
                       return null;
                     }
@@ -3433,6 +3584,8 @@ export default function CanvasStageContent({
                     const indicatorSelectionIds =
                       dragVisualSelectionIds.length > 0
                         ? dragVisualSelectionIds
+                        : isCanvasDragCoordinatorActive
+                          ? elementosSeleccionados
                         : elementosSeleccionados;
 
                     if (indicatorSelectionIds.length === 0) return null;
@@ -3444,6 +3597,7 @@ export default function CanvasStageContent({
                         objetos={objetos}
                         isMobile={isMobile}
                         bringToFront
+                        onVisualReadyChange={handleDragSelectionOverlayReadyChange}
                       />
                     );
                   })()}

@@ -17,19 +17,6 @@ function readExplicitDebugFlag(rawValue) {
   return null;
 }
 
-function isLocalDebugHostname(hostname) {
-  const normalizedHost = String(hostname || "").trim().toLowerCase();
-  if (!normalizedHost) return true;
-
-  return (
-    normalizedHost === "localhost" ||
-    normalizedHost === "127.0.0.1" ||
-    normalizedHost === "0.0.0.0" ||
-    normalizedHost === "::1" ||
-    normalizedHost.endsWith(".local")
-  );
-}
-
 export function isSelectedDragDebugEnabled() {
   if (typeof window === "undefined") return false;
 
@@ -48,10 +35,7 @@ export function isSelectedDragDebugEnabled() {
   const explicitStorageFlag = readExplicitDebugFlag(storageRawValue);
   if (explicitStorageFlag !== null) return explicitStorageFlag;
 
-  return (
-    process.env.NODE_ENV !== "production" ||
-    isLocalDebugHostname(window.location?.hostname)
-  );
+  return false;
 }
 
 function roundMetric(value, digits = 2) {
@@ -59,6 +43,40 @@ function roundMetric(value, digits = 2) {
   if (!Number.isFinite(numeric)) return null;
   const precision = 10 ** digits;
   return Math.round(numeric * precision) / precision;
+}
+
+function resolveActivePointerButton(buttons) {
+  const numericButtons = Number(buttons);
+  if (!Number.isFinite(numericButtons) || numericButtons <= 0) return null;
+  if (numericButtons & 1) return 0;
+  if (numericButtons & 2) return 2;
+  if (numericButtons & 4) return 1;
+  if (numericButtons & 8) return 3;
+  if (numericButtons & 16) return 4;
+  return null;
+}
+
+function normalizePointerButtonMeta(nativeEvent) {
+  const rawButton =
+    Number.isFinite(Number(nativeEvent?.button)) ? Number(nativeEvent.button) : null;
+  const buttons =
+    Number.isFinite(Number(nativeEvent?.buttons)) ? Number(nativeEvent.buttons) : null;
+  const eventType =
+    typeof nativeEvent?.type === "string" ? nativeEvent.type.toLowerCase() : "";
+  const isMoveLike =
+    eventType.includes("move") || eventType.includes("drag");
+  const activeButton = resolveActivePointerButton(buttons);
+  const normalizedButton =
+    rawButton !== null && rawButton >= 0
+      ? rawButton
+      : (isMoveLike ? activeButton : null);
+
+  return {
+    rawButton,
+    button: normalizedButton,
+    buttons,
+    activeButton,
+  };
 }
 
 function getDebugNowMs() {
@@ -233,6 +251,7 @@ export function getCanvasPointerDebugInfo(event) {
   if (!event) return null;
 
   const nativeEvent = event?.evt || null;
+  const pointerButtonMeta = normalizePointerButtonMeta(nativeEvent);
   const stage =
     event?.target?.getStage?.() ||
     event?.currentTarget?.getStage?.() ||
@@ -251,10 +270,10 @@ export function getCanvasPointerDebugInfo(event) {
   return {
     type: nativeEvent?.type || null,
     pointerType: nativeEvent?.pointerType || null,
-    button:
-      Number.isFinite(Number(nativeEvent?.button)) ? Number(nativeEvent.button) : null,
-    buttons:
-      Number.isFinite(Number(nativeEvent?.buttons)) ? Number(nativeEvent.buttons) : null,
+    rawButton: pointerButtonMeta.rawButton,
+    button: pointerButtonMeta.button,
+    buttons: pointerButtonMeta.buttons,
+    activeButton: pointerButtonMeta.activeButton,
     clientX: roundMetric(nativeEvent?.clientX),
     clientY: roundMetric(nativeEvent?.clientY),
     stageX: roundMetric(stagePointer?.x),

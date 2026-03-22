@@ -79,7 +79,6 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
 
   useEffect(() => {
     if (visible && modo === "plantilla") {
-      console.log("🔁 Refrescando plantillas de sección");
       refrescar();
     }
   }, [modo, visible]);

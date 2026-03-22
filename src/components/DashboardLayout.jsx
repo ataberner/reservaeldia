@@ -30,6 +30,7 @@ export default function DashboardLayout({
   editorSession = null,
   templateSessionMeta = null,
   ensureEditorFlushBeforeAction = null,
+  onOpenTemplateSession = null,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
@@ -80,6 +81,7 @@ export default function DashboardLayout({
         editorSession={editorSession}
         templateSessionMeta={templateSessionMeta}
         ensureEditorFlushBeforeAction={ensureEditorFlushBeforeAction}
+        onOpenTemplateSession={onOpenTemplateSession}
       />
 
       {/* Sidebar */}

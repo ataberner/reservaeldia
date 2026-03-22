@@ -192,6 +192,7 @@ export default function DashboardHeader(props) {
         editorSession = null,
         templateSessionMeta = null,
         ensureEditorFlushBeforeAction = null,
+        onOpenTemplateSession = null,
     } = props;
 
     const [menuAbierto, setMenuAbierto] = useState(false);
@@ -532,7 +533,7 @@ export default function DashboardHeader(props) {
             });
             recordTemplateDashboardCardSnapshot(data, templateId);
 
-            await convertDraftToTemplate({
+            const conversionResult = await convertDraftToTemplate({
                 draftSlug: templateId,
                 authoringStatus: authoringStatusToValidate || null,
                 datos: {
@@ -545,6 +546,22 @@ export default function DashboardHeader(props) {
                 templateId,
                 "template-persisted-document"
             );
+
+            if (typeof onOpenTemplateSession === "function") {
+                onOpenTemplateSession({
+                    templateId,
+                    item:
+                        conversionResult?.item &&
+                        typeof conversionResult.item === "object"
+                            ? conversionResult.item
+                            : null,
+                    editorDocument:
+                        conversionResult?.editorDocument &&
+                        typeof conversionResult.editorDocument === "object"
+                            ? conversionResult.editorDocument
+                            : null,
+                });
+            }
 
             await router.replace(
                 `/dashboard?templateId=${encodeURIComponent(templateId)}`

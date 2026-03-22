@@ -1,7 +1,5 @@
-// src/utils/insertarCountdown.js
-// ⚠️ IMPORTANTÍSIMO: poné acá exactamente el mismo tipo que usa tu renderer.
-// Si con el menú te funcionaba "countdown", usá "countdown".
-export const TIPO_COUNTDOWN = "countdown"; // o "cuenta-regresiva"
+// IMPORTANTISIMO: usa exactamente el mismo tipo que espera el renderer.
+export const TIPO_COUNTDOWN = "countdown";
 
 const genId = () => `count-${Date.now().toString(36)}`;
 
@@ -18,7 +16,10 @@ export function insertarCountdown({ targetISO, preset, position }) {
   const detail = {
     id: genId(),
     tipo: TIPO_COUNTDOWN,
-    x, y, width, height,
+    x,
+    y,
+    width,
+    height,
     rotation: 0,
     scaleX: 1,
     scaleY: 1,
@@ -27,6 +28,5 @@ export function insertarCountdown({ targetISO, preset, position }) {
     presetId,
   };
 
-  console.log("[insertarCountdown] dispatch insertar-elemento →", detail);
   window.dispatchEvent(new CustomEvent("insertar-elemento", { detail }));
 }

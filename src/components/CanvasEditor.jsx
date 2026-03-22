@@ -78,6 +78,7 @@ import useTextEditInteractionController from "@/components/editor/textSystem/run
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
+import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
 import {
   applySectionSolidBackground,
   normalizeSectionBackgroundModel,
@@ -236,18 +237,7 @@ export default function CanvasEditor({
     ));
   }, [inlineOverlayMountSession]);
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    window.__DBG_CANVAS_DRAG_PERF = false;
-    window.__CANVAS_DRAG_PERF_EXPANDED = false;
-    window.__DEBUG_SELECTED_DRAG = true;
-    window.__EDITOR_PRELOAD_DEBUG = false;
-    window.__INLINE_DEBUG = false;
-    window.__DBG_INLINE_INTENT = true;
-    window.__INLINE_FOCUS_RCA = false;
-    window.__INLINE_DIAG_ALIGNMENT = false;
-    window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
-    window.__INLINE_DIAG_COMPACT = false;
+    applyDefaultEditorConsoleDebugFlags();
   }, []);
   const contenedorRef = useRef(null);
   const editorOverlayRootRef = useRef(null);

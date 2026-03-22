@@ -53,6 +53,7 @@ import {
   readPendingEditorIssue,
   startEditorSessionWatchdog,
 } from "@/lib/monitoring/editorIssueReporter";
+import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // disable server-side rendering for editor
   loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
@@ -113,39 +114,7 @@ const TEMPLATE_FORM_STATE_INITIAL = Object.freeze({
   touchedKeys: [],
 });
 
-function ensureDefaultEditorConsoleDebugFlags() {
-  if (typeof window === "undefined") return;
-
-  if (typeof window.__DBG_CANVAS_DRAG_PERF === "undefined") {
-    window.__DBG_CANVAS_DRAG_PERF = false;
-  }
-  if (typeof window.__CANVAS_DRAG_PERF_EXPANDED === "undefined") {
-    window.__CANVAS_DRAG_PERF_EXPANDED = false;
-  }
-  if (typeof window.__EDITOR_PRELOAD_DEBUG === "undefined") {
-    window.__EDITOR_PRELOAD_DEBUG = false;
-  }
-  if (typeof window.__INLINE_DEBUG === "undefined") {
-    window.__INLINE_DEBUG = false;
-  }
-  if (typeof window.__DBG_INLINE_INTENT === "undefined") {
-    window.__DBG_INLINE_INTENT = false;
-  }
-  if (typeof window.__INLINE_FOCUS_RCA === "undefined") {
-    window.__INLINE_FOCUS_RCA = false;
-  }
-  if (typeof window.__INLINE_DIAG_ALIGNMENT === "undefined") {
-    window.__INLINE_DIAG_ALIGNMENT = false;
-  }
-  if (typeof window.__INLINE_DIAG_ALIGNMENT_EXTENDED === "undefined") {
-    window.__INLINE_DIAG_ALIGNMENT_EXTENDED = false;
-  }
-  if (typeof window.__INLINE_DIAG_COMPACT === "undefined") {
-    window.__INLINE_DIAG_COMPACT = true;
-  }
-}
-
-ensureDefaultEditorConsoleDebugFlags();
+applyDefaultEditorConsoleDebugFlags();
 
 function schedulePublishedCountdownAuditCapture(publicUrl, fallbackHtml = "") {
   const safePublicUrl = String(publicUrl || "").trim();
@@ -851,6 +820,55 @@ export default function Dashboard() {
       id: "",
     });
   }, []);
+  const handleOpenTemplateSession = useCallback((payload = {}) => {
+    const safePayload = payload && typeof payload === "object" ? payload : {};
+    const nextTemplateId = sanitizeDraftSlug(
+      typeof safePayload.templateId === "string" ? safePayload.templateId : ""
+    );
+    if (!nextTemplateId) return;
+
+    const initialData =
+      safePayload.editorDocument && typeof safePayload.editorDocument === "object"
+        ? safePayload.editorDocument
+        : null;
+    const nextView = initialData
+      ? normalizeTemplateWorkspaceFromDraft(initialData)
+      : {
+          enabled: true,
+          readOnly: false,
+          draftName: "",
+          templateName:
+            typeof safePayload?.item?.nombre === "string"
+              ? safePayload.item.nombre.trim()
+              : "",
+          estadoEditorial:
+            typeof safePayload?.item?.estadoEditorial === "string"
+              ? safePayload.item.estadoEditorial.trim()
+              : "en_proceso",
+          permissions:
+            safePayload?.item?.permissions &&
+            typeof safePayload.item.permissions === "object"
+              ? safePayload.item.permissions
+              : {},
+        };
+
+    resetAdminDraftView();
+    setLegacyDraftNotice(null);
+    setTemplateWorkspaceView({
+      ...nextView,
+      enabled: true,
+      status: initialData ? "ready" : "loading",
+      templateId: nextTemplateId,
+      initialData,
+    });
+    setEditorSession({
+      kind: "template",
+      id: nextTemplateId,
+    });
+    setSlugInvitacion((prev) => (prev === nextTemplateId ? prev : nextTemplateId));
+    setModoEditor((prev) => (prev === "konva" ? prev : "konva"));
+    setVista((prev) => (prev === "editor" ? prev : "editor"));
+  }, [resetAdminDraftView]);
   const isAdminReadOnlyView =
     adminDraftView.enabled === true && adminDraftView.status === "ready";
   const isTemplateWorkspaceReadOnly =
@@ -3044,6 +3062,7 @@ export default function Dashboard() {
       editorSession={editorSession}
       templateSessionMeta={templateWorkspaceView}
       ensureEditorFlushBeforeAction={ensureDraftFlushBeforeCriticalAction}
+      onOpenTemplateSession={handleOpenTemplateSession}
     >
       {editorIssueReport && (
         <EditorIssueBanner

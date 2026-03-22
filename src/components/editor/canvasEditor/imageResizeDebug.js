@@ -23,19 +23,6 @@ function readExplicitDebugFlag(rawValue) {
   return null;
 }
 
-function isLocalDebugHostname(hostname) {
-  const normalizedHost = String(hostname || "").trim().toLowerCase();
-  if (!normalizedHost) return true;
-
-  return (
-    normalizedHost === "localhost" ||
-    normalizedHost === "127.0.0.1" ||
-    normalizedHost === "0.0.0.0" ||
-    normalizedHost === "::1" ||
-    normalizedHost.endsWith(".local")
-  );
-}
-
 function getNowMs() {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
     return performance.now();
@@ -66,10 +53,7 @@ export function isImageResizeDebugEnabled() {
   const explicitStorageFlag = readExplicitDebugFlag(storageRawValue);
   if (explicitStorageFlag !== null) return explicitStorageFlag;
 
-  return (
-    process.env.NODE_ENV !== "production" ||
-    isLocalDebugHostname(window.location?.hostname)
-  );
+  return false;
 }
 
 function isImageResizeVerboseConsoleEnabled() {
@@ -92,7 +76,7 @@ function isImageResizeVerboseConsoleEnabled() {
   const explicitStorageFlag = readExplicitDebugFlag(storageRawValue);
   if (explicitStorageFlag !== null) return explicitStorageFlag;
 
-  return true;
+  return false;
 }
 
 function shouldEmitConsole(eventName) {

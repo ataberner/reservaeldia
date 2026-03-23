@@ -7,6 +7,7 @@ import TemplateEventForm from "@/components/templates/TemplateEventForm";
 import {
   buildPreviewOperationsForField,
   buildPreviewPatchMessage,
+  resolvePreviewScrollTargetsForField,
 } from "@/domain/templates/previewLivePatch";
 import { syncPreviewFrameAndCaptureTextPositions } from "@/domain/templates/previewTextPositionSnapshot";
 import { logTemplateDraftDebug } from "@/domain/templates/draftPersonalizationDebug";
@@ -192,13 +193,13 @@ export default function TemplatePreviewModal({
   }, [onClose, openingEditor, visible]);
 
   const postPreviewOperations = useCallback(
-    (operations) => {
+    (operations, options = {}) => {
       if (!canPatchPreview) return;
       if (!Array.isArray(operations) || operations.length === 0) return;
       const frameWindow = previewFrameRef.current?.contentWindow;
       if (!frameWindow) return;
 
-      frameWindow.postMessage(buildPreviewPatchMessage(operations), "*");
+      frameWindow.postMessage(buildPreviewPatchMessage(operations, options), "*");
     },
     [canPatchPreview]
   );
@@ -206,7 +207,7 @@ export default function TemplatePreviewModal({
   const handleLiveFieldUpdate = useCallback(
     ({ fieldKey, value, phase }) => {
       const key = toText(fieldKey);
-      if (!key || !phase) return;
+      if (!key || !phase || !canPatchPreview) return;
 
       const operations = buildPreviewOperationsForField({
         template,
@@ -215,21 +216,22 @@ export default function TemplatePreviewModal({
         phase,
       });
       if (!operations.length) return;
+      const scrollTargets = resolvePreviewScrollTargetsForField(template, key);
 
       if (phase === "input") {
         if (inputPatchTimersRef.current[key]) {
           clearTimeout(inputPatchTimersRef.current[key]);
         }
         inputPatchTimersRef.current[key] = setTimeout(() => {
-          postPreviewOperations(operations);
+          postPreviewOperations(operations, { scrollTargets });
           delete inputPatchTimersRef.current[key];
         }, 180);
         return;
       }
 
-      postPreviewOperations(operations);
+      postPreviewOperations(operations, { scrollTargets });
     },
-    [postPreviewOperations, template]
+    [canPatchPreview, postPreviewOperations, template]
   );
 
   const handlePrimaryAction = useCallback(() => {

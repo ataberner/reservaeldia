@@ -1,6 +1,8 @@
 import { buildTemplateFormState, resolveTemplateFieldByKey } from "./formModel.js";
 import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
 
+const PREVIEW_SCROLL_SCOPES = new Set(["objeto", "seccion"]);
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
@@ -41,10 +43,44 @@ function normalizeTargets(field) {
     .filter(Boolean);
 }
 
+function normalizePreviewScrollTarget(target) {
+  const scope = normalizeText(target?.scope).toLowerCase();
+  const id = normalizeText(target?.id);
+  if (!PREVIEW_SCROLL_SCOPES.has(scope) || !id) return null;
+
+  return {
+    scope,
+    id,
+  };
+}
+
+function dedupePreviewScrollTargets(targets) {
+  const seen = new Set();
+  const out = [];
+
+  (Array.isArray(targets) ? targets : []).forEach((target) => {
+    const normalized = normalizePreviewScrollTarget(target);
+    if (!normalized) return;
+
+    const dedupeKey = `${normalized.scope}|${normalized.id}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    out.push(normalized);
+  });
+
+  return out;
+}
+
 function shouldDispatchFieldForPhase(field, phase) {
   const safePhase = normalizeText(phase).toLowerCase();
   if (!safePhase) return false;
   return normalizeText(field?.updateMode).toLowerCase() === safePhase;
+}
+
+export function resolvePreviewScrollTargetsForField(template, fieldKey) {
+  const field = resolveTemplateFieldByKey(template, fieldKey);
+  if (!field) return [];
+  return dedupePreviewScrollTargets(normalizeTargets(field));
 }
 
 export function buildPreviewOperationsForField({
@@ -109,13 +145,16 @@ export function buildPreviewOperationsForField({
   ];
 }
 
-export function buildPreviewPatchMessage(operations) {
+export function buildPreviewPatchMessage(operations, options = {}) {
   const safeOperations = Array.isArray(operations)
     ? operations.filter((operation) => operation && typeof operation === "object")
     : [];
+  const safeOptions = asObject(options);
+  const safeScrollTargets = dedupePreviewScrollTargets(safeOptions.scrollTargets);
 
   return {
     type: "template-preview:apply",
     operations: safeOperations,
+    ...(safeScrollTargets.length ? { scrollTargets: safeScrollTargets } : {}),
   };
 }

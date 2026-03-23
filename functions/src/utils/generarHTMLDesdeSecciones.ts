@@ -650,6 +650,125 @@ export function generarHTMLDesdeSecciones(
     return null;
   }
 
+  var PREVIEW_SCROLL_PADDING_PX = 24;
+  var PREVIEW_SCROLL_CENTER_RATIO = 0.3;
+  var PREVIEW_SCROLL_LARGE_TARGET_THRESHOLD = 0.68;
+  var PREVIEW_SCROLL_LARGE_TARGET_TOP_RATIO = 0.1;
+
+  function normalizeScrollTargets(scrollTargets){
+    var out = [];
+    var seen = {};
+    if (!Array.isArray(scrollTargets)) return out;
+
+    for (var i = 0; i < scrollTargets.length; i += 1) {
+      var target = scrollTargets[i];
+      var scope = toText(target && target.scope).toLowerCase();
+      var id = toText(target && target.id);
+      if (!id) continue;
+      if (scope !== "objeto" && scope !== "seccion") continue;
+
+      var dedupeKey = scope + "|" + id;
+      if (seen[dedupeKey]) continue;
+      seen[dedupeKey] = true;
+      out.push({
+        scope: scope,
+        id: id,
+      });
+    }
+
+    return out;
+  }
+
+  function findPreviewTarget(target){
+    if (!target || typeof target !== "object") return null;
+    var scope = toText(target.scope).toLowerCase();
+    if (scope === "objeto") return findObjectElementById(target.id);
+    if (scope === "seccion") return findSectionElementById(target.id);
+    return null;
+  }
+
+  function isPreviewTargetVisible(targetElement){
+    if (!targetElement || typeof targetElement.getBoundingClientRect !== "function") return false;
+
+    var rect = targetElement.getBoundingClientRect();
+    var viewportWidth = Math.max(
+      0,
+      window.innerWidth || document.documentElement.clientWidth || 0
+    );
+    var viewportHeight = Math.max(
+      0,
+      window.innerHeight || document.documentElement.clientHeight || 0
+    );
+    if (!(viewportWidth > 0) || !(viewportHeight > 0)) return false;
+
+    var padding = Math.min(
+      PREVIEW_SCROLL_PADDING_PX,
+      Math.max(8, Math.round(Math.min(viewportWidth, viewportHeight) * 0.04))
+    );
+
+    return (
+      rect.bottom > padding &&
+      rect.top < viewportHeight - padding &&
+      rect.right > padding &&
+      rect.left < viewportWidth - padding
+    );
+  }
+
+  function scrollToPreviewElement(targetElement){
+    if (!targetElement || typeof targetElement.getBoundingClientRect !== "function") return false;
+
+    var scrollRoot =
+      document.scrollingElement ||
+      document.documentElement ||
+      document.body ||
+      null;
+    if (!scrollRoot || typeof scrollRoot.scrollTo !== "function") return false;
+
+    var rect = targetElement.getBoundingClientRect();
+    var viewportHeight = Math.max(
+      0,
+      window.innerHeight || document.documentElement.clientHeight || 0
+    );
+    if (!(viewportHeight > 0)) return false;
+
+    var currentScrollTop = Number(scrollRoot.scrollTop || window.pageYOffset || 0);
+    var documentTop = currentScrollTop + rect.top;
+    var documentCenter = documentTop + rect.height / 2;
+    var targetTop = documentCenter - viewportHeight * PREVIEW_SCROLL_CENTER_RATIO;
+
+    if (rect.height >= viewportHeight * PREVIEW_SCROLL_LARGE_TARGET_THRESHOLD) {
+      targetTop = documentTop - viewportHeight * PREVIEW_SCROLL_LARGE_TARGET_TOP_RATIO;
+    }
+
+    var maxScrollTop = Math.max(
+      0,
+      (Number(scrollRoot.scrollHeight || 0) - Number(scrollRoot.clientHeight || viewportHeight))
+    );
+    var clampedTop = Math.max(0, Math.min(maxScrollTop, targetTop));
+
+    if (Math.abs(clampedTop - currentScrollTop) < 2) return false;
+
+    scrollRoot.scrollTo({
+      top: Math.round(clampedTop),
+      behavior: "smooth",
+    });
+    return true;
+  }
+
+  function applyPreviewScrollTargets(scrollTargets){
+    var firstFoundTarget = null;
+
+    for (var i = 0; i < scrollTargets.length; i += 1) {
+      var targetElement = findPreviewTarget(scrollTargets[i]);
+      if (!targetElement) continue;
+      if (!firstFoundTarget) firstFoundTarget = targetElement;
+      if (isPreviewTargetVisible(targetElement)) return false;
+    }
+
+    if (!firstFoundTarget) return false;
+    return scrollToPreviewElement(firstFoundTarget);
+  }
+
   function setImageSource(targetElement, nextUrl){
     var safeUrl = toText(nextUrl);
     if (!safeUrl || !targetElement) return false;
@@ -829,7 +948,8 @@ export function generarHTMLDesdeSecciones(
     var payload = event && event.data;
     if (!payload || payload.type !== "template-preview:apply") return;
     var operations = Array.isArray(payload.operations) ? payload.operations : [];
-    if (!operations.length) return;
+    var scrollTargets = normalizeScrollTargets(payload.scrollTargets);
+    if (!operations.length && !scrollTargets.length) return;
     operations.forEach(function(operation){
       try {
         applyOperation(operation);
@@ -837,6 +957,23 @@ export function generarHTMLDesdeSecciones(
         // Ignorar errores de patch para no interrumpir la preview.
       }
     });
+
+    if (!scrollTargets.length) return;
+
+    var runPreviewScroll = function(){
+      try {
+        applyPreviewScrollTargets(scrollTargets);
+      } catch (_error) {
+        // Ignorar errores de scroll para no interrumpir la preview.
+      }
+    };
+
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(runPreviewScroll);
+      return;
+    }
+
+    runPreviewScroll();
   });
 })();
 </script>

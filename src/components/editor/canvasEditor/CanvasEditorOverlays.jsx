@@ -212,6 +212,7 @@ export default function CanvasEditorOverlays({
                     templateAuthoring.selectedElementDefaultFieldType,
                   selectedField: templateAuthoring.selectedField,
                   fieldsSchema: templateAuthoring.fieldsSchema,
+                  onRefreshFields: templateAuthoring.reloadAvailableFields,
                   onCreateField: templateAuthoring.createFieldFromSelection,
                   onLinkField: templateAuthoring.linkSelectionToField,
                   onEditField: templateAuthoring.editField,

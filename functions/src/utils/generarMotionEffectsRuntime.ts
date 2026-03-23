@@ -271,8 +271,8 @@ export function generarMotionEffectsRuntimeHTML(): string {
   var FONTS_TIMEOUT_MS = 1200;
   var DECOR_PARALLAX_MODES = { none: 1, soft: 1, dynamic: 1 };
   var DECOR_PARALLAX_DISTANCE = {
-    soft: { mobile: 10, desktop: 14 },
-    dynamic: { mobile: 14, desktop: 22 }
+    soft: { mobile: 12, desktop: 17 },
+    dynamic: { mobile: 16, desktop: 26 }
   };
   var bootStarted = false;
   var decorParallaxEntries = [];

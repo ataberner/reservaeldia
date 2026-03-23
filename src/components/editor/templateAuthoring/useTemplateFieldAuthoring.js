@@ -32,6 +32,16 @@ function isCountdownCompatibleFieldType(fieldType) {
   return safeType === "date" || safeType === "datetime";
 }
 
+function collectRecoverableAuthoringIssues(issues) {
+  return (Array.isArray(issues) ? issues : [])
+    .map((issue) => normalizeText(issue))
+    .filter(
+      (issue) =>
+        issue.includes(": sin applyTargets.") ||
+        issue.includes("' no existe en objetos actuales.")
+    );
+}
+
 function emptySnapshot() {
   return {
     version: AUTHORING_DRAFT_VERSION,
@@ -63,6 +73,8 @@ export default function useTemplateFieldAuthoring({
   const lastLoadKeyRef = useRef("");
   const saveQueueRef = useRef(Promise.resolve());
   const saveCounterRef = useRef(0);
+  const reloadInFlightRef = useRef(null);
+  const autoRepairSignatureRef = useRef("");
 
   const safeObjetos = Array.isArray(objetos) ? objetos : [];
   const selectedElementId = normalizeText(selectedElement?.id);
@@ -187,6 +199,66 @@ export default function useTemplateFieldAuthoring({
     [hydrateSnapshot, persistSnapshot]
   );
 
+  const reloadAvailableFields = useCallback(
+    async ({ resetSnapshot = false, clearOnError = false } = {}) => {
+      const safeSlug = normalizeText(slug);
+      if (!enabled || !safeSlug) {
+        const clearedSnapshot = emptySnapshot();
+        setSnapshot(clearedSnapshot);
+        setLoading(false);
+        setSaving(false);
+        setError("");
+        return clearedSnapshot;
+      }
+
+      if (reloadInFlightRef.current) {
+        return reloadInFlightRef.current;
+      }
+
+      const templateId = normalizeText(draftMeta?.plantillaId || "");
+      if (resetSnapshot) {
+        setSnapshot(emptySnapshot());
+      }
+      setLoading(true);
+      setError("");
+
+      const reloadPromise = saveQueueRef.current
+        .catch(() => {})
+        .then(() =>
+          loadAuthoringState({
+            slug: safeSlug,
+            templateId,
+            editorSession,
+            preloadedDraft: null,
+          })
+        )
+        .then((loaded) => {
+          const nextSnapshot = hydrateSnapshot(loaded);
+          setSnapshot(nextSnapshot);
+          return nextSnapshot;
+        })
+        .catch((loadError) => {
+          const message =
+            loadError instanceof Error
+              ? loadError.message
+              : "No se pudo cargar el authoring de la plantilla.";
+          setError(message);
+          if (clearOnError) {
+            setSnapshot(emptySnapshot());
+          }
+          throw loadError;
+        })
+        .finally(() => {
+          setLoading(false);
+          reloadInFlightRef.current = null;
+        });
+
+      reloadInFlightRef.current = reloadPromise;
+      return reloadPromise;
+    },
+    [draftMeta, editorSession, enabled, hydrateSnapshot, safeObjetos, slug]
+  );
+
   useEffect(() => {
     const safeSlug = normalizeText(slug);
     if (!enabled || !safeSlug) {
@@ -206,7 +278,9 @@ export default function useTemplateFieldAuthoring({
 
     let cancelled = false;
     setLoading(true);
+    setSaving(false);
     setError("");
+    setSnapshot(emptySnapshot());
 
     void (async () => {
       try {
@@ -393,11 +467,20 @@ export default function useTemplateFieldAuthoring({
     });
     if (!unlinkResult.changed) return false;
 
+    const repairedResult = sanitizeAuthoringSchema({
+      fieldsSchema: unlinkResult.fieldsSchema,
+      defaults,
+      objetos: safeObjetos,
+      dropOrphans: true,
+    });
+    const nextFieldsSchema = repairedResult.fieldsSchema;
+    const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, repairedResult.defaults);
+
     await commitSnapshot({
       ...snapshot,
       sourceTemplateId,
-      fieldsSchema: unlinkResult.fieldsSchema,
-      defaults: ensureDefaultsForSchema(unlinkResult.fieldsSchema, defaults),
+      fieldsSchema: nextFieldsSchema,
+      defaults: nextDefaults,
     });
     return true;
   }, [
@@ -405,6 +488,7 @@ export default function useTemplateFieldAuthoring({
     commitSnapshot,
     defaults,
     fieldsSchema,
+    safeObjetos,
     selectedElementId,
     selectedFieldKey,
     snapshot,
@@ -512,6 +596,44 @@ export default function useTemplateFieldAuthoring({
     ]
   );
 
+  const autoRepairSignature = useMemo(() => {
+    const recoverableIssues = collectRecoverableAuthoringIssues(status?.issues);
+    if (!recoverableIssues.length) return "";
+
+    return JSON.stringify({
+      sourceTemplateId: normalizeText(sourceTemplateId),
+      issueCount: recoverableIssues.length,
+      issues: recoverableIssues.sort(),
+      fieldKeys: fieldsSchema
+        .map((field) => normalizeText(field?.key))
+        .filter(Boolean)
+        .sort(),
+      objectCount: safeObjetos.length,
+    });
+  }, [fieldsSchema, safeObjetos.length, sourceTemplateId, status?.issues]);
+
+  useEffect(() => {
+    if (!enabled || !canConfigure || loading || saving) return;
+
+    if (!autoRepairSignature) {
+      autoRepairSignatureRef.current = "";
+      return;
+    }
+
+    if (autoRepairSignatureRef.current === autoRepairSignature) return;
+    autoRepairSignatureRef.current = autoRepairSignature;
+
+    // El authoring puede quedar stale cuando se eliminan objetos/secciones fuera del menu.
+    void repairSnapshot({ dropOrphans: true }).catch((repairError) => {
+      autoRepairSignatureRef.current = "";
+      setError(
+        repairError instanceof Error
+          ? repairError.message
+          : "No se pudo reparar el schema dinamico."
+      );
+    });
+  }, [autoRepairSignature, canConfigure, enabled, loading, repairSnapshot, saving]);
+
   return {
     loading,
     saving,
@@ -534,6 +656,7 @@ export default function useTemplateFieldAuthoring({
     deleteField,
     getFieldUsage,
     repairSnapshot,
+    reloadAvailableFields,
     getSnapshot: () => ({
       version: AUTHORING_DRAFT_VERSION,
       sourceTemplateId,

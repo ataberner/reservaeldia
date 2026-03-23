@@ -738,6 +738,7 @@ export default function MenuOpcionesElemento({
                     suggestedFieldType={authoringConfig?.selectedElementDefaultFieldType || "text"}
                     selectedField={authoringConfig?.selectedField || null}
                     fieldsSchema={authoringConfig?.fieldsSchema || []}
+                    onRefreshFields={authoringConfig?.onRefreshFields}
                     onCreateField={authoringConfig?.onCreateField}
                     onLinkField={authoringConfig?.onLinkField}
                     onEditField={authoringConfig?.onEditField}

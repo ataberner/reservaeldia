@@ -106,6 +106,49 @@ function normalizeStoredDraft(value) {
   };
 }
 
+function resolveExpectedTemplateId(session, templateId, draftData) {
+  const safeDraftData = asObject(draftData);
+  return (
+    normalizeText(templateId) ||
+    (session.kind === "template" ? normalizeText(session.id) : "") ||
+    normalizeText(safeDraftData?.plantillaId) ||
+    normalizeText(safeDraftData?.templateAuthoringDraft?.sourceTemplateId) ||
+    null
+  );
+}
+
+function resolvePreloadedTemplateId(preloadedDraft) {
+  const safePreloaded = asObject(preloadedDraft);
+  return (
+    normalizeText(safePreloaded?.plantillaId) ||
+    normalizeText(safePreloaded?.sourceTemplateId) ||
+    normalizeText(safePreloaded?.templateAuthoringDraft?.sourceTemplateId) ||
+    null
+  );
+}
+
+function canUsePreloadedDraft(preloadedDraft, session, templateId) {
+  const safePreloaded = asObject(preloadedDraft);
+  if (!Object.keys(safePreloaded).length) return false;
+  if (session.kind !== "template") return true;
+
+  const expectedTemplateId = resolveExpectedTemplateId(session, templateId, safePreloaded);
+  const preloadedTemplateId = resolvePreloadedTemplateId(safePreloaded);
+
+  if (!expectedTemplateId || !preloadedTemplateId) return false;
+  return preloadedTemplateId === expectedTemplateId;
+}
+
+function isStoredAuthoringAligned(storedDraft, expectedTemplateId) {
+  const safeExpectedTemplateId = normalizeText(expectedTemplateId);
+  if (!safeExpectedTemplateId) return true;
+
+  const storedTemplateId = normalizeText(storedDraft?.sourceTemplateId);
+  if (!storedTemplateId) return true;
+
+  return storedTemplateId === safeExpectedTemplateId;
+}
+
 function normalizeEditorSession(session, fallbackSlug = "", fallbackTemplateId = "") {
   const safeSession = session && typeof session === "object" ? session : {};
   const requestedKind =
@@ -132,7 +175,7 @@ export async function loadAuthoringState({
   const safeSlug = normalizeText(slug);
   const session = normalizeEditorSession(editorSession, safeSlug, templateId);
   const preloaded = asObject(preloadedDraft);
-  let draftData = preloaded;
+  let draftData = canUsePreloadedDraft(preloaded, session, templateId) ? preloaded : {};
 
   if (!Object.keys(draftData).length) {
     if (!session.id) return buildEmptySnapshot(templateId);
@@ -151,19 +194,14 @@ export async function loadAuthoringState({
   }
 
   const draftRenderState = normalizeDraftRenderState(draftData);
-  const sourceTemplateId =
-    normalizeText(templateId) ||
-    (session.kind === "template" ? normalizeText(session.id) : "") ||
-    normalizeText(draftData?.plantillaId) ||
-    normalizeText(draftData?.templateAuthoringDraft?.sourceTemplateId) ||
-    null;
+  const sourceTemplateId = resolveExpectedTemplateId(session, templateId, draftData);
 
   const storedAuthoring = normalizeStoredDraft(draftData?.templateAuthoringDraft);
   const hasStoredAuthoring =
     draftData?.templateAuthoringDraft &&
     typeof draftData.templateAuthoringDraft === "object";
 
-  if (hasStoredAuthoring) {
+  if (hasStoredAuthoring && isStoredAuthoringAligned(storedAuthoring, sourceTemplateId)) {
     return normalizeAuthoringSnapshot(
       storedAuthoring,
       sourceTemplateId,

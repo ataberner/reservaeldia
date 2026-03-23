@@ -665,35 +665,48 @@ function buildTemplateAuthoringDraft(
   uid: string,
   { persist = true }: { persist?: boolean } = {}
 ) {
+  const safeTemplateId = normalizeText(templateId);
   const source = asObject(sourceValue);
   const fallback = asObject(template.templateAuthoringDraft);
-  const fieldsSchema = Array.isArray(source.fieldsSchema)
-    ? source.fieldsSchema
-    : Array.isArray(fallback.fieldsSchema)
-      ? fallback.fieldsSchema
+  const alignedSource =
+    !safeTemplateId ||
+    !normalizeText(source.sourceTemplateId) ||
+    normalizeText(source.sourceTemplateId) === safeTemplateId
+      ? source
+      : {};
+  const alignedFallback =
+    !safeTemplateId ||
+    !normalizeText(fallback.sourceTemplateId) ||
+    normalizeText(fallback.sourceTemplateId) === safeTemplateId
+      ? fallback
+      : {};
+  const fieldsSchema = Array.isArray(alignedSource.fieldsSchema)
+    ? alignedSource.fieldsSchema
+    : Array.isArray(alignedFallback.fieldsSchema)
+      ? alignedFallback.fieldsSchema
       : Array.isArray(template.fieldsSchema)
         ? template.fieldsSchema
         : [];
   const defaults =
-    source.defaults && typeof source.defaults === "object"
-      ? source.defaults
-      : fallback.defaults && typeof fallback.defaults === "object"
-        ? fallback.defaults
+    alignedSource.defaults && typeof alignedSource.defaults === "object"
+      ? alignedSource.defaults
+      : alignedFallback.defaults && typeof alignedFallback.defaults === "object"
+        ? alignedFallback.defaults
         : template.defaults && typeof template.defaults === "object"
           ? template.defaults
           : {};
-  const rawStatus = asObject(source.status);
-  const fallbackStatus = asObject(fallback.status);
+  const rawStatus = asObject(alignedSource.status);
+  const fallbackStatus = asObject(alignedFallback.status);
   const issues = normalizeIssues(rawStatus.issues || fallbackStatus.issues);
 
   return {
-    version: Number.isFinite(Number(source.version || fallback.version))
-      ? Math.max(1, Math.round(Number(source.version || fallback.version)))
+    version: Number.isFinite(Number(alignedSource.version || alignedFallback.version))
+      ? Math.max(1, Math.round(Number(alignedSource.version || alignedFallback.version)))
       : 1,
     sourceTemplateId:
-      normalizeText(source.sourceTemplateId) ||
-      normalizeText(fallback.sourceTemplateId) ||
-      templateId ||
+      normalizeText(alignedSource.sourceTemplateId) ||
+      normalizeText(alignedFallback.sourceTemplateId) ||
+      safeTemplateId ||
       null,
     fieldsSchema,
     defaults,
@@ -706,11 +719,11 @@ function buildTemplateAuthoringDraft(
     },
     updatedAt: persist
       ? admin.firestore.FieldValue.serverTimestamp()
-      : source.updatedAt || fallback.updatedAt || null,
+      : alignedSource.updatedAt || alignedFallback.updatedAt || null,
     updatedByUid:
       (persist ? uid : "") ||
-      normalizeText(source.updatedByUid) ||
-      normalizeText(fallback.updatedByUid) ||
+      normalizeText(alignedSource.updatedByUid) ||
+      normalizeText(alignedFallback.updatedByUid) ||
       null,
   };
 }

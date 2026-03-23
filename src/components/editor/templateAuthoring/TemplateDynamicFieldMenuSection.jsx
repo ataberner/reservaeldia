@@ -44,6 +44,7 @@ export default function TemplateDynamicFieldMenuSection({
   suggestedFieldType = "text",
   selectedField = null,
   fieldsSchema = [],
+  onRefreshFields,
   onCreateField,
   onLinkField,
   onEditField,
@@ -196,6 +197,30 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
+  const refreshAvailableFields = async () => {
+    if (typeof onRefreshFields !== "function") return;
+    setSubmitError("");
+
+    try {
+      await onRefreshFields();
+    } catch (refreshError) {
+      setSubmitError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "No se pudo actualizar la lista de campos."
+      );
+    }
+  };
+
+  const handleToggleLinkMode = () => {
+    const nextMode = mode === "link" ? "" : "link";
+    setMode(nextMode);
+    if (nextMode !== "link") return;
+
+    setLinkFieldKey("");
+    void refreshAvailableFields();
+  };
+
   const handleEditField = async () => {
     if (!selectedField?.key || typeof onEditField !== "function") return;
     setSubmitError("");
@@ -276,8 +301,8 @@ export default function TemplateDynamicFieldMenuSection({
             <button
               type="button"
               className={sectionButtonNeutral}
-              disabled={!canConfigure || !selectedIsSupportedElement || availableFields.length === 0}
-              onClick={() => setMode((prev) => (prev === "link" ? "" : "link"))}
+              disabled={!canConfigure || !selectedIsSupportedElement}
+              onClick={handleToggleLinkMode}
             >
               Vincular a campo existente
             </button>
@@ -392,6 +417,12 @@ export default function TemplateDynamicFieldMenuSection({
           <select
             value={linkFieldKey}
             onChange={(event) => setLinkFieldKey(event.target.value)}
+            onFocus={() => {
+              void refreshAvailableFields();
+            }}
+            onPointerDown={() => {
+              void refreshAvailableFields();
+            }}
             className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
           >
             <option value="">Seleccionar campo...</option>

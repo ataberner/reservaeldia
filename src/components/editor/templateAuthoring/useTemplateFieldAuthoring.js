@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ensureDefaultsForSchema } from "../../../../shared/templates/contract.js";
+import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
 import {
   buildElementFieldIndex,
   buildFieldFromElement,
@@ -17,6 +18,10 @@ import {
   loadAuthoringState,
   saveAuthoringDraft,
 } from "@/domain/templates/authoring/service.js";
+import {
+  buildDynamicGalleryObjectPatch,
+  buildFixedGalleryObjectPatch,
+} from "@/domain/templates/galleryDynamicMedia.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -30,6 +35,87 @@ function asObject(value) {
 function isCountdownCompatibleFieldType(fieldType) {
   const safeType = normalizeText(fieldType).toLowerCase();
   return safeType === "date" || safeType === "datetime";
+}
+
+function isMediaAuthoringElementType(elementType) {
+  const safeType = normalizeText(elementType).toLowerCase();
+  return safeType === "imagen" || safeType === "galeria";
+}
+
+function normalizeSelectedElementDefaultValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean);
+  }
+  return normalizeText(value);
+}
+
+function arePatchValuesEqual(left, right) {
+  if (left === right) return true;
+  const leftIsObject = left && typeof left === "object";
+  const rightIsObject = right && typeof right === "object";
+  if (!leftIsObject || !rightIsObject) return false;
+
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+function resolveFieldTargetForObject(field, objectId) {
+  const safeObjectId = normalizeText(objectId);
+  if (!safeObjectId) return null;
+  const targets = Array.isArray(field?.applyTargets) ? field.applyTargets : [];
+  return (
+    targets.find(
+      (target) =>
+        normalizeText(target?.scope).toLowerCase() === "objeto" &&
+        normalizeText(target?.id) === safeObjectId
+    ) || null
+  );
+}
+
+function buildSelectedMediaFieldEnhancement(field, selectedElementType, selectedTargetConfig) {
+  const safeField = field && typeof field === "object" ? { ...field } : null;
+  if (!safeField || !isMediaAuthoringElementType(selectedElementType)) return field;
+
+  const nextValidation =
+    safeField.validation && typeof safeField.validation === "object"
+      ? { ...safeField.validation }
+      : {};
+  if (selectedElementType === "imagen") {
+    nextValidation.maxItems = 1;
+  } else if (!Number.isFinite(Number(nextValidation.maxItems)) || Number(nextValidation.maxItems) <= 0) {
+    nextValidation.maxItems = 12;
+  }
+
+  return {
+    ...safeField,
+    type: "images",
+    validation: nextValidation,
+    helperText: normalizeText(safeField.helperText) || selectedTargetConfig?.helperText || undefined,
+  };
+}
+
+function buildGalleryAuthoringPatch(galleryObject, shouldUseDynamicMedia) {
+  if (!galleryObject || normalizeText(galleryObject?.tipo).toLowerCase() !== "galeria") {
+    return null;
+  }
+
+  const mediaUrls = collectGalleryMediaUrls(galleryObject?.cells);
+  const patch = shouldUseDynamicMedia
+    ? buildDynamicGalleryObjectPatch({
+        galleryObject,
+        mediaUrls,
+      })
+    : buildFixedGalleryObjectPatch(galleryObject);
+
+  const hasChanged = Object.entries(patch).some(
+    ([key, value]) => !arePatchValuesEqual(galleryObject?.[key], value)
+  );
+  return hasChanged ? patch : null;
 }
 
 function collectRecoverableAuthoringIssues(issues) {
@@ -65,6 +151,7 @@ export default function useTemplateFieldAuthoring({
   objetos,
   selectedElement,
   draftMeta,
+  onPatchObject = null,
 }) {
   const [snapshot, setSnapshot] = useState(() => emptySnapshot());
   const [loading, setLoading] = useState(false);
@@ -83,7 +170,9 @@ export default function useTemplateFieldAuthoring({
   const selectedTargetConfig = resolveAuthoringTargetForElement(selectedElement) || null;
   const selectedElementFieldPath = normalizeText(selectedTargetConfig?.path) || "";
   const selectedElementDefaultFieldType = normalizeText(selectedTargetConfig?.defaultType) || "text";
-  const selectedElementDefaultValue = normalizeText(selectedTargetConfig?.defaultValue);
+  const selectedElementDefaultValue = normalizeSelectedElementDefaultValue(
+    selectedTargetConfig?.defaultValue
+  );
   const sourceTemplateId =
     normalizeText(snapshot.sourceTemplateId) ||
     normalizeText(draftMeta?.plantillaId) ||
@@ -117,6 +206,29 @@ export default function useTemplateFieldAuthoring({
     selectedFieldKey && Array.isArray(fieldsSchema)
       ? fieldsSchema.find((field) => normalizeText(field?.key) === selectedFieldKey) || null
       : null;
+
+  const syncSelectedGalleryAuthoringState = useCallback(
+    (nextFieldsSchema) => {
+      if (typeof onPatchObject !== "function") return;
+      if (selectedElementType !== "galeria" || !selectedElementId) return;
+
+      const currentGallery =
+        safeObjetos.find((objeto) => normalizeText(objeto?.id) === selectedElementId) || null;
+      if (!currentGallery) return;
+
+      const shouldUseDynamicMedia = (Array.isArray(nextFieldsSchema) ? nextFieldsSchema : []).some(
+        (field) =>
+          normalizeText(field?.type).toLowerCase() === "images" &&
+          normalizeText(resolveFieldTargetForObject(field, selectedElementId)?.path).toLowerCase() ===
+            "cells"
+      );
+
+      const patch = buildGalleryAuthoringPatch(currentGallery, shouldUseDynamicMedia);
+      if (!patch) return;
+      onPatchObject(selectedElementId, patch);
+    },
+    [onPatchObject, safeObjetos, selectedElementId, selectedElementType]
+  );
 
   const hydrateSnapshot = useCallback(
     (incoming) => {
@@ -324,7 +436,7 @@ export default function useTemplateFieldAuthoring({
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
       if (!selectedIsSupportedElement || !selectedElementId) {
-        throw new Error("Selecciona un texto o countdown para crear un campo dinamico.");
+        throw new Error("Selecciona un texto, countdown, imagen o galeria para crear un campo dinamico.");
       }
 
       const newField = buildFieldFromElement({
@@ -354,6 +466,7 @@ export default function useTemplateFieldAuthoring({
         fieldsSchema: linkedResult.fieldsSchema,
         defaults: ensureDefaultsForSchema(linkedResult.fieldsSchema, nextDefaults),
       });
+      syncSelectedGalleryAuthoringState(linkedResult.fieldsSchema);
 
       return newField.key;
     },
@@ -370,6 +483,7 @@ export default function useTemplateFieldAuthoring({
       selectedIsSupportedElement,
       snapshot,
       sourceTemplateId,
+      syncSelectedGalleryAuthoringState,
     ]
   );
 
@@ -379,15 +493,23 @@ export default function useTemplateFieldAuthoring({
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
       if (!selectedIsSupportedElement || !selectedElementId) {
-        throw new Error("Selecciona un texto o countdown para vincularlo.");
+        throw new Error("Selecciona un texto, countdown, imagen o galeria para vincularlo.");
       }
+      const targetField = fieldsSchema.find(
+        (field) => normalizeText(field?.key) === normalizeText(fieldKey)
+      );
       if (selectedElementType === "countdown") {
-        const targetField = fieldsSchema.find(
-          (field) => normalizeText(field?.key) === normalizeText(fieldKey)
-        );
         if (!targetField || !isCountdownCompatibleFieldType(targetField.type)) {
           throw new Error("Para countdown, vincula un campo de tipo fecha o fecha y hora.");
         }
+      }
+      if (isMediaAuthoringElementType(selectedElementType)) {
+        if (!targetField || normalizeText(targetField.type).toLowerCase() !== "images") {
+          throw new Error("Las imagenes y galerias solo se pueden vincular a campos de fotos.");
+        }
+      }
+      if (selectedElementType === "texto" && normalizeText(targetField?.type).toLowerCase() === "images") {
+        throw new Error("Un texto no se puede vincular a un campo de fotos.");
       }
 
       const linkResult = linkElementToField({
@@ -398,8 +520,16 @@ export default function useTemplateFieldAuthoring({
       });
       if (!linkResult.changed) return false;
 
+      const enhancedFields = isMediaAuthoringElementType(selectedElementType)
+        ? linkResult.fieldsSchema.map((field) =>
+            normalizeText(field?.key) === normalizeText(fieldKey)
+              ? buildSelectedMediaFieldEnhancement(field, selectedElementType, selectedTargetConfig)
+              : field
+          )
+        : linkResult.fieldsSchema;
+
       const repairedResult = sanitizeAuthoringSchema({
-        fieldsSchema: linkResult.fieldsSchema,
+        fieldsSchema: enhancedFields,
         defaults,
         objetos: safeObjetos,
         dropOrphans: true,
@@ -413,6 +543,7 @@ export default function useTemplateFieldAuthoring({
         fieldsSchema: nextFieldsSchema,
         defaults: nextDefaults,
       });
+      syncSelectedGalleryAuthoringState(nextFieldsSchema);
       return true;
     },
     [
@@ -423,10 +554,12 @@ export default function useTemplateFieldAuthoring({
       safeObjetos,
       selectedElementId,
       selectedElementFieldPath,
+      selectedTargetConfig,
       selectedElementType,
       selectedIsSupportedElement,
       snapshot,
       sourceTemplateId,
+      syncSelectedGalleryAuthoringState,
     ]
   );
 
@@ -482,6 +615,7 @@ export default function useTemplateFieldAuthoring({
       fieldsSchema: nextFieldsSchema,
       defaults: nextDefaults,
     });
+    syncSelectedGalleryAuthoringState(nextFieldsSchema);
     return true;
   }, [
     canConfigure,
@@ -493,6 +627,7 @@ export default function useTemplateFieldAuthoring({
     selectedFieldKey,
     snapshot,
     sourceTemplateId,
+    syncSelectedGalleryAuthoringState,
   ]);
 
   const deleteField = useCallback(

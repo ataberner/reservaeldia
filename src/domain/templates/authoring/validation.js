@@ -1,5 +1,6 @@
 import {
   isDateLikeTemplateFieldType,
+  isImageTemplateTargetPath,
   isTextualTemplateTargetPath,
   normalizeTemplateTargetTransform,
 } from "@/domain/templates/fieldValueResolver.js";
@@ -148,6 +149,19 @@ export function validateAuthoringState({
         if (!isTextualTemplateTargetPath(path)) {
           issues.push(
             `Campo '${key}': applyTarget #${targetIndex + 1} date_to_text requiere un path textual.`
+          );
+        }
+      }
+
+      if (transform?.kind === "images_to_first_url") {
+        if (type !== "images") {
+          issues.push(
+            `Campo '${key}': applyTarget #${targetIndex + 1} usa images_to_first_url sin ser campo fotos.`
+          );
+        }
+        if (!isImageTemplateTargetPath(path)) {
+          issues.push(
+            `Campo '${key}': applyTarget #${targetIndex + 1} images_to_first_url requiere un path de imagen.`
           );
         }
       }

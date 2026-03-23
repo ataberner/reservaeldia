@@ -1,11 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo } from "react";
 import { buildTemplateFormState } from "@/domain/templates/formModel";
-import { validateGalleryFiles } from "@/domain/templates/galleryUpload";
-
-function asObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return value;
-}
+import TemplateMediaFieldInput from "@/components/templates/TemplateMediaFieldInput";
+import useTemplateMediaLibrary from "@/hooks/useTemplateMediaLibrary";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -31,9 +27,6 @@ function resolveFieldInputType(fieldType) {
 function resolveGalleryMaxImages(field, galleryRules) {
   const fieldMax = Number(field?.validation?.maxItems);
   const rulesMax = Number(galleryRules?.maxImages);
-  if (Number.isFinite(fieldMax) && fieldMax > 0 && Number.isFinite(rulesMax) && rulesMax > 0) {
-    return Math.min(fieldMax, rulesMax);
-  }
   if (Number.isFinite(fieldMax) && fieldMax > 0) return fieldMax;
   if (Number.isFinite(rulesMax) && rulesMax > 0) return rulesMax;
   return 12;
@@ -48,10 +41,6 @@ const TemplateEventForm = forwardRef(function TemplateEventForm({
   openingEditor = false,
   mode = "collapsed",
 }, ref) {
-  const [galleryFilesByField, setGalleryFilesByField] = useState({});
-  const [galleryPreviewUrlsByField, setGalleryPreviewUrlsByField] = useState({});
-  const [galleryErrorsByField, setGalleryErrorsByField] = useState({});
-
   const model = useMemo(
     () => buildTemplateFormState(template, formState),
     [formState, template]
@@ -62,30 +51,15 @@ const TemplateEventForm = forwardRef(function TemplateEventForm({
   const rawValues = model.rawValues;
   const touchedKeys = model.touchedKeys || [];
   const hasDynamicFields = fields.length > 0;
+  const hasImageFields = fields.some((field) => field.type === "images");
   const galleryRules = template?.galleryRules && typeof template.galleryRules === "object"
     ? template.galleryRules
     : null;
   const isExpanded = mode === "expanded";
-
-  useEffect(() => {
-    setGalleryFilesByField({});
-    setGalleryPreviewUrlsByField((prev) => {
-      Object.values(asObject(prev)).forEach((urls) => {
-        toSafeArray(urls).forEach((url) => URL.revokeObjectURL(url));
-      });
-      return {};
-    });
-    setGalleryErrorsByField({});
-  }, [template?.id]);
-
-  useEffect(
-    () => () => {
-      Object.values(asObject(galleryPreviewUrlsByField)).forEach((urls) => {
-        toSafeArray(urls).forEach((url) => URL.revokeObjectURL(url));
-      });
-    },
-    [galleryPreviewUrlsByField]
-  );
+  const mediaLibrary = useTemplateMediaLibrary({
+    enabled: hasImageFields,
+    reloadKey: template?.id,
+  });
 
   const notifyFormChange = (nextRawValues, nextTouchedKeys) => {
     onFormStateChange?.({
@@ -121,63 +95,49 @@ const TemplateEventForm = forwardRef(function TemplateEventForm({
     });
   };
 
-  const handleGalleryFilesChange = (field, fileList) => {
+  const handleMediaFieldChange = (field, nextUrls) => {
     const key = field.key;
-    const files = Array.from(fileList || []);
+    const maxImages = resolveGalleryMaxImages(field, galleryRules);
+    const sanitizedUrls = toSafeArray(nextUrls)
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean)
+      .slice(0, maxImages);
+    const nextRawValues = {
+      ...rawValues,
+      [key]: sanitizedUrls,
+    };
+    const nextTouchedKeys = Array.from(new Set([...touchedKeys, key]));
 
-    try {
-      validateGalleryFiles({
-        files,
-        field,
-        galleryRules,
-      });
-    } catch (error) {
-      setGalleryErrorsByField((prev) => ({
-        ...prev,
-        [key]: String(error?.message || "No se pudieron validar las imagenes."),
-      }));
-      return;
-    }
-
-    setGalleryErrorsByField((prev) => ({
-      ...prev,
-      [key]: "",
-    }));
-
-    setGalleryFilesByField((prev) => ({
-      ...prev,
-      [key]: files,
-    }));
-
-    setGalleryPreviewUrlsByField((prev) => {
-      const next = { ...prev };
-      toSafeArray(next[key]).forEach((url) => URL.revokeObjectURL(url));
-      next[key] = files.map((file) => URL.createObjectURL(file));
-      return next;
+    notifyFormChange(nextRawValues, nextTouchedKeys);
+    onLiveFieldUpdate?.({
+      fieldKey: key,
+      value: sanitizedUrls,
+      phase: "confirm",
     });
   };
 
-  const clearGallerySelection = (fieldKey) => {
-    setGalleryFilesByField((prev) => ({
-      ...prev,
-      [fieldKey]: [],
-    }));
-    setGalleryErrorsByField((prev) => ({
-      ...prev,
-      [fieldKey]: "",
-    }));
-    setGalleryPreviewUrlsByField((prev) => {
-      const next = { ...prev };
-      toSafeArray(next[fieldKey]).forEach((url) => URL.revokeObjectURL(url));
-      next[fieldKey] = [];
-      return next;
+  const handleMediaUpload = async (field, files) => {
+    const maxImages = resolveGalleryMaxImages(field, galleryRules);
+    return mediaLibrary.uploadFiles({
+      files,
+      field: {
+        ...field,
+        validation: {
+          ...(field?.validation && typeof field.validation === "object"
+            ? field.validation
+            : {}),
+          maxItems: maxImages,
+        },
+      },
+      galleryRules,
     });
   };
 
   const handleSaveAndOpen = () => {
     onSaveAndOpen?.({
       rawValues,
-      galleryFilesByField,
+      touchedKeys,
+      galleryFilesByField: {},
     });
   };
 
@@ -186,7 +146,7 @@ const TemplateEventForm = forwardRef(function TemplateEventForm({
     () => ({
       submitChanges: handleSaveAndOpen,
     }),
-    [galleryFilesByField, rawValues]
+    [rawValues, touchedKeys]
   );
 
   return (
@@ -229,91 +189,25 @@ const TemplateEventForm = forwardRef(function TemplateEventForm({
                   {group.fields.map((field) => {
                     if (field.type === "images") {
                       const fieldKey = field.key;
-                      const selectedPreviews = toSafeArray(galleryPreviewUrlsByField[fieldKey]);
-                      const defaultImages = toSafeArray(defaults[fieldKey]);
-                      const maxImages = resolveGalleryMaxImages(field, galleryRules);
-                      const galleryError = normalizeText(galleryErrorsByField[fieldKey]);
 
                       return (
-                        <div
-                          key={field.key}
-                          className="rounded-lg border border-[#ece3fb] bg-white p-3 md:col-span-2"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <p className="text-xs font-semibold text-slate-900">{field.label}</p>
-                              {field.helperText ? (
-                                <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                                  {field.helperText}
-                                </p>
-                              ) : null}
-                            </div>
-                            <span className="text-[11px] text-slate-500">Maximo {maxImages}</span>
-                          </div>
-
-                          <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                            {galleryRules?.recommendedSizeText
-                              ? `Recomendado: ${galleryRules.recommendedSizeText}.`
-                              : "Cargar imagenes en buena calidad mejora el resultado final."}
-                            {galleryRules?.recommendedRatio
-                              ? ` Ratio sugerido: ${galleryRules.recommendedRatio}.`
-                              : ""}
-                          </p>
-                          <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                            Si no subes fotos, se mantienen las que trae la plantilla y podras cambiarlas luego.
-                          </p>
-
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              onChange={(event) =>
-                                handleGalleryFilesChange(field, event.target.files)
-                              }
-                              disabled={openingEditor}
-                              className="block w-full text-[11px] text-slate-600 file:mr-2 file:rounded-md file:border file:border-[#ded2f5] file:bg-[#f7f2ff] file:px-2.5 file:py-1.5 file:text-[11px] file:font-semibold file:text-[#5f3596]"
-                            />
-                            {selectedPreviews.length > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() => clearGallerySelection(fieldKey)}
-                                disabled={openingEditor}
-                                className="rounded-md border border-[#e1d5f8] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#5f3596] hover:bg-[#f7f2ff] disabled:opacity-60"
-                              >
-                                Limpiar
-                              </button>
-                            ) : null}
-                          </div>
-
-                          {galleryError ? (
-                            <p className="mt-2 text-[11px] text-rose-600">{galleryError}</p>
-                          ) : null}
-
-                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            {(selectedPreviews.length ? selectedPreviews : defaultImages)
-                              .slice(0, 8)
-                              .map((url, index) => (
-                                <div
-                                  key={`${fieldKey}-preview-${index}`}
-                                  className="aspect-square overflow-hidden rounded-lg border border-[#ebebf3] bg-slate-50"
-                                >
-                                  <img
-                                    src={url}
-                                    alt={`Preview ${index + 1}`}
-                                    className="h-full w-full object-cover"
-                                    loading="lazy"
-                                  />
-                                </div>
-                              ))}
-                          </div>
-
-                          <p className="mt-2 text-[11px] text-slate-500">
-                            {selectedPreviews.length > 0
-                              ? `Reemplazaras ${selectedPreviews.length} foto(s) al guardar.`
-                              : `Actualmente hay ${defaultImages.length} foto(s) por defecto.`}
-                          </p>
-                        </div>
+                        <TemplateMediaFieldInput
+                          key={fieldKey}
+                          field={field}
+                          value={rawValues[fieldKey]}
+                          defaultImages={defaults[fieldKey]}
+                          isTouched={touchedKeys.includes(fieldKey)}
+                          maxImages={resolveGalleryMaxImages(field, galleryRules)}
+                          galleryRules={galleryRules}
+                          libraryImages={mediaLibrary.images}
+                          libraryLoading={mediaLibrary.loading}
+                          libraryHasMore={mediaLibrary.hasMore}
+                          libraryUploading={mediaLibrary.uploading}
+                          openingEditor={openingEditor}
+                          onLoadMoreLibrary={mediaLibrary.loadMore}
+                          onUploadFiles={(files) => handleMediaUpload(field, files)}
+                          onChange={(nextUrls) => handleMediaFieldChange(field, nextUrls)}
+                        />
                       );
                     }
 

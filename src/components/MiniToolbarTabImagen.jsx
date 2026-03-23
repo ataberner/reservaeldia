@@ -107,10 +107,20 @@ export default function MiniToolbarTabImagen({
   }, [editorSelection.selectedIds]);
 
   const totalCeldasGaleria = useMemo(() => {
+    const isDynamicGallery =
+      String(galeriaSeleccionada?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
+    const cells = Array.isArray(galeriaSeleccionada?.cells) ? galeriaSeleccionada.cells : [];
+    if (isDynamicGallery) {
+      return cells.filter((cell) => {
+        const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+        return Boolean(mediaUrl);
+      }).length;
+    }
+
     const rows = Math.max(1, Number(galeriaSeleccionada?.rows) || 1);
     const cols = Math.max(1, Number(galeriaSeleccionada?.cols) || 1);
     return rows * cols;
-  }, [galeriaSeleccionada?.rows, galeriaSeleccionada?.cols]);
+  }, [galeriaSeleccionada?.cells, galeriaSeleccionada?.cols, galeriaSeleccionada?.galleryLayoutMode, galeriaSeleccionada?.rows]);
 
   const celdaActiva = useMemo(() => {
     const cell = editorSelection.galleryCell;

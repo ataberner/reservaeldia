@@ -2175,6 +2175,7 @@ export default function Dashboard() {
   const openTemplateEditor = useCallback(async ({
     applyChanges,
     rawValues = {},
+    touchedKeys = [],
     galleryFilesByField = {},
     previewTextPositions = null,
   }) => {
@@ -2190,6 +2191,9 @@ export default function Dashboard() {
           rawValues && typeof rawValues === "object"
             ? rawValues
             : selectedTemplateFormState?.rawValues || {},
+        touchedKeys: Array.isArray(touchedKeys)
+          ? touchedKeys
+          : selectedTemplateFormState?.touchedKeys || [],
         galleryFilesByField,
         previewTextPositions,
         applyChanges: applyChanges === true,
@@ -2241,6 +2245,9 @@ export default function Dashboard() {
         safePayload.rawValues && typeof safePayload.rawValues === "object"
           ? safePayload.rawValues
           : {},
+      touchedKeys: Array.isArray(safePayload.touchedKeys)
+        ? safePayload.touchedKeys
+        : [],
       galleryFilesByField:
         safePayload.galleryFilesByField && typeof safePayload.galleryFilesByField === "object"
           ? safePayload.galleryFilesByField

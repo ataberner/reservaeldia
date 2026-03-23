@@ -27,7 +27,6 @@ function resolveMaxImages({ field, galleryRules }) {
   const fieldMax = toPositiveNumber(field?.validation?.maxItems);
   const rulesMax = toPositiveNumber(galleryRules?.maxImages);
 
-  if (fieldMax && rulesMax) return Math.min(fieldMax, rulesMax);
   if (fieldMax) return fieldMax;
   if (rulesMax) return rulesMax;
   return 12;

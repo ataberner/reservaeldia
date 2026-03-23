@@ -44,6 +44,7 @@ const APPLY_TARGET_TRANSFORM_KINDS = new Set([
   "identity",
   "date_to_countdown_iso",
   "date_to_text",
+  "images_to_first_url",
 ]);
 const DEFAULT_DATE_TEXT_TRANSFORM_PRESET = "event_date_long_es_ar";
 

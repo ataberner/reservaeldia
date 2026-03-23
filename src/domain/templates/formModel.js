@@ -192,11 +192,15 @@ export function resolveTemplateInputValues({
   template,
   rawValues,
   galleryUrlsByField,
+  touchedKeys,
 }) {
-  const formState = buildTemplateFormState(template, { rawValues });
+  const formState = buildTemplateFormState(template, { rawValues, touchedKeys });
   const defaults = formState.defaults;
   const safeRawValues = asObject(formState.rawValues);
   const safeGalleryUrlsByField = asObject(galleryUrlsByField);
+  const touchedSet = new Set(
+    Array.isArray(formState.touchedKeys) ? formState.touchedKeys : []
+  );
   const resolvedValues = {};
 
   formState.fields.forEach((field) => {
@@ -212,6 +216,11 @@ export function resolveTemplateInputValues({
 
       const rawExisting = sanitizeImagesValue(safeRawValues[key]);
       if (rawExisting.length > 0) {
+        resolvedValues[key] = rawExisting;
+        return;
+      }
+
+      if (touchedSet.has(key)) {
         resolvedValues[key] = rawExisting;
         return;
       }

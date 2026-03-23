@@ -9,6 +9,7 @@ const TEXT_FIELD_TYPE_OPTIONS = [
   { value: "location", label: "Ubicacion" },
   { value: "url", label: "URL" },
 ];
+const MEDIA_FIELD_TYPE_OPTIONS = [{ value: "images", label: "Fotos" }];
 
 const FIELD_GROUP_OPTIONS = [
   "Datos principales",
@@ -22,9 +23,20 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
+function isMediaElementType(value) {
+  const safeType = normalizeText(value).toLowerCase();
+  return safeType === "imagen" || safeType === "galeria";
+}
+
 function buildSuggestedLabel(selectedElement, selectedElementType) {
   if (selectedElementType === "countdown") {
     return "Fecha del evento";
+  }
+  if (selectedElementType === "imagen") {
+    return "Imagen principal";
+  }
+  if (selectedElementType === "galeria") {
+    return "Fotos";
   }
   const rawText = normalizeText(selectedElement?.texto);
   if (!rawText) return "Nuevo campo";
@@ -63,27 +75,46 @@ export default function TemplateDynamicFieldMenuSection({
   const [editType, setEditType] = useState("text");
   const [editGroup, setEditGroup] = useState("Datos principales");
   const [editOptional, setEditOptional] = useState(false);
+  const isMediaElement = isMediaElementType(selectedElementType);
 
   const availableFields = useMemo(
     () => (Array.isArray(fieldsSchema) ? fieldsSchema : []),
     [fieldsSchema]
   );
+  const linkableFields = useMemo(() => {
+    return availableFields.filter((field) => {
+      const fieldType = normalizeText(field?.type).toLowerCase();
+      if (selectedElementType === "countdown") {
+        return fieldType === "date" || fieldType === "datetime";
+      }
+      if (isMediaElement) {
+        return fieldType === "images";
+      }
+      return fieldType !== "images";
+    });
+  }, [availableFields, isMediaElement, selectedElementType]);
   const createTypeOptions = useMemo(() => {
     if (selectedElementType === "countdown") {
       return TEXT_FIELD_TYPE_OPTIONS.filter(
         (option) => option.value === "date" || option.value === "datetime"
       );
     }
+    if (isMediaElement) {
+      return MEDIA_FIELD_TYPE_OPTIONS;
+    }
     return TEXT_FIELD_TYPE_OPTIONS;
-  }, [selectedElementType]);
+  }, [isMediaElement, selectedElementType]);
   const editTypeOptions = useMemo(() => {
     if (selectedElementType === "countdown") {
       return TEXT_FIELD_TYPE_OPTIONS.filter(
         (option) => option.value === "date" || option.value === "datetime"
       );
     }
+    if (isMediaElement) {
+      return MEDIA_FIELD_TYPE_OPTIONS;
+    }
     return TEXT_FIELD_TYPE_OPTIONS;
-  }, [selectedElementType]);
+  }, [isMediaElement, selectedElementType]);
 
   useEffect(() => {
     setMode("");
@@ -92,12 +123,14 @@ export default function TemplateDynamicFieldMenuSection({
     setCreateType(
       selectedElementType === "countdown"
         ? "date"
-        : normalizeText(suggestedFieldType) || "text"
+        : isMediaElement
+          ? "images"
+          : normalizeText(suggestedFieldType) || "text"
     );
-    setCreateGroup("Datos principales");
+    setCreateGroup(isMediaElement ? "Galeria" : "Datos principales");
     setCreateOptional(false);
     setLinkFieldKey("");
-  }, [selectedElement?.id, selectedElementType, suggestedFieldType, visible]);
+  }, [isMediaElement, selectedElement?.id, selectedElementType, suggestedFieldType, visible]);
 
   useEffect(() => {
     if (!selectedField) return;
@@ -109,12 +142,14 @@ export default function TemplateDynamicFieldMenuSection({
       incomingType !== "datetime"
     ) {
       setEditType("date");
+    } else if (isMediaElement) {
+      setEditType("images");
     } else {
       setEditType(incomingType);
     }
-    setEditGroup(normalizeText(selectedField.group) || "Datos principales");
+    setEditGroup(normalizeText(selectedField.group) || (isMediaElement ? "Galeria" : "Datos principales"));
     setEditOptional(Boolean(selectedField.optional));
-  }, [selectedElementType, selectedField]);
+  }, [isMediaElement, selectedElementType, selectedField]);
 
   if (!visible) return null;
 
@@ -140,7 +175,7 @@ export default function TemplateDynamicFieldMenuSection({
     if (!selectedIsSupportedElement) {
       return (
         <p className="text-[10px] text-slate-500">
-          MVP activo: selecciona un texto o countdown para configurar campo dinamico.
+          Selecciona un texto, countdown, imagen o galeria para configurar un campo dinamico.
         </p>
       );
     }
@@ -153,9 +188,25 @@ export default function TemplateDynamicFieldMenuSection({
       );
     }
 
+    if (selectedElementType === "imagen") {
+      return (
+        <p className="text-[10px] text-slate-500">
+          Vincula esta imagen a un campo de fotos para reemplazarla desde el formulario.
+        </p>
+      );
+    }
+
+    if (selectedElementType === "galeria") {
+      return (
+        <p className="text-[10px] text-slate-500">
+          Vincula esta galeria a un campo de fotos para activar su composicion dinamica.
+        </p>
+      );
+    }
+
     return (
       <p className="text-[10px] text-slate-500">
-        Configura este texto como campo del formulario para reutilizarlo en templates.
+        Configura este elemento como campo del formulario para reutilizarlo en templates.
       </p>
     );
   };
@@ -369,6 +420,7 @@ export default function TemplateDynamicFieldMenuSection({
           <select
             value={createType}
             onChange={(event) => setCreateType(event.target.value)}
+            disabled={isMediaElement}
             className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
           >
             {createTypeOptions.map((option) => (
@@ -426,7 +478,7 @@ export default function TemplateDynamicFieldMenuSection({
             className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
           >
             <option value="">Seleccionar campo...</option>
-            {availableFields.map((field) => (
+            {linkableFields.map((field) => (
               <option key={field.key} value={field.key}>
                 {field.label || field.key} ({field.key})
               </option>
@@ -457,6 +509,7 @@ export default function TemplateDynamicFieldMenuSection({
           <select
             value={editType}
             onChange={(event) => setEditType(event.target.value)}
+            disabled={isMediaElement}
             className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
           >
             {editTypeOptions.map((option) => (

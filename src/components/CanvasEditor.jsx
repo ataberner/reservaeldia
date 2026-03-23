@@ -694,6 +694,17 @@ export default function CanvasEditor({
     objetos,
     selectedElement: objetoSeleccionado,
     draftMeta,
+    onPatchObject: (objectId, patch) => {
+      const safeObjectId = String(objectId || "").trim();
+      if (!safeObjectId || !patch || typeof patch !== "object") return;
+      setObjetos((prev) =>
+        prev.map((objeto) =>
+          objeto?.id === safeObjectId
+            ? { ...objeto, ...patch }
+            : objeto
+        )
+      );
+    },
   });
   const canRenderTemplateAuthoringMenu =
     canManageSite &&

@@ -27,7 +27,8 @@ export type TemplateFieldUpdateMode = "input" | "blur" | "confirm";
 export type TemplateFieldApplyTargetTransformKind =
   | "identity"
   | "date_to_countdown_iso"
-  | "date_to_text";
+  | "date_to_text"
+  | "images_to_first_url";
 
 export interface TemplateFieldApplyTargetTransform {
   kind: TemplateFieldApplyTargetTransformKind;

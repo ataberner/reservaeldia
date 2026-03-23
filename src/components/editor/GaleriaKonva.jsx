@@ -13,8 +13,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
 import useImage from "use-image";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
-import { calcGalleryLayout } from "@/utils/calcGrid";
 import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
+import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -107,18 +107,71 @@ export default function GaleriaKonva({
   const cols = Math.max(1, toNum(obj.cols, 1));
   const width = Math.max(1, toNum(obj.width, 400));
 
-  const cellRatio =
-    obj.ratio === "4:3" ? 3 / 4 :
-      obj.ratio === "16:9" ? 9 / 16 :
-        1;
+  const isDynamicGallery = String(obj?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
+  const sourceCells = Array.isArray(obj.cells) ? obj.cells : [];
+  const renderCells = useMemo(() => {
+    if (isDynamicGallery) {
+      return sourceCells
+        .map((cell) => {
+          const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+          if (!mediaUrl) return null;
+          return {
+            ...cell,
+            mediaUrl,
+            fit: cell?.fit || "cover",
+            bg: cell?.bg || "#f3f4f6",
+          };
+        })
+        .filter(Boolean);
+    }
+
+    const total = Math.max(1, rows * cols);
+    return Array.from({ length: total }, (_, index) => {
+      const cell = sourceCells[index] || {};
+      return {
+        ...cell,
+        mediaUrl: cell?.mediaUrl || null,
+        fit: cell?.fit || "cover",
+        bg: cell?.bg || "#f3f4f6",
+      };
+    });
+  }, [cols, isDynamicGallery, rows, sourceCells]);
+  const mediaUrls = useMemo(
+    () =>
+      renderCells
+        .map((cell) => String(cell?.mediaUrl || "").trim())
+        .filter(Boolean),
+    [renderCells]
+  );
 
   const { rects, totalHeight } = useMemo(() => {
     try {
-      return calcGalleryLayout({ width, rows, cols, gap, cellRatio });
+      return resolveGalleryRenderLayout({
+        width,
+        rows,
+        cols,
+        gap,
+        ratio: obj.ratio,
+        layoutMode: obj.galleryLayoutMode,
+        layoutType: obj.galleryLayoutType,
+        layoutBlueprint: obj.galleryLayoutBlueprint,
+        mediaUrls,
+        isMobile: false,
+      });
     } catch {
       return { rects: [], totalHeight: 0 };
     }
-  }, [width, rows, cols, gap, cellRatio]);
+  }, [
+    cols,
+    gap,
+    mediaUrls,
+    obj.galleryLayoutBlueprint,
+    obj.galleryLayoutMode,
+    obj.galleryLayoutType,
+    obj.ratio,
+    rows,
+    width,
+  ]);
 
   const safeTotalHeight = Math.max(1, totalHeight);
 
@@ -282,8 +335,13 @@ export default function GaleriaKonva({
     if (pressRef.current.suppressClick) return;
     if (evt) evt.cancelBubble = true;
     if (evt?.evt) evt.evt.cancelBubble = true;
-    const nuevasCells = [...(obj.cells || [])];
-    nuevasCells[index] = { ...(nuevasCells[index] || {}), mediaUrl: null };
+    const nuevasCells = isDynamicGallery
+      ? renderCells.filter((_, cellIndex) => cellIndex !== index)
+      : (() => {
+          const next = [...sourceCells];
+          next[index] = { ...(next[index] || {}), mediaUrl: null };
+          return next;
+        })();
     onChange?.(obj.id, { cells: nuevasCells });
   };
 
@@ -366,7 +424,7 @@ export default function GaleriaKonva({
       />
 
       {rects.map((r, i) => {
-        const cell = obj.cells?.[i] || {};
+        const cell = renderCells[i] || {};
         const bg = cell.bg || "#f3f4f6";
         const mediaUrl = cell.mediaUrl || null;
         const fit = cell.fit || "cover";

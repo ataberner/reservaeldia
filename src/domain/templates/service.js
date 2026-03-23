@@ -378,6 +378,7 @@ export async function createDraftFromTemplateWithInput({
   template,
   userId,
   rawValues,
+  touchedKeys,
   galleryFilesByField,
   previewTextPositions = null,
   applyChanges = false,
@@ -400,6 +401,7 @@ export async function createDraftFromTemplateWithInput({
     templateId,
     applyChanges,
     rawValues,
+    touchedKeys,
     previewTextPositions,
   });
 
@@ -436,6 +438,7 @@ export async function createDraftFromTemplateWithInput({
   const { resolvedValues } = resolveTemplateInputValues({
     template: safeTemplate,
     rawValues,
+    touchedKeys,
     galleryUrlsByField: uploadedGalleryUrlsByField,
   });
 

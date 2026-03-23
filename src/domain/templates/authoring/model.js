@@ -3,7 +3,7 @@ import {
   normalizeTemplateTargetTransform,
 } from "@/domain/templates/fieldValueResolver.js";
 
-const TEXT_FIELD_TYPES = new Set([
+const FIELD_TYPES = new Set([
   "text",
   "textarea",
   "date",
@@ -11,10 +11,12 @@ const TEXT_FIELD_TYPES = new Set([
   "datetime",
   "location",
   "url",
+  "images",
 ]);
 
 const DEFAULT_GROUP = "Datos principales";
-const SUPPORTED_SOURCE_ELEMENT_TYPES = new Set(["texto", "countdown"]);
+const DEFAULT_MEDIA_GROUP = "Galeria";
+const SUPPORTED_SOURCE_ELEMENT_TYPES = new Set(["texto", "countdown", "imagen", "galeria"]);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -38,7 +40,7 @@ function normalizeBoolean(value, fallback = false) {
 function normalizeFieldType(value) {
   const token = normalizeText(value).toLowerCase();
   if (!token) return "text";
-  if (!TEXT_FIELD_TYPES.has(token)) return "text";
+  if (!FIELD_TYPES.has(token)) return "text";
   return token;
 }
 
@@ -72,6 +74,109 @@ function sanitizeFieldKeyToken(value) {
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
+}
+
+function toPositiveInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(parsed);
+}
+
+function normalizeFieldHelperText(value) {
+  const safe = normalizeText(value);
+  return safe || undefined;
+}
+
+function normalizeFieldValidation(value, fieldType) {
+  const source = asObject(value);
+  const type = normalizeFieldType(fieldType);
+  const validation = {};
+
+  if (type === "images") {
+    const minItems = toPositiveInteger(source.minItems);
+    const maxItems = toPositiveInteger(source.maxItems);
+    if (minItems) validation.minItems = minItems;
+    if (maxItems) validation.maxItems = maxItems;
+  } else {
+    const maxLength = toPositiveInteger(source.maxLength);
+    if (maxLength) validation.maxLength = maxLength;
+  }
+
+  return Object.keys(validation).length ? validation : undefined;
+}
+
+function normalizeMediaUrls(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+}
+
+function collectGalleryElementMediaUrls(element) {
+  const cells = Array.isArray(element?.cells) ? element.cells : [];
+  return cells
+    .map((cell) => normalizeText(cell?.mediaUrl || cell?.url || cell?.src))
+    .filter(Boolean);
+}
+
+function resolveElementWidth(element) {
+  return (
+    toPositiveInteger(element?.width) ||
+    toPositiveInteger(element?.ancho) ||
+    null
+  );
+}
+
+function resolveElementHeight(element) {
+  return (
+    toPositiveInteger(element?.height) ||
+    toPositiveInteger(element?.alto) ||
+    null
+  );
+}
+
+function computeGreatestCommonDivisor(a, b) {
+  let left = Math.abs(Math.round(a));
+  let right = Math.abs(Math.round(b));
+  while (right) {
+    const tmp = right;
+    right = left % right;
+    left = tmp;
+  }
+  return left || 1;
+}
+
+function buildAspectRatioLabel(width, height) {
+  const safeWidth = toPositiveInteger(width);
+  const safeHeight = toPositiveInteger(height);
+  if (!safeWidth || !safeHeight) return "";
+  const divisor = computeGreatestCommonDivisor(safeWidth, safeHeight);
+  const ratioWidth = Math.max(1, Math.round(safeWidth / divisor));
+  const ratioHeight = Math.max(1, Math.round(safeHeight / divisor));
+  return `${ratioWidth}:${ratioHeight}`;
+}
+
+function buildImageFieldHelperText(element) {
+  const ratioLabel = buildAspectRatioLabel(
+    resolveElementWidth(element),
+    resolveElementHeight(element)
+  );
+  if (!ratioLabel) {
+    return "Puedes reemplazar esta imagen desde el formulario.";
+  }
+  return `Proporcion sugerida: ${ratioLabel}.`;
+}
+
+function buildGalleryFieldHelperText() {
+  return "La composicion se adapta automaticamente segun la cantidad de fotos.";
+}
+
+function resolveGalleryDefaultMaxItems(element) {
+  const explicitCellCount = Array.isArray(element?.cells) ? element.cells.length : 0;
+  const gridCellCount =
+    Math.max(1, toPositiveInteger(element?.rows) || 1) *
+    Math.max(1, toPositiveInteger(element?.cols) || 1);
+  return Math.max(12, explicitCellCount, gridCellCount);
 }
 
 function stripUndefinedTransform(target) {
@@ -115,19 +220,29 @@ function normalizeField(field, index = 0) {
   const type = normalizeFieldType(source.type);
   const group = normalizeFieldGroup(source.group);
   const optional = normalizeBoolean(source.optional, false);
+  const helperText = normalizeFieldHelperText(source.helperText);
+  const validation = normalizeFieldValidation(source.validation, type);
   const applyTargets = Array.isArray(source.applyTargets)
     ? source.applyTargets
         .map((target) => normalizeApplyTarget(target))
         .filter(Boolean)
     : [];
 
+  const {
+    helperText: _unusedHelperText,
+    validation: _unusedValidation,
+    ...restSource
+  } = source;
+
   return {
-    ...source,
+    ...restSource,
     key,
     label,
     type,
     group,
     optional,
+    ...(helperText ? { helperText } : {}),
+    ...(validation ? { validation } : {}),
     applyTargets: applyTargets
       .map((target) => {
         const suggestedTransform =
@@ -198,6 +313,35 @@ export function resolveAuthoringTargetForElement(element) {
     };
   }
 
+  if (elementType === "imagen") {
+    const imageUrl = normalizeText(safeElement.src || safeElement.url);
+    return {
+      elementType,
+      path: "src",
+      defaultType: "images",
+      defaultLabel: "Imagen principal",
+      defaultValue: imageUrl ? [imageUrl] : [],
+      helperText: buildImageFieldHelperText(safeElement),
+      validation: {
+        maxItems: 1,
+      },
+    };
+  }
+
+  if (elementType === "galeria") {
+    return {
+      elementType,
+      path: "cells",
+      defaultType: "images",
+      defaultLabel: "Fotos",
+      defaultValue: collectGalleryElementMediaUrls(safeElement),
+      helperText: buildGalleryFieldHelperText(),
+      validation: {
+        maxItems: resolveGalleryDefaultMaxItems(safeElement),
+      },
+    };
+  }
+
   return {
     elementType: "texto",
     path: "texto",
@@ -220,25 +364,37 @@ export function buildFieldFromElement({
   const targetConfig = resolveAuthoringTargetForElement(safeElement);
 
   if (!targetConfig || !elementId) {
-    throw new Error("Solo se pueden crear campos dinamicos desde texto o countdown.");
+    throw new Error("Solo se pueden crear campos dinamicos desde texto, countdown, imagen o galeria.");
   }
 
   const elementType = targetConfig.elementType;
   const defaultLabel =
     elementType === "countdown"
       ? targetConfig.defaultLabel
-      : normalizeText(safeElement.texto).slice(0, 60) || targetConfig.defaultLabel;
+      : elementType === "texto"
+        ? normalizeText(safeElement.texto).slice(0, 60) || targetConfig.defaultLabel
+        : targetConfig.defaultLabel;
   const suggestedLabel =
     normalizeFieldLabel(label) || defaultLabel || "Campo";
   const key = generateFieldKey(suggestedLabel, existingFields);
-  const normalizedType = normalizeFieldType(type || targetConfig.defaultType);
+  const normalizedType = (
+    elementType === "imagen" || elementType === "galeria"
+      ? "images"
+      : normalizeFieldType(type || targetConfig.defaultType)
+  );
+  const resolvedGroup =
+    elementType === "imagen" || elementType === "galeria"
+      ? normalizeFieldGroup(group || DEFAULT_MEDIA_GROUP)
+      : normalizeFieldGroup(group);
 
   return {
     key,
     label: suggestedLabel,
     type: normalizedType,
-    group: normalizeFieldGroup(group),
+    group: resolvedGroup,
     optional: normalizeBoolean(optional, false),
+    ...(targetConfig.helperText ? { helperText: targetConfig.helperText } : {}),
+    ...(targetConfig.validation ? { validation: targetConfig.validation } : {}),
     applyTargets: [
       {
         scope: "objeto",
@@ -461,6 +617,17 @@ export function updateFieldConfig({
         : normalized.optional,
       normalized.optional
     );
+    const nextHelperText = normalizeFieldHelperText(
+      Object.prototype.hasOwnProperty.call(safePatch, "helperText")
+        ? safePatch.helperText
+        : normalized.helperText
+    );
+    const nextValidation = normalizeFieldValidation(
+      Object.prototype.hasOwnProperty.call(safePatch, "validation")
+        ? safePatch.validation
+        : normalized.validation,
+      nextType
+    );
     const nextTargets = normalized.applyTargets.map((target) =>
       stripUndefinedTransform({
         ...target,
@@ -475,17 +642,26 @@ export function updateFieldConfig({
       nextType !== normalized.type ||
       nextGroup !== normalized.group ||
       nextOptional !== normalized.optional ||
+      nextHelperText !== normalizeFieldHelperText(normalized.helperText) ||
+      JSON.stringify(nextValidation || null) !== JSON.stringify(normalized.validation || null) ||
       JSON.stringify(nextTargets) !== JSON.stringify(normalized.applyTargets)
     ) {
       changed = true;
     }
 
+    const {
+      helperText: _unusedHelperText,
+      validation: _unusedValidation,
+      ...restNormalized
+    } = normalized;
     return {
-      ...normalized,
+      ...restNormalized,
       label: nextLabel,
       type: nextType,
       group: nextGroup,
       optional: nextOptional,
+      ...(nextHelperText ? { helperText: nextHelperText } : {}),
+      ...(nextValidation ? { validation: nextValidation } : {}),
       applyTargets: nextTargets,
     };
   });

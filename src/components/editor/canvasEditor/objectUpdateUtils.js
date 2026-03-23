@@ -1,3 +1,8 @@
+import {
+  resolveGalleryLayoutForObject,
+  scaleDynamicGalleryBlueprintToVisibleWidth,
+} from "@/domain/templates/galleryDynamicMedia";
+
 export function mergeObjectForUpdate(currentObject, nuevo = {}) {
   if (!currentObject) return currentObject;
   const { fromTransform, ...cleanNuevo } = nuevo || {};
@@ -51,9 +56,49 @@ export function normalizarMedidasGaleria(galeria, widthCandidate, xCandidate) {
   width = Math.min(canvasWidth, Math.max(minGridWidth, width));
   widthPct = Math.max(10, Math.min(100, (width / canvasWidth) * 100));
 
-  const maxX = Math.max(0, canvasWidth - width);
   const fallbackX = Number.isFinite(Number(galeria?.x)) ? Number(galeria.x) : 0;
   const rawX = Number.isFinite(Number(xCandidate)) ? Number(xCandidate) : fallbackX;
+
+  if (String(galeria?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media") {
+    const galleryLayoutBlueprint = scaleDynamicGalleryBlueprintToVisibleWidth(
+      galeria,
+      width
+    );
+    const layout = resolveGalleryLayoutForObject({
+      galleryObject: {
+        ...galeria,
+        width,
+        galleryLayoutBlueprint,
+      },
+      isMobile: false,
+      layoutMode: "dynamic_media",
+      layoutBlueprint: galleryLayoutBlueprint,
+    });
+    const nextWidth =
+      Number.isFinite(Number(layout?.totalWidth)) && Number(layout.totalWidth) > 0
+        ? Number(layout.totalWidth)
+        : width;
+    const nextHeight =
+      Number.isFinite(Number(layout?.totalHeight)) && Number(layout.totalHeight) >= 0
+        ? Number(layout.totalHeight)
+        : 0;
+    const maxX = Math.max(0, canvasWidth - nextWidth);
+    const x = Math.max(0, Math.min(rawX, maxX));
+    const nextWidthPct = Math.max(
+      10,
+      Math.min(100, ((nextWidth > 0 ? nextWidth : width) / canvasWidth) * 100)
+    );
+
+    return {
+      width: nextWidth,
+      height: nextHeight,
+      widthPct: nextWidthPct,
+      x,
+      galleryLayoutBlueprint,
+    };
+  }
+
+  const maxX = Math.max(0, canvasWidth - width);
   const x = Math.max(0, Math.min(rawX, maxX));
 
   const cellW = Math.max(1, (width - gap * (cols - 1)) / cols);

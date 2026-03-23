@@ -4,6 +4,10 @@ import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 import { measureTextPositionFromPreviewSemantics } from "@/lib/templatePreviewTextMeasure";
 import { logTemplateDraftDebug } from "./draftPersonalizationDebug.js";
+import {
+  buildDynamicGalleryObjectPatch,
+  buildFixedGalleryObjectPatch,
+} from "./galleryDynamicMedia.js";
 
 const DEFAULT_TEXT_CONTAINER_WIDTH_PX = 800;
 
@@ -73,6 +77,10 @@ function sanitizeImageUrls(value) {
   return value
     .map((entry) => normalizeText(entry))
     .filter(Boolean);
+}
+
+function isDynamicGalleryObject(value) {
+  return normalizeText(value?.galleryLayoutMode).toLowerCase() === "dynamic_media";
 }
 
 function replaceInText(baseText, findText, replaceText) {
@@ -328,6 +336,16 @@ function setValueAtPath(target, path, value, textMeasurementOptions) {
 function applyGalleryCells(targetObject, urls) {
   if (!targetObject || typeof targetObject !== "object") return false;
   const safeUrls = sanitizeImageUrls(urls);
+
+  if (isDynamicGalleryObject(targetObject)) {
+    const patch = buildDynamicGalleryObjectPatch({
+      galleryObject: targetObject,
+      mediaUrls: safeUrls,
+    });
+    Object.assign(targetObject, patch);
+    return true;
+  }
+
   if (!safeUrls.length) return false;
 
   const cells = Array.isArray(targetObject.cells) ? targetObject.cells : [];
@@ -346,6 +364,7 @@ function applyGalleryCells(targetObject, urls) {
   });
 
   targetObject.cells = nextCells;
+  Object.assign(targetObject, buildFixedGalleryObjectPatch(targetObject));
   return true;
 }
 
@@ -434,7 +453,6 @@ function applyFallbackTextReplace({
 function applyFallbackGalleryReplace({ objetos, urls }) {
   if (!Array.isArray(objetos)) return 0;
   const safeUrls = sanitizeImageUrls(urls);
-  if (!safeUrls.length) return 0;
 
   const galeria = objetos.find(
     (objeto) =>
@@ -442,6 +460,7 @@ function applyFallbackGalleryReplace({ objetos, urls }) {
       Array.isArray(objeto?.cells)
   );
   if (!galeria) return 0;
+  if (!safeUrls.length && !isDynamicGalleryObject(galeria)) return 0;
 
   const applied = applyGalleryCells(galeria, safeUrls);
   return applied ? 1 : 0;

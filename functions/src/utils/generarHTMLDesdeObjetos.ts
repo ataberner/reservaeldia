@@ -1,6 +1,12 @@
 import { LINE_CONSTANTS } from "../models/lineConstants";
 import { resolveRsvpButtonVisual } from "../rsvp/buttonStyles";
 
+const {
+  normalizeGalleryLayoutMode,
+  normalizeGalleryLayoutType,
+  resolveGalleryRenderLayout,
+} = require("../../shared/templates/galleryDynamicLayout.cjs");
+
 // ✅ Escapar strings para meterlos en atributos/HTML
 function escHTML(str: any = ""): string {
   return String(str)
@@ -1254,12 +1260,134 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
         const cols = Math.max(1, parseInt(obj.cols || 1, 10));
         const gapPx = Math.max(0, parseInt(obj.gap || 0, 10));
         const radiusPx = Math.max(0, parseInt(obj.radius || 0, 10));
+        const layoutMode = normalizeGalleryLayoutMode(obj.galleryLayoutMode);
+        const layoutType = normalizeGalleryLayoutType(obj.galleryLayoutType);
 
         const baseStyle = stylePosBase(obj);
-        const w = Number.isFinite(obj?.width) ? obj.width : undefined;
-        const h = Number.isFinite(obj?.height) ? obj.height : undefined;
+        const w = Number.isFinite(obj?.width) ? Number(obj.width) : 1;
+        const h = Number.isFinite(obj?.height) ? Number(obj.height) : undefined;
 
         const sGrid = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
+        const sourceCells = Array.isArray(obj.cells) ? obj.cells : [];
+
+        if (layoutMode === "dynamic_media") {
+          const mediaCells = sourceCells
+            .map((cell: any) => {
+              const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+              if (!mediaUrl) return null;
+              return {
+                mediaUrl,
+                fit: cell?.fit === "contain" ? "contain" : "cover",
+                bg: sanitizeCssPaint(cell?.bg, "#f3f4f6"),
+              };
+            })
+            .filter(Boolean);
+
+          const mediaUrls = mediaCells.map((cell: any) => cell.mediaUrl);
+          const desktopLayout = resolveGalleryRenderLayout({
+            width: w,
+            rows,
+            cols,
+            gap: gapPx,
+            ratio: obj.ratio,
+            layoutMode,
+            layoutType,
+            layoutBlueprint: obj.galleryLayoutBlueprint,
+            mediaUrls,
+            isMobile: false,
+          });
+          const mobileLayout = resolveGalleryRenderLayout({
+            width: w,
+            rows,
+            cols,
+            gap: gapPx,
+            ratio: obj.ratio,
+            layoutMode,
+            layoutType,
+            layoutBlueprint: obj.galleryLayoutBlueprint,
+            mediaUrls,
+            isMobile: true,
+          });
+
+          const desktopWidth = Math.max(
+            0,
+            Number.isFinite(Number(desktopLayout?.totalWidth))
+              ? Number(desktopLayout.totalWidth)
+              : w
+          );
+          const desktopHeight = Math.max(
+            0,
+            Number.isFinite(Number(desktopLayout?.totalHeight))
+              ? Number(desktopLayout.totalHeight)
+              : Number.isFinite(h)
+                ? Number(h)
+                : 0
+          );
+          const mobileHeight = Math.max(
+            0,
+            Number.isFinite(Number(mobileLayout?.totalHeight))
+              ? Number(mobileLayout.totalHeight)
+              : desktopHeight
+          );
+
+          const styleContenedorDinamico = `
+${baseStyle}
+width: ${pxX(obj, desktopWidth)};
+--gallery-scale: ${sGrid};
+--gallery-height-desktop: ${desktopHeight};
+--gallery-height-mobile: ${mobileHeight};
+--gallery-cell-radius: ${radiusPx};
+box-sizing: border-box;
+`.trim();
+
+          const htmlCeldas = mediaCells
+            .map((cell: any, idx: number) => {
+              const desktopRect = desktopLayout?.rects?.[idx];
+              const mobileRect = mobileLayout?.rects?.[idx] || desktopRect;
+              if (!desktopRect || !mobileRect) return "";
+
+              const safeSrc = escapeAttr(cell.mediaUrl || "");
+              const safeFit = cell.fit === "contain" ? "contain" : "cover";
+              const safeBg = sanitizeCssPaint(cell.bg, "#f3f4f6");
+              const celdaStyle = `
+--cell-x-desktop:${Number(desktopRect.x) || 0};
+--cell-y-desktop:${Number(desktopRect.y) || 0};
+--cell-w-desktop:${Number(desktopRect.width) || 0};
+--cell-h-desktop:${Number(desktopRect.height) || 0};
+--cell-x-mobile:${Number(mobileRect.x) || 0};
+--cell-y-mobile:${Number(mobileRect.y) || 0};
+--cell-w-mobile:${Number(mobileRect.width) || 0};
+--cell-h-mobile:${Number(mobileRect.height) || 0};
+background:${safeBg};
+`.trim();
+
+              return `
+<div class="galeria-celda galeria-celda--clickable"
+     data-index="${idx}"
+     data-gallery-image="1"
+     role="button"
+     tabindex="0"
+     aria-label="Ver imagen en pantalla completa"
+     style="${celdaStyle}">
+  <img src="${safeSrc}" alt="" loading="lazy" decoding="async"
+       style="width:100%;height:100%;object-fit:${safeFit};display:block;" />
+</div>
+`.trim();
+            })
+            .filter(Boolean)
+            .join("");
+
+          const htmlGaleriaDinamica = `
+<div class="objeto galeria galeria--dynamic"
+  data-gallery-layout-mode="${escapeAttr(layoutMode)}"
+  data-gallery-layout-type="${escapeAttr(layoutType)}"
+  style="${styleContenedorDinamico}">
+  ${htmlCeldas}
+</div>
+`.trim();
+
+          return envolverSiEnlace(htmlGaleriaDinamica, obj);
+        }
 
         const styleContenedor = `
 ${baseStyle}
@@ -1273,11 +1401,11 @@ box-sizing: border-box;
 
         const total = rows * cols;
         const cells = Array.from({ length: total }, (_, i) => {
-          const c = (obj.cells && obj.cells[i]) || {};
+          const c = sourceCells[i] || {};
           return {
             mediaUrl: c.mediaUrl || "",
             fit: c.fit === "contain" ? "contain" : "cover",
-            bg: c.bg || "#f3f4f6",
+            bg: sanitizeCssPaint(c.bg, "#f3f4f6"),
           };
         });
 

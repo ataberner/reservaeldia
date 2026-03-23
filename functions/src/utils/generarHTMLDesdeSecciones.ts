@@ -807,7 +807,107 @@ export function generarHTMLDesdeSecciones(
     existingImg.setAttribute("src", url);
   }
 
-  function applyGalleryCells(targetElement, urls){
+  function renderDynamicGalleryCells(targetElement, urls, galleryLayout){
+    if (!targetElement) return false;
+    var galleryRoot = targetElement.classList && targetElement.classList.contains("galeria")
+      ? targetElement
+      : targetElement.querySelector(".galeria");
+    if (!galleryRoot) return false;
+
+    var safeUrls = toStringArray(urls);
+    var rects = Array.isArray(galleryLayout && galleryLayout.rects)
+      ? galleryLayout.rects
+      : [];
+    var totalHeight = Number(galleryLayout && galleryLayout.totalHeight);
+    if (!isFinite(totalHeight) || totalHeight < 0) totalHeight = 0;
+    var totalWidth = Number(galleryLayout && galleryLayout.totalWidth);
+    if (!isFinite(totalWidth) || totalWidth < 0) totalWidth = 0;
+    var frame = galleryLayout && typeof galleryLayout === "object"
+      ? galleryLayout.frame
+      : null;
+
+    var existingCells = galleryRoot.querySelectorAll(".galeria-celda");
+    var radius = 0;
+    if (existingCells.length > 0) {
+      var firstCellStyle = window.getComputedStyle
+        ? window.getComputedStyle(existingCells[0])
+        : null;
+      radius = parsePixelValue(firstCellStyle && firstCellStyle.borderRadius) || 0;
+    }
+
+    galleryRoot.innerHTML = "";
+    galleryRoot.classList.add("galeria--dynamic");
+    galleryRoot.setAttribute("data-gallery-layout-mode", "dynamic_media");
+
+    var layoutType = toText(galleryLayout && galleryLayout.galleryLayoutType);
+    if (layoutType) {
+      galleryRoot.setAttribute("data-gallery-layout-type", layoutType);
+    }
+
+    galleryRoot.style.display = "block";
+    galleryRoot.style.gap = "0px";
+    galleryRoot.style.gridTemplateColumns = "";
+    galleryRoot.style.gridTemplateRows = "";
+    if (frame && typeof frame === "object") {
+      var frameX = Number(frame.x);
+      var frameY = Number(frame.y);
+      var frameWidth = Number(frame.width);
+      var frameHeight = Number(frame.height);
+
+      if (isFinite(frameX)) {
+        galleryRoot.style.left = frameX + "px";
+      }
+      if (isFinite(frameY)) {
+        galleryRoot.style.top = frameY + "px";
+      }
+      if (isFinite(frameWidth) && frameWidth >= 0) {
+        galleryRoot.style.width = frameWidth + "px";
+      } else if (totalWidth >= 0) {
+        galleryRoot.style.width = totalWidth + "px";
+      }
+      if (isFinite(frameHeight) && frameHeight >= 0) {
+        galleryRoot.style.height = frameHeight + "px";
+      } else {
+        galleryRoot.style.height = totalHeight + "px";
+      }
+    } else {
+      if (totalWidth >= 0) {
+        galleryRoot.style.width = totalWidth + "px";
+      }
+      galleryRoot.style.height = totalHeight + "px";
+    }
+
+    for (var i = 0; i < rects.length; i += 1) {
+      var nextUrl = safeUrls[i];
+      var rect = rects[i];
+      if (!nextUrl || !rect) continue;
+
+      var cell = document.createElement("div");
+      cell.className = "galeria-celda galeria-celda--clickable";
+      cell.setAttribute("data-index", String(i));
+      cell.setAttribute("data-gallery-image", "1");
+      cell.setAttribute("role", "button");
+      cell.setAttribute("tabindex", "0");
+      cell.setAttribute("aria-label", "Ver imagen en pantalla completa");
+      cell.style.position = "absolute";
+      cell.style.left = (Number(rect.x) || 0) + "px";
+      cell.style.top = (Number(rect.y) || 0) + "px";
+      cell.style.width = (Number(rect.width) || 0) + "px";
+      cell.style.height = (Number(rect.height) || 0) + "px";
+      cell.style.overflow = "hidden";
+      cell.style.borderRadius = Math.max(0, radius) + "px";
+      cell.style.background = "#f3f4f6";
+      ensureGalleryCellImage(cell, nextUrl);
+      galleryRoot.appendChild(cell);
+    }
+
+    return true;
+  }
+
+  function applyGalleryCells(targetElement, urls, galleryLayout){
+    if (galleryLayout && typeof galleryLayout === "object") {
+      return renderDynamicGalleryCells(targetElement, urls, galleryLayout);
+    }
     if (!targetElement) return false;
     var safeUrls = toStringArray(urls);
     if (!safeUrls.length) return false;
@@ -846,7 +946,7 @@ export function generarHTMLDesdeSecciones(
     var defaultValue = operation.defaultValue;
 
     if (path === "cells") {
-      return applyGalleryCells(targetElement, nextValue);
+      return applyGalleryCells(targetElement, nextValue, operation.galleryLayout);
     }
 
     if (path === "fechaobjetivo") {
@@ -1565,6 +1665,41 @@ export function generarHTMLDesdeSecciones(
       transform-origin: top left;
       overflow: visible;
       pointer-events: auto;
+    }
+
+    .objeto.galeria.galeria--dynamic{
+      display: block;
+      height: calc(var(--gallery-scale, 1) * var(--gallery-height-desktop, 0) * 1px);
+    }
+
+    .objeto.galeria.galeria--dynamic .galeria-celda{
+      position: absolute;
+      left: calc(var(--gallery-scale, 1) * var(--cell-x-desktop, 0) * 1px);
+      top: calc(var(--gallery-scale, 1) * var(--cell-y-desktop, 0) * 1px);
+      width: calc(var(--gallery-scale, 1) * var(--cell-w-desktop, 0) * 1px);
+      height: calc(var(--gallery-scale, 1) * var(--cell-h-desktop, 0) * 1px);
+      overflow: hidden;
+      border-radius: calc(var(--gallery-scale, 1) * var(--gallery-cell-radius, 0) * 1px);
+      box-sizing: border-box;
+    }
+
+    .objeto.galeria.galeria--dynamic .galeria-celda img{
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    @media (max-width: 767px){
+      .objeto.galeria.galeria--dynamic{
+        height: calc(var(--gallery-scale, 1) * var(--gallery-height-mobile, var(--gallery-height-desktop, 0)) * 1px);
+      }
+
+      .objeto.galeria.galeria--dynamic .galeria-celda{
+        left: calc(var(--gallery-scale, 1) * var(--cell-x-mobile, var(--cell-x-desktop, 0)) * 1px);
+        top: calc(var(--gallery-scale, 1) * var(--cell-y-mobile, var(--cell-y-desktop, 0)) * 1px);
+        width: calc(var(--gallery-scale, 1) * var(--cell-w-mobile, var(--cell-w-desktop, 0)) * 1px);
+        height: calc(var(--gallery-scale, 1) * var(--cell-h-mobile, var(--cell-h-desktop, 0)) * 1px);
+      }
     }
 
     .objeto[data-debug-texto="1"]{

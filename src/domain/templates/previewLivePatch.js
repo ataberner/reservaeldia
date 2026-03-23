@@ -1,5 +1,6 @@
 import { buildTemplateFormState, resolveTemplateFieldByKey } from "./formModel.js";
 import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
+import { buildPreviewDynamicGalleryLayout } from "./galleryDynamicMedia.js";
 
 const PREVIEW_SCROLL_SCOPES = new Set(["objeto", "seccion"]);
 
@@ -71,6 +72,13 @@ function dedupePreviewScrollTargets(targets) {
   return out;
 }
 
+function findTemplateObjectById(template, objectId) {
+  const safeObjectId = normalizeText(objectId);
+  if (!safeObjectId) return null;
+  const objects = Array.isArray(template?.objetos) ? template.objetos : [];
+  return objects.find((object) => normalizeText(object?.id) === safeObjectId) || null;
+}
+
 function shouldDispatchFieldForPhase(field, phase) {
   const safePhase = normalizeText(phase).toLowerCase();
   if (!safePhase) return false;
@@ -113,6 +121,24 @@ export function buildPreviewOperationsForField({
         fieldKey: field.key,
         value: resolvedValues.nextValue,
         defaultValue: resolvedValues.defaultValue,
+        ...(() => {
+          if (target.scope !== "objeto" || normalizeText(target.path).toLowerCase() !== "cells") {
+            return {};
+          }
+          const targetObject = findTemplateObjectById(template, target.id);
+          if (
+            !targetObject ||
+            normalizeText(targetObject?.galleryLayoutMode).toLowerCase() !== "dynamic_media"
+          ) {
+            return {};
+          }
+          return {
+            galleryLayout: buildPreviewDynamicGalleryLayout(
+              targetObject,
+              sanitizeImageUrls(incomingValue)
+            ),
+          };
+        })(),
       };
     });
   }

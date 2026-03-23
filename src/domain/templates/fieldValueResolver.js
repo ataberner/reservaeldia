@@ -2,10 +2,12 @@ const TARGET_TRANSFORM_KINDS = new Set([
   "identity",
   "date_to_countdown_iso",
   "date_to_text",
+  "images_to_first_url",
 ]);
 
 const DATE_LIKE_FIELD_TYPES = new Set(["date", "datetime"]);
 const TEXTUAL_TARGET_PATHS = new Set(["texto", "text", "title", "label"]);
+const IMAGE_TARGET_PATHS = new Set(["src", "url", "mediaurl", "fondoimagen"]);
 
 export const DEFAULT_DATE_TEXT_TRANSFORM_PRESET = "event_date_long_es_ar";
 export const DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET = "event_datetime_long_es_ar";
@@ -17,6 +19,13 @@ function normalizeText(value) {
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
+}
+
+function sanitizeImageUrls(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
 }
 
 function padDateSegment(value) {
@@ -131,6 +140,10 @@ export function isTextualTemplateTargetPath(path) {
   return TEXTUAL_TARGET_PATHS.has(normalizeText(path).toLowerCase());
 }
 
+export function isImageTemplateTargetPath(path) {
+  return IMAGE_TARGET_PATHS.has(normalizeText(path).toLowerCase());
+}
+
 export function normalizeTemplateTargetTransform(rawTransform) {
   const source = asObject(rawTransform);
   const kind = normalizeText(source.kind).toLowerCase();
@@ -149,6 +162,12 @@ export function normalizeTemplateTargetTransform(rawTransform) {
 export function buildSuggestedTemplateTargetTransform({ fieldType, path } = {}) {
   const safePath = normalizeText(path);
   if (!safePath) return undefined;
+
+  if (normalizeText(fieldType).toLowerCase() === "images" && isImageTemplateTargetPath(safePath)) {
+    return {
+      kind: "images_to_first_url",
+    };
+  }
 
   if (safePath.toLowerCase() === "fechaobjetivo") {
     return {
@@ -174,6 +193,11 @@ export function resolveEffectiveTemplateTargetTransform({ field, target } = {}) 
   if (explicitTransform) return explicitTransform;
 
   const safePath = normalizeText(target?.path).toLowerCase();
+  if (normalizeText(field?.type).toLowerCase() === "images" && isImageTemplateTargetPath(safePath)) {
+    return {
+      kind: "images_to_first_url",
+    };
+  }
   if (safePath === "fechaobjetivo") {
     return {
       kind: "date_to_countdown_iso",
@@ -201,6 +225,10 @@ export function formatTemplateDateTextValue(
   return formatDateTextPreset(parsed.date, preset, fieldType);
 }
 
+export function resolveFirstTemplateImageUrl(value) {
+  return sanitizeImageUrls(value)[0] || "";
+}
+
 export function resolveTemplateTargetValue({ field, target, value } = {}) {
   const transform = resolveEffectiveTemplateTargetTransform({ field, target });
 
@@ -210,6 +238,10 @@ export function resolveTemplateTargetValue({ field, target, value } = {}) {
 
   if (transform.kind === "date_to_text") {
     return formatTemplateDateTextValue(value, transform.preset, field?.type);
+  }
+
+  if (transform.kind === "images_to_first_url") {
+    return resolveFirstTemplateImageUrl(value);
   }
 
   return value;

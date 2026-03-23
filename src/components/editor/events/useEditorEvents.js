@@ -20,6 +20,12 @@ import {
 } from "@/domain/motionEffects";
 import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
+import {
+  buildDynamicGalleryObjectPatch,
+  buildFixedGalleryObjectPatch,
+  buildGalleryLayoutBlueprintFromObject,
+} from "@/domain/templates/galleryDynamicMedia";
+import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
 
 const COUNTDOWN_STYLE_KEYS = [
   "fontFamily",
@@ -112,6 +118,20 @@ function pickCountdownStylePatch(source = {}) {
   }, {});
 }
 
+const GALLERY_STRUCTURAL_KEYS = new Set([
+  "rows",
+  "cols",
+  "gap",
+  "ratio",
+  "width",
+  "height",
+  "widthPct",
+]);
+
+function hasGalleryStructuralChanges(changes = {}) {
+  return Object.keys(changes).some((key) => GALLERY_STRUCTURAL_KEYS.has(key));
+}
+
 /**
  * Hook que concentra los eventos globales del editor y utilidades expuestas en window:
  * - window.asignarImagenACelda
@@ -152,6 +172,27 @@ export default function useEditorEvents({
   // 1) Exponer función global: asignar imagen a la celda activa
   // ------------------------------------------------------------
   useEffect(() => {
+    const getVisibleGalleryCells = (galleryObject) => {
+      const cells = Array.isArray(galleryObject?.cells) ? galleryObject.cells : [];
+      const isDynamicGallery =
+        String(galleryObject?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
+
+      if (!isDynamicGallery) {
+        return cells;
+      }
+
+      return cells
+        .map((cell) => {
+          const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+          if (!mediaUrl) return null;
+          return {
+            ...cell,
+            mediaUrl,
+          };
+        })
+        .filter(Boolean);
+    };
+
     window.asignarImagenACelda = (mediaUrl, fit = "cover", bg) => {
       if (!celdaGaleriaActiva) return false; // no hay slot activo
       const { objId, index } = celdaGaleriaActiva;
@@ -166,7 +207,7 @@ export default function useEditorEvents({
         const galeriaActual = objetosActuales.find(
           (o) => o?.id === objId && o?.tipo === "galeria"
         );
-        const cellsActuales = Array.isArray(galeriaActual?.cells) ? galeriaActual.cells : [];
+        const cellsActuales = getVisibleGalleryCells(galeriaActual);
 
         if (cellsActuales.length > 1) {
           const projectedCells = [...cellsActuales];
@@ -202,9 +243,46 @@ export default function useEditorEvents({
         if (obj.tipo !== "galeria") return prev;
 
         const next = [...prev];
+        const isDynamicGallery =
+          String(obj?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
+
+        if (isDynamicGallery) {
+          const cells = getVisibleGalleryCells(obj);
+          if (!Number.isFinite(indexActual) || indexActual < 0 || indexActual >= cells.length) {
+            return prev;
+          }
+
+          let nextVisibleCells = [...cells];
+          if (typeof mediaUrl === "string" && mediaUrl.trim().length > 0) {
+            const prevCell = nextVisibleCells[indexActual] || {};
+            nextVisibleCells[indexActual] = {
+              ...prevCell,
+              mediaUrl,
+              fit: fit || prevCell.fit || "cover",
+              bg: bg ?? prevCell.bg ?? "#f3f4f6",
+            };
+          } else {
+            nextVisibleCells = nextVisibleCells.filter((_, cellIndex) => cellIndex !== indexActual);
+          }
+
+          const patch = buildDynamicGalleryObjectPatch({
+            galleryObject: {
+              ...obj,
+              cells: nextVisibleCells,
+            },
+            mediaUrls: nextVisibleCells.map((cell) => cell?.mediaUrl),
+          });
+
+          next[i] = {
+            ...obj,
+            ...patch,
+          };
+          return next;
+        }
+
         const cells = Array.isArray(obj.cells) ? [...obj.cells] : [];
-        const prevCell = cells[index] || {};
-        cells[index] = {
+        const prevCell = cells[indexActual] || {};
+        cells[indexActual] = {
           ...prevCell,
           mediaUrl,
           fit: fit || prevCell.fit || "cover",
@@ -391,7 +469,41 @@ export default function useEditorEvents({
         if (i === -1) return prev;
 
         const next = [...prev];
-        next[i] = { ...next[i], ...cambios };
+        const currentObject = next[i];
+        const mergedObject = { ...currentObject, ...cambios };
+
+        if (mergedObject?.tipo === "galeria" && hasGalleryStructuralChanges(cambios)) {
+          const isDynamicGallery =
+            String(mergedObject?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
+
+          if (isDynamicGallery) {
+            const galleryLayoutBlueprint = buildGalleryLayoutBlueprintFromObject(mergedObject, {
+              width: mergedObject.width,
+            });
+            const dynamicPatch = buildDynamicGalleryObjectPatch({
+              galleryObject: {
+                ...mergedObject,
+                galleryLayoutBlueprint,
+              },
+              mediaUrls: collectGalleryMediaUrls(mergedObject.cells),
+              layoutBlueprint: galleryLayoutBlueprint,
+            });
+
+            next[i] = {
+              ...currentObject,
+              ...cambios,
+              ...dynamicPatch,
+            };
+          } else {
+            next[i] = {
+              ...currentObject,
+              ...cambios,
+              ...buildFixedGalleryObjectPatch(mergedObject),
+            };
+          }
+        } else {
+          next[i] = mergedObject;
+        }
 
         if (next[i]?.tipo === "countdown") {
           return next.filter((obj, index) => obj?.tipo !== "countdown" || index === i);

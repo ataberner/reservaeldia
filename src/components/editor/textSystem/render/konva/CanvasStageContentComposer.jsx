@@ -3015,6 +3015,10 @@ export default function CanvasStageContent({
                                     updatedElement.height = galleryMetrics.height;
                                     updatedElement.widthPct = galleryMetrics.widthPct;
                                     updatedElement.x = galleryMetrics.x;
+                                    if (galleryMetrics.galleryLayoutBlueprint) {
+                                      updatedElement.galleryLayoutBlueprint =
+                                        galleryMetrics.galleryLayoutBlueprint;
+                                    }
                                     updatedElement.rotation = elemento.rotation || 0;
                                     updatedElement.scaleX = 1;
                                     updatedElement.scaleY = 1;
@@ -3191,6 +3195,12 @@ export default function CanvasStageContent({
                                     width: galleryMetrics.width,
                                     height: galleryMetrics.height,
                                     widthPct: galleryMetrics.widthPct,
+                                    ...(galleryMetrics.galleryLayoutBlueprint
+                                      ? {
+                                          galleryLayoutBlueprint:
+                                            galleryMetrics.galleryLayoutBlueprint,
+                                        }
+                                      : {}),
                                     rotation: objOriginal.rotation || 0,
                                     scaleX: 1,
                                     scaleY: 1,

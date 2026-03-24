@@ -376,6 +376,194 @@ function buildCountdownLayoutMetrics(obj: any) {
   };
 }
 
+function formatShapePercent(value: number): string {
+  return `${Math.round(value * 1000) / 10}%`;
+}
+
+function buildRegularPolygonClipPath(sides: number): string {
+  const totalSides = Math.max(3, Math.round(Number(sides) || 3));
+  const points: string[] = [];
+
+  for (let i = 0; i < totalSides; i += 1) {
+    const angle = -Math.PI / 2 + (i * (Math.PI * 2)) / totalSides;
+    const x = 50 + Math.cos(angle) * 50;
+    const y = 50 + Math.sin(angle) * 50;
+    points.push(`${formatShapePercent(x)} ${formatShapePercent(y)}`);
+  }
+
+  return points.join(", ");
+}
+
+function buildStarClipPath(innerRatio = 0.45): string {
+  const points: string[] = [];
+
+  for (let i = 0; i < 10; i += 1) {
+    const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+    const radius = i % 2 === 0 ? 50 : 50 * innerRatio;
+    const x = 50 + Math.cos(angle) * radius;
+    const y = 50 + Math.sin(angle) * radius;
+    points.push(`${formatShapePercent(x)} ${formatShapePercent(y)}`);
+  }
+
+  return points.join(", ");
+}
+
+function buildHeartMaskDataUri(): string {
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+  <path fill="white" d="M 50 84 C 8 58, 14 25, 34 25 C 42 25, 47 30, 50 36 C 53 30, 58 25, 66 25 C 86 25, 92 58, 50 84 Z" />
+</svg>
+`.trim();
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function buildSvgPolygonPoints(values: number[]): string {
+  const safeValues = Array.isArray(values) ? values : [];
+  const pairs: string[] = [];
+
+  for (let index = 0; index < safeValues.length; index += 2) {
+    const x = Number(safeValues[index]);
+    const y = Number(safeValues[index + 1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    pairs.push(`${toCssNumber(x)},${toCssNumber(y)}`);
+  }
+
+  return pairs.join(" ");
+}
+
+function buildRegularPolygonSvgPoints(sides: number, width: number, height: number): string {
+  const totalSides = Math.max(3, Math.round(Number(sides) || 3));
+  const cx = width / 2;
+  const cy = height / 2;
+  const rx = width / 2;
+  const ry = height / 2;
+  const points: number[] = [];
+
+  for (let index = 0; index < totalSides; index += 1) {
+    const angle = -Math.PI / 2 + (index * (Math.PI * 2)) / totalSides;
+    points.push(cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry);
+  }
+
+  return buildSvgPolygonPoints(points);
+}
+
+function buildStarSvgPoints(width: number, height: number, innerRatio = 0.45): string {
+  const cx = width / 2;
+  const cy = height / 2;
+  const outerX = width / 2;
+  const outerY = height / 2;
+  const innerX = outerX * innerRatio;
+  const innerY = outerY * innerRatio;
+  const points: number[] = [];
+
+  for (let index = 0; index < 10; index += 1) {
+    const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+    const radiusX = index % 2 === 0 ? outerX : innerX;
+    const radiusY = index % 2 === 0 ? outerY : innerY;
+    points.push(cx + Math.cos(angle) * radiusX, cy + Math.sin(angle) * radiusY);
+  }
+
+  return buildSvgPolygonPoints(points);
+}
+
+function buildDiamondSvgPoints(width: number, height: number): string {
+  return buildSvgPolygonPoints([width / 2, 0, width, height / 2, width / 2, height, 0, height / 2]);
+}
+
+function buildArrowSvgPoints(width: number, height: number): string {
+  return buildSvgPolygonPoints([
+    0, height * 0.34,
+    width * 0.6, height * 0.34,
+    width * 0.6, 0,
+    width, height / 2,
+    width * 0.6, height,
+    width * 0.6, height * 0.66,
+    0, height * 0.66,
+  ]);
+}
+
+function buildHeartSvgPath(width: number, height: number): string {
+  const w = Math.max(1, width);
+  const h = Math.max(1, height);
+
+  return `M ${toCssNumber(w * 0.5)} ${toCssNumber(h * 0.84)}
+    C ${toCssNumber(w * 0.08)} ${toCssNumber(h * 0.58)}, ${toCssNumber(w * 0.14)} ${toCssNumber(h * 0.25)}, ${toCssNumber(w * 0.34)} ${toCssNumber(h * 0.25)}
+    C ${toCssNumber(w * 0.42)} ${toCssNumber(h * 0.25)}, ${toCssNumber(w * 0.47)} ${toCssNumber(h * 0.30)}, ${toCssNumber(w * 0.5)} ${toCssNumber(h * 0.36)}
+    C ${toCssNumber(w * 0.53)} ${toCssNumber(h * 0.30)}, ${toCssNumber(w * 0.58)} ${toCssNumber(h * 0.25)}, ${toCssNumber(w * 0.66)} ${toCssNumber(h * 0.25)}
+    C ${toCssNumber(w * 0.86)} ${toCssNumber(h * 0.25)}, ${toCssNumber(w * 0.92)} ${toCssNumber(h * 0.58)}, ${toCssNumber(w * 0.5)} ${toCssNumber(h * 0.84)}
+    Z`;
+}
+
+function splitGradientArguments(input: string): string[] {
+  const chunks: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === "(") depth += 1;
+    if (char === ")") depth = Math.max(0, depth - 1);
+
+    if (char === "," && depth === 0) {
+      chunks.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim().length > 0) {
+    chunks.push(current.trim());
+  }
+
+  return chunks;
+}
+
+function isGradientDirectionToken(token: string): boolean {
+  const normalized = String(token || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith("to ")) return true;
+  return (
+    normalized.endsWith("deg") ||
+    normalized.endsWith("rad") ||
+    normalized.endsWith("turn")
+  );
+}
+
+function stripGradientColorStop(token: string): string {
+  const safe = String(token || "").trim();
+  if (!safe) return "";
+
+  const cleaned = safe.replace(
+    /\s+(-?\d+(?:\.\d+)?%?)(?:\s+(-?\d+(?:\.\d+)?%?))?\s*$/i,
+    ""
+  );
+  return cleaned.trim() || safe;
+}
+
+function parseLinearGradientPaint(value: string): { from: string; to: string } | null {
+  const safe = String(value || "").trim();
+  if (!isLinearGradientPaint(safe)) return null;
+
+  const inner = safe.slice("linear-gradient(".length, -1).trim();
+  if (!inner) return null;
+
+  const rawArgs = splitGradientArguments(inner);
+  if (rawArgs.length < 2) return null;
+
+  const colorArgs = isGradientDirectionToken(rawArgs[0]) ? rawArgs.slice(1) : rawArgs;
+  if (colorArgs.length < 2) return null;
+
+  const from = stripGradientColorStop(colorArgs[0]);
+  const to = stripGradientColorStop(colorArgs[1]);
+  if (!from || !to) return null;
+
+  return { from, to };
+}
+
+
 function normalizeRoleValue(value: any): string {
   return String(value || "").trim().toLowerCase();
 }
@@ -687,6 +875,153 @@ pointer-events: auto;
     if (ww !== undefined) parts.push(`width: ${pxX(obj, ww)};`);
     if (hh !== undefined) parts.push(`height: ${pxY(obj, hh)};`);
     return parts.join("\n");
+  }
+
+  function buildShapeSvgFillMarkup(fill: string, gradientId: string): {
+    defsHtml: string;
+    fillValue: string;
+  } {
+    const safePaint = sanitizeCssPaint(fill, "#000000");
+    const gradient = parseLinearGradientPaint(safePaint);
+
+    if (!gradient) {
+      return {
+        defsHtml: "",
+        fillValue: escapeAttr(safePaint),
+      };
+    }
+
+    return {
+      defsHtml: `
+<defs>
+  <linearGradient id="${escapeAttr(gradientId)}" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="${escapeAttr(gradient.from)}" />
+    <stop offset="100%" stop-color="${escapeAttr(gradient.to)}" />
+  </linearGradient>
+</defs>
+`.trim(),
+      fillValue: `url(#${escapeAttr(gradientId)})`,
+    };
+  }
+
+  function renderShapeSvgHtml(
+    obj: any,
+    width: number,
+    height: number,
+    innerHtml: string,
+    extraStyle = ""
+  ): string {
+    const baseStyle = stylePosBase(obj);
+    const style = `
+${baseStyle}
+${styleSize(obj, width, height)}
+display: block;
+overflow: visible;
+pointer-events: auto;
+${extraStyle}
+`.trim();
+
+    return `<svg class="objeto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${escapeAttr(String(width))} ${escapeAttr(String(height))}" preserveAspectRatio="none" style="${style}">${innerHtml}</svg>`;
+  }
+
+  function sanitizeSvgIdToken(value: any, fallback = "shape"): string {
+    const raw = String(value || "").trim();
+    const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+    return cleaned || fallback;
+  }
+
+  function renderShapePolygonSvgHtml(
+    obj: any,
+    fill: string,
+    width: number,
+    height: number,
+    points: string
+  ): string {
+    const gradientId = `shape-fill-${sanitizeSvgIdToken(obj?.id)}`;
+    const shapeFill = buildShapeSvgFillMarkup(fill, gradientId);
+    const innerHtml = `
+${shapeFill.defsHtml}
+<polygon points="${escapeAttr(points)}" fill="${shapeFill.fillValue}" />
+`.trim();
+
+    return renderShapeSvgHtml(obj, width, height, innerHtml);
+  }
+
+  function renderShapePathSvgHtml(
+    obj: any,
+    fill: string,
+    width: number,
+    height: number,
+    pathData: string
+  ): string {
+    const gradientId = `shape-fill-${sanitizeSvgIdToken(obj?.id)}`;
+    const shapeFill = buildShapeSvgFillMarkup(fill, gradientId);
+    const innerHtml = `
+${shapeFill.defsHtml}
+<path d="${escapeAttr(pathData)}" fill="${shapeFill.fillValue}" />
+`.trim();
+
+    return renderShapeSvgHtml(obj, width, height, innerHtml);
+  }
+
+  function renderShapeLineSvgHtml(obj: any, fill: string): string {
+    const points = Array.isArray(obj?.points)
+      ? obj.points
+      : [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0];
+    const x1 = Number.parseFloat(String(points[0])) || 0;
+    const y1 = Number.parseFloat(String(points[1])) || 0;
+    const x2 = Number.parseFloat(String(points[2])) || LINE_CONSTANTS.DEFAULT_LENGTH;
+    const y2 = Number.parseFloat(String(points[3])) || 0;
+    const strokeWidth = Math.max(1, Number(obj?.strokeWidth) || LINE_CONSTANTS.STROKE_WIDTH);
+
+    const halfStroke = strokeWidth / 2;
+    const minX = Math.min(x1, x2) - halfStroke;
+    const minY = Math.min(y1, y2) - halfStroke;
+    const maxX = Math.max(x1, x2) + halfStroke;
+    const maxY = Math.max(y1, y2) + halfStroke;
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+
+    const absoluteX = Number(obj?.x || 0) + minX;
+    const absoluteY = getYPxEditor(obj) + minY;
+    const rot = obj?.rotation ?? 0;
+    const scaleX = obj?.scaleX ?? 1;
+    const scaleY = obj?.scaleY ?? 1;
+    const zIndex = Number.isFinite(obj?.zIndex) ? obj.zIndex : undefined;
+
+    const gradientId = `shape-stroke-${sanitizeSvgIdToken(obj?.id, "line")}`;
+    const strokePaint = buildShapeSvgFillMarkup(fill, gradientId);
+    const style = `
+position: absolute;
+left: ${pxX(obj, absoluteX)};
+top: ${topCSSFromYPx(obj, absoluteY)};
+width: ${pxX(obj, width)};
+height: ${pxY(obj, height)};
+transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY});
+transform-origin: ${pxX(obj, -minX)} ${pxY(obj, -minY)};
+overflow: visible;
+display: block;
+${zIndex !== undefined ? `z-index:${zIndex};` : ""}
+pointer-events: auto;
+`.trim();
+
+    const innerHtml = `
+${strokePaint.defsHtml}
+<line
+  x1="${escapeAttr(toCssNumber(x1 - minX))}"
+  y1="${escapeAttr(toCssNumber(y1 - minY))}"
+  x2="${escapeAttr(toCssNumber(x2 - minX))}"
+  y2="${escapeAttr(toCssNumber(y2 - minY))}"
+  stroke="${strokePaint.fillValue}"
+  stroke-width="${escapeAttr(toCssNumber(strokeWidth))}"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+/>
+`.trim();
+
+    return `<svg class="objeto linea" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${escapeAttr(
+      toCssNumber(width)
+    )} ${escapeAttr(toCssNumber(height))}" preserveAspectRatio="none" style="${style}">${innerHtml}</svg>`;
   }
 
   function renderIconoSvgNuevoInline(obj: any) {
@@ -1590,6 +1925,7 @@ pointer-events: auto;
         }
 
         if (figura === "line") {
+          return envolverSiEnlace(renderShapeLineSvgHtml(obj, fill), obj);
           const points = obj.points || [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0];
           const x1 = parseFloat(points[0]) || 0;
           const y1 = parseFloat(points[1]) || 0;
@@ -1622,6 +1958,7 @@ top: ${topCSSFromYPx(obj, startY)};
 width: ${pxX(obj, length)};
 height: ${lineH};
 background: ${fill};
+border-radius: ${lineH};
 transform: rotate(${totalRotation}deg) scale(${scaleX}, ${scaleY});
 transform-origin: 0 50%;
 pointer-events: auto;
@@ -1658,6 +1995,66 @@ pointer-events: auto;
 `.trim();
 
           return envolverSiEnlace(`<div class="objeto" style="${baseStyle}"></div>`, obj);
+        }
+
+        if (figura === "diamond") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 120);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 120);
+          return envolverSiEnlace(
+            renderShapePolygonSvgHtml(obj, fill, w, h, buildDiamondSvgPoints(w, h)),
+            obj
+          );
+        }
+
+        if (figura === "star") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 120);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 120);
+          return envolverSiEnlace(
+            renderShapePolygonSvgHtml(obj, fill, w, h, buildStarSvgPoints(w, h)),
+            obj
+          );
+        }
+
+        if (figura === "arrow") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 160);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 90);
+          return envolverSiEnlace(
+            renderShapePolygonSvgHtml(
+              obj,
+              fill,
+              w,
+              h,
+              buildArrowSvgPoints(w, h)
+            ),
+            obj
+          );
+        }
+
+        if (figura === "pentagon") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 120);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 120);
+          return envolverSiEnlace(
+            renderShapePolygonSvgHtml(obj, fill, w, h, buildRegularPolygonSvgPoints(5, w, h)),
+            obj
+          );
+        }
+
+        if (figura === "hexagon") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 128);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 112);
+          return envolverSiEnlace(
+            renderShapePolygonSvgHtml(obj, fill, w, h, buildRegularPolygonSvgPoints(6, w, h)),
+            obj
+          );
+        }
+
+        if (figura === "heart") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 120);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 108);
+          return envolverSiEnlace(
+            renderShapePathSvgHtml(obj, fill, w, h, buildHeartSvgPath(w, h)),
+            obj
+          );
         }
 
         return "";

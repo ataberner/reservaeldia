@@ -2,6 +2,10 @@ import { randomUUID } from "crypto";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
+import {
+  areEquivalentStorageBuckets,
+  parseBucketAndPathFromStorageValue as parseStorageAssetValue,
+} from "../utils/storageAssetValue";
 
 const TEMPLATE_ASSET_FIELD_KEYS = new Set([
   "src",
@@ -36,80 +40,7 @@ function defaultBucket() {
 export function parseBucketAndPathFromStorageValue(
   rawValue: string
 ): { bucketName: string; path: string } | null {
-  const bucket = defaultBucket();
-  const value = String(rawValue || "").trim();
-  if (!value || value.startsWith("data:")) return null;
-
-  if (/^gs:\/\//i.test(value)) {
-    const withoutScheme = value.replace(/^gs:\/\//i, "");
-    const firstSlash = withoutScheme.indexOf("/");
-    if (firstSlash <= 0) return null;
-    const bucketName = withoutScheme.slice(0, firstSlash);
-    const path = withoutScheme.slice(firstSlash + 1);
-    if (!path) return null;
-    return {
-      bucketName,
-      path: decodeURIComponent(path),
-    };
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    try {
-      const url = new URL(value);
-
-      if (
-        url.hostname === "firebasestorage.googleapis.com" ||
-        url.hostname.endsWith(".firebasestorage.app")
-      ) {
-        const match = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
-        if (!match) return null;
-
-        const bucketName = decodeURIComponent(match[1] || "");
-        const path = decodeURIComponent(match[2] || "");
-        if (!bucketName || !path) return null;
-        return { bucketName, path };
-      }
-
-      if (url.hostname === "storage.googleapis.com") {
-        const segments = url.pathname
-          .split("/")
-          .filter((segment) => segment.length > 0);
-        if (segments.length < 2) return null;
-        const bucketName = segments[0] || "";
-        const path = decodeURIComponent(segments.slice(1).join("/"));
-        if (!bucketName || !path) return null;
-        return { bucketName, path };
-      }
-    } catch {
-      return null;
-    }
-
-    return null;
-  }
-
-  if (value.includes("://")) return null;
-
-  const normalizedPath = value.replace(/^\/+/, "");
-  if (!normalizedPath) return null;
-
-  return { bucketName: bucket.name, path: normalizedPath };
-}
-
-function getBucketProjectKey(bucketName: string): string {
-  const normalized = (bucketName || "").toLowerCase().trim();
-  if (normalized.endsWith(".firebasestorage.app")) {
-    return normalized.replace(/\.firebasestorage\.app$/, "");
-  }
-  if (normalized.endsWith(".appspot.com")) {
-    return normalized.replace(/\.appspot\.com$/, "");
-  }
-  return normalized;
-}
-
-function areEquivalentStorageBuckets(a: string, b: string): boolean {
-  const keyA = getBucketProjectKey(a);
-  const keyB = getBucketProjectKey(b);
-  return Boolean(keyA && keyB && keyA === keyB);
+  return parseStorageAssetValue(rawValue, defaultBucket().name);
 }
 
 function shouldCloneTemplateStoragePath(path: string, plantillaId: string): boolean {

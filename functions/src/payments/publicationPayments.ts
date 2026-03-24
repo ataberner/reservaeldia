@@ -45,10 +45,8 @@ import {
   loadCheckoutPricingConfig,
 } from "../siteSettings/pricing";
 import {
-  buildSectionDecorationsPayload,
-  listSectionVisualAssets,
-  normalizeSectionBackgroundModel,
-} from "../utils/sectionBackground";
+  normalizePublishRenderStateAssets,
+} from "../utils/publishAssetNormalization";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -2129,112 +2127,6 @@ async function resolveExistingPublicSlug(draftSlug: string): Promise<string | nu
   return null;
 }
 
-async function resolveUrlsInObjects(objetos: unknown[]): Promise<unknown[]> {
-  const list = Array.isArray(objetos) ? objetos : [];
-
-  return Promise.all(
-    list.map(async (obj: any) => {
-      if (!obj || typeof obj !== "object") return obj;
-
-      if (
-        (obj.tipo === "imagen" || obj.tipo === "icono") &&
-        typeof obj.src === "string" &&
-        obj.src &&
-        !obj.src.startsWith("http")
-      ) {
-        const resolvedUrl = await resolveStorageReadUrl(obj.src);
-        if (resolvedUrl) {
-          return {
-            ...obj,
-            src: resolvedUrl,
-          };
-        }
-        return obj;
-      }
-
-      return obj;
-    })
-  );
-}
-
-async function resolveStorageReadUrl(
-  rawPathOrUrl: unknown,
-  storagePathOverride: unknown = null
-): Promise<string | null> {
-  const directValue = getString(rawPathOrUrl);
-  const storagePath = directValue && !directValue.startsWith("http")
-    ? directValue
-    : getString(storagePathOverride);
-
-  if (!storagePath) {
-    return directValue || null;
-  }
-
-  try {
-    const [url] = await bucket.file(storagePath).getSignedUrl({
-      action: "read",
-      expires: Date.now() + 1000 * 60 * 60 * 24 * 365,
-    });
-    return url;
-  } catch (error) {
-    logger.warn("No se pudo resolver URL de seccion en publicacion", {
-      storagePath,
-      error: error instanceof Error ? error.message : String(error || ""),
-    });
-    return directValue || storagePath;
-  }
-}
-
-async function resolveUrlsInSections(secciones: unknown[]): Promise<unknown[]> {
-  const list = Array.isArray(secciones) ? secciones : [];
-
-  return Promise.all(
-    list.map(async (section: any) => {
-      if (!section || typeof section !== "object") return section;
-
-      const nextSection: Record<string, unknown> = {
-        ...section,
-      };
-      const backgroundModel = normalizeSectionBackgroundModel(section);
-      const nextDecoraciones = backgroundModel.decoraciones.map((decoration) => ({
-        ...decoration,
-      }));
-
-      for (const asset of listSectionVisualAssets(section)) {
-        const resolvedUrl = await resolveStorageReadUrl(asset.imageUrl, asset.storagePath);
-        if (!resolvedUrl) continue;
-
-        if (asset.kind === "base") {
-          nextSection.fondoImagen = resolvedUrl;
-          continue;
-        }
-
-        const decorationIndex = nextDecoraciones.findIndex(
-          (decoration) => decoration.id === asset.decorationId
-        );
-        if (decorationIndex >= 0) {
-          nextDecoraciones[decorationIndex] = {
-            ...nextDecoraciones[decorationIndex],
-            src: resolvedUrl,
-          };
-        }
-      }
-
-      nextSection.decoracionesFondo = buildSectionDecorationsPayload(
-        {
-          items: nextDecoraciones,
-          parallax: backgroundModel.parallax,
-        },
-        {
-          sectionHeight: getNumber(section?.altura, 600),
-        }
-      );
-
-      return nextSection;
-    })
-  );
-}
-
 function createRsvpConfig(data: Record<string, any>): ModalConfig {
   const rawRsvp = data?.rsvp && typeof data.rsvp === "object"
     ? data.rsvp as Record<string, unknown>
@@ -2389,8 +2281,13 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
 
   const objetos = draftRenderState.objetos;
   const secciones = draftRenderState.secciones;
-  const objetosFinales = await resolveUrlsInObjects(objetos);
-  const seccionesFinales = await resolveUrlsInSections(secciones);
+  const {
+    objetos: objetosFinales,
+    secciones: seccionesFinales,
+  } = await normalizePublishRenderStateAssets({
+    objetos,
+    secciones,
+  });
   const hasGiftButton = objetosFinales.some(
     (obj) => (obj as Record<string, unknown>)?.tipo === "regalo-boton"
   );

@@ -8,6 +8,15 @@ import { normalizePublishRenderStateAssets } from "../utils/publishAssetNormaliz
 import { resolvePublishImageCropState } from "../utils/publishImageCrop";
 
 type UnknownRecord = Record<string, unknown>;
+const ALTURA_EDITOR_PANTALLA = 500;
+const PANTALLA_Y_DRIFT_WARNING_PX = 6;
+const GIFT_BANK_FIELD_LABELS: Record<string, string> = Object.freeze({
+  holder: "Titular",
+  bank: "Banco",
+  alias: "Alias",
+  cbu: "CBU / CVU",
+  cuit: "CUIT",
+});
 
 export type PublicationPublishValidationSeverity = "blocking" | "warning";
 
@@ -58,6 +67,15 @@ function normalizeText(value: unknown): string {
   return getString(value).toLowerCase();
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeSectionMode(value: unknown): "pantalla" | "fijo" {
+  return normalizeText(value) === "pantalla" ? "pantalla" : "fijo";
+}
+
 function isPublishReadyAssetValue(value: unknown): boolean {
   const text = getString(value);
   if (!text) return false;
@@ -95,6 +113,46 @@ function getGalleryCellAssetCandidate(source: UnknownRecord): string {
     getString(source.url) ||
     getString(source.src)
   );
+}
+
+function hasConfiguredLink(value: unknown): boolean {
+  if (typeof value === "string") {
+    return getString(value).length > 0;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return getString((value as UnknownRecord).href).length > 0;
+}
+
+function getIncompleteGiftModalFields(
+  gifts: GiftsConfig | null
+): Array<{ fieldPath: string; label: string }> {
+  if (!gifts) return [];
+
+  const normalized = normalizeGiftConfig(gifts, { forceEnabled: false });
+  const incompleteFields: Array<{ fieldPath: string; label: string }> = [];
+
+  Object.entries(GIFT_BANK_FIELD_LABELS).forEach(([fieldKey, label]) => {
+    if (!normalized.visibility[fieldKey as keyof GiftsConfig["visibility"]]) return;
+    if (getString(normalized.bank[fieldKey as keyof GiftsConfig["bank"]])) return;
+
+    incompleteFields.push({
+      fieldPath: `gifts.bank.${fieldKey}`,
+      label,
+    });
+  });
+
+  if (normalized.visibility.giftListLink && !getString(normalized.giftListUrl)) {
+    incompleteFields.push({
+      fieldPath: "gifts.giftListUrl",
+      label: "Lista externa",
+    });
+  }
+
+  return incompleteFields;
 }
 
 function createIssue(params: {
@@ -209,11 +267,16 @@ export function validatePreparedPublicationRenderState(params: {
   rawSecciones: unknown[];
   objetosFinales: UnknownRecord[];
   seccionesFinales: UnknownRecord[];
+  rsvp?: RSVPConfig | null;
+  gifts?: GiftsConfig | null;
 }): PublicationPublishValidationResult {
   const rawObjetos = asRecordList(params.rawObjetos);
   const rawSecciones = asRecordList(params.rawSecciones);
   const objetosFinales = asRecordList(params.objetosFinales);
   const seccionesFinales = asRecordList(params.seccionesFinales);
+  const rsvp = params.rsvp || null;
+  const gifts = params.gifts || null;
+  const incompleteGiftModalFields = getIncompleteGiftModalFields(gifts);
   const objectIssues = new Set<string>();
   const blockers: PublicationPublishValidationIssue[] = [];
   const warnings: PublicationPublishValidationIssue[] = [];
@@ -247,6 +310,14 @@ export function validatePreparedPublicationRenderState(params: {
     }
   });
 
+  const rawSectionLookup = new Map<string, UnknownRecord>();
+  rawSecciones.forEach((section) => {
+    const sectionId = getString(section.id);
+    if (sectionId && !rawSectionLookup.has(sectionId)) {
+      rawSectionLookup.set(sectionId, section);
+    }
+  });
+
   const finalObjectLookup = new Map<string, UnknownRecord>();
   objetosFinales.forEach((object) => {
     const objectId = getString(object.id);
@@ -271,6 +342,11 @@ export function validatePreparedPublicationRenderState(params: {
       getString(rawObject.seccionId) || getString(finalObject.seccionId) || null;
     const objectType = normalizeText(rawObject.tipo) || normalizeText(finalObject.tipo);
     const objectLabel = getObjectLabel(rawObject, index);
+    const rawSection = sectionId ? rawSectionLookup.get(sectionId) || null : null;
+    const finalSection = sectionId ? finalSectionLookup.get(sectionId) || null : null;
+    const sectionMode = normalizeSectionMode(
+      rawSection?.altoModo ?? finalSection?.altoModo
+    );
 
     if (!sectionId || !validSectionIds.has(sectionId)) {
       pushIssue(
@@ -384,6 +460,79 @@ export function validatePreparedPublicationRenderState(params: {
           })
         );
       }
+    }
+
+    if (sectionMode === "pantalla") {
+      const yNorm = toFiniteNumber(rawObject.yNorm);
+      const y = toFiniteNumber(rawObject.y);
+
+      if (yNorm === null) {
+        pushIssue(
+          createIssue({
+            severity: "warning",
+            code: "pantalla-ynorm-missing",
+            message: `${objectLabel} esta en una seccion pantalla pero no tiene yNorm persistido; publish puede reubicarlo distinto al canvas.`,
+            objectId,
+            sectionId,
+            fieldPath: "yNorm",
+          })
+        );
+      } else if (y !== null) {
+        const expectedY = yNorm * ALTURA_EDITOR_PANTALLA;
+        if (Math.abs(y - expectedY) > PANTALLA_Y_DRIFT_WARNING_PX) {
+          pushIssue(
+            createIssue({
+              severity: "warning",
+              code: "pantalla-ynorm-drift",
+              message: `${objectLabel} esta en una seccion pantalla con y/yNorm desalineados; publish prioriza yNorm y la posicion vertical puede cambiar.`,
+              objectId,
+              sectionId,
+              fieldPath: "yNorm",
+            })
+          );
+        }
+      }
+    }
+
+    if ((objectType === "rsvp-boton" || objectType === "regalo-boton") && hasConfiguredLink(rawObject.enlace)) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "functional-cta-link-ignored",
+          message: `${objectLabel} define enlace, pero publish ignora enlace en CTA funcionales.`,
+          objectId,
+          sectionId,
+          fieldPath: "enlace",
+        })
+      );
+    }
+
+    if (objectType === "regalo-boton" && incompleteGiftModalFields.length > 0) {
+      incompleteGiftModalFields.forEach((field) => {
+        pushIssue(
+          createIssue({
+            severity: "warning",
+            code: "gift-modal-field-incomplete",
+            message: `${objectLabel} tiene "${field.label}" visible en el modal de regalos, pero ese dato esta incompleto y el HTML publicado no lo mostrara.`,
+            objectId,
+            sectionId,
+            fieldPath: field.fieldPath,
+          })
+        );
+      });
+    }
+
+    if (objectType === "rsvp-boton" && rsvp?.enabled === false) {
+      pushIssue(
+        createIssue({
+          severity: "blocking",
+          code: "rsvp-disabled-with-button",
+          message: `${objectLabel} requiere RSVP habilitado en raiz para que el HTML publicado tenga un modal funcional.`,
+          objectId,
+          sectionId,
+          fieldPath: "rsvp.enabled",
+        })
+      );
     }
 
     if (isFullBleedObject(rawObject)) {

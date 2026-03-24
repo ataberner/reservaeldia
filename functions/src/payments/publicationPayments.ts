@@ -2182,6 +2182,8 @@ async function buildPublicationRenderArtifacts(
     rawSecciones: prepared.draftRenderState.secciones,
     objetosFinales: prepared.objetosFinales,
     seccionesFinales: prepared.seccionesFinales,
+    rsvp: prepared.rsvp,
+    gifts: prepared.gifts,
   });
 
   return {
@@ -2200,6 +2202,18 @@ async function buildPublicationRenderArtifacts(
       : null,
     validation,
   };
+}
+
+function assertPublicationValidationCanPublish(
+  validation: ReturnType<typeof validatePreparedPublicationRenderState>
+): void {
+  if (validation.canPublish) return;
+
+  throw new HttpsError(
+    "failed-precondition",
+    buildPublicationValidationBlockingMessage(validation),
+    { validation }
+  );
 }
 
 function createSlugConflictError(message: string): HttpsError {
@@ -2325,13 +2339,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     validation,
   } = await buildPublicationRenderArtifacts(draftData as Record<string, unknown>);
 
-  if (!validation.canPublish) {
-    throw new HttpsError(
-      "failed-precondition",
-      buildPublicationValidationBlockingMessage(validation),
-      { validation }
-    );
-  }
+  assertPublicationValidationCanPublish(validation);
 
   const objetos = draftRenderState.objetos;
 
@@ -3142,12 +3150,15 @@ export async function createPublicationCheckoutSessionHandler(
   const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
   const operation = normalizeOperation(request.data?.operation);
 
-  await ensureDraftOwnership(uid, draftSlug);
-
+  const draft = await ensureDraftOwnership(uid, draftSlug);
   const config = await getPublicationPaymentConfig();
   if (!config.enabled) {
     throw new HttpsError("failed-precondition", "La publicacion con pago esta deshabilitada");
   }
+  const checkoutArtifacts = await buildPublicationRenderArtifacts(
+    draft.data as Record<string, unknown>
+  );
+  assertPublicationValidationCanPublish(checkoutArtifacts.validation);
   const pricingConfig = await loadCheckoutPricingConfig({
     context: "createPublicationCheckoutSession",
     operation,

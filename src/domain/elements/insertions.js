@@ -54,7 +54,7 @@ export function buildRasterIconInsertPayload(src, format, timestamp = Date.now()
     tipo: "icono",
     formato: format || "png",
     colorizable: false,
-    url: src,
+    src,
   };
 }
 

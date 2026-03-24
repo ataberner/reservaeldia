@@ -1,5 +1,6 @@
 import { trackCanvasDragPerf } from "@/components/editor/canvasEditor/canvasDragPerf";
 import { recordImageRotationLayerDraw } from "@/components/editor/canvasEditor/imageRotationDebug";
+import { resolveObjectPrimaryAssetUrl } from "../../../../shared/renderAssetContract.js";
 
 function getPerfNow() {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -70,7 +71,7 @@ export function buildImagePerfPayload(obj, img, imageCrop, node) {
   return {
     elementId: obj.id,
     tipo: obj.tipo,
-    src: obj.src || obj.url || null,
+    src: resolveObjectPrimaryAssetUrl(obj) || null,
     naturalWidth: naturalWidth || null,
     naturalHeight: naturalHeight || null,
     sourceWidth: sourceWidth || null,

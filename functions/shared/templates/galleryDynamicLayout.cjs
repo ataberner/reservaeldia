@@ -31,6 +31,10 @@ function normalizeGalleryLayoutType(value) {
   return "canvas_preserve";
 }
 
+const {
+  resolveGalleryCellMediaUrl,
+} = require("../renderAssetContract.cjs");
+
 function normalizeMediaUrls(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -43,7 +47,7 @@ function collectGalleryMediaUrls(cells) {
   return cells
     .map((cell) => {
       if (!cell || typeof cell !== "object") return "";
-      return normalizeText(cell.mediaUrl || cell.url || cell.src);
+      return normalizeText(resolveGalleryCellMediaUrl(cell));
     })
     .filter(Boolean);
 }

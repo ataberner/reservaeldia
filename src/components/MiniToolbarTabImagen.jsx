@@ -1,6 +1,7 @@
 // components/MiniToolbarTabImagen.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
+import { resolveGalleryCellMediaUrl } from "../../shared/renderAssetContract.js";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, isNaN(n) ? min : n));
@@ -112,7 +113,7 @@ export default function MiniToolbarTabImagen({
     const cells = Array.isArray(galeriaSeleccionada?.cells) ? galeriaSeleccionada.cells : [];
     if (isDynamicGallery) {
       return cells.filter((cell) => {
-        const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+        const mediaUrl = resolveGalleryCellMediaUrl(cell);
         return Boolean(mediaUrl);
       }).length;
     }

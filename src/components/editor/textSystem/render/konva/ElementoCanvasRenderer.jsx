@@ -38,6 +38,7 @@ import {
   markTemplateDraftRenderLogged,
 } from "@/domain/templates/draftPersonalizationDebug";
 import useSharedImage from "@/hooks/useSharedImage";
+import { resolveObjectPrimaryAssetUrl } from "../../../../../../shared/renderAssetContract.js";
 import {
   buildCanvasDragPerfDiff,
   endCanvasDragPerfSession,
@@ -410,7 +411,22 @@ export default function ElementoCanvas({
   onPredragVisualSelectionStart = null,
   onPredragVisualSelectionCancel = null,
 }) {
-  const [img] = useSharedImage(obj.src || null, "anonymous");
+  const primaryAssetUrl = resolveObjectPrimaryAssetUrl(obj) || null;
+  const imageAssetUrl = obj.tipo === "imagen" ? primaryAssetUrl : null;
+  const rasterIconAssetUrl =
+    obj.tipo === "icono" &&
+    (
+      obj.formato === "png" ||
+      obj.formato === "jpg" ||
+      obj.formato === "jpeg" ||
+      obj.formato === "webp" ||
+      obj.formato === "gif" ||
+      obj.formato === "avif"
+    )
+      ? primaryAssetUrl
+      : null;
+  const [img] = useSharedImage(imageAssetUrl, "anonymous");
+  const [rasterIconImg] = useSharedImage(rasterIconAssetUrl, "anonymous");
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
   const [debugTextClientRect, setDebugTextClientRect] = useState(null);
 
@@ -857,12 +873,12 @@ export default function ElementoCanvas({
   }, [
     imageCropData,
     img,
+    imageAssetUrl,
     isInEditMode,
     isImageResizeGestureActive,
     isSelected,
     imageResizeSession,
     obj.id,
-    obj.src,
     obj.tipo,
     obj.width,
     obj.height,
@@ -3911,16 +3927,14 @@ export default function ElementoCanvas({
       obj.formato === "avif"
     )
   ) {
-    const [img] = useSharedImage(obj.url, "anonymous");
-
     return (
       <KonvaImage
         {...commonProps}
         ref={handleRef}
-        image={img}
+        image={rasterIconImg}
         crossOrigin="anonymous"
-        width={obj.width || (img?.width ?? 120)}
-        height={obj.height || (img?.height ?? 120)}
+        width={obj.width || (rasterIconImg?.width ?? 120)}
+        height={obj.height || (rasterIconImg?.height ?? 120)}
         listening={true}
 
         // UX cursor (sin romper tu hover)

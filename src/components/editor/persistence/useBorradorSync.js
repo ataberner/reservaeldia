@@ -20,6 +20,7 @@ import {
 } from "@/lib/monitoring/editorIssueReporter";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { buildSectionDecorationsPayload } from "@/domain/sections/backgrounds";
+import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
 
 const PERSIST_DEBOUNCE_MS = 500;
 const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
@@ -348,10 +349,12 @@ export default function useBorradorSync({
           return obj;
         });
 
-        const seccionesLimpias = limpiarUndefined(
-          rawSecciones.map((section) => normalizeSectionPersistenceShape(section))
-        );
-        const objetosLimpios = limpiarUndefined(objetosValidados);
+        const renderAssetState = normalizeRenderAssetState({
+          objetos: objetosValidados,
+          secciones: rawSecciones.map((section) => normalizeSectionPersistenceShape(section)),
+        });
+        const seccionesLimpias = limpiarUndefined(renderAssetState.secciones);
+        const objetosLimpios = limpiarUndefined(renderAssetState.objetos);
         const countdownForAudit = objetosValidados.find((item) => item?.tipo === "countdown") || null;
         const rsvpLimpio = rawRsvp
           ? limpiarUndefined(normalizeRsvpConfig(rawRsvp, { forceEnabled: false }))
@@ -563,12 +566,18 @@ export default function useBorradorSync({
             refreshUrlsDeep(seccionesData, refreshCache),
             refreshUrlsDeep(objetosData, refreshCache),
           ]);
+          const renderAssetState = normalizeRenderAssetState({
+            objetos: objetosRefrescados,
+            secciones: seccionesRefrescadas,
+          });
+          const objetosCanonicos = renderAssetState.objetos;
+          const seccionesCanonicas = renderAssetState.secciones;
 
           // Mantengo migracion de yNorm para secciones pantalla.
-          const objsMigrados = objetosRefrescados.map((o) => {
+          const objsMigrados = objetosCanonicos.map((o) => {
             if (!o?.seccionId) return o;
 
-            const sec = seccionesRefrescadas.find((s) => s.id === o.seccionId);
+            const sec = seccionesCanonicas.find((s) => s.id === o.seccionId);
             const modo = normalizarAltoModo(sec?.altoModo);
 
             if (modo === "pantalla") {
@@ -583,8 +592,8 @@ export default function useBorradorSync({
           });
 
           setObjetos(objsMigrados);
-          const seccionesNormalizadas = (Array.isArray(seccionesRefrescadas)
-            ? seccionesRefrescadas
+          const seccionesNormalizadas = (Array.isArray(seccionesCanonicas)
+            ? seccionesCanonicas
             : []
           ).map((section) => normalizeSectionPersistenceShape(section));
 

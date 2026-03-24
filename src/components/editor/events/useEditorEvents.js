@@ -25,6 +25,7 @@ import {
   buildFixedGalleryObjectPatch,
   buildGalleryLayoutBlueprintFromObject,
 } from "@/domain/templates/galleryDynamicMedia";
+import { resolveGalleryCellMediaUrl } from "../../../../shared/renderAssetContract.js";
 import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
 
 const COUNTDOWN_STYLE_KEYS = [
@@ -183,7 +184,7 @@ export default function useEditorEvents({
 
       return cells
         .map((cell) => {
-          const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+          const mediaUrl = resolveGalleryCellMediaUrl(cell);
           if (!mediaUrl) return null;
           return {
             ...cell,

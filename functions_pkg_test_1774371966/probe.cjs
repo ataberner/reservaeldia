@@ -1,0 +1,1 @@
+try { require('./functions/lib/index.js'); console.log('PACKAGED_ENTRY_OK'); } catch (error) { console.error('PACKAGED_ENTRY_FAIL'); console.error(error && error.stack ? error.stack : error); process.exit(1); }

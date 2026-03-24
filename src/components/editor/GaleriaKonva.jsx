@@ -14,6 +14,7 @@ import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva
 import useImage from "use-image";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
+import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
 
 const DRAG_THRESHOLD_PX = 4;
@@ -113,7 +114,7 @@ export default function GaleriaKonva({
     if (isDynamicGallery) {
       return sourceCells
         .map((cell) => {
-          const mediaUrl = String(cell?.mediaUrl || cell?.url || cell?.src || "").trim();
+          const mediaUrl = resolveGalleryCellMediaUrl(cell);
           if (!mediaUrl) return null;
           return {
             ...cell,
@@ -130,7 +131,7 @@ export default function GaleriaKonva({
       const cell = sourceCells[index] || {};
       return {
         ...cell,
-        mediaUrl: cell?.mediaUrl || null,
+        mediaUrl: resolveGalleryCellMediaUrl(cell) || null,
         fit: cell?.fit || "cover",
         bg: cell?.bg || "#f3f4f6",
       };

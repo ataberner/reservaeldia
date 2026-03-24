@@ -11,6 +11,7 @@ import {
   ensureDefaultsForSchema,
   normalizeTemplateDocument,
 } from "../../../../shared/templates/contract.js";
+import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
 
 export const AUTHORING_DRAFT_VERSION = 1;
 
@@ -282,6 +283,7 @@ export function buildTemplatePayloadFromAuthoring({
 } = {}) {
   const safeDraftData = asObject(draftData);
   const renderState = normalizeDraftRenderState(safeDraftData);
+  const normalizedRenderState = normalizeRenderAssetState(renderState);
   const sourceAuthoring =
     asObject(authoringState).fieldsSchema || asObject(authoringState).defaults
       ? asObject(authoringState)
@@ -299,8 +301,8 @@ export function buildTemplatePayloadFromAuthoring({
     tipo: normalizedType || "general",
     editor: "konva",
     portada: normalizeText(safeDraftData.portada) || null,
-    objetos: renderState.objetos,
-    secciones: renderState.secciones,
+    objetos: normalizedRenderState.objetos,
+    secciones: normalizedRenderState.secciones,
     fieldsSchema,
     defaults,
     ...(renderState.rsvp ? { rsvp: renderState.rsvp } : {}),

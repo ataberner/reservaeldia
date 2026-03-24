@@ -2,6 +2,10 @@ import {
   buildSuggestedTemplateTargetTransform,
   normalizeTemplateTargetTransform,
 } from "@/domain/templates/fieldValueResolver.js";
+import {
+  resolveGalleryCellMediaUrl,
+  resolveObjectPrimaryAssetUrl,
+} from "../../../../shared/renderAssetContract.js";
 
 const FIELD_TYPES = new Set([
   "text",
@@ -115,7 +119,7 @@ function normalizeMediaUrls(value) {
 function collectGalleryElementMediaUrls(element) {
   const cells = Array.isArray(element?.cells) ? element.cells : [];
   return cells
-    .map((cell) => normalizeText(cell?.mediaUrl || cell?.url || cell?.src))
+    .map((cell) => resolveGalleryCellMediaUrl(cell))
     .filter(Boolean);
 }
 
@@ -314,7 +318,7 @@ export function resolveAuthoringTargetForElement(element) {
   }
 
   if (elementType === "imagen") {
-    const imageUrl = normalizeText(safeElement.src || safeElement.url);
+    const imageUrl = resolveObjectPrimaryAssetUrl(safeElement);
     return {
       elementType,
       path: "src",

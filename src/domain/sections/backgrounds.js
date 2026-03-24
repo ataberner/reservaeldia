@@ -1,3 +1,7 @@
+import {
+  resolveObjectPrimaryAssetUrl,
+  resolveSectionDecorationAssetUrl,
+} from "../../../shared/renderAssetContract.js";
 const CANVAS_WIDTH = 800;
 const DEFAULT_SECTION_HEIGHT = 600;
 const DEFAULT_DECORATION_WIDTH = 220;
@@ -238,7 +242,7 @@ export function normalizeBackgroundDecoration(
   } = {}
 ) {
   const safeRaw = asObject(raw);
-  const src = normalizeText(safeRaw.src);
+  const src = resolveSectionDecorationAssetUrl(safeRaw);
   if (!src) return null;
 
   const baseDecoration = {
@@ -752,7 +756,7 @@ export function buildBackgroundDecorationFromImageObject(
   } = {}
 ) {
   const safeImage = asObject(imageObject);
-  const src = normalizeText(safeImage.src);
+  const src = resolveObjectPrimaryAssetUrl(safeImage);
   if (!src) return null;
 
   const width = resolveImageObjectDimension(

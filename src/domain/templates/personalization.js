@@ -8,6 +8,10 @@ import {
   buildDynamicGalleryObjectPatch,
   buildFixedGalleryObjectPatch,
 } from "./galleryDynamicMedia.js";
+import {
+  normalizeRenderAssetState,
+  resolveGalleryCellMediaUrl,
+} from "../../../shared/renderAssetContract.js";
 
 const DEFAULT_TEXT_CONTAINER_WIDTH_PX = 800;
 
@@ -352,7 +356,7 @@ function applyGalleryCells(targetObject, urls) {
   const cellCount = cells.length || safeUrls.length;
   const nextCells = Array.from({ length: cellCount }, (_, index) => {
     const currentCell = cells[index] && typeof cells[index] === "object" ? cells[index] : {};
-    const fallbackUrl = normalizeText(currentCell.mediaUrl || currentCell.url || currentCell.src);
+    const fallbackUrl = resolveGalleryCellMediaUrl(currentCell);
     const nextUrl = safeUrls[index] || fallbackUrl || "";
 
     return {
@@ -477,13 +481,17 @@ export function buildDraftPersonalizationPatch({
   const safeResolvedValues = asObject(resolvedValues);
   const formState = buildTemplateFormState(safeTemplate);
   const renderState = normalizeDraftRenderState(safeDraftData);
+  const normalizedRenderState = normalizeRenderAssetState(renderState);
   const textMeasurementOptions = buildTextMeasurementOptions(
-    renderState,
+    {
+      ...renderState,
+      ...normalizedRenderState,
+    },
     measurementOptions
   );
 
-  const objetos = deepClone(renderState.objetos);
-  const secciones = deepClone(renderState.secciones);
+  const objetos = deepClone(normalizedRenderState.objetos);
+  const secciones = deepClone(normalizedRenderState.secciones);
   let rsvp = renderState.rsvp ? deepClone(renderState.rsvp) : null;
   let gifts = renderState.gifts ? deepClone(renderState.gifts) : null;
   const defaults = asObject(formState.defaults);

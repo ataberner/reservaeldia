@@ -255,6 +255,12 @@ Current image objects use:
 | `url` | Optional fallback | HTML generator uses `src || url`. |
 | `width` | Optional | HTML renders it when present. |
 | `height` | Optional | HTML renders it when present. |
+| `ancho` | Optional but required for crop-safe publish | Source image width used to materialize crop consistently in preview/publish HTML. |
+| `alto` | Optional but required for crop-safe publish | Source image height used to materialize crop consistently in preview/publish HTML. |
+| `cropX` | Optional | Source-space crop origin X used by canvas and HTML generation. |
+| `cropY` | Optional | Source-space crop origin Y used by canvas and HTML generation. |
+| `cropWidth` | Optional | Source-space crop width. |
+| `cropHeight` | Optional | Source-space crop height. |
 
 ### `icono`
 Current icon objects have two active branches:

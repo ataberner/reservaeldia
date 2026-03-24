@@ -45,8 +45,10 @@ import {
   loadCheckoutPricingConfig,
 } from "../siteSettings/pricing";
 import {
-  normalizePublishRenderStateAssets,
-} from "../utils/publishAssetNormalization";
+  buildPublicationValidationBlockingMessage,
+  preparePublicationRenderState,
+  validatePreparedPublicationRenderState,
+} from "./publicationPublishValidation";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -2164,6 +2166,42 @@ function createGiftConfig(data: Record<string, any>): GiftsConfig {
   return JSON.parse(JSON.stringify(normalized)) as GiftsConfig;
 }
 
+async function buildPublicationRenderArtifacts(
+  draftData: Record<string, unknown>
+): Promise<{
+  draftRenderState: ReturnType<typeof normalizeDraftRenderState>;
+  objetosFinales: Record<string, unknown>[];
+  seccionesFinales: Record<string, unknown>[];
+  rsvp: ModalConfig;
+  gifts: GiftsConfig | null;
+  validation: ReturnType<typeof validatePreparedPublicationRenderState>;
+}> {
+  const prepared = await preparePublicationRenderState(draftData);
+  const validation = validatePreparedPublicationRenderState({
+    rawObjetos: prepared.draftRenderState.objetos,
+    rawSecciones: prepared.draftRenderState.secciones,
+    objetosFinales: prepared.objetosFinales,
+    seccionesFinales: prepared.seccionesFinales,
+  });
+
+  return {
+    draftRenderState: prepared.draftRenderState,
+    objetosFinales: prepared.objetosFinales,
+    seccionesFinales: prepared.seccionesFinales,
+    rsvp: createRsvpConfig({
+      ...draftData,
+      rsvp: prepared.draftRenderState.rsvp || {},
+    } as Record<string, any>),
+    gifts: prepared.gifts
+      ? createGiftConfig({
+          ...draftData,
+          gifts: prepared.draftRenderState.gifts || {},
+        } as Record<string, any>)
+      : null,
+    validation,
+  };
+}
+
 function createSlugConflictError(message: string): HttpsError {
   return new HttpsError("already-exists", message);
 }
@@ -2177,7 +2215,6 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
 
   const draft = await ensureDraftOwnership(uid, draftSlug);
   const draftData = draft.data;
-  const draftRenderState = normalizeDraftRenderState(draftData);
 
   const normalizedPublicSlug = normalizePublicSlug(publicSlug);
   if (!normalizedPublicSlug) {
@@ -2279,29 +2316,24 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
       ? safeTimestampFromDate(existingPausedAtDate || now)
       : null;
 
-  const objetos = draftRenderState.objetos;
-  const secciones = draftRenderState.secciones;
   const {
-    objetos: objetosFinales,
-    secciones: seccionesFinales,
-  } = await normalizePublishRenderStateAssets({
-    objetos,
-    secciones,
-  });
-  const hasGiftButton = objetosFinales.some(
-    (obj) => (obj as Record<string, unknown>)?.tipo === "regalo-boton"
-  );
-  const rsvp = createRsvpConfig({
-    ...(draftData as Record<string, unknown>),
-    rsvp: draftRenderState.rsvp || {},
-  } as Record<string, any>);
-  const gifts =
-    hasGiftButton || draftRenderState.gifts
-      ? createGiftConfig({
-          ...(draftData as Record<string, unknown>),
-          gifts: draftRenderState.gifts || {},
-        } as Record<string, any>)
-      : null;
+    draftRenderState,
+    objetosFinales,
+    seccionesFinales,
+    rsvp,
+    gifts,
+    validation,
+  } = await buildPublicationRenderArtifacts(draftData as Record<string, unknown>);
+
+  if (!validation.canPublish) {
+    throw new HttpsError(
+      "failed-precondition",
+      buildPublicationValidationBlockingMessage(validation),
+      { validation }
+    );
+  }
+
+  const objetos = draftRenderState.objetos;
 
   const htmlFinal = generarHTMLDesdeSecciones(
     seccionesFinales as any[],
@@ -2902,6 +2934,22 @@ export async function checkPublicSlugAvailabilityHandler(
     isValid: true,
     isAvailable: availability.isAvailable,
     reason: availability.reason,
+  };
+}
+
+export async function validateDraftForPublicationHandler(
+  request: CallableRequest<{ draftSlug: string }>
+) {
+  const uid = requireAuth(request);
+  const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
+  const draft = await ensureDraftOwnership(uid, draftSlug);
+  const artifacts = await buildPublicationRenderArtifacts(
+    draft.data as Record<string, unknown>
+  );
+
+  return {
+    draftSlug,
+    ...artifacts.validation,
   };
 }
 

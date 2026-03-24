@@ -157,6 +157,7 @@ export default function ImageCropOverlay({
   const dragRef = useRef(null);
   const detachListenersRef = useRef(() => {});
   const handleRefs = useRef({});
+  const finishCropDragRef = useRef(() => {});
   const [runtimeDragActive, setRuntimeDragActive] = useState(() => (
     typeof window !== "undefined" &&
     Boolean(window._isDragging || window._grupoLider)
@@ -181,6 +182,10 @@ export default function ImageCropOverlay({
   const handleHitStrokeWidth = isMobile ? 34 : 22;
   const handleStrokeWidth = isMobile ? 3 : 2;
   const handleCornerRadius = handleThickness / 2;
+  const shouldUsePointerStartEvents =
+    supportsPointerEvents &&
+    typeof window !== "undefined" &&
+    Boolean(window.PointerEvent);
   const edgeCursorByName = {
     left: "ew-resize",
     right: "ew-resize",
@@ -349,6 +354,10 @@ export default function ImageCropOverlay({
       });
     }
   }, [clearInteractionState, onCropCommit, onInteractionEnd]);
+
+  useEffect(() => {
+    finishCropDragRef.current = finishCropDrag;
+  }, [finishCropDrag]);
 
   const handleNativeMove = useCallback((nativeEvent) => {
     const drag = dragRef.current;
@@ -564,10 +573,9 @@ export default function ImageCropOverlay({
 
   useEffect(() => {
     return () => {
-      window._resizeData = null;
-      clearInteractionState();
+      finishCropDragRef.current?.(null, { commit: false });
     };
-  }, [clearInteractionState]);
+  }, []);
 
   if (
     runtimeDragActive ||
@@ -626,9 +634,21 @@ export default function ImageCropOverlay({
                 clearGlobalCursor(stageRef);
               }
             }}
-            onMouseDown={(event) => startCropDrag(handle.edge, event)}
-            onTouchStart={(event) => startCropDrag(handle.edge, event)}
-            onPointerDown={(event) => startCropDrag(handle.edge, event)}
+            onMouseDown={
+              shouldUsePointerStartEvents
+                ? undefined
+                : (event) => startCropDrag(handle.edge, event)
+            }
+            onTouchStart={
+              shouldUsePointerStartEvents
+                ? undefined
+                : (event) => startCropDrag(handle.edge, event)
+            }
+            onPointerDown={
+              shouldUsePointerStartEvents
+                ? (event) => startCropDrag(handle.edge, event)
+                : undefined
+            }
           />
         );
       })}

@@ -428,6 +428,11 @@ export default function CanvasStageContent({
     Boolean(isDragging) ||
     (typeof window !== "undefined" && Boolean(window._isDragging)) ||
     (typeof window !== "undefined" && Boolean(window._grupoLider));
+  const shouldRenderImageCropOverlay =
+    !editing.id &&
+    !isCanvasDragGestureActive &&
+    !isImageRotateInteractionActive &&
+    (!isAnyCanvasDragActive || isImageCropInteracting);
   const canvasInteractionLastBegin =
     typeof window !== "undefined" ? window.__CANVAS_INTERACTION_LAST_BEGIN || null : null;
   const isCanvasDragCoordinatorActive = Boolean(
@@ -1853,14 +1858,14 @@ export default function CanvasStageContent({
 
       const current = prev[objIndex];
       if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
+      const sectionUsesYNorm = esSeccionPantallaById(current.seccionId);
+      const nextY = Number.isFinite(cropAttrs.y) ? cropAttrs.y : current.y;
 
       const next = [...prev];
-      next[objIndex] = {
+      const nextObject = {
         ...current,
         x: Number.isFinite(cropAttrs.x) ? cropAttrs.x : current.x,
-        y: Number.isFinite(cropAttrs.y)
-          ? convertirAbsARel(cropAttrs.y, current.seccionId, seccionesOrdenadas)
-          : current.y,
+        y: nextY,
         width: Number.isFinite(cropAttrs.width) ? cropAttrs.width : current.width,
         height: Number.isFinite(cropAttrs.height) ? cropAttrs.height : current.height,
         cropX: Number.isFinite(cropAttrs.cropX) ? cropAttrs.cropX : current.cropX,
@@ -1879,6 +1884,15 @@ export default function CanvasStageContent({
         scaleX: 1,
         scaleY: 1,
       };
+      if (sectionUsesYNorm && Number.isFinite(nextY)) {
+        nextObject.yNorm = Math.max(
+          0,
+          Math.min(1, nextY / ALTURA_PANTALLA_EDITOR)
+        );
+      } else {
+        delete nextObject.yNorm;
+      }
+      next[objIndex] = nextObject;
       return next;
     });
 
@@ -1888,10 +1902,10 @@ export default function CanvasStageContent({
       }
     });
   }, [
+    ALTURA_PANTALLA_EDITOR,
     actualizarPosicionBotonOpciones,
-    convertirAbsARel,
+    esSeccionPantallaById,
     elementosSeleccionados,
-    seccionesOrdenadas,
     setObjetos,
   ]);
 
@@ -1904,14 +1918,14 @@ export default function CanvasStageContent({
 
       const current = prev[objIndex];
       if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
+      const sectionUsesYNorm = esSeccionPantallaById(current.seccionId);
+      const nextY = Number.isFinite(cropAttrs.y) ? cropAttrs.y : current.y;
 
       const next = [...prev];
-      next[objIndex] = {
+      const nextObject = {
         ...current,
         x: Number.isFinite(cropAttrs.x) ? cropAttrs.x : current.x,
-        y: Number.isFinite(cropAttrs.y)
-          ? convertirAbsARel(cropAttrs.y, current.seccionId, seccionesOrdenadas)
-          : current.y,
+        y: nextY,
         width: Number.isFinite(cropAttrs.width) ? cropAttrs.width : current.width,
         height: Number.isFinite(cropAttrs.height) ? cropAttrs.height : current.height,
         cropX: Number.isFinite(cropAttrs.cropX) ? cropAttrs.cropX : current.cropX,
@@ -1930,6 +1944,15 @@ export default function CanvasStageContent({
         scaleX: 1,
         scaleY: 1,
       };
+      if (sectionUsesYNorm && Number.isFinite(nextY)) {
+        nextObject.yNorm = Math.max(
+          0,
+          Math.min(1, nextY / ALTURA_PANTALLA_EDITOR)
+        );
+      } else {
+        delete nextObject.yNorm;
+      }
+      next[objIndex] = nextObject;
       return next;
     });
 
@@ -1939,10 +1962,10 @@ export default function CanvasStageContent({
       }
     });
   }, [
+    ALTURA_PANTALLA_EDITOR,
     actualizarPosicionBotonOpciones,
-    convertirAbsARel,
+    esSeccionPantallaById,
     elementosSeleccionados,
-    seccionesOrdenadas,
     setObjetos,
   ]);
 
@@ -3485,7 +3508,7 @@ export default function CanvasStageContent({
 
 
                   {/* No mostrar hover durante drag/resize/ediciÃ³n NI cuando hay lÃ­der de grupo */}
-                  {!editing.id && !isAnyCanvasDragActive && !isImageRotateInteractionActive && (
+                  {shouldRenderImageCropOverlay && (
                     <ImageCropOverlay
                       selectedElementId={
                         elementosSeleccionados.length === 1 ? elementosSeleccionados[0] : null

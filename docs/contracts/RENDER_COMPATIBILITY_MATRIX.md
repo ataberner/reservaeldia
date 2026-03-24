@@ -62,8 +62,8 @@ Estados usados:
 - `Contratos a congelar temporalmente`: `icono-svg` legacy, `countdown` schema v1, `anclaje: fullbleed`.
 - `No usar en contenido nuevo`: `forma.diamond`, `forma.star`, `forma.heart`, `forma.arrow`, `forma.pentagon`, `forma.hexagon`, `forma.pill`.
 - `Alinear primero para roadmap`: `imagen`, galerias, `countdown` schema v2, CTA funcionales, `altoModo: pantalla + yNorm`, `motionEffect`, `anclaje: fullbleed`.
-- `Drift tolerable hoy`: diferencias de renderer y metricas en `texto`, formulas geometricas entre canvas y HTML para `rect/circle/line/triangle`, diferencias visuales menores en fondos y decoraciones.
-- `Drift peligroso hoy`: formas solo-editor, crop de `imagen`, assets no resueltos en publish, CTA acoplados a config raiz, `fullbleed`, `motionEffect`, layout vertical basado en `yNorm`.
+- `Drift tolerable hoy`: diferencias de renderer y metricas en `texto`, formulas geometricas entre canvas y HTML para `rect/circle/line/triangle`, diferencias visuales menores en fondos y decoraciones, `motionEffect` solo-visible en HTML por diseno.
+- `Drift peligroso hoy`: formas solo-editor, `imagen` con crop sin metricas de origen suficientes, assets no resueltos en publish, CTA acoplados a config raiz, `fullbleed`, layout vertical basado en `yNorm`.
 
 ## Matriz principal
 
@@ -124,7 +124,7 @@ Estados usados:
 
 ### Contratos dependientes de assets ya resueltos
 
-- `imagen` pierde crop en HTML.
+- `imagen` materializa crop en HTML solo si tiene metricas de origen suficientes (`ancho`, `alto`, `cropX`, `cropY`, `cropWidth`, `cropHeight`).
 - `icono` raster puede fallar en publish si depende de `url` y no de `src` resuelto.
 - `galeria` fija y `dynamic_media` dependen de `cells[].mediaUrl` ya resuelto.
 - `countdown` schema v2 depende de `frameSvgUrl` ya resuelto para cerrar el contrato visual completo en publish.
@@ -150,9 +150,9 @@ Estados usados:
 - `Produccion hoy`: `con restricciones`.
 - `Bloquea expansion`: `si`.
 - `Drift dominante`: `render/layout`.
-- `Diferencias conocidas`: el editor soporta `cropX`, `cropY`, `cropWidth` y `cropHeight`; el HTML solo emite `<img>` sin materializar crop.
-- `Observaciones tecnicas`: publish reescribe `src` no-HTTP, pero no resuelve un contrato equivalente al crop del canvas.
-- `Consecuencia practica`: hoy es usable si la imagen no depende de crop para verse correcta en publish.
+- `Diferencias conocidas`: el editor y el HTML comparten `cropX`, `cropY`, `cropWidth` y `cropHeight`, pero publish necesita tambien `ancho` y `alto` de origen para cerrar ese contrato sin drift.
+- `Observaciones tecnicas`: publish reescribe `src` no-HTTP y materializa crop en HTML cuando el objeto trae metrica completa de origen.
+- `Consecuencia practica`: hoy es usable si `src` ya queda publico y si la imagen trae `ancho`/`alto` de origen cuando depende de crop.
 - `Decision recomendada`: `alinear antes de extender`.
 - `Fuentes verificadas`: `src/components/editor/textSystem/render/konva/ElementoCanvasRenderer.jsx`, `src/components/editor/textSystem/render/konva/CanvasStageContentComposer.jsx`, `functions/src/utils/generarHTMLDesdeObjetos.ts`.
 
@@ -363,7 +363,7 @@ Estados usados:
 - `Drift dominante`: `html-only/animacion`.
 - `Diferencias conocidas`: el editor configura y persiste `motionEffect`, pero la animacion real solo existe en runtime HTML.
 - `Observaciones tecnicas`: el runtime HTML tiene reglas especificas para galerias, countdowns y CTA RSVP, no una proyeccion visible en canvas.
-- `Consecuencia practica`: no usar el canvas como validacion suficiente para efectos.
+- `Consecuencia practica`: no usar el canvas como validacion suficiente para efectos; por si solo este drift no debe bloquear ni advertir publish.
 - `Decision recomendada`: `alinear antes de extender`.
 - `Fuentes verificadas`: `src/domain/motionEffects/index.js`, `functions/src/utils/generarHTMLDesdeObjetos.ts`, `functions/src/utils/generarMotionEffectsRuntime.ts`.
 
@@ -371,7 +371,7 @@ Estados usados:
 
 ### 1. Drift de render
 
-- `imagen`: el editor soporta crop y el HTML no.
+- `imagen`: el editor soporta crop y el HTML lo materializa solo cuando el objeto trae metrica suficiente.
 - `forma.diamond`, `forma.star`, `forma.heart`, `forma.arrow`, `forma.pentagon`, `forma.hexagon`, `forma.pill`: solo existen en editor.
 - `anclaje: fullbleed`: existe en HTML, no en el canvas.
 - `Consecuencia operativa`: no sumar nuevas variantes de render ni nuevas formas hasta cerrar primero la salida HTML real.

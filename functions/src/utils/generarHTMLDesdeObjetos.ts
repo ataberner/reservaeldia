@@ -1,5 +1,6 @@
 import { LINE_CONSTANTS } from "../models/lineConstants";
 import { resolveRsvpButtonVisual } from "../rsvp/buttonStyles";
+import { resolvePublishImageCropState } from "./publishImageCrop";
 
 const {
   normalizeGalleryLayoutMode,
@@ -1137,18 +1138,70 @@ ${obj.shadowColor
         const src = obj.src || obj.url || "";
         if (!src) return "";
 
+        const imageCropState = resolvePublishImageCropState(obj);
         const baseStyle = stylePosBase(obj);
-        const w = Number.isFinite(obj?.width) ? obj.width : undefined;
-        const h = Number.isFinite(obj?.height) ? obj.height : undefined;
+        const w = Number.isFinite(imageCropState.displayWidth)
+          ? imageCropState.displayWidth
+          : (Number.isFinite(obj?.width) ? obj.width : undefined);
+        const h = Number.isFinite(imageCropState.displayHeight)
+          ? imageCropState.displayHeight
+          : (Number.isFinite(obj?.height) ? obj.height : undefined);
+        const hasDisplayBox =
+          Number.isFinite(Number(w)) && Number.isFinite(Number(h));
 
-        const style = `
+        if (!hasDisplayBox) {
+          const fallbackStyle = `
 ${baseStyle}
 ${styleSize(obj, w, h)}
-object-fit: contain;
 display: block;
+max-width: none;
 `.trim();
 
-        return envolverSiEnlace(`<img class="objeto" src="${escapeAttr(src)}" style="${style}" />`, obj);
+          return envolverSiEnlace(
+            `<img class="objeto" src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" draggable="false" style="${fallbackStyle}" />`,
+            obj
+          );
+        }
+
+        const wrapperStyle = `
+${baseStyle}
+${styleSize(obj, w, h)}
+display: block;
+overflow: hidden;
+box-sizing: border-box;
+`.trim();
+
+        const shouldMaterializeCrop =
+          imageCropState.hasMeaningfulCrop && imageCropState.canMaterializeCrop;
+        const innerImageStyle = shouldMaterializeCrop
+          ? `
+position: absolute;
+left: calc(-100% * ${toCssNumber(imageCropState.cropX)} / ${toCssNumber(imageCropState.cropWidth || 1)});
+top: calc(-100% * ${toCssNumber(imageCropState.cropY)} / ${toCssNumber(imageCropState.cropHeight || 1)});
+width: calc(100% * ${toCssNumber(imageCropState.sourceWidth || 1)} / ${toCssNumber(imageCropState.cropWidth || 1)});
+height: calc(100% * ${toCssNumber(imageCropState.sourceHeight || 1)} / ${toCssNumber(imageCropState.cropHeight || 1)});
+display: block;
+max-width: none;
+user-select: none;
+pointer-events: none;
+`.trim()
+          : `
+width: 100%;
+height: 100%;
+object-fit: fill;
+display: block;
+user-select: none;
+pointer-events: none;
+`.trim();
+
+        return envolverSiEnlace(
+          `
+<div class="objeto image-object" style="${wrapperStyle}">
+  <img src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" draggable="false" style="${innerImageStyle}" />
+</div>
+`.trim(),
+          obj
+        );
       }
 
       // ---------------- ICONO (nuevo) ----------------

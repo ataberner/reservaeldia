@@ -30,6 +30,7 @@ import {
   retryPaidPublicationWithNewSlugHandler,
   transitionPublishedInvitationStateHandler,
   upsertPublicationDiscountCodeHandler,
+  validateDraftForPublicationHandler,
 } from "./payments/publicationPayments";
 import { normalizePublicSlug } from "./utils/publicSlug";
 import { normalizeInvitationType } from "./utils/invitationType";
@@ -1560,6 +1561,11 @@ export const restoreDraftFromTrash = onCall(
 export const checkPublicSlugAvailability = onCall(
   { region: "us-central1", memory: "256MiB" },
   async (request) => checkPublicSlugAvailabilityHandler(request)
+);
+
+export const validateDraftForPublication = onCall(
+  { region: "us-central1", memory: "256MiB" },
+  async (request) => validateDraftForPublicationHandler(request)
 );
 
 export const createPublicationCheckoutSession = onCall(

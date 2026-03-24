@@ -209,6 +209,17 @@ function getStagePointerPoint(node) {
   }
 }
 
+function drawRectangularHitRegion(context, shape, width, height) {
+  const safeWidth = Math.max(0, Number(width) || 0);
+  const safeHeight = Math.max(0, Number(height) || 0);
+  if (!safeWidth || !safeHeight) return;
+
+  context.beginPath();
+  context.rect(0, 0, safeWidth, safeHeight);
+  context.closePath();
+  context.fillStrokeShape(shape);
+}
+
 function detachSelectionTransformerForNode(node, payload = null) {
   const stage = node?.getStage?.() || null;
   if (!stage || typeof stage.findOne !== "function") return false;
@@ -3807,6 +3818,8 @@ export default function ElementoCanvas({
   if (obj.tipo === "imagen" && img) {
     const imageCrop = imageCropData || resolveKonvaImageCrop(obj, img);
     const mostrarBordeSeleccionImagen = preSeleccionado && !isSelected;
+    const shouldUseRectangularSelectionHitRegion =
+      !isSelected && !preSeleccionado;
     return (
       <KonvaImage
         {...commonProps}
@@ -3820,6 +3833,16 @@ export default function ElementoCanvas({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         perfectDrawEnabled={false}
+        hitFunc={shouldUseRectangularSelectionHitRegion
+          ? (context, shape) => {
+              drawRectangularHitRegion(
+                context,
+                shape,
+                imageCrop.width,
+                imageCrop.height
+              );
+            }
+          : undefined}
         stroke={mostrarBordeSeleccionImagen ? "#773dbe" : undefined}
         strokeWidth={mostrarBordeSeleccionImagen ? 1 : 0}
       />

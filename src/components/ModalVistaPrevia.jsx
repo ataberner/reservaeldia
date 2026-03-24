@@ -16,6 +16,7 @@ import {
   MOBILE_VIEWPORT_HEIGHT,
   MOBILE_VIEWPORT_WIDTH,
 } from "@/components/preview/modalVistaPreviaLayout";
+import PublishValidationSummary from "@/components/preview/PublishValidationSummary";
 
 const SECONDARY_TOOLBAR_BUTTON_CLASS =
   "inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#ddd2f5] bg-white/90 px-3 text-sm font-medium text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
@@ -331,6 +332,8 @@ export default function ModalVistaPrevia({
   publishSuccess = "",
   publishedUrl = "",
   checkoutVisible = false,
+  publishValidation = null,
+  publishValidationPending = false,
 }) {
   const [iframeKey, setIframeKey] = useState(0);
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
@@ -719,6 +722,12 @@ export default function ModalVistaPrevia({
               ) : null}
               {showPublishActions && publishSuccess ? (
                 <p className="mt-2 text-[12px] font-medium text-emerald-700">{publishSuccess}</p>
+              ) : null}
+              {showPublishActions ? (
+                <PublishValidationSummary
+                  validation={publishValidation}
+                  pending={publishValidationPending}
+                />
               ) : null}
             </div>
           </div>

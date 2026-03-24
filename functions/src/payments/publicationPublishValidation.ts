@@ -1,0 +1,465 @@
+import {
+  normalizeDraftRenderState,
+  type DraftRenderState,
+} from "../drafts/sourceOfTruth";
+import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
+import { normalizeRsvpConfig, type RSVPConfig } from "../rsvp/config";
+import { normalizePublishRenderStateAssets } from "../utils/publishAssetNormalization";
+import { resolvePublishImageCropState } from "../utils/publishImageCrop";
+
+type UnknownRecord = Record<string, unknown>;
+
+export type PublicationPublishValidationSeverity = "blocking" | "warning";
+
+export type PublicationPublishValidationIssue = {
+  severity: PublicationPublishValidationSeverity;
+  code: string;
+  message: string;
+  objectId: string | null;
+  sectionId: string | null;
+  fieldPath: string | null;
+};
+
+export type PublicationPublishValidationResult = {
+  canPublish: boolean;
+  blockers: PublicationPublishValidationIssue[];
+  warnings: PublicationPublishValidationIssue[];
+  summary: {
+    blockerCount: number;
+    warningCount: number;
+    blockingMessage: string;
+    warningMessage: string;
+  };
+};
+
+export type PreparedPublicationRenderState = {
+  draftRenderState: DraftRenderState;
+  objetosFinales: UnknownRecord[];
+  seccionesFinales: UnknownRecord[];
+  rsvp: RSVPConfig;
+  gifts: GiftsConfig | null;
+};
+
+function asRecord(value: unknown): UnknownRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as UnknownRecord;
+}
+
+function asRecordList(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => asRecord(entry));
+}
+
+function getString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeText(value: unknown): string {
+  return getString(value).toLowerCase();
+}
+
+function isPublishReadyAssetValue(value: unknown): boolean {
+  const text = getString(value);
+  if (!text) return false;
+  if (/^https?:\/\//i.test(text)) return true;
+  if (/^data:image\//i.test(text)) return true;
+  return false;
+}
+
+function isFullBleedObject(rawObject: UnknownRecord): boolean {
+  return normalizeText(rawObject.anclaje) === "fullbleed";
+}
+
+function getObjectLabel(rawObject: UnknownRecord, index: number): string {
+  const type = normalizeText(rawObject.tipo) || "objeto";
+  const objectId = getString(rawObject.id);
+  return objectId ? `${type} "${objectId}"` : `${type} #${index + 1}`;
+}
+
+function getSectionLabel(rawSection: UnknownRecord, index: number): string {
+  const sectionId = getString(rawSection.id);
+  return sectionId ? `seccion "${sectionId}"` : `seccion #${index + 1}`;
+}
+
+function getPrimaryObjectAssetCandidate(source: UnknownRecord): string {
+  return (
+    getString(source.src) ||
+    getString(source.url) ||
+    getString(source.storagePath)
+  );
+}
+
+function getGalleryCellAssetCandidate(source: UnknownRecord): string {
+  return (
+    getString(source.mediaUrl) ||
+    getString(source.url) ||
+    getString(source.src)
+  );
+}
+
+function createIssue(params: {
+  severity: PublicationPublishValidationSeverity;
+  code: string;
+  message: string;
+  objectId?: string | null;
+  sectionId?: string | null;
+  fieldPath?: string | null;
+}): PublicationPublishValidationIssue {
+  return {
+    severity: params.severity,
+    code: params.code,
+    message: params.message,
+    objectId: params.objectId || null,
+    sectionId: params.sectionId || null,
+    fieldPath: params.fieldPath || null,
+  };
+}
+
+function buildBlockingMessage(
+  blockers: PublicationPublishValidationIssue[]
+): string {
+  if (!blockers.length) return "";
+
+  const firstMessage =
+    blockers[0]?.message ||
+    "Hay contratos de render que todavia no son seguros para publicar.";
+  const remaining = blockers.length - 1;
+
+  if (remaining <= 0) {
+    return `No se puede publicar todavia: ${firstMessage}`;
+  }
+
+  return `No se puede publicar todavia: ${firstMessage} Hay ${remaining} incompatibilidades mas.`;
+}
+
+function buildWarningMessage(
+  warnings: PublicationPublishValidationIssue[]
+): string {
+  if (!warnings.length) return "";
+
+  if (warnings.length === 1) {
+    return warnings[0]?.message || "Se detecto una advertencia de compatibilidad.";
+  }
+
+  return `Se detectaron ${warnings.length} advertencias de compatibilidad para revisar antes de publicar.`;
+}
+
+function buildValidationResult(params: {
+  blockers: PublicationPublishValidationIssue[];
+  warnings: PublicationPublishValidationIssue[];
+}): PublicationPublishValidationResult {
+  const blockers = params.blockers;
+  const warnings = params.warnings;
+
+  return {
+    canPublish: blockers.length === 0,
+    blockers,
+    warnings,
+    summary: {
+      blockerCount: blockers.length,
+      warningCount: warnings.length,
+      blockingMessage: buildBlockingMessage(blockers),
+      warningMessage: buildWarningMessage(warnings),
+    },
+  };
+}
+
+function findFinalRecordByIdOrIndex(
+  rawRecord: UnknownRecord,
+  index: number,
+  lookup: Map<string, UnknownRecord>,
+  fallbackList: UnknownRecord[]
+): UnknownRecord {
+  const recordId = getString(rawRecord.id);
+  if (recordId && lookup.has(recordId)) {
+    return lookup.get(recordId) as UnknownRecord;
+  }
+  return asRecord(fallbackList[index]);
+}
+
+export async function preparePublicationRenderState(
+  draftData: UnknownRecord
+): Promise<PreparedPublicationRenderState> {
+  const draftRenderState = normalizeDraftRenderState(draftData);
+  const normalizedAssets = await normalizePublishRenderStateAssets({
+    objetos: draftRenderState.objetos,
+    secciones: draftRenderState.secciones,
+  });
+
+  const objetosFinales = asRecordList(normalizedAssets.objetos);
+  const seccionesFinales = asRecordList(normalizedAssets.secciones);
+  const hasGiftButton = objetosFinales.some(
+    (object) => normalizeText(object.tipo) === "regalo-boton"
+  );
+
+  return {
+    draftRenderState,
+    objetosFinales,
+    seccionesFinales,
+    rsvp: normalizeRsvpConfig(draftRenderState.rsvp || {}),
+    gifts:
+      hasGiftButton || Boolean(draftRenderState.gifts)
+        ? normalizeGiftConfig(draftRenderState.gifts || {})
+        : null,
+  };
+}
+
+export function validatePreparedPublicationRenderState(params: {
+  rawObjetos: unknown[];
+  rawSecciones: unknown[];
+  objetosFinales: UnknownRecord[];
+  seccionesFinales: UnknownRecord[];
+}): PublicationPublishValidationResult {
+  const rawObjetos = asRecordList(params.rawObjetos);
+  const rawSecciones = asRecordList(params.rawSecciones);
+  const objetosFinales = asRecordList(params.objetosFinales);
+  const seccionesFinales = asRecordList(params.seccionesFinales);
+  const objectIssues = new Set<string>();
+  const blockers: PublicationPublishValidationIssue[] = [];
+  const warnings: PublicationPublishValidationIssue[] = [];
+
+  const pushIssue = (issue: PublicationPublishValidationIssue) => {
+    const issueKey = [
+      issue.severity,
+      issue.code,
+      issue.objectId || "",
+      issue.sectionId || "",
+      issue.fieldPath || "",
+      issue.message,
+    ].join("|");
+
+    if (objectIssues.has(issueKey)) return;
+    objectIssues.add(issueKey);
+
+    if (issue.severity === "blocking") {
+      blockers.push(issue);
+      return;
+    }
+
+    warnings.push(issue);
+  };
+
+  const finalSectionLookup = new Map<string, UnknownRecord>();
+  seccionesFinales.forEach((section) => {
+    const sectionId = getString(section.id);
+    if (sectionId && !finalSectionLookup.has(sectionId)) {
+      finalSectionLookup.set(sectionId, section);
+    }
+  });
+
+  const finalObjectLookup = new Map<string, UnknownRecord>();
+  objetosFinales.forEach((object) => {
+    const objectId = getString(object.id);
+    if (objectId && !finalObjectLookup.has(objectId)) {
+      finalObjectLookup.set(objectId, object);
+    }
+  });
+
+  const validSectionIds = new Set(
+    seccionesFinales.map((section) => getString(section.id)).filter(Boolean)
+  );
+
+  rawObjetos.forEach((rawObject, index) => {
+    const finalObject = findFinalRecordByIdOrIndex(
+      rawObject,
+      index,
+      finalObjectLookup,
+      objetosFinales
+    );
+    const objectId = getString(rawObject.id) || getString(finalObject.id) || null;
+    const sectionId =
+      getString(rawObject.seccionId) || getString(finalObject.seccionId) || null;
+    const objectType = normalizeText(rawObject.tipo) || normalizeText(finalObject.tipo);
+    const objectLabel = getObjectLabel(rawObject, index);
+
+    if (!sectionId || !validSectionIds.has(sectionId)) {
+      pushIssue(
+        createIssue({
+          severity: "blocking",
+          code: "missing-section-reference",
+          message: `${objectLabel} no tiene una seccion valida para publish.`,
+          objectId,
+          sectionId,
+          fieldPath: "seccionId",
+        })
+      );
+    }
+
+    if (objectType === "imagen") {
+      const rawAsset = getPrimaryObjectAssetCandidate(rawObject);
+      const finalAsset = getPrimaryObjectAssetCandidate(finalObject);
+      const imageCropState = resolvePublishImageCropState(rawObject);
+
+      if (rawAsset && !isPublishReadyAssetValue(finalAsset)) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "image-asset-unresolved",
+            message: `${objectLabel} no tiene un asset publico resuelto para el HTML final.`,
+            objectId,
+            sectionId,
+            fieldPath: "src",
+          })
+        );
+      }
+
+      if (imageCropState.hasMeaningfulCrop && !imageCropState.canMaterializeCrop) {
+        const cropMessage =
+          imageCropState.materializationIssue === "missing-source-size"
+            ? `${objectLabel} usa crop del canvas pero le faltan ancho/alto de origen para materializar ese crop en el HTML publicado.`
+            : imageCropState.materializationIssue === "missing-display-size"
+              ? `${objectLabel} usa crop del canvas pero no tiene width/height finales consistentes para publicarlo sin drift.`
+              : `${objectLabel} usa crop del canvas y ese crop no se materializa en el HTML publicado.`;
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "image-crop-not-materialized",
+            message: cropMessage,
+            objectId,
+            sectionId,
+            fieldPath: "crop",
+          })
+        );
+      }
+    }
+
+    if (objectType === "icono" && normalizeText(rawObject.formato) !== "svg") {
+      const rawAsset = getPrimaryObjectAssetCandidate(rawObject);
+      const finalAsset = getPrimaryObjectAssetCandidate(finalObject);
+
+      if (rawAsset && !isPublishReadyAssetValue(finalAsset)) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "icon-asset-unresolved",
+            message: `${objectLabel} no tiene un asset publico resuelto para publish.`,
+            objectId,
+            sectionId,
+            fieldPath: "src",
+          })
+        );
+      }
+    }
+
+    if (objectType === "galeria") {
+      const rawCells = Array.isArray(rawObject.cells) ? rawObject.cells : [];
+      const finalCells = Array.isArray(finalObject.cells) ? finalObject.cells : [];
+
+      rawCells.forEach((rawCell, cellIndex) => {
+        const safeRawCell = asRecord(rawCell);
+        const safeFinalCell = asRecord(finalCells[cellIndex]);
+        const rawMedia = getGalleryCellAssetCandidate(safeRawCell);
+        const finalMedia = getGalleryCellAssetCandidate(safeFinalCell);
+
+        if (!rawMedia) return;
+        if (isPublishReadyAssetValue(finalMedia)) return;
+
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "gallery-media-unresolved",
+            message: `${objectLabel} tiene la celda ${cellIndex + 1} sin mediaUrl publico resuelto para publish.`,
+            objectId,
+            sectionId,
+            fieldPath: `cells[${cellIndex}].mediaUrl`,
+          })
+        );
+      });
+    }
+
+    if (objectType === "countdown") {
+      const schemaVersion = Number(rawObject.countdownSchemaVersion || 1);
+      const rawFrameSvgUrl = getString(rawObject.frameSvgUrl);
+      const finalFrameSvgUrl = getString(finalObject.frameSvgUrl);
+
+      if (schemaVersion >= 2 && rawFrameSvgUrl && !isPublishReadyAssetValue(finalFrameSvgUrl)) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "countdown-frame-unresolved",
+            message: `${objectLabel} usa countdown schema v2 con frameSvgUrl sin resolver para publish.`,
+            objectId,
+            sectionId,
+            fieldPath: "frameSvgUrl",
+          })
+        );
+      }
+    }
+
+    if (isFullBleedObject(rawObject)) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "fullbleed-editor-drift",
+          message: `${objectLabel} usa fullbleed y el canvas no representa ese contrato igual que el HTML final.`,
+          objectId,
+          sectionId,
+          fieldPath: "anclaje",
+        })
+      );
+    }
+
+  });
+
+  rawSecciones.forEach((rawSection, index) => {
+    const finalSection = findFinalRecordByIdOrIndex(
+      rawSection,
+      index,
+      finalSectionLookup,
+      seccionesFinales
+    );
+    const sectionId = getString(rawSection.id) || getString(finalSection.id) || null;
+    const sectionLabel = getSectionLabel(rawSection, index);
+    const rawBackground = getString(rawSection.fondoImagen);
+    const finalBackground = getString(finalSection.fondoImagen);
+
+    if (rawBackground && !isPublishReadyAssetValue(finalBackground)) {
+      pushIssue(
+        createIssue({
+          severity: "blocking",
+          code: "section-background-unresolved",
+          message: `${sectionLabel} tiene una imagen de fondo sin URL publica resuelta para publish.`,
+          sectionId,
+          fieldPath: "fondoImagen",
+        })
+      );
+    }
+
+    const decorations =
+      finalSection.decoracionesFondo &&
+      typeof finalSection.decoracionesFondo === "object" &&
+      Array.isArray((finalSection.decoracionesFondo as UnknownRecord).items)
+        ? ((finalSection.decoracionesFondo as UnknownRecord).items as unknown[])
+        : [];
+
+    decorations.forEach((decoration, decorationIndex) => {
+      const safeDecoration = asRecord(decoration);
+      const decorationSrc =
+        getString(safeDecoration.src) || getString(safeDecoration.storagePath);
+
+      if (!decorationSrc) return;
+      if (isPublishReadyAssetValue(decorationSrc)) return;
+
+      pushIssue(
+        createIssue({
+          severity: "blocking",
+          code: "section-decoration-unresolved",
+          message: `${sectionLabel} tiene una decoracion de fondo sin URL publica resuelta para publish.`,
+          sectionId,
+          fieldPath: `decoracionesFondo.items[${decorationIndex}].src`,
+        })
+      );
+    });
+  });
+
+  return buildValidationResult({
+    blockers,
+    warnings,
+  });
+}
+
+export function buildPublicationValidationBlockingMessage(
+  result: PublicationPublishValidationResult
+): string {
+  return result.summary.blockingMessage;
+}

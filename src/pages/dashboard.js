@@ -20,6 +20,7 @@ import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner
 import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
 import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
 import { getPublicationStatus } from "@/domain/publications/state";
+import { validateDraftForPublication } from "@/domain/publications/service";
 import { isDraftTrashed } from "@/domain/drafts/state";
 import { requestEditorDraftFlush } from "@/domain/drafts/flushGate";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
@@ -667,6 +668,8 @@ export default function Dashboard() {
   const [puedeActualizarPublicacion, setPuedeActualizarPublicacion] = useState(false);
   const [publicacionVistaPreviaError, setPublicacionVistaPreviaError] = useState("");
   const [publicacionVistaPreviaOk, setPublicacionVistaPreviaOk] = useState("");
+  const [publishValidationResult, setPublishValidationResult] = useState(null);
+  const [publishValidationPending, setPublishValidationPending] = useState(false);
   const [urlPublicadaReciente, setUrlPublicadaReciente] = useState(null);
   const [mostrarCheckoutPublicacion, setMostrarCheckoutPublicacion] = useState(false);
   const [operacionCheckoutPublicacion, setOperacionCheckoutPublicacion] = useState("new");
@@ -2313,6 +2316,36 @@ export default function Dashboard() {
     [editorSession.kind, modoEditor, slugInvitacion]
   );
 
+  const refreshPublishValidation = useCallback(
+    async (draftSlugOverride = null) => {
+      if (editorSession.kind === "template") {
+        setPublishValidationResult(null);
+        setPublishValidationPending(false);
+        return null;
+      }
+
+      const safeDraftSlug = sanitizeDraftSlug(draftSlugOverride || slugInvitacion);
+      if (!safeDraftSlug) {
+        setPublishValidationResult(null);
+        setPublishValidationPending(false);
+        return null;
+      }
+
+      setPublishValidationPending(true);
+
+      try {
+        const result = await validateDraftForPublication({
+          draftSlug: safeDraftSlug,
+        });
+        setPublishValidationResult(result || null);
+        return result || null;
+      } finally {
+        setPublishValidationPending(false);
+      }
+    },
+    [editorSession.kind, slugInvitacion]
+  );
+
   const generarVistaPrevia = async () => {
     try {
       const flushResult = await ensureDraftFlushBeforeCriticalAction("preview-before-open");
@@ -2328,6 +2361,8 @@ export default function Dashboard() {
       setPuedeActualizarPublicacion(false);
       setPublicacionVistaPreviaError("");
       setPublicacionVistaPreviaOk("");
+      setPublishValidationResult(null);
+      setPublishValidationPending(false);
       setUrlPublicadaReciente(null);
       setMostrarVistaPrevia(true); // Abrir modal primero
 
@@ -2571,6 +2606,11 @@ export default function Dashboard() {
       }
 
       setHtmlVistaPrevia(htmlGenerado);
+      if (editorSession.kind !== "template") {
+        void refreshPublishValidation(slugInvitacion).catch((validationError) => {
+          console.error("Error validando publicacion previa:", validationError);
+        });
+      }
     } catch (error) {
       console.error("Error generando vista previa:", error);
       alert("No se pudo generar la vista previa");
@@ -2585,6 +2625,31 @@ export default function Dashboard() {
     const flushResult = await ensureDraftFlushBeforeCriticalAction("checkout-before-open");
     if (!flushResult.ok) {
       setPublicacionVistaPreviaError(flushResult.error || "");
+      setPublicacionVistaPreviaOk("");
+      setMostrarCheckoutPublicacion(false);
+      return;
+    }
+
+    let validationResult = null;
+    try {
+      validationResult = await refreshPublishValidation(slugInvitacion);
+    } catch (validationError) {
+      setPublicacionVistaPreviaError(
+        getErrorMessage(
+          validationError,
+          "No se pudo validar la compatibilidad de publish. Intenta nuevamente."
+        )
+      );
+      setPublicacionVistaPreviaOk("");
+      setMostrarCheckoutPublicacion(false);
+      return;
+    }
+
+    if (Array.isArray(validationResult?.blockers) && validationResult.blockers.length > 0) {
+      setPublicacionVistaPreviaError(
+        validationResult?.summary?.blockingMessage ||
+          "Hay contratos de render que todavia no son seguros para publicar."
+      );
       setPublicacionVistaPreviaOk("");
       setMostrarCheckoutPublicacion(false);
       return;
@@ -3282,6 +3347,8 @@ export default function Dashboard() {
           setPuedeActualizarPublicacion(false);
           setPublicacionVistaPreviaError("");
           setPublicacionVistaPreviaOk("");
+          setPublishValidationResult(null);
+          setPublishValidationPending(false);
           setUrlPublicadaReciente(null);
         }}
         htmlContent={htmlVistaPrevia}
@@ -3294,6 +3361,8 @@ export default function Dashboard() {
         publishSuccess={publicacionVistaPreviaOk}
         publishedUrl={urlPublicadaReciente}
         checkoutVisible={!isTemplateEditorSession && mostrarCheckoutPublicacion}
+        publishValidation={publishValidationResult}
+        publishValidationPending={publishValidationPending}
       />
 
 

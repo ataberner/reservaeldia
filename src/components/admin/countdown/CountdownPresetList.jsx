@@ -56,7 +56,7 @@ export default function CountdownPresetList({
                 "General / Minimal";
               const sourceTag =
                 String(item?.metadata?.migrationSource || "").toLowerCase() === "legacy-config-v1"
-                  ? "legacy"
+                  ? "legacy compat"
                   : "nuevo";
               const statusColor =
                 item.estado === "published"

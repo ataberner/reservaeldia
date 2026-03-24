@@ -6,6 +6,7 @@ import {
 } from "@/domain/countdownPresets/catalogInvalidation";
 import { listCountdownPresetsPublic } from "@/domain/countdownPresets/service";
 import { buildCountdownCanvasPatchFromPreset } from "@/domain/countdownPresets/toCanvasPatch";
+import { resolveCountdownContract } from "../../shared/renderContractPolicy.js";
 
 const CATALOG_CACHE_TTL_MS = 90 * 1000;
 
@@ -15,20 +16,29 @@ let catalogCache = {
 };
 
 function mapLegacyPresets() {
-  return (Array.isArray(COUNTDOWN_PRESETS) ? COUNTDOWN_PRESETS : []).map((preset) => ({
-    id: preset.id,
-    nombre: preset.nombre || preset.id,
-    categoriaLabel: "Legacy",
-    thumbnailUrl: null,
-    activeVersion: 1,
-    presetPropsForCanvas: {
+  return (Array.isArray(COUNTDOWN_PRESETS) ? COUNTDOWN_PRESETS : []).map((preset) => {
+    const presetPropsForCanvas = {
       ...preset.props,
       presetId: preset.id,
       presetVersion: 1,
       countdownSchemaVersion: 1,
       tamanoBase: 320,
-    },
-  }));
+    };
+    const contract = resolveCountdownContract(presetPropsForCanvas);
+
+    return {
+      id: preset.id,
+      nombre: preset.nombre || preset.id,
+      categoriaLabel: "Legacy",
+      thumbnailUrl: null,
+      activeVersion: 1,
+      presetPropsForCanvas,
+      compatibilityStatus: contract.status,
+      legacyFrozen: contract.isLegacyFrozenCompat,
+      compatibilityReason: contract.reason,
+      replacementContractId: contract.replacementContractId,
+    };
+  });
 }
 
 function toCatalogItems(rawItems) {
@@ -47,6 +57,7 @@ function toCatalogItems(rawItems) {
             tamanoBase: item?.tamanoBase,
             svgRef: item?.svgRef,
           });
+      const contract = resolveCountdownContract(patch);
 
       return {
         id: String(item?.id || ""),
@@ -55,6 +66,10 @@ function toCatalogItems(rawItems) {
         thumbnailUrl: item?.thumbnailUrl || item?.svgRef?.thumbnailUrl || null,
         activeVersion: Number(item?.activeVersion || 1),
         presetPropsForCanvas: patch,
+        compatibilityStatus: contract.status,
+        legacyFrozen: contract.isLegacyFrozenCompat,
+        compatibilityReason: contract.reason,
+        replacementContractId: contract.replacementContractId,
       };
     })
     .filter((item) => item.id);

@@ -600,7 +600,12 @@ export default function CountdownPresetForm({
       {lastMessage ? <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{lastMessage}</div> : null}
       {errorMessage ? <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-700">{errorMessage}</div> : null}
       {validationWarnings.length ? <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">{validationWarnings.join(" ")}</div> : null}
-      {isLegacyPreset && !formState?.svgAsset?.previewUrl ? <div className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-700">Preset legacy sin frame SVG. Puedes editarlo y publicarlo igual, o subir un frame nuevo.</div> : null}
+      {isLegacyPreset ? (
+        <div className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-700">
+          Este preset pertenece a una ruta legacy congelada de compatibilidad. Se sigue soportando para contenido existente, pero no debe tomarse como base para nuevas expansiones.
+          {!formState?.svgAsset?.previewUrl ? " Actualmente no tiene frame SVG: puedes editarlo y publicarlo igual, o subir un frame nuevo." : ""}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,390px)] lg:overflow-hidden">
         <div className="space-y-3 lg:min-h-0 lg:overflow-y-auto lg:pr-2">

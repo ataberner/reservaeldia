@@ -35,6 +35,9 @@ export default function CountdownPresetBuilderPage() {
             <p className="mt-0.5 text-[11px] text-slate-600 lg:text-xs">
               Disena, versiona y publica presets reutilizables para todo el canvas.
             </p>
+            <p className="mt-1 text-[11px] text-amber-700 lg:text-xs">
+              Los presets legacy se mantienen como compatibilidad congelada y no deben usarse como base para nuevas expansiones.
+            </p>
           </div>
           <button
             type="button"
@@ -42,7 +45,7 @@ export default function CountdownPresetBuilderPage() {
             disabled={syncingLegacy}
             className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
           >
-            {syncingLegacy ? "Sincronizando legacy..." : "Sincronizar presets legacy"}
+            {syncingLegacy ? "Sincronizando compat..." : "Sync legacy compat"}
           </button>
         </div>
       </header>

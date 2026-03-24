@@ -1,5 +1,5 @@
 // C:\Reservaeldia\src\components\MenuOpcionesElemento.jsx
-import React, { useCallback, useEffect, useLayoutEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
@@ -10,6 +10,7 @@ import {
     sanitizeMotionEffect,
 } from "@/domain/motionEffects";
 import TemplateDynamicFieldMenuSection from "@/components/editor/templateAuthoring/TemplateDynamicFieldMenuSection";
+import { classifyRenderObjectContract } from "../../shared/renderContractPolicy.js";
 
 // Normaliza y valida URL básica
 function sanitizeURL(url) {
@@ -45,6 +46,17 @@ const BACKGROUND_MOTION_EFFECT_OPTIONS = Object.freeze([
         description: "Se mueve de forma bien visible al recorrer la invitacion.",
     },
 ]);
+
+function describeLegacyRenderContract(classification) {
+    const contractId = String(classification?.contractId || "").trim();
+    if (contractId === "countdown_schema_v1") {
+        return "Este countdown usa schema v1 legacy. Se mantiene por compatibilidad, pero esta congelado para nuevas expansiones.";
+    }
+    if (contractId === "icono_svg_legacy") {
+        return "Este icono usa la rama legacy icono-svg. Se mantiene por compatibilidad, pero el trabajo nuevo debe ir sobre el contrato moderno tipo='icono'.";
+    }
+    return "Este elemento usa un contrato legacy congelado. Sigue soportado por compatibilidad, pero no debe servir como base para trabajo nuevo.";
+}
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -171,6 +183,10 @@ export default function MenuOpcionesElemento({
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
+    const selectedRenderContract = useMemo(
+        () => classifyRenderObjectContract(elementoSeleccionado || null),
+        [elementoSeleccionado]
+    );
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -692,6 +708,11 @@ export default function MenuOpcionesElemento({
                 </>
             ) : (
                 <>
+            {selectedRenderContract?.isLegacyFrozenCompat ? (
+                <div className="mb-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">
+                    {describeLegacyRenderContract(selectedRenderContract)}
+                </div>
+            ) : null}
             {/* Copiar */}
             <button
                 onClick={() => {

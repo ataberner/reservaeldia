@@ -14,6 +14,11 @@ const {
 const {
   normalizeRenderAssetObject,
 } = require("../../shared/renderAssetContract.cjs");
+const {
+  classifyRenderObjectContract,
+  resolveCountdownContract,
+  resolveCountdownTargetIso,
+} = require("../../shared/renderContractPolicy.cjs");
 
 // ✅ Escapar strings para meterlos en atributos/HTML
 function escHTML(str: any = ""): string {
@@ -1247,6 +1252,7 @@ display: block;
 
       // ---------------- ICONO LEGACY (icono-svg) ----------------
       if (tipo === "icono-svg" && obj.d) {
+        const iconContract = classifyRenderObjectContract(obj);
         const vb = obj.viewBox || "0 0 100 100";
         const fill = obj.color || "#000";
 
@@ -1261,7 +1267,11 @@ height: ${pxY(obj, h)};
 fill: ${escapeAttr(fill)};
 `.trim();
 
-        const svg = `<svg class="objeto" xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttr(
+        const svg = `<svg class="objeto" data-render-contract-id="${escapeAttr(
+          iconContract.contractId || ""
+        )}" data-render-contract-status="${escapeAttr(
+          iconContract.status || ""
+        )}" xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttr(
           vb
         )}" style="${style}"><path d="${escHTML(obj.d)}" /></svg>`;
 
@@ -1270,10 +1280,16 @@ fill: ${escapeAttr(fill)};
 
       // ---------------- COUNTDOWN ----------------
       if (tipo === "countdown") {
-        const targetISO = obj.targetISO || obj.fechaObjetivo || obj.fechaISO || "";
-        const schemaVersion = Number(obj.countdownSchemaVersion || 1);
+        const countdownTarget = resolveCountdownTargetIso(obj);
+        const countdownContract = resolveCountdownContract(obj);
+        const targetISO = countdownTarget.targetISO;
+        const schemaVersion = countdownContract.schemaVersion || 1;
+        const countdownContractVersion = countdownContract.contractVersion || "v1";
+        const countdownContractId = countdownContract.contractId || "";
+        const countdownContractStatus = countdownContract.status || "";
+        const countdownTargetSource = countdownTarget.sourceField || "";
 
-        if (schemaVersion >= 2) {
+        if (countdownContractVersion === "v2") {
           const layout = buildCountdownLayoutMetrics(obj);
           const safeUnits = layout.units;
           const distribution = layout.distribution;
@@ -1437,7 +1453,11 @@ ${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
   data-mobile-cluster="isolated"
   data-mobile-center="force"
   data-countdown
+  data-countdown-contract="${escapeAttr(countdownContractVersion)}"
   data-countdown-v2="1"
+  data-countdown-target-source="${escapeAttr(countdownTargetSource)}"
+  data-render-contract-id="${escapeAttr(countdownContractId)}"
+  data-render-contract-status="${escapeAttr(countdownContractStatus)}"
   ${countdownAuditAttrs}
   data-target="${escapeAttr(targetISO)}"
   data-layout-type="${escapeAttr(layoutType)}"
@@ -1631,6 +1651,10 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
   data-mobile-cluster="isolated"
   data-mobile-center="force"
   data-countdown
+  data-countdown-contract="${escapeAttr(countdownContractVersion)}"
+  data-countdown-target-source="${escapeAttr(countdownTargetSource)}"
+  data-render-contract-id="${escapeAttr(countdownContractId)}"
+  data-render-contract-status="${escapeAttr(countdownContractStatus)}"
   ${countdownAuditAttrs}
   data-target="${escapeAttr(targetISO)}"
   data-preset="${escapeAttr(

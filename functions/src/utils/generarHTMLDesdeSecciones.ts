@@ -384,6 +384,19 @@ export function generarHTMLDesdeSecciones(
     });
   }
 
+  function resolveCountdownContract(root){
+    var explicitContract = String(root.getAttribute("data-countdown-contract") || "")
+      .trim()
+      .toLowerCase();
+    if (explicitContract === "v2" || explicitContract === "v1") {
+      return explicitContract;
+    }
+    if (root.getAttribute("data-countdown-v2") === "1") {
+      return "v2";
+    }
+    return "v1";
+  }
+
   function tickOne(root){
     const iso = root.getAttribute("data-target");
     if(!iso) return;
@@ -391,7 +404,7 @@ export function generarHTMLDesdeSecciones(
     if(isNaN(targetDate.getTime())) return;
     const parts = diffParts(targetDate);
 
-    if (root.getAttribute("data-countdown-v2") === "1") {
+    if (resolveCountdownContract(root) === "v2") {
       tickOneV2(root, parts);
       return;
     }

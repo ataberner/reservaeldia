@@ -8,6 +8,7 @@ import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
+import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
 const CANVAS_WIDTH = 800;
 
@@ -384,6 +385,7 @@ export default function computeInsertDefaults({
     };
   } else if (tipo === "countdown") {
     const presetProps = payload.presetProps || payload.props || {};
+    const countdownTarget = resolveCountdownTargetIso(payload);
     const width = incomingWidth ?? calcCountdownInitialWidth(presetProps);
     const height = incomingHeight ?? calcCountdownInitialHeight(presetProps);
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
@@ -394,7 +396,7 @@ export default function computeInsertDefaults({
       y,
       width,
       height,
-      fechaObjetivo: payload.fechaObjetivo || payload.targetISO || payload.fechaISO,
+      fechaObjetivo: countdownTarget.targetISO,
       ...presetProps,
     };
   } else if (tipo === "rsvp-boton" || tipo === "regalo-boton") {

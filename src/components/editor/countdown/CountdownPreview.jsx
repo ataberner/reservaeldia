@@ -6,6 +6,7 @@ import {
   resolveCountdownUnitWidth,
   resolvePreviewPaint,
 } from "@/domain/countdownPresets/renderModel";
+import { resolveCountdownContract } from "../../../../shared/renderContractPolicy.js";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -94,7 +95,11 @@ export default function CountdownPreview({ targetISO, preset, size = "sm", live 
     setScale(nextScale);
   }, []);
 
-  const isV2 = Number(preset?.countdownSchemaVersion || 1) >= 2;
+  const countdownContract = useMemo(
+    () => resolveCountdownContract(preset || null),
+    [preset]
+  );
+  const isV2 = countdownContract.contractVersion === "v2";
   const legacyParts = [
     { key: "d", value: fmt(state.d, preset?.padZero), label: "Dias" },
     { key: "h", value: fmt(state.h, preset?.padZero), label: "Horas" },

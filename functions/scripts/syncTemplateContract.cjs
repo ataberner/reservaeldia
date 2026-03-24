@@ -19,6 +19,14 @@ const artifacts = [
       path.resolve(__dirname, "../lib/shared/templates/galleryDynamicLayout.cjs"),
     ],
   },
+  {
+    label: "Politica de contratos de render",
+    sourcePath: path.resolve(__dirname, "../../shared/renderContractPolicy.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/renderContractPolicy.cjs"),
+      path.resolve(__dirname, "../lib/shared/renderContractPolicy.cjs"),
+    ],
+  },
 ];
 
 artifacts.forEach(({ label, sourcePath, targetPaths }) => {

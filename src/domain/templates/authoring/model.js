@@ -6,6 +6,7 @@ import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
 } from "../../../../shared/renderAssetContract.js";
+import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
 const FIELD_TYPES = new Set([
   "text",
@@ -308,12 +309,13 @@ export function resolveAuthoringTargetForElement(element) {
   }
 
   if (elementType === "countdown") {
+    const countdownTarget = resolveCountdownTargetIso(safeElement);
     return {
       elementType,
       path: "fechaObjetivo",
       defaultType: "date",
       defaultLabel: "Fecha del evento",
-      defaultValue: normalizeText(safeElement.fechaObjetivo || safeElement.targetISO || safeElement.fechaISO),
+      defaultValue: normalizeText(countdownTarget.targetISO),
     };
   }
 

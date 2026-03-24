@@ -3,6 +3,9 @@ import {
   normalizeVisibleUnits,
   resolveCountdownUnitWidth,
 } from "@/domain/countdownPresets/renderModel";
+import {
+  resolveCountdownContract,
+} from "../../../shared/renderContractPolicy.js";
 
 export const COUNTDOWN_AUDIT_TRACE_ID_FIELD = "countdownAuditTraceId";
 export const COUNTDOWN_AUDIT_FIXTURE_FIELD = "countdownAuditFixture";
@@ -382,9 +385,12 @@ export function buildCountdownAuditSnapshot({
     null;
   if (!resolvedTraceId) return null;
 
-  const schemaVersion = Math.max(1, Number(safeCountdown?.countdownSchemaVersion || 1));
+  const countdownContract = resolveCountdownContract(safeCountdown);
+  const schemaVersion = countdownContract.schemaVersion || 1;
   const metrics =
-    schemaVersion >= 2 ? computeV2Metrics(safeCountdown) : computeLegacyMetrics(safeCountdown);
+    countdownContract.contractVersion === "v2"
+      ? computeV2Metrics(safeCountdown)
+      : computeLegacyMetrics(safeCountdown);
 
   const snapshot = {
     traceId: resolvedTraceId,
@@ -393,6 +399,8 @@ export function buildCountdownAuditSnapshot({
     id: String(safeCountdown?.id || "").trim() || null,
     presetId: String(safeCountdown?.presetId || "").trim() || null,
     countdownSchemaVersion: schemaVersion,
+    renderContractId: countdownContract.contractId || null,
+    renderContractStatus: countdownContract.status || null,
     seccionId: String(safeCountdown?.seccionId || "").trim() || null,
     altoModo: String(altoModo || safeCountdown?.altoModo || "").trim() || null,
     x: roundMetric(toFinite(safeCountdown?.x, 0)),

@@ -14,6 +14,12 @@ const {
   resolveObjectPrimaryAssetUrl,
   resolveSectionDecorationAssetUrl,
 } = require("../../shared/renderAssetContract.cjs");
+const {
+  RENDER_CONTRACT_IDS,
+  classifyRenderObjectContract,
+  resolveCountdownContract,
+  resolveCountdownTargetIso,
+} = require("../../shared/renderContractPolicy.cjs");
 
 type UnknownRecord = Record<string, unknown>;
 const ALTURA_EDITOR_PANTALLA = 500;
@@ -354,6 +360,33 @@ export function validatePreparedPublicationRenderState(params: {
     const sectionMode = normalizeSectionMode(
       rawSection?.altoModo ?? finalSection?.altoModo
     );
+    const renderContract = classifyRenderObjectContract(rawObject);
+
+    if (renderContract.contractId === RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V1) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "legacy-countdown-schema-v1-frozen",
+          message: `${objectLabel} usa countdown schema v1 legacy. Sigue soportado por compatibilidad, pero esta congelado para trabajo nuevo.`,
+          objectId,
+          sectionId,
+          fieldPath: "countdownSchemaVersion",
+        })
+      );
+    }
+
+    if (renderContract.contractId === RENDER_CONTRACT_IDS.ICONO_SVG_LEGACY) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "legacy-icono-svg-frozen",
+          message: `${objectLabel} usa la rama legacy icono-svg. Sigue soportado por compatibilidad, pero el trabajo nuevo debe ir sobre el contrato moderno tipo='icono'.`,
+          objectId,
+          sectionId,
+          fieldPath: "tipo",
+        })
+      );
+    }
 
     if (!sectionId || !validSectionIds.has(sectionId)) {
       pushIssue(
@@ -454,11 +487,29 @@ export function validatePreparedPublicationRenderState(params: {
     }
 
     if (objectType === "countdown") {
-      const schemaVersion = Number(rawObject.countdownSchemaVersion || 1);
+      const countdownContract = resolveCountdownContract(rawObject);
+      const countdownTarget = resolveCountdownTargetIso(rawObject);
       const rawFrameSvgUrl = getString(rawObject.frameSvgUrl);
       const finalFrameSvgUrl = getString(finalObject.frameSvgUrl);
 
-      if (schemaVersion >= 2 && rawFrameSvgUrl && !isPublishReadyAssetValue(finalFrameSvgUrl)) {
+      if (countdownTarget.usesCompatibilityAlias) {
+        pushIssue(
+          createIssue({
+            severity: "warning",
+            code: "countdown-target-compat-alias",
+            message: `${objectLabel} resuelve la fecha del countdown desde '${countdownTarget.sourceField}'. Los cambios nuevos deben persistir en fechaObjetivo.`,
+            objectId,
+            sectionId,
+            fieldPath: countdownTarget.sourceField || "fechaObjetivo",
+          })
+        );
+      }
+
+      if (
+        countdownContract.contractVersion === "v2" &&
+        rawFrameSvgUrl &&
+        !isPublishReadyAssetValue(finalFrameSvgUrl)
+      ) {
         pushIssue(
           createIssue({
             severity: "blocking",

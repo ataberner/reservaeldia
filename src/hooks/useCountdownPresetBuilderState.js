@@ -135,11 +135,11 @@ export function useCountdownPresetBuilderState() {
         const created = Number(response?.created || 0);
         const skipped = Number(response?.skipped || 0);
         setLastMessage(
-          `Legacy sincronizados: ${created} creados, ${skipped} ya existentes.`
+          `Compatibilidad legacy sincronizada: ${created} creados, ${skipped} ya existentes.`
         );
         return response;
       } catch (error) {
-        setListError(getErrorMessage(error, "No se pudieron sincronizar los presets legacy."));
+        setListError(getErrorMessage(error, "No se pudieron sincronizar los presets legacy de compatibilidad."));
         return null;
       } finally {
         setSyncingLegacy(false);

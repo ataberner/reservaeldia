@@ -3,6 +3,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { useCountdownPresetCatalog } from "@/hooks/useCountdownPresetCatalog";
 import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
+import {
+  resolveCountdownContract,
+  resolveCountdownTargetIso,
+} from "../../shared/renderContractPolicy.js";
 
 function fechaStrToISO(str) {
   if (!str || typeof str !== "string") return null;
@@ -102,14 +106,19 @@ export default function MiniToolbarTabContador() {
   }, []);
 
   useEffect(() => {
-    const fechaObj = countdownEnBorrador?.fechaObjetivo;
+    const fechaObj = resolveCountdownTargetIso(countdownEnBorrador || null).targetISO;
     if (!fechaObj) return;
 
     const fechaInput = fechaISOToInputDateTime(fechaObj);
     if (!fechaInput) return;
 
     setFechaEventoStr((prev) => (prev === fechaInput ? prev : fechaInput));
-  }, [countdownEnBorrador?.id, countdownEnBorrador?.fechaObjetivo]);
+  }, [
+    countdownEnBorrador?.id,
+    countdownEnBorrador?.fechaObjetivo,
+    countdownEnBorrador?.targetISO,
+    countdownEnBorrador?.fechaISO,
+  ]);
 
   const selectedUI = useMemo(() => {
     if (!countdownSel) return null;
@@ -131,6 +140,19 @@ export default function MiniToolbarTabContador() {
     if (!selectedUI.frameSvgUrl) return true;
     return selectedUI.frameColorMode === "currentcolor";
   }, [selectedUI]);
+  const selectedCountdownContract = useMemo(
+    () => (countdownSel ? resolveCountdownContract(countdownSel) : null),
+    [countdownSel]
+  );
+  const draftCountdownTarget = useMemo(
+    () => resolveCountdownTargetIso(countdownEnBorrador || null),
+    [
+      countdownEnBorrador?.id,
+      countdownEnBorrador?.fechaObjetivo,
+      countdownEnBorrador?.targetISO,
+      countdownEnBorrador?.fechaISO,
+    ]
+  );
 
   const selectedPresetId = useMemo(
     () => String(countdownEnBorrador?.presetId || "").trim(),
@@ -180,6 +202,16 @@ export default function MiniToolbarTabContador() {
 
       {selectedUI && (
         <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          {selectedCountdownContract?.isLegacyFrozenCompat ? (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2 text-[11px] text-sky-800">
+              Este countdown usa schema v1 legacy. Se mantiene por compatibilidad, pero esta congelado para trabajo nuevo.
+            </div>
+          ) : null}
+          {draftCountdownTarget.usesCompatibilityAlias ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+              La fecha actual se esta resolviendo desde <code>{draftCountdownTarget.sourceField}</code>. Los cambios nuevos deben escribir en <code>fechaObjetivo</code>.
+            </div>
+          ) : null}
 
           <label className="block text-xs font-medium text-zinc-700">
             Separacion entre chips
@@ -300,7 +332,7 @@ export default function MiniToolbarTabContador() {
         {countdownPresetsError ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
             {usingFallback
-              ? "Catalogo remoto no disponible. Mostrando presets legacy."
+              ? "Catalogo remoto no disponible. Mostrando presets legacy congelados de compatibilidad."
               : countdownPresetsError}
           </div>
         ) : null}
@@ -325,6 +357,7 @@ export default function MiniToolbarTabContador() {
             const hasLivePresetPreview = Object.keys(rawPresetProps || {}).length > 0;
             const previewImageUrl = String(p?.thumbnailUrl || "").trim();
             const isSelected = selectedPresetId.length > 0 && selectedPresetId === String(p?.id || "");
+            const isLegacyPreset = p?.legacyFrozen === true;
             const cardClassName = [
               "group flex h-[96px] w-full flex-col rounded-[18px] border-2 px-[14px] py-3 text-left transition-all duration-200",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/90 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
@@ -398,7 +431,14 @@ export default function MiniToolbarTabContador() {
                     <div className="text-[11px] text-zinc-400">Sin preview</div>
                   )}
                 </div>
-                <p className={nameClassName}>{presetLabel}</p>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <p className={nameClassName}>{presetLabel}</p>
+                  {isLegacyPreset ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-700">
+                      legacy compat
+                    </span>
+                  ) : null}
+                </div>
               </button>
             );
           })}

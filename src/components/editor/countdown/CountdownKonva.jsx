@@ -13,6 +13,7 @@ import {
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
+import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
 import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
@@ -145,7 +146,14 @@ export default function CountdownKonva({
   }, [obj.y, obj.seccionId, seccionesOrdenadas, altoCanvas]);
 
   // Tiempo restante
-  const state = useMemo(() => getRemainingParts(obj.fechaObjetivo), [obj.fechaObjetivo, tick]);
+  const countdownTarget = useMemo(
+    () => resolveCountdownTargetIso(obj || null),
+    [obj.fechaObjetivo, obj.targetISO, obj.fechaISO]
+  );
+  const state = useMemo(
+    () => getRemainingParts(countdownTarget.targetISO),
+    [countdownTarget.targetISO, tick]
+  );
 
   const visibleUnits = useMemo(
     () => normalizeUnits(obj.visibleUnits),

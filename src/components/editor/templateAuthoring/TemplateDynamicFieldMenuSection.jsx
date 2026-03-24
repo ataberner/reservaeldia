@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  resolveCountdownContract,
+  resolveCountdownTargetIso,
+} from "../../../../shared/renderContractPolicy.js";
 
 const TEXT_FIELD_TYPE_OPTIONS = [
   { value: "text", label: "Texto corto" },
@@ -76,6 +80,20 @@ export default function TemplateDynamicFieldMenuSection({
   const [editGroup, setEditGroup] = useState("Datos principales");
   const [editOptional, setEditOptional] = useState(false);
   const isMediaElement = isMediaElementType(selectedElementType);
+  const selectedCountdownContract = useMemo(
+    () =>
+      selectedElementType === "countdown"
+        ? resolveCountdownContract(selectedElement || null)
+        : null,
+    [selectedElement, selectedElementType]
+  );
+  const selectedCountdownTarget = useMemo(
+    () =>
+      selectedElementType === "countdown"
+        ? resolveCountdownTargetIso(selectedElement || null)
+        : null,
+    [selectedElement, selectedElementType]
+  );
 
   const availableFields = useMemo(
     () => (Array.isArray(fieldsSchema) ? fieldsSchema : []),
@@ -182,9 +200,21 @@ export default function TemplateDynamicFieldMenuSection({
 
     if (selectedElementType === "countdown") {
       return (
-        <p className="text-[10px] text-slate-500">
-          Vincula una fecha al countdown para que el formulario actualice su cuenta regresiva.
-        </p>
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-500">
+            Vincula una fecha al countdown para que el formulario actualice su cuenta regresiva.
+          </p>
+          {selectedCountdownContract?.isLegacyFrozenCompat ? (
+            <p className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] text-sky-800">
+              Este countdown usa schema v1 legacy. Se mantiene por compatibilidad, pero esta congelado para trabajo nuevo.
+            </p>
+          ) : null}
+          {selectedCountdownTarget?.usesCompatibilityAlias ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+              La fecha actual se esta resolviendo desde {selectedCountdownTarget.sourceField}. Los nuevos cambios deben persistir en fechaObjetivo.
+            </p>
+          ) : null}
+        </div>
       );
     }
 

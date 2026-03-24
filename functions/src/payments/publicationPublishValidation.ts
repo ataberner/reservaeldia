@@ -3,7 +3,10 @@ import {
   type DraftRenderState,
 } from "../drafts/sourceOfTruth";
 import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
-import { normalizeRsvpConfig, type RSVPConfig } from "../rsvp/config";
+import {
+  resolveFunctionalCtaContract,
+  type FunctionalCtaContract,
+} from "../utils/functionalCtaContract";
 import { normalizePublishRenderStateAssets } from "../utils/publishAssetNormalization";
 import { resolvePublishImageCropState } from "../utils/publishImageCrop";
 const {
@@ -50,8 +53,7 @@ export type PreparedPublicationRenderState = {
   draftRenderState: DraftRenderState;
   objetosFinales: UnknownRecord[];
   seccionesFinales: UnknownRecord[];
-  rsvp: RSVPConfig;
-  gifts: GiftsConfig | null;
+  functionalCtaContract: FunctionalCtaContract;
 };
 
 function asRecord(value: unknown): UnknownRecord {
@@ -243,19 +245,17 @@ export async function preparePublicationRenderState(
 
   const objetosFinales = asRecordList(normalizedAssets.objetos);
   const seccionesFinales = asRecordList(normalizedAssets.secciones);
-  const hasGiftButton = objetosFinales.some(
-    (object) => normalizeText(object.tipo) === "regalo-boton"
-  );
+  const functionalCtaContract = resolveFunctionalCtaContract({
+    objetos: draftRenderState.objetos,
+    rsvpConfig: draftRenderState.rsvp,
+    giftsConfig: draftRenderState.gifts,
+  });
 
   return {
     draftRenderState,
     objetosFinales,
     seccionesFinales,
-    rsvp: normalizeRsvpConfig(draftRenderState.rsvp || {}),
-    gifts:
-      hasGiftButton || Boolean(draftRenderState.gifts)
-        ? normalizeGiftConfig(draftRenderState.gifts || {})
-        : null,
+    functionalCtaContract,
   };
 }
 
@@ -264,16 +264,26 @@ export function validatePreparedPublicationRenderState(params: {
   rawSecciones: unknown[];
   objetosFinales: UnknownRecord[];
   seccionesFinales: UnknownRecord[];
-  rsvp?: RSVPConfig | null;
-  gifts?: GiftsConfig | null;
+  rawRsvp?: unknown;
+  rawGifts?: unknown;
+  functionalCtaContract?: FunctionalCtaContract | null;
 }): PublicationPublishValidationResult {
   const rawObjetos = asRecordList(params.rawObjetos);
   const rawSecciones = asRecordList(params.rawSecciones);
   const objetosFinales = asRecordList(params.objetosFinales);
   const seccionesFinales = asRecordList(params.seccionesFinales);
-  const rsvp = params.rsvp || null;
-  const gifts = params.gifts || null;
-  const incompleteGiftModalFields = getIncompleteGiftModalFields(gifts);
+  const functionalCtaContract =
+    params.functionalCtaContract ||
+    resolveFunctionalCtaContract({
+      objetos: rawObjetos,
+      rsvpConfig: params.rawRsvp,
+      giftsConfig: params.rawGifts,
+    });
+  const rsvp = functionalCtaContract.rsvp.config;
+  const gifts = functionalCtaContract.gifts.config;
+  const incompleteGiftModalFields = functionalCtaContract.gifts.ready
+    ? getIncompleteGiftModalFields(gifts)
+    : [];
   const objectIssues = new Set<string>();
   const blockers: PublicationPublishValidationIssue[] = [];
   const warnings: PublicationPublishValidationIssue[] = [];
@@ -507,6 +517,50 @@ export function validatePreparedPublicationRenderState(params: {
       );
     }
 
+    if (objectType === "regalo-boton" && !functionalCtaContract.gifts.rootPresent) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "gift-missing-root-config",
+          message: `${objectLabel} necesita gifts en raiz para que el CTA publicado sea funcional.`,
+          objectId,
+          sectionId,
+          fieldPath: "gifts",
+        })
+      );
+    }
+
+    if (objectType === "regalo-boton" && functionalCtaContract.gifts.enabled === false) {
+      pushIssue(
+        createIssue({
+          severity: "blocking",
+          code: "gift-disabled-with-button",
+          message: `${objectLabel} requiere gifts habilitado en raiz para que el HTML publicado tenga un CTA funcional.`,
+          objectId,
+          sectionId,
+          fieldPath: "gifts.enabled",
+        })
+      );
+    }
+
+    if (
+      objectType === "regalo-boton" &&
+      functionalCtaContract.gifts.rootPresent &&
+      functionalCtaContract.gifts.enabled === true &&
+      !functionalCtaContract.gifts.hasUsableMethods
+    ) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "gift-no-usable-methods",
+          message: `${objectLabel} tiene gifts en raiz, pero no hay metodos visibles completos para mostrar en el HTML publicado.`,
+          objectId,
+          sectionId,
+          fieldPath: "gifts",
+        })
+      );
+    }
+
     if (objectType === "regalo-boton" && incompleteGiftModalFields.length > 0) {
       incompleteGiftModalFields.forEach((field) => {
         pushIssue(
@@ -520,6 +574,19 @@ export function validatePreparedPublicationRenderState(params: {
           })
         );
       });
+    }
+
+    if (objectType === "rsvp-boton" && !functionalCtaContract.rsvp.rootPresent) {
+      pushIssue(
+        createIssue({
+          severity: "warning",
+          code: "rsvp-missing-root-config",
+          message: `${objectLabel} necesita rsvp en raiz para que el CTA publicado sea funcional.`,
+          objectId,
+          sectionId,
+          fieldPath: "rsvp",
+        })
+      );
     }
 
     if (objectType === "rsvp-boton" && rsvp?.enabled === false) {

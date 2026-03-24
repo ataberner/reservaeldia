@@ -8,6 +8,10 @@ import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGa
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
 import { generarMotionEffectsRuntimeHTML } from "./generarMotionEffectsRuntime";
 import { generarInvitationLoaderRuntimeHTML } from "./generarInvitationLoaderRuntime";
+import {
+  resolveFunctionalCtaContract,
+  type FunctionalCtaContract,
+} from "./functionalCtaContract";
 import { normalizeSectionBackgroundModel } from "./sectionBackground";
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
@@ -57,6 +61,9 @@ type GenerarHTMLOpciones = {
   slug?: string;
   isPreview?: boolean;
   gifts?: GiftsConfig | null;
+  rsvpSource?: unknown;
+  giftsSource?: unknown;
+  functionalCtaContract?: FunctionalCtaContract | null;
 };
 
 function escapeAttr(str: string = ""): string {
@@ -212,13 +219,26 @@ function renderSectionDecorations(decorations: any[], mode: string): string {
 export function generarHTMLDesdeSecciones(
   secciones: any[],
   objetos: any[],
-  rsvp?: ModalConfig,
+  rsvp?: ModalConfig | null,
   opciones?: GenerarHTMLOpciones,
   opts?: { slug?: string }
 ): string {
   const slug = opciones?.slug ?? "";
   const slugPublica = opts?.slug ?? "";
   const isPreview = opciones?.isPreview === true;
+  const hasExplicitRsvpSource = Boolean(
+    opciones && Object.prototype.hasOwnProperty.call(opciones, "rsvpSource")
+  );
+  const hasExplicitGiftsSource = Boolean(
+    opciones && Object.prototype.hasOwnProperty.call(opciones, "giftsSource")
+  );
+  const functionalCtaContract =
+    opciones?.functionalCtaContract ??
+    resolveFunctionalCtaContract({
+      objetos,
+      rsvpConfig: hasExplicitRsvpSource ? opciones?.rsvpSource : rsvp,
+      giftsConfig: hasExplicitGiftsSource ? opciones?.giftsSource : opciones?.gifts,
+    });
 
   const fuentesUsadas = [
     ...new Set(
@@ -236,16 +256,15 @@ export function generarHTMLDesdeSecciones(
 
   const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
 
-  const hayRSVPEnCanvas = objetos?.some((o) => o.tipo === "rsvp-boton");
-  const hayRegalosEnCanvas = objetos?.some((o) => o.tipo === "regalo-boton");
   const botonRSVP = ""; // (si querés agregar un botón fijo fuera del canvas, hacelo acá)
   const modalRSVP =
-    hayRSVPEnCanvas && rsvp?.enabled
-      ? generarModalRSVPHTML(rsvp, { previewMode: isPreview })
+    functionalCtaContract.rsvp.ready && functionalCtaContract.rsvp.config
+      ? generarModalRSVPHTML(functionalCtaContract.rsvp.config, { previewMode: isPreview })
       : "";
-  const modalRegalos = hayRegalosEnCanvas
-    ? generarModalRegalosHTML(opciones?.gifts as GiftsConfig)
-    : "";
+  const modalRegalos =
+    functionalCtaContract.gifts.ready && functionalCtaContract.gifts.config
+      ? generarModalRegalosHTML(functionalCtaContract.gifts.config)
+      : "";
   const modalGaleria = hayGaleriaConImagenes(objetos) ? generarModalGaleriaHTML() : "";
   const invitationLoaderRuntime = generarInvitationLoaderRuntimeHTML();
   const motionEffectsRuntime = generarMotionEffectsRuntimeHTML();
@@ -1104,8 +1123,12 @@ export function generarHTMLDesdeSecciones(
       const fondoLayerHtml = renderSectionBackgroundLayer(seccion, backgroundModel);
       const htmlDecoraciones = renderSectionDecorations(backgroundModel.decoraciones, modo);
 
-      const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas);
-      const htmlContenido = generarHTMLDesdeObjetos(objsContenido, seccionesOrdenadas);
+      const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas, {
+        functionalCtaContract,
+      });
+      const htmlContenido = generarHTMLDesdeObjetos(objsContenido, seccionesOrdenadas, {
+        functionalCtaContract,
+      });
 
 
       return `
@@ -1720,6 +1743,13 @@ export function generarHTMLDesdeSecciones(
     }
 
     .objeto.is-interactive{ pointer-events: auto; }
+    .objeto.is-functional-cta-unavailable{
+      pointer-events: none;
+      opacity: 0.74;
+      filter: saturate(0.82);
+      box-shadow: none !important;
+      cursor: default !important;
+    }
 
     .cd-chip { backdrop-filter: saturate(1.1); }
 

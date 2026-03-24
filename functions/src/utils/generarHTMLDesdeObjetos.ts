@@ -1,5 +1,9 @@
 import { LINE_CONSTANTS } from "../models/lineConstants";
 import { resolveRsvpButtonVisual } from "../rsvp/buttonStyles";
+import {
+  getFunctionalCtaContractForObjectType,
+  type FunctionalCtaContract,
+} from "./functionalCtaContract";
 import { resolvePublishImageCropState } from "./publishImageCrop";
 
 const {
@@ -727,7 +731,15 @@ export function escapeHTML(texto: string = ""): string {
     .replace(/'/g, "&#039;");
 }
 
-export function generarHTMLDesdeObjetos(objetos: any[], _secciones: any[]): string {
+type GenerarHTMLDesdeObjetosOptions = {
+  functionalCtaContract?: FunctionalCtaContract | null;
+};
+
+export function generarHTMLDesdeObjetos(
+  objetos: any[],
+  _secciones: any[],
+  options: GenerarHTMLDesdeObjetosOptions = {}
+): string {
   const altoModoPorSeccion = new Map(
     (_secciones || []).map((s: any) => [s.id, String(s.altoModo || "fijo").toLowerCase()])
   );
@@ -1839,6 +1851,12 @@ background: ${cell.bg};
       // ---------------- RSVP BOTÓN ----------------
       if (tipo === "rsvp-boton" || tipo === "regalo-boton") {
         const isGiftButton = tipo === "regalo-boton";
+        const ctaContract = getFunctionalCtaContractForObjectType(
+          tipo,
+          options.functionalCtaContract
+        );
+        const ctaReady = ctaContract ? ctaContract.ready === true : true;
+        const ctaReason = ctaContract ? ctaContract.reason : "ready";
         const textoRaw = obj.texto || (isGiftButton ? "Ver regalos" : "Confirmar asistencia");
         const texto = escapeHTML(textoRaw);
         const w = Number.isFinite(obj?.width)
@@ -1880,16 +1898,25 @@ justify-content: center;
 border-radius: calc(${sBtn} * ${cornerRadius}px);
 border: ${rsvpVisual.cssBorder};
 box-shadow: ${rsvpVisual.cssShadow};
-cursor: pointer;
+cursor: ${ctaReady ? "pointer" : "default"};
 `.trim();
 
-        const htmlRsvp = `
-<div class="objeto is-interactive ${isGiftButton ? "regalo-boton" : "rsvp-boton"}"
-  ${!isGiftButton ? 'id="abrirModalRSVP"' : ""}
+        const stateAttrs = ctaReady
+          ? `data-cta-state="ready"
   data-accion="${isGiftButton ? "abrir-regalos" : "abrir-rsvp"}"
   ${isGiftButton ? "data-gift-open" : "data-rsvp-open"}
   role="button"
-  tabindex="0"
+  tabindex="0"`
+          : `data-cta-state="unavailable"
+  data-cta-reason="${escapeAttr(ctaReason)}"
+  aria-disabled="true"
+  title="No disponible"`;
+        const interactiveClass = ctaReady ? "is-interactive" : "is-functional-cta-unavailable";
+
+        const htmlRsvp = `
+<div class="objeto ${interactiveClass} ${isGiftButton ? "regalo-boton" : "rsvp-boton"}"
+  ${!isGiftButton && ctaReady ? 'id="abrirModalRSVP"' : ""}
+  ${stateAttrs}
   aria-label="${escapeAttr(textoRaw)}"
   style="${style}">
   ${texto}

@@ -51,6 +51,10 @@ export function generarModalRegalosHTML(
   const showGiftList = Boolean(normalized.visibility.giftListLink && normalized.giftListUrl);
   const hasVisibleMethods = visibleBankFields.length > 0 || showGiftList;
 
+  if (!normalized.enabled || !hasVisibleMethods) {
+    return "";
+  }
+
   const bankRowsHtml = visibleBankFields
     .map(
       (field) => `

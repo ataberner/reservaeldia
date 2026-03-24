@@ -2426,25 +2426,27 @@ export default function Dashboard() {
       const renderState = normalizeDraftRenderState(data);
       const objetosBase = renderState.objetos;
       const secciones = renderState.secciones;
-      const rawRsvp = renderState.rsvp || {};
+      const rawRsvp = renderState.rsvp || null;
       const rawGifts = renderState.gifts || null;
-      const rsvpPreviewConfig = normalizeRsvpConfig(
-        {
-          ...rawRsvp,
-          enabled: rawRsvp?.enabled !== false,
-          title: rawRsvp?.title,
-          subtitle: rawRsvp?.subtitle,
-          buttonText: rawRsvp?.buttonText,
-          primaryColor: rawRsvp?.primaryColor,
-          sheetUrl: rawRsvp?.sheetUrl,
-        },
-        { forceEnabled: false }
-      );
-      const hayRegaloBoton = objetosBase.some((obj) => obj?.tipo === "regalo-boton");
+      const rsvpPreviewConfig =
+        rawRsvp && typeof rawRsvp === "object"
+          ? normalizeRsvpConfig(
+              {
+                ...rawRsvp,
+                enabled: rawRsvp?.enabled !== false,
+                title: rawRsvp?.title,
+                subtitle: rawRsvp?.subtitle,
+                buttonText: rawRsvp?.buttonText,
+                primaryColor: rawRsvp?.primaryColor,
+                sheetUrl: rawRsvp?.sheetUrl,
+              },
+              { forceEnabled: false }
+            )
+          : null;
       const giftPreviewConfig =
-        hayRegaloBoton || (rawGifts && typeof rawGifts === "object")
+        rawGifts && typeof rawGifts === "object"
           ? normalizeGiftConfig({
-              ...(rawGifts && typeof rawGifts === "object" ? rawGifts : {}),
+              ...rawGifts,
               enabled: rawGifts?.enabled !== false,
             })
           : null;
@@ -2596,6 +2598,8 @@ export default function Dashboard() {
           slug: slugPreview,
           isPreview: true,
           gifts: giftPreviewConfig,
+          rsvpSource: rawRsvp,
+          giftsSource: rawGifts,
         }
       );
 

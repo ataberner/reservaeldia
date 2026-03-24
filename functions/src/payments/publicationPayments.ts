@@ -5,8 +5,8 @@ import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
 import { type CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
-import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
-import { normalizeRsvpConfig, type RSVPConfig as ModalConfig } from "../rsvp/config";
+import { type GiftsConfig } from "../gifts/config";
+import { type RSVPConfig as ModalConfig } from "../rsvp/config";
 import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
 import {
   type PublicSlugAvailabilityReason,
@@ -2129,41 +2129,8 @@ async function resolveExistingPublicSlug(draftSlug: string): Promise<string | nu
   return null;
 }
 
-function createRsvpConfig(data: Record<string, any>): ModalConfig {
-  const rawRsvp = data?.rsvp && typeof data.rsvp === "object"
-    ? data.rsvp as Record<string, unknown>
-    : {};
-
-  const normalized = normalizeRsvpConfig({
-    ...rawRsvp,
-    enabled: rawRsvp?.enabled !== false,
-    title: rawRsvp?.title,
-    subtitle: rawRsvp?.subtitle,
-    buttonText: rawRsvp?.buttonText,
-    primaryColor: rawRsvp?.primaryColor,
-    sheetUrl: rawRsvp?.sheetUrl,
-  });
-
-  // Firestore rechaza campos `undefined` en objetos anidados.
-  // JSON stringify/parse elimina esos valores de forma segura para este snapshot.
-  return JSON.parse(JSON.stringify(normalized)) as ModalConfig;
-}
-
-function createGiftConfig(data: Record<string, any>): GiftsConfig {
-  const rawGifts = data?.gifts && typeof data.gifts === "object"
-    ? data.gifts as Record<string, unknown>
-    : {};
-
-  const normalized = normalizeGiftConfig({
-    ...rawGifts,
-    enabled: rawGifts?.enabled !== false,
-    introText: rawGifts?.introText,
-    bank: rawGifts?.bank,
-    visibility: rawGifts?.visibility,
-    giftListUrl: rawGifts?.giftListUrl,
-  });
-
-  return JSON.parse(JSON.stringify(normalized)) as GiftsConfig;
+function cloneFirestoreSafe<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 async function buildPublicationRenderArtifacts(
@@ -2172,8 +2139,11 @@ async function buildPublicationRenderArtifacts(
   draftRenderState: ReturnType<typeof normalizeDraftRenderState>;
   objetosFinales: Record<string, unknown>[];
   seccionesFinales: Record<string, unknown>[];
-  rsvp: ModalConfig;
+  rsvp: ModalConfig | null;
   gifts: GiftsConfig | null;
+  functionalCtaContract: Awaited<
+    ReturnType<typeof preparePublicationRenderState>
+  >["functionalCtaContract"];
   validation: ReturnType<typeof validatePreparedPublicationRenderState>;
 }> {
   const prepared = await preparePublicationRenderState(draftData);
@@ -2182,24 +2152,22 @@ async function buildPublicationRenderArtifacts(
     rawSecciones: prepared.draftRenderState.secciones,
     objetosFinales: prepared.objetosFinales,
     seccionesFinales: prepared.seccionesFinales,
-    rsvp: prepared.rsvp,
-    gifts: prepared.gifts,
+    rawRsvp: prepared.draftRenderState.rsvp,
+    rawGifts: prepared.draftRenderState.gifts,
+    functionalCtaContract: prepared.functionalCtaContract,
   });
 
   return {
     draftRenderState: prepared.draftRenderState,
     objetosFinales: prepared.objetosFinales,
     seccionesFinales: prepared.seccionesFinales,
-    rsvp: createRsvpConfig({
-      ...draftData,
-      rsvp: prepared.draftRenderState.rsvp || {},
-    } as Record<string, any>),
-    gifts: prepared.gifts
-      ? createGiftConfig({
-          ...draftData,
-          gifts: prepared.draftRenderState.gifts || {},
-        } as Record<string, any>)
+    rsvp: prepared.functionalCtaContract.rsvp.config
+      ? cloneFirestoreSafe(prepared.functionalCtaContract.rsvp.config)
       : null,
+    gifts: prepared.functionalCtaContract.gifts.config
+      ? cloneFirestoreSafe(prepared.functionalCtaContract.gifts.config)
+      : null,
+    functionalCtaContract: prepared.functionalCtaContract,
     validation,
   };
 }
@@ -2336,6 +2304,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     seccionesFinales,
     rsvp,
     gifts,
+    functionalCtaContract,
     validation,
   } = await buildPublicationRenderArtifacts(draftData as Record<string, unknown>);
 
@@ -2346,10 +2315,13 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
   const htmlFinal = generarHTMLDesdeSecciones(
     seccionesFinales as any[],
     objetosFinales as any[],
-    rsvp,
+    rsvp || undefined,
     {
       slug: normalizedPublicSlug,
       gifts,
+      rsvpSource: draftRenderState.rsvp,
+      giftsSource: draftRenderState.gifts,
+      functionalCtaContract,
     }
   );
 

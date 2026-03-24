@@ -11,7 +11,8 @@ function normalizeTemplateArrays(template) {
 }
 
 function buildRsvpPreviewConfig(rawRsvp) {
-  const source = rawRsvp && typeof rawRsvp === "object" ? rawRsvp : {};
+  const source = rawRsvp && typeof rawRsvp === "object" ? rawRsvp : null;
+  if (!source) return null;
   return normalizeRsvpConfig(
     {
       ...source,
@@ -27,7 +28,8 @@ function buildRsvpPreviewConfig(rawRsvp) {
 }
 
 function buildGiftPreviewConfig(rawGifts) {
-  const source = rawGifts && typeof rawGifts === "object" ? rawGifts : {};
+  const source = rawGifts && typeof rawGifts === "object" ? rawGifts : null;
+  if (!source) return null;
   return normalizeGiftConfig({
     ...source,
     enabled: source?.enabled !== false,
@@ -56,6 +58,8 @@ export async function generateTemplatePreviewHtml(template) {
     slug: slugPreview,
     isPreview: true,
     gifts: giftPreviewConfig,
+    rsvpSource: safeTemplate.rsvp ?? null,
+    giftsSource: safeTemplate.gifts ?? null,
   });
 
   if (!String(html || "").trim()) {

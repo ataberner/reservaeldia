@@ -9,6 +9,7 @@ import {
   normalizeStoragePathCandidate,
   parseBucketAndPathFromStorageValue,
 } from "./storageAssetValue";
+import { backfillPublishImageSourceDimensions } from "./publishImageSourceDimensions";
 
 const PUBLISH_ASSET_FIELD_KEYS = new Set([
   "src",
@@ -227,9 +228,14 @@ export async function normalizePublishRenderStateAssets(params: {
     normalizePublishAssetFieldsDeep(safeObjetos, cache),
     normalizePublishSections(safeSecciones, cache),
   ]);
+  const objetosConDimensionesOrigen = await backfillPublishImageSourceDimensions(
+    Array.isArray(objetos) ? objetos : []
+  );
 
   return {
-    objetos: Array.isArray(objetos) ? objetos : [],
+    objetos: Array.isArray(objetosConDimensionesOrigen)
+      ? objetosConDimensionesOrigen
+      : [],
     secciones: Array.isArray(secciones) ? secciones : [],
   };
 }

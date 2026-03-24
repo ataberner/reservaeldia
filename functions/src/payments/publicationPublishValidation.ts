@@ -364,7 +364,10 @@ export function validatePreparedPublicationRenderState(params: {
     if (objectType === "imagen") {
       const rawAsset = getPrimaryObjectAssetCandidate(rawObject);
       const finalAsset = getPrimaryObjectAssetCandidate(finalObject);
-      const imageCropState = resolvePublishImageCropState(rawObject);
+      const imageCropState = resolvePublishImageCropState({
+        ...rawObject,
+        ...finalObject,
+      });
 
       if (rawAsset && !isPublishReadyAssetValue(finalAsset)) {
         pushIssue(

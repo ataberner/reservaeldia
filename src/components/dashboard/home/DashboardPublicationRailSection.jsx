@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Image as ImageIcon, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import DashboardCardPauseButton from "@/components/DashboardCardPauseButton";
 import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
 import DashboardSectionShell from "@/components/dashboard/home/DashboardSectionShell";
 import HorizontalRail from "@/components/dashboard/home/HorizontalRail";
+import ResolvedPreviewImage from "@/components/publications/ResolvedPreviewImage";
 import { transitionPublishedInvitationState } from "@/domain/publications/service";
 import { toMs } from "@/domain/publications/state";
 
@@ -112,20 +113,15 @@ function PublicationRailCard({
       ) : null}
 
       <div className="relative aspect-square overflow-hidden border-b border-gray-100 bg-gray-100">
-        {item?.portada ? (
-          <img
-            src={item.portada}
-            alt={`Portada de ${item?.nombre || "invitacion"}`}
-            className={`dashboard-invitation-card__media h-full w-full object-cover object-top motion-reduce:transition-none ${
-              item?.isPaused ? "opacity-80 saturate-[0.9]" : ""
-            }`}
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-gray-400">
-            <ImageIcon className="h-7 w-7" />
-          </div>
-        )}
+        <ResolvedPreviewImage
+          primarySrc={item?.portada || ""}
+          previewCandidates={item?.previewCandidates || []}
+          alt={`Portada de ${item?.nombre || "invitacion"}`}
+          className={`dashboard-invitation-card__media h-full w-full object-cover object-top motion-reduce:transition-none ${
+            item?.isPaused ? "opacity-80 saturate-[0.9]" : ""
+          }`}
+          loading="lazy"
+        />
       </div>
 
       <div className="space-y-2 p-3">

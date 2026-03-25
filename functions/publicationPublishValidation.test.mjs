@@ -4,6 +4,14 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  FIXTURE_BUCKET,
+  FIXTURE_PATHS,
+  createRepresentativePublishNormalizationStageState,
+} from "../shared/renderAssetContractFixtures.mjs";
+import {
+  installFirebaseStorageMock,
+} from "./testUtils/firebaseStorageMock.mjs";
 
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +27,7 @@ function requireBuiltModule(relativePath) {
 }
 
 const {
+  preparePublicationRenderState,
   validatePreparedPublicationRenderState,
 } = requireBuiltModule("lib/payments/publicationPublishValidation.js");
 
@@ -89,4 +98,67 @@ test("keeps v2 frame validation blocking while avoiding false legacy warnings", 
   assert.equal(result.canPublish, false);
   assert.ok(blockerCodes.includes("countdown-frame-unresolved"));
   assert.ok(!warningCodes.includes("legacy-countdown-schema-v1-frozen"));
+});
+
+test("blocks the representative asset-heavy draft when publish normalization is skipped", () => {
+  const draftState = createRepresentativePublishNormalizationStageState();
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos: draftState.objetos,
+    rawSecciones: draftState.secciones,
+    objetosFinales: draftState.objetos,
+    seccionesFinales: draftState.secciones,
+  });
+
+  const blockerCodes = result.blockers.map((blocker) => blocker.code);
+
+  assert.equal(result.canPublish, false);
+  assert.ok(blockerCodes.includes("image-asset-unresolved"));
+  assert.ok(blockerCodes.includes("icon-asset-unresolved"));
+  assert.ok(blockerCodes.includes("gallery-media-unresolved"));
+  assert.ok(blockerCodes.includes("countdown-frame-unresolved"));
+  assert.ok(blockerCodes.includes("section-background-unresolved"));
+});
+
+test("prepares the representative asset-heavy draft into a publish-safe state", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {
+      [FIXTURE_PATHS.heroImage]: {},
+      [FIXTURE_PATHS.rasterIcon]: {},
+      [FIXTURE_PATHS.galleryOne]: {},
+      [FIXTURE_PATHS.galleryTwo]: {},
+      [FIXTURE_PATHS.galleryThree]: {},
+      [FIXTURE_PATHS.sectionBackground]: {},
+      [FIXTURE_PATHS.decorTop]: {},
+      [FIXTURE_PATHS.decorBottom]: {},
+      [FIXTURE_PATHS.countdownFrame]: {},
+    },
+  });
+  t.after(() => storageMock.restore());
+
+  const draftState = createRepresentativePublishNormalizationStageState();
+  const prepared = await preparePublicationRenderState(draftState);
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos: draftState.objetos,
+    rawSecciones: draftState.secciones,
+    objetosFinales: prepared.objetosFinales,
+    seccionesFinales: prepared.seccionesFinales,
+    functionalCtaContract: prepared.functionalCtaContract,
+  });
+
+  const warningCodes = result.warnings.map((warning) => warning.code);
+  const blockerCodes = result.blockers.map((blocker) => blocker.code);
+
+  assert.equal(result.canPublish, true);
+  assert.equal(result.blockers.length, 0);
+  assert.ok(warningCodes.includes("legacy-countdown-schema-v1-frozen"));
+  assert.ok(warningCodes.includes("countdown-target-compat-alias"));
+  assert.ok(warningCodes.includes("legacy-icono-svg-frozen"));
+  assert.ok(!blockerCodes.includes("image-asset-unresolved"));
+  assert.ok(!blockerCodes.includes("icon-asset-unresolved"));
+  assert.ok(!blockerCodes.includes("gallery-media-unresolved"));
+  assert.ok(!blockerCodes.includes("countdown-frame-unresolved"));
+  assert.ok(!blockerCodes.includes("section-background-unresolved"));
+  assert.ok(!blockerCodes.includes("section-decoration-unresolved"));
 });

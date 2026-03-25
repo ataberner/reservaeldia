@@ -7,6 +7,7 @@ import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
 import { moveDraftToTrash } from "@/domain/drafts/service";
 import { isDraftTrashed } from "@/domain/drafts/state";
 import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
+import { resolveDraftPublicationLifecycleState } from "@/domain/invitations/readResolution";
 
 const HOME_READY_THUMBNAIL_TARGET = 2;
 const THUMBNAIL_SETTLE_TIMEOUT_MS = 900;
@@ -67,18 +68,7 @@ function appendCacheBust(url, versionMs) {
 }
 
 function getLifecycleState(borrador) {
-  const explicitState =
-    typeof borrador?.publicationLifecycle?.state === "string"
-      ? borrador.publicationLifecycle.state.trim().toLowerCase()
-      : "";
-  if (explicitState === "draft" || explicitState === "published" || explicitState === "finalized") {
-    return explicitState;
-  }
-
-  const hasPublicSlug =
-    typeof borrador?.slugPublico === "string" &&
-    borrador.slugPublico.trim().length > 0;
-  return hasPublicSlug ? "published" : "draft";
+  return resolveDraftPublicationLifecycleState(borrador);
 }
 
 function isVisibleDraft(borrador) {

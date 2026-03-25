@@ -14,7 +14,6 @@ import { db, functions as cloudFunctions } from "@/firebase";
 import {
   Copy,
   ExternalLink,
-  Image as ImageIcon,
   Pause,
   Pencil,
   Play,
@@ -22,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
+import ResolvedPreviewImage from "@/components/publications/ResolvedPreviewImage";
 import {
   adaptRsvpResponse,
   buildColumns,
@@ -37,10 +37,9 @@ import {
   toMs,
 } from "@/domain/publications/state";
 import { transitionPublishedInvitationState } from "@/domain/publications/service";
-import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
 import {
-  getPublicationPreview,
-  resolvePublicationDraftLookupSlug,
+  getPublicationPreviewItemKey,
+  resolvePublicationPreviewReadModelsByItemKey,
   resolvePublicationEditableDraftSlug,
 } from "@/domain/publications/preview";
 
@@ -71,62 +70,6 @@ function normalizeHistoricSummary(rawSummary) {
     transportCount: toInt(source.transportCount ?? source.transport),
     totalResponses: toInt(source.totalResponses),
   };
-}
-
-function getPublicationItemKey(source, id) {
-  const safeSource = typeof source === "string" && source.trim() ? source.trim() : "active";
-  const safeId = typeof id === "string" ? id.trim() : String(id || "").trim();
-  return `${safeSource}:${safeId}`;
-}
-
-async function resolveDraftPreviewFallbackByItemKey(items = []) {
-  const itemKeyToDraftSlug = new Map();
-
-  items.forEach((item) => {
-    const hasPreview = getPublicationPreview(item);
-    if (hasPreview) return;
-
-    const fallbackSlug = typeof item?.id === "string" ? item.id.trim() : "";
-    const draftSlug = resolvePublicationDraftLookupSlug(item, fallbackSlug);
-    if (!draftSlug) return;
-
-    const itemKey = getPublicationItemKey(item?.source, item?.id);
-    itemKeyToDraftSlug.set(itemKey, draftSlug);
-  });
-
-  const uniqueDraftSlugs = [...new Set(itemKeyToDraftSlug.values())];
-  if (!uniqueDraftSlugs.length) return new Map();
-
-  const draftPreviewBySlug = new Map();
-
-  await Promise.all(
-    uniqueDraftSlugs.map(async (draftSlug) => {
-      try {
-        const draftSnap = await getDoc(doc(db, "borradores", draftSlug));
-        if (!draftSnap.exists()) return;
-
-        const draftData = draftSnap.data() || {};
-        const fallbackPreview =
-          getDraftPreviewCandidates(draftData, { includePlaceholder: false })[0] || "";
-
-        if (fallbackPreview) {
-          draftPreviewBySlug.set(draftSlug, fallbackPreview);
-        }
-      } catch {
-        // Ignoramos fallos individuales para no bloquear la carga.
-      }
-    })
-  );
-
-  const fallbackByItemKey = new Map();
-  itemKeyToDraftSlug.forEach((draftSlug, itemKey) => {
-    const preview = draftPreviewBySlug.get(draftSlug) || "";
-    if (preview) {
-      fallbackByItemKey.set(itemKey, preview);
-    }
-  });
-
-  return fallbackByItemKey;
 }
 
 function buildHistoricSummaryCards(summary) {
@@ -267,16 +210,23 @@ export default function PublicadasGrid({ usuario }) {
         });
 
         const mergedItems = [...activeDocs, ...historyDocs];
-        const fallbackPreviewByItemKey =
-          await resolveDraftPreviewFallbackByItemKey(mergedItems);
+        const previewReadModelByItemKey =
+          await resolvePublicationPreviewReadModelsByItemKey(mergedItems, {
+            getItemData: (item) => item,
+            readDraftBySlug: async (draftSlug) =>
+              getDoc(doc(db, "borradores", draftSlug)),
+          });
 
         setItems(
           mergedItems.map((item) => {
-            const itemKey = getPublicationItemKey(item.source, item.id);
-            const fallbackPreview = fallbackPreviewByItemKey.get(itemKey) || "";
+            const itemKey = getPublicationPreviewItemKey(item.source, item.id);
+            const previewReadModel = previewReadModelByItemKey.get(itemKey) || null;
             return {
               ...item,
-              portada: getPublicationPreview(item) || fallbackPreview || null,
+              portada: previewReadModel?.primarySrc || null,
+              previewCandidates: Array.isArray(previewReadModel?.candidates)
+                ? previewReadModel.candidates
+                : [],
             };
           })
         );
@@ -338,7 +288,13 @@ export default function PublicadasGrid({ usuario }) {
           (typeof item.slug === "string" && item.slug.trim()) ||
           (item.source === "active" ? String(item.id || "").trim() : ""),
         nombre: item.nombre || item.slug || "(sin nombre)",
-        portada: getPublicationPreview(item) || null,
+        portada:
+          typeof item.portada === "string" && item.portada.trim()
+            ? item.portada.trim()
+            : null,
+        previewCandidates: Array.isArray(item.previewCandidates)
+          ? item.previewCandidates
+          : [],
         url: isFinalized || !status.isActive ? "" : item.urlPublica || "",
         publicadaEn,
         fechaEvento,
@@ -643,34 +599,28 @@ export default function PublicadasGrid({ usuario }) {
                           rel="noreferrer"
                           onClick={(event) => event.stopPropagation()}
                         >
-                          {fila.portada ? (
-                            <img
-                              src={fila.portada}
-                              alt={`Portada de ${fila.nombre}`}
-                              className={`h-full w-full object-cover object-top ${
-                                fila.isPaused ? "opacity-80 saturate-[0.9]" : ""
-                              }`}
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-gray-400">
-                              <ImageIcon className="h-6 w-6" />
-                            </div>
-                          )}
+                          <ResolvedPreviewImage
+                            primarySrc={fila.portada || ""}
+                            previewCandidates={fila.previewCandidates || []}
+                            alt={`Portada de ${fila.nombre}`}
+                            className={`h-full w-full object-cover object-top ${
+                              fila.isPaused ? "opacity-80 saturate-[0.9]" : ""
+                            }`}
+                            loading="lazy"
+                            fallbackIconClassName="h-6 w-6"
+                          />
                         </a>
-                      ) : fila.portada ? (
-                        <img
-                          src={fila.portada}
+                      ) : (
+                        <ResolvedPreviewImage
+                          primarySrc={fila.portada || ""}
+                          previewCandidates={fila.previewCandidates || []}
                           alt={`Portada de ${fila.nombre}`}
                           className={`h-full w-full object-cover object-top ${
                             fila.isPaused ? "opacity-80 saturate-[0.9]" : "opacity-80"
                           }`}
                           loading="lazy"
+                          fallbackIconClassName="h-6 w-6"
                         />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-gray-400">
-                          <ImageIcon className="h-6 w-6" />
-                        </div>
                       )}
                     </div>
 

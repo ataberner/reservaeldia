@@ -3,6 +3,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import { isDraftTrashed } from "@/domain/drafts/state";
 import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
+import { resolveDraftPublicationLifecycleState } from "@/domain/invitations/readResolution";
 
 function toMs(value) {
   if (!value) return 0;
@@ -54,18 +55,7 @@ function appendCacheBust(url, versionMs) {
 }
 
 function getLifecycleState(draft) {
-  const explicitState =
-    typeof draft?.publicationLifecycle?.state === "string"
-      ? draft.publicationLifecycle.state.trim().toLowerCase()
-      : "";
-
-  if (explicitState === "draft" || explicitState === "published" || explicitState === "finalized") {
-    return explicitState;
-  }
-
-  const hasPublicSlug =
-    typeof draft?.slugPublico === "string" && draft.slugPublico.trim().length > 0;
-  return hasPublicSlug ? "published" : "draft";
+  return resolveDraftPublicationLifecycleState(draft);
 }
 
 function isVisibleDraft(draft) {

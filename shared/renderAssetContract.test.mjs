@@ -3,10 +3,18 @@ import assert from "node:assert/strict";
 
 import {
   normalizeRenderAssetObject,
+  normalizeRenderAssetState,
   normalizeRenderAssetSection,
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
+  resolveSectionDecorationAssetUrl,
 } from "./renderAssetContract.js";
+import {
+  FIXTURE_PATHS,
+  buildFirebaseDownloadUrl,
+  createRepresentativeDraftLoadStageState,
+  createRepresentativePreviewPreparationStageState,
+} from "./renderAssetContractFixtures.mjs";
 
 test("normalizes image objects with legacy url into canonical src", () => {
   const normalized = normalizeRenderAssetObject({
@@ -80,5 +88,58 @@ test("preserves canonical section background and decoration fields", () => {
   assert.equal(
     normalized.decoracionesFondo.items[0].src,
     "https://cdn.example.com/decor.png"
+  );
+});
+
+test("normalizes representative draft-load assets the same way preview preparation expects them", () => {
+  const draftLoadState = createRepresentativeDraftLoadStageState();
+  const previewPreparationState = createRepresentativePreviewPreparationStageState();
+
+  const normalizedDraftLoad = normalizeRenderAssetState(draftLoadState);
+  const normalizedPreviewPreparation = normalizeRenderAssetState(
+    previewPreparationState
+  );
+
+  assert.deepEqual(normalizedPreviewPreparation, normalizedDraftLoad);
+
+  const heroImage = normalizedDraftLoad.objetos.find((entry) => entry.id === "hero-image");
+  const rasterIcon = normalizedDraftLoad.objetos.find((entry) => entry.id === "icon-raster");
+  const gallery = normalizedDraftLoad.objetos.find((entry) => entry.id === "gallery-main");
+  const countdown = normalizedDraftLoad.objetos.find((entry) => entry.id === "count-modern");
+  const heroSection = normalizedDraftLoad.secciones.find(
+    (entry) => entry.id === "section-hero"
+  );
+
+  assert.equal(
+    heroImage.src,
+    buildFirebaseDownloadUrl(FIXTURE_PATHS.heroImage, "hero-load")
+  );
+  assert.equal(
+    resolveObjectPrimaryAssetUrl(rasterIcon),
+    buildFirebaseDownloadUrl(FIXTURE_PATHS.rasterIcon, "icon-load")
+  );
+  assert.deepEqual(
+    gallery.cells.map((cell) => resolveGalleryCellMediaUrl(cell)),
+    [
+      buildFirebaseDownloadUrl(FIXTURE_PATHS.galleryOne, "gallery-load-1"),
+      buildFirebaseDownloadUrl(FIXTURE_PATHS.galleryTwo, "gallery-load-2"),
+      buildFirebaseDownloadUrl(FIXTURE_PATHS.galleryThree, "gallery-load-3"),
+    ]
+  );
+  assert.equal(
+    countdown.frameSvgUrl,
+    buildFirebaseDownloadUrl(FIXTURE_PATHS.countdownFrame, "countdown-load")
+  );
+  assert.equal(
+    heroSection.fondoImagen,
+    buildFirebaseDownloadUrl(FIXTURE_PATHS.sectionBackground, "section-load")
+  );
+  assert.equal(
+    resolveSectionDecorationAssetUrl(heroSection.decoracionesFondo.superior),
+    buildFirebaseDownloadUrl(FIXTURE_PATHS.decorTop, "decor-top-load")
+  );
+  assert.equal(
+    resolveSectionDecorationAssetUrl(heroSection.decoracionesFondo.inferior),
+    buildFirebaseDownloadUrl(FIXTURE_PATHS.decorBottom, "decor-bottom-load")
   );
 });

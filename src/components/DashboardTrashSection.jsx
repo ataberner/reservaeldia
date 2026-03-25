@@ -18,6 +18,7 @@ import {
 } from "@/domain/drafts/state";
 import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
 import { restoreDraftFromTrash } from "@/domain/drafts/service";
+import { getPublicationPreview } from "@/domain/publications/preview";
 
 const TRASH_CARD_GRID_CLASS =
   "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-6";
@@ -36,17 +37,6 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   }).format(new Date(ms));
-}
-
-function getPreview(item) {
-  const options = [
-    item?.portada,
-    item?.thumbnailUrl,
-    item?.thumbnailurl,
-    item?.thumbnail_url,
-  ].filter((value) => typeof value === "string" && value.trim());
-
-  return options[0] || "";
 }
 
 function appendCacheBust(url, versionMs) {
@@ -95,7 +85,7 @@ function mapTrashedPublication(docItem) {
     itemType: TRASH_ITEM_TYPES.PUBLICATION,
     publicSlug: docItem.id,
     nombre: data.nombre || data.slug || docItem.id,
-    portada: getPreview(data),
+    portada: getPublicationPreview(data),
     estado: status.label,
     enPapeleraAt: dates.trashedAt,
     venceAt: dates.expiresAt,

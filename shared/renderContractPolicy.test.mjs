@@ -9,6 +9,7 @@ import {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } from "./renderContractPolicy.js";
+import { createRepresentativeDraftLoadStageState } from "./renderAssetContractFixtures.mjs";
 
 test("classifies countdown schema v1 as legacy frozen compat", () => {
   const classification = resolveCountdownContract({
@@ -114,6 +115,31 @@ test("collects unique legacy render contracts from render state", () => {
     [
       [RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V1, 1],
       [RENDER_CONTRACT_IDS.ICONO_SVG_LEGACY, 1],
+    ]
+  );
+});
+
+test("tracks legacy branches inside a representative mixed asset render state", () => {
+  const renderState = createRepresentativeDraftLoadStageState();
+  const modernCountdown = renderState.objetos.find((entry) => entry.id === "count-modern");
+  const legacyCountdown = renderState.objetos.find((entry) => entry.id === "count-legacy");
+  const legacyIcon = renderState.objetos.find((entry) => entry.id === "icon-legacy");
+
+  const modernClassification = classifyRenderObjectContract(modernCountdown);
+  const legacyClassification = classifyRenderObjectContract(legacyIcon);
+  const legacyTarget = resolveCountdownTargetIso(legacyCountdown);
+  const legacyContracts = collectLegacyRenderContracts(renderState);
+
+  assert.equal(modernClassification.contractId, RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V2);
+  assert.equal(modernClassification.isLegacyFrozenCompat, false);
+  assert.equal(legacyClassification.contractId, RENDER_CONTRACT_IDS.ICONO_SVG_LEGACY);
+  assert.equal(legacyTarget.sourceField, "fechaISO");
+  assert.equal(legacyTarget.usesCompatibilityAlias, true);
+  assert.deepEqual(
+    legacyContracts.map((entry) => [entry.contractId, entry.objectIds]),
+    [
+      [RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V1, ["count-legacy"]],
+      [RENDER_CONTRACT_IDS.ICONO_SVG_LEGACY, ["icon-legacy"]],
     ]
   );
 });

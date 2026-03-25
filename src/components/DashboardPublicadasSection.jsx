@@ -10,23 +10,22 @@ import {
   where,
 } from "firebase/firestore";
 import {
-  Image as ImageIcon,
   Pencil,
 } from "lucide-react";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import { db } from "@/firebase";
 import DashboardCardPauseButton from "@/components/DashboardCardPauseButton";
 import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
+import ResolvedPreviewImage from "@/components/publications/ResolvedPreviewImage";
 import {
   getPublicationStatus,
   resolvePublicationDates,
   toMs,
 } from "@/domain/publications/state";
 import { transitionPublishedInvitationState } from "@/domain/publications/service";
-import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
 import {
-  getPublicationPreview,
-  resolvePublicationDraftLookupSlug,
+  getPublicationPreviewItemKey,
+  resolvePublicationPreviewReadModelsByItemKey,
   resolvePublicationEditableDraftSlug,
 } from "@/domain/publications/preview";
 
@@ -50,64 +49,7 @@ function formatDate(value) {
   }).format(new Date(ms));
 }
 
-function getPublicationItemKey(source, id) {
-  const safeSource = typeof source === "string" && source.trim() ? source.trim() : "active";
-  const safeId = typeof id === "string" ? id.trim() : String(id || "").trim();
-  return `${safeSource}:${safeId}`;
-}
-
-async function resolveDraftPreviewFallbackByItemKey(items = []) {
-  const itemKeyToDraftSlug = new Map();
-
-  items.forEach((item) => {
-    const hasPreview = getPublicationPreview(item?.data);
-    if (hasPreview) return;
-
-    const fallbackSlug =
-      typeof item?.id === "string" && item.id.trim() ? item.id.trim() : "";
-    const draftSlug = resolvePublicationDraftLookupSlug(item?.data, fallbackSlug);
-    if (!draftSlug) return;
-
-    const itemKey = getPublicationItemKey(item?.source, item?.id);
-    itemKeyToDraftSlug.set(itemKey, draftSlug);
-  });
-
-  const uniqueDraftSlugs = [...new Set(itemKeyToDraftSlug.values())];
-  if (!uniqueDraftSlugs.length) return new Map();
-
-  const draftPreviewBySlug = new Map();
-
-  await Promise.all(
-    uniqueDraftSlugs.map(async (draftSlug) => {
-      try {
-        const draftSnap = await getDoc(doc(db, "borradores", draftSlug));
-        if (!draftSnap.exists()) return;
-
-        const draftData = draftSnap.data() || {};
-        const fallbackPreview =
-          getDraftPreviewCandidates(draftData, { includePlaceholder: false })[0] || "";
-
-        if (fallbackPreview) {
-          draftPreviewBySlug.set(draftSlug, fallbackPreview);
-        }
-      } catch {
-        // Ignoramos fallos individuales para no bloquear el listado.
-      }
-    })
-  );
-
-  const fallbackByItemKey = new Map();
-  itemKeyToDraftSlug.forEach((draftSlug, itemKey) => {
-    const preview = draftPreviewBySlug.get(draftSlug) || "";
-    if (preview) {
-      fallbackByItemKey.set(itemKey, preview);
-    }
-  });
-
-  return fallbackByItemKey;
-}
-
-function buildActiveItem(docItem, nowMs, fallbackPreview = "") {
+function buildActiveItem(docItem, nowMs, previewReadModel = null) {
   const data = docItem.data() || {};
   const status = getPublicationStatus(data, nowMs);
   const dates = resolvePublicationDates(data);
@@ -123,7 +65,10 @@ function buildActiveItem(docItem, nowMs, fallbackPreview = "") {
     source: "active",
     publicSlug: docItem.id,
     nombre: data.nombre || data.slug || docItem.id,
-    portada: getPublicationPreview(data) || fallbackPreview,
+    portada: previewReadModel?.primarySrc || "",
+    previewCandidates: Array.isArray(previewReadModel?.candidates)
+      ? previewReadModel.candidates
+      : [],
     url: status.isActive ? String(data.urlPublica || "").trim() : "",
     borradorSlug: resolvePublicationEditableDraftSlug(data),
     statusLabel: status.label,
@@ -139,7 +84,7 @@ function buildActiveItem(docItem, nowMs, fallbackPreview = "") {
   };
 }
 
-function buildHistoryItem(docItem, fallbackPreview = "") {
+function buildHistoryItem(docItem, previewReadModel = null) {
   const data = docItem.data() || {};
   const dates = resolvePublicationDates(data);
   const sortMs =
@@ -153,7 +98,10 @@ function buildHistoryItem(docItem, fallbackPreview = "") {
       (typeof data.slug === "string" && data.slug.trim()) ||
       "",
     nombre: data.nombre || data.slug || "(sin nombre)",
-    portada: getPublicationPreview(data) || fallbackPreview,
+    portada: previewReadModel?.primarySrc || "",
+    previewCandidates: Array.isArray(previewReadModel?.candidates)
+      ? previewReadModel.candidates
+      : [],
     url: "",
     borradorSlug: resolvePublicationEditableDraftSlug(data),
     statusLabel: "Finalizada",
@@ -256,17 +204,23 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
           })),
         ];
 
-        const fallbackPreviewByItemKey =
-          await resolveDraftPreviewFallbackByItemKey(rawPublicationItems);
+        const previewReadModelByItemKey =
+          await resolvePublicationPreviewReadModelsByItemKey(
+            rawPublicationItems,
+            {
+              readDraftBySlug: async (draftSlug) =>
+                getDoc(doc(db, "borradores", draftSlug)),
+            }
+          );
 
         const activeItems = activeSnap.docs
           .map((docItem) =>
             buildActiveItem(
               docItem,
               nowMs,
-              fallbackPreviewByItemKey.get(
-                getPublicationItemKey("active", docItem.id)
-              ) || ""
+              previewReadModelByItemKey.get(
+                getPublicationPreviewItemKey("active", docItem.id)
+              ) || null
             )
           )
           .filter((item) => !item.isTrashed);
@@ -275,9 +229,9 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
           ? historySnap.docs.map((docItem) =>
               buildHistoryItem(
                 docItem,
-                fallbackPreviewByItemKey.get(
-                  getPublicationItemKey("history", docItem.id)
-                ) || ""
+                previewReadModelByItemKey.get(
+                  getPublicationPreviewItemKey("history", docItem.id)
+                ) || null
               )
             )
           : [];
@@ -458,20 +412,15 @@ export default function DashboardPublicadasSection({ usuario, onReadyChange }) {
                   ) : null}
 
                   <div className="relative aspect-square overflow-hidden border-b border-gray-100 bg-gray-100">
-                    {item.portada ? (
-                      <img
-                        src={item.portada}
-                        alt={`Portada de ${item.nombre}`}
-                        className={`h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none ${
-                          item.isPaused ? "opacity-80 saturate-[0.9]" : ""
-                        }`}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-gray-400">
-                        <ImageIcon className="h-7 w-7" />
-                      </div>
-                    )}
+                    <ResolvedPreviewImage
+                      primarySrc={item.portada || ""}
+                      previewCandidates={item.previewCandidates || []}
+                      alt={`Portada de ${item.nombre}`}
+                      className={`h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none ${
+                        item.isPaused ? "opacity-80 saturate-[0.9]" : ""
+                      }`}
+                      loading="lazy"
+                    />
                   </div>
 
                   <div className="space-y-2 p-3">

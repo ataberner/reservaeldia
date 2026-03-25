@@ -24,6 +24,11 @@ import { validateDraftForPublication } from "@/domain/publications/service";
 import { isDraftTrashed } from "@/domain/drafts/state";
 import { requestEditorDraftFlush } from "@/domain/drafts/flushGate";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
+import {
+  resolveOwnedDraftSlugForEditorRead,
+  resolvePublicationLinkForDraftRead,
+  sanitizeDraftSlug,
+} from "@/domain/invitations/readResolution";
 import { normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { normalizeGiftConfig } from "@/domain/gifts/config";
 import {
@@ -255,14 +260,6 @@ function decodeURIComponentSafe(value) {
   }
 }
 
-function sanitizeDraftSlug(rawSlug) {
-  if (typeof rawSlug !== "string") return null;
-  const decoded = decodeURIComponentSafe(rawSlug).trim();
-  if (!decoded) return null;
-  const slug = decoded.split("?")[0].trim();
-  return slug || null;
-}
-
 function delay(ms) {
   const timeoutMs = Number(ms);
   const safeMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 0;
@@ -321,78 +318,6 @@ function isPermissionDeniedFirestoreError(error) {
   return code === "permission-denied" || code.includes("permission-denied");
 }
 
-function getDraftCandidatesFromPublication(data) {
-  const candidates = [
-    data?.borradorSlug,
-    data?.borradorId,
-    data?.draftSlug,
-    data?.slugOriginal,
-  ]
-    .map((value) => sanitizeDraftSlug(typeof value === "string" ? value : ""))
-    .filter(Boolean);
-
-  return Array.from(new Set(candidates));
-}
-
-async function resolveOwnedDraftSlugForEditor({ slug, uid }) {
-  const normalizedSlug = sanitizeDraftSlug(slug);
-  if (!normalizedSlug || !uid) return normalizedSlug;
-
-  let directDraftPermissionDenied = false;
-  try {
-    const directDraftSnap = await getDoc(doc(db, "borradores", normalizedSlug));
-    if (directDraftSnap.exists()) {
-      const directDraftData = directDraftSnap.data() || {};
-      const ownerUid = String(directDraftData?.userId || "").trim();
-      if (ownerUid !== uid) return null;
-      return isDraftTrashed(directDraftData) ? null : normalizedSlug;
-    }
-  } catch (error) {
-    if (isPermissionDeniedFirestoreError(error)) {
-      directDraftPermissionDenied = true;
-    } else {
-      return normalizedSlug;
-    }
-  }
-
-  try {
-    const publicationSnap = await getDoc(doc(db, "publicadas", normalizedSlug));
-    if (!publicationSnap.exists()) {
-      return directDraftPermissionDenied ? null : normalizedSlug;
-    }
-
-    const publicationData = publicationSnap.data() || {};
-    const publicationOwnerUid = String(publicationData?.userId || "").trim();
-    if (!publicationOwnerUid || publicationOwnerUid !== uid) {
-      return null;
-    }
-
-    const draftCandidates = getDraftCandidatesFromPublication(publicationData);
-    for (const candidateSlug of draftCandidates) {
-      try {
-        const candidateDraftSnap = await getDoc(doc(db, "borradores", candidateSlug));
-        if (!candidateDraftSnap.exists()) continue;
-        const candidateDraftData = candidateDraftSnap.data() || {};
-        const candidateOwnerUid = String(candidateDraftData?.userId || "").trim();
-        if (candidateOwnerUid !== uid) continue;
-        if (isDraftTrashed(candidateDraftData)) continue;
-        return candidateSlug;
-      } catch (candidateError) {
-        if (!isPermissionDeniedFirestoreError(candidateError)) {
-          return normalizedSlug;
-        }
-      }
-    }
-
-    return null;
-  } catch (publicationError) {
-    if (isPermissionDeniedFirestoreError(publicationError)) {
-      return null;
-    }
-    return normalizedSlug;
-  }
-}
-
 function hasModernDraftRenderState(rawDraft) {
   const renderState = normalizeDraftRenderState(rawDraft);
   return renderState.secciones.length > 0 || renderState.objetos.length > 0;
@@ -437,7 +362,15 @@ function normalizeTemplateWorkspaceFromDraft(rawDraft) {
 }
 
 async function resolveCompatibleDraftForDashboardEditor({ slug, uid }) {
-  const resolvedSlug = await resolveOwnedDraftSlugForEditor({ slug, uid });
+  const resolvedSlug = await resolveOwnedDraftSlugForEditorRead({
+    slug,
+    uid,
+    readDraftBySlug: async (draftSlug) => getDoc(doc(db, "borradores", draftSlug)),
+    readPublicationBySlug: async (publicSlug) =>
+      getDoc(doc(db, "publicadas", publicSlug)),
+    isPermissionDeniedError: isPermissionDeniedFirestoreError,
+    isDraftTrashed,
+  });
   if (!resolvedSlug) {
     return { status: "unavailable", slug: null, draftData: null };
   }
@@ -2452,68 +2385,32 @@ export default function Dashboard() {
           : null;
       let urlPublicaDetectada = "";
       let slugPublicoDetectado = "";
-      const slugPublicoBorrador =
-        editorSession.kind === "template"
-          ? ""
-          : String(data?.slugPublico || "").trim();
       let publicacionNoVigenteDetectada = false;
 
-      if (editorSession.kind !== "template" && slugPublicoBorrador) {
-        try {
-          const snapPublicoPorSlug = await getDoc(doc(db, "publicadas", slugPublicoBorrador));
-          if (snapPublicoPorSlug.exists()) {
-            const dataPublicada = snapPublicoPorSlug.data() || {};
-            if (isPublicacionActiva(dataPublicada)) {
-              slugPublicoDetectado = slugPublicoBorrador;
-              urlPublicaDetectada =
-                String(dataPublicada?.urlPublica || "").trim() ||
-                `https://reservaeldia.com.ar/i/${slugPublicoBorrador}`;
-            } else {
-              publicacionNoVigenteDetectada = true;
-            }
-          }
-        } catch (_e) {}
-      }
+      if (editorSession.kind !== "template") {
+        const publicationRead = await resolvePublicationLinkForDraftRead({
+          draftSlug: slugInvitacion,
+          draftData: data,
+          readPublicationBySlug: async (publicSlug) =>
+            getDoc(doc(db, "publicadas", publicSlug)),
+          queryPublicationBySlugOriginal: async (draftSlug) => {
+            const qPublicadaPorOriginal = query(
+              collection(db, "publicadas"),
+              where("slugOriginal", "==", draftSlug),
+              limit(1)
+            );
+            const snapPublicadaPorOriginal = await getDocs(qPublicadaPorOriginal);
+            return snapPublicadaPorOriginal.empty
+              ? null
+              : snapPublicadaPorOriginal.docs[0];
+          },
+          isPublicationReadable: (publicationData) =>
+            isPublicacionActiva(publicationData),
+        });
 
-      if (editorSession.kind !== "template" && !urlPublicaDetectada && slugInvitacion) {
-        try {
-          const snapPublicoDirecto = await getDoc(doc(db, "publicadas", slugInvitacion));
-          if (snapPublicoDirecto.exists()) {
-            const dataPublicada = snapPublicoDirecto.data() || {};
-            if (isPublicacionActiva(dataPublicada)) {
-              slugPublicoDetectado = slugInvitacion;
-              urlPublicaDetectada =
-                String(dataPublicada?.urlPublica || "").trim() ||
-                `https://reservaeldia.com.ar/i/${slugInvitacion}`;
-            } else {
-              publicacionNoVigenteDetectada = true;
-            }
-          }
-        } catch (_e) {}
-      }
-
-      if (editorSession.kind !== "template" && !urlPublicaDetectada && slugInvitacion) {
-        try {
-          const qPublicadaPorOriginal = query(
-            collection(db, "publicadas"),
-            where("slugOriginal", "==", slugInvitacion),
-            limit(1)
-          );
-          const snapPublicadaPorOriginal = await getDocs(qPublicadaPorOriginal);
-          if (!snapPublicadaPorOriginal.empty) {
-            const docPublicada = snapPublicadaPorOriginal.docs[0];
-            const dataPublicada = docPublicada?.data() || {};
-            if (isPublicacionActiva(dataPublicada)) {
-              const slugPublicado = String(dataPublicada?.slug || docPublicada?.id || "").trim();
-              slugPublicoDetectado = slugPublicado || "";
-              urlPublicaDetectada =
-                String(dataPublicada?.urlPublica || "").trim() ||
-                (slugPublicado ? `https://reservaeldia.com.ar/i/${slugPublicado}` : "");
-            } else {
-              publicacionNoVigenteDetectada = true;
-            }
-          }
-        } catch (_e) {}
+        slugPublicoDetectado = String(publicationRead?.publicSlug || "").trim();
+        urlPublicaDetectada = String(publicationRead?.publicUrl || "").trim();
+        publicacionNoVigenteDetectada = publicationRead?.matchedInactive === true;
       }
 
       const slugPublicoNormalizado =

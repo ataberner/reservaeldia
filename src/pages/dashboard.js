@@ -22,7 +22,7 @@ import { normalizePublicSlug, parseSlugFromPublicUrl } from "@/lib/publicSlug";
 import { getPublicationStatus } from "@/domain/publications/state";
 import { validateDraftForPublication } from "@/domain/publications/service";
 import { isDraftTrashed } from "@/domain/drafts/state";
-import { requestEditorDraftFlush } from "@/domain/drafts/flushGate";
+import { flushEditorPersistenceBeforeCriticalAction } from "@/domain/drafts/criticalFlush";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
 import {
   resolveOwnedDraftSlugForEditorRead,
@@ -2200,54 +2200,41 @@ export default function Dashboard() {
   const ensureDraftFlushBeforeCriticalAction = useCallback(
     async (reason) => {
       const safeSlug = sanitizeDraftSlug(slugInvitacion);
-      if (!safeSlug || modoEditor !== "konva") {
-        return { ok: true };
-      }
+      pushEditorBreadcrumb("critical-action-flush-start", {
+        slug: safeSlug || null,
+        reason,
+        sessionKind: editorSession.kind,
+      });
 
-      let result;
+      const result = await flushEditorPersistenceBeforeCriticalAction({
+        slug: safeSlug,
+        reason,
+        editorMode: modoEditor,
+        editorSession,
+        directFlush:
+          typeof window !== "undefined" &&
+          typeof window.canvasEditor?.flushPersistenceNow === "function"
+            ? (options) => window.canvasEditor.flushPersistenceNow(options)
+            : null,
+        captureSnapshot: () => readEditorRenderSnapshot(),
+      });
 
-      if (
-        editorSession.kind === "template" &&
-        typeof window !== "undefined" &&
-        typeof window.canvasEditor?.flushPersistenceNow === "function"
-      ) {
-        try {
-          result = await window.canvasEditor.flushPersistenceNow({
-            reason,
-          });
-        } catch (flushError) {
-          result = {
-            ok: false,
-            reason: "direct-flush-failed",
-            error: getErrorMessage(
-              flushError,
-              "No se pudo ejecutar el guardado inmediato de la plantilla."
-            ),
-          };
-        }
-      } else {
-        result = await requestEditorDraftFlush({
-          slug: safeSlug,
+      pushEditorBreadcrumb(
+        result.ok ? "critical-action-flush-success" : "critical-action-flush-failed",
+        {
+          slug: safeSlug || null,
           reason,
-          timeoutMs: 6000,
-        });
-      }
+          sessionKind: result.sessionKind || editorSession.kind,
+          transport: result.transport || null,
+          skipped: result.skipped === true,
+          capturedCompatibilitySnapshot: Boolean(result.compatibilitySnapshot),
+          failureReason: result.reason || null,
+        }
+      );
 
-      if (result.ok) return result;
-
-      const detail = String(result?.error || result?.reason || "").trim();
-      const sourceLabel =
-        editorSession.kind === "template" ? "la plantilla" : "el borrador";
-      const message = detail
-        ? `No se pudo confirmar el guardado reciente de ${sourceLabel} (${detail}). Intenta nuevamente.`
-        : `No se pudo confirmar el guardado reciente de ${sourceLabel}. Intenta nuevamente.`;
-
-      return {
-        ok: false,
-        error: message,
-      };
+      return result;
     },
-    [editorSession.kind, modoEditor, slugInvitacion]
+    [editorSession, modoEditor, slugInvitacion]
   );
 
   const refreshPublishValidation = useCallback(
@@ -2299,6 +2286,11 @@ export default function Dashboard() {
       setPublishValidationPending(false);
       setUrlPublicadaReciente(null);
       setMostrarVistaPrevia(true); // Abrir modal primero
+      const previewBoundarySnapshot =
+        flushResult.compatibilitySnapshot &&
+        typeof flushResult.compatibilitySnapshot === "object"
+          ? flushResult.compatibilitySnapshot
+          : null;
 
       // Generar HTML para vista previa
       let data = null;
@@ -2326,7 +2318,7 @@ export default function Dashboard() {
         data = snap.data();
       }
 
-      const liveEditorSnapshot = readEditorRenderSnapshot();
+      const liveEditorSnapshot = previewBoundarySnapshot || readEditorRenderSnapshot();
 
       if (liveEditorSnapshot) {
         data = {

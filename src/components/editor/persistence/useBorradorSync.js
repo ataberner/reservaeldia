@@ -14,6 +14,14 @@ import {
   buildDraftContentMeta,
   normalizeDraftRenderState,
 } from "@/domain/drafts/sourceOfTruth";
+import { normalizePantallaObjectPosition } from "@/domain/drafts/pantallaPosition";
+import { normalizeEditorSession } from "@/domain/drafts/session";
+import {
+  DRAFT_FLUSH_REQUEST_EVENT,
+  DRAFT_FLUSH_RESULT_EVENT,
+  buildFlushResultDetail,
+  normalizeFlushRequestDetail,
+} from "@/domain/drafts/flushGate";
 import {
   captureEditorIssue,
   pushEditorBreadcrumb,
@@ -23,8 +31,6 @@ import { buildSectionDecorationsPayload } from "@/domain/sections/backgrounds";
 import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
 
 const PERSIST_DEBOUNCE_MS = 500;
-const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
-const DRAFT_FLUSH_RESULT_EVENT = "editor:draft-flush:result";
 
 function parseStorageLocationFromUrl(value) {
   if (typeof value !== "string" || !/^https?:\/\//i.test(value)) return null;
@@ -125,27 +131,6 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
-function normalizeFlushRequestDetail(detail) {
-  const safeDetail = detail && typeof detail === "object" ? detail : {};
-  const requestId = normalizeText(safeDetail.requestId);
-  const slug = normalizeText(safeDetail.slug);
-  const reason = normalizeText(safeDetail.reason) || "manual-flush";
-  return { requestId, slug, reason };
-}
-
-function normalizeEditorSession(value, fallbackSlug = "") {
-  const safeValue = value && typeof value === "object" ? value : {};
-  const kind =
-    normalizeText(safeValue.kind).toLowerCase() === "template"
-      ? "template"
-      : "draft";
-  const id = normalizeText(safeValue.id) || normalizeText(fallbackSlug);
-  return {
-    kind,
-    id,
-  };
-}
-
 function normalizeCountdownObjectGeometry(obj) {
   if (!obj || obj.tipo !== "countdown") return obj;
 
@@ -185,6 +170,126 @@ function normalizeSectionPersistenceShape(section) {
   };
 }
 
+function cleanUndefinedDeep(value) {
+  if (Array.isArray(value)) return value.map((item) => cleanUndefinedDeep(item));
+
+  if (value !== null && typeof value === "object") {
+    const cleaned = {};
+    Object.keys(value).forEach((key) => {
+      const nestedValue = value[key];
+      if (nestedValue !== undefined) {
+        cleaned[key] = cleanUndefinedDeep(nestedValue);
+      }
+    });
+    return cleaned;
+  }
+
+  return value;
+}
+
+function buildPersistableRenderState({
+  objetos,
+  secciones,
+  rsvp,
+  gifts,
+  validarPuntosLinea,
+  ALTURA_PANTALLA_EDITOR,
+}) {
+  const rawObjetos = Array.isArray(objetos) ? objetos : [];
+  const rawSecciones = Array.isArray(secciones) ? secciones : [];
+  const rawRsvp = rsvp && typeof rsvp === "object" ? rsvp : null;
+  const rawGifts = gifts && typeof gifts === "object" ? gifts : null;
+
+  const objetosValidados = rawObjetos.map((obj) => {
+    if (obj?.tipo === "countdown") {
+      return normalizeCountdownObjectGeometry(obj);
+    }
+
+    if (obj?.tipo === "forma" && obj?.figura === "line") {
+      return validarPuntosLinea(obj);
+    }
+
+    if (obj?.tipo === "texto") {
+      return {
+        ...obj,
+        color: obj.colorTexto || obj.color || obj.fill || "#000000",
+        stroke: obj.stroke || null,
+        strokeWidth: obj.strokeWidth || 0,
+        shadowColor: obj.shadowColor || null,
+        shadowBlur: obj.shadowBlur || 0,
+        shadowOffsetX: obj.shadowOffsetX || 0,
+        shadowOffsetY: obj.shadowOffsetY || 0,
+      };
+    }
+
+    return obj;
+  });
+
+  const seccionesBase = rawSecciones.map((section) =>
+    normalizeSectionPersistenceShape(section)
+  );
+  const renderAssetState = normalizeRenderAssetState({
+    objetos: objetosValidados,
+    secciones: seccionesBase,
+  });
+  const seccionById = new Map(
+    (Array.isArray(renderAssetState.secciones) ? renderAssetState.secciones : []).map((section) => [
+      section?.id,
+      section,
+    ])
+  );
+  const countdownForAudit =
+    objetosValidados.find((item) => item?.tipo === "countdown") || null;
+  const objetosNormalizadosPantalla = renderAssetState.objetos.map((objeto) =>
+    normalizePantallaObjectPosition(objeto, {
+      sectionMode: seccionById.get(objeto?.seccionId)?.altoModo,
+      alturaPantalla: ALTURA_PANTALLA_EDITOR,
+    })
+  );
+
+  return {
+    objetos: cleanUndefinedDeep(objetosNormalizadosPantalla),
+    secciones: cleanUndefinedDeep(renderAssetState.secciones),
+    rsvp: rawRsvp
+      ? cleanUndefinedDeep(normalizeRsvpConfig(rawRsvp, { forceEnabled: false }))
+      : null,
+    gifts: rawGifts
+      ? cleanUndefinedDeep(normalizeGiftConfig(rawGifts, { forceEnabled: false }))
+      : null,
+    countdownForAudit,
+  };
+}
+
+function buildLoadedEditorRenderState({
+  objetos,
+  secciones,
+  ALTURA_PANTALLA_EDITOR,
+}) {
+  const renderAssetState = normalizeRenderAssetState({
+    objetos: Array.isArray(objetos) ? objetos : [],
+    secciones: Array.isArray(secciones) ? secciones : [],
+  });
+  const objetosCanonicos = renderAssetState.objetos;
+  const seccionesCanonicas = renderAssetState.secciones;
+
+  const seccionById = new Map(seccionesCanonicas.map((section) => [section?.id, section]));
+  const objetosNormalizados = objetosCanonicos.map((objeto) =>
+    normalizePantallaObjectPosition(objeto, {
+      sectionMode: seccionById.get(objeto?.seccionId)?.altoModo,
+      alturaPantalla: ALTURA_PANTALLA_EDITOR,
+    })
+  );
+
+  const seccionesNormalizadas = seccionesCanonicas.map((section) =>
+    normalizeSectionPersistenceShape(section)
+  );
+
+  return {
+    objetos: objetosNormalizados,
+    secciones: seccionesNormalizadas,
+  };
+}
+
 /**
  * Hook de sincronizacion Firestore para el borrador (carga + guardado con debounce).
  * Incluye flush inmediato para acciones criticas (preview/publicacion).
@@ -219,7 +324,6 @@ export default function useBorradorSync({
   stageRef,
 
   // helpers de tu layout actual
-  normalizarAltoModo,
   validarPuntosLinea,
 
   // constantes
@@ -228,6 +332,7 @@ export default function useBorradorSync({
   const skipNextPersistRef = useRef(true);
   const persistTimeoutRef = useRef(null);
   const persistInFlightRef = useRef(null);
+  const pendingPersistReasonRef = useRef(null);
   const latestStateRef = useRef({
     slug: null,
     editorSession: { kind: "draft", id: null },
@@ -249,23 +354,15 @@ export default function useBorradorSync({
     cargado,
   };
 
-  // helper: limpiar undefined recursivo
-  const limpiarUndefined = useCallback((obj) => {
-    if (Array.isArray(obj)) return obj.map(limpiarUndefined);
-
-    if (obj !== null && typeof obj === "object") {
-      const objLimpio = {};
-      Object.keys(obj).forEach((key) => {
-        const valor = obj[key];
-        if (valor !== undefined) objLimpio[key] = limpiarUndefined(valor);
-      });
-      return objLimpio;
-    }
-
-    return obj;
+  const clearScheduledPersist = useCallback(() => {
+    if (!persistTimeoutRef.current) return false;
+    clearTimeout(persistTimeoutRef.current);
+    persistTimeoutRef.current = null;
+    pendingPersistReasonRef.current = null;
+    return true;
   }, []);
 
-  const persistDraftNow = useCallback(
+  const persistCurrentState = useCallback(
     async ({ reason = "autosave", immediate = false } = {}) => {
       const state = latestStateRef.current;
       const session = normalizeEditorSession(state.editorSession, state.slug);
@@ -312,56 +409,21 @@ export default function useBorradorSync({
       }
 
       const persistPromise = (async () => {
-        const rawObjetos = Array.isArray(state.objetos) ? state.objetos : [];
-        const rawSecciones = Array.isArray(state.secciones) ? state.secciones : [];
-        const rawRsvp =
-          state.rsvp && typeof state.rsvp === "object"
-            ? state.rsvp
-            : null;
-        const rawGifts =
-          state.gifts && typeof state.gifts === "object"
-            ? state.gifts
-            : null;
-
-        // Validacion: lineas + normalizacion de textos
-        const objetosValidados = rawObjetos.map((obj) => {
-          if (obj?.tipo === "countdown") {
-            return normalizeCountdownObjectGeometry(obj);
-          }
-
-          if (obj?.tipo === "forma" && obj?.figura === "line") {
-            return validarPuntosLinea(obj);
-          }
-
-          if (obj?.tipo === "texto") {
-            return {
-              ...obj,
-              color: obj.colorTexto || obj.color || obj.fill || "#000000",
-              stroke: obj.stroke || null,
-              strokeWidth: obj.strokeWidth || 0,
-              shadowColor: obj.shadowColor || null,
-              shadowBlur: obj.shadowBlur || 0,
-              shadowOffsetX: obj.shadowOffsetX || 0,
-              shadowOffsetY: obj.shadowOffsetY || 0,
-            };
-          }
-
-          return obj;
+        // Persist-time normalization boundary: only commit the canonical render
+        // payload that preview/publish should read back from persistence.
+        const persistedRenderState = buildPersistableRenderState({
+          objetos: state.objetos,
+          secciones: state.secciones,
+          rsvp: state.rsvp,
+          gifts: state.gifts,
+          validarPuntosLinea,
+          ALTURA_PANTALLA_EDITOR,
         });
-
-        const renderAssetState = normalizeRenderAssetState({
-          objetos: objetosValidados,
-          secciones: rawSecciones.map((section) => normalizeSectionPersistenceShape(section)),
-        });
-        const seccionesLimpias = limpiarUndefined(renderAssetState.secciones);
-        const objetosLimpios = limpiarUndefined(renderAssetState.objetos);
-        const countdownForAudit = objetosValidados.find((item) => item?.tipo === "countdown") || null;
-        const rsvpLimpio = rawRsvp
-          ? limpiarUndefined(normalizeRsvpConfig(rawRsvp, { forceEnabled: false }))
-          : null;
-        const giftsLimpios = rawGifts
-          ? limpiarUndefined(normalizeGiftConfig(rawGifts, { forceEnabled: false }))
-          : null;
+        const seccionesLimpias = persistedRenderState.secciones;
+        const objetosLimpios = persistedRenderState.objetos;
+        const rsvpLimpio = persistedRenderState.rsvp;
+        const giftsLimpios = persistedRenderState.gifts;
+        const countdownForAudit = persistedRenderState.countdownForAudit;
 
         if (session.kind === "template") {
           await saveTemplateEditorDocument({
@@ -456,7 +518,78 @@ export default function useBorradorSync({
         }
       }
     },
-    [limpiarUndefined, stageRef, validarPuntosLinea]
+    [ALTURA_PANTALLA_EDITOR, stageRef, validarPuntosLinea]
+  );
+
+  const scheduleDebouncedPersist = useCallback(
+    ({ reason = "debounced-autosave" } = {}) => {
+      clearScheduledPersist();
+      pendingPersistReasonRef.current = reason;
+      persistTimeoutRef.current = setTimeout(() => {
+        persistTimeoutRef.current = null;
+        pendingPersistReasonRef.current = null;
+        void persistCurrentState({
+          reason,
+          immediate: false,
+        });
+      }, PERSIST_DEBOUNCE_MS);
+    },
+    [clearScheduledPersist, persistCurrentState]
+  );
+
+  const flushPersistBoundary = useCallback(
+    async ({ reason = "manual-flush", source = "unknown" } = {}) => {
+      const state = latestStateRef.current;
+      const session = normalizeEditorSession(state.editorSession, state.slug);
+      const safeSlug = normalizeText(session.id || state.slug);
+      const pendingReason = pendingPersistReasonRef.current || null;
+      const clearedScheduledPersist = clearScheduledPersist();
+
+      pushEditorBreadcrumb("draft-flush-start", {
+        slug: safeSlug || null,
+        sessionKind: session.kind,
+        reason,
+        source,
+        clearedScheduledPersist,
+        pendingReason,
+        hasInFlightPersist: Boolean(persistInFlightRef.current),
+      });
+
+      const result = await persistCurrentState({
+        reason,
+        immediate: true,
+      });
+
+      const shouldRestoreScheduledPersist =
+        clearedScheduledPersist &&
+        (result?.reason === "resize-in-progress" ||
+          result?.reason === "draft-not-loaded");
+
+      if (shouldRestoreScheduledPersist) {
+        scheduleDebouncedPersist({
+          reason: pendingReason || "debounced-autosave",
+        });
+      }
+
+      pushEditorBreadcrumb(
+        result?.ok === true ? "draft-flush-success" : "draft-flush-failed",
+        {
+          slug: safeSlug || null,
+          sessionKind: session.kind,
+          reason,
+          source,
+          outcomeReason: result?.reason || null,
+          restoredScheduledPersist: shouldRestoreScheduledPersist,
+        }
+      );
+
+      return {
+        ...result,
+        clearedScheduledPersist,
+        restoredScheduledPersist: shouldRestoreScheduledPersist,
+      };
+    },
+    [clearScheduledPersist, persistCurrentState, scheduleDebouncedPersist]
   );
 
   // 1) Cargar borrador desde Firestore
@@ -472,10 +605,7 @@ export default function useBorradorSync({
       return;
     }
 
-    if (persistTimeoutRef.current) {
-      clearTimeout(persistTimeoutRef.current);
-      persistTimeoutRef.current = null;
-    }
+    clearScheduledPersist();
 
     // Al cambiar de borrador, evitamos persistir inmediatamente tras hidratar estado.
     skipNextPersistRef.current = true;
@@ -560,43 +690,22 @@ export default function useBorradorSync({
             }
           }
 
-          // Refresca URLs de Firebase Storage por si hay tokens vencidos/revocados.
+          // Load-time hydration boundary: refresh storage URLs and canonicalize
+          // render assets for editor runtime without mutating persistence yet.
           const refreshCache = new Map();
           const [seccionesRefrescadas, objetosRefrescados] = await Promise.all([
             refreshUrlsDeep(seccionesData, refreshCache),
             refreshUrlsDeep(objetosData, refreshCache),
           ]);
-          const renderAssetState = normalizeRenderAssetState({
+          const loadedRenderState = buildLoadedEditorRenderState({
             objetos: objetosRefrescados,
             secciones: seccionesRefrescadas,
+            ALTURA_PANTALLA_EDITOR,
           });
-          const objetosCanonicos = renderAssetState.objetos;
-          const seccionesCanonicas = renderAssetState.secciones;
-
-          // Mantengo migracion de yNorm para secciones pantalla.
-          const objsMigrados = objetosCanonicos.map((o) => {
-            if (!o?.seccionId) return o;
-
-            const sec = seccionesCanonicas.find((s) => s.id === o.seccionId);
-            const modo = normalizarAltoModo(sec?.altoModo);
-
-            if (modo === "pantalla") {
-              if (!Number.isFinite(o.yNorm)) {
-                const yPx = Number.isFinite(o.y) ? o.y : 0;
-                const yNorm = Math.max(0, Math.min(1, yPx / ALTURA_PANTALLA_EDITOR));
-                return { ...o, yNorm };
-              }
-            }
-
-            return o;
-          });
+          const objsMigrados = loadedRenderState.objetos;
+          const seccionesNormalizadas = loadedRenderState.secciones;
 
           setObjetos(objsMigrados);
-          const seccionesNormalizadas = (Array.isArray(seccionesCanonicas)
-            ? seccionesCanonicas
-            : []
-          ).map((section) => normalizeSectionPersistenceShape(section));
-
           setSecciones(seccionesNormalizadas);
           const countdownForAudit =
             objsMigrados.find((item) => item?.tipo === "countdown") || null;
@@ -713,7 +822,15 @@ export default function useBorradorSync({
 
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorSession, initialDraftData, initialEditorData, readOnly, slug]);
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    clearScheduledPersist,
+    editorSession,
+    initialDraftData,
+    initialEditorData,
+    readOnly,
+    slug,
+  ]);
 
   // 2) Guardar en Firestore con debounce cuando cambian objetos/secciones/rsvp.
   useEffect(() => {
@@ -737,26 +854,24 @@ export default function useBorradorSync({
     // No guardar durante resize.
     if (window._resizeData?.isResizing) return;
 
-    if (persistTimeoutRef.current) {
-      clearTimeout(persistTimeoutRef.current);
-      persistTimeoutRef.current = null;
-    }
-
-    persistTimeoutRef.current = setTimeout(() => {
-      persistTimeoutRef.current = null;
-      void persistDraftNow({
-        reason: "debounced-autosave",
-        immediate: false,
-      });
-    }, PERSIST_DEBOUNCE_MS);
+    scheduleDebouncedPersist({
+      reason: "debounced-autosave",
+    });
 
     return () => {
-      if (persistTimeoutRef.current) {
-        clearTimeout(persistTimeoutRef.current);
-        persistTimeoutRef.current = null;
-      }
+      clearScheduledPersist();
     };
-  }, [cargado, gifts, ignoreNextUpdateRef, objetos, persistDraftNow, rsvp, secciones, slug]);
+  }, [
+    cargado,
+    clearScheduledPersist,
+    gifts,
+    ignoreNextUpdateRef,
+    objetos,
+    rsvp,
+    scheduleDebouncedPersist,
+    secciones,
+    slug,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -769,25 +884,18 @@ export default function useBorradorSync({
       const currentSlug = normalizeText(latestStateRef.current.slug);
       if (!currentSlug || detail.slug !== currentSlug) return;
 
-      if (persistTimeoutRef.current) {
-        clearTimeout(persistTimeoutRef.current);
-        persistTimeoutRef.current = null;
-      }
-
-      const result = await persistDraftNow({
+      const result = await flushPersistBoundary({
         reason: detail.reason || "external-flush",
-        immediate: true,
+        source: "window-event",
       });
 
       window.dispatchEvent(
         new CustomEvent(DRAFT_FLUSH_RESULT_EVENT, {
-          detail: {
+          detail: buildFlushResultDetail({
             requestId: detail.requestId,
             slug: detail.slug,
-            ok: result.ok === true,
-            reason: result.reason || "",
-            error: result.ok ? "" : result.error || "No se pudo guardar el borrador.",
-          },
+            result,
+          }),
         })
       );
     };
@@ -797,31 +905,28 @@ export default function useBorradorSync({
     return () => {
       window.removeEventListener(DRAFT_FLUSH_REQUEST_EVENT, handleFlushRequest);
     };
-  }, [persistDraftNow, readOnly]);
+  }, [flushPersistBoundary, readOnly]);
 
   useEffect(() => {
     if (typeof onRegisterPersistenceBridge !== "function") return undefined;
 
     onRegisterPersistenceBridge({
       flushNow: async ({ reason = "direct-bridge-flush" } = {}) =>
-        persistDraftNow({
+        flushPersistBoundary({
           reason,
-          immediate: true,
+          source: "direct-bridge",
         }),
     });
 
     return () => {
       onRegisterPersistenceBridge(null);
     };
-  }, [onRegisterPersistenceBridge, persistDraftNow]);
+  }, [flushPersistBoundary, onRegisterPersistenceBridge]);
 
   useEffect(
     () => () => {
-      if (persistTimeoutRef.current) {
-        clearTimeout(persistTimeoutRef.current);
-        persistTimeoutRef.current = null;
-      }
+      clearScheduledPersist();
     },
-    []
+    [clearScheduledPersist]
   );
 }

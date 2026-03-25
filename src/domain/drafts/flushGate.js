@@ -1,5 +1,5 @@
-const REQUEST_EVENT_NAME = "editor:draft-flush:request";
-const RESULT_EVENT_NAME = "editor:draft-flush:result";
+export const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
+export const DRAFT_FLUSH_RESULT_EVENT = "editor:draft-flush:result";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -10,80 +10,144 @@ function createRequestId() {
   return `flush-${Date.now()}-${randomToken}`;
 }
 
-export function requestEditorDraftFlush({ slug, reason, timeoutMs = 6000 } = {}) {
-  const safeSlug = normalizeText(slug);
-  const safeReason = normalizeText(reason) || "manual-flush";
-  const timeout = Number.isFinite(Number(timeoutMs))
-    ? Math.max(1000, Math.round(Number(timeoutMs)))
-    : 6000;
+export function normalizeFlushRequestDetail(detail) {
+  const safeDetail = detail && typeof detail === "object" ? detail : {};
+  const requestId = normalizeText(safeDetail.requestId);
+  const slug = normalizeText(safeDetail.slug);
+  const reason = normalizeText(safeDetail.reason) || "manual-flush";
 
-  if (!safeSlug) {
-    return Promise.resolve({
-      ok: false,
-      reason: "missing-slug",
-      error: "Falta slug para confirmar el guardado del borrador.",
-    });
-  }
+  return {
+    requestId,
+    slug,
+    reason,
+  };
+}
 
-  if (typeof window === "undefined") {
-    return Promise.resolve({
-      ok: false,
-      reason: "no-window",
-      error: "No hay una sesion de editor activa para confirmar el guardado.",
-    });
-  }
+export function normalizeFlushResultDetail(detail) {
+  const safeDetail = detail && typeof detail === "object" ? detail : {};
+  const requestId = normalizeText(safeDetail.requestId);
+  const slug = normalizeText(safeDetail.slug);
+  const ok = safeDetail.ok === true;
+  const reason = normalizeText(safeDetail.reason);
+  const error = normalizeText(safeDetail.error);
 
-  return new Promise((resolve) => {
-    const requestId = createRequestId();
-    let settled = false;
-    let timeoutId = null;
+  return {
+    requestId,
+    slug,
+    ok,
+    reason,
+    error,
+  };
+}
 
-    const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      window.removeEventListener(RESULT_EVENT_NAME, handleResultEvent);
-    };
+export function buildFlushResultDetail({ requestId, slug, result } = {}) {
+  const normalizedRequest = normalizeFlushRequestDetail({
+    requestId,
+    slug,
+  });
+  const safeResult = result && typeof result === "object" ? result : {};
+  const ok = safeResult.ok === true;
 
-    const finalize = (payload) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(payload);
-    };
+  return {
+    requestId: normalizedRequest.requestId,
+    slug: normalizedRequest.slug,
+    ok,
+    reason: normalizeText(safeResult.reason),
+    error: ok
+      ? ""
+      : normalizeText(safeResult.error) || "No se pudo guardar el borrador.",
+  };
+}
 
-    const handleResultEvent = (event) => {
-      const detail = event?.detail && typeof event.detail === "object" ? event.detail : {};
-      if (normalizeText(detail.requestId) !== requestId) return;
-      if (normalizeText(detail.slug) !== safeSlug) return;
+export function createEditorDraftFlushRequester({
+  eventTarget = typeof window !== "undefined" ? window : null,
+  createEvent = (eventName, detail) => new CustomEvent(eventName, { detail }),
+  createRequestIdFn = createRequestId,
+  setTimer = (...args) => setTimeout(...args),
+  clearTimer = (...args) => clearTimeout(...args),
+} = {}) {
+  return function requestEditorDraftFlush({ slug, reason, timeoutMs = 6000 } = {}) {
+    const safeSlug = normalizeText(slug);
+    const safeReason = normalizeText(reason) || "manual-flush";
+    const timeout = Number.isFinite(Number(timeoutMs))
+      ? Math.max(1000, Math.round(Number(timeoutMs)))
+      : 6000;
 
-      const ok = detail.ok === true;
-      finalize({
-        ok,
-        reason: normalizeText(detail.reason) || undefined,
-        error: ok ? undefined : normalizeText(detail.error) || "No se pudo guardar el borrador.",
-      });
-    };
-
-    timeoutId = setTimeout(() => {
-      finalize({
+    if (!safeSlug) {
+      return Promise.resolve({
         ok: false,
-        reason: "timeout",
-        error: "No se recibio confirmacion de guardado del editor a tiempo.",
+        reason: "missing-slug",
+        error: "Falta slug para confirmar el guardado del borrador.",
       });
-    }, timeout);
+    }
 
-    window.addEventListener(RESULT_EVENT_NAME, handleResultEvent);
+    if (!eventTarget) {
+      return Promise.resolve({
+        ok: false,
+        reason: "no-window",
+        error: "No hay una sesion de editor activa para confirmar el guardado.",
+      });
+    }
 
-    window.dispatchEvent(
-      new CustomEvent(REQUEST_EVENT_NAME, {
-        detail: {
+    return new Promise((resolve) => {
+      const requestId = createRequestIdFn();
+      let settled = false;
+      let timeoutId = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimer(timeoutId);
+          timeoutId = null;
+        }
+        eventTarget.removeEventListener(DRAFT_FLUSH_RESULT_EVENT, handleResultEvent);
+      };
+
+      const finalize = (payload) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(payload);
+      };
+
+      const handleResultEvent = (event) => {
+        const detail = normalizeFlushResultDetail(event?.detail);
+        if (detail.requestId !== requestId) return;
+        if (detail.slug !== safeSlug) return;
+
+        finalize({
+          ok: detail.ok,
+          reason: detail.reason || undefined,
+          error: detail.ok
+            ? undefined
+            : detail.error || "No se pudo guardar el borrador.",
+        });
+      };
+
+      timeoutId = setTimer(() => {
+        finalize({
+          ok: false,
+          reason: "timeout",
+          error: "No se recibio confirmacion de guardado del editor a tiempo.",
+        });
+      }, timeout);
+
+      eventTarget.addEventListener(DRAFT_FLUSH_RESULT_EVENT, handleResultEvent);
+      eventTarget.dispatchEvent(
+        createEvent(DRAFT_FLUSH_REQUEST_EVENT, {
           requestId,
           slug: safeSlug,
           reason: safeReason,
-        },
-      })
-    );
-  });
+        })
+      );
+    });
+  };
 }
+
+export function requestEditorDraftFlush(options = {}) {
+  return createEditorDraftFlushRequester()(options);
+}
+
+export {
+  DRAFT_FLUSH_REQUEST_EVENT as REQUEST_EVENT_NAME,
+  DRAFT_FLUSH_RESULT_EVENT as RESULT_EVENT_NAME,
+};

@@ -1,4 +1,8 @@
 import { useEffect } from "react";
+import {
+  clearEditorSnapshotRenderState,
+  syncEditorSnapshotRenderState,
+} from "@/lib/editorSnapshotAdapter";
 
 export default function useCanvasEditorGlobalsBridge({
   elementosSeleccionados,
@@ -15,13 +19,21 @@ export default function useCanvasEditorGlobalsBridge({
   setHoverId,
 }) {
   useEffect(() => {
+    const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+
     window._elementosSeleccionados = elementosSeleccionados;
     window._objetosActuales = objetos;
     window._elementRefs = elementRefs.current;
-    window._seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
+    window._seccionesOrdenadas = seccionesOrdenadas;
     window._rsvpConfigActual = rsvpConfig && typeof rsvpConfig === "object" ? rsvpConfig : null;
     window._giftsConfigActual = giftsConfig && typeof giftsConfig === "object" ? giftsConfig : null;
     window._altoCanvas = altoCanvas;
+    syncEditorSnapshotRenderState({
+      objetos,
+      secciones: seccionesOrdenadas,
+      rsvp: rsvpConfig,
+      gifts: giftsConfig,
+    });
     window.dispatchEvent(
       new CustomEvent("editor-selection-change", {
         detail: {
@@ -42,6 +54,12 @@ export default function useCanvasEditorGlobalsBridge({
     celdaGaleriaActiva,
     elementRefs,
   ]);
+
+  useEffect(() => {
+    return () => {
+      clearEditorSnapshotRenderState();
+    };
+  }, []);
 
   useEffect(() => {
     if (!celdaGaleriaActiva) return;

@@ -6,7 +6,7 @@
   getQuestionTemplate,
   isCustomQuestionId,
   resolvePresetId,
-} from "@/domain/rsvp/catalog";
+} from "./catalog.js";
 
 export const RSVP_DEFAULT_MODAL = Object.freeze({
   title: "Confirmar asistencia",
@@ -47,6 +47,11 @@ function toSafeOrder(value, fallback = 0) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, Math.round(parsed));
+}
+
+function resolveEnabledFlag(value, fallback) {
+  if (typeof value === "boolean") return value;
+  return fallback;
 }
 
 function buildOptions(templateOptions = [], incomingOptions = []) {
@@ -172,6 +177,8 @@ export function createDefaultRsvpConfig(presetId = "basic") {
 
 export function normalizeRsvpConfig(rawConfig, options = {}) {
   const forceEnabled = options.forceEnabled !== false;
+  const hasSourceObject =
+    Boolean(rawConfig) && typeof rawConfig === "object" && !Array.isArray(rawConfig);
 
   const legacyTitle = sanitizeText(rawConfig?.title, RSVP_DEFAULT_MODAL.title, 80);
   const legacySubtitle = sanitizeLongText(rawConfig?.subtitle, RSVP_DEFAULT_MODAL.subtitle, 160);
@@ -214,13 +221,18 @@ export function normalizeRsvpConfig(rawConfig, options = {}) {
     sanitizeQuestion(incomingById.get(question.id), question, index)
   );
 
+  const sheetUrl = sanitizeLongText(rawConfig?.sheetUrl, "", 400);
+
   const normalized = {
     version: RSVP_VERSION,
-    enabled: forceEnabled ? rawConfig?.enabled !== false : Boolean(rawConfig?.enabled),
+    enabled: forceEnabled
+      ? rawConfig?.enabled !== false
+      : resolveEnabledFlag(rawConfig?.enabled, hasSourceObject),
     presetId,
     limits,
     modal,
     questions: normalizeQuestionOrder(enforceLimits(questions, limits)),
+    ...(sheetUrl ? { sheetUrl } : {}),
   };
 
   return normalized;

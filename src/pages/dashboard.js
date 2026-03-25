@@ -51,6 +51,7 @@ import {
 } from "@/domain/templates/preview";
 import { buildTemplateFormState } from "@/domain/templates/formModel";
 import { GOOGLE_FONTS } from "@/config/fonts";
+import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 import {
   consumeInterruptedEditorSession,
   clearPendingEditorIssue,
@@ -2325,34 +2326,15 @@ export default function Dashboard() {
         data = snap.data();
       }
 
-      const liveObjetos =
-        typeof window !== "undefined" && Array.isArray(window._objetosActuales)
-          ? window._objetosActuales
-          : null;
-      const liveSecciones =
-        typeof window !== "undefined" && Array.isArray(window._seccionesOrdenadas)
-          ? window._seccionesOrdenadas
-          : null;
-      const liveRsvp =
-        typeof window !== "undefined" &&
-        window._rsvpConfigActual &&
-        typeof window._rsvpConfigActual === "object"
-          ? window._rsvpConfigActual
-          : null;
-      const liveGifts =
-        typeof window !== "undefined" &&
-        window._giftsConfigActual &&
-        typeof window._giftsConfigActual === "object"
-          ? window._giftsConfigActual
-          : null;
+      const liveEditorSnapshot = readEditorRenderSnapshot();
 
-      if (liveObjetos && liveSecciones) {
+      if (liveEditorSnapshot) {
         data = {
           ...(data && typeof data === "object" ? data : {}),
-          objetos: liveObjetos,
-          secciones: liveSecciones,
-          rsvp: liveRsvp,
-          gifts: liveGifts,
+          objetos: liveEditorSnapshot.objetos,
+          secciones: liveEditorSnapshot.secciones,
+          rsvp: liveEditorSnapshot.rsvp,
+          gifts: liveEditorSnapshot.gifts,
         };
       }
 

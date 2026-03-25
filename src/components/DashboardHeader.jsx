@@ -26,6 +26,7 @@ import {
     captureCountdownAuditTemplateDocument,
     recordCountdownAuditSnapshot,
 } from "@/domain/countdownAudit/runtime";
+import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 import {
     triggerEditorRedo,
     triggerEditorUndo,
@@ -67,34 +68,6 @@ function normalizeTemplateWorkspaceMeta(value) {
         estadoEditorial: normalizeText(safeValue.estadoEditorial) || "publicada",
         readOnly: safeValue.readOnly === true || permissions?.readOnly === true,
         permissions,
-    };
-}
-
-function getLiveEditorRenderSnapshot() {
-    if (typeof window === "undefined") return null;
-
-    const objetos = Array.isArray(window._objetosActuales)
-        ? window._objetosActuales
-        : null;
-    const secciones = Array.isArray(window._seccionesOrdenadas)
-        ? window._seccionesOrdenadas
-        : null;
-    const rsvp =
-        window._rsvpConfigActual && typeof window._rsvpConfigActual === "object"
-            ? window._rsvpConfigActual
-            : null;
-    const gifts =
-        window._giftsConfigActual && typeof window._giftsConfigActual === "object"
-            ? window._giftsConfigActual
-            : null;
-
-    if (!objetos || !secciones) return null;
-
-    return {
-        objetos,
-        secciones,
-        rsvp,
-        gifts,
     };
 }
 
@@ -464,7 +437,7 @@ export default function DashboardHeader(props) {
             const portada = await (
                 await import("firebase/storage")
             ).getDownloadURL(previewRef);
-            const liveEditorSnapshot = getLiveEditorRenderSnapshot();
+            const liveEditorSnapshot = readEditorRenderSnapshot();
             if (liveEditorSnapshot) {
                 recordTemplateDashboardCardSnapshot(liveEditorSnapshot, templateId);
             }

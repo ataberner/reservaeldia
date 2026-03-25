@@ -426,7 +426,7 @@ Important rule:
 
 ## 6. Optional / Dynamic Fields
 ### Root Config: `rsvp`
-Current normalized RSVP config shape on the server is:
+Current normalized RSVP config shape on both the client and server is:
 
 | Field | Status | Notes |
 | --- | --- | --- |
@@ -448,9 +448,42 @@ Current normalized RSVP config shape on the server is:
 | `questions[].active` | Required | Active flag. |
 | `questions[].order` | Required | Ordering index. |
 | `questions[].options[]` | Optional | Present for select-like questions. |
-| `sheetUrl` | Optional server-side field | Present in the server TypeScript normalizer and RSVP modal runtime. See risks below for client/server mismatch. |
+| `sheetUrl` | Optional normalized field | Preserved by both normalizers and exposed to the RSVP modal runtime for the optional secondary sheet/webhook POST. It is not read by `publicRsvpSubmit`. |
 
-Current draft saves go through the client JavaScript normalizer, which does not currently preserve `sheetUrl`. Treat `sheetUrl` as a risky cross-runtime field unless the client and server normalizers are aligned.
+Legacy-compatible RSVP input aliases accepted by both normalizers:
+
+| Legacy Input | Normalized Field |
+| --- | --- |
+| `title` | `modal.title` |
+| `subtitle` | `modal.subtitle` |
+| `buttonText` | `modal.submitLabel` |
+| `primaryColor` | `modal.primaryColor` |
+
+Question normalization rules that matter for compatibility:
+
+- Only the known catalog IDs plus `custom_1` and `custom_2` are preserved.
+- Custom question types normalize to `short_text` or `long_text`.
+- Select option identity and `metricTag` stay template-defined; incoming option patches can only replace labels by matching option `id`.
+- Missing `enabled` on an existing RSVP object normalizes as enabled/active for compatibility with published/server behavior.
+
+### Public RSVP Submission Payload: `publicRsvpSubmit`
+The public write endpoint accepts a different contract from the root RSVP config. It writes attendee responses under `publicadas/{slug}/rsvps`.
+
+| Field | Status | Notes |
+| --- | --- | --- |
+| `slug` | Required | Public invitation slug. |
+| `answers` | Optional structured input | Arbitrary question-id map, sanitized to primitive RSVP answer values. |
+| `schemaQuestionIds` | Optional structured input | Ordered question ids for the submitted schema snapshot. Falls back to `Object.keys(answers)`. |
+| `metrics` | Optional structured input | Attendance-derived summary input. The server sanitizes and recomputes the stored metric shape. |
+| `nombre` | Optional legacy input | Compatibility alias for `answers.full_name`. |
+| `cantidad` | Optional legacy input | Compatibility alias for `answers.party_size`. |
+| `mensaje` | Optional legacy input | Compatibility alias for `answers.host_message`. |
+| `asistencia` / `confirma` | Optional legacy input | Compatibility attendance aliases consumed only to mirror legacy output fields. |
+
+Stored public RSVP records include both:
+
+- current structured fields: `version`, `schemaVersion`, `schemaQuestionIds`, `answers`, `metrics`
+- legacy mirrors: `nombre`, `asistencia`, `confirma`, `cantidad`, `mensaje`
 
 ### Root Config: `gifts`
 Current normalized gifts config shape is:
@@ -656,7 +689,7 @@ These are the current code-grounded rules that must not be broken:
 - `publicadas` metadata is not the canonical render model. Debugging publication issues against `publicadas` alone is incomplete.
 - Publication metadata `tipo` is currently derived from compatibility fields (`tipo` / `plantillaTipo`) rather than modern `tipoInvitacion`. That means draft metadata and publication metadata can drift even when the render payload is valid.
 - Storage-backed URLs are mutable across load and publish. A path or signed URL can be rewritten without changing the logical object/section identity.
-- The client RSVP normalizer and the server RSVP normalizer are not identical today. The server TypeScript config preserves optional `sheetUrl`, but the client JavaScript normalizer does not currently preserve it. That makes `sheetUrl` a fragile field in editor-managed drafts.
+- RSVP root config and `publicRsvpSubmit` use different contracts. `sheetUrl` belongs to the config/runtime path, while attendee submissions are stored from `slug` + `answers`/`metrics` with legacy mirrors. Mixing those surfaces is unsafe.
 - The current HTML generator only publishes `forma.rect`, `forma.circle`, `forma.line`, and `forma.triangle`. Other editor-side `figura` values do not currently have matching DOM generation branches.
 
 ## 11. Compatibility and Asset Resolution

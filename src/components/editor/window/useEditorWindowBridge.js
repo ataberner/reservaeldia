@@ -1,6 +1,13 @@
 ﻿// src/components/editor/window/useEditorWindowBridge.js
 import { useEffect } from "react";
 import { registerCountdownAuditContext } from "@/domain/countdownAudit/runtime";
+import {
+  clearEditorSnapshotResolvers,
+  ensureEditorSnapshotAdapter,
+  readEditorObjectSnapshot,
+  readEditorSectionInfo,
+  syncEditorSnapshotResolvers,
+} from "@/lib/editorSnapshotAdapter";
 
 /**
  * Puente con window:
@@ -46,14 +53,18 @@ export default function useEditorWindowBridge({
   };
 
   if (typeof window !== "undefined") {
+    const snapshot = ensureEditorSnapshotAdapter(window);
     mergeCanvasEditor({
       cambiarColorFondoSeccion,
+      snapshot,
     });
   }
 
   useEffect(() => {
+    const snapshot = ensureEditorSnapshotAdapter(window);
     mergeCanvasEditor({
       cambiarColorFondoSeccion,
+      snapshot,
       seccionActivaId,
       secciones,
       deshacer: onDeshacer,
@@ -103,7 +114,7 @@ export default function useEditorWindowBridge({
   }, [objetos, seccionesOrdenadas, stageRef, seccionActivaId]);
 
   useEffect(() => {
-    window.__getSeccionInfo = (id) => {
+    const getSectionInfo = (id) => {
       try {
         const idx = seccionesOrdenadas.findIndex((s) => s.id === id);
         if (idx === -1) return null;
@@ -118,18 +129,22 @@ export default function useEditorWindowBridge({
         return null;
       }
     };
+    const getObjectById = (id) => (objetos || []).find((o) => o.id === id) || null;
+
+    syncEditorSnapshotResolvers({
+      getSectionInfo,
+      getObjectById,
+    });
+
+    window.__getSeccionInfo = (id) => readEditorSectionInfo(window, id);
+    window.__getObjById = (id) => readEditorObjectSnapshot(window, id);
 
     return () => {
+      clearEditorSnapshotResolvers(window);
       delete window.__getSeccionInfo;
-    };
-  }, [seccionesOrdenadas, calcularOffsetY]);
-
-  useEffect(() => {
-    window.__getObjById = (id) => (objetos || []).find((o) => o.id === id) || null;
-    return () => {
       delete window.__getObjById;
     };
-  }, [objetos]);
+  }, [seccionesOrdenadas, calcularOffsetY, objetos]);
 
   useEffect(() => {
     return () => {
@@ -145,6 +160,7 @@ export default function useEditorWindowBridge({
         "getTemplateAuthoringStatus",
         "repairTemplateAuthoringState",
         "flushPersistenceNow",
+        "snapshot",
       ]);
     };
   }, []);

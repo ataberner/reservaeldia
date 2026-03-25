@@ -11,6 +11,7 @@ import {
 } from "@/domain/countdownAudit/layoutSnapshot";
 import { generateCountdownThumbnailDataUrl } from "@/domain/countdownPresets/renderModel";
 import { db } from "@/firebase";
+import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 
 const ENABLE_STORAGE_KEY = "countdown-audit-enabled";
 const TRACE_STORAGE_KEY = "countdown-audit-trace-v1";
@@ -161,9 +162,10 @@ function commitSnapshot(snapshot) {
 }
 
 function resolveSectionMode(sectionId) {
-  const win = getWindowObject();
-  if (!win || !Array.isArray(win._seccionesOrdenadas)) return "";
-  const section = win._seccionesOrdenadas.find((item) => item?.id === sectionId);
+  const renderSnapshot = readEditorRenderSnapshot(getWindowObject());
+  const section = Array.isArray(renderSnapshot?.secciones)
+    ? renderSnapshot.secciones.find((item) => item?.id === sectionId)
+    : null;
   return String(section?.altoModo || "").trim().toLowerCase();
 }
 
@@ -568,9 +570,8 @@ export async function captureCountdownAuditPublicationHtml(url, stage = "publish
 }
 
 function getCurrentCanvasCountdown(traceId = "") {
-  const win = getWindowObject();
-  if (!win) return null;
-  return extractCountdownFromObjects(win._objetosActuales, traceId);
+  const renderSnapshot = readEditorRenderSnapshot(getWindowObject());
+  return extractCountdownFromObjects(renderSnapshot?.objetos, traceId);
 }
 
 export function captureCurrentCanvasCountdown(stage = "canvas-konva-render", options = {}) {
@@ -658,7 +659,8 @@ function moveFixtureToScreenSectionIfNeeded(fixture, payloadId) {
   const win = getWindowObject();
   if (!win || fixture?.kind !== "v2-screen") return;
 
-  const sections = Array.isArray(win._seccionesOrdenadas) ? win._seccionesOrdenadas : [];
+  const renderSnapshot = readEditorRenderSnapshot(win);
+  const sections = Array.isArray(renderSnapshot?.secciones) ? renderSnapshot.secciones : [];
   const targetSection = sections.find(
     (section) => String(section?.altoModo || "").trim().toLowerCase() === "pantalla"
   );

@@ -4,15 +4,13 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import Konva from "konva";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 
 function resolveCountdownAuditStageSnapshot() {
-  if (typeof window === "undefined") {
-    return { countdown: null, altoModo: "" };
-  }
-
-  const objetos = Array.isArray(window._objetosActuales) ? window._objetosActuales : [];
+  const renderSnapshot = readEditorRenderSnapshot();
+  const objetos = Array.isArray(renderSnapshot?.objetos) ? renderSnapshot.objetos : [];
   const countdown = objetos.find((item) => item?.tipo === "countdown") || null;
-  const secciones = Array.isArray(window._seccionesOrdenadas) ? window._seccionesOrdenadas : [];
+  const secciones = Array.isArray(renderSnapshot?.secciones) ? renderSnapshot.secciones : [];
   const altoModo = countdown
     ? String(secciones.find((section) => section?.id === countdown?.seccionId)?.altoModo || "")
         .trim()

@@ -309,8 +309,8 @@ Branch-specific fields:
 Important compatibility note:
 
 - The current editor runtime supports more `forma` variants than the HTML generator.
-- `generarHTMLDesdeObjetos` currently implements DOM output for `rect`, `circle`, `line`, and `triangle`.
-- Other figure values such as `diamond`, `star`, `heart`, `arrow`, `pentagon`, `hexagon`, and `pill` are editor-side data today, but they do not have equivalent DOM generation branches in the current publish path.
+- Alignment note (verified against `functions/src/utils/generarHTMLDesdeObjetos.ts` on 2026-03-26): the current HTML generator implements DOM/SVG output for `rect`, `circle`, `line`, `triangle`, `diamond`, `star`, `arrow`, `pentagon`, `hexagon`, and `heart`.
+- `pill` remains editor-side data without a dedicated HTML generation branch in the current publish path.
 
 ### `galeria`
 Gallery objects use:

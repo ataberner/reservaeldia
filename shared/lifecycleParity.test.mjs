@@ -13,6 +13,10 @@ import {
   computeDraftTrashPurgeAt,
 } from "../src/domain/drafts/state.js";
 import {
+  resolveDraftLinkedPublicSlug,
+  resolveDraftPublicationLifecycleState,
+} from "../src/domain/invitations/readResolution.js";
+import {
   PUBLICATION_STATES as FRONTEND_PUBLICATION_STATES,
   TRASH_RETENTION_DAYS as FRONTEND_PUBLICATION_TRASH_RETENTION_DAYS,
   resolvePublicationState,
@@ -22,7 +26,8 @@ import {
 } from "../src/domain/publications/state.js";
 import {
   FIXED_NOW_MS,
-  draftParityFixtures,
+  draftTrashParityFixtures,
+  draftPublicationLinkageParityFixtures,
   publicationParityFixtures,
   publicationSemanticDriftFixtures,
 } from "./lifecycleParityFixtures.mjs";
@@ -59,6 +64,8 @@ const {
 const {
   PUBLICATION_PUBLIC_STATES,
   PUBLICATION_TRASH_RETENTION_DAYS,
+  resolveDraftLinkedPublicSlugFromData,
+  resolveDraftPublicationLifecycleStateFromData,
   resolvePublicationPublicStateFromData,
   isPubliclyAccessible,
   toDateFromTimestampLike,
@@ -101,7 +108,7 @@ function resolveBackendExpirationDate(publication) {
   return computePublicationExpirationDate(publishedAt);
 }
 
-function readFrontendDraftSnapshot(draft) {
+function readFrontendDraftTrashSnapshot(draft) {
   return {
     state: resolveDraftState(draft),
     isTrashed: isDraftTrashed(draft),
@@ -109,11 +116,25 @@ function readFrontendDraftSnapshot(draft) {
   };
 }
 
-function readBackendDraftSnapshot(draft) {
+function readBackendDraftTrashSnapshot(draft) {
   const state = resolveDraftStateFromData(draft);
   return {
     state,
     isTrashed: state === BACKEND_DRAFT_STATES.TRASH,
+  };
+}
+
+function readFrontendDraftPublicationLinkageSnapshot(draft) {
+  return {
+    linkedPublicSlug: resolveDraftLinkedPublicSlug(draft),
+    lifecycleState: resolveDraftPublicationLifecycleState(draft),
+  };
+}
+
+function readBackendDraftPublicationLinkageSnapshot(draft) {
+  return {
+    linkedPublicSlug: resolveDraftLinkedPublicSlugFromData(draft),
+    lifecycleState: resolveDraftPublicationLifecycleStateFromData(draft),
   };
 }
 
@@ -184,23 +205,33 @@ test("publication lifecycle overlapping constants stay aligned across frontend a
   );
 });
 
-test("draft lifecycle fixtures stay in frontend/backend parity", async (t) => {
-  for (const fixture of draftParityFixtures) {
+test("draft trash lifecycle fixtures stay in frontend/backend parity", async (t) => {
+  for (const fixture of draftTrashParityFixtures) {
     await t.test(fixture.id, () => {
-      const frontend = readFrontendDraftSnapshot(fixture.draft);
-      const backend = readBackendDraftSnapshot(fixture.draft);
+      const frontend = readFrontendDraftTrashSnapshot(fixture.draft);
+      const backend = readBackendDraftTrashSnapshot(fixture.draft);
+      const expectedShared = {
+        state: fixture.expected.state,
+        isTrashed: fixture.expected.isTrashed,
+      };
 
-      assert.deepEqual(
-        {
-          state: frontend.state,
-          isTrashed: frontend.isTrashed,
-        },
-        fixture.expected
-      );
-      assert.deepEqual(backend, fixture.expected);
+      assert.deepEqual(frontend, fixture.expected);
+      assert.deepEqual(backend, expectedShared);
       assert.equal(frontend.state, backend.state);
       assert.equal(frontend.isTrashed, backend.isTrashed);
-      assert.equal(frontend.purgeAtIso, fixture.frontendOnly.purgeAtIso);
+      assert.equal(frontend.purgeAtIso, fixture.expected.purgeAtIso);
+    });
+  }
+});
+
+test("draft publication linkage fixtures stay in frontend/backend parity", async (t) => {
+  for (const fixture of draftPublicationLinkageParityFixtures) {
+    await t.test(fixture.id, () => {
+      const frontend = readFrontendDraftPublicationLinkageSnapshot(fixture.draft);
+      const backend = readBackendDraftPublicationLinkageSnapshot(fixture.draft);
+
+      assert.deepEqual(frontend, fixture.expected);
+      assert.deepEqual(backend, fixture.expected);
     });
   }
 });

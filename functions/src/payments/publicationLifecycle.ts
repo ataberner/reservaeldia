@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import { normalizePublicSlug } from "../utils/publicSlug";
 
 export const PUBLICATION_LIFECYCLE_STATES = Object.freeze({
   DRAFT: "draft",
@@ -24,6 +25,45 @@ export const PUBLICATION_VIGENCY_MONTHS = 12;
 
 function normalizeStateText(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+export function resolveDraftLinkedPublicSlugFromData(
+  draftData: Record<string, unknown> | null | undefined
+): string {
+  const safeDraftData = asRecord(draftData);
+  const lifecycle = asRecord(safeDraftData.publicationLifecycle);
+
+  return (
+    normalizePublicSlug(safeDraftData.slugPublico) ||
+    normalizePublicSlug(lifecycle.activePublicSlug) ||
+    normalizePublicSlug(lifecycle.publicSlug) ||
+    normalizePublicSlug(lifecycle.slug) ||
+    ""
+  );
+}
+
+export function resolveDraftPublicationLifecycleStateFromData(
+  draftData: Record<string, unknown> | null | undefined
+): PublicationLifecycleState {
+  const lifecycle = asRecord(asRecord(draftData).publicationLifecycle);
+  const explicitState = normalizeStateText(lifecycle.state);
+
+  if (
+    explicitState === PUBLICATION_LIFECYCLE_STATES.DRAFT ||
+    explicitState === PUBLICATION_LIFECYCLE_STATES.PUBLISHED ||
+    explicitState === PUBLICATION_LIFECYCLE_STATES.FINALIZED
+  ) {
+    return explicitState as PublicationLifecycleState;
+  }
+
+  return resolveDraftLinkedPublicSlugFromData(draftData)
+    ? PUBLICATION_LIFECYCLE_STATES.PUBLISHED
+    : PUBLICATION_LIFECYCLE_STATES.DRAFT;
 }
 
 export function normalizePublicationPublicState(value: unknown): PublicationPublicState | null {

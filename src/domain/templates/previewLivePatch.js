@@ -1,8 +1,9 @@
-import { buildTemplateFormState, resolveTemplateFieldByKey } from "./formModel.js";
-import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
+import { resolveTemplateFieldByKey } from "./formModel.js";
 import { buildPreviewDynamicGalleryLayout } from "./galleryDynamicMedia.js";
+import { resolveTemplatePersonalizationFieldPlan } from "./personalizationContract.js";
 
 const PREVIEW_SCROLL_SCOPES = new Set(["objeto", "seccion"]);
+const PREVIEW_PATCHABLE_SCOPES = new Set(["objeto", "seccion"]);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -11,37 +12,6 @@ function normalizeText(value) {
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
-}
-
-function sanitizeImageUrls(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => normalizeText(entry))
-    .filter(Boolean);
-}
-
-function normalizeTargets(field) {
-  if (!Array.isArray(field?.applyTargets)) return [];
-
-  return field.applyTargets
-    .map((target) => {
-      const scope = normalizeText(target?.scope).toLowerCase();
-      const id = normalizeText(target?.id);
-      const path = normalizeText(target?.path);
-      const mode = normalizeText(target?.mode).toLowerCase() === "replace" ? "replace" : "set";
-      if (!scope || !path) return null;
-      if ((scope === "objeto" || scope === "seccion") && !id) return null;
-      return {
-        scope,
-        ...(id ? { id } : {}),
-        path,
-        mode,
-        ...(target?.transform && typeof target.transform === "object"
-          ? { transform: target.transform }
-          : {}),
-      };
-    })
-    .filter(Boolean);
 }
 
 function normalizePreviewScrollTarget(target) {
@@ -88,7 +58,7 @@ function shouldDispatchFieldForPhase(field, phase) {
 export function resolvePreviewScrollTargetsForField(template, fieldKey) {
   const field = resolveTemplateFieldByKey(template, fieldKey);
   if (!field) return [];
-  return dedupePreviewScrollTargets(normalizeTargets(field));
+  return dedupePreviewScrollTargets(field.applyTargets);
 }
 
 export function buildPreviewOperationsForField({
@@ -101,50 +71,46 @@ export function buildPreviewOperationsForField({
   if (!field) return [];
   if (!shouldDispatchFieldForPhase(field, phase)) return [];
 
-  const formState = buildTemplateFormState(template);
-  const defaults = asObject(formState.defaults);
-  const defaultValue = defaults[field.key];
-  const targets = normalizeTargets(field);
+  const fieldPlan = resolveTemplatePersonalizationFieldPlan({
+    template,
+    fieldKey: field.key,
+    value,
+  });
+  if (!fieldPlan) return [];
 
-  if (targets.length > 0) {
-    return targets.map((target) => {
-      const incomingValue = field.type === "images" ? sanitizeImageUrls(value) : value;
-      const resolvedValues = resolveTemplateTargetValuePair({
-        field,
-        target,
-        nextValue: incomingValue,
-        defaultValue,
+  if (fieldPlan.applyTargets.length > 0) {
+    return fieldPlan.applyTargets
+      .filter((target) => PREVIEW_PATCHABLE_SCOPES.has(normalizeText(target?.scope).toLowerCase()))
+      .map((target) => {
+        const incomingValue =
+          fieldPlan.fallback?.kind === "gallery" ? fieldPlan.fallback.value : fieldPlan.nextValue;
+
+        return {
+          ...target,
+          fieldKey: field.key,
+          value: target.nextValue,
+          defaultValue: target.defaultValue,
+          ...(() => {
+            if (target.scope !== "objeto" || normalizeText(target.path).toLowerCase() !== "cells") {
+              return {};
+            }
+            const targetObject = findTemplateObjectById(template, target.id);
+            if (
+              !targetObject ||
+              normalizeText(targetObject?.galleryLayoutMode).toLowerCase() !== "dynamic_media"
+            ) {
+              return {};
+            }
+            return {
+              galleryLayout: buildPreviewDynamicGalleryLayout(targetObject, incomingValue),
+            };
+          })(),
+        };
       });
-
-      return {
-        ...target,
-        fieldKey: field.key,
-        value: resolvedValues.nextValue,
-        defaultValue: resolvedValues.defaultValue,
-        ...(() => {
-          if (target.scope !== "objeto" || normalizeText(target.path).toLowerCase() !== "cells") {
-            return {};
-          }
-          const targetObject = findTemplateObjectById(template, target.id);
-          if (
-            !targetObject ||
-            normalizeText(targetObject?.galleryLayoutMode).toLowerCase() !== "dynamic_media"
-          ) {
-            return {};
-          }
-          return {
-            galleryLayout: buildPreviewDynamicGalleryLayout(
-              targetObject,
-              sanitizeImageUrls(incomingValue)
-            ),
-          };
-        })(),
-      };
-    });
   }
 
-  if (field.type === "images") {
-    const urls = sanitizeImageUrls(value);
+  if (fieldPlan.fallback?.kind === "gallery") {
+    const urls = fieldPlan.fallback.value;
     if (!urls.length) return [];
     return [
       {
@@ -156,8 +122,10 @@ export function buildPreviewOperationsForField({
     ];
   }
 
-  const nextValue = String(value ?? "");
-  const previous = String(defaultValue ?? "");
+  if (fieldPlan.fallback?.kind !== "text_replace") return [];
+
+  const nextValue = String(fieldPlan.fallback.replace ?? "");
+  const previous = String(fieldPlan.fallback.find ?? "");
   if (!previous || nextValue === previous) return [];
 
   return [

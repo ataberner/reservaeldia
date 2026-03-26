@@ -1,5 +1,5 @@
-import { normalizeRsvpConfig } from "@/domain/rsvp/config";
-import { normalizeGiftConfig } from "@/domain/gifts/config";
+import { normalizeRsvpConfig } from "../rsvp/config.js";
+import { normalizeGiftConfig } from "../gifts/config.js";
 import { resolveTemplatePreviewSource as resolveTemplatePreviewSourceContract } from "../../../shared/templates/contract.js";
 
 function normalizeTemplateArrays(template) {
@@ -8,6 +8,11 @@ function normalizeTemplateArrays(template) {
     objetos: Array.isArray(safeTemplate.objetos) ? safeTemplate.objetos : [],
     secciones: Array.isArray(safeTemplate.secciones) ? safeTemplate.secciones : [],
   };
+}
+
+function normalizeText(value, fallback = "") {
+  const safe = String(value || "").trim();
+  return safe || fallback;
 }
 
 function buildRsvpPreviewConfig(rawRsvp) {
@@ -71,4 +76,39 @@ export async function generateTemplatePreviewHtml(template) {
 
 export function resolveTemplatePreviewSource(template) {
   return resolveTemplatePreviewSourceContract(template);
+}
+
+export function resolveTemplatePreviewRuntimeState({
+  template,
+  previewHtml,
+  previewStatus,
+  previewUrlFailed = false,
+} = {}) {
+  const source = resolveTemplatePreviewSource(template);
+  const status = normalizeText(previewStatus?.status, previewHtml ? "ready" : "idle");
+  const previewUrl = source.mode === "url" ? source.previewUrl : null;
+  const hasPreviewUrl = Boolean(previewUrl);
+  const shouldShowGeneratedPreview = status === "ready" && Boolean(previewHtml);
+  const shouldShowPreviewUrl =
+    hasPreviewUrl &&
+    previewUrlFailed !== true &&
+    !shouldShowGeneratedPreview &&
+    status !== "loading";
+
+  return {
+    status,
+    sourceMode: source.mode,
+    activeMode: shouldShowGeneratedPreview ? "generated" : shouldShowPreviewUrl ? "url" : "none",
+    previewUrl,
+    hasPreviewUrl,
+    shouldShowGeneratedPreview,
+    shouldShowPreviewUrl,
+    canPatchPreview: shouldShowGeneratedPreview,
+    canCaptureTextPositions: shouldShowGeneratedPreview,
+    shouldShowLoadingState:
+      !shouldShowPreviewUrl && (status === "idle" || status === "loading"),
+    shouldShowErrorState: !shouldShowPreviewUrl && status === "error",
+    shouldShowMissingPreviewState:
+      !shouldShowPreviewUrl && status === "ready" && !previewHtml,
+  };
 }

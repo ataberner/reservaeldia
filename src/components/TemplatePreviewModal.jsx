@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
-import { resolveTemplatePreviewSource } from "@/domain/templates/preview";
+import { resolveTemplatePreviewRuntimeState } from "@/domain/templates/preview";
 import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
 import TemplateEventForm from "@/components/templates/TemplateEventForm";
 import {
@@ -136,7 +136,6 @@ export default function TemplatePreviewModal({
   const inputPatchTimersRef = useRef({});
   const [mode, setMode] = useState("collapsed");
   const [previewUrlFailed, setPreviewUrlFailed] = useState(false);
-  const status = toText(previewStatus?.status, previewHtml ? "ready" : "idle");
   const errorMessage = toText(
     previewStatus?.error,
     "No se pudo cargar la vista previa de esta plantilla."
@@ -146,13 +145,16 @@ export default function TemplatePreviewModal({
   const badges = toList(metadata?.badges).filter((badge) => toText(badge).toLowerCase() !== "top");
   const features = toList(metadata?.features);
   const categories = toList(metadata?.categories);
-  const previewSource = resolveTemplatePreviewSource(template);
-  const previewUrl = previewSource.mode === "url" ? previewSource.previewUrl : null;
-  const hasPreviewUrl = Boolean(previewUrl);
-  const usePreviewUrl = hasPreviewUrl && !previewUrlFailed;
-  const shouldShowGeneratedPreview = status === "ready" && Boolean(previewHtml);
-  const shouldShowPreviewUrl = usePreviewUrl && !shouldShowGeneratedPreview && status !== "loading";
-  const canPatchPreview = shouldShowGeneratedPreview;
+  const previewRuntime = resolveTemplatePreviewRuntimeState({
+    template,
+    previewHtml,
+    previewStatus,
+    previewUrlFailed,
+  });
+  const previewUrl = previewRuntime.previewUrl;
+  const shouldShowGeneratedPreview = previewRuntime.shouldShowGeneratedPreview;
+  const shouldShowPreviewUrl = previewRuntime.shouldShowPreviewUrl;
+  const canPatchPreview = previewRuntime.canPatchPreview;
   const isExpanded = mode === "expanded";
 
   useEffect(() => {
@@ -337,7 +339,7 @@ export default function TemplatePreviewModal({
                   />
                 ) : null}
 
-                {!shouldShowPreviewUrl && (status === "idle" || status === "loading") && (
+                {previewRuntime.shouldShowLoadingState && (
                   <div className="flex h-full items-center justify-center bg-slate-50">
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                       <Loader2 className="h-4 w-4 animate-spin text-[#6f3bc0]" />
@@ -346,13 +348,13 @@ export default function TemplatePreviewModal({
                   </div>
                 )}
 
-                {!shouldShowPreviewUrl && status === "error" && (
+                {previewRuntime.shouldShowErrorState && (
                   <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
                     <p className="max-w-xl text-sm text-rose-600">{errorMessage}</p>
                   </div>
                 )}
 
-                {!shouldShowPreviewUrl && status === "ready" && !previewHtml ? (
+                {previewRuntime.shouldShowMissingPreviewState ? (
                   <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
                     <p className="max-w-xl text-sm text-rose-600">
                       No se pudo cargar la vista previa de esta plantilla.

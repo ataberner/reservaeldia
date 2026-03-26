@@ -1,8 +1,6 @@
-import { buildTemplateFormState, getChangedKeys } from "./formModel.js";
-import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
-import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
-import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
-import { measureTextPositionFromPreviewSemantics } from "@/lib/templatePreviewTextMeasure";
+import { normalizeDraftRenderState } from "../drafts/sourceOfTruth.js";
+import { shouldPreserveTextCenterPosition } from "../../lib/textCenteringPolicy.js";
+import { measureTextPositionFromPreviewSemantics } from "../../lib/templatePreviewTextMeasure.js";
 import { logTemplateDraftDebug } from "./draftPersonalizationDebug.js";
 import {
   buildDynamicGalleryObjectPatch,
@@ -12,6 +10,7 @@ import {
   normalizeRenderAssetState,
   resolveGalleryCellMediaUrl,
 } from "../../../shared/renderAssetContract.js";
+import { buildTemplatePersonalizationPlan } from "./personalizationContract.js";
 
 const DEFAULT_TEXT_CONTAINER_WIDTH_PX = 800;
 
@@ -479,9 +478,12 @@ export function buildDraftPersonalizationPatch({
   const safeTemplate = asObject(template);
   const safeDraftData = asObject(draftData);
   const safeResolvedValues = asObject(resolvedValues);
-  const formState = buildTemplateFormState(safeTemplate);
   const renderState = normalizeDraftRenderState(safeDraftData);
   const normalizedRenderState = normalizeRenderAssetState(renderState);
+  const personalizationPlan = buildTemplatePersonalizationPlan({
+    template: safeTemplate,
+    resolvedValues: safeResolvedValues,
+  });
   const textMeasurementOptions = buildTextMeasurementOptions(
     {
       ...renderState,
@@ -494,28 +496,29 @@ export function buildDraftPersonalizationPatch({
   const secciones = deepClone(normalizedRenderState.secciones);
   let rsvp = renderState.rsvp ? deepClone(renderState.rsvp) : null;
   let gifts = renderState.gifts ? deepClone(renderState.gifts) : null;
-  const defaults = asObject(formState.defaults);
-  const changedKeys = getChangedKeys({
-    fields: formState.fields,
-    defaults,
-    resolvedValues: safeResolvedValues,
-  });
+  const defaults = asObject(personalizationPlan.defaults);
+  const changedKeys = Array.isArray(personalizationPlan.changedKeys)
+    ? personalizationPlan.changedKeys
+    : [];
+  const fieldPlans = Array.isArray(personalizationPlan.fieldPlans)
+    ? personalizationPlan.fieldPlans
+    : [];
+  const fieldsProcessed = Array.isArray(personalizationPlan.fields)
+    ? personalizationPlan.fields.length
+    : 0;
 
   const report = {
-    fieldsProcessed: formState.fields.length,
+    fieldsProcessed,
     fieldsChanged: changedKeys.length,
     targetsApplied: 0,
     fallbackReplacements: 0,
     skippedFields: [],
   };
 
-  formState.fields.forEach((field) => {
-    const key = field.key;
-    if (!changedKeys.includes(key)) return;
-
-    const nextValue = safeResolvedValues[key];
-    const defaultValue = defaults[key];
-    const applyTargets = Array.isArray(field.applyTargets) ? field.applyTargets : [];
+  fieldPlans.forEach((fieldPlan) => {
+    const field = asObject(fieldPlan.field);
+    const key = normalizeText(fieldPlan.key || field.key);
+    const applyTargets = Array.isArray(fieldPlan.applyTargets) ? fieldPlan.applyTargets : [];
     let appliedInField = 0;
 
     applyTargets.forEach((target) => {
@@ -523,12 +526,6 @@ export function buildDraftPersonalizationPatch({
       const path = target?.path;
       const mode = normalizeText(target?.mode).toLowerCase() === "replace" ? "replace" : "set";
       const targetId = target?.id;
-      const resolvedTargetValues = resolveTemplateTargetValuePair({
-        field,
-        target,
-        nextValue,
-        defaultValue,
-      });
 
       if (scope === "objeto") {
         const objeto = findObjetoById(objetos, targetId);
@@ -537,8 +534,8 @@ export function buildDraftPersonalizationPatch({
           target: objeto,
           path,
           mode,
-          nextValue: resolvedTargetValues.nextValue,
-          defaultValue: resolvedTargetValues.defaultValue,
+          nextValue: target.nextValue,
+          defaultValue: target.defaultValue,
           textMeasurementOptions,
         });
         if (result.applied) {
@@ -555,8 +552,8 @@ export function buildDraftPersonalizationPatch({
           target: seccion,
           path,
           mode,
-          nextValue: resolvedTargetValues.nextValue,
-          defaultValue: resolvedTargetValues.defaultValue,
+          nextValue: target.nextValue,
+          defaultValue: target.defaultValue,
           textMeasurementOptions,
         });
         if (result.applied) {
@@ -572,8 +569,8 @@ export function buildDraftPersonalizationPatch({
           target: rsvpTarget,
           path,
           mode,
-          nextValue: resolvedTargetValues.nextValue,
-          defaultValue: resolvedTargetValues.defaultValue,
+          nextValue: target.nextValue,
+          defaultValue: target.defaultValue,
           textMeasurementOptions,
         });
         if (result.applied) {
@@ -586,10 +583,10 @@ export function buildDraftPersonalizationPatch({
 
     if (appliedInField > 0) return;
 
-    if (field.type === "images") {
+    if (normalizeText(field.type).toLowerCase() === "images") {
       const replaced = applyFallbackGalleryReplace({
         objetos,
-        urls: nextValue,
+        urls: fieldPlan.fallback?.kind === "gallery" ? fieldPlan.fallback.value : [],
       });
       report.fallbackReplacements += replaced;
       if (!replaced) {
@@ -598,11 +595,11 @@ export function buildDraftPersonalizationPatch({
       return;
     }
 
-    if (typeof defaultValue === "string" && typeof nextValue === "string") {
+    if (fieldPlan.fallback?.kind === "text_replace") {
       const replaced = applyFallbackTextReplace({
         objetos,
-        defaultValue,
-        nextValue,
+        defaultValue: fieldPlan.fallback.find,
+        nextValue: fieldPlan.fallback.replace,
         textMeasurementOptions,
       });
       report.fallbackReplacements += replaced;
@@ -651,4 +648,65 @@ export function buildDraftPersonalizationPatch({
     changedKeys,
     defaults,
   };
+}
+
+export function applyPreviewTextPositionOverrides(objetos, previewTextPositions) {
+  if (!Array.isArray(objetos)) return;
+
+  const safePreviewTextPositions =
+    previewTextPositions && typeof previewTextPositions === "object"
+      ? previewTextPositions
+      : null;
+  if (!safePreviewTextPositions) return;
+
+  objetos.forEach((objeto) => {
+    if (!shouldPreserveTextCenterPosition(objeto)) return;
+
+    const safeId = normalizeText(objeto?.id);
+    if (!safeId) return;
+
+    const override = safePreviewTextPositions[safeId];
+    if (!override || typeof override !== "object") return;
+
+    const nextX = Number(override.x);
+    const nextY = Number(override.y);
+
+    if (Number.isFinite(nextX)) {
+      objeto.x = nextX;
+    }
+    if (Number.isFinite(nextY)) {
+      objeto.y = nextY;
+    }
+
+    logTemplateDraftDebug("service:preview-position-override", {
+      objectId: safeId,
+      override,
+      finalPosition: {
+        x: objeto.x ?? null,
+        y: objeto.y ?? null,
+      },
+    });
+  });
+}
+
+export function preparePostCopyTemplatePersonalizationPatch({
+  template,
+  draftData,
+  resolvedValues,
+  measurementOptions,
+  previewTextPositions = null,
+} = {}) {
+  const personalizationPatch = buildDraftPersonalizationPatch({
+    template,
+    draftData,
+    resolvedValues,
+    measurementOptions,
+  });
+
+  applyPreviewTextPositionOverrides(
+    personalizationPatch?.objetos,
+    previewTextPositions
+  );
+
+  return personalizationPatch;
 }

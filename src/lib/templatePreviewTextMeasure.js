@@ -1,4 +1,4 @@
-import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import { shouldPreserveTextCenterPosition } from "./textCenteringPolicy.js";
 
 const DEFAULT_CONTAINER_WIDTH_PX = 800;
 const DEFAULT_SECTION_MODE = "fijo";

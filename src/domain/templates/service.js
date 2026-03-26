@@ -10,8 +10,10 @@ import {
   getTemplateById as getTemplateByIdFromRepository,
   listTemplates as listTemplatesFromRepository,
 } from "./repository.js";
-import { buildTemplateFormState, resolveTemplateInputValues } from "./formModel.js";
-import { buildDraftPersonalizationPatch } from "./personalization.js";
+import { buildTemplateFormState } from "./formModel.js";
+import {
+  preparePostCopyTemplatePersonalizationPatch,
+} from "./personalization.js";
 import { uploadTemplateGalleryFiles } from "./galleryUpload.js";
 import {
   DRAFT_SOURCE_OF_TRUTH_VERSION,
@@ -25,6 +27,7 @@ import {
   logTemplateDraftDebug,
   setTemplateDraftDebugSession,
 } from "./draftPersonalizationDebug.js";
+import { resolveTemplatePersonalizationInput } from "./personalizationContract.js";
 
 const copiarPlantillaCallable = httpsCallable(cloudFunctions, "copiarPlantilla");
 const CREATE_DRAFT_CALLABLE_TIMEOUT_MS = 12000;
@@ -285,45 +288,6 @@ function normalizeGalleryFilesByField(value) {
   return out;
 }
 
-function applyPreviewTextPositionOverrides(objetos, previewTextPositions) {
-  if (!Array.isArray(objetos)) return;
-
-  const safePreviewTextPositions =
-    previewTextPositions && typeof previewTextPositions === "object"
-      ? previewTextPositions
-      : null;
-  if (!safePreviewTextPositions) return;
-
-  objetos.forEach((objeto) => {
-    if (!shouldPreserveTextCenterPosition(objeto)) return;
-
-    const safeId = normalizeText(objeto?.id);
-    if (!safeId) return;
-
-    const override = safePreviewTextPositions[safeId];
-    if (!override || typeof override !== "object") return;
-
-    const nextX = Number(override.x);
-    const nextY = Number(override.y);
-
-    if (Number.isFinite(nextX)) {
-      objeto.x = nextX;
-    }
-    if (Number.isFinite(nextY)) {
-      objeto.y = nextY;
-    }
-
-    logTemplateDraftDebug("service:preview-position-override", {
-      objectId: safeId,
-      override,
-      finalPosition: {
-        x: objeto.x ?? null,
-        y: objeto.y ?? null,
-      },
-    });
-  });
-}
-
 export async function createDraftFromTemplate({ templateId, templateName }) {
   const safeTemplateId = normalizeText(templateId);
   if (!safeTemplateId) {
@@ -435,7 +399,7 @@ export async function createDraftFromTemplateWithInput({
     }
   }
 
-  const { resolvedValues } = resolveTemplateInputValues({
+  const { resolvedValues } = resolveTemplatePersonalizationInput({
     template: safeTemplate,
     rawValues,
     touchedKeys,
@@ -453,15 +417,12 @@ export async function createDraftFromTemplateWithInput({
   const draftData = draftSnap.data() || {};
   const draftRenderState = normalizeDraftRenderState(draftData);
   await prepareDraftTextMeasurement(draftRenderState);
-  const personalizationPatch = buildDraftPersonalizationPatch({
+  const personalizationPatch = preparePostCopyTemplatePersonalizationPatch({
     template: safeTemplate,
     draftData: draftRenderState,
     resolvedValues,
+    previewTextPositions,
   });
-  applyPreviewTextPositionOverrides(
-    personalizationPatch?.objetos,
-    previewTextPositions
-  );
   const debugObjectsById = Object.fromEntries(
     (Array.isArray(personalizationPatch?.objetos) ? personalizationPatch.objetos : [])
       .filter((objeto) => shouldPreserveTextCenterPosition(objeto))

@@ -242,6 +242,47 @@ export function buildEditorIssueReport({
   };
 }
 
+export function buildEditorIssueTransportPayload(report) {
+  if (!report || typeof report !== "object") return {};
+
+  const runtime =
+    report.runtime && typeof report.runtime === "object"
+      ? {
+          href: report.runtime.href || null,
+          path: report.runtime.path || null,
+          query: report.runtime.query || null,
+          userAgent: truncate(report.runtime.userAgent, 400),
+          language: report.runtime.language || null,
+          platform: report.runtime.platform || null,
+          viewport: report.runtime.viewport || null,
+          memory: report.runtime.memory || null,
+        }
+      : null;
+
+  const breadcrumbs = Array.isArray(report.breadcrumbs)
+    ? report.breadcrumbs.slice(-30).map((item) => ({
+        at: item?.at || null,
+        event: truncate(item?.event, 120),
+        detail: truncate(item?.detail, 800),
+      }))
+    : [];
+
+  return {
+    id: truncate(report.id, 120),
+    occurredAt: truncate(report.occurredAt, 80),
+    source: truncate(report.source, 180),
+    severity: truncate(report.severity, 40),
+    slug: truncate(report.slug, 180),
+    name: truncate(report.name, 120),
+    message: truncate(report.message, 2000),
+    stack: truncate(report.stack, 12000),
+    detail: truncate(report.detail, 12000),
+    runtime,
+    breadcrumbs,
+    fingerprint: truncate(report.fingerprint, 180),
+  };
+}
+
 export function persistPendingEditorIssue(report) {
   const storage = getStorage("local");
   if (!storage || !report) return;

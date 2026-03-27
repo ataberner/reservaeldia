@@ -15,6 +15,12 @@ import { useDashboardEditorRoute } from "@/hooks/useDashboardEditorRoute";
 import { useDashboardPreviewController } from "@/hooks/useDashboardPreviewController";
 import { useDashboardStartupLoaders } from "@/hooks/useDashboardStartupLoaders";
 import { useDashboardTemplateModal } from "@/hooks/useDashboardTemplateModal";
+import {
+  buildDashboardCanvasEditorProps,
+  buildDashboardLayoutProps,
+  buildDashboardPageViewState,
+  buildDashboardPreviewGateState,
+} from "@/domain/dashboard/pageShell";
 import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
@@ -54,7 +60,6 @@ export default function Dashboard() {
     templateWorkspaceView,
     editorSession,
     isAdminReadOnlyView,
-    isTemplateWorkspaceReadOnly,
     isEditorReadOnly,
     isTemplateEditorSession,
     requestedRouteSlug,
@@ -116,13 +121,18 @@ export default function Dashboard() {
     modoEditor,
     editorSession,
   });
-  const [tipoSeleccionado, setTipoSeleccionado] = useState(DEFAULT_TIPO_INVITACION);
+  const tipoSeleccionado = DEFAULT_TIPO_INVITACION;
   const [zoom, setZoom] = useState(0.8);
-  const [secciones, setSecciones] = useState([]);
-  const [seccionActivaId, setSeccionActivaId] = useState(null);
   const [historialExternos, setHistorialExternos] = useState([]);
   const [futurosExternos, setFuturosExternos] = useState([]);
-  const isHomeView = !slugInvitacion && vista === "home" && !isResolvingEditorRoute;
+  const pageViewState = buildDashboardPageViewState({
+    slugInvitacion,
+    vista,
+    isResolvingEditorRoute,
+    isSuperAdmin,
+    legacyDraftNotice,
+    adminDraftView,
+  });
   const {
     editorPreloadState,
     editorRuntimeState,
@@ -137,17 +147,59 @@ export default function Dashboard() {
     handleHomeViewReadyChange,
   } = useDashboardStartupLoaders({
     slugInvitacion,
-    isHomeView,
+    isHomeView: pageViewState.isHomeView,
     homeResetKey: tipoSeleccionado,
   });
-
+  const previewGateState = buildDashboardPreviewGateState({
+    isTemplateEditorSession,
+    mostrarCheckoutPublicacion,
+  });
   const toggleZoom = () => {
     setZoom((prev) => (prev === 1 ? 0.8 : 1));
   };
+  const layoutProps = buildDashboardLayoutProps({
+    slugInvitacion,
+    setSlugInvitacion,
+    setModoEditor,
+    zoom,
+    toggleZoom,
+    historialExternos,
+    futurosExternos,
+    generarVistaPrevia,
+    usuario,
+    vista,
+    setVista,
+    canManageSite,
+    isSuperAdmin,
+    loadingAdminAccess,
+    isEditorReadOnly,
+    isResolvingEditorRoute,
+    shouldRenderHomeStartupLoader,
+    templatePreviewModalVisible: templatePreviewModalProps.visible,
+    adminDraftView,
+    templateWorkspaceView,
+    editorSession,
+    ensureDraftFlushBeforeCriticalAction,
+    handleOpenTemplateSession,
+    seccionActivaId: null,
+  });
+  const canvasEditorProps = buildDashboardCanvasEditorProps({
+    slugInvitacion,
+    editorSession,
+    zoom,
+    setHistorialExternos,
+    setFuturosExternos,
+    usuarioUid: usuario?.uid,
+    handleEditorStartupStatusChange,
+    canManageSite,
+    isAdminReadOnlyView,
+    isEditorReadOnly,
+    adminDraftView,
+    templateWorkspaceView,
+  });
 
-  // Listen custom event to open a draft
+  // Page-level event bridge: open a draft from external dashboard actions.
   useEffect(() => {
-
     const handleAbrirBorrador = (e) => {
       const { slug } = e.detail;
       if (!slug) return;
@@ -159,22 +211,13 @@ export default function Dashboard() {
       void abrirBorradorEnEditor(slug);
     };
 
-
     window.addEventListener("abrir-borrador", handleAbrirBorrador);
     return () => {
       window.removeEventListener("abrir-borrador", handleAbrirBorrador);
     };
-
-
   }, [abrirBorradorEnEditor]);
 
-
-  // cuando hay cambios en secciones
-  useEffect(() => {
-    if (!seccionActivaId && secciones.length > 0) {
-      setSeccionActivaId(secciones[0].id);
-    }
-  }, [secciones]);
+  // Page-level access guard: only superadmin can keep the management view.
   useEffect(() => {
     if (checkingAuth || slugInvitacion) return;
     if (vista !== "gestion") return;
@@ -197,41 +240,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <DashboardLayout
-      mostrarMiniToolbar={!!slugInvitacion && !isEditorReadOnly}
-      seccionActivaId={seccionActivaId}
-      modoSelector={!slugInvitacion && vista === "home" && !isResolvingEditorRoute}
-      slugInvitacion={slugInvitacion}
-      setSlugInvitacion={setSlugInvitacion}
-      setModoEditor={setModoEditor}
-      zoom={zoom}
-      toggleZoom={toggleZoom}
-      historialExternos={historialExternos}
-      futurosExternos={futurosExternos}
-      generarVistaPrevia={generarVistaPrevia}
-      usuario={usuario}
-      vista={vista}
-      onCambiarVista={setVista}
-      ocultarSidebar={
-        vista === "publicadas" ||
-        vista === "papelera" ||
-        vista === "gestion" ||
-        isEditorReadOnly ||
-        isResolvingEditorRoute
-      }
-      canManageSite={canManageSite}
-      isSuperAdmin={isSuperAdmin}
-      loadingAdminAccess={loadingAdminAccess}
-      lockMainScroll={
-        shouldRenderHomeStartupLoader || templatePreviewModalProps.visible
-      }
-      editorReadOnly={isEditorReadOnly}
-      draftDisplayName={adminDraftView.draftName || templateWorkspaceView.draftName || ""}
-      editorSession={editorSession}
-      templateSessionMeta={templateWorkspaceView}
-      ensureEditorFlushBeforeAction={ensureDraftFlushBeforeCriticalAction}
-      onOpenTemplateSession={handleOpenTemplateSession}
-    >
+      <DashboardLayout {...layoutProps}>
       {editorIssueReport && (
         <EditorIssueBanner
           report={editorIssueReport}
@@ -243,7 +252,7 @@ export default function Dashboard() {
           onSend={handleSendEditorIssue}
         />
       )}
-      {legacyDraftNotice && !slugInvitacion && (
+      {pageViewState.showLegacyDraftNotice && (
         <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_28px_rgba(180,120,24,0.08)] sm:mx-6 lg:mx-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -260,15 +269,13 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      {!slugInvitacion &&
-        adminDraftView.enabled &&
-        adminDraftView.status === "loading" && (
+      {pageViewState.showAdminDraftLoadingNotice && (
           <div className="mx-4 mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm sm:mx-6 lg:mx-8">
             Cargando vista administrativa del borrador...
           </div>
         )}
 
-      {isResolvingEditorRoute && (
+      {pageViewState.showRouteResolvingView && (
         <div className="mx-4 mt-4 flex min-h-[280px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.06)] sm:mx-6 lg:mx-8">
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
             <div className="relative flex h-11 w-11 items-center justify-center">
@@ -287,7 +294,7 @@ export default function Dashboard() {
    
 
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
-      {isHomeView && (
+      {pageViewState.isHomeView && (
         <div className="relative w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
           {shouldRenderHomeStartupLoader && (
             <div
@@ -334,13 +341,13 @@ export default function Dashboard() {
       )}
 
       {/* PUBLISHED view */}
-      {!slugInvitacion && vista === "publicadas" && (
+      {pageViewState.showPublicationsView && (
         <div className="w-full px-4 pb-8">
           <PublicadasGrid usuario={usuario} />
         </div>
       )}
 
-      {!slugInvitacion && vista === "papelera" && (
+      {pageViewState.showTrashView && (
         <div className="w-full px-4 pb-8">
           <DashboardTrashSection usuario={usuario} />
         </div>
@@ -349,7 +356,7 @@ export default function Dashboard() {
 
 
       {/* Invitation editor */}
-      {!slugInvitacion && vista === "gestion" && isSuperAdmin && (
+      {pageViewState.showManagementView && (
         <div className="w-full px-4 pb-8">
           <SiteManagementBoard
             isSuperAdmin={isSuperAdmin}
@@ -358,7 +365,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {slugInvitacion && (
+      {pageViewState.showEditorView && (
         <ChunkErrorBoundary>
           <div className={shouldMountCanvasEditor ? "relative" : ""}>
             {shouldMountCanvasEditor && (
@@ -371,24 +378,7 @@ export default function Dashboard() {
                 }
                 aria-hidden={showEditorStartupLoader ? "true" : undefined}
               >
-                <CanvasEditor
-                  slug={slugInvitacion}
-                  editorSession={editorSession}
-                  zoom={zoom}
-                  onHistorialChange={setHistorialExternos}
-                  onFuturosChange={setFuturosExternos}
-                  userId={usuario?.uid}
-                  secciones={[]}
-                  onStartupStatusChange={handleEditorStartupStatusChange}
-                  canManageSite={canManageSite && !isAdminReadOnlyView}
-                  readOnly={isEditorReadOnly}
-                  initialDraftData={isAdminReadOnlyView ? adminDraftView.draftData : null}
-                  initialEditorData={
-                    isAdminReadOnlyView
-                      ? adminDraftView.draftData
-                      : templateWorkspaceView.initialData || null
-                  }
-                />
+                <CanvasEditor {...canvasEditorProps} />
               </div>
             )}
 
@@ -425,12 +415,12 @@ export default function Dashboard() {
         publicUrl={urlPublicaVistaPrevia}
         previewDisplayUrl={previewDisplayUrl}
         onPublish={publicarDesdeVistaPrevia}
-        showPublishActions={!isTemplateEditorSession}
+        showPublishActions={previewGateState.canPublishFromPreview}
         publishing={false}
         publishError={publicacionVistaPreviaError}
         publishSuccess={publicacionVistaPreviaOk}
         publishedUrl={urlPublicadaReciente}
-        checkoutVisible={!isTemplateEditorSession && mostrarCheckoutPublicacion}
+        checkoutVisible={previewGateState.previewCheckoutVisible}
         publishValidation={publishValidationResult}
         publishValidationPending={publishValidationPending}
       />
@@ -439,7 +429,7 @@ export default function Dashboard() {
       </DashboardLayout>
 
       <PublicationCheckoutModal
-        visible={!isTemplateEditorSession && mostrarCheckoutPublicacion}
+        visible={previewGateState.checkoutModalVisible}
         onClose={closeCheckout}
         draftSlug={slugInvitacion}
         operation={operacionCheckoutPublicacion}

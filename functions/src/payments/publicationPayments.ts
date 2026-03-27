@@ -17,30 +17,16 @@ import {
   PUBLICATION_PUBLIC_STATES,
   PUBLICATION_TRASH_RETENTION_DAYS,
   addMonthsPreservingDateTimeUTC,
-  computePublicationExpirationDate,
-  normalizePublicationPublicState,
   resolvePublicationBackendStateFromData,
-  resolvePublicationFirstPublishedAtFromData,
   resolvePublicationLifecycleSnapshotFromData,
-  resolvePublicationTimelineFromData,
-  resolvePublicationEffectiveExpirationDateFromData,
-  toDateFromTimestampLike,
 } from "./publicationLifecycle";
 import {
   buildLinkedDraftResetWrite,
 } from "./publicationWritePreparation";
 import {
-  planLegacyPublicationCleanupOperations,
-  planPublicationFinalizationOperations,
-  planPublicationTransitionOperations,
-  planTrashedPublicationPurgeOperations,
-} from "./publicationOperationPlanning";
-import {
   executePlannedLegacyPublicationCleanup,
   executePlannedDraftWriteIfExists,
-  executePlannedPublicationFinalization,
   executePlannedPublicationWrites,
-  executePlannedTrashedPublicationPurge,
 } from "./publicationOperationExecution";
 import {
   buildPaymentResultFromSession,
@@ -79,6 +65,21 @@ import {
   resolveExistingPublicSlugFlow,
   type SlugAvailabilityResult,
 } from "./publicationSlugReservationFlow";
+import {
+  autoApproveZeroAmountCheckoutSessionFlow,
+  buildCheckoutStatusResponseFromSession,
+  buildExpiredCheckoutPaymentResult,
+  buildExpiredCheckoutStatusResponse,
+  expireCheckoutSessionIfNeededFlow,
+  readOwnedCheckoutSessionFlow,
+} from "./publicationCheckoutSessionFlow";
+import { finalizePublicationSnapshotFlow } from "./publicationFinalizationFlow";
+import {
+  isPublicationDueForTrashPurgeFlow,
+  purgeTrashedPublicationFlow,
+} from "./publicationTrashPurgeFlow";
+import { preparePublicationStateTransitionFlow } from "./publicationStateTransitionFlow";
+import { prepareLegacyPublicationCleanupFlow } from "./publicationLegacyCleanupFlow";
 
 export type {
   CheckoutOperation,
@@ -113,13 +114,6 @@ const FINALIZATION_REASON = Object.freeze({
   SCHEDULED_EXPIRATION: "scheduled-expiration",
   EXPIRED_BEFORE_UPDATE_PUBLISH: "expired-before-update-publish",
 });
-
-const SESSION_TERMINAL_STATES = new Set<CheckoutSessionStatus>([
-  "published",
-  "payment_rejected",
-  "approved_slug_conflict",
-  "expired",
-]);
 
 type SlugReservationStatus = "active" | "consumed" | "released" | "expired";
 
@@ -237,18 +231,6 @@ type DiscountUsageItem = {
   approvedAt: string | null;
 };
 
-type PublicationSummary = {
-  totalResponses: number;
-  confirmedResponses: number;
-  declinedResponses: number;
-  confirmedGuests: number;
-  vegetarianCount: number;
-  veganCount: number;
-  childrenCount: number;
-  dietaryRestrictionsCount: number;
-  transportCount: number;
-};
-
 type PublicationFinalizationResult = {
   slug: string;
   historyId: string | null;
@@ -292,118 +274,6 @@ function getPublicationRef(slug: string) {
 
 function getPublicationHistoryRef(historyId: string) {
   return db.collection(PUBLICADAS_HISTORIAL_COLLECTION).doc(historyId);
-}
-
-function normalizeAttendanceMetric(value: unknown): "yes" | "no" | "unknown" {
-  const raw = getString(value).toLowerCase();
-  if (!raw) return "unknown";
-  if (["yes", "si", "sí", "true", "1"].includes(raw)) return "yes";
-  if (["no", "false", "0"].includes(raw)) return "no";
-  return "unknown";
-}
-
-function normalizeBooleanMetric(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  const raw = getString(value).toLowerCase();
-  if (!raw) return false;
-  return ["yes", "si", "sí", "true", "1"].includes(raw);
-}
-
-function normalizePositiveIntMetric(value: unknown): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.round(parsed));
-}
-
-function normalizeMenuMetricId(value: unknown): string | null {
-  const raw = getString(value).toLowerCase();
-  if (!raw) return null;
-  if (raw.includes("vegano") || raw === "vegan") return "vegan";
-  if (raw.includes("vegetar")) return "vegetarian";
-  if (raw.includes("tacc") || raw.includes("celia")) return "celiac";
-  if (raw === "standard" || raw === "clasico" || raw === "clásico") return "standard";
-  return raw;
-}
-
-function createEmptyPublicationSummary(): PublicationSummary {
-  return {
-    totalResponses: 0,
-    confirmedResponses: 0,
-    declinedResponses: 0,
-    confirmedGuests: 0,
-    vegetarianCount: 0,
-    veganCount: 0,
-    childrenCount: 0,
-    dietaryRestrictionsCount: 0,
-    transportCount: 0,
-  };
-}
-
-function buildPublicationSummary(rows: Record<string, unknown>[]): PublicationSummary {
-  const summary = createEmptyPublicationSummary();
-
-  rows.forEach((row) => {
-    summary.totalResponses += 1;
-
-    const answers =
-      row.answers && typeof row.answers === "object"
-        ? (row.answers as Record<string, unknown>)
-        : {};
-
-    const metrics =
-      row.metrics && typeof row.metrics === "object"
-        ? (row.metrics as Record<string, unknown>)
-        : {};
-
-    const legacyAttendance =
-      typeof row.confirma === "boolean"
-        ? row.confirma
-          ? "yes"
-          : "no"
-        : row.confirmado === true
-          ? "yes"
-          : row.confirmado === false
-            ? "no"
-            : row.asistencia;
-
-    const attendance = normalizeAttendanceMetric(
-      metrics.attendance ?? answers.attendance ?? legacyAttendance
-    );
-
-    if (attendance === "yes") summary.confirmedResponses += 1;
-    if (attendance === "no") summary.declinedResponses += 1;
-
-    const partySize = normalizePositiveIntMetric(
-      answers.party_size ?? row.cantidad ?? row.invitados ?? row.asistentes
-    );
-    const confirmedGuests =
-      normalizePositiveIntMetric(metrics.confirmedGuests) ||
-      (attendance === "yes" ? (partySize || 1) : 0);
-    summary.confirmedGuests += confirmedGuests;
-
-    const menuType = normalizeMenuMetricId(metrics.menuTypeId ?? answers.menu_type ?? row.menu_type);
-    if (menuType === "vegetarian") summary.vegetarianCount += 1;
-    if (menuType === "vegan") summary.veganCount += 1;
-
-    const childrenCount = normalizePositiveIntMetric(
-      metrics.childrenCount ?? answers.children_count ?? row.children_count ?? row.ninos
-    );
-    summary.childrenCount += childrenCount;
-
-    const hasDietaryRestrictions =
-      typeof metrics.hasDietaryRestrictions === "boolean"
-        ? metrics.hasDietaryRestrictions
-        : Boolean(getString(answers.dietary_notes ?? row.dietary_notes ?? row.alergias));
-    if (hasDietaryRestrictions) summary.dietaryRestrictionsCount += 1;
-
-    const needsTransport =
-      typeof metrics.needsTransport === "boolean"
-        ? metrics.needsTransport
-        : normalizeBooleanMetric(answers.needs_transport ?? row.needs_transport ?? row.transporte);
-    if (needsTransport) summary.transportCount += 1;
-  });
-
-  return summary;
 }
 
 function inferDraftSlugFromPublicationData(
@@ -529,11 +399,6 @@ function normalizePublicationStateTransitionAction(
     return action;
   }
   throw new HttpsError("invalid-argument", "Accion de estado invalida.");
-}
-
-function toSafeIsoDate(value: unknown): string {
-  const date = value instanceof Date ? value : new Date();
-  return date.toISOString();
 }
 
 function isExpiredAt(expiresAt: unknown): boolean {
@@ -938,97 +803,35 @@ async function markReservationStatus(params: {
   });
 }
 
-function computePublicationDates(params: {
-  publicationData: Record<string, unknown>;
-  publicationSnap: FirebaseFirestore.DocumentSnapshot;
-  now: Date;
-}) {
-  const { publicationData, publicationSnap, now } = params;
-  const timeline = resolvePublicationTimelineFromData(publicationData, {
-    fallbackPublishedAt: publicationSnap.createTime ?? now,
-    fallbackLastPublishedAt: publicationSnap.createTime ?? now,
-    includeLifecycleFirstPublishedAt: true,
-    includeLifecycleExpiration: true,
-    includeLifecycleLastPublishedAt: true,
-  });
-  const firstPublishedAt = timeline.firstPublishedAt || now;
-  const vigenteHasta =
-    timeline.effectiveExpirationDate || computePublicationExpirationDate(firstPublishedAt);
-  const lastPublishedAt = timeline.lastPublishedAt || firstPublishedAt;
-
-  return {
-    firstPublishedAt,
-    vigenteHasta,
-    lastPublishedAt,
-  };
-}
-
 async function finalizePublicationSnapshot(params: {
   slug: string;
   publicationSnap: FirebaseFirestore.DocumentSnapshot;
   reason: string;
 }): Promise<PublicationFinalizationResult> {
   const { slug, publicationSnap, reason } = params;
-  if (!publicationSnap.exists) {
-    return {
-      slug,
-      historyId: null,
-      draftSlug: null,
-      finalized: false,
-      alreadyMissing: true,
-    };
-  }
+  const publicationData = publicationSnap.exists
+    ? ((publicationSnap.data() || {}) as Record<string, unknown>)
+    : {};
 
-  const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
-  const publicationRef = publicationSnap.ref;
-  const now = new Date();
-  const dates = computePublicationDates({
-    publicationData,
-    publicationSnap,
-    now,
-  });
-  const draftSlug = inferDraftSlugFromPublicationData(slug, publicationData);
-
-  const rsvpSnap = await publicationRef.collection("rsvps").get();
-  const summary = buildPublicationSummary(
-    rsvpSnap.docs.map((item) => (item.data() || {}) as Record<string, unknown>)
-  );
-  const plannedFinalization = planPublicationFinalizationOperations({
+  return finalizePublicationSnapshotFlow({
     slug,
-    publicationData,
-    draftSlug,
-    dates: {
-      firstPublishedAt: dates.firstPublishedAt,
-      effectiveExpirationDate: dates.vigenteHasta,
-      lastPublishedAt: dates.lastPublishedAt,
-    },
-    summary,
-    finalizedAt: now,
+    publicationSnap,
     reason,
-    historySourceCollection: PUBLICADAS_COLLECTION,
-    historyCreatedAtValue: serverTimestamp(),
-    historyUpdatedAtValue: serverTimestamp(),
-    draftUpdatedAtValue: serverTimestamp(),
-    reservationUpdatedAtValue: serverTimestamp(),
-  });
-
-  await executePlannedPublicationFinalization({
-    plan: plannedFinalization,
-    historyRef: getPublicationHistoryRef(plannedFinalization.historyId),
-    publicationRef,
-    draftRef:
-      draftSlug && plannedFinalization.draftFinalizeWrite
-        ? db.collection(BORRADORES_COLLECTION).doc(draftSlug)
-        : null,
+    draftSlug: publicationSnap.exists
+      ? inferDraftSlugFromPublicationData(slug, publicationData)
+      : "",
+    getHistoryRef: getPublicationHistoryRef,
+    getDraftRef: (draftSlug) => db.collection(BORRADORES_COLLECTION).doc(draftSlug),
     reservationRef: getReservationRef(slug),
+    createHistoryCreatedAtValue: () => serverTimestamp(),
+    createHistoryUpdatedAtValue: () => serverTimestamp(),
+    createDraftUpdatedAtValue: () => serverTimestamp(),
+    createReservationUpdatedAtValue: () => serverTimestamp(),
     deleteStoragePrefix: (prefix) => bucket.deleteFiles({ prefix }),
     recursiveDelete: (ref) => db.recursiveDelete(ref as FirebaseFirestore.DocumentReference),
     warn: (message, context) => logger.warn(message, context),
+    info: (message, context) => logger.info(message, context),
   });
-
-  logger.info("Publicacion finalizada", plannedFinalization.logContext);
-
-  return plannedFinalization.result;
 }
 
 export async function finalizePublicationBySlug(params: {
@@ -1140,87 +943,6 @@ export async function finalizeExpiredPublicationsHandler(params?: {
   };
 }
 
-function resolveTransitionTargetState(params: {
-  currentState: string;
-  action: PublicationStateTransitionAction;
-  now: Date;
-  venceAt: Date;
-}): {
-  nextState: string;
-  pausedAt: Date | null;
-  enPapeleraAt: Date | null;
-} {
-  const { currentState, action, now, venceAt } = params;
-
-  if (action === "pause") {
-    if (currentState !== PUBLICATION_PUBLIC_STATES.ACTIVE) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Solo puedes pausar una invitacion activa."
-      );
-    }
-
-    return {
-      nextState: PUBLICATION_PUBLIC_STATES.PAUSED,
-      pausedAt: now,
-      enPapeleraAt: null,
-    };
-  }
-
-  if (action === "resume") {
-    if (currentState !== PUBLICATION_PUBLIC_STATES.PAUSED) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Solo puedes reanudar una invitacion pausada."
-      );
-    }
-    if (venceAt.getTime() <= now.getTime()) {
-      throw new HttpsError(
-        "failed-precondition",
-        "La invitacion ya vencio y no puede reanudarse."
-      );
-    }
-
-    return {
-      nextState: PUBLICATION_PUBLIC_STATES.ACTIVE,
-      pausedAt: null,
-      enPapeleraAt: null,
-    };
-  }
-
-  if (action === "move_to_trash") {
-    if (currentState !== PUBLICATION_PUBLIC_STATES.PAUSED) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Solo puedes mover a papelera una invitacion pausada."
-      );
-    }
-
-    return {
-      nextState: PUBLICATION_PUBLIC_STATES.TRASH,
-      pausedAt: now,
-      enPapeleraAt: now,
-    };
-  }
-
-  if (action === "restore_from_trash") {
-    if (currentState !== PUBLICATION_PUBLIC_STATES.TRASH) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Solo puedes restaurar invitaciones en papelera."
-      );
-    }
-
-    return {
-      nextState: PUBLICATION_PUBLIC_STATES.PAUSED,
-      pausedAt: now,
-      enPapeleraAt: null,
-    };
-  }
-
-  throw new HttpsError("invalid-argument", "Accion de estado invalida.");
-}
-
 export async function transitionPublishedInvitationStateHandler(
   request: CallableRequest<{
     slug: string;
@@ -1253,62 +975,27 @@ export async function transitionPublishedInvitationStateHandler(
     }
 
     const now = new Date();
-    const firstPublishedAt =
-      resolvePublicationFirstPublishedAtFromData(publicationData, {
-        fallbackPublishedAt: publicationSnap.createTime ?? now,
-      }) || now;
-    const venceAt =
-      resolvePublicationEffectiveExpirationDateFromData(publicationData, {
-        fallbackPublishedAt: firstPublishedAt,
-        includeLifecycleExpiration: false,
-      }) || computePublicationExpirationDate(firstPublishedAt);
-    const currentState = resolvePublicationBackendStateFromData(publicationData);
-
-    if (
-      currentState === PUBLICATION_LIFECYCLE_STATES.FINALIZED ||
-      currentState === "finalizada"
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "La invitacion ya esta finalizada."
-      );
-    }
-
-    const normalizedCurrentPublicState = normalizePublicationPublicState(currentState);
-    if (!normalizedCurrentPublicState) {
-      throw new HttpsError(
-        "failed-precondition",
-        "La publicacion no tiene un estado compatible para esta accion."
-      );
-    }
-
-    const transitionTarget = resolveTransitionTargetState({
-      currentState: normalizedCurrentPublicState,
-      action,
-      now,
-      venceAt,
-    });
     linkedDraftSlug = inferDraftSlugFromPublicationData(slug, publicationData);
-    const plannedTransition = planPublicationTransitionOperations({
+    const preparedTransition = preparePublicationStateTransitionFlow({
       slug,
-      nextState: transitionTarget.nextState,
-      firstPublishedAt,
-      effectiveExpirationDate: venceAt,
-      pausedAt: transitionTarget.pausedAt,
-      trashedAt: transitionTarget.enPapeleraAt,
+      action,
+      publicationData,
+      publicationSnap,
       linkedDraftSlug,
-      activeUpdatedAtValue: serverTimestamp(),
-      draftUpdatedAtValue: serverTimestamp(),
+      now,
+      createActiveUpdatedAtValue: () => serverTimestamp(),
+      createDraftUpdatedAtValue: () => serverTimestamp(),
     });
+    linkedDraftSlug = preparedTransition.linkedDraftSlug;
 
     tx.set(
       publicationRef,
-      plannedTransition.activePublicationWrite,
+      preparedTransition.activePublicationWrite,
       { merge: true }
     );
 
-    plannedDraftWrite = plannedTransition.draftWrite;
-    transitionResult = plannedTransition.result;
+    plannedDraftWrite = preparedTransition.draftWrite;
+    transitionResult = preparedTransition.result;
   });
 
   if (linkedDraftSlug && plannedDraftWrite) {
@@ -1324,79 +1011,6 @@ export async function transitionPublishedInvitationStateHandler(
   }
 
   return transitionResult;
-}
-
-function isTrashedPublicationDueForPurge(params: {
-  publicationData: Record<string, unknown>;
-  publicationSnap: FirebaseFirestore.DocumentSnapshot;
-  now: Date;
-}): boolean {
-  const { publicationData, publicationSnap, now } = params;
-  const snapshot = resolvePublicationLifecycleSnapshotFromData(publicationData, {
-    now,
-    fallbackPublishedAt: publicationSnap.createTime ?? now,
-  });
-  if (snapshot.backendState !== PUBLICATION_PUBLIC_STATES.TRASH) return false;
-
-  const purgeAt = snapshot.trashPurgeAt;
-  if (!(purgeAt instanceof Date)) return false;
-
-  return purgeAt.getTime() <= now.getTime();
-}
-
-async function collectDraftCandidatesForPublicationPurge(params: {
-  slug: string;
-  publicationData: Record<string, unknown>;
-}): Promise<Set<string>> {
-  const { slug, publicationData } = params;
-  const draftCandidates = new Set<string>();
-
-  extractDraftSlugCandidatesFromPublicationData(publicationData).forEach((candidate) => {
-    draftCandidates.add(candidate);
-  });
-
-  const linkedDraftsSnap = await db
-    .collection(BORRADORES_COLLECTION)
-    .where("slugPublico", "==", slug)
-    .limit(60)
-    .get();
-
-  linkedDraftsSnap.docs.forEach((draftDoc) => {
-    draftCandidates.add(draftDoc.id);
-  });
-
-  return draftCandidates;
-}
-
-async function purgeSingleTrashedPublication(params: {
-  slug: string;
-  publicationSnap: FirebaseFirestore.QueryDocumentSnapshot;
-}): Promise<void> {
-  const { slug, publicationSnap } = params;
-  const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
-  const draftCandidates = await collectDraftCandidatesForPublicationPurge({
-    slug,
-    publicationData,
-  });
-  const plannedPurge = planTrashedPublicationPurgeOperations({
-    slug,
-    draftSlugs: draftCandidates,
-  });
-
-  await executePlannedTrashedPublicationPurge({
-    plan: plannedPurge,
-    publicationRef: publicationSnap.ref,
-    deleteStoragePrefix: (prefix) => bucket.deleteFiles({ prefix }),
-    recursiveDelete: (ref) => db.recursiveDelete(ref as FirebaseFirestore.DocumentReference),
-    resetDraftLinks: (request) =>
-      clearDraftPublicationLinksAsDraft({
-        draftSlug: request.draftSlug,
-      }),
-    deleteReservation: async (reservationSlug) => {
-      await getReservationRef(reservationSlug).delete();
-    },
-    warn: (message, context) => logger.warn(message, context),
-  });
 }
 
 export async function purgeTrashedPublicationsHandler(params?: {
@@ -1427,7 +1041,7 @@ export async function purgeTrashedPublicationsHandler(params?: {
   for (const docItem of trashedSnap.docs) {
     try {
       const data = (docItem.data() || {}) as Record<string, unknown>;
-      const isDue = isTrashedPublicationDueForPurge({
+      const isDue = isPublicationDueForTrashPurgeFlow({
         publicationData: data,
         publicationSnap: docItem,
         now,
@@ -1438,9 +1052,28 @@ export async function purgeTrashedPublicationsHandler(params?: {
         continue;
       }
 
-      await purgeSingleTrashedPublication({
+      await purgeTrashedPublicationFlow({
         slug: docItem.id,
         publicationSnap: docItem,
+        extractInitialDraftSlugs: (publicationData) =>
+          extractDraftSlugCandidatesFromPublicationData(publicationData),
+        queryLinkedDraftsByPublicSlug: (slug) =>
+          db
+            .collection(BORRADORES_COLLECTION)
+            .where("slugPublico", "==", slug)
+            .limit(60)
+            .get(),
+        resetDraftLinks: (request) =>
+          clearDraftPublicationLinksAsDraft({
+            draftSlug: request.draftSlug,
+          }),
+        deleteStoragePrefix: (prefix) => bucket.deleteFiles({ prefix }),
+        recursiveDelete: (ref) =>
+          db.recursiveDelete(ref as FirebaseFirestore.DocumentReference),
+        deleteReservation: async (reservationSlug) => {
+          await getReservationRef(reservationSlug).delete();
+        },
+        warn: (message, context) => logger.warn(message, context),
       });
       purged += 1;
     } catch (error) {
@@ -1574,59 +1207,23 @@ export async function hardDeleteLegacyPublicationHandler(
 
   const publicationRef = getPublicationRef(slug);
   const publicationSnap = await publicationRef.get();
-  const publicationData = publicationSnap.exists
-    ? ((publicationSnap.data() || {}) as Record<string, unknown>)
-    : null;
-
-  const draftCandidates = new Set<string>();
-  let hasOwnership = false;
-
-  if (publicationData) {
-    const publicationOwnerUid = getString(publicationData.userId);
-    if (!publicationOwnerUid || publicationOwnerUid !== uid) {
-      throw new HttpsError("permission-denied", "No tienes permisos sobre esta publicacion.");
-    }
-
-    hasOwnership = true;
-    extractDraftSlugCandidatesFromPublicationData(publicationData).forEach((candidate) =>
-      draftCandidates.add(candidate)
-    );
-  }
-
-  const historyDocs = await collectUserHistoryDocsForSlug({ uid, slug });
-  if (historyDocs.length > 0) {
-    hasOwnership = true;
-    historyDocs.forEach((historyDoc) => {
-      const historyData = (historyDoc.data() || {}) as Record<string, unknown>;
-      extractDraftSlugCandidatesFromPublicationData(historyData).forEach((candidate) =>
-        draftCandidates.add(candidate)
-      );
+  const { plan: plannedLegacyCleanup, historyDocs } =
+    await prepareLegacyPublicationCleanupFlow({
+      slug,
+      uid,
+      publicationSnap,
+      extractDraftSlugsFromPublicationData: (publicationData) =>
+        extractDraftSlugCandidatesFromPublicationData(publicationData),
+      loadHistoryDocsForSlug: (uid, slug) => collectUserHistoryDocsForSlug({ uid, slug }),
+      queryLinkedDraftsByPublicSlug: (uid, slug) =>
+        db
+          .collection(BORRADORES_COLLECTION)
+          .where("userId", "==", uid)
+          .where("slugPublico", "==", slug)
+          .limit(25)
+          .get(),
     });
-  }
 
-  const linkedDraftsSnap = await db
-    .collection(BORRADORES_COLLECTION)
-    .where("userId", "==", uid)
-    .where("slugPublico", "==", slug)
-    .limit(25)
-    .get();
-
-  if (!linkedDraftsSnap.empty) {
-    hasOwnership = true;
-    linkedDraftsSnap.docs.forEach((draftDoc) => {
-      draftCandidates.add(draftDoc.id);
-    });
-  }
-
-  if (!hasOwnership) {
-    throw new HttpsError("not-found", "No se encontro una publicacion legacy para eliminar.");
-  }
-  const plannedLegacyCleanup = planLegacyPublicationCleanupOperations({
-    slug,
-    uid,
-    draftSlugs: draftCandidates,
-    shouldDeleteActivePublication: publicationSnap.exists,
-  });
   const {
     deletedStoragePrefix,
     deletedActivePublication,
@@ -1882,26 +1479,6 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     warn: (message, context) => logger.warn(message, context),
     logError: (message, context) => logger.error(message, context),
   });
-}
-
-async function readSessionOwnedByUser(uid: string, sessionId: string) {
-  const ref = getSessionRef(sessionId);
-  const snap = await ref.get();
-
-  if (!snap.exists) {
-    throw new HttpsError("not-found", "Sesion de checkout no encontrada");
-  }
-
-  const data = (snap.data() || {}) as Record<string, unknown>;
-  if (getString(data.uid) !== uid) {
-    throw new HttpsError("permission-denied", "No tenes acceso a esta sesion");
-  }
-
-  return {
-    ref,
-    snap,
-    data,
-  };
 }
 
 function toAmount(value: unknown, fallback: number): number {
@@ -2360,36 +1937,26 @@ export async function createPublicationPaymentHandler(
 ): Promise<CheckoutPaymentResult> {
   const uid = requireAuth(request);
   const sessionId = normalizeSessionId(request.data?.sessionId);
-  const { ref: sessionRef, data: sessionData } = await readSessionOwnedByUser(uid, sessionId);
+  const { ref: sessionRef, data: sessionData } = await readOwnedCheckoutSessionFlow({
+    uid,
+    sessionId,
+    sessionRef: getSessionRef(sessionId),
+  });
+
+  if (
+    await expireCheckoutSessionIfNeededFlow({
+      sessionId,
+      sessionData,
+      sessionRef,
+      isExpiredAt,
+      createUpdatedAtValue: () => serverTimestamp(),
+      updateReservationStatus: (update) => markReservationStatus(update),
+    })
+  ) {
+    return buildExpiredCheckoutPaymentResult();
+  }
 
   const sessionStatus = getString(sessionData.status) as CheckoutSessionStatus;
-  const expiresAt = sessionData.expiresAt as admin.firestore.Timestamp;
-
-  if (isExpiredAt(expiresAt) && !SESSION_TERMINAL_STATES.has(sessionStatus)) {
-    await sessionRef.set(
-      {
-        status: "expired",
-        lastError: "La sesion de pago expiro. Inicia una nueva.",
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    if (getString(sessionData.operation) === "new") {
-      await markReservationStatus({
-        slug: getString(sessionData.publicSlug),
-        sessionId,
-        nextStatus: "expired",
-      });
-    }
-
-    return {
-      sessionStatus: "expired",
-      paymentId: "",
-      message: "La sesion expiro",
-      errorMessage: "La sesion de pago expiro. Inicia una nueva.",
-    };
-  }
 
   if (sessionStatus === "published") {
     return buildPaymentResultFromSession(sessionData, getString(sessionData.mpPaymentId));
@@ -2399,25 +1966,17 @@ export async function createPublicationPaymentHandler(
   const operation = normalizeOperation(sessionData.operation);
 
   if (isZeroAmount(amountArs)) {
-    const syntheticPaymentId =
-      getString(sessionData.mpPaymentId) || `discount-full-${sessionId}`;
-
-    await sessionRef.set(
-      {
-        mpPaymentId: syntheticPaymentId,
-        mpStatus: "approved",
-        mpStatusDetail: "discount_100_auto_approved",
-        status: "payment_approved",
-        lastError: null,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const zeroAmountApproval = await autoApproveZeroAmountCheckoutSessionFlow({
+      sessionId,
+      sessionData,
+      sessionRef,
+      createUpdatedAtValue: () => serverTimestamp(),
+    });
 
     return finalizeApprovedSession({
       sessionId,
-      fallbackPaymentId: syntheticPaymentId,
-      approvedAt: toSafeIsoDate(new Date()),
+      fallbackPaymentId: zeroAmountApproval.paymentId,
+      approvedAt: zeroAmountApproval.approvedAt,
     });
   }
 
@@ -2515,40 +2074,26 @@ export async function getPublicationCheckoutStatusHandler(
   const uid = requireAuth(request);
   const sessionId = normalizeSessionId(request.data?.sessionId);
 
-  const { ref: sessionRef, data } = await readSessionOwnedByUser(uid, sessionId);
-  const status = getString(data.status) as CheckoutSessionStatus;
-  const expiresAt = data.expiresAt as admin.firestore.Timestamp;
+  const { ref: sessionRef, data } = await readOwnedCheckoutSessionFlow({
+    uid,
+    sessionId,
+    sessionRef: getSessionRef(sessionId),
+  });
 
-  if (isExpiredAt(expiresAt) && !SESSION_TERMINAL_STATES.has(status)) {
-    await sessionRef.set(
-      {
-        status: "expired",
-        lastError: "La sesion de pago expiro. Inicia una nueva.",
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    if (getString(data.operation) === "new") {
-      await markReservationStatus({
-        slug: getString(data.publicSlug),
-        sessionId,
-        nextStatus: "expired",
-      });
-    }
-
-    return {
-      sessionStatus: "expired",
-      errorMessage: "La sesion de pago expiro. Inicia una nueva.",
-    };
+  if (
+    await expireCheckoutSessionIfNeededFlow({
+      sessionId,
+      sessionData: data,
+      sessionRef,
+      isExpiredAt,
+      createUpdatedAtValue: () => serverTimestamp(),
+      updateReservationStatus: (update) => markReservationStatus(update),
+    })
+  ) {
+    return buildExpiredCheckoutStatusResponse();
   }
 
-  return {
-    sessionStatus: status || "awaiting_payment",
-    publicUrl: getString(data.publicUrl) || undefined,
-    receipt: (data.receipt as Record<string, unknown> | undefined) || undefined,
-    errorMessage: getString(data.lastError) || undefined,
-  };
+  return buildCheckoutStatusResponseFromSession(data);
 }
 
 export async function retryPaidPublicationWithNewSlugHandler(
@@ -2557,7 +2102,11 @@ export async function retryPaidPublicationWithNewSlugHandler(
   const uid = requireAuth(request);
   const sessionId = normalizeSessionId(request.data?.sessionId);
 
-  const { ref: sessionRef, data } = await readSessionOwnedByUser(uid, sessionId);
+  const { ref: sessionRef, data } = await readOwnedCheckoutSessionFlow({
+    uid,
+    sessionId,
+    sessionRef: getSessionRef(sessionId),
+  });
   const status = getString(data.status) as CheckoutSessionStatus;
 
   if (status === "published") {
@@ -2646,7 +2195,11 @@ export async function publishWithApprovedPaymentSession(params: {
 
   await ensureDraftOwnership(uid, draftSlug);
 
-  const session = await readSessionOwnedByUser(uid, paymentSessionId);
+  const session = await readOwnedCheckoutSessionFlow({
+    uid,
+    sessionId: paymentSessionId,
+    sessionRef: getSessionRef(paymentSessionId),
+  });
   const data = session.data;
 
   const sessionPublicSlug = getString(data.publicSlug);

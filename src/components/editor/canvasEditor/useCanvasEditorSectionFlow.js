@@ -27,6 +27,8 @@ export default function useCanvasEditorSectionFlow({
   previoAnimandoSeccionesRef,
   seccionActivaIdRef,
   normalizarAltoModo,
+  validarPuntosLinea,
+  ALTURA_PANTALLA_EDITOR,
 }) {
   const seccionPendienteEliminar = useMemo(
     () => secciones.find((seccion) => seccion.id === deleteSectionModal.sectionId) || null,
@@ -73,6 +75,8 @@ export default function useCanvasEditorSectionFlow({
         setSecciones,
         setObjetos,
         setSeccionActivaId,
+        validarPuntosLinea,
+        ALTURA_PANTALLA_EDITOR,
       });
       setDeleteSectionModal({ isOpen: false, sectionId: null });
     } finally {
@@ -90,6 +94,8 @@ export default function useCanvasEditorSectionFlow({
     setSeccionActivaId,
     setDeleteSectionModal,
     setIsDeletingSection,
+    validarPuntosLinea,
+    ALTURA_PANTALLA_EDITOR,
   ]);
 
   const onSelectSeccion = useCallback((id) => {
@@ -312,6 +318,8 @@ export default function useCanvasEditorSectionFlow({
       slug,
       setSecciones,
       setSeccionesAnimando,
+      validarPuntosLinea,
+      ALTURA_PANTALLA_EDITOR,
     });
 
     seguirScrollDuranteMovimientoSeccion({
@@ -327,6 +335,8 @@ export default function useCanvasEditorSectionFlow({
     seguirScrollDuranteMovimientoSeccion,
     slug,
     ultimaSeccionMovidaRef,
+    validarPuntosLinea,
+    ALTURA_PANTALLA_EDITOR,
   ]);
 
   const sincronizarSeccionVisiblePorScroll = useCallback(() => {

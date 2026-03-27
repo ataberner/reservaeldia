@@ -6,6 +6,7 @@ export const PUBLICATION_STATES = Object.freeze({
 });
 
 export const TRASH_RETENTION_DAYS = 30;
+const PUBLICATION_VIGENCY_MONTHS = 12;
 
 function normalizeStateText(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -35,6 +36,56 @@ export function toMs(value) {
 export function toDate(value) {
   const ms = toMs(value);
   return ms > 0 ? new Date(ms) : null;
+}
+
+function resolvePublicationLifecycleRecord(publication) {
+  if (!publication || typeof publication !== "object" || Array.isArray(publication)) {
+    return null;
+  }
+
+  const lifecycle = publication.publicationLifecycle;
+  if (!lifecycle || typeof lifecycle !== "object" || Array.isArray(lifecycle)) {
+    return null;
+  }
+
+  return lifecycle;
+}
+
+function isExplicitFinalizedState(value) {
+  const normalized = normalizeStateText(value);
+  return normalized === PUBLICATION_STATES.FINALIZED || normalized === "finalized";
+}
+
+function isDraftLifecycleState(value) {
+  return normalizeStateText(value) === "draft";
+}
+
+function normalizePublicationPublicStateValue(value) {
+  const normalized = normalizeStateText(value);
+  if (!normalized) return null;
+
+  if (
+    normalized === PUBLICATION_STATES.ACTIVE ||
+    normalized === "active" ||
+    normalized === "activa" ||
+    normalized === "published"
+  ) {
+    return PUBLICATION_STATES.ACTIVE;
+  }
+
+  if (
+    normalized === PUBLICATION_STATES.PAUSED ||
+    normalized === "paused" ||
+    normalized === "pausada"
+  ) {
+    return PUBLICATION_STATES.PAUSED;
+  }
+
+  if (normalized === PUBLICATION_STATES.TRASH || normalized === "trash") {
+    return PUBLICATION_STATES.TRASH;
+  }
+
+  return null;
 }
 
 export function normalizePublicationStateValue(value) {
@@ -75,21 +126,57 @@ export function normalizePublicationStateValue(value) {
   return "";
 }
 
+function addMonthsPreservingDateTimeUTC(baseDate, monthsToAdd) {
+  const months = Number.isFinite(monthsToAdd) ? Math.trunc(monthsToAdd) : 0;
+  const year = baseDate.getUTCFullYear();
+  const month = baseDate.getUTCMonth();
+  const day = baseDate.getUTCDate();
+  const hour = baseDate.getUTCHours();
+  const minute = baseDate.getUTCMinutes();
+  const second = baseDate.getUTCSeconds();
+  const millisecond = baseDate.getUTCMilliseconds();
+
+  const totalMonths = month + months;
+  const targetYear = year + Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+  const lastDayOfMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const safeDay = Math.min(day, lastDayOfMonth);
+
+  return new Date(
+    Date.UTC(targetYear, targetMonth, safeDay, hour, minute, second, millisecond)
+  );
+}
+
+function computePublicationExpirationDate(publishedAt) {
+  if (!(publishedAt instanceof Date)) return null;
+  return addMonthsPreservingDateTimeUTC(publishedAt, PUBLICATION_VIGENCY_MONTHS);
+}
+
 export function resolvePublicationState(publication) {
   if (!publication || typeof publication !== "object") {
     return PUBLICATION_STATES.ACTIVE;
   }
 
-  const fromEstado = normalizePublicationStateValue(publication.estado);
+  if (isExplicitFinalizedState(publication.estado)) {
+    return PUBLICATION_STATES.FINALIZED;
+  }
+  if (isDraftLifecycleState(publication.estado)) {
+    return null;
+  }
+
+  const fromEstado = normalizePublicationPublicStateValue(publication.estado);
   if (fromEstado) return fromEstado;
 
-  const lifecycle =
-    publication.publicationLifecycle &&
-    typeof publication.publicationLifecycle === "object"
-      ? publication.publicationLifecycle
-      : null;
+  const lifecycle = resolvePublicationLifecycleRecord(publication);
 
-  const fromLifecycle = normalizePublicationStateValue(lifecycle?.state);
+  if (isExplicitFinalizedState(lifecycle?.state)) {
+    return PUBLICATION_STATES.FINALIZED;
+  }
+  if (isDraftLifecycleState(lifecycle?.state)) {
+    return null;
+  }
+
+  const fromLifecycle = normalizePublicationPublicStateValue(lifecycle?.state);
   if (fromLifecycle) return fromLifecycle;
 
   if (publication.enPapeleraAt) return PUBLICATION_STATES.TRASH;
@@ -99,14 +186,17 @@ export function resolvePublicationState(publication) {
 }
 
 export function resolvePublicationDates(publication) {
+  const lifecycle = resolvePublicationLifecycleRecord(publication);
   const publishedAt =
     toDate(publication?.publicadaAt) ||
     toDate(publication?.publicadaEn) ||
+    toDate(lifecycle?.firstPublishedAt) ||
     null;
   const expiresAt =
     toDate(publication?.venceAt) ||
     toDate(publication?.vigenteHasta) ||
-    null;
+    toDate(lifecycle?.expiresAt) ||
+    computePublicationExpirationDate(publishedAt);
   const pausedAt = toDate(publication?.pausadaAt);
   const trashedAt = toDate(publication?.enPapeleraAt);
 
@@ -169,6 +259,17 @@ export function getPublicationStatus(publication, nowMs = Date.now()) {
       isActive: false,
       isPaused: false,
       isTrashed: true,
+    };
+  }
+
+  if (state !== PUBLICATION_STATES.ACTIVE) {
+    return {
+      state: null,
+      label: "No disponible",
+      isFinalized: false,
+      isActive: false,
+      isPaused: false,
+      isTrashed: false,
     };
   }
 

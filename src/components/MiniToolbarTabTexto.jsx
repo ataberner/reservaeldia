@@ -2,6 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { normalizeInvitationType } from "@/domain/invitationTypes";
 import { useTextPresetCatalog } from "@/hooks/useTextPresetCatalog";
+import {
+  readEditorActiveSectionId,
+  readEditorInvitationType,
+} from "@/lib/editorRuntimeBridge";
 
 function normalizeTextProps(item = {}) {
   const fontSize = Number(item.fontSize ?? item.size ?? 24);
@@ -38,13 +42,7 @@ function normalizeTextProps(item = {}) {
 function getSeccionDestino(explicitId) {
   if (explicitId) return explicitId;
   if (typeof window === "undefined") return null;
-  return (
-    window._seccionActivaId ||
-    (window.canvasEditor && window.canvasEditor.seccionActivaId) ||
-    window._lastSeccionActivaId ||
-    (Array.isArray(window._seccionesOrdenadas) && window._seccionesOrdenadas[0]?.id) ||
-    null
-  );
+  return readEditorActiveSectionId();
 }
 
 let measureCtx = null;
@@ -93,11 +91,7 @@ function measureTextWidth(texto, fontDesc, letterSpacing = 0) {
 function getCurrentInvitationType() {
   if (typeof window === "undefined") return "general";
 
-  const direct =
-    window._draftTipoInvitacion ||
-    window.canvasEditor?.tipoInvitacion ||
-    window._tipoInvitacionActual ||
-    "general";
+  const direct = readEditorInvitationType() || "general";
 
   return normalizeInvitationType(direct);
 }

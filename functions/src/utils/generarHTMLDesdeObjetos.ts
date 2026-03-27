@@ -2032,6 +2032,28 @@ pointer-events: auto;
           return envolverSiEnlace(`<div class="objeto" style="${style}"></div>`, obj);
         }
 
+        if (figura === "pill") {
+          const w = Math.max(1, Number.isFinite(obj?.width) ? Number(obj.width) : 170);
+          const h = Math.max(1, Number.isFinite(obj?.height) ? Number(obj.height) : 72);
+          const cornerRadius = Number.isFinite(obj?.cornerRadius)
+            ? Number(obj.cornerRadius)
+            : Math.max(10, Math.round(h / 2));
+          const baseStyle = stylePosBase(obj);
+          const sPill = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
+
+          const style = `
+${baseStyle}
+width: ${pxX(obj, w)};
+height: ${pxY(obj, h)};
+background: ${fill};
+border-radius: calc(${sPill} * ${cornerRadius}px);
+box-sizing: border-box;
+pointer-events: auto;
+`.trim();
+
+          return envolverSiEnlace(`<div class="objeto" style="${style}"></div>`, obj);
+        }
+
         if (figura === "line") {
           return envolverSiEnlace(renderShapeLineSvgHtml(obj, fill), obj);
           const points = obj.points || [0, 0, LINE_CONSTANTS.DEFAULT_LENGTH, 0];

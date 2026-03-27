@@ -127,6 +127,31 @@ test("keeps v2 frame validation blocking while avoiding false legacy warnings", 
   assert.deepEqual(issueKeys(result.warnings), []);
 });
 
+test("allows editor pill shapes once published HTML supports them", () => {
+  const rawObjetos = [
+    {
+      id: "shape-pill",
+      tipo: "forma",
+      figura: "pill",
+      seccionId: "section-1",
+      width: 170,
+      height: 72,
+      color: "#111111",
+    },
+  ];
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos,
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: rawObjetos,
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, true);
+  assert.deepEqual(issueKeys(result.blockers), []);
+  assert.deepEqual(issueKeys(result.warnings), []);
+});
+
 test("prepares a representative clean draft into a publish-ready state without warnings", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,

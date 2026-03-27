@@ -25,6 +25,11 @@ import {
   buildFixedGalleryObjectPatch,
   buildGalleryLayoutBlueprintFromObject,
 } from "@/domain/templates/galleryDynamicMedia";
+import {
+  readEditorObjectById,
+  readEditorObjectByType,
+  readEditorSelectionSnapshot,
+} from "@/lib/editorRuntimeBridge";
 import { resolveGalleryCellMediaUrl } from "../../../../shared/renderAssetContract.js";
 import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
 
@@ -202,12 +207,7 @@ export default function useEditorEvents({
 
       const hayImagenNueva = typeof mediaUrl === "string" && mediaUrl.trim().length > 0;
       if (hayImagenNueva && Number.isFinite(indexActual)) {
-        const objetosActuales = Array.isArray(window._objetosActuales)
-          ? window._objetosActuales
-          : [];
-        const galeriaActual = objetosActuales.find(
-          (o) => o?.id === objId && o?.tipo === "galeria"
-        );
+        const galeriaActual = readEditorObjectById(objId);
         const cellsActuales = getVisibleGalleryCells(galeriaActual);
 
         if (cellsActuales.length > 1) {
@@ -332,21 +332,15 @@ export default function useEditorEvents({
 
       const existingCountdownId =
         nuevoConSeccion?.tipo === "countdown"
-          ? (Array.isArray(window._objetosActuales)
-            ? window._objetosActuales.find((o) => o?.tipo === "countdown")?.id
-            : null)
+          ? readEditorObjectByType("countdown")?.id || null
           : null;
       const existingRsvpId =
         nuevoConSeccion?.tipo === "rsvp-boton"
-          ? (Array.isArray(window._objetosActuales)
-            ? window._objetosActuales.find((o) => o?.tipo === "rsvp-boton")?.id
-            : null)
+          ? readEditorObjectByType("rsvp-boton")?.id || null
           : null;
       const existingGiftId =
         nuevoConSeccion?.tipo === "regalo-boton"
-          ? (Array.isArray(window._objetosActuales)
-            ? window._objetosActuales.find((o) => o?.tipo === "regalo-boton")?.id
-            : null)
+          ? readEditorObjectByType("regalo-boton")?.id || null
           : null;
 
       setObjetos((prev) => {
@@ -462,7 +456,8 @@ export default function useEditorEvents({
       const { id, cambios } = e.detail || {};
       if (!cambios) return;
 
-      const targetId = id || (window._elementosSeleccionados?.[0] ?? null);
+      const targetId =
+        id || (readEditorSelectionSnapshot().selectedIds?.[0] ?? null);
       if (!targetId) return;
 
       setObjetos((prev) => {

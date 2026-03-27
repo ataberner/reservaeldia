@@ -441,25 +441,14 @@ export const publicationParityFixtures = Object.freeze([
       trashPurgeAtIso: null,
     },
   },
-]);
-
-export const publicationSemanticDriftFixtures = Object.freeze([
   {
-    id: "publication-lifecycle-draft-state-drift",
+    id: "publication-lifecycle-draft-state-parity",
     publication: {
       publicationLifecycle: {
         state: "draft",
       },
     },
-    frontendExpected: {
-      rawPublicState: "publicada_activa",
-      effectiveState: "publicada_activa",
-      isFinalized: false,
-      isDateExpired: false,
-      isVisitorAccessible: true,
-      trashPurgeAtIso: null,
-    },
-    backendExpected: {
+    expected: {
       rawPublicState: null,
       effectiveState: null,
       isFinalized: false,
@@ -469,7 +458,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
     },
   },
   {
-    id: "publication-lifecycle-expiry-drift",
+    id: "publication-lifecycle-expiry-parity",
     publication: {
       publicationLifecycle: {
         state: "published",
@@ -477,15 +466,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       },
       publicadaEn: PUBLICATION_PUBLISHED_AT_ISO,
     },
-    frontendExpected: {
-      rawPublicState: "publicada_activa",
-      effectiveState: "publicada_activa",
-      isFinalized: false,
-      isDateExpired: false,
-      isVisitorAccessible: true,
-      trashPurgeAtIso: null,
-    },
-    backendExpected: {
+    expected: {
       rawPublicState: "publicada_activa",
       effectiveState: "finalizada",
       isFinalized: true,
@@ -495,20 +476,12 @@ export const publicationSemanticDriftFixtures = Object.freeze([
     },
   },
   {
-    id: "publication-derived-expiry-from-legacy-published-date-drift",
+    id: "publication-derived-expiry-from-legacy-published-date-parity",
     publication: {
       estado: "publicada_activa",
       publicadaAt: PUBLICATION_OLD_PUBLISHED_AT_ISO,
     },
-    frontendExpected: {
-      rawPublicState: "publicada_activa",
-      effectiveState: "publicada_activa",
-      isFinalized: false,
-      isDateExpired: false,
-      isVisitorAccessible: true,
-      trashPurgeAtIso: null,
-    },
-    backendExpected: {
+    expected: {
       rawPublicState: "publicada_activa",
       effectiveState: "finalizada",
       isFinalized: true,
@@ -518,21 +491,13 @@ export const publicationSemanticDriftFixtures = Object.freeze([
     },
   },
   {
-    id: "publication-trash-purge-derived-from-published-date-drift",
+    id: "publication-trash-purge-derived-from-published-date-parity",
     publication: {
       estado: "papelera",
       enPapeleraAt: isoFromNow(-2),
       publicadaAt: PUBLICATION_PUBLISHED_AT_ISO,
     },
-    frontendExpected: {
-      rawPublicState: "papelera",
-      effectiveState: "papelera",
-      isFinalized: false,
-      isDateExpired: false,
-      isVisitorAccessible: false,
-      trashPurgeAtIso: null,
-    },
-    backendExpected: {
+    expected: {
       rawPublicState: "papelera",
       effectiveState: "papelera",
       isFinalized: false,
@@ -542,5 +507,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
     },
   },
 ]);
+
+export const publicationSemanticDriftFixtures = Object.freeze([]);
 
 export const draftParityFixtures = draftTrashParityFixtures;

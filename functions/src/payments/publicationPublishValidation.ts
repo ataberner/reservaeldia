@@ -31,6 +31,19 @@ const GIFT_BANK_FIELD_LABELS: Record<string, string> = Object.freeze({
   cbu: "CBU / CVU",
   cuit: "CUIT",
 });
+const PUBLISH_SUPPORTED_SHAPE_FIGURES = new Set([
+  "rect",
+  "circle",
+  "pill",
+  "line",
+  "triangle",
+  "diamond",
+  "star",
+  "arrow",
+  "pentagon",
+  "hexagon",
+  "heart",
+]);
 
 export type PublicationPublishValidationSeverity = "blocking" | "warning";
 
@@ -354,6 +367,8 @@ export function validatePreparedPublicationRenderState(params: {
     const sectionId =
       getString(rawObject.seccionId) || getString(finalObject.seccionId) || null;
     const objectType = normalizeText(rawObject.tipo) || normalizeText(finalObject.tipo);
+    const shapeFigure =
+      normalizeText(rawObject.figura) || normalizeText(finalObject.figura);
     const objectLabel = getObjectLabel(rawObject, index);
     const rawSection = sectionId ? rawSectionLookup.get(sectionId) || null : null;
     const finalSection = sectionId ? finalSectionLookup.get(sectionId) || null : null;
@@ -397,6 +412,24 @@ export function validatePreparedPublicationRenderState(params: {
           objectId,
           sectionId,
           fieldPath: "seccionId",
+        })
+      );
+    }
+
+    if (
+      objectType === "forma" &&
+      !PUBLISH_SUPPORTED_SHAPE_FIGURES.has(shapeFigure)
+    ) {
+      pushIssue(
+        createIssue({
+          severity: "blocking",
+          code: "shape-figure-unsupported-for-publish",
+          message: shapeFigure
+            ? `${objectLabel} usa la figura "${shapeFigure}", pero el HTML publicado no la soporta todavia.`
+            : `${objectLabel} no tiene una figura soportada para el HTML publicado.`,
+          objectId,
+          sectionId,
+          fieldPath: "figura",
         })
       );
     }

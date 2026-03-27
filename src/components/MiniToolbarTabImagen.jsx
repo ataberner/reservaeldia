@@ -1,6 +1,10 @@
 // components/MiniToolbarTabImagen.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
+import {
+  readEditorObjectById,
+  readEditorSelectionSnapshot,
+} from "@/lib/editorRuntimeBridge";
 import { resolveGalleryCellMediaUrl } from "../../shared/renderAssetContract.js";
 
 function clamp(n, min, max) {
@@ -8,16 +12,7 @@ function clamp(n, min, max) {
 }
 
 function getWindowSelectionSnapshot() {
-  if (typeof window === "undefined") {
-    return { selectedIds: [], galleryCell: null };
-  }
-
-  return {
-    selectedIds: Array.isArray(window._elementosSeleccionados)
-      ? window._elementosSeleccionados
-      : [],
-    galleryCell: window._celdaGaleriaActiva || null,
-  };
+  return readEditorSelectionSnapshot();
 }
 
 export default function MiniToolbarTabImagen({
@@ -96,14 +91,12 @@ export default function MiniToolbarTabImagen({
   }, []);
 
   const galeriaSeleccionada = useMemo(() => {
-    if (typeof window === "undefined") return null;
     if (!Array.isArray(editorSelection.selectedIds) || editorSelection.selectedIds.length !== 1) {
       return null;
     }
 
     const selectedId = editorSelection.selectedIds[0];
-    const objetos = Array.isArray(window._objetosActuales) ? window._objetosActuales : [];
-    const obj = objetos.find((item) => item?.id === selectedId);
+    const obj = readEditorObjectById(selectedId);
     return obj?.tipo === "galeria" ? obj : null;
   }, [editorSelection.selectedIds]);
 

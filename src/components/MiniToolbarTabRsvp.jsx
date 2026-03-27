@@ -13,6 +13,7 @@ import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
+import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
 import {
   moveQuestion,
   setCustomQuestionType,
@@ -31,10 +32,7 @@ function normalizeConfig(input) {
 }
 
 function findRsvpButtonId() {
-  if (typeof window === "undefined") return null;
-  const objects = Array.isArray(window._objetosActuales) ? window._objetosActuales : [];
-  const rsvpButton = objects.find((obj) => obj?.tipo === "rsvp-boton");
-  return rsvpButton?.id || null;
+  return readEditorObjectByType("rsvp-boton")?.id || null;
 }
 
 function emitRsvpConfigUpdate(nextConfig) {

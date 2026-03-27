@@ -1,6 +1,12 @@
 // src/components/editor/sections/useSectionsManager.js
 import { useCallback, useEffect, useRef, useState } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+    buildNextSectionHeightState,
+    buildNextSectionModeState,
+    buildSectionCreationState,
+    buildSectionMutationWritePayload,
+} from "./sectionMutationPersistence.js";
 import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
 
 /**
@@ -24,9 +30,10 @@ export default function useSectionsManager({
 
     crearSeccion,
     normalizarAltoModo,
-    limpiarObjetoUndefined,
+    validarPuntosLinea,
 
     ALTURA_REFERENCIA_PANTALLA,
+    ALTURA_PANTALLA_EDITOR,
 }) {
     const getClientYFromEvent = useCallback((event) => {
         if (!event) return null;
@@ -45,6 +52,8 @@ export default function useSectionsManager({
     // ------------------------------------------
     const [controlandoAltura, setControlandoAltura] = useState(false);
     const seccionesRef = useRef(secciones);
+    const objetosRef = useRef(objetos);
+    const resizePersistTimeoutRef = useRef(null);
     const resizeSessionRef = useRef({
         isResizing: false,
         seccionId: null,
@@ -52,6 +61,7 @@ export default function useSectionsManager({
         posicionInicialMouse: 0,
         posicionActualMouse: 0,
         ultimaAlturaAplicada: null,
+        ultimaSeccionesCalculadas: null,
         rafId: null,
         pointerId: null,
         targetConCapture: null,
@@ -62,6 +72,71 @@ export default function useSectionsManager({
         seccionesRef.current = secciones;
     }, [secciones]);
 
+    useEffect(() => {
+        objetosRef.current = objetos;
+    }, [objetos]);
+
+    useEffect(() => () => {
+        if (resizePersistTimeoutRef.current) {
+            clearTimeout(resizePersistTimeoutRef.current);
+        }
+    }, []);
+
+    const applySectionSnapshot = useCallback(
+        (nextSecciones) => {
+            seccionesRef.current = nextSecciones;
+            setSecciones(nextSecciones);
+            return nextSecciones;
+        },
+        [setSecciones]
+    );
+
+    const applyDraftSnapshot = useCallback(
+        ({
+            nextSecciones,
+            nextObjetos = objetosRef.current,
+            updateObjetos = false,
+        }) => {
+            applySectionSnapshot(nextSecciones);
+
+            if (updateObjetos) {
+                objetosRef.current = nextObjetos;
+                setObjetos(nextObjetos);
+            }
+
+            return {
+                nextSecciones,
+                nextObjetos: updateObjetos ? nextObjetos : objetosRef.current,
+            };
+        },
+        [applySectionSnapshot, setObjetos]
+    );
+
+    const persistSectionMutation = useCallback(
+        async ({
+            nextSecciones,
+            nextObjetos = objetosRef.current,
+            reason,
+            includeObjetos = false,
+        }) => {
+            if (!slug) return;
+
+            const ref = doc(db, "borradores", slug);
+            const { payload } = buildSectionMutationWritePayload({
+                secciones: nextSecciones,
+                objetos: nextObjetos,
+                reason,
+                includeObjetos,
+                validarPuntosLinea,
+                ALTURA_PANTALLA_EDITOR,
+                createTimestamp: () => serverTimestamp(),
+            });
+
+            await updateDoc(ref, payload);
+        },
+        [slug, validarPuntosLinea, ALTURA_PANTALLA_EDITOR]
+    );
+
     const aplicarResizeAltura = useCallback(() => {
         const session = resizeSessionRef.current;
         if (!session.isResizing || !session.seccionId) return;
@@ -71,15 +146,15 @@ export default function useSectionsManager({
         if (session.ultimaAlturaAplicada === nuevaAltura) return;
 
         session.ultimaAlturaAplicada = nuevaAltura;
-
-        setSecciones((prev) => {
-            const next = prev.map((s) =>
-                s.id === session.seccionId ? { ...s, altura: nuevaAltura } : s
-            );
-            seccionesRef.current = next;
-            return next;
+        const nextSecciones = buildNextSectionHeightState(seccionesRef.current, {
+            seccionId: session.seccionId,
+            altura: nuevaAltura,
         });
-    }, [setSecciones]);
+
+        session.ultimaSeccionesCalculadas = nextSecciones;
+        applySectionSnapshot(nextSecciones);
+        return nextSecciones;
+    }, [applySectionSnapshot]);
 
     const scheduleResizeFrame = useCallback(() => {
         const session = resizeSessionRef.current;
@@ -129,6 +204,7 @@ export default function useSectionsManager({
             session.posicionInicialMouse = pointerY;
             session.posicionActualMouse = pointerY;
             session.ultimaAlturaAplicada = seccion.altura;
+            session.ultimaSeccionesCalculadas = seccionesRef.current;
             session.pointerId = Number.isFinite(evt.pointerId) ? evt.pointerId : null;
             session.rafId = null;
 
@@ -170,7 +246,10 @@ export default function useSectionsManager({
             cancelAnimationFrame(session.rafId);
             session.rafId = null;
         }
-        aplicarResizeAltura();
+        const nextSecciones =
+            aplicarResizeAltura() ||
+            session.ultimaSeccionesCalculadas ||
+            seccionesRef.current;
 
         clearGlobalCursor?.(stageRef);
 
@@ -188,20 +267,24 @@ export default function useSectionsManager({
         session.posicionInicialMouse = 0;
         session.posicionActualMouse = 0;
         session.ultimaAlturaAplicada = null;
+        session.ultimaSeccionesCalculadas = null;
         session.pointerId = null;
         session.targetConCapture = null;
 
         setControlandoAltura(false);
 
-        if (window._saveAlturaTimeout) clearTimeout(window._saveAlturaTimeout);
-        window._saveAlturaTimeout = setTimeout(async () => {
-            try {
-                if (!slug) return;
+        const nextObjetos = objetosRef.current;
 
-                const ref = doc(db, "borradores", slug);
-                await updateDoc(ref, {
-                    secciones: seccionesRef.current,
-                    ultimaEdicion: serverTimestamp(),
+        if (resizePersistTimeoutRef.current) {
+            clearTimeout(resizePersistTimeoutRef.current);
+        }
+        resizePersistTimeoutRef.current = setTimeout(async () => {
+            resizePersistTimeoutRef.current = null;
+            try {
+                await persistSectionMutation({
+                    nextSecciones,
+                    nextObjetos,
+                    reason: "section-height",
                 });
 
                 clearGlobalCursor?.(stageRef);
@@ -210,7 +293,7 @@ export default function useSectionsManager({
                 console.error("❌ Error guardando altura:", error);
             }
         }, 220);
-    }, [aplicarResizeAltura, slug, clearGlobalCursor, stageRef]);
+    }, [aplicarResizeAltura, clearGlobalCursor, persistSectionMutation, stageRef]);
 
 
     // listeners globales (mouse/touch/pointer)
@@ -284,76 +367,21 @@ export default function useSectionsManager({
         async (seccionId) => {
             if (!seccionId) return;
 
-            // 1) Actualizar estado local
-            setSecciones((prev) => {
-                const next = prev.map((s) => {
-                    if (s.id !== seccionId) return s;
-
-                    const modoActual = normalizarAltoModo(s.altoModo);
-                    const modoNuevo = modoActual === "pantalla" ? "fijo" : "pantalla";
-
-                    if (modoNuevo === "pantalla") {
-                        return {
-                            ...s,
-                            altoModo: "pantalla",
-                            alturaFijoBackup: Number.isFinite(s.altura) ? s.altura : 600,
-                            altura: ALTURA_REFERENCIA_PANTALLA,
-                        };
-                    }
-
-                    const backup = Number.isFinite(s.alturaFijoBackup)
-                        ? s.alturaFijoBackup
-                        : s.altura;
-
-                    const { alturaFijoBackup, ...rest } = s;
-
-                    return {
-                        ...rest,
-                        altoModo: "fijo",
-                        altura: Number.isFinite(backup) ? backup : 600,
-                    };
-                });
-
-                return next;
+            const nextSecciones = buildNextSectionModeState(seccionesRef.current, {
+                seccionId,
+                normalizarAltoModo,
+                ALTURA_REFERENCIA_PANTALLA,
             });
+            const nextObjetos = objetosRef.current;
 
-            // 2) Persistir en Firestore usando el snapshot actual
+            applySectionSnapshot(nextSecciones);
+
             try {
-                if (!slug) return;
-
-                const ref = doc(db, "borradores", slug);
-
-                const seccionesNext = secciones.map((s) => {
-                    if (s.id !== seccionId) return s;
-
-                    const modoActual = normalizarAltoModo(s.altoModo);
-                    const modoNuevo = modoActual === "pantalla" ? "fijo" : "pantalla";
-
-                    if (modoNuevo === "pantalla") {
-                        return {
-                            ...s,
-                            altoModo: "pantalla",
-                            alturaFijoBackup: Number.isFinite(s.altura) ? s.altura : 600,
-                            altura: ALTURA_REFERENCIA_PANTALLA,
-                        };
-                    }
-
-                    const backup = Number.isFinite(s.alturaFijoBackup)
-                        ? s.alturaFijoBackup
-                        : s.altura;
-
-                    const { alturaFijoBackup, ...rest } = s;
-
-                    return {
-                        ...rest,
-                        altoModo: "fijo",
-                        altura: Number.isFinite(backup) ? backup : 600,
-                    };
-                });
-
-                await updateDoc(ref, {
-                    secciones: seccionesNext,
-                    ultimaEdicion: serverTimestamp(),
+                await persistSectionMutation({
+                    nextSecciones,
+                    nextObjetos,
+                    reason: "section-mode-toggle",
+                    includeObjetos: true,
                 });
 
                 console.log("✅ altoModo actualizado:", seccionId);
@@ -361,7 +389,12 @@ export default function useSectionsManager({
                 console.error("❌ Error guardando altoModo:", e);
             }
         },
-        [slug, secciones, setSecciones, normalizarAltoModo, ALTURA_REFERENCIA_PANTALLA]
+        [
+            ALTURA_REFERENCIA_PANTALLA,
+            applySectionSnapshot,
+            normalizarAltoModo,
+            persistSectionMutation,
+        ]
     );
 
     // ------------------------------------------
@@ -370,44 +403,32 @@ export default function useSectionsManager({
     const handleCrearSeccion = useCallback(
         async (datos) => {
             if (!slug) return;
-            const ref = doc(db, "borradores", slug);
-
-            setSecciones((prevSecciones) => {
-                const nueva = crearSeccion(datos, prevSecciones);
-
-                let objetosDesdePlantilla = [];
-
-                if (datos?.desdePlantilla && Array.isArray(datos.objetos)) {
-                    objetosDesdePlantilla = datos.objetos.map((obj) => ({
-                        ...obj,
-                        id: "obj-" + Date.now() + Math.random().toString(36).substring(2, 6),
-                        seccionId: nueva.id,
-                    }));
-                }
-
-                const nuevasSecciones = [...prevSecciones, nueva];
-
-                setObjetos((prevObjetos) => {
-                    const nuevosObjetos = [...prevObjetos, ...objetosDesdePlantilla];
-
-                    // limpiar antes de guardar (tu helper existente)
-                    const seccionesLimpias = limpiarObjetoUndefined(nuevasSecciones);
-                    const objetosLimpios = limpiarObjetoUndefined(nuevosObjetos);
-
-                    updateDoc(ref, {
-                        secciones: seccionesLimpias,
-                        objetos: objetosLimpios,
-                    })
-                        .then(() => console.log("✅ Sección agregada:", nueva))
-                        .catch((error) => console.error("❌ Error al guardar sección", error));
-
-                    return nuevosObjetos;
-                });
-
-                return nuevasSecciones;
+            const { nuevaSeccion, nextSecciones, nextObjetos } = buildSectionCreationState({
+                datos,
+                secciones: seccionesRef.current,
+                objetos: objetosRef.current,
+                crearSeccion,
             });
+
+            applyDraftSnapshot({
+                nextSecciones,
+                nextObjetos,
+                updateObjetos: true,
+            });
+
+            try {
+                await persistSectionMutation({
+                    nextSecciones,
+                    nextObjetos,
+                    reason: "section-create",
+                    includeObjetos: true,
+                });
+                console.log("✅ Sección agregada:", nuevaSeccion);
+            } catch (error) {
+                console.error("❌ Error al guardar sección", error);
+            }
         },
-        [slug, setSecciones, setObjetos, crearSeccion, limpiarObjetoUndefined]
+        [slug, crearSeccion, applyDraftSnapshot, persistSectionMutation]
     );
 
     // Listener global: "crear-seccion"
@@ -432,5 +453,3 @@ export default function useSectionsManager({
         handleCrearSeccion,
     };
 }
-
-

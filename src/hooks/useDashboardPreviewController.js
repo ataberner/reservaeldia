@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -39,6 +39,7 @@ import { flushEditorPersistenceBeforeCriticalAction } from "../domain/drafts/cri
 import {
   sanitizeDraftSlug,
 } from "../domain/invitations/readResolution.js";
+import { readCanvasEditorMethod } from "../lib/editorRuntimeBridge.js";
 import { readEditorRenderSnapshot } from "../lib/editorSnapshotAdapter.js";
 import { pushEditorBreadcrumb } from "../lib/monitoring/editorIssueReporter.js";
 
@@ -98,11 +99,7 @@ async function runDashboardPreviewControllerCriticalActionFlush({
     reason,
     editorMode: modoEditor,
     editorSession,
-    directFlush:
-      typeof window !== "undefined" &&
-      typeof window.canvasEditor?.flushPersistenceNow === "function"
-        ? (options) => window.canvasEditor.flushPersistenceNow(options)
-        : null,
+    directFlush: readCanvasEditorMethod("flushPersistenceNow"),
     captureSnapshot: () => readEditorRenderSnapshot(),
   });
 }
@@ -757,14 +754,6 @@ export function useDashboardPreviewControllerWithDependencies(
     () => buildDashboardPreviewControllerDependencies(dependencyOverrides),
     [dependencyOverrides]
   );
-  const {
-    runCriticalActionFlush,
-    runPreviewPipeline,
-    runPublishValidation,
-    resolvePublishAction,
-    schedulePublishedAuditCapture,
-    showAlert,
-  } = controllerDependencies;
   const [previewState, setPreviewState] = useState(() =>
     createPublicationPreviewState()
   );
@@ -796,374 +785,28 @@ export function useDashboardPreviewControllerWithDependencies(
     previewStateRef.current = previewState;
   }, [previewState]);
 
-  const clearPreviewSession = useCallback(() => {
-    activePreviewSessionRef.current = EMPTY_PREVIEW_CONTROLLER_SESSION;
-  }, []);
-
-  const beginPreviewSession = useCallback(() => {
-    previewSessionSequenceRef.current += 1;
-    const previewSession = createDashboardPreviewControllerSession({
-      slugInvitacion,
-      editorSession,
-      requestSequence: previewSessionSequenceRef.current,
-    });
-
-    activePreviewSessionRef.current = {
-      ...previewSession,
-      isOpen: true,
-    };
-
-    return previewSession;
-  }, [editorSession, slugInvitacion]);
-
-  const isCurrentPreviewSession = useCallback((previewSession) => {
-    return canApplyDashboardPreviewControllerSession({
-      activeSession: activePreviewSessionRef.current,
-      session: previewSession,
-      currentContext: currentPreviewContextRef.current,
-    });
-  }, []);
-
-  const commitPreviewState = useCallback(
-    (previewSession, updater) => {
-      if (previewSession && !isCurrentPreviewSession(previewSession)) {
-        return false;
-      }
-
-      setPreviewState((prev) =>
-        typeof updater === "function" ? updater(prev) : updater
-      );
-      return true;
-    },
-    [isCurrentPreviewSession]
-  );
-
-  const resetPreviewState = useCallback(
-    (previewSession = null) => {
-      return commitPreviewState(previewSession, createPublicationPreviewState());
-    },
-    [commitPreviewState]
-  );
-
-  const ensureDraftFlushBeforeCriticalAction = useCallback(
-    async (reason) => {
-      const safeSlug = sanitizeDraftSlug(slugInvitacion);
-      pushEditorBreadcrumb("critical-action-flush-start", {
-        slug: safeSlug || null,
-        reason,
-        sessionKind: editorSession?.kind || null,
-      });
-
-      const result = await runCriticalActionFlush({
-        slugInvitacion: safeSlug,
+  const controllerRuntime = useMemo(
+    () =>
+      createDashboardPreviewControllerRuntime({
+        slugInvitacion,
         modoEditor,
         editorSession,
-        reason,
-      });
-
-      pushEditorBreadcrumb(
-        result.ok ? "critical-action-flush-success" : "critical-action-flush-failed",
-        {
-          slug: safeSlug || null,
-          reason,
-          sessionKind: result.sessionKind || editorSession?.kind || null,
-          transport: result.transport || null,
-          skipped: result.skipped === true,
-          capturedCompatibilitySnapshot: Boolean(result.compatibilitySnapshot),
-          failureReason: result.reason || null,
-        }
-      );
-
-      return result;
-    },
-    [editorSession, modoEditor, runCriticalActionFlush, slugInvitacion]
-  );
-
-  const refreshPublishValidation = useCallback(
-    async (draftSlugOverride = null, options = {}) => {
-      const previewSession =
-        options && typeof options === "object" ? options.previewSession || null : null;
-      const commitIfCurrent = (updater) => {
-        if (previewSession && !isCurrentPreviewSession(previewSession)) {
-          return false;
-        }
-        return commitPreviewState(null, updater);
-      };
-
-      if (!previewCompatibilityState.canUsePublishCompatibility) {
-        commitIfCurrent((prev) => ({
-          ...prev,
-          ...buildDashboardPreviewPublishValidationIdleStatePatch(),
-        }));
-        return null;
-      }
-
-      const safeDraftSlug = sanitizeDraftSlug(draftSlugOverride || slugInvitacion);
-      if (!safeDraftSlug) {
-        commitIfCurrent((prev) => ({
-          ...prev,
-          ...buildDashboardPreviewPublishValidationIdleStatePatch(),
-        }));
-        return null;
-      }
-
-      commitIfCurrent((prev) => ({
-        ...prev,
-        ...buildDashboardPreviewPublishValidationPendingStatePatch(),
-      }));
-
-      try {
-        const result = await runPublishValidation({
-          draftSlug: safeDraftSlug,
-          canUsePublishCompatibility:
-            previewCompatibilityState.canUsePublishCompatibility,
-        });
-
-        commitIfCurrent((prev) => ({
-          ...prev,
-          ...buildDashboardPreviewPublishValidationResolvedStatePatch({
-            validationResult: result,
-          }),
-        }));
-
-        return result || null;
-      } finally {
-        commitIfCurrent((prev) => ({
-          ...prev,
-          ...buildDashboardPreviewPublishValidationSettledStatePatch(),
-        }));
-      }
-    },
+        dependencyOverrides: controllerDependencies,
+        previewCompatibilityState,
+        currentPreviewContextRef,
+        previewSessionSequenceRef,
+        activePreviewSessionRef,
+        previewStateRef,
+        setPreviewState,
+      }),
     [
-      commitPreviewState,
-      isCurrentPreviewSession,
-      previewCompatibilityState.canUsePublishCompatibility,
-      runPublishValidation,
+      controllerDependencies,
+      editorSession,
+      modoEditor,
+      previewCompatibilityState,
       slugInvitacion,
     ]
   );
-
-  const generarVistaPrevia = useCallback(async () => {
-    const previewSession = beginPreviewSession();
-    const assertCurrentPreviewSession = () => {
-      if (!isCurrentPreviewSession(previewSession)) {
-        throw createStalePreviewSessionError();
-      }
-    };
-
-    try {
-      const flushResult = await ensureDraftFlushBeforeCriticalAction(
-        "preview-before-open"
-      );
-
-      if (!isCurrentPreviewSession(previewSession)) return;
-
-      if (!flushResult.ok) {
-        commitPreviewState(previewSession, (prev) => ({
-          ...prev,
-          ...buildDashboardPreviewOpenFlushFailureStatePatch({
-            errorMessage: flushResult.error,
-          }),
-        }));
-        return;
-      }
-
-      if (
-        !commitPreviewState(
-          previewSession,
-          buildDashboardPreviewOpenedState()
-        )
-      ) {
-        return;
-      }
-
-      const previewBoundarySnapshot =
-        flushResult.compatibilitySnapshot &&
-        typeof flushResult.compatibilitySnapshot === "object"
-          ? flushResult.compatibilitySnapshot
-          : null;
-
-      const previewResult = await runPreviewPipeline({
-        slugInvitacion,
-        isTemplateSession: previewCompatibilityState.isTemplateSession,
-        canUsePublishCompatibility:
-          previewCompatibilityState.canUsePublishCompatibility,
-        previewBoundarySnapshot,
-        assertCurrentSession: assertCurrentPreviewSession,
-      });
-
-      if (!isCurrentPreviewSession(previewSession)) return;
-
-      if (previewResult.status === "missing-template") {
-        showAlert("No se encontro la plantilla.");
-        resetPreviewState(previewSession);
-        return;
-      }
-
-      if (previewResult.status === "missing-draft") {
-        showAlert("No se encontro el borrador");
-        resetPreviewState(previewSession);
-        return;
-      }
-
-      if (
-        !commitPreviewState(previewSession, (prev) => ({
-          ...prev,
-          ...buildDashboardPreviewSuccessStatePatch({
-            htmlGenerado: previewResult.htmlGenerado,
-            isTemplateEditorSession: previewCompatibilityState.isTemplateSession,
-            urlPublicaDetectada: previewResult.urlPublicaDetectada,
-            slugPublicoDetectado: previewResult.slugPublicoDetectado,
-            publicacionNoVigenteDetectada:
-              previewResult.publicacionNoVigenteDetectada,
-            currentError: prev.publicacionVistaPreviaError,
-          }),
-        }))
-      ) {
-        return;
-      }
-
-      if (previewCompatibilityState.shouldRefreshPublishValidationAfterPreview) {
-        void refreshPublishValidation(slugInvitacion, {
-          previewSession,
-          compatibilitySideEffect: true,
-        }).catch((validationError) => {
-          console.error("Error validando publicacion previa:", validationError);
-        });
-      }
-    } catch (error) {
-      if (isStalePreviewSessionError(error)) return;
-      if (!isCurrentPreviewSession(previewSession)) return;
-
-      console.error("Error generando vista previa:", error);
-      showAlert("No se pudo generar la vista previa");
-      resetPreviewState(previewSession);
-    }
-  }, [
-    beginPreviewSession,
-    commitPreviewState,
-    ensureDraftFlushBeforeCriticalAction,
-    isCurrentPreviewSession,
-    previewCompatibilityState.canUsePublishCompatibility,
-    previewCompatibilityState.isTemplateSession,
-    previewCompatibilityState.shouldRefreshPublishValidationAfterPreview,
-    refreshPublishValidation,
-    resetPreviewState,
-    runPreviewPipeline,
-    slugInvitacion,
-    showAlert,
-  ]);
-
-  const publicarDesdeVistaPrevia = useCallback(async () => {
-    if (!previewCompatibilityState.canOpenCheckoutFromPreview) return;
-
-    const previewSession = activePreviewSessionRef.current;
-    if (!isCurrentPreviewSession(previewSession)) return;
-
-    const flushResult = await ensureDraftFlushBeforeCriticalAction(
-      "checkout-before-open"
-    );
-
-    if (!isCurrentPreviewSession(previewSession)) return;
-
-    if (!flushResult.ok) {
-      commitPreviewState(previewSession, (prev) => ({
-        ...prev,
-        ...buildDashboardPreviewCheckoutClosedErrorStatePatch({
-          errorMessage: flushResult.error,
-        }),
-      }));
-      return;
-    }
-
-    let validationResult = null;
-    try {
-      validationResult = await refreshPublishValidation(slugInvitacion, {
-        previewSession,
-      });
-    } catch (validationError) {
-      if (!isCurrentPreviewSession(previewSession)) return;
-
-      commitPreviewState(previewSession, (prev) => ({
-        ...prev,
-        ...buildDashboardPreviewCheckoutClosedErrorStatePatch({
-          errorMessage: getErrorMessage(
-            validationError,
-            "No se pudo validar la compatibilidad de publish. Intenta nuevamente."
-          ),
-        }),
-      }));
-      return;
-    }
-
-    if (!isCurrentPreviewSession(previewSession)) return;
-
-    const publishAction = resolvePublishAction({
-      validationResult,
-    });
-
-    if (publishAction.status === "blocked") {
-      commitPreviewState(previewSession, (prev) => ({
-        ...prev,
-        ...buildDashboardPreviewCheckoutClosedErrorStatePatch({
-          errorMessage: publishAction.blockingMessage,
-        }),
-      }));
-      return;
-    }
-
-    commitPreviewState(previewSession, (prev) => ({
-      ...prev,
-      ...buildDashboardPreviewCheckoutReadyStatePatch({
-        canUpdatePublication: prev.puedeActualizarPublicacion,
-      }),
-    }));
-  }, [
-    commitPreviewState,
-    ensureDraftFlushBeforeCriticalAction,
-    isCurrentPreviewSession,
-    previewCompatibilityState.canOpenCheckoutFromPreview,
-    refreshPublishValidation,
-    resolvePublishAction,
-    slugInvitacion,
-  ]);
-
-  const handleCheckoutPublished = useCallback(
-    (payload) => {
-      if (!previewCompatibilityState.canUsePublishCompatibility) return;
-
-      setPreviewState((prev) => ({
-        ...prev,
-        ...buildDashboardPreviewCheckoutPublishedStatePatch({
-          payload,
-          currentPreviewPublicUrl: prev.urlPublicaVistaPrevia,
-          currentPublishedUrl: prev.urlPublicadaReciente,
-          currentPublicSlug: prev.slugPublicoVistaPrevia,
-        }),
-      }));
-
-      schedulePublishedAuditCapture({
-        publicUrl: payload?.publicUrl,
-        fallbackHtml: previewStateRef.current.htmlVistaPrevia,
-      });
-    },
-    [
-      previewCompatibilityState.canUsePublishCompatibility,
-      schedulePublishedAuditCapture,
-    ]
-  );
-
-  const closePreview = useCallback(() => {
-    clearPreviewSession();
-    setPreviewState(buildDashboardPreviewCloseState());
-  }, [clearPreviewSession]);
-
-  const closeCheckout = useCallback(() => {
-    setPreviewState((prev) => ({
-      ...prev,
-      ...buildDashboardPreviewCloseCheckoutStatePatch(),
-    }));
-  }, []);
 
   const previewDisplayUrl = useMemo(
     () =>
@@ -1186,13 +829,7 @@ export function useDashboardPreviewControllerWithDependencies(
   return {
     ...previewState,
     previewDisplayUrl,
-    ensureDraftFlushBeforeCriticalAction,
-    refreshPublishValidation,
-    generarVistaPrevia,
-    publicarDesdeVistaPrevia,
-    handleCheckoutPublished,
-    closePreview,
-    closeCheckout,
+    ...controllerRuntime,
   };
 }
 

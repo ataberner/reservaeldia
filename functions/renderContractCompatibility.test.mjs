@@ -97,3 +97,30 @@ test("injects runtime branching based on explicit countdown contracts", () => {
   assert.match(html, /data-countdown-contract="v2"/);
   assert.match(html, /if \(resolveCountdownContract\(root\) === "v2"\)/);
 });
+
+test("renders pill editor shapes in published HTML with rounded geometry", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "shape-pill",
+        tipo: "forma",
+        figura: "pill",
+        seccionId: "section-1",
+        x: 120,
+        y: 80,
+        width: 170,
+        height: 72,
+        cornerRadius: 36,
+        color: "#111111",
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /class="objeto"/);
+  assert.match(html, /data-type="shape"/);
+  assert.match(html, /width: calc\(var\(--s(?:x|final)\) \* 170px\)/);
+  assert.match(html, /height: calc\(var\(--s(?:x|final)\) \* 72px\)/);
+  assert.match(html, /background: #111111;/);
+  assert.match(html, /border-radius: calc\(var\(--s(?:x|final)\) \* 36px\)/);
+});

@@ -1,6 +1,9 @@
+import { readCanvasEditorMethod } from "@/lib/editorRuntimeBridge";
+
 export function triggerEditorUndo() {
-  if (typeof window !== "undefined" && window.canvasEditor?.deshacer) {
-    window.canvasEditor.deshacer();
+  const undo = readCanvasEditorMethod("deshacer");
+  if (undo) {
+    undo();
     return;
   }
 
@@ -12,8 +15,9 @@ export function triggerEditorUndo() {
 }
 
 export function triggerEditorRedo() {
-  if (typeof window !== "undefined" && window.canvasEditor?.rehacer) {
-    window.canvasEditor.rehacer();
+  const redo = readCanvasEditorMethod("rehacer");
+  if (redo) {
+    redo();
     return;
   }
 

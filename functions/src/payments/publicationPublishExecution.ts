@@ -4,6 +4,7 @@ import {
   buildDraftContentMeta,
   type DraftRenderState,
 } from "../drafts/sourceOfTruth";
+import { normalizeInvitationType } from "../utils/invitationType";
 import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
 import { planPublicationPublishOperations } from "./publicationOperationPlanning";
 import { type PreparedPublicationRenderState } from "./publicationPublishValidation";
@@ -74,6 +75,44 @@ export type ExecutePublicationPublishResult = {
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+const DRAFT_PUBLICATION_PORTADA_KEYS = Object.freeze([
+  "thumbnailUrl",
+  "thumbnailurl",
+  "thumbnail_url",
+  "thumbnailURL",
+  "portada",
+  "previewUrl",
+  "previewurl",
+  "preview_url",
+  "previewURL",
+]);
+
+function getFirstNonEmptyString(
+  source: Record<string, unknown>,
+  keys: readonly string[]
+): string {
+  for (const key of keys) {
+    const value = getString(source?.[key]);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function derivePublishedInvitationType(draftData: Record<string, unknown>): string {
+  const preferredRawType =
+    getString(draftData.tipoInvitacion) ||
+    getString(draftData.tipo) ||
+    getString(draftData.plantillaTipo);
+
+  return preferredRawType ? normalizeInvitationType(preferredRawType) : "desconocido";
+}
+
+function derivePublishedPortada(draftData: Record<string, unknown>): string | null {
+  const portada = getFirstNonEmptyString(draftData, DRAFT_PUBLICATION_PORTADA_KEYS);
+  return portada || null;
 }
 
 export async function executePublicationPublish(
@@ -177,8 +216,8 @@ export async function executePublicationPublish(
     plantillaId: draftData.plantillaId || null,
     urlPublica: plannedPublish.publicUrl,
     nombre: draftData.nombre || publicSlug,
-    tipo: draftData.tipo || draftData.plantillaTipo || "desconocido",
-    portada: draftData.thumbnailUrl || null,
+    tipo: derivePublishedInvitationType(draftData),
+    portada: derivePublishedPortada(draftData),
     invitadosCount: draftData.invitadosCount || 0,
     rsvp: artifacts.rsvp,
     gifts: artifacts.gifts,

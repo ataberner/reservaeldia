@@ -2,6 +2,7 @@
 
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase";
+import { buildSectionMutationWritePayload } from "@/components/editor/sections/sectionMutationPersistence";
 
 /**
  * Borrar una seccion y sus objetos asociados.
@@ -16,6 +17,8 @@ export const borrarSeccion = async ({
   setSecciones,
   setObjetos,
   setSeccionActivaId,
+  validarPuntosLinea,
+  ALTURA_PANTALLA_EDITOR,
 }) => {
   const seccion = secciones.find((s) => s.id === seccionId);
   if (!seccion) return;
@@ -32,11 +35,16 @@ export const borrarSeccion = async ({
     }
 
     const ref = doc(db, "borradores", slug);
-    await updateDoc(ref, {
-      objetos: objetosFiltrados,
+    const { payload } = buildSectionMutationWritePayload({
       secciones: seccionesFiltradas,
-      ultimaEdicion: serverTimestamp(),
+      objetos: objetosFiltrados,
+      reason: "section-delete",
+      includeObjetos: true,
+      validarPuntosLinea,
+      ALTURA_PANTALLA_EDITOR,
+      createTimestamp: () => serverTimestamp(),
     });
+    await updateDoc(ref, payload);
 
     console.log("Seccion borrada correctamente:", seccionId);
   } catch (error) {
@@ -55,6 +63,8 @@ export const moverSeccion = async ({
   slug,
   setSecciones,
   setSeccionesAnimando,
+  validarPuntosLinea,
+  ALTURA_PANTALLA_EDITOR,
 }) => {
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
   const indiceActual = seccionesOrdenadas.findIndex((s) => s.id === seccionId);
@@ -93,10 +103,14 @@ export const moverSeccion = async ({
   // Guardar en Firestore
   try {
     const ref = doc(db, "borradores", slug);
-    await updateDoc(ref, {
+    const { payload } = buildSectionMutationWritePayload({
       secciones: nuevasSecciones,
-      ultimaEdicion: serverTimestamp(),
+      reason: "section-reorder",
+      validarPuntosLinea,
+      ALTURA_PANTALLA_EDITOR,
+      createTimestamp: () => serverTimestamp(),
     });
+    await updateDoc(ref, payload);
   } catch (error) {
     console.error("Error guardando orden de secciones:", error);
   }

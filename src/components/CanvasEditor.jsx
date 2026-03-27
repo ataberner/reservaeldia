@@ -41,7 +41,6 @@ import {
   ALTURA_PANTALLA_EDITOR,
   normalizarAltoModo,
   resolveKonvaFontStyle,
-  limpiarObjetoUndefined,
   setGlobalCursor,
   clearGlobalCursor,
 } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
@@ -545,9 +544,10 @@ export default function CanvasEditor({
 
     crearSeccion,
     normalizarAltoModo,
-    limpiarObjetoUndefined,
+    validarPuntosLinea,
 
     ALTURA_REFERENCIA_PANTALLA,
+    ALTURA_PANTALLA_EDITOR,
 
     stageRef,
     setGlobalCursor,
@@ -1642,6 +1642,8 @@ export default function CanvasEditor({
     previoAnimandoSeccionesRef,
     seccionActivaIdRef,
     normalizarAltoModo,
+    validarPuntosLinea,
+    ALTURA_PANTALLA_EDITOR,
   });
   // ?? NUEVO HOOK PARA GUÃAS
   const publishGuideLines = useCallback((nextLines = []) => {

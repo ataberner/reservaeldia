@@ -26,6 +26,10 @@ import {
     captureCountdownAuditTemplateDocument,
     recordCountdownAuditSnapshot,
 } from "@/domain/countdownAudit/runtime";
+import {
+    readCanvasEditorMethod,
+    readCanvasEditorStage,
+} from "@/lib/editorRuntimeBridge";
 import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 import {
     triggerEditorRedo,
@@ -344,26 +348,30 @@ export default function DashboardHeader(props) {
                 }
             }
 
-            let runtimeAuthoringStatus =
-                typeof window !== "undefined" &&
-                typeof window.canvasEditor?.getTemplateAuthoringStatus === "function"
-                    ? window.canvasEditor.getTemplateAuthoringStatus()
-                    : null;
-            let runtimeAuthoringSnapshot =
-                typeof window !== "undefined" &&
-                typeof window.canvasEditor?.getTemplateAuthoringSnapshot === "function"
-                    ? window.canvasEditor.getTemplateAuthoringSnapshot()
-                    : null;
+            const getTemplateAuthoringStatus = readCanvasEditorMethod(
+                "getTemplateAuthoringStatus"
+            );
+            const getTemplateAuthoringSnapshot = readCanvasEditorMethod(
+                "getTemplateAuthoringSnapshot"
+            );
+            const repairTemplateAuthoringState = readCanvasEditorMethod(
+                "repairTemplateAuthoringState"
+            );
+            let runtimeAuthoringStatus = getTemplateAuthoringStatus
+                ? getTemplateAuthoringStatus()
+                : null;
+            let runtimeAuthoringSnapshot = getTemplateAuthoringSnapshot
+                ? getTemplateAuthoringSnapshot()
+                : null;
             let authoringRepairSummary = "";
 
             if (
                 runtimeAuthoringStatus &&
                 runtimeAuthoringStatus.isReady === false &&
-                typeof window !== "undefined" &&
-                typeof window.canvasEditor?.repairTemplateAuthoringState === "function"
+                typeof repairTemplateAuthoringState === "function"
             ) {
                 const repairResult =
-                    await window.canvasEditor.repairTemplateAuthoringState({
+                    await repairTemplateAuthoringState({
                         dropOrphans: true,
                     });
 
@@ -417,7 +425,7 @@ export default function DashboardHeader(props) {
                 return;
             }
 
-            const stage = window.canvasEditor?.stageRef;
+            const stage = readCanvasEditorStage();
             if (!stage) {
                 alert("El editor no esta listo todavia.");
                 return;

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, Copy, Eye, ExternalLink, Gift, Plus, Settings2, X } from "lucide-react";
 import { createDefaultGiftConfig, hasVisibleGiftMethods, normalizeGiftConfig } from "@/domain/gifts/config";
 import { getFunctionalCtaDefaultText } from "@/domain/functionalCtaButtons";
+import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
 import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
@@ -86,13 +87,8 @@ function emitGiftConfigUpdate(nextConfig) {
   );
 }
 
-function getObjects() {
-  if (typeof window === "undefined") return [];
-  return Array.isArray(window._objetosActuales) ? window._objetosActuales : [];
-}
-
 function findGiftButton() {
-  return getObjects().find((obj) => obj?.tipo === "regalo-boton") || null;
+  return readEditorObjectByType("regalo-boton");
 }
 
 function findGiftButtonId() {

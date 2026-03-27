@@ -128,6 +128,86 @@ test("draft preview pipeline rereads persisted data, prefers the boundary snapsh
   assert.equal(debugPayload.objetos[0].id, "live-text-1");
 });
 
+test("draft preview pipeline rereads persisted data and overlays the live editor snapshot when no boundary snapshot is available", async () => {
+  let draftReads = 0;
+  let liveSnapshotReads = 0;
+  let generatorCall = null;
+
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-preview-live-overlay",
+    readDraftDocument: async () => {
+      draftReads += 1;
+      return createSnapshotRecord("draft-preview-live-overlay", {
+        objetos: [
+          {
+            id: "persisted-text-1",
+            seccionId: "persisted",
+            tipo: "texto",
+          },
+        ],
+        secciones: [
+          {
+            id: "persisted",
+          },
+        ],
+        rsvp: {
+          enabled: false,
+        },
+      });
+    },
+    readLiveEditorSnapshot: () => {
+      liveSnapshotReads += 1;
+      return {
+        objetos: [
+          {
+            id: "live-text-1",
+            seccionId: "hero",
+            tipo: "texto",
+          },
+        ],
+        secciones: [
+          {
+            id: "hero",
+          },
+        ],
+        rsvp: {
+          enabled: true,
+          title: "RSVP live overlay",
+        },
+      };
+    },
+    generateHtmlFromSections: async (
+      secciones,
+      objetos,
+      rsvpPreviewConfig,
+      generatorOptions
+    ) => {
+      generatorCall = {
+        secciones,
+        objetos,
+        rsvpPreviewConfig,
+        generatorOptions,
+      };
+      return "<html>preview-live-overlay</html>";
+    },
+  });
+
+  assert.equal(previewResult.status, "success");
+  assert.equal(previewResult.htmlGenerado, "<html>preview-live-overlay</html>");
+  assert.equal(draftReads, 1);
+  assert.equal(liveSnapshotReads, 1);
+  assert.deepEqual(generatorCall.secciones, [{ id: "hero" }]);
+  assert.deepEqual(generatorCall.objetos, [
+    {
+      id: "live-text-1",
+      seccionId: "hero",
+      tipo: "texto",
+    },
+  ]);
+  assert.equal(generatorCall.rsvpPreviewConfig.enabled, true);
+  assert.equal(generatorCall.generatorOptions.slug, "draft-preview-live-overlay");
+});
+
 test("template preview pipeline reads the template document and skips publication compatibility lookups", async () => {
   let liveSnapshotReads = 0;
   let publicationLookupCalls = 0;

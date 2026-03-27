@@ -78,7 +78,9 @@ async function createExecutionInput(t, draftOverrides = {}) {
     tipoInvitacion: "boda",
     plantillaTipo: "cumple",
     tipo: undefined,
+    portada: "https://cdn.example.test/draft-portada.webp",
     thumbnailUrl: "https://cdn.example.test/cover.webp",
+    previewUrl: "https://cdn.example.test/draft-preview.webp",
     invitadosCount: 42,
     ...draftOverrides,
   };
@@ -148,7 +150,7 @@ function createExecutionHarness(overrides = {}) {
   };
 }
 
-test("executePublicationPublish preserves first-publication writes, html path, analytics, and current tipo derivation", async (t) => {
+test("executePublicationPublish preserves first-publication writes, html path, analytics, and draft-first metadata derivation", async (t) => {
   const { draftData, artifacts } = await createExecutionInput(t);
   const harness = createExecutionHarness();
 
@@ -181,7 +183,7 @@ test("executePublicationPublish preserves first-publication writes, html path, a
   assert.equal(write.publicationWrite.userId, "user-1");
   assert.equal(write.publicationWrite.urlPublica, "https://reservaeldia.com.ar/i/mi-slug");
   assert.equal(write.publicationWrite.nombre, "Fiesta de Lucia");
-  assert.equal(write.publicationWrite.tipo, "cumple");
+  assert.equal(write.publicationWrite.tipo, "boda");
   assert.equal(write.publicationWrite.portada, "https://cdn.example.test/cover.webp");
   assert.equal(write.publicationWrite.invitadosCount, 42);
   assert.equal(write.publicationWrite.estado, "publicada_activa");
@@ -220,6 +222,38 @@ test("executePublicationPublish preserves first-publication writes, html path, a
     templateName: "Fiesta de Lucia",
     operation: "new",
   });
+});
+
+test("executePublicationPublish falls back to compatibility metadata only when modern draft metadata is absent", async (t) => {
+  const { draftData, artifacts } = await createExecutionInput(t, {
+    tipoInvitacion: "",
+    tipo: "empresarial",
+    plantillaTipo: "cumple",
+    thumbnailUrl: "",
+    portada: "https://cdn.example.test/from-portada.webp",
+    previewUrl: "https://cdn.example.test/from-preview.webp",
+  });
+  const harness = createExecutionHarness();
+
+  await executePublicationPublish({
+    draftSlug: "draft-1",
+    publicSlug: "mi-slug",
+    uid: "user-1",
+    operation: "new",
+    paymentSessionId: "session-compat",
+    draftData,
+    existingData: null,
+    artifacts,
+    now: new Date("2026-03-27T09:00:00.000Z"),
+    ...harness.deps,
+  });
+
+  const write = harness.calls.writes[0];
+  assert.equal(write.publicationWrite.tipo, "empresarial");
+  assert.equal(
+    write.publicationWrite.portada,
+    "https://cdn.example.test/from-portada.webp"
+  );
 });
 
 test("executePublicationPublish preserves planner-driven paused update behavior without first-publication analytics", async (t) => {

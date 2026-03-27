@@ -4,6 +4,11 @@ import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
 import { useCountdownPresetCatalog } from "@/hooks/useCountdownPresetCatalog";
 import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 import {
+  readEditorObjectById,
+  readEditorObjectByType,
+  readEditorSelectionSnapshot,
+} from "@/lib/editorRuntimeBridge";
+import {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } from "../../shared/renderContractPolicy.js";
@@ -71,20 +76,20 @@ export default function MiniToolbarTabContador() {
   useEffect(() => {
     const syncSelectedCountdown = () => {
       try {
-        const ids = window._elementosSeleccionados || [];
-        const objs = window._objetosActuales || [];
-        const firstCountdown = Array.isArray(objs)
-          ? objs.find((o) => o?.tipo === "countdown") || null
-          : null;
+        const selectionSnapshot = readEditorSelectionSnapshot();
+        const firstCountdown = readEditorObjectByType("countdown");
 
         setCountdownEnBorrador(firstCountdown);
 
-        if (!Array.isArray(ids) || !Array.isArray(objs) || ids.length !== 1) {
+        if (
+          !Array.isArray(selectionSnapshot.selectedIds) ||
+          selectionSnapshot.selectedIds.length !== 1
+        ) {
           setCountdownSel(null);
           return;
         }
 
-        const obj = objs.find((o) => o.id === ids[0]);
+        const obj = readEditorObjectById(selectionSnapshot.selectedIds[0]);
         if (!obj || obj.tipo !== "countdown") {
           setCountdownSel(null);
           return;

@@ -19,6 +19,7 @@ import {
 import {
   PUBLICATION_STATES as FRONTEND_PUBLICATION_STATES,
   TRASH_RETENTION_DAYS as FRONTEND_PUBLICATION_TRASH_RETENTION_DAYS,
+  computeTrashPurgeAt as computeFrontendTrashPurgeAt,
   resolvePublicationState,
   getPublicationStatus,
   isPublicationExpired,
@@ -67,6 +68,7 @@ const {
   resolveDraftLinkedPublicSlugFromData,
   resolveDraftPublicationLifecycleStateFromData,
   resolvePublicationPublicStateFromData,
+  computeTrashPurgeAt: computeBackendTrashPurgeAt,
   isPubliclyAccessible,
   toDateFromTimestampLike,
   computePublicationExpirationDate,
@@ -141,6 +143,9 @@ function readBackendDraftPublicationLinkageSnapshot(draft) {
 function readFrontendPublicationSnapshot(publication) {
   const resolvedState = resolvePublicationState(publication);
   const status = getPublicationStatus(publication, FIXED_NOW_MS);
+  const trashPurgeAtIso = status.isTrashed
+    ? toIsoOrNull(computeFrontendTrashPurgeAt(publication))
+    : null;
 
   return {
     rawPublicState:
@@ -149,6 +154,7 @@ function readFrontendPublicationSnapshot(publication) {
     isFinalized: status.isFinalized,
     isDateExpired: isPublicationExpired(publication, FIXED_NOW_MS),
     isVisitorAccessible: isPublicSlugAvailableForVisitors(publication, FIXED_NOW_MS),
+    trashPurgeAtIso,
   };
 }
 
@@ -162,6 +168,10 @@ function readBackendPublicationSnapshot(publication) {
     isHistoryLinked ||
     isExplicitlyFinalized(publication) ||
     (isDateExpired && rawPublicState !== PUBLICATION_PUBLIC_STATES.TRASH);
+  const trashPurgeAtIso =
+    rawPublicState === PUBLICATION_PUBLIC_STATES.TRASH && expirationDate instanceof Date
+      ? toIsoOrNull(computeBackendTrashPurgeAt(expirationDate))
+      : null;
 
   return {
     rawPublicState,
@@ -174,6 +184,7 @@ function readBackendPublicationSnapshot(publication) {
       Boolean(rawPublicState) &&
       isPubliclyAccessible(rawPublicState) &&
       !isFinalized,
+    trashPurgeAtIso,
   };
 }
 

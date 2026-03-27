@@ -7,6 +7,31 @@ function isoFromNow(dayOffset) {
   return new Date(FIXED_NOW_MS + dayOffset * DAY_MS).toISOString();
 }
 
+function addDaysToIso(iso, dayOffset) {
+  return new Date(Date.parse(iso) + dayOffset * DAY_MS).toISOString();
+}
+
+function addMonthsPreservingDateTimeUTC(iso, monthsToAdd) {
+  const baseDate = new Date(iso);
+  const year = baseDate.getUTCFullYear();
+  const month = baseDate.getUTCMonth();
+  const day = baseDate.getUTCDate();
+  const hour = baseDate.getUTCHours();
+  const minute = baseDate.getUTCMinutes();
+  const second = baseDate.getUTCSeconds();
+  const millisecond = baseDate.getUTCMilliseconds();
+
+  const totalMonths = month + monthsToAdd;
+  const targetYear = year + Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+  const lastDayOfMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const safeDay = Math.min(day, lastDayOfMonth);
+
+  return new Date(
+    Date.UTC(targetYear, targetMonth, safeDay, hour, minute, second, millisecond)
+  ).toISOString();
+}
+
 function secondsFromIso(iso) {
   return Math.floor(Date.parse(iso) / 1000);
 }
@@ -22,6 +47,18 @@ const PUBLICATION_PUBLISHED_AT_ISO = isoFromNow(-40);
 const PUBLICATION_OLD_PUBLISHED_AT_ISO = isoFromNow(-380);
 const PUBLICATION_FUTURE_EXPIRES_AT_ISO = isoFromNow(20);
 const PUBLICATION_PAST_EXPIRES_AT_ISO = isoFromNow(-1);
+const PUBLICATION_FUTURE_TRASH_PURGE_AT_ISO = addDaysToIso(
+  PUBLICATION_FUTURE_EXPIRES_AT_ISO,
+  30
+);
+const PUBLICATION_DERIVED_FUTURE_EXPIRES_AT_ISO = addMonthsPreservingDateTimeUTC(
+  PUBLICATION_PUBLISHED_AT_ISO,
+  12
+);
+const PUBLICATION_DERIVED_FUTURE_TRASH_PURGE_AT_ISO = addDaysToIso(
+  PUBLICATION_DERIVED_FUTURE_EXPIRES_AT_ISO,
+  30
+);
 
 export const draftTrashParityFixtures = Object.freeze([
   {
@@ -78,7 +115,20 @@ export const draftTrashParityFixtures = Object.freeze([
     expected: {
       state: "borrador_papelera",
       isTrashed: true,
-      purgeAtIso: new Date(Date.parse(DRAFT_TRASHED_AT_ISO) + 30 * DAY_MS).toISOString(),
+      purgeAtIso: addDaysToIso(DRAFT_TRASHED_AT_ISO, 30),
+    },
+  },
+  {
+    id: "draft-trash-en-papelera-overrides-explicit-active-state",
+    draft: {
+      estadoBorrador: "borrador_activo",
+      enPapeleraAt: DRAFT_TRASHED_AT_ISO,
+      eliminacionDefinitivaAt: DRAFT_PURGE_AT_ISO,
+    },
+    expected: {
+      state: "borrador_papelera",
+      isTrashed: true,
+      purgeAtIso: DRAFT_PURGE_AT_ISO,
     },
   },
 ]);
@@ -213,6 +263,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: true,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -230,6 +281,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: true,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -246,6 +298,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -263,6 +316,62 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: false,
+      trashPurgeAtIso: PUBLICATION_FUTURE_TRASH_PURGE_AT_ISO,
+    },
+  },
+  {
+    id: "publication-estado-precedence-over-lifecycle-and-timestamps",
+    publication: {
+      estado: "publicada_pausada",
+      publicationLifecycle: {
+        state: "published",
+      },
+      pausadaAt: isoFromNow(-2),
+      enPapeleraAt: isoFromNow(-3),
+      publicadaAt: PUBLICATION_PUBLISHED_AT_ISO,
+      vigenteHasta: PUBLICATION_FUTURE_EXPIRES_AT_ISO,
+    },
+    expected: {
+      rawPublicState: "publicada_pausada",
+      effectiveState: "publicada_pausada",
+      isFinalized: false,
+      isDateExpired: false,
+      isVisitorAccessible: false,
+      trashPurgeAtIso: null,
+    },
+  },
+  {
+    id: "publication-finalized-through-lifecycle-state",
+    publication: {
+      publicationLifecycle: {
+        state: "finalized",
+        finalizedAt: isoFromNow(-1),
+      },
+    },
+    expected: {
+      rawPublicState: null,
+      effectiveState: "finalizada",
+      isFinalized: true,
+      isDateExpired: false,
+      isVisitorAccessible: false,
+      trashPurgeAtIso: null,
+    },
+  },
+  {
+    id: "publication-trash-purge-from-explicit-vence-at",
+    publication: {
+      estado: "papelera",
+      enPapeleraAt: isoFromNow(-2),
+      publicadaAt: PUBLICATION_PUBLISHED_AT_ISO,
+      venceAt: PUBLICATION_FUTURE_EXPIRES_AT_ISO,
+    },
+    expected: {
+      rawPublicState: "papelera",
+      effectiveState: "papelera",
+      isFinalized: false,
+      isDateExpired: false,
+      isVisitorAccessible: false,
+      trashPurgeAtIso: PUBLICATION_FUTURE_TRASH_PURGE_AT_ISO,
     },
   },
   {
@@ -278,6 +387,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: true,
       isDateExpired: false,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -293,6 +403,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: true,
       isDateExpired: true,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -310,6 +421,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: true,
       isDateExpired: true,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -326,6 +438,7 @@ export const publicationParityFixtures = Object.freeze([
       isFinalized: true,
       isDateExpired: false,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
 ]);
@@ -344,6 +457,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: true,
+      trashPurgeAtIso: null,
     },
     backendExpected: {
       rawPublicState: null,
@@ -351,6 +465,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -368,6 +483,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: true,
+      trashPurgeAtIso: null,
     },
     backendExpected: {
       rawPublicState: "publicada_activa",
@@ -375,6 +491,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       isFinalized: true,
       isDateExpired: true,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
     },
   },
   {
@@ -389,6 +506,7 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       isFinalized: false,
       isDateExpired: false,
       isVisitorAccessible: true,
+      trashPurgeAtIso: null,
     },
     backendExpected: {
       rawPublicState: "publicada_activa",
@@ -396,6 +514,31 @@ export const publicationSemanticDriftFixtures = Object.freeze([
       isFinalized: true,
       isDateExpired: true,
       isVisitorAccessible: false,
+      trashPurgeAtIso: null,
+    },
+  },
+  {
+    id: "publication-trash-purge-derived-from-published-date-drift",
+    publication: {
+      estado: "papelera",
+      enPapeleraAt: isoFromNow(-2),
+      publicadaAt: PUBLICATION_PUBLISHED_AT_ISO,
+    },
+    frontendExpected: {
+      rawPublicState: "papelera",
+      effectiveState: "papelera",
+      isFinalized: false,
+      isDateExpired: false,
+      isVisitorAccessible: false,
+      trashPurgeAtIso: null,
+    },
+    backendExpected: {
+      rawPublicState: "papelera",
+      effectiveState: "papelera",
+      isFinalized: false,
+      isDateExpired: false,
+      isVisitorAccessible: false,
+      trashPurgeAtIso: PUBLICATION_DERIVED_FUTURE_TRASH_PURGE_AT_ISO,
     },
   },
 ]);

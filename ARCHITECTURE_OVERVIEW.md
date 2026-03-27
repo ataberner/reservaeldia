@@ -45,9 +45,9 @@ The current production flow is draft-first. The editable invitation source of tr
 11. Draft preview generation normalizes the draft render state, builds preview-ready `rsvp` and `gifts` configs, resolves existing-publication linkage through `resolvePublicationLinkForDraftRead` (centralizing `slugPublico`, direct public-slug lookup, and legacy `slugOriginal` fallback), and then imports `functions/src/utils/generarHTMLDesdeSecciones.ts` to produce the HTML shown in `ModalVistaPrevia`.
 12. Before publish checkout opens, the dashboard forces another immediate draft flush and calls `validateDraftForPublication`. The backend now treats publish preflight as a separate step: `preparePublicationRenderState` normalizes publish-ready assets and CTA contract state, and `validatePreparedPublicationRenderState` classifies blockers and warnings. If blockers are present, checkout is not opened.
 13. The checkout flow in `src/components/payments/PublicationCheckoutModal.jsx` creates a session with `createPublicationCheckoutSession`, reserves or reuses the public slug depending on `new` vs `update`, submits payment with `createPublicationPayment`, polls `getPublicationCheckoutStatus`, and can recover from an approved slug conflict with `retryPaidPublicationWithNewSlug`.
-14. After payment approval, the backend finalizes publication in `functions/src/payments/publicationPayments.ts`. It re-reads the draft from `borradores`, prepares the publish render state with `preparePublicationRenderState`, validates it again with `validatePreparedPublicationRenderState`, generates final HTML with `generarHTMLDesdeSecciones`, writes `publicadas/{slug}/index.html` to Storage, writes or updates `publicadas/{slug}`, and mirrors publication metadata back onto the source draft through `slugPublico`, `publicationLifecycle`, and related fields.
-15. Public visitors open `/i/{slug}`. Firebase Hosting rewrites the request to `verInvitacionPublicada`, which reads `publicadas/{slug}`, resolves public accessibility through `resolvePublicationPublicStateFromData`, finalizes expired publications on access when needed, and serves the stored HTML artifact from Storage only when the invitation is currently publicly accessible.
-16. Public RSVP submission goes through `publicRsvpSubmit`. It only accepts `POST`, validates slug and publication accessibility, finalizes expired publications on request when needed, writes under `publicadas/{slug}/rsvps`, and stores both the current structured RSVP payload (`answers`, `metrics`, `schemaQuestionIds`) and legacy compatibility fields such as `nombre`, `asistencia`, `confirma`, `cantidad`, and `mensaje`.
+14. After payment approval, the request still enters through `functions/src/payments/publicationPayments.ts`, but approved-session settlement is now delegated to `functions/src/payments/publicationApprovedSessionFlow.ts`. That flow claims the approved checkout session, reuses `publishDraftToPublic`, and the post-gating publish execution now delegates HTML generation, Storage write, publication payload assembly, linked-draft sync, and first-publication analytics to `functions/src/payments/publicationPublishExecution.ts`. Lifecycle/date shaping, write preparation, operation planning, and operation execution are handled by dedicated backend helpers in the same domain.
+15. Public visitors open `/i/{slug}`. Firebase Hosting rewrites the request to `verInvitacionPublicada`, which reads `publicadas/{slug}`, builds a backend lifecycle snapshot through `resolvePublicationLifecycleSnapshotFromData`, rejects requests unless the resolved raw public state is currently publicly accessible, finalizes expired publications on access when needed, and serves the stored HTML artifact from Storage only when the invitation is currently publicly accessible.
+16. Public RSVP submission goes through `publicRsvpSubmit`. It only accepts `POST`, validates slug and publication accessibility through the same backend lifecycle snapshot boundary, finalizes expired publications on request when needed, writes under `publicadas/{slug}/rsvps`, and stores both the current structured RSVP payload (`answers`, `metrics`, `schemaQuestionIds`) and legacy compatibility fields such as `nombre`, `asistencia`, `confirma`, `cantidad`, and `mensaje`.
 
 ## 5. Frontend Structure
 - `src/pages/index.js`: landing page and auth entry point.
@@ -70,7 +70,13 @@ The current production flow is draft-first. The editable invitation source of tr
 `functions/src/index.ts` is the deployed Functions entry point. It re-exports domain handlers, hosts the Express app used by `verInvitacionPublicada`, and still contains several current inline handlers plus legacy exports.
 
 Current backend domains visible in the repo:
-- `functions/src/payments/`: publication checkout, Mercado Pago integration, slug reservation, publish finalization, lifecycle transitions, expiration finalization, history writes, and trash purge.
+- `functions/src/payments/publicationPayments.ts`: request-facing publication/payment orchestration, Mercado Pago request building, discount/admin handlers, lifecycle entry points, and delegation to extracted publication helper seams.
+- `functions/src/payments/publicationLifecycle.ts`: backend lifecycle interpretation, effective expiration/date resolution, lifecycle payload shaping, public accessibility inputs, and trash-purge input derivation.
+- `functions/src/payments/publicationWritePreparation.ts`: history and linked-draft write shaping used by publish/finalization flows.
+- `functions/src/payments/publicationOperationPlanning.ts` and `functions/src/payments/publicationOperationExecution.ts`: planned write/delete choreography for publish, finalization, approved-session outcomes, trash purge, and legacy cleanup.
+- `functions/src/payments/publicationApprovedSessionFlow.ts`: approved-session settlement, receipt shaping, payment-result shaping, and Mercado Pago status mapping.
+- `functions/src/payments/publicationPublishExecution.ts`: post-gating publish execution, including HTML generation, Storage write, active publication write assembly, linked-draft sync, icon-usage delta, and first-publication analytics.
+- `functions/src/payments/publicationSlugReservationFlow.ts`: slug availability checks, reservation lifecycle writes, and active public-slug resolution for update flows.
 - `functions/src/payments/publicationPublishValidation.ts`: publish preflight helpers that separate render-state preparation (`preparePublicationRenderState`) from compatibility validation (`validatePreparedPublicationRenderState`).
 - `functions/src/utils/generarHTMLDesdeSecciones.ts` and `functions/src/utils/generarHTMLDesdeObjetos.ts`: HTML, CSS, and runtime generation from stored render data.
 - `functions/src/utils/publishAssetNormalization.ts`: publish-time asset resolution, section decoration normalization, and image source dimension backfill.
@@ -119,20 +125,19 @@ Publication state and lifecycle currently span three layers:
 Current lifecycle behavior:
 - Draft lifecycle states: `draft`, `published`, `finalized`
 - Public publication states: `publicada_activa`, `publicada_pausada`, `papelera`
-- Publication vigency: 12 months from first publication
-- Trash retention for publicadas: 30 days after `vigenteHasta`
+- Backend lifecycle interpretation for publications is centralized in `functions/src/payments/publicationLifecycle.ts`
+- Effective expiration is resolved from stored expiration inputs first (`venceAt ?? vigenteHasta`), then backend lifecycle fallback fields such as `publicationLifecycle.expiresAt`, and then a derived publication-date-based expiration when the caller uses that derived path
+- Public accessibility is determined from the resolved raw public state, while expired publications are rejected/finalized as a separate step
+- Trash retention for publicadas is 30 days after the backend purge input date; that purge input currently comes from `venceAt ?? vigenteHasta`, and when those fields are missing the backend purge path derives it from publication-date inputs rather than from `publicationLifecycle.expiresAt`
 
 The publish sequence implemented today is:
-1. Validate draft ownership and requested operation.
-2. For `new`, validate and reserve the requested public slug in `public_slug_reservations`. For `update`, resolve the active public slug already linked to the draft.
+1. Validate draft ownership and requested operation in `publicationPayments.ts`.
+2. For `new`, validate and reserve the requested public slug through `publicationSlugReservationFlow.ts`. For `update`, resolve the active linked public slug through the same slug-resolution seam.
 3. Create a checkout session in `publication_checkout_sessions` and, when needed, initialize Mercado Pago preference/payment data.
-4. After payment approval, re-read the draft from `borradores`.
-5. Build a prepared publish render state with `preparePublicationRenderState`, which normalizes the draft render state, resolves publish-time assets through `normalizePublishRenderStateAssets`, computes `functionalCtaContract`, and returns publish-ready `objetosFinales` and `seccionesFinales`.
-6. Validate the prepared render state with `validatePreparedPublicationRenderState`. Blocking issues stop publication even after session approval; warnings are returned but do not block.
-7. Generate final HTML with `generarHTMLDesdeSecciones`.
-8. Write the HTML artifact to `publicadas/{slug}/index.html` in Storage.
-9. Create or update `publicadas/{slug}` with the active publication record, including public URL, lifecycle timestamps, publish-ready CTA config, and linking metadata back to the draft.
-10. Mirror publication linkage back onto the draft through `slugPublico`, `publicationLifecycle`, and finalization-related metadata.
+4. After payment approval, `publicationApprovedSessionFlow.ts` claims the session's `publishing` slot and short-circuits duplicate settlement attempts.
+5. `publishDraftToPublic` re-reads the draft, re-runs publish preflight, and keeps ownership/new-vs-update/conflict/expired-publication gating in `publicationPayments.ts`.
+6. `publicationPublishExecution.ts` generates final HTML, writes `publicadas/{slug}/index.html` to Storage, applies icon-usage delta, writes or updates `publicadas/{slug}`, and mirrors publication linkage back onto the source draft.
+7. `publicationWritePreparation.ts`, `publicationOperationPlanning.ts`, and `publicationOperationExecution.ts` shape and apply the linked Firestore writes without changing current document contracts.
 
 Active publication transitions are handled by `transitionPublishedInvitationState`:
 - `pause`: active -> paused
@@ -142,8 +147,8 @@ Active publication transitions are handled by `transitionPublishedInvitationStat
 
 Finalization behavior:
 - Expired publications are finalized by scheduler, by public access, or by public RSVP requests hitting an expired invitation.
-- Finalization writes a history snapshot into `publicadas_historial`, including summary metrics built from `publicadas/{slug}/rsvps`.
-- Finalization deletes the Storage artifact prefix `publicadas/{slug}/`, recursively deletes the active `publicadas/{slug}` document and subcollections, releases the slug reservation, and updates the linked draft to a finalized lifecycle state.
+- `publicationPayments.ts` still owns the entry points and RSVP summary collection, but finalization write/delete choreography is now planned in `publicationOperationPlanning.ts` and executed in `publicationOperationExecution.ts`.
+- Finalization writes a history snapshot into `publicadas_historial`, deletes the Storage artifact prefix `publicadas/{slug}/`, recursively deletes the active `publicadas/{slug}` document and subcollections, releases the slug reservation, and updates the linked draft to a finalized lifecycle state.
 
 HTML generation today is shared between preview and publish:
 - `functions/src/utils/generarHTMLDesdeSecciones.ts` builds the full HTML document, section markup, section background layers, Google Fonts link aggregation, RSVP modal HTML, gifts modal HTML, gallery modal HTML, countdown runtime, invitation loader runtime, motion effects runtime, preview-only template patch runtime, and preview mobile scroll runtime.
@@ -164,7 +169,7 @@ HTML generation today is shared between preview and publish:
 - `src/components/CanvasEditor.jsx`: large editor runtime with selection, drag, resize, history, inline text behavior, mobile behavior, and window-based bridges.
 - `src/components/editor/persistence/useBorradorSync.js`: combined load/persist normalization boundaries, URL refresh, autosave, thumbnail generation, invitation-type backfill, and immediate flush protocol for both draft and template sessions.
 - `functions/src/index.ts`: large deployed entry point with both domain re-exports and inline/legacy handlers.
-- `functions/src/payments/publicationPayments.ts`: high-density module covering checkout config, discounts, slug reservation, Mercado Pago, publish finalization, history writes, expiration finalization, and state transitions.
+- `functions/src/payments/publicationPayments.ts`: high-density orchestration shell covering request/auth normalization, Mercado Pago request wiring, discount/admin handlers, checkout/session handlers, lifecycle entry points, and delegation to extracted publication helper seams.
 - `functions/src/utils/generarHTMLDesdeSecciones.ts` and `functions/src/utils/generarHTMLDesdeObjetos.ts`: shared generator code where changes affect preview HTML, published HTML, CTA runtime, and responsive behavior.
 - Publish validation code: `functions/src/payments/publicationPublishValidation.ts` is now the dedicated publish preflight surface, but it still explicitly carries compatibility branches and drift detection for `image-crop-not-materialized`, `pantalla-ynorm-drift`, `fullbleed-editor-drift`, legacy countdown schema, and legacy icon contracts.
 - Window bridges and custom events: critical flush requests are centralized in `src/domain/drafts/criticalFlush.js`, and non-editor snapshot reads go through `src/lib/editorSnapshotAdapter.js`, but preview generation and editor coordination still depend on window bridges and event names such as `editor:draft-flush:request` and `editor:draft-flush:result`.
@@ -186,7 +191,7 @@ HTML generation today is shared between preview and publish:
 
 ## 12. Riesgos actuales
 - `alto`: Publish correctness still depends on agreement between editor persistence, shared render contracts, publish asset normalization, publish validation, and HTML generation. The shared contract and preflight helpers reduce drift, but they do not make preview/publish inputs identical.
-- `alto`: Payment processing, slug reservation, active publication writes, history finalization, and expiration handling are concentrated in `functions/src/payments/publicationPayments.ts`, so one module governs multiple critical state transitions.
+- `alto`: `functions/src/payments/publicationPayments.ts` still concentrates request-facing checkout/payment handlers, Mercado Pago wiring, lifecycle entry points, and cross-flow sequencing. The deepest approved-session settlement, slug reservation, publish execution, and planned write/delete seams are now extracted, which narrows but does not remove backend orchestration risk.
 - `alto`: Public lifecycle state is distributed across Firestore active docs, Firestore history docs, Storage HTML artifacts, slug reservations, and mirrored draft metadata. Finalization must keep all of those layers in sync.
 - `medio`: Preview behavior is runtime-dependent because it still overlays a live editor snapshot on top of a persistence re-read. `readEditorRenderSnapshot` narrows that read boundary, but it currently falls back to legacy window globals during migration.
 - `medio`: Asset URLs and media readiness are still derived in different runtimes for template copy, editor load, preview, and publish, even though the field contract is now more centralized.

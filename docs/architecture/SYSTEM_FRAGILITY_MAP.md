@@ -20,15 +20,21 @@ Those changes made several seams materially safer:
 - the draft persistence boundary is now easier to reason about as load/hydrate, persist/flush, and render-state normalization instead of one undifferentiated hook
 - lifecycle hardening in this pass was parity hardening, not a behavioral rewrite, which means the remaining lifecycle risk is now narrower and better defined
 
-The focused hardening suite that covers those surfaces is currently green (`61/61`), including:
+The recent backend hardening is also real and visible in code:
+
+- `functions/src/payments/publicationLifecycle.ts` centralizes lifecycle interpretation, date resolution, lifecycle payload shaping, and trash-purge input derivation.
+- `functions/src/payments/publicationWritePreparation.ts`, `publicationOperationPlanning.ts`, and `publicationOperationExecution.ts` now own publication write shaping plus planned write/delete execution for publish, finalization, approved-session outcomes, trash purge, and legacy cleanup.
+- `functions/src/payments/publicationApprovedSessionFlow.ts` now owns approved-session settlement, receipt shaping, payment-result shaping, and Mercado Pago status mapping.
+- `functions/src/payments/publicationPublishExecution.ts` now owns post-gating publish execution.
+- `functions/src/payments/publicationSlugReservationFlow.ts` now owns slug availability, reservation lifecycle, and active public-slug resolution.
+
+The focused hardening suites that cover these surfaces are currently green in the current worktree, including:
 
 - `shared/lifecycleParity.test.mjs`
-- `src/hooks/useDashboardPreviewController.test.mjs`
-- `src/hooks/useDashboardPreviewController.controller.test.mjs`
-- `src/hooks/useDashboardTemplateModal.test.mjs`
-- `src/hooks/useDashboardTemplateModal.controller.test.mjs`
-- `src/domain/dashboard/pageShell.test.mjs`
-- `src/components/editor/persistence/borradorSyncRenderState.test.mjs`
+- `shared/renderAssetContract.test.mjs`
+- `shared/renderContractPolicy.test.mjs`
+- frontend controller/runtime tests for the dashboard preview and template modal seams
+- backend helper characterization tests for `publicationLifecycle`, `publicationWritePreparation`, `publicationOperationPlanning`, `publicationOperationExecution`, `publicationApprovedSessionFlow`, `publicationPublishExecution`, and `publicationSlugReservationFlow`
 
 They did not remove the system's highest-risk seams.
 
@@ -40,9 +46,9 @@ The most dangerous modules are still:
 - `functions/src/utils/generarHTMLDesdeObjetos.ts`
 - `functions/src/index.ts`
 
-The main priority change in this revision is that `useDashboardPreviewController.js` should no longer be treated as the best first target. It is now materially safer than the previous map claimed. The best next incremental target is backend-only publication lifecycle helper extraction around effective expiration, public-state reuse, and trash-purge input derivation, without changing checkout or finalization behavior.
+Those extractions materially changed the backend risk profile. `functions/src/payments/publicationPayments.ts` is still the most dangerous backend module, but it is now more clearly an orchestration shell over extracted seams rather than the inline owner of all publish, settlement, reservation, and cleanup logic.
 
-The main lifecycle clarification in this revision is also explicit: the latest lifecycle work was parity hardening, not a semantic rewrite. Draft trash parity is stronger, publication lifecycle parity is better fenced, and the remaining drift is now localized around effective expiration and backend-only expiry sources rather than vaguely spread across the whole system.
+The main priority change in this revision is that backend-only lifecycle helper extraction is no longer the best next target. The best next incremental backend target is checkout/session lifecycle extraction plus thinner request-facing handler delegation around session expiry, owned-session reads, result shaping, and webhook/direct-payment convergence, without changing Firestore schema or public contracts.
 
 ### Priority Labels Used Here
 
@@ -110,14 +116,14 @@ These earlier hardening seams still exist and remain safer than they used to be:
 | Preview generation | Medium-High | Medium | High | Medium-High | Maintain |
 | Preview controller tier | High | Medium | High | Medium-High | Next |
 | Publish validation | High | Low-Medium | High | Medium | Maintain |
-| Publication checkout/payment | High | High | Very High | Very High | Last |
-| Publish finalization | Very High | Very High | Very High | Very High | Last |
+| Publication checkout/payment | High | High | Very High | Very High | First |
+| Publish finalization | High | High | Very High | High | Next |
 | Public delivery | Medium | Medium | Very High | High | Later |
 | Public RSVP | Medium | Medium | High | Medium | Later |
 | Shared render contracts | Medium | Low | High | Low-Medium | Maintain |
 | Asset normalization | Medium-High | Medium | High | Medium | Maintain |
 | HTML generation | Very High | High | Very High | Very High | Later |
-| Lifecycle / history / trash / finalization | High | High | Very High | High | First |
+| Lifecycle / history / trash / finalization | Medium-High | High | Very High | High | Next |
 | Publication lifecycle parity | Medium | Low-Medium | High | Medium | Maintain |
 
 ## 4. Area-by-Area Reassessment
@@ -221,19 +227,19 @@ Assessment change: stays in maintenance mode.
 
 ### Publication checkout/payment
 
-Main files: `src/components/payments/PublicationCheckoutModal.jsx`, `functions/src/payments/publicationPayments.ts`
+Main files: `src/components/payments/PublicationCheckoutModal.jsx`, `functions/src/payments/publicationPayments.ts`, `functions/src/payments/publicationApprovedSessionFlow.ts`
 
-This area is still high risk because checkout session state, Mercado Pago state, slug reservation state, retry handling, and publish finalization still converge through the same backend module. The stronger lifecycle parity boundary reduces ambiguity around some state semantics, but it does not simplify the checkout/payment orchestration itself.
+This area remains high risk, but the risk shape changed. Approved-session settlement, payment-status mapping, and receipt/result shaping are now extracted. The remaining fragility is session expiry duplication, handler-level request normalization, zero-amount approval flow, Mercado Pago request wiring, retry/reset behavior, and webhook/direct-payment convergence in `publicationPayments.ts`.
 
-Assessment change: some surrounding ambiguity dropped; the area itself is still not a safe direct target.
+Assessment change: it stays high fragility, but it becomes the best next incremental backend target instead of a `Last` surface.
 
 ### Publish finalization
 
-Main files: `functions/src/payments/publicationPayments.ts`
+Main files: `functions/src/payments/publicationPayments.ts`, `functions/src/payments/publicationPublishExecution.ts`
 
-This remains the highest-risk backend seam. Finalization still spans draft rereads, publish validation, HTML generation, Storage writes, `publicadas`, `publicadas_historial`, slug reservation cleanup, linked-draft updates, expiration handling, and lifecycle transitions in one large backend module.
+This area is no longer a fully inline backend seam. Post-gating publish execution now lives in `publicationPublishExecution.ts`, while `publicationPayments.ts` keeps ownership, new/update, conflict, and expired-publication gating. The remaining risk is the editor-to-public convergence boundary and precondition orchestration, not raw HTML/Storage/write assembly living in one function.
 
-Assessment change: no meaningful drop in direct-refactor safety.
+Assessment change: fragility drops meaningfully and moves to `Next`, not `Last`.
 
 ### Public delivery
 
@@ -277,17 +283,11 @@ Assessment change: still not ready for a broad refactor.
 
 ### Lifecycle / history / trash / finalization
 
-Main files: `src/domain/drafts/state.js`, `functions/src/drafts/draftTrashLifecycle.ts`, `src/domain/publications/state.js`, `functions/src/payments/publicationLifecycle.ts`, `functions/src/payments/publicationPayments.ts`, `functions/src/index.ts`, `shared/lifecycleParityFixtures.mjs`, `shared/lifecycleParity.test.mjs`
+Main files: `functions/src/payments/publicationLifecycle.ts`, `functions/src/payments/publicationWritePreparation.ts`, `functions/src/payments/publicationOperationPlanning.ts`, `functions/src/payments/publicationOperationExecution.ts`, `functions/src/payments/publicationPayments.ts`, `functions/src/index.ts`
 
-This area remains distributed, but it is no longer as vaguely risky as the previous map said. The current codebase now has explicit lifecycle parity fixtures and tests. Draft trash lifecycle parity is stronger, publication lifecycle parity is fenced, and the remaining lifecycle risk is now better localized around backend orchestration and helper reuse than around unknown helper drift.
+This area remains distributed, but the remaining risk is now entrypoint orchestration rather than missing helper boundaries. Lifecycle interpretation, write shaping, planned finalization writes, trash purge, and legacy cleanup all have explicit backend seams. `publicationPayments.ts` still owns entry points, RSVP summary collection, and some multi-surface sequencing, while `functions/src/index.ts` still owns public delivery/public RSVP flows that depend on the same lifecycle semantics.
 
-What still makes the area high-risk:
-
-- `functions/src/payments/publicationPayments.ts` still owns state transitions, history writes, finalization, and trash-purge behavior
-- `functions/src/index.ts` still contains public delivery/public RSVP handler logic that depends on overlapping lifecycle interpretation
-- finalization still has to keep Firestore active docs, Firestore history docs, Storage artifacts, slug reservations, and mirrored draft metadata aligned
-
-Assessment change: still high fragility overall, but now more localized and better defined. The right next move is backend-only helper extraction around lifecycle interpretation, not a broad rewrite.
+Assessment change: it remains important but moves from `First` to `Next`.
 
 ### Publication lifecycle parity
 
@@ -357,6 +357,15 @@ Lifecycle helper modules that are now safer for bounded parity-preserving work t
 - `src/domain/drafts/state.js`
 - `functions/src/drafts/draftTrashLifecycle.ts`
 
+Additional backend publication helper seams that are now safer for bounded work:
+
+- `functions/src/payments/publicationWritePreparation.ts`
+- `functions/src/payments/publicationOperationPlanning.ts`
+- `functions/src/payments/publicationOperationExecution.ts`
+- `functions/src/payments/publicationApprovedSessionFlow.ts`
+- `functions/src/payments/publicationPublishExecution.ts`
+- `functions/src/payments/publicationSlugReservationFlow.ts`
+
 ## 6. Areas Still Too Risky To Touch Directly
 
 These areas still should not be used as first-pass direct refactor targets:
@@ -364,7 +373,7 @@ These areas still should not be used as first-pass direct refactor targets:
 - `src/components/CanvasEditor.jsx`
   - Reason: heavy runtime dependence on globals, drag/resize side channels, and editor-internal coordination across many consumers.
 - `functions/src/payments/publicationPayments.ts`
-  - Reason: checkout, payment, slug reservation, state transitions, history, finalization, and purge behavior still converge here.
+  - Reason: request-facing checkout/payment handlers, Mercado Pago wiring, discount/admin surfaces, lifecycle entry points, and remaining cross-flow orchestration still converge here even after the helper extractions.
 - `functions/src/utils/generarHTMLDesdeSecciones.ts`
   - Reason: shared preview/public render runtime with broad behavioral surface and limited representative fixture coverage.
 - `functions/src/utils/generarHTMLDesdeObjetos.ts`
@@ -376,20 +385,14 @@ These areas still should not be used as first-pass direct refactor targets:
 
 ### First
 
-- Extract a backend-only publication lifecycle helper around:
-  - effective expiration inputs
-  - public accessibility inputs
-  - trash-purge input derivation
-- Reuse that helper from `functions/src/payments/publicationPayments.ts` and `functions/src/index.ts`.
-- Keep `shared/lifecycleParity.test.mjs` green while doing it.
-- Do not broaden the change into checkout redesign or finalization-orchestration rewrites.
+- Extract checkout/session lifecycle handling from `functions/src/payments/publicationPayments.ts` around owned-session reads, shared expire-if-needed behavior, zero-amount approval convergence, and thin per-handler delegation.
+- Preserve current Firestore schema, session status strings, Mercado Pago payloads, user-facing messages, and callable/webhook response contracts.
 
 ### Next
 
-- Narrow lifecycle/history/trash helper reuse further after that extraction, still without changing current semantics.
-- Continue draft persistence cleanup only after the lifecycle helper boundary is clearer, or when adjacent work requires it.
-- Continue template preview cleanup around dual preview modes and generated-HTML-only live patching.
-- Continue preview controller cleanup only as incremental simplification, not as a repo-wide first-pass hardening target.
+- Narrow lifecycle/history/trash/finalization entrypoint orchestration further using the existing planning/execution seams.
+- Keep publish precondition orchestration narrow and adjacency-driven only; do not broaden it into a generic payment/publishing platform.
+- Continue draft persistence, template preview, and preview-controller cleanup only as incremental follow-ups.
 
 ### Maintain
 
@@ -404,7 +407,7 @@ These areas still should not be used as first-pass direct refactor targets:
 
 - Expand representative fixture coverage around the HTML generators before broader render-surface refactors.
 - Clean up template editorial/admin conversions after template preview and personalization seams are more fully fenced.
-- Revisit public delivery and public RSVP only after lifecycle helper reuse is clearer on the backend.
+- Revisit public delivery and public RSVP only after checkout/session and lifecycle entrypoint orchestration are narrower on the backend.
 
 ### Last
 
@@ -415,19 +418,19 @@ These areas still should not be used as first-pass direct refactor targets:
 
 ### Recommended order
 
-1. backend-only publication lifecycle helper extraction
-2. broader lifecycle/history/trash helper narrowing
+1. checkout/session lifecycle plus thin handler delegation
+2. lifecycle/history/trash/finalization orchestration narrowing
 3. draft persistence follow-up if needed
 4. template preview / personalization dual-mode cleanup
-5. preview controller cleanup only as incremental simplification
+5. preview controller cleanup as incremental simplification only
 6. HTML generators in fixture-backed slices only
 7. `src/components/CanvasEditor.jsx`
 8. broad `publicationPayments.ts` rewrite never as a first pass
 
 ### Should they be tackled now?
 
-- backend-only publication lifecycle helper extraction: Yes. This is now the best current incremental target because lifecycle risk is better localized and parity-tested than before.
-- broader lifecycle/history/trash helper narrowing: Yes, but only after the first helper extraction clarifies the backend interpretation boundary.
+- checkout/session lifecycle plus thin handler delegation: Yes. This is now the best current incremental backend target because the deepest approved-session, publish-execution, and slug-reservation seams are already extracted.
+- lifecycle/history/trash/finalization orchestration narrowing: Yes, incrementally. The helper seams are already present, so the next work should stay at the entrypoint-orchestration layer rather than reopen the helper boundaries that now exist.
 - draft persistence follow-up: Yes, incrementally. The boundary is safer than before, but it is no longer the best first target.
 - `src/hooks/useDashboardPreviewController.js`: Not as the top priority anymore. It is now materially safer, and further cleanup should be incremental rather than treated as the main hardening entry point.
 - `src/pages/dashboard.js`: No longer the main blocker. Small composition cleanups are safe, but the shell should not still be framed as the best first target.
@@ -436,4 +439,4 @@ These areas still should not be used as first-pass direct refactor targets:
 - `src/components/CanvasEditor.jsx`: No direct refactor yet. Keep reducing dependence on editor-internal runtime globals first.
 - `functions/src/payments/publicationPayments.ts`: No direct broad rewrite yet. Keep extracting helper boundaries around it before attempting deeper changes.
 
-The important change from the previous revision of this map is that `dashboard.js` and preview generation are no longer first-pass fragility hotspots. The preview controller is safer but still dense. The best next target is now backend-only publication lifecycle helper extraction because lifecycle risk is more localized and parity-tested than before.
+The important change from the previous revision of this map is that backend-only lifecycle helper extraction is no longer the best next target because that seam now exists in code. `dashboard.js` and preview generation also remain off the first-pass hotspot list. The best next target is now checkout/session lifecycle extraction plus thinner request-facing handler delegation around `publicationPayments.ts`.

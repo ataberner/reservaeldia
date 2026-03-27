@@ -67,11 +67,7 @@ const {
   PUBLICATION_TRASH_RETENTION_DAYS,
   resolveDraftLinkedPublicSlugFromData,
   resolveDraftPublicationLifecycleStateFromData,
-  resolvePublicationPublicStateFromData,
-  computeTrashPurgeAt: computeBackendTrashPurgeAt,
-  isPubliclyAccessible,
-  toDateFromTimestampLike,
-  computePublicationExpirationDate,
+  resolvePublicationLifecycleSnapshotFromData,
 } = requireBuiltModule("../functions/lib/payments/publicationLifecycle.js");
 
 function toIsoOrNull(value) {
@@ -82,32 +78,6 @@ function toIsoOrNull(value) {
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function isExplicitlyFinalized(publication) {
-  const estado = normalizeText(publication?.estado);
-  const lifecycleState = normalizeText(publication?.publicationLifecycle?.state);
-  return (
-    estado === FRONTEND_PUBLICATION_STATES.FINALIZED ||
-    estado === "finalized" ||
-    lifecycleState === FRONTEND_PUBLICATION_STATES.FINALIZED ||
-    lifecycleState === "finalized"
-  );
-}
-
-function resolveBackendExpirationDate(publication) {
-  const explicitDate =
-    toDateFromTimestampLike(publication?.vigenteHasta) ||
-    toDateFromTimestampLike(publication?.venceAt) ||
-    toDateFromTimestampLike(publication?.publicationLifecycle?.expiresAt);
-  if (explicitDate) return explicitDate;
-
-  const publishedAt =
-    toDateFromTimestampLike(publication?.publicadaAt) ||
-    toDateFromTimestampLike(publication?.publicadaEn);
-  if (!(publishedAt instanceof Date)) return null;
-
-  return computePublicationExpirationDate(publishedAt);
 }
 
 function readFrontendDraftTrashSnapshot(draft) {
@@ -159,32 +129,21 @@ function readFrontendPublicationSnapshot(publication) {
 }
 
 function readBackendPublicationSnapshot(publication) {
-  const rawPublicState = resolvePublicationPublicStateFromData(publication);
-  const expirationDate = resolveBackendExpirationDate(publication);
-  const isDateExpired =
-    expirationDate instanceof Date && expirationDate.getTime() <= FIXED_NOW_MS;
+  const lifecycleSnapshot = resolvePublicationLifecycleSnapshotFromData(publication, {
+    now: new Date(FIXED_NOW_MS),
+  });
   const isHistoryLinked = normalizeText(publication?.source) === "history";
-  const isFinalized =
-    isHistoryLinked ||
-    isExplicitlyFinalized(publication) ||
-    (isDateExpired && rawPublicState !== PUBLICATION_PUBLIC_STATES.TRASH);
-  const trashPurgeAtIso =
-    rawPublicState === PUBLICATION_PUBLIC_STATES.TRASH && expirationDate instanceof Date
-      ? toIsoOrNull(computeBackendTrashPurgeAt(expirationDate))
-      : null;
+  const isFinalized = isHistoryLinked || lifecycleSnapshot.isExpired;
 
   return {
-    rawPublicState,
+    rawPublicState: lifecycleSnapshot.rawPublicState,
     effectiveState: isFinalized
       ? FRONTEND_PUBLICATION_STATES.FINALIZED
-      : rawPublicState,
+      : lifecycleSnapshot.rawPublicState,
     isFinalized,
-    isDateExpired,
-    isVisitorAccessible:
-      Boolean(rawPublicState) &&
-      isPubliclyAccessible(rawPublicState) &&
-      !isFinalized,
-    trashPurgeAtIso,
+    isDateExpired: lifecycleSnapshot.isDateExpired,
+    isVisitorAccessible: lifecycleSnapshot.isPubliclyAccessibleByState && !isFinalized,
+    trashPurgeAtIso: toIsoOrNull(lifecycleSnapshot.trashPurgeAt),
   };
 }
 

@@ -21,7 +21,6 @@ import {
   finalizePublicationBySlug,
   hardDeleteLegacyPublicationHandler,
   getPublicationCheckoutStatusHandler,
-  isPublicationExpiredData,
   listPublicationDiscountCodesHandler,
   listPublicationDiscountCodeUsageHandler,
   processMercadoPagoWebhookRequest,
@@ -36,8 +35,7 @@ import { normalizePublicSlug } from "./utils/publicSlug";
 import { normalizeInvitationType } from "./utils/invitationType";
 import { normalizeCountdownGeometryDeep } from "./utils/normalizeCountdownGeometry";
 import {
-  isPubliclyAccessible,
-  resolvePublicationPublicStateFromData,
+  resolvePublicationLifecycleSnapshotFromData,
 } from "./payments/publicationLifecycle";
 import {
   DRAFT_STATES,
@@ -881,11 +879,12 @@ function resolveUserDirectoryPublicationDates(
 function resolveUserDirectoryPublicationStatus(
   data: Record<string, unknown>
 ): UserDirectoryPublicationStatus | null {
-  if (isPublicationExpiredData(data)) {
+  const lifecycleSnapshot = resolvePublicationLifecycleSnapshotFromData(data);
+  if (lifecycleSnapshot.isExpired) {
     return "expired";
   }
 
-  const publicState = resolvePublicationPublicStateFromData(data);
+  const publicState = lifecycleSnapshot.rawPublicState;
   if (publicState === "publicada_pausada") {
     return "paused";
   }
@@ -1107,12 +1106,15 @@ app.get("/i/:slug", async (req: Request, res: Response) => {
     }
 
     const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
-    const publicState = resolvePublicationPublicStateFromData(publicationData);
-    if (!publicState || !isPubliclyAccessible(publicState)) {
+    const lifecycleSnapshot = resolvePublicationLifecycleSnapshotFromData(publicationData);
+    if (
+      !lifecycleSnapshot.rawPublicState ||
+      !lifecycleSnapshot.isPubliclyAccessibleByState
+    ) {
       return res.status(404).send("Invitacion no disponible");
     }
 
-    if (isPublicationExpiredData(publicationData)) {
+    if (lifecycleSnapshot.isExpired) {
       try {
         await finalizePublicationBySlug({
           slug,
@@ -1475,8 +1477,11 @@ export const publicRsvpSubmit = onRequest(
       }
 
       const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
-      const publicState = resolvePublicationPublicStateFromData(publicationData);
-      if (!publicState || !isPubliclyAccessible(publicState)) {
+      const lifecycleSnapshot = resolvePublicationLifecycleSnapshotFromData(publicationData);
+      if (
+        !lifecycleSnapshot.rawPublicState ||
+        !lifecycleSnapshot.isPubliclyAccessibleByState
+      ) {
         res.status(404).json({
           ok: false,
           message: "La invitacion no esta disponible.",
@@ -1484,7 +1489,7 @@ export const publicRsvpSubmit = onRequest(
         return;
       }
 
-      if (isPublicationExpiredData(publicationData)) {
+      if (lifecycleSnapshot.isExpired) {
         try {
           await finalizePublicationBySlug({
             slug,

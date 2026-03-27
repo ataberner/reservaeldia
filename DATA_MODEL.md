@@ -124,9 +124,9 @@ Observed publication fields include:
 | `invitadosCount` | `publicadas/{publicSlug}` | Auxiliary publication metric. |
 | `rsvp` | `publicadas/{publicSlug}` | Normalized published RSVP config. |
 | `gifts` | `publicadas/{publicSlug}` | Normalized published gifts config. |
-| `estado` | `publicadas/{publicSlug}` | Publication state metadata. |
-| `publicadaAt` / `publicadaEn` | `publicadas/{publicSlug}` | First publication timestamps. |
-| `venceAt` / `vigenteHasta` | `publicadas/{publicSlug}` | Expiration timestamps. |
+| `estado` | `publicadas/{publicSlug}` | Publication state metadata. Backend lifecycle interpretation does not rely on `estado` alone; the current source of truth is `functions/src/payments/publicationLifecycle.ts`. |
+| `publicadaAt` / `publicadaEn` | `publicadas/{publicSlug}` | Primary first-publication timestamps for active publication docs. Backend timeline helpers use these first and only fall back to lifecycle timestamps in callers that explicitly opt into that compatibility path. |
+| `venceAt` / `vigenteHasta` | `publicadas/{publicSlug}` | Primary expiration timestamps. Backend lifecycle interpretation currently treats `venceAt ?? vigenteHasta` as the stored expiration input before any lifecycle/date-derived fallback. |
 | `ultimaPublicacionEn` | `publicadas/{publicSlug}` | Latest publish timestamp. |
 | `pausadaAt` | `publicadas/{publicSlug}` | Pause timestamp when applicable. |
 | `enPapeleraAt` | `publicadas/{publicSlug}` | Trash timestamp when applicable. |
@@ -142,6 +142,22 @@ Relationship summary:
 - `publicadas/{publicSlug}` is a publication wrapper and lifecycle record.
 - `publicadas/{publicSlug}` is not a fallback source for `objetos` or `secciones`.
 - Published HTML is stored separately at `publicadas/{publicSlug}/index.html` in Firebase Storage.
+
+### Backend Lifecycle Interpretation
+The current backend source of truth for publication lifecycle interpretation is `functions/src/payments/publicationLifecycle.ts`.
+
+That module currently centralizes:
+- raw public-state resolution
+- backend state resolution
+- effective expiration inputs
+- publication-date resolution used by backend lifecycle flows
+- public accessibility inputs
+- trash-purge input derivation
+
+Current backend interpretation rules that matter for this model:
+- public access checks in `functions/src/index.ts` first gate on the resolved raw public state and public accessibility, then separately reject/finalize expired publications
+- effective expiration is currently resolved from `venceAt ?? vigenteHasta`, then `publicationLifecycle.expiresAt`, then derived publication-date inputs when the caller uses that derived path
+- trash purge derivation currently uses `venceAt ?? vigenteHasta`, and if those fields are missing the backend purge path derives the purge input from publication-date inputs rather than from `publicationLifecycle.expiresAt`
 
 ## 3. Sections Model
 Sections are stored in the `secciones` array inside the draft document. The editor and the HTML generator both sort sections by `orden`.
@@ -580,6 +596,53 @@ It does not store:
 - `secciones`
 - the generated HTML itself
 
+### `publication_checkout_sessions`
+`publication_checkout_sessions/{sessionId}` stores the backend checkout/session lifecycle.
+
+Observed fields include:
+
+- `uid`, `draftSlug`, `operation`, `publicSlug`
+- `amountBaseArs`, `amountArs`, `discountAmountArs`, `discountCode`, `discountDescription`, `currency`
+- `pricingSnapshot` with `pricingVersion`, `operationType`, `appliedPrice`, `currency`
+- `status`, `expiresAt`, `lastError`
+- `mpPreferenceId`, `mpPaymentId`, `mpStatus`, `mpStatusDetail`
+- `publicUrl`
+- `receipt` with `operation`, `amountBaseArs`, `amountArs`, `discountAmountArs`, `discountCode`, `discountDescription`, `currency`, `approvedAt`, `paymentId`, `publicSlug`, `publicUrl`
+- `createdAt`, `updatedAt`
+
+Current status values in code:
+
+- `awaiting_payment`
+- `payment_processing`
+- `payment_rejected`
+- `payment_approved`
+- `publishing`
+- `published`
+- `approved_slug_conflict`
+- `expired`
+
+### `public_slug_reservations`
+`public_slug_reservations/{slug}` stores temporary public-slug claims for checkout flows that need a new public slug.
+
+Observed fields include:
+
+- `slug`, `uid`, `draftSlug`, `sessionId`
+- `status`
+- `expiresAt`
+- `createdAt`, `updatedAt`
+
+Current status values in code:
+
+- `active`
+- `consumed`
+- `released`
+- `expired`
+
+Important behavior:
+
+- reservation status updates are session-id-sensitive
+- slug availability and update-slug resolution also inspect `publicadas/{slug}` and can finalize an expired active publication before treating a slug as reusable
+
 ### HTML Output
 Published HTML is stored in Firebase Storage, not Firestore:
 
@@ -688,6 +751,7 @@ These are the current code-grounded rules that must not be broken:
 - Countdown v1 and v2 coexist. The data shape is not identical across those branches.
 - `publicadas` metadata is not the canonical render model. Debugging publication issues against `publicadas` alone is incomplete.
 - Publication metadata `tipo` is currently derived from compatibility fields (`tipo` / `plantillaTipo`) rather than modern `tipoInvitacion`. That means draft metadata and publication metadata can drift even when the render payload is valid.
+- `public_slug_reservations` is not a pure availability index. Slug availability and update-slug resolution can expire active reservations and finalize expired publications during lookup before treating a slug as reusable.
 - Storage-backed URLs are mutable across load and publish. A path or signed URL can be rewritten without changing the logical object/section identity.
 - RSVP root config and `publicRsvpSubmit` use different contracts. `sheetUrl` belongs to the config/runtime path, while attendee submissions are stored from `slug` + `answers`/`metrics` with legacy mirrors. Mixing those surfaces is unsafe.
 - The current HTML generator only publishes `forma.rect`, `forma.circle`, `forma.line`, and `forma.triangle`. Other editor-side `figura` values do not currently have matching DOM generation branches.

@@ -2,21 +2,26 @@
 
 ## 1. Executive Summary
 
-This map is based on the current implementation and the current testable behavior in the repository on 2026-03-26, not on the previous version of this document.
+This map is based on the current implementation and the current testable behavior in the repository on 2026-03-26. It describes the code that exists today; it does not introduce code or API changes.
 
-The recent fragility-reduction work is real and visible in code:
+The recent dashboard and preview hardening is real and visible in code:
 
-- draft/publication read resolution is now centralized in `src/domain/invitations/readResolution.js`
-- publication and draft preview image fallback logic is now centralized in `src/domain/invitations/previewReadModel.js`
-- critical preview/publish flushes now go through `src/domain/drafts/criticalFlush.js` + `src/domain/drafts/flushGate.js`
-- editor snapshot reads now have an explicit adapter in `src/lib/editorSnapshotAdapter.js`
-- asset normalization is now centralized around `shared/renderAssetContract.*` and `functions/src/utils/publishAssetNormalization.ts`
-- legacy render-branch classification is now explicit in `shared/renderContractPolicy.*`
-- publish preflight is now centralized in `functions/src/payments/publicationPublishValidation.ts`
-- client/server RSVP normalization is now aligned between `src/domain/rsvp/config.js` and `functions/src/rsvp/config.ts`
-- template preview/personalization now has shared planning/runtime helpers and focused tests under `src/domain/templates/`
+- dashboard startup/preload orchestration now lives in `src/hooks/useDashboardStartupLoaders.js`
+- dashboard route/session resolution now lives in `src/hooks/useDashboardEditorRoute.js` plus `src/domain/dashboard/editorSession.js`
+- template preview modal selection/loading orchestration now lives in `src/hooks/useDashboardTemplateModal.js`
+- publication list/read-model assembly is now centralized in `src/domain/publications/dashboardList.js`
+- dashboard home section shaping is now centralized in `src/domain/dashboard/homeModel.js`
+- preview state shaping is now centralized in `src/domain/dashboard/previewSession.js`
+- preview generation is now centralized in `src/domain/dashboard/previewPipeline.js`
+- preview publication validation/audit actions are now centralized in `src/domain/dashboard/previewPublicationActions.js`
 
-Those changes reduced drift around preview lookup, asset normalization, CTA readiness, flush timing, and client/server RSVP schema handling. They did not remove the system's highest-risk seams.
+Those changes made several seams materially safer:
+
+- `src/pages/dashboard.js` is now mostly a composition layer instead of the main owner of startup/preload, route resolution, preview internals, and template modal orchestration
+- dashboard home/publication assembly is now shared across home and publication surfaces instead of being rebuilt ad hoc in each caller
+- preview generation is no longer one large controller-owned flow; its session state, payload shaping, generation pipeline, and publication-side actions now have separate domain modules and focused tests
+
+They did not remove the system's highest-risk seams.
 
 The most dangerous modules are still:
 
@@ -25,86 +30,92 @@ The most dangerous modules are still:
 - `functions/src/utils/generarHTMLDesdeSecciones.ts`
 - `functions/src/utils/generarHTMLDesdeObjetos.ts`
 
-The largest priority change in this revision is `src/pages/dashboard.js`: it is still risky, but it is no longer blocked behind missing surrounding boundaries. It is now the first large orchestration module that can be decomposed incrementally.
+The main priority change in this revision is that preview generation itself should no longer be treated as the best first target. The extracted preview modules lowered that risk. The better first-pass refactor target is now `src/hooks/useDashboardPreviewController.js`: it is thinner and more controller-focused than before, but it still coordinates session tokens, flush gating, publish validation refresh, modal state, and checkout transitions in one large async hook.
 
-One documentation note remains stale outside this file: the current HTML generator in `functions/src/utils/generarHTMLDesdeObjetos.ts` supports `rect`, `circle`, `line`, `triangle`, `diamond`, `star`, `arrow`, `pentagon`, `hexagon`, and `heart`.
+The main backend follow-up target is still lifecycle/history/trash hardening, but that work should be boundary extraction and parity hardening around current behavior, not a broad rewrite of `publicationPayments.ts`.
 
 ### Priority Labels Used Here
 
 - `Maintain`: the seam is already materially safer; prefer additive tests and small contract-preserving changes.
-- `First`: best current refactor target.
+- `First`: best current incremental refactor target.
 - `Next`: good follow-up once the first wave lands.
 - `Later`: not blocked forever, but still should wait.
 - `Last`: too risky for direct refactor right now.
 
 ## 2. Risks Actually Reduced
 
+### Reduced: dashboard shell no longer owns startup/preload internals
+
+`src/pages/dashboard.js` still coordinates view composition, but editor/home startup loaders now live in `src/hooks/useDashboardStartupLoaders.js`. That hook owns editor asset preload, runtime readiness tracking, home loader timing, and the loader exit choreography that previously made the page harder to reason about inline.
+
+### Reduced: dashboard route/session orchestration is now fenced outside the page
+
+Editor route normalization, template workspace entry, admin draft snapshot handling, legacy draft blocking, and compatibility draft resolution now live in `src/hooks/useDashboardEditorRoute.js` plus the pure helpers in `src/domain/dashboard/editorSession.js`. Current behavior is covered by `src/domain/dashboard/editorSession.test.mjs`.
+
+### Reduced: template modal orchestration is no longer mixed into the dashboard page
+
+Template selection sessions, preview HTML caching, preview status tracking, and open-editor handoff now live in `src/hooks/useDashboardTemplateModal.js`. `src/pages/dashboard.js` now treats the template modal as a dedicated controller surface instead of owning its internal state machine directly.
+
+### Reduced: dashboard home section shaping is now centralized
+
+`src/components/dashboard/home/DashboardHomeView.jsx` now composes draft/publication/template/config hooks and delegates section shaping to `src/domain/dashboard/homeModel.js` via `useDashboardHomeSections.js`. The page no longer builds dashboard home rails inline.
+
+### Reduced: publication list/read-model assembly is now shared across dashboard surfaces
+
+Publication source loading and publication item shaping now go through `loadUserPublicationSourceRecords` and `assembleDashboardPublicationItems` in `src/domain/publications/dashboardList.js`. That shared module is used by `src/hooks/useDashboardPublications.js`, `src/components/DashboardPublicadasSection.jsx`, and `src/components/PublicadasGrid.jsx`. Current behavior is covered by `src/domain/publications/dashboardList.test.mjs`.
+
 ### Reduced: alternate draft/publication lookup drift
 
-`src/pages/dashboard.js` now delegates editor entry and preview publication lookup to `resolveOwnedDraftSlugForEditorRead` and `resolvePublicationLinkForDraftRead` in `src/domain/invitations/readResolution.js`. The current lookup order and fallback behavior are covered by `src/domain/invitations/readResolution.test.mjs`.
+`src/pages/dashboard.js` and preview/home flows now rely on shared resolution helpers in `src/domain/invitations/readResolution.js` instead of ad hoc lookup order. Current lookup behavior is covered by `src/domain/invitations/readResolution.test.mjs`.
 
 ### Reduced: preview image fallback drift
 
-Preview image candidate selection is no longer spread only through ad hoc component code. `src/domain/invitations/previewReadModel.js` now centralizes draft/publication preview candidate ordering and linked-draft fallback, and it is used by `useDashboardDrafts`, `useDashboardPublications`, `PublicadasGrid.jsx`, and `DashboardPublicadasSection.jsx`. Current behavior is covered by `src/domain/invitations/previewReadModel.test.mjs`.
+Publication and draft preview candidate resolution still goes through `src/domain/invitations/previewReadModel.js`, and the publication list assembly now consumes that shared read-model instead of rebuilding preview lookup locally. Current behavior is covered by `src/domain/invitations/previewReadModel.test.mjs`.
+
+### Reduced: preview state shaping is now explicit and test-backed
+
+The preview modal state factory, success/error patches, live snapshot overlay, preview render payload shaping, and display URL logic now live in `src/domain/dashboard/previewSession.js`. Current behavior is covered by `src/domain/dashboard/previewSession.test.mjs`.
+
+### Reduced: preview generation is now a dedicated pipeline
+
+Preview document read, live snapshot overlay, publication link lookup, generator input shaping, and HTML generation handoff now live in `src/domain/dashboard/previewPipeline.js`. Current behavior is covered by `src/domain/dashboard/previewPipeline.test.mjs`.
+
+### Reduced: preview publication-side actions are now separated from the controller
+
+Publish validation dispatch, preview publish action resolution, and delayed published audit capture now live in `src/domain/dashboard/previewPublicationActions.js`. Current behavior is covered by `src/domain/dashboard/previewPublicationActions.test.mjs`.
 
 ### Reduced: preview/publish flush timing ambiguity
 
-Critical actions now go through `flushEditorPersistenceBeforeCriticalAction` in `src/domain/drafts/criticalFlush.js`. That helper explicitly distinguishes template direct flush (`window.canvasEditor.flushPersistenceNow`) from draft event-based flush (`editor:draft-flush:request` / `editor:draft-flush:result`) and can capture a boundary snapshot. Current behavior is covered by `src/domain/drafts/criticalFlush.test.mjs`.
+Critical actions still go through `flushEditorPersistenceBeforeCriticalAction` in `src/domain/drafts/criticalFlush.js`, which makes the draft flush boundary explicit before preview and checkout. Current behavior is covered by `src/domain/drafts/criticalFlush.test.mjs`.
 
 ### Reduced: uncontrolled editor snapshot reads
 
-Non-editor consumers now have an explicit read adapter in `src/lib/editorSnapshotAdapter.js`. The adapter is already used by `src/pages/dashboard.js`, `src/utils/guardarThumbnail.js`, `src/components/DashboardHeader.jsx`, `src/domain/countdownAudit/runtime.js`, and the editor window bridge. The migration is not complete because legacy globals still exist, but the read boundary is better defined and tested in `src/lib/editorSnapshotAdapter.test.mjs`.
+Non-editor consumers still read the editor through `src/lib/editorSnapshotAdapter.js`, which gives preview and other dashboard consumers an explicit boundary instead of direct dependence on runtime globals. Current behavior is covered by `src/lib/editorSnapshotAdapter.test.mjs`.
 
 ### Reduced: asset contract drift across load/preview/publish
 
-The repo now has one shared asset-contract layer in `shared/renderAssetContract.*`, publish-time normalization in `functions/src/utils/publishAssetNormalization.ts`, and representative fixtures/tests in:
-
-- `shared/renderAssetContract.test.mjs`
-- `functions/publishAssetNormalization.test.mjs`
-
-This materially reduces the earlier risk that load, preview, and publish normalized `src`/`url`/`mediaUrl`/section assets differently.
-
-### Reduced: legacy contract ambiguity
-
-Legacy render branches are now explicitly classified instead of being only implicit compatibility behavior. `shared/renderContractPolicy.*` marks countdown schema v1 and `icono-svg` as frozen compatibility branches, and the HTML generator emits explicit countdown contract markers. Current behavior is covered by:
-
-- `shared/renderContractPolicy.test.mjs`
-- `functions/renderContractCompatibility.test.mjs`
+The repo still relies on shared asset normalization via `shared/renderAssetContract.*`, `functions/src/utils/publishAssetNormalization.ts`, and load-time/persist-time normalization in `src/components/editor/persistence/useBorradorSync.js`. This remains materially safer than the older scattered handling.
 
 ### Reduced: publish-input ambiguity
 
-`functions/src/payments/publicationPayments.ts` no longer owns publish input preparation alone. It now delegates to:
-
-- `preparePublicationRenderState`
-- `validatePreparedPublicationRenderState`
-- `resolveFunctionalCtaContract`
-
-That separation is backed by representative tests in `functions/publicationPublishValidation.test.mjs`. This does not make finalization safe, but it does reduce input-contract fragility.
-
-### Reduced: client/server RSVP normalization drift
-
-`sheetUrl` and other RSVP normalization semantics are now aligned between frontend and backend. Current parity is covered by `src/domain/rsvp/config.test.mjs`.
+`functions/src/payments/publicationPayments.ts` still owns checkout/finalization, but publish input preparation and validation are fenced through `functions/src/payments/publicationPublishValidation.ts`. That seam remains one of the safest important parts of publish.
 
 ### Reduced: template preview/personalization contract drift
 
-Template preview source resolution now goes through the shared template contract, preview runtime mode selection is explicit, and post-copy personalization now runs through `src/domain/templates/personalizationContract.js`. Current behavior is covered by:
-
-- `src/domain/templates/preview.test.mjs`
-- `src/domain/templates/personalization.test.mjs`
-
-This is a meaningful improvement, but the area still has two preview modes and iframe patching.
+Template preview mode resolution now goes through `src/domain/templates/preview.js`, and post-copy personalization now goes through `src/domain/templates/personalization.js` plus `src/domain/templates/personalizationContract.js`. Current behavior is covered by `src/domain/templates/preview.test.mjs` and `src/domain/templates/personalization.test.mjs`.
 
 ## 3. Fragility Matrix by Area
 
 | Area | Complexity | Fragility | Business criticality | Regression risk | Priority now |
 | --- | --- | --- | --- | --- | --- |
-| Dashboard shell | High | High | High | High | First |
-| Dashboard home data loading | Medium | Medium | Medium | Medium | Next |
+| Dashboard shell | Medium-High | Medium | High | Medium | Maintain |
+| Dashboard home data loading / publication assembly | Medium | Low-Medium | Medium | Medium | Maintain |
 | Editor runtime | Very High | Very High | High | Very High | Last |
 | Draft persistence | High | Medium | High | Medium-High | Next |
-| Template preview and personalization | High | Medium-High | High | Medium-High | Next |
+| Template preview and personalization | High | Medium | High | Medium-High | Next |
 | Template admin/editorial flows | High | High | Medium | High | Later |
-| Preview generation | High | Medium-High | High | High | First |
+| Preview generation | Medium-High | Medium | High | Medium-High | Next |
+| Preview controller tier | High | Medium-High | High | High | First |
 | Publish validation | High | Low-Medium | High | Medium | Maintain |
 | Publication checkout/payment | High | High | Very High | Very High | Last |
 | Publish finalization | Very High | Very High | Very High | Very High | Last |
@@ -119,89 +130,109 @@ This is a meaningful improvement, but the area still has two preview modes and i
 
 ### Dashboard shell
 
-Main files: `src/pages/dashboard.js`
+Main files: `src/pages/dashboard.js`, `src/hooks/useDashboardStartupLoaders.js`, `src/hooks/useDashboardEditorRoute.js`, `src/hooks/useDashboardTemplateModal.js`
 
-This file is still a large coordinator for auth, home, editor entry, preview generation, template flows, publish validation, and checkout launch. The current code is safer than before because editor entry resolution, publication lookup, flush confirmation, and snapshot capture now live behind explicit helpers. It is still fragile because preview generation still re-reads persistence and then overwrites that payload with a live editor snapshot before importing `functions/src/utils/generarHTMLDesdeSecciones.ts`, so preview orchestration remains cross-layer and multi-source.
+`src/pages/dashboard.js` is now mostly a composition layer. It wires auth/admin access, editor route state, startup loaders, preview controller output, template modal props, and the view layout together. The page still coordinates many states and conditional views, but it no longer owns the dashboard's deepest startup/preload or preview-generation internals inline.
 
-Assessment change: still high fragility, but now a viable decomposition target.
+Remaining risk: the shell still coordinates many cross-hook state transitions, view gates, and editor/home modal combinations. The current risk is orchestration at the composition layer, not the older "one page owns everything" shape.
 
-### Dashboard home data loading
+Assessment change: fragility drops from high to medium and moves into maintenance mode.
 
-Main files: `src/hooks/useDashboardDrafts.js`, `src/hooks/useDashboardPublications.js`, `src/components/dashboard/home/DashboardHomeView.jsx`
+### Dashboard home data loading / publication assembly
 
-This area is safer than before. Draft visibility now uses `resolveDraftPublicationLifecycleState`, and publication preview fallback now uses `resolvePublicationPreviewReadModelsByItemKey`. The remaining risk is duplication: publication read-model assembly still exists in more than one UI surface (`useDashboardPublications.js`, `DashboardPublicadasSection.jsx`, `PublicadasGrid.jsx`), and history reads still degrade differently when `publicadas_historial` is not readable.
+Main files: `src/components/dashboard/home/DashboardHomeView.jsx`, `src/hooks/useDashboardPublications.js`, `src/domain/publications/dashboardList.js`, `src/domain/dashboard/homeModel.js`
 
-Assessment change: fragility drops from high to medium.
+This area is materially safer than before. Dashboard home section shaping now goes through `src/domain/dashboard/homeModel.js`, and publication item assembly now goes through `src/domain/publications/dashboardList.js`. The shared publication module is reused across home and publication surfaces, so the read-model contract is no longer reconstructed independently in each caller.
+
+Remaining risk: load/refresh orchestration and lifecycle action UI are still duplicated across `useDashboardPublications.js`, `DashboardPublicadasSection.jsx`, `DashboardPublicationRailSection.jsx`, and `PublicadasGrid.jsx`. The main duplication now lives in surface-specific data loading and actions, not in core publication item assembly.
+
+Assessment change: fragility drops from medium/high orchestration risk to low-medium contract risk and moves into maintenance mode.
 
 ### Editor runtime
 
 Main files: `src/components/CanvasEditor.jsx`, `src/components/editor/canvasEditor/useCanvasEditorGlobalsBridge.js`, `src/components/editor/window/useEditorWindowBridge.js`, `src/drag/dragGrupal.js`
 
-The editor runtime remains too coupled for a direct refactor. The snapshot adapter is real progress, but the runtime still exports and consumes many legacy globals: `_objetosActuales`, `_seccionesOrdenadas`, `_elementosSeleccionados`, `_isDragging`, `_grupoLider`, `_resizeData`, `_rsvpConfigActual`, `_giftsConfigActual`, `_giftConfigActual`, and `window.canvasEditor`. Many non-editor modules still read those globals directly.
+The editor runtime remains too coupled for a direct refactor. Surrounding dashboard consumers now have better boundaries, but the runtime itself still coordinates a large number of global bridges, drag/resize side channels, and selection/runtime internals.
 
-Assessment change: surrounding consumers are slightly safer; editor internals themselves are not.
+Assessment change: surrounding consumers are safer; editor internals themselves are not.
 
 ### Draft persistence
 
 Main files: `src/components/editor/persistence/useBorradorSync.js`, `src/domain/drafts/criticalFlush.js`, `src/domain/drafts/flushGate.js`
 
-This seam is materially safer than before. `useBorradorSync` now has explicit load-time and persist-time normalization boundaries, normalizes render assets, normalizes pantalla positions, centralizes immediate flush behavior, and writes `draftContentMeta` consistently. It is still non-trivial because the same hook supports normal draft sessions and template sessions and still owns URL refresh, autosave timing, thumbnail generation, and flush behavior.
+This seam is materially safer than before. `useBorradorSync.js` now has explicit load-time hydration boundaries, explicit persist-time normalization boundaries, explicit flush behavior, and consistent `draftContentMeta` writes. It also normalizes render assets and pantalla positions before persistence and before editor hydration.
 
-Assessment change: fragility drops from high to medium.
+Remaining risk: the same hook still owns autosave timing, thumbnail generation, storage URL refresh, draft/template dual-mode behavior, countdown audit recording, and direct persistence bridging for critical actions.
+
+Assessment change: fragility drops from high to medium, but it is still a meaningful `Next` target.
 
 ### Template preview and personalization
 
-Main files: `src/components/TemplatePreviewModal.jsx`, `src/domain/templates/preview.js`, `src/domain/templates/personalization.js`, `src/domain/templates/personalizationContract.js`, `src/domain/templates/previewLivePatch.js`
+Main files: `src/components/TemplatePreviewModal.jsx`, `src/hooks/useDashboardTemplateModal.js`, `src/domain/templates/preview.js`, `src/domain/templates/personalization.js`, `src/domain/templates/personalizationContract.js`, `src/domain/templates/previewLivePatch.js`
 
-This area improved significantly. Preview mode selection is now explicit, live patching runs from a shared personalization field plan, and post-copy personalization uses a shared contract plus focused tests. It remains fragile because the system still supports both URL-based preview and generated preview, and only the generated path supports iframe patching and text-position capture.
+This area improved significantly. Preview runtime mode selection is now explicit, form-state/modal orchestration is separated from the dashboard page, and post-copy personalization uses a shared plan/contract instead of only local modal logic.
 
-Assessment change: still somewhat fragile, but no longer one of the least-fenced seams in the repo.
+Remaining risk: the system still supports two preview modes (`url` and generated HTML), and only the generated path supports iframe patching and text-position capture. Live patching and preview text-position capture are still specialized behaviors that make the surface more fragile than a plain read-only preview.
+
+Assessment change: fragility drops to medium, but the dual-mode preview model keeps it as a `Next` target rather than a maintenance seam.
 
 ### Template admin/editorial flows
 
 Main files: `functions/src/templates/editorialService.ts`, `src/domain/templates/adminService.js`, `src/domain/templates/authoring/service.js`
 
-This area still has multiple representations of the same logical template: source template, catalog projection, editor document, workspace draft, and authoring snapshot. The current code does not show the same kind of contract hardening here that now exists for preview or publish validation.
+This area still has multiple representations of the same logical template: source template, catalog projection, editor document, workspace draft, and authoring snapshot. The current code does not show the same degree of shared contract hardening here that now exists for dashboard preview or publication assembly.
 
-Assessment change: no meaningful reduction visible in the current implementation.
+Assessment change: no major reduction visible in the current implementation.
 
 ### Preview generation
 
-Main files: `src/pages/dashboard.js`, `src/domain/templates/preview.js`, `functions/src/utils/generarHTMLDesdeSecciones.ts`
+Main files: `src/domain/dashboard/previewPipeline.js`, `src/domain/dashboard/previewSession.js`, `functions/src/utils/generarHTMLDesdeSecciones.ts`
 
-Preview generation is safer than before because the code now has an explicit flush boundary and an explicit snapshot adapter. It is still not a single authoritative pipeline: dashboard preview still re-reads persisted state and then overlays a live editor snapshot, and frontend preview still imports backend generator code directly.
+Preview generation is materially safer than before. The pipeline, preview payload shaping, generator input shaping, and publication-link lookup now live behind explicit domain modules with focused tests. This is no longer a single monolithic path buried inside `dashboard.js` or a large hook.
 
-Assessment change: fragility drops from high to medium-high, but this remains tightly coupled to `dashboard.js`.
+Remaining risk: the current pipeline still re-reads persisted draft/template data, overlays a live editor snapshot, and imports the backend HTML generator directly from the frontend. That means preview still depends on multiple sources of truth and on a cross-runtime generator boundary.
+
+Assessment change: fragility drops from high/first-pass risk to medium/next-pass risk. Preview generation should no longer be `First`.
+
+### Preview controller tier
+
+Main files: `src/hooks/useDashboardPreviewController.js`, `src/domain/dashboard/previewSession.js`, `src/domain/dashboard/previewPipeline.js`, `src/domain/dashboard/previewPublicationActions.js`
+
+`useDashboardPreviewController.js` is materially thinner and more controller-focused than before. It now delegates preview state shaping, payload assembly, preview generation, publish validation dispatch, and published audit capture to extracted domain modules.
+
+It is still the most concentrated preview refactor target. The hook continues to own preview-session tokens, stale-session rejection, flush-before-preview logic, publish validation refresh side effects, preview modal state, checkout-open gating, and published-state updates in one large async controller. Current tests in `src/hooks/useDashboardPreviewController.test.mjs` cover session-token and compatibility helpers, but not the hook's full async state machine.
+
+Assessment change: this becomes the best current incremental refactor target and moves to `First`.
 
 ### Publish validation
 
 Main files: `functions/src/payments/publicationPublishValidation.ts`
 
-This is now one of the safest important seams in the publishing path. The code cleanly separates render-state preparation from validation, explicitly classifies blockers versus warnings, and carries representative fixture coverage for image assets, gallery assets, countdown contracts, CTA readiness, pantalla drift, and legacy branches.
+This remains one of the safest important seams in the publishing path. Render-state preparation and publish validation are explicit, test-backed, and already separated from checkout/finalization orchestration.
 
-Assessment change: priority moves from active hardening to maintenance.
+Assessment change: stays in maintenance mode.
 
 ### Publication checkout/payment
 
 Main files: `src/components/payments/PublicationCheckoutModal.jsx`, `functions/src/payments/publicationPayments.ts`
 
-The current code is still high risk because checkout state, Mercado Pago state, slug reservation state, session state, and publish finalization are still coordinated through the same backend module. The new validation/preparation helpers reduce input ambiguity, but they do not simplify payment/session orchestration.
+This area is still high risk because checkout session state, Mercado Pago state, slug reservation state, session retry handling, and publish finalization still converge through the same backend module. The improved validation boundary reduces input ambiguity, but it does not simplify the payment/session orchestration itself.
 
-Assessment change: some surrounding risk dropped, but this area itself is still not a safe direct target.
+Assessment change: some surrounding input risk dropped; the area itself is still not a safe direct target.
 
 ### Publish finalization
 
 Main files: `functions/src/payments/publicationPayments.ts`
 
-This remains the highest-risk backend seam. `publishDraftToPublic` still re-reads the draft, normalizes assets, validates, generates HTML, writes Storage, writes `publicadas`, mirrors state back to `borradores`, and coordinates active/update semantics. Finalization still spans `publicadas`, `publicadas_historial`, Storage, slug reservations, and draft metadata.
+This remains the highest-risk backend seam. Finalization still spans draft rereads, publish validation, HTML generation, Storage writes, `publicadas`, `publicadas_historial`, slug reservation cleanup, and mirror writes back to `borradores`.
 
-Assessment change: input preparation is cleaner, but finalization remains very high fragility.
+Assessment change: no meaningful drop in direct-refactor safety.
 
 ### Public delivery
 
 Main files: `functions/src/index.ts`, `functions/src/payments/publicationLifecycle.ts`
 
-Public delivery is still smaller than the publish pipeline, but it remains coupled to distributed publication state and Storage artifacts. The access path still finalizes expired publications on read, so public delivery is not a pure read path.
+Public delivery is still smaller than the publish pipeline, but it remains coupled to distributed publication state and exported handler wiring. The public access path is still not a pure read-only surface.
 
 Assessment change: no material reduction.
 
@@ -209,46 +240,54 @@ Assessment change: no material reduction.
 
 Main files: `functions/src/index.ts`, `functions/src/rsvp/config.ts`, `src/domain/rsvp/config.js`
 
-This area is safer than before because client/server normalization semantics now match, including `sheetUrl` handling in the config layer. It still depends on current publication accessibility and still finalizes expired publications on request before returning `410`.
+This area remains safer than it used to be because client/server RSVP normalization semantics are aligned, but it still depends on publication accessibility and backend lifecycle state.
 
-Assessment change: fragility drops from high to medium.
+Assessment change: remains medium fragility and not a first-pass target.
 
 ### Shared render contracts
 
 Main files: `shared/renderAssetContract.*`, `shared/renderContractPolicy.*`
 
-These are now clearly fenced by focused tests and are the safest cross-runtime contract surfaces in the repository. They still matter a lot, but the logic is explicit and much less orchestration-heavy than surrounding modules.
+These remain the safest cross-runtime contract surfaces in the repository. They are explicit, test-backed, and much less orchestration-heavy than the dashboard, editor, or payment/finalization seams around them.
 
-Assessment change: remains low fragility and shifts to maintenance mode.
+Assessment change: remains low fragility and in maintenance mode.
 
 ### Asset normalization
 
 Main files: `shared/renderAssetContract.*`, `functions/src/utils/publishAssetNormalization.ts`, `src/components/editor/persistence/useBorradorSync.js`
 
-This seam is now materially safer. Load-time normalization, preview-time canonicalization, and publish-time normalization are still separate stages, but they now share a much clearer contract and representative fixture coverage. The remaining risk is that the system still resolves assets in different runtime contexts, not that the field contract is undefined.
+This seam remains materially safer. Load-time normalization, preview-time canonicalization, and publish-time normalization still happen in different runtime contexts, but the field contract is much better defined than before.
 
-Assessment change: fragility drops from high to medium.
+Assessment change: remains medium fragility and in maintenance mode.
 
 ### HTML generation
 
 Main files: `functions/src/utils/generarHTMLDesdeSecciones.ts`, `functions/src/utils/generarHTMLDesdeObjetos.ts`
 
-The generators are still high-risk shared render surfaces. Current code is better fenced than before because it now consumes explicit render-contract helpers, uses the functional CTA contract, and has compatibility tests for countdown contract markers. It is still a very large, broadly shared runtime with limited representative fixture coverage compared with its blast radius.
+The generators are still high-risk shared render surfaces. Current code is better fenced around contracts than it used to be, but the runtime is still large, broadly shared, and undercovered relative to its blast radius.
 
-Assessment change: slightly safer around contract handling, but still not ready for a broad refactor.
+Assessment change: still not ready for a broad refactor.
 
 ### Lifecycle / history / trash / finalization
 
 Main files: `src/domain/drafts/state.js`, `functions/src/drafts/draftTrashLifecycle.ts`, `src/domain/publications/state.js`, `functions/src/payments/publicationLifecycle.ts`, `functions/src/payments/publicationPayments.ts`
 
-This area remains distributed. Frontend and backend helpers now look more aligned than before, but they are still separate implementations and are not yet backed by the same kind of parity-fixture coverage that now exists for assets, preview read models, RSVP config, or publish validation. Finalization and purge behavior also still live partly in `publicationPayments.ts`.
+This area remains distributed. Frontend and backend state helpers are closer in shape than before, but they are not a single shared contract surface and are not backed by parity-style fixtures. `functions/src/payments/publicationPayments.ts` still owns publication state transitions, history writes, finalization, trash purge behavior, and checkout/finalization coupling in the same module.
 
-Assessment change: still high fragility and a good follow-up helper-consolidation target.
+Assessment change: still high fragility. This is the main backend hardening follow-up, but it should start with helper extraction and parity hardening, not with a direct rewrite of `publicationPayments.ts`.
 
 ## 5. Modules Now Safer to Refactor
 
-These modules now have enough contract definition or test coverage to support focused refactors:
+These modules now have enough boundary definition or test coverage to support focused refactors:
 
+- `src/hooks/useDashboardStartupLoaders.js`
+- `src/hooks/useDashboardEditorRoute.js`
+- `src/domain/dashboard/editorSession.js`
+- `src/domain/publications/dashboardList.js`
+- `src/domain/dashboard/homeModel.js`
+- `src/domain/dashboard/previewSession.js`
+- `src/domain/dashboard/previewPipeline.js`
+- `src/domain/dashboard/previewPublicationActions.js`
 - `src/domain/invitations/readResolution.js`
 - `src/domain/invitations/previewReadModel.js`
 - `src/domain/drafts/criticalFlush.js`
@@ -266,71 +305,88 @@ These modules now have enough contract definition or test coverage to support fo
 
 Modules that are not small but are now safer than they were before:
 
-- `src/hooks/useDashboardDrafts.js`
+- `src/pages/dashboard.js`
 - `src/hooks/useDashboardPublications.js`
+- `src/hooks/useDashboardTemplateModal.js`
+- `src/hooks/useDashboardPreviewController.js` for incremental extraction only
 - `src/components/editor/persistence/useBorradorSync.js`
-- `src/pages/dashboard.js` for incremental decomposition only
 
 ## 6. Areas Still Too Risky To Touch Directly
 
-These areas still should not be used as first-pass refactor targets:
+These areas still should not be used as first-pass direct refactor targets:
 
 - `src/components/CanvasEditor.jsx`
-  - Reason: heavy runtime dependence on window globals and drag/resize side channels across many consumers.
+  - Reason: heavy runtime dependence on globals, drag/resize side channels, and editor-internal coordination across many consumers.
 - `functions/src/payments/publicationPayments.ts`
-  - Reason: payment/session state, slug reservation, active publication writes, finalization, history, and purge/finalization helpers still converge here.
+  - Reason: checkout, payment, slug reservation, state transitions, history, finalization, and purge behavior still converge here.
 - `functions/src/utils/generarHTMLDesdeSecciones.ts`
-  - Reason: shared preview/public render runtime with large behavioral surface and limited fixture coverage.
+  - Reason: shared preview/public render runtime with broad behavioral surface and limited representative fixture coverage.
 - `functions/src/utils/generarHTMLDesdeObjetos.ts`
-  - Reason: object-level render contract for many element families, including legacy branches.
+  - Reason: object-level render contract for many element families, including legacy branches and shape-specific rendering paths.
 - `functions/src/index.ts`
-  - Reason: public delivery and RSVP still retain lifecycle side effects and mixed export responsibilities.
+  - Reason: very broad export surface with mixed responsibilities, including public access/lifecycle wiring and many unrelated handlers.
 
 ## 7. Updated Improvement Priorities
 
 ### First
 
-- Decompose `src/pages/dashboard.js` into smaller coordinators around:
-  - editor session resolution
-  - preview generation
-  - publish validation / checkout launch
-  - template modal orchestration
-- Consolidate duplicated publication list/read-model assembly now that shared preview/read-resolution helpers exist.
-- Add lifecycle parity fixtures for:
-  - `src/domain/publications/state.js` vs `functions/src/payments/publicationLifecycle.ts`
-  - `src/domain/drafts/state.js` vs `functions/src/drafts/draftTrashLifecycle.ts`
+- Further decompose `src/hooks/useDashboardPreviewController.js` around:
+  - preview session token/state transition handling
+  - preview-open flow and failure paths
+  - publish validation refresh and checkout gating
+- Add controller-level tests that cover:
+  - preview open success/failure
+  - stale session rejection across async completions
+  - publish validation refresh behavior
+  - checkout-ready and checkout-closed transitions
+- Keep `src/domain/dashboard/previewSession.js`, `src/domain/dashboard/previewPipeline.js`, and `src/domain/dashboard/previewPublicationActions.js` as the lower-level boundaries; do not move that logic back into the hook.
 
 ### Next
 
-- Continue reducing preview drift so dashboard preview stops owning both the persistence re-read path and the live snapshot overlay path.
-- Refine `useBorradorSync` now that the normalization and flush boundaries are explicit.
-- Continue template preview/personalization cleanup around the now-shared personalization plan instead of editing modal logic ad hoc.
+- Add lifecycle parity fixtures for:
+  - `src/domain/publications/state.js` vs `functions/src/payments/publicationLifecycle.ts`
+  - `src/domain/drafts/state.js` vs `functions/src/drafts/draftTrashLifecycle.ts`
+- Extract lifecycle/history helpers out of `functions/src/payments/publicationPayments.ts` without changing checkout or finalization behavior.
+- Continue simplifying `src/components/editor/persistence/useBorradorSync.js` now that load/persist/flush boundaries are explicit.
+- Continue template preview cleanup around dual preview modes and iframe patching.
+
+### Maintain
+
+- `src/pages/dashboard.js` as a composition shell
+- `src/domain/publications/dashboardList.js` and `src/domain/dashboard/homeModel.js` as shared dashboard read-model boundaries
+- `functions/src/payments/publicationPublishValidation.ts`
+- `shared/renderAssetContract.*` and `shared/renderContractPolicy.*`
 
 ### Later
 
-- Expand fixture coverage around the HTML generators before attempting broader render-surface refactors.
-- Clean up template editorial/admin conversions after current template contract surfaces are better documented and fenced.
+- Expand fixture coverage around the HTML generators before broader render-surface refactors.
+- Clean up template editorial/admin conversions after current template preview and personalization seams are more fully fenced.
 - Revisit public delivery/RSVP only after lifecycle semantics are better parity-tested.
 
 ### Last
 
 - Direct refactors inside `CanvasEditor.jsx`
-- Direct refactors inside `publicationPayments.ts`
+- Direct broad rewrites inside `publicationPayments.ts`
 
-## 8. Explicit Call: `dashboard.js`, `publicationPayments.ts`, HTML Generators, `CanvasEditor.jsx`
+## 8. Explicit Call: `useDashboardPreviewController.js`, `dashboard.js`, `publicationPayments.ts`, HTML Generators, `CanvasEditor.jsx`
 
 ### Recommended order
 
-1. `src/pages/dashboard.js`
-2. `functions/src/utils/generarHTMLDesdeSecciones.ts` + `functions/src/utils/generarHTMLDesdeObjetos.ts`
-3. `src/components/CanvasEditor.jsx`
-4. `functions/src/payments/publicationPayments.ts`
+1. `src/hooks/useDashboardPreviewController.js`
+2. lifecycle/history/trash hardening around `src/domain/publications/state.js`, `src/domain/drafts/state.js`, `functions/src/payments/publicationLifecycle.ts`, `functions/src/drafts/draftTrashLifecycle.ts`, and helper extractions from `functions/src/payments/publicationPayments.ts`
+3. `src/components/editor/persistence/useBorradorSync.js`
+4. template preview/personalization cleanup
+5. `functions/src/utils/generarHTMLDesdeSecciones.ts` + `functions/src/utils/generarHTMLDesdeObjetos.ts` only in fixture-backed slices
+6. `src/components/CanvasEditor.jsx`
+7. `functions/src/payments/publicationPayments.ts`
 
 ### Should they be tackled now?
 
-- `src/pages/dashboard.js`: Yes, incrementally. It is still risky, but the surrounding hardening work now gives it enough stable seams to start decomposing safely.
+- `src/hooks/useDashboardPreviewController.js`: Yes, incrementally. The lower-level preview pieces are now extracted and tested, which makes the controller itself the best current first-pass target.
+- `src/pages/dashboard.js`: No longer the main blocker. Small composition cleanups are safe, but the page should not still be framed as the first hardening target.
+- preview generation itself: No longer `First`. The extracted preview pipeline lowered that risk; the controller tier now deserves the first slot.
 - HTML generators: Not as a broad rewrite. Only tackle them in bounded, fixture-backed slices after adding more representative coverage.
-- `src/components/CanvasEditor.jsx`: No direct refactor yet. Keep migrating consumers away from legacy globals first.
-- `functions/src/payments/publicationPayments.ts`: No direct refactor yet. It should stay last until payment/finalization behavior has much stronger execution-path coverage.
+- `src/components/CanvasEditor.jsx`: No direct refactor yet. Keep reducing dependence on editor-internal runtime globals first.
+- `functions/src/payments/publicationPayments.ts`: No direct broad rewrite yet. Continue extracting boundaries around it before attempting deeper changes.
 
-The important change from the previous version of this map is that `dashboard.js` moved out of the "do not touch early" bucket. The other three named areas did not.
+The important change from the previous revision of this map is that both `dashboard.js` and preview generation moved out of the "best first target" bucket. `useDashboardPreviewController.js` now occupies that position.

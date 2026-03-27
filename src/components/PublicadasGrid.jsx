@@ -5,9 +5,7 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
-  where,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions as cloudFunctions } from "@/firebase";
@@ -30,23 +28,12 @@ import {
   formatAnswerValue,
   normalizeRsvpSnapshot,
 } from "@/domain/rsvp/publicadas";
+import { toDate, toMs } from "@/domain/publications/state";
 import {
-  getPublicationStatus,
-  resolvePublicationDates,
-  toDate,
-  toMs,
-} from "@/domain/publications/state";
+  assembleDashboardPublicationItems,
+  loadUserPublicationSourceRecords,
+} from "@/domain/publications/dashboardList";
 import { transitionPublishedInvitationState } from "@/domain/publications/service";
-import {
-  getPublicationPreviewItemKey,
-  resolvePublicationPreviewReadModelsByItemKey,
-  resolvePublicationEditableDraftSlug,
-} from "@/domain/publications/preview";
-
-function isPermissionDeniedError(error) {
-  const code = String(error?.code || "").toLowerCase();
-  return code === "permission-denied" || code.includes("permission-denied");
-}
 
 function normalizeHistoricSummary(rawSummary) {
   const source =
@@ -134,8 +121,11 @@ export default function PublicadasGrid({ usuario }) {
   const [detalleId, setDetalleId] = useState(null);
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchPublicadas = async () => {
       if (!usuario?.uid) {
+        if (!mounted) return;
         setItems([]);
         setCargando(false);
         return;
@@ -146,136 +136,94 @@ export default function PublicadasGrid({ usuario }) {
       setActionError("");
 
       try {
-        const publicacionesQuery = query(
-          collection(db, "publicadas"),
-          where("userId", "==", usuario.uid),
-          orderBy("publicadaEn", "desc")
-        );
-
-        const historialQuery = query(
-          collection(db, "publicadas_historial"),
-          where("userId", "==", usuario.uid)
-        );
-
-        const [publicacionesResult, historialResult] = await Promise.allSettled([
-          getDocs(publicacionesQuery),
-          getDocs(historialQuery),
-        ]);
-
-        if (publicacionesResult.status !== "fulfilled") {
-          throw publicacionesResult.reason;
-        }
-
-        const publicacionesSnap = publicacionesResult.value;
-        const historialSnap =
-          historialResult.status === "fulfilled"
-            ? historialResult.value
-            : null;
-
-        if (historialResult.status === "rejected" && !isPermissionDeniedError(historialResult.reason)) {
-          throw historialResult.reason;
-        }
-
-        const activeDocs = await Promise.all(
-          publicacionesSnap.docs.map(async (documento) => {
-            const data = documento.data() || {};
+        const records = await loadUserPublicationSourceRecords({
+          userUid: usuario.uid,
+          enrichActiveRecord: async (record) => {
+            const data =
+              record?.data && typeof record.data === "object" ? record.data : {};
             const rsvpsSnap = await getDocs(
-              collection(db, "publicadas", documento.id, "rsvps")
+              collection(db, "publicadas", record.id, "rsvps")
             );
 
             let confirmadosCount = 0;
             rsvpsSnap.forEach((responseDoc) => {
-              confirmadosCount += computeConfirmedGuestsFromRaw(responseDoc.data() || {});
+              confirmadosCount += computeConfirmedGuestsFromRaw(
+                responseDoc.data() || {}
+              );
             });
 
             return {
-              id: documento.id,
-              source: "active",
-              ...data,
-              rsvp: normalizeRsvpSnapshot(data.rsvp),
-              confirmadosCount,
+              ...record,
+              data: {
+                ...data,
+                rsvp: normalizeRsvpSnapshot(data.rsvp),
+                confirmadosCount,
+              },
             };
-          })
-        );
+          },
+          enrichHistoryRecord: async (record) => {
+            const data =
+              record?.data && typeof record.data === "object" ? record.data : {};
 
-        const historyDocs = (historialSnap?.docs || []).map((documento) => {
-          const data = documento.data() || {};
-          return {
-            id: documento.id,
-            source: "history",
-            ...data,
-            rsvp: normalizeRsvpSnapshot(data.rsvp),
-            rsvpSummary: normalizeHistoricSummary(data.rsvpSummary),
-          };
+            return {
+              ...record,
+              data: {
+                ...data,
+                rsvp: normalizeRsvpSnapshot(data.rsvp),
+                rsvpSummary: normalizeHistoricSummary(data.rsvpSummary),
+              },
+            };
+          },
+        });
+        const nextItems = await assembleDashboardPublicationItems(records, {
+          readDraftBySlug: async (draftSlug) =>
+            getDoc(doc(db, "borradores", draftSlug)),
         });
 
-        const mergedItems = [...activeDocs, ...historyDocs];
-        const previewReadModelByItemKey =
-          await resolvePublicationPreviewReadModelsByItemKey(mergedItems, {
-            getItemData: (item) => item,
-            readDraftBySlug: async (draftSlug) =>
-              getDoc(doc(db, "borradores", draftSlug)),
-          });
-
-        setItems(
-          mergedItems.map((item) => {
-            const itemKey = getPublicationPreviewItemKey(item.source, item.id);
-            const previewReadModel = previewReadModelByItemKey.get(itemKey) || null;
-            return {
-              ...item,
-              portada: previewReadModel?.primarySrc || null,
-              previewCandidates: Array.isArray(previewReadModel?.candidates)
-                ? previewReadModel.candidates
-                : [],
-            };
-          })
-        );
+        if (!mounted) return;
+        setItems(nextItems);
       } catch (fetchError) {
+        if (!mounted) return;
         setItems([]);
         setError(fetchError?.message || "Error al cargar publicaciones");
       } finally {
-        setCargando(false);
+        if (mounted) {
+          setCargando(false);
+        }
       }
     };
 
-    fetchPublicadas();
+    void fetchPublicadas();
+
+    return () => {
+      mounted = false;
+    };
   }, [usuario?.uid, refreshTick]);
 
   const filas = useMemo(() => {
-    const ahora = Date.now();
-
     const mapped = items.map((item) => {
-      const isHistory = item.source === "history";
-      const dates = resolvePublicationDates(item);
-      const publicadaEn = dates.publishedAt;
-      const vigenteHasta = dates.expiresAt;
-      const finalizadaEn = toDate(item.finalizadaEn || item.finalizedAt);
-      const status = getPublicationStatus(
-        {
-          ...item,
-          source: isHistory ? "history" : "active",
-        },
-        ahora
-      );
-      const isFinalized = status.isFinalized;
-
-      const summary = normalizeHistoricSummary(item.rsvpSummary);
-
-      const confirmados = isFinalized
+      const raw = item?.raw && typeof item.raw === "object" ? item.raw : {};
+      const publicadaEn = item.publishedAt || null;
+      const vigenteHasta = item.expiresAt || null;
+      const finalizadaEn = toDate(item.finalizadaEn || raw.finalizedAt);
+      const summary = normalizeHistoricSummary(raw.rsvpSummary);
+      const confirmados = item.isFinalized
         ? summary.confirmedGuests
-        : typeof item.confirmados === "number"
-          ? item.confirmados
-          : typeof item.confirmadosCount === "number"
-            ? item.confirmadosCount
-            : typeof item.invitadosConfirmados === "number"
-              ? item.invitadosConfirmados
+        : typeof raw.confirmados === "number"
+          ? raw.confirmados
+          : typeof raw.confirmadosCount === "number"
+            ? raw.confirmadosCount
+            : typeof raw.invitadosConfirmados === "number"
+              ? raw.invitadosConfirmados
               : 0;
 
-      const fechaEvento = isFinalized ? finalizadaEn || vigenteHasta || publicadaEn : publicadaEn;
+      const fechaEvento = item.isFinalized
+        ? finalizadaEn || vigenteHasta || publicadaEn
+        : publicadaEn;
       const sortMs =
-        toMs(item.enPapeleraAt) ||
-        toMs(item.pausadaAt) ||
-        toMs(item.ultimaPublicacionEn) ||
+        toMs(raw.enPapeleraAt) ||
+        toMs(item.pausedAt) ||
+        toMs(raw.ultimaPublicacionEn) ||
         toMs(finalizadaEn) ||
         toMs(vigenteHasta) ||
         toMs(publicadaEn);
@@ -283,11 +231,8 @@ export default function PublicadasGrid({ usuario }) {
       return {
         id: item.id,
         source: item.source || "active",
-        publicSlug:
-          (typeof item.sourceSlug === "string" && item.sourceSlug.trim()) ||
-          (typeof item.slug === "string" && item.slug.trim()) ||
-          (item.source === "active" ? String(item.id || "").trim() : ""),
-        nombre: item.nombre || item.slug || "(sin nombre)",
+        publicSlug: item.publicSlug || "",
+        nombre: item.nombre || "(sin nombre)",
         portada:
           typeof item.portada === "string" && item.portada.trim()
             ? item.portada.trim()
@@ -295,18 +240,18 @@ export default function PublicadasGrid({ usuario }) {
         previewCandidates: Array.isArray(item.previewCandidates)
           ? item.previewCandidates
           : [],
-        url: isFinalized || !status.isActive ? "" : item.urlPublica || "",
+        url: item.url || "",
         publicadaEn,
         fechaEvento,
-        estado: status.label,
-        stateKey: status.state,
-        isFinalized,
-        isActive: status.isActive,
-        isPaused: status.isPaused,
-        isTrashed: status.isTrashed,
+        estado: item.statusLabel,
+        stateKey: item.stateKey,
+        isFinalized: item.isFinalized,
+        isActive: item.isActive,
+        isPaused: item.isPaused,
+        isTrashed: item.isTrashed,
         confirmados,
-        borradorSlug: resolvePublicationEditableDraftSlug(item),
-        rsvp: item.rsvp || null,
+        borradorSlug: item.borradorSlug,
+        rsvp: raw.rsvp || null,
         rsvpSummary: summary,
         sortMs,
       };
@@ -390,13 +335,7 @@ export default function PublicadasGrid({ usuario }) {
       const hardDelete = httpsCallable(cloudFunctions, "hardDeleteLegacyPublication");
       await hardDelete({ slug: publicSlug });
       setItems((prev) =>
-        prev.filter((item) => {
-          const itemPublicSlug =
-            (typeof item?.sourceSlug === "string" && item.sourceSlug.trim()) ||
-            (typeof item?.slug === "string" && item.slug.trim()) ||
-            (item?.source === "active" ? String(item.id || "").trim() : "");
-          return itemPublicSlug !== publicSlug;
-        })
+        prev.filter((item) => item?.publicSlug !== publicSlug)
       );
     } catch (deleteError) {
       const message =

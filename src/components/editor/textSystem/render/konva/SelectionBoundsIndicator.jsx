@@ -6,6 +6,11 @@ import {
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import {
+  getKonvaNodeDebugInfo,
+  logSelectedDragDebug,
+  sampleCanvasInteractionLog,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
 
 function hasFinitePolygonPoints(points) {
   return (
@@ -134,13 +139,35 @@ function resolveSelectionBounds({
         });
         const sx = node?.scaleX?.() ?? 1;
         const sy = node?.scaleY?.() ?? 1;
+        const boundsSample = sampleCanvasInteractionLog(
+          `selection-bounds-indicator:${obj.id}`,
+          {
+            firstCount: 3,
+            throttleMs: 120,
+          }
+        );
+        if (boundsSample.shouldLog) {
+          logSelectedDragDebug("selection:bounds-indicator-node-rect", {
+            elementId: obj.id,
+            tipo: obj.tipo || null,
+            figura: obj.figura || null,
+            rect: {
+              x: Number.isFinite(Number(box?.x)) ? Number(box.x) : null,
+              y: Number.isFinite(Number(box?.y)) ? Number(box.y) : null,
+              width: Number.isFinite(Number(box?.width)) ? Number(box.width) : null,
+              height: Number.isFinite(Number(box?.height)) ? Number(box.height) : null,
+            },
+            node: getKonvaNodeDebugInfo(node),
+          });
+        }
         debugLog(
           "[BI]",
           `id=${obj.id}`,
           `tipo=${obj.tipo}`,
+          `figura=${obj.figura || ""}`,
           `sx=${sx.toFixed(3)}`,
           `sy=${sy.toFixed(3)}`,
-          `rect(w=${box.width.toFixed(1)},h=${box.height.toFixed(1)})`
+          `rect(x=${box.x.toFixed(1)},y=${box.y.toFixed(1)},w=${box.width.toFixed(1)},h=${box.height.toFixed(1)})`
         );
 
         const realX = box.x;

@@ -42,6 +42,9 @@ import {
   resolveCanvasTextVisualWidth,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorTextMetrics";
 import {
+  resolveInlineDomTextFlow,
+} from "@/components/editor/overlays/inlineEditor/inlineEditorWrapParity";
+import {
   INLINE_LAYOUT_VERSION,
   INLINE_VISUAL_NUDGE_CACHE,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorConstants";
@@ -312,6 +315,7 @@ export default function InlineTextEditor({
         letterSpacing: getProp(textNode, "letterSpacing", 0),
         fill: getProp(textNode, "fill", "#000"),
         lineHeightKonva: getProp(textNode, "lineHeight", 1.2),
+        wrapModeKonva: getProp(textNode, "wrap", "none"),
       };
     } catch (error) {
       console.warn("Error obteniendo propiedades del textNode:", error);
@@ -325,6 +329,7 @@ export default function InlineTextEditor({
         letterSpacing: 0,
         fill: "#000",
         lineHeightKonva: 1.2,
+        wrapModeKonva: "none",
       };
     }
   }, [textNode]);
@@ -388,7 +393,9 @@ export default function InlineTextEditor({
       totalScaleY,
     ]
   );
-  const domPerceptualScale = Number(domPerceptualScaleModel?.scale || 1);
+  const domPerceptualScale = domTextFlow.shouldUsePerceptualScale
+    ? Number(domPerceptualScaleModel?.scale || 1)
+    : 1;
   const domRenderFontSizePx = Math.max(1, Number(fontSizePx) * domPerceptualScale);
   const rawValue = String(value ?? "");
   const normalizedValue = normalizeInlineEditableText(rawValue, {
@@ -441,6 +448,14 @@ export default function InlineTextEditor({
   const normalizedValueForMeasure = layoutTextValueForMeasure;
   const normalizedValueForSingleLine = layoutTextValueForMeasure.replace(/\n+$/g, "");
   const isSingleLine = !layoutTextValueForMeasure.includes("\n");
+  const domTextFlow = useMemo(
+    () =>
+      resolveInlineDomTextFlow({
+        isSingleLine,
+        konvaWrapMode: nodeProps.wrapModeKonva,
+      }),
+    [isSingleLine, nodeProps.wrapModeKonva]
+  );
   const probeTextForAlignment = useMemo(
     () =>
       buildInlineProbeText({
@@ -2979,6 +2994,7 @@ export default function InlineTextEditor({
       isEditorVisible={isEditorVisible}
       isEditorInteractive={isEditorInteractive}
       isSingleLine={isSingleLine}
+      domTextFlow={domTextFlow}
       fontSizePx={domRenderFontSizePx}
       nodeProps={nodeProps}
       editableLineHeightPx={editableLineHeightPx}

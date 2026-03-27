@@ -23,6 +23,9 @@ import {
   resolveInlineDomPerceptualScale,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorTextMetrics";
 import {
+  resolveInlineDomTextFlow,
+} from "@/components/editor/overlays/inlineEditor/inlineEditorWrapParity";
+import {
   emitSemanticCaretDebug,
   rectToSemanticCaretPayload,
   roundSemanticCaretMetric,
@@ -141,6 +144,7 @@ function HiddenSemanticTextBackend({
       fill: readNodeAttr(textNode, "fill", "#111111") || "#111111",
       lineHeight: toPositiveNumber(readNodeAttr(textNode, "lineHeight", 1.2), 1.2),
       letterSpacing: Number(readNodeAttr(textNode, "letterSpacing", 0)) || 0,
+      wrapMode: String(readNodeAttr(textNode, "wrap", "none") || "none"),
       width: toPositiveNumber(readNodeAttr(textNode, "width", 0), 1),
       height: toPositiveNumber(readNodeAttr(textNode, "height", 0), 1),
       verticalAlign: String(readNodeAttr(textNode, "verticalAlign", "top") || "top")
@@ -280,6 +284,14 @@ function HiddenSemanticTextBackend({
   const letterSpacingPx = Number(nodeProps.letterSpacing || 0) * backendMetricScaleX;
   const normalizedValueForMeasure = sessionValue.replace(/[ \t]+$/gm, "");
   const isSingleLine = !normalizedValueForMeasure.includes("\n");
+  const domTextFlow = useMemo(
+    () =>
+      resolveInlineDomTextFlow({
+        isSingleLine,
+        konvaWrapMode: nodeProps.wrapMode,
+      }),
+    [isSingleLine, nodeProps.wrapMode]
+  );
 
   const domPerceptualScaleModel = useMemo(
     () =>
@@ -303,7 +315,9 @@ function HiddenSemanticTextBackend({
       backendMetricScaleY,
     ]
   );
-  const domPerceptualScale = Number(domPerceptualScaleModel?.scale || 1);
+  const domPerceptualScale = domTextFlow.shouldUsePerceptualScale
+    ? Number(domPerceptualScaleModel?.scale || 1)
+    : 1;
   const domRenderFontSizePx = Math.max(1, fontSizePx * domPerceptualScale);
 
   const singleLineCaretProbeModel = useMemo(() => {
@@ -710,9 +724,9 @@ function HiddenSemanticTextBackend({
               caretColor: usesTransformedBackendLayout
                 ? (nativeCaretVisible ? nodeProps.fill : "transparent")
                 : "transparent",
-              whiteSpace: isSingleLine ? "pre" : "pre-wrap",
-              overflowWrap: isSingleLine ? "normal" : "break-word",
-              wordBreak: isSingleLine ? "normal" : "break-word",
+              whiteSpace: domTextFlow.whiteSpace,
+              overflowWrap: domTextFlow.overflowWrap,
+              wordBreak: domTextFlow.wordBreak,
               userSelect: "text",
               pointerEvents: "none",
               fontFamily: nodeProps.fontFamily,

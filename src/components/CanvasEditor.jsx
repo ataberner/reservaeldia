@@ -13,12 +13,7 @@ import useInlineEditor from "@/hooks/useInlineEditor";
 import ShapeToolbar from './ShapeToolbar';
 import useEditorHandlers from '@/hooks/useEditorHandlers';
 import FontSelector from './FontSelector';
-import {
-  desanclarImagenDeFondo,
-  reemplazarFondoSeccion as reemplazarFondo,
-  convertirDecoracionFondoEnImagen,
-  convertirImagenEnDecoracionFondo,
-} from "@/utils/accionesFondo";
+import { reemplazarFondoSeccion as reemplazarFondo } from "@/utils/accionesFondo";
 import { validarPuntosLinea } from "./editor/selection/selectionUtils";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
 import useGuiasCentrado from '@/hooks/useGuiasCentrado';
@@ -60,8 +55,14 @@ import useCanvasEditorFontPreload from "@/components/editor/canvasEditor/useCanv
 import useCanvasEditorGlobalsBridge from "@/components/editor/canvasEditor/useCanvasEditorGlobalsBridge";
 import { createLineIntersectionDetector } from "@/components/editor/canvasEditor/lineIntersectionUtils";
 import CanvasEditorOverlays from "@/components/editor/canvasEditor/CanvasEditorOverlays";
+import useCanvasEditorDraftMeta from "@/components/editor/canvasEditor/useCanvasEditorDraftMeta";
+import useCanvasEditorElementRegistry from "@/components/editor/canvasEditor/useCanvasEditorElementRegistry";
+import useCanvasEditorPersistenceBridge from "@/components/editor/canvasEditor/useCanvasEditorPersistenceBridge";
 import useCanvasEditorRsvpBridge from "@/components/editor/canvasEditor/useCanvasEditorRsvpBridge";
+import useCanvasEditorRuntimeEffects from "@/components/editor/canvasEditor/useCanvasEditorRuntimeEffects";
+import useCanvasEditorSectionBackgroundUi from "@/components/editor/canvasEditor/useCanvasEditorSectionBackgroundUi";
 import useCanvasEditorGiftBridge from "@/components/editor/canvasEditor/useCanvasEditorGiftBridge";
+import useCanvasEditorSelectionUi from "@/components/editor/canvasEditor/useCanvasEditorSelectionUi";
 import useCanvasEditorSectionUiSync from "@/components/editor/canvasEditor/useCanvasEditorSectionUiSync";
 import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/useCanvasEditorExternalCallbacks";
 import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEditor/useCanvasEditorOptionPanelOutsideClose";
@@ -78,12 +79,6 @@ import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInl
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
-import {
-  applySectionSolidBackground,
-  normalizeSectionBackgroundModel,
-  removeBackgroundDecoration,
-  updateBackgroundDecorationsParallax,
-} from "@/domain/sections/backgrounds";
 
 
 Konva.dragDistance = 8;
@@ -249,10 +244,11 @@ export default function CanvasEditor({
   const previoAnimandoSeccionesRef = useRef(false);
   const seccionActivaIdRef = useRef(null);
   const ignoreNextUpdateRef = useRef(0);
-  const persistenceBridgeRef = useRef(null);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
+  const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
+  const [mostrarPanelZ, setMostrarPanelZ] = useState(false);
   const fuentesDisponibles = ALL_FONTS;
   const [draftMeta, setDraftMeta] = useState({
     plantillaId: null,
@@ -269,12 +265,45 @@ export default function CanvasEditor({
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const [giftsConfig, setGiftsConfig] = useState(null);
   const [sectionDecorationEdit, setSectionDecorationEdit] = useState(null);
+  const {
+    registerPersistenceBridge,
+    flushEditorPersistence,
+  } = useCanvasEditorPersistenceBridge();
+  const {
+    handleDraftLoaded,
+    templateWorkspace,
+    canOpenTemplateEditorialPanel,
+    handleTemplateEditorialSaved,
+  } = useCanvasEditorDraftMeta({
+    slug,
+    canManageSite,
+    draftMeta,
+    setDraftMeta,
+    setTemplateEditorialPanelOpen,
+    setSectionDecorationEdit,
+  });
+  const {
+    setHoverId,
+    cerrarMenusFlotantes,
+    clearCanvasSelectionUi,
+    effectiveHoverId,
+  } = useCanvasEditorSelectionUi({
+    hoverId,
+    setHoverIdState,
+    setMostrarPanelZ,
+    setMostrarSubmenuCapa,
+    setMostrarSelectorFuente,
+    setMostrarSelectorTamano,
+    setElementosSeleccionados,
+    setElementosPreSeleccionados,
+    setSeleccionActiva,
+    setInicioSeleccion,
+    setAreaSeleccion,
+    setBackgroundEditSectionId,
+    setIsBackgroundEditInteracting,
+  });
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
-  const isHoverSuppressed =
-    typeof window !== "undefined" &&
-    Boolean(window._isDragging || window._grupoLider || window._resizeData?.isResizing);
-  const effectiveHoverId = isHoverSuppressed ? null : hoverId;
 
   useEffect(() => {
     canvasEditorRenderCountRef.current += 1;
@@ -399,37 +428,6 @@ export default function CanvasEditor({
     }
   }, [elementosPreSeleccionados, elementosSeleccionados, hoverId]);
 
-  useEffect(() => {
-    setDraftMeta({
-      plantillaId: null,
-      templateWorkspace: null,
-      templateAuthoringDraft: null,
-      loadedAt: 0,
-    });
-    setTemplateEditorialPanelOpen(false);
-    setSectionDecorationEdit(null);
-  }, [slug]);
-
-  useEffect(() => {
-    setSectionDecorationEdit((previous) => {
-      if (!previous?.sectionId || !previous?.decorationId) return previous;
-      const targetSection = secciones.find((section) => section?.id === previous.sectionId);
-      if (!targetSection) return null;
-      const decoration = normalizeSectionBackgroundModel(targetSection, {
-        sectionHeight: targetSection.altura,
-      }).decoraciones.find((item) => item.id === previous.decorationId);
-      return decoration ? previous : null;
-    });
-  }, [secciones]);
-
-  useEffect(() => {
-    setSectionDecorationEdit((previous) => {
-      if (!previous?.sectionId || !seccionActivaId) return previous;
-      if (previous.sectionId === seccionActivaId) return previous;
-      return null;
-    });
-  }, [seccionActivaId]);
-
   const isTextResizeDebugEnabled = () =>
     typeof window !== "undefined" && Boolean(window.__DBG_TEXT_RESIZE);
 
@@ -458,27 +456,6 @@ export default function CanvasEditor({
     giftsConfig,
     setGiftsConfig,
   });
-  const registerPersistenceBridge = useCallback((bridge) => {
-    persistenceBridgeRef.current =
-      bridge && typeof bridge === "object" ? bridge : null;
-  }, []);
-
-  const flushEditorPersistence = useCallback((options = {}) => {
-    const flushNow = persistenceBridgeRef.current?.flushNow;
-    if (typeof flushNow !== "function") {
-      return Promise.resolve({
-        ok: false,
-        reason: "bridge-unavailable",
-        error: "El editor todavia no expuso un flush directo.",
-      });
-    }
-    return flushNow(options);
-  }, []);
-
-
-
-
-
   useBorradorSync({
     slug,
     editorSession,
@@ -500,24 +477,7 @@ export default function CanvasEditor({
     setGifts: setGiftsConfig,
     setCargado,
     setSeccionActivaId,
-    onDraftLoaded: (meta) => {
-      const safeMeta = meta && typeof meta === "object" ? meta : {};
-      setDraftMeta({
-        plantillaId:
-          typeof safeMeta.plantillaId === "string" ? safeMeta.plantillaId : null,
-        templateWorkspace:
-          safeMeta.templateWorkspace &&
-          typeof safeMeta.templateWorkspace === "object"
-            ? safeMeta.templateWorkspace
-            : null,
-        templateAuthoringDraft:
-          safeMeta.templateAuthoringDraft &&
-          typeof safeMeta.templateAuthoringDraft === "object"
-            ? safeMeta.templateAuthoringDraft
-            : null,
-        loadedAt: Number(safeMeta.loadedAt || Date.now()),
-      });
-    },
+    onDraftLoaded: handleDraftLoaded,
 
     ignoreNextUpdateRef,
     stageRef,
@@ -633,53 +593,6 @@ export default function CanvasEditor({
     }
   }, []);
 
-  const setHoverId = useCallback((nextHoverId) => {
-    setHoverIdState((currentHoverId) => {
-      if (
-        typeof window !== "undefined" &&
-        (window._isDragging || window._grupoLider || window._resizeData?.isResizing)
-      ) {
-        return currentHoverId;
-      }
-
-      const resolvedHoverId =
-        typeof nextHoverId === "function"
-          ? nextHoverId(currentHoverId)
-          : nextHoverId;
-
-      return Object.is(currentHoverId, resolvedHoverId)
-        ? currentHoverId
-        : resolvedHoverId;
-    });
-  }, []);
-
-  const cerrarMenusFlotantes = useCallback(() => {
-    setMostrarPanelZ(false);
-    setMostrarSubmenuCapa(false);
-    setMostrarSelectorFuente(false);
-    setMostrarSelectorTamano(false);
-    setHoverId(null);
-  }, [setHoverId]);
-
-  const clearCanvasSelectionUi = useCallback(() => {
-    setElementosSeleccionados([]);
-    setElementosPreSeleccionados([]);
-    setSeleccionActiva(false);
-    setInicioSeleccion(null);
-    setAreaSeleccion(null);
-    setBackgroundEditSectionId(null);
-    setIsBackgroundEditInteracting(false);
-    cerrarMenusFlotantes();
-  }, [
-    cerrarMenusFlotantes,
-    setAreaSeleccion,
-    setBackgroundEditSectionId,
-    setElementosPreSeleccionados,
-    setInicioSeleccion,
-    setIsBackgroundEditInteracting,
-    setSeleccionActiva,
-  ]);
-
   // ???Elemento actualmente seleccionado (o null)
   const objetoSeleccionado =
     elementosSeleccionados.length === 1
@@ -709,14 +622,6 @@ export default function CanvasEditor({
   const canRenderTemplateAuthoringMenu =
     canManageSite &&
     templateAuthoring.selectedIsSupportedElement;
-  const templateWorkspace =
-    draftMeta?.templateWorkspace && typeof draftMeta.templateWorkspace === "object"
-      ? draftMeta.templateWorkspace
-      : null;
-  const canOpenTemplateEditorialPanel =
-    canManageSite &&
-    Boolean(templateWorkspace?.templateId) &&
-    templateWorkspace?.mode === "template_edit";
 
   const handleViewTemplateFieldUsage = useCallback(
     (fieldKey) => {
@@ -729,66 +634,9 @@ export default function CanvasEditor({
     },
     [templateAuthoring]
   );
-  const handleTemplateEditorialSaved = useCallback((nextTemplate) => {
-    const safeTemplate =
-      nextTemplate && typeof nextTemplate === "object" ? nextTemplate : {};
-    const nextPermissions =
-      safeTemplate.permissions && typeof safeTemplate.permissions === "object"
-        ? safeTemplate.permissions
-        : templateWorkspace?.permissions || {};
-
-    setDraftMeta((previous) => ({
-      ...previous,
-      templateWorkspace: previous?.templateWorkspace
-        ? {
-            ...previous.templateWorkspace,
-            estadoEditorial: safeTemplate.estadoEditorial || previous.templateWorkspace.estadoEditorial || "publicada",
-            tags: Array.isArray(safeTemplate.tags)
-              ? safeTemplate.tags
-              : previous.templateWorkspace.tags || [],
-            templateName:
-              safeTemplate.nombre ||
-              previous.templateWorkspace.templateName ||
-              "Plantilla",
-            permissions: nextPermissions,
-            readOnly:
-              nextPermissions?.readOnly === true
-                ? true
-                : previous.templateWorkspace.readOnly === true,
-          }
-        : previous?.templateWorkspace || null,
-    }));
-  }, [templateWorkspace?.permissions]);
-
-  const [mostrarSelectorTamano, setMostrarSelectorTamano] = useState(false);
   const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
   const botonOpcionesRef = useRef(null);
 
-  const _refEventQueued = useRef(new Set());
-
-  const registerRef = useCallback((id, node) => {
-    if (!node) {
-      delete elementRefs.current[id];
-      imperativeObjects.registerObject(id, null);
-      return;
-    }
-
-    elementRefs.current[id] = node;
-    imperativeObjects.registerObject(id, node);
-
-    // ? Debounce por frame para evitar rÃ¡fagas de re-attach del Transformer
-    if (_refEventQueued.current.has(id)) return;
-    _refEventQueued.current.add(id);
-
-    requestAnimationFrame(() => {
-      _refEventQueued.current.delete(id);
-      try {
-        window.dispatchEvent(
-          new CustomEvent("element-ref-registrado", { detail: { id } })
-        );
-      } catch { }
-    });
-  }, [imperativeObjects]);
 
   const {
     isMobile,
@@ -818,24 +666,21 @@ export default function CanvasEditor({
   const mobileBottomTypographyStripVisible =
     mobileFontStripVisible || mobileSizeStripVisible;
   const optionButtonSize = isMobile ? 38 : 24;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const applyKonvaPixelRatio = () => {
-      const desiredRatio = resolveKonvaPixelRatio();
-      if (Konva.pixelRatio !== desiredRatio) {
-        Konva.pixelRatio = desiredRatio;
-        stageRef.current?.getStage?.()?.batchDraw?.();
-      }
-    };
-
-    applyKonvaPixelRatio();
-    window.addEventListener("resize", applyKonvaPixelRatio);
-    return () => {
-      window.removeEventListener("resize", applyKonvaPixelRatio);
-    };
-  }, []);
+  const {
+    registerRef,
+    logOptionButtonMenuDebug,
+    togglePanelOpciones,
+    moverElemento,
+  } = useCanvasEditorElementRegistry({
+    elementRefs,
+    imperativeObjects,
+    mostrarPanelZ,
+    setMostrarPanelZ,
+    objetos,
+    elementosSeleccionados,
+    isMobile,
+    setObjetos,
+  });
 
   // ?? FunciÃ³n para actualizar offsets de imagen de fondo (SIN UNDEFINED)
   const actualizarOffsetFondo = useCallback((seccionId, nuevosOffsets, esPreview = false) => {
@@ -887,74 +732,7 @@ export default function CanvasEditor({
 
 
 
-  useEffect(() => {
-    // Limpiar flag de resize al montar el componente
-    window._resizeData = null;
-  }, []);
-
-  const [mostrarPanelZ, setMostrarPanelZ] = useState(false);
   const [isSelectionRotating, setIsSelectionRotating] = useState(false);
-
-  const logOptionButtonMenuDebug = useCallback((eventName, payload = {}) => {
-    return undefined;
-  }, []);
-
-  const togglePanelOpciones = useCallback((source = "unknown", nativeEvent = null) => {
-    setMostrarPanelZ((prev) => {
-      const next = !prev;
-      logOptionButtonMenuDebug("toggle", {
-        source,
-        prev,
-        next,
-        selectedId: elementosSeleccionados?.[0] ?? null,
-        selectionCount: elementosSeleccionados.length,
-        isMobile,
-        nativeEventType: nativeEvent?.type ?? null,
-        pointerType: nativeEvent?.pointerType ?? null,
-      });
-      return next;
-    });
-  }, [elementosSeleccionados, isMobile, logOptionButtonMenuDebug]);
-
-  useEffect(() => {
-    logOptionButtonMenuDebug("panel-state", {
-      open: mostrarPanelZ,
-      selectedId: elementosSeleccionados?.[0] ?? null,
-      selectionCount: elementosSeleccionados.length,
-      isMobile,
-    });
-  }, [
-    mostrarPanelZ,
-    elementosSeleccionados,
-    isMobile,
-    logOptionButtonMenuDebug,
-  ]);
-
-  const moverElemento = (accion) => {
-    const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
-    if (index === -1) return;
-
-    const nuevos = [...objetos];
-    const [elemento] = nuevos.splice(index, 1);
-
-    if (accion === "al-frente") {
-      nuevos.push(elemento);
-    } else if (accion === "al-fondo") {
-      nuevos.unshift(elemento);
-    } else if (accion === "subir" && index < objetos.length - 1) {
-      nuevos.splice(index + 1, 0, elemento);
-    } else if (accion === "bajar" && index > 0) {
-      nuevos.splice(index - 1, 0, elemento);
-    } else {
-      nuevos.splice(index, 0, elemento); // sin cambios
-    }
-
-    setObjetos(nuevos);
-    setMostrarPanelZ(false);
-  };
-
-
-
 
   const {
     onDeshacer,
@@ -1022,16 +800,6 @@ export default function CanvasEditor({
 
 
 
-  useEffect(() => {
-    const handleClickFuera = (e) => {
-      if (!e.target.closest(".popup-fuente")) {
-        setMostrarSelectorFuente(false);
-        setMostrarSelectorTamano(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickFuera);
-    return () => document.removeEventListener("mousedown", handleClickFuera);
-  }, []);
 
 
 
@@ -1170,418 +938,47 @@ export default function CanvasEditor({
   });
 
 
-  const cambiarColorFondoSeccion = useCallback((seccionId, nuevoColor) => {
-    setSectionDecorationEdit((previous) =>
-      previous?.sectionId === seccionId ? null : previous
-    );
-    setSecciones((prev) => applySectionSolidBackground(prev, seccionId, nuevoColor));
-  }, [setSecciones]);
-
-  const usarImagenComoDecoracionFondo = useCallback((elementoImagen) => {
-    const safeImage = elementoImagen && typeof elementoImagen === "object" ? elementoImagen : null;
-    const selectedNode = safeImage?.id ? elementRefs.current?.[safeImage.id] || null : null;
-    const targetSectionIndex = seccionesOrdenadas.findIndex(
-      (section) => section?.id === safeImage?.seccionId
-    );
-    const targetSection =
-      targetSectionIndex >= 0 ? seccionesOrdenadas[targetSectionIndex] : null;
-    const sectionOffsetY =
-      targetSectionIndex >= 0
-        ? calcularOffsetY(seccionesOrdenadas, targetSectionIndex, altoCanvas)
-        : 0;
-    const fallbackLocalY =
-      normalizarAltoModo(targetSection?.altoModo) === "pantalla" &&
-      Number.isFinite(Number(safeImage?.yNorm))
-        ? Number(safeImage.yNorm) * ALTURA_PANTALLA_EDITOR
-        : safeImage?.y;
-    const renderedImageSnapshot =
-      safeImage && targetSection
-        ? {
-            ...safeImage,
-            x:
-              typeof selectedNode?.x === "function" && Number.isFinite(Number(selectedNode.x()))
-                ? Number(selectedNode.x())
-                : safeImage.x,
-            y:
-              typeof selectedNode?.y === "function" && Number.isFinite(Number(selectedNode.y()))
-                ? Number(selectedNode.y()) - sectionOffsetY
-                : fallbackLocalY,
-            width:
-              typeof selectedNode?.width === "function" && Number.isFinite(Number(selectedNode.width()))
-                ? Number(selectedNode.width())
-                : safeImage.width,
-            height:
-              typeof selectedNode?.height === "function" && Number.isFinite(Number(selectedNode.height()))
-                ? Number(selectedNode.height())
-                : safeImage.height,
-            scaleX:
-              typeof selectedNode?.scaleX === "function" && Number.isFinite(Number(selectedNode.scaleX()))
-                ? Number(selectedNode.scaleX())
-                : safeImage.scaleX,
-            scaleY:
-              typeof selectedNode?.scaleY === "function" && Number.isFinite(Number(selectedNode.scaleY()))
-                ? Number(selectedNode.scaleY())
-                : safeImage.scaleY,
-            rotation:
-              typeof selectedNode?.rotation === "function" &&
-              Number.isFinite(Number(selectedNode.rotation()))
-                ? Number(selectedNode.rotation())
-                : safeImage.rotation,
-          }
-        : elementoImagen;
-
-    convertirImagenEnDecoracionFondo({
-      elementoImagen: renderedImageSnapshot,
-      secciones,
-      objetos,
-      setSecciones,
-      setObjetos,
-      setElementosSeleccionados,
-      setSeccionActivaId,
-      setSectionDecorationEdit,
-      setMostrarPanelZ,
-    });
-  }, [
-    ALTURA_PANTALLA_EDITOR,
+  const {
+    cambiarColorFondoSeccion,
+    usarImagenComoDecoracionFondo,
+    registerBackgroundEditNode,
+    handleBackgroundEditInteractionChange,
+    requestBackgroundEdit,
+    overlaySelection,
+    handleDesanclarImagenFondoBase,
+    handleFinalizarAjusteFondoBase,
+    handleConvertirDecoracionFondoEnImagen,
+    handleEliminarDecoracionFondo,
+    handleFinalizarAjusteDecoracionFondo,
+    handleActualizarMovimientoDecoracionFondo,
+  } = useCanvasEditorSectionBackgroundUi({
     altoCanvas,
-    elementRefs,
-    objetos,
-    seccionesOrdenadas,
     secciones,
-    setElementosSeleccionados,
-    setObjetos,
-    setSeccionActivaId,
+    seccionesOrdenadas,
+    objetos,
+    elementosSeleccionados,
+    seccionActivaId,
+    backgroundEditSectionId,
+    sectionDecorationEdit,
+    editingId: editing.id,
+    requestInlineEditFinishRef,
+    elementRefs,
+    backgroundEditNodeRefs,
+    normalizarAltoModo,
+    ALTURA_PANTALLA_EDITOR,
     setSecciones,
-    setSectionDecorationEdit,
-    setMostrarPanelZ,
-  ]);
-
-  const registerBackgroundEditNode = useCallback((sectionId, node) => {
-    const safeSectionId = String(sectionId || "").trim();
-    if (!safeSectionId) return;
-
-    if (node) {
-      backgroundEditNodeRefs.current[safeSectionId] = node;
-      return;
-    }
-
-    delete backgroundEditNodeRefs.current[safeSectionId];
-  }, []);
-
-  const handleBackgroundEditInteractionChange = useCallback((isActive) => {
-    setIsBackgroundEditInteracting(Boolean(isActive));
-  }, []);
-
-  const requestBackgroundEdit = useCallback((sectionId) => {
-    const safeSectionId = String(sectionId || "").trim();
-    if (!safeSectionId) return;
-
-    if (editing.id) {
-      requestInlineEditFinishRef.current?.("section-base-image-edit");
-    }
-
-    setMostrarPanelZ(false);
-    setElementosSeleccionados([]);
-    setElementosPreSeleccionados([]);
-    setSeleccionActiva(false);
-    setInicioSeleccion(null);
-    setAreaSeleccion(null);
-    setSectionDecorationEdit(null);
-    setIsBackgroundEditInteracting(false);
-    setSeccionActivaId(safeSectionId);
-    setBackgroundEditSectionId(safeSectionId);
-  }, [
-    editing.id,
+    setObjetos,
+    setElementosSeleccionados,
+    setElementosPreSeleccionados,
+    setSeleccionActiva,
+    setInicioSeleccion,
     setAreaSeleccion,
     setBackgroundEditSectionId,
-    setElementosPreSeleccionados,
-    setElementosSeleccionados,
-    setInicioSeleccion,
     setIsBackgroundEditInteracting,
     setSectionDecorationEdit,
-    setSeleccionActiva,
     setSeccionActivaId,
     setMostrarPanelZ,
-  ]);
-
-  const activeBackgroundDecorationMenuItem = useMemo(() => {
-    if (!sectionDecorationEdit?.sectionId || !sectionDecorationEdit?.decorationId) return null;
-
-    const sectionIndex = seccionesOrdenadas.findIndex(
-      (section) => section?.id === sectionDecorationEdit.sectionId
-    );
-    if (sectionIndex === -1) return null;
-
-    const targetSection = seccionesOrdenadas[sectionIndex];
-    const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
-      sectionHeight: targetSection.altura,
-    });
-    const decoration = backgroundModel.decoraciones.find(
-      (item) => item.id === sectionDecorationEdit.decorationId
-    );
-
-    if (!decoration) return null;
-
-    const offsetY = calcularOffsetY(seccionesOrdenadas, sectionIndex, altoCanvas);
-
-    return {
-      id: `decoracion-fondo:${targetSection.id}:${decoration.id}`,
-      tipo: "decoracion-fondo",
-      nombre: decoration.nombre || "Decoracion del fondo",
-      src: decoration.src,
-      seccionId: targetSection.id,
-      decorationId: decoration.id,
-      x: decoration.x,
-      y: offsetY + decoration.y,
-      width: decoration.width,
-      height: decoration.height,
-      rotation: decoration.rotation || 0,
-      backgroundMotionMode: backgroundModel.parallax || "none",
-    };
-  }, [altoCanvas, sectionDecorationEdit, seccionesOrdenadas]);
-
-  const activeBaseBackgroundMenuItem = useMemo(() => {
-    if (!backgroundEditSectionId) return null;
-
-    const targetSection = seccionesOrdenadas.find(
-      (section) => section?.id === backgroundEditSectionId
-    );
-    if (!targetSection) return null;
-
-    const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
-      sectionHeight: targetSection.altura,
-    });
-    if (
-      backgroundModel.base.fondoTipo !== "imagen" ||
-      !backgroundModel.base.fondoImagen
-    ) {
-      return null;
-    }
-
-    return {
-      id: `imagen-fondo-seccion:${targetSection.id}`,
-      tipo: "imagen-fondo-seccion",
-      nombre: "Imagen de fondo",
-      src: backgroundModel.base.fondoImagen,
-      seccionId: targetSection.id,
-      backgroundMotionMode: backgroundModel.parallax || "none",
-    };
-  }, [backgroundEditSectionId, seccionesOrdenadas]);
-
-  const activeBackgroundMotionSectionId =
-    activeBackgroundDecorationMenuItem?.seccionId ||
-    activeBaseBackgroundMenuItem?.seccionId ||
-    null;
-
-  const overlaySelection = useMemo(() => {
-    if (activeBackgroundDecorationMenuItem) {
-      return {
-        kind: "background-decoration",
-        menuItem: activeBackgroundDecorationMenuItem,
-      };
-    }
-
-    if (activeBaseBackgroundMenuItem) {
-      return {
-        kind: "section-base-image",
-        sectionId: activeBaseBackgroundMenuItem.seccionId,
-        menuItem: activeBaseBackgroundMenuItem,
-      };
-    }
-
-    if (elementosSeleccionados.length !== 1) return null;
-    const selectedObject = objetos.find((item) => item.id === elementosSeleccionados[0]) || null;
-    if (!selectedObject) return null;
-
-    return {
-      kind: "canvas-object",
-      objectId: selectedObject.id,
-      menuItem: selectedObject,
-    };
-  }, [
-    activeBackgroundDecorationMenuItem,
-    activeBaseBackgroundMenuItem,
-    elementosSeleccionados,
-    objetos,
-  ]);
-
-  const handleDesanclarImagenFondoBase = useCallback(() => {
-    if (!activeBaseBackgroundMenuItem?.seccionId) return;
-
-    setSectionDecorationEdit(null);
-    setBackgroundEditSectionId(null);
-    setIsBackgroundEditInteracting(false);
-    setSeccionActivaId(activeBaseBackgroundMenuItem.seccionId);
-    desanclarImagenDeFondo({
-      seccionId: activeBaseBackgroundMenuItem.seccionId,
-      secciones,
-      objetos,
-      setSecciones,
-      setObjetos,
-      setElementosSeleccionados,
-    });
-    setMostrarPanelZ(false);
-  }, [
-    activeBaseBackgroundMenuItem,
-    objetos,
-    secciones,
-    setBackgroundEditSectionId,
-    setElementosSeleccionados,
-    setIsBackgroundEditInteracting,
-    setObjetos,
-    setSeccionActivaId,
-    setSecciones,
-    setSectionDecorationEdit,
-    setMostrarPanelZ,
-  ]);
-
-  const handleFinalizarAjusteFondoBase = useCallback(() => {
-    setBackgroundEditSectionId(null);
-    setIsBackgroundEditInteracting(false);
-    setMostrarPanelZ(false);
-  }, [
-    setBackgroundEditSectionId,
-    setIsBackgroundEditInteracting,
-    setMostrarPanelZ,
-  ]);
-
-  const handleConvertirDecoracionFondoEnImagen = useCallback(() => {
-    if (!activeBackgroundDecorationMenuItem) return;
-
-    convertirDecoracionFondoEnImagen({
-      seccionId: activeBackgroundDecorationMenuItem.seccionId,
-      decorationId: activeBackgroundDecorationMenuItem.decorationId,
-      secciones,
-      objetos,
-      setSecciones,
-      setObjetos,
-      setElementosSeleccionados,
-      setSectionDecorationEdit,
-      setSeccionActivaId,
-    });
-    setMostrarPanelZ(false);
-  }, [
-    activeBackgroundDecorationMenuItem,
-    objetos,
-    secciones,
-    setElementosSeleccionados,
-    setObjetos,
-    setSeccionActivaId,
-    setSecciones,
-    setSectionDecorationEdit,
-    setMostrarPanelZ,
-  ]);
-
-  const handleEliminarDecoracionFondo = useCallback(() => {
-    if (!activeBackgroundDecorationMenuItem) return;
-
-    setSecciones((previous) =>
-      removeBackgroundDecoration(
-        previous,
-        activeBackgroundDecorationMenuItem.seccionId,
-        activeBackgroundDecorationMenuItem.decorationId
-      )
-    );
-    setSectionDecorationEdit((previous) => {
-      if (
-        previous?.sectionId === activeBackgroundDecorationMenuItem.seccionId &&
-        previous?.decorationId === activeBackgroundDecorationMenuItem.decorationId
-      ) {
-        return null;
-      }
-      return previous;
-    });
-    setMostrarPanelZ(false);
-  }, [
-    activeBackgroundDecorationMenuItem,
-    setSecciones,
-    setSectionDecorationEdit,
-    setMostrarPanelZ,
-  ]);
-
-  const handleFinalizarAjusteDecoracionFondo = useCallback(() => {
-    setSectionDecorationEdit(null);
-    setMostrarPanelZ(false);
-  }, [setSectionDecorationEdit, setMostrarPanelZ]);
-
-  const handleActualizarMovimientoDecoracionFondo = useCallback((nextMotionMode) => {
-    if (!activeBackgroundMotionSectionId) return;
-
-    const normalizedMode =
-      String(nextMotionMode || "").trim().toLowerCase() === "none"
-        ? "none"
-        : "dynamic";
-
-    setSecciones((previous) =>
-      updateBackgroundDecorationsParallax(
-        previous,
-        activeBackgroundMotionSectionId,
-        normalizedMode,
-        {
-          sectionHeight: secciones.find(
-            (section) => section?.id === activeBackgroundMotionSectionId
-          )?.altura,
-        }
-      )
-    );
-  }, [
-    activeBackgroundMotionSectionId,
-    secciones,
-    setSecciones,
-  ]);
-
-  useEffect(() => {
-    if (!backgroundEditSectionId) {
-      setIsBackgroundEditInteracting(false);
-      return;
-    }
-
-    const targetSection = secciones.find((section) => section?.id === backgroundEditSectionId);
-    if (!targetSection) {
-      setBackgroundEditSectionId(null);
-      setIsBackgroundEditInteracting(false);
-      return;
-    }
-
-    const baseBackground = normalizeSectionBackgroundModel(targetSection, {
-      sectionHeight: targetSection.altura,
-    }).base;
-    if (baseBackground.fondoTipo !== "imagen" || !baseBackground.fondoImagen) {
-      setBackgroundEditSectionId(null);
-      setIsBackgroundEditInteracting(false);
-      return;
-    }
-
-    if (sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) {
-      setBackgroundEditSectionId(null);
-      setIsBackgroundEditInteracting(false);
-      return;
-    }
-
-    if (elementosSeleccionados.length > 0) {
-      setBackgroundEditSectionId(null);
-      setIsBackgroundEditInteracting(false);
-      return;
-    }
-
-    if (seccionActivaId && seccionActivaId !== backgroundEditSectionId) {
-      setBackgroundEditSectionId(null);
-      setIsBackgroundEditInteracting(false);
-    }
-  }, [
-    backgroundEditSectionId,
-    elementosSeleccionados.length,
-    seccionActivaId,
-    secciones,
-    sectionDecorationEdit,
-    setBackgroundEditSectionId,
-    setIsBackgroundEditInteracting,
-  ]);
-
-  useEffect(() => {
-    if (overlaySelection?.menuItem) return;
-    setMostrarPanelZ(false);
-  }, [overlaySelection]);
+  });
 
 
   useEditorWindowBridge({
@@ -1824,68 +1221,17 @@ export default function CanvasEditor({
     requestInlineEditFinishRef.current = requestInlineEditFinish;
   }, [requestInlineEditFinish]);
 
-  useEffect(() => {
-    if (typeof document === "undefined") return undefined;
-    if (elementosSeleccionados.length === 0) return undefined;
-
-    const resolveTargetElement = (target) => {
-      if (target instanceof Element) return target;
-      if (target instanceof Node) return target.parentElement;
-      return null;
-    };
-
-    const isInsideCanvasStage = (targetElement) => {
-      if (!targetElement) return false;
-      const stage = stageRef.current?.getStage?.() || stageRef.current;
-      const container = stage?.container?.() || stage?.content || null;
-      return Boolean(container && typeof container.contains === "function" && container.contains(targetElement));
-    };
-
-    const shouldPreserveSelection = (targetElement) =>
-      Boolean(targetElement?.closest?.(PRESERVE_CANVAS_SELECTION_SELECTOR));
-
-    const handlePointerOutsideCanvas = (event) => {
-      if (
-        typeof window !== "undefined" &&
-        (window._isDragging || window._grupoLider || window._resizeData?.isResizing)
-      ) {
-        return;
-      }
-      const targetElement = resolveTargetElement(event.target);
-      if (!targetElement) return;
-      if (isInsideCanvasStage(targetElement)) return;
-      if (shouldPreserveSelection(targetElement)) return;
-
-      if (editing.id) {
-        requestInlineEditFinish("outside-canvas-pointerdown");
-      }
-      clearCanvasSelectionUi();
-    };
-
-    if (typeof window !== "undefined" && "PointerEvent" in window) {
-      document.addEventListener("pointerdown", handlePointerOutsideCanvas, true);
-      return () => {
-        document.removeEventListener("pointerdown", handlePointerOutsideCanvas, true);
-      };
-    }
-
-    document.addEventListener("mousedown", handlePointerOutsideCanvas, true);
-    document.addEventListener("touchstart", handlePointerOutsideCanvas, {
-      capture: true,
-      passive: true,
-    });
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerOutsideCanvas, true);
-      document.removeEventListener("touchstart", handlePointerOutsideCanvas, true);
-    };
-  }, [
-    clearCanvasSelectionUi,
-    editing.id,
-    elementosSeleccionados.length,
-    requestInlineEditFinish,
+  useCanvasEditorRuntimeEffects({
     stageRef,
-  ]);
+    resolveKonvaPixelRatio,
+    setMostrarSelectorFuente,
+    setMostrarSelectorTamano,
+    editingId: editing.id,
+    selectedCount: elementosSeleccionados.length,
+    requestInlineEditFinishRef,
+    clearCanvasSelectionUi,
+    preserveCanvasSelectionSelector: PRESERVE_CANVAS_SELECTION_SELECTOR,
+  });
 
 
 

@@ -798,9 +798,51 @@ function calcularDeltaGrupal(stage, { allowPointerFallback = true } = {}) {
   });
 }
 
+function isNodeDescendantOf(node, ancestor) {
+  if (!node || !ancestor) return false;
+
+  let current = node;
+  let guard = 0;
+  while (current && guard < 100) {
+    if (current === ancestor) return true;
+    current = typeof current.getParent === "function" ? current.getParent() : null;
+    guard += 1;
+  }
+
+  return false;
+}
+
 function syncAttachedTextNodePosition(elementId, x, y) {
-  const textNode = window._elementRefs?.[`${elementId}-text`];
+  const elementNode = window._elementRefs?.[elementId] || null;
+  const textId = `${elementId}-text`;
+  const textNode = window._elementRefs?.[textId] || null;
   if (!textNode || typeof textNode.position !== "function") return;
+
+  const isNestedInsideElement = isNodeDescendantOf(textNode, elementNode);
+  const syncSample = sampleCanvasInteractionLog(`drag-group-text-sync:${elementId}`, {
+    firstCount: 3,
+    throttleMs: 120,
+  });
+
+  if (syncSample.shouldLog) {
+    logSelectedDragDebug("drag:group:attached-text-sync", {
+      elementId,
+      textId,
+      applied: !isNestedInsideElement,
+      reason: isNestedInsideElement ? "descendant-skip" : "detached-sync",
+      targetPosition: {
+        x: Number.isFinite(Number(x)) ? Number(x) : null,
+        y: Number.isFinite(Number(y)) ? Number(y) : null,
+      },
+      elementNode: getKonvaNodeDebugInfo(elementNode),
+      textNode: getKonvaNodeDebugInfo(textNode),
+    });
+  }
+
+  if (isNestedInsideElement) {
+    return;
+  }
+
   textNode.position({ x, y });
 }
 

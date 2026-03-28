@@ -119,7 +119,7 @@ Observed publication fields include:
 | `plantillaId` | `publicadas/{publicSlug}` | Optional template link. |
 | `urlPublica` | `publicadas/{publicSlug}` | Public URL. |
 | `nombre` | `publicadas/{publicSlug}` | Display name copied from the draft. |
-| `tipo` | `publicadas/{publicSlug}` | Publication metadata field. Current publish code fills it from `draftData.tipo || draftData.plantillaTipo || "desconocido"`, not from `tipoInvitacion`, so it is a compatibility-oriented value rather than the modern draft type source of truth. |
+| `tipo` | `publicadas/{publicSlug}` | Publication metadata field. Current publish code derives it from `tipoInvitacion`, then falls back to `tipo`, then `plantillaTipo`, and normalizes the result through `normalizeInvitationType`. |
 | `portada` | `publicadas/{publicSlug}` | Published preview image. |
 | `invitadosCount` | `publicadas/{publicSlug}` | Auxiliary publication metric. |
 | `rsvp` | `publicadas/{publicSlug}` | Normalized published RSVP config. |
@@ -324,9 +324,9 @@ Branch-specific fields:
 
 Important compatibility note:
 
-- The current editor runtime supports more `forma` variants than the HTML generator.
-- Alignment note (verified against `functions/src/utils/generarHTMLDesdeObjetos.ts` on 2026-03-26): the current HTML generator implements DOM/SVG output for `rect`, `circle`, `line`, `triangle`, `diamond`, `star`, `arrow`, `pentagon`, `hexagon`, and `heart`.
-- `pill` remains editor-side data without a dedicated HTML generation branch in the current publish path.
+- The current editor runtime and the current HTML generator both implement these `forma.figura` branches: `rect`, `circle`, `pill`, `line`, `triangle`, `diamond`, `star`, `arrow`, `pentagon`, `hexagon`, and `heart`.
+- Publish validation also treats those figures as the currently supported shape set.
+- Assumption: fine-grained visual equivalence for the less common published shapes (`diamond`, `star`, `arrow`, `pentagon`, `hexagon`, `heart`) still requires manual verification beyond the current characterization coverage.
 
 ### `galeria`
 Gallery objects use:
@@ -579,6 +579,10 @@ Section-level workflows can also update the same draft document directly outside
 - section height changes
 - `altoModo` toggles
 
+Current ordering rule:
+
+- those direct section writes now join the same draft-write FIFO used by autosave and flush, so persistence order is serialized even though the write triggers are still split
+
 ### `publicadas`
 `publicadas/{publicSlug}` is a separate Firestore metadata document written by the publish flow.
 
@@ -690,10 +694,13 @@ Output:
 #### 3. Preview
 Input:
 
-- either live editor globals or the latest normalized draft payload
+- a persisted draft/template re-read plus an optional critical-flush boundary snapshot
 
 Transformation:
 
+- preview requests a critical flush before opening
+- preview re-reads the draft document or template editor document
+- if a compatible editor boundary snapshot exists, preview overlays that snapshot on top of the re-read payload
 - preview normalizes `rsvp` and `gifts`
 - preview calls `generarHTMLDesdeSecciones(secciones, objetos, rsvp, opciones)`
 
@@ -709,8 +716,8 @@ Input:
 Transformation:
 
 - `normalizeDraftRenderState` extracts canonical render state
-- image/icon/section visual URLs are resolved for public access
-- `rsvp` and `gifts` are normalized for publication
+- `preparePublicationRenderState(...)` resolves publish-ready assets and functional CTA state
+- `validatePreparedPublicationRenderState(...)` classifies blockers and warnings before HTML generation
 - `generarHTMLDesdeSecciones` builds final HTML
 - HTML is saved to Storage
 - publication metadata is written to `publicadas/{publicSlug}`
@@ -726,6 +733,7 @@ Output:
 - `altoModo`, `y`, and `yNorm` must mean the same thing in editor persistence and HTML generation.
 - section ordering must stay sortable by `orden`.
 - root `rsvp` and `gifts` must remain root-level configs, not embedded into button objects.
+- publish readiness is not inferred only from generator support. The current backend contract is `preparePublicationRenderState(...)` plus `validatePreparedPublicationRenderState(...)`, which can produce either blockers or warnings for the same stored render fields.
 
 ## 9. Validation Rules and Constraints
 These are the current code-grounded rules that must not be broken:
@@ -750,11 +758,11 @@ These are the current code-grounded rules that must not be broken:
 - Dynamic gallery fields depend on the shared gallery layout resolver. Blueprint/schema mismatches can change published layout unexpectedly.
 - Countdown v1 and v2 coexist. The data shape is not identical across those branches.
 - `publicadas` metadata is not the canonical render model. Debugging publication issues against `publicadas` alone is incomplete.
-- Publication metadata `tipo` is currently derived from compatibility fields (`tipo` / `plantillaTipo`) rather than modern `tipoInvitacion`. That means draft metadata and publication metadata can drift even when the render payload is valid.
+- Publication metadata `tipo` is normalized from `tipoInvitacion` first, but compatibility fallbacks (`tipo`, `plantillaTipo`) still exist. Metadata drift is narrower than before, not fully eliminated.
 - `public_slug_reservations` is not a pure availability index. Slug availability and update-slug resolution can expire active reservations and finalize expired publications during lookup before treating a slug as reusable.
 - Storage-backed URLs are mutable across load and publish. A path or signed URL can be rewritten without changing the logical object/section identity.
 - RSVP root config and `publicRsvpSubmit` use different contracts. `sheetUrl` belongs to the config/runtime path, while attendee submissions are stored from `slug` + `answers`/`metrics` with legacy mirrors. Mixing those surfaces is unsafe.
-- The current HTML generator only publishes `forma.rect`, `forma.circle`, `forma.line`, and `forma.triangle`. Other editor-side `figura` values do not currently have matching DOM generation branches.
+- Publish-supported shape figures now include `rect`, `circle`, `pill`, `line`, `triangle`, `diamond`, `star`, `arrow`, `pentagon`, `hexagon`, and `heart`, but manual parity checks are still prudent for the less common branches.
 
 ## 11. Compatibility and Asset Resolution
 ### Legacy Draft Compatibility

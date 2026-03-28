@@ -1,4 +1,4 @@
-# Architecture Guidelines – Reserva el Día
+# Architecture Guidelines - Reserva el Dia
 
 This document defines mandatory architectural and product principles.
 All features, refactors and architectural decisions must respect these rules.
@@ -87,6 +87,11 @@ Never mix layers unnecessarily.
 - All data access must respect user ownership.
 - Never expose unnecessary data to the client.
 - Storage paths must be user-scoped.
+
+## 4.4 Cross-Runtime Contracts
+- Any compatibility surface shared across editor, preview, publish, or backend validation must be treated as a contract.
+- This includes window bridge keys and events, snapshot/read adapters, shared prepared render fields, and publish preflight blocker/warning semantics.
+- If one side changes, every consumer of that contract must be updated in the same change.
 
 ---
 

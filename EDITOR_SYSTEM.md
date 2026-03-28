@@ -370,8 +370,28 @@ For draft sessions, the editor writes back to `borradores/{slug}`:
 
 It can also generate a draft thumbnail after non-immediate saves on non-mobile runtime.
 
+### Ordering and Write Coordination
+Persistence is still split by trigger type, but it is no longer unordered.
+
+- `CanvasEditor.jsx` creates a shared `draftWriteCoordinator`.
+- `useBorradorSync` uses that coordinator for autosave and flush work.
+- Section-level direct writes still exist for section height resize, section creation, section deletion, section reorder, and `altoModo` toggle.
+- Those section-specific writes now join the same FIFO through `enqueueDraftWrite` when the coordinator is available.
+
+Current ordering rules:
+
+- autosave is scheduled by `borradorSyncScheduling` with a `500ms` debounce
+- flush clears any scheduled autosave before persisting immediately
+- a cleared autosave is restored only when the immediate persist declined to write for guard reasons such as `resize-in-progress` or `draft-not-loaded`
+- `hasPendingDraftWrites()` reflects whether the shared FIFO still has work in flight
+
+Practical consequence:
+
+- autosave, direct section writes, and immediate flush now observe one serialized write order
+- persistence is still conceptually split, but preview/publish flushes no longer race an independent section-write channel
+
 ### Immediate Flush
-The editor exposes an immediate flush path because preview/publish-like flows cannot rely on pending debounce state.
+The editor exposes an immediate flush path because preview and publish-adjacent flows cannot rely on pending debounce state.
 
 Current immediate flush contracts:
 
@@ -379,21 +399,34 @@ Current immediate flush contracts:
 - window event `editor:draft-flush:request`
 - window event `editor:draft-flush:result`
 
-### Coexisting Direct Writes
-Not all section mutations go through the debounced draft sync hook.
+Transport rules used by `flushEditorPersistenceBeforeCriticalAction`:
 
-The current editor also writes directly to Firestore for:
+- draft sessions use the window event protocol
+- template sessions prefer direct `window.canvasEditor.flushPersistenceNow` when available
+- successful critical flushes can capture a compatibility snapshot through `readEditorRenderSnapshot()`
 
-- section height resize
-- section creation
-- section deletion
-- section reorder
-- `altoModo` toggle
+The event protocol is compatibility-sensitive:
 
-This means persistence is intentionally split between:
+- request detail carries `requestId`, `slug`, and `reason`
+- result detail carries `requestId`, `slug`, `ok`, `reason`, and `error`
 
-- debounced full-draft sync
-- immediate section-specific writes
+### Preview and Publish Boundaries
+Preview and publish do not consume editor state the same way.
+
+Preview flow:
+
+- requests a critical flush before opening
+- re-reads the draft or template editor document after that flush
+- overlays the flush boundary snapshot on top of the re-read payload when a compatible snapshot is available
+- uses the backend HTML generator from the dashboard
+
+Publish flow:
+
+- does not rely on a live editor overlay
+- re-reads the draft on the backend
+- runs `preparePublicationRenderState(...)`
+- runs `validatePreparedPublicationRenderState(...)`
+- generates the public HTML artifact only from that prepared backend state
 
 ## 8. Constraints and Rules
 These rules are enforced by the current implementation and should not be broken.
@@ -405,11 +438,17 @@ These rules are enforced by the current implementation and should not be broken.
 - Transformer-managed resize/rotation and drag commit logic must keep persisted geometry flattened when the current code expects flattened data.
 - `forma.line` must remain on the dedicated `LineControls` path; it is not interchangeable with `SelectionTransformer`.
 - Drag must not break committed selection, post-drag selection restoration, or guide cleanup.
+- Group drag must preserve leader/follower membership, shared overlay state, and final all-members commit.
+- A drag gesture must not silently drop committed multi-selection while the session is active.
 - Section order comes from `orden`, and rendering depends on sorting by that field.
 - The current insertion/update flow enforces one persisted `countdown` per draft and avoids duplicate functional CTA buttons.
 - Undo/redo depends on `ignoreNextUpdateRef`; changes to history behavior must preserve that guard.
 - Preview/publish-adjacent flows depend on immediate persistence flush; that bridge is a runtime contract, not an optional convenience.
+- Inline text editing owns focus through the DOM overlay. While inline editing is active, the main transformer must stay suppressed and the same text object must not present conflicting Konva and DOM editing surfaces.
+- `window.editorSnapshot` is the canonical read boundary for non-editor consumers. Legacy `window._*` render globals are still a migration fallback, not the preferred read API.
+- Formal bridge globals and events are compatibility contracts. Transient scratch globals are not.
 - Window-mirrored runtime state and custom events are part of the current editor contract. Renaming or removing them is a breaking change unless every consumer is updated together.
+- External consumers such as preview, sidebar actions, and template tooling must use the documented bridge methods, adapter reads, or custom events, not arbitrary scratch runtime state.
 
 ## 9. Known Complexity Areas
 The current editor is functional, but several areas are tightly coupled and fragile.
@@ -419,7 +458,7 @@ The current editor is functional, but several areas are tightly coupled and frag
 - Group drag depends on shared runtime globals and legacy compatibility behavior, not just local React state.
 - `SelectionTransformer` is heavily specialized by element type. Text resize, image resize, image rotation, countdown resize, and gallery resize do not share the same commit rules.
 - Drag-capable element families do not all finalize through one persistence branch. Generic objects, galleries, and countdowns each have their own commit path.
-- Persistence is split between debounced draft sync and direct section writes, so changes to save timing can create subtle consistency bugs.
+- Persistence ordering is safer than it used to be because writes share one FIFO, but save semantics are still split between debounced whole-draft sync and direct section mutations.
 - Hover, transformer visibility, drag overlays, and guide lines are actively suppressed or deferred during interaction for performance reasons.
 - Section auto-selection and auto-scroll during section reorder are coupled to viewport calculations and animation timing.
 - The editor still depends on window bridges and custom events for sidebar and external panel coordination.
@@ -455,20 +494,42 @@ Use these rules when extending the editor without breaking existing behavior.
 
 - Store section background/base-image/decoration data on `secciones`, not `objetos`.
 - Normalize section decoration payloads through the existing section background domain helpers.
-- If a section action writes directly to Firestore, keep it consistent with the debounced full-draft sync model.
+- If a section action writes directly to Firestore, keep it consistent with the shared draft-write FIFO so flush observes the latest section mutation order.
 
 ## 11. Runtime Contracts and Hidden Dependencies
-The current editor exposes non-trivial runtime contracts through `window` and custom events. They are part of the active system, even though they are not typed public APIs.
+The current editor exposes non-trivial runtime contracts through `window`, the snapshot adapter, and custom events. They are part of the active system, even though they are not typed public APIs.
 
 ### `window.canvasEditor`
-The editor currently merges capabilities into `window.canvasEditor`, including:
+The formal compatibility keys currently exposed on `window.canvasEditor` are:
 
-- active section data
-- undo/redo helpers
-- stage reference access
-- background color mutation entrypoints
-- template authoring helpers
-- immediate persistence flush
+- `deshacer`
+- `rehacer`
+- `flushPersistenceNow`
+- `getTemplateAuthoringStatus`
+- `getTemplateAuthoringSnapshot`
+- `repairTemplateAuthoringState`
+- `stageRef`
+- `seccionActivaId`
+- `tipoInvitacion`
+- `snapshot`
+
+This is the stable compatibility surface for `window.canvasEditor` in the current codebase. Other ad hoc properties should not be documented or consumed as if they were part of the same contract.
+
+### `window.editorSnapshot`
+The editor snapshot adapter is the canonical read boundary for external consumers that need live render state.
+
+Current adapter API:
+
+- `window.editorSnapshot.getRenderSnapshot()`
+- `window.editorSnapshot.getSectionInfo(id)`
+- `window.editorSnapshot.getObjectById(id)`
+
+Important behavior:
+
+- the editor keeps this adapter synchronized through `useCanvasEditorGlobalsBridge` and `useEditorWindowBridge`
+- adapter reads return cloned data
+- section snapshots are sorted by `orden`
+- legacy `window._objetosActuales` / `window._seccionesOrdenadas` fallback still exists for migration compatibility
 
 ### Other window helpers
 The current runtime also exposes standalone helpers outside `window.canvasEditor`, including:
@@ -479,25 +540,21 @@ The current runtime also exposes standalone helpers outside `window.canvasEditor
 - `window.setHoverIdGlobal` for hover reset from external UI
 
 ### Mirrored globals
-The runtime mirrors editor state into globals such as:
+The formalized legacy-compatible mirrored globals are grouped like this:
 
-- `window._elementosSeleccionados`
-- `window._objetosActuales`
-- `window._elementRefs`
-- `window._seccionesOrdenadas`
-- `window._rsvpConfigActual`
-- `window._giftsConfigActual`
-- `window._altoCanvas`
-- `window._seccionActivaId`
-- `window._celdaGaleriaActiva`
-- `window._isDragging`
-- `window._grupoLider`
-- `window._groupDragSession`
-- `window._resizeData`
-- `window._pendingDragSelectionId`
-- `window._pendingDragSelectionPhase`
+- render state: `window._objetosActuales`, `window._seccionesOrdenadas`, `window._rsvpConfigActual`, `window._giftConfigActual`, `window._giftsConfigActual`
+- editor session: `window._draftTipoInvitacion`, `window._tipoInvitacionActual`, `window._seccionActivaId`, `window._lastSeccionActivaId`
+- selection: `window._elementosSeleccionados`, `window._celdaGaleriaActiva`
+- interaction: `window._elementRefs`, `window.setHoverIdGlobal`, `window._isDragging`, `window._resizeData`
+- group drag: `window._groupDragSession`, `window._grupoLider`, `window._grupoElementos`, `window._grupoSeguidores`, `window._dragStartPos`, `window._dragInicial`, `window._groupPreviewLastDelta`
 
-These globals are used by drag, selection, external panels, and bridge-style editor actions.
+These globals are used by drag, selection, external panels, and compatibility bridges.
+
+Not part of the formal compatibility contract:
+
+- transient scratch globals such as `_skipUntil`, `_recentGroupDragGuard`, `_objetosCopiados`, `_selectionThrottle`, `_currentEditingId`, and `editing`
+
+Those values can exist at runtime, but external systems should not depend on them as stable bridge APIs.
 
 ### Custom events
 The current runtime relies on custom events for cross-surface coordination. Important examples include:
@@ -519,4 +576,4 @@ The current runtime relies on custom events for cross-surface coordination. Impo
 - `editor:draft-flush:result`
 
 ### Practical rule
-Treat these bridges as compatibility-sensitive system boundaries. If one of them changes, the matching consumers in sidebars, overlays, template tooling, or publish/preview triggers must be updated in the same change.
+Treat these bridges as compatibility-sensitive system boundaries. If one of them changes, the matching consumers in sidebars, overlays, template tooling, preview triggers, or publish-adjacent flows must be updated in the same change.

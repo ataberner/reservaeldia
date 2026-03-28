@@ -215,3 +215,19 @@ Si alguna respuesta es “no”, el cambio no está listo para aprobación.
 13. Preview visual y persistencia en `objetos` son estados distintos.
 14. Wrappers deben preservar firma, orden lógico y semántica observable.
 15. Fix visual sin fuente de verdad clara es parche.
+
+## 11) Contratos cross-runtime vigentes
+
+1. La surface formal de compatibilidad actual incluye:
+- `window.canvasEditor`
+- `window.editorSnapshot`
+- eventos nombrados usados por preview, sidebar y bridges
+- helpers formales como `__getObjById` y `__getSeccionInfo`
+
+2. Estado scratch transitorio no es contrato estable:
+- no documentarlo como API publica
+- no usarlo como fuente primaria para preview ni para consumers externos
+
+3. Para consumers externos:
+- preview y otras lecturas fuera del editor deben preferir snapshot adapters o bridges formales
+- los globals legacy se consideran fallback de migracion, no surface recomendada para nuevas dependencias

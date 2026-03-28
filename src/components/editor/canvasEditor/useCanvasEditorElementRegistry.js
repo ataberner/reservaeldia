@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
+import {
+  getCountdownRepeatDragActiveState,
+  getCountdownRepeatDragNodeIdentity,
+  isCountdownRepeatDragDebugEnabled,
+  publishCountdownRepeatDragDebugEntry,
+} from "@/components/editor/canvasEditor/countdownRepeatDragDebug";
 
 export default function useCanvasEditorElementRegistry({
   elementRefs,
@@ -14,14 +20,37 @@ export default function useCanvasEditorElementRegistry({
 
   const registerRef = useCallback(
     (id, node) => {
+      const activeCountdownDrag = getCountdownRepeatDragActiveState();
+      const shouldLogCountdownRefChange =
+        isCountdownRepeatDragDebugEnabled() &&
+        activeCountdownDrag?.elementId &&
+        activeCountdownDrag.elementId === id;
+
       if (!node) {
         delete elementRefs.current[id];
         imperativeObjects.registerObject(id, null);
+        if (shouldLogCountdownRefChange) {
+          publishCountdownRepeatDragDebugEntry({
+            event: "registry:unregister-ref",
+            elementId: id,
+            activeDebugState: activeCountdownDrag,
+            nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+          });
+        }
         return;
       }
 
       elementRefs.current[id] = node;
       imperativeObjects.registerObject(id, node);
+
+      if (shouldLogCountdownRefChange) {
+        publishCountdownRepeatDragDebugEntry({
+          event: "registry:register-ref",
+          elementId: id,
+          activeDebugState: activeCountdownDrag,
+          nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+        });
+      }
 
       if (refEventQueuedRef.current.has(id)) return;
       refEventQueuedRef.current.add(id);

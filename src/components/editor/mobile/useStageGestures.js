@@ -263,7 +263,12 @@ export default function useStageGestures({
       requestAnimationFrame(() => {
         window._mouseMoveThrottle = false;
 
-        const stage = e.target.getStage();
+        const stage =
+          e?.target?.getStage?.() ||
+          e?.currentTarget?.getStage?.() ||
+          null;
+        if (!stage || typeof stage.getPointerPosition !== "function") return;
+
         const pos = stage.getPointerPosition();
         if (!pos) return;
 
@@ -319,7 +324,10 @@ export default function useStageGestures({
 
   const onMouseUp = useCallback(
     (e) => {
-      const stage = e.target.getStage();
+      const stage =
+        e?.target?.getStage?.() ||
+        e?.currentTarget?.getStage?.() ||
+        null;
       if (window._grupoLider) return;
       if (isPostDragSelectionGuardActive()) {
         resetSelectionMarquee();
@@ -332,6 +340,7 @@ export default function useStageGestures({
         if (!node) return false;
 
         if (obj.tipo === "forma" && obj.figura === "line") {
+          if (!stage) return false;
           return detectarInterseccionLinea(obj, areaSeleccion, stage);
         }
 

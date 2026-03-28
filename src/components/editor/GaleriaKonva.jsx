@@ -326,7 +326,17 @@ export default function GaleriaKonva({
     if (evt?.target?.id?.() === `btn-${obj.id}-${index}`) return;
     if (evt) evt.cancelBubble = true;
     if (evt?.evt) evt.evt.cancelBubble = true;
-    onSelect?.(obj.id, evt);
+    const selectionResult = onSelect?.(obj.id, evt);
+    const shouldActivateCell =
+      Array.isArray(selectionResult?.selectionIds) &&
+      selectionResult.selectionIds.length === 1 &&
+      selectionResult.selectionIds[0] === obj.id;
+
+    if (!shouldActivateCell) {
+      setCeldaGaleriaActiva?.(null);
+      return;
+    }
+
     const payload = { objId: obj.id, index };
     onPickCell?.(payload);
     setCeldaGaleriaActiva?.(payload);

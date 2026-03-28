@@ -32,6 +32,11 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
+  getCountdownRepeatDragActiveState,
+  isCountdownRepeatDragDebugEnabled,
+  publishCountdownRepeatDragDebugEntry,
+} from "@/components/editor/canvasEditor/countdownRepeatDragDebug";
+import {
   getCanvasPointerDebugInfo,
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
@@ -367,6 +372,7 @@ export default function CanvasStageContent({
   const canvasStageRenderSnapshotRef = useRef(null);
   const canvasStageObjectsRef = useRef(null);
   const canvasStageObjectsVersionRef = useRef(0);
+  const countdownDragDebugSnapshotRef = useRef(null);
   const dragLayerRef = useRef(null);
   const dragSettleSessionRef = useRef(createEmptyDragSettleSession());
   const activeTransformInteractionRef = useRef({
@@ -555,6 +561,95 @@ export default function CanvasStageContent({
     seleccionActiva,
   ]);
 
+  const publishCountdownRuntimeDebug = useCallback((eventName, payload = {}) => {
+    if (!isCountdownRepeatDragDebugEnabled()) return false;
+
+    const activeDebugState = getCountdownRepeatDragActiveState();
+    if (!activeDebugState?.elementId) return false;
+
+    const activeObject =
+      objetos.find((item) => item?.id === activeDebugState.elementId) || null;
+    if (activeObject?.tipo !== "countdown") return false;
+
+    publishCountdownRepeatDragDebugEntry({
+      event: eventName,
+      elementId: activeDebugState.elementId,
+      source: "CanvasStageContentComposer",
+      activeDebugState,
+      ...payload,
+    });
+    return true;
+  }, [objetos]);
+
+  useEffect(() => {
+    if (!isCountdownRepeatDragDebugEnabled()) return;
+
+    const activeDebugState = getCountdownRepeatDragActiveState();
+    if (!activeDebugState?.elementId) return;
+
+    const activeCountdown =
+      objetos.find((item) => item?.id === activeDebugState.elementId) || null;
+    if (activeCountdown?.tipo !== "countdown") return;
+
+    const nextSnapshot = {
+      renderCount: canvasStageRenderCountRef.current,
+      elementId: activeDebugState.elementId,
+      activeSessionId: activeDebugState.sessionId || null,
+      canvasInteractionEpoch: Number(canvasInteractionEpoch || 0),
+      canvasInteractionActive: Boolean(canvasInteractionActive),
+      canvasInteractionSettling: Boolean(canvasInteractionSettling),
+      isDraggingProp: Boolean(isDragging),
+      globalDragging: typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+      isCanvasDragGestureActive: Boolean(isCanvasDragGestureActive),
+      isCanvasDragCoordinatorActive: Boolean(isCanvasDragCoordinatorActive),
+      pendingDragSelectionId:
+        typeof window !== "undefined" ? window._pendingDragSelectionId || null : null,
+      pendingDragSelectionPhase:
+        typeof window !== "undefined" ? window._pendingDragSelectionPhase || null : null,
+      dragSettleDragId: dragSettleSessionRef.current?.dragId || null,
+      dragSettleTipo: dragSettleSessionRef.current?.tipo || null,
+      dragSettleStartedSelected: Boolean(dragSettleSessionRef.current?.startedSelected),
+      dragSettleNeedsDeferredCommit: Boolean(
+        dragSettleSessionRef.current?.needsDeferredCommit
+      ),
+      dragSettleInteractionEpoch: Number(
+        dragSettleSessionRef.current?.interactionEpoch || 0
+      ),
+      dragVisualSelectionIds: sanitizeSelectionIds(dragVisualSelectionIds).join(","),
+      dragVisualSelectionCount: dragVisualSelectionIds.length,
+      selectedIds: sanitizeSelectionIds(elementosSeleccionados).join(","),
+      preselectedIds: sanitizeSelectionIds(elementosPreSeleccionados).join(","),
+      guidesCount: guideOverlayRef?.current?.getGuideLinesCount?.() || 0,
+    };
+    const previousSnapshot = countdownDragDebugSnapshotRef.current;
+    const changedKeys = !previousSnapshot
+      ? Object.keys(nextSnapshot)
+      : Object.keys(nextSnapshot).filter(
+          (key) => previousSnapshot[key] !== nextSnapshot[key]
+        );
+
+    if (changedKeys.length === 0) return;
+
+    countdownDragDebugSnapshotRef.current = nextSnapshot;
+    publishCountdownRuntimeDebug("composer:countdown-drag-state", {
+      changedKeys,
+      snapshot: nextSnapshot,
+    });
+  }, [
+    canvasInteractionActive,
+    canvasInteractionEpoch,
+    canvasInteractionSettling,
+    dragVisualSelectionIds,
+    elementosPreSeleccionados,
+    elementosSeleccionados,
+    guideOverlayRef,
+    isCanvasDragCoordinatorActive,
+    isCanvasDragGestureActive,
+    isDragging,
+    objetos,
+    publishCountdownRuntimeDebug,
+  ]);
+
   useEffect(() => {
     dragGuideObjectsRef.current = objetos;
   }, [objetos]);
@@ -664,6 +759,14 @@ export default function CanvasStageContent({
     };
 
     dragSettleSessionRef.current = nextSession;
+    publishCountdownRuntimeDebug("composer:drag-settle-start", {
+      dragId,
+      tipo,
+      interactionEpoch: Number(interactionEpoch || 0),
+      startedSelected,
+      needsDeferredCommit: Boolean(nextSession.needsDeferredCommit),
+      selectionSnapshot: [...currentSelection],
+    });
 
     if (!nextSession.needsDeferredCommit) {
       if (typeof window !== "undefined") {
@@ -705,6 +808,12 @@ export default function CanvasStageContent({
         ? currentSelection
         : (dragId ? [dragId] : []);
 
+    publishCountdownRuntimeDebug("composer:drag-visual-selection", {
+      dragId,
+      currentSelectionSnapshot: [...currentSelection],
+      nextSelectionSnapshot: [...nextSelection],
+    });
+
     setDragVisualSelectionIds((current) => {
       if (
         Array.isArray(current) &&
@@ -716,7 +825,7 @@ export default function CanvasStageContent({
       dragVisualSelectionIdsRef.current = nextSelection;
       return nextSelection;
     });
-  }, []);
+  }, [publishCountdownRuntimeDebug]);
 
   useEffect(() => {
     if (!isPredragVisualSelectionActive) return;
@@ -915,6 +1024,12 @@ export default function CanvasStageContent({
   }, [beginCanvasInteraction]);
 
   const queuePostDragUiRefresh = useCallback((dragId, tipo = null, source = "element-drag-end") => {
+    publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:scheduled", {
+      dragId,
+      tipo,
+      source,
+      sessionSnapshot: dragSettleSessionRef.current || null,
+    });
     const runPostDragUi = () => {
       const session = dragSettleSessionRef.current;
       if (!session?.dragId || session.dragId !== dragId) {
@@ -923,11 +1038,33 @@ export default function CanvasStageContent({
           window._pendingDragSelectionPhase = null;
         }
         dragSettleSessionRef.current = createEmptyDragSettleSession();
+        publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:skipped", {
+          dragId,
+          tipo,
+          source,
+          reason: "missing-or-mismatched-session",
+          sessionSnapshot: session || null,
+        });
         return;
       }
 
       const outcome = resolveDragSettleOutcome(session);
-      if (!outcome.hasWork) return;
+      if (!outcome.hasWork) {
+        publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:no-work", {
+          dragId,
+          tipo,
+          source,
+          outcome,
+        });
+        return;
+      }
+
+      publishCountdownRuntimeDebug("composer:post-drag-ui-refresh", {
+        dragId,
+        tipo,
+        source,
+        outcome,
+      });
 
       logSelectedDragDebug("selection:post-drag-ui-refresh", {
         elementId: dragId,
@@ -964,6 +1101,7 @@ export default function CanvasStageContent({
   }, [
     canvasInteractionEpoch,
     elementosSeleccionados,
+    publishCountdownRuntimeDebug,
     resolveDragSettleOutcome,
     scheduleCanvasUiAfterSettle,
   ]);
@@ -1630,6 +1768,13 @@ export default function CanvasStageContent({
     elementosSeleccionados,
   ]);
 
+  const handleSpecialElementSelectIntent = useCallback((id, obj, event) => (
+    handleElementSelectIntent(id, obj, event, {
+      gesture: "primary",
+      selectionOrigin: "gesture",
+    })
+  ), [handleElementSelectIntent]);
+
   const selectSectionAndClearInlineIntent = useCallback((sectionId, reason = "section-select") => {
     if (isPostDragSelectionGuardActive()) return;
     clearInlineActivation(reason, {
@@ -2088,13 +2233,10 @@ export default function CanvasStageContent({
           isSelected={elementosSeleccionados.includes(obj.id)}
           celdaGaleriaActiva={celdaGaleriaActiva}
           onPickCell={(info) => setCeldaGaleriaActiva(info)}
+          setCeldaGaleriaActiva={setCeldaGaleriaActiva}
           seccionesOrdenadas={seccionesOrdenadas}
           altoCanvas={altoCanvas}
-          onSelect={(id, e) => {
-            e?.evt && (e.evt.cancelBubble = true);
-            clearInlineIntent("non-inline-select", { id, tipo: "galeria" });
-            setElementosSeleccionados([id]);
-          }}
+          onSelect={(id, e) => handleSpecialElementSelectIntent(id, obj, e)}
           onDragMovePersonalizado={(pos, id) => {
             window._isDragging = true;
             scheduleGuideEvaluation(pos, id);
@@ -2144,12 +2286,12 @@ export default function CanvasStageContent({
           isSelected={elementosSeleccionados.includes(obj.id)}
           seccionesOrdenadas={seccionesOrdenadas}
           altoCanvas={altoCanvas}
-          onSelect={(id, e) => {
-            e?.evt && (e.evt.cancelBubble = true);
-            clearInlineIntent("non-inline-select", { id, tipo: "countdown" });
-            setElementosSeleccionados([id]);
-          }}
+          onSelect={(id, e) => handleSpecialElementSelectIntent(id, obj, e)}
           onDragStartPersonalizado={(dragId = obj.id) => {
+            publishCountdownRuntimeDebug("composer:countdown-dragstart-callback", {
+              dragId,
+              selectedIds: sanitizeSelectionIds(elementosSeleccionados),
+            });
             clearInlineIntent("drag-start", { dragId, tipo: "countdown" });
             const interactionEpoch = beginCanvasDragGesture(dragId, "countdown");
             startDragSettleSession(
@@ -2163,9 +2305,18 @@ export default function CanvasStageContent({
             prepararGuias?.(dragId, objetos, elementRefs);
           }}
           onDragMovePersonalizado={(pos, id) => {
+            publishCountdownRuntimeDebug("composer:countdown-dragmove-callback", {
+              dragId: id,
+              x: Number(pos?.x ?? null),
+              y: Number(pos?.y ?? null),
+            });
             scheduleGuideEvaluation(pos, id);
           }}
           onDragEndPersonalizado={() => {
+            publishCountdownRuntimeDebug("composer:countdown-dragend-callback", {
+              dragId: obj.id,
+              selectedIds: sanitizeSelectionIds(elementosSeleccionados),
+            });
             cancelScheduledGuideEvaluation();
             queuePostDragUiRefresh(obj.id, "countdown", "countdown-drag-end");
             endCanvasInteraction("drag", {

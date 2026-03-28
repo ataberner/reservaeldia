@@ -14,6 +14,13 @@ import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import {
+  getCountdownRepeatDragActiveState,
+  getCountdownRepeatDragNodeIdentity,
+  isCountdownRepeatDragDebugEnabled,
+  publishCountdownRepeatDragDebugEntry,
+  setCountdownRepeatDragActiveState,
+} from "@/components/editor/canvasEditor/countdownRepeatDragDebug";
+import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
@@ -30,6 +37,7 @@ const UNIT_LABELS = Object.freeze({
 });
 
 const DEFAULT_UNITS = Object.freeze(["days", "hours", "minutes", "seconds"]);
+let countdownRepeatDragDebugInstanceCounter = 0;
 
 function normalizeUnits(value) {
   if (!Array.isArray(value)) return [...DEFAULT_UNITS];
@@ -62,6 +70,11 @@ function getClientPoint(evt) {
   const y = Number.isFinite(touch?.clientY) ? touch.clientY : evt.clientY;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return { x, y };
+}
+
+function getEventTimeStampMs(evt) {
+  const timeStamp = Number(evt?.timeStamp);
+  return Number.isFinite(timeStamp) ? timeStamp : null;
 }
 
 function resolvePointerType(evt) {
@@ -109,6 +122,7 @@ export default function CountdownKonva({
   obj,
   registerRef,
   onHover,
+  isSelected = false,
   seccionesOrdenadas,
   altoCanvas,
   onSelect,
@@ -120,9 +134,26 @@ export default function CountdownKonva({
   hasDragged,
 }) {
   const rootRef = useRef(null);
+  const pressSessionCounterRef = useRef(0);
+  const debugRenderCountRef = useRef(0);
+  const debugRenderSnapshotRef = useRef(null);
+  const dragMoveDebugRef = useRef({
+    lastLogAtMs: 0,
+    lastX: null,
+    lastY: null,
+  });
+  const lastRootNodeIdentityRef = useRef(null);
+  const debugInstanceIdRef = useRef(null);
+
+  if (!debugInstanceIdRef.current) {
+    countdownRepeatDragDebugInstanceCounter += 1;
+    debugInstanceIdRef.current = `countdown:${obj.id || "unknown"}:${countdownRepeatDragDebugInstanceCounter}`;
+  }
+  debugRenderCountRef.current += 1;
 
   // Tick cada 1s (no re-render si estamos arrastrando)
   const [tick, setTick] = useState(0);
+  const [reactDraggableEnabled, setReactDraggableEnabled] = useState(false);
   const draggingRef = useRef(false);
 
   useEffect(() => {
@@ -135,7 +166,49 @@ export default function CountdownKonva({
   // Registrar nodo raíz
   const setRefs = useCallback(
     (node) => {
+      const previousNode = rootRef.current || null;
+      const previousNodeIdentity = getCountdownRepeatDragNodeIdentity(previousNode);
+      const nextNodeIdentity = getCountdownRepeatDragNodeIdentity(node);
+
+      if (previousNode && previousNode !== node) {
+        lastRootNodeIdentityRef.current = previousNodeIdentity;
+      }
+
       rootRef.current = node;
+
+      if (previousNode !== node) {
+        if (previousNode) {
+          const detachEntry = {
+            event: "ref-detach",
+            elementId: obj.id || null,
+            instanceId: debugInstanceIdRef.current,
+            renderCount: debugRenderCountRef.current,
+            previousNodeIdentity,
+            nextNodeIdentity,
+          };
+          if (isCountdownRepeatDragDebugEnabled()) {
+            publishCountdownRepeatDragDebugEntry(detachEntry);
+            console.log("[COUNTDOWN_REPEAT_DRAG]", detachEntry);
+          }
+        }
+
+        if (node) {
+          lastRootNodeIdentityRef.current = nextNodeIdentity;
+          const attachEntry = {
+            event: "ref-attach",
+            elementId: obj.id || null,
+            instanceId: debugInstanceIdRef.current,
+            renderCount: debugRenderCountRef.current,
+            previousNodeIdentity,
+            nodeIdentity: nextNodeIdentity,
+          };
+          if (isCountdownRepeatDragDebugEnabled()) {
+            publishCountdownRepeatDragDebugEntry(attachEntry);
+            console.log("[COUNTDOWN_REPEAT_DRAG]", attachEntry);
+          }
+        }
+      }
+
       if (typeof registerRef === "function") registerRef(obj.id, node || null);
     },
     [obj.id, registerRef]
@@ -426,6 +499,8 @@ export default function CountdownKonva({
   // Drag gating (la clave)
   // ---------------------------
   const pressRef = useRef({
+    sessionId: 0,
+    startedAtMs: null,
     active: false,
     movedEnough: false,
     startedDrag: false,
@@ -439,20 +514,479 @@ export default function CountdownKonva({
     // para ignorar click si se convirtió en drag
     suppressClick: false,
   });
+  const dragSessionRef = useRef({
+    sessionId: null,
+    startedAtMs: null,
+    thresholdCrossedAtMs: null,
+  });
+  const completedDragSessionIdRef = useRef(null);
 
   const cleanupGlobalRef = useRef(null);
 
-  const cleanupGlobal = useCallback(() => {
-    if (cleanupGlobalRef.current) {
-      try { cleanupGlobalRef.current(); } catch {}
-      cleanupGlobalRef.current = null;
+  const logCountdownRepeatDragDiag = useCallback((eventName, payload = {}) => {
+    if (!isCountdownRepeatDragDebugEnabled()) {
+      return;
     }
+
+    const press = pressRef.current || {};
+    const dragSession = dragSessionRef.current || {};
+    const activeDebugState = getCountdownRepeatDragActiveState();
+    const entry = {
+      event: eventName,
+      elementId: obj.id || null,
+      instanceId: debugInstanceIdRef.current,
+      renderCount: debugRenderCountRef.current,
+      sessionId: press.sessionId || null,
+      currentPressSessionId: press.sessionId || null,
+      dragSessionId: dragSession.sessionId || null,
+      completedDragSessionId: completedDragSessionIdRef.current || null,
+      pressActive: Boolean(press.active),
+      movedEnough: Boolean(press.movedEnough),
+      startedDrag: Boolean(press.startedDrag),
+      suppressClick: Boolean(press.suppressClick),
+      globalDragging: Boolean(window._isDragging),
+      reactDraggableEnabled: Boolean(reactDraggableEnabled),
+      selectedIds: Array.isArray(window._elementosSeleccionados)
+        ? [...window._elementosSeleccionados]
+        : [],
+      activeDebugState,
+      rootNodeIdentity: getCountdownRepeatDragNodeIdentity(rootRef.current),
+      ...payload,
+    };
+
+    publishCountdownRepeatDragDebugEntry(entry);
+    console.log("[COUNTDOWN_REPEAT_DRAG]", entry);
+  }, [obj.id, reactDraggableEnabled]);
+
+  const syncReactDraggableEnabled = useCallback((nextDraggable) => {
+    const safeNext = Boolean(nextDraggable);
+    const apply = () => {
+      setReactDraggableEnabled((current) => (
+        current === safeNext ? current : safeNext
+      ));
+    };
+
+    if (safeNext && typeof flushSync === "function") {
+      flushSync(apply);
+      return;
+    }
+
+    apply();
   }, []);
 
-  const attachGlobalListeners = useCallback(() => {
+  const setNodeDraggable = useCallback((node, nextDraggable, reason, extra = {}) => {
+    syncReactDraggableEnabled(nextDraggable);
+
+    if (!node) {
+      logCountdownRepeatDragDiag("draggable:set-missing-node", {
+        reason,
+        requestedDraggable: Boolean(nextDraggable),
+        ...extra,
+      });
+      return null;
+    }
+
+    let previousDraggable = null;
+    try {
+      previousDraggable =
+        typeof node.draggable === "function" ? Boolean(node.draggable()) : null;
+    } catch {}
+
+    try {
+      node.draggable(nextDraggable);
+    } catch {}
+
+    let nodeDraggable = null;
+    try {
+      nodeDraggable =
+        typeof node.draggable === "function" ? Boolean(node.draggable()) : null;
+    } catch {}
+
+    logCountdownRepeatDragDiag("draggable:set", {
+      reason,
+      requestedDraggable: Boolean(nextDraggable),
+      previousDraggable,
+      nodeDraggable,
+      reactDraggableEnabled: Boolean(nextDraggable),
+      nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+      ...extra,
+    });
+
+    return nodeDraggable;
+  }, [logCountdownRepeatDragDiag, syncReactDraggableEnabled]);
+
+  const detachTransformerBeforeNativeDrag = useCallback((node, reason = "unknown") => {
+    if (!node) {
+      return false;
+    }
+
+    const stage = node?.getStage?.() || null;
+    if (!stage || typeof stage.findOne !== "function") {
+      return false;
+    }
+
+    let transformer = null;
+    try {
+      transformer = stage.findOne("Transformer");
+    } catch {
+      transformer = null;
+    }
+    if (!transformer || typeof transformer.nodes !== "function") {
+      return false;
+    }
+
+    let attachedNodes = [];
+    try {
+      attachedNodes = transformer.nodes() || [];
+    } catch {
+      attachedNodes = [];
+    }
+
+    const shouldDetach = attachedNodes.some((attachedNode) => attachedNode === node);
+    if (!shouldDetach) {
+      return false;
+    }
+
+    try {
+      transformer.stopTransform?.();
+    } catch {}
+    try {
+      transformer.nodes([]);
+    } catch {}
+    try {
+      transformer.getLayer?.()?.batchDraw?.();
+    } catch {}
+
+    logCountdownRepeatDragDiag("transformer:detach-before-drag", {
+      reason,
+      attachedNodeCount: attachedNodes.length,
+      nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+    });
+
+    return true;
+  }, [logCountdownRepeatDragDiag]);
+
+  const markActiveDebugDragSession = useCallback((phase, sessionId, extra = {}) => {
+    if (!isCountdownRepeatDragDebugEnabled()) {
+      return;
+    }
+
+    const previous = getCountdownRepeatDragActiveState();
+    setCountdownRepeatDragActiveState({
+      ...(previous && previous.elementId === obj.id ? previous : {}),
+      elementId: obj.id || null,
+      instanceId: debugInstanceIdRef.current,
+      sessionId: sessionId ?? previous?.sessionId ?? null,
+      phase: phase || null,
+      atMs: Date.now(),
+      ...extra,
+    });
+  }, [obj.id]);
+
+  const clearActiveDebugDragSession = useCallback((sessionId = null) => {
+    if (!isCountdownRepeatDragDebugEnabled()) {
+      return false;
+    }
+
+    const current = getCountdownRepeatDragActiveState();
+    if (!current || current.elementId !== obj.id) {
+      return false;
+    }
+    if (current.instanceId && current.instanceId !== debugInstanceIdRef.current) {
+      return false;
+    }
+    if (
+      sessionId != null &&
+      current.sessionId != null &&
+      current.sessionId !== sessionId
+    ) {
+      return false;
+    }
+
+    setCountdownRepeatDragActiveState(null);
+    return true;
+  }, [obj.id]);
+
+  const scheduleDragStartHealthChecks = useCallback((sessionId, sourceNode) => {
+    if (!isCountdownRepeatDragDebugEnabled()) {
+      return;
+    }
+
+    const sourceNodeIdentity = getCountdownRepeatDragNodeIdentity(sourceNode);
+    const logHealthCheck = (phase) => {
+      const currentNode = rootRef.current || null;
+      const currentNodeIdentity = getCountdownRepeatDragNodeIdentity(currentNode);
+      logCountdownRepeatDragDiag("dragstart:health-check", {
+        phase,
+        sessionId,
+        sourceNodeIdentity,
+        currentNodeIdentity,
+        sameNodeKey:
+          sourceNodeIdentity?.key && currentNodeIdentity?.key
+            ? sourceNodeIdentity.key === currentNodeIdentity.key
+            : false,
+        nodeDragging: Boolean(currentNode?.isDragging?.()),
+        nodeDraggable: Boolean(currentNode?.draggable?.()),
+        globalDragging: Boolean(window._isDragging),
+      });
+    };
+
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(() => {
+        logHealthCheck("microtask");
+      });
+    } else {
+      Promise.resolve().then(() => {
+        logHealthCheck("microtask");
+      });
+    }
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        logHealthCheck("raf");
+      });
+    }
+  }, [logCountdownRepeatDragDiag]);
+
+  const logThrottledDragMove = useCallback((node, extra = {}) => {
+    if (!isCountdownRepeatDragDebugEnabled()) {
+      return;
+    }
+
+    const nextX =
+      node && typeof node.x === "function" && Number.isFinite(Number(node.x()))
+        ? Number(node.x())
+        : null;
+    const nextY =
+      node && typeof node.y === "function" && Number.isFinite(Number(node.y()))
+        ? Number(node.y())
+        : null;
+    const nowMs = Date.now();
+    const last = dragMoveDebugRef.current;
+    const movedEnough =
+      !Number.isFinite(last.lastX) ||
+      !Number.isFinite(last.lastY) ||
+      Math.abs((nextX ?? 0) - (last.lastX ?? 0)) >= 0.5 ||
+      Math.abs((nextY ?? 0) - (last.lastY ?? 0)) >= 0.5;
+    const waitedEnough = nowMs - last.lastLogAtMs >= 80;
+
+    if (!movedEnough && !waitedEnough) {
+      return;
+    }
+
+    dragMoveDebugRef.current = {
+      lastLogAtMs: nowMs,
+      lastX: nextX,
+      lastY: nextY,
+    };
+
+    logCountdownRepeatDragDiag("dragmove", {
+      x: nextX,
+      y: nextY,
+      nodeDragging: Boolean(node?.isDragging?.()),
+      nodeDraggable: Boolean(node?.draggable?.()),
+      nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+      ...extra,
+    });
+  }, [logCountdownRepeatDragDiag]);
+
+  useEffect(() => {
+    logCountdownRepeatDragDiag("instance-state", {
+      isSelected: Boolean(isSelected),
+      nodeRegistered: Boolean(rootRef.current),
+    });
+  }, [isSelected, logCountdownRepeatDragDiag]);
+
+  useEffect(() => {
+    if (isCountdownRepeatDragDebugEnabled()) {
+      const entry = {
+        event: "instance-mount",
+        elementId: obj.id || null,
+        instanceId: debugInstanceIdRef.current,
+        renderCount: debugRenderCountRef.current,
+        isSelected: Boolean(isSelected),
+        nodeRegistered: Boolean(rootRef.current),
+        nodeIdentity: getCountdownRepeatDragNodeIdentity(rootRef.current),
+      };
+      publishCountdownRepeatDragDebugEntry(entry);
+      console.log("[COUNTDOWN_REPEAT_DRAG]", entry);
+    }
+
+    return () => {
+      const clearedActiveDebug = clearActiveDebugDragSession();
+      const entry = {
+        event: "instance-unmount",
+        elementId: obj.id || null,
+        instanceId: debugInstanceIdRef.current,
+        renderCount: debugRenderCountRef.current,
+        clearedActiveDebug,
+        lastKnownNodeIdentity:
+          lastRootNodeIdentityRef.current ||
+          getCountdownRepeatDragNodeIdentity(rootRef.current),
+      };
+      if (isCountdownRepeatDragDebugEnabled()) {
+        publishCountdownRepeatDragDebugEntry(entry);
+        console.log("[COUNTDOWN_REPEAT_DRAG]", entry);
+      }
+    };
+  }, [clearActiveDebugDragSession, obj.id]);
+
+  useEffect(() => {
+    if (!isCountdownRepeatDragDebugEnabled()) {
+      return;
+    }
+
+    const activeDebugState = getCountdownRepeatDragActiveState();
+    const rootNodeIdentity = getCountdownRepeatDragNodeIdentity(rootRef.current);
+    const shouldLogRender =
+      activeDebugState?.elementId === obj.id ||
+      Boolean(isSelected) ||
+      Boolean(dragSessionRef.current.sessionId) ||
+      Boolean(pressRef.current.active) ||
+      Boolean(window._isDragging);
+
+    if (!shouldLogRender) {
+      return;
+    }
+
+    const nextSnapshot = {
+      isSelected: Boolean(isSelected),
+      x: obj.x ?? 0,
+      yAbs,
+      rotation: obj.rotation || 0,
+      scaleX: obj.scaleX || 1,
+      scaleY: obj.scaleY || 1,
+      pressSessionId: pressRef.current.sessionId || null,
+      dragSessionId: dragSessionRef.current.sessionId || null,
+      pressActive: Boolean(pressRef.current.active),
+      localDragging: Boolean(draggingRef.current),
+      globalDragging: Boolean(window._isDragging),
+      reactDraggableEnabled: Boolean(reactDraggableEnabled),
+      rootNodeKey: rootNodeIdentity?.key || null,
+      rootNodeDraggable: rootNodeIdentity?.draggable ?? null,
+      rootNodeDragging: rootNodeIdentity?.isDragging ?? null,
+    };
+    const previousSnapshot = debugRenderSnapshotRef.current;
+    const changedKeys = !previousSnapshot
+      ? Object.keys(nextSnapshot)
+      : Object.keys(nextSnapshot).filter(
+          (key) => previousSnapshot[key] !== nextSnapshot[key]
+        );
+
+    if (changedKeys.length === 0) {
+      return;
+    }
+
+    debugRenderSnapshotRef.current = nextSnapshot;
+    logCountdownRepeatDragDiag("instance-render", {
+      changedKeys,
+      snapshot: nextSnapshot,
+    });
+  }, [
+    isSelected,
+    obj.id,
+    obj.rotation,
+    obj.scaleX,
+    obj.scaleY,
+    obj.x,
+    reactDraggableEnabled,
+    yAbs,
+    logCountdownRepeatDragDiag,
+  ]);
+
+  const cleanupGlobal = useCallback((expectedSessionId = null) => {
+    const cleanupState = cleanupGlobalRef.current;
+    if (!cleanupState) {
+      return false;
+    }
+
+    if (
+      expectedSessionId != null &&
+      Number.isFinite(cleanupState.sessionId) &&
+      cleanupState.sessionId !== expectedSessionId
+    ) {
+      return false;
+    }
+
+    try { cleanupState.cleanup(); } catch {}
+    cleanupGlobalRef.current = null;
+    return true;
+  }, []);
+
+  const scheduleHasDraggedReset = useCallback(() => {
+    setTimeout(() => {
+      if (hasDragged?.current != null) hasDragged.current = false;
+    }, 0);
+  }, [hasDragged]);
+
+  const resetPressStateForSession = useCallback((sessionId) => {
+    if (pressRef.current.sessionId !== sessionId) {
+      return false;
+    }
+
+    pressRef.current.active = false;
+    pressRef.current.movedEnough = false;
+    pressRef.current.startedDrag = false;
+    pressRef.current.startedAtMs = null;
+    return true;
+  }, []);
+
+  const clearDragSession = useCallback((sessionId = null) => {
+    const currentDragSessionId = dragSessionRef.current?.sessionId ?? null;
+    if (sessionId != null && currentDragSessionId !== sessionId) {
+      return false;
+    }
+
+    dragSessionRef.current = {
+      sessionId: null,
+      startedAtMs: null,
+      thresholdCrossedAtMs: null,
+    };
+    return true;
+  }, []);
+
+  const finalizeLocalDragCleanup = useCallback((sessionId, node) => {
+    if (sessionId == null) {
+      return;
+    }
+
+    setNodeDraggable(node, false, "finalize-local-drag-cleanup", {
+      sessionId,
+    });
+
+    draggingRef.current = false;
+    window._isDragging = false;
+
+    const resetPressState = resetPressStateForSession(sessionId);
+    const clearedDragSession = clearDragSession(sessionId);
+    completedDragSessionIdRef.current = sessionId;
+
+    scheduleHasDraggedReset();
+    const cleanupGlobalCompleted = cleanupGlobal(sessionId);
+    const clearedActiveDebug = clearActiveDebugDragSession(sessionId);
+    logCountdownRepeatDragDiag("cleanup:finalized", {
+      sessionId,
+      resetPressState,
+      clearedDragSession,
+      cleanupGlobalCompleted,
+      clearedActiveDebug,
+      nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+    });
+  }, [
+    cleanupGlobal,
+    clearActiveDebugDragSession,
+    clearDragSession,
+    logCountdownRepeatDragDiag,
+    resetPressStateForSession,
+    scheduleHasDraggedReset,
+    setNodeDraggable,
+  ]);
+
+  const attachGlobalListeners = useCallback((listenerSessionId) => {
     cleanupGlobal();
 
     const onMove = (ev) => {
+      if (pressRef.current.sessionId !== listenerSessionId) return;
       if (!pressRef.current.active) return;
       if (pressRef.current.startedDrag) return;
 
@@ -476,67 +1010,105 @@ export default function CountdownKonva({
       pressRef.current.movedEnough = true;
       pressRef.current.startedDrag = true;
       pressRef.current.suppressClick = true;
+      dragSessionRef.current = {
+        sessionId: listenerSessionId,
+        startedAtMs: pressRef.current.startedAtMs,
+        thresholdCrossedAtMs: getEventTimeStampMs(ev),
+      };
+      completedDragSessionIdRef.current = null;
 
       const node = rootRef.current;
       if (!node) return;
+      detachTransformerBeforeNativeDrag(node, "threshold-cross");
 
       // Corregimos posición inicial con el delta real para evitar “arrastre atrasado”.
       // Dejamos que Konva arranque el drag nativo desde la posiciÃ³n actual
       // para evitar el salto del reposicionamiento manual previo.
 
       // Habilitar drag solo ahora
-      try { node.draggable(true); } catch {}
+      setNodeDraggable(node, true, "threshold-cross", {
+        listenerSessionId,
+      });
 
       // Bloquear re-render por tick durante drag
       draggingRef.current = true;
       window._isDragging = true;
       if (hasDragged?.current != null) hasDragged.current = true;
+      markActiveDebugDragSession("threshold-cross", listenerSessionId, {
+        pressStartedAtMs: pressRef.current.startedAtMs ?? null,
+        thresholdCrossedAtMs: dragSessionRef.current.thresholdCrossedAtMs ?? null,
+      });
 
       // Iniciar drag nativo de Konva (esto dispara dragstart/dragmove/dragend)
+      logCountdownRepeatDragDiag("threshold-cross", {
+        listenerSessionId,
+        nodeDragging: Boolean(node?.isDragging?.()),
+        nodeDraggable: Boolean(node?.draggable?.()),
+      });
       try { node.startDrag(); } catch {}
     };
 
     const onUp = () => {
-      // Siempre cerramos el press
+      const currentPressSessionId = pressRef.current.sessionId ?? null;
+      const dragSessionId = dragSessionRef.current.sessionId ?? null;
+      const completedDragSessionId = completedDragSessionIdRef.current ?? null;
+      const isCurrentPressSession = currentPressSessionId === listenerSessionId;
+      const ownsActiveDragSession = dragSessionId === listenerSessionId;
+      const alreadyCompleted = completedDragSessionId === listenerSessionId;
+      const node = rootRef.current;
+
+      logCountdownRepeatDragDiag("release", {
+        listenerSessionId,
+        isCurrentPressSession,
+        ownsActiveDragSession,
+        alreadyCompleted,
+        movedEnough: Boolean(pressRef.current.movedEnough),
+        startedDrag: Boolean(pressRef.current.startedDrag),
+        nodeDragging: Boolean(node?.isDragging?.()),
+        nodeDraggable: Boolean(node?.draggable?.()),
+      });
+
+      if (alreadyCompleted) {
+        cleanupGlobal(listenerSessionId);
+        return;
+      }
+
+      if (!isCurrentPressSession) {
+        logCountdownRepeatDragDiag("release:stale-session-ignored", {
+          listenerSessionId,
+        });
+        return;
+      }
+
       pressRef.current.active = false;
 
-      const node = rootRef.current;
       if (!node) {
-        cleanupGlobal();
+        if (!ownsActiveDragSession) {
+          resetPressStateForSession(listenerSessionId);
+          cleanupGlobal(listenerSessionId);
+        }
         return;
       }
 
       // Si NO se convirtió en drag, garantizamos 0 movimiento
-      if (!pressRef.current.movedEnough) {
+      if (!ownsActiveDragSession && !pressRef.current.movedEnough && !pressRef.current.startedDrag) {
         try {
           node.position({ x: pressRef.current.startNodeX, y: pressRef.current.startNodeY });
           node.getLayer()?.batchDraw();
         } catch {}
-        // click permitido
-      } else {
-        // Si fue drag, aseguramos que termine
-        try {
-          if (node.isDragging?.()) node.stopDrag();
-        } catch {}
+        resetPressStateForSession(listenerSessionId);
+        setNodeDraggable(node, false, "release-no-drag", {
+          listenerSessionId,
+        });
+        draggingRef.current = false;
+        window._isDragging = false;
+        cleanupGlobal(listenerSessionId);
+        return;
       }
 
-      // Reset flags
-      pressRef.current.movedEnough = false;
-      pressRef.current.startedDrag = false;
-
-      // Volver a modo "no draggable" siempre (clave para que el click nunca dispare drag)
-      try { node.draggable(false); } catch {}
-
-      draggingRef.current = false;
-      window._isDragging = false;
-
-      // Permitimos clicks futuros
-      setTimeout(() => {
-        pressRef.current.suppressClick = false;
-        if (hasDragged?.current != null) hasDragged.current = false;
-      }, 0);
-
-      cleanupGlobal();
+      try {
+        if (node.isDragging?.()) node.stopDrag();
+      } catch {}
     };
 
     window.addEventListener("pointermove", onMove, true);
@@ -547,16 +1119,27 @@ export default function CountdownKonva({
     window.addEventListener("pointercancel", onUp, true);
     window.addEventListener("blur", onUp, true);
 
-    cleanupGlobalRef.current = () => {
-      window.removeEventListener("pointermove", onMove, true);
-      window.removeEventListener("touchmove", onMove, true);
-      window.removeEventListener("pointerup", onUp, true);
-      window.removeEventListener("touchend", onUp, true);
-      window.removeEventListener("touchcancel", onUp, true);
-      window.removeEventListener("pointercancel", onUp, true);
-      window.removeEventListener("blur", onUp, true);
+    cleanupGlobalRef.current = {
+      sessionId: listenerSessionId,
+      cleanup: () => {
+        window.removeEventListener("pointermove", onMove, true);
+        window.removeEventListener("touchmove", onMove, true);
+        window.removeEventListener("pointerup", onUp, true);
+        window.removeEventListener("touchend", onUp, true);
+        window.removeEventListener("touchcancel", onUp, true);
+        window.removeEventListener("pointercancel", onUp, true);
+        window.removeEventListener("blur", onUp, true);
+      },
     };
-  }, [cleanupGlobal, dragStartPos, hasDragged]);
+  }, [
+    cleanupGlobal,
+    detachTransformerBeforeNativeDrag,
+    hasDragged,
+    logCountdownRepeatDragDiag,
+    markActiveDebugDragSession,
+    resetPressStateForSession,
+    setNodeDraggable,
+  ]);
 
   // ---------------------------
   // Handlers del nodo
@@ -573,15 +1156,26 @@ export default function CountdownKonva({
         });
       }
 
-      const node = e.currentTarget;
       const ev = e.evt;
-      const stage = node?.getStage?.();
       const pointerType = resolvePointerType(ev);
+      if (!isSelected) {
+        logCountdownRepeatDragDiag("press-start:selection-required", {
+          pointerType,
+        });
+        return;
+      }
+
+      const node = e.currentTarget;
+      const stage = node?.getStage?.();
       const dragThreshold = getDragIntentThreshold(pointerType);
       const clientPoint = getClientPoint(ev);
       const stagePoint = stage?.getPointerPosition?.();
+      const nextSessionId = pressSessionCounterRef.current + 1;
+      pressSessionCounterRef.current = nextSessionId;
 
       // Iniciar press
+      pressRef.current.sessionId = nextSessionId;
+      pressRef.current.startedAtMs = getEventTimeStampMs(ev);
       pressRef.current.active = true;
       pressRef.current.movedEnough = false;
       pressRef.current.startedDrag = false;
@@ -605,13 +1199,29 @@ export default function CountdownKonva({
         Number.isFinite(stagePoint?.y) ? stagePoint.y : 0;
 
       // Por defecto NO draggable en press (clave)
-      try { node.draggable(false); } catch {}
+      setNodeDraggable(node, false, "press-start", {
+        sessionId: nextSessionId,
+      });
 
       if (hasDragged?.current != null) hasDragged.current = false;
 
-      attachGlobalListeners();
+      logCountdownRepeatDragDiag("press-start", {
+        sessionId: nextSessionId,
+        pointerType,
+        dragThreshold,
+        nodeDragging: Boolean(node?.isDragging?.()),
+        nodeDraggable: Boolean(node?.draggable?.()),
+      });
+      attachGlobalListeners(nextSessionId);
     },
-    [attachGlobalListeners, hasDragged, onHover]
+    [
+      attachGlobalListeners,
+      hasDragged,
+      isSelected,
+      logCountdownRepeatDragDiag,
+      onHover,
+      setNodeDraggable,
+    ]
   );
 
   const handleClick = useCallback(
@@ -638,10 +1248,24 @@ export default function CountdownKonva({
   // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
   const handleDragStart = useCallback(
     (e) => {
+      const node = e?.currentTarget || e?.target || rootRef.current || null;
+      const dragSessionId =
+        dragSessionRef.current.sessionId ??
+        (pressRef.current.startedDrag ? (pressRef.current.sessionId ?? null) : null);
+      markActiveDebugDragSession("dragstart", dragSessionId, {
+        nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+      });
+      logCountdownRepeatDragDiag("dragstart", {
+        dragSessionId,
+        dragSessionStartedAtMs: dragSessionRef.current.startedAtMs,
+        nodeDragging: Boolean(node?.isDragging?.()),
+        nodeDraggable: Boolean(node?.draggable?.()),
+        nodeIdentity: getCountdownRepeatDragNodeIdentity(node),
+      });
+      scheduleDragStartHealthChecks(dragSessionId, node);
       // Arranque de tu lógica grupal/individual
       const groupDragResult = startDragGrupalLider(e, obj);
       if (groupDragResult.mode === "follower-ignored") {
-        const node = e?.currentTarget || e?.target || null;
         try { e?.target?.stopDrag?.(); } catch {}
         try { node?.stopDrag?.(); } catch {}
         try {
@@ -652,7 +1276,9 @@ export default function CountdownKonva({
             });
           }
         } catch {}
-        try { node?.draggable?.(false); } catch {}
+        setNodeDraggable(node, false, "dragstart-follower-ignored", {
+          dragSessionId,
+        });
         try { node?.getLayer?.()?.batchDraw?.(); } catch {}
         if (hasDragged?.current != null) hasDragged.current = false;
         return;
@@ -666,7 +1292,16 @@ export default function CountdownKonva({
         startDragIndividual(e, dragStartPos);
       }
     },
-    [dragStartPos, hasDragged, obj, onDragStartPersonalizado]
+    [
+      dragStartPos,
+      hasDragged,
+      logCountdownRepeatDragDiag,
+      markActiveDebugDragSession,
+      obj,
+      onDragStartPersonalizado,
+      scheduleDragStartHealthChecks,
+      setNodeDraggable,
+    ]
   );
 
   const handleDragMove = useCallback(
@@ -674,30 +1309,92 @@ export default function CountdownKonva({
       if (window._grupoLider) {
         if (obj.id === window._grupoLider) {
           previewDragGrupal(e, obj, onChange);
+          logThrottledDragMove(e?.target || e?.currentTarget || rootRef.current, {
+            groupMode: "leader",
+          });
           onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
         }
         return;
       }
       previewDragIndividual(e, obj, onDragMovePersonalizado);
+      logThrottledDragMove(e?.target || e?.currentTarget || rootRef.current, {
+        groupMode: "individual",
+      });
     },
-    [obj, onChange, onDragMovePersonalizado]
+    [logThrottledDragMove, obj, onChange, onDragMovePersonalizado]
   );
 
   const handleDragEnd = useCallback(
     (e) => {
       const node = e.currentTarget;
+      const dragSessionId =
+        dragSessionRef.current.sessionId ??
+        (pressRef.current.startedDrag ? (pressRef.current.sessionId ?? null) : null);
+      const currentPressSessionId = pressRef.current.sessionId ?? null;
+      const dragEndTimeMs = getEventTimeStampMs(e?.evt);
+      const sameSessionStillActive =
+        dragSessionId != null &&
+        currentPressSessionId === dragSessionId &&
+        pressRef.current.active === true;
+      const newerPressStartedBySession =
+        Number.isFinite(currentPressSessionId) &&
+        Number.isFinite(dragSessionId) &&
+        currentPressSessionId > dragSessionId;
+      const newerPressStartedByTime =
+        !newerPressStartedBySession &&
+        currentPressSessionId !== dragSessionId &&
+        Number.isFinite(pressRef.current.startedAtMs) &&
+        Number.isFinite(dragSessionRef.current.startedAtMs) &&
+        pressRef.current.startedAtMs > dragSessionRef.current.startedAtMs;
+      const newerPressStarted = newerPressStartedBySession || newerPressStartedByTime;
+      const skipReason = newerPressStarted
+        ? (newerPressStartedBySession ? "newer-press-session" : "newer-press-timestamp")
+        : null;
+      const shouldSkipLocalCleanup = Boolean(skipReason);
+
+      if (
+        dragSessionId != null &&
+        completedDragSessionIdRef.current != null &&
+        completedDragSessionIdRef.current === dragSessionId
+      ) {
+        logCountdownRepeatDragDiag("dragend:duplicate-ignored", {
+          dragSessionId,
+          dragEndTimeMs,
+        });
+        return;
+      }
+
+      logCountdownRepeatDragDiag("dragend:start", {
+        shouldSkipLocalCleanup,
+        skipReason,
+        sameSessionStillActive,
+        newerPressStarted,
+        dragSessionId,
+        currentPressSessionId,
+        dragEndTimeMs,
+        nativeEventType: e?.evt?.type || null,
+        nativeEventPointerType: e?.evt?.pointerType || null,
+        nativeEventButton:
+          Number.isFinite(Number(e?.evt?.button)) ? Number(e.evt.button) : null,
+        nativeEventButtons:
+          Number.isFinite(Number(e?.evt?.buttons)) ? Number(e.evt.buttons) : null,
+        pressStartedAtMs: pressRef.current.startedAtMs,
+        dragSessionStartedAtMs: dragSessionRef.current.startedAtMs,
+        nodeDragging: Boolean(node?.isDragging?.()),
+        nodeDraggable: Boolean(node?.draggable?.()),
+      });
       const groupDragResult = endDragGrupal(e, obj, onChange, hasDragged, () => {});
 
       if (groupDragResult.role === "follower") {
-        try { node.draggable(false); } catch {}
-        pressRef.current.active = false;
-        pressRef.current.movedEnough = false;
-        pressRef.current.startedDrag = false;
-        setTimeout(() => {
-          pressRef.current.suppressClick = false;
-          if (hasDragged?.current != null) hasDragged.current = false;
-        }, 0);
-        cleanupGlobal();
+        if (!shouldSkipLocalCleanup) {
+          finalizeLocalDragCleanup(dragSessionId, node);
+        } else {
+          logCountdownRepeatDragDiag("dragend:follower-skip-cleanup", {
+            dragSessionId,
+            currentPressSessionId,
+            reason: skipReason,
+          });
+        }
         return;
       }
 
@@ -724,26 +1421,27 @@ export default function CountdownKonva({
         endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
       }
 
-      // Volver a no-draggable (clave)
-      try { node.draggable(false); } catch {}
+      if (shouldSkipLocalCleanup) {
+        logCountdownRepeatDragDiag("dragend:skip-local-cleanup", {
+          dragSessionId,
+          currentPressSessionId,
+          sameSessionStillActive,
+          newerPressStarted,
+          reason: skipReason,
+        });
+        return;
+      }
 
-      draggingRef.current = false;
-      window._isDragging = false;
-
-      // Limpieza del press
-      pressRef.current.active = false;
-      pressRef.current.movedEnough = false;
-      pressRef.current.startedDrag = false;
-
-      // permitir click futuro
-      setTimeout(() => {
-        pressRef.current.suppressClick = false;
-        if (hasDragged?.current != null) hasDragged.current = false;
-      }, 0);
-
-      cleanupGlobal();
+      finalizeLocalDragCleanup(dragSessionId, node);
     },
-    [obj, onChange, hasDragged, onDragEndPersonalizado, cleanupGlobal]
+    [
+      finalizeLocalDragCleanup,
+      obj,
+      onChange,
+      hasDragged,
+      onDragEndPersonalizado,
+      logCountdownRepeatDragDiag,
+    ]
   );
 
   // Cleanup global por si el componente se desmonta en pleno press
@@ -753,18 +1451,40 @@ export default function CountdownKonva({
     };
   }, [cleanupGlobal]);
 
+  const liveRenderNode = rootRef.current || null;
+  const shouldRenderLiveDragPose = Boolean(
+    reactDraggableEnabled &&
+    liveRenderNode &&
+    (
+      dragSessionRef.current.sessionId != null ||
+      draggingRef.current
+    )
+  );
+  const renderedX =
+    shouldRenderLiveDragPose &&
+    typeof liveRenderNode?.x === "function" &&
+    Number.isFinite(Number(liveRenderNode.x()))
+      ? Number(liveRenderNode.x())
+      : (obj.x ?? 0);
+  const renderedY =
+    shouldRenderLiveDragPose &&
+    typeof liveRenderNode?.y === "function" &&
+    Number.isFinite(Number(liveRenderNode.y()))
+      ? Number(liveRenderNode.y())
+      : yAbs;
+
   return (
     <Group
       ref={setRefs}
       id={obj.id}
-      x={obj.x ?? 0}
-      y={yAbs}
+      x={renderedX}
+      y={renderedY}
       rotation={obj.rotation || 0}
       scaleX={obj.scaleX || 1}
       scaleY={obj.scaleY || 1}
 
       // ✅ SIEMPRE false: el drag se habilita imperativamente solo si hubo intención
-      draggable={false}
+      draggable={reactDraggableEnabled}
       listening={true}
 
       onMouseDown={handleDown}

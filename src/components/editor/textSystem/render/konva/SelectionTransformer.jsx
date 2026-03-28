@@ -50,6 +50,11 @@ import {
   setImageResizeSessionActive,
   setPendingImageTransformCommit,
 } from "@/components/editor/canvasEditor/imagePendingTransformCommit";
+import {
+  getCountdownRepeatDragActiveState,
+  isCountdownRepeatDragDebugEnabled,
+  publishCountdownRepeatDragDebugEntry,
+} from "@/components/editor/canvasEditor/countdownRepeatDragDebug";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -325,6 +330,7 @@ export default function SelectionBounds({
   const transformerRef = useRef(null);
   const renderCountRef = useRef(0);
   const renderSnapshotRef = useRef(null);
+  const countdownDragDebugSnapshotRef = useRef(null);
   const lastAttachedNodeIdsRef = useRef("");
   const lastTransformerSyncSnapshotRef = useRef({
     attachedNodeIds: "",
@@ -796,6 +802,78 @@ export default function SelectionBounds({
       .map((node) => getTransformNodeId(node))
       .filter(Boolean)
       .join("|");
+
+  useEffect(() => {
+    if (!isCountdownRepeatDragDebugEnabled()) return;
+    if (!(selectedElements.length === 1 && primerElemento?.tipo === "countdown")) return;
+
+    const activeDebugState = getCountdownRepeatDragActiveState();
+    const selectedCountdownId = primerElemento?.id || null;
+    const shouldLog =
+      activeDebugState?.elementId === selectedCountdownId ||
+      effectiveDragging ||
+      globalDragging ||
+      canvasInteractionSettling ||
+      pendingDragSelectionId === selectedCountdownId;
+
+    if (!shouldLog) return;
+
+    const tr = transformerRef.current;
+    const attachedNodeIds = buildAttachedNodeIdsKey(
+      typeof tr?.nodes === "function" ? tr.nodes() || [] : []
+    );
+    const nextSnapshot = {
+      selectedCountdownId,
+      activeDebugSessionId: activeDebugState?.sessionId || null,
+      effectiveDragging: Boolean(effectiveDragging),
+      globalDragging: Boolean(globalDragging),
+      groupDragging: Boolean(groupDragging),
+      canvasInteractionActive: Boolean(canvasInteractionActive),
+      canvasInteractionSettling: Boolean(canvasInteractionSettling),
+      pendingDragSelectionId,
+      pendingDragSelectionPhase,
+      shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
+      shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
+      shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      attachSuppressed: Boolean(isTransformerAttachSuppressed),
+      attachedNodeIds,
+      lastStableAttachedNodeIds:
+        lastTransformerSyncSnapshotRef.current?.attachedNodeIds || null,
+    };
+    const previousSnapshot = countdownDragDebugSnapshotRef.current;
+    const changedKeys = !previousSnapshot
+      ? Object.keys(nextSnapshot)
+      : Object.keys(nextSnapshot).filter(
+          (key) => previousSnapshot[key] !== nextSnapshot[key]
+        );
+
+    if (changedKeys.length === 0) return;
+
+    countdownDragDebugSnapshotRef.current = nextSnapshot;
+    publishCountdownRepeatDragDebugEntry({
+      event: "transformer:countdown-drag-state",
+      source: "SelectionTransformer",
+      elementId: selectedCountdownId,
+      activeDebugState,
+      changedKeys,
+      snapshot: nextSnapshot,
+    });
+  }, [
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    effectiveDragging,
+    globalDragging,
+    groupDragging,
+    isTransformerAttachSuppressed,
+    pendingDragSelectionId,
+    pendingDragSelectionPhase,
+    primerElemento?.id,
+    primerElemento?.tipo,
+    selectedElements.length,
+    shouldHideTransformerDuringDrag,
+    shouldSuppressBeforeFirstDragStart,
+    shouldSuppressDuringDeferredDrag,
+  ]);
 
   const resolveTransformableNodes = () => {
     let nodosTransformables = elementosTransformables

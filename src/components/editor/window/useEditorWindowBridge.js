@@ -2,6 +2,9 @@
 import { useEffect } from "react";
 import { registerCountdownAuditContext } from "@/domain/countdownAudit/runtime";
 import {
+  CANVAS_EDITOR_COMPATIBILITY_KEYS,
+} from "@/lib/editorBridgeContracts";
+import {
   clearEditorSnapshotResolvers,
   ensureEditorSnapshotAdapter,
   readEditorObjectSnapshot,
@@ -33,8 +36,14 @@ export default function useEditorWindowBridge({
   repairTemplateAuthoringState,
   flushPersistenceNow,
 }) {
+  const EXTRA_CANVAS_EDITOR_COMPATIBILITY_KEYS = [
+    "cambiarColorFondoSeccion",
+    "secciones",
+  ];
+
   const mergeCanvasEditor = (patch = {}) => {
     if (typeof window === "undefined") return;
+    // Compatibility boundary: preview/header tooling still reads window.canvasEditor.
     window.canvasEditor = {
       ...(window.canvasEditor || {}),
       ...patch,
@@ -149,18 +158,9 @@ export default function useEditorWindowBridge({
   useEffect(() => {
     return () => {
       clearCanvasEditorKeys([
-        "cambiarColorFondoSeccion",
-        "seccionActivaId",
-        "secciones",
-        "deshacer",
-        "rehacer",
-        "stageRef",
+        ...CANVAS_EDITOR_COMPATIBILITY_KEYS,
+        ...EXTRA_CANVAS_EDITOR_COMPATIBILITY_KEYS,
         "getHistorial",
-        "getTemplateAuthoringSnapshot",
-        "getTemplateAuthoringStatus",
-        "repairTemplateAuthoringState",
-        "flushPersistenceNow",
-        "snapshot",
       ]);
     };
   }, []);

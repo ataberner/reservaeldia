@@ -3,61 +3,10 @@ import {
   readEditorObjectSnapshot,
   readEditorRenderSnapshot,
 } from "./editorSnapshotAdapter.js";
-
-const CANVAS_EDITOR_COMPATIBILITY_KEYS = Object.freeze([
-  "deshacer",
-  "rehacer",
-  "flushPersistenceNow",
-  "getTemplateAuthoringStatus",
-  "getTemplateAuthoringSnapshot",
-  "repairTemplateAuthoringState",
-  "stageRef",
-  "seccionActivaId",
-  "tipoInvitacion",
-  "snapshot",
-]);
-
-const LEGACY_RENDER_STATE_GLOBAL_KEYS = Object.freeze([
-  "_objetosActuales",
-  "_seccionesOrdenadas",
-  "_rsvpConfigActual",
-  "_giftConfigActual",
-  "_giftsConfigActual",
-]);
-
-const LEGACY_EDITOR_SESSION_GLOBAL_KEYS = Object.freeze([
-  "_draftTipoInvitacion",
-  "_tipoInvitacionActual",
-  "_seccionActivaId",
-  "_lastSeccionActivaId",
-]);
-
-const LEGACY_EDITOR_SELECTION_GLOBAL_KEYS = Object.freeze([
-  "_elementosSeleccionados",
-  "_celdaGaleriaActiva",
-]);
-
-const LEGACY_EDITOR_INTERACTION_GLOBAL_KEYS = Object.freeze([
-  "_elementRefs",
-  "setHoverIdGlobal",
-]);
-
-const EDITOR_RUNTIME_BRIDGE_FUNCTION_KEYS = Object.freeze([
-  "asignarImagenACelda",
-  "__getSeccionInfo",
-  "__getObjById",
-]);
-
-// External/editor-adjacent consumers should use these accessors instead of
-// reading window.canvasEditor or window._* globals directly.
-export const EDITOR_RUNTIME_COMPATIBILITY_CONTRACT = Object.freeze({
-  canvasEditor: CANVAS_EDITOR_COMPATIBILITY_KEYS,
-  legacyRenderStateGlobals: LEGACY_RENDER_STATE_GLOBAL_KEYS,
-  legacySessionGlobals: LEGACY_EDITOR_SESSION_GLOBAL_KEYS,
-  legacySelectionGlobals: LEGACY_EDITOR_SELECTION_GLOBAL_KEYS,
-  legacyInteractionGlobals: LEGACY_EDITOR_INTERACTION_GLOBAL_KEYS,
-  bridgeFunctions: EDITOR_RUNTIME_BRIDGE_FUNCTION_KEYS,
-});
+import {
+  EDITOR_RUNTIME_COMPATIBILITY_CONTRACT,
+} from "./editorBridgeContracts.js";
+export { EDITOR_RUNTIME_COMPATIBILITY_CONTRACT } from "./editorBridgeContracts.js";
 
 function resolveTargetWindow(targetWindow) {
   if (targetWindow && typeof targetWindow === "object") return targetWindow;

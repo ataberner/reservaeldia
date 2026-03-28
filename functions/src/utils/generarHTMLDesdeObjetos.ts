@@ -1879,6 +1879,8 @@ background: ${cell.bg};
           tipo,
           options.functionalCtaContract
         );
+        // Compatibility: direct object rendering still treats CTA buttons as interactive
+        // when no resolved root/object contract was provided by the caller.
         const ctaReady = ctaContract ? ctaContract.ready === true : true;
         const ctaReason = ctaContract ? ctaContract.reason : "ready";
         const textoRaw = obj.texto || (isGiftButton ? "Ver regalos" : "Confirmar asistencia");

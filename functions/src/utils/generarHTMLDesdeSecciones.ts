@@ -232,6 +232,8 @@ export function generarHTMLDesdeSecciones(
   const hasExplicitGiftsSource = Boolean(
     opciones && Object.prototype.hasOwnProperty.call(opciones, "giftsSource")
   );
+  // Compatibility seam: some callers still omit the resolved contract and rely on
+  // generator-side recompute to keep CTA/output parity with stored root configs.
   const functionalCtaContract =
     opciones?.functionalCtaContract ??
     resolveFunctionalCtaContract({

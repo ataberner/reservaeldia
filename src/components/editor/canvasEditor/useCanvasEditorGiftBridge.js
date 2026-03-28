@@ -1,5 +1,8 @@
 import { useCallback, useEffect } from "react";
 import { createDefaultGiftConfig, normalizeGiftConfig } from "@/domain/gifts/config";
+import {
+  EDITOR_BRIDGE_EVENTS,
+} from "@/lib/editorBridgeContracts";
 
 export default function useCanvasEditorGiftBridge({
   giftsConfig,
@@ -12,7 +15,7 @@ export default function useCanvasEditorGiftBridge({
         : createDefaultGiftConfig()
     );
 
-    window.dispatchEvent(new CustomEvent("abrir-panel-regalos"));
+    window.dispatchEvent(new CustomEvent(EDITOR_BRIDGE_EVENTS.GIFT_PANEL_OPEN));
   }, [setGiftsConfig]);
 
   useEffect(() => {
@@ -22,8 +25,9 @@ export default function useCanvasEditorGiftBridge({
       setGiftsConfig(normalizeGiftConfig(nextConfig, { forceEnabled: false }));
     };
 
-    window.addEventListener("gift-config-update", handleGiftConfigUpdate);
-    return () => window.removeEventListener("gift-config-update", handleGiftConfigUpdate);
+    window.addEventListener(EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_UPDATE, handleGiftConfigUpdate);
+    return () =>
+      window.removeEventListener(EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_UPDATE, handleGiftConfigUpdate);
   }, [setGiftsConfig]);
 
   useEffect(() => {
@@ -31,9 +35,11 @@ export default function useCanvasEditorGiftBridge({
       ? normalizeGiftConfig(giftsConfig, { forceEnabled: false })
       : createDefaultGiftConfig();
 
+    // Compatibility boundary: old and new gift globals must stay mirrored.
+    window._giftsConfigActual = normalized;
     window._giftConfigActual = normalized;
     window.dispatchEvent(
-      new CustomEvent("gift-config-changed", {
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_CHANGED, {
         detail: { config: normalized },
       })
     );

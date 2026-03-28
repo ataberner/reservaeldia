@@ -51,12 +51,22 @@ test("editor snapshot adapter falls back to legacy globals during migration", ()
     _objetosActuales: [{ id: "legacy-obj" }],
     _seccionesOrdenadas: [{ id: "legacy-section", orden: 1, altura: 320 }],
     _rsvpConfigActual: { enabled: true, presetId: "minimal" },
+    _giftsConfigActual: { enabled: false, bank: { alias: "plural" } },
     _giftConfigActual: { enabled: true, bank: { alias: "regalos" } },
   };
 
   const snapshot = readEditorRenderSnapshot(fakeWindow);
 
   assert.deepEqual(snapshot, {
+    objetos: [{ id: "legacy-obj" }],
+    secciones: [{ id: "legacy-section", orden: 1, altura: 320 }],
+    rsvp: { enabled: true, presetId: "minimal" },
+    gifts: { enabled: false, bank: { alias: "plural" } },
+  });
+
+  delete fakeWindow._giftsConfigActual;
+
+  assert.deepEqual(readEditorRenderSnapshot(fakeWindow), {
     objetos: [{ id: "legacy-obj" }],
     secciones: [{ id: "legacy-section", orden: 1, altura: 320 }],
     rsvp: { enabled: true, presetId: "minimal" },

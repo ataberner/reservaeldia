@@ -132,6 +132,17 @@ export function buildSectionCreationState(
   };
 }
 
+export function shouldPersistSectionMutationSnapshot(
+  {
+    currentSecciones,
+    currentObjetos,
+    nextSecciones,
+    nextObjetos,
+  } = {}
+) {
+  return currentSecciones === nextSecciones && currentObjetos === nextObjetos;
+}
+
 export function buildSectionMutationWritePayload(
   {
     secciones,

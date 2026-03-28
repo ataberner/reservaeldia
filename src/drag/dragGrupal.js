@@ -9,6 +9,11 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorDragLifecycleDetail,
+  projectLegacyGroupDragGlobals,
+} from "@/lib/editorBridgeContracts";
 
 const isDragGrupalDebugEnabled = () =>
   typeof window !== "undefined" && window.__DBG_DRAG_GRUPAL === true;
@@ -128,50 +133,23 @@ export function shouldSuppressIndividualDragForElement(elementId) {
 
 function syncLegacyGroupGlobalsFromSession(session) {
   if (typeof window === "undefined") return;
+  const projection = projectLegacyGroupDragGlobals(session || null, {
+    resolveManualStartPointer: resolveManualMotionStartPointer,
+  });
 
-  const activeSession = session?.active ? session : null;
-  const shouldExposeLegacyGlobals = Boolean(
-    activeSession &&
-    (
-      activeSession.engine !== "manual-pointer" ||
-      activeSession.phase === "active" ||
-      activeSession.phase === "ending"
-    )
-  );
-  const legacyDragStartPos =
-    activeSession?.engine === "manual-pointer"
-      ? (
-          activeSession.phase === "active" || activeSession.phase === "ending"
-            ? resolveManualMotionStartPointer(activeSession)
-            : activeSession.pointerDownStage || activeSession.startPointer || null
-        )
-      : activeSession?.startPointer || null;
-  window._grupoLider = shouldExposeLegacyGlobals ? activeSession?.leaderId || null : null;
-  window._grupoElementos = shouldExposeLegacyGlobals ? activeSession?.elementIds || null : null;
-  window._grupoSeguidores = shouldExposeLegacyGlobals ? activeSession?.followerIds || null : null;
-  window._dragStartPos = shouldExposeLegacyGlobals ? legacyDragStartPos : null;
-  window._dragInicial = shouldExposeLegacyGlobals ? activeSession?.dragInicial || null : null;
-  window._groupPreviewLastDelta =
-    shouldExposeLegacyGlobals &&
-    Number.isFinite(activeSession?.lastPreviewDelta?.deltaX) &&
-    Number.isFinite(activeSession?.lastPreviewDelta?.deltaY)
-      ? {
-          deltaX: activeSession.lastPreviewDelta.deltaX,
-          deltaY: activeSession.lastPreviewDelta.deltaY,
-        }
-      : null;
+  Object.entries(projection).forEach(([key, value]) => {
+    window[key] = value;
+  });
 }
 
 function setActiveGroupDragSession(session) {
   if (typeof window === "undefined") return null;
-  window._groupDragSession = session || null;
   syncLegacyGroupGlobalsFromSession(session || null);
   return window._groupDragSession;
 }
 
 function clearActiveGroupDragSession() {
   if (typeof window === "undefined") return;
-  window._groupDragSession = null;
   syncLegacyGroupGlobalsFromSession(null);
 }
 
@@ -558,14 +536,14 @@ function dispatchGroupDraggingStart(session, obj) {
     document.body.style.cursor = "grabbing";
   } catch {}
   window.dispatchEvent(
-    new CustomEvent("dragging-start", {
-      detail: {
+    new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_START, {
+      detail: buildEditorDragLifecycleDetail({
         id: obj?.id || null,
         tipo: obj?.tipo || null,
         group: true,
         sessionId: session?.sessionId || null,
         leaderId: session?.leaderId || null,
-      },
+      }),
     })
   );
 }

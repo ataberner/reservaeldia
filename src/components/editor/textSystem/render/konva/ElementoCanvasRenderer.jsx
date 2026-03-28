@@ -78,6 +78,10 @@ import {
   hasImageTransformCommitSettled,
   resolveImageObjectWithPendingCommit,
 } from "@/components/editor/canvasEditor/imagePendingTransformCommit";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorDragLifecycleDetail,
+} from "@/lib/editorBridgeContracts";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -1717,15 +1721,15 @@ export default function ElementoCanvas({
       notePostDragSelectionGuard();
       if (typeof window !== "undefined" && finishResult.shouldDispatchDraggingEnd) {
         window.dispatchEvent(
-          new CustomEvent("dragging-end", {
-            detail: {
+          new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+            detail: buildEditorDragLifecycleDetail({
               id: latestObj?.id || null,
               tipo: latestObj?.tipo || null,
               group: true,
               engine: "manual-pointer",
               sessionId: finishResult.sessionId || null,
               leaderId: finishResult.leaderId || null,
-            },
+            }),
           })
         );
       }
@@ -2805,11 +2809,11 @@ export default function ElementoCanvas({
         window._isDragging = true;
         if (typeof window !== "undefined") {
           window.dispatchEvent(
-            new CustomEvent("dragging-start", {
-              detail: {
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_START, {
+              detail: buildEditorDragLifecycleDetail({
                 id: obj.id,
                 tipo: obj.tipo || null,
-              },
+              }),
             })
           );
         }
@@ -2989,14 +2993,14 @@ export default function ElementoCanvas({
         window._isDragging = false;
         if (typeof window !== "undefined" && groupDragResult.shouldDispatchDraggingEnd) {
           window.dispatchEvent(
-            new CustomEvent("dragging-end", {
-              detail: {
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+              detail: buildEditorDragLifecycleDetail({
                 id: obj.id,
                 tipo: obj.tipo || null,
                 group: true,
                 sessionId: groupDragResult.sessionId || null,
                 leaderId: groupDragResult.leaderId || null,
-              },
+              }),
             })
           );
         }
@@ -3077,11 +3081,11 @@ export default function ElementoCanvas({
       window._isDragging = false;
       if (typeof window !== "undefined") {
         window.dispatchEvent(
-          new CustomEvent("dragging-end", {
-            detail: {
+          new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+            detail: buildEditorDragLifecycleDetail({
               id: obj.id,
               tipo: obj.tipo || null,
-            },
+            }),
           })
         );
       }

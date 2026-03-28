@@ -13,6 +13,10 @@ import {
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorDragLifecycleDetail,
+} from "@/lib/editorBridgeContracts";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
 import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
@@ -701,14 +705,14 @@ export default function CountdownKonva({
         notePostDragSelectionGuard();
         if (typeof window !== "undefined" && groupDragResult.shouldDispatchDraggingEnd) {
           window.dispatchEvent(
-            new CustomEvent("dragging-end", {
-              detail: {
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+              detail: buildEditorDragLifecycleDetail({
                 id: obj.id,
                 tipo: obj.tipo || null,
                 group: true,
                 sessionId: groupDragResult.sessionId || null,
                 leaderId: groupDragResult.leaderId || null,
-              },
+              }),
             })
           );
         }

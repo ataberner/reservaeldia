@@ -1,6 +1,10 @@
 // components/MiniToolbarTabContador.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import CountdownPreview from "@/components/editor/countdown/CountdownPreview";
+import {
+  getCountdownSidebarPanelPresentation,
+  getCountdownSidebarPresetPresentation,
+} from "@/components/countdownSidebarPresentation";
 import { useCountdownPresetCatalog } from "@/hooks/useCountdownPresetCatalog";
 import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 import {
@@ -158,6 +162,21 @@ export default function MiniToolbarTabContador() {
       countdownEnBorrador?.fechaISO,
     ]
   );
+  const sidebarPanelPresentation = useMemo(
+    () =>
+      getCountdownSidebarPanelPresentation({
+        countdownPresetsError,
+        usingFallback,
+        selectedCountdownContract,
+        draftCountdownTarget,
+      }),
+    [
+      countdownPresetsError,
+      usingFallback,
+      selectedCountdownContract,
+      draftCountdownTarget,
+    ]
+  );
 
   const selectedPresetId = useMemo(
     () => String(countdownEnBorrador?.presetId || "").trim(),
@@ -207,14 +226,9 @@ export default function MiniToolbarTabContador() {
 
       {selectedUI && (
         <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          {selectedCountdownContract?.isLegacyFrozenCompat ? (
-            <div className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2 text-[11px] text-sky-800">
-              Este countdown usa schema v1 legacy. Se mantiene por compatibilidad, pero esta congelado para trabajo nuevo.
-            </div>
-          ) : null}
-          {draftCountdownTarget.usesCompatibilityAlias ? (
+          {sidebarPanelPresentation.showCompatibilityAliasNotice ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-              La fecha actual se esta resolviendo desde <code>{draftCountdownTarget.sourceField}</code>. Los cambios nuevos deben escribir en <code>fechaObjetivo</code>.
+              La fecha actual se esta resolviendo desde <code>{sidebarPanelPresentation.compatibilityAliasSourceField}</code>. Los cambios nuevos deben escribir en <code>fechaObjetivo</code>.
             </div>
           ) : null}
 
@@ -334,11 +348,9 @@ export default function MiniToolbarTabContador() {
       )}
 
       <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-        {countdownPresetsError ? (
+        {sidebarPanelPresentation.fallbackMessage ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-            {usingFallback
-              ? "Catalogo remoto no disponible. Mostrando presets legacy congelados de compatibilidad."
-              : countdownPresetsError}
+            {sidebarPanelPresentation.fallbackMessage}
           </div>
         ) : null}
 
@@ -362,7 +374,7 @@ export default function MiniToolbarTabContador() {
             const hasLivePresetPreview = Object.keys(rawPresetProps || {}).length > 0;
             const previewImageUrl = String(p?.thumbnailUrl || "").trim();
             const isSelected = selectedPresetId.length > 0 && selectedPresetId === String(p?.id || "");
-            const isLegacyPreset = p?.legacyFrozen === true;
+            const presetPresentation = getCountdownSidebarPresetPresentation({ preset: p });
             const cardClassName = [
               "group flex h-[96px] w-full flex-col rounded-[18px] border-2 px-[14px] py-3 text-left transition-all duration-200",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/90 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
@@ -370,7 +382,7 @@ export default function MiniToolbarTabContador() {
                 ? "border-[#773dbe] bg-[#faf7ff] shadow-[0_0_0_3px_rgba(119,61,190,0.15)]"
                 : "border-[#e8e2f1] bg-[linear-gradient(180deg,#ffffff_0%,#fcfbff_100%)] shadow-[0_4px_12px_rgba(15,23,42,0.04)] hover:-translate-y-[1px] hover:border-[#773dbe] hover:bg-[#faf7ff]",
             ].join(" ");
-            const previewClassName = "flex flex-1 items-center justify-center overflow-hidden -translate-y-[2px]";
+            const previewClassName = "flex min-h-0 flex-1 items-center justify-center overflow-hidden -translate-y-[2px]";
             const nameClassName = isSelected
               ? "truncate text-[12px] font-medium text-[#773dbe]"
               : "truncate text-[12px] font-normal text-[#6b7280]";
@@ -421,8 +433,7 @@ export default function MiniToolbarTabContador() {
                     <CountdownPreview
                       targetISO={isoPreview}
                       preset={rawPresetProps}
-                      size="md"
-                      live={false}
+                      {...presetPresentation.previewProps}
                     />
                   ) : previewImageUrl ? (
                     <img
@@ -436,13 +447,8 @@ export default function MiniToolbarTabContador() {
                     <div className="text-[11px] text-zinc-400">Sin preview</div>
                   )}
                 </div>
-                <div className="mt-1 flex items-center justify-between gap-2">
+                <div className="mt-1 min-w-0">
                   <p className={nameClassName}>{presetLabel}</p>
-                  {isLegacyPreset ? (
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-700">
-                      legacy compat
-                    </span>
-                  ) : null}
                 </div>
               </button>
             );

@@ -19,6 +19,7 @@ import {
   buildPreviewDisplayUrl,
   createPublicationPreviewState,
   overlayLiveEditorSnapshot,
+  prepareDashboardPreviewRenderState,
   PREVIEW_INACTIVE_PUBLICATION_MESSAGE,
 } from "./previewSession.js";
 
@@ -202,19 +203,90 @@ test("live editor snapshots override persisted preview reads without dropping un
   });
 });
 
-test("preview render payload normalizes current draft render contracts for preview generation", () => {
-  const payload = buildDashboardPreviewRenderPayload({
+test("preview render preparation keeps client-side asset normalization explicit", () => {
+  const prepared = prepareDashboardPreviewRenderState({
     objetos: [
       {
-        id: "txt-1",
-        tipo: "texto",
+        id: "img-1",
+        tipo: "imagen",
         seccionId: "sec-1",
+        url: "https://cdn.example.com/photo.jpg",
+      },
+      {
+        id: "gallery-1",
+        tipo: "galeria",
+        seccionId: "sec-1",
+        cells: [
+          { url: "https://cdn.example.com/gallery-a.jpg" },
+          { src: "https://cdn.example.com/gallery-b.jpg" },
+        ],
       },
     ],
     secciones: [
       {
         id: "sec-1",
         orden: 1,
+        fondoImagen: "https://cdn.example.com/background.jpg",
+        decoracionesFondo: {
+          superior: {
+            url: "https://cdn.example.com/decor-top.png",
+          },
+          inferior: {
+            src: "https://cdn.example.com/decor-bottom.png",
+          },
+        },
+      },
+    ],
+    rsvp: {
+      enabled: true,
+      title: "Confirmacion",
+    },
+    gifts: {
+      enabled: true,
+      title: "Mesa de regalos",
+    },
+  });
+
+  assert.equal(prepared.renderState.objetos[0].src, "https://cdn.example.com/photo.jpg");
+  assert.equal(
+    prepared.renderState.objetos[1].cells[0].mediaUrl,
+    "https://cdn.example.com/gallery-a.jpg"
+  );
+  assert.equal(
+    prepared.renderState.objetos[1].cells[1].mediaUrl,
+    "https://cdn.example.com/gallery-b.jpg"
+  );
+  assert.equal(
+    prepared.renderState.secciones[0].decoracionesFondo.superior.src,
+    "https://cdn.example.com/decor-top.png"
+  );
+  assert.equal(
+    prepared.renderState.secciones[0].decoracionesFondo.inferior.src,
+    "https://cdn.example.com/decor-bottom.png"
+  );
+  assert.equal(prepared.rawRsvp.title, "Confirmacion");
+  assert.equal(prepared.rawGifts.title, "Mesa de regalos");
+});
+
+test("preview render payload normalizes current draft render contracts for preview generation", () => {
+  const payload = buildDashboardPreviewRenderPayload({
+    objetos: [
+      {
+        id: "img-1",
+        tipo: "imagen",
+        seccionId: "sec-1",
+        url: "https://cdn.example.com/photo.jpg",
+      },
+    ],
+    secciones: [
+      {
+        id: "sec-1",
+        orden: 1,
+        decoracionesFondo: {
+          superior: {
+            url: "https://cdn.example.com/decor-top.png",
+          },
+        },
       },
     ],
     rsvp: {
@@ -230,10 +302,65 @@ test("preview render payload normalizes current draft render contracts for previ
 
   assert.equal(payload.objetos.length, 1);
   assert.equal(payload.secciones.length, 1);
+  assert.equal(payload.renderState.objetos[0].src, "https://cdn.example.com/photo.jpg");
+  assert.equal(
+    payload.renderState.secciones[0].decoracionesFondo.superior.src,
+    "https://cdn.example.com/decor-top.png"
+  );
   assert.equal(payload.rawRsvp.title, "Confirmacion");
   assert.equal(payload.rawGifts.title, "Mesa de regalos");
   assert.equal(payload.rsvpPreviewConfig.enabled, true);
   assert.equal(payload.giftPreviewConfig.enabled, true);
+});
+
+test("preview render payload keeps normalized RSVP and gifts configs explicit for parity checks", () => {
+  const payload = buildDashboardPreviewRenderPayload({
+    objetos: [],
+    secciones: [],
+    rsvp: {
+      enabled: false,
+      presetId: "minimal",
+      title: " Confirmacion RSVP ",
+      subtitle: " Contanos si vienes ",
+      buttonText: " Enviar respuesta ",
+      primaryColor: "#1f6f78",
+      sheetUrl: " https://example.com/rsvp-sheet ",
+    },
+    gifts: {
+      enabled: true,
+      introText: " Si desean regalarnos algo, aqui dejamos los datos. ",
+      bank: {
+        alias: " pareja.regalo ",
+        cbu: "0001234500001234500012",
+      },
+      visibility: {
+        alias: true,
+        cbu: true,
+        giftListLink: true,
+      },
+      giftListUrl: " lista.example.com/regalos ",
+    },
+  });
+
+  assert.deepEqual(payload.rsvpPreviewConfig.modal, {
+    title: "Confirmacion RSVP",
+    subtitle: "Contanos si vienes",
+    submitLabel: "Enviar respuesta",
+    primaryColor: "#1f6f78",
+  });
+  assert.equal(payload.rsvpPreviewConfig.enabled, false);
+  assert.equal(payload.rsvpPreviewConfig.sheetUrl, "https://example.com/rsvp-sheet");
+  assert.equal(payload.giftPreviewConfig.enabled, true);
+  assert.equal(
+    payload.giftPreviewConfig.introText,
+    "Si desean regalarnos algo, aqui dejamos los datos."
+  );
+  assert.equal(payload.giftPreviewConfig.bank.alias, "pareja.regalo");
+  assert.equal(payload.giftPreviewConfig.visibility.giftListLink, true);
+  assert.equal(
+    payload.giftPreviewConfig.giftListUrl,
+    "https://lista.example.com/regalos"
+  );
 });
 
 test("preview display URL favors published URLs and keeps template sessions blank", () => {

@@ -69,6 +69,7 @@ import useCanvasEditorOptionPanelOutsideClose from "@/components/editor/canvasEd
 import useCanvasEditorSectionFlow from "@/components/editor/canvasEditor/useCanvasEditorSectionFlow";
 import useCanvasEditorInteractionEffects from "@/components/editor/canvasEditor/useCanvasEditorInteractionEffects";
 import useCanvasInteractionCoordinator from "@/components/editor/canvasEditor/useCanvasInteractionCoordinator";
+import { createDraftWriteCoordinator } from "@/components/editor/persistence/draftWriteCoordinator";
 import {
   buildCanvasDragPerfDiff,
   trackCanvasDragPerf,
@@ -269,6 +270,7 @@ export default function CanvasEditor({
     registerPersistenceBridge,
     flushEditorPersistence,
   } = useCanvasEditorPersistenceBridge();
+  const draftWriteCoordinator = useMemo(() => createDraftWriteCoordinator(), []);
   const {
     handleDraftLoaded,
     templateWorkspace,
@@ -478,6 +480,8 @@ export default function CanvasEditor({
     setCargado,
     setSeccionActivaId,
     onDraftLoaded: handleDraftLoaded,
+    enqueueDraftWrite: draftWriteCoordinator.enqueueDraftWrite,
+    hasPendingDraftWrites: draftWriteCoordinator.hasPendingDraftWrites,
 
     ignoreNextUpdateRef,
     stageRef,
@@ -505,6 +509,7 @@ export default function CanvasEditor({
     crearSeccion,
     normalizarAltoModo,
     validarPuntosLinea,
+    enqueueDraftWrite: draftWriteCoordinator.enqueueDraftWrite,
 
     ALTURA_REFERENCIA_PANTALLA,
     ALTURA_PANTALLA_EDITOR,
@@ -1040,6 +1045,7 @@ export default function CanvasEditor({
     seccionActivaIdRef,
     normalizarAltoModo,
     validarPuntosLinea,
+    enqueueDraftWrite: draftWriteCoordinator.enqueueDraftWrite,
     ALTURA_PANTALLA_EDITOR,
   });
   // ?? NUEVO HOOK PARA GUÃAS

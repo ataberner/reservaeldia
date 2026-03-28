@@ -1,63 +1,21 @@
-export const DRAFT_FLUSH_REQUEST_EVENT = "editor:draft-flush:request";
-export const DRAFT_FLUSH_RESULT_EVENT = "editor:draft-flush:result";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorDraftFlushResultDetail,
+  normalizeEditorDraftFlushRequestDetail,
+  normalizeEditorDraftFlushResultDetail,
+} from "../../lib/editorBridgeContracts.js";
 
-function normalizeText(value) {
-  return String(value || "").trim();
-}
+export const DRAFT_FLUSH_REQUEST_EVENT = EDITOR_BRIDGE_EVENTS.DRAFT_FLUSH_REQUEST;
+export const DRAFT_FLUSH_RESULT_EVENT = EDITOR_BRIDGE_EVENTS.DRAFT_FLUSH_RESULT;
 
 function createRequestId() {
   const randomToken = Math.random().toString(36).slice(2, 10);
   return `flush-${Date.now()}-${randomToken}`;
 }
 
-export function normalizeFlushRequestDetail(detail) {
-  const safeDetail = detail && typeof detail === "object" ? detail : {};
-  const requestId = normalizeText(safeDetail.requestId);
-  const slug = normalizeText(safeDetail.slug);
-  const reason = normalizeText(safeDetail.reason) || "manual-flush";
-
-  return {
-    requestId,
-    slug,
-    reason,
-  };
-}
-
-export function normalizeFlushResultDetail(detail) {
-  const safeDetail = detail && typeof detail === "object" ? detail : {};
-  const requestId = normalizeText(safeDetail.requestId);
-  const slug = normalizeText(safeDetail.slug);
-  const ok = safeDetail.ok === true;
-  const reason = normalizeText(safeDetail.reason);
-  const error = normalizeText(safeDetail.error);
-
-  return {
-    requestId,
-    slug,
-    ok,
-    reason,
-    error,
-  };
-}
-
-export function buildFlushResultDetail({ requestId, slug, result } = {}) {
-  const normalizedRequest = normalizeFlushRequestDetail({
-    requestId,
-    slug,
-  });
-  const safeResult = result && typeof result === "object" ? result : {};
-  const ok = safeResult.ok === true;
-
-  return {
-    requestId: normalizedRequest.requestId,
-    slug: normalizedRequest.slug,
-    ok,
-    reason: normalizeText(safeResult.reason),
-    error: ok
-      ? ""
-      : normalizeText(safeResult.error) || "No se pudo guardar el borrador.",
-  };
-}
+export const normalizeFlushRequestDetail = normalizeEditorDraftFlushRequestDetail;
+export const normalizeFlushResultDetail = normalizeEditorDraftFlushResultDetail;
+export const buildFlushResultDetail = buildEditorDraftFlushResultDetail;
 
 export function createEditorDraftFlushRequester({
   eventTarget = typeof window !== "undefined" ? window : null,
@@ -67,8 +25,12 @@ export function createEditorDraftFlushRequester({
   clearTimer = (...args) => clearTimeout(...args),
 } = {}) {
   return function requestEditorDraftFlush({ slug, reason, timeoutMs = 6000 } = {}) {
-    const safeSlug = normalizeText(slug);
-    const safeReason = normalizeText(reason) || "manual-flush";
+    const normalizedRequest = normalizeFlushRequestDetail({
+      slug,
+      reason,
+    });
+    const safeSlug = normalizedRequest.slug;
+    const safeReason = normalizedRequest.reason;
     const timeout = Number.isFinite(Number(timeoutMs))
       ? Math.max(1000, Math.round(Number(timeoutMs)))
       : 6000;

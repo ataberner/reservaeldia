@@ -1,5 +1,11 @@
 import { useEffect } from "react";
 import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorActiveSectionDetail,
+  buildEditorGalleryCellChangeDetail,
+  buildEditorSelectionChangeDetail,
+} from "@/lib/editorBridgeContracts";
+import {
   clearEditorSnapshotRenderState,
   syncEditorSnapshotRenderState,
 } from "@/lib/editorSnapshotAdapter";
@@ -21,13 +27,14 @@ export default function useCanvasEditorGlobalsBridge({
   useEffect(() => {
     const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
 
+    // Compatibility boundary: drag/sidebar/preview code still reads these globals.
     window._elementosSeleccionados = elementosSeleccionados;
     window._objetosActuales = objetos;
     window._elementRefs = elementRefs.current;
     window._seccionesOrdenadas = seccionesOrdenadas;
-    window._rsvpConfigActual = rsvpConfig && typeof rsvpConfig === "object" ? rsvpConfig : null;
-    window._giftsConfigActual = giftsConfig && typeof giftsConfig === "object" ? giftsConfig : null;
+    window._seccionActivaId = seccionActivaId || null;
     window._altoCanvas = altoCanvas;
+    // RSVP/gift globals are owned by their dedicated bridges so they stay normalized.
     syncEditorSnapshotRenderState({
       objetos,
       secciones: seccionesOrdenadas,
@@ -35,12 +42,12 @@ export default function useCanvasEditorGlobalsBridge({
       gifts: giftsConfig,
     });
     window.dispatchEvent(
-      new CustomEvent("editor-selection-change", {
-        detail: {
-          ids: [...elementosSeleccionados],
-          activeSectionId: seccionActivaId || null,
-          galleryCell: celdaGaleriaActiva || null,
-        },
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE, {
+        detail: buildEditorSelectionChangeDetail({
+          ids: elementosSeleccionados,
+          activeSectionId: seccionActivaId,
+          galleryCell: celdaGaleriaActiva,
+        }),
       })
     );
   }, [
@@ -79,16 +86,17 @@ export default function useCanvasEditorGlobalsBridge({
   useEffect(() => {
     window._celdaGaleriaActiva = celdaGaleriaActiva || null;
     window.dispatchEvent(
-      new CustomEvent("editor-gallery-cell-change", {
-        detail: { cell: celdaGaleriaActiva || null },
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.GALLERY_CELL_CHANGE, {
+        detail: buildEditorGalleryCellChangeDetail(celdaGaleriaActiva),
       })
     );
   }, [celdaGaleriaActiva]);
 
   useEffect(() => {
+    window._seccionActivaId = seccionActivaId || null;
     window.dispatchEvent(
-      new CustomEvent("seccion-activa", {
-        detail: { id: seccionActivaId || null },
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.ACTIVE_SECTION_CHANGE, {
+        detail: buildEditorActiveSectionDetail(seccionActivaId),
       })
     );
   }, [seccionActivaId]);

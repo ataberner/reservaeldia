@@ -11,11 +11,17 @@ import {
   captureEditorIssue,
   pushEditorBreadcrumb,
 } from "@/lib/monitoring/editorIssueReporter";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorInvitationTypeDetail,
+} from "@/lib/editorBridgeContracts";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+import {
+  BORRADOR_SYNC_PERSIST_DEBOUNCE_MS,
+  createBorradorSyncSchedulingController,
+} from "./borradorSyncScheduling.js";
 import { loadBorradorSyncState } from "./borradorSyncLoad.js";
 import { persistBorradorSyncState } from "./borradorSyncPersist.js";
-
-const PERSIST_DEBOUNCE_MS = 500;
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -49,6 +55,8 @@ export default function useBorradorSync({
   setCargado,
   setSeccionActivaId,
   onDraftLoaded,
+  enqueueDraftWrite = null,
+  hasPendingDraftWrites = null,
 
   // refs / helpers que ya existen en CanvasEditor
   ignoreNextUpdateRef,
@@ -61,9 +69,9 @@ export default function useBorradorSync({
   ALTURA_PANTALLA_EDITOR,
 }) {
   const skipNextPersistRef = useRef(true);
-  const persistTimeoutRef = useRef(null);
   const persistInFlightRef = useRef(null);
-  const pendingPersistReasonRef = useRef(null);
+  const persistCurrentStateRef = useRef(null);
+  const persistSchedulerRef = useRef(null);
   const latestStateRef = useRef({
     slug: null,
     editorSession: { kind: "draft", id: null },
@@ -84,120 +92,125 @@ export default function useBorradorSync({
     gifts,
     cargado,
   };
+  if (!persistSchedulerRef.current) {
+    persistSchedulerRef.current = createBorradorSyncSchedulingController({
+      runPersistNow: (options = {}) =>
+        typeof persistCurrentStateRef.current === "function"
+          ? persistCurrentStateRef.current(options)
+          : Promise.resolve({
+              ok: false,
+              reason: "persist-runner-unavailable",
+              error: "El editor todavia no preparo la persistencia del borrador.",
+            }),
+      debounceMs: BORRADOR_SYNC_PERSIST_DEBOUNCE_MS,
+    });
+  }
 
-  const clearScheduledPersist = useCallback(() => {
-    if (!persistTimeoutRef.current) return false;
-    clearTimeout(persistTimeoutRef.current);
-    persistTimeoutRef.current = null;
-    pendingPersistReasonRef.current = null;
-    return true;
-  }, []);
+  const clearScheduledPersist = useCallback(
+    () => persistSchedulerRef.current?.clearScheduledPersist?.() === true,
+    []
+  );
 
   const persistCurrentState = useCallback(
     async ({ reason = "autosave", immediate = false } = {}) => {
-      const state = latestStateRef.current;
-      const session = normalizeEditorSession(state.editorSession, state.slug);
-      const safeSlug = normalizeText(session.id || state.slug);
+      const runPersistTask = async () => {
+        // Compatibility boundary: queue draft writes first, then read the latest
+        // editor state so flush/autosave do not replay stale render snapshots.
+        const state = latestStateRef.current;
+        const session = normalizeEditorSession(state.editorSession, state.slug);
+        const safeSlug = normalizeText(session.id || state.slug);
 
-      if (readOnly) {
-        return {
-          ok: false,
-          reason: "read-only",
-          error: "El borrador esta abierto en modo solo lectura.",
-        };
-      }
-
-      if (!safeSlug) {
-        return {
-          ok: false,
-          reason: "missing-slug",
-          error: "Slug de borrador no disponible.",
-        };
-      }
-
-      if (!state.cargado) {
-        return {
-          ok: false,
-          reason: "draft-not-loaded",
-          error: "El borrador todavia no termino de cargar.",
-        };
-      }
-
-      if (window._resizeData?.isResizing) {
-        return {
-          ok: false,
-          reason: "resize-in-progress",
-          error: "Espera a que termine el ajuste de tamano en curso.",
-        };
-      }
-
-      if (persistInFlightRef.current) {
-        try {
-          await persistInFlightRef.current;
-        } catch {
-          // Si una persistencia previa falla, continuamos con el siguiente intento.
+        if (readOnly) {
+          return {
+            ok: false,
+            reason: "read-only",
+            error: "El borrador esta abierto en modo solo lectura.",
+          };
         }
-      }
 
-      const persistPromise = persistBorradorSyncState({
-        state,
-        readOnly,
-        reason,
-        immediate,
-        stageRef,
-        validarPuntosLinea,
-        ALTURA_PANTALLA_EDITOR,
-      });
+        if (!safeSlug) {
+          return {
+            ok: false,
+            reason: "missing-slug",
+            error: "Slug de borrador no disponible.",
+          };
+        }
+
+        if (!state.cargado) {
+          return {
+            ok: false,
+            reason: "draft-not-loaded",
+            error: "El borrador todavia no termino de cargar.",
+          };
+        }
+
+        if (window._resizeData?.isResizing) {
+          return {
+            ok: false,
+            reason: "resize-in-progress",
+            error: "Espera a que termine el ajuste de tamano en curso.",
+          };
+        }
+
+        try {
+          return await persistBorradorSyncState({
+            state,
+            readOnly,
+            reason,
+            immediate,
+            stageRef,
+            validarPuntosLinea,
+            ALTURA_PANTALLA_EDITOR,
+          });
+        } catch (error) {
+          captureEditorIssue({
+            source: "useBorradorSync.save",
+            error,
+            detail: {
+              slug: safeSlug,
+              reason,
+              immediate,
+              sessionKind: session.kind,
+              objetos: Array.isArray(state.objetos) ? state.objetos.length : null,
+              secciones: Array.isArray(state.secciones) ? state.secciones.length : null,
+              hasRsvp: Boolean(state.rsvp),
+              hasGifts: Boolean(state.gifts),
+            },
+            severity: "error",
+          });
+
+          return {
+            ok: false,
+            reason: "persist-failed",
+            error: "No se pudo guardar el borrador en este momento.",
+          };
+        }
+      };
+
+      const persistPromise =
+        typeof enqueueDraftWrite === "function"
+          ? enqueueDraftWrite(runPersistTask)
+          : Promise.resolve().then(runPersistTask);
 
       persistInFlightRef.current = persistPromise;
 
       try {
         return await persistPromise;
-      } catch (error) {
-        captureEditorIssue({
-          source: "useBorradorSync.save",
-          error,
-          detail: {
-            slug: safeSlug,
-            reason,
-            immediate,
-            sessionKind: session.kind,
-            objetos: Array.isArray(state.objetos) ? state.objetos.length : null,
-            secciones: Array.isArray(state.secciones) ? state.secciones.length : null,
-            hasRsvp: Boolean(state.rsvp),
-            hasGifts: Boolean(state.gifts),
-          },
-          severity: "error",
-        });
-
-        return {
-          ok: false,
-          reason: "persist-failed",
-          error: "No se pudo guardar el borrador en este momento.",
-        };
       } finally {
         if (persistInFlightRef.current === persistPromise) {
           persistInFlightRef.current = null;
         }
       }
     },
-    [ALTURA_PANTALLA_EDITOR, readOnly, stageRef, validarPuntosLinea]
+    [ALTURA_PANTALLA_EDITOR, enqueueDraftWrite, readOnly, stageRef, validarPuntosLinea]
   );
+  persistCurrentStateRef.current = persistCurrentState;
 
   const scheduleDebouncedPersist = useCallback(
     ({ reason = "debounced-autosave" } = {}) => {
-      clearScheduledPersist();
-      pendingPersistReasonRef.current = reason;
-      persistTimeoutRef.current = setTimeout(() => {
-        persistTimeoutRef.current = null;
-        pendingPersistReasonRef.current = null;
-        void persistCurrentState({
-          reason,
-          immediate: false,
-        });
-      }, PERSIST_DEBOUNCE_MS);
+      persistSchedulerRef.current?.scheduleDebouncedPersist?.({ reason });
     },
-    [clearScheduledPersist, persistCurrentState]
+    []
   );
 
   const flushPersistBoundary = useCallback(
@@ -205,34 +218,27 @@ export default function useBorradorSync({
       const state = latestStateRef.current;
       const session = normalizeEditorSession(state.editorSession, state.slug);
       const safeSlug = normalizeText(session.id || state.slug);
-      const pendingReason = pendingPersistReasonRef.current || null;
-      const clearedScheduledPersist = clearScheduledPersist();
+      const pendingReason = persistSchedulerRef.current?.getPendingReason?.() || null;
+      const hasScheduledPersist =
+        persistSchedulerRef.current?.hasScheduledPersist?.() === true;
+      const hasQueuedDraftWrites =
+        typeof hasPendingDraftWrites === "function"
+          ? hasPendingDraftWrites() === true
+          : Boolean(persistInFlightRef.current);
 
       pushEditorBreadcrumb("draft-flush-start", {
         slug: safeSlug || null,
         sessionKind: session.kind,
         reason,
         source,
-        clearedScheduledPersist,
+        clearedScheduledPersist: hasScheduledPersist,
         pendingReason,
-        hasInFlightPersist: Boolean(persistInFlightRef.current),
+        hasInFlightPersist: hasQueuedDraftWrites,
       });
 
-      const result = await persistCurrentState({
+      const result = await persistSchedulerRef.current.flushPersistBoundary({
         reason,
-        immediate: true,
       });
-
-      const shouldRestoreScheduledPersist =
-        clearedScheduledPersist &&
-        (result?.reason === "resize-in-progress" ||
-          result?.reason === "draft-not-loaded");
-
-      if (shouldRestoreScheduledPersist) {
-        scheduleDebouncedPersist({
-          reason: pendingReason || "debounced-autosave",
-        });
-      }
 
       pushEditorBreadcrumb(
         result?.ok === true ? "draft-flush-success" : "draft-flush-failed",
@@ -242,17 +248,13 @@ export default function useBorradorSync({
           reason,
           source,
           outcomeReason: result?.reason || null,
-          restoredScheduledPersist: shouldRestoreScheduledPersist,
+          restoredScheduledPersist: result?.restoredScheduledPersist === true,
         }
       );
 
-      return {
-        ...result,
-        clearedScheduledPersist,
-        restoredScheduledPersist: shouldRestoreScheduledPersist,
-      };
+      return result;
     },
-    [clearScheduledPersist, persistCurrentState, scheduleDebouncedPersist]
+    [hasPendingDraftWrites]
   );
 
   // 1) Cargar borrador desde Firestore
@@ -299,8 +301,8 @@ export default function useBorradorSync({
             window._draftTipoInvitacion = tipoInvitacion;
             window._tipoInvitacionActual = tipoInvitacion;
             window.dispatchEvent(
-              new CustomEvent("editor-tipo-invitacion", {
-                detail: { tipoInvitacion },
+              new CustomEvent(EDITOR_BRIDGE_EVENTS.INVITATION_TYPE_CHANGE, {
+                detail: buildEditorInvitationTypeDetail(tipoInvitacion),
               })
             );
             if (window.canvasEditor && typeof window.canvasEditor === "object") {

@@ -19,6 +19,7 @@ export const borrarSeccion = async ({
   setSeccionActivaId,
   validarPuntosLinea,
   ALTURA_PANTALLA_EDITOR,
+  enqueueDraftWrite,
 }) => {
   const seccion = secciones.find((s) => s.id === seccionId);
   if (!seccion) return;
@@ -34,17 +35,27 @@ export const borrarSeccion = async ({
       setSeccionActivaId(null);
     }
 
-    const ref = doc(db, "borradores", slug);
-    const { payload } = buildSectionMutationWritePayload({
-      secciones: seccionesFiltradas,
-      objetos: objetosFiltrados,
-      reason: "section-delete",
-      includeObjetos: true,
-      validarPuntosLinea,
-      ALTURA_PANTALLA_EDITOR,
-      createTimestamp: () => serverTimestamp(),
-    });
-    await updateDoc(ref, payload);
+    const persistTask = async () => {
+      const ref = doc(db, "borradores", slug);
+      const { payload } = buildSectionMutationWritePayload({
+        secciones: seccionesFiltradas,
+        objetos: objetosFiltrados,
+        reason: "section-delete",
+        includeObjetos: true,
+        validarPuntosLinea,
+        ALTURA_PANTALLA_EDITOR,
+        createTimestamp: () => serverTimestamp(),
+      });
+      await updateDoc(ref, payload);
+    };
+
+    // Compatibility boundary: delete/reorder still persist directly, but they
+    // now join the shared draft-write FIFO so immediate flush observes them.
+    if (typeof enqueueDraftWrite === "function") {
+      await enqueueDraftWrite(persistTask);
+    } else {
+      await persistTask();
+    }
 
     console.log("Seccion borrada correctamente:", seccionId);
   } catch (error) {
@@ -65,6 +76,7 @@ export const moverSeccion = async ({
   setSeccionesAnimando,
   validarPuntosLinea,
   ALTURA_PANTALLA_EDITOR,
+  enqueueDraftWrite,
 }) => {
   const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
   const indiceActual = seccionesOrdenadas.findIndex((s) => s.id === seccionId);
@@ -102,15 +114,23 @@ export const moverSeccion = async ({
 
   // Guardar en Firestore
   try {
-    const ref = doc(db, "borradores", slug);
-    const { payload } = buildSectionMutationWritePayload({
-      secciones: nuevasSecciones,
-      reason: "section-reorder",
-      validarPuntosLinea,
-      ALTURA_PANTALLA_EDITOR,
-      createTimestamp: () => serverTimestamp(),
-    });
-    await updateDoc(ref, payload);
+    const persistTask = async () => {
+      const ref = doc(db, "borradores", slug);
+      const { payload } = buildSectionMutationWritePayload({
+        secciones: nuevasSecciones,
+        reason: "section-reorder",
+        validarPuntosLinea,
+        ALTURA_PANTALLA_EDITOR,
+        createTimestamp: () => serverTimestamp(),
+      });
+      await updateDoc(ref, payload);
+    };
+
+    if (typeof enqueueDraftWrite === "function") {
+      await enqueueDraftWrite(persistTask);
+    } else {
+      await persistTask();
+    }
   } catch (error) {
     console.error("Error guardando orden de secciones:", error);
   }

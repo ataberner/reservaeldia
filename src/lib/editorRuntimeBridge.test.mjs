@@ -142,8 +142,21 @@ test("editor runtime bridge exposes documented compatibility globals and cloned 
     )
   );
   assert.ok(
+    EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.canvasEditor.includes("snapshot")
+  );
+  assert.ok(
     EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.legacySelectionGlobals.includes(
       "_elementosSeleccionados"
+    )
+  );
+  assert.ok(
+    EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.legacyInteractionGlobals.includes(
+      "_resizeData"
+    )
+  );
+  assert.ok(
+    EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.legacyGroupDragGlobals.includes(
+      "_groupDragSession"
     )
   );
   assert.ok(

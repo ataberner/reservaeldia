@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { calcularOffsetY } from "@/utils/layout";
 import { borrarSeccion as borrarSeccionExternal, moverSeccion as moverSeccionExternal } from "@/utils/editorSecciones";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorActiveSectionDetail,
+} from "@/lib/editorBridgeContracts";
 
 export default function useCanvasEditorSectionFlow({
   slug,
@@ -28,6 +32,7 @@ export default function useCanvasEditorSectionFlow({
   seccionActivaIdRef,
   normalizarAltoModo,
   validarPuntosLinea,
+  enqueueDraftWrite,
   ALTURA_PANTALLA_EDITOR,
 }) {
   const seccionPendienteEliminar = useMemo(
@@ -76,6 +81,7 @@ export default function useCanvasEditorSectionFlow({
         setObjetos,
         setSeccionActivaId,
         validarPuntosLinea,
+        enqueueDraftWrite,
         ALTURA_PANTALLA_EDITOR,
       });
       setDeleteSectionModal({ isOpen: false, sectionId: null });
@@ -95,6 +101,7 @@ export default function useCanvasEditorSectionFlow({
     setDeleteSectionModal,
     setIsDeletingSection,
     validarPuntosLinea,
+    enqueueDraftWrite,
     ALTURA_PANTALLA_EDITOR,
   ]);
 
@@ -102,7 +109,11 @@ export default function useCanvasEditorSectionFlow({
     try {
       setSeccionActivaId(id);
       window._seccionActivaId = id;
-      window.dispatchEvent(new CustomEvent("seccion-activa", { detail: { id } }));
+      window.dispatchEvent(
+        new CustomEvent(EDITOR_BRIDGE_EVENTS.ACTIVE_SECTION_CHANGE, {
+          detail: buildEditorActiveSectionDetail(id),
+        })
+      );
     } catch (e) {
       console.warn("No pude emitir seccion-activa:", e);
     }
@@ -319,6 +330,7 @@ export default function useCanvasEditorSectionFlow({
       setSecciones,
       setSeccionesAnimando,
       validarPuntosLinea,
+      enqueueDraftWrite,
       ALTURA_PANTALLA_EDITOR,
     });
 
@@ -336,6 +348,7 @@ export default function useCanvasEditorSectionFlow({
     slug,
     ultimaSeccionMovidaRef,
     validarPuntosLinea,
+    enqueueDraftWrite,
     ALTURA_PANTALLA_EDITOR,
   ]);
 

@@ -2,6 +2,7 @@ import { getPublicationStatus } from "../publications/state.js";
 import { normalizeDraftRenderState } from "../drafts/sourceOfTruth.js";
 import { normalizeRsvpConfig } from "../rsvp/config.js";
 import { normalizeGiftConfig } from "../gifts/config.js";
+import { normalizeRenderAssetState } from "../../../shared/renderAssetContract.js";
 import {
   normalizePublicSlug,
   parseSlugFromPublicUrl,
@@ -128,10 +129,28 @@ export function overlayLiveEditorSnapshot(data, liveEditorSnapshot) {
   };
 }
 
+export function prepareDashboardPreviewRenderState(data) {
+  const rawRenderState = normalizeDraftRenderState(data);
+  const renderAssetState = normalizeRenderAssetState({
+    objetos: rawRenderState.objetos,
+    secciones: rawRenderState.secciones,
+  });
+
+  return {
+    // Preview stays browser-safe here: canonicalize current asset aliases,
+    // but keep publish-only preparation on the backend path.
+    renderState: {
+      ...rawRenderState,
+      objetos: renderAssetState.objetos,
+      secciones: renderAssetState.secciones,
+    },
+    rawRsvp: rawRenderState.rsvp || null,
+    rawGifts: rawRenderState.gifts || null,
+  };
+}
+
 export function buildDashboardPreviewRenderPayload(data) {
-  const renderState = normalizeDraftRenderState(data);
-  const rawRsvp = renderState.rsvp || null;
-  const rawGifts = renderState.gifts || null;
+  const { renderState, rawRsvp, rawGifts } = prepareDashboardPreviewRenderState(data);
 
   const rsvpPreviewConfig =
     rawRsvp && typeof rawRsvp === "object"

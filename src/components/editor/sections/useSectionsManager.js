@@ -6,6 +6,7 @@ import {
     buildNextSectionModeState,
     buildSectionCreationState,
     buildSectionMutationWritePayload,
+    shouldPersistSectionMutationSnapshot,
 } from "./sectionMutationPersistence.js";
 import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
 
@@ -31,6 +32,7 @@ export default function useSectionsManager({
     crearSeccion,
     normalizarAltoModo,
     validarPuntosLinea,
+    enqueueDraftWrite,
 
     ALTURA_REFERENCIA_PANTALLA,
     ALTURA_PANTALLA_EDITOR,
@@ -121,20 +123,30 @@ export default function useSectionsManager({
         }) => {
             if (!slug) return;
 
-            const ref = doc(db, "borradores", slug);
-            const { payload } = buildSectionMutationWritePayload({
-                secciones: nextSecciones,
-                objetos: nextObjetos,
-                reason,
-                includeObjetos,
-                validarPuntosLinea,
-                ALTURA_PANTALLA_EDITOR,
-                createTimestamp: () => serverTimestamp(),
-            });
+            const persistTask = async () => {
+                const ref = doc(db, "borradores", slug);
+                const { payload } = buildSectionMutationWritePayload({
+                    secciones: nextSecciones,
+                    objetos: nextObjetos,
+                    reason,
+                    includeObjetos,
+                    validarPuntosLinea,
+                    ALTURA_PANTALLA_EDITOR,
+                    createTimestamp: () => serverTimestamp(),
+                });
 
-            await updateDoc(ref, payload);
+                await updateDoc(ref, payload);
+            };
+
+            // Compatibility boundary: section writes remain direct, but they
+            // now join the shared draft-write FIFO used by autosave/flush.
+            if (typeof enqueueDraftWrite === "function") {
+                return enqueueDraftWrite(persistTask);
+            }
+
+            return persistTask();
         },
-        [slug, validarPuntosLinea, ALTURA_PANTALLA_EDITOR]
+        [slug, validarPuntosLinea, ALTURA_PANTALLA_EDITOR, enqueueDraftWrite]
     );
 
     const aplicarResizeAltura = useCallback(() => {
@@ -280,6 +292,18 @@ export default function useSectionsManager({
         }
         resizePersistTimeoutRef.current = setTimeout(async () => {
             resizePersistTimeoutRef.current = null;
+            // Delayed section-height persists must not replay after a newer
+            // local section/object snapshot has already superseded them.
+            if (
+                !shouldPersistSectionMutationSnapshot({
+                    currentSecciones: seccionesRef.current,
+                    currentObjetos: objetosRef.current,
+                    nextSecciones,
+                    nextObjetos,
+                })
+            ) {
+                return;
+            }
             try {
                 await persistSectionMutation({
                     nextSecciones,

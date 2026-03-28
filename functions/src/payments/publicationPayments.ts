@@ -1,4 +1,4 @@
-import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
 import type { Request, Response } from "express";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
@@ -62,7 +62,6 @@ import {
   checkSlugAvailabilityFlow,
   markReservationStatusFlow,
   reserveSlugForSessionFlow,
-  resolveExistingPublicSlugFlow,
   type SlugAvailabilityResult,
 } from "./publicationSlugReservationFlow";
 import {
@@ -80,11 +79,59 @@ import {
 } from "./publicationTrashPurgeFlow";
 import { preparePublicationStateTransitionFlow } from "./publicationStateTransitionFlow";
 import { prepareLegacyPublicationCleanupFlow } from "./publicationLegacyCleanupFlow";
+import {
+  CHECKOUT_CONFIG_DOC_PATH,
+  getPublicationPaymentConfig as loadPublicationPaymentConfig,
+  type PublicationCheckoutConfig,
+} from "./publicationCheckoutConfig";
+import {
+  buildAwaitingRetryResult,
+  buildPublishedRetryResult,
+  extractPaymentMethodId,
+  getNumber,
+  isAccountMoneyPaymentMethod,
+  isZeroAmount,
+  mapMercadoPagoConfigError,
+  mapMercadoPagoPaymentError,
+  normalizeDraftSlug,
+  normalizeOperation,
+  normalizePublicationStateTransitionAction,
+  normalizeSessionId,
+  parseOptionalDateString,
+  resolvePayerEmail,
+  toAmount,
+  toIsoFromTimestamp,
+  type PublicationStateTransitionAction,
+  type RetryPaidPublicationResult,
+} from "./publicationPaymentEdge";
+import {
+  BORRADORES_COLLECTION,
+  DISCOUNT_CODES_COLLECTION,
+  DISCOUNT_USAGE_COLLECTION,
+  PUBLICADAS_COLLECTION,
+  PUBLICADAS_HISTORIAL_COLLECTION,
+  ensureDraftOwnership as ensureDraftOwnershipRead,
+  extractDraftSlugCandidatesFromPublicationData,
+  getDiscountCodeRef as buildDiscountCodeRef,
+  getDiscountUsageRef as buildDiscountUsageRef,
+  getPublicationHistoryRef as buildPublicationHistoryRef,
+  getPublicationRef as buildPublicationRef,
+  getReservationRef as buildReservationRef,
+  getSessionRef as buildSessionRef,
+  inferDraftSlugFromPublicationData,
+  resolveExistingPublicSlug as resolveExistingPublicSlugRead,
+} from "./publicationPaymentReads";
+import {
+  readMercadoPagoWebhookEnvelope,
+  resolvePaymentById,
+  validateMercadoPagoSignature,
+} from "./mercadoPagoWebhookEdge";
 
 export type {
   CheckoutOperation,
   CheckoutSessionStatus,
 } from "./publicationApprovedSessionFlow";
+export type { PublicationStateTransitionAction } from "./publicationPaymentEdge";
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -96,14 +143,6 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const bucket = getStorage().bucket();
 
-const CHECKOUT_CONFIG_DOC_PATH = "app_config/publicationPayments";
-const CHECKOUT_SESSIONS_COLLECTION = "publication_checkout_sessions";
-const SLUG_RESERVATIONS_COLLECTION = "public_slug_reservations";
-const DISCOUNT_CODES_COLLECTION = "publication_discount_codes";
-const DISCOUNT_USAGE_COLLECTION = "publication_discount_code_usage";
-const PUBLICADAS_COLLECTION = "publicadas";
-const PUBLICADAS_HISTORIAL_COLLECTION = "publicadas_historial";
-const BORRADORES_COLLECTION = "borradores";
 const UNKNOWN_TEMPLATE_ANALYTICS_ID = "unknown-template";
 const HISTORY_SCAN_PAGE_SIZE = 250;
 
@@ -116,12 +155,6 @@ const FINALIZATION_REASON = Object.freeze({
 });
 
 type SlugReservationStatus = "active" | "consumed" | "released" | "expired";
-
-type PublicationCheckoutConfig = {
-  enabled: boolean;
-  slugReservationTtlMinutes: number;
-  enforcePayment: boolean;
-};
 
 type CheckoutPricingSnapshot = {
   pricingVersion: number;
@@ -239,12 +272,6 @@ type PublicationFinalizationResult = {
   alreadyMissing: boolean;
 };
 
-export type PublicationStateTransitionAction =
-  | "pause"
-  | "resume"
-  | "move_to_trash"
-  | "restore_from_trash";
-
 type PublicationStateTransitionResult = {
   slug: string;
   estado: string;
@@ -252,12 +279,6 @@ type PublicationStateTransitionResult = {
   venceAt: string;
   pausadaAt: string | null;
   enPapeleraAt: string | null;
-};
-
-const DEFAULT_PAYMENT_CONFIG: PublicationCheckoutConfig = {
-  enabled: true,
-  slugReservationTtlMinutes: 20,
-  enforcePayment: true,
 };
 
 function serverTimestamp() {
@@ -268,38 +289,73 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+// Keep the public callable shell on this module while edge contracts live in
+// focused helpers. These local adapters preserve the current handler surface.
 function getPublicationRef(slug: string) {
-  return db.collection(PUBLICADAS_COLLECTION).doc(slug);
+  return buildPublicationRef(db, slug);
 }
 
 function getPublicationHistoryRef(historyId: string) {
-  return db.collection(PUBLICADAS_HISTORIAL_COLLECTION).doc(historyId);
+  return buildPublicationHistoryRef(db, historyId);
 }
 
-function inferDraftSlugFromPublicationData(
-  slug: string,
-  publicationData: Record<string, unknown>
-): string {
-  const preferred =
-    getString(publicationData.borradorSlug) ||
-    getString(publicationData.borradorId) ||
-    getString(publicationData.slugOriginal) ||
-    slug;
-
-  return preferred || slug;
+function getReservationRef(slug: string) {
+  return buildReservationRef(db, slug);
 }
 
-function extractDraftSlugCandidatesFromPublicationData(
-  publicationData: Record<string, unknown>
-): string[] {
-  const candidates = [
-    getString(publicationData.borradorSlug),
-    getString(publicationData.borradorId),
-    getString(publicationData.draftSlug),
-    getString(publicationData.slugOriginal),
-  ].filter(Boolean);
+function getSessionRef(sessionId: string) {
+  return buildSessionRef(db, sessionId);
+}
 
-  return Array.from(new Set(candidates));
+function getDiscountCodeRef(code: string) {
+  return buildDiscountCodeRef(db, code);
+}
+
+function getDiscountUsageRef(sessionId: string) {
+  return buildDiscountUsageRef(db, sessionId);
+}
+
+async function getPublicationPaymentConfig(): Promise<PublicationCheckoutConfig> {
+  return loadPublicationPaymentConfig({
+    loadConfigDoc: () => db.doc(CHECKOUT_CONFIG_DOC_PATH).get(),
+  });
+}
+
+async function ensureDraftOwnership(uid: string, draftSlug: string) {
+  return ensureDraftOwnershipRead({
+    db,
+    uid,
+    draftSlug,
+  });
+}
+
+async function resolveExistingPublicSlug(draftSlug: string): Promise<string | null> {
+  return resolveExistingPublicSlugRead({
+    draftSlug,
+    loadDraftData: async () => {
+      const draftSnap = await db.collection(BORRADORES_COLLECTION).doc(draftSlug).get();
+      return (draftSnap.data() || {}) as Record<string, unknown>;
+    },
+    loadPublicationBySlug: async (slug) => getPublicationRef(slug).get(),
+    queryPublicationsByOriginalDraftSlug: async () =>
+      db
+        .collection(PUBLICADAS_COLLECTION)
+        .where("slugOriginal", "==", draftSlug)
+        .limit(5)
+        .get(),
+    queryPublicationsByLinkedDraftSlug: async () =>
+      db
+        .collection(PUBLICADAS_COLLECTION)
+        .where("borradorSlug", "==", draftSlug)
+        .limit(5)
+        .get(),
+    finalizeExpiredPublication: async (slug) =>
+      finalizePublicationBySlug({
+        slug,
+        reason: FINALIZATION_REASON.EXPIRED_CHECKOUT_UPDATE,
+      }),
+    isPublicationExpiredData,
+  });
 }
 
 export function isPublicationExpiredData(
@@ -317,90 +373,6 @@ function normalizeDiscountCode(value: unknown): string {
   return raw.replace(/[^A-Z0-9_-]/g, "");
 }
 
-function mapMercadoPagoConfigError(error: unknown): HttpsError {
-  const message = error instanceof Error ? error.message : String(error || "");
-  if (message.includes("Falta variable de entorno requerida")) {
-    return new HttpsError(
-      "failed-precondition",
-      "Configuracion de pagos incompleta. Falta configurar Mercado Pago en backend."
-    );
-  }
-  return new HttpsError("internal", "No se pudo inicializar Mercado Pago.");
-}
-
-function mapMercadoPagoPaymentError(error: unknown): HttpsError {
-  const message = error instanceof Error ? error.message : String(error || "");
-
-  if (message.includes("Falta variable de entorno requerida")) {
-    return mapMercadoPagoConfigError(error);
-  }
-
-  const normalized = message.toLowerCase();
-  if (normalized.includes("payment type")) {
-    return new HttpsError("invalid-argument", "Selecciona un medio de pago para continuar.");
-  }
-
-  if (normalized.includes("token")) {
-    return new HttpsError("invalid-argument", "Completa los datos del medio de pago.");
-  }
-
-  return new HttpsError("failed-precondition", "No se pudo procesar el pago. Intenta nuevamente.");
-}
-
-function extractPaymentMethodId(brickData: Record<string, unknown>): string {
-  const fromSelected = brickData.selectedPaymentMethod;
-  const selectedId =
-    typeof fromSelected === "string"
-      ? getString(fromSelected)
-      : getString((fromSelected as Record<string, unknown> | undefined)?.id);
-
-  return (
-    getString(brickData.payment_method_id) ||
-    getString(brickData.paymentMethodId) ||
-    selectedId
-  );
-}
-
-function isAccountMoneyPaymentMethod(paymentMethodId: string): boolean {
-  return getString(paymentMethodId).toLowerCase() === "account_money";
-}
-
-function normalizeSessionId(value: unknown): string {
-  const sessionId = getString(value);
-  if (!sessionId) {
-    throw new HttpsError("invalid-argument", "Falta sessionId");
-  }
-  return sessionId;
-}
-
-function normalizeDraftSlug(value: unknown): string {
-  const draftSlug = getString(value);
-  if (!draftSlug) {
-    throw new HttpsError("invalid-argument", "Falta draftSlug");
-  }
-  return draftSlug;
-}
-
-function normalizeOperation(value: unknown): CheckoutOperation {
-  if (value === "new" || value === "update") return value;
-  throw new HttpsError("invalid-argument", "operation invalido");
-}
-
-function normalizePublicationStateTransitionAction(
-  value: unknown
-): PublicationStateTransitionAction {
-  const action = getString(value).toLowerCase();
-  if (
-    action === "pause" ||
-    action === "resume" ||
-    action === "move_to_trash" ||
-    action === "restore_from_trash"
-  ) {
-    return action;
-  }
-  throw new HttpsError("invalid-argument", "Accion de estado invalida.");
-}
-
 function isExpiredAt(expiresAt: unknown): boolean {
   const now = Date.now();
 
@@ -413,80 +385,6 @@ function isExpiredAt(expiresAt: unknown): boolean {
   }
 
   return false;
-}
-
-function resolvePayerEmail(request: CallableRequest<unknown>, fallback = ""): string {
-  const emailFromToken = getString((request.auth?.token as Record<string, unknown> | undefined)?.email);
-  if (emailFromToken) return emailFromToken;
-  return getString(fallback);
-}
-
-function getNumber(value: unknown, fallback = 0): number {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return numeric;
-}
-
-function getPublicationConfigFromData(data: Record<string, unknown>): PublicationCheckoutConfig {
-  const enabled = typeof data.enabled === "boolean" ? data.enabled : DEFAULT_PAYMENT_CONFIG.enabled;
-  const slugReservationTtlMinutes = Number.isFinite(Number(data.slugReservationTtlMinutes))
-    ? Math.max(5, Math.round(Number(data.slugReservationTtlMinutes)))
-    : DEFAULT_PAYMENT_CONFIG.slugReservationTtlMinutes;
-  const enforcePayment = typeof data.enforcePayment === "boolean"
-    ? data.enforcePayment
-    : DEFAULT_PAYMENT_CONFIG.enforcePayment;
-
-  return {
-    enabled,
-    slugReservationTtlMinutes,
-    enforcePayment,
-  };
-}
-
-async function getPublicationPaymentConfig(): Promise<PublicationCheckoutConfig> {
-  const snap = await db.doc(CHECKOUT_CONFIG_DOC_PATH).get();
-  if (!snap.exists) return DEFAULT_PAYMENT_CONFIG;
-
-  const data = (snap.data() || {}) as Record<string, unknown>;
-  return getPublicationConfigFromData(data);
-}
-
-function getReservationRef(slug: string) {
-  return db.collection(SLUG_RESERVATIONS_COLLECTION).doc(slug);
-}
-
-function getSessionRef(sessionId: string) {
-  return db.collection(CHECKOUT_SESSIONS_COLLECTION).doc(sessionId);
-}
-
-function getDiscountCodeRef(code: string) {
-  return db.collection(DISCOUNT_CODES_COLLECTION).doc(code);
-}
-
-function getDiscountUsageRef(sessionId: string) {
-  return db.collection(DISCOUNT_USAGE_COLLECTION).doc(sessionId);
-}
-
-function toIsoFromTimestamp(value: unknown): string | null {
-  if (value && typeof (value as any).toDate === "function") {
-    return ((value as admin.firestore.Timestamp).toDate() || new Date()).toISOString();
-  }
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "string" && value.trim()) {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
-  }
-  return null;
-}
-
-function parseOptionalDateString(value: unknown, fieldName: string): admin.firestore.Timestamp | null {
-  const raw = getString(value);
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new HttpsError("invalid-argument", `${fieldName} invalido`);
-  }
-  return admin.firestore.Timestamp.fromDate(parsed);
 }
 
 function normalizeDiscountType(value: unknown): DiscountType {
@@ -718,26 +616,6 @@ async function createMercadoPagoPreferenceForCheckout(params: {
   }
 
   return preferenceId;
-}
-
-async function ensureDraftOwnership(uid: string, draftSlug: string) {
-  const draftRef = db.collection(BORRADORES_COLLECTION).doc(draftSlug);
-  const draftSnap = await draftRef.get();
-
-  if (!draftSnap.exists) {
-    throw new HttpsError("not-found", "No se encontro el borrador");
-  }
-
-  const data = draftSnap.data() as Record<string, unknown>;
-  const ownerUid = getString(data?.userId);
-  if (!ownerUid || ownerUid !== uid) {
-    throw new HttpsError("permission-denied", "No tenes permisos sobre este borrador");
-  }
-
-  return {
-    ref: draftRef,
-    data,
-  };
 }
 
 async function checkSlugAvailability(
@@ -1271,35 +1149,6 @@ export async function hardDeleteLegacyPublicationHandler(
   };
 }
 
-async function resolveExistingPublicSlug(draftSlug: string): Promise<string | null> {
-  return resolveExistingPublicSlugFlow({
-    draftSlug,
-    loadDraftData: async () => {
-      const draftSnap = await db.collection(BORRADORES_COLLECTION).doc(draftSlug).get();
-      return (draftSnap.data() || {}) as Record<string, unknown>;
-    },
-    loadPublicationBySlug: async (slug) => getPublicationRef(slug).get(),
-    queryPublicationsByOriginalDraftSlug: async () =>
-      db
-        .collection(PUBLICADAS_COLLECTION)
-        .where("slugOriginal", "==", draftSlug)
-        .limit(5)
-        .get(),
-    queryPublicationsByLinkedDraftSlug: async () =>
-      db
-        .collection(PUBLICADAS_COLLECTION)
-        .where("borradorSlug", "==", draftSlug)
-        .limit(5)
-        .get(),
-    finalizeExpiredPublication: async (slug) =>
-      finalizePublicationBySlug({
-        slug,
-        reason: FINALIZATION_REASON.EXPIRED_CHECKOUT_UPDATE,
-      }),
-    isPublicationExpiredData,
-  });
-}
-
 function cloneFirestoreSafe<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -1479,16 +1328,6 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     warn: (message, context) => logger.warn(message, context),
     logError: (message, context) => logger.error(message, context),
   });
-}
-
-function toAmount(value: unknown, fallback: number): number {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return Math.max(0, Math.round(numeric));
-}
-
-function isZeroAmount(value: unknown): boolean {
-  return toAmount(value, 0) <= 0;
 }
 
 async function finalizeApprovedSession(params: {
@@ -2098,7 +1937,7 @@ export async function getPublicationCheckoutStatusHandler(
 
 export async function retryPaidPublicationWithNewSlugHandler(
   request: CallableRequest<{ sessionId: string; newPublicSlug: string }>
-): Promise<{ sessionStatus: "published" | "awaiting_retry"; publicUrl?: string; message?: string }> {
+): Promise<RetryPaidPublicationResult> {
   const uid = requireAuth(request);
   const sessionId = normalizeSessionId(request.data?.sessionId);
 
@@ -2110,10 +1949,7 @@ export async function retryPaidPublicationWithNewSlugHandler(
   const status = getString(data.status) as CheckoutSessionStatus;
 
   if (status === "published") {
-    return {
-      sessionStatus: "published",
-      publicUrl: getString(data.publicUrl) || undefined,
-    };
+    return buildPublishedRetryResult(getString(data.publicUrl) || undefined);
   }
 
   if (status !== "approved_slug_conflict") {
@@ -2131,10 +1967,7 @@ export async function retryPaidPublicationWithNewSlugHandler(
   const draftSlug = getString(data.draftSlug);
   const availability = await checkSlugAvailability(validation.normalizedSlug, uid, draftSlug);
   if (!availability.isAvailable) {
-    return {
-      sessionStatus: "awaiting_retry",
-      message: "El enlace elegido no esta disponible.",
-    };
+    return buildAwaitingRetryResult("El enlace elegido no esta disponible.");
   }
 
   const config = await getPublicationPaymentConfig();
@@ -2172,17 +2005,15 @@ export async function retryPaidPublicationWithNewSlugHandler(
   });
 
   if (result.sessionStatus === "published") {
-    return {
-      sessionStatus: "published",
-      publicUrl: result.publicUrl,
-      message: "Invitacion publicada correctamente.",
-    };
+    return buildPublishedRetryResult(
+      result.publicUrl,
+      "Invitacion publicada correctamente."
+    );
   }
 
-  return {
-    sessionStatus: "awaiting_retry",
-    message: result.message || "No se pudo publicar con ese enlace. Intenta con otro.",
-  };
+  return buildAwaitingRetryResult(
+    result.message || "No se pudo publicar con ese enlace. Intenta con otro."
+  );
 }
 
 export async function publishWithApprovedPaymentSession(params: {
@@ -2252,79 +2083,14 @@ export async function publishWithApprovedPaymentSession(params: {
   };
 }
 
-function parseSignatureHeader(rawHeader: string): { ts: string; v1: string } | null {
-  const parts = rawHeader
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => part.split("="));
-
-  const signatureMap = new Map<string, string>();
-  parts.forEach(([key, value]) => {
-    if (!key || !value) return;
-    signatureMap.set(key, value);
-  });
-
-  const ts = signatureMap.get("ts") || "";
-  const v1 = signatureMap.get("v1") || "";
-  if (!ts || !v1) return null;
-
-  return { ts, v1 };
-}
-
-function toQueryValue(value: unknown): string {
-  if (Array.isArray(value)) {
-    return getString(value[0]);
-  }
-  return getString(value);
-}
-
-function validateMercadoPagoSignature(params: {
-  signatureHeader: string;
-  requestId: string;
-  dataId: string;
-}): boolean {
-  let secret = "";
-  try {
-    secret = getMercadoPagoWebhookSecret();
-  } catch {
-    return false;
-  }
-  const parsed = parseSignatureHeader(params.signatureHeader);
-  if (!parsed) return false;
-
-  const manifest = `id:${params.dataId};request-id:${params.requestId};ts:${parsed.ts};`;
-  const digest = createHmac("sha256", secret).update(manifest).digest("hex");
-
-  try {
-    return timingSafeEqual(Buffer.from(digest), Buffer.from(parsed.v1));
-  } catch {
-    return false;
-  }
-}
-
-async function resolvePaymentById(paymentId: string): Promise<any> {
-  const numericId = Number(paymentId);
-  if (!Number.isFinite(numericId) || numericId <= 0) {
-    throw new HttpsError("invalid-argument", "paymentId invalido");
-  }
-
-  const paymentClient = getMercadoPagoPaymentClient();
-  const payment = (await paymentClient.get({ id: numericId })) as any;
-  return payment;
-}
-
 export async function processMercadoPagoWebhookRequest(req: Request, res: Response): Promise<void> {
   try {
-    const signatureHeader = getString(req.headers["x-signature"]);
-    const requestId = getString(req.headers["x-request-id"]);
-    const action =
-      toQueryValue((req.query as Record<string, unknown>).action) ||
-      getString((req.body as Record<string, unknown>)?.action);
-
-    const dataIdFromQuery = toQueryValue((req.query as Record<string, unknown>)["data.id"]);
-    const dataIdFromBody = getString((req.body as Record<string, any>)?.data?.id);
-    const dataId = dataIdFromQuery || dataIdFromBody;
+    const { signatureHeader, requestId, action, dataId, topic } =
+      readMercadoPagoWebhookEnvelope({
+        headers: req.headers as Record<string, unknown>,
+        query: req.query as Record<string, unknown>,
+        body: req.body,
+      });
 
     logger.info("Mercado Pago webhook recibido", {
       action: action || "unknown",
@@ -2342,17 +2108,13 @@ export async function processMercadoPagoWebhookRequest(req: Request, res: Respon
       signatureHeader,
       requestId,
       dataId,
+      getWebhookSecret: () => getMercadoPagoWebhookSecret(),
     });
 
     if (!signatureValid) {
       res.status(401).json({ ok: false, message: "Firma invalida" });
       return;
     }
-
-    const topic =
-      toQueryValue((req.query as Record<string, unknown>).type) ||
-      getString((req.body as Record<string, unknown>)?.type) ||
-      toQueryValue((req.query as Record<string, unknown>).topic);
 
     if (topic && topic !== "payment") {
       logger.info("Mercado Pago webhook ignorado por topic", {
@@ -2365,7 +2127,13 @@ export async function processMercadoPagoWebhookRequest(req: Request, res: Respon
       return;
     }
 
-    const payment = await resolvePaymentById(dataId);
+    const payment = await resolvePaymentById({
+      paymentId: dataId,
+      loadPayment: async (id) => {
+        const paymentClient = getMercadoPagoPaymentClient();
+        return (await paymentClient.get({ id })) as any;
+      },
+    });
     const paymentId = getString(payment?.id || dataId);
     const paymentStatus = getString(payment?.status) || "in_process";
     const paymentStatusDetail = getString(payment?.status_detail);

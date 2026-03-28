@@ -24,6 +24,8 @@ export function generarModalRSVPHTML(
   const payloadConfig = {
     ...normalized,
     questions: activeQuestions,
+    // Compatibility: preview keeps the same serialized public endpoint and exits
+    // before network submission through the runtime previewMode branch below.
     previewMode: runtimeOptions.previewMode === true,
     submitEndpoint: "https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit",
   };

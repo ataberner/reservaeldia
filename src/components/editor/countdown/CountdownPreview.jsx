@@ -7,6 +7,10 @@ import {
   resolvePreviewPaint,
 } from "@/domain/countdownPresets/renderModel";
 import { resolveCountdownContract } from "../../../../shared/renderContractPolicy.js";
+import {
+  COUNTDOWN_PREVIEW_FIT_MODES,
+  computeCountdownPreviewScale,
+} from "./countdownPreviewScale";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -41,7 +45,13 @@ function toFinite(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export default function CountdownPreview({ targetISO, preset, size = "sm", live = true }) {
+export default function CountdownPreview({
+  targetISO,
+  preset,
+  size = "sm",
+  live = true,
+  fitMode = COUNTDOWN_PREVIEW_FIT_MODES.WIDTH,
+}) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -82,18 +92,16 @@ export default function CountdownPreview({ targetISO, preset, size = "sm", live 
   const measureScale = useCallback(() => {
     if (!wrapperRef.current || !innerRef.current) return;
 
-    const containerWidth = wrapperRef.current.offsetWidth;
-    const contentWidth = innerRef.current.scrollWidth;
-    if (!containerWidth || !contentWidth) return;
-
-    const marginFactor = 0.95;
-    const nextScale =
-      contentWidth > containerWidth
-        ? (containerWidth / contentWidth) * marginFactor
-        : 1 * marginFactor;
-
+    const nextScale = computeCountdownPreviewScale({
+      containerWidth: wrapperRef.current.offsetWidth,
+      containerHeight: wrapperRef.current.offsetHeight,
+      contentWidth: innerRef.current.scrollWidth,
+      contentHeight: innerRef.current.scrollHeight,
+      fitMode,
+    });
+    if (!nextScale) return;
     setScale(nextScale);
-  }, []);
+  }, [fitMode]);
 
   const countdownContract = useMemo(
     () => resolveCountdownContract(preset || null),

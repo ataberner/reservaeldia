@@ -142,6 +142,60 @@ function withDefinedMetrics(source = {}) {
   );
 }
 
+function clampNormalizedPosition(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function canonicalizeFinalizedDragPatch({
+  objOriginal,
+  dragPatch,
+  seccionesOrdenadas,
+  determinarNuevaSeccion,
+  convertirAbsARel,
+  esSeccionPantallaById,
+  ALTURA_PANTALLA_EDITOR,
+}) {
+  const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
+    dragPatch.y,
+    objOriginal.seccionId,
+    seccionesOrdenadas
+  );
+
+  let nextPatch = { ...dragPatch };
+  delete nextPatch.finalizoDrag;
+
+  if (nuevaSeccion) {
+    nextPatch = {
+      ...nextPatch,
+      ...coordenadasAjustadas,
+      seccionId: nuevaSeccion,
+    };
+  } else {
+    nextPatch.y = convertirAbsARel(
+      dragPatch.y,
+      objOriginal.seccionId,
+      seccionesOrdenadas
+    );
+  }
+
+  const seccionFinalId = nextPatch.seccionId || objOriginal.seccionId;
+  const yRelPx = Number.isFinite(nextPatch.y) ? nextPatch.y : 0;
+
+  if (esSeccionPantallaById(seccionFinalId)) {
+    const safePantallaHeight =
+      Number.isFinite(ALTURA_PANTALLA_EDITOR) && ALTURA_PANTALLA_EDITOR > 0
+        ? ALTURA_PANTALLA_EDITOR
+        : 1;
+    nextPatch.yNorm = clampNormalizedPosition(yRelPx / safePantallaHeight);
+    delete nextPatch.y;
+  } else {
+    nextPatch.y = yRelPx;
+    delete nextPatch.yNorm;
+  }
+
+  return nextPatch;
+}
+
 function createEmptyDragSettleSession() {
   return {
     dragId: null,
@@ -2216,6 +2270,24 @@ export default function CanvasStageContent({
     seccionesOrdenadas,
   ]);
 
+  const applyCanonicalDragFinalization = useCallback((objOriginal, dragPatch) => (
+    canonicalizeFinalizedDragPatch({
+      objOriginal,
+      dragPatch,
+      seccionesOrdenadas,
+      determinarNuevaSeccion,
+      convertirAbsARel,
+      esSeccionPantallaById,
+      ALTURA_PANTALLA_EDITOR,
+    })
+  ), [
+    ALTURA_PANTALLA_EDITOR,
+    convertirAbsARel,
+    determinarNuevaSeccion,
+    esSeccionPantallaById,
+    seccionesOrdenadas,
+  ]);
+
   const renderCanvasObject = (obj) => {
     const isInlineEditableObject = obj.tipo === "texto";
     const isInEditMode =
@@ -2236,6 +2308,7 @@ export default function CanvasStageContent({
           setCeldaGaleriaActiva={setCeldaGaleriaActiva}
           seccionesOrdenadas={seccionesOrdenadas}
           altoCanvas={altoCanvas}
+          ALTURA_PANTALLA_EDITOR={ALTURA_PANTALLA_EDITOR}
           onSelect={(id, e) => handleSpecialElementSelectIntent(id, obj, e)}
           onDragMovePersonalizado={(pos, id) => {
             window._isDragging = true;
@@ -2267,8 +2340,14 @@ export default function CanvasStageContent({
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
+              const objOriginal = prev[index];
               const updated = [...prev];
-              updated[index] = { ...updated[index], ...nuevo };
+              updated[index] = nuevo.finalizoDrag
+                ? {
+                    ...updated[index],
+                    ...applyCanonicalDragFinalization(objOriginal, nuevo),
+                  }
+                : { ...updated[index], ...nuevo };
               return updated;
             });
           }}
@@ -2284,24 +2363,39 @@ export default function CanvasStageContent({
           registerRef={registerRef}
           onHover={setHoverIdWhenIdle}
           isSelected={elementosSeleccionados.includes(obj.id)}
+          selectionCount={elementosSeleccionados.length}
           seccionesOrdenadas={seccionesOrdenadas}
           altoCanvas={altoCanvas}
-          onSelect={(id, e) => handleSpecialElementSelectIntent(id, obj, e)}
-          onDragStartPersonalizado={(dragId = obj.id) => {
+          ALTURA_PANTALLA_EDITOR={ALTURA_PANTALLA_EDITOR}
+          onSelect={handleElementSelectIntent}
+          onPredragVisualSelectionStart={beginPredragVisualSelection}
+          onPredragVisualSelectionCancel={clearDragVisualSelection}
+          onDragStartPersonalizado={(dragId = obj.id, _event = null) => {
+            const selectionSnapshotFromWindow =
+              typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
+                ? sanitizeSelectionIds(window._elementosSeleccionados)
+                : [];
+            const selectionSnapshot =
+              selectionSnapshotFromWindow.length > 0
+                ? selectionSnapshotFromWindow
+                : sanitizeSelectionIds(elementosSeleccionados);
             publishCountdownRuntimeDebug("composer:countdown-dragstart-callback", {
               dragId,
-              selectedIds: sanitizeSelectionIds(elementosSeleccionados),
+              selectedIds: selectionSnapshot,
             });
             clearInlineIntent("drag-start", { dragId, tipo: "countdown" });
             const interactionEpoch = beginCanvasDragGesture(dragId, "countdown");
             startDragSettleSession(
               dragId,
-              elementosSeleccionados,
+              selectionSnapshot,
               "countdown",
               interactionEpoch
             );
-            beginDragVisualSelection(dragId, elementosSeleccionados);
+            beginDragVisualSelection(dragId, selectionSnapshot);
             cancelScheduledGuideEvaluation();
+            setElementosPreSeleccionados((current) => (
+              Array.isArray(current) && current.length === 0 ? current : []
+            ));
             prepararGuias?.(dragId, objetos, elementRefs);
           }}
           onDragMovePersonalizado={(pos, id) => {
@@ -2340,23 +2434,11 @@ export default function CanvasStageContent({
                 return updated;
               }
 
-              const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-                cambios.y,
-                objOriginal.seccionId,
-                seccionesOrdenadas
-              );
-
-              let next = { ...cambios };
-              delete next.finalizoDrag;
-
-              if (nuevaSeccion) {
-                next = { ...next, ...coordenadasAjustadas, seccionId: nuevaSeccion };
-              } else {
-                next.y = convertirAbsARel(cambios.y, objOriginal.seccionId, seccionesOrdenadas);
-              }
-
               const updated = [...prev];
-              updated[index] = { ...updated[index], ...next };
+              updated[index] = {
+                ...updated[index],
+                ...applyCanonicalDragFinalization(objOriginal, cambios),
+              };
               return updated;
             });
           }}
@@ -2472,40 +2554,7 @@ export default function CanvasStageContent({
           if (!objOriginal) return;
 
           if (nuevo.finalizoDrag) {
-            const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-              nuevo.y,
-              objOriginal.seccionId,
-              seccionesOrdenadas
-            );
-
-            let coordenadasFinales = { ...nuevo };
-            delete coordenadasFinales.finalizoDrag;
-
-            if (nuevaSeccion) {
-              coordenadasFinales = {
-                ...coordenadasFinales,
-                ...coordenadasAjustadas,
-                seccionId: nuevaSeccion,
-              };
-            } else {
-              coordenadasFinales.y = convertirAbsARel(
-                nuevo.y,
-                objOriginal.seccionId,
-                seccionesOrdenadas
-              );
-            }
-
-            const seccionFinalId = coordenadasFinales.seccionId || objOriginal.seccionId;
-            const yRelPx = Number.isFinite(coordenadasFinales.y) ? coordenadasFinales.y : 0;
-
-            if (esSeccionPantallaById(seccionFinalId)) {
-              const yNorm = Math.max(0, Math.min(1, yRelPx / ALTURA_PANTALLA_EDITOR));
-              coordenadasFinales.yNorm = yNorm;
-              delete coordenadasFinales.y;
-            } else {
-              coordenadasFinales.y = yRelPx;
-              delete coordenadasFinales.yNorm;
-            }
+            const coordenadasFinales = applyCanonicalDragFinalization(objOriginal, nuevo);
 
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);

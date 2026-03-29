@@ -4,7 +4,7 @@
 // - Calcula su propio offset Y por seccion (calcularOffsetY).
 // - Renderiza las celdas en base a calcGalleryLayout.
 // - Permite seleccionar la galeria y una celda (onSelect + onPickCell/setCeldaGaleriaActiva).
-// - Arrastre del grupo actualiza seccion/posicion (determinarNuevaSeccion).
+// - Drag end reporta coordenadas absolutas; el composer canoniza seccion/posicion.
 //
 // Dependencias de frontend: utils/layout (NO usar funciones de functions/).
 // ----------------------------------------------------------------------
@@ -13,7 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
 import useImage from "use-image";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
-import { calcularOffsetY, determinarNuevaSeccion } from "@/utils/layout";
+import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
 
@@ -74,6 +74,7 @@ export default function GaleriaKonva({
   setCeldaGaleriaActiva,
   seccionesOrdenadas = [],
   altoCanvas = 0,
+  ALTURA_PANTALLA_EDITOR = 0,
 }) {
   const [hoveredCell, setHoveredCell] = useState(null);
   const rootRef = useRef(null);
@@ -99,9 +100,35 @@ export default function GaleriaKonva({
   );
 
   const indexSeccion = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
-  const offsetY = calcularOffsetY(seccionesOrdenadas, indexSeccion);
+  const safeSectionIndex = indexSeccion >= 0 ? indexSeccion : 0;
+  const offsetY = calcularOffsetY(seccionesOrdenadas, safeSectionIndex);
 
   const toNum = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
+  const sectionUsesYNorm = useMemo(
+    () => String(
+      seccionesOrdenadas.find((section) => section?.id === obj?.seccionId)?.altoModo || ""
+    ).trim().toLowerCase() === "pantalla",
+    [obj?.seccionId, seccionesOrdenadas]
+  );
+  const stageY = useMemo(() => {
+    const yNorm = Number(obj?.yNorm);
+    const yFallback = Number.isFinite(Number(obj?.y)) ? Number(obj.y) : 0;
+    const usesYNorm =
+      sectionUsesYNorm &&
+      Number.isFinite(yNorm) &&
+      Number.isFinite(ALTURA_PANTALLA_EDITOR) &&
+      ALTURA_PANTALLA_EDITOR > 0;
+    const yLocal = usesYNorm
+      ? yNorm * ALTURA_PANTALLA_EDITOR
+      : yFallback;
+    return yLocal + offsetY;
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    obj?.y,
+    obj?.yNorm,
+    offsetY,
+    sectionUsesYNorm,
+  ]);
   const radius = Math.max(0, toNum(obj.radius, 0));
   const gap = Math.max(0, toNum(obj.gap, 0));
   const rows = Math.max(1, toNum(obj.rows, 1));
@@ -361,7 +388,7 @@ export default function GaleriaKonva({
   return (
     <Group
       x={toNum(obj.x, 0)}
-      y={toNum(obj.y, 0) + offsetY}
+      y={stageY}
       id={obj.id}
       clipX={0}
       clipY={0}
@@ -397,19 +424,7 @@ export default function GaleriaKonva({
 
         const finalX = e.target.x();
         const finalYAbs = e.target.y();
-
-        const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-          finalYAbs,
-          obj.seccionId,
-          seccionesOrdenadas
-        );
-
-        if (nuevaSeccion) {
-          onChange?.(obj.id, { x: finalX, seccionId: nuevaSeccion, ...coordenadasAjustadas });
-        } else {
-          const yRel = finalYAbs - offsetY;
-          onChange?.(obj.id, { x: finalX, y: yRel });
-        }
+        onChange?.(obj.id, { x: finalX, y: finalYAbs, finalizoDrag: true });
 
         window._isDragging = false;
         onDragEndPersonalizado?.(obj.id);

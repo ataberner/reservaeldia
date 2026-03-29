@@ -328,6 +328,8 @@ export default function SelectionBounds({
   dragSelectionOverlayVisualReady = false,
 }) {
   const transformerRef = useRef(null);
+  const lastKnownTransformerRef = useRef(null);
+  const latestDetachTransformerRef = useRef(null);
   const renderCountRef = useRef(0);
   const renderSnapshotRef = useRef(null);
   const countdownDragDebugSnapshotRef = useRef(null);
@@ -748,7 +750,9 @@ export default function SelectionBounds({
     (obj) => !(obj.tipo === "forma" && obj.figura === "line")
   );
 
-  const deberiaUsarTransformer =
+  const shouldUseGenericTransformer =
+    selectedElements.length > 0 &&
+    !hayLineas &&
     elementosTransformables.length > 0;
   const interactionLocked = Boolean(isInteractionLocked);
 
@@ -802,6 +806,24 @@ export default function SelectionBounds({
       .map((node) => getTransformNodeId(node))
       .filter(Boolean)
       .join("|");
+
+  const getLifecycleTransformerNode = () =>
+    transformerRef.current || lastKnownTransformerRef.current || null;
+
+  const setTransformerNodeRef = useCallback((node) => {
+    transformerRef.current = node || null;
+    if (node) {
+      lastKnownTransformerRef.current = node;
+    }
+  }, []);
+
+  const resetTransformerAttachmentSnapshot = () => {
+    lastAttachedNodeIdsRef.current = "";
+    lastTransformerSyncSnapshotRef.current = {
+      attachedNodeIds: "",
+      selectedGeomKey: "",
+    };
+  };
 
   useEffect(() => {
     if (!isCountdownRepeatDragDebugEnabled()) return;
@@ -1286,7 +1308,7 @@ export default function SelectionBounds({
     useDragOverlay = false,
     forceTop = false,
   } = {}) => {
-    const transformer = transformerRef.current;
+    const transformer = getLifecycleTransformerNode();
     if (!transformer) return false;
 
     const isLifted = Boolean(transformer.__canvasOverlayLiftParent);
@@ -1796,6 +1818,10 @@ export default function SelectionBounds({
     source = "unknown",
     { textPreviewEndSnapshot = null, forceAttach = false } = {}
   ) => {
+    if (!shouldUseGenericTransformer) {
+      return;
+    }
+
     const restoreEpoch = canvasInteractionEpoch;
     const runRestore = () => {
       if (pendingUiRestoreEpochRef.current !== restoreEpoch) {
@@ -1864,7 +1890,7 @@ export default function SelectionBounds({
   };
 
   const stopNativeTransformerIfActive = () => {
-    const tr = transformerRef.current;
+    const tr = getLifecycleTransformerNode();
     if (!tr) return false;
     let nativeTransforming = false;
     try {
@@ -1877,6 +1903,68 @@ export default function SelectionBounds({
     } catch {}
     return true;
   };
+
+  const detachTransformerNodes = (
+    source = "unknown",
+    { logEvent = "transformer:detach" } = {}
+  ) => {
+    pendingUiRestoreEpochRef.current = 0;
+    if (typeof cancelCanvasUiAfterSettle === "function") {
+      cancelCanvasUiAfterSettle(transformerRestoreKey);
+    }
+
+    stopResizeHintPulse();
+    resetTransformerGestureUiState({
+      syncOverlay: true,
+      clearRotatePreviewState: true,
+    });
+
+    const tr = getLifecycleTransformerNode();
+    if (!tr) {
+      resetTransformerAttachmentSnapshot();
+      return false;
+    }
+
+    let attachedNodes = [];
+    try {
+      attachedNodes = typeof tr.nodes === "function" ? tr.nodes() || [] : [];
+    } catch {
+      attachedNodes = [];
+    }
+
+    const attachedNodeIds = buildAttachedNodeIdsKey(attachedNodes);
+
+    try {
+      tr.stopTransform?.();
+    } catch {}
+    try {
+      tr.nodes([]);
+    } catch {}
+    try {
+      tr.forceUpdate?.();
+    } catch {}
+    try {
+      tr.getLayer?.()?.batchDraw?.();
+    } catch {}
+
+    resetTransformerAttachmentSnapshot();
+
+    if (logEvent && attachedNodeIds) {
+      logSelectedDragDebug(logEvent, {
+        source,
+        selectedIds: selectedElements,
+        selectedCount: selectedElements.length,
+        attachedNodeIds: attachedNodes.map((node) => getTransformNodeId(node)),
+        effectiveDragging: Boolean(effectiveDragging),
+        attachSuppressed: Boolean(isTransformerAttachBlocked),
+        shouldUseGenericTransformer: Boolean(shouldUseGenericTransformer),
+      });
+    }
+
+    return Boolean(attachedNodeIds);
+  };
+
+  latestDetachTransformerRef.current = detachTransformerNodes;
 
   const getResizeAnchorNameFromTarget = (target) => {
     if (!target) return null;
@@ -2046,7 +2134,7 @@ export default function SelectionBounds({
   }, [cancelCanvasUiAfterSettle, transformerRestoreKey]);
 
   useEffect(() => {
-    if (!selectionKey || !deberiaUsarTransformer) {
+    if (!selectionKey || !shouldUseGenericTransformer) {
       stopResizeHintPulse();
       lastResizeHintSelectionKeyRef.current = selectionKey;
       return;
@@ -2088,7 +2176,7 @@ export default function SelectionBounds({
     };
   }, [
     selectionKey,
-    deberiaUsarTransformer,
+    shouldUseGenericTransformer,
     effectiveDragging,
     isResizeGestureActive,
     isMobile,
@@ -2124,19 +2212,20 @@ export default function SelectionBounds({
 
   useEffect(
     () => () => {
-      stopNativeTransformerIfActive();
-      clearResizeHintTimers();
+      latestDetachTransformerRef.current?.("component-unmount");
     },
     []
   );
 
   useEffect(() => {
-    if (selectedElements.length === 0 || !deberiaUsarTransformer) {
-      lastAttachedNodeIdsRef.current = "";
-      stopResizeHintPulse();
-      stopNativeTransformerIfActive();
-      setIsResizeGestureActive(false);
-      setPressedResizeAnchorName((current) => (current ? null : current));
+    if (selectedElements.length === 0 || !shouldUseGenericTransformer) {
+      detachTransformerNodes(
+        selectedElements.length === 0
+          ? "selection-empty"
+          : hayLineas
+            ? "selection-line-path"
+            : "selection-no-transformables"
+      );
       return;
     }
     if (effectiveDragging && !isTransformingResizeRef.current) {
@@ -2144,7 +2233,13 @@ export default function SelectionBounds({
       setIsResizeGestureActive(false);
       setPressedResizeAnchorName((current) => (current ? null : current));
     }
-  }, [selectedElements.length, effectiveDragging, deberiaUsarTransformer]);
+  }, [
+    selectedElements.length,
+    effectiveDragging,
+    hayLineas,
+    selectionKey,
+    shouldUseGenericTransformer,
+  ]);
 
   useEffect(() => {
     if (!interactionLocked) return;
@@ -2166,7 +2261,7 @@ export default function SelectionBounds({
     TRDBG("ATTACH effect start", {
       selKey: selectionKey,
       isDragging: effectiveDragging,
-      deberiaUsarTransformer,
+      shouldUseGenericTransformer,
       elementosTransformablesLen: elementosTransformables.length,
       transformTick,
       attachSuppressed: isTransformerAttachBlocked,
@@ -2181,8 +2276,8 @@ export default function SelectionBounds({
       return;
     }
 
-    if (!deberiaUsarTransformer) {
-      lastAttachedNodeIdsRef.current = "";
+    if (!shouldUseGenericTransformer) {
+      resetTransformerAttachmentSnapshot();
       TRDBG("ATTACH effect exit: transformer disabled", { selKey: selectionKey });
       return;
     }
@@ -2228,7 +2323,7 @@ export default function SelectionBounds({
     });
   }, [
     selectionKey,
-    deberiaUsarTransformer,
+    shouldUseGenericTransformer,
     elementosTransformables.length,
     transformTick,
     effectiveDragging,
@@ -2240,7 +2335,7 @@ export default function SelectionBounds({
   ]);
 
   useEffect(() => {
-    if (!deberiaUsarTransformer || isTransformerAttachBlocked) return;
+    if (!shouldUseGenericTransformer || isTransformerAttachBlocked) return;
     const tr = transformerRef.current;
     if (!tr) return;
 
@@ -2252,9 +2347,34 @@ export default function SelectionBounds({
     syncTransformerGeometryNow("selected-geom");
   }, [
     selectionKey,
-    deberiaUsarTransformer,
+    shouldUseGenericTransformer,
     isTransformerAttachBlocked,
     selectedGeomKey,
+    transformTick,
+  ]);
+
+  useEffect(() => {
+    if (!isTransformerAttachBlocked) return;
+
+    const tr = getLifecycleTransformerNode();
+    if (!tr || typeof tr.nodes !== "function") return;
+
+    const currentAttachedNodeIds = buildAttachedNodeIdsKey(tr.nodes() || []);
+    if (!currentAttachedNodeIds) return;
+
+    if (!shouldUseGenericTransformer) {
+      detachTransformerNodes("attach-blocked-ineligible-selection");
+      return;
+    }
+
+    const desiredNodeIds = buildAttachedNodeIdsKey(resolveTransformableNodes());
+    if (!desiredNodeIds || desiredNodeIds === currentAttachedNodeIds) return;
+
+    detachTransformerNodes("attach-blocked-stale-selection");
+  }, [
+    isTransformerAttachBlocked,
+    selectionKey,
+    shouldUseGenericTransformer,
     transformTick,
   ]);
 
@@ -2291,19 +2411,7 @@ export default function SelectionBounds({
 
   if (selectedElements.length === 0) return null;
 
-  if (hayLineas && elementosTransformables.length === 0) {
-    return (
-      <SelectionBoundsIndicator
-        selectedElements={selectedElements}
-        elementRefs={elementRefs}
-        objetos={objetos}
-        isMobile={isMobile}
-        debugLog={slog}
-      />
-    );
-  }
-
-  if (hayLineas && elementosTransformables.length > 0) {
+  if (hayLineas) {
     return (
       <SelectionBoundsIndicator
         selectedElements={selectedElements}
@@ -2384,7 +2492,7 @@ export default function SelectionBounds({
 
       <Transformer
       name="ui"
-      ref={transformerRef}
+      ref={setTransformerNodeRef}
       visible={!shouldSuppressTransformerVisualsForDragOverlay}
 
       // ðŸ”µ borde siempre visible

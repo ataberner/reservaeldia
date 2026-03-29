@@ -123,8 +123,10 @@ export default function CountdownKonva({
   registerRef,
   onHover,
   isSelected = false,
+  selectionCount = 0,
   seccionesOrdenadas,
   altoCanvas,
+  ALTURA_PANTALLA_EDITOR,
   onSelect,
   onChange,
   onDragStartPersonalizado,
@@ -132,6 +134,8 @@ export default function CountdownKonva({
   onDragEndPersonalizado,
   dragStartPos,
   hasDragged,
+  onPredragVisualSelectionStart = null,
+  onPredragVisualSelectionCancel = null,
 }) {
   const rootRef = useRef(null);
   const pressSessionCounterRef = useRef(0);
@@ -155,6 +159,10 @@ export default function CountdownKonva({
   const [tick, setTick] = useState(0);
   const [reactDraggableEnabled, setReactDraggableEnabled] = useState(false);
   const draggingRef = useRef(false);
+  const pendingPrimarySelectionClickGuardRef = useRef({
+    elementId: null,
+    expiresAt: 0,
+  });
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -219,8 +227,28 @@ export default function CountdownKonva({
     const idx = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
     const safe = idx >= 0 ? idx : 0;
     const off = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
-    return (obj.y ?? 0) + off;
-  }, [obj.y, obj.seccionId, seccionesOrdenadas, altoCanvas]);
+    const sectionMode = String(
+      seccionesOrdenadas.find((section) => section?.id === obj?.seccionId)?.altoModo || ""
+    ).trim().toLowerCase();
+    const yNorm = Number(obj?.yNorm);
+    const yFallback = Number.isFinite(Number(obj?.y)) ? Number(obj.y) : 0;
+    const usesYNorm =
+      sectionMode === "pantalla" &&
+      Number.isFinite(yNorm) &&
+      Number.isFinite(ALTURA_PANTALLA_EDITOR) &&
+      ALTURA_PANTALLA_EDITOR > 0;
+    const yLocal = usesYNorm
+      ? yNorm * ALTURA_PANTALLA_EDITOR
+      : yFallback;
+    return yLocal + off;
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    altoCanvas,
+    obj?.seccionId,
+    obj?.y,
+    obj?.yNorm,
+    seccionesOrdenadas,
+  ]);
 
   // Tiempo restante
   const countdownTarget = useMemo(
@@ -558,6 +586,134 @@ export default function CountdownKonva({
     console.log("[COUNTDOWN_REPEAT_DRAG]", entry);
   }, [obj.id, reactDraggableEnabled]);
 
+  const getMirroredSelectedIds = useCallback(() => {
+    if (typeof window === "undefined" || !Array.isArray(window._elementosSeleccionados)) {
+      return [];
+    }
+
+    return window._elementosSeleccionados.filter(
+      (id) => id !== null && typeof id !== "undefined" && id !== ""
+    );
+  }, []);
+
+  const getEffectiveSelectionState = useCallback(() => {
+    const runtimeSelectedIds = getMirroredSelectedIds();
+    const effectiveSelectionCount =
+      runtimeSelectedIds.length > 0 ? runtimeSelectedIds.length : selectionCount;
+    const effectiveIsSelected =
+      isSelected || runtimeSelectedIds.includes(obj.id);
+
+    return {
+      runtimeSelectedIds,
+      effectiveSelectionCount,
+      effectiveIsSelected,
+    };
+  }, [getMirroredSelectedIds, isSelected, obj.id, selectionCount]);
+
+  const armPrimarySelectionClickGuard = useCallback(() => {
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    pendingPrimarySelectionClickGuardRef.current = {
+      elementId: obj.id,
+      expiresAt: nowMs + 500,
+    };
+  }, [obj.id]);
+
+  const consumePrimarySelectionClickGuard = useCallback(() => {
+    const guard = pendingPrimarySelectionClickGuardRef.current || {};
+    const nowMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const active =
+      guard.elementId === obj.id &&
+      Number.isFinite(Number(guard.expiresAt)) &&
+      Number(guard.expiresAt) >= nowMs;
+
+    pendingPrimarySelectionClickGuardRef.current = {
+      elementId: null,
+      expiresAt: 0,
+    };
+
+    return active;
+  }, [obj.id]);
+
+  const emitSelectionGesture = useCallback((gesture, event, meta = {}) => {
+    if (!onSelect) return null;
+
+    event && (event.cancelBubble = true);
+    event?.evt && (event.evt.cancelBubble = true);
+
+    return onSelect(obj.id, obj, event, {
+      gesture,
+      ...meta,
+    });
+  }, [obj, onSelect]);
+
+  const maybeSelectElementOnPress = useCallback((event) => {
+    if (!onSelect) {
+      return {
+        didSelectOnPress: false,
+        allowSameGestureDrag: false,
+        decision: null,
+      };
+    }
+
+    const {
+      runtimeSelectedIds,
+      effectiveSelectionCount,
+      effectiveIsSelected,
+    } = getEffectiveSelectionState();
+
+    if (effectiveIsSelected || effectiveSelectionCount > 1) {
+      return {
+        didSelectOnPress: false,
+        allowSameGestureDrag: false,
+        decision: null,
+        runtimeSelectedIds,
+        effectiveSelectionCount,
+      };
+    }
+
+    const nativeEvent = event?.evt || null;
+    if (nativeEvent?.button != null && Number(nativeEvent.button) !== 0) {
+      return {
+        didSelectOnPress: false,
+        allowSameGestureDrag: false,
+        decision: null,
+        runtimeSelectedIds,
+        effectiveSelectionCount,
+      };
+    }
+
+    const allowSameGestureDrag =
+      !nativeEvent?.shiftKey &&
+      !nativeEvent?.ctrlKey &&
+      !nativeEvent?.metaKey;
+
+    armPrimarySelectionClickGuard();
+
+    const selectionIntent = emitSelectionGesture("primary", event, {
+      selectionOrigin: "press",
+      allowSameGestureDrag,
+    });
+
+    return {
+      didSelectOnPress: Boolean(selectionIntent),
+      allowSameGestureDrag: selectionIntent?.decision === "select_and_drag",
+      decision: selectionIntent?.decision || null,
+      runtimeSelectedIds,
+      effectiveSelectionCount,
+    };
+  }, [
+    armPrimarySelectionClickGuard,
+    emitSelectionGesture,
+    getEffectiveSelectionState,
+    onSelect,
+  ]);
+
   const syncReactDraggableEnabled = useCallback((nextDraggable) => {
     const safeNext = Boolean(nextDraggable);
     const apply = () => {
@@ -614,6 +770,33 @@ export default function CountdownKonva({
 
     return nodeDraggable;
   }, [logCountdownRepeatDragDiag, syncReactDraggableEnabled]);
+
+  const ensureIdleNodeNotDraggable = useCallback((reason = "idle-draggable-reset") => {
+    const node = rootRef.current || null;
+    if (!node) return false;
+
+    const ownsActiveDragSession =
+      Boolean(dragSessionRef.current?.sessionId) ||
+      Boolean(pressRef.current?.active) ||
+      Boolean(draggingRef.current);
+    if (ownsActiveDragSession) return false;
+
+    let nodeDraggable = false;
+    try {
+      nodeDraggable =
+        typeof node.draggable === "function" ? Boolean(node.draggable()) : false;
+    } catch {}
+
+    if (!reactDraggableEnabled && !nodeDraggable) {
+      return false;
+    }
+
+    setNodeDraggable(node, false, reason, {
+      nodeDraggable,
+      reactDraggableEnabled: Boolean(reactDraggableEnabled),
+    });
+    return true;
+  }, [reactDraggableEnabled, setNodeDraggable]);
 
   const detachTransformerBeforeNativeDrag = useCallback((node, reason = "unknown") => {
     if (!node) {
@@ -796,6 +979,14 @@ export default function CountdownKonva({
       nodeRegistered: Boolean(rootRef.current),
     });
   }, [isSelected, logCountdownRepeatDragDiag]);
+
+  useEffect(() => {
+    ensureIdleNodeNotDraggable("selection-sync-reset");
+  }, [
+    ensureIdleNodeNotDraggable,
+    isSelected,
+    selectionCount,
+  ]);
 
   useEffect(() => {
     if (isCountdownRepeatDragDebugEnabled()) {
@@ -1019,6 +1210,10 @@ export default function CountdownKonva({
 
       const node = rootRef.current;
       if (!node) return;
+      const mirroredSelection = getMirroredSelectedIds();
+      const selectionSnapshot =
+        mirroredSelection.length > 0 ? mirroredSelection : [obj.id];
+      onPredragVisualSelectionStart?.(obj.id, selectionSnapshot);
       detachTransformerBeforeNativeDrag(node, "threshold-cross");
 
       // Corregimos posición inicial con el delta real para evitar “arrastre atrasado”.
@@ -1092,6 +1287,7 @@ export default function CountdownKonva({
 
       // Si NO se convirtió en drag, garantizamos 0 movimiento
       if (!ownsActiveDragSession && !pressRef.current.movedEnough && !pressRef.current.startedDrag) {
+        onPredragVisualSelectionCancel?.(obj.id);
         try {
           node.position({ x: pressRef.current.startNodeX, y: pressRef.current.startNodeY });
           node.getLayer()?.batchDraw();
@@ -1134,9 +1330,13 @@ export default function CountdownKonva({
   }, [
     cleanupGlobal,
     detachTransformerBeforeNativeDrag,
+    getMirroredSelectedIds,
     hasDragged,
     logCountdownRepeatDragDiag,
     markActiveDebugDragSession,
+    obj.id,
+    onPredragVisualSelectionCancel,
+    onPredragVisualSelectionStart,
     resetPressStateForSession,
     setNodeDraggable,
   ]);
@@ -1158,14 +1358,33 @@ export default function CountdownKonva({
 
       const ev = e.evt;
       const pointerType = resolvePointerType(ev);
-      if (!isSelected) {
+      const node = e.currentTarget || e.target || rootRef.current || null;
+      setNodeDraggable(node, false, "press-start-reset", {
+        pointerType,
+      });
+
+      const selectionState = getEffectiveSelectionState();
+      const pressSelectionResult = !selectionState.effectiveIsSelected
+        ? maybeSelectElementOnPress(e)
+        : {
+            didSelectOnPress: false,
+            allowSameGestureDrag: false,
+            decision: null,
+          };
+      const canStartDragSession =
+        selectionState.effectiveIsSelected ||
+        pressSelectionResult?.allowSameGestureDrag === true;
+
+      if (!canStartDragSession) {
         logCountdownRepeatDragDiag("press-start:selection-required", {
           pointerType,
+          selectionDecision: pressSelectionResult?.decision || null,
+          effectiveSelectionCount: selectionState.effectiveSelectionCount,
+          runtimeSelectedIds: selectionState.runtimeSelectedIds || [],
         });
         return;
       }
 
-      const node = e.currentTarget;
       const stage = node?.getStage?.();
       const dragThreshold = getDragIntentThreshold(pointerType);
       const clientPoint = getClientPoint(ev);
@@ -1201,6 +1420,8 @@ export default function CountdownKonva({
       // Por defecto NO draggable en press (clave)
       setNodeDraggable(node, false, "press-start", {
         sessionId: nextSessionId,
+        selectionDecision: pressSelectionResult?.decision || null,
+        allowSameGestureDrag: pressSelectionResult?.allowSameGestureDrag === true,
       });
 
       if (hasDragged?.current != null) hasDragged.current = false;
@@ -1216,9 +1437,10 @@ export default function CountdownKonva({
     },
     [
       attachGlobalListeners,
+      getEffectiveSelectionState,
       hasDragged,
-      isSelected,
       logCountdownRepeatDragDiag,
+      maybeSelectElementOnPress,
       onHover,
       setNodeDraggable,
     ]
@@ -1227,13 +1449,17 @@ export default function CountdownKonva({
   const handleClick = useCallback(
     (e) => {
       e.cancelBubble = true;
+      if (e?.evt) e.evt.cancelBubble = true;
 
       // Si este click se convirtió en drag, no seleccionar “de vuelta”
       if (pressRef.current.suppressClick) return;
+      if (consumePrimarySelectionClickGuard()) return;
 
-      onSelect?.(obj.id, e);
+      emitSelectionGesture("primary", e, {
+        selectionOrigin: "gesture",
+      });
     },
-    [obj.id, onSelect]
+    [consumePrimarySelectionClickGuard, emitSelectionGesture]
   );
 
   const handleMouseEnter = useCallback(() => {

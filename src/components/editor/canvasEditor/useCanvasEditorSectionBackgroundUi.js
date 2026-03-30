@@ -30,15 +30,12 @@ export default function useCanvasEditorSectionBackgroundUi({
   setSecciones,
   setObjetos,
   setElementosSeleccionados,
-  setElementosPreSeleccionados,
-  setSeleccionActiva,
-  setInicioSeleccion,
-  setAreaSeleccion,
   setBackgroundEditSectionId,
   setIsBackgroundEditInteracting,
   setSectionDecorationEdit,
   setSeccionActivaId,
   setMostrarPanelZ,
+  selectionClearPolicy,
 }) {
   useEffect(() => {
     setSectionDecorationEdit((previous) => {
@@ -200,11 +197,7 @@ export default function useCanvasEditorSectionBackgroundUi({
       }
 
       setMostrarPanelZ(false);
-      setElementosSeleccionados([]);
-      setElementosPreSeleccionados([]);
-      setSeleccionActiva(false);
-      setInicioSeleccion(null);
-      setAreaSeleccion(null);
+      selectionClearPolicy?.prepareForSectionBackgroundEdit?.();
       setSectionDecorationEdit(null);
       setIsBackgroundEditInteracting(false);
       setSeccionActivaId(safeSectionId);
@@ -213,14 +206,10 @@ export default function useCanvasEditorSectionBackgroundUi({
     [
       editingId,
       requestInlineEditFinishRef,
-      setAreaSeleccion,
       setBackgroundEditSectionId,
-      setElementosPreSeleccionados,
-      setElementosSeleccionados,
-      setInicioSeleccion,
       setIsBackgroundEditInteracting,
+      selectionClearPolicy,
       setSectionDecorationEdit,
-      setSeleccionActiva,
       setSeccionActivaId,
       setMostrarPanelZ,
     ]

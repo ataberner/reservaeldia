@@ -55,6 +55,9 @@ import {
   isCountdownRepeatDragDebugEnabled,
   publishCountdownRepeatDragDebugEntry,
 } from "@/components/editor/canvasEditor/countdownRepeatDragDebug";
+import {
+  resolveTransformerVisualMode,
+} from "./selectionVisualModes.js";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -329,6 +332,7 @@ export default function SelectionBounds({
   predragVisualSelectionActive = false,
   dragSelectionOverlayVisible = false,
   dragSelectionOverlayVisualReady = false,
+  selectionRuntime = null,
 }) {
   const transformerRef = useRef(null);
   const lastKnownTransformerRef = useRef(null);
@@ -404,6 +408,10 @@ export default function SelectionBounds({
   const [isResizeGestureActive, setIsResizeGestureActive] = useState(false);
   const [pressedResizeAnchorName, setPressedResizeAnchorName] = useState(null);
   const [resizeHintPhase, setResizeHintPhase] = useState(0);
+  const runtimeSelectionSnapshot =
+    typeof selectionRuntime?.readSnapshot === "function"
+      ? selectionRuntime.readSnapshot()
+      : null;
   const elementosSeleccionadosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
     .filter(Boolean);
@@ -540,9 +548,13 @@ export default function SelectionBounds({
     (obj) => obj.tipo === "forma" && obj.figura === "line"
   );
   const pendingDragSelectionId =
-    typeof window !== "undefined" ? window._pendingDragSelectionId || null : null;
+    runtimeSelectionSnapshot?.pendingDragSelection?.id ||
+    (typeof window !== "undefined" ? window._pendingDragSelectionId || null : null);
   const pendingDragSelectionPhase =
-    typeof window !== "undefined" ? window._pendingDragSelectionPhase || null : null;
+    runtimeSelectionSnapshot?.pendingDragSelection?.phase ||
+    (typeof window !== "undefined"
+      ? window._pendingDragSelectionPhase || null
+      : null);
   const globalDragging =
     typeof window !== "undefined" ? Boolean(window._isDragging) : false;
   const groupDragging =
@@ -560,12 +572,8 @@ export default function SelectionBounds({
   const runtimeResizeActive =
     typeof window !== "undefined" ? Boolean(window._resizeData?.isResizing) : false;
   const effectiveDragging = Boolean(isDragging || globalDragging || groupDragging);
-  const isTransformerAttachSuppressed = Boolean(
-    effectiveDragging ||
-    predragVisualSelectionActive ||
-    canvasInteractionSettling ||
-    (canvasInteractionActive && !runtimeResizeActive)
-  );
+  const shouldUseLightweightRotateOverlay =
+    esImagenSeleccionada && isImageRotateGestureActive;
   const shouldSuppressBeforeFirstDragStart = Boolean(
     pendingDragSelectionPhase === "predrag" &&
     pendingDragSelectionId &&
@@ -573,26 +581,37 @@ export default function SelectionBounds({
     selectedElements.length === 1 &&
     selectedElements[0] === pendingDragSelectionId
   );
+  const transformerVisualMode = resolveTransformerVisualMode({
+    selectedIds: selectedElements,
+    selectedObjects: elementosSeleccionadosData,
+    hasLineSelection: hayLineas,
+    pendingDragSelectionId,
+    pendingDragSelectionPhase,
+    effectiveDragging,
+    predragVisualSelectionActive,
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    runtimeResizeActive,
+    dragSelectionOverlayVisible,
+    dragSelectionOverlayVisualReady,
+    isResizeGestureActive,
+    isTransformingResize: isTransformingResizeRef.current,
+    interactionLocked,
+    hasActiveInlineEditingSession,
+    isGallerySelection: esGaleria,
+    shouldUseLightweightRotateOverlay,
+  });
+  const shouldUseGenericTransformer =
+    transformerVisualMode.shouldUseGenericTransformer;
+  const isTransformerAttachSuppressed =
+    transformerVisualMode.isAttachSuppressed;
   const isTransformerAttachBlocked = Boolean(isTransformerAttachSuppressed);
-  const shouldSuppressDuringDeferredDrag = Boolean(
-    effectiveDragging &&
-    pendingDragSelectionId &&
-    !selectedElements.includes(pendingDragSelectionId)
-  );
-  const shouldHideTransformerDuringDrag = Boolean(
-    effectiveDragging &&
-    dragSelectionOverlayVisible &&
-    dragSelectionOverlayVisualReady &&
-    !isResizeGestureActive &&
-    !isTransformingResizeRef.current
-  );
-  const shouldSuppressTransformerVisualsForDragOverlay = Boolean(
-    dragSelectionOverlayVisible &&
-    dragSelectionOverlayVisualReady &&
-    !shouldHideTransformerDuringDrag &&
-    !isResizeGestureActive &&
-    !isTransformingResizeRef.current
-  );
+  const shouldSuppressDuringDeferredDrag =
+    transformerVisualMode.shouldSuppressDuringDeferredDrag;
+  const shouldHideTransformerDuringDrag =
+    transformerVisualMode.shouldHideTransformerDuringDrag;
+  const shouldSuppressTransformerVisualsForDragOverlay =
+    transformerVisualMode.shouldSuppressTransformerVisualsForDragOverlay;
 
   useEffect(() => {
     const visibilitySnapshot = {
@@ -756,15 +775,6 @@ export default function SelectionBounds({
     transformTick,
   ]);
 
-  const elementosTransformables = elementosSeleccionadosData.filter(
-    (obj) => !(obj.tipo === "forma" && obj.figura === "line")
-  );
-
-  const shouldUseGenericTransformer =
-    selectedElements.length > 0 &&
-    !hayLineas &&
-    elementosTransformables.length > 0;
-
   const selectedGeomKey = elementosSeleccionadosData
     .map((o) =>
       [
@@ -783,6 +793,9 @@ export default function SelectionBounds({
       ].join(":")
     )
     .join("|");
+  const elementosTransformables = elementosSeleccionadosData.filter(
+    (obj) => !(obj.tipo === "forma" && obj.figura === "line")
+  );
 
   const getTransformPose = (node) => {
     if (!node) return { x: 0, y: 0, rotation: 0 };
@@ -2411,17 +2424,13 @@ export default function SelectionBounds({
 
   // ðŸ”¥ Render
 
-  if (
-    hasActiveInlineEditingSession ||
-    shouldSuppressDuringDeferredDrag ||
-    shouldHideTransformerDuringDrag
-  ) {
+  if (transformerVisualMode.renderMode === "none") {
     return null;
   }
 
   if (selectedElements.length === 0) return null;
 
-  if (hayLineas) {
+  if (transformerVisualMode.renderMode === "line-indicator") {
     return (
       <SelectionBoundsIndicator
         selectedElements={selectedElements}
@@ -2437,8 +2446,6 @@ export default function SelectionBounds({
     resizeHintPhase > 0 &&
     !isResizeGestureActive &&
     !isTransformingResizeRef.current;
-  const shouldUseLightweightRotateOverlay =
-    esImagenSeleccionada && isImageRotateGestureActive;
   const transformerBorderStroke = isResizeHintVisible
     ? SELECTION_FRAME_ACTIVE_STROKE
     : SELECTION_FRAME_STROKE;
@@ -2506,10 +2513,7 @@ export default function SelectionBounds({
       visible={!shouldSuppressTransformerVisualsForDragOverlay}
 
       // ðŸ”µ borde siempre visible
-      borderEnabled={
-        !shouldUseLightweightRotateOverlay &&
-        !shouldSuppressTransformerVisualsForDragOverlay
-      }
+      borderEnabled={transformerVisualMode.borderEnabled}
 
       borderStroke={transformerBorderStroke}
 
@@ -2518,21 +2522,8 @@ export default function SelectionBounds({
       padding={transformerPaddingForRender}
 
       // âŒ nodos y rotaciÃ³n OFF durante drag
-      enabledAnchors={
-        shouldSuppressTransformerVisualsForDragOverlay ||
-        interactionLocked ||
-        (effectiveDragging && !isResizeGestureActive)
-          ? []
-          : shouldUseLightweightRotateOverlay
-            ? []
-          : ["bottom-right"]
-      }
-      rotateEnabled={
-        !shouldSuppressTransformerVisualsForDragOverlay &&
-        !interactionLocked &&
-        !effectiveDragging &&
-        !esGaleria
-      }
+      enabledAnchors={transformerVisualMode.enabledAnchors}
+      rotateEnabled={transformerVisualMode.rotateEnabled}
       onMouseDown={handleResizeAnchorPressStart}
       onTouchStart={handleResizeAnchorPressStart}
       onPointerDown={handleResizeAnchorPressStart}
@@ -3372,7 +3363,6 @@ export default function SelectionBounds({
           try {
             const tScaleX = typeof tr.scaleX === "function" ? tr.scaleX() || 1 : 1;
             const tScaleY = typeof tr.scaleY === "function" ? tr.scaleY() || 1 : 1;
-            const avg = (Math.abs(tScaleX) + Math.abs(tScaleY)) / 2;
 
             const updates = nodes
               .map((n) => {
@@ -3392,34 +3382,104 @@ export default function SelectionBounds({
                   y: canonicalPose.y,
                   rotation: canonicalPose.rotation,
                 };
+                const nodeScaleX =
+                  typeof n.scaleX === "function" ? n.scaleX() || 1 : 1;
+                const nodeScaleY =
+                  typeof n.scaleY === "function" ? n.scaleY() || 1 : 1;
+                const avgScale =
+                  (Math.abs(nodeScaleX) + Math.abs(nodeScaleY)) / 2;
+                let liveRect = null;
+                try {
+                  liveRect = n.getClientRect({
+                    skipTransform: false,
+                    skipShadow: true,
+                    skipStroke: true,
+                  });
+                } catch {}
 
                 if (obj.tipo === "texto") {
                   const base = obj.fontSize || 24;
-                  upd.fontSize = Math.max(6, Math.round(base * avg));
+                  upd.fontSize = Math.max(6, Math.round(base * avgScale));
                   if (typeof n.scaleX === "function") {
                     n.scaleX(1);
                     n.scaleY(1);
                   }
+                  if (
+                    Number.isFinite(upd.fontSize) &&
+                    typeof n.fontSize === "function"
+                  ) {
+                    n.fontSize(upd.fontSize);
+                  }
+                  TRDBG("multi-transform:end:update", {
+                    id,
+                    tipo: obj.tipo,
+                    trScaleX: roundNodeMetric(tScaleX, 3),
+                    trScaleY: roundNodeMetric(tScaleY, 3),
+                    nodeScaleX: roundNodeMetric(nodeScaleX, 3),
+                    nodeScaleY: roundNodeMetric(nodeScaleY, 3),
+                    rectW: roundNodeMetric(liveRect?.width, 3),
+                    rectH: roundNodeMetric(liveRect?.height, 3),
+                    fontSize: roundNodeMetric(upd.fontSize, 3),
+                  });
                   return upd;
                 }
 
                 if (obj.tipo === "forma" && obj.figura === "circle") {
                   const baseR = obj.radius || 50;
-                  upd.radius = baseR * avg;
+                  const diameter =
+                    Number.isFinite(liveRect?.width) &&
+                    Number.isFinite(liveRect?.height)
+                      ? Math.max(1, Math.max(liveRect.width, liveRect.height))
+                      : Math.max(1, baseR * 2 * avgScale);
+                  upd.radius = diameter / 2;
                   if (typeof n.scaleX === "function") {
                     n.scaleX(1);
                     n.scaleY(1);
                   }
+                  if (
+                    Number.isFinite(upd.radius) &&
+                    typeof n.radius === "function"
+                  ) {
+                    n.radius(upd.radius);
+                  }
+                  TRDBG("multi-transform:end:update", {
+                    id,
+                    tipo: `${obj.tipo}:${obj.figura}`,
+                    trScaleX: roundNodeMetric(tScaleX, 3),
+                    trScaleY: roundNodeMetric(tScaleY, 3),
+                    nodeScaleX: roundNodeMetric(nodeScaleX, 3),
+                    nodeScaleY: roundNodeMetric(nodeScaleY, 3),
+                    rectW: roundNodeMetric(liveRect?.width, 3),
+                    rectH: roundNodeMetric(liveRect?.height, 3),
+                    radius: roundNodeMetric(upd.radius, 3),
+                  });
                   return upd;
                 }
 
                 if (obj.tipo === "forma" && obj.figura === "triangle") {
                   const baseR = obj.radius || 60;
-                  upd.radius = Math.max(1, baseR * avg);
+                  upd.radius = Math.max(1, baseR * avgScale);
                   if (typeof n.scaleX === "function") {
                     n.scaleX(1);
                     n.scaleY(1);
                   }
+                  if (
+                    Number.isFinite(upd.radius) &&
+                    typeof n.radius === "function"
+                  ) {
+                    n.radius(upd.radius);
+                  }
+                  TRDBG("multi-transform:end:update", {
+                    id,
+                    tipo: `${obj.tipo}:${obj.figura}`,
+                    trScaleX: roundNodeMetric(tScaleX, 3),
+                    trScaleY: roundNodeMetric(tScaleY, 3),
+                    nodeScaleX: roundNodeMetric(nodeScaleX, 3),
+                    nodeScaleY: roundNodeMetric(nodeScaleY, 3),
+                    rectW: roundNodeMetric(liveRect?.width, 3),
+                    rectH: roundNodeMetric(liveRect?.height, 3),
+                    radius: roundNodeMetric(upd.radius, 3),
+                  });
                   return upd;
                 }
 
@@ -3427,6 +3487,28 @@ export default function SelectionBounds({
                   const countdownSize = getCountdownScaledSize(n);
                   upd.width = countdownSize.width;
                   upd.height = countdownSize.height;
+                  if (typeof n.scaleX === "function") {
+                    n.scaleX(1);
+                    n.scaleY(1);
+                  }
+                  if (typeof n.width === "function") {
+                    n.width(upd.width);
+                  }
+                  if (typeof n.height === "function") {
+                    n.height(upd.height);
+                  }
+                  TRDBG("multi-transform:end:update", {
+                    id,
+                    tipo: obj.tipo,
+                    trScaleX: roundNodeMetric(tScaleX, 3),
+                    trScaleY: roundNodeMetric(tScaleY, 3),
+                    nodeScaleX: roundNodeMetric(nodeScaleX, 3),
+                    nodeScaleY: roundNodeMetric(nodeScaleY, 3),
+                    rectW: roundNodeMetric(liveRect?.width, 3),
+                    rectH: roundNodeMetric(liveRect?.height, 3),
+                    width: roundNodeMetric(upd.width, 3),
+                    height: roundNodeMetric(upd.height, 3),
+                  });
                   return upd;
                 }
 
@@ -3435,13 +3517,33 @@ export default function SelectionBounds({
                 const baseH =
                   obj.height != null ? obj.height : (typeof n.height === "function" ? n.height() : 100);
 
-                upd.width = Math.abs(baseW * tScaleX);
-                upd.height = Math.abs(baseH * tScaleY);
+                upd.width = Math.abs(baseW * nodeScaleX);
+                upd.height = Math.abs(baseH * nodeScaleY);
 
                 if (typeof n.scaleX === "function") {
                   n.scaleX(1);
                   n.scaleY(1);
                 }
+                if (Number.isFinite(upd.width) && typeof n.width === "function") {
+                  n.width(upd.width);
+                }
+                if (Number.isFinite(upd.height) && typeof n.height === "function") {
+                  n.height(upd.height);
+                }
+                TRDBG("multi-transform:end:update", {
+                  id,
+                  tipo: obj.tipo,
+                  trScaleX: roundNodeMetric(tScaleX, 3),
+                  trScaleY: roundNodeMetric(tScaleY, 3),
+                  nodeScaleX: roundNodeMetric(nodeScaleX, 3),
+                  nodeScaleY: roundNodeMetric(nodeScaleY, 3),
+                  baseW: roundNodeMetric(baseW, 3),
+                  baseH: roundNodeMetric(baseH, 3),
+                  rectW: roundNodeMetric(liveRect?.width, 3),
+                  rectH: roundNodeMetric(liveRect?.height, 3),
+                  width: roundNodeMetric(upd.width, 3),
+                  height: roundNodeMetric(upd.height, 3),
+                });
                 return upd;
               })
               .filter(Boolean);

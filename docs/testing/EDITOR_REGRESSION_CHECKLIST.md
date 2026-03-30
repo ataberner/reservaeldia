@@ -63,6 +63,44 @@ Resultado esperado:
 - se preservan las distancias relativas
 - la multiseleccion sigue coherente al terminar el drag
 
+### [ ] Select-and-drag en el mismo gesto
+
+1. Tomar un objeto no seleccionado.
+2. Empezar a arrastrarlo en el mismo pointer-down o touch-start.
+3. Soltar y repetir el gesto una segunda vez.
+
+Resultado esperado:
+
+- el objeto pasa a seleccionado sin requerir un click previo
+- el drag arranca sin parpadeo del transformer ni canvas en blanco
+- no queda pending drag selection colgada al terminar
+
+### [ ] Modos visuales de seleccion
+
+1. Seleccionar un objeto comun.
+2. Seleccionar una `forma.line`.
+3. Editar inline un texto ya seleccionado.
+
+Resultado esperado:
+
+- un objeto comun muestra transformer
+- una linea muestra bounds indicator y `LineControls`, no el transformer generico
+- durante inline edit se suprimen los visuales primarios de seleccion
+- no aparecen dobles bordes ni overlays superpuestos
+
+### [ ] Overlay de drag y restauracion del transformer
+
+1. Seleccionar un objeto o grupo.
+2. Iniciar drag y observar el overlay visual.
+3. Soltar y esperar el settle del drag.
+
+Resultado esperado:
+
+- el drag overlay aparece durante predrag o drag activo cuando corresponde
+- el transformer se oculta o se desacopla sin dejar residuos visuales
+- al terminar el settle, el transformer vuelve a anclarse a la seleccion correcta
+- no queda drag visual selection residual
+
 ### [ ] Re-seleccion despues del drag
 
 1. Mover un objeto o grupo.
@@ -74,6 +112,17 @@ Resultado esperado:
 - la deseleccion funciona de inmediato
 - el objeto puede volver a seleccionarse sin bloqueo temporal
 - no reaparece una seleccion vieja
+
+### [ ] Scroll tactil vs marquee
+
+1. En mobile o emulacion tactil, hacer scroll vertical sobre el canvas sin intentar seleccionar.
+2. Repetir iniciando un marquee real desde zona vacia.
+
+Resultado esperado:
+
+- el scroll normal no arma marquee por error
+- el marquee real sigue funcionando despues del scroll
+- el rectangulo de seleccion no deriva respecto al puntero
 
 ## 2. Texto inline
 
@@ -231,6 +280,18 @@ Resultado esperado:
 - la geometria final persiste
 - no reaparece escala intermedia
 
+### [ ] Drift visual despues de drag, settle o scroll
+
+1. Arrastrar un objeto cerca de los limites del viewport o durante auto-scroll de secciones.
+2. Soltar, esperar el settle y volver a seleccionarlo.
+3. Si el cambio toca mobile, repetir tras un scroll del viewport.
+
+Resultado esperado:
+
+- bounds, transformer y line controls vuelven a la geometria correcta
+- no queda offset visual entre el objeto y su overlay
+- no reaparece un drag overlay viejo despues del scroll o restore
+
 ### [ ] Fondo base de seccion
 
 1. Entrar al modo mover fondo.
@@ -275,7 +336,9 @@ Bloquear validacion si aparece cualquiera de estas:
 - preview abre con estado previo despues de una edicion reciente
 - una mutacion directa de seccion se pierde tras preview, publish o reload
 - multiseleccion y drag grupal dejan objetos atras o rompen la seleccion
+- select-and-drag deja pending drag selection colgada o duplica overlays de seleccion
 - inline edit requiere click extra para empezar a escribir
 - el overlay inline queda montado o desalineado al cerrar
+- transformer, bounds indicator o line controls quedan desfasados tras drag, settle o scroll
 - publish usa un estado distinto del confirmado por flush
 - `pantalla` y `yNorm` cambian la posicion vertical inesperadamente al recargar o previsualizar

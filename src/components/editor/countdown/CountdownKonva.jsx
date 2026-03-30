@@ -136,6 +136,7 @@ export default function CountdownKonva({
   hasDragged,
   onPredragVisualSelectionStart = null,
   onPredragVisualSelectionCancel = null,
+  selectionRuntime = null,
 }) {
   const rootRef = useRef(null);
   const pressSessionCounterRef = useRef(0);
@@ -574,9 +575,12 @@ export default function CountdownKonva({
       suppressClick: Boolean(press.suppressClick),
       globalDragging: Boolean(window._isDragging),
       reactDraggableEnabled: Boolean(reactDraggableEnabled),
-      selectedIds: Array.isArray(window._elementosSeleccionados)
-        ? [...window._elementosSeleccionados]
-        : [],
+      selectedIds:
+        typeof selectionRuntime?.readSnapshot === "function"
+          ? selectionRuntime.readSnapshot()?.selectedIds || []
+          : Array.isArray(window._elementosSeleccionados)
+            ? [...window._elementosSeleccionados]
+            : [],
       activeDebugState,
       rootNodeIdentity: getCountdownRepeatDragNodeIdentity(rootRef.current),
       ...payload,
@@ -587,6 +591,15 @@ export default function CountdownKonva({
   }, [obj.id, reactDraggableEnabled]);
 
   const getMirroredSelectedIds = useCallback(() => {
+    if (typeof selectionRuntime?.readSnapshot === "function") {
+      const runtimeSelectedIds = selectionRuntime.readSnapshot()?.selectedIds;
+      if (Array.isArray(runtimeSelectedIds)) {
+        return runtimeSelectedIds.filter(
+          (id) => id !== null && typeof id !== "undefined" && id !== ""
+        );
+      }
+    }
+
     if (typeof window === "undefined" || !Array.isArray(window._elementosSeleccionados)) {
       return [];
     }
@@ -594,7 +607,7 @@ export default function CountdownKonva({
     return window._elementosSeleccionados.filter(
       (id) => id !== null && typeof id !== "undefined" && id !== ""
     );
-  }, []);
+  }, [selectionRuntime]);
 
   const getEffectiveSelectionState = useCallback(() => {
     const runtimeSelectedIds = getMirroredSelectedIds();

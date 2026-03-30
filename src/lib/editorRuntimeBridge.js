@@ -4,6 +4,9 @@ import {
   readEditorRenderSnapshot,
 } from "./editorSnapshotAdapter.js";
 import {
+  readEditorSelectionRuntimeSnapshot,
+} from "./editorSelectionRuntime.js";
+import {
   EDITOR_RUNTIME_COMPATIBILITY_CONTRACT,
 } from "./editorBridgeContracts.js";
 export { EDITOR_RUNTIME_COMPATIBILITY_CONTRACT } from "./editorBridgeContracts.js";
@@ -122,12 +125,13 @@ export function readEditorSelectionSnapshot(targetWindow) {
     };
   }
 
+  const runtimeSnapshot = readEditorSelectionRuntimeSnapshot(resolvedWindow);
   return {
-    selectedIds: Array.isArray(resolvedWindow._elementosSeleccionados)
-      ? [...resolvedWindow._elementosSeleccionados]
+    selectedIds: Array.isArray(runtimeSnapshot?.selectedIds)
+      ? [...runtimeSnapshot.selectedIds]
       : [],
-    galleryCell: asObject(resolvedWindow._celdaGaleriaActiva)
-      ? { ...resolvedWindow._celdaGaleriaActiva }
+    galleryCell: asObject(runtimeSnapshot?.galleryCell)
+      ? { ...runtimeSnapshot.galleryCell }
       : null,
   };
 }

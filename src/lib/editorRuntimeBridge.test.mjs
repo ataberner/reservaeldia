@@ -13,6 +13,7 @@ import {
   readEditorSelectionSnapshot,
 } from "./editorRuntimeBridge.js";
 import { syncEditorSnapshotRenderState } from "./editorSnapshotAdapter.js";
+import { syncEditorSelectionRenderState } from "./editorSelectionRuntime.js";
 
 test("editor runtime bridge resolves bound canvasEditor methods and stage refs", () => {
   const fakeWindow = {
@@ -193,6 +194,41 @@ test("editor runtime bridge exposes documented compatibility globals and cloned 
     galleryCell: {
       objId: "gallery-1",
       index: 2,
+    },
+  });
+});
+
+test("editor runtime bridge prefers the selection runtime surface over legacy globals", () => {
+  const fakeWindow = {
+    _elementosSeleccionados: ["legacy-obj"],
+    _celdaGaleriaActiva: {
+      objId: "legacy-gallery",
+      index: 1,
+    },
+  };
+
+  syncEditorSelectionRenderState(
+    {
+      selectedIds: ["runtime-obj"],
+      preselectedIds: ["pre-1"],
+      galleryCell: {
+        objId: "runtime-gallery",
+        index: 4,
+      },
+      marquee: {
+        active: true,
+        start: { x: 0, y: 0 },
+        area: { x: 0, y: 0, width: 5, height: 6 },
+      },
+    },
+    fakeWindow
+  );
+
+  assert.deepEqual(readEditorSelectionSnapshot(fakeWindow), {
+    selectedIds: ["runtime-obj"],
+    galleryCell: {
+      objId: "runtime-gallery",
+      index: 4,
     },
   });
 });

@@ -157,6 +157,25 @@ Current selection state in `CanvasEditor.jsx`:
 - `inicioSeleccion`
 - `areaSeleccion`
 
+### Current Runtime Behavior
+React state in `CanvasEditor.jsx` still owns the rendered selection state, but the editor now also maintains an internal selection runtime through `useCanvasEditorSelectionRuntime` and `src/lib/editorSelectionRuntime.js`.
+
+Current internal selection runtime snapshot includes:
+
+- `selectedIds`
+- `preselectedIds`
+- `galleryCell`
+- `marquee`
+- `pendingDragSelection`
+- `dragVisualSelection`
+
+Current behavior versus target architecture:
+
+- current behavior: React remains the render source of truth, while the internal selection runtime is the preferred runtime read/write surface for selection-critical interaction state
+- target architecture: continue shrinking direct `window._*` interaction reads, but legacy mirrors and fallbacks still remain in the active runtime for compatibility
+
+The current clear-selection policy is also centralized behind named intents in `selectionClearPolicy`, but those intents still resolve back into the same React state plus runtime snapshot updates.
+
 ### Single Selection
 Single selection is handled through `handleElementSelectIntent` inside the stage composer and gesture handling inside `ElementoCanvasRenderer`.
 
@@ -178,14 +197,25 @@ Marquee behavior:
 - While moving, it computes `elementosPreSeleccionados`.
 - On release, it promotes intersecting objects into `elementosSeleccionados`.
 - Line objects are tested with dedicated line intersection logic instead of regular bounding boxes.
+- Marquee reset and clear-selection behavior now go through shared named intents, but the rendered marquee rect and preselection membership are still driven by React state in `CanvasEditor.jsx`.
 
 ### Transformer and Selection UI
 Selection affects UI in different ways depending on element type:
 
-- Non-line selections use `SelectionTransformer`.
-- Line selections do not attach to the transformer; they render `LineControls` instead.
+- Multi-selection of non-line objects still uses `SelectionTransformer`; the component keeps the actual Konva attach/detach, transform lifecycle, and type-specific commit rules.
+- Any selection containing a line stays off the generic transformer path. A single selected line can render `LineControls`, while line bounds still use `SelectionBoundsIndicator`.
+- Stage-level visual-selection mode decisions are now centralized in `selectionVisualModes`, but drawing is still split across the composer, transformer, bounds indicator, and line controls.
+- Marquee preview is still a stage rectangle plus per-object preselection styling in the renderers.
 - While inline editing is active, the main transformer is suppressed.
-- During drag-overlay phases, the transformer can be hidden or detached temporarily to avoid visual glitches and stale attachment state.
+- During predrag or coordinated drag-settling phases, a drag-layer `SelectionBoundsIndicator` can temporarily replace or suppress transformer visuals.
+
+### Pending Drag And Drag Visual Selection
+Same-gesture select-and-drag still depends on transient runtime state.
+
+- `pendingDragSelection` tracks the object id plus phase used to bridge selection and drag decisions.
+- `dragVisualSelection` tracks the ids that should drive the drag overlay and whether the editor is still in the predrag visual phase.
+- `CanvasStageContentComposer` still owns the live drag-visual overlay state locally, but mirrors it into the internal selection runtime so transformer and bridge reads can reason about the same interaction snapshot.
+- `pendingDragSelection` is still mirrored into legacy globals for compatibility. `dragVisualSelection` is intentionally kept internal to the runtime snapshot and stage state; there is no formal `window._dragVisualSelection` contract.
 
 ## 5. Transformations
 
@@ -455,11 +485,11 @@ The current editor is functional, but several areas are tightly coupled and frag
 
 - `CanvasEditor.jsx` is still the main orchestration surface and owns many interacting state domains.
 - Selection, drag handoff, and inline text intent are tightly coupled. The current runtime uses pending selection phases and release guards to decide whether a gesture should select, drag, or enter inline edit.
-- Group drag depends on shared runtime globals and legacy compatibility behavior, not just local React state.
+- The internal selection runtime reduced direct selection/global coupling, but group drag and some interaction timing still depend on shared runtime globals and legacy compatibility behavior, not just local React state.
 - `SelectionTransformer` is heavily specialized by element type. Text resize, image resize, image rotation, countdown resize, and gallery resize do not share the same commit rules.
 - Drag-capable element families do not all finalize through one persistence branch. Generic objects, galleries, and countdowns each have their own commit path.
 - Persistence ordering is safer than it used to be because writes share one FIFO, but save semantics are still split between debounced whole-draft sync and direct section mutations.
-- Hover, transformer visibility, drag overlays, and guide lines are actively suppressed or deferred during interaction for performance reasons.
+- Hover, transformer visibility, drag overlays, guide lines, and transformer restore-after-settle timing are actively suppressed or deferred during interaction for performance reasons.
 - Section auto-selection and auto-scroll during section reorder are coupled to viewport calculations and animation timing.
 - The editor still depends on window bridges and custom events for sidebar and external panel coordination.
 
@@ -531,6 +561,20 @@ Important behavior:
 - section snapshots are sorted by `orden`
 - legacy `window._objetosActuales` / `window._seccionesOrdenadas` fallback still exists for migration compatibility
 
+### Internal Selection Runtime
+The editor now maintains an internal selection runtime through `useCanvasEditorSelectionRuntime` and `src/lib/editorSelectionRuntime.js`.
+
+Current role:
+
+- preferred internal runtime surface for committed selection, preselection, marquee state, gallery cell state, pending drag selection, and drag visual selection
+- immediate read/write surface for selection-sensitive interaction code that cannot wait for React reconciliation during drag handoff
+- source used by `readEditorSelectionSnapshot()` before legacy `window._*` fallbacks
+
+Important boundary:
+
+- this runtime is real and active, but it is still an internal editor surface, not a documented public bridge for external consumers
+- `useCanvasEditorGlobalsBridge` continues to synchronize render-state globals and compatibility events, but committed selection mirroring itself now comes from the selection runtime
+
 ### Other window helpers
 The current runtime also exposes standalone helpers outside `window.canvasEditor`, including:
 
@@ -544,11 +588,16 @@ The formalized legacy-compatible mirrored globals are grouped like this:
 
 - render state: `window._objetosActuales`, `window._seccionesOrdenadas`, `window._rsvpConfigActual`, `window._giftConfigActual`, `window._giftsConfigActual`
 - editor session: `window._draftTipoInvitacion`, `window._tipoInvitacionActual`, `window._seccionActivaId`, `window._lastSeccionActivaId`
-- selection: `window._elementosSeleccionados`, `window._celdaGaleriaActiva`
+- selection: `window._elementosSeleccionados`, `window._celdaGaleriaActiva`, `window._pendingDragSelectionId`, `window._pendingDragSelectionPhase`
 - interaction: `window._elementRefs`, `window.setHoverIdGlobal`, `window._isDragging`, `window._resizeData`
 - group drag: `window._groupDragSession`, `window._grupoLider`, `window._grupoElementos`, `window._grupoSeguidores`, `window._dragStartPos`, `window._dragInicial`, `window._groupPreviewLastDelta`
 
 These globals are used by drag, selection, external panels, and compatibility bridges.
+
+Current runtime behavior:
+
+- `_elementosSeleccionados`, `_celdaGaleriaActiva`, `_pendingDragSelectionId`, and `_pendingDragSelectionPhase` are now compatibility mirrors or fallbacks for the internal selection runtime, not the preferred internal selection authority
+- drag visual selection does not have a formal mirrored global; it remains internal to the stage runtime and selection runtime snapshot
 
 Not part of the formal compatibility contract:
 

@@ -75,6 +75,7 @@ export default function LineControls({
   isDragGrupalActive = false,
   elementosSeleccionados = [],
   isMobile = false,
+  selectionRuntime = null,
 }) {
   const [draggingPoint, setDraggingPoint] = useState(null);
   const [lineBeingDragged, setLineBeingDragged] = useState(false);
@@ -90,6 +91,18 @@ export default function LineControls({
   const metricsIndicatorBgRef = useRef(null);
   const metricsIndicatorTextRef = useRef(null);
   const dragGuideLineRef = useRef(null);
+  const readRuntimeSelectedIds = useCallback(() => {
+    if (typeof selectionRuntime?.readSnapshot === "function") {
+      const runtimeSelectedIds = selectionRuntime.readSnapshot()?.selectedIds;
+      if (Array.isArray(runtimeSelectedIds)) {
+        return runtimeSelectedIds.filter(Boolean);
+      }
+    }
+
+    return Array.isArray(window._elementosSeleccionados)
+      ? window._elementosSeleccionados.filter(Boolean)
+      : [];
+  }, [selectionRuntime]);
   const drawFrameRef = useRef(null);
 
   const isTouchLike = useIsTouchLike(isMobile);
@@ -129,7 +142,7 @@ export default function LineControls({
     return () => {
       nodeRef.off("dragmove", syncPos);
     };
-  }, [isValidLine, nodeRef]);
+  }, [isValidLine, nodeRef, readRuntimeSelectedIds]);
 
   useEffect(() => {
     if (!isValidLine || !lineId) {
@@ -150,7 +163,7 @@ export default function LineControls({
       lcLog("[LINE CONTROLS] Drag start", lineId);
       setLineBeingDragged(true);
 
-      const selectedIds = window._elementosSeleccionados || [];
+      const selectedIds = readRuntimeSelectedIds();
       if (selectedIds.length > 1 && selectedIds.includes(lineId)) {
         try {
           const groupDragResult = startDragGrupalLider(event, lineElement);

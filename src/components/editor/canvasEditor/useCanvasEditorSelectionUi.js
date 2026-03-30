@@ -18,13 +18,7 @@ export default function useCanvasEditorSelectionUi({
   setMostrarSubmenuCapa,
   setMostrarSelectorFuente,
   setMostrarSelectorTamano,
-  setElementosSeleccionados,
-  setElementosPreSeleccionados,
-  setSeleccionActiva,
-  setInicioSeleccion,
-  setAreaSeleccion,
-  setBackgroundEditSectionId,
-  setIsBackgroundEditInteracting,
+  selectionClearPolicy,
 }) {
   const setHoverId = useCallback(
     (nextHoverId) => {
@@ -61,23 +55,11 @@ export default function useCanvasEditorSelectionUi({
   ]);
 
   const clearCanvasSelectionUi = useCallback(() => {
-    setElementosSeleccionados([]);
-    setElementosPreSeleccionados([]);
-    setSeleccionActiva(false);
-    setInicioSeleccion(null);
-    setAreaSeleccion(null);
-    setBackgroundEditSectionId(null);
-    setIsBackgroundEditInteracting(false);
+    selectionClearPolicy?.clearCanvasSelection?.();
     cerrarMenusFlotantes();
   }, [
+    selectionClearPolicy,
     cerrarMenusFlotantes,
-    setAreaSeleccion,
-    setBackgroundEditSectionId,
-    setElementosPreSeleccionados,
-    setElementosSeleccionados,
-    setInicioSeleccion,
-    setIsBackgroundEditInteracting,
-    setSeleccionActiva,
   ]);
 
   const isHoverSuppressed = isGlobalCanvasInteractionActive();

@@ -27,8 +27,6 @@ export default function useCanvasEditorGlobalsBridge({
   useEffect(() => {
     const seccionesOrdenadas = [...secciones].sort((a, b) => a.orden - b.orden);
 
-    // Compatibility boundary: drag/sidebar/preview code still reads these globals.
-    window._elementosSeleccionados = elementosSeleccionados;
     window._objetosActuales = objetos;
     window._elementRefs = elementRefs.current;
     window._seccionesOrdenadas = seccionesOrdenadas;
@@ -84,7 +82,6 @@ export default function useCanvasEditorGlobalsBridge({
   }, [celdaGaleriaActiva, elementosSeleccionados, objetos, setCeldaGaleriaActiva]);
 
   useEffect(() => {
-    window._celdaGaleriaActiva = celdaGaleriaActiva || null;
     window.dispatchEvent(
       new CustomEvent(EDITOR_BRIDGE_EVENTS.GALLERY_CELL_CHANGE, {
         detail: buildEditorGalleryCellChangeDetail(celdaGaleriaActiva),

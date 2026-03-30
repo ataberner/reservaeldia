@@ -1,7 +1,7 @@
 # Reglas del Sistema de Texto del Editor Visual
 
 Estado: vigente (Etapa 3)  
-Fecha: 2026-03-07  
+Fecha: 2026-03-30  
 Alcance: render de texto Konva, edición inline DOM, handoff Konva↔DOM, métricas/layout, commit policy, bridges `window`, debug/trace y coexistencia `legacy` + `phase_atomic_v2`.
 
 ---
@@ -45,9 +45,9 @@ Interacciones clave:
 | `metrics-layout` | Medición de texto, normalización de font style/weight, centrado y métricas reutilizables | Decisiones de UX, commits, side effects de edición |
 | `commit-policy` | Reglas de `onInlineFinish`, construcción de patch final, orden de commit y cleanup | Render, resolver visibilidad Konva/DOM, debug visual |
 | `adapters/konva-dom` | Traducción de estados Konva↔DOM (visibilidad/proyección/criterios de edición visible) | Lógica de negocio de commit o toolbar |
-| `bridges/window` | Único punto para globals `window` y contratos legacy/harness | Render, métricas, transformaciones de dominio |
+| `bridges/window` | Punto preferido para contratos formales `window` y compatibilidad legacy/harness | Render, métricas, transformaciones de dominio |
 | `debug` | Emisión de trazas, snapshots, `runMatrix/clearTrace`, diagnósticos de alineación | Cambiar estado productivo o corregir flujo |
-| `render/konva` | Dibujo de texto/elementos, ocultar texto durante inline edit según adapter, transformer/bounds | Persistencia final de texto, escritura directa de globals |
+| `render/konva` | Dibujo de texto/elementos, ocultar texto durante inline edit según adapter, transformer/bounds y lecturas legacy de interacción ya existentes | Persistencia final de texto, definición de nuevos contratos globales |
 | `render/dom-overlay` | Input inline DOM, caret/selección, layout de overlay y eventos inline | Persistencia final, reglas de commit |
 | `CanvasEditor` | Orquestación, wiring de dependencias, composición de facades/hooks | Implementar lógica profunda de métricas/commit/debug en línea |
 
@@ -138,7 +138,7 @@ Regla transversal de estado:
 
 - Agregar nudges mágicos de alineación en más de un módulo.
 - Duplicar medición de texto en runtime, toolbar y render con fórmulas distintas.
-- Escribir lógica crítica directamente contra `window` fuera de `bridges/window`.
+- Introducir nuevas escrituras criticas directamente contra `window` fuera de `bridges/window`; los fallbacks legacy ya existentes en render/konva son deuda controlada, no patron a expandir.
 - Mezclar UI, métricas y commit en una misma función grande.
 - Introducir nuevas ramas legacy sin encapsulación y contrato claro.
 - Corregir síntomas visuales tocando timing sin diagnóstico de fuente de verdad.
@@ -206,7 +206,7 @@ Si alguna respuesta es “no”, el cambio no está listo para aprobación.
 4. Contenido persistible durante inline: `editing.value`; caret/selección: overlay DOM.
 5. Commit final de texto solo en `commit-policy`.
 6. Métricas y centrado solo en `metrics-layout`.
-7. Globals `window` solo vía `bridges/window`.
+7. Nuevos contratos `window` solo via `bridges/window`; fallbacks legacy ya existentes de seleccion/drag no son API nueva.
 8. Debug observa; runtime decide.
 9. Mantener compatibilidad `legacy` + `phase_atomic_v2` hasta retiro planificado.
 10. No duplicar fórmulas tipográficas (`lineHeight`, spacing, centrado).
@@ -231,3 +231,8 @@ Si alguna respuesta es “no”, el cambio no está listo para aprobación.
 3. Para consumers externos:
 - preview y otras lecturas fuera del editor deben preferir snapshot adapters o bridges formales
 - los globals legacy se consideran fallback de migracion, no surface recomendada para nuevas dependencias
+
+4. Comportamiento runtime actual para seleccion e interaccion:
+- `render/konva` y `SelectionTransformer` deben preferir la selection runtime interna del editor y los helpers de visual mode antes que globals legacy cuando leen seleccion, pending drag o drag visual state
+- `_elementosSeleccionados`, `_pendingDragSelectionId` y `_pendingDragSelectionPhase` siguen existiendo como fallback de compatibilidad durante drag/selection/transform
+- esto describe el runtime actual, no la arquitectura destino; la deuda restante vive en timing de interaccion y fallbacks de compatibilidad, no en nuevos contratos recomendados

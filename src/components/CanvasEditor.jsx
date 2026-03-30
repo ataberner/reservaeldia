@@ -62,6 +62,7 @@ import useCanvasEditorRsvpBridge from "@/components/editor/canvasEditor/useCanva
 import useCanvasEditorRuntimeEffects from "@/components/editor/canvasEditor/useCanvasEditorRuntimeEffects";
 import useCanvasEditorSectionBackgroundUi from "@/components/editor/canvasEditor/useCanvasEditorSectionBackgroundUi";
 import useCanvasEditorGiftBridge from "@/components/editor/canvasEditor/useCanvasEditorGiftBridge";
+import useCanvasEditorSelectionRuntime from "@/components/editor/canvasEditor/useCanvasEditorSelectionRuntime";
 import useCanvasEditorSelectionUi from "@/components/editor/canvasEditor/useCanvasEditorSelectionUi";
 import useCanvasEditorSectionUiSync from "@/components/editor/canvasEditor/useCanvasEditorSectionUiSync";
 import useCanvasEditorExternalCallbacks from "@/components/editor/canvasEditor/useCanvasEditorExternalCallbacks";
@@ -288,6 +289,49 @@ export default function CanvasEditor({
     setSectionDecorationEdit,
   });
   const {
+    readSnapshot: readSelectionRuntimeSnapshot,
+    setCommittedSelection: setRuntimeCommittedSelection,
+    toggleCommittedSelection: toggleRuntimeCommittedSelection,
+    setPendingDragSelection: setRuntimePendingDragSelection,
+    setDragVisualSelection: setRuntimeDragVisualSelection,
+    clearTransientState: clearRuntimeSelectionTransientState,
+    clearSelectionState,
+    clearPolicy: selectionClearPolicy,
+  } = useCanvasEditorSelectionRuntime({
+    elementosSeleccionados,
+    elementosPreSeleccionados,
+    seleccionActiva,
+    inicioSeleccion,
+    areaSeleccion,
+    celdaGaleriaActiva,
+    setElementosSeleccionados,
+    setElementosPreSeleccionados,
+    setSeleccionActiva,
+    setInicioSeleccion,
+    setAreaSeleccion,
+    setBackgroundEditSectionId,
+    setIsBackgroundEditInteracting,
+  });
+  const selectionRuntime = useMemo(() => ({
+    readSnapshot: readSelectionRuntimeSnapshot,
+    setCommittedSelection: setRuntimeCommittedSelection,
+    toggleCommittedSelection: toggleRuntimeCommittedSelection,
+    setPendingDragSelection: setRuntimePendingDragSelection,
+    setDragVisualSelection: setRuntimeDragVisualSelection,
+    clearTransientState: clearRuntimeSelectionTransientState,
+    clearSelectionState,
+    clearPolicy: selectionClearPolicy,
+  }), [
+    clearRuntimeSelectionTransientState,
+    selectionClearPolicy,
+    clearSelectionState,
+    readSelectionRuntimeSnapshot,
+    setRuntimeCommittedSelection,
+    setRuntimeDragVisualSelection,
+    setRuntimePendingDragSelection,
+    toggleRuntimeCommittedSelection,
+  ]);
+  const {
     setHoverId,
     cerrarMenusFlotantes,
     clearCanvasSelectionUi,
@@ -299,13 +343,7 @@ export default function CanvasEditor({
     setMostrarSubmenuCapa,
     setMostrarSelectorFuente,
     setMostrarSelectorTamano,
-    setElementosSeleccionados,
-    setElementosPreSeleccionados,
-    setSeleccionActiva,
-    setInicioSeleccion,
-    setAreaSeleccion,
-    setBackgroundEditSectionId,
-    setIsBackgroundEditInteracting,
+    selectionClearPolicy,
   });
   const supportsPointerEvents =
     typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
@@ -982,15 +1020,12 @@ export default function CanvasEditor({
     setSecciones,
     setObjetos,
     setElementosSeleccionados,
-    setElementosPreSeleccionados,
-    setSeleccionActiva,
-    setInicioSeleccion,
-    setAreaSeleccion,
     setBackgroundEditSectionId,
     setIsBackgroundEditInteracting,
     setSectionDecorationEdit,
     setSeccionActivaId,
     setMostrarPanelZ,
+    selectionClearPolicy,
   });
 
   const {
@@ -1309,6 +1344,7 @@ export default function CanvasEditor({
     setAreaSeleccion,
     onSelectSeccion,
     cerrarMenusFlotantes,
+    selectionClearPolicy,
   });
 
   const mobileCanvasToolbarOffset = mobileTextToolbarVisible
@@ -1506,6 +1542,7 @@ export default function CanvasEditor({
                 normalizarMedidasGaleria={normalizarMedidasGaleria}
                 setElementosSeleccionados={setElementosSeleccionados}
                 setSecciones={setSecciones}
+                selectionRuntime={selectionRuntime}
                 sectionDecorationEdit={sectionDecorationEdit}
                 setSectionDecorationEdit={setSectionDecorationEdit}
                 onRegisterBackgroundEditNode={registerBackgroundEditNode}

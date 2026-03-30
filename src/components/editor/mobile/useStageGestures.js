@@ -41,6 +41,7 @@ export default function useStageGestures({
   setAreaSeleccion,
   onSelectSeccion,
   cerrarMenusFlotantes,
+  selectionClearPolicy,
 }) {
   const touchGestureRef = useRef({
     startX: 0,
@@ -73,14 +74,12 @@ export default function useStageGestures({
   );
 
   const resetSelectionMarquee = useCallback(() => {
-    setElementosPreSeleccionados([]);
-    setSeleccionActiva(false);
-    setAreaSeleccion(null);
+    selectionClearPolicy?.resetMarquee?.();
 
     if (window._selectionThrottle) window._selectionThrottle = false;
     if (window._boundsUpdateThrottle) window._boundsUpdateThrottle = false;
     window._lineIntersectionCache = {};
-  }, [setAreaSeleccion, setElementosPreSeleccionados, setSeleccionActiva]);
+  }, [selectionClearPolicy]);
 
   const clearSelectionUI = useCallback(() => {
     if (
@@ -90,9 +89,9 @@ export default function useStageGestures({
       return;
     }
     if (isPostDragSelectionGuardActive()) return;
-    setElementosSeleccionados([]);
+    selectionClearPolicy?.clearForStageTap?.();
     cerrarMenusFlotantes?.();
-  }, [setElementosSeleccionados, cerrarMenusFlotantes]);
+  }, [cerrarMenusFlotantes, selectionClearPolicy]);
 
   const onMouseDown = useCallback(
     (e) => {

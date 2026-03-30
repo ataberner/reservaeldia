@@ -99,6 +99,7 @@ export default function InlineEditorPortalView({
         data-inline-render-authority-phase={renderAuthorityPhase || "konva"}
         data-inline-caret-visible={caretVisible ? "true" : "false"}
         data-inline-editor="true"
+        data-preserve-inline-edit="true"
         data-inline-width-mode={normalizedWidthMode}
         data-inline-finish-mode={normalizedFinishMode}
         data-inline-box-debug={BOX_DEBUG_MODE ? "true" : "false"}

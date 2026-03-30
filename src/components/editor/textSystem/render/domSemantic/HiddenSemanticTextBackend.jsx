@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   getInlineKonvaProjectedRectViewport,
   resolveInlineKonvaTextNode,
@@ -25,11 +25,17 @@ import {
 import {
   resolveInlineDomTextFlow,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorWrapParity";
+import useInlineViewportSyncRevision from "@/components/editor/overlays/inlineEditor/useInlineViewportSyncRevision";
 import {
   emitSemanticCaretDebug,
   rectToSemanticCaretPayload,
   roundSemanticCaretMetric,
 } from "@/components/editor/textSystem/debug";
+import {
+  emitInlineCaretScrollDebugEvent,
+  isInlineCaretScrollDebugEnabled,
+} from "@/components/editor/textSystem/debug/inlineCaretScrollDebug";
+import { resolveHiddenSemanticVisualMode } from "@/components/editor/textSystem/render/domSemantic/hiddenSemanticVisualMode";
 
 function readNodeAttr(node, key, fallback = null) {
   if (!node) return fallback;
@@ -87,6 +93,102 @@ function areProjectionRectsEqual(nextRect, prevRect) {
   });
 }
 
+function buildSemanticBackendActiveElementSnapshot(editorEl, rootEl) {
+  if (typeof document === "undefined") return null;
+  const activeElement = document.activeElement || null;
+  return {
+    nodeName: activeElement?.nodeName || null,
+    role:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("role")
+        : null,
+    dataInlineEditorContent:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("data-inline-editor-content")
+        : null,
+    dataInlineEditorEngine:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("data-inline-editor-engine")
+        : null,
+    isEditorActive: Boolean(editorEl && activeElement === editorEl),
+    isWithinRoot: Boolean(
+      rootEl &&
+        activeElement &&
+        typeof rootEl.contains === "function" &&
+        rootEl.contains(activeElement)
+    ),
+  };
+}
+
+function buildSemanticBackendSelectionSnapshot(editorEl) {
+  if (!editorEl || typeof window === "undefined") {
+    return {
+      rangeCount: 0,
+      inEditor: false,
+      isCollapsed: null,
+      anchorOffset: null,
+      focusOffset: null,
+      anchorNodeName: null,
+      focusNodeName: null,
+      rangeRectViewport: null,
+      firstClientRectViewport: null,
+    };
+  }
+
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount <= 0) {
+    return {
+      rangeCount: 0,
+      inEditor: false,
+      isCollapsed: null,
+      anchorOffset: null,
+      focusOffset: null,
+      anchorNodeName: null,
+      focusNodeName: null,
+      rangeRectViewport: null,
+      firstClientRectViewport: null,
+    };
+  }
+
+  let range = null;
+  try {
+    range = selection.getRangeAt(0);
+  } catch {
+    range = null;
+  }
+  let firstClientRect = null;
+  try {
+    firstClientRect = Array.from(range?.getClientRects?.() || [])[0] || null;
+  } catch {
+    firstClientRect = null;
+  }
+  const anchorNode = selection.anchorNode || null;
+  const focusNode = selection.focusNode || null;
+  const inEditor = Boolean(
+    anchorNode &&
+      focusNode &&
+      editorEl.contains(anchorNode) &&
+      editorEl.contains(focusNode)
+  );
+
+  return {
+    rangeCount: Number(selection.rangeCount || 0),
+    inEditor,
+    isCollapsed:
+      typeof selection.isCollapsed === "boolean" ? selection.isCollapsed : null,
+    anchorOffset: Number.isFinite(Number(selection.anchorOffset))
+      ? Number(selection.anchorOffset)
+      : null,
+    focusOffset: Number.isFinite(Number(selection.focusOffset))
+      ? Number(selection.focusOffset)
+      : null,
+    anchorNodeName: anchorNode?.nodeName || null,
+    focusNodeName: focusNode?.nodeName || null,
+    rangeRectViewport: rectToSemanticCaretPayload(range?.getBoundingClientRect?.()),
+    firstClientRectViewport: rectToSemanticCaretPayload(firstClientRect),
+  };
+}
+
 function HiddenSemanticTextBackend({
   editing,
   node,
@@ -105,6 +207,17 @@ function HiddenSemanticTextBackend({
   const editingId = editing?.id || null;
   const rawValue = String(editing?.value ?? "");
   const sessionValue = rawValue;
+  const { viewportSyncRevision } = useInlineViewportSyncRevision({
+    isPhaseAtomicV2: true,
+  });
+
+  useEffect(() => {
+    emitInlineCaretScrollDebugEvent("inline-runtime-path", {
+      component: "HiddenSemanticTextBackend",
+      editingId,
+      nativeCaretVisible,
+    });
+  }, [editingId, nativeCaretVisible]);
 
   const stage = node?.getStage?.() || null;
   const textNode = useMemo(
@@ -113,11 +226,11 @@ function HiddenSemanticTextBackend({
   );
   const stageMetrics = useMemo(
     () => resolveInlineStageViewportMetrics(stage, { scaleVisual }),
-    [scaleVisual, stage]
+    [scaleVisual, stage, viewportSyncRevision]
   );
   const konvaProjection = useMemo(
     () => getInlineKonvaProjectedRectViewport(textNode, stage, scaleVisual),
-    [rawValue, scaleVisual, stage, textNode]
+    [rawValue, scaleVisual, stage, textNode, viewportSyncRevision]
   );
   const effectiveKonvaProjection =
     liveKonvaProjection?.konvaProjectedRectViewport &&
@@ -220,7 +333,14 @@ function HiddenSemanticTextBackend({
         totalScaleY: Number(nextProjection?.totalScaleY || 1),
       };
     });
-  }, [editingId, rawValue, scaleVisual, stage, textNode]);
+  }, [
+    editingId,
+    rawValue,
+    scaleVisual,
+    stage,
+    textNode,
+    viewportSyncRevision,
+  ]);
 
   const hasRenderableBackend = Boolean(
     editingId && node && textNode && stageMetrics?.stageRect
@@ -240,8 +360,105 @@ function HiddenSemanticTextBackend({
     Math.abs(Number(nodeProps.scaleX || 1) - 1) < 0.01 &&
     Math.abs(Number(nodeProps.scaleY || 1) - 1) < 0.01;
   const usesTransformedBackendLayout = !useProjectedBoxLayout;
+  const hiddenSemanticVisualMode = useMemo(
+    () =>
+      resolveHiddenSemanticVisualMode({
+        usesTransformedBackendLayout,
+      }),
+    [usesTransformedBackendLayout]
+  );
+  const shouldUseNativeSelectionVisuals = Boolean(
+    hiddenSemanticVisualMode.shouldUseNativeSelectionVisuals
+  );
   const backendMetricScaleX = useProjectedBoxLayout ? totalScaleX : 1;
   const backendMetricScaleY = useProjectedBoxLayout ? totalScaleY : 1;
+  const emitHiddenSemanticBackendDebug = useCallback((eventName, extra = {}) => {
+    if (!isInlineCaretScrollDebugEnabled()) return null;
+    const rootEl = overlayRootRef.current;
+    const editorEl = editableRef.current;
+    const computedStyle = (() => {
+      try {
+        return editorEl ? window.getComputedStyle(editorEl) : null;
+      } catch {
+        return null;
+      }
+    })();
+    return emitInlineCaretScrollDebugEvent(eventName, {
+      component: "HiddenSemanticTextBackend",
+      editingId,
+      renderMode: {
+        useProjectedBoxLayout,
+        usesTransformedBackendLayout,
+        selectionVisualMode: hiddenSemanticVisualMode.selectionVisualMode,
+        nativeCaretVisible,
+        backendRenderCaretNatively: Boolean(shouldUseNativeSelectionVisuals),
+        backendTextTransparent:
+          (computedStyle?.color || null) === "rgba(0, 0, 0, 0)" ||
+          (computedStyle?.color || null) === "transparent",
+      },
+      projectedRectViewport: rectToSemanticCaretPayload(projectedRect),
+      rects: {
+        rootRectViewport: rectToSemanticCaretPayload(
+          rootEl?.getBoundingClientRect?.() || null
+        ),
+        editorRectViewport: rectToSemanticCaretPayload(
+          editorEl?.getBoundingClientRect?.() || null
+        ),
+      },
+      styles: {
+        opacity: computedStyle?.opacity || null,
+        color: computedStyle?.color || null,
+        webkitTextFillColor: computedStyle?.WebkitTextFillColor || null,
+        caretColor: computedStyle?.caretColor || null,
+        pointerEvents: computedStyle?.pointerEvents || null,
+        userSelect: computedStyle?.userSelect || null,
+      },
+      focus: buildSemanticBackendActiveElementSnapshot(editorEl, rootEl),
+      selection: buildSemanticBackendSelectionSnapshot(editorEl),
+      ...extra,
+    });
+  }, [
+    editingId,
+    hiddenSemanticVisualMode.selectionVisualMode,
+    nativeCaretVisible,
+    projectedRect,
+    shouldUseNativeSelectionVisuals,
+    useProjectedBoxLayout,
+    usesTransformedBackendLayout,
+  ]);
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    if (!hasRenderableBackend) return undefined;
+    emitHiddenSemanticBackendDebug("semantic-backend-baseline", {
+      step: "baseline",
+      frameOrder: "effect",
+    });
+    return undefined;
+  }, [editingId, emitHiddenSemanticBackendDebug, hasRenderableBackend]);
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    if (typeof window === "undefined") return undefined;
+
+    const handleScroll = () => {
+      emitHiddenSemanticBackendDebug("semantic-backend-scroll", {
+        step: "before-scroll",
+        frameOrder: "scroll-event",
+      });
+      window.requestAnimationFrame(() => {
+        emitHiddenSemanticBackendDebug("semantic-backend-after-scroll", {
+          step: "after-scroll",
+          frameOrder: "raf-1",
+        });
+      });
+    };
+
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [editingId, emitHiddenSemanticBackendDebug]);
 
   useEffect(() => {
     if (!registerBackend) return undefined;
@@ -254,12 +471,12 @@ function HiddenSemanticTextBackend({
       });
       return undefined;
     }
-    registerBackend?.({
-      rootEl: overlayRootRef.current,
-      editorEl: editableRef.current,
-      preserveCenterDuringEdit,
-      renderCaretNatively: usesTransformedBackendLayout,
-    });
+      registerBackend?.({
+        rootEl: overlayRootRef.current,
+        editorEl: editableRef.current,
+        preserveCenterDuringEdit,
+        renderCaretNatively: shouldUseNativeSelectionVisuals,
+      });
     return () => {
       registerBackend?.({
         rootEl: null,
@@ -273,7 +490,7 @@ function HiddenSemanticTextBackend({
     editingId,
     preserveCenterDuringEdit,
     registerBackend,
-    usesTransformedBackendLayout,
+    shouldUseNativeSelectionVisuals,
   ]);
 
   const fontSizePx = Math.max(
@@ -534,6 +751,7 @@ function HiddenSemanticTextBackend({
       },
       backend: {
         usesTransformedBackendLayout,
+        selectionVisualMode: hiddenSemanticVisualMode.selectionVisualMode,
       },
       stage: {
         stageRectViewport: rectToSemanticCaretPayload(stageMetrics?.stageRect),
@@ -541,6 +759,9 @@ function HiddenSemanticTextBackend({
         totalScaleY: roundSemanticCaretMetric(totalScaleY),
         backendMetricScaleX: roundSemanticCaretMetric(backendMetricScaleX),
         backendMetricScaleY: roundSemanticCaretMetric(backendMetricScaleY),
+        viewportSyncRevision: Number.isFinite(Number(viewportSyncRevision))
+          ? Number(viewportSyncRevision)
+          : null,
       },
       typography: {
         fontFamily: nodeProps.fontFamily,
@@ -633,11 +854,13 @@ function HiddenSemanticTextBackend({
     stageMetrics?.stageRect,
     textAlign,
     textLineCount,
+    hiddenSemanticVisualMode.selectionVisualMode,
     usesTransformedBackendLayout,
     backendMetricScaleX,
     backendMetricScaleY,
     totalScaleX,
     totalScaleY,
+    viewportSyncRevision,
     useProjectedBoxLayout,
     verticalAlignOffsetPx,
     visualOffsetXPx,
@@ -693,6 +916,7 @@ function HiddenSemanticTextBackend({
             ref={editableRef}
             data-inline-editor-content="true"
             contentEditable
+            data-inline-selection-visual={hiddenSemanticVisualMode.selectionVisualMode}
             suppressContentEditableWarning
             spellCheck={false}
             role="textbox"
@@ -719,9 +943,10 @@ function HiddenSemanticTextBackend({
               boxSizing: "border-box",
               overflow: "visible",
               background: "transparent",
+              opacity: hiddenSemanticVisualMode.editorOpacity,
               color: "transparent",
               WebkitTextFillColor: "transparent",
-              caretColor: usesTransformedBackendLayout
+              caretColor: shouldUseNativeSelectionVisuals
                 ? (nativeCaretVisible ? nodeProps.fill : "transparent")
                 : "transparent",
               whiteSpace: domTextFlow.whiteSpace,

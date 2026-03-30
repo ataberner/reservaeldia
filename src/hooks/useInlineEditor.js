@@ -1,4 +1,7 @@
 import { useState, useCallback } from "react";
+import {
+  normalizeInlineEntrySelectionMode,
+} from "@/components/editor/textSystem/runtime/inlineEntrySelectionMode";
 
 function normalizeClientPoint(point) {
   const clientX = Number(point?.clientX);
@@ -14,17 +17,24 @@ export default function useInlineEditor() {
     id: null,
     value: "",
     initialCaretClientPoint: null,
+    entrySelectionMode: null,
   });
 
   const startEdit = useCallback(
-    (id, val, options = {}) =>
+    (id, val, options = {}) => {
+      const initialCaretClientPoint = normalizeClientPoint(
+        options?.initialCaretClientPoint
+      );
       setEditing({
         id,
         value: val,
-        initialCaretClientPoint: normalizeClientPoint(
-          options?.initialCaretClientPoint
+        initialCaretClientPoint,
+        entrySelectionMode: normalizeInlineEntrySelectionMode(
+          options?.entrySelectionMode,
+          { initialCaretClientPoint }
         ),
-      }),
+      });
+    },
     []
   );
   const updateEdit = useCallback(
@@ -37,6 +47,7 @@ export default function useInlineEditor() {
         id: null,
         value: "",
         initialCaretClientPoint: null,
+        entrySelectionMode: null,
       }),
     []
   );

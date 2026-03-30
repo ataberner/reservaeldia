@@ -314,6 +314,9 @@ export default function SelectionBounds({
   onTransform,
   onTransformInteractionStart = null,
   onTransformInteractionEnd = null,
+  editingId = null,
+  activeInlineEditingId = null,
+  requestInlineEditFinish = null,
   isDragging,
   isInteractionLocked = false,
   isMobile = false,
@@ -413,6 +416,10 @@ export default function SelectionBounds({
     selectedElements.length === 1 &&
     primerElemento?.tipo === "imagen" &&
     !primerElemento?.esFondo;
+  const hasActiveInlineEditingSession = Boolean(activeInlineEditingId);
+  const interactionLocked = Boolean(
+    isInteractionLocked || hasActiveInlineEditingSession
+  );
 
   const buildRotationPreviewSampleKey = (interactionId = null) =>
     `transform-rotate-preview:${interactionId || primerElemento?.id || "selection"}`;
@@ -647,7 +654,8 @@ export default function SelectionBounds({
       isResizeGestureActive: Boolean(isResizeGestureActive),
       isImageRotateGestureActive: Boolean(isImageRotateGestureActive),
       isTransformingResize: Boolean(isTransformingResizeRef.current),
-      isInteractionLocked: Boolean(isInteractionLocked),
+      isInteractionLocked: Boolean(interactionLocked),
+      activeInlineEditingId: activeInlineEditingId || null,
       dragSelectionOverlayVisible: Boolean(dragSelectionOverlayVisible),
     });
   }, [
@@ -670,7 +678,8 @@ export default function SelectionBounds({
     predragVisualSelectionActive,
     isResizeGestureActive,
     isImageRotateGestureActive,
-    isInteractionLocked,
+    interactionLocked,
+    activeInlineEditingId,
     dragSelectionOverlayVisible,
     primerElemento?.id,
     primerElemento?.tipo,
@@ -743,6 +752,7 @@ export default function SelectionBounds({
     dragSelectionOverlayVisible,
     dragSelectionOverlayVisualReady,
     shouldSuppressTransformerVisualsForDragOverlay,
+    interactionLocked,
     transformTick,
   ]);
 
@@ -754,7 +764,6 @@ export default function SelectionBounds({
     selectedElements.length > 0 &&
     !hayLineas &&
     elementosTransformables.length > 0;
-  const interactionLocked = Boolean(isInteractionLocked);
 
   const selectedGeomKey = elementosSeleccionadosData
     .map((o) =>
@@ -2403,6 +2412,7 @@ export default function SelectionBounds({
   // ðŸ”¥ Render
 
   if (
+    hasActiveInlineEditingSession ||
     shouldSuppressDuringDeferredDrag ||
     shouldHideTransformerDuringDrag
   ) {
@@ -2833,6 +2843,22 @@ export default function SelectionBounds({
         });
       }}
       onTransformStart={(e) => {
+        if (hasActiveInlineEditingSession) {
+          if (editingId && typeof requestInlineEditFinish === "function") {
+            requestInlineEditFinish("transform-start");
+          }
+          try {
+            e?.evt?.preventDefault?.();
+            e?.evt?.stopPropagation?.();
+          } catch {}
+          stopNativeTransformerIfActive();
+          resetTransformerGestureUiState({
+            syncOverlay: true,
+            clearRotatePreviewState: true,
+          });
+          transformerRef.current?.getLayer?.()?.batchDraw?.();
+          return;
+        }
         stopResizeHintPulse();
         isTransformingResizeRef.current = true;
         window._resizeData = { isResizing: true };

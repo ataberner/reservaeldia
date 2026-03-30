@@ -105,6 +105,7 @@ export default function UnifiedColorPicker({
   showEyeDropper = true,
   solidPresets = SOLID_COLOR_PRESETS,
   gradientPresets = GRADIENT_COLOR_PRESETS,
+  preserveInlineEdit = false,
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("solid");
@@ -315,6 +316,7 @@ export default function UnifiedColorPicker({
     <div
       ref={panelRef}
       data-preserve-canvas-selection="true"
+      data-preserve-inline-edit={preserveInlineEdit ? "true" : undefined}
       className="fixed z-[130]"
       style={{
         top: `${panelPosition.top}px`,

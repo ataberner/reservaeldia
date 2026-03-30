@@ -35,6 +35,13 @@ import {
 import {
   INLINE_CARET_BLINK_INTERVAL_MS,
 } from "@/components/editor/textSystem/render/inlineCaretStyle";
+import {
+  buildInlineEntrySelectionPlan,
+} from "@/components/editor/textSystem/runtime/inlineEntrySelectionMode";
+import {
+  emitInlineCaretScrollDebugEvent,
+  isInlineCaretScrollDebugEnabled,
+} from "@/components/editor/textSystem/debug/inlineCaretScrollDebug";
 
 function createEmptyDecorations() {
   return createEmptyTextSelectionGeometry();
@@ -201,6 +208,54 @@ function getSelectionRangeInsideEditor(editorEl) {
   return null;
 }
 
+function buildActiveElementSnapshot(editorEl, rootEl) {
+  if (typeof document === "undefined") return null;
+  const activeElement = document.activeElement || null;
+  return {
+    nodeName: activeElement?.nodeName || null,
+    role:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("role")
+        : null,
+    dataInlineEditorContent:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("data-inline-editor-content")
+        : null,
+    dataInlineEditorEngine:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("data-inline-editor-engine")
+        : null,
+    isEditorActive: Boolean(editorEl && activeElement === editorEl),
+    isWithinRoot: Boolean(
+      rootEl &&
+        activeElement &&
+        typeof rootEl.contains === "function" &&
+        rootEl.contains(activeElement)
+    ),
+  };
+}
+
+function buildDecorationsSnapshotPayload(decorations) {
+  const safeDecorations = decorations || createEmptyDecorations();
+  const selectionRects = Array.isArray(safeDecorations.selectionRects)
+    ? safeDecorations.selectionRects
+    : [];
+  return {
+    isActive: Boolean(safeDecorations.isActive),
+    isCollapsed: Boolean(safeDecorations.isCollapsed),
+    selectionRectsCount: selectionRects.length,
+    selectionBoundsStage: rectToSemanticCaretPayload(
+      safeDecorations.selectionBounds || null
+    ),
+    caretRectStage: rectToSemanticCaretPayload(safeDecorations.caretRect || null),
+    firstSelectionRectStage:
+      selectionRects.length > 0
+        ? rectToSemanticCaretPayload(selectionRects[0])
+        : null,
+    diagnostics: safeDecorations.diagnostics || null,
+  };
+}
+
 function isSelectionNavigationKey(key) {
   return (
     key === "ArrowLeft" ||
@@ -305,6 +360,10 @@ export default function useTextEditInteractionController({
   const [decorations, setDecorations] = useState(createEmptyDecorations);
   const [isFocused, setIsFocused] = useState(false);
   const [caretBlinkVisible, setCaretBlinkVisible] = useState(true);
+  const caretScrollBaselineRef = useRef({
+    editingId: null,
+    emitted: false,
+  });
 
   const editingId = editing?.id || null;
   const sessionValue = useMemo(
@@ -322,6 +381,67 @@ export default function useTextEditInteractionController({
     editing?.initialCaretClientPoint?.clientX,
     editing?.initialCaretClientPoint?.clientY,
   ]);
+  const entrySelectionPlan = useMemo(
+    () =>
+      buildInlineEntrySelectionPlan({
+        entrySelectionMode: editing?.entrySelectionMode,
+        initialCaretClientPoint,
+      }),
+    [editing?.entrySelectionMode, initialCaretClientPoint]
+  );
+
+  const emitCaretScrollControllerEvent = useCallback((eventName, extra = {}) => {
+    if (!isInlineCaretScrollDebugEnabled()) return null;
+    const rootEl = rootRef.current;
+    const editorEl = editorRef.current;
+    const currentDecorations = decorationsRef.current || createEmptyDecorations();
+    const renderCaretNatively = Boolean(backendMetaRef.current?.renderCaretNatively);
+    const controllerNativeCaretVisible = Boolean(
+      isFocusedRef.current &&
+      currentDecorations?.isCollapsed &&
+      caretBlinkVisibleRef.current
+    );
+    const selectionSnapshot = buildSelectionSnapshot(editorEl);
+    const decorationsSnapshot = buildDecorationsSnapshotPayload(currentDecorations);
+    return emitInlineCaretScrollDebugEvent(eventName, {
+      component: "useTextEditInteractionController",
+      editingId,
+      backend: {
+        preserveCenterDuringEdit: Boolean(
+          backendMetaRef.current?.preserveCenterDuringEdit
+        ),
+        renderCaretNatively,
+        rootEngine:
+          typeof rootEl?.getAttribute === "function"
+            ? rootEl.getAttribute("data-inline-editor-engine")
+            : null,
+      },
+      layerState: {
+        syntheticDecorationsHidden: renderCaretNatively,
+        syntheticSelectionVisible:
+          !renderCaretNatively && decorationsSnapshot.selectionRectsCount > 0,
+        syntheticCaretVisible:
+          !renderCaretNatively && Boolean(decorationsSnapshot.caretRectStage),
+        controllerNativeCaretVisible,
+      },
+      rects: {
+        rootRectViewport: rectToSemanticCaretPayload(
+          rootEl?.getBoundingClientRect?.() || null
+        ),
+        editorRectViewport: rectToSemanticCaretPayload(
+          editorEl?.getBoundingClientRect?.() || null
+        ),
+      },
+      focus: {
+        isFocused: Boolean(isFocusedRef.current),
+        caretBlinkVisible: Boolean(caretBlinkVisibleRef.current),
+        activeElement: buildActiveElementSnapshot(editorEl, rootEl),
+      },
+      selection: selectionSnapshot,
+      decorations: decorationsSnapshot,
+      ...extra,
+    });
+  }, [editingId]);
 
   useEffect(() => {
     isFocusedRef.current = isFocused;
@@ -557,9 +677,20 @@ export default function useTextEditInteractionController({
       renderCaretNatively: nextRenderCaretNatively,
     };
     if (backendChanged) {
+      emitCaretScrollControllerEvent("text-controller-backend-register", {
+        frameOrder: "sync",
+        rootNodePresent: Boolean(rootEl),
+        editorNodePresent: Boolean(editorEl),
+        requested: {
+          preserveCenterDuringEdit: nextPreserveCenterDuringEdit,
+          renderCaretNatively: nextRenderCaretNatively,
+        },
+      });
+    }
+    if (backendChanged) {
       setBackendRevision((previous) => previous + 1);
     }
-  }, []);
+  }, [emitCaretScrollControllerEvent]);
 
   const requestFinish = useCallback((reason = "manual") => {
     if (!editingId) return false;
@@ -655,7 +786,6 @@ export default function useTextEditInteractionController({
     if (!editorEl) return false;
 
     suppressNextFocusSyncRef.current = true;
-    pendingInitialCaretPointRef.current = null;
     requestedLogicalOffsetRef.current = null;
     logicalCaretOffsetRef.current = null;
     focusSemanticEditor(editorEl);
@@ -759,9 +889,28 @@ export default function useTextEditInteractionController({
     flushSync(() => {
       onChange?.(nextValue);
     });
-    flushDecorationsSync();
+    const nextGeometry = flushDecorationsSync();
+    emitCaretScrollControllerEvent("text-controller-input-after-sync", {
+      step: "after-input-sync",
+      frameOrder: "input-event",
+      inputType: inputType || null,
+      geometry: buildDecorationsSnapshotPayload(nextGeometry),
+    });
     window.requestAnimationFrame(syncDecorations);
-  }, [editing?.value, flushDecorationsSync, onChange, syncDecorations]);
+    window.requestAnimationFrame(() => {
+      emitCaretScrollControllerEvent("text-controller-input-after-paint", {
+        step: "after-input-paint",
+        frameOrder: "raf-1",
+        inputType: inputType || null,
+      });
+    });
+  }, [
+    editing?.value,
+    emitCaretScrollControllerEvent,
+    flushDecorationsSync,
+    onChange,
+    syncDecorations,
+  ]);
 
   const handleFocus = useCallback(() => {
     pendingCanvasRefocusRef.current = null;
@@ -910,6 +1059,13 @@ export default function useTextEditInteractionController({
       return;
     }
 
+    if (caretScrollBaselineRef.current.editingId !== editingId) {
+      caretScrollBaselineRef.current = {
+        editingId,
+        emitted: false,
+      };
+    }
+
     if (finishLockRef.current && finishLockRef.current !== editingId) {
       finishLockRef.current = null;
     }
@@ -923,6 +1079,24 @@ export default function useTextEditInteractionController({
   }, [editingId]);
 
   useEffect(() => {
+    if (!editingId || !editorRef.current || !isFocused) return undefined;
+    const selectionSnapshot = buildSelectionSnapshot(editorRef.current);
+    if (!selectionSnapshot.inEditor) return undefined;
+    if (caretScrollBaselineRef.current.emitted) return undefined;
+    const event = emitCaretScrollControllerEvent("text-controller-baseline", {
+      step: "baseline",
+      frameOrder: "effect",
+    });
+    if (event) {
+      caretScrollBaselineRef.current = {
+        editingId,
+        emitted: true,
+      };
+    }
+    return undefined;
+  }, [editingId, emitCaretScrollControllerEvent, isFocused, backendRevision]);
+
+  useEffect(() => {
     if (!editingId || !editorRef.current) return undefined;
     const rafId = window.requestAnimationFrame(() => {
       const entrySelectionState = entrySelectionAppliedRef.current || {};
@@ -932,32 +1106,39 @@ export default function useTextEditInteractionController({
 
       if (!shouldApplyEntryPlacement) return;
 
-      const selectedAll = focusEditorSelectingAll();
-      entrySelectionAppliedRef.current = {
-        editingId,
-        applied: selectedAll,
-      };
-      if (selectedAll) return;
+      const runEntryAction = (action) => {
+        if (action === "select-all") {
+          return focusEditorSelectingAll();
+        }
 
-      const pendingPoint = pendingInitialCaretPointRef.current;
-      if (pendingPoint) {
-        pendingInitialCaretPointRef.current = null;
-        const placed = focusEditorFromViewportPoint({
-          clientX: pendingPoint.clientX,
-          clientY: pendingPoint.clientY,
-          fallbackBoundary: "end",
-        });
-        entrySelectionAppliedRef.current = {
-          editingId,
-          applied: placed,
-        };
-        if (placed) return;
+        if (action === "point") {
+          const pendingPoint = pendingInitialCaretPointRef.current;
+          if (!pendingPoint) return false;
+          if (entrySelectionPlan.consumesInitialCaretPoint) {
+            pendingInitialCaretPointRef.current = null;
+          }
+          return focusEditorFromViewportPoint({
+            clientX: pendingPoint.clientX,
+            clientY: pendingPoint.clientY,
+            fallbackBoundary: "end",
+          });
+        }
+
+        if (action === "restore") {
+          return Boolean(restoreEditorSelectionRef.current?.("end"));
+        }
+
+        return false;
+      };
+
+      let applied = runEntryAction(entrySelectionPlan.primaryAction);
+      if (!applied && entrySelectionPlan.fallbackAction) {
+        applied = runEntryAction(entrySelectionPlan.fallbackAction);
       }
 
-      const restored = Boolean(restoreEditorSelectionRef.current?.("end"));
       entrySelectionAppliedRef.current = {
         editingId,
-        applied: restored,
+        applied,
       };
     });
     return () => {
@@ -966,6 +1147,7 @@ export default function useTextEditInteractionController({
   }, [
     backendRevision,
     editingId,
+    entrySelectionPlan,
     focusEditorSelectingAll,
     focusEditorFromViewportPoint,
   ]);
@@ -985,17 +1167,36 @@ export default function useTextEditInteractionController({
     const scheduleSync = () => {
       window.requestAnimationFrame(syncDecorations);
     };
+    const handleScrollSync = (source = "scroll") => {
+      emitCaretScrollControllerEvent("text-controller-scroll-event", {
+        step: "before-scroll-sync",
+        frameOrder: "scroll-event",
+        source,
+      });
+      window.requestAnimationFrame(() => {
+        const nextGeometry = syncDecorations();
+        emitCaretScrollControllerEvent("text-controller-after-scroll-sync", {
+          step: "after-scroll-sync",
+          frameOrder: "raf-1",
+          source,
+          geometry: buildDecorationsSnapshotPayload(nextGeometry),
+        });
+      });
+    };
+    const handleDocumentScroll = () => {
+      handleScrollSync("document-scroll");
+    };
 
     document.addEventListener("selectionchange", scheduleSync);
     window.addEventListener("resize", scheduleSync);
-    document.addEventListener("scroll", scheduleSync, true);
+    document.addEventListener("scroll", handleDocumentScroll, true);
 
     return () => {
       document.removeEventListener("selectionchange", scheduleSync);
       window.removeEventListener("resize", scheduleSync);
-      document.removeEventListener("scroll", scheduleSync, true);
+      document.removeEventListener("scroll", handleDocumentScroll, true);
     };
-  }, [editingId, syncDecorations]);
+  }, [editingId, emitCaretScrollControllerEvent, syncDecorations]);
 
   useEffect(() => {
     if (!editingId || !isFocused || !decorations?.isCollapsed) {

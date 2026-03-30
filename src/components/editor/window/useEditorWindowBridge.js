@@ -34,6 +34,7 @@ export default function useEditorWindowBridge({
   getTemplateAuthoringSnapshot,
   getTemplateAuthoringStatus,
   repairTemplateAuthoringState,
+  ensureInlineEditSettledBeforeCriticalAction,
   flushPersistenceNow,
 }) {
   const EXTRA_CANVAS_EDITOR_COMPATIBILITY_KEYS = [
@@ -92,6 +93,10 @@ export default function useEditorWindowBridge({
         typeof repairTemplateAuthoringState === "function"
           ? repairTemplateAuthoringState
           : undefined,
+      ensureInlineEditSettledBeforeCriticalAction:
+        typeof ensureInlineEditSettledBeforeCriticalAction === "function"
+          ? ensureInlineEditSettledBeforeCriticalAction
+          : undefined,
       flushPersistenceNow:
         typeof flushPersistenceNow === "function"
           ? flushPersistenceNow
@@ -109,6 +114,7 @@ export default function useEditorWindowBridge({
     getTemplateAuthoringSnapshot,
     getTemplateAuthoringStatus,
     repairTemplateAuthoringState,
+    ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow,
   ]);
 

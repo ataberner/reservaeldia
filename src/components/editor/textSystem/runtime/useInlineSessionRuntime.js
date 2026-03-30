@@ -22,6 +22,9 @@ import useInlineDebugABConfig from "@/components/editor/textSystem/runtime/useIn
 import useInlineFontReady from "@/components/editor/textSystem/runtime/useInlineFontReady";
 import useInlineGlobalEditingSync from "@/components/editor/textSystem/bridges/window/useInlineGlobalEditingSync";
 import resolveInlineCanvasVisibility from "@/components/editor/textSystem/adapters/konvaDom/resolveInlineCanvasVisibility";
+import {
+  INLINE_ENTRY_SELECTION_MODE_SELECT_ALL,
+} from "@/components/editor/textSystem/runtime/inlineEntrySelectionMode";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -1511,7 +1514,9 @@ export default function useCanvasEditorInlineRuntime({
       }, prev));
       setCurrentInlineEditingId(id);
       flushSync(() => {
-        startEdit(id, initialValue);
+        startEdit(id, initialValue, {
+          entrySelectionMode: INLINE_ENTRY_SELECTION_MODE_SELECT_ALL,
+        });
       });
       const node = elementRefs.current[id] || null;
       node?.draggable?.(false);

@@ -8,7 +8,6 @@ import {
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
 import {
   setPlainTextEditableContent,
-  selectAllEditableContent,
 } from "@/components/editor/textSystem/services/textCaretPositionService";
 
 export default function useInlineEditorMountLifecycle({
@@ -70,18 +69,14 @@ export default function useInlineEditorMountLifecycle({
     const isFocusedNow = () =>
       typeof document !== "undefined" && document.activeElement === el;
 
-    const focusAndSelect = (attempt) => {
+    const focusEditorOwnership = (attempt) => {
       emitDebug("overlay: before-focus", { attempt });
       try {
         el.focus({ preventScroll: true });
       } catch {
         el.focus();
       }
-      const focused = isFocusedNow();
-      if (focused) {
-        selectAllEditableContent(el);
-      }
-      return focused;
+      return isFocusedNow();
     };
 
     if (el instanceof HTMLInputElement) {
@@ -120,7 +115,7 @@ export default function useInlineEditorMountLifecycle({
     const runFocusHandshake = () => {
       if (cancelled) return;
       focusAttempts += 1;
-      const focused = focusAndSelect(focusAttempts);
+      const focused = focusEditorOwnership(focusAttempts);
       if (focused || focusAttempts >= maxFocusAttempts) {
         finalizeLayoutProbe();
         return;

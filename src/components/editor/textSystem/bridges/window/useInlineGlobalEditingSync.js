@@ -14,7 +14,13 @@ export default function useInlineGlobalEditingSync({
   useEffect(() => {
     if (typeof window === "undefined") return;
     setInlineEditingSnapshot(editing);
-  }, [editing.id, editing.value]);
+  }, [
+    editing.id,
+    editing.value,
+    editing.entrySelectionMode,
+    editing.initialCaretClientPoint?.clientX,
+    editing.initialCaretClientPoint?.clientY,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -32,6 +32,12 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
+  buildImageCropObjectState,
+} from "@/components/editor/textSystem/render/konva/imageCropStatePatch";
+import {
+  resolveActiveInlineSessionId,
+} from "@/components/editor/canvasEditor/inlineCriticalBoundary";
+import {
   getCountdownRepeatDragActiveState,
   isCountdownRepeatDragDebugEnabled,
   publishCountdownRepeatDragDebugEntry,
@@ -57,6 +63,9 @@ import { isPostDragSelectionGuardActive } from "@/components/editor/canvasEditor
 import {
   readClientPointFromCanvasEvent,
 } from "@/components/editor/textSystem/services/textCanvasPointerService";
+import {
+  INLINE_ENTRY_SELECTION_MODE_SELECT_ALL,
+} from "@/components/editor/textSystem/runtime/inlineEntrySelectionMode";
 import {
   buildSelectionFramePolygon,
   getSelectionFramePadding,
@@ -459,12 +468,12 @@ export default function CanvasStageContent({
   const dragVisualSelectionIdsRef = useRef([]);
   const [isPredragVisualSelectionActive, setIsPredragVisualSelectionActive] = useState(false);
   const [isDragSelectionOverlayVisualReady, setIsDragSelectionOverlayVisualReady] = useState(false);
-  const activeInlineEditingId =
-    editing.id ||
-    getCurrentInlineEditingId() ||
-    (inlineOverlayMountSession?.mounted ? inlineOverlayMountSession.id : null) ||
-    inlineOverlayMountedId ||
-    null;
+  const activeInlineEditingId = resolveActiveInlineSessionId({
+    editingId: editing.id,
+    currentInlineEditingId: getCurrentInlineEditingId(),
+    inlineOverlayMountedId,
+    inlineOverlayMountSession,
+  });
   const isHoverSuppressed =
     Boolean(isDragging) ||
     Boolean(backgroundEditSectionId) ||
@@ -1418,6 +1427,7 @@ export default function CanvasStageContent({
 
     startEdit(id, initialText, {
       initialCaretClientPoint: sourceClientPoint,
+      entrySelectionMode: INLINE_ENTRY_SELECTION_MODE_SELECT_ALL,
     });
     node?.draggable(false);
     node?.getLayer?.()?.batchDraw?.();
@@ -2057,40 +2067,16 @@ export default function CanvasStageContent({
 
       const current = prev[objIndex];
       if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
-      const sectionUsesYNorm = esSeccionPantallaById(current.seccionId);
-      const nextY = Number.isFinite(cropAttrs.y) ? cropAttrs.y : current.y;
 
       const next = [...prev];
-      const nextObject = {
-        ...current,
-        x: Number.isFinite(cropAttrs.x) ? cropAttrs.x : current.x,
-        y: nextY,
-        width: Number.isFinite(cropAttrs.width) ? cropAttrs.width : current.width,
-        height: Number.isFinite(cropAttrs.height) ? cropAttrs.height : current.height,
-        cropX: Number.isFinite(cropAttrs.cropX) ? cropAttrs.cropX : current.cropX,
-        cropY: Number.isFinite(cropAttrs.cropY) ? cropAttrs.cropY : current.cropY,
-        cropWidth: Number.isFinite(cropAttrs.cropWidth)
-          ? cropAttrs.cropWidth
-          : current.cropWidth,
-        cropHeight: Number.isFinite(cropAttrs.cropHeight)
-          ? cropAttrs.cropHeight
-          : current.cropHeight,
-        ancho: Number.isFinite(cropAttrs.ancho) ? cropAttrs.ancho : current.ancho,
-        alto: Number.isFinite(cropAttrs.alto) ? cropAttrs.alto : current.alto,
-        rotation: Number.isFinite(cropAttrs.rotation)
-          ? cropAttrs.rotation
-          : (current.rotation || 0),
-        scaleX: 1,
-        scaleY: 1,
-      };
-      if (sectionUsesYNorm && Number.isFinite(nextY)) {
-        nextObject.yNorm = Math.max(
-          0,
-          Math.min(1, nextY / ALTURA_PANTALLA_EDITOR)
-        );
-      } else {
-        delete nextObject.yNorm;
-      }
+      const nextObject = buildImageCropObjectState({
+        current,
+        cropAttrs,
+        seccionesOrdenadas,
+        convertirAbsARel,
+        esSeccionPantallaById,
+        ALTURA_PANTALLA_EDITOR,
+      });
       next[objIndex] = nextObject;
       return next;
     });
@@ -2103,8 +2089,10 @@ export default function CanvasStageContent({
   }, [
     ALTURA_PANTALLA_EDITOR,
     actualizarPosicionBotonOpciones,
+    convertirAbsARel,
     esSeccionPantallaById,
     elementosSeleccionados,
+    seccionesOrdenadas,
     setObjetos,
   ]);
 
@@ -2117,40 +2105,16 @@ export default function CanvasStageContent({
 
       const current = prev[objIndex];
       if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
-      const sectionUsesYNorm = esSeccionPantallaById(current.seccionId);
-      const nextY = Number.isFinite(cropAttrs.y) ? cropAttrs.y : current.y;
 
       const next = [...prev];
-      const nextObject = {
-        ...current,
-        x: Number.isFinite(cropAttrs.x) ? cropAttrs.x : current.x,
-        y: nextY,
-        width: Number.isFinite(cropAttrs.width) ? cropAttrs.width : current.width,
-        height: Number.isFinite(cropAttrs.height) ? cropAttrs.height : current.height,
-        cropX: Number.isFinite(cropAttrs.cropX) ? cropAttrs.cropX : current.cropX,
-        cropY: Number.isFinite(cropAttrs.cropY) ? cropAttrs.cropY : current.cropY,
-        cropWidth: Number.isFinite(cropAttrs.cropWidth)
-          ? cropAttrs.cropWidth
-          : current.cropWidth,
-        cropHeight: Number.isFinite(cropAttrs.cropHeight)
-          ? cropAttrs.cropHeight
-          : current.cropHeight,
-        ancho: Number.isFinite(cropAttrs.ancho) ? cropAttrs.ancho : current.ancho,
-        alto: Number.isFinite(cropAttrs.alto) ? cropAttrs.alto : current.alto,
-        rotation: Number.isFinite(cropAttrs.rotation)
-          ? cropAttrs.rotation
-          : (current.rotation || 0),
-        scaleX: 1,
-        scaleY: 1,
-      };
-      if (sectionUsesYNorm && Number.isFinite(nextY)) {
-        nextObject.yNorm = Math.max(
-          0,
-          Math.min(1, nextY / ALTURA_PANTALLA_EDITOR)
-        );
-      } else {
-        delete nextObject.yNorm;
-      }
+      const nextObject = buildImageCropObjectState({
+        current,
+        cropAttrs,
+        seccionesOrdenadas,
+        convertirAbsARel,
+        esSeccionPantallaById,
+        ALTURA_PANTALLA_EDITOR,
+      });
       next[objIndex] = nextObject;
       return next;
     });
@@ -2163,8 +2127,10 @@ export default function CanvasStageContent({
   }, [
     ALTURA_PANTALLA_EDITOR,
     actualizarPosicionBotonOpciones,
+    convertirAbsARel,
     esSeccionPantallaById,
     elementosSeleccionados,
+    seccionesOrdenadas,
     setObjetos,
   ]);
 
@@ -3144,7 +3110,7 @@ export default function CanvasStageContent({
                   )}
 
 
-                  {!editing.id &&
+                  {!activeInlineEditingId &&
                     !sectionDecorationEdit &&
                     elementosSeleccionados.length > 0 && (() => {
                     return (
@@ -3170,6 +3136,9 @@ export default function CanvasStageContent({
                         }
                         onTransformInteractionStart={handleTransformInteractionStartWithInlineIntent}
                         onTransformInteractionEnd={handleTransformInteractionEndWithInlineIntent}
+                        editingId={editing.id || null}
+                        activeInlineEditingId={activeInlineEditingId || null}
+                        requestInlineEditFinish={requestInlineEditFinish}
                         onTransform={(newAttrs) => {
                           if (elementosSeleccionados.length === 1) {
                             const id = elementosSeleccionados[0];

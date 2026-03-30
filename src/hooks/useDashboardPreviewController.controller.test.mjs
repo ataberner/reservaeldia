@@ -61,6 +61,12 @@ function createExpectedDraftControllerState({
 
 function createTestDependencies(overrides = {}) {
   return {
+    runInlineCriticalBoundary: async () => ({
+      ok: true,
+      settled: true,
+      handled: false,
+      activeId: null,
+    }),
     runCriticalActionFlush: async () => ({ ok: true }),
     runPreviewPipeline: async () => ({
       status: "success",
@@ -124,11 +130,22 @@ function createControllerHarness({
 test("preview open success keeps the preview visible before html generation settles and then patches the resolved preview state", async () => {
   const previewPipeline = createDeferred();
   const showAlertCalls = [];
+  const inlineBoundaryCalls = [];
   const flushCalls = [];
   const previewPipelineCalls = [];
   const harness = createControllerHarness({
     dependencyOverrides: createTestDependencies({
+      runInlineCriticalBoundary: async (input) => {
+        inlineBoundaryCalls.push(input);
+        return {
+          ok: true,
+          settled: true,
+          handled: true,
+          activeId: "text-1",
+        };
+      },
       runCriticalActionFlush: async (input) => {
+        assert.equal(inlineBoundaryCalls.length, 1);
         flushCalls.push(input);
         return {
           ok: true,
@@ -150,6 +167,18 @@ test("preview open success keeps the preview visible before html generation sett
   const previewPromise = harness.controller.generarVistaPrevia();
   await flushMicrotasks();
 
+  assert.deepEqual(inlineBoundaryCalls, [
+    {
+      slugInvitacion: "draft-1",
+      modoEditor: "edicion",
+      editorSession: {
+        kind: "draft",
+        id: "draft-1",
+      },
+      reason: "preview-before-open",
+      maxWaitMs: 120,
+    },
+  ]);
   assert.deepEqual(flushCalls.map((call) => call.reason), ["preview-before-open"]);
   assert.equal(previewPipelineCalls.length, 1);
   assert.deepEqual(previewPipelineCalls[0].previewBoundarySnapshot, {
@@ -224,6 +253,48 @@ test("preview open failure on flush keeps the preview closed and preserves the c
     })
   );
   assert.deepEqual(showAlertCalls, []);
+});
+
+test("inline boundary failure stops preview before flush and preserves the controller error path", async () => {
+  let flushCalled = false;
+  let previewPipelineCalled = false;
+  const harness = createControllerHarness({
+    dependencyOverrides: createTestDependencies({
+      runInlineCriticalBoundary: async () => ({
+        ok: false,
+        settled: false,
+        handled: true,
+        activeId: "text-1",
+        reason: "inline-session-still-active",
+        error: "No se pudo cerrar la edicion de texto en curso. Intenta nuevamente.",
+      }),
+      runCriticalActionFlush: async () => {
+        flushCalled = true;
+        return { ok: true };
+      },
+      runPreviewPipeline: async () => {
+        previewPipelineCalled = true;
+        return {
+          status: "success",
+        };
+      },
+    }),
+  });
+
+  await harness.controller.generarVistaPrevia();
+  await flushMicrotasks();
+
+  assert.equal(flushCalled, false);
+  assert.equal(previewPipelineCalled, false);
+  assert.deepEqual(
+    harness.getState(),
+    createExpectedDraftControllerState({
+      overrides: {
+        publicacionVistaPreviaError:
+          "No se pudo cerrar la edicion de texto en curso. Intenta nuevamente.",
+      },
+    })
+  );
 });
 
 test("stale preview completions cannot overwrite a newer preview-open session", async () => {
@@ -354,10 +425,21 @@ test("preview success refreshes publish validation and preserves the current pen
 });
 
 test("checkout opens in update mode from preview and closeCheckout only hides the checkout modal", async () => {
+  const inlineBoundaryCalls = [];
   const flushCalls = [];
   const harness = createControllerHarness({
     dependencyOverrides: createTestDependencies({
+      runInlineCriticalBoundary: async (input) => {
+        inlineBoundaryCalls.push(input);
+        return {
+          ok: true,
+          settled: true,
+          handled: true,
+          activeId: "text-1",
+        };
+      },
       runCriticalActionFlush: async (input) => {
+        assert.equal(inlineBoundaryCalls.length, flushCalls.length + 1);
         flushCalls.push(input);
         return {
           ok: true,
@@ -382,6 +464,10 @@ test("checkout opens in update mode from preview and closeCheckout only hides th
     "preview-before-open",
     "checkout-before-open",
   ]);
+  assert.deepEqual(
+    inlineBoundaryCalls.map((call) => call.reason),
+    ["preview-before-open", "checkout-before-open"]
+  );
   assert.deepEqual(
     harness.getState(),
     createExpectedDraftControllerState({

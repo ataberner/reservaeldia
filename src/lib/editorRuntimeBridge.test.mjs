@@ -19,6 +19,13 @@ test("editor runtime bridge resolves bound canvasEditor methods and stage refs",
     canvasEditor: {
       stageRef: { id: "stage-1" },
       counter: 2,
+      ensureInlineEditSettledBeforeCriticalAction(options = {}) {
+        return {
+          counter: this.counter,
+          options,
+          ok: true,
+        };
+      },
       flushPersistenceNow(options = {}) {
         return {
           counter: this.counter,
@@ -29,12 +36,25 @@ test("editor runtime bridge resolves bound canvasEditor methods and stage refs",
   };
 
   const flush = readCanvasEditorMethod("flushPersistenceNow", fakeWindow);
+  const ensureInlineSettled = readCanvasEditorMethod(
+    "ensureInlineEditSettledBeforeCriticalAction",
+    fakeWindow
+  );
 
   assert.equal(typeof flush, "function");
+  assert.equal(typeof ensureInlineSettled, "function");
   assert.deepEqual(flush({ reason: "preview-before-open" }), {
     counter: 2,
     options: { reason: "preview-before-open" },
   });
+  assert.deepEqual(
+    ensureInlineSettled({ reason: "checkout-before-open", maxWaitMs: 120 }),
+    {
+      counter: 2,
+      options: { reason: "checkout-before-open", maxWaitMs: 120 },
+      ok: true,
+    }
+  );
   assert.deepEqual(
     callCanvasEditorMethod(
       "flushPersistenceNow",

@@ -1,5 +1,9 @@
 import { useEffect } from "react";
 import Konva from "konva";
+import {
+  shouldPreserveCanvasSelectionTarget,
+  shouldPreserveInlineEditTarget,
+} from "@/components/editor/canvasEditor/selectionPreservationPolicy";
 
 function isGlobalCanvasInteractionActive() {
   return (
@@ -22,6 +26,7 @@ export default function useCanvasEditorRuntimeEffects({
   requestInlineEditFinishRef,
   clearCanvasSelectionUi,
   preserveCanvasSelectionSelector,
+  preserveInlineEditSelector,
 }) {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -66,7 +71,7 @@ export default function useCanvasEditorRuntimeEffects({
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
-    if (selectedCount === 0) return undefined;
+    if (selectedCount === 0 && !editingId) return undefined;
 
     const resolveTargetElement = (target) => {
       if (target instanceof Element) return target;
@@ -85,11 +90,6 @@ export default function useCanvasEditorRuntimeEffects({
       );
     };
 
-    const shouldPreserveSelection = (targetElement) =>
-      Boolean(
-        targetElement?.closest?.(preserveCanvasSelectionSelector)
-      );
-
     const handlePointerOutsideCanvas = (event) => {
       if (isGlobalCanvasInteractionActive()) {
         return;
@@ -97,11 +97,22 @@ export default function useCanvasEditorRuntimeEffects({
       const targetElement = resolveTargetElement(event.target);
       if (!targetElement) return;
       if (isInsideCanvasStage(targetElement)) return;
-      if (shouldPreserveSelection(targetElement)) return;
 
-      if (editingId) {
+      const shouldPreserveInlineEdit = shouldPreserveInlineEditTarget(
+        targetElement,
+        preserveInlineEditSelector
+      );
+
+      if (editingId && !shouldPreserveInlineEdit) {
         requestInlineEditFinishRef.current?.("outside-canvas-pointerdown");
       }
+
+      const shouldPreserveSelection = shouldPreserveCanvasSelectionTarget(
+        targetElement,
+        preserveCanvasSelectionSelector
+      );
+      if (shouldPreserveSelection) return;
+
       clearCanvasSelectionUi();
     };
 
@@ -138,6 +149,7 @@ export default function useCanvasEditorRuntimeEffects({
     clearCanvasSelectionUi,
     editingId,
     preserveCanvasSelectionSelector,
+    preserveInlineEditSelector,
     requestInlineEditFinishRef,
     selectedCount,
     stageRef,

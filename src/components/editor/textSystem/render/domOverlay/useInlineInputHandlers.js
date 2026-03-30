@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   getInlineLineStats,
   normalizeInlineEditableDomText,
@@ -42,6 +42,7 @@ export default function useInlineInputHandlers({
   onDomLayoutValueChange,
   onChange,
   emitDebug,
+  emitCaretScrollDebug = null,
   triggerFinish,
 }) {
   const pendingStructuredSelectionRestoreRef = useRef({
@@ -49,6 +50,20 @@ export default function useInlineInputHandlers({
     textLength: null,
     inputType: null,
   });
+  const caretScrollDebugRafRef = useRef({
+    paint: 0,
+  });
+
+  useEffect(() => () => {
+    const pending = caretScrollDebugRafRef.current || {};
+    if (pending.paint) {
+      window.cancelAnimationFrame(pending.paint);
+      caretScrollDebugRafRef.current = {
+        paint: 0,
+      };
+    }
+  }, []);
+
   const handleInput = useCallback((e) => {
     const editorEl = e.currentTarget || null;
     const domRaw = String(editorEl?.innerText || "");
@@ -119,6 +134,36 @@ export default function useInlineInputHandlers({
       },
     });
 
+    if (typeof emitCaretScrollDebug === "function") {
+      const debugPayload = {
+        step: "after-input-change",
+        frameOrder: "input-event",
+        inputType: inputType || null,
+        prevLength: prevValue.length,
+        nextLength: nextValue.length,
+        normalizationChanged,
+        domStructureNormalized: Boolean(domStructureNormalization.applied),
+        domSelectionRestored: Boolean(domStructureNormalization.restoredSelection),
+        domSelectionAliasKind: domStructureNormalization.selectionAliasKind || null,
+        domResolvedSelectionLogicalOffset:
+          Number.isFinite(domStructureNormalization.resolvedSelectionLogicalOffset)
+            ? Number(domStructureNormalization.resolvedSelectionLogicalOffset)
+            : null,
+      };
+      emitCaretScrollDebug("input-after-change", debugPayload);
+      if (caretScrollDebugRafRef.current.paint) {
+        window.cancelAnimationFrame(caretScrollDebugRafRef.current.paint);
+      }
+      caretScrollDebugRafRef.current.paint = window.requestAnimationFrame(() => {
+        caretScrollDebugRafRef.current.paint = 0;
+        emitCaretScrollDebug("input-after-paint", {
+          ...debugPayload,
+          step: "after-input-paint",
+          frameOrder: "raf-1",
+        });
+      });
+    }
+
     if (
       prevLineCount !== nextLineCount ||
       prevTrailingNewlines !== nextTrailingNewlines ||
@@ -168,6 +213,7 @@ export default function useInlineInputHandlers({
     onDomLayoutValueChange,
     overlayPhase,
     sessionIdRef,
+    emitCaretScrollDebug,
   ]);
 
   const handleKeyDown = useCallback((e) => {

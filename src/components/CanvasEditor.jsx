@@ -77,9 +77,17 @@ import {
 import useCanvasEditorTextSystem from "@/components/editor/textSystem/runtime/useCanvasEditorTextSystem";
 import useTextEditInteractionController from "@/components/editor/textSystem/runtime/useTextEditInteractionController";
 import CanvasInlineEditingLayer from "@/components/editor/canvasEditor/CanvasInlineEditingLayer";
+import { getCurrentInlineEditingId } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
+import {
+  ensureInlineSessionSettledBeforeCriticalAction,
+} from "@/components/editor/canvasEditor/inlineCriticalBoundary";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
+import {
+  PRESERVE_CANVAS_SELECTION_SELECTOR,
+  PRESERVE_INLINE_EDIT_SELECTOR,
+} from "@/components/editor/canvasEditor/selectionPreservationPolicy";
 
 
 Konva.dragDistance = 8;
@@ -111,16 +119,6 @@ function resolveKonvaPixelRatio() {
 }
 
 Konva.pixelRatio = resolveKonvaPixelRatio();
-
-const PRESERVE_CANVAS_SELECTION_SELECTOR = [
-  '[data-preserve-canvas-selection="true"]',
-  '[data-dashboard-sidebar="true"]',
-  "#sidebar-panel",
-  '[data-option-button="true"]',
-  '[data-inline-editor="true"]',
-  ".menu-z-index",
-  ".popup-fuente",
-].join(", ");
 
 function isTypographyEditableCanvasObject(obj) {
   return Boolean(
@@ -182,6 +180,11 @@ export default function CanvasEditor({
   const inlineKonvaDrawMetaRef = useRef({ seq: 0, nowMs: null, source: null });
   const inlinePaintApproxRef = useRef({ lastPaintApproxMs: null, pending: false });
   const requestInlineEditFinishRef = useRef(() => false);
+  const inlineCriticalBoundaryStateRef = useRef({
+    editingId: null,
+    inlineOverlayMountedId: null,
+    inlineOverlayMountSession: null,
+  });
   const logInlineSnapshotRef = useRef(null);
   const pendingInlineStartRef = useRef(0);
   const inlineRenderValueRef = useRef({ id: null, value: "" });
@@ -560,6 +563,11 @@ export default function CanvasEditor({
     updateEdit,   // (nuevoValor)
     finishEdit    // () => void
   } = useInlineEditor();
+  inlineCriticalBoundaryStateRef.current = {
+    editingId: editing.id || null,
+    inlineOverlayMountedId: inlineOverlayMountedId || null,
+    inlineOverlayMountSession: inlineOverlayMountSession || null,
+  };
 
   const obtenerMetricasNodoInline = useCallback((node) => {
     if (!node) return null;
@@ -985,30 +993,6 @@ export default function CanvasEditor({
     setMostrarPanelZ,
   });
 
-
-  useEditorWindowBridge({
-    seccionesOrdenadas,
-    secciones,
-    seccionActivaId,
-    objetos,
-    altoCanvas,
-    calcularOffsetY,
-
-    cambiarColorFondoSeccion,
-
-    onDeshacer,
-    onRehacer,
-    historialLength: historial.length,
-    futurosLength: futuros.length,
-
-    stageRef,
-    getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
-    getTemplateAuthoringStatus: templateAuthoring.getStatus,
-    repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
-    flushPersistenceNow: flushEditorPersistence,
-  });
-
-
   const {
     seccionPendienteEliminar,
     cantidadElementosSeccionPendiente,
@@ -1223,9 +1207,51 @@ export default function CanvasEditor({
     return handled;
   }, [editing.id, onInlineFinish, textEditInteractionController.requestFinish]);
 
+  const ensureInlineEditSettledBeforeCriticalAction = useCallback(({
+    reason = "critical-action",
+    maxWaitMs = 120,
+  } = {}) => ensureInlineSessionSettledBeforeCriticalAction({
+    getState: () => {
+      const state = inlineCriticalBoundaryStateRef.current || {};
+      return {
+        editingId: state.editingId || null,
+        currentInlineEditingId: getCurrentInlineEditingId(),
+        inlineOverlayMountedId: state.inlineOverlayMountedId || null,
+        inlineOverlayMountSession: state.inlineOverlayMountSession || null,
+      };
+    },
+    requestInlineEditFinish: (finishReason) =>
+      requestInlineEditFinishRef.current?.(finishReason) === true,
+    reason,
+    maxWaitMs,
+  }), []);
+
   useEffect(() => {
     requestInlineEditFinishRef.current = requestInlineEditFinish;
   }, [requestInlineEditFinish]);
+
+  useEditorWindowBridge({
+    seccionesOrdenadas,
+    secciones,
+    seccionActivaId,
+    objetos,
+    altoCanvas,
+    calcularOffsetY,
+
+    cambiarColorFondoSeccion,
+
+    onDeshacer,
+    onRehacer,
+    historialLength: historial.length,
+    futurosLength: futuros.length,
+
+    stageRef,
+    getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
+    getTemplateAuthoringStatus: templateAuthoring.getStatus,
+    repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
+    ensureInlineEditSettledBeforeCriticalAction,
+    flushPersistenceNow: flushEditorPersistence,
+  });
 
   useCanvasEditorRuntimeEffects({
     stageRef,
@@ -1237,6 +1263,7 @@ export default function CanvasEditor({
     requestInlineEditFinishRef,
     clearCanvasSelectionUi,
     preserveCanvasSelectionSelector: PRESERVE_CANVAS_SELECTION_SELECTOR,
+    preserveInlineEditSelector: PRESERVE_INLINE_EDIT_SELECTOR,
   });
 
 

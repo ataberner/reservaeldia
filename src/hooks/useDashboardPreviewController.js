@@ -51,6 +51,9 @@ const EMPTY_PREVIEW_CONTROLLER_SESSION = Object.freeze({
   isOpen: false,
 });
 const STALE_PREVIEW_SESSION_ERROR_CODE = "dashboard-preview-session-stale";
+const INLINE_CRITICAL_BOUNDARY_MAX_WAIT_MS = 120;
+const INLINE_CRITICAL_BOUNDARY_ERROR_MESSAGE =
+  "No se pudo cerrar la edicion de texto en curso. Intenta nuevamente.";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -102,6 +105,58 @@ async function runDashboardPreviewControllerCriticalActionFlush({
     directFlush: readCanvasEditorMethod("flushPersistenceNow"),
     captureSnapshot: () => readEditorRenderSnapshot(),
   });
+}
+
+async function runDashboardPreviewControllerInlineCriticalBoundary({
+  reason,
+  maxWaitMs = INLINE_CRITICAL_BOUNDARY_MAX_WAIT_MS,
+} = {}) {
+  const ensureInlineSettled = readCanvasEditorMethod(
+    "ensureInlineEditSettledBeforeCriticalAction"
+  );
+
+  if (typeof ensureInlineSettled !== "function") {
+    return {
+      ok: false,
+      settled: false,
+      handled: false,
+      activeId: null,
+      reason: "inline-boundary-unavailable",
+      actionReason: normalizeText(reason) || "critical-action",
+      error: INLINE_CRITICAL_BOUNDARY_ERROR_MESSAGE,
+    };
+  }
+
+  try {
+    const result = await ensureInlineSettled({
+      reason,
+      maxWaitMs,
+    });
+
+    if (!result || typeof result !== "object") {
+      return {
+        ok: false,
+        settled: false,
+        handled: false,
+        activeId: null,
+        reason: "inline-boundary-invalid-result",
+        actionReason: normalizeText(reason) || "critical-action",
+        error: INLINE_CRITICAL_BOUNDARY_ERROR_MESSAGE,
+      };
+    }
+
+    return result;
+  } catch (error) {
+    return {
+      ok: false,
+      settled: false,
+      handled: false,
+      activeId: null,
+      reason: "inline-boundary-error",
+      actionReason: normalizeText(reason) || "critical-action",
+      error: getErrorMessage(error, INLINE_CRITICAL_BOUNDARY_ERROR_MESSAGE),
+    };
+  }
 }
 
 async function runDashboardPreviewControllerPreviewPipeline({
@@ -227,6 +282,10 @@ function buildDashboardPreviewControllerDependencies(dependencyOverrides = {}) {
       : {};
 
   return {
+    runInlineCriticalBoundary:
+      typeof safeOverrides.runInlineCriticalBoundary === "function"
+        ? safeOverrides.runInlineCriticalBoundary
+        : runDashboardPreviewControllerInlineCriticalBoundary,
     runCriticalActionFlush:
       typeof safeOverrides.runCriticalActionFlush === "function"
         ? safeOverrides.runCriticalActionFlush
@@ -369,6 +428,7 @@ export function createDashboardPreviewControllerRuntime({
   const controllerDependencies =
     buildDashboardPreviewControllerDependencies(dependencyOverrides);
   const {
+    runInlineCriticalBoundary,
     runCriticalActionFlush,
     runPreviewPipeline,
     runPublishValidation,
@@ -452,6 +512,56 @@ export function createDashboardPreviewControllerRuntime({
 
   const ensureDraftFlushBeforeCriticalAction = async (reason) => {
     const safeSlug = sanitizeDraftSlug(slugInvitacion);
+    pushEditorBreadcrumb("critical-action-inline-boundary-start", {
+      slug: safeSlug || null,
+      reason,
+      sessionKind: editorSession?.kind || null,
+    });
+
+    const inlineBoundaryResult = await runInlineCriticalBoundary({
+      slugInvitacion: safeSlug,
+      modoEditor,
+      editorSession,
+      reason,
+      maxWaitMs: INLINE_CRITICAL_BOUNDARY_MAX_WAIT_MS,
+    });
+
+    pushEditorBreadcrumb(
+      inlineBoundaryResult?.ok
+        ? "critical-action-inline-boundary-success"
+        : "critical-action-inline-boundary-failed",
+      {
+        slug: safeSlug || null,
+        reason,
+        sessionKind: editorSession?.kind || null,
+        settled: inlineBoundaryResult?.settled === true,
+        handled: inlineBoundaryResult?.handled === true,
+        activeId: inlineBoundaryResult?.activeId || null,
+        failureReason: inlineBoundaryResult?.reason || null,
+      }
+    );
+
+    if (!inlineBoundaryResult?.ok) {
+      return {
+        ok: false,
+        slug: safeSlug,
+        sessionKind: editorSession?.kind || null,
+        transport: "inline-boundary",
+        skipped: false,
+        reason:
+          normalizeText(inlineBoundaryResult?.reason) ||
+          "inline-boundary-failed",
+        error:
+          normalizeText(inlineBoundaryResult?.error) ||
+          INLINE_CRITICAL_BOUNDARY_ERROR_MESSAGE,
+        rawResult:
+          inlineBoundaryResult && typeof inlineBoundaryResult === "object"
+            ? inlineBoundaryResult
+            : null,
+        compatibilitySnapshot: null,
+      };
+    }
+
     pushEditorBreadcrumb("critical-action-flush-start", {
       slug: safeSlug || null,
       reason,

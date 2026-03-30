@@ -930,6 +930,7 @@ export default function FloatingTextToolbar({
         ref={toolbarRef}
         data-floating-text-toolbar="true"
         data-preserve-canvas-selection="true"
+        data-preserve-inline-edit="true"
         className={toolbarContainerClass}
         style={{ ...toolbarContainerStyle, maxWidth: isMobile ? toolbarContainerStyle.maxWidth : "220px" }}
       >
@@ -957,6 +958,7 @@ export default function FloatingTextToolbar({
         ref={toolbarRef}
         data-floating-text-toolbar="true"
         data-preserve-canvas-selection="true"
+        data-preserve-inline-edit="true"
         className={toolbarContainerClass}
         style={toolbarContainerStyle}
       >
@@ -964,6 +966,7 @@ export default function FloatingTextToolbar({
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-600">Fondo</label>
             <UnifiedColorPicker
+              preserveInlineEdit={true}
               value={fondoPickerValue}
               showGradients={permiteGradienteFondo}
               title="Cambiar fondo"
@@ -1047,6 +1050,7 @@ export default function FloatingTextToolbar({
                 onFontChange={aplicarFuenteSeleccionada}
                 isOpen={mostrarSelectorFuente}
                 panelStyle={fontSelectorStyle}
+                preserveInlineEdit={true}
                 onClose={() => setMostrarSelectorFuente(false)}
               />
             )}
@@ -1241,6 +1245,7 @@ export default function FloatingTextToolbar({
       {mobileFontStripVisible && (
         <div
           data-preserve-canvas-selection="true"
+          data-preserve-inline-edit="true"
           className="popup-fuente fixed z-50 bg-white border rounded shadow px-1.5 py-1 flex items-center gap-1 overflow-x-auto"
           style={{
             top: `${mobileFontStripTop ?? 106}px`,
@@ -1281,6 +1286,7 @@ export default function FloatingTextToolbar({
       {mobileSizeStripVisible && (
         <div
           data-preserve-canvas-selection="true"
+          data-preserve-inline-edit="true"
           className="popup-fuente fixed z-50 bg-white border rounded shadow px-2 py-1.5 flex items-center gap-2"
           style={{
             top: `${mobileFontStripTop ?? 106}px`,

@@ -14,6 +14,7 @@ function cloneGalleryCell(cell) {
 export const CANVAS_EDITOR_COMPATIBILITY_KEYS = Object.freeze([
   "deshacer",
   "rehacer",
+  "ensureInlineEditSettledBeforeCriticalAction",
   "flushPersistenceNow",
   "getTemplateAuthoringStatus",
   "getTemplateAuthoringSnapshot",

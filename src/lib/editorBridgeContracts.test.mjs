@@ -192,6 +192,13 @@ test("editor bridge contract does not formalize transient scratch globals", () =
     Object.values(EDITOR_RUNTIME_COMPATIBILITY_CONTRACT).flat()
   );
 
+  assert.equal(
+    EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.canvasEditor.includes(
+      "ensureInlineEditSettledBeforeCriticalAction"
+    ),
+    true
+  );
+
   assert.equal(formalizedKeys.has("_skipUntil"), false);
   assert.equal(formalizedKeys.has("_recentGroupDragGuard"), false);
   assert.equal(formalizedKeys.has("_objetosCopiados"), false);

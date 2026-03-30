@@ -1,5 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
+export function shouldTrackInlineViewportScroll({
+  isPhaseAtomicV2,
+} = {}) {
+  void isPhaseAtomicV2;
+  // The inline overlay is positioned in viewport space, so both overlay engines
+  // need fresh projection when the page or any scroll container moves.
+  return true;
+}
+
 export default function useInlineViewportSyncRevision({
   isPhaseAtomicV2,
 }) {
@@ -16,6 +25,9 @@ export default function useInlineViewportSyncRevision({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    const trackViewportScroll = shouldTrackInlineViewportScroll({
+      isPhaseAtomicV2,
+    });
     const onViewportChange = () => {
       scheduleViewportSync();
     };
@@ -24,7 +36,7 @@ export default function useInlineViewportSyncRevision({
     const vv = window.visualViewport || null;
     vv?.addEventListener("resize", onViewportChange);
 
-    if (!isPhaseAtomicV2) {
+    if (trackViewportScroll) {
       window.addEventListener("scroll", onViewportChange, true);
       vv?.addEventListener("scroll", onViewportChange);
     }
@@ -32,7 +44,7 @@ export default function useInlineViewportSyncRevision({
     return () => {
       window.removeEventListener("resize", onViewportChange);
       vv?.removeEventListener("resize", onViewportChange);
-      if (!isPhaseAtomicV2) {
+      if (trackViewportScroll) {
         window.removeEventListener("scroll", onViewportChange, true);
         vv?.removeEventListener("scroll", onViewportChange);
       }

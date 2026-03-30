@@ -48,9 +48,6 @@ import {
   INLINE_LAYOUT_VERSION,
   INLINE_VISUAL_NUDGE_CACHE,
 } from "@/components/editor/overlays/inlineEditor/inlineEditorConstants";
-import {
-  selectAllEditableContent,
-} from "@/components/editor/textSystem/services/textCaretPositionService";
 import useInlineViewportSyncRevision from "@/components/editor/overlays/inlineEditor/useInlineViewportSyncRevision";
 import useInlinePhaseAtomicLifecycle from "@/components/editor/overlays/inlineEditor/useInlinePhaseAtomicLifecycle";
 import useInlineDebugEmitter from "@/components/editor/overlays/inlineEditor/useInlineDebugEmitter";
@@ -61,6 +58,10 @@ import {
   buildInlineFocusOperationalSnapshot,
   emitInlineFocusRcaEvent,
 } from "@/components/editor/textSystem/debug/inlineFocusOperationalDebug";
+import {
+  emitInlineCaretScrollDebugEvent,
+  isInlineCaretScrollDebugEnabled,
+} from "@/components/editor/textSystem/debug/inlineCaretScrollDebug";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -147,6 +148,290 @@ function isUsableClientRect(rect) {
   return isFiniteRectPayload(rect) && !isZeroRectPayload(rect);
 }
 
+function getSelectionRangeInsideEditor(editorEl) {
+  if (!editorEl || typeof window === "undefined") return null;
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount <= 0) return null;
+  try {
+    const range = selection.getRangeAt(0);
+    const startContainer = range?.startContainer || null;
+    const endContainer = range?.endContainer || null;
+    if (
+      startContainer &&
+      endContainer &&
+      editorEl.contains(startContainer) &&
+      editorEl.contains(endContainer)
+    ) {
+      return range;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function toRoundedViewportRect(rect) {
+  if (!isFiniteRectPayload(rect) || isZeroRectPayload(rect)) return null;
+  return {
+    x: roundMetric(Number(rect.x)),
+    y: roundMetric(Number(rect.y)),
+    width: roundMetric(Number(rect.width)),
+    height: roundMetric(Number(rect.height)),
+  };
+}
+
+function toRoundedViewportNumber(value) {
+  const numeric =
+    typeof value === "string" ? Number.parseFloat(value) : Number(value);
+  return Number.isFinite(numeric) ? roundMetric(numeric) : null;
+}
+
+function buildInlineViewportCaretSyncSnapshot({
+  editorEl,
+  contentEl,
+  frameEl,
+} = {}) {
+  if (!editorEl || !contentEl) return null;
+  const selectionInfo = getSelectionRectInEditor(editorEl);
+  const computedStyle = (() => {
+    try {
+      return typeof window !== "undefined" ? window.getComputedStyle(editorEl) : null;
+    } catch {
+      return null;
+    }
+  })();
+  return {
+    contentRectViewport: toRoundedViewportRect(contentEl.getBoundingClientRect?.()),
+    frameRectViewport: toRoundedViewportRect(frameEl?.getBoundingClientRect?.()),
+    editorRectViewport: toRoundedViewportRect(editorEl.getBoundingClientRect?.()),
+    firstGlyphRectViewport: toRoundedViewportRect(getFirstGlyphRectInEditor(editorEl)),
+    textInkRectViewport: toRoundedViewportRect(getTextInkRectInEditor(editorEl)),
+    selectionRectViewport: toRoundedViewportRect(
+      selectionInfo?.inEditor ? selectionInfo.rect : null
+    ),
+    fullRangeRectViewport: toRoundedViewportRect(getFullRangeRect(editorEl)),
+    caretProbeRectViewport: toRoundedViewportRect(
+      getCollapsedCaretProbeRectInEditor(editorEl)
+    ),
+    editorMetrics: {
+      clientWidth: toRoundedViewportNumber(editorEl.clientWidth),
+      clientHeight: toRoundedViewportNumber(editorEl.clientHeight),
+      scrollWidth: toRoundedViewportNumber(editorEl.scrollWidth),
+      scrollHeight: toRoundedViewportNumber(editorEl.scrollHeight),
+      scrollTop: toRoundedViewportNumber(editorEl.scrollTop),
+      scrollLeft: toRoundedViewportNumber(editorEl.scrollLeft),
+    },
+    computed: {
+      fontSizePx: toRoundedViewportNumber(computedStyle?.fontSize),
+      lineHeightPx: toRoundedViewportNumber(computedStyle?.lineHeight),
+      paddingTopPx: toRoundedViewportNumber(computedStyle?.paddingTop),
+      paddingBottomPx: toRoundedViewportNumber(computedStyle?.paddingBottom),
+      transform: computedStyle?.transform || null,
+    },
+  };
+}
+
+function buildInlineViewportCaretSyncMetricSignature(snapshot) {
+  if (!snapshot) return "null";
+  return JSON.stringify(snapshot);
+}
+
+function buildInlineViewportCaretSelectionSnapshot(range) {
+  if (!range) return null;
+  return {
+    collapsed: Boolean(range.collapsed),
+    startOffset: Number.isFinite(Number(range.startOffset))
+      ? Number(range.startOffset)
+      : null,
+    endOffset: Number.isFinite(Number(range.endOffset))
+      ? Number(range.endOffset)
+      : null,
+    startNodeName: range.startContainer?.nodeName || null,
+    endNodeName: range.endContainer?.nodeName || null,
+  };
+}
+
+function buildInlineViewportCaretSelectionSignature(snapshot) {
+  if (!snapshot) return "null";
+  return JSON.stringify(snapshot);
+}
+
+function buildInlineCaretScrollSelectionState(editorEl) {
+  if (!editorEl || typeof window === "undefined") {
+    return {
+      rangeCount: 0,
+      inEditor: false,
+      isCollapsed: null,
+      anchorOffset: null,
+      focusOffset: null,
+      anchorNodeName: null,
+      focusNodeName: null,
+      rangeRectViewport: null,
+      firstClientRectViewport: null,
+    };
+  }
+
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount <= 0) {
+    return {
+      rangeCount: 0,
+      inEditor: false,
+      isCollapsed: null,
+      anchorOffset: null,
+      focusOffset: null,
+      anchorNodeName: null,
+      focusNodeName: null,
+      rangeRectViewport: null,
+      firstClientRectViewport: null,
+    };
+  }
+
+  let range = null;
+  try {
+    range = selection.getRangeAt(0);
+  } catch {
+    range = null;
+  }
+
+  const anchorNode = selection.anchorNode || null;
+  const focusNode = selection.focusNode || null;
+  const inEditor = Boolean(
+    anchorNode &&
+      focusNode &&
+      editorEl.contains(anchorNode) &&
+      editorEl.contains(focusNode)
+  );
+
+  let firstClientRect = null;
+  try {
+    firstClientRect = Array.from(range?.getClientRects?.() || [])[0] || null;
+  } catch {
+    firstClientRect = null;
+  }
+
+  return {
+    rangeCount: Number(selection.rangeCount || 0),
+    inEditor,
+    isCollapsed:
+      typeof selection.isCollapsed === "boolean" ? selection.isCollapsed : null,
+    anchorOffset: Number.isFinite(Number(selection.anchorOffset))
+      ? Number(selection.anchorOffset)
+      : null,
+    focusOffset: Number.isFinite(Number(selection.focusOffset))
+      ? Number(selection.focusOffset)
+      : null,
+    anchorNodeName: anchorNode?.nodeName || null,
+    focusNodeName: focusNode?.nodeName || null,
+    rangeRectViewport: toRoundedViewportRect(
+      range?.getBoundingClientRect?.() || null
+    ),
+    firstClientRectViewport: toRoundedViewportRect(firstClientRect),
+  };
+}
+
+function buildInlineCaretScrollViewportState() {
+  if (typeof window === "undefined") return null;
+  const visualViewport = window.visualViewport || null;
+  return {
+    windowScrollX: toRoundedViewportNumber(window.scrollX),
+    windowScrollY: toRoundedViewportNumber(window.scrollY),
+    visualViewport: visualViewport
+      ? {
+          offsetLeft: toRoundedViewportNumber(visualViewport.offsetLeft),
+          offsetTop: toRoundedViewportNumber(visualViewport.offsetTop),
+          pageLeft: toRoundedViewportNumber(visualViewport.pageLeft),
+          pageTop: toRoundedViewportNumber(visualViewport.pageTop),
+          width: toRoundedViewportNumber(visualViewport.width),
+          height: toRoundedViewportNumber(visualViewport.height),
+          scale: toRoundedViewportNumber(visualViewport.scale),
+        }
+      : null,
+  };
+}
+
+function buildInlineCaretScrollFocusState(editorEl, overlayRootEl) {
+  if (typeof document === "undefined") return null;
+  const activeElement = document.activeElement || null;
+  return {
+    nodeName: activeElement?.nodeName || null,
+    role:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("role")
+        : null,
+    dataInlineEditorContent:
+      typeof activeElement?.getAttribute === "function"
+        ? activeElement.getAttribute("data-inline-editor-content")
+        : null,
+    isEditorActive: Boolean(editorEl && activeElement === editorEl),
+    isWithinOverlay: Boolean(
+      overlayRootEl &&
+        activeElement &&
+        typeof overlayRootEl.contains === "function" &&
+        overlayRootEl.contains(activeElement)
+    ),
+  };
+}
+
+function refreshCollapsedCaretAfterViewportSync({
+  editorEl,
+  contentEl,
+  frameEl,
+  range,
+} = {}) {
+  if (!editorEl || !range?.collapsed || typeof window === "undefined") {
+    return {
+      selectionReapplied: false,
+      forcedReflow: false,
+      reflowMetrics: null,
+      operations: [],
+    };
+  }
+  const selection = window.getSelection?.();
+  if (!selection) {
+    return {
+      selectionReapplied: false,
+      forcedReflow: false,
+      reflowMetrics: null,
+      operations: [],
+    };
+  }
+
+  const reflowMetrics = {
+    editorOffsetHeight: toRoundedViewportNumber(editorEl.offsetHeight),
+    contentOffsetHeight: toRoundedViewportNumber(contentEl?.offsetHeight),
+    frameOffsetHeight: toRoundedViewportNumber(frameEl?.offsetHeight),
+  };
+  const operations = ["read-offset-heights", "remove-all-ranges"];
+
+  try {
+    const clonedRange = range.cloneRange();
+    selection.removeAllRanges();
+    operations.push("read-content-rect");
+    contentEl?.getBoundingClientRect?.();
+    operations.push("read-frame-rect");
+    frameEl?.getBoundingClientRect?.();
+    operations.push("read-editor-rect");
+    editorEl.getBoundingClientRect?.();
+    operations.push("add-range");
+    selection.addRange(clonedRange);
+    operations.push("read-editor-rect-post-add");
+    editorEl.getBoundingClientRect?.();
+    return {
+      selectionReapplied: true,
+      forcedReflow: true,
+      reflowMetrics,
+      operations,
+    };
+  } catch {
+    return {
+      selectionReapplied: false,
+      forcedReflow: true,
+      reflowMetrics,
+      operations,
+    };
+  }
+}
+
 function createEmptyVerticalAuthoritySession() {
   return {
     editingId: null,
@@ -188,6 +473,10 @@ export default function InlineTextEditor({
   const editableHostRef = useRef(null);
   const editorFrameRef = useRef(null);
   const overlayRootRef = useRef(null);
+  const caretScrollBaselineRef = useRef({
+    editingId: null,
+    emitted: false,
+  });
   const nudgeCalibrationRef = useRef({
     key: null,
   });
@@ -1553,9 +1842,6 @@ export default function InlineTextEditor({
       }
       const firstSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
       const isFocused = Boolean(firstSnapshot.isActiveElementEditor);
-      if (isFocused) {
-        selectAllEditableContent(targetEl);
-      }
       const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
 
       emitInlineNudgeDiag(DEBUG_MODE, "focus-ownership-entry", {
@@ -1645,9 +1931,6 @@ export default function InlineTextEditor({
       }
       const firstSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
       const isFocused = Boolean(firstSnapshot.isActiveElementEditor);
-      if (isFocused) {
-        selectAllEditableContent(targetEl);
-      }
       const operationalSnapshot = buildInlineFocusOperationalSnapshot(targetEl);
 
       emitInlineNudgeDiag(DEBUG_MODE, "focus-ownership-entry", {
@@ -2869,6 +3152,87 @@ export default function InlineTextEditor({
       }
     };
   }, [emitDebug]);
+  useEffect(() => {
+    if (caretScrollBaselineRef.current.editingId !== editingId) {
+      caretScrollBaselineRef.current = {
+        editingId: editingId || null,
+        emitted: false,
+      };
+    }
+  }, [editingId]);
+  useEffect(() => {
+    emitInlineCaretScrollDebugEvent("inline-runtime-path", {
+      component: "InlineTextOverlayEditor",
+      editingId,
+      overlayEngine: normalizedOverlayEngine,
+    });
+  }, [editingId, normalizedOverlayEngine]);
+  const emitCaretScrollDebug = useCallback((eventName, extra = {}) => {
+    if (!isInlineCaretScrollDebugEnabled()) return null;
+
+    const editorEl = editorRef.current;
+    const contentEl = contentBoxRef.current;
+    const frameEl = editorFrameRef.current;
+    const overlayRootEl = overlayRootRef.current;
+
+    return emitInlineCaretScrollDebugEvent(eventName, {
+      editingId,
+      overlayPhase,
+      renderAuthorityPhase,
+      viewportSyncRevision: Number(viewportSyncRevision || 0),
+      layoutProbeRevision: Number(layoutProbeRevision || 0),
+      caretVisible: Boolean(caretVisible),
+      editorVisualReady: Boolean(editorVisualReady),
+      isEditorInteractive: Boolean(isEditorInteractive),
+      isEditorVisible: Boolean(isEditorVisible),
+      offsets: {
+        effectiveVisualOffsetPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+        internalContentOffsetPx: roundMetric(
+          Number(effectiveInternalContentOffsetPx || 0)
+        ),
+        editorPaddingTopPx: roundMetric(Number(editorPaddingTopPx || 0)),
+        editorPaddingBottomPx: roundMetric(Number(editorPaddingBottomPx || 0)),
+        editableLineHeightPx: roundMetric(Number(editableLineHeightPx || 0)),
+        fontSizePx: roundMetric(Number(domRenderFontSizePx || 0)),
+        letterSpacingPx: roundMetric(Number(letterSpacingPx || 0)),
+      },
+      viewport: buildInlineCaretScrollViewportState(),
+      focus: buildInlineCaretScrollFocusState(editorEl, overlayRootEl),
+      rects: {
+        overlayRootRectViewport: toRoundedViewportRect(
+          overlayRootEl?.getBoundingClientRect?.() || null
+        ),
+        contentRectViewport: toRoundedViewportRect(
+          contentEl?.getBoundingClientRect?.() || null
+        ),
+        frameRectViewport: toRoundedViewportRect(
+          frameEl?.getBoundingClientRect?.() || null
+        ),
+        editorRectViewport: toRoundedViewportRect(
+          editorEl?.getBoundingClientRect?.() || null
+        ),
+      },
+      selection: buildInlineCaretScrollSelectionState(editorEl),
+      ...extra,
+    });
+  }, [
+    caretVisible,
+    domRenderFontSizePx,
+    editingId,
+    editableLineHeightPx,
+    editorPaddingBottomPx,
+    editorPaddingTopPx,
+    editorVisualReady,
+    effectiveInternalContentOffsetPx,
+    effectiveVisualOffsetPx,
+    isEditorInteractive,
+    isEditorVisible,
+    layoutProbeRevision,
+    letterSpacingPx,
+    overlayPhase,
+    renderAuthorityPhase,
+    viewportSyncRevision,
+  ]);
   useInlinePhaseAtomicLifecycle({
     editingId,
     isPhaseAtomicV2,
@@ -2894,6 +3258,245 @@ export default function InlineTextEditor({
     setCaretVisible,
     setLayoutProbeRevision,
   });
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    if (!isEditorInteractive || !isEditorVisible) return undefined;
+
+    const editorEl = editorRef.current;
+    if (!editorEl) return undefined;
+    if (typeof document === "undefined" || document.activeElement !== editorEl) {
+      return undefined;
+    }
+
+    const currentRange = getSelectionRangeInsideEditor(editorEl);
+    if (!currentRange?.collapsed) return undefined;
+    if (caretScrollBaselineRef.current.emitted) return undefined;
+
+    const event = emitCaretScrollDebug("caret-baseline", {
+      step: "baseline",
+      frameOrder: "effect",
+    });
+    if (event) {
+      caretScrollBaselineRef.current = {
+        editingId: editingId || null,
+        emitted: true,
+      };
+    }
+    return undefined;
+  }, [
+    editingId,
+    emitCaretScrollDebug,
+    isEditorInteractive,
+    isEditorVisible,
+    overlayPhase,
+    viewportSyncRevision,
+  ]);
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    if (typeof window === "undefined") return undefined;
+
+    const handleWindowScroll = () => {
+      emitCaretScrollDebug("scroll-event", {
+        step: "before-reprojection",
+        frameOrder: "scroll-event",
+        source: "window",
+      });
+    };
+    const handleVisualViewportScroll = () => {
+      emitCaretScrollDebug("scroll-event", {
+        step: "before-reprojection",
+        frameOrder: "scroll-event",
+        source: "visualViewport",
+      });
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, true);
+    const visualViewport = window.visualViewport || null;
+    visualViewport?.addEventListener("scroll", handleVisualViewportScroll);
+
+    return () => {
+      window.removeEventListener("scroll", handleWindowScroll, true);
+      visualViewport?.removeEventListener("scroll", handleVisualViewportScroll);
+    };
+  }, [editingId, emitCaretScrollDebug]);
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    if (viewportSyncRevision <= 0) return undefined;
+    if (!isEditorInteractive || !isEditorVisible) return undefined;
+
+    let refreshRafId = 0;
+    let settleRafId = 0;
+    let cancelled = false;
+
+    refreshRafId = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      const editorEl = editorRef.current;
+      const contentEl = contentBoxRef.current;
+      const frameEl = editorFrameRef.current;
+      if (!editorEl || !contentEl) return;
+      if (typeof document === "undefined" || document.activeElement !== editorEl) return;
+
+      const currentRange = getSelectionRangeInsideEditor(editorEl);
+      if (!currentRange?.collapsed) return;
+
+      const before = buildInlineViewportCaretSyncSnapshot({
+        editorEl,
+        contentEl,
+        frameEl,
+      });
+      const beforeSelection = buildInlineViewportCaretSelectionSnapshot(currentRange);
+      emitCaretScrollDebug("viewport-refresh-before", {
+        step: "after-reprojection-before-refresh",
+        frameOrder: "raf-1",
+        captured: {
+          layout: before,
+          selection: beforeSelection,
+        },
+      });
+      const refreshResult = refreshCollapsedCaretAfterViewportSync({
+        editorEl,
+        contentEl,
+        frameEl,
+        range: currentRange,
+      });
+      const afterRefreshRange = getSelectionRangeInsideEditor(editorEl);
+      const afterRefresh = buildInlineViewportCaretSyncSnapshot({
+        editorEl,
+        contentEl,
+        frameEl,
+      });
+      const afterRefreshSelection = buildInlineViewportCaretSelectionSnapshot(
+        afterRefreshRange
+      );
+      emitCaretScrollDebug("viewport-refresh-after", {
+        step: "after-refresh",
+        frameOrder: "raf-1",
+        refreshResult,
+        captured: {
+          layout: afterRefresh,
+          selection: afterRefreshSelection,
+        },
+      });
+
+      settleRafId = window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        const settledRange = getSelectionRangeInsideEditor(editorEl);
+        const afterPaint = buildInlineViewportCaretSyncSnapshot({
+          editorEl,
+          contentEl,
+          frameEl,
+        });
+        const afterPaintSelection = buildInlineViewportCaretSelectionSnapshot(
+          settledRange
+        );
+        const metricsChangedAfterRefresh =
+          buildInlineViewportCaretSyncMetricSignature(before) !==
+          buildInlineViewportCaretSyncMetricSignature(afterRefresh);
+        const metricsChangedAfterPaint =
+          buildInlineViewportCaretSyncMetricSignature(afterRefresh) !==
+          buildInlineViewportCaretSyncMetricSignature(afterPaint);
+        const selectionChangedDuringRefresh =
+          buildInlineViewportCaretSelectionSignature(beforeSelection) !==
+            buildInlineViewportCaretSelectionSignature(afterRefreshSelection) ||
+          buildInlineViewportCaretSelectionSignature(afterRefreshSelection) !==
+            buildInlineViewportCaretSelectionSignature(afterPaintSelection);
+        const likelyCause = !refreshResult.selectionReapplied
+          ? "selection-refresh-failed"
+          : (
+            metricsChangedAfterRefresh || metricsChangedAfterPaint
+              ? "inner-metrics-still-settling"
+              : (
+                selectionChangedDuringRefresh
+                  ? "selection-state-shifted-during-refresh"
+                  : "native-caret-visual-stale"
+              )
+          );
+
+        emitCaretScrollDebug("viewport-refresh-after-paint", {
+          step: "after-refresh-paint",
+          frameOrder: "raf-2",
+          refreshResult,
+          metricsChangedAfterRefresh,
+          metricsChangedAfterPaint,
+          selectionChangedDuringRefresh,
+          likelyCause,
+          captured: {
+            before: {
+              layout: before,
+              selection: beforeSelection,
+            },
+            afterRefresh: {
+              layout: afterRefresh,
+              selection: afterRefreshSelection,
+            },
+            afterPaint: {
+              layout: afterPaint,
+              selection: afterPaintSelection,
+            },
+          },
+        });
+
+        emitDebug("overlay: viewport-caret-sync", {
+          viewportSyncRevision: Number(viewportSyncRevision || 0),
+          selectionCollapsed: true,
+          selectionReapplied: refreshResult.selectionReapplied,
+          forcedReflow: refreshResult.forcedReflow,
+          reflowMetrics: refreshResult.reflowMetrics,
+          refreshOperations: refreshResult.operations,
+          metricsChangedAfterRefresh,
+          metricsChangedAfterPaint,
+          selectionChangedDuringRefresh,
+          likelyCause,
+          offsets: {
+            effectiveVisualOffsetPx: roundMetric(Number(effectiveVisualOffsetPx || 0)),
+            internalContentOffsetPx: roundMetric(
+              Number(effectiveInternalContentOffsetPx || 0)
+            ),
+            editorPaddingTopPx: roundMetric(Number(editorPaddingTopPx || 0)),
+            editorPaddingBottomPx: roundMetric(Number(editorPaddingBottomPx || 0)),
+            editableLineHeightPx: roundMetric(Number(editableLineHeightPx || 0)),
+            fontSizePx: roundMetric(Number(domRenderFontSizePx || 0)),
+            letterSpacingPx: roundMetric(Number(letterSpacingPx || 0)),
+          },
+          before: {
+            layout: before,
+            selection: beforeSelection,
+          },
+          afterRefresh: {
+            layout: afterRefresh,
+            selection: afterRefreshSelection,
+          },
+          afterPaint: {
+            layout: afterPaint,
+            selection: afterPaintSelection,
+          },
+        });
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (refreshRafId) window.cancelAnimationFrame(refreshRafId);
+      if (settleRafId) window.cancelAnimationFrame(settleRafId);
+    };
+  }, [
+    domRenderFontSizePx,
+    editingId,
+    editableLineHeightPx,
+    editorPaddingBottomPx,
+    editorPaddingTopPx,
+    effectiveInternalContentOffsetPx,
+    effectiveVisualOffsetPx,
+    emitDebug,
+    isEditorInteractive,
+    isEditorVisible,
+    letterSpacingPx,
+    emitCaretScrollDebug,
+    viewportSyncRevision,
+  ]);
 
   useEffect(() => {
     if (!editingId) return;
@@ -2951,6 +3554,7 @@ export default function InlineTextEditor({
     onDomLayoutValueChange: handleDomLayoutValueChange,
     onChange,
     emitDebug,
+    emitCaretScrollDebug,
     triggerFinish,
   });
   return (

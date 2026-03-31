@@ -1,0 +1,117 @@
+{
+  "manifestVersion": 1,
+  "generatedFrom": "shared/previewPublishVisualBaselineFixtures.mjs",
+  "cases": [
+    {
+      "caseId": "simple-pantalla-section",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "pantalla viewport-fit behavior stays stable",
+        "content-anchored text remains inside the section content flow",
+        "desktop and mobile preserve the same authored text hierarchy"
+      ]
+    },
+    {
+      "caseId": "decorative-fullbleed",
+      "sourceFixture": "preview-publish-warning-only-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "warning-only",
+      "acceptedWarningCodes": [
+        "fullbleed-editor-drift",
+        "pantalla-ynorm-drift"
+      ],
+      "captureFocus": [
+        "fullbleed media stays in the bleed layer rather than collapsing into content width",
+        "section decorations remain attached to the same section backdrop",
+        "mobile keeps the same fullbleed reading, not a separate anchor interpretation"
+      ]
+    },
+    {
+      "caseId": "text-with-decoration-behind",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "text stays visually above background decorations",
+        "decorations do not detach or jump in front of the text",
+        "the case does not silently inherit bleed semantics"
+      ]
+    },
+    {
+      "caseId": "gallery",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "gallery cell order remains stable",
+        "layout mode and sizing pattern stay recognizable",
+        "desktop/mobile preserve the same gallery layout family"
+      ]
+    },
+    {
+      "caseId": "countdown",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "frame and unit composition stay intact",
+        "desktop/mobile preserve the same countdown layout family",
+        "no later parity work should change countdown structure accidentally"
+      ]
+    },
+    {
+      "caseId": "mixed-fijo-pantalla",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "section order stays stable across pantalla and fijo sections",
+        "pantalla hero rendering does not disturb downstream fixed sections",
+        "cross-section relationships remain intact in desktop and mobile views"
+      ]
+    }
+  ]
+}

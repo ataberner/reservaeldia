@@ -234,7 +234,7 @@ export default function Home() {
           </div>
         </div>
       )}
-
+      
       <header className="navbar navbar-expand-lg navbar-light bg-light fixed-top py-3">
         <div className="container">
           <Link href="/" className="navbar-brand">

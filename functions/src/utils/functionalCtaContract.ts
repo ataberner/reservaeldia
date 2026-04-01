@@ -39,12 +39,29 @@ function normalizeType(value: unknown): string {
   return String(value || "").trim().toLowerCase();
 }
 
+function hasButtonOfTypeInEntry(
+  entry: unknown,
+  targetType: FunctionalCtaObjectType
+): boolean {
+  if (!isRecord(entry)) return false;
+
+  if (normalizeType(entry.tipo) === targetType) {
+    return true;
+  }
+
+  if (normalizeType(entry.tipo) !== "grupo" || !Array.isArray(entry.children)) {
+    return false;
+  }
+
+  return entry.children.some((child) => hasButtonOfTypeInEntry(child, targetType));
+}
+
 function hasButtonOfType(
   objects: unknown[],
   targetType: FunctionalCtaObjectType
 ): boolean {
   return Array.isArray(objects)
-    ? objects.some((entry) => isRecord(entry) && normalizeType(entry.tipo) === targetType)
+    ? objects.some((entry) => hasButtonOfTypeInEntry(entry, targetType))
     : false;
 }
 

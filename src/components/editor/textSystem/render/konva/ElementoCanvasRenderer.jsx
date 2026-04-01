@@ -32,6 +32,8 @@ import {
 import resolveInlineCanvasVisibility from "@/components/editor/textSystem/adapters/konvaDom/resolveInlineCanvasVisibility";
 import { resolveKonvaImageCrop } from "@/components/editor/textSystem/render/konva/imageCropUtils";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import GaleriaKonva from "@/components/editor/GaleriaKonva";
+import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import {
   getTemplateDraftDebugSession,
   groupTemplateDraftDebug,
@@ -424,6 +426,7 @@ export default function ElementoCanvas({
   onPredragVisualSelectionStart = null,
   onPredragVisualSelectionCancel = null,
   selectionRuntime = null,
+  isPassiveRender = false,
 }) {
   const primaryAssetUrl = resolveObjectPrimaryAssetUrl(obj) || null;
   const imageAssetUrl = obj.tipo === "imagen" ? primaryAssetUrl : null;
@@ -448,6 +451,7 @@ export default function ElementoCanvas({
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
   const readRuntimeSelectedIds = useCallback(() => {
+    if (isPassiveRender) return [];
     if (typeof selectionRuntime?.readSnapshot === "function") {
       const runtimeSelectedIds = selectionRuntime.readSnapshot()?.selectedIds;
       if (Array.isArray(runtimeSelectedIds)) {
@@ -458,7 +462,7 @@ export default function ElementoCanvas({
     return typeof window !== "undefined" && Array.isArray(window._elementosSeleccionados)
       ? window._elementosSeleccionados.filter(Boolean)
       : [];
-  }, [selectionRuntime]);
+  }, [isPassiveRender, selectionRuntime]);
   const readEffectiveSelectionState = useCallback(() => (
     resolveEffectiveSelectionState({
       elementId: obj.id,
@@ -1149,6 +1153,13 @@ export default function ElementoCanvas({
   ]);
 
   const resolveInteractionAccessState = useCallback(() => {
+    if (isPassiveRender) {
+      return {
+        draggable: false,
+        listening: false,
+        followerSuppressed: false,
+      };
+    }
     const { isActiveGroupFollower, isManualGroupMember } =
       getActiveGroupInteractionState();
     return resolveInteractionAccess({
@@ -1163,6 +1174,7 @@ export default function ElementoCanvas({
     editingMode,
     getActiveGroupInteractionState,
     inlineEditPointerActive,
+    isPassiveRender,
     isInEditMode,
     shouldUseManualGroupDrag,
   ]);
@@ -3500,6 +3512,128 @@ export default function ElementoCanvas({
         shadowBlur={isSelected ? 8 : 0}
         shadowOffset={{ x: 0, y: 2 }}
       />
+    );
+  }
+
+  if (obj.tipo === "grupo") {
+    const groupWidth = Math.max(1, Math.abs(Number(obj.width) || 1));
+    const groupHeight = Math.max(1, Math.abs(Number(obj.height) || 1));
+    const children = Array.isArray(obj.children) ? obj.children : [];
+
+    return (
+      <Group
+        {...commonProps}
+        id={obj.id}
+        ref={handleRef}
+        width={groupWidth}
+        height={groupHeight}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <Rect
+          x={0}
+          y={0}
+          width={groupWidth}
+          height={groupHeight}
+          fill="rgba(0,0,0,0.001)"
+          stroke="transparent"
+          listening={true}
+          draggable={false}
+          onClick={handleClick}
+          onTap={handleClick}
+          onDblClick={handleDoubleClick}
+          onDblTap={handleDoubleClick}
+        />
+
+        <Group listening={false}>
+          {children.map((child, childIndex) => {
+            const childKey = `${obj.id}:${child?.id || childIndex}`;
+
+            if (child?.tipo === "countdown") {
+              return (
+                <CountdownKonva
+                  key={childKey}
+                  obj={child}
+                  registerRef={null}
+                  onHover={null}
+                  isSelected={false}
+                  selectionCount={0}
+                  seccionesOrdenadas={[]}
+                  altoCanvas={0}
+                  ALTURA_PANTALLA_EDITOR={0}
+                  onSelect={null}
+                  onChange={null}
+                  onDragStartPersonalizado={null}
+                  onDragMovePersonalizado={null}
+                  onDragEndPersonalizado={null}
+                  dragStartPos={dragStartPos}
+                  hasDragged={hasDragged}
+                  onPredragVisualSelectionStart={null}
+                  onPredragVisualSelectionCancel={null}
+                  selectionRuntime={null}
+                  isPassiveRender={true}
+                />
+              );
+            }
+
+            if (child?.tipo === "galeria") {
+              return (
+                <GaleriaKonva
+                  key={childKey}
+                  obj={child}
+                  registerRef={null}
+                  onHover={null}
+                  isSelected={false}
+                  onSelect={null}
+                  onChange={null}
+                  onDragStartPersonalizado={null}
+                  onDragMovePersonalizado={null}
+                  onDragEndPersonalizado={null}
+                  celdaGaleriaActiva={null}
+                  onPickCell={null}
+                  setCeldaGaleriaActiva={null}
+                  seccionesOrdenadas={[]}
+                  altoCanvas={0}
+                  ALTURA_PANTALLA_EDITOR={0}
+                  isPassiveRender={true}
+                />
+              );
+            }
+
+            return (
+              <ElementoCanvas
+                key={childKey}
+                obj={child}
+                isSelected={false}
+                isInEditMode={false}
+                onSelect={null}
+                onChange={undefined}
+                editingId={null}
+                registerRef={null}
+                onHover={null}
+                preSeleccionado={false}
+                selectionCount={0}
+                onDragMovePersonalizado={null}
+                onDragStartPersonalizado={null}
+                onDragEndPersonalizado={null}
+                dragStartPos={dragStartPos}
+                hasDragged={hasDragged}
+                editingMode={false}
+                inlineOverlayMountedId={null}
+                inlineOverlayMountSession={null}
+                inlineVisibilityMode="reactive"
+                inlineOverlayEngine="phase_atomic_v2"
+                onInlineEditPointer={null}
+                dragLayerRef={null}
+                onPredragVisualSelectionStart={null}
+                onPredragVisualSelectionCancel={null}
+                selectionRuntime={null}
+                isPassiveRender={true}
+              />
+            );
+          })}
+        </Group>
+      </Group>
     );
   }
 

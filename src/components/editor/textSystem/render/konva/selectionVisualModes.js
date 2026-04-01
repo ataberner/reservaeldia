@@ -20,6 +20,10 @@ function isLineObject(obj) {
   return obj?.tipo === "forma" && obj?.figura === "line";
 }
 
+function isPreservedGroupObject(obj) {
+  return obj?.tipo === "grupo";
+}
+
 const NO_ANCHORS = Object.freeze([]);
 const BOTTOM_RIGHT_ANCHOR = Object.freeze(["bottom-right"]);
 
@@ -77,9 +81,11 @@ export function resolveTransformerVisualMode(input = {}) {
     : [];
   const hasLineSelection =
     input.hasLineSelection === true || selectedObjects.some(isLineObject);
+  const hasPreservedGroupSelection = selectedObjects.some(isPreservedGroupObject);
   const transformableObjects = selectedObjects.filter((obj) => !isLineObject(obj));
   const shouldUseGenericTransformer = Boolean(
     selectedIds.length > 0 &&
+      !hasPreservedGroupSelection &&
       !hasLineSelection &&
       transformableObjects.length > 0
   );
@@ -118,7 +124,7 @@ export function resolveTransformerVisualMode(input = {}) {
     shouldSuppressDuringDeferredDrag ||
     shouldHideTransformerDuringDrag
       ? "none"
-      : hasLineSelection
+      : hasLineSelection || hasPreservedGroupSelection
         ? "line-indicator"
         : selectedIds.length > 0
           ? "transformer"

@@ -3,6 +3,9 @@ import {
   startCanvasDragPerfSpan,
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
+import {
+  resolveSelectionFrameRect,
+} from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 
 const FALLBACK_BUTTON_SIZE_DESKTOP = 28;
 const FALLBACK_BUTTON_SIZE_MOBILE = 24;
@@ -133,6 +136,25 @@ function getScrollableAncestors(startNode) {
   return Array.from(new Set(targets));
 }
 
+function isRegisteredRefRelevantToOverlaySelection(overlaySelection, registeredId) {
+  const safeRegisteredId = String(registeredId || "").trim();
+  if (!safeRegisteredId || !overlaySelection) return false;
+
+  if (overlaySelection.kind === "canvas-object") {
+    return String(overlaySelection?.objectId || "").trim() === safeRegisteredId;
+  }
+
+  if (overlaySelection.kind === "multi-selection") {
+    return Array.isArray(overlaySelection?.selectedIds)
+      ? overlaySelection.selectedIds.some(
+          (selectedId) => String(selectedId || "").trim() === safeRegisteredId
+        )
+      : false;
+  }
+
+  return false;
+}
+
 function resolveDashboardHeaderBottom() {
   if (typeof window === "undefined" || typeof document === "undefined") return 0;
 
@@ -187,12 +209,17 @@ export default function useOptionButtonPosition({
     const overlayMenuItem = overlaySelection?.menuItem || null;
     const hasObjectSelection =
       overlayKind === "canvas-object" && elementosSeleccionados.length === 1;
+    const hasMultiSelection =
+      overlayKind === "multi-selection" &&
+      Array.isArray(overlaySelection?.selectedIds) &&
+      overlaySelection.selectedIds.length >= 2;
     const hasBackgroundDecorationSelection =
       overlayKind === "background-decoration" && Boolean(overlayMenuItem?.id);
     const hasSectionBaseImageSelection =
       overlayKind === "section-base-image" && Boolean(overlaySelection?.sectionId);
     if (
       !hasObjectSelection &&
+      !hasMultiSelection &&
       !hasBackgroundDecorationSelection &&
       !hasSectionBaseImageSelection
     ) {
@@ -202,6 +229,8 @@ export default function useOptionButtonPosition({
     const stage = stageRef.current;
     const selectionKind = hasObjectSelection
       ? "object"
+      : hasMultiSelection
+        ? "multi-selection"
       : hasSectionBaseImageSelection
         ? "section-base-image"
         : "background-decoration";
@@ -210,7 +239,7 @@ export default function useOptionButtonPosition({
       : hasSectionBaseImageSelection
         ? overlayNodeRefs?.current?.[overlaySelection.sectionId] || null
       : null;
-    if ((!nodeRef && !hasBackgroundDecorationSelection) || !stage) return null;
+    if ((!nodeRef && !hasMultiSelection && !hasBackgroundDecorationSelection) || !stage) return null;
 
     try {
       const box =
@@ -219,6 +248,14 @@ export default function useOptionButtonPosition({
             relativeTo: stage,
             skipShadow: true,
           })
+        : hasMultiSelection
+          ? resolveSelectionFrameRect({
+              selectedElements: overlaySelection.selectedIds,
+              elementRefs,
+              objetos: overlaySelection.selectedObjects,
+              includePadding: true,
+              requireLiveNodes: false,
+            })
         : resolveBackgroundDecorationStageBox(overlayMenuItem);
       if (!box) return null;
 
@@ -232,6 +269,11 @@ export default function useOptionButtonPosition({
                   y: typeof nodeRef.y === "function" ? nodeRef.y() : null,
                 }
           )
+        : hasMultiSelection
+          ? {
+              x: Number(box.x) || 0,
+              y: Number(box.y) || 0,
+            }
         : {
             x: Number(overlayMenuItem?.x) || 0,
             y: Number(overlayMenuItem?.y) || 0,
@@ -243,6 +285,8 @@ export default function useOptionButtonPosition({
               ? Number(nodeRef.rotation() || 0)
               : Number(nodeRef?.attrs?.rotation || 0)
           )
+        : hasMultiSelection
+          ? 0
         : Number(overlayMenuItem?.rotation || 0);
       const anchorStageY =
         (hasObjectSelection || hasSectionBaseImageSelection) &&
@@ -251,6 +295,8 @@ export default function useOptionButtonPosition({
           : box.y;
       const selectedId = hasObjectSelection
         ? elementosSeleccionados[0]
+        : hasMultiSelection
+          ? `multi:${overlaySelection.selectedIds.join(",")}`
         : hasSectionBaseImageSelection
           ? overlayMenuItem?.id || `section-base-image:${overlaySelection.sectionId}`
           : overlayMenuItem?.id || "background-decoration";
@@ -388,6 +434,8 @@ export default function useOptionButtonPosition({
     const selectionKind =
       overlayKind === "canvas-object"
         ? "object"
+        : overlayKind === "multi-selection"
+          ? "multi-selection"
         : overlayKind === "section-base-image"
           ? "section-base-image"
           : overlayKind === "background-decoration"
@@ -395,6 +443,10 @@ export default function useOptionButtonPosition({
             : "none";
     const hasObjectSelection =
       overlayKind === "canvas-object" && elementosSeleccionados.length === 1;
+    const hasMultiSelection =
+      overlayKind === "multi-selection" &&
+      Array.isArray(overlaySelection?.selectedIds) &&
+      overlaySelection.selectedIds.length >= 2;
     const hasBackgroundDecorationSelection =
       overlayKind === "background-decoration" && Boolean(overlayMenuItem?.id);
     const hasSectionBaseImageSelection =
@@ -402,12 +454,14 @@ export default function useOptionButtonPosition({
 
     if (
       !hasObjectSelection &&
+      !hasMultiSelection &&
       !hasBackgroundDecorationSelection &&
       !hasSectionBaseImageSelection
     ) {
       ocultarBotonOpciones("selection-count", {
         source,
         count: elementosSeleccionados.length,
+        hasMultiSelection,
         hasBackgroundDecorationSelection,
         hasSectionBaseImageSelection,
       });
@@ -421,11 +475,12 @@ export default function useOptionButtonPosition({
       : hasSectionBaseImageSelection
         ? overlayNodeRefs?.current?.[overlaySelection.sectionId] || null
       : null;
-    if ((!nodeRef && !hasBackgroundDecorationSelection) || !stage) {
+    if ((!nodeRef && !hasMultiSelection && !hasBackgroundDecorationSelection) || !stage) {
       ocultarBotonOpciones("missing-node-or-stage", {
         source,
         hasNode: Boolean(nodeRef),
         hasStage: Boolean(stage),
+        hasMultiSelection,
         hasBackgroundDecorationSelection,
         hasSectionBaseImageSelection,
       });
@@ -440,11 +495,20 @@ export default function useOptionButtonPosition({
             relativeTo: stage,
             skipShadow: true,
           })
+        : hasMultiSelection
+          ? resolveSelectionFrameRect({
+              selectedElements: overlaySelection.selectedIds,
+              elementRefs,
+              objetos: overlaySelection.selectedObjects,
+              includePadding: true,
+              requireLiveNodes: false,
+            })
         : resolveBackgroundDecorationStageBox(overlayMenuItem);
       if (!box) {
         ocultarBotonOpciones("missing-box", {
           source,
           hasObjectSelection,
+          hasMultiSelection,
           hasBackgroundDecorationSelection,
           hasSectionBaseImageSelection,
         });
@@ -461,6 +525,11 @@ export default function useOptionButtonPosition({
                   y: typeof nodeRef.y === "function" ? nodeRef.y() : null,
                 }
           )
+        : hasMultiSelection
+          ? {
+              x: Number(box.x) || 0,
+              y: Number(box.y) || 0,
+            }
         : {
             x: Number(overlayMenuItem?.x) || 0,
             y: Number(overlayMenuItem?.y) || 0,
@@ -608,12 +677,16 @@ export default function useOptionButtonPosition({
           source,
           selectedId: hasObjectSelection
             ? elementosSeleccionados[0]
+            : hasMultiSelection
+              ? `multi:${overlaySelection.selectedIds.join(",")}`
             : hasSectionBaseImageSelection
               ? overlayMenuItem?.id || overlaySelection?.sectionId || null
               : overlayMenuItem?.id || null,
           isMobile,
           selectionKind: hasObjectSelection
             ? "object"
+            : hasMultiSelection
+              ? "multi-selection"
             : hasSectionBaseImageSelection
               ? "section-base-image"
               : "background-decoration",
@@ -739,6 +812,9 @@ export default function useOptionButtonPosition({
     const hasAnchoredTarget =
       overlaySelection?.kind === "canvas-object"
         ? elementosSeleccionados.length === 1
+        : overlaySelection?.kind === "multi-selection"
+          ? Array.isArray(overlaySelection?.selectedIds) &&
+            overlaySelection.selectedIds.length >= 2
         : overlaySelection?.kind === "background-decoration"
           ? Boolean(overlaySelection?.menuItem?.id)
           : overlaySelection?.kind === "section-base-image"
@@ -852,6 +928,9 @@ export default function useOptionButtonPosition({
       }
       if (
         (overlaySelection?.kind === "canvas-object" && elementosSeleccionados.length === 1) ||
+        (overlaySelection?.kind === "multi-selection" &&
+          Array.isArray(overlaySelection?.selectedIds) &&
+          overlaySelection.selectedIds.length >= 2) ||
         (overlaySelection?.kind === "background-decoration" &&
           overlaySelection?.menuItem?.id) ||
         (overlaySelection?.kind === "section-base-image" &&
@@ -959,6 +1038,34 @@ export default function useOptionButtonPosition({
     actualizarPosicionBotonOpciones,
     cancelPendingPositionSyncRafs,
     ocultarBotonOpciones,
+    overlaySelection,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleElementRefRegistered = (event) => {
+      const registeredId = event?.detail?.id || null;
+      if (!isRegisteredRefRelevantToOverlaySelection(overlaySelection, registeredId)) {
+        return;
+      }
+
+      if (canvasUiSuppressed) return;
+
+      actualizarPosicionBotonOpciones(
+        "element-ref-registered",
+        event,
+        `element-ref:${String(registeredId || "").trim()}`
+      );
+    };
+
+    window.addEventListener("element-ref-registrado", handleElementRefRegistered);
+    return () => {
+      window.removeEventListener("element-ref-registrado", handleElementRefRegistered);
+    };
+  }, [
+    actualizarPosicionBotonOpciones,
+    canvasUiSuppressed,
     overlaySelection,
   ]);
 

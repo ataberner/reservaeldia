@@ -54,9 +54,9 @@
       "expectedParityMode": "shared-parity",
       "acceptedWarningCodes": [],
       "captureFocus": [
-        "text stays visually above background decorations",
-        "decorations do not detach or jump in front of the text",
-        "the case does not silently inherit bleed semantics"
+        "the preserved group stays in authored child order with the star behind the text",
+        "mobile reflow moves the group as one composition instead of separating its children",
+        "preview and publish keep the same content-lane anchor semantics for the group"
       ]
     },
     {

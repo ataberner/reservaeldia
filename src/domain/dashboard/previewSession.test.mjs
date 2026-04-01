@@ -23,6 +23,42 @@ import {
   PREVIEW_INACTIVE_PUBLICATION_MESSAGE,
 } from "./previewSession.js";
 
+function createPreviewPreservedGroup(overrides = {}) {
+  return {
+    id: "hero-copy-group",
+    tipo: "grupo",
+    seccionId: "sec-hero",
+    anclaje: "content",
+    x: 96,
+    y: 180,
+    yNorm: 0.36,
+    width: 320,
+    height: 128,
+    children: [
+      {
+        id: "hero-copy-star",
+        tipo: "forma",
+        figura: "star",
+        x: 0,
+        y: 0,
+        width: 120,
+        height: 120,
+        color: "#f0d36a",
+      },
+      {
+        id: "hero-copy",
+        tipo: "texto",
+        x: 48,
+        y: 40,
+        width: 220,
+        texto: "Celebremos juntos",
+        fontSize: 30,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 test("preview state factory preserves current dashboard modal defaults", () => {
   assert.deepEqual(createPublicationPreviewState({ mostrarVistaPrevia: true }), {
     mostrarVistaPrevia: true,
@@ -266,6 +302,25 @@ test("preview render preparation keeps client-side asset normalization explicit"
   );
   assert.equal(prepared.rawRsvp.title, "Confirmacion");
   assert.equal(prepared.rawGifts.title, "Mesa de regalos");
+});
+
+test("preview render preparation keeps valid preserved groups renderable in the shared contract", () => {
+  const prepared = prepareDashboardPreviewRenderState({
+    objetos: [createPreviewPreservedGroup()],
+    secciones: [
+      {
+        id: "sec-hero",
+        orden: 1,
+        altoModo: "pantalla",
+      },
+    ],
+  });
+
+  assert.equal(prepared.runtimeSupport.canRenderCurrentHtmlRuntime, true);
+  assert.deepEqual(prepared.contractIssues, []);
+  assert.equal(prepared.preparedRenderContract.objectUnits.length, 1);
+  assert.equal(prepared.preparedRenderContract.objectUnits[0].kind, "group");
+  assert.equal(prepared.preparedRenderContract.objectUnits[0].children.length, 2);
 });
 
 test("preview render payload normalizes current draft render contracts for preview generation", () => {

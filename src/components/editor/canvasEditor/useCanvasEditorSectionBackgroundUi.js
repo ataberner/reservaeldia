@@ -11,6 +11,7 @@ import {
   removeBackgroundDecoration,
   updateBackgroundDecorationsParallax,
 } from "@/domain/sections/backgrounds";
+import { resolveGroupingSelectionCandidate } from "@/domain/editor/grouping";
 
 export default function useCanvasEditorSectionBackgroundUi({
   altoCanvas,
@@ -284,6 +285,15 @@ export default function useCanvasEditorSectionBackgroundUi({
     activeBaseBackgroundMenuItem?.seccionId ||
     null;
 
+  const groupingSelection = useMemo(
+    () =>
+      resolveGroupingSelectionCandidate({
+        objetos,
+        selectedIds: elementosSeleccionados,
+      }),
+    [elementosSeleccionados, objetos]
+  );
+
   const overlaySelection = useMemo(() => {
     if (activeBackgroundDecorationMenuItem) {
       return {
@@ -300,20 +310,33 @@ export default function useCanvasEditorSectionBackgroundUi({
       };
     }
 
-    if (elementosSeleccionados.length !== 1) return null;
-    const selectedObject =
-      objetos.find((item) => item.id === elementosSeleccionados[0]) || null;
-    if (!selectedObject) return null;
+    if (elementosSeleccionados.length === 1) {
+      const selectedObject =
+        objetos.find((item) => item.id === elementosSeleccionados[0]) || null;
+      if (!selectedObject) return null;
+
+      return {
+        kind: "canvas-object",
+        objectId: selectedObject.id,
+        menuItem: selectedObject,
+      };
+    }
+
+    if (!groupingSelection.eligible) return null;
 
     return {
-      kind: "canvas-object",
-      objectId: selectedObject.id,
-      menuItem: selectedObject,
+      kind: "multi-selection",
+      selectedIds: groupingSelection.selectedIds,
+      selectedObjects: groupingSelection.selectedObjects,
+      menuItem: null,
     };
   }, [
     activeBackgroundDecorationMenuItem,
     activeBaseBackgroundMenuItem,
     elementosSeleccionados,
+    groupingSelection.eligible,
+    groupingSelection.selectedIds,
+    groupingSelection.selectedObjects,
     objetos,
   ]);
 
@@ -492,7 +515,7 @@ export default function useCanvasEditorSectionBackgroundUi({
   ]);
 
   useEffect(() => {
-    if (overlaySelection?.menuItem) return;
+    if (overlaySelection) return;
     setMostrarPanelZ(false);
   }, [overlaySelection, setMostrarPanelZ]);
 

@@ -25,6 +25,8 @@ export default function CanvasEditorOverlays({
   onCopiar,
   onPegar,
   onDuplicar,
+  onAgrupar,
+  onDesagrupar,
   onEliminar,
   moverElemento,
   setMostrarPanelZ,
@@ -67,6 +69,8 @@ export default function CanvasEditorOverlays({
   onActualizarMovimientoDecoracionFondo,
   onDesanclarImagenFondoBase,
   onFinalizarAjusteFondoBase,
+  canvasUiSuppressed = false,
+  backgroundEditSectionId = null,
 }) {
   const workspaceStateLabel =
     templateWorkspace?.estadoEditorial === "en_revision"
@@ -80,16 +84,19 @@ export default function CanvasEditorOverlays({
   const menuSelection = overlaySelection?.menuItem || null;
   const isBackgroundDecorationEditing = overlayKind === "background-decoration";
   const isSectionBaseImageEditing = overlayKind === "section-base-image";
+  const isMultiSelectionMenu = overlayKind === "multi-selection";
   const shouldShowOptionButton =
     !readOnly &&
     !editingId &&
     !isSelectionRotating &&
-    Boolean(menuSelection);
+    Boolean(overlaySelection);
   const optionButtonTitle = isBackgroundDecorationEditing
     ? "Opciones de la decoracion"
     : isSectionBaseImageEditing
       ? "Opciones del fondo"
-      : "Opciones del elemento";
+      : isMultiSelectionMenu
+        ? "Opciones de la seleccion"
+        : "Opciones del elemento";
 
   return (
     <>
@@ -175,9 +182,12 @@ export default function CanvasEditorOverlays({
           isOpen={mostrarPanelZ}
           botonOpcionesRef={botonOpcionesRef}
           elementoSeleccionado={menuSelection}
+          menuContext={overlaySelection}
           onCopiar={onCopiar}
           onPegar={onPegar}
           onDuplicar={onDuplicar}
+          onAgrupar={onAgrupar}
+          onDesagrupar={onDesagrupar}
           onEliminar={onEliminar}
           moverElemento={moverElemento}
           onCerrar={() => setMostrarPanelZ(false)}

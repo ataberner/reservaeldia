@@ -33,6 +33,159 @@ const { resolveFunctionalCtaContract } = requireBuiltModule(
 
 const FIXED_SECTION = [{ id: "section-1", orden: 1, altoModo: "fijo", altura: 600 }];
 const CTA_SECTION = [{ id: "section-details", orden: 1, altoModo: "fijo", altura: 600 }];
+const PANTALLA_SECTION = [{ id: "section-hero", orden: 1, altoModo: "pantalla", altura: 600 }];
+
+function createPreservedTextDecorationGroup(overrides = {}) {
+  return {
+    id: "hero-copy-group",
+    tipo: "grupo",
+    seccionId: "section-hero",
+    anclaje: "content",
+    x: 118,
+    y: 212,
+    yNorm: 0.424,
+    width: 360,
+    height: 132,
+    children: [
+      {
+        id: "hero-copy-star",
+        tipo: "forma",
+        figura: "star",
+        x: 0,
+        y: 0,
+        width: 128,
+        height: 128,
+        color: "#f0d36a",
+      },
+      {
+        id: "hero-copy",
+        tipo: "texto",
+        x: 56,
+        y: 42,
+        width: 240,
+        texto: "Celebremos juntos",
+        fontSize: 30,
+        fontFamily: "Cormorant Garamond",
+        colorTexto: "#2f2a27",
+      },
+    ],
+    ...deepClone(overrides),
+  };
+}
+
+function createPreservedTextIconGroup(overrides = {}) {
+  return {
+    id: "ornament-title-group",
+    tipo: "grupo",
+    seccionId: "section-1",
+    anclaje: "content",
+    x: 72,
+    y: 96,
+    width: 280,
+    height: 92,
+    children: [
+      {
+        id: "ornament-icon",
+        tipo: "icono-svg",
+        x: 0,
+        y: 12,
+        width: 48,
+        height: 48,
+        color: "#111111",
+        d: "M0 0 L10 10",
+      },
+      {
+        id: "ornament-title",
+        tipo: "texto",
+        x: 64,
+        y: 10,
+        width: 200,
+        texto: "Con musica en vivo",
+        fontSize: 26,
+        colorTexto: "#2f2a27",
+      },
+    ],
+    ...deepClone(overrides),
+  };
+}
+
+function createPreservedImageCaptionGroup(overrides = {}) {
+  return {
+    id: "photo-caption-group",
+    tipo: "grupo",
+    seccionId: "section-1",
+    anclaje: "content",
+    x: 64,
+    y: 220,
+    width: 260,
+    height: 220,
+    children: [
+      {
+        id: "photo-caption-image",
+        tipo: "imagen",
+        x: 0,
+        y: 0,
+        width: 220,
+        height: 140,
+        src: "https://cdn.example.com/group-photo.jpg",
+      },
+      {
+        id: "photo-caption-text",
+        tipo: "texto",
+        x: 12,
+        y: 156,
+        width: 220,
+        texto: "Ceremonia al aire libre",
+        fontSize: 22,
+        colorTexto: "#2f2a27",
+      },
+    ],
+    ...deepClone(overrides),
+  };
+}
+
+function createPreservedCountdownGalleryGroup(overrides = {}) {
+  return {
+    id: "countdown-gallery-group",
+    tipo: "grupo",
+    seccionId: "section-1",
+    anclaje: "content",
+    x: 72,
+    y: 160,
+    width: 340,
+    height: 240,
+    children: [
+      {
+        id: "countdown-child",
+        tipo: "countdown",
+        x: 0,
+        y: 0,
+        width: 240,
+        height: 96,
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2026-05-10T20:00:00.000Z",
+        frameSvgUrl: "https://cdn.example.com/frame.svg",
+        visibleUnits: ["days", "hours", "minutes", "seconds"],
+      },
+      {
+        id: "gallery-child",
+        tipo: "galeria",
+        x: 28,
+        y: 112,
+        width: 240,
+        height: 128,
+        rows: 1,
+        cols: 2,
+        gap: 8,
+        cells: [
+          { mediaUrl: "https://cdn.example.com/gallery-1.jpg", fit: "cover" },
+          { mediaUrl: "https://cdn.example.com/gallery-2.jpg", fit: "cover" },
+        ],
+      },
+    ],
+    ...deepClone(overrides),
+  };
+}
 
 function deepClone(value) {
   if (Array.isArray(value)) {
@@ -230,6 +383,73 @@ test("keeps representative fullbleed objects in the bleed lane and content objec
   assert.match(bleedSegment, /width: calc\(var\(--bx\) \* 320px\);/);
   assert.match(bleedSegment, /height: calc\(var\(--sx\) \* 440px\);/);
   assert.match(contentSegment, /left: calc\(var\(--sfinal\) \* 48px\);/);
+});
+
+test("renders preserved groups as isolated top-level layout units without exposing child objects to mobile reflow", () => {
+  const html = generarHTMLDesdeSecciones(
+    PANTALLA_SECTION,
+    [createPreservedTextDecorationGroup()],
+    null,
+    {}
+  );
+  const bleedSegment = extractBetween(html, '<div class="sec-bleed">', '<div class="sec-content">');
+  const contentSegment = extractBetween(html, '<div class="sec-content">', "</section>");
+  const starIndex = contentSegment.indexOf('data-group-child-id="hero-copy-star"');
+  const textIndex = contentSegment.indexOf('data-group-child-id="hero-copy"');
+
+  assert.doesNotMatch(bleedSegment, /data-obj-id="hero-copy-group"/);
+  assert.match(contentSegment, /data-obj-id="hero-copy-group"/);
+  assert.match(contentSegment, /data-type="group"/);
+  assert.match(contentSegment, /data-mobile-cluster="isolated"/);
+  assert.match(contentSegment, /class="group-child-root"/);
+  assert.doesNotMatch(contentSegment, /data-obj-id="hero-copy-star"/);
+  assert.doesNotMatch(contentSegment, /data-obj-id="hero-copy"/);
+  assert.notEqual(starIndex, -1);
+  assert.notEqual(textIndex, -1);
+  assert.equal(starIndex < textIndex, true);
+});
+
+test("keeps grouped text plus icon compositions nested under one authored object id", () => {
+  const html = generarHTMLDesdeObjetos(
+    [createPreservedTextIconGroup()],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-obj-id="ornament-title-group"/);
+  assert.match(html, /data-group-child-id="ornament-icon"/);
+  assert.match(html, /data-group-child-id="ornament-title"/);
+  assert.doesNotMatch(html, /data-obj-id="ornament-icon"/);
+  assert.doesNotMatch(html, /data-obj-id="ornament-title"/);
+  assert.match(html, /class="group-child-root"/);
+});
+
+test("keeps grouped image plus caption compositions nested under one authored object id", () => {
+  const html = generarHTMLDesdeObjetos(
+    [createPreservedImageCaptionGroup()],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-obj-id="photo-caption-group"/);
+  assert.match(html, /data-group-child-id="photo-caption-image"/);
+  assert.match(html, /data-group-child-id="photo-caption-text"/);
+  assert.doesNotMatch(html, /data-obj-id="photo-caption-image"/);
+  assert.doesNotMatch(html, /data-obj-id="photo-caption-text"/);
+  assert.match(html, /<div[^>]+data-group-child-id="photo-caption-image"[\s\S]*class="group-child-root image-object"/);
+});
+
+test("keeps grouped countdown and gallery compositions nested under one authored object id", () => {
+  const html = generarHTMLDesdeObjetos(
+    [createPreservedCountdownGalleryGroup()],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-obj-id="countdown-gallery-group"/);
+  assert.match(html, /data-group-child-id="countdown-child"/);
+  assert.match(html, /data-group-child-id="gallery-child"/);
+  assert.doesNotMatch(html, /data-obj-id="countdown-child"/);
+  assert.doesNotMatch(html, /data-obj-id="gallery-child"/);
+  assert.match(html, /data-group-child-id="countdown-child"[\s\S]*data-countdown/);
+  assert.match(html, /data-group-child-id="gallery-child"[\s\S]*class="group-child-root galeria/);
 });
 
 test("keeps pantalla positioning branches stable for yNorm objects and y fallback objects", () => {

@@ -108,6 +108,64 @@ async function resolveStorageImageSourceSize(
   return cache.get(cacheKey) as Promise<PublishImageSourceSize>;
 }
 
+async function backfillPublishImageSourceDimensionsForObject(
+  object: UnknownRecord,
+  defaultBucketName: string,
+  cache: PublishImageSizeCache
+): Promise<UnknownRecord> {
+  if (getString(object.tipo).toLowerCase() === "grupo") {
+    const children = Array.isArray(object.children) ? object.children : [];
+    if (children.length === 0) return object;
+
+    const nextChildren = await Promise.all(
+      children.map((child) =>
+        backfillPublishImageSourceDimensionsForObject(
+          asRecord(child),
+          defaultBucketName,
+          cache
+        )
+      )
+    );
+
+    return {
+      ...object,
+      children: nextChildren,
+    };
+  }
+
+  if (getString(object.tipo).toLowerCase() !== "imagen") {
+    return object;
+  }
+
+  const cropState = resolvePublishImageCropState(object);
+  if (!cropState.hasMeaningfulCrop) {
+    return object;
+  }
+
+  if (cropState.sourceWidth !== null && cropState.sourceHeight !== null) {
+    return object;
+  }
+
+  const storagePath = resolveImageStoragePath(object, defaultBucketName);
+  if (!storagePath) {
+    return object;
+  }
+
+  const sourceSize = await resolveStorageImageSourceSize(storagePath, cache);
+  const nextWidth = cropState.sourceWidth ?? sourceSize.width;
+  const nextHeight = cropState.sourceHeight ?? sourceSize.height;
+
+  if (nextWidth === cropState.sourceWidth && nextHeight === cropState.sourceHeight) {
+    return object;
+  }
+
+  return {
+    ...object,
+    ...(nextWidth ? { ancho: nextWidth } : {}),
+    ...(nextHeight ? { alto: nextHeight } : {}),
+  };
+}
+
 export async function backfillPublishImageSourceDimensions(
   objects: unknown[]
 ): Promise<UnknownRecord[]> {
@@ -118,38 +176,8 @@ export async function backfillPublishImageSourceDimensions(
   const cache: PublishImageSizeCache = new Map();
 
   return Promise.all(
-    safeObjects.map(async (object) => {
-      if (getString(object.tipo).toLowerCase() !== "imagen") {
-        return object;
-      }
-
-      const cropState = resolvePublishImageCropState(object);
-      if (!cropState.hasMeaningfulCrop) {
-        return object;
-      }
-
-      if (cropState.sourceWidth !== null && cropState.sourceHeight !== null) {
-        return object;
-      }
-
-      const storagePath = resolveImageStoragePath(object, bucket.name);
-      if (!storagePath) {
-        return object;
-      }
-
-      const sourceSize = await resolveStorageImageSourceSize(storagePath, cache);
-      const nextWidth = cropState.sourceWidth ?? sourceSize.width;
-      const nextHeight = cropState.sourceHeight ?? sourceSize.height;
-
-      if (nextWidth === cropState.sourceWidth && nextHeight === cropState.sourceHeight) {
-        return object;
-      }
-
-      return {
-        ...object,
-        ...(nextWidth ? { ancho: nextWidth } : {}),
-        ...(nextHeight ? { alto: nextHeight } : {}),
-      };
-    })
+    safeObjects.map((object) =>
+      backfillPublishImageSourceDimensionsForObject(object, bucket.name, cache)
+    )
   );
 }

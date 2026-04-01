@@ -200,3 +200,60 @@ test("persistable render state preserves the current normalization bundle", () =
   assert.equal(result.gifts.enabled, false);
   assert.equal(result.gifts.bank.alias, "alias-regalos");
 });
+
+test("persistable render state normalizes grouped children without reintroducing root-only fields", () => {
+  const result = buildPersistableRenderState({
+    objetos: [
+      {
+        id: "group-1",
+        tipo: "grupo",
+        seccionId: "pantalla-section",
+        x: 100,
+        y: 120,
+        yNorm: 0.24,
+        width: 240,
+        height: 140,
+        children: [
+          {
+            id: "child-text",
+            tipo: "texto",
+            x: 10,
+            y: 20,
+            seccionId: "pantalla-section",
+            anclaje: "content",
+            yNorm: 0.3,
+            colorTexto: "#654321",
+          },
+          {
+            id: "child-line",
+            tipo: "forma",
+            figura: "line",
+            x: 20,
+            y: 80,
+            points: [0, 0, 20, 20],
+          },
+        ],
+      },
+    ],
+    secciones: [
+      {
+        id: "pantalla-section",
+        orden: 0,
+        altura: 500,
+        altoModo: "pantalla",
+      },
+    ],
+    validarPuntosLinea: (obj) => ({
+      ...obj,
+      validated: true,
+    }),
+    ALTURA_PANTALLA_EDITOR: 500,
+  });
+
+  assert.equal(result.objetos[0].yNorm, 0.24);
+  assert.equal(result.objetos[0].children[0].color, "#654321");
+  assert.equal("seccionId" in result.objetos[0].children[0], false);
+  assert.equal("anclaje" in result.objetos[0].children[0], false);
+  assert.equal("yNorm" in result.objetos[0].children[0], false);
+  assert.equal(result.objetos[0].children[1].validated, true);
+});

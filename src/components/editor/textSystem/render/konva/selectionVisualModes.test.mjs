@@ -137,6 +137,20 @@ test("transformer visual mode resolves line selection to the line-indicator path
   assert.equal(mode.shouldUseGenericTransformer, false);
 });
 
+test("transformer visual mode keeps preserved group selections on the passive indicator path", () => {
+  const mode = resolveTransformerVisualMode({
+    selectedIds: ["group-1"],
+    selectedObjects: [{ id: "group-1", tipo: "grupo" }],
+    interactionLocked: false,
+    effectiveDragging: false,
+    isGallerySelection: false,
+    shouldUseLightweightRotateOverlay: false,
+  });
+
+  assert.equal(mode.renderMode, "line-indicator");
+  assert.equal(mode.shouldUseGenericTransformer, false);
+});
+
 test("transformer visual mode resolves idle non-line selection to the generic transformer", () => {
   const mode = resolveTransformerVisualMode({
     selectedIds: ["obj-1"],

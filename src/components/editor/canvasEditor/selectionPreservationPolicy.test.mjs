@@ -84,6 +84,27 @@ test("option button and layer menu targets do not preserve inline editing by def
   );
 });
 
+test("explicit canvas-preserve targets keep the current canvas selection", () => {
+  const groupingActionTarget = createFakeTarget([
+    '[data-preserve-canvas-selection="true"]',
+  ]);
+
+  assert.equal(
+    shouldPreserveCanvasSelectionTarget(
+      groupingActionTarget,
+      PRESERVE_CANVAS_SELECTION_SELECTOR
+    ),
+    true
+  );
+  assert.equal(
+    shouldPreserveInlineEditTarget(
+      groupingActionTarget,
+      PRESERVE_INLINE_EDIT_SELECTOR
+    ),
+    false
+  );
+});
+
 test("selection-preserve and inline-preserve decisions can differ", () => {
   const selectionOnlyTarget = createFakeTarget(['[data-dashboard-sidebar="true"]']);
   const inlineOnlyTarget = createFakeTarget(['[data-preserve-inline-edit="true"]']);

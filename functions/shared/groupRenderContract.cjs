@@ -40,6 +40,18 @@ function normalizeSectionMode(value) {
   return normalizeLowerText(value) === "pantalla" ? "pantalla" : "fijo";
 }
 
+function hasConfiguredLink(value) {
+  if (typeof value === "string") {
+    return normalizeText(value).length > 0;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return normalizeText(value.href).length > 0;
+}
+
 function createContractIssue({
   severity = "blocking",
   code,
@@ -195,6 +207,21 @@ function prepareGroupAwareRenderState(value) {
       );
     }
 
+    if (
+      hasConfiguredLink(safeObject.enlace) &&
+      children.some((child) => hasConfiguredLink(asObject(child).enlace))
+    ) {
+      pushIssue(
+        createContractIssue({
+          code: "group-link-conflict-unsupported",
+          message: `El grupo "${groupId || "sin-id"}" combina enlace propio con children enlazados, y esa composicion todavia no tiene una semantica HTML segura en publish.`,
+          objectId: groupId,
+          sectionId,
+          fieldPath: "enlace",
+        })
+      );
+    }
+
     children.forEach((child, childIndex) => {
       const safeChild = asObject(child);
       const childPath = `children[${childIndex}]`;
@@ -264,14 +291,7 @@ function prepareGroupAwareRenderState(value) {
     }),
   };
 
-  const hasGroups = preparedRenderContract.objectUnits.some(
-    (unit) => unit.kind === "group"
-  );
   const reasonCodes = [];
-
-  if (hasGroups) {
-    reasonCodes.push("group-render-runtime-deferred");
-  }
 
   contractIssues.forEach((issue) => {
     if (!reasonCodes.includes(issue.code)) {
@@ -285,7 +305,7 @@ function prepareGroupAwareRenderState(value) {
     preparedRenderContract,
     contractIssues,
     runtimeSupport: {
-      canRenderCurrentHtmlRuntime: !hasGroups,
+      canRenderCurrentHtmlRuntime: true,
       reasonCodes,
     },
   };

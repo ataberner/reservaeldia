@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   FIXTURE_BUCKET,
   FIXTURE_PATHS,
+  buildGsUrl,
 } from "../shared/renderAssetContractFixtures.mjs";
 import {
   createPublishValidationImageDownloadBuffer,
@@ -37,6 +38,80 @@ function createRepresentativeStorageFiles() {
     [FIXTURE_PATHS.decorTop]: {},
     [FIXTURE_PATHS.decorBottom]: {},
     [FIXTURE_PATHS.countdownFrame]: {},
+  };
+}
+
+function createGroupedImageCaptionObject(overrides = {}) {
+  return {
+    id: "photo-caption-group",
+    tipo: "grupo",
+    seccionId: "section-details",
+    anclaje: "content",
+    x: 72,
+    y: 248,
+    width: 280,
+    height: 220,
+    children: [
+      {
+        id: "photo-caption-image",
+        tipo: "imagen",
+        x: 0,
+        y: 0,
+        width: 220,
+        height: 140,
+        url: buildGsUrl(FIXTURE_PATHS.heroImage),
+        storagePath: FIXTURE_PATHS.heroImage,
+        cropX: 1,
+        cropY: 1,
+        cropWidth: 2,
+        cropHeight: 2,
+      },
+      {
+        id: "photo-caption-text",
+        tipo: "texto",
+        x: 12,
+        y: 156,
+        width: 220,
+        texto: "Ceremonia al aire libre",
+        fontSize: 22,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function createMalformedGroupedObject(overrides = {}) {
+  return {
+    id: "broken-group",
+    tipo: "grupo",
+    seccionId: "section-1",
+    anclaje: "content",
+    x: 40,
+    y: 80,
+    width: 260,
+    height: 120,
+    children: [
+      {
+        id: "nested-group",
+        tipo: "grupo",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        children: [],
+      },
+      {
+        id: "broken-child",
+        tipo: "texto",
+        x: 24,
+        y: 30,
+        yNorm: 0.4,
+        width: 180,
+        texto: "Contrato invalido",
+        fontSize: 24,
+      },
+    ],
+    ...overrides,
   };
 }
 
@@ -173,6 +248,82 @@ test("prepares a representative clean draft into a publish-ready state without w
   assert.equal(heroImage.alto, 4);
 });
 
+test("prepares grouped image compositions recursively so publish validates the child assets too", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: createRepresentativeStorageFiles(),
+  });
+  t.after(() => storageMock.restore());
+
+  const draftState = createRepresentativePublishReadyDraftFixture();
+  draftState.objetos.push(createGroupedImageCaptionObject());
+
+  const prepared = await preparePublicationRenderState(draftState);
+  const result = validatePreparedDraft(draftState, prepared);
+  const groupedObject = prepared.objetosFinales.find((entry) => entry.id === "photo-caption-group");
+  const groupedImage = groupedObject.children.find((entry) => entry.id === "photo-caption-image");
+
+  assert.equal(result.canPublish, true);
+  assert.deepEqual(issueKeys(result.blockers), []);
+  assert.equal(groupedImage.ancho, 4);
+  assert.equal(groupedImage.alto, 4);
+});
+
+test("validates grouped countdown and gallery children through the normal publish contract", () => {
+  const rawObjetos = [
+    {
+      id: "countdown-gallery-group",
+      tipo: "grupo",
+      seccionId: "section-1",
+      anclaje: "content",
+      x: 72,
+      y: 140,
+      width: 340,
+      height: 240,
+      children: [
+        {
+          id: "countdown-child",
+          tipo: "countdown",
+          x: 0,
+          y: 0,
+          width: 240,
+          height: 96,
+          countdownSchemaVersion: 2,
+          fechaObjetivo: "2026-05-10T20:00:00.000Z",
+          frameSvgUrl: "https://cdn.example.com/frame.svg",
+          visibleUnits: ["days", "hours", "minutes", "seconds"],
+        },
+        {
+          id: "gallery-child",
+          tipo: "galeria",
+          x: 24,
+          y: 112,
+          width: 240,
+          height: 128,
+          rows: 1,
+          cols: 2,
+          gap: 8,
+          cells: [
+            { mediaUrl: "https://cdn.example.com/gallery-1.jpg", fit: "cover" },
+            { mediaUrl: "https://cdn.example.com/gallery-2.jpg", fit: "cover" },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos,
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: rawObjetos,
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, true);
+  assert.deepEqual(issueKeys(result.blockers), []);
+  assert.deepEqual(issueKeys(result.warnings), []);
+});
+
 test("keeps representative compatibility and preview drift branches as warnings only", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,
@@ -260,4 +411,21 @@ test("separates representative blockers from warnings when publish finalization 
   assert.equal(result.summary.warningCount, 5);
   assert.match(result.summary.blockingMessage, /^No se puede publicar todavia:/);
   assert.match(result.summary.warningMessage, /advertencias de compatibilidad/);
+});
+
+test("blocks malformed preserved group contracts during publish validation", () => {
+  const rawObjetos = [createMalformedGroupedObject()];
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos,
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: rawObjetos,
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, false);
+  assert.deepEqual(issueKeys(result.blockers), [
+    "group-child-ynorm-forbidden|broken-group|section-1|children[1].yNorm",
+    "group-nested-unsupported|broken-group|section-1|children[0]",
+  ]);
 });

@@ -585,6 +585,7 @@ function mapObjToDataType(obj: any): string {
   const tipo = normalizeRoleValue(obj?.tipo);
   const figura = normalizeRoleValue(obj?.figura);
 
+  if (tipo === "grupo" || tipo === "group") return "group";
   if (tipo === "texto" || tipo === "text") return "text";
   if (tipo === "imagen" || tipo === "image") return "image";
   if (tipo === "icono" || tipo === "icono-svg" || tipo === "icon") return "icon";
@@ -614,6 +615,7 @@ function inferDataRole(obj: any): string {
   if (type === "divider") return "divider";
   if (type === "image") return "image";
   if (type === "icon") return "icon";
+  if (type === "group") return "group";
   if (type === "gallery") return "gallery";
   if (type === "countdown") return "countdown";
   if (type === "rsvp" || type === "button") return "cta";
@@ -622,22 +624,54 @@ function inferDataRole(obj: any): string {
   return "content";
 }
 
-function buildMotionDataAttrs(obj: any): string {
+function buildMotionDataAttrs(
+  obj: any,
+  {
+    includeObjId = true,
+    extraAttrs = {},
+  }: {
+    includeObjId?: boolean;
+    extraAttrs?: Record<string, string | null | undefined>;
+  } = {}
+): string {
   const dataType = escapeAttr(mapObjToDataType(obj));
   const dataRole = escapeAttr(inferDataRole(obj));
   const dataMotion = escapeAttr(sanitizeMotionEffect(obj?.motionEffect));
   const dataObjId = escapeAttr(String(obj?.id || "").trim());
-  return `data-type="${dataType}" data-role="${dataRole}" data-motion="${dataMotion}"${dataObjId ? ` data-obj-id="${dataObjId}"` : ""}`;
+  const serializedExtraAttrs = Object.entries(extraAttrs || {})
+    .map(([key, value]) => {
+      const safeKey = String(key || "").trim();
+      if (!safeKey) return "";
+      const safeValue = String(value || "").trim();
+      if (!safeValue) return "";
+      return `${safeKey}="${escapeAttr(safeValue)}"`;
+    })
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    `data-type="${dataType}"`,
+    `data-role="${dataRole}"`,
+    `data-motion="${dataMotion}"`,
+    includeObjId && dataObjId ? `data-obj-id="${dataObjId}"` : "",
+    serializedExtraAttrs,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
-function appendMotionDataAttrs(htmlElemento: string, obj: any): string {
+function appendMotionDataAttrs(
+  htmlElemento: string,
+  obj: any,
+  options: {
+    includeObjId?: boolean;
+    extraAttrs?: Record<string, string | null | undefined>;
+  } = {}
+): string {
   if (!htmlElemento || typeof htmlElemento !== "string") return htmlElemento;
 
-  const attrs = buildMotionDataAttrs(obj);
-  return htmlElemento.replace(
-    /(<(?:div|img|svg)\b[^>]*\bclass="[^"]*\bobjeto\b[^"]*")/i,
-    `$1 ${attrs}`
-  );
+  const attrs = buildMotionDataAttrs(obj, options);
+  return htmlElemento.replace(/(<(?:div|img|svg)\b)/i, `$1 ${attrs} `);
 }
 
 function roundCountdownAuditMetric(value: any): number | null {
@@ -717,9 +751,21 @@ function getLinkProps(obj: any) {
   return { href, target, rel };
 }
 
-function envolverSiEnlace(htmlElemento: string, obj: any): string {
-  const htmlConData = appendMotionDataAttrs(htmlElemento, obj);
+function envolverSiEnlace(
+  htmlElemento: string,
+  obj: any,
+  options: {
+    includeObjId?: boolean;
+    extraAttrs?: Record<string, string | null | undefined>;
+    allowLinkWrap?: boolean;
+  } = {}
+): string {
+  const htmlConData = appendMotionDataAttrs(htmlElemento, obj, {
+    includeObjId: options.includeObjId,
+    extraAttrs: options.extraAttrs,
+  });
   if (obj?.tipo === "rsvp-boton" || obj?.tipo === "regalo-boton") return htmlConData;
+  if (options.allowLinkWrap === false) return htmlConData;
 
   const link = getLinkProps(obj);
   if (!link) return htmlConData;
@@ -738,6 +784,10 @@ export function escapeHTML(texto: string = ""): string {
 
 type GenerarHTMLDesdeObjetosOptions = {
   functionalCtaContract?: FunctionalCtaContract | null;
+  renderMode?: "top-level" | "group-child";
+  inheritedSectionId?: string | null;
+  inheritedAnchor?: string | null;
+  groupId?: string | null;
 };
 
 export function generarHTMLDesdeObjetos(
@@ -745,9 +795,63 @@ export function generarHTMLDesdeObjetos(
   _secciones: any[],
   options: GenerarHTMLDesdeObjetosOptions = {}
 ): string {
+  const renderMode = options.renderMode === "group-child" ? "group-child" : "top-level";
+  const isGroupChildRender = renderMode === "group-child";
+  const inheritedSectionId = String(options.inheritedSectionId || "").trim();
+  const inheritedAnchor = String(options.inheritedAnchor || "").trim();
+  const parentGroupId = String(options.groupId || "").trim();
   const altoModoPorSeccion = new Map(
     (_secciones || []).map((s: any) => [s.id, String(s.altoModo || "fijo").toLowerCase()])
   );
+
+  function inheritGroupLayoutFields(obj: any): any {
+    if (!isGroupChildRender || !obj || typeof obj !== "object") return obj;
+
+    return {
+      ...obj,
+      seccionId: inheritedSectionId || obj?.seccionId,
+      anclaje: inheritedAnchor || obj?.anclaje,
+    };
+  }
+
+  function normalizeGroupChildRootHtml(
+    htmlElemento: string,
+    obj: any,
+    force = false
+  ): string {
+    if ((!isGroupChildRender && !force) || !htmlElemento) return htmlElemento;
+
+    const classMatch = htmlElemento.match(/class="([^"]*)"/i);
+    if (!classMatch) return htmlElemento;
+
+    const currentClasses = String(classMatch[1] || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((className) => className !== "objeto");
+    const nextClasses = Array.from(
+      new Set(["group-child-root", ...currentClasses])
+    ).join(" ");
+
+    let normalizedHtml = htmlElemento.replace(
+      /class="[^"]*"/i,
+      `class="${escapeAttr(nextClasses)}"`
+    );
+
+    normalizedHtml = normalizedHtml.replace(/\sdata-obj-id="[^"]*"/i, "");
+
+    const extraAttrs = [
+      parentGroupId ? `data-group-id="${escapeAttr(parentGroupId)}"` : "",
+      String(obj?.id || "").trim()
+        ? `data-group-child-id="${escapeAttr(String(obj?.id || "").trim())}"`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    if (!extraAttrs) return normalizedHtml;
+
+    return normalizedHtml.replace(/(<(?:div|img|svg)\b)/i, `$1 ${extraAttrs} `);
+  }
 
   function esSeccionPantalla(obj: any): boolean {
     const modo = altoModoPorSeccion.get(obj?.seccionId) || "fijo";
@@ -816,6 +920,11 @@ export function generarHTMLDesdeObjetos(
   }
 
   function getYPxEditor(obj: any): number {
+    if (isGroupChildRender) {
+      const yPx = Number(obj?.y);
+      return Number.isFinite(yPx) ? yPx : 0;
+    }
+
     // ✅ En Pantalla ON: yNorm es la fuente de verdad (0..1)
     const yn = clamp01(obj?.yNorm);
     if (yn != null) return yn * ALTURA_EDITOR_PANTALLA;
@@ -846,6 +955,11 @@ export function generarHTMLDesdeObjetos(
    * - Fijo: pxY(obj, y)
    */
   function topCSS(obj: any): string {
+    if (isGroupChildRender) {
+      const y = Number(obj?.y || 0);
+      return pxY(obj, y);
+    }
+
     if (esSeccionPantalla(obj)) {
       const yPxEditor = getYPxEditor(obj);
       const yn = clamp01(yPxEditor / ALTURA_EDITOR_PANTALLA) ?? 0;
@@ -860,6 +974,10 @@ export function generarHTMLDesdeObjetos(
    * ✅ Variante para cuando ya tenés yPx (en "px editor")
    */
   function topCSSFromYPx(obj: any, yPx: number): string {
+    if (isGroupChildRender) {
+      return pxY(obj, yPx);
+    }
+
     if (esSeccionPantalla(obj)) {
       const yn = clamp01(yPx / ALTURA_EDITOR_PANTALLA) ?? 0;
       return topPantallaCSS(obj, yn);
@@ -1083,8 +1201,46 @@ pointer-events: auto;
 
   return objetos
     .map((obj) => {
-      obj = normalizeRenderAssetObject(obj);
+      obj = inheritGroupLayoutFields(normalizeRenderAssetObject(obj));
       const tipo = obj?.tipo;
+
+      if (tipo === "grupo") {
+        const children = Array.isArray(obj?.children) ? obj.children : [];
+        const hasLinkedChildren = children.some((child: any) => Boolean(getLinkProps(child)));
+        const width = Number.isFinite(obj?.width) ? Number(obj.width) : undefined;
+        const height = Number.isFinite(obj?.height) ? Number(obj.height) : undefined;
+        const groupStyle = `
+${stylePosBase(obj)}
+${styleSize(obj, width, height)}
+display: block;
+overflow: visible;
+box-sizing: border-box;
+`.trim();
+        const childrenHtml = children
+          .map((child: any) =>
+            normalizeGroupChildRootHtml(
+              generarHTMLDesdeObjetos([child], _secciones, {
+                ...options,
+                renderMode: "group-child",
+                inheritedSectionId: String(obj?.seccionId || "").trim() || null,
+                inheritedAnchor: String(obj?.anclaje || "").trim() || null,
+                groupId: String(obj?.id || "").trim() || null,
+              }),
+              child,
+              true
+            )
+          )
+          .filter(Boolean)
+          .join("\n");
+
+        return envolverSiEnlace(
+          `<div class="objeto group-object" data-mobile-cluster="isolated" style="${groupStyle}">${childrenHtml}</div>`,
+          obj,
+          {
+            allowLinkWrap: !hasLinkedChildren,
+          }
+        );
+      }
 
       // ---------------- TEXTO ----------------
       if (tipo === "texto") {

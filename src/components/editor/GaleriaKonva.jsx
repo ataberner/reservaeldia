@@ -75,6 +75,7 @@ export default function GaleriaKonva({
   seccionesOrdenadas = [],
   altoCanvas = 0,
   ALTURA_PANTALLA_EDITOR = 0,
+  isPassiveRender = false,
 }) {
   const [hoveredCell, setHoveredCell] = useState(null);
   const rootRef = useRef(null);
@@ -111,6 +112,10 @@ export default function GaleriaKonva({
     [obj?.seccionId, seccionesOrdenadas]
   );
   const stageY = useMemo(() => {
+    if (isPassiveRender) {
+      return toNum(obj?.y, 0);
+    }
+
     const yNorm = Number(obj?.yNorm);
     const yFallback = Number.isFinite(Number(obj?.y)) ? Number(obj.y) : 0;
     const usesYNorm =
@@ -128,6 +133,7 @@ export default function GaleriaKonva({
     obj?.yNorm,
     offsetY,
     sectionUsesYNorm,
+    isPassiveRender,
   ]);
   const radius = Math.max(0, toNum(obj.radius, 0));
   const gap = Math.max(0, toNum(obj.gap, 0));
@@ -395,19 +401,20 @@ export default function GaleriaKonva({
       clipWidth={width}
       clipHeight={safeTotalHeight}
       draggable={false}
+      listening={!isPassiveRender}
       ref={setRootRef}
-      onMouseEnter={() => {
+      onMouseEnter={isPassiveRender ? undefined : () => {
         if (!window._isDragging) onHover?.(obj.id);
       }}
-      onMouseLeave={() => {
+      onMouseLeave={isPassiveRender ? undefined : () => {
         setHoveredCell(null);
         onHover?.(null);
       }}
-      onMouseDown={handlePressStart}
-      onTouchStart={handlePressStart}
-      onClick={handleRootClick}
-      onTap={handleRootClick}
-      onDragStart={(e) => {
+      onMouseDown={isPassiveRender ? undefined : handlePressStart}
+      onTouchStart={isPassiveRender ? undefined : handlePressStart}
+      onClick={isPassiveRender ? undefined : handleRootClick}
+      onTap={isPassiveRender ? undefined : handleRootClick}
+      onDragStart={isPassiveRender ? undefined : (e) => {
         if (!isSelected) {
           e.target.stopDrag();
           return;
@@ -415,10 +422,10 @@ export default function GaleriaKonva({
         window._isDragging = true;
         onDragStartPersonalizado?.(obj.id);
       }}
-      onDragMove={(e) => {
+      onDragMove={isPassiveRender ? undefined : (e) => {
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
       }}
-      onDragEnd={(e) => {
+      onDragEnd={isPassiveRender ? undefined : (e) => {
         notePostDragSelectionGuard();
         onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
 
@@ -456,6 +463,7 @@ export default function GaleriaKonva({
         const fit = cell.fit || "cover";
 
         const esActiva =
+          !isPassiveRender &&
           celdaGaleriaActiva?.objId === obj.id &&
           celdaGaleriaActiva?.index === i;
 
@@ -476,21 +484,22 @@ export default function GaleriaKonva({
           ctx.closePath();
         };
 
-        const mostrarBotonQuitar = mediaUrl && (hoveredCell === i || esActiva);
+        const mostrarBotonQuitar =
+          !isPassiveRender && mediaUrl && (hoveredCell === i || esActiva);
 
         return (
           <Group
             key={`${obj.id}-${i}`}
             x={r.x}
             y={r.y}
-            onMouseEnter={() => setHoveredCell(i)}
-            onMouseLeave={() => setHoveredCell(null)}
-            onClick={(e) => seleccionarCelda(i, e)}
-            onTap={(e) => seleccionarCelda(i, e)}
+            onMouseEnter={isPassiveRender ? undefined : () => setHoveredCell(i)}
+            onMouseLeave={isPassiveRender ? undefined : () => setHoveredCell(null)}
+            onClick={isPassiveRender ? undefined : (e) => seleccionarCelda(i, e)}
+            onTap={isPassiveRender ? undefined : (e) => seleccionarCelda(i, e)}
           >
             <Rect x={0} y={0} width={r.width} height={r.height} fill="transparent" />
 
-            <Group clipFunc={clipFunc} listening={true}>
+            <Group clipFunc={clipFunc} listening={!isPassiveRender}>
               <Rect x={0} y={0} width={r.width} height={r.height} fill={bg} />
               {mediaUrl && (
                 <ImagenCelda src={mediaUrl} fit={fit} w={r.width} h={r.height} />

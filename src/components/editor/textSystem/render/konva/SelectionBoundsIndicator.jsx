@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef } from "react";
-import { Group, Line, Rect } from "react-konva";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Group, Line, Rect, Text } from "react-konva";
 import {
   buildSelectionFramePolygon,
   getSelectionFramePaddingForSelection,
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import {
+  resolveSelectionFrameRect,
+} from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 import {
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
@@ -62,12 +65,73 @@ function shouldUseRotatedSelectionBounds(selectedObjects = [], selectedNode = nu
   );
 }
 
+function resolveSelectedGroupObject(selectedElements = [], objetos = []) {
+  if (!Array.isArray(selectedElements) || selectedElements.length !== 1) {
+    return null;
+  }
+
+  const selectedId = String(selectedElements[0] || "").trim();
+  if (!selectedId) return null;
+
+  const selectedObject = Array.isArray(objetos)
+    ? objetos.find((objeto) => objeto?.id === selectedId) || null
+    : null;
+
+  return selectedObject?.tipo === "grupo" ? selectedObject : null;
+}
+
+function resolveBoundsOrigin(bounds) {
+  if (!bounds || typeof bounds !== "object") {
+    return { x: 0, y: 0 };
+  }
+
+  if (bounds.kind === "polygon" && Array.isArray(bounds.points) && bounds.points.length >= 8) {
+    const xs = bounds.points.filter((_, index) => index % 2 === 0).map((value) => Number(value));
+    const ys = bounds.points.filter((_, index) => index % 2 === 1).map((value) => Number(value));
+
+    return {
+      x: xs.length ? Math.min(...xs) : 0,
+      y: ys.length ? Math.min(...ys) : 0,
+    };
+  }
+
+  return {
+    x: Number(bounds.x) || 0,
+    y: Number(bounds.y) || 0,
+  };
+}
+
+function buildGroupBadgeLayout(groupObject, bounds, isMobile = false) {
+  if (!groupObject) return null;
+
+  const childCount = Array.isArray(groupObject.children) ? groupObject.children.length : 0;
+  const label =
+    childCount === 1
+      ? "Grupo seleccionado · 1 elemento"
+      : `Grupo seleccionado · ${childCount} elementos`;
+  const fontSize = isMobile ? 11 : 10;
+  const paddingX = isMobile ? 10 : 8;
+  const height = isMobile ? 24 : 22;
+  const estimatedWidth = Math.max(132, Math.ceil(label.length * fontSize * 0.58) + paddingX * 2);
+  const origin = resolveBoundsOrigin(bounds);
+  const y = Math.max(4, origin.y - height - 8);
+
+  return {
+    label,
+    x: Math.max(4, origin.x),
+    y,
+    width: estimatedWidth,
+    height,
+    fontSize,
+    paddingX,
+  };
+}
+
 function resolveSelectionBounds({
   selectedElements,
   elementRefs,
   objetos,
   isMobile,
-  debugLog,
 }) {
   const elementosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
@@ -97,124 +161,47 @@ function resolveSelectionBounds({
       };
     }
   }
+  const rectBounds = resolveSelectionFrameRect({
+    selectedElements,
+    elementRefs,
+    objetos,
+    isMobile,
+    includePadding: true,
+  });
+  if (!rectBounds) return null;
 
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  elementosData.forEach((obj) => {
+  rectBounds.selectedObjects.forEach((obj) => {
     const node = elementRefs.current[obj.id];
-    if (!node) return;
-
-    try {
-      if (obj.tipo === "forma" && obj.figura === "line") {
-        const points = obj.points || [0, 0, 100, 0];
-        const cleanPoints = [
-          parseFloat(points[0]) || 0,
-          parseFloat(points[1]) || 0,
-          parseFloat(points[2]) || 100,
-          parseFloat(points[3]) || 0,
-        ];
-
-        const realX = node.x();
-        const realY = node.y();
-
-        const x1 = realX + cleanPoints[0];
-        const y1 = realY + cleanPoints[1];
-        const x2 = realX + cleanPoints[2];
-        const y2 = realY + cleanPoints[3];
-
-        const linePadding = 5;
-
-        minX = Math.min(minX, x1 - linePadding, x2 - linePadding);
-        minY = Math.min(minY, y1 - linePadding, y2 - linePadding);
-        maxX = Math.max(maxX, x1 + linePadding, x2 + linePadding);
-        maxY = Math.max(maxY, y1 + linePadding, y2 + linePadding);
-      } else {
-        const box = node.getClientRect({
-          skipTransform: false,
-          skipShadow: true,
-          skipStroke: true,
-        });
-        const sx = node?.scaleX?.() ?? 1;
-        const sy = node?.scaleY?.() ?? 1;
-        const boundsSample = sampleCanvasInteractionLog(
-          `selection-bounds-indicator:${obj.id}`,
-          {
-            firstCount: 3,
-            throttleMs: 120,
-          }
-        );
-        if (boundsSample.shouldLog) {
-          logSelectedDragDebug("selection:bounds-indicator-node-rect", {
-            elementId: obj.id,
-            tipo: obj.tipo || null,
-            figura: obj.figura || null,
-            rect: {
-              x: Number.isFinite(Number(box?.x)) ? Number(box.x) : null,
-              y: Number.isFinite(Number(box?.y)) ? Number(box.y) : null,
-              width: Number.isFinite(Number(box?.width)) ? Number(box.width) : null,
-              height: Number.isFinite(Number(box?.height)) ? Number(box.height) : null,
-            },
-            node: getKonvaNodeDebugInfo(node),
-          });
-        }
-        debugLog(
-          "[BI]",
-          `id=${obj.id}`,
-          `tipo=${obj.tipo}`,
-          `figura=${obj.figura || ""}`,
-          `sx=${sx.toFixed(3)}`,
-          `sy=${sy.toFixed(3)}`,
-          `rect(x=${box.x.toFixed(1)},y=${box.y.toFixed(1)},w=${box.width.toFixed(1)},h=${box.height.toFixed(1)})`
-        );
-
-        const realX = box.x;
-        const realY = box.y;
-        let width = box.width;
-        let height = box.height;
-
-        if (obj.tipo === "texto" && typeof node.height === "function") {
-          const computedTextHeight = Number(node.height());
-          const scaledTextHeight = computedTextHeight * Math.abs(Number(sy) || 1);
-          if (Number.isFinite(scaledTextHeight) && scaledTextHeight > 0) {
-            height = scaledTextHeight;
-          }
-        }
-
-        minX = Math.min(minX, realX);
-        minY = Math.min(minY, realY);
-        maxX = Math.max(maxX, realX + width);
-        maxY = Math.max(maxY, realY + height);
+    const box = rectBounds.unionRect;
+    const boundsSample = sampleCanvasInteractionLog(
+      `selection-bounds-indicator:${obj.id}`,
+      {
+        firstCount: 3,
+        throttleMs: 120,
       }
-    } catch {
-      const fallbackX = obj.x || 0;
-      const fallbackY = obj.y || 0;
-      const fallbackSize = 20;
-
-      minX = Math.min(minX, fallbackX);
-      minY = Math.min(minY, fallbackY);
-      maxX = Math.max(maxX, fallbackX + fallbackSize);
-      maxY = Math.max(maxY, fallbackY + fallbackSize);
+    );
+    if (boundsSample.shouldLog) {
+      logSelectedDragDebug("selection:bounds-indicator-node-rect", {
+        elementId: obj.id,
+        tipo: obj.tipo || null,
+        figura: obj.figura || null,
+        rect: {
+          x: Number.isFinite(Number(box?.x)) ? Number(box.x) : null,
+          y: Number.isFinite(Number(box?.y)) ? Number(box.y) : null,
+          width: Number.isFinite(Number(box?.width)) ? Number(box.width) : null,
+          height: Number.isFinite(Number(box?.height)) ? Number(box.height) : null,
+        },
+        node: getKonvaNodeDebugInfo(node),
+      });
     }
   });
 
-  if (minX === Infinity || maxX === -Infinity) {
-    const primerElemento = elementosData[0];
-    if (!primerElemento) return null;
-    minX = primerElemento.x || 0;
-    minY = primerElemento.y || 0;
-    maxX = minX + 100;
-    maxY = minY + 50;
-  }
-
   return {
     kind: "rect",
-    x: minX - padding,
-    y: minY - padding,
-    width: maxX - minX + padding * 2,
-    height: maxY - minY + padding * 2,
+    x: rectBounds.x,
+    y: rectBounds.y,
+    width: rectBounds.width,
+    height: rectBounds.height,
     strokeWidth,
   };
 }
@@ -231,6 +218,10 @@ export default function SelectionBoundsIndicator({
   const groupRef = useRef(null);
   const rectRef = useRef(null);
   const polygonRef = useRef(null);
+  const selectedGroupObject = useMemo(
+    () => resolveSelectedGroupObject(selectedElements, objetos),
+    [objetos, selectedElements]
+  );
 
   const syncIndicatorBounds = useCallback(() => {
     const groupNode = groupRef.current;
@@ -243,7 +234,6 @@ export default function SelectionBoundsIndicator({
       elementRefs,
       objetos,
       isMobile,
-      debugLog,
     });
 
     if (!nextBounds) return;
@@ -347,6 +337,10 @@ export default function SelectionBoundsIndicator({
     debugLog,
   });
   const hasBounds = Boolean(bounds);
+  const groupBadge = useMemo(
+    () => buildGroupBadgeLayout(selectedGroupObject, bounds, isMobile),
+    [bounds, isMobile, selectedGroupObject]
+  );
 
   useEffect(() => {
     if (typeof onVisualReadyChange !== "function") return;
@@ -371,6 +365,7 @@ export default function SelectionBoundsIndicator({
         fillEnabled={false}
         stroke={SELECTION_FRAME_STROKE}
         strokeWidth={bounds.strokeWidth}
+        dash={selectedGroupObject ? [8, 4] : undefined}
         listening={false}
         perfectDrawEnabled={false}
       />
@@ -384,10 +379,37 @@ export default function SelectionBoundsIndicator({
         fill="transparent"
         stroke={SELECTION_FRAME_STROKE}
         strokeWidth={bounds.strokeWidth}
+        dash={selectedGroupObject ? [8, 4] : undefined}
         listening={false}
         perfectDrawEnabled={false}
         strokeScaleEnabled={false}
       />
+      {groupBadge ? (
+        <Group listening={false}>
+          <Rect
+            x={groupBadge.x}
+            y={groupBadge.y}
+            width={groupBadge.width}
+            height={groupBadge.height}
+            fill="rgba(147, 51, 234, 0.96)"
+            cornerRadius={groupBadge.height / 2}
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={0.75}
+            shadowColor="rgba(88, 28, 135, 0.28)"
+            shadowBlur={8}
+            shadowOffset={{ x: 0, y: 2 }}
+          />
+          <Text
+            x={groupBadge.x + groupBadge.paddingX}
+            y={groupBadge.y + (isMobile ? 6 : 5)}
+            text={groupBadge.label}
+            fontSize={groupBadge.fontSize}
+            fontStyle="bold"
+            fill="#ffffff"
+            listening={false}
+          />
+        </Group>
+      ) : null}
     </Group>
   );
 }

@@ -8,12 +8,24 @@ import {
   pegarElemento,
   cambiarAlineacionTexto
 } from '@/utils/editorActions';
+import {
+  buildGroupedSelectionState,
+  buildUngroupedSelectionState,
+  createEditorGroupId,
+} from '@/domain/editor/grouping';
+import {
+  resolveSelectionUnionRect,
+} from '@/components/editor/textSystem/render/konva/selectionBoundsGeometry';
 
 export default function useEditorHandlers({
   objetos,
   setObjetos,
+  secciones,
   elementosSeleccionados,
   setElementosSeleccionados,
+  selectionRuntime,
+  elementRefs,
+  ALTURA_PANTALLA_EDITOR,
   historial,
   setHistorial,
   futuros,
@@ -92,6 +104,89 @@ const onEliminar = useCallback(() => {
     setObjetos
   }), [objetos, elementosSeleccionados]);
 
+  const onAgrupar = useCallback(() => {
+    const selectionFrame = resolveSelectionUnionRect({
+      selectedElements: elementosSeleccionados,
+      elementRefs,
+      objetos,
+      requireLiveNodes: true,
+    });
+    if (!selectionFrame) return false;
+
+    const result = buildGroupedSelectionState({
+      objetos,
+      secciones,
+      selectedIds: elementosSeleccionados,
+      selectionFrame,
+      alturaPantalla: ALTURA_PANTALLA_EDITOR,
+      groupId: createEditorGroupId(),
+    });
+    if (!result?.ok) return false;
+
+    setMostrarPanelZ(false);
+    selectionRuntime?.clearTransientState?.({
+      clearPreselection: true,
+      clearMarquee: true,
+    });
+    setObjetos(result.nextObjetos);
+
+    if (typeof selectionRuntime?.setCommittedSelection === "function") {
+      selectionRuntime.setCommittedSelection(result.selectedIds, {
+        source: "grouping-action",
+      });
+    } else {
+      setElementosSeleccionados(result.selectedIds);
+    }
+
+    return true;
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    elementRefs,
+    elementosSeleccionados,
+    objetos,
+    secciones,
+    selectionRuntime,
+    setElementosSeleccionados,
+    setMostrarPanelZ,
+    setObjetos,
+  ]);
+
+  const onDesagrupar = useCallback(() => {
+    const result = buildUngroupedSelectionState({
+      objetos,
+      secciones,
+      selectedIds: elementosSeleccionados,
+      alturaPantalla: ALTURA_PANTALLA_EDITOR,
+    });
+    if (!result?.ok) return false;
+
+    setMostrarPanelZ(false);
+    selectionRuntime?.clearTransientState?.({
+      clearPreselection: true,
+      clearMarquee: true,
+    });
+    setObjetos(result.nextObjetos);
+
+    if (typeof selectionRuntime?.setCommittedSelection === "function") {
+      selectionRuntime.setCommittedSelection(result.selectedIds, {
+        source: "ungrouping-action",
+      });
+    } else {
+      setElementosSeleccionados(result.selectedIds);
+    }
+
+    return true;
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    elementosSeleccionados,
+    objetos,
+    secciones,
+    selectionRuntime,
+    setElementosSeleccionados,
+    setMostrarPanelZ,
+    setObjetos,
+  ]);
+
   return {
     onDeshacer,
     onRehacer,
@@ -99,6 +194,8 @@ const onEliminar = useCallback(() => {
     onEliminar,
     onCopiar,
     onPegar,
-    onCambiarAlineacion
+    onCambiarAlineacion,
+    onAgrupar,
+    onDesagrupar,
   };
 }

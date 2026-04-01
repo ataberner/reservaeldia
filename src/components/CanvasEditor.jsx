@@ -792,12 +792,18 @@ export default function CanvasEditor({
     onEliminar,
     onCopiar,
     onPegar,
-    onCambiarAlineacion
+    onCambiarAlineacion,
+    onAgrupar,
+    onDesagrupar,
   } = useEditorHandlers({
     objetos,
     setObjetos,
+    secciones,
     elementosSeleccionados,
     setElementosSeleccionados,
+    selectionRuntime,
+    elementRefs,
+    ALTURA_PANTALLA_EDITOR,
     historial,
     setHistorial,
     futuros,
@@ -1601,6 +1607,8 @@ export default function CanvasEditor({
           onCopiar={onCopiar}
           onPegar={onPegar}
           onDuplicar={onDuplicar}
+          onAgrupar={onAgrupar}
+          onDesagrupar={onDesagrupar}
           onEliminar={onEliminar}
           moverElemento={moverElemento}
           setMostrarPanelZ={setMostrarPanelZ}
@@ -1643,6 +1651,12 @@ export default function CanvasEditor({
           onActualizarMovimientoDecoracionFondo={handleActualizarMovimientoDecoracionFondo}
           onDesanclarImagenFondoBase={handleDesanclarImagenFondoBase}
           onFinalizarAjusteFondoBase={handleFinalizarAjusteFondoBase}
+          canvasUiSuppressed={
+            canvasInteractionCoordinator.isCanvasUiSuppressed() ||
+            isBackgroundEditInteracting
+          }
+          backgroundEditSectionId={backgroundEditSectionId}
+          sectionDecorationEdit={sectionDecorationEdit}
         />
       )}
 

@@ -9,6 +9,7 @@ import {
     getAllowedMotionEffectsForElement,
     sanitizeMotionEffect,
 } from "@/domain/motionEffects";
+import { resolveUngroupSelectionCandidate } from "@/domain/editor/grouping";
 import TemplateDynamicFieldMenuSection from "@/components/editor/templateAuthoring/TemplateDynamicFieldMenuSection";
 import { classifyRenderObjectContract } from "../../shared/renderContractPolicy.js";
 
@@ -120,9 +121,12 @@ export default function MenuOpcionesElemento({
     isOpen,
     botonOpcionesRef,            // ref al botón ⚙️
     elementoSeleccionado,        // objeto actual
+    menuContext = null,
     onCopiar,
     onPegar,
     onDuplicar,
+    onAgrupar,
+    onDesagrupar,
     onEliminar,
     moverElemento,               // ("al-frente" | "al-fondo" | "subir" | "bajar")
     onCerrar,                    // cierra el menú en el padre (setMostrarPanelZ(false))
@@ -178,15 +182,44 @@ export default function MenuOpcionesElemento({
     const esImagen = elementoSeleccionado?.tipo === "imagen";
     const esRsvp = elementoSeleccionado?.tipo === "rsvp-boton";
     const esRegalo = elementoSeleccionado?.tipo === "regalo-boton";
+    const esGrupo = elementoSeleccionado?.tipo === "grupo";
     const esDecoracionFondo = elementoSeleccionado?.tipo === "decoracion-fondo";
     const esImagenFondoSeccion = elementoSeleccionado?.tipo === "imagen-fondo-seccion";
+    const menuKind = menuContext?.kind || (elementoSeleccionado ? "canvas-object" : null);
+    const isMultiSelectionMenu = menuKind === "multi-selection";
+    const multiSelectionIds = useMemo(
+        () => (
+            Array.isArray(menuContext?.selectedIds)
+                ? menuContext.selectedIds.map((id) => String(id || "").trim()).filter(Boolean)
+                : []
+        ),
+        [menuContext?.selectedIds]
+    );
+    const multiSelectionCount = Array.isArray(menuContext?.selectedObjects)
+        ? menuContext.selectedObjects.length
+        : multiSelectionIds.length;
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
     const selectedRenderContract = useMemo(
-        () => classifyRenderObjectContract(elementoSeleccionado || null),
-        [elementoSeleccionado]
+        () => (isMultiSelectionMenu ? null : classifyRenderObjectContract(elementoSeleccionado || null)),
+        [elementoSeleccionado, isMultiSelectionMenu]
     );
+    const ungroupCandidate = useMemo(
+        () => {
+            if (!esGrupo || menuKind !== "canvas-object" || !elementoSeleccionado?.id) {
+                return { eligible: false, reason: "selection-not-group" };
+            }
+
+            return resolveUngroupSelectionCandidate({
+                objetos,
+                secciones,
+                selectedIds: [elementoSeleccionado.id],
+            });
+        },
+        [elementoSeleccionado?.id, esGrupo, menuKind, objetos, secciones]
+    );
+    const canUngroupSelection = ungroupCandidate?.eligible === true;
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -604,7 +637,68 @@ export default function MenuOpcionesElemento({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
         >
-            {esImagenFondoSeccion ? (
+            {isMultiSelectionMenu ? (
+                <>
+                    <div className="mb-2 rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
+                        <div className="text-sm font-semibold text-[#5f3596]">
+                            Seleccion multiple
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                            {multiSelectionCount} elemento{multiSelectionCount === 1 ? "" : "s"} seleccionado{multiSelectionCount === 1 ? "" : "s"}
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => {
+                            onCopiar();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <Copy className="w-4 h-4" /> Copiar
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            onPegar();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <ClipboardPaste className="w-4 h-4" /> Pegar
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            onDuplicar();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <PlusCircle className="w-4 h-4" /> Duplicar
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            onAgrupar?.();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <Layers className="w-4 h-4" /> Agrupar elementos
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            onEliminar();
+                            onCerrar();
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <Trash2 className="w-4 h-4 text-red-500" /> Eliminar
+                    </button>
+                </>
+            ) : esImagenFondoSeccion ? (
                 <>
                     <div className="mb-2 flex items-center gap-3 rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
                         {elementoSeleccionado?.src ? (
@@ -746,7 +840,19 @@ export default function MenuOpcionesElemento({
                 <PlusCircle className="w-4 h-4" /> Duplicar
             </button>
 
-            {shouldRenderTemplateAuthoringSection && (
+            {esGrupo && canUngroupSelection && (
+                <button
+                    onClick={() => {
+                        onDesagrupar?.();
+                        onCerrar();
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                >
+                    <Layers className="w-4 h-4" /> Desagrupar
+                </button>
+            )}
+
+            {!esGrupo && shouldRenderTemplateAuthoringSection && (
                 <TemplateDynamicFieldMenuSection
                     visible={true}
                     canConfigure={authoringConfig?.canConfigure === true}
@@ -771,6 +877,7 @@ export default function MenuOpcionesElemento({
 
 
             {/* Enlace */}
+            {!esGrupo && (
             <div className="relative">
                 <button
                     ref={btnEnlaceRef}
@@ -870,9 +977,11 @@ export default function MenuOpcionesElemento({
                     )
                 }
             </div>
+            )}
 
 
 
+            {!esGrupo && (
             <div className="relative">
                 <button
                     ref={btnEfectosRef}
@@ -943,9 +1052,10 @@ export default function MenuOpcionesElemento({
                     )
                 }
             </div>
+            )}
 
             {/* Usar como fondo (solo si es imagen) */}
-            {esImagen && (
+            {!esGrupo && esImagen && (
                 <button
                     onClick={() => {
                         reemplazarFondo({
@@ -967,7 +1077,7 @@ export default function MenuOpcionesElemento({
                 </button>
             )}
 
-            {esImagen && typeof usarComoDecoracionFondo === "function" && (
+            {!esGrupo && esImagen && typeof usarComoDecoracionFondo === "function" && (
                 <button
                     onClick={() => {
                         usarComoDecoracionFondo(elementoSeleccionado);

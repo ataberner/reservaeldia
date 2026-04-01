@@ -15,6 +15,9 @@ const {
   resolveSectionDecorationAssetUrl,
 } = require("../../shared/renderAssetContract.cjs");
 const {
+  prepareGroupAwareRenderState,
+} = require("../../shared/groupRenderContract.cjs");
+const {
   RENDER_CONTRACT_IDS,
   classifyRenderObjectContract,
   resolveCountdownContract,
@@ -356,26 +359,74 @@ export function validatePreparedPublicationRenderState(params: {
     seccionesFinales.map((section) => getString(section.id)).filter(Boolean)
   );
 
-  rawObjetos.forEach((rawObject, index) => {
-    const finalObject = findFinalRecordByIdOrIndex(
-      rawObject,
-      index,
-      finalObjectLookup,
-      objetosFinales
+  const groupAwareState = prepareGroupAwareRenderState({
+    objetos: rawObjetos,
+    secciones: rawSecciones,
+  });
+
+  groupAwareState.contractIssues.forEach((issue: any) => {
+    pushIssue(
+      createIssue({
+        severity: issue?.severity === "warning" ? "warning" : "blocking",
+        code: String(issue?.code || "").trim() || "group-contract-issue",
+        message:
+          String(issue?.message || "").trim() ||
+          "Hay un problema en el contrato de grupo preservado para publish.",
+        objectId: issue?.objectId || null,
+        sectionId: issue?.sectionId || null,
+        fieldPath: issue?.fieldPath || null,
+      })
     );
+  });
+
+  function resolveFieldPath(pathPrefix: string, fieldPath: string | null): string | null {
+    const safeFieldPath = getString(fieldPath);
+    if (!safeFieldPath) {
+      return pathPrefix || null;
+    }
+
+    return pathPrefix ? `${pathPrefix}.${safeFieldPath}` : safeFieldPath;
+  }
+
+  function validateObjectRecord(params: {
+    rawObject: UnknownRecord;
+    finalObject: UnknownRecord;
+    index: number;
+    pathPrefix?: string;
+    inheritedSectionId?: string | null;
+    inheritedAnchor?: string | null;
+    inheritsLayoutFromGroup?: boolean;
+  }) {
+    const rawObject = asRecord(params.rawObject);
+    const finalObject = asRecord(params.finalObject);
+    const pathPrefix = getString(params.pathPrefix);
+    const inheritedSectionId = getString(params.inheritedSectionId);
+    const inheritedAnchor = getString(params.inheritedAnchor);
+    const inheritsLayoutFromGroup = params.inheritsLayoutFromGroup === true;
+
     const objectId = getString(rawObject.id) || getString(finalObject.id) || null;
     const sectionId =
-      getString(rawObject.seccionId) || getString(finalObject.seccionId) || null;
+      inheritedSectionId ||
+      getString(rawObject.seccionId) ||
+      getString(finalObject.seccionId) ||
+      null;
+    const anchor =
+      inheritedAnchor ||
+      getString(rawObject.anclaje) ||
+      getString(finalObject.anclaje) ||
+      "";
     const objectType = normalizeText(rawObject.tipo) || normalizeText(finalObject.tipo);
     const shapeFigure =
       normalizeText(rawObject.figura) || normalizeText(finalObject.figura);
-    const objectLabel = getObjectLabel(rawObject, index);
+    const objectLabel = getObjectLabel(rawObject, params.index);
     const rawSection = sectionId ? rawSectionLookup.get(sectionId) || null : null;
     const finalSection = sectionId ? finalSectionLookup.get(sectionId) || null : null;
     const sectionMode = normalizeSectionMode(
       rawSection?.altoModo ?? finalSection?.altoModo
     );
     const renderContract = classifyRenderObjectContract(rawObject);
+    const toFieldPath = (fieldPath: string | null) =>
+      resolveFieldPath(pathPrefix, fieldPath);
 
     if (renderContract.contractId === RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V1) {
       pushIssue(
@@ -385,7 +436,7 @@ export function validatePreparedPublicationRenderState(params: {
           message: `${objectLabel} usa countdown schema v1 legacy. Sigue soportado por compatibilidad, pero esta congelado para trabajo nuevo.`,
           objectId,
           sectionId,
-          fieldPath: "countdownSchemaVersion",
+          fieldPath: toFieldPath("countdownSchemaVersion"),
         })
       );
     }
@@ -398,12 +449,12 @@ export function validatePreparedPublicationRenderState(params: {
           message: `${objectLabel} usa la rama legacy icono-svg. Sigue soportado por compatibilidad, pero el trabajo nuevo debe ir sobre el contrato moderno tipo='icono'.`,
           objectId,
           sectionId,
-          fieldPath: "tipo",
+          fieldPath: toFieldPath("tipo"),
         })
       );
     }
 
-    if (!sectionId || !validSectionIds.has(sectionId)) {
+    if (!inheritsLayoutFromGroup && (!sectionId || !validSectionIds.has(sectionId))) {
       pushIssue(
         createIssue({
           severity: "blocking",
@@ -411,9 +462,90 @@ export function validatePreparedPublicationRenderState(params: {
           message: `${objectLabel} no tiene una seccion valida para publish.`,
           objectId,
           sectionId,
-          fieldPath: "seccionId",
+          fieldPath: toFieldPath("seccionId"),
         })
       );
+    }
+
+    if (objectType === "grupo") {
+      const rawChildren = Array.isArray(rawObject.children) ? rawObject.children : [];
+      const finalChildren = Array.isArray(finalObject.children) ? finalObject.children : [];
+      const finalChildLookup = new Map<string, UnknownRecord>();
+
+      finalChildren.forEach((child) => {
+        const safeChild = asRecord(child);
+        const childId = getString(safeChild.id);
+        if (childId && !finalChildLookup.has(childId)) {
+          finalChildLookup.set(childId, safeChild);
+        }
+      });
+
+      if (sectionMode === "pantalla") {
+        const yNorm = toFiniteNumber(rawObject.yNorm);
+        const y = toFiniteNumber(rawObject.y);
+
+        if (yNorm === null) {
+          pushIssue(
+            createIssue({
+              severity: "warning",
+              code: "pantalla-ynorm-missing",
+              message: `${objectLabel} esta en una seccion pantalla pero no tiene yNorm persistido; publish puede reubicarlo distinto al canvas.`,
+              objectId,
+              sectionId,
+              fieldPath: toFieldPath("yNorm"),
+            })
+          );
+        } else if (y !== null) {
+          const expectedY = yNorm * ALTURA_EDITOR_PANTALLA;
+          if (Math.abs(y - expectedY) > PANTALLA_Y_DRIFT_WARNING_PX) {
+            pushIssue(
+              createIssue({
+                severity: "warning",
+                code: "pantalla-ynorm-drift",
+                message: `${objectLabel} esta en una seccion pantalla con y/yNorm desalineados; publish prioriza yNorm y la posicion vertical puede cambiar.`,
+                objectId,
+                sectionId,
+                fieldPath: toFieldPath("yNorm"),
+              })
+            );
+          }
+        }
+      }
+
+      if (!inheritsLayoutFromGroup && normalizeText(anchor) === "fullbleed") {
+        pushIssue(
+          createIssue({
+            severity: "warning",
+            code: "fullbleed-editor-drift",
+            message: `${objectLabel} usa fullbleed y el canvas no representa ese contrato igual que el HTML final.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath("anclaje"),
+          })
+        );
+      }
+
+      rawChildren.forEach((child, childIndex) => {
+        const safeRawChild = asRecord(child);
+        const safeFinalChild = findFinalRecordByIdOrIndex(
+          safeRawChild,
+          childIndex,
+          finalChildLookup,
+          finalChildren.map((entry) => asRecord(entry))
+        );
+
+        validateObjectRecord({
+          rawObject: safeRawChild,
+          finalObject: safeFinalChild,
+          index: childIndex,
+          pathPrefix: toFieldPath(`children[${childIndex}]`) || `children[${childIndex}]`,
+          inheritedSectionId: sectionId,
+          inheritedAnchor: anchor,
+          inheritsLayoutFromGroup: true,
+        });
+      });
+
+      return;
     }
 
     if (
@@ -429,7 +561,7 @@ export function validatePreparedPublicationRenderState(params: {
             : `${objectLabel} no tiene una figura soportada para el HTML publicado.`,
           objectId,
           sectionId,
-          fieldPath: "figura",
+          fieldPath: toFieldPath("figura"),
         })
       );
     }
@@ -450,7 +582,7 @@ export function validatePreparedPublicationRenderState(params: {
             message: `${objectLabel} no tiene un asset publico resuelto para el HTML final.`,
             objectId,
             sectionId,
-            fieldPath: "src",
+            fieldPath: toFieldPath("src"),
           })
         );
       }
@@ -469,7 +601,7 @@ export function validatePreparedPublicationRenderState(params: {
             message: cropMessage,
             objectId,
             sectionId,
-            fieldPath: "crop",
+            fieldPath: toFieldPath("crop"),
           })
         );
       }
@@ -487,7 +619,7 @@ export function validatePreparedPublicationRenderState(params: {
             message: `${objectLabel} no tiene un asset publico resuelto para publish.`,
             objectId,
             sectionId,
-            fieldPath: "src",
+            fieldPath: toFieldPath("src"),
           })
         );
       }
@@ -513,7 +645,7 @@ export function validatePreparedPublicationRenderState(params: {
             message: `${objectLabel} tiene la celda ${cellIndex + 1} sin mediaUrl publico resuelto para publish.`,
             objectId,
             sectionId,
-            fieldPath: `cells[${cellIndex}].mediaUrl`,
+            fieldPath: toFieldPath(`cells[${cellIndex}].mediaUrl`),
           })
         );
       });
@@ -533,7 +665,7 @@ export function validatePreparedPublicationRenderState(params: {
             message: `${objectLabel} resuelve la fecha del countdown desde '${countdownTarget.sourceField}'. Los cambios nuevos deben persistir en fechaObjetivo.`,
             objectId,
             sectionId,
-            fieldPath: countdownTarget.sourceField || "fechaObjetivo",
+            fieldPath: toFieldPath(countdownTarget.sourceField || "fechaObjetivo"),
           })
         );
       }
@@ -550,13 +682,13 @@ export function validatePreparedPublicationRenderState(params: {
             message: `${objectLabel} usa countdown schema v2 con frameSvgUrl sin resolver para publish.`,
             objectId,
             sectionId,
-            fieldPath: "frameSvgUrl",
+            fieldPath: toFieldPath("frameSvgUrl"),
           })
         );
       }
     }
 
-    if (sectionMode === "pantalla") {
+    if (!inheritsLayoutFromGroup && sectionMode === "pantalla") {
       const yNorm = toFiniteNumber(rawObject.yNorm);
       const y = toFiniteNumber(rawObject.y);
 
@@ -568,7 +700,7 @@ export function validatePreparedPublicationRenderState(params: {
             message: `${objectLabel} esta en una seccion pantalla pero no tiene yNorm persistido; publish puede reubicarlo distinto al canvas.`,
             objectId,
             sectionId,
-            fieldPath: "yNorm",
+            fieldPath: toFieldPath("yNorm"),
           })
         );
       } else if (y !== null) {
@@ -581,14 +713,17 @@ export function validatePreparedPublicationRenderState(params: {
               message: `${objectLabel} esta en una seccion pantalla con y/yNorm desalineados; publish prioriza yNorm y la posicion vertical puede cambiar.`,
               objectId,
               sectionId,
-              fieldPath: "yNorm",
+              fieldPath: toFieldPath("yNorm"),
             })
           );
         }
       }
     }
 
-    if ((objectType === "rsvp-boton" || objectType === "regalo-boton") && hasConfiguredLink(rawObject.enlace)) {
+    if (
+      (objectType === "rsvp-boton" || objectType === "regalo-boton") &&
+      hasConfiguredLink(rawObject.enlace)
+    ) {
       pushIssue(
         createIssue({
           severity: "warning",
@@ -596,7 +731,7 @@ export function validatePreparedPublicationRenderState(params: {
           message: `${objectLabel} define enlace, pero publish ignora enlace en CTA funcionales.`,
           objectId,
           sectionId,
-          fieldPath: "enlace",
+          fieldPath: toFieldPath("enlace"),
         })
       );
     }
@@ -686,7 +821,7 @@ export function validatePreparedPublicationRenderState(params: {
       );
     }
 
-    if (isFullBleedObject(rawObject)) {
+    if (!inheritsLayoutFromGroup && normalizeText(anchor) === "fullbleed") {
       pushIssue(
         createIssue({
           severity: "warning",
@@ -694,11 +829,25 @@ export function validatePreparedPublicationRenderState(params: {
           message: `${objectLabel} usa fullbleed y el canvas no representa ese contrato igual que el HTML final.`,
           objectId,
           sectionId,
-          fieldPath: "anclaje",
+          fieldPath: toFieldPath("anclaje"),
         })
       );
     }
+  }
 
+  rawObjetos.forEach((rawObject, index) => {
+    const finalObject = findFinalRecordByIdOrIndex(
+      rawObject,
+      index,
+      finalObjectLookup,
+      objetosFinales
+    );
+
+    validateObjectRecord({
+      rawObject,
+      finalObject,
+      index,
+    });
   });
 
   rawSecciones.forEach((rawSection, index) => {

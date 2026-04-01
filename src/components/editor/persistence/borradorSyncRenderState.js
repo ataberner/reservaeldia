@@ -60,6 +60,53 @@ function cleanUndefinedDeep(value) {
   return value;
 }
 
+function normalizeTextObjectPersistence(obj) {
+  return {
+    ...obj,
+    color: obj.colorTexto || obj.color || obj.fill || "#000000",
+    stroke: obj.stroke || null,
+    strokeWidth: obj.strokeWidth || 0,
+    shadowColor: obj.shadowColor || null,
+    shadowBlur: obj.shadowBlur || 0,
+    shadowOffsetX: obj.shadowOffsetX || 0,
+    shadowOffsetY: obj.shadowOffsetY || 0,
+  };
+}
+
+function normalizePersistableObject(obj, { validarPuntosLinea, isGroupChild = false } = {}) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+    return obj;
+  }
+
+  let next = { ...obj };
+
+  if (next.tipo === "grupo" && Array.isArray(next.children)) {
+    next = {
+      ...next,
+      children: next.children.map((child) =>
+        normalizePersistableObject(child, {
+          validarPuntosLinea,
+          isGroupChild: true,
+        })
+      ),
+    };
+  } else if (next.tipo === "countdown") {
+    next = normalizeCountdownObjectGeometry(next);
+  } else if (next.tipo === "forma" && next.figura === "line") {
+    next = validarPuntosLinea(next);
+  } else if (next.tipo === "texto") {
+    next = normalizeTextObjectPersistence(next);
+  }
+
+  if (isGroupChild) {
+    delete next.seccionId;
+    delete next.anclaje;
+    delete next.yNorm;
+  }
+
+  return next;
+}
+
 export function buildPersistableRenderState({
   objetos,
   secciones,
@@ -73,30 +120,9 @@ export function buildPersistableRenderState({
   const rawRsvp = rsvp && typeof rsvp === "object" ? rsvp : null;
   const rawGifts = gifts && typeof gifts === "object" ? gifts : null;
 
-  const objetosValidados = rawObjetos.map((obj) => {
-    if (obj?.tipo === "countdown") {
-      return normalizeCountdownObjectGeometry(obj);
-    }
-
-    if (obj?.tipo === "forma" && obj?.figura === "line") {
-      return validarPuntosLinea(obj);
-    }
-
-    if (obj?.tipo === "texto") {
-      return {
-        ...obj,
-        color: obj.colorTexto || obj.color || obj.fill || "#000000",
-        stroke: obj.stroke || null,
-        strokeWidth: obj.strokeWidth || 0,
-        shadowColor: obj.shadowColor || null,
-        shadowBlur: obj.shadowBlur || 0,
-        shadowOffsetX: obj.shadowOffsetX || 0,
-        shadowOffsetY: obj.shadowOffsetY || 0,
-      };
-    }
-
-    return obj;
-  });
+  const objetosValidados = rawObjetos.map((obj) =>
+    normalizePersistableObject(obj, { validarPuntosLinea })
+  );
 
   const seccionesBase = rawSecciones.map((section) =>
     normalizeSectionPersistenceShape(section)

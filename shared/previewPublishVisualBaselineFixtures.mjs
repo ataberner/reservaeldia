@@ -107,6 +107,56 @@ function createPantallaTextObject({
   };
 }
 
+function createPreservedGroupObject({
+  id = "hero-copy-group",
+  seccionId = "section-hero",
+  anclaje = "content",
+  x = 118,
+  y = 212,
+  yNorm = 0.424,
+  width = 360,
+  height = 132,
+  textId = "hero-copy",
+  decorationId = "hero-copy-star",
+  texto = "Celebremos juntos",
+  fontSize = 30,
+} = {}) {
+  return {
+    id,
+    tipo: "grupo",
+    seccionId,
+    anclaje,
+    x,
+    y,
+    yNorm,
+    width,
+    height,
+    children: [
+      {
+        id: decorationId,
+        tipo: "forma",
+        figura: "star",
+        x: 0,
+        y: 0,
+        width: 128,
+        height: 128,
+        color: "#f0d36a",
+      },
+      {
+        id: textId,
+        tipo: "texto",
+        x: 56,
+        y: 42,
+        width: 240,
+        texto,
+        fontSize,
+        fontFamily: "Cormorant Garamond",
+        colorTexto: "#2f2a27",
+      },
+    ],
+  };
+}
+
 function createVisualBaselineCase({
   id,
   label,
@@ -196,15 +246,7 @@ const decoratedTextPreviewDraft = upsertObject(
       objectIds: [],
     })
   ),
-  createPantallaTextObject({
-    id: "hero-copy",
-    texto: "Celebremos juntos",
-    x: 118,
-    y: 212,
-    yNorm: 0.424,
-    width: 360,
-    fontSize: 30,
-  })
+  createPreservedGroupObject()
 );
 const decoratedTextPublishDraft = upsertObject(
   withoutRootConfigs(
@@ -213,15 +255,7 @@ const decoratedTextPublishDraft = upsertObject(
       objectIds: [],
     })
   ),
-  createPantallaTextObject({
-    id: "hero-copy",
-    texto: "Celebremos juntos",
-    x: 118,
-    y: 212,
-    yNorm: 0.424,
-    width: 360,
-    fontSize: 30,
-  })
+  createPreservedGroupObject()
 );
 
 const galleryPreviewDraft = withoutRootConfigs(
@@ -318,18 +352,18 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
   createVisualBaselineCase({
     id: "text-with-decoration-behind",
     label: "Text with decoration behind",
-    purpose: "Freeze text layering against current section background and decoration rendering.",
+    purpose: "Freeze a preserved text plus decoration composition as one atomic mobile layout unit.",
     sourceFixture: "preview-publish-hydrated-asset-parity",
     expectedParityMode: "shared-parity",
     previewDraft: decoratedTextPreviewDraft,
     publishDraft: decoratedTextPublishDraft,
     focusCheckpoints: [
-      "text stays visually above background decorations",
-      "decorations do not detach or jump in front of the text",
-      "the case does not silently inherit bleed semantics",
+      "the preserved group stays in authored child order with the star behind the text",
+      "mobile reflow moves the group as one composition instead of separating its children",
+      "preview and publish keep the same content-lane anchor semantics for the group",
     ],
     notes: [
-      "This is a lightweight layering reference, not a grouping-model test.",
+      "This is the first canonical preserved-group visual baseline case for Phase 4.",
     ],
   }),
   createVisualBaselineCase({

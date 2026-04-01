@@ -137,6 +137,7 @@ export default function CountdownKonva({
   onPredragVisualSelectionStart = null,
   onPredragVisualSelectionCancel = null,
   selectionRuntime = null,
+  isPassiveRender = false,
 }) {
   const rootRef = useRef(null);
   const pressSessionCounterRef = useRef(0);
@@ -225,6 +226,10 @@ export default function CountdownKonva({
 
   // y absoluta = y relativa + offset de sección
   const yAbs = useMemo(() => {
+    if (isPassiveRender) {
+      return Number.isFinite(Number(obj?.y)) ? Number(obj.y) : 0;
+    }
+
     const idx = seccionesOrdenadas.findIndex((s) => s.id === obj.seccionId);
     const safe = idx >= 0 ? idx : 0;
     const off = calcularOffsetY(seccionesOrdenadas, safe, altoCanvas) || 0;
@@ -468,6 +473,8 @@ export default function CountdownKonva({
   }, [canRenderSeparators, unitLayouts, separatorFontSize]);
 
   useEffect(() => {
+    if (isPassiveRender) return;
+
     const sectionMode = String(
       seccionesOrdenadas.find((section) => section?.id === obj?.seccionId)?.altoModo || ""
     ).trim().toLowerCase();
@@ -518,6 +525,7 @@ export default function CountdownKonva({
     startY,
     unitLayouts,
     separatorLayouts,
+    isPassiveRender,
   ]);
 
   const [frameImageWithCors] = useImage(hasFrameConfigured ? frameSvgUrl : null, "anonymous");
@@ -1723,21 +1731,21 @@ export default function CountdownKonva({
       scaleY={obj.scaleY || 1}
 
       // ✅ SIEMPRE false: el drag se habilita imperativamente solo si hubo intención
-      draggable={reactDraggableEnabled}
-      listening={true}
+      draggable={isPassiveRender ? false : reactDraggableEnabled}
+      listening={!isPassiveRender}
 
-      onMouseDown={handleDown}
-      onTouchStart={handleDown}
-      onPointerDown={handleDown}
+      onMouseDown={isPassiveRender ? undefined : handleDown}
+      onTouchStart={isPassiveRender ? undefined : handleDown}
+      onPointerDown={isPassiveRender ? undefined : handleDown}
 
-      onClick={handleClick}
-      onTap={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onClick={isPassiveRender ? undefined : handleClick}
+      onTap={isPassiveRender ? undefined : handleClick}
+      onMouseEnter={isPassiveRender ? undefined : handleMouseEnter}
+      onMouseLeave={isPassiveRender ? undefined : handleMouseLeave}
 
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
+      onDragStart={isPassiveRender ? undefined : handleDragStart}
+      onDragMove={isPassiveRender ? undefined : handleDragMove}
+      onDragEnd={isPassiveRender ? undefined : handleDragEnd}
     >
       {/* Hitbox */}
       <Rect

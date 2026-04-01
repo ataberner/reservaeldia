@@ -706,14 +706,6 @@ export function createDashboardPreviewControllerRuntime({
         return;
       }
 
-      if (previewResult.status === "group-runtime-deferred") {
-        showAlert(
-          "La vista previa todavia no admite grupos de composicion en el runtime actual."
-        );
-        resetPreviewState(previewSession);
-        return;
-      }
-
       if (
         !commitPreviewState(previewSession, (prev) => ({
           ...prev,

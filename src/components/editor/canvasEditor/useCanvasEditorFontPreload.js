@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useRef } from "react";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 
+function collectObjectsDeep(objects) {
+  const queue = Array.isArray(objects) ? [...objects] : [];
+  const collected = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    collected.push(current);
+
+    if (current.tipo === "grupo" && Array.isArray(current.children)) {
+      queue.push(...current.children);
+    }
+  }
+
+  return collected;
+}
+
 export default function useCanvasEditorFontPreload({
   objetos,
   cargado,
@@ -10,7 +27,7 @@ export default function useCanvasEditorFontPreload({
   const loadedFontFamiliesRef = useRef(new Set());
 
   const fuentesNecesarias = useMemo(() => {
-    const fonts = (objetos || [])
+    const fonts = collectObjectsDeep(objetos)
       .filter(
         (o) =>
           (o.tipo === "texto" ||

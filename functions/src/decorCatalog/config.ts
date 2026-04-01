@@ -29,12 +29,14 @@ export const DECOR_CATALOG_MAX_LIST_LIMIT = 400;
 export const DECOR_CATALOG_DEFAULT_LIST_LIMIT = 100;
 
 export const DECOR_CATALOG_CALLABLE_OPTIONS = {
-  region: "us-central1",
+  region: "us-central1" as const,
+  cpu: "gcf_gen1" as const,
   cors: DEFAULT_CORS,
 };
 
 export const DECOR_CATALOG_TRIGGER_OPTIONS = {
-  region: "us-central1",
+  region: "us-central1" as const,
+  cpu: "gcf_gen1" as const,
 };
 
 export const DECOR_V1_ENABLED = String(

@@ -101,6 +101,8 @@ export function decidePressSelection({
   ctrlKey,
   metaKey,
 }) {
+  const additiveSelectionRequested = Boolean(shiftKey);
+
   if (!hasOnSelect) {
     return {
       shouldSelectOnPress: false,
@@ -117,7 +119,10 @@ export function decidePressSelection({
     };
   }
 
-  if (Number(effectiveSelectionCount) > 1) {
+  if (
+    Number(effectiveSelectionCount) > 1 &&
+    !additiveSelectionRequested
+  ) {
     return {
       shouldSelectOnPress: false,
       allowSameGestureDrag: false,

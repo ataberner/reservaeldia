@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildGroupedSelectionState,
+  resolveMultiSelectionMenuCandidate,
   buildUngroupedSelectionState,
   resolveGroupingSelectionCandidate,
   resolveUngroupSelectionCandidate,
@@ -322,6 +323,53 @@ test("preserves child ordering by root objetos order instead of selected id orde
     ["a", "b", "d"]
   );
   assert.deepEqual(selection.selectedIndices, [0, 1, 3]);
+});
+
+test("multi-selection menu stays eligible for a root group mixed with another root object even when grouping is not", () => {
+  const objetos = [
+    {
+      id: "group-a",
+      tipo: "grupo",
+      seccionId: "sec-1",
+      anclaje: "content",
+      x: 40,
+      y: 60,
+      width: 120,
+      height: 80,
+      children: [
+        { id: "child-a", tipo: "texto", x: 0, y: 0, width: 100, texto: "Hola" },
+      ],
+    },
+    {
+      id: "icon-b",
+      tipo: "icono",
+      seccionId: "sec-1",
+      anclaje: "content",
+      x: 220,
+      y: 88,
+      width: 28,
+      height: 28,
+      formato: "svg",
+      paths: [{ d: "M0 0L10 0L5 10Z" }],
+    },
+  ];
+
+  const menuSelection = resolveMultiSelectionMenuCandidate({
+    objetos,
+    selectedIds: ["icon-b", "group-a"],
+  });
+  const groupingSelection = resolveGroupingSelectionCandidate({
+    objetos,
+    selectedIds: ["icon-b", "group-a"],
+  });
+
+  assert.equal(menuSelection.eligible, true);
+  assert.deepEqual(
+    menuSelection.selectedObjects.map((entry) => entry.id),
+    ["group-a", "icon-b"]
+  );
+  assert.equal(groupingSelection.eligible, false);
+  assert.equal(groupingSelection.reason, "unsupported-object-family");
 });
 
 test("keeps negative local child coordinates when the live group frame starts after an authored child origin", () => {

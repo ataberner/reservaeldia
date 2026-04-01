@@ -3168,6 +3168,7 @@ async function runPendingRawExports(): Promise<number> {
 export const getBusinessAnalyticsOverviewV1 = onCall(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     memory: "512MiB",
   },
   async (request: CallableRequest<AnalyticsDateRangeInput>) => {
@@ -3266,6 +3267,7 @@ export const getBusinessAnalyticsOverviewV1 = onCall(
 export const requestBusinessAnalyticsRawExportV1 = onCall(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     memory: "512MiB",
   },
   async (
@@ -3291,6 +3293,7 @@ export const requestBusinessAnalyticsRawExportV1 = onCall(
 export const getBusinessAnalyticsRawExportStatusV1 = onCall(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     memory: "512MiB",
   },
   async (request: CallableRequest<{ exportId?: string | null }>) => {
@@ -3314,6 +3317,7 @@ export const getBusinessAnalyticsRawExportStatusV1 = onCall(
 export const runBusinessAnalyticsExportJobsV1 = onSchedule(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     schedule: "every 1 minutes",
     memory: "1GiB",
     timeoutSeconds: 540,
@@ -3353,6 +3357,7 @@ async function processPendingAnalyticsBatch(processingState: "pending" | "failed
 export const processPendingAnalyticsEventsV1 = onSchedule(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     schedule: "every 15 minutes",
     memory: "512MiB",
   },
@@ -3811,6 +3816,7 @@ async function executeBusinessAnalyticsRebuildJob(jobRef: FirebaseFirestore.Docu
 export const runBusinessAnalyticsRebuildJobsV1 = onSchedule(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     schedule: "every 1 minutes",
     memory: "1GiB",
     timeoutSeconds: 540,
@@ -3861,6 +3867,7 @@ export const runBusinessAnalyticsRebuildJobsV1 = onSchedule(
 export const adminRebuildBusinessAnalyticsV1 = onCall(
   {
     region: SCHEDULE_REGION,
+    cpu: "gcf_gen1",
     memory: "512MiB",
   },
   async (request: CallableRequest<Record<string, never>>) => {

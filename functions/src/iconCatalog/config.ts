@@ -33,12 +33,14 @@ export const ICON_CATALOG_DAILY_USAGE_SCAN_CRON = "15 3 * * *";
 export const ICON_CATALOG_DAILY_RECONCILE_CRON = "45 3 * * *";
 
 export const ICON_CATALOG_CALLABLE_OPTIONS = {
-  region: "us-central1",
+  region: "us-central1" as const,
+  cpu: "gcf_gen1" as const,
   cors: DEFAULT_CORS,
 };
 
 export const ICON_CATALOG_TRIGGER_OPTIONS = {
-  region: "us-central1",
+  region: "us-central1" as const,
+  cpu: "gcf_gen1" as const,
 };
 
 export const ICONOS_V2_ENABLED = String(
@@ -55,4 +57,3 @@ export const ICONOS_V2_AUTO_NORMALIZE_SAFE = String(
 export const ICONOS_V2_AUTO_NORMALIZE_CURRENTCOLOR = String(
   process.env.ICONOS_V2_AUTO_NORMALIZE_CURRENTCOLOR ?? "false"
 ).toLowerCase() === "true";
-

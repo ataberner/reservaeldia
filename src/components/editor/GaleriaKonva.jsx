@@ -336,13 +336,25 @@ export default function GaleriaKonva({
       press.startNodeX = node.x();
       press.startNodeY = node.y();
 
+      if (
+        e?.evt?.shiftKey &&
+        !isSelected &&
+        !isRemoveButtonTarget(e?.target) &&
+        typeof onSelect === "function"
+      ) {
+        const selectionResult = onSelect(obj.id, e);
+        if (selectionResult) {
+          press.suppressClick = true;
+        }
+      }
+
       try {
         node.draggable(false);
       } catch {}
 
       attachGlobalListeners();
     },
-    [attachGlobalListeners, isRemoveButtonTarget, isSelected]
+    [attachGlobalListeners, isRemoveButtonTarget, isSelected, obj.id, onSelect]
   );
 
   const handleRootClick = useCallback(

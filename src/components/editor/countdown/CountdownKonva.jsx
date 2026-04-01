@@ -687,8 +687,13 @@ export default function CountdownKonva({
       effectiveSelectionCount,
       effectiveIsSelected,
     } = getEffectiveSelectionState();
+    const nativeEvent = event?.evt || null;
+    const additiveSelectionRequested = Boolean(nativeEvent?.shiftKey);
 
-    if (effectiveIsSelected || effectiveSelectionCount > 1) {
+    if (
+      effectiveIsSelected ||
+      (effectiveSelectionCount > 1 && !additiveSelectionRequested)
+    ) {
       return {
         didSelectOnPress: false,
         allowSameGestureDrag: false,
@@ -698,7 +703,6 @@ export default function CountdownKonva({
       };
     }
 
-    const nativeEvent = event?.evt || null;
     if (nativeEvent?.button != null && Number(nativeEvent.button) !== 0) {
       return {
         didSelectOnPress: false,

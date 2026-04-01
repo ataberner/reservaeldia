@@ -5,6 +5,7 @@ import { normalizeInvitationType } from "../utils/invitationType";
 
 const OPTIONS = {
   region: "us-central1" as const,
+  cpu: "gcf_gen1" as const,
   cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
 };
 

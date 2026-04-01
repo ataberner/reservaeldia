@@ -2585,6 +2585,22 @@ export default function ElementoCanvas({
     [emitSelectionGesture]
   );
 
+  const resolveRootDelegatedEvent = useCallback((event) => {
+    const rootNode = elementNodeRef.current;
+    if (!event || !rootNode || event.currentTarget === rootNode) {
+      return event;
+    }
+
+    return {
+      ...event,
+      currentTarget: rootNode,
+    };
+  }, []);
+
+  const handleNestedHitboxPressStart = useCallback((event, source = "pointerdown") => {
+    handlePressStart(resolveRootDelegatedEvent(event), source);
+  }, [handlePressStart, resolveRootDelegatedEvent]);
+
   const manualGroupPreviewPose = getManualGroupDragPreviewPose(obj.id);
   const manualGroupPreviewSignature = manualGroupPreviewPose?.signature || "";
   const visualRenderObject = obj.tipo === "imagen" ? renderImageObject : obj;
@@ -4042,6 +4058,9 @@ export default function ElementoCanvas({
           stroke="transparent"      // Sin borde
           listening={true}          // DEBE recibir eventos
           draggable={false}
+          onMouseDown={!hasPointerEvents ? (e) => handleNestedHitboxPressStart(e, "mousedown") : undefined}
+          onTouchStart={!hasPointerEvents ? (e) => handleNestedHitboxPressStart(e, "touchstart") : undefined}
+          onPointerDown={(e) => handleNestedHitboxPressStart(e, "pointerdown")}
         />
 
         {/* Contenido SVG visual - NO maneja eventos */}

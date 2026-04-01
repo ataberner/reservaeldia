@@ -164,7 +164,7 @@ export function createEditorGroupId(seed = Date.now()) {
     .slice(2, 6)}`;
 }
 
-export function resolveGroupingSelectionCandidate({
+export function resolveMultiSelectionMenuCandidate({
   objetos,
   selectedIds,
 } = {}) {
@@ -202,6 +202,32 @@ export function resolveGroupingSelectionCandidate({
       selectedIndices: orderedSelectedIndices,
     };
   }
+
+  return {
+    eligible: true,
+    reason: "ready",
+    selectedIds: safeSelectedIds,
+    selectedObjects: orderedSelectedObjects,
+    selectedIndices: orderedSelectedIndices,
+  };
+}
+
+export function resolveGroupingSelectionCandidate({
+  objetos,
+  selectedIds,
+} = {}) {
+  const baseSelection = resolveMultiSelectionMenuCandidate({
+    objetos,
+    selectedIds,
+  });
+
+  if (!baseSelection.eligible) {
+    return baseSelection;
+  }
+
+  const safeSelectedIds = baseSelection.selectedIds;
+  const orderedSelectedObjects = baseSelection.selectedObjects;
+  const orderedSelectedIndices = baseSelection.selectedIndices;
 
   if (!orderedSelectedObjects.every(isObjectSupportedForGrouping)) {
     return {

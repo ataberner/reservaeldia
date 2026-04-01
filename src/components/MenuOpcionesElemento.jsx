@@ -198,6 +198,7 @@ export default function MenuOpcionesElemento({
     const multiSelectionCount = Array.isArray(menuContext?.selectedObjects)
         ? menuContext.selectedObjects.length
         : multiSelectionIds.length;
+    const canGroupSelection = menuContext?.canGroupSelection === true;
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
@@ -678,15 +679,17 @@ export default function MenuOpcionesElemento({
                         <PlusCircle className="w-4 h-4" /> Duplicar
                     </button>
 
-                    <button
-                        onClick={() => {
-                            onAgrupar?.();
-                            onCerrar();
-                        }}
-                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-                    >
-                        <Layers className="w-4 h-4" /> Agrupar elementos
-                    </button>
+                    {canGroupSelection ? (
+                        <button
+                            onClick={() => {
+                                onAgrupar?.();
+                                onCerrar();
+                            }}
+                            className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                        >
+                            <Layers className="w-4 h-4" /> Agrupar elementos
+                        </button>
+                    ) : null}
 
                     <button
                         onClick={() => {

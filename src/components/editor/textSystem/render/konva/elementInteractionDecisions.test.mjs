@@ -184,6 +184,25 @@ test("press-selection decision reports the existing skip reasons and same-gestur
     "multiselection-active"
   );
 
+  assert.deepEqual(
+    decidePressSelection({
+      hasOnSelect: true,
+      effectiveIsSelected: false,
+      effectiveSelectionCount: 3,
+      inlineEditPointerActive: false,
+      selectionGestureSuppressed: false,
+      button: 0,
+      shiftKey: true,
+      ctrlKey: false,
+      metaKey: false,
+    }),
+    {
+      shouldSelectOnPress: true,
+      allowSameGestureDrag: false,
+      reason: "select-on-press",
+    }
+  );
+
   assert.equal(
     decidePressSelection({
       hasOnSelect: true,

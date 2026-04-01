@@ -11,7 +11,10 @@ import {
   removeBackgroundDecoration,
   updateBackgroundDecorationsParallax,
 } from "@/domain/sections/backgrounds";
-import { resolveGroupingSelectionCandidate } from "@/domain/editor/grouping";
+import {
+  resolveGroupingSelectionCandidate,
+  resolveMultiSelectionMenuCandidate,
+} from "@/domain/editor/grouping";
 
 export default function useCanvasEditorSectionBackgroundUi({
   altoCanvas,
@@ -293,6 +296,14 @@ export default function useCanvasEditorSectionBackgroundUi({
       }),
     [elementosSeleccionados, objetos]
   );
+  const multiSelectionMenu = useMemo(
+    () =>
+      resolveMultiSelectionMenuCandidate({
+        objetos,
+        selectedIds: elementosSeleccionados,
+      }),
+    [elementosSeleccionados, objetos]
+  );
 
   const overlaySelection = useMemo(() => {
     if (activeBackgroundDecorationMenuItem) {
@@ -322,12 +333,13 @@ export default function useCanvasEditorSectionBackgroundUi({
       };
     }
 
-    if (!groupingSelection.eligible) return null;
+    if (!multiSelectionMenu.eligible) return null;
 
     return {
       kind: "multi-selection",
-      selectedIds: groupingSelection.selectedIds,
-      selectedObjects: groupingSelection.selectedObjects,
+      selectedIds: multiSelectionMenu.selectedIds,
+      selectedObjects: multiSelectionMenu.selectedObjects,
+      canGroupSelection: groupingSelection.eligible === true,
       menuItem: null,
     };
   }, [
@@ -335,8 +347,9 @@ export default function useCanvasEditorSectionBackgroundUi({
     activeBaseBackgroundMenuItem,
     elementosSeleccionados,
     groupingSelection.eligible,
-    groupingSelection.selectedIds,
-    groupingSelection.selectedObjects,
+    multiSelectionMenu.eligible,
+    multiSelectionMenu.selectedIds,
+    multiSelectionMenu.selectedObjects,
     objetos,
   ]);
 

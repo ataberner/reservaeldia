@@ -21,7 +21,8 @@
       "inline:probe": "node scripts/inlineOverlayMatrixProbe.mjs",
       "icons:categories:normalize:dry": "node scripts/normalizeIconCategoriesCase.cjs --dry-run",
       "icons:categories:normalize:apply": "node scripts/normalizeIconCategoriesCase.cjs --apply",
-      "deploy:full": "npm run build && firebase deploy",
+      "deploy:functions:batched": "node scripts/deployFunctionsBatched.cjs",
+      "deploy:full": "npm run build && firebase deploy --only hosting && npm run deploy:functions:batched",
       "deploy:hosting": "npm run build && firebase deploy --only hosting"
    },
    "dependencies": {

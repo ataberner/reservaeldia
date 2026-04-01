@@ -83,8 +83,16 @@ function normalizeOrder(value: unknown, fallback: number): number {
   return Math.max(1, Math.round(parsed));
 }
 
+type TimestampLike = { toDate: () => Date };
+
+function isTimestampLike(value: unknown): value is TimestampLike {
+  // Avoid instanceof checks here because the emulator-stubbed Admin namespace
+  // can make constructor identity unreliable in local Functions runtime.
+  return !!value && typeof value === "object" && typeof (value as TimestampLike).toDate === "function";
+}
+
 function serialize(value: unknown): unknown {
-  if (value instanceof admin.firestore.Timestamp) {
+  if (isTimestampLike(value)) {
     return value.toDate().toISOString();
   }
   if (Array.isArray(value)) {

@@ -4,7 +4,6 @@ import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
-import { JSDOM } from "jsdom";
 import { requireAdmin, requireAuth } from "../auth/adminAuth";
 
 type Estado = "draft" | "published" | "archived";
@@ -176,7 +175,6 @@ const UNSAFE_HREF = /^(https?:|\/\/|javascript:)/i;
 const UNSAFE_CSS_TOKEN = /[<>;]/;
 const UNSAFE_CSS_PATTERN = /(url\s*\(|javascript:|expression\s*\()/i;
 const SAFE_CSS_VALUE = /^[#(),.%\-+\s\w:/]*$/i;
-const CSS_VALIDATOR_WINDOW = new JSDOM("<!doctype html><html><body></body></html>").window;
 
 const EVENTS = new Set(["boda", "quince", "cumpleanos", "aniversario", "baby-shower", "corporativo", "general"]);
 const STYLES = new Set(["minimal", "floral", "romantico", "editorial", "moderno", "clasico", "premium"]);
@@ -207,6 +205,21 @@ const DEFAULT_CATEGORY: Category = {
   custom: null,
   label: "General / Minimal",
 };
+
+let cssValidatorWindow: ReturnType<typeof createCssValidatorWindow> | null = null;
+
+function createCssValidatorWindow() {
+  // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+  return new JSDOM("<!doctype html><html><body></body></html>").window;
+}
+
+function getCssValidatorWindow() {
+  if (!cssValidatorWindow) {
+    cssValidatorWindow = createCssValidatorWindow();
+  }
+  return cssValidatorWindow;
+}
 
 function ensureApp() {
   if (admin.apps.length > 0) return admin.app();
@@ -253,7 +266,7 @@ function isSafeCssPaint(value: string): boolean {
   if (UNSAFE_CSS_TOKEN.test(value) || UNSAFE_CSS_PATTERN.test(value)) return false;
   if (!SAFE_CSS_VALUE.test(value)) return false;
 
-  const probe = CSS_VALIDATOR_WINDOW.document.createElement("div");
+  const probe = getCssValidatorWindow().document.createElement("div");
   probe.style.color = "";
   probe.style.color = value;
   if (probe.style.color) return true;
@@ -660,7 +673,8 @@ function inspectSvg(svgText: string, fileName: string, bytes: number) {
   if (bytes > 500 * 1024) criticalErrors.push("El SVG supera 500KB.");
   else if (bytes > 200 * 1024) warnings.push("El SVG pesa mas de 200KB.");
 
-  let dom: JSDOM;
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+  let dom: import("jsdom").JSDOM;
   try {
     dom = new JSDOM(svgText, { contentType: "image/svg+xml" });
   } catch {

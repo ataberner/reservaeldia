@@ -3,6 +3,7 @@ import { normalizeDraftRenderState } from "../drafts/sourceOfTruth.js";
 import { normalizeRsvpConfig } from "../rsvp/config.js";
 import { normalizeGiftConfig } from "../gifts/config.js";
 import { normalizeRenderAssetState } from "../../../shared/renderAssetContract.js";
+import { prepareGroupAwareRenderState } from "../../../shared/groupRenderContract.js";
 import {
   normalizePublicSlug,
   parseSlugFromPublicUrl,
@@ -135,22 +136,36 @@ export function prepareDashboardPreviewRenderState(data) {
     objetos: rawRenderState.objetos,
     secciones: rawRenderState.secciones,
   });
+  const groupAwareState = prepareGroupAwareRenderState({
+    objetos: renderAssetState.objetos,
+    secciones: renderAssetState.secciones,
+  });
 
   return {
     // Preview stays browser-safe here: canonicalize current asset aliases,
     // but keep publish-only preparation on the backend path.
     renderState: {
       ...rawRenderState,
-      objetos: renderAssetState.objetos,
-      secciones: renderAssetState.secciones,
+      objetos: groupAwareState.objetos,
+      secciones: groupAwareState.secciones,
     },
     rawRsvp: rawRenderState.rsvp || null,
     rawGifts: rawRenderState.gifts || null,
+    preparedRenderContract: groupAwareState.preparedRenderContract,
+    contractIssues: groupAwareState.contractIssues,
+    runtimeSupport: groupAwareState.runtimeSupport,
   };
 }
 
 export function buildDashboardPreviewRenderPayload(data) {
-  const { renderState, rawRsvp, rawGifts } = prepareDashboardPreviewRenderState(data);
+  const {
+    renderState,
+    rawRsvp,
+    rawGifts,
+    preparedRenderContract,
+    contractIssues,
+    runtimeSupport,
+  } = prepareDashboardPreviewRenderState(data);
 
   const rsvpPreviewConfig =
     rawRsvp && typeof rawRsvp === "object"
@@ -184,6 +199,9 @@ export function buildDashboardPreviewRenderPayload(data) {
     rawGifts,
     rsvpPreviewConfig,
     giftPreviewConfig,
+    preparedRenderContract,
+    contractIssues,
+    runtimeSupport,
   };
 }
 

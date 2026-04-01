@@ -6,7 +6,6 @@ import {
   DECOR_V1_ENABLED,
 } from "./config";
 import { writeDecorAuditEvent } from "./audit";
-import { processDecorDocumentV1 } from "./processor";
 import { activeDecorCollection, moveDecorToArchived } from "./repository";
 
 function normalizeString(value: unknown): string {
@@ -16,6 +15,18 @@ function normalizeString(value: unknown): string {
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+let processDecorDocumentV1Promise: Promise<typeof import("./processor")["processDecorDocumentV1"]> | null = null;
+
+async function loadProcessDecorDocumentV1() {
+  if (!processDecorDocumentV1Promise) {
+    // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+    processDecorDocumentV1Promise = import("./processor").then(
+      (module) => module.processDecorDocumentV1
+    );
+  }
+  return processDecorDocumentV1Promise;
 }
 
 export const onDecorCatalogDocWriteV1 = onDocumentWritten(
@@ -32,6 +43,7 @@ export const onDecorCatalogDocWriteV1 = onDocumentWritten(
     const afterData = asObject(event.data.after.data());
 
     try {
+      const processDecorDocumentV1 = await loadProcessDecorDocumentV1();
       const processed = await processDecorDocumentV1({
         decorId,
         rawData: afterData,

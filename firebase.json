@@ -10,10 +10,9 @@
         "firebase-debug.*.log",
         "*.local"
       ],
-"predeploy": [
-  "npm --prefix functions run build"
-]
-
+      "predeploy": [
+        "npm --prefix functions run build"
+      ]
     }
   ],
   "firestore": {
@@ -22,6 +21,21 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "functions": {
+      "port": 5001
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    }
   },
   "hosting": {
     "public": "out",

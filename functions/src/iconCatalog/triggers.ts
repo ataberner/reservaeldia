@@ -12,7 +12,6 @@ import {
 } from "./config";
 import { writeIconAuditEvent } from "./audit";
 import { mergeLegacyMetadata, normalizeIconMetadata } from "./metadata";
-import { processIconDocumentV2 } from "./processor";
 import {
   activeIconCollection,
   db,
@@ -37,6 +36,18 @@ function toDateKey(date = new Date()): string {
   const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(date.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+let processIconDocumentV2Promise: Promise<typeof import("./processor")["processIconDocumentV2"]> | null = null;
+
+async function loadProcessIconDocumentV2() {
+  if (!processIconDocumentV2Promise) {
+    // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+    processIconDocumentV2Promise = import("./processor").then(
+      (module) => module.processIconDocumentV2
+    );
+  }
+  return processIconDocumentV2Promise;
 }
 
 async function scanCollectionForCandidates(collectionName: string): Promise<{
@@ -158,6 +169,7 @@ export const onIconCatalogDocWriteV2 = onDocumentWritten(
     const afterData = asObject(event.data.after.data());
 
     try {
+      const processIconDocumentV2 = await loadProcessIconDocumentV2();
       const processed = await processIconDocumentV2({
         iconId,
         rawData: afterData,
@@ -241,6 +253,7 @@ export const dailyIconCatalogReconcileV2 = onSchedule(
       }
 
       if (!data.validation || !data.hashSha256 || !data.storagePath) {
+        const processIconDocumentV2 = await loadProcessIconDocumentV2();
         const processed = await processIconDocumentV2({
           iconId: docItem.id,
           rawData: data,

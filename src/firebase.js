@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
@@ -19,13 +19,23 @@ const firebaseConfig = {
   appId: "1:860495975406:web:3a49ad0cf55d60313534ff",
 };
 
+function normalizeFirebaseMode(rawMode) {
+  switch (String(rawMode || "").trim().toLowerCase()) {
+    case "functions-local":
+      return "functions-local";
+    case "emulators":
+      return "emulators";
+    case "prod":
+    default:
+      return "prod";
+  }
+}
+
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-
-// 🔹 Functions
 export const functions = getFunctions(app, "us-central1");
 
 const isLocalhost =
@@ -33,13 +43,20 @@ const isLocalhost =
   (window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1");
 
-const USE_EMULATORS =
-  isLocalhost && process.env.NEXT_PUBLIC_USE_EMULATORS === "true";
+// Safety boundary: non-local hosts always stay production-backed.
+const firebaseMode = normalizeFirebaseMode(
+  process.env.NEXT_PUBLIC_FIREBASE_MODE
+);
+const localFirebaseMode = isLocalhost ? firebaseMode : "prod";
 
-// ✅ SOLO en localhost + flag true
-if (USE_EMULATORS) {
+if (localFirebaseMode === "functions-local") {
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
 }
 
+if (localFirebaseMode === "emulators") {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+}
 
 export default app;

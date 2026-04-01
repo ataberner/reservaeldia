@@ -43,6 +43,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+type TimestampLike = { toDate: () => Date };
+
+function isTimestampLike(value: unknown): value is TimestampLike {
+  return !!value && typeof value === "object" && typeof (value as TimestampLike).toDate === "function";
+}
+
 function sanitizeSlug(value: unknown): string {
   const safe = normalizeString(value)
     .normalize("NFD")
@@ -207,7 +213,7 @@ function buildPreview(items: NormalizedPresetItem[]) {
 }
 
 function serialize(value: unknown): unknown {
-  if (value instanceof admin.firestore.Timestamp) {
+  if (isTimestampLike(value)) {
     return value.toDate().toISOString();
   }
   if (Array.isArray(value)) return value.map((entry) => serialize(entry));
@@ -278,14 +284,8 @@ function sortByOrderAndDate(items: Record<string, unknown>[]) {
 
     const leftUpdatedRaw = left.audit && isObject(left.audit) ? left.audit.updatedAt : null;
     const rightUpdatedRaw = right.audit && isObject(right.audit) ? right.audit.updatedAt : null;
-    const leftUpdatedMs =
-      leftUpdatedRaw instanceof admin.firestore.Timestamp
-        ? leftUpdatedRaw.toDate().getTime()
-        : 0;
-    const rightUpdatedMs =
-      rightUpdatedRaw instanceof admin.firestore.Timestamp
-        ? rightUpdatedRaw.toDate().getTime()
-        : 0;
+    const leftUpdatedMs = isTimestampLike(leftUpdatedRaw) ? leftUpdatedRaw.toDate().getTime() : 0;
+    const rightUpdatedMs = isTimestampLike(rightUpdatedRaw) ? rightUpdatedRaw.toDate().getTime() : 0;
     if (rightUpdatedMs !== leftUpdatedMs) return rightUpdatedMs - leftUpdatedMs;
 
     return String(left.nombre || "").localeCompare(String(right.nombre || ""));

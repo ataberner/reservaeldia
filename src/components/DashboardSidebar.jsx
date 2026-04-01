@@ -5,10 +5,11 @@ import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
 import { FaChevronRight, FaGift, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
 import { Redo2, Undo2 } from "lucide-react";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
+import { functions } from "@/firebase";
 import {
     triggerEditorRedo,
     triggerEditorUndo,
@@ -279,7 +280,6 @@ export default function DashboardSidebar({
             };
 
             try {
-                const functions = getFunctions();
                 const crearPlantilla = httpsCallable(functions, "crearPlantilla");
 
                 const res = await crearPlantilla({

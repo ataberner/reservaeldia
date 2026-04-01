@@ -10,6 +10,8 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
+const GROUP_RUNTIME_DEFERRED_STATUS = "group-runtime-deferred";
+
 function asRecord(value) {
   return value && typeof value === "object" ? value : {};
 }
@@ -190,6 +192,17 @@ export async function runDashboardPreviewPipeline({
     onBeforeGenerateHtml({
       previewPayload,
     });
+  }
+
+  if (previewPayload?.runtimeSupport?.canRenderCurrentHtmlRuntime === false) {
+    return {
+      status: GROUP_RUNTIME_DEFERRED_STATUS,
+      previewPayload,
+      htmlGenerado: "",
+      urlPublicaDetectada,
+      slugPublicoDetectado,
+      publicacionNoVigenteDetectada,
+    };
   }
 
   const generatorInput = buildDashboardPreviewGeneratorInput({

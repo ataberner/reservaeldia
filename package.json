@@ -3,7 +3,10 @@
    "name": "reservaeldia",
    "version": "1.0.0",
    "scripts": {
-      "dev": "next dev",
+      "dev": "cross-env NEXT_PUBLIC_FIREBASE_MODE=prod next dev",
+      "dev:functions": "cross-env NEXT_PUBLIC_FIREBASE_MODE=functions-local concurrently -k \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions\" \"next dev\"",
+      "emulators": "npm --prefix functions run build && firebase emulators:start --only auth,firestore,functions",
+      "dev:emulators": "cross-env NEXT_PUBLIC_FIREBASE_MODE=emulators concurrently -k \"npm --prefix functions run build:watch\" \"firebase emulators:start --only auth,firestore,functions\" \"next dev\"",
       "dev:reset": "node -e \"const fs=require('fs'); ['.next','.next-dev'].forEach((d)=>fs.rmSync(d,{recursive:true,force:true}))\" && next dev",
       "build": "next build",
       "export": "next export",
@@ -48,6 +51,8 @@
    },
    "devDependencies": {
       "autoprefixer": "^10.4.14",
+      "concurrently": "^9.2.1",
+      "cross-env": "^7.0.3",
       "postcss": "^8.4.21",
       "tailwindcss": "^3.4.1"
    },

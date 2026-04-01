@@ -4,7 +4,6 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import { randomUUID } from "crypto";
-import { JSDOM } from "jsdom";
 import express, { Request, Response } from "express";
 import {
   requireAdmin,
@@ -132,6 +131,11 @@ import {
 
 import * as logger from "firebase-functions/logger";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
+
+function loadJSDOM() {
+  // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+  return require("jsdom") as typeof import("jsdom");
+}
 
 export const saveCountdownPresetDraft = saveCountdownPresetDraftHandler;
 export const publishCountdownPresetDraft = publishCountdownPresetDraftHandler;
@@ -1192,6 +1196,7 @@ export const verInvitacion = onRequest(
       const [htmlBuffer] = await file.download();
       const html = htmlBuffer.toString("utf-8");
 
+      const { JSDOM } = loadJSDOM();
       const dom = new JSDOM(html);
       const { document } = dom.window;
 
@@ -1255,6 +1260,7 @@ export const copiarPlantillaHTML = onCall(
 
   const [htmlBuffer] = await archivoHtml.download();
   const html = htmlBuffer.toString("utf-8");
+  const { JSDOM } = loadJSDOM();
   const dom = new JSDOM(html);
   const { document } = dom.window;
 

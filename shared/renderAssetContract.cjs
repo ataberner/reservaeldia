@@ -48,6 +48,13 @@ function normalizeRenderAssetObject(value) {
   if (!safeValue || Object.keys(safeValue).length === 0) return value;
 
   let next = safeValue;
+  if (normalizeLowerText(safeValue.tipo) === "grupo" && Array.isArray(safeValue.children)) {
+    next = {
+      ...next,
+      children: safeValue.children.map((child) => normalizeRenderAssetObject(child)),
+    };
+  }
+
   const primaryAssetUrl = resolveObjectPrimaryAssetUrl(safeValue);
   if (primaryAssetUrl) {
     next = {

@@ -27,6 +27,22 @@ const artifacts = [
       path.resolve(__dirname, "../lib/shared/renderContractPolicy.cjs"),
     ],
   },
+  {
+    label: "Contrato de assets de render",
+    sourcePath: path.resolve(__dirname, "../../shared/renderAssetContract.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/renderAssetContract.cjs"),
+      path.resolve(__dirname, "../lib/shared/renderAssetContract.cjs"),
+    ],
+  },
+  {
+    label: "Contrato de grupos de render",
+    sourcePath: path.resolve(__dirname, "../../shared/groupRenderContract.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/groupRenderContract.cjs"),
+      path.resolve(__dirname, "../lib/shared/groupRenderContract.cjs"),
+    ],
+  },
 ];
 
 artifacts.forEach(({ label, sourcePath, targetPaths }) => {

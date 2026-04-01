@@ -9,7 +9,6 @@ import {
 } from "./config";
 import { writeIconAuditEvent } from "./audit";
 import { mergeLegacyMetadata, normalizeIconMetadata } from "./metadata";
-import { processIconDocumentV2 } from "./processor";
 import {
   activeIconCollection,
   archivedIconCollection,
@@ -51,6 +50,18 @@ function parseCursor(value: unknown): {
 
 function toPlainRecord(icon: IconCatalogDocWithId): Record<string, unknown> {
   return { ...icon };
+}
+
+let processIconDocumentV2Promise: Promise<typeof import("./processor")["processIconDocumentV2"]> | null = null;
+
+async function loadProcessIconDocumentV2() {
+  if (!processIconDocumentV2Promise) {
+    // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+    processIconDocumentV2Promise = import("./processor").then(
+      (module) => module.processIconDocumentV2
+    );
+  }
+  return processIconDocumentV2Promise;
 }
 
 export const adminListIconCatalogV2 = onCall(
@@ -293,6 +304,7 @@ export const adminRevalidateIconV2 = onCall(
     }
 
     const currentData = asObject(existing.snap.data());
+    const processIconDocumentV2 = await loadProcessIconDocumentV2();
     const processed = await processIconDocumentV2({
       iconId,
       rawData: currentData,

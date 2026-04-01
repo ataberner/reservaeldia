@@ -95,8 +95,14 @@ export function isLegacyPricingFallbackEnabled(): boolean {
   return parseEnvBoolean(process.env.PRICING_CONFIG_ALLOW_LEGACY_FALLBACK, true);
 }
 
+type TimestampLike = { toDate: () => Date };
+
+function isTimestampLike(value: unknown): value is TimestampLike {
+  return !!value && typeof value === "object" && typeof (value as TimestampLike).toDate === "function";
+}
+
 function serialize(value: unknown): unknown {
-  if (value instanceof admin.firestore.Timestamp) {
+  if (isTimestampLike(value)) {
     return value.toDate().toISOString();
   }
   if (Array.isArray(value)) {

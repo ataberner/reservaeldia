@@ -3,12 +3,11 @@ import {
   ExternalLink,
   Link2,
   Maximize2,
-  Monitor,
   RefreshCw,
-  Smartphone,
   X,
 } from "lucide-react";
 import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
+import { buildPreviewPublishNoticePresentation } from "@/domain/dashboard/previewValidationPresentation";
 import {
   computeModalVistaPreviaLayout,
   DESKTOP_VIEWPORT_HEIGHT,
@@ -16,7 +15,7 @@ import {
   MOBILE_VIEWPORT_HEIGHT,
   MOBILE_VIEWPORT_WIDTH,
 } from "@/components/preview/modalVistaPreviaLayout";
-import PublishValidationSummary from "@/components/preview/PublishValidationSummary";
+import PreviewPublishNoticeLayer from "@/components/preview/PreviewPublishNoticeLayer";
 
 const SECONDARY_TOOLBAR_BUTTON_CLASS =
   "inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#ddd2f5] bg-white/90 px-3 text-sm font-medium text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
@@ -338,10 +337,43 @@ export default function ModalVistaPrevia({
   const [iframeKey, setIframeKey] = useState(0);
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const [fullscreenIframeKey, setFullscreenIframeKey] = useState(0);
+  const [noticePosition, setNoticePosition] = useState(null);
   const [windowHeight, setWindowHeight] = useState(820);
   const [windowWidth, setWindowWidth] = useState(0);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const modalPanelRef = useRef(null);
+  const publishActionsRef = useRef(null);
   const stageRef = useRef(null);
+  const previewUrl =
+    String(previewDisplayUrl || "").trim() || "https://reservaeldia.com.ar/i/...";
+  const confirmedPublicUrl = String(publishedUrl || publicUrl || "").trim();
+  const yaPublicada = Boolean(confirmedPublicUrl);
+  const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
+  const layout = computeModalVistaPreviaLayout({
+    stageWidth: stageSize.width,
+    stageHeight: stageSize.height,
+    fallbackWidth: Math.max(windowWidth - 32, 320),
+    fallbackHeight: Math.max(windowHeight - 180, 380),
+  });
+  const toolbarInline = layout.toolbarMode === "inline";
+  const desktopVariant =
+    layout.mode === "showcase-overlap"
+      ? "showcase"
+      : layout.mode === "stacked-priority"
+        ? "stacked"
+        : "compact";
+  const mobileVariant =
+    layout.mode === "showcase-overlap"
+      ? "showcase"
+      : layout.mode === "stacked-priority"
+        ? "stacked"
+        : "compact";
+  const publishNoticePresentation = buildPreviewPublishNoticePresentation({
+    validation: publishValidation,
+    pending: publishValidationPending,
+    publishError,
+    publishSuccess,
+  });
 
   useEffect(() => {
     if (!visible) return;
@@ -424,30 +456,71 @@ export default function ModalVistaPrevia({
     return () => observer.disconnect();
   }, [visible]);
 
-  const previewUrl =
-    String(previewDisplayUrl || "").trim() || "https://reservaeldia.com.ar/i/...";
-  const confirmedPublicUrl = String(publishedUrl || publicUrl || "").trim();
-  const yaPublicada = Boolean(confirmedPublicUrl);
-  const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
-  const layout = computeModalVistaPreviaLayout({
-    stageWidth: stageSize.width,
-    stageHeight: stageSize.height,
-    fallbackWidth: Math.max(windowWidth - 32, 320),
-    fallbackHeight: Math.max(windowHeight - 180, 380),
-  });
-  const toolbarInline = layout.toolbarMode === "inline";
-  const desktopVariant =
-    layout.mode === "showcase-overlap"
-      ? "showcase"
-      : layout.mode === "stacked-priority"
-        ? "stacked"
-        : "compact";
-  const mobileVariant =
-    layout.mode === "showcase-overlap"
-      ? "showcase"
-      : layout.mode === "stacked-priority"
-        ? "stacked"
-        : "compact";
+  useEffect(() => {
+    if (!visible || !showPublishActions || typeof window === "undefined") {
+      setNoticePosition(null);
+      return;
+    }
+
+    const modalNode = modalPanelRef.current;
+    const actionsNode = publishActionsRef.current;
+    if (!modalNode || !actionsNode) {
+      setNoticePosition(null);
+      return;
+    }
+
+    const measure = () => {
+      const modalRect = modalNode.getBoundingClientRect();
+      const actionsRect = actionsNode.getBoundingClientRect();
+      if (!modalRect.width || !actionsRect.width) return;
+
+      const maxWidth = Math.max(168, Math.min(420, modalRect.width - 24));
+      const minWidth = Math.min(maxWidth, toolbarInline ? 300 : 260);
+      const preferredWidth = Math.max(actionsRect.width, minWidth);
+      const nextPosition = {
+        top: Math.round(Math.max(actionsRect.bottom - modalRect.top + 10, 8)),
+        right: Math.round(Math.max(modalRect.right - actionsRect.right, 12)),
+        width: Math.round(Math.min(Math.max(preferredWidth, minWidth), maxWidth)),
+      };
+
+      setNoticePosition((current) => {
+        if (
+          current?.top === nextPosition.top &&
+          current?.right === nextPosition.right &&
+          current?.width === nextPosition.width
+        ) {
+          return current;
+        }
+
+        return nextPosition;
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(measure);
+    const onResize = () => measure();
+    window.addEventListener("resize", onResize);
+
+    if (typeof ResizeObserver === "undefined") {
+      measure();
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.removeEventListener("resize", onResize);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      measure();
+    });
+    observer.observe(modalNode);
+    observer.observe(actionsNode);
+    measure();
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", onResize);
+      observer.disconnect();
+    };
+  }, [showPublishActions, toolbarInline, visible]);
 
   const confirmarPublicacion = () => {
     if (!showPublishActions) return;
@@ -569,7 +642,10 @@ export default function ModalVistaPrevia({
   return (
     <div className="fixed inset-0 z-[9999] bg-[rgba(247,244,255,0.68)] backdrop-blur-[6px]">
       <div className="flex h-full w-full items-center justify-center p-2 sm:p-5">
-        <div className="flex h-full w-full max-w-[1560px] flex-col overflow-hidden rounded-[30px] border border-[#e9dcfb] bg-[linear-gradient(180deg,#ffffff_0%,#fbf8ff_34%,#f5f9ff_100%)] text-slate-800 shadow-[0_30px_84px_rgba(111,59,192,0.18)]">
+        <div
+          ref={modalPanelRef}
+          className="relative flex h-full w-full max-w-[1560px] flex-col overflow-hidden rounded-[30px] border border-[#e9dcfb] bg-[linear-gradient(180deg,#ffffff_0%,#fbf8ff_34%,#f5f9ff_100%)] text-slate-800 shadow-[0_30px_84px_rgba(111,59,192,0.18)]"
+        >
           <div className="shrink-0 border-b border-[#e7dcf8]/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(250,246,255,0.92)_100%)]">
             <div className="px-3 py-2.5 sm:px-4 sm:py-3">
               <div
@@ -605,7 +681,10 @@ export default function ModalVistaPrevia({
                 </div>
 
                 {toolbarInline ? (
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div
+                    ref={publishActionsRef}
+                    className="flex shrink-0 items-center gap-2"
+                  >
                     {showPublishActions ? (
                       <button
                         type="button"
@@ -658,7 +737,7 @@ export default function ModalVistaPrevia({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div ref={publishActionsRef} className="flex flex-col gap-2">
                     {showPublishActions ? (
                       <button
                         type="button"
@@ -716,21 +795,15 @@ export default function ModalVistaPrevia({
                   </div>
                 )}
               </div>
-
-              {showPublishActions && publishError ? (
-                <p className="mt-2 text-[12px] font-medium text-red-600">{publishError}</p>
-              ) : null}
-              {showPublishActions && publishSuccess ? (
-                <p className="mt-2 text-[12px] font-medium text-emerald-700">{publishSuccess}</p>
-              ) : null}
-              {showPublishActions ? (
-                <PublishValidationSummary
-                  validation={publishValidation}
-                  pending={publishValidationPending}
-                />
-              ) : null}
             </div>
           </div>
+
+          {showPublishActions ? (
+            <PreviewPublishNoticeLayer
+              notices={publishNoticePresentation.notices}
+              position={noticePosition}
+            />
+          ) : null}
 
           <div ref={stageRef} className="relative flex-1 min-h-0 overflow-hidden">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_16%,rgba(232,214,255,0.95),rgba(255,255,255,0)_34%),radial-gradient(circle_at_82%_20%,rgba(224,238,255,0.82),rgba(255,255,255,0)_28%),radial-gradient(circle_at_78%_84%,rgba(243,247,255,0.92),rgba(255,255,255,0)_40%),radial-gradient(circle_at_30%_78%,rgba(248,235,255,0.55),rgba(255,255,255,0)_32%)]" />

@@ -63,6 +63,7 @@ import {
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
+import { logCanvasBoxFlow } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
 import {
   clearCanonicalPoseMetadata,
   markTextOriginOffsetCanonicalPose,
@@ -257,6 +258,19 @@ function detachSelectionTransformerForNode(node, payload = null) {
 
   const shouldDetach = attachedNodes.some((attachedNode) => attachedNode === node);
   if (!shouldDetach) return false;
+  const attachedNodeIds = attachedNodes
+    .map((attachedNode) => {
+      try {
+        return (
+          (typeof attachedNode?.id === "function"
+            ? attachedNode.id()
+            : attachedNode?.attrs?.id) || null
+        );
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
 
   try {
     transformer.stopTransform?.();
@@ -275,6 +289,17 @@ function detachSelectionTransformerForNode(node, payload = null) {
   }, {
     throttleMs: 60,
     throttleKey: `transformer:detach-before-image-drag-lift:${payload?.elementId || "unknown"}`,
+  });
+  logCanvasBoxFlow("selection", "transformer:predrag-detach", {
+    source: payload?.source || "element-renderer",
+    elementId: payload?.elementId || null,
+    tipo: payload?.tipo || null,
+    attachedNodeIds,
+  }, {
+    identity: payload?.selectionIdentity || payload?.elementId || "selection:implicit",
+    startPayload: {
+      selectedIds: Array.isArray(payload?.selectedIds) ? payload.selectedIds : [],
+    },
   });
 
   return true;
@@ -1025,6 +1050,13 @@ export default function ElementoCanvas({
     if (!preDetachedSelectionTransformerRef.current) return;
 
     cancelPendingTransformerRestore();
+    logCanvasBoxFlow("selection", "transformer:restore-after-predrag-cancel-scheduled", {
+      source: "element-renderer",
+      elementId: obj.id,
+      tipo: obj.tipo,
+    }, {
+      identity: obj.id,
+    });
 
     if (
       typeof window === "undefined" ||
@@ -1044,6 +1076,13 @@ export default function ElementoCanvas({
       }, {
         throttleMs: 60,
         throttleKey: `transformer:restore-after-predrag-cancel:${obj.id}`,
+      });
+      logCanvasBoxFlow("selection", "transformer:restore-after-predrag-cancel-applied", {
+        source: "element-renderer",
+        elementId: obj.id,
+        tipo: obj.tipo,
+      }, {
+        identity: obj.id,
       });
 
       try {
@@ -1614,6 +1653,16 @@ export default function ElementoCanvas({
       hasDragged: Boolean(hasDragged.current),
       node: getKonvaNodeDebugInfo(node),
     });
+    logCanvasBoxFlow("selection", "predrag:cancel", {
+      source: "element-renderer",
+      elementId: obj.id,
+      tipo: obj.tipo,
+      reason,
+      clearedPredragSelectionLock,
+      node: getKonvaNodeDebugInfo(node),
+    }, {
+      identity: obj.id,
+    });
 
     if (clearedPredragSelectionLock && typeof window !== "undefined") {
       try {
@@ -2078,11 +2127,18 @@ export default function ElementoCanvas({
 
       onPredragVisualSelectionStart?.(
         obj.id,
-        selectionSnapshot.length > 0 ? selectionSnapshot : [obj.id]
+        selectionSnapshot.length > 0 ? selectionSnapshot : [obj.id],
+        {
+          predragIntent: "selected-predrag",
+        }
       );
       preDetachedSelectionTransformerRef.current = detachSelectionTransformerForNode(node, {
         elementId: obj.id,
         tipo: obj.tipo,
+        source: "selected-predrag",
+        selectedIds: selectionSnapshot,
+        selectionIdentity:
+          selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id,
       });
 
       logSelectedDragDebug("element:selected-predrag-visual-start", {
@@ -2095,6 +2151,19 @@ export default function ElementoCanvas({
         currentPoint,
         stagePointerSynced,
         detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
+      });
+      logCanvasBoxFlow("selection", "predrag:visual-start", {
+        source: "selected-predrag",
+        elementId: obj.id,
+        tipo: obj.tipo,
+        distancePx: Math.round(distancePx * 100) / 100,
+        thresholdPx: selectedPredragVisualThresholdPx,
+        detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
+      }, {
+        identity: selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id,
+        startPayload: {
+          selectedIds: selectionSnapshot,
+        },
       });
       return true;
     };
@@ -2135,12 +2204,19 @@ export default function ElementoCanvas({
 
       onPredragVisualSelectionStart?.(
         obj.id,
-        selectionSnapshot.length > 0 ? selectionSnapshot : [obj.id]
+        selectionSnapshot.length > 0 ? selectionSnapshot : [obj.id],
+        {
+          predragIntent: "same-gesture-select-drag",
+        }
       );
       if (!preDetachedSelectionTransformerRef.current) {
         preDetachedSelectionTransformerRef.current = detachSelectionTransformerForNode(node, {
           elementId: obj.id,
           tipo: obj.tipo,
+          source: "select-and-drag-predrag",
+          selectedIds: selectionSnapshot,
+          selectionIdentity:
+            selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id,
         });
       }
 
@@ -2155,6 +2231,19 @@ export default function ElementoCanvas({
         stagePointerSynced,
         detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
         mirroredSelection: selectionSnapshot,
+      });
+      logCanvasBoxFlow("selection", "predrag:visual-start", {
+        source: "select-and-drag-predrag",
+        elementId: obj.id,
+        tipo: obj.tipo,
+        distancePx: Math.round(distancePx * 100) / 100,
+        thresholdPx: fastStartThresholdPx,
+        detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
+      }, {
+        identity: selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id,
+        startPayload: {
+          selectedIds: selectionSnapshot,
+        },
       });
 
       let startedDrag = false;
@@ -2816,6 +2905,9 @@ export default function ElementoCanvas({
           detachSelectionTransformerForNode(imageDragNode, {
             elementId: obj.id,
             tipo: obj.tipo,
+            source: "image-drag-start",
+            selectionIdentity: obj.id,
+            selectedIds: [obj.id],
           });
         }
 
@@ -2939,6 +3031,15 @@ export default function ElementoCanvas({
 
       if (dragLifecycle.activeMode === "group" && dragLifecycle.leaderId === obj.id) {
         previewDragGrupal(e, obj, onChange);
+        onDragMovePersonalizado?.(
+          { x: e.target.x(), y: e.target.y() },
+          obj.id,
+          {
+            pipeline: "group",
+            sessionId: dragLifecycle.activeGroupSessionId || null,
+            leaderId: dragLifecycle.leaderId || obj.id,
+          }
+        );
         finishDragMovePerf?.({
           branch: "group-leader",
           selectionCount,
@@ -3234,14 +3335,20 @@ export default function ElementoCanvas({
   // Ã°Å¸â€Â¥ MEMOIZAR HANDLERS HOVER
   const handleMouseEnter = useCallback(() => {
     if (!onHover || window._isDragging || isInEditMode) return;
-    onHover(obj.id);
-  }, [onHover, obj.id, isInEditMode]);
+    onHover(obj.id, {
+      source: "element-enter",
+      targetType: obj.tipo || null,
+    });
+  }, [onHover, obj.id, isInEditMode, obj.tipo]);
 
 
   const handleMouseLeave = useCallback(() => {
     if (!onHover || window._isDragging || isInEditMode) return;
-    onHover(null);
-  }, [onHover, isInEditMode]);
+    onHover(null, {
+      source: "element-leave",
+      targetType: obj.tipo || null,
+    });
+  }, [onHover, isInEditMode, obj.tipo]);
 
   const recalcGroupAlign = useCallback(() => {
     if (obj.tipo !== "texto") return;

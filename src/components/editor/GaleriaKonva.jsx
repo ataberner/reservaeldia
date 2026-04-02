@@ -13,6 +13,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
 import useImage from "use-image";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildEditorDragLifecycleDetail,
+} from "@/lib/editorBridgeContracts";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -416,11 +420,19 @@ export default function GaleriaKonva({
       listening={!isPassiveRender}
       ref={setRootRef}
       onMouseEnter={isPassiveRender ? undefined : () => {
-        if (!window._isDragging) onHover?.(obj.id);
+        if (!window._isDragging) {
+          onHover?.(obj.id, {
+            source: "gallery-root-enter",
+            targetType: "galeria",
+          });
+        }
       }}
       onMouseLeave={isPassiveRender ? undefined : () => {
         setHoveredCell(null);
-        onHover?.(null);
+        onHover?.(null, {
+          source: "gallery-root-leave",
+          targetType: "galeria",
+        });
       }}
       onMouseDown={isPassiveRender ? undefined : handlePressStart}
       onTouchStart={isPassiveRender ? undefined : handlePressStart}
@@ -432,6 +444,16 @@ export default function GaleriaKonva({
           return;
         }
         window._isDragging = true;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_START, {
+              detail: buildEditorDragLifecycleDetail({
+                id: obj.id,
+                tipo: obj.tipo || null,
+              }),
+            })
+          );
+        }
         onDragStartPersonalizado?.(obj.id);
       }}
       onDragMove={isPassiveRender ? undefined : (e) => {
@@ -446,6 +468,16 @@ export default function GaleriaKonva({
         onChange?.(obj.id, { x: finalX, y: finalYAbs, finalizoDrag: true });
 
         window._isDragging = false;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+              detail: buildEditorDragLifecycleDetail({
+                id: obj.id,
+                tipo: obj.tipo || null,
+              }),
+            })
+          );
+        }
         onDragEndPersonalizado?.(obj.id);
         e.target.draggable(false);
         pressRef.current.active = false;

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 import { Group, Line, Rect, Text } from "react-konva";
 import {
   buildSelectionFramePolygon,
@@ -14,6 +21,14 @@ import {
   logSelectedDragDebug,
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
+import {
+  buildCanvasBoxFlowBoundsDigest,
+  buildCanvasBoxFlowIdsDigest,
+  flushCanvasBoxFlowSummary,
+  getActiveCanvasBoxFlowSession,
+  logCanvasBoxFlow,
+  recordCanvasBoxFlowSummary,
+} from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
 
 function hasFinitePolygonPoints(points) {
   return (
@@ -35,6 +50,44 @@ function arePointArraysEqual(left, right) {
   }
 
   return true;
+}
+
+function areBoundsDigestsEqual(left, right) {
+  if (!left || !right) return left === right;
+  return (
+    left.kind === right.kind &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
+function getSelectionIndicatorNodeId(node) {
+  try {
+    return (
+      (typeof node?.id === "function"
+        ? node.id()
+        : node?.attrs?.id) || null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function buildSelectionIndicatorNodesKey(nodes = []) {
+  return nodes
+    .map((node) => getSelectionIndicatorNodeId(node))
+    .filter(Boolean)
+    .join(",");
+}
+
+function isKonvaNodeDragging(node) {
+  try {
+    return Boolean(node?.isDragging?.());
+  } catch {
+    return false;
+  }
 }
 
 function hasMeaningfulRotation(node, objectData) {
@@ -127,11 +180,24 @@ function buildGroupBadgeLayout(groupObject, bounds, isMobile = false) {
   };
 }
 
-function resolveSelectionBounds({
+function flushIndicatorLayerDraw(groupNode, immediate = false) {
+  const layer = groupNode?.getLayer?.() || null;
+  if (!layer) return;
+
+  if (immediate && typeof layer.draw === "function") {
+    layer.draw();
+    return;
+  }
+
+  layer.batchDraw?.();
+}
+
+export function resolveSelectionBounds({
   selectedElements,
   elementRefs,
   objetos,
   isMobile,
+  requireLiveNodes = false,
 }) {
   const elementosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
@@ -167,6 +233,7 @@ function resolveSelectionBounds({
     objetos,
     isMobile,
     includePadding: true,
+    requireLiveNodes,
   });
   if (!rectBounds) return null;
 
@@ -206,49 +273,240 @@ function resolveSelectionBounds({
   };
 }
 
-export default function SelectionBoundsIndicator({
+const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   selectedElements,
   elementRefs,
   objetos,
   isMobile = false,
   debugLog = () => {},
+  debugSource = "selection-bounds-indicator",
+  boxFlowIdentity = null,
+  lifecycleKey = null,
+  boundsControlMode = "auto",
   bringToFront = false,
   onVisualReadyChange = null,
-}) {
+  onBoxFlowBoundsSample = null,
+}, forwardedRef) {
   const groupRef = useRef(null);
   const rectRef = useRef(null);
   const polygonRef = useRef(null);
+  const badgeGroupRef = useRef(null);
+  const badgeRectRef = useRef(null);
+  const badgeTextRef = useRef(null);
+  const indicatorSnapshotRef = useRef(null);
+  const latestInputsRef = useRef(null);
+  const isControlledMode = boundsControlMode === "controlled";
+  const selectedIdsDigest = buildCanvasBoxFlowIdsDigest(selectedElements);
+  const selectedNodes = selectedElements
+    .map((id) => elementRefs.current?.[id] || null)
+    .filter(Boolean);
+  const selectedNodesKey = buildSelectionIndicatorNodesKey(selectedNodes);
   const selectedGroupObject = useMemo(
     () => resolveSelectedGroupObject(selectedElements, objetos),
-    [objetos, selectedElements]
+    [objetos, selectedIdsDigest]
   );
 
-  const syncIndicatorBounds = useCallback(() => {
+  latestInputsRef.current = {
+    selectedElements,
+    selectedIdsDigest,
+    selectedNodes,
+    elementRefs,
+    objetos,
+    isMobile,
+    bringToFront,
+    debugSource,
+    boxFlowIdentity,
+    lifecycleKey,
+    selectedGroupObject,
+    boundsControlMode,
+  };
+
+  const shouldEmitForIdentity = useCallback((identity) => {
+    if (!boxFlowIdentity) {
+      return true;
+    }
+    return getActiveCanvasBoxFlowSession("selection")?.identity === identity;
+  }, [boxFlowIdentity]);
+
+  const updateBadgeVisual = useCallback((bounds, inputs = latestInputsRef.current || {}) => {
+    const badgeGroupNode = badgeGroupRef.current;
+    const badgeRectNode = badgeRectRef.current;
+    const badgeTextNode = badgeTextRef.current;
+    if (!badgeGroupNode || !badgeRectNode || !badgeTextNode) {
+      return false;
+    }
+
+    const nextBadge = buildGroupBadgeLayout(
+      inputs.selectedGroupObject || null,
+      bounds,
+      Boolean(inputs.isMobile)
+    );
+    const nextVisible = Boolean(nextBadge);
+    let didChange = false;
+
+    if (badgeGroupNode.visible() !== nextVisible) {
+      badgeGroupNode.visible(nextVisible);
+      didChange = true;
+    }
+
+    if (!nextBadge) {
+      return didChange;
+    }
+
+    const nextCornerRadius = nextBadge.height / 2;
+    const currentShadowOffset = badgeRectNode.shadowOffset?.() || { x: 0, y: 0 };
+    if (
+      badgeRectNode.x() !== nextBadge.x ||
+      badgeRectNode.y() !== nextBadge.y ||
+      badgeRectNode.width() !== nextBadge.width ||
+      badgeRectNode.height() !== nextBadge.height ||
+      badgeRectNode.cornerRadius() !== nextCornerRadius ||
+      currentShadowOffset.x !== 0 ||
+      currentShadowOffset.y !== 2
+    ) {
+      badgeRectNode.setAttrs({
+        x: nextBadge.x,
+        y: nextBadge.y,
+        width: nextBadge.width,
+        height: nextBadge.height,
+        cornerRadius: nextCornerRadius,
+        shadowOffset: { x: 0, y: 2 },
+      });
+      didChange = true;
+    }
+
+    const textY = nextBadge.y + (Boolean(inputs.isMobile) ? 6 : 5);
+    if (
+      badgeTextNode.x() !== nextBadge.x + nextBadge.paddingX ||
+      badgeTextNode.y() !== textY ||
+      badgeTextNode.text() !== nextBadge.label ||
+      badgeTextNode.fontSize() !== nextBadge.fontSize
+    ) {
+      badgeTextNode.setAttrs({
+        x: nextBadge.x + nextBadge.paddingX,
+        y: textY,
+        text: nextBadge.label,
+        fontSize: nextBadge.fontSize,
+      });
+      didChange = true;
+    }
+
+    return didChange;
+  }, []);
+
+  const clearIndicatorVisuals = useCallback((meta = {}) => {
     const groupNode = groupRef.current;
     const rectNode = rectRef.current;
     const polygonNode = polygonRef.current;
-    if (!groupNode || !rectNode || !polygonNode) return;
+    const badgeGroupNode = badgeGroupRef.current;
+    const previousSnapshot = indicatorSnapshotRef.current;
+    const currentInputs = latestInputsRef.current || {};
+    const currentDebugSource =
+      meta.debugSource ||
+      currentInputs.debugSource ||
+      debugSource;
+    const currentIdentity =
+      meta.identity ||
+      previousSnapshot?.identity ||
+      currentInputs.boxFlowIdentity ||
+      currentInputs.selectedIdsDigest ||
+      currentDebugSource;
 
-    const nextBounds = resolveSelectionBounds({
-      selectedElements,
-      elementRefs,
-      objetos,
-      isMobile,
-    });
+    if (groupNode && rectNode && polygonNode) {
+      let didChange = false;
+      if (rectNode.visible()) {
+        rectNode.visible(false);
+        didChange = true;
+      }
+      if (polygonNode.visible()) {
+        polygonNode.visible(false);
+        didChange = true;
+      }
+      if (badgeGroupNode?.visible()) {
+        badgeGroupNode.visible(false);
+        didChange = true;
+      }
+      if (didChange) {
+        flushIndicatorLayerDraw(groupNode, isControlledMode);
+      }
+    }
 
-    if (!nextBounds) return;
+    if (previousSnapshot?.visible && shouldEmitForIdentity(previousSnapshot.identity)) {
+      flushCanvasBoxFlowSummary("selection", `${currentDebugSource}:bounds`, {
+        reason: meta.reason || "hidden",
+      });
+      logCanvasBoxFlow("selection", "selection-box:hidden", {
+        source: currentDebugSource,
+        selectedIds: previousSnapshot.identity,
+        reason: meta.reason || "hidden",
+      }, {
+        identity: previousSnapshot.identity,
+      });
+    }
 
+    indicatorSnapshotRef.current = {
+      visible: false,
+      boundsDigest: null,
+      debugSource: currentDebugSource,
+      identity: currentIdentity,
+    };
+
+    if (isControlledMode && typeof onVisualReadyChange === "function") {
+      onVisualReadyChange(false);
+    }
+
+    return indicatorSnapshotRef.current;
+  }, [
+    debugSource,
+    isControlledMode,
+    onVisualReadyChange,
+    shouldEmitForIdentity,
+  ]);
+
+  const applyIndicatorBounds = useCallback((nextBounds, meta = {}) => {
+    const groupNode = groupRef.current;
+    const rectNode = rectRef.current;
+    const polygonNode = polygonRef.current;
+    if (!groupNode || !rectNode || !polygonNode) return null;
+    if (!nextBounds) {
+      return clearIndicatorVisuals(meta);
+    }
+
+    const currentInputs = latestInputsRef.current || {};
+    const currentDebugSource =
+      meta.debugSource ||
+      currentInputs.debugSource ||
+      debugSource;
+    const currentSelectedIds = Array.isArray(meta.selectedIds)
+      ? meta.selectedIds
+      : (
+          Array.isArray(currentInputs.selectedElements)
+            ? currentInputs.selectedElements
+            : []
+        );
+    const currentIdentity =
+      meta.identity ||
+      currentInputs.boxFlowIdentity ||
+      currentInputs.selectedIdsDigest ||
+      currentDebugSource ||
+      debugSource;
+    const nextBoundsDigest = buildCanvasBoxFlowBoundsDigest(nextBounds);
+    if (!nextBoundsDigest) return null;
+
+    const nextDash = currentInputs.selectedGroupObject ? [8, 4] : [];
     let didChange = false;
 
     if (nextBounds.kind === "polygon") {
       if (
         !polygonNode.visible() ||
         !arePointArraysEqual(polygonNode.points(), nextBounds.points) ||
-        polygonNode.strokeWidth() !== nextBounds.strokeWidth
+        polygonNode.strokeWidth() !== nextBounds.strokeWidth ||
+        !arePointArraysEqual(polygonNode.dash(), nextDash)
       ) {
         polygonNode.visible(true);
         polygonNode.points(nextBounds.points);
         polygonNode.strokeWidth(nextBounds.strokeWidth);
+        polygonNode.dash(nextDash);
         didChange = true;
       }
 
@@ -263,7 +521,8 @@ export default function SelectionBoundsIndicator({
         rectNode.y() !== nextBounds.y ||
         rectNode.width() !== nextBounds.width ||
         rectNode.height() !== nextBounds.height ||
-        rectNode.strokeWidth() !== nextBounds.strokeWidth
+        rectNode.strokeWidth() !== nextBounds.strokeWidth ||
+        !arePointArraysEqual(rectNode.dash(), nextDash)
       ) {
         rectNode.visible(true);
         rectNode.setAttrs({
@@ -272,6 +531,7 @@ export default function SelectionBoundsIndicator({
           width: nextBounds.width,
           height: nextBounds.height,
           strokeWidth: nextBounds.strokeWidth,
+          dash: nextDash,
         });
         didChange = true;
       }
@@ -282,117 +542,455 @@ export default function SelectionBoundsIndicator({
       }
     }
 
-    if (bringToFront && typeof groupNode.moveToTop === "function") {
+    if (currentInputs.bringToFront && typeof groupNode.moveToTop === "function") {
       groupNode.moveToTop();
       didChange = true;
     }
 
-    if (didChange) {
-      groupNode.getLayer?.()?.batchDraw?.();
+    if (updateBadgeVisual(nextBounds, currentInputs)) {
+      didChange = true;
     }
-  }, [bringToFront, debugLog, elementRefs, isMobile, objetos, selectedElements]);
+
+    if (didChange) {
+      flushIndicatorLayerDraw(groupNode, isControlledMode);
+    }
+
+    const previousSnapshot = indicatorSnapshotRef.current;
+    const shouldLogRecalc =
+      shouldEmitForIdentity(currentIdentity) &&
+      (
+        !previousSnapshot?.visible ||
+        previousSnapshot.identity !== currentIdentity ||
+        !areBoundsDigestsEqual(previousSnapshot.boundsDigest, nextBoundsDigest) ||
+        previousSnapshot.debugSource !== currentDebugSource
+      );
+    if (shouldLogRecalc) {
+      logCanvasBoxFlow("selection", "bounds:recalc", {
+        source: meta.source || "manual",
+        debugSource: currentDebugSource,
+        selectedIds: currentIdentity,
+        bounds: nextBoundsDigest,
+      }, {
+        identity: currentIdentity,
+      });
+    }
+
+    if (
+      shouldEmitForIdentity(currentIdentity) &&
+      (!previousSnapshot?.visible || previousSnapshot.identity !== currentIdentity)
+    ) {
+      logCanvasBoxFlow("selection", "selection-box:shown", {
+        source: currentDebugSource,
+        selectedIds: currentIdentity,
+        bounds: nextBoundsDigest,
+      }, {
+        identity: currentIdentity,
+      });
+    }
+
+    if (shouldEmitForIdentity(currentIdentity)) {
+      recordCanvasBoxFlowSummary(
+        "selection",
+        `${currentDebugSource}:bounds`,
+        {
+          source: meta.source || "manual",
+          debugSource: currentDebugSource,
+          selectedIds: currentIdentity,
+          bounds: nextBoundsDigest,
+        },
+        {
+          identity: currentIdentity,
+          eventName: "bounds:summary",
+        }
+      );
+    }
+
+    if (typeof onBoxFlowBoundsSample === "function") {
+      onBoxFlowBoundsSample({
+        source: meta.source || "manual",
+        debugSource: currentDebugSource,
+        selectedIds: [...currentSelectedIds],
+        bounds: nextBoundsDigest,
+        lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
+        boxFlowIdentity: currentIdentity,
+        syncToken: meta.syncToken || null,
+        paintMode: isControlledMode ? "immediate-draw" : "batched-draw",
+      });
+    }
+
+    indicatorSnapshotRef.current = {
+      visible: true,
+      boundsDigest: nextBoundsDigest,
+      debugSource: currentDebugSource,
+      identity: currentIdentity,
+    };
+
+    if (
+      isControlledMode &&
+      typeof onVisualReadyChange === "function" &&
+      (
+        !previousSnapshot?.visible ||
+        previousSnapshot.identity !== currentIdentity
+      )
+    ) {
+      onVisualReadyChange(true);
+    }
+
+    return indicatorSnapshotRef.current;
+  }, [
+    clearIndicatorVisuals,
+    debugSource,
+    isControlledMode,
+    onBoxFlowBoundsSample,
+    onVisualReadyChange,
+    shouldEmitForIdentity,
+    updateBadgeVisual,
+  ]);
+
+  const syncIndicatorBounds = useCallback((source = "manual") => {
+    if (isControlledMode) return null;
+    if (!groupRef.current || !rectRef.current || !polygonRef.current) return null;
+    const currentInputs = latestInputsRef.current || {};
+    const currentSelectedElements = Array.isArray(currentInputs.selectedElements)
+      ? currentInputs.selectedElements
+      : [];
+    const currentSelectedNodes = Array.isArray(currentInputs.selectedNodes)
+      ? currentInputs.selectedNodes
+      : [];
+    const identity =
+      currentInputs.boxFlowIdentity ||
+      currentInputs.selectedIdsDigest ||
+      currentInputs.debugSource ||
+      debugSource;
+
+    if (
+      (source === "node-x-change" || source === "node-y-change") &&
+      currentSelectedNodes.some((node) => isKonvaNodeDragging(node))
+    ) {
+      return;
+    }
+
+    const nextBounds = resolveSelectionBounds({
+      selectedElements: currentSelectedElements,
+      elementRefs: currentInputs.elementRefs || elementRefs,
+      objetos: currentInputs.objetos || objetos,
+      isMobile: Boolean(currentInputs.isMobile),
+      requireLiveNodes: false,
+    });
+
+    return applyIndicatorBounds(nextBounds, {
+      source,
+      debugSource: currentInputs.debugSource || debugSource,
+      selectedIds: currentSelectedElements,
+      identity,
+      lifecycleKey: currentInputs.lifecycleKey || null,
+    });
+  }, [
+    applyIndicatorBounds,
+    debugSource,
+    isControlledMode,
+  ]);
 
   useEffect(() => {
-    const selectedNodes = selectedElements
-      .map((id) => elementRefs.current?.[id] || null)
-      .filter(Boolean);
+    if (isControlledMode) return undefined;
     const stage =
       selectedNodes.find((node) => typeof node?.getStage === "function")?.getStage?.() ||
       null;
 
     if (selectedNodes.length === 0 && !stage) return;
 
+    const identity = boxFlowIdentity || selectedIdsDigest || debugSource;
+    if (shouldEmitForIdentity(identity)) {
+      logCanvasBoxFlow("selection", "bounds:listeners-attached", {
+        source: debugSource,
+        selectedIds: identity,
+        nodeCount: selectedNodes.length,
+        stageBound: Boolean(stage),
+      }, {
+        identity,
+      });
+    }
+
+    const dragMoveHandler = () => syncIndicatorBounds("node-dragmove");
+    const transformHandler = () => syncIndicatorBounds("node-transform");
+    const xChangeHandler = () => syncIndicatorBounds("node-x-change");
+    const yChangeHandler = () => syncIndicatorBounds("node-y-change");
+    const rotationChangeHandler = () => syncIndicatorBounds("node-rotation-change");
+    const scaleXChangeHandler = () => syncIndicatorBounds("node-scaleX-change");
+    const scaleYChangeHandler = () => syncIndicatorBounds("node-scaleY-change");
+    const stageDragMoveHandler = (event) => {
+      if (
+        event?.target &&
+        event?.currentTarget &&
+        event.target !== event.currentTarget
+      ) {
+        return;
+      }
+      syncIndicatorBounds("stage-dragmove");
+    };
+
     selectedNodes.forEach((node) => {
-      node.on("dragmove.selection-bounds-indicator", syncIndicatorBounds);
-      node.on("transform.selection-bounds-indicator", syncIndicatorBounds);
-      node.on("xChange.selection-bounds-indicator", syncIndicatorBounds);
-      node.on("yChange.selection-bounds-indicator", syncIndicatorBounds);
-      node.on("rotationChange.selection-bounds-indicator", syncIndicatorBounds);
-      node.on("scaleXChange.selection-bounds-indicator", syncIndicatorBounds);
-      node.on("scaleYChange.selection-bounds-indicator", syncIndicatorBounds);
+      node.on("dragmove.selection-bounds-indicator", dragMoveHandler);
+      node.on("transform.selection-bounds-indicator", transformHandler);
+      node.on("xChange.selection-bounds-indicator", xChangeHandler);
+      node.on("yChange.selection-bounds-indicator", yChangeHandler);
+      node.on("rotationChange.selection-bounds-indicator", rotationChangeHandler);
+      node.on("scaleXChange.selection-bounds-indicator", scaleXChangeHandler);
+      node.on("scaleYChange.selection-bounds-indicator", scaleYChangeHandler);
     });
 
-    stage?.on("dragmove.selection-bounds-indicator", syncIndicatorBounds);
-    syncIndicatorBounds();
+    stage?.on("dragmove.selection-bounds-indicator", stageDragMoveHandler);
+    syncIndicatorBounds("effect-init");
 
     return () => {
       selectedNodes.forEach((node) => {
-        node.off("dragmove.selection-bounds-indicator", syncIndicatorBounds);
-        node.off("transform.selection-bounds-indicator", syncIndicatorBounds);
-        node.off("xChange.selection-bounds-indicator", syncIndicatorBounds);
-        node.off("yChange.selection-bounds-indicator", syncIndicatorBounds);
-        node.off("rotationChange.selection-bounds-indicator", syncIndicatorBounds);
-        node.off("scaleXChange.selection-bounds-indicator", syncIndicatorBounds);
-        node.off("scaleYChange.selection-bounds-indicator", syncIndicatorBounds);
+        node.off("dragmove.selection-bounds-indicator", dragMoveHandler);
+        node.off("transform.selection-bounds-indicator", transformHandler);
+        node.off("xChange.selection-bounds-indicator", xChangeHandler);
+        node.off("yChange.selection-bounds-indicator", yChangeHandler);
+        node.off("rotationChange.selection-bounds-indicator", rotationChangeHandler);
+        node.off("scaleXChange.selection-bounds-indicator", scaleXChangeHandler);
+        node.off("scaleYChange.selection-bounds-indicator", scaleYChangeHandler);
       });
-      stage?.off("dragmove.selection-bounds-indicator", syncIndicatorBounds);
+      stage?.off("dragmove.selection-bounds-indicator", stageDragMoveHandler);
+      if (shouldEmitForIdentity(identity)) {
+        flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
+          reason: boxFlowIdentity ? "overlay-session-end" : "listeners-detached",
+        });
+        logCanvasBoxFlow("selection", "bounds:listeners-detached", {
+          source: debugSource,
+          selectedIds: identity,
+          reason: boxFlowIdentity ? "overlay-session-end" : "listeners-detached",
+        }, {
+          identity,
+        });
+      }
     };
-  }, [debugLog, elementRefs, isMobile, objetos, selectedElements, syncIndicatorBounds]);
+  }, [
+    boxFlowIdentity,
+    debugSource,
+    isControlledMode,
+    lifecycleKey,
+    selectedIdsDigest,
+    selectedNodesKey,
+    syncIndicatorBounds,
+    shouldEmitForIdentity,
+  ]);
 
-  const bounds = resolveSelectionBounds({
-    selectedElements,
-    elementRefs,
-    objetos,
-    isMobile,
-    debugLog,
-  });
+  const bounds = isControlledMode
+    ? null
+    : resolveSelectionBounds({
+        selectedElements,
+        elementRefs,
+        objetos,
+        isMobile,
+        debugLog,
+      });
   const hasBounds = Boolean(bounds);
+  const boundsDigest = isControlledMode
+    ? null
+    : buildCanvasBoxFlowBoundsDigest(bounds);
+  const indicatorIdentity =
+    boxFlowIdentity || selectedIdsDigest || debugSource;
   const groupBadge = useMemo(
-    () => buildGroupBadgeLayout(selectedGroupObject, bounds, isMobile),
-    [bounds, isMobile, selectedGroupObject]
+    () => (
+      isControlledMode
+        ? null
+        : buildGroupBadgeLayout(selectedGroupObject, bounds, isMobile)
+    ),
+    [bounds, isControlledMode, isMobile, selectedGroupObject]
   );
 
   useEffect(() => {
+    if (isControlledMode) return undefined;
+    const nextSnapshot = {
+      visible: hasBounds,
+      boundsDigest,
+      debugSource,
+      identity: indicatorIdentity,
+    };
+    const previousSnapshot = indicatorSnapshotRef.current;
+    indicatorSnapshotRef.current = nextSnapshot;
+
+    if (
+      previousSnapshot?.visible &&
+      (!nextSnapshot.visible || previousSnapshot.identity !== nextSnapshot.identity)
+    ) {
+      if (shouldEmitForIdentity(previousSnapshot.identity)) {
+        flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
+          reason: boxFlowIdentity ? "overlay-hidden" : "hidden",
+        });
+        logCanvasBoxFlow("selection", "selection-box:hidden", {
+          source: debugSource,
+          selectedIds: previousSnapshot.identity,
+          reason:
+            previousSnapshot.identity !== nextSnapshot.identity
+              ? "selection-changed"
+              : (boxFlowIdentity ? "overlay-hidden" : "hidden"),
+        }, {
+          identity: previousSnapshot.identity,
+        });
+      }
+    }
+
+    if (!nextSnapshot.visible || !boundsDigest) return;
+
+    if (
+      shouldEmitForIdentity(indicatorIdentity) &&
+      (!previousSnapshot?.visible || previousSnapshot.identity !== indicatorIdentity)
+    ) {
+      logCanvasBoxFlow("selection", "selection-box:shown", {
+        source: debugSource,
+        selectedIds: indicatorIdentity,
+        bounds: boundsDigest,
+      }, {
+        identity: indicatorIdentity,
+      });
+    }
+  }, [
+    boundsDigest,
+    boxFlowIdentity,
+    debugSource,
+    hasBounds,
+    indicatorIdentity,
+    isControlledMode,
+    shouldEmitForIdentity,
+  ]);
+
+  useEffect(() => {
+    if (!isControlledMode) return undefined;
+
+    try {
+      rectRef.current?.visible(false);
+      polygonRef.current?.visible(false);
+      badgeGroupRef.current?.visible(false);
+      flushIndicatorLayerDraw(groupRef.current, true);
+    } catch {}
+
+    return () => {
+      const snapshot = indicatorSnapshotRef.current;
+      if (!snapshot?.visible) return;
+      if (shouldEmitForIdentity(snapshot.identity)) {
+        flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
+          reason: boxFlowIdentity ? "overlay-session-end" : "controlled-unmount",
+        });
+        logCanvasBoxFlow("selection", "selection-box:hidden", {
+          source: debugSource,
+          selectedIds: snapshot.identity,
+          reason: boxFlowIdentity ? "overlay-session-end" : "controlled-unmount",
+        }, {
+          identity: snapshot.identity,
+        });
+      }
+      indicatorSnapshotRef.current = {
+        ...snapshot,
+        visible: false,
+        boundsDigest: null,
+      };
+    };
+  }, [
+    boxFlowIdentity,
+    debugSource,
+    isControlledMode,
+    shouldEmitForIdentity,
+  ]);
+
+  useImperativeHandle(forwardedRef, () => ({
+    applyControlledBounds(nextBounds, meta = {}) {
+      if (!isControlledMode) return null;
+      return applyIndicatorBounds(nextBounds, {
+        ...meta,
+        source: meta.source || "controlled-apply",
+        debugSource: meta.debugSource || debugSource,
+        lifecycleKey: meta.lifecycleKey || lifecycleKey || null,
+      });
+    },
+    clearControlledBounds(meta = {}) {
+      if (!isControlledMode) return null;
+      return clearIndicatorVisuals({
+        ...meta,
+        source: meta.source || "controlled-clear",
+        debugSource: meta.debugSource || debugSource,
+        reason: meta.reason || "overlay-hidden",
+      });
+    },
+    getAppliedBoundsDigest() {
+      return indicatorSnapshotRef.current?.boundsDigest || null;
+    },
+  }), [
+    applyIndicatorBounds,
+    clearIndicatorVisuals,
+    debugSource,
+    isControlledMode,
+    lifecycleKey,
+  ]);
+
+  useEffect(() => {
+    if (isControlledMode) return undefined;
     if (typeof onVisualReadyChange !== "function") return;
     onVisualReadyChange(hasBounds);
 
     return () => {
       onVisualReadyChange(false);
     };
-  }, [hasBounds, onVisualReadyChange]);
+  }, [hasBounds, isControlledMode, onVisualReadyChange]);
 
-  if (!bounds) {
+  if (!isControlledMode && !bounds) {
     return null;
   }
+
+  const renderBounds = bounds || {
+    kind: "rect",
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    strokeWidth: getSelectionFrameStrokeWidth(isMobile),
+  };
 
   return (
     <Group ref={groupRef} name="ui selection-bounds-indicator" listening={false}>
       <Line
         ref={polygonRef}
-        points={bounds.kind === "polygon" ? bounds.points : []}
+        points={isControlledMode ? undefined : (renderBounds.kind === "polygon" ? renderBounds.points : [])}
         closed
-        visible={bounds.kind === "polygon"}
+        visible={isControlledMode ? undefined : renderBounds.kind === "polygon"}
         fillEnabled={false}
         stroke={SELECTION_FRAME_STROKE}
-        strokeWidth={bounds.strokeWidth}
-        dash={selectedGroupObject ? [8, 4] : undefined}
+        strokeWidth={isControlledMode ? undefined : renderBounds.strokeWidth}
+        dash={isControlledMode ? undefined : (selectedGroupObject ? [8, 4] : undefined)}
         listening={false}
         perfectDrawEnabled={false}
       />
       <Rect
         ref={rectRef}
-        x={bounds.kind === "rect" ? bounds.x : 0}
-        y={bounds.kind === "rect" ? bounds.y : 0}
-        width={bounds.kind === "rect" ? bounds.width : 0}
-        height={bounds.kind === "rect" ? bounds.height : 0}
-        visible={bounds.kind === "rect"}
+        x={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.x : 0)}
+        y={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.y : 0)}
+        width={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.width : 0)}
+        height={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.height : 0)}
+        visible={isControlledMode ? undefined : renderBounds.kind === "rect"}
         fill="transparent"
         stroke={SELECTION_FRAME_STROKE}
-        strokeWidth={bounds.strokeWidth}
-        dash={selectedGroupObject ? [8, 4] : undefined}
+        strokeWidth={isControlledMode ? undefined : renderBounds.strokeWidth}
+        dash={isControlledMode ? undefined : (selectedGroupObject ? [8, 4] : undefined)}
         listening={false}
         perfectDrawEnabled={false}
         strokeScaleEnabled={false}
       />
-      {groupBadge ? (
-        <Group listening={false}>
+      {groupBadge || isControlledMode ? (
+        <Group
+          ref={badgeGroupRef}
+          listening={false}
+          visible={isControlledMode ? undefined : Boolean(groupBadge)}
+        >
           <Rect
-            x={groupBadge.x}
-            y={groupBadge.y}
-            width={groupBadge.width}
-            height={groupBadge.height}
+            ref={badgeRectRef}
+            x={isControlledMode ? undefined : (groupBadge?.x || 0)}
+            y={isControlledMode ? undefined : (groupBadge?.y || 0)}
+            width={isControlledMode ? undefined : (groupBadge?.width || 0)}
+            height={isControlledMode ? undefined : (groupBadge?.height || 0)}
             fill="rgba(147, 51, 234, 0.96)"
-            cornerRadius={groupBadge.height / 2}
+            cornerRadius={isControlledMode ? undefined : (groupBadge ? groupBadge.height / 2 : 0)}
             stroke="rgba(255,255,255,0.85)"
             strokeWidth={0.75}
             shadowColor="rgba(88, 28, 135, 0.28)"
@@ -400,10 +998,11 @@ export default function SelectionBoundsIndicator({
             shadowOffset={{ x: 0, y: 2 }}
           />
           <Text
-            x={groupBadge.x + groupBadge.paddingX}
-            y={groupBadge.y + (isMobile ? 6 : 5)}
-            text={groupBadge.label}
-            fontSize={groupBadge.fontSize}
+            ref={badgeTextRef}
+            x={isControlledMode ? undefined : (groupBadge ? groupBadge.x + groupBadge.paddingX : 0)}
+            y={isControlledMode ? undefined : (groupBadge ? groupBadge.y + (isMobile ? 6 : 5) : 0)}
+            text={isControlledMode ? undefined : (groupBadge?.label || "")}
+            fontSize={isControlledMode ? undefined : (groupBadge?.fontSize || (isMobile ? 11 : 10))}
             fontStyle="bold"
             fill="#ffffff"
             listening={false}
@@ -412,4 +1011,8 @@ export default function SelectionBoundsIndicator({
       ) : null}
     </Group>
   );
-}
+});
+
+SelectionBoundsIndicator.displayName = "SelectionBoundsIndicator";
+
+export default SelectionBoundsIndicator;

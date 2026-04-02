@@ -27,6 +27,72 @@ function isPreservedGroupObject(obj) {
 const NO_ANCHORS = Object.freeze([]);
 const BOTTOM_RIGHT_ANCHOR = Object.freeze(["bottom-right"]);
 
+export function hasDragOverlayVisualOwnership(input = {}) {
+  const selectedIds = normalizeSelectionIds(input.selectedIds);
+  const pendingDragSelectionId = String(input.pendingDragSelectionId ?? "").trim();
+  const pendingPredragOwnsSelectedElement = Boolean(
+    input.pendingDragSelectionPhase === "predrag" &&
+      pendingDragSelectionId &&
+      selectedIds.includes(pendingDragSelectionId)
+  );
+
+  return Boolean(
+    input.isResizeGestureActive !== true &&
+      input.isTransformingResize !== true &&
+      (
+        input.predragVisualSelectionActive === true ||
+        input.dragSelectionOverlayVisible === true ||
+        pendingPredragOwnsSelectedElement
+      )
+  );
+}
+
+export function shouldSeedPredragOverlayBounds(input = {}) {
+  const dragId = String(input.dragId ?? "").trim();
+  const pendingDragSelectionId = String(input.pendingDragSelectionId ?? "").trim();
+
+  if (!dragId) return true;
+
+  return !(
+    input.pendingDragSelectionPhase === "predrag" &&
+    pendingDragSelectionId &&
+    pendingDragSelectionId === dragId
+  );
+}
+
+export function resolvePredragOverlayStartupPolicy(input = {}) {
+  const predragIntent = String(input.predragIntent ?? "").trim();
+
+  if (predragIntent === "same-gesture-select-drag") {
+    return {
+      shouldSeedPredragBounds: false,
+      skipInitialSeed: true,
+      policySource: "predrag-intent",
+      policyReason: "same-gesture-select-drag",
+    };
+  }
+
+  if (predragIntent === "selected-predrag") {
+    return {
+      shouldSeedPredragBounds: true,
+      skipInitialSeed: false,
+      policySource: "predrag-intent",
+      policyReason: "selected-predrag",
+    };
+  }
+
+  const shouldSeedPredragBounds = shouldSeedPredragOverlayBounds(input);
+
+  return {
+    shouldSeedPredragBounds,
+    skipInitialSeed: !shouldSeedPredragBounds,
+    policySource: "runtime-pending-drag-selection",
+    policyReason: shouldSeedPredragBounds
+      ? "runtime-fallback-seed"
+      : "runtime-predrag-skip",
+  };
+}
+
 export function resolveStageSelectionVisualMode(input = {}) {
   const selectedIds = normalizeSelectionIds(input.selectedIds);
   const selectedObjects = Array.isArray(input.selectedObjects)
@@ -102,18 +168,18 @@ export function resolveTransformerVisualMode(input = {}) {
       input.canvasInteractionSettling === true ||
       (input.canvasInteractionActive === true && input.runtimeResizeActive !== true)
   );
+  const dragOverlayVisualOwnership = hasDragOverlayVisualOwnership({
+    ...input,
+    selectedIds,
+  });
 
   const shouldHideTransformerDuringDrag = Boolean(
     input.effectiveDragging === true &&
-      input.dragSelectionOverlayVisible === true &&
-      input.dragSelectionOverlayVisualReady === true &&
-      input.isResizeGestureActive !== true &&
-      input.isTransformingResize !== true
+      dragOverlayVisualOwnership
   );
 
   const shouldSuppressTransformerVisualsForDragOverlay = Boolean(
-    input.dragSelectionOverlayVisible === true &&
-      input.dragSelectionOverlayVisualReady === true &&
+    dragOverlayVisualOwnership &&
       !shouldHideTransformerDuringDrag &&
       input.isResizeGestureActive !== true &&
       input.isTransformingResize !== true
@@ -155,6 +221,7 @@ export function resolveTransformerVisualMode(input = {}) {
     shouldUseGenericTransformer,
     isAttachSuppressed,
     shouldSuppressDuringDeferredDrag,
+    hasDragOverlayVisualOwnership: dragOverlayVisualOwnership,
     shouldHideTransformerDuringDrag,
     shouldSuppressTransformerVisualsForDragOverlay,
     enabledAnchors,

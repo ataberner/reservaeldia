@@ -7,6 +7,12 @@ import {
   trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
+  buildCanvasBoxFlowBoundsDigest,
+  flushCanvasBoxFlowSummary,
+  logCanvasBoxFlow,
+  recordCanvasBoxFlowSummary,
+} from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
+import {
   finishImageRotationDebugSession,
   startImageRotationDebugSession,
   trackImageRotationDebug,
@@ -324,6 +330,7 @@ export default function SelectionBounds({
   isInteractionLocked = false,
   isMobile = false,
   dragLayerRef = null,
+  boxFlowIdentity = null,
   canvasInteractionEpoch = 0,
   canvasInteractionActive = false,
   canvasInteractionSettling = false,
@@ -403,6 +410,9 @@ export default function SelectionBounds({
     insideSnapBand: false,
   });
   const lastVisibilitySnapshotRef = useRef(null);
+  const transformerBoxFlowSnapshotRef = useRef(null);
+  const attachBlockSnapshotRef = useRef(null);
+  const selectionBoxFlowIdentityRef = useRef(null);
   const pendingUiRestoreEpochRef = useRef(0);
   const isTransformingResizeRef = useRef(false);
   const [isResizeGestureActive, setIsResizeGestureActive] = useState(false);
@@ -456,6 +466,8 @@ export default function SelectionBounds({
     ...extra,
   });
   const selectionKey = selectedElements.join(",");
+  selectionBoxFlowIdentityRef.current =
+    boxFlowIdentity || selectionKey || primerElemento?.id || null;
 
   const lockAspectCountdown = selectedElements.length === 1 && esCountdown;
   const lockAspectText = selectedElements.length === 1 && esTexto;
@@ -608,6 +620,8 @@ export default function SelectionBounds({
   const isTransformerAttachBlocked = Boolean(isTransformerAttachSuppressed);
   const shouldSuppressDuringDeferredDrag =
     transformerVisualMode.shouldSuppressDuringDeferredDrag;
+  const hasDragOverlayVisualOwnership =
+    transformerVisualMode.hasDragOverlayVisualOwnership;
   const shouldHideTransformerDuringDrag =
     transformerVisualMode.shouldHideTransformerDuringDrag;
   const shouldSuppressTransformerVisualsForDragOverlay =
@@ -621,6 +635,7 @@ export default function SelectionBounds({
       shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      hasDragOverlayVisualOwnership: Boolean(hasDragOverlayVisualOwnership),
       shouldSuppressTransformerVisualsForDragOverlay: Boolean(
         shouldSuppressTransformerVisualsForDragOverlay
       ),
@@ -662,6 +677,7 @@ export default function SelectionBounds({
       shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
       shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
       shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+      hasDragOverlayVisualOwnership: Boolean(hasDragOverlayVisualOwnership),
       shouldSuppressTransformerVisualsForDragOverlay: Boolean(
         shouldSuppressTransformerVisualsForDragOverlay
       ),
@@ -688,6 +704,7 @@ export default function SelectionBounds({
     pendingDragSelectionPhase,
     shouldSuppressBeforeFirstDragStart,
     shouldSuppressDuringDeferredDrag,
+    hasDragOverlayVisualOwnership,
     shouldHideTransformerDuringDrag,
     shouldSuppressTransformerVisualsForDragOverlay,
     dragSelectionOverlayVisualReady,
@@ -733,6 +750,7 @@ export default function SelectionBounds({
       transformerVisualSuppressedForOverlay: Boolean(
         shouldSuppressTransformerVisualsForDragOverlay
       ),
+      dragOverlayVisualOwnership: Boolean(hasDragOverlayVisualOwnership),
       primerElementoId: primerElemento?.id || null,
       primerElementoTipo: primerElemento?.tipo || null,
     };
@@ -765,6 +783,7 @@ export default function SelectionBounds({
     selectionKey,
     shouldSuppressBeforeFirstDragStart,
     shouldSuppressDuringDeferredDrag,
+    hasDragOverlayVisualOwnership,
     canvasInteractionActive,
     canvasInteractionSettling,
     predragVisualSelectionActive,
@@ -823,19 +842,116 @@ export default function SelectionBounds({
   const getTransformNodeId = (node) =>
     typeof node?.id === "function" ? node.id() || null : node?.attrs?.id || null;
 
-  const buildAttachedNodeIdsKey = (nodes = []) =>
+  const buildSelectionBoxFlowIdentity = (fallback = null) =>
+    boxFlowIdentity ||
+    selectionBoxFlowIdentityRef.current ||
+    selectionKey ||
+    primerElemento?.id ||
+    fallback ||
+    "selection:implicit";
+
+  const collectTransformNodeIds = (nodes = []) =>
     nodes
       .map((node) => getTransformNodeId(node))
-      .filter(Boolean)
-      .join("|");
+      .filter(Boolean);
+
+  const buildAttachedNodeIdsKey = (nodes = []) =>
+    collectTransformNodeIds(nodes).join("|");
+
+  const buildAttachedNodeIdsDigest = (nodes = []) =>
+    collectTransformNodeIds(nodes).join(",");
 
   const getLifecycleTransformerNode = () =>
     transformerRef.current || lastKnownTransformerRef.current || null;
 
+  const getTransformerBoundsDigest = (node = null) => {
+    const transformerNode = node || getLifecycleTransformerNode();
+    if (!transformerNode) return null;
+    try {
+      return buildCanvasBoxFlowBoundsDigest(
+        transformerNode.getClientRect?.({
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        }) || null
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  const getNodeBoundsDigest = (node) => {
+    if (!node) return null;
+    try {
+      return buildCanvasBoxFlowBoundsDigest(
+        node.getClientRect?.({
+          skipTransform: false,
+          skipShadow: true,
+          skipStroke: true,
+        }) || null
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  const buildTransformBoxFlowPayload = (node, transformData = {}, extra = {}) => {
+    const transformerNode = transformerRef.current;
+    const attachedNodes =
+      typeof transformerNode?.nodes === "function" ? transformerNode.nodes() || [] : [];
+
+    return {
+      source: "selection-transformer",
+      mode: transformGestureRef.current?.isRotate ? "rotate" : "transform",
+      activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+      selectedIds: selectionKey || null,
+      attachedNodeIds: buildAttachedNodeIdsDigest(attachedNodes) || null,
+      bounds: getNodeBoundsDigest(node) || getTransformerBoundsDigest(transformerNode),
+      x: roundNodeMetric(transformData?.x),
+      y: roundNodeMetric(transformData?.y),
+      rotation: roundNodeMetric(transformData?.rotation),
+      width: roundNodeMetric(transformData?.width),
+      height: roundNodeMetric(transformData?.height),
+      fontSize: roundNodeMetric(transformData?.fontSize),
+      ...extra,
+    };
+  };
+
   const setTransformerNodeRef = useCallback((node) => {
+    const previousNode = transformerRef.current || null;
+    if (previousNode === node) {
+      return;
+    }
+
     transformerRef.current = node || null;
     if (node) {
       lastKnownTransformerRef.current = node;
+    }
+
+    const identity =
+      selectionBoxFlowIdentityRef.current ||
+      lastAttachedNodeIdsRef.current.replace(/\|/g, ",") ||
+      "selection:implicit";
+
+    if (node) {
+      logCanvasBoxFlow("selection", "transformer-ref:attached", {
+        source: "selection-transformer",
+        hasPreviousRef: Boolean(previousNode),
+      }, {
+        identity,
+      });
+      return;
+    }
+
+    if (previousNode) {
+      flushCanvasBoxFlowSummary("selection", "transform-preview", {
+        reason: "transformer-ref-detached",
+      });
+      logCanvasBoxFlow("selection", "transformer-ref:detached", {
+        source: "selection-transformer",
+      }, {
+        identity,
+      });
     }
   }, []);
 
@@ -953,6 +1069,7 @@ export default function SelectionBounds({
       return false;
     }
 
+    const attachedNodeIds = collectTransformNodeIds(nodosTransformables);
     const nextAttachedNodeIds = buildAttachedNodeIdsKey(nodosTransformables);
     const currentAttachedNodeIds = buildAttachedNodeIdsKey(
       typeof tr.nodes === "function" ? tr.nodes() || [] : []
@@ -991,15 +1108,60 @@ export default function SelectionBounds({
       tr.forceUpdate?.();
     } catch {}
     tr.getLayer?.()?.batchDraw?.();
+
+    logCanvasBoxFlow("selection", "attach:applied", {
+      source,
+      force: Boolean(force),
+      selectedIds: selectionKey || null,
+      attachedNodeIds,
+      bounds: getTransformerBoundsDigest(tr),
+    }, {
+      identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodosTransformables)),
+      flushSummaryKeys: ["transform-preview"],
+      flushReason: "attach-applied",
+    });
     return true;
   };
 
   const syncTransformerGeometryNow = (source = "unknown") => {
     const tr = transformerRef.current;
-    if (!tr) return false;
+    const currentAttachedNodes =
+      typeof tr?.nodes === "function" ? tr.nodes() || [] : [];
+    const attachedNodeIds = collectTransformNodeIds(currentAttachedNodes);
+    const identity = buildSelectionBoxFlowIdentity(attachedNodeIds.join(","));
+
+    logCanvasBoxFlow("selection", "bounds-sync:requested", {
+      source,
+      selectedIds: selectionKey || null,
+      attachedNodeIds,
+      selectedGeomKey,
+    }, {
+      identity,
+    });
+
+    if (!tr) {
+      logCanvasBoxFlow("selection", "bounds-sync:skipped", {
+        source,
+        reason: "missing-transformer",
+        selectedIds: selectionKey || null,
+      }, {
+        identity,
+      });
+      return false;
+    }
 
     try {
-      if (tr.isTransforming?.()) return false;
+      if (tr.isTransforming?.()) {
+        logCanvasBoxFlow("selection", "bounds-sync:skipped", {
+          source,
+          reason: "native-transform-in-flight",
+          selectedIds: selectionKey || null,
+          attachedNodeIds,
+        }, {
+          identity,
+        });
+        return false;
+      }
     } catch {}
 
     try {
@@ -1025,6 +1187,15 @@ export default function SelectionBounds({
         throttleKey: `transformer:sync:${source}`,
       }
     );
+
+    logCanvasBoxFlow("selection", "bounds-sync:applied", {
+      source,
+      selectedIds: selectionKey || null,
+      attachedNodeIds,
+      bounds: getTransformerBoundsDigest(tr),
+    }, {
+      identity,
+    });
     return true;
   };
 
@@ -1841,20 +2012,71 @@ export default function SelectionBounds({
     { textPreviewEndSnapshot = null, forceAttach = false } = {}
   ) => {
     if (!shouldUseGenericTransformer) {
+      logCanvasBoxFlow("selection", "restore-after-settle:skipped", {
+        source,
+        reason: "generic-transformer-disabled",
+        forceAttach: Boolean(forceAttach),
+      }, {
+        identity: buildSelectionBoxFlowIdentity(),
+      });
       return;
     }
 
     const restoreEpoch = canvasInteractionEpoch;
+    const identity = buildSelectionBoxFlowIdentity();
+    const schedulingStrategy =
+      typeof scheduleCanvasUiAfterSettle === "function"
+        ? "canvas-ui-settle"
+        : typeof requestAnimationFrame === "function"
+          ? "raf"
+          : "sync";
+
+    logCanvasBoxFlow("selection", "restore-after-settle:scheduled", {
+      source,
+      restoreEpoch,
+      forceAttach: Boolean(forceAttach),
+      strategy: schedulingStrategy,
+    }, {
+      identity,
+    });
+
     const runRestore = () => {
       if (pendingUiRestoreEpochRef.current !== restoreEpoch) {
+        logCanvasBoxFlow("selection", "restore-after-settle:skipped", {
+          source,
+          reason: "stale-epoch",
+          restoreEpoch,
+          pendingEpoch: pendingUiRestoreEpochRef.current,
+        }, {
+          identity,
+        });
         return;
       }
 
       const tr = transformerRef.current;
-      if (!tr) return;
+      if (!tr) {
+        logCanvasBoxFlow("selection", "restore-after-settle:skipped", {
+          source,
+          reason: "missing-transformer",
+          restoreEpoch,
+        }, {
+          identity,
+        });
+        return;
+      }
 
       const nodosTransformables = resolveTransformableNodes();
-      if (nodosTransformables.length === 0) return;
+      const attachedNodeIdsDigest = buildAttachedNodeIdsDigest(nodosTransformables);
+      if (nodosTransformables.length === 0) {
+        logCanvasBoxFlow("selection", "restore-after-settle:skipped", {
+          source,
+          reason: "missing-transformable-nodes",
+          restoreEpoch,
+        }, {
+          identity,
+        });
+        return;
+      }
       const nextAttachedNodeIds = buildAttachedNodeIdsKey(nodosTransformables);
       const currentAttachedNodeIds = buildAttachedNodeIdsKey(
         typeof tr.nodes === "function" ? tr.nodes() || [] : []
@@ -1867,6 +2089,14 @@ export default function SelectionBounds({
         lastStableSnapshot.attachedNodeIds === nextAttachedNodeIds &&
         lastStableSnapshot.selectedGeomKey === selectedGeomKey
       ) {
+        logCanvasBoxFlow("selection", "restore-after-settle:skipped", {
+          source,
+          reason: "already-synced",
+          restoreEpoch,
+          attachedNodeIds: attachedNodeIdsDigest,
+        }, {
+          identity,
+        });
         return;
       }
 
@@ -1876,9 +2106,21 @@ export default function SelectionBounds({
         logEvent: "transformer:restore",
       });
 
+      let syncApplied = false;
       if (!attached) {
-        syncTransformerGeometryNow(`restore:${source}`);
+        syncApplied = syncTransformerGeometryNow(`restore:${source}`);
       }
+
+      logCanvasBoxFlow("selection", "restore-after-settle:applied", {
+        source,
+        restoreEpoch,
+        forceAttach: Boolean(forceAttach),
+        action: attached ? "attach" : syncApplied ? "sync" : "noop",
+        attachedNodeIds: attachedNodeIdsDigest,
+        bounds: getTransformerBoundsDigest(tr),
+      }, {
+        identity: buildSelectionBoxFlowIdentity(attachedNodeIdsDigest),
+      });
 
       if (textPreviewEndSnapshot && selectedElements.length === 1) {
         runTextTransformCommitDebug(selectedElements[0], textPreviewEndSnapshot);
@@ -1930,6 +2172,9 @@ export default function SelectionBounds({
     source = "unknown",
     { logEvent = "transformer:detach" } = {}
   ) => {
+    flushCanvasBoxFlowSummary("selection", "transform-preview", {
+      reason: source || "detach",
+    });
     pendingUiRestoreEpochRef.current = 0;
     if (typeof cancelCanvasUiAfterSettle === "function") {
       cancelCanvasUiAfterSettle(transformerRestoreKey);
@@ -1955,6 +2200,7 @@ export default function SelectionBounds({
     }
 
     const attachedNodeIds = buildAttachedNodeIdsKey(attachedNodes);
+    const attachedNodeIdsDigest = buildAttachedNodeIdsDigest(attachedNodes);
 
     try {
       tr.stopTransform?.();
@@ -1980,6 +2226,19 @@ export default function SelectionBounds({
         effectiveDragging: Boolean(effectiveDragging),
         attachSuppressed: Boolean(isTransformerAttachBlocked),
         shouldUseGenericTransformer: Boolean(shouldUseGenericTransformer),
+      });
+    }
+
+    if (attachedNodeIds) {
+      logCanvasBoxFlow("selection", "detach:applied", {
+        source,
+        selectedIds: selectionKey || null,
+        attachedNodeIds: attachedNodeIdsDigest,
+        effectiveDragging: Boolean(effectiveDragging),
+        attachSuppressed: Boolean(isTransformerAttachBlocked),
+        shouldUseGenericTransformer: Boolean(shouldUseGenericTransformer),
+      }, {
+        identity: buildSelectionBoxFlowIdentity(attachedNodeIdsDigest),
       });
     }
 
@@ -2234,6 +2493,19 @@ export default function SelectionBounds({
 
   useEffect(
     () => () => {
+      const lifecycleNode = getLifecycleTransformerNode();
+      const attachedNodes =
+        typeof lifecycleNode?.nodes === "function" ? lifecycleNode.nodes() || [] : [];
+      logCanvasBoxFlow("selection", "cleanup", {
+        source: "selection-transformer",
+        reason: "component-unmount",
+        attachedNodeIds: buildAttachedNodeIdsDigest(attachedNodes),
+        visible: Boolean(transformerBoxFlowSnapshotRef.current?.visible),
+      }, {
+        identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(attachedNodes)),
+        flushSummaryKeys: ["transform-preview"],
+        flushReason: "cleanup",
+      });
       latestDetachTransformerRef.current?.("component-unmount");
     },
     []
@@ -2270,6 +2542,78 @@ export default function SelectionBounds({
     setPressedResizeAnchorName((current) => (current ? null : current));
     hideRotationIndicator();
   }, [interactionLocked]);
+
+  useEffect(() => {
+    const nextSnapshot = isTransformerAttachBlocked
+      ? {
+          renderMode: transformerVisualMode.renderMode,
+          canvasInteractionActive: Boolean(canvasInteractionActive),
+          canvasInteractionSettling: Boolean(canvasInteractionSettling),
+          effectiveDragging: Boolean(effectiveDragging),
+          pendingDragSelectionId: pendingDragSelectionId || null,
+          pendingDragSelectionPhase: pendingDragSelectionPhase || null,
+          shouldSuppressBeforeFirstDragStart: Boolean(shouldSuppressBeforeFirstDragStart),
+          shouldSuppressDuringDeferredDrag: Boolean(shouldSuppressDuringDeferredDrag),
+          shouldHideTransformerDuringDrag: Boolean(shouldHideTransformerDuringDrag),
+          hasDragOverlayVisualOwnership: Boolean(hasDragOverlayVisualOwnership),
+          shouldSuppressTransformerVisualsForDragOverlay: Boolean(
+            shouldSuppressTransformerVisualsForDragOverlay
+          ),
+          dragSelectionOverlayVisible: Boolean(dragSelectionOverlayVisible),
+          dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
+          predragVisualSelectionActive: Boolean(predragVisualSelectionActive),
+          interactionLocked: Boolean(interactionLocked),
+        }
+      : null;
+    const previousSnapshot = attachBlockSnapshotRef.current;
+
+    if (!nextSnapshot) {
+      if (previousSnapshot) {
+        logCanvasBoxFlow("selection", "attach:block-cleared", {
+          source: "selection-transformer",
+          selectedIds: selectionKey || null,
+        }, {
+          identity: buildSelectionBoxFlowIdentity(),
+        });
+      }
+      attachBlockSnapshotRef.current = null;
+      return;
+    }
+
+    const didChange =
+      !previousSnapshot ||
+      Object.keys(nextSnapshot).some((key) => previousSnapshot[key] !== nextSnapshot[key]);
+
+    attachBlockSnapshotRef.current = nextSnapshot;
+
+    if (!didChange) return;
+
+    logCanvasBoxFlow("selection", "attach:blocked", {
+      source: "selection-transformer",
+      selectedIds: selectionKey || null,
+      ...nextSnapshot,
+    }, {
+      identity: buildSelectionBoxFlowIdentity(),
+    });
+  }, [
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    dragSelectionOverlayVisible,
+    dragSelectionOverlayVisualReady,
+    effectiveDragging,
+    interactionLocked,
+    isTransformerAttachBlocked,
+    pendingDragSelectionId,
+    pendingDragSelectionPhase,
+    predragVisualSelectionActive,
+    selectionKey,
+    hasDragOverlayVisualOwnership,
+    shouldHideTransformerDuringDrag,
+    shouldSuppressBeforeFirstDragStart,
+    shouldSuppressDuringDeferredDrag,
+    shouldSuppressTransformerVisualsForDragOverlay,
+    transformerVisualMode.renderMode,
+  ]);
 
   useEffect(() => {
     const tr = transformerRef.current;
@@ -2331,6 +2675,14 @@ export default function SelectionBounds({
         wantedIds: elementosTransformables.map(o => o.id),
         refsPresent: elementosTransformables.map(o => !!elementRefs.current?.[o.id]),
       });
+      logCanvasBoxFlow("selection", "attach:skipped", {
+        source: "selection-effect",
+        reason: "missing-transformable-nodes",
+        selectedIds: selectionKey || null,
+        wantedIds: elementosTransformables.map((obj) => obj.id),
+      }, {
+        identity: buildSelectionBoxFlowIdentity(),
+      });
       return;
     }
 
@@ -2389,11 +2741,17 @@ export default function SelectionBounds({
       return;
     }
 
+    if (hasDragOverlayVisualOwnership) {
+      detachTransformerNodes("attach-blocked-drag-overlay-ownership");
+      return;
+    }
+
     const desiredNodeIds = buildAttachedNodeIdsKey(resolveTransformableNodes());
     if (!desiredNodeIds || desiredNodeIds === currentAttachedNodeIds) return;
 
     detachTransformerNodes("attach-blocked-stale-selection");
   }, [
+    hasDragOverlayVisualOwnership,
     isTransformerAttachBlocked,
     selectionKey,
     shouldUseGenericTransformer,
@@ -2419,6 +2777,79 @@ export default function SelectionBounds({
     return () => window.removeEventListener("element-ref-registrado", handler);
   }, [selectionKey, selectedElements]);
 
+  useEffect(() => {
+    const lifecycleNode = getLifecycleTransformerNode();
+    const attachedNodes =
+      typeof lifecycleNode?.nodes === "function" ? lifecycleNode.nodes() || [] : [];
+    const attachedNodeIds = buildAttachedNodeIdsDigest(attachedNodes);
+    const nextVisible = Boolean(
+      selectedElements.length > 0 &&
+      attachedNodes.length > 0 &&
+      shouldUseGenericTransformer &&
+      transformerVisualMode.renderMode !== "none" &&
+      transformerVisualMode.renderMode !== "line-indicator" &&
+      !shouldSuppressTransformerVisualsForDragOverlay
+    );
+    const nextSnapshot = {
+      visible: nextVisible,
+      identity: buildSelectionBoxFlowIdentity(attachedNodeIds),
+      renderMode: transformerVisualMode.renderMode,
+      attachedNodeIds,
+      bounds: nextVisible ? getTransformerBoundsDigest(lifecycleNode) : null,
+    };
+    const previousSnapshot = transformerBoxFlowSnapshotRef.current;
+    transformerBoxFlowSnapshotRef.current = nextSnapshot;
+
+    if (
+      previousSnapshot?.visible &&
+      (!nextSnapshot.visible || previousSnapshot.identity !== nextSnapshot.identity)
+    ) {
+      flushCanvasBoxFlowSummary("selection", "transform-preview", {
+        reason: "selection-box-hidden",
+      });
+      logCanvasBoxFlow("selection", "selection-box:hidden", {
+        source: "transformer-primary",
+        selectedIds: previousSnapshot.identity,
+        renderMode: previousSnapshot.renderMode,
+        attachedNodeIds: previousSnapshot.attachedNodeIds || null,
+        reason:
+          previousSnapshot.identity !== nextSnapshot.identity
+            ? "selection-changed"
+            : hasDragOverlayVisualOwnership
+              ? "drag-overlay-owned"
+              : shouldSuppressTransformerVisualsForDragOverlay
+                ? "drag-overlay-suppressed"
+              : transformerVisualMode.renderMode,
+      }, {
+        identity: previousSnapshot.identity,
+      });
+    }
+
+    if (
+      nextSnapshot.visible &&
+      (!previousSnapshot?.visible || previousSnapshot.identity !== nextSnapshot.identity)
+    ) {
+      logCanvasBoxFlow("selection", "selection-box:shown", {
+        source: "transformer-primary",
+        selectedIds: nextSnapshot.identity,
+        renderMode: nextSnapshot.renderMode,
+        attachedNodeIds: nextSnapshot.attachedNodeIds || null,
+        bounds: nextSnapshot.bounds,
+      }, {
+        identity: nextSnapshot.identity,
+      });
+    }
+  }, [
+    selectedElements.length,
+    selectedGeomKey,
+    selectionKey,
+    hasDragOverlayVisualOwnership,
+    shouldSuppressTransformerVisualsForDragOverlay,
+    shouldUseGenericTransformer,
+    transformTick,
+    transformerVisualMode.renderMode,
+  ]);
+
 
 
 
@@ -2438,6 +2869,7 @@ export default function SelectionBounds({
         objetos={objetos}
         isMobile={isMobile}
         debugLog={slog}
+        debugSource="line-indicator"
       />
     );
   }
@@ -2835,6 +3267,13 @@ export default function SelectionBounds({
       }}
       onTransformStart={(e) => {
         if (hasActiveInlineEditingSession) {
+          logCanvasBoxFlow("selection", "transform:start-blocked", {
+            source: "selection-transformer",
+            reason: "inline-editing-active",
+            selectedIds: selectionKey || null,
+          }, {
+            identity: buildSelectionBoxFlowIdentity(),
+          });
           if (editingId && typeof requestInlineEditFinish === "function") {
             requestInlineEditFinish("transform-start");
           }
@@ -2869,6 +3308,18 @@ export default function SelectionBounds({
           isRotate: isRotateGesture,
           activeAnchor: activeAnchor ?? null,
         };
+        logCanvasBoxFlow("selection", "transform:start", buildTransformBoxFlowPayload(
+          null,
+          {},
+          {
+            pointerType: e?.evt?.pointerType ?? null,
+            isImageSelection: Boolean(esImagenSeleccionada),
+          }
+        ), {
+          identity: buildSelectionBoxFlowIdentity(),
+          flushSummaryKeys: ["transform-preview"],
+          flushReason: "transform-start",
+        });
         if (!isRotateGesture && esImagenSeleccionada) {
           const imageNode = typeof tr?.nodes === "function" ? (tr.nodes() || [])[0] || null : null;
           setImageResizeSessionActive(imageNode, {
@@ -3311,6 +3762,20 @@ export default function SelectionBounds({
             onTransform(transformData);
           }
 
+          recordCanvasBoxFlowSummary(
+            "selection",
+            "transform-preview",
+            buildTransformBoxFlowPayload(node, transformData, {
+              pointerType: e?.evt?.pointerType ?? null,
+            }),
+            {
+              identity: buildSelectionBoxFlowIdentity(
+                buildAttachedNodeIdsDigest(nodes)
+              ),
+              eventName: "transform:summary",
+            }
+          );
+
           // --- LOG COMPACTO (opcional) ---
           const id = (typeof node.id === "function" ? node.id() : node.attrs?.id) || "âˆ…";
           const sx = node.scaleX?.() ?? 1;
@@ -3573,6 +4038,19 @@ export default function SelectionBounds({
             scheduleTransformerRestoreAfterSettle("transform-end-multi", {
               forceAttach: true,
             });
+            logCanvasBoxFlow("selection", "transform:end", {
+              source: "selection-transformer",
+              mode: transformGestureRef.current?.isRotate ? "rotate" : "transform",
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              selectedIds: selectionKey || null,
+              batchCount: updates.length,
+              attachedNodeIds: buildAttachedNodeIdsDigest(nodes),
+              bounds: getTransformerBoundsDigest(tr),
+            }, {
+              identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodes)),
+              flushSummaryKeys: ["transform-preview"],
+              flushReason: "transform-end-multi",
+            });
 
             window._resizeData = { isResizing: false };
             setTimeout(() => {
@@ -3582,6 +4060,18 @@ export default function SelectionBounds({
             return;
           } catch (err) {
             console.warn("Error en onTransformEnd (multi):", err);
+            logCanvasBoxFlow("selection", "transform:error", {
+              source: "selection-transformer",
+              mode: transformGestureRef.current?.isRotate ? "rotate" : "transform",
+              activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+              selectedIds: selectionKey || null,
+              message: err?.message || String(err),
+              branch: "multi",
+            }, {
+              identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodes)),
+              flushSummaryKeys: ["transform-preview"],
+              flushReason: "transform-error-multi",
+            });
             window._resizeData = null;
             return;
           }
@@ -3592,6 +4082,17 @@ export default function SelectionBounds({
         // -------------------------
         const node = nodes[0];
         if (!node) {
+          logCanvasBoxFlow("selection", "transform:end", {
+            source: "selection-transformer",
+            mode: transformGestureRef.current?.isRotate ? "rotate" : "transform",
+            activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+            selectedIds: selectionKey || null,
+            reason: "missing-node",
+          }, {
+            identity: buildSelectionBoxFlowIdentity(),
+            flushSummaryKeys: ["transform-preview"],
+            flushReason: "transform-end-missing-node",
+          });
           if (transformGestureRef.current?.isRotate) {
             logSelectedDragDebug("transform:rotate:end-missing-node", {
               interactionId: rotationLifecycleDebugRef.current?.interactionId || null,
@@ -4019,10 +4520,32 @@ export default function SelectionBounds({
             textPreviewEndSnapshot,
             forceAttach: true,
           });
+          logCanvasBoxFlow("selection", "transform:end", buildTransformBoxFlowPayload(
+            node,
+            finalData,
+            {
+              isFinal: true,
+            }
+          ), {
+            identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodes)),
+            flushSummaryKeys: ["transform-preview"],
+            flushReason: "transform-end-single",
+          });
 
 
         } catch (error) {
           console.warn("Error en onTransformEnd:", error);
+          logCanvasBoxFlow("selection", "transform:error", {
+            source: "selection-transformer",
+            mode: transformGestureRef.current?.isRotate ? "rotate" : "transform",
+            activeAnchor: transformGestureRef.current?.activeAnchor ?? null,
+            selectedIds: selectionKey || null,
+            message: error?.message || String(error),
+          }, {
+            identity: buildSelectionBoxFlowIdentity(),
+            flushSummaryKeys: ["transform-preview"],
+            flushReason: "transform-error",
+          });
           if (transformGestureRef.current?.isRotate) {
             logSelectedDragDebug("transform:rotate:error", {
               interactionId: rotationLifecycleDebugRef.current?.interactionId || null,

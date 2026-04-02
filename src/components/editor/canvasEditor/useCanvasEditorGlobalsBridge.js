@@ -9,6 +9,7 @@ import {
   clearEditorSnapshotRenderState,
   syncEditorSnapshotRenderState,
 } from "@/lib/editorSnapshotAdapter";
+import { logCanvasBoxFlow } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
 
 export default function useCanvasEditorGlobalsBridge({
   elementosSeleccionados,
@@ -111,6 +112,18 @@ export default function useCanvasEditorGlobalsBridge({
   useEffect(() => {
     if (!hoverId) return;
     const exists = objetos.some((o) => o.id === hoverId);
-    if (!exists) setHoverId(null);
+    if (!exists) {
+      logCanvasBoxFlow("hover", "forced-clear", {
+        hoverId,
+        source: "globals-bridge",
+        reason: "target-missing",
+      }, {
+        identity: hoverId,
+      });
+      setHoverId(null, {
+        source: "globals-bridge",
+        reason: "target-missing",
+      });
+    }
   }, [hoverId, objetos, setHoverId]);
 }

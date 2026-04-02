@@ -217,6 +217,70 @@ Same-gesture select-and-drag still depends on transient runtime state.
 - `CanvasStageContentComposer` still owns the live drag-visual overlay state locally, but mirrors it into the internal selection runtime so transformer and bridge reads can reason about the same interaction snapshot.
 - `pendingDragSelection` is still mirrored into legacy globals for compatibility. `dragVisualSelection` is intentionally kept internal to the runtime snapshot and stage state; there is no formal `window._dragVisualSelection` contract.
 
+### Interaction Phases And Visual Ownership
+Canvas interaction visuals must be treated as an explicit phase model, not as independent overlays that can decide visibility on their own. The active phase boundary is coordinated in `CanvasStageContentComposer.jsx` and `selectionVisualModes.js`, then rendered through `HoverIndicator`, `SelectionTransformer`, or drag-layer `SelectionBoundsIndicator`.
+
+Single-owner rule:
+
+- Exactly one visual owner may render the box-level affordance at a time.
+- Valid owners are `hover-indicator`, `transformer-primary`, and `drag-overlay`.
+- `LineControls` is a selected-phase variant and must obey the same exclusivity rule as `transformer-primary`.
+- Ownership transfer must be explicit at the phase boundary; delayed unmount, passive target loss, or replayed snapshots are not valid ownership handoff mechanisms.
+
+| Phase | Allowed visual owner | Systems that must stay suppressed | Notes |
+| --- | --- | --- | --- |
+| `idle` | none | hover, transformer-primary, drag-overlay | No hover target and no active selected-phase box owner. |
+| `hover` | `hover-indicator` | transformer-primary, drag-overlay | Hover is allowed only while no interaction-owned selection visual has taken control. |
+| `selected` | `transformer-primary` | hover-indicator, drag-overlay | This is the normal committed-selection phase for transformer-managed selections. |
+| `predrag` | `drag-overlay` owns the phase, but may remain visually hidden until the first valid startup sync | hover-indicator, transformer-primary | Predrag starts visual ownership transfer even before full drag-active runtime state exists. |
+| `drag` | `drag-overlay` | hover-indicator, transformer-primary | Active drag must remain locked to the authoritative live drag geometry. |
+| `settling` | `drag-overlay` until cleanup/handoff completes | hover-indicator, transformer-primary | Settling may freeze or replay the last valid drag-overlay state, but it does not restore transformer ownership early. |
+
+### Drag-Overlay Startup Invariants
+Drag-overlay startup must be deterministic. The first visible overlay frame is architecture-sensitive because startup drift is caused by incorrect startup authority, not by steady-state drag math.
+
+Required invariants:
+
+- The first visible drag-overlay frame must come from authoritative live drag geometry, currently the composer-owned controlled-sync path based on live node bounds.
+- A startup frame is valid for visibility only when the controlled-sync belongs to the active drag-overlay session, uses the same session identity/sync cycle as the first live drag sample, and is derived from current live node geometry rather than a buffered snapshot.
+- `predrag-seed`, `drag-selection-seed`, `controlled-seed`, buffered startup snapshots, and replay snapshots may update internal runtime/debug state, but they must not create the first visible overlay frame.
+- `group-drag-start` or any other startup convenience snapshot is also forbidden from producing the first visible frame unless it has already been promoted into the same authoritative controlled-sync path for the active session.
+- The overlay must remain non-visual until the first valid controlled-sync has been applied.
+- Startup authority must have one path only. If multiple startup sources can make the overlay visible, the subsystem is back in an invalid state.
+- Once the first valid controlled-sync is visible, steady-state drag continues through the same controlled overlay path; startup must not switch owners mid-session.
+
+### Hover Lifecycle Rules
+Hover is not allowed to survive interaction-owned selection phases.
+
+- Hover must terminate at predrag start, not at drag-active as a later fallback.
+- Forced clear must remove both hover session ownership and the currently visible hover box in the same boundary.
+- Forced clear is not complete if only `hoverId` or hover session identity is reset. The visible hover snapshot, bounds cache, and rendered hover box state must be cleared in the same lifecycle step.
+- Hover must not remain visible during `predrag`, `drag`, or `settling`.
+- Delayed target-loss, component-unmount, or passive session-end cleanup are fallback safety nets only. They are not valid primary hover-hide paths for predrag or drag startup.
+- Drag-start hover clear still exists as a fallback for direct-start drag paths that do not pass through predrag first, but predrag is the primary hover termination boundary.
+
+### Ordering Guarantees
+These ordering guarantees are required for a correct startup handoff:
+
+1. Hover must be cleared before or at the same boundary as `predrag:visual-selection-start`.
+2. `transformer-primary` must be suppressed or detached before `drag-overlay` is allowed to render visibly.
+3. The first visible drag-overlay frame must happen only after controlled-sync has been applied from authoritative live drag geometry.
+4. `settling` keeps drag-overlay ownership until cleanup is complete; transformer restoration happens only after the overlay has ended.
+
+### Ownership Handoff Table
+| Transition | Outgoing owner | Incoming owner | Required suppression | Minimum condition to complete handoff |
+| --- | --- | --- | --- | --- |
+| `hover -> predrag` | `hover-indicator` | `drag-overlay` phase owner, still allowed to be visually hidden | hover visual state must be cleared immediately | hover forced-clear has removed both logical hover state and visible hover snapshot before or at `predrag:visual-selection-start` |
+| `selected -> predrag` | `transformer-primary` | `drag-overlay` phase owner, still allowed to be visually hidden | transformer-primary must detach/hide | drag-overlay ownership has started and transformer is no longer rendering a visible box |
+| `predrag -> drag` | `drag-overlay` | `drag-overlay` | hover-indicator and transformer-primary remain suppressed | first authoritative controlled-sync for the active drag-overlay session has been applied and is now allowed to become visible |
+| `drag -> settling` | `drag-overlay` | `drag-overlay` | hover-indicator and transformer-primary remain suppressed | active drag has ended and the overlay is holding or replaying the last valid drag-session state without reopening startup ownership |
+| `settling -> selected|idle` | `drag-overlay` | `transformer-primary` or none | drag-overlay must end before another owner appears | overlay cleanup is complete; then transformer may restore for a surviving selection or the system may return to no owner |
+
+### Failure Modes This Model Prevents
+- `startupJump`: the first visible drag-overlay frame came from stale seed geometry, buffered replay, or another non-authoritative startup source instead of the first live controlled-sync.
+- Hover lingering: hover ownership was cleared logically, but visible hover cleanup happened later through passive session-end or component unmount instead of the predrag boundary.
+- Multiple startup paths: transformer, seed snapshots, replayed overlay state, and controlled-sync each tried to own startup visibility. Future changes must keep exactly one startup authority.
+
 ## 5. Transformations
 
 ### Drag

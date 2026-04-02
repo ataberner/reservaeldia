@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   resolveStageSelectionVisualMode,
   resolveTransformerVisualMode,
+  resolvePredragOverlayStartupPolicy,
+  shouldSeedPredragOverlayBounds,
 } from "./selectionVisualModes.js";
 
 test("stage visual mode mounts the primary overlay for an idle committed selection", () => {
@@ -215,6 +217,147 @@ test("transformer visual mode suppresses its visuals for the drag overlay while 
   assert.deepEqual(mode.enabledAnchors, []);
   assert.equal(mode.rotateEnabled, false);
   assert.equal(mode.borderEnabled, false);
+});
+
+test("transformer visual mode suppresses primary visuals during predrag ownership before overlay ready", () => {
+  const mode = resolveTransformerVisualMode({
+    selectedIds: ["obj-1"],
+    selectedObjects: [{ id: "obj-1", tipo: "texto" }],
+    predragVisualSelectionActive: true,
+    dragSelectionOverlayVisible: true,
+    dragSelectionOverlayVisualReady: false,
+    effectiveDragging: false,
+    isResizeGestureActive: false,
+    isTransformingResize: false,
+    interactionLocked: false,
+    shouldUseLightweightRotateOverlay: false,
+    isGallerySelection: false,
+  });
+
+  assert.equal(mode.renderMode, "transformer");
+  assert.equal(mode.hasDragOverlayVisualOwnership, true);
+  assert.equal(mode.shouldSuppressTransformerVisualsForDragOverlay, true);
+  assert.deepEqual(mode.enabledAnchors, []);
+  assert.equal(mode.rotateEnabled, false);
+  assert.equal(mode.borderEnabled, false);
+});
+
+test("transformer visual mode treats same-selection pending predrag as drag-overlay ownership", () => {
+  const mode = resolveTransformerVisualMode({
+    selectedIds: ["obj-1"],
+    selectedObjects: [{ id: "obj-1", tipo: "texto" }],
+    pendingDragSelectionId: "obj-1",
+    pendingDragSelectionPhase: "predrag",
+    effectiveDragging: false,
+    dragSelectionOverlayVisible: false,
+    dragSelectionOverlayVisualReady: false,
+    isResizeGestureActive: false,
+    isTransformingResize: false,
+    interactionLocked: false,
+    shouldUseLightweightRotateOverlay: false,
+    isGallerySelection: false,
+  });
+
+  assert.equal(mode.hasDragOverlayVisualOwnership, true);
+  assert.equal(mode.shouldSuppressTransformerVisualsForDragOverlay, true);
+});
+
+test("predrag seed helper skips same-gesture select-and-drag but preserves already-selected predrag", () => {
+  assert.equal(
+    shouldSeedPredragOverlayBounds({
+      dragId: "obj-1",
+      pendingDragSelectionId: "obj-1",
+      pendingDragSelectionPhase: "predrag",
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldSeedPredragOverlayBounds({
+      dragId: "obj-1",
+      pendingDragSelectionId: null,
+      pendingDragSelectionPhase: null,
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldSeedPredragOverlayBounds({
+      dragId: "obj-1",
+      pendingDragSelectionId: "obj-2",
+      pendingDragSelectionPhase: "predrag",
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldSeedPredragOverlayBounds({
+      dragId: "obj-1",
+      pendingDragSelectionId: "obj-1",
+      pendingDragSelectionPhase: "deferred-drag",
+    }),
+    true
+  );
+});
+
+test("predrag startup policy prefers explicit intent over runtime fallback", () => {
+  assert.deepEqual(
+    resolvePredragOverlayStartupPolicy({
+      dragId: "obj-1",
+      predragIntent: "same-gesture-select-drag",
+      pendingDragSelectionId: null,
+      pendingDragSelectionPhase: null,
+    }),
+    {
+      shouldSeedPredragBounds: false,
+      skipInitialSeed: true,
+      policySource: "predrag-intent",
+      policyReason: "same-gesture-select-drag",
+    }
+  );
+
+  assert.deepEqual(
+    resolvePredragOverlayStartupPolicy({
+      dragId: "obj-1",
+      predragIntent: "selected-predrag",
+      pendingDragSelectionId: "obj-1",
+      pendingDragSelectionPhase: "predrag",
+    }),
+    {
+      shouldSeedPredragBounds: true,
+      skipInitialSeed: false,
+      policySource: "predrag-intent",
+      policyReason: "selected-predrag",
+    }
+  );
+
+  assert.deepEqual(
+    resolvePredragOverlayStartupPolicy({
+      dragId: "obj-1",
+      pendingDragSelectionId: "obj-1",
+      pendingDragSelectionPhase: "predrag",
+    }),
+    {
+      shouldSeedPredragBounds: false,
+      skipInitialSeed: true,
+      policySource: "runtime-pending-drag-selection",
+      policyReason: "runtime-predrag-skip",
+    }
+  );
+
+  assert.deepEqual(
+    resolvePredragOverlayStartupPolicy({
+      dragId: "obj-1",
+      pendingDragSelectionId: "obj-1",
+      pendingDragSelectionPhase: "deferred-drag",
+    }),
+    {
+      shouldSeedPredragBounds: true,
+      skipInitialSeed: false,
+      policySource: "runtime-pending-drag-selection",
+      policyReason: "runtime-fallback-seed",
+    }
+  );
 });
 
 test("transformer visual mode matches current anchor and rotation disable rules for locked lightweight selections", () => {

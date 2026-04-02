@@ -1536,7 +1536,7 @@ export default function CanvasEditor({
                 textResizeDebug={textResizeDebug}
                 isTextResizeDebugEnabled={isTextResizeDebugEnabled}
                 actualizarObjeto={actualizarObjeto}
-                hoverId={effectiveHoverId}
+                hoverId={hoverId}
                 isDragging={isDragging}
                 setIsDragging={setIsDragging}
                 actualizarLinea={actualizarLinea}

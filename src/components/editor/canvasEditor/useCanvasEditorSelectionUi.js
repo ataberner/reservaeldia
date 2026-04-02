@@ -11,6 +11,26 @@ function isGlobalCanvasInteractionActive() {
   );
 }
 
+export function resolveCanvasHoverIdUpdate(
+  currentHoverId,
+  nextHoverId,
+  { interactionActive = false } = {}
+) {
+  const resolvedHoverId =
+    typeof nextHoverId === "function"
+      ? nextHoverId(currentHoverId)
+      : nextHoverId;
+
+  const isHoverClear = resolvedHoverId == null;
+  if (interactionActive && !isHoverClear) {
+    return currentHoverId;
+  }
+
+  return Object.is(currentHoverId, resolvedHoverId)
+    ? currentHoverId
+    : resolvedHoverId;
+}
+
 export default function useCanvasEditorSelectionUi({
   hoverId,
   setHoverIdState,
@@ -21,20 +41,11 @@ export default function useCanvasEditorSelectionUi({
   selectionClearPolicy,
 }) {
   const setHoverId = useCallback(
-    (nextHoverId) => {
+    (nextHoverId, _meta = null) => {
       setHoverIdState((currentHoverId) => {
-        if (isGlobalCanvasInteractionActive()) {
-          return currentHoverId;
-        }
-
-        const resolvedHoverId =
-          typeof nextHoverId === "function"
-            ? nextHoverId(currentHoverId)
-            : nextHoverId;
-
-        return Object.is(currentHoverId, resolvedHoverId)
-          ? currentHoverId
-          : resolvedHoverId;
+        return resolveCanvasHoverIdUpdate(currentHoverId, nextHoverId, {
+          interactionActive: isGlobalCanvasInteractionActive(),
+        });
       });
     },
     [setHoverIdState]

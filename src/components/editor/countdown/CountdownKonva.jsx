@@ -1198,7 +1198,10 @@ export default function CountdownKonva({
     setNodeDraggable,
   ]);
 
-  const attachGlobalListeners = useCallback((listenerSessionId) => {
+  const attachGlobalListeners = useCallback((
+    listenerSessionId,
+    predragIntent = "selected-predrag"
+  ) => {
     cleanupGlobal();
 
     const onMove = (ev) => {
@@ -1238,7 +1241,9 @@ export default function CountdownKonva({
       const mirroredSelection = getMirroredSelectedIds();
       const selectionSnapshot =
         mirroredSelection.length > 0 ? mirroredSelection : [obj.id];
-      onPredragVisualSelectionStart?.(obj.id, selectionSnapshot);
+      onPredragVisualSelectionStart?.(obj.id, selectionSnapshot, {
+        predragIntent,
+      });
       detachTransformerBeforeNativeDrag(node, "threshold-cross");
 
       // Corregimos posición inicial con el delta real para evitar “arrastre atrasado”.
@@ -1377,7 +1382,10 @@ export default function CountdownKonva({
 
       if (typeof onHover === "function") {
         flushSync(() => {
-          onHover(null);
+          onHover(null, {
+            source: "countdown-press-start-clear",
+            targetType: "countdown",
+          });
         });
       }
 
@@ -1458,7 +1466,12 @@ export default function CountdownKonva({
         nodeDragging: Boolean(node?.isDragging?.()),
         nodeDraggable: Boolean(node?.draggable?.()),
       });
-      attachGlobalListeners(nextSessionId);
+      attachGlobalListeners(
+        nextSessionId,
+        pressSelectionResult?.allowSameGestureDrag === true
+          ? "same-gesture-select-drag"
+          : "selected-predrag"
+      );
     },
     [
       attachGlobalListeners,
@@ -1489,11 +1502,17 @@ export default function CountdownKonva({
 
   const handleMouseEnter = useCallback(() => {
     if (window._isDragging) return;
-    onHover?.(obj.id);
+    onHover?.(obj.id, {
+      source: "countdown-enter",
+      targetType: "countdown",
+    });
   }, [onHover, obj.id]);
 
   const handleMouseLeave = useCallback(() => {
-    onHover?.(null);
+    onHover?.(null, {
+      source: "countdown-leave",
+      targetType: "countdown",
+    });
   }, [onHover]);
 
   // Estos handlers solo corren cuando el drag fue habilitado y startDrag() se llamó
@@ -1540,6 +1559,16 @@ export default function CountdownKonva({
 
       onDragStartPersonalizado?.(obj.id, e);
       if (groupDragResult.mode !== "started") {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_START, {
+              detail: buildEditorDragLifecycleDetail({
+                id: obj.id,
+                tipo: obj.tipo || null,
+              }),
+            })
+          );
+        }
         startDragIndividual(e, dragStartPos);
       }
     },
@@ -1669,6 +1698,17 @@ export default function CountdownKonva({
         }
       } else {
         notePostDragSelectionGuard();
+        window._isDragging = false;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+              detail: buildEditorDragLifecycleDetail({
+                id: obj.id,
+                tipo: obj.tipo || null,
+              }),
+            })
+          );
+        }
         endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
       }
 

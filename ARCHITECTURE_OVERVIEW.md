@@ -168,6 +168,26 @@ HTML generation today is shared between preview and publish:
 - Template authoring and user draft editing currently coexist inside the same dashboard shell and partially inside the same Firestore collection surface.
 - Frontend owns live authoring state and preview boundary capture; backend owns publish preflight, public asset normalization, lifecycle enforcement, and final public artifact writes.
 
+### Canvas Interaction Ownership
+The canvas editor must be reasoned about as a phase-driven interaction system, not as a collection of independent overlay widgets.
+
+Current invariant:
+
+- Exactly one visual owner may render the box-level interaction affordance at a time: `hover-indicator`, `transformer-primary`, or `drag-overlay`.
+- Ownership transfers must be explicit at the phase boundary `idle -> hover -> selected -> predrag -> drag -> settling -> selected|idle`.
+- `predrag` is the first interaction-owned drag-overlay boundary for same-gesture and selected-item drag startup. It is not a passive preview phase.
+- `drag-overlay` startup authority belongs to the composer-owned controlled-sync path from live node geometry. The first visible frame is valid only when that controlled-sync belongs to the active drag-overlay session and the same startup sync cycle as the first live drag sample.
+- Buffered startup seeds, replay snapshots, and other startup convenience sources are internal-only state and must not produce the first visible overlay frame.
+- Hover termination belongs to the predrag boundary. Forced-clear is only complete when it removes both logical hover ownership and the visible hover box state immediately; hover that survives until drag-active or component unmount is an architecture bug, not an acceptable cleanup path.
+
+Required ordering:
+
+1. Hover clears before predrag visual ownership begins.
+2. Transformer ownership ends before drag-overlay becomes visible.
+3. Controlled-sync is applied before the first visible overlay frame.
+
+The architecture intent is determinism: one owner, one startup authority, one ordered handoff path.
+
 ## 10. Known Complexity Areas
 - `src/pages/dashboard.js`: large orchestration surface that mixes auth flow, dashboard home, editor route resolution, preview generation, publish gating, admin draft sessions, and template sessions.
 - `src/components/CanvasEditor.jsx`: large editor runtime with selection, drag, resize, history, inline text behavior, mobile behavior, and window-based bridges.
@@ -178,6 +198,13 @@ HTML generation today is shared between preview and publish:
 - Publish validation code: `functions/src/payments/publicationPublishValidation.ts` is now the dedicated publish preflight surface, but it still explicitly carries compatibility branches and drift detection for `image-crop-not-materialized`, `pantalla-ynorm-drift`, `fullbleed-editor-drift`, legacy countdown schema, and legacy icon contracts.
 - Window bridges and custom events: critical flush requests are centralized in `src/domain/drafts/criticalFlush.js`, and non-editor snapshot reads go through `src/lib/editorSnapshotAdapter.js`, but preview generation and editor coordination still depend on window bridges and event names such as `editor:draft-flush:request` and `editor:draft-flush:result`.
 - Legacy or secondary paths still in the repo: `verInvitacion`, `copiarPlantillaHTML`, `publicarInvitacion`, `functions/src/backupindex.ts`, and `src/components/Editor.jsx`.
+
+### Canvas Interaction Failure Modes
+The current drag-overlay/hover subsystem has shown three recurring failure modes that future changes must treat as lifecycle bugs, not as isolated visual glitches:
+
+- `startupJump`: the first visible drag-overlay frame comes from the wrong startup authority, so the overlay begins far from the dragged element even if steady-state drag later aligns.
+- Hover lingering: hover ownership ends logically, but visible hover cleanup is delayed until session-end or component unmount instead of the predrag boundary.
+- Multiple startup paths: seeds, replayed snapshots, transformer restoration, and controlled-sync all compete to own startup visibility, which makes behavior non-deterministic across equivalent drag starts.
 
 ## 11. Inconsistencias actuales
 - Preview and publish do not read exactly the same input payload. Preview still uses a critical-flush boundary plus a `readEditorRenderSnapshot` overlay on top of a persistence re-read, while publish re-reads the draft on the backend and uses publish-only asset normalization.

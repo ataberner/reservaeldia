@@ -42,6 +42,8 @@ test("editor selection runtime returns cloned snapshots and mirrors compatibilit
     {
       ids: ["obj-1", "obj-2"],
       predragActive: true,
+      sessionKey: "drag-overlay:1:obj-1",
+      dragId: "obj-1",
     },
     {},
     fakeWindow
@@ -65,6 +67,8 @@ test("editor selection runtime returns cloned snapshots and mirrors compatibilit
     dragVisualSelection: {
       ids: ["obj-1", "obj-2"],
       predragActive: true,
+      sessionKey: "drag-overlay:1:obj-1",
+      dragId: "obj-1",
     },
   });
   assert.deepEqual(fakeWindow._elementosSeleccionados, ["obj-1"]);
@@ -96,6 +100,8 @@ test("editor selection runtime returns cloned snapshots and mirrors compatibilit
     dragVisualSelection: {
       ids: ["obj-1", "obj-2"],
       predragActive: true,
+      sessionKey: "drag-overlay:1:obj-1",
+      dragId: "obj-1",
     },
   });
 });
@@ -130,6 +136,8 @@ test("editor selection runtime falls back to legacy globals until initialized", 
     dragVisualSelection: {
       ids: [],
       predragActive: false,
+      sessionKey: null,
+      dragId: null,
     },
   });
 
@@ -154,6 +162,8 @@ test("editor selection runtime falls back to legacy globals until initialized", 
     dragVisualSelection: {
       ids: [],
       predragActive: false,
+      sessionKey: null,
+      dragId: null,
     },
   });
 });
@@ -174,6 +184,8 @@ test("editor selection runtime clears transient drag state without dropping comm
     {
       ids: ["obj-1"],
       predragActive: true,
+      sessionKey: "drag-overlay:2:obj-1",
+      dragId: "obj-1",
     },
     {},
     fakeWindow
@@ -217,6 +229,8 @@ test("editor selection runtime clears transient drag state without dropping comm
     dragVisualSelection: {
       ids: [],
       predragActive: false,
+      sessionKey: null,
+      dragId: null,
     },
   });
   assert.deepEqual(fakeWindow._elementosSeleccionados, ["obj-1"]);

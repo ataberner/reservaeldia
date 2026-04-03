@@ -99,6 +99,9 @@ export function resolveStageSelectionVisualMode(input = {}) {
     ? input.selectedObjects.filter(Boolean)
     : [];
   const dragVisualSelectionIds = normalizeSelectionIds(input.dragVisualSelectionIds);
+  const dragOverlaySessionSelectedIds = normalizeSelectionIds(
+    input.dragOverlaySessionSelectedIds
+  );
   const singleSelectedObject =
     selectedIds.length === 1 ? selectedObjects[0] || null : null;
   const singleSelectedLineId = isLineObject(singleSelectedObject)
@@ -117,6 +120,10 @@ export function resolveStageSelectionVisualMode(input = {}) {
         )
       )
   );
+  const dragOverlaySelectionIds =
+    dragOverlaySessionSelectedIds.length > 0
+      ? dragOverlaySessionSelectedIds
+      : (dragVisualSelectionIds.length > 0 ? dragVisualSelectionIds : selectedIds);
 
   return {
     showMarqueeRect: Boolean(
@@ -134,7 +141,7 @@ export function resolveStageSelectionVisualMode(input = {}) {
     ),
     showDragSelectionOverlay,
     dragOverlaySelectionIds: showDragSelectionOverlay
-      ? (dragVisualSelectionIds.length > 0 ? dragVisualSelectionIds : selectedIds)
+      ? dragOverlaySelectionIds
       : [],
     singleSelectedLineId,
   };

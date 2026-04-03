@@ -134,14 +134,20 @@ function createEmptyDragVisualSelection() {
   return {
     ids: [],
     predragActive: false,
+    sessionKey: null,
+    dragId: null,
   };
 }
 
 function normalizeDragVisualSelection(value) {
   const safeValue = isRecord(value) ? value : {};
+  const sessionKey = String(safeValue.sessionKey ?? "").trim();
+  const dragId = String(safeValue.dragId ?? "").trim();
   return {
     ids: normalizeSelectionIds(safeValue.ids),
     predragActive: safeValue.predragActive === true,
+    sessionKey: sessionKey || null,
+    dragId: dragId || null,
   };
 }
 
@@ -149,6 +155,8 @@ function cloneDragVisualSelection(value) {
   return {
     ids: cloneSelectionIds(value?.ids),
     predragActive: value?.predragActive === true,
+    sessionKey: value?.sessionKey || null,
+    dragId: value?.dragId || null,
   };
 }
 

@@ -285,6 +285,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   boundsControlMode = "auto",
   bringToFront = false,
   onVisualReadyChange = null,
+  onFirstControlledFrameVisible = null,
   onBoxFlowBoundsSample = null,
 }, forwardedRef) {
   const groupRef = useRef(null);
@@ -576,6 +577,22 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     }
 
     if (
+      isControlledMode &&
+      typeof onFirstControlledFrameVisible === "function" &&
+      (!previousSnapshot?.visible || previousSnapshot.identity !== currentIdentity)
+    ) {
+      onFirstControlledFrameVisible({
+        source: meta.source || "manual",
+        debugSource: currentDebugSource,
+        selectedIds: [...currentSelectedIds],
+        bounds: nextBoundsDigest,
+        lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
+        boxFlowIdentity: currentIdentity,
+        syncToken: meta.syncToken || null,
+      });
+    }
+
+    if (
       shouldEmitForIdentity(currentIdentity) &&
       (!previousSnapshot?.visible || previousSnapshot.identity !== currentIdentity)
     ) {
@@ -641,6 +658,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     clearIndicatorVisuals,
     debugSource,
     isControlledMode,
+    onFirstControlledFrameVisible,
     onBoxFlowBoundsSample,
     onVisualReadyChange,
     shouldEmitForIdentity,

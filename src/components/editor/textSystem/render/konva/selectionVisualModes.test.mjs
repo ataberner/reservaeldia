@@ -85,6 +85,19 @@ test("stage visual mode activates the drag overlay for predrag and keeps explici
   assert.deepEqual(mode.dragOverlaySelectionIds, ["obj-1", "obj-2"]);
 });
 
+test("stage visual mode prefers the active drag-overlay session identity when available", () => {
+  const mode = resolveStageSelectionVisualMode({
+    selectedIds: ["stale-1", "stale-2"],
+    selectedObjects: [{ id: "stale-1", tipo: "texto" }],
+    predragVisualSelectionActive: true,
+    dragVisualSelectionIds: ["stale-1", "stale-2"],
+    dragOverlaySessionSelectedIds: ["obj-1"],
+  });
+
+  assert.equal(mode.showDragSelectionOverlay, true);
+  assert.deepEqual(mode.dragOverlaySelectionIds, ["obj-1"]);
+});
+
 test("stage visual mode falls back to committed selection ids during coordinated drag overlay", () => {
   const mode = resolveStageSelectionVisualMode({
     selectedIds: ["obj-1", "obj-2"],

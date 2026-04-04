@@ -12,10 +12,33 @@ function toFiniteNumber(value, fallback = null) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function buildSelectionData(selectedElements = [], objetos = []) {
-  const selectedIdSet = new Set(asArray(selectedElements).filter(Boolean));
-  if (selectedIdSet.size === 0) return [];
+function normalizeSelectionIds(selectedElements = []) {
+  return asArray(selectedElements)
+    .map((id) => String(id ?? "").trim())
+    .filter(Boolean);
+}
 
+function normalizeSelectedObjects(selectedObjects = []) {
+  return asArray(selectedObjects).filter(Boolean);
+}
+
+function buildSelectionData(selectedElements = [], objetos = [], objectLookup = null) {
+  const selectedIds = normalizeSelectionIds(selectedElements);
+  if (selectedIds.length === 0) return [];
+
+  if (objectLookup instanceof Map) {
+    return selectedIds
+      .map((selectedId) => objectLookup.get(selectedId) || null)
+      .filter(Boolean);
+  }
+
+  if (objectLookup && typeof objectLookup === "object") {
+    return selectedIds
+      .map((selectedId) => objectLookup[selectedId] || null)
+      .filter(Boolean);
+  }
+
+  const selectedIdSet = new Set(selectedIds);
   return asArray(objetos).filter((object) => selectedIdSet.has(object?.id));
 }
 
@@ -92,12 +115,18 @@ function resolveNodeSelectionRect(object, node) {
 
 export function resolveSelectionUnionRect({
   selectedElements,
+  selectedObjects = null,
   elementRefs,
   objetos,
+  objectLookup = null,
   requireLiveNodes = false,
 } = {}) {
-  const selectedObjects = buildSelectionData(selectedElements, objetos);
-  if (selectedObjects.length === 0) return null;
+  const normalizedSelectedObjects = normalizeSelectedObjects(selectedObjects);
+  const resolvedSelectedObjects =
+    normalizedSelectedObjects.length > 0
+      ? normalizedSelectedObjects
+      : buildSelectionData(selectedElements, objetos, objectLookup);
+  if (resolvedSelectedObjects.length === 0) return null;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -105,7 +134,7 @@ export function resolveSelectionUnionRect({
   let maxY = -Infinity;
   let liveRectCount = 0;
 
-  selectedObjects.forEach((object) => {
+  resolvedSelectedObjects.forEach((object) => {
     const node = elementRefs?.current?.[object.id] || null;
     const liveRect = resolveNodeSelectionRect(object, node);
     if (liveRect) {
@@ -129,7 +158,7 @@ export function resolveSelectionUnionRect({
     maxY = Math.max(maxY, fallbackY + fallbackHeight);
   });
 
-  if (requireLiveNodes && liveRectCount !== selectedObjects.length) {
+  if (requireLiveNodes && liveRectCount !== resolvedSelectedObjects.length) {
     return null;
   }
 
@@ -147,29 +176,39 @@ export function resolveSelectionUnionRect({
     y: minY,
     width: maxX - minX,
     height: maxY - minY,
-    selectedObjects,
+    selectedObjects: resolvedSelectedObjects,
   };
 }
 
 export function resolveSelectionFrameRect({
   selectedElements,
+  selectedObjects = null,
   elementRefs,
   objetos,
+  objectLookup = null,
   isMobile = false,
   includePadding = true,
   requireLiveNodes = false,
 } = {}) {
   const unionRect = resolveSelectionUnionRect({
     selectedElements,
+    selectedObjects,
     elementRefs,
     objetos,
+    objectLookup,
     requireLiveNodes,
   });
   if (!unionRect) return null;
 
-  const selectedObjects = unionRect.selectedObjects || buildSelectionData(selectedElements, objetos);
+  const normalizedSelectedObjects = normalizeSelectedObjects(selectedObjects);
+  const resolvedSelectedObjects =
+    unionRect.selectedObjects ||
+    (normalizedSelectedObjects.length > 0
+      ? normalizedSelectedObjects
+      : null) ||
+    buildSelectionData(selectedElements, objetos, objectLookup);
   const padding = includePadding
-    ? getSelectionFramePaddingForSelection(selectedObjects, isMobile)
+    ? getSelectionFramePaddingForSelection(resolvedSelectedObjects, isMobile)
     : 0;
 
   return {
@@ -179,7 +218,7 @@ export function resolveSelectionFrameRect({
     height: unionRect.height + padding * 2,
     strokeWidth: getSelectionFrameStrokeWidth(isMobile),
     padding,
-    selectedObjects,
+    selectedObjects: resolvedSelectedObjects,
     unionRect: {
       x: unionRect.x,
       y: unionRect.y,

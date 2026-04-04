@@ -54,6 +54,8 @@ Never mix layers unnecessarily.
 - The editor must remain predictable.
 - Avoid hidden side effects.
 - All transformations must be explicit and traceable.
+- Selection and drag documentation must name which layer owns the visible box in `selected`, `predrag`, `drag`, and `settling`, and which geometry source is authoritative in each phase.
+- Do not describe the selection box as a direct mirror of committed selection unless the implementation for that phase actually reads committed selection as its visible source.
 
 ## 3.2 Global Feature Control
 - Animations and visual effects must be globally configurable.

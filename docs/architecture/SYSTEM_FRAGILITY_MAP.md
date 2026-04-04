@@ -33,6 +33,8 @@ The system is already partially hardened compared with older docs, but it is sti
   - `editorSnapshotAdapter` reads from the adapter first but still falls back to `_objetosActuales`, `_seccionesOrdenadas`, `_rsvpConfigActual`, `_giftsConfigActual`, and `_giftConfigActual`.
   - `editorSelectionRuntime` still mirrors `_elementosSeleccionados`, `_celdaGaleriaActiva`, `_pendingDragSelectionId`, and `_pendingDragSelectionPhase`.
   - `SelectionTransformer` still reads `window._isDragging`, `window._grupoLider`, `window._groupDragSession`, and `window._resizeData`.
+  - During same-gesture drag startup, committed selection can still lag while the composer uses `pendingDragSelection`, `dragVisualSelection`, and the active drag-overlay session to decide which ids the visible drag box should represent.
+  - The composer can collapse drag-overlay membership to `[dragId]` when the committed selection snapshot does not yet contain the dragged id, so visual selection and logical selection are temporarily not the same thing.
 
 #### E2. Inline text editing depends on an imperative DOM/Konva handoff and a timed settle boundary
 
@@ -55,6 +57,8 @@ The system is already partially hardened compared with older docs, but it is sti
   - `SelectionTransformer.jsx` sets `window._resizeData = { isResizing: true }` during resize and clears it later.
   - During image rotation it lifts nodes into overlay layers and restores them afterward.
   - `CanvasEditor.jsx` suppresses some hover/tracing behavior while `window._isDragging || window._grupoLider || window._resizeData?.isResizing`.
+  - The controlled drag overlay samples bounds with `requireLiveNodes: true`, while selected-phase auto indicators can fall back to object `x/y/width/height`; different selection-box paths can therefore read different geometry sources.
+  - Drag end does not immediately hand visual ownership back to committed selection. Settling can keep the last controlled drag-overlay bounds visible until deferred selection repair and cleanup finish.
 
 #### E4. The editor still has very large orchestration files with blurred boundaries
 

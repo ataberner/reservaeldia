@@ -169,24 +169,18 @@ HTML generation today is shared between preview and publish:
 - Frontend owns live authoring state and preview boundary capture; backend owns publish preflight, public asset normalization, lifecycle enforcement, and final public artifact writes.
 
 ### Canvas Interaction Ownership
-The canvas editor must be reasoned about as a phase-driven interaction system, not as a collection of independent overlay widgets.
+The canvas editor still has to be reasoned about as a phase-driven interaction system, but the current implementation is hybrid rather than purely single-source.
 
-Current invariant:
+Current observed behavior:
 
-- Exactly one visual owner may render the box-level interaction affordance at a time: `hover-indicator`, `transformer-primary`, or `drag-overlay`.
-- Ownership transfers must be explicit at the phase boundary `idle -> hover -> selected -> predrag -> drag -> settling -> selected|idle`.
-- `predrag` is the first interaction-owned drag-overlay boundary for same-gesture and selected-item drag startup. It is not a passive preview phase.
-- `drag-overlay` startup authority belongs to the composer-owned controlled-sync path from live node geometry. The first visible frame is valid only when that controlled-sync belongs to the active drag-overlay session and the same startup sync cycle as the first live drag sample.
-- Buffered startup seeds, replay snapshots, and other startup convenience sources are internal-only state and must not produce the first visible overlay frame.
-- Hover termination belongs to the predrag boundary. Forced-clear is only complete when it removes both logical hover ownership and the visible hover box state immediately; hover that survives until drag-active or component unmount is an architecture bug, not an acceptable cleanup path.
+- `HoverIndicator` owns hover-only boxes from live node geometry until predrag or drag boundaries force-clear it.
+- Selected-phase boxes are rendered either by `SelectionTransformer` or by `SelectionBoundsIndicator` in `auto` mode for line and preserved-group paths.
+- During `predrag`, `drag`, and `settling`, the visible selection box moves to a drag-layer `SelectionBoundsIndicator` in `controlled` mode. `CanvasStageContentComposer` owns that session and pushes bounds into it imperatively.
+- Active drag overlay membership is a derived drag-session snapshot, not always the same as committed selection. If the committed selection snapshot does not include the active `dragId`, the overlay collapses to `[dragId]`.
+- Active drag overlay geometry comes from live Konva node bounds only. After drag end, settling can keep the last controlled bounds visible while deferred selection commit, selection restoration, and guide cleanup run.
+- Visual exclusivity is enforced by suppression and delayed cleanup, not by an instant unmount guarantee across every competing layer.
 
-Required ordering:
-
-1. Hover clears before predrag visual ownership begins.
-2. Transformer ownership ends before drag-overlay becomes visible.
-3. Controlled-sync is applied before the first visible overlay frame.
-
-The architecture intent is determinism: one owner, one startup authority, one ordered handoff path.
+Detailed traceability for the current behavior lives in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
 
 ## 10. Known Complexity Areas
 - `src/pages/dashboard.js`: large orchestration surface that mixes auth flow, dashboard home, editor route resolution, preview generation, publish gating, admin draft sessions, and template sessions.

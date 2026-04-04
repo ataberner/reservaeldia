@@ -63,7 +63,10 @@ import {
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
-import { logCanvasBoxFlow } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
+import {
+  getActiveCanvasBoxFlowSession,
+  logCanvasBoxFlow,
+} from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
 import {
   clearCanonicalPoseMetadata,
   markTextOriginOffsetCanonicalPose,
@@ -297,6 +300,9 @@ function detachSelectionTransformerForNode(node, payload = null) {
     attachedNodeIds,
   }, {
     identity: payload?.selectionIdentity || payload?.elementId || "selection:implicit",
+    sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(
+      payload?.selectionIdentity || payload?.elementId || null
+    ),
     startPayload: {
       selectedIds: Array.isArray(payload?.selectedIds) ? payload.selectedIds : [],
     },
@@ -337,6 +343,16 @@ function logInlineIntentEmitter(eventName, payload = {}) {
     ts: new Date().toISOString(),
     ...payload,
   });
+}
+
+function resolveActiveSelectionBoxFlowSessionIdentity(fallback = null) {
+  const activeSession = getActiveCanvasBoxFlowSession("selection");
+  if (activeSession?.identity) {
+    return activeSession.identity;
+  }
+
+  const trimmedFallback = String(fallback ?? "").trim();
+  return trimmedFallback || "selection:implicit";
 }
 
 function toShapeSize(obj, fallbackWidth = 120, fallbackHeight = 120) {
@@ -1056,6 +1072,7 @@ export default function ElementoCanvas({
       tipo: obj.tipo,
     }, {
       identity: obj.id,
+      sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(obj.id),
     });
 
     if (
@@ -1083,6 +1100,7 @@ export default function ElementoCanvas({
         tipo: obj.tipo,
       }, {
         identity: obj.id,
+        sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(obj.id),
       });
 
       try {
@@ -1662,6 +1680,7 @@ export default function ElementoCanvas({
       node: getKonvaNodeDebugInfo(node),
     }, {
       identity: obj.id,
+      sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(obj.id),
     });
 
     if (clearedPredragSelectionLock && typeof window !== "undefined") {
@@ -2161,6 +2180,9 @@ export default function ElementoCanvas({
         detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
       }, {
         identity: selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id,
+        sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(
+          selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id
+        ),
         startPayload: {
           selectedIds: selectionSnapshot,
         },
@@ -2241,6 +2263,9 @@ export default function ElementoCanvas({
         detachedTransformer: Boolean(preDetachedSelectionTransformerRef.current),
       }, {
         identity: selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id,
+        sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(
+          selectionSnapshot.length > 0 ? selectionSnapshot.join(",") : obj.id
+        ),
         startPayload: {
           selectedIds: selectionSnapshot,
         },

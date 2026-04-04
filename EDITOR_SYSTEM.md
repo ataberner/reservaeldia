@@ -215,17 +215,37 @@ Same-gesture select-and-drag still depends on transient runtime state.
 - `pendingDragSelection` tracks the object id plus phase used to bridge selection and drag decisions.
 - `dragVisualSelection` tracks the ids that should drive the drag overlay and whether the editor is still in the predrag visual phase.
 - `CanvasStageContentComposer` still owns the live drag-visual overlay state locally, but mirrors it into the internal selection runtime so transformer and bridge reads can reason about the same interaction snapshot.
+- The mirrored `dragVisualSelection` snapshot now also carries the active drag-overlay `sessionKey` and `dragId`, so selection-sensitive code can read the same overlay identity the composer is enforcing.
 - `pendingDragSelection` is still mirrored into legacy globals for compatibility. `dragVisualSelection` is intentionally kept internal to the runtime snapshot and stage state; there is no formal `window._dragVisualSelection` contract.
+
+Current canonical identity contract:
+
+- While a drag-overlay session is active, the composer-owned drag-overlay session identity is canonical for overlay visuals.
+- `dragId`, the session `selectedIds`, `dragOverlaySelectionIds`, and the drag-overlay session key must refer to the same interaction identity.
+- If the current committed selection does not contain the active `dragId`, drag-overlay identity must collapse to `[dragId]` instead of preserving a mismatched multi-selection snapshot.
+- Settling and idle cleanup must only clear or restore drag-visual state when the visual snapshot still matches the active settling session identity.
+
+### Selection Box During Drag (Current Behavior)
+The full current behavior is documented in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
+
+Short version:
+
+- The visible drag box is rendered by a drag-layer `SelectionBoundsIndicator` in `boundsControlMode="controlled"` and orchestrated by `CanvasStageContentComposer`.
+- During active drag, selection membership is a derived drag-session snapshot. The active drag-overlay session wins first, then `dragVisualSelection`, then committed selection, and the overlay collapses to `[dragId]` if the committed snapshot does not include the dragged id.
+- During active drag, geometry comes from live Konva node bounds only. Persisted object geometry is not the source for the controlled drag overlay.
+- During settling, the drag overlay can stay visible on the last applied controlled bounds while deferred selection commit, selection restoration, and guide cleanup run.
+- Outside the controlled drag overlay path, selected-phase bounds can still come from either `SelectionTransformer` or `SelectionBoundsIndicator` in `auto` mode, and `auto` mode may fall back to object geometry when live nodes are missing.
 
 ### Interaction Phases And Visual Ownership
 Canvas interaction visuals must be treated as an explicit phase model, not as independent overlays that can decide visibility on their own. The active phase boundary is coordinated in `CanvasStageContentComposer.jsx` and `selectionVisualModes.js`, then rendered through `HoverIndicator`, `SelectionTransformer`, or drag-layer `SelectionBoundsIndicator`.
 
-Single-owner rule:
+Current visible-owner rule:
 
-- Exactly one visual owner may render the box-level affordance at a time.
+- Exactly one layer should be visibly owning the box-level affordance at a time.
 - Valid owners are `hover-indicator`, `transformer-primary`, and `drag-overlay`.
 - `LineControls` is a selected-phase variant and must obey the same exclusivity rule as `transformer-primary`.
-- Ownership transfer must be explicit at the phase boundary; delayed unmount, passive target loss, or replayed snapshots are not valid ownership handoff mechanisms.
+- Current implementation reaches that visible exclusivity through suppression, attach guards, settling delays, and cleanup effects rather than guaranteed immediate unmount of every competing layer.
+- Delayed cleanup and replay-safe snapshot retention still exist in the runtime. They are compatibility and resilience paths, not the intended visible owner of the box.
 
 | Phase | Allowed visual owner | Systems that must stay suppressed | Notes |
 | --- | --- | --- | --- |
@@ -249,6 +269,60 @@ Required invariants:
 - Startup authority must have one path only. If multiple startup sources can make the overlay visible, the subsystem is back in an invalid state.
 - Once the first valid controlled-sync is visible, steady-state drag continues through the same controlled overlay path; startup must not switch owners mid-session.
 
+### Drag-Overlay Visibility Contract
+The current implementation separates ownership transfer from visible overlay rendering.
+
+- `predrag` transfers drag-overlay ownership, allocates the active session identity, clears hover, and suppresses or detaches the transformer, but it does not make the overlay visually visible by itself.
+- `controlled-sync` is the only authority that may create the first visible drag-overlay frame for the active session.
+- The first visible controlled-sync frame is the formal visibility boundary for the active drag-overlay session.
+- `drag-overlay:shown` now represents that exact first visible frame. It must not fire before the frame becomes visible, and it must not lag behind visibility as a later readiness confirmation.
+- Drag-layer `selection-box:shown` follows that same visible controlled-sync boundary. It is part of the same visual handoff, not a separate startup authority.
+- `drag-overlay:ready-state` is a derived lifecycle notification about overlay readiness. It is no longer the authoritative visibility boundary for drag-overlay startup.
+- Current BOXFLOW order at the first visible boundary is `bounds:recalc { source: "controlled-sync" }`, then `drag-overlay:shown`, then drag-layer `selection-box:shown`; `drag-overlay:ready-state { isReady: true }` is expected afterward as a later readiness notification.
+- Current BOXFLOW expectations are zero `startupJump` at startup and aligned steady-state drag-overlay drift during active drag.
+
+### Drag Interaction Session Continuity
+Drag session continuity is a separate concern from both phase changes and visible-owner changes.
+
+- One real drag interaction is conceptually continuous across `predrag -> drag -> settling` for the same drag gesture and drag-overlay identity.
+- Internal phase changes do not automatically justify a new logical interaction session. Moving from `predrag` to `drag`, or from `drag` to `settling`, is normally phase progression inside the same interaction.
+- Visual ownership and session continuity are related but not identical. For example, `predrag` can transfer drag-overlay ownership before the overlay becomes visible, and `settling` can keep the same drag session active while cleanup delays transformer restoration.
+- The intended lifecycle contract is that a true new interaction session should begin only when a real interaction boundary occurs, such as a different drag identity or a completed return to non-drag ownership, not merely because internal subphase bookkeeping changed.
+- Current BOXFLOW instrumentation may still emit detailed phase and debug events inside one drag session. Those events are diagnostic detail, not proof that multiple real drag interactions occurred.
+- Current implementation and recent logs may still show early instrumentation identity refinement such as `interaction:retarget` when a placeholder debug identity is replaced by the canonical drag-overlay session identity. That should be interpreted as instrumentation continuity for the same real interaction, not as a new drag session boundary.
+
+### Strict Interaction Session Invariants
+These are strict lifecycle invariants for drag interaction continuity. They are stronger than descriptive phase guidance and should be treated as correctness requirements.
+
+- One real drag gesture must create exactly one logical interaction session.
+- The current lifecycle authority for that session is the drag interaction session identity, currently emitted as `drag-session:*`.
+- That session must remain active across `predrag`, `drag`, and `settling`.
+- That session must end exactly once, and the valid terminal reason for the completed drag lifecycle is `drag-session-complete`.
+- Phase transitions inside the same gesture are session-internal state changes. They must not create a new logical session.
+- Visual owner changes inside the same gesture are rendering-state changes. They must not create a new logical session.
+- Transformer attach, detach, suppression, or restoration inside the same gesture must not create or end a logical interaction session.
+- `dragOverlaySessionKey`, `selectedIds`, or other interaction identity refinements inside the same gesture must not create or end a logical interaction session.
+- Once a drag interaction session is active, later identity refinement may update metadata, but it must not override session continuity.
+- Current logs may still show invalid fragmentation. Those traces should be treated as lifecycle bugs, not as acceptable variants of the drag model.
+
+### Forbidden Fragmentation Patterns
+The following patterns are invalid while one real drag gesture is still active:
+
+- `interaction:end { reason: "identity-change" }` before the drag lifecycle has actually completed.
+- `interaction:start -> interaction:end -> interaction:start` loops for the same `drag-session:*` during one gesture.
+- Temporary fallback from the active `drag-session:*` identity to element identity such as `texto...` or `titulo...`, then later return to the same drag session while the gesture is still active.
+- Re-entry into the same drag-session identity after it was already ended, unless a truly new drag gesture began.
+
+### Session Authority Model
+Once a drag interaction session is active, the runtime must treat these concerns as separate layers:
+
+- `drag-session:*` is the lifecycle authority for the real drag interaction.
+- Drag identity such as `dragId`, `selectedIds`, or drag-overlay identity is metadata about that session.
+- Phase such as `predrag`, `drag`, or `settling` is session state, not session lifetime.
+- Visual owner such as `hover-indicator`, `transformer-primary`, or `drag-overlay` is rendering state, not session lifetime.
+- BOXFLOW tokenization is observability only. It must follow the active drag interaction session, not redefine it.
+- None of those secondary layers may end, replace, or fragment an already-active drag interaction session on their own.
+
 ### Hover Lifecycle Rules
 Hover is not allowed to survive interaction-owned selection phases.
 
@@ -265,19 +339,22 @@ These ordering guarantees are required for a correct startup handoff:
 1. Hover must be cleared before or at the same boundary as `predrag:visual-selection-start`.
 2. `transformer-primary` must be suppressed or detached before `drag-overlay` is allowed to render visibly.
 3. The first visible drag-overlay frame must happen only after controlled-sync has been applied from authoritative live drag geometry.
-4. `settling` keeps drag-overlay ownership until cleanup is complete; transformer restoration happens only after the overlay has ended.
+4. `drag-overlay:shown` must fire at that first visible controlled-sync boundary, and drag-layer `selection-box:shown` must not precede it.
+5. `drag-overlay:ready-state` is a later readiness confirmation and must not be treated as startup visibility authority.
+6. `settling` keeps drag-overlay ownership until cleanup is complete; transformer restoration happens only after the overlay has ended.
 
 ### Ownership Handoff Table
 | Transition | Outgoing owner | Incoming owner | Required suppression | Minimum condition to complete handoff |
 | --- | --- | --- | --- | --- |
 | `hover -> predrag` | `hover-indicator` | `drag-overlay` phase owner, still allowed to be visually hidden | hover visual state must be cleared immediately | hover forced-clear has removed both logical hover state and visible hover snapshot before or at `predrag:visual-selection-start` |
 | `selected -> predrag` | `transformer-primary` | `drag-overlay` phase owner, still allowed to be visually hidden | transformer-primary must detach/hide | drag-overlay ownership has started and transformer is no longer rendering a visible box |
-| `predrag -> drag` | `drag-overlay` | `drag-overlay` | hover-indicator and transformer-primary remain suppressed | first authoritative controlled-sync for the active drag-overlay session has been applied and is now allowed to become visible |
+| `predrag -> drag` | `drag-overlay` | `drag-overlay` | hover-indicator and transformer-primary remain suppressed | first authoritative controlled-sync for the active drag-overlay session has been applied; that visible boundary emits `drag-overlay:shown`, and drag-layer `selection-box:shown` follows from the same visible apply path |
 | `drag -> settling` | `drag-overlay` | `drag-overlay` | hover-indicator and transformer-primary remain suppressed | active drag has ended and the overlay is holding or replaying the last valid drag-session state without reopening startup ownership |
 | `settling -> selected|idle` | `drag-overlay` | `transformer-primary` or none | drag-overlay must end before another owner appears | overlay cleanup is complete; then transformer may restore for a surviving selection or the system may return to no owner |
 
 ### Failure Modes This Model Prevents
 - `startupJump`: the first visible drag-overlay frame came from stale seed geometry, buffered replay, or another non-authoritative startup source instead of the first live controlled-sync.
+- Late formal shown event: the overlay became visibly mounted through controlled-sync, but `drag-overlay:shown` was emitted later from a readiness confirmation instead of the real first visible frame.
 - Hover lingering: hover ownership was cleared logically, but visible hover cleanup happened later through passive session-end or component unmount instead of the predrag boundary.
 - Multiple startup paths: transformer, seed snapshots, replayed overlay state, and controlled-sync each tried to own startup visibility. Future changes must keep exactly one startup authority.
 
@@ -556,6 +633,7 @@ The current editor is functional, but several areas are tightly coupled and frag
 - Hover, transformer visibility, drag overlays, guide lines, and transformer restore-after-settle timing are actively suppressed or deferred during interaction for performance reasons.
 - Section auto-selection and auto-scroll during section reorder are coupled to viewport calculations and animation timing.
 - The editor still depends on window bridges and custom events for sidebar and external panel coordination.
+- Drag-overlay correctness is now stabilized around one startup visibility path, consistent session identity, zero `startupJump`, aligned steady-state drag geometry, and one continuous drag interaction across `predrag -> drag -> settling`. Remaining next-stage work should target lifecycle noise, redundant session churn, and performance cost rather than re-solving visibility authority, phase ordering, or identity correctness.
 
 ## 10. Extension Guidelines
 Use these rules when extending the editor without breaking existing behavior.
@@ -576,6 +654,15 @@ Use these rules when extending the editor without breaking existing behavior.
 - Preserve `determinarNuevaSeccion`, `convertirAbsARel`, and the section-mode-specific `yNorm` normalization used by the generic object drag path.
 - Do not remove post-drag selection restoration, guide cleanup, or drag overlay synchronization.
 - Treat individual drag and group drag as separate pipelines, and do not assume gallery/countdown drag commits automatically follow the generic object branch.
+- Preserve the canonical drag-overlay identity contract between `dragId`, the active session `selectedIds`, `dragOverlaySelectionIds`, and the drag-overlay session key.
+- Do not introduce a second startup visibility path. The first visible overlay frame, `drag-overlay:shown`, and drag-layer `selection-box:shown` must stay coupled to the same controlled-sync boundary.
+
+### Optimize Drag-Overlay Lifecycle
+
+- Treat current drag-overlay ownership, identity, and startup visibility rules as correctness invariants, not optimization targets.
+- Treat the documented drag phase model and drag interaction session continuity model as stable. Future cleanup may collapse redundant interaction restarts, placeholder identity churn, or overly chatty debug transitions, but it must not redefine when `predrag`, `drag`, and `settling` occur.
+- Remaining cleanup work is to make runtime behavior and BOXFLOW instrumentation fully comply with the strict interaction session invariants above. That next refactor is about enforcing session continuity and removing invalid fragmentation, not about redesigning drag correctness.
+- Near-term optimization work should reduce lifecycle noise, phase churn, redundant interaction restarts, and performance cost while preserving `controlled-sync` as the only startup visibility authority.
 
 ### Extend selection or transform behavior
 

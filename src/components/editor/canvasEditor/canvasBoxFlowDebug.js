@@ -441,6 +441,215 @@ function normalizeIdentity(identity, channel) {
   return trimmed || `${normalizeChannel(channel)}:default`;
 }
 
+function readRetiredIdentityStore(store, channel) {
+  if (!store) return null;
+  const safeChannel = normalizeChannel(channel);
+  if (!store.retiredIdentities || typeof store.retiredIdentities !== "object") {
+    store.retiredIdentities = {};
+  }
+  if (!store.retiredIdentities[safeChannel]) {
+    store.retiredIdentities[safeChannel] = {};
+  }
+  return store.retiredIdentities[safeChannel];
+}
+
+function isCanvasBoxFlowIdentityRetiredInStore(
+  store,
+  channel,
+  identity,
+  currentSession = null
+) {
+  const safeChannel = normalizeChannel(channel);
+  const safeIdentity = normalizeIdentity(identity, safeChannel);
+  if (!safeIdentity) return false;
+  if (currentSession?.identity === safeIdentity) return false;
+  const retiredIdentityStore = readRetiredIdentityStore(store, safeChannel);
+  return Boolean(retiredIdentityStore?.[safeIdentity]);
+}
+
+function retireCanvasBoxFlowIdentityInStore(
+  store,
+  channel,
+  identity,
+  payload = {},
+  targetWindow = null
+) {
+  const safeChannel = normalizeChannel(channel);
+  const safeIdentity = normalizeIdentity(identity, safeChannel);
+  if (!safeIdentity) return null;
+  const retiredIdentityStore = readRetiredIdentityStore(store, safeChannel);
+  if (!retiredIdentityStore) return null;
+  const existingRecord = retiredIdentityStore[safeIdentity] || null;
+  const nextRecord = {
+    identity: safeIdentity,
+    retiredAtMs: getNowMs(targetWindow),
+    reason: payload?.reason || null,
+  };
+  retiredIdentityStore[safeIdentity] = {
+    ...existingRecord,
+    ...nextRecord,
+  };
+  return retiredIdentityStore[safeIdentity];
+}
+
+function resolveReusableIdentity(
+  store,
+  channel,
+  identity,
+  currentSession = null
+) {
+  const safeChannel = normalizeChannel(channel);
+  const safeIdentity = normalizeIdentity(identity, safeChannel);
+  if (!safeIdentity) return null;
+  if (
+    isCanvasBoxFlowIdentityRetiredInStore(
+      store,
+      safeChannel,
+      safeIdentity,
+      currentSession
+    )
+  ) {
+    return null;
+  }
+  return safeIdentity;
+}
+
+function resolveSessionIdentity(
+  channel,
+  options = {},
+  currentSession = null,
+  store = null
+) {
+  const safeChannel = normalizeChannel(channel);
+
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "sessionIdentity")
+  ) {
+    const safeSessionIdentity = resolveReusableIdentity(
+      store,
+      safeChannel,
+      options.sessionIdentity,
+      currentSession
+    );
+    if (safeSessionIdentity) {
+      return safeSessionIdentity;
+    }
+  }
+
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "identity")
+  ) {
+    const safeIdentity = resolveReusableIdentity(
+      store,
+      safeChannel,
+      options.identity,
+      currentSession
+    );
+    if (safeIdentity) {
+      return safeIdentity;
+    }
+  }
+
+  return currentSession?.identity || null;
+}
+
+function resolveAuthorityIdentity(
+  channel,
+  options = {},
+  currentSession = null,
+  store = null
+) {
+  const safeChannel = normalizeChannel(channel);
+
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "authorityIdentity")
+  ) {
+    const rawAuthorityIdentity = options.authorityIdentity;
+    if (
+      rawAuthorityIdentity === null ||
+      typeof rawAuthorityIdentity === "undefined" ||
+      rawAuthorityIdentity === false
+    ) {
+      return null;
+    }
+    return resolveReusableIdentity(
+      store,
+      safeChannel,
+      rawAuthorityIdentity,
+      currentSession
+    );
+  }
+
+  return currentSession?.authorityIdentity || null;
+}
+
+function isAuthorityIdentityLocked(session, authorityIdentity = null) {
+  const lockedIdentity = authorityIdentity || session?.authorityIdentity || null;
+  if (!session || !lockedIdentity) return false;
+  return session.identity === lockedIdentity;
+}
+
+function shouldPreserveAuthoritySession(
+  session,
+  requestedIdentity,
+  authorityIdentity = null,
+  options = {}
+) {
+  if (!session) return false;
+  if (options?.allowAuthorityReplace === true) return false;
+  if (!isAuthorityIdentityLocked(session, authorityIdentity)) return false;
+  if (!requestedIdentity) return true;
+  return requestedIdentity !== session.identity;
+}
+
+function syncSessionAuthorityIdentity(session, authorityIdentity = null) {
+  if (!session) return session;
+  const normalizedAuthorityIdentity = authorityIdentity || null;
+  if (session.authorityIdentity === normalizedAuthorityIdentity) {
+    return session;
+  }
+  session.authorityIdentity = normalizedAuthorityIdentity;
+  return session;
+}
+
+function maybeAttachEventIdentity(
+  payload,
+  options = {},
+  sessionIdentity = null,
+  channel = "selection",
+  store = null,
+  currentSession = null
+) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (
+    !options ||
+    !Object.prototype.hasOwnProperty.call(options, "identity")
+  ) {
+    return payload;
+  }
+
+  const eventIdentity = resolveReusableIdentity(
+    store,
+    channel,
+    options.identity,
+    currentSession
+  );
+  if (!eventIdentity || eventIdentity === sessionIdentity || payload.eventIdentity) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    eventIdentity,
+  };
+}
+
 function ensureDebugStore(targetWindow = null, { reset = false } = {}) {
   const resolvedWindow = getDebugWindow(targetWindow);
   if (!resolvedWindow) return null;
@@ -454,6 +663,10 @@ function ensureDebugStore(targetWindow = null, { reset = false } = {}) {
       sessions: {
         hover: null,
         selection: null,
+      },
+      retiredIdentities: {
+        hover: {},
+        selection: {},
       },
     };
   }
@@ -505,6 +718,16 @@ function emitBoxFlowLog(session, eventName, payload = {}, targetWindow = null) {
   return entry;
 }
 
+function hasActiveSessionSummaries(session) {
+  return Boolean(session && Object.keys(session.summaries || {}).length > 0);
+}
+
+function shouldRetargetSessionIdentity(session, options = {}) {
+  if (options.allowIdentityRetarget !== true) return false;
+  if (!session || hasActiveSessionSummaries(session)) return false;
+  return Number(session.seq || 0) <= 1;
+}
+
 function flushSessionSummary(session, summaryKey, reason = "manual", targetWindow = null) {
   if (!session || !summaryKey) return null;
 
@@ -551,6 +774,16 @@ export function getActiveCanvasBoxFlowSession(channel, targetWindow = null) {
   return store.sessions[normalizeChannel(channel)] || null;
 }
 
+export function isCanvasBoxFlowIdentityRetired(
+  channel,
+  identity,
+  targetWindow = null
+) {
+  const store = ensureDebugStore(targetWindow);
+  if (!store) return false;
+  return isCanvasBoxFlowIdentityRetiredInStore(store, channel, identity, null);
+}
+
 export function ensureCanvasBoxFlowSession(
   channel,
   identity,
@@ -561,16 +794,61 @@ export function ensureCanvasBoxFlowSession(
   if (!isCanvasBoxFlowDebugEnabled(targetWindow)) return null;
 
   const safeChannel = normalizeChannel(channel);
-  const safeIdentity = normalizeIdentity(identity, safeChannel);
   const store = ensureDebugStore(targetWindow);
   if (!store) return null;
 
   const currentSession = store.sessions[safeChannel];
+  const safeIdentity = resolveSessionIdentity(safeChannel, {
+    ...options,
+    sessionIdentity:
+      Object.prototype.hasOwnProperty.call(options || {}, "sessionIdentity")
+        ? options.sessionIdentity
+        : identity,
+  }, currentSession, store);
+  const authorityIdentity = resolveAuthorityIdentity(
+    safeChannel,
+    options,
+    currentSession,
+    store
+  );
+  if (!safeIdentity) {
+    return currentSession || null;
+  }
   if (currentSession && currentSession.identity === safeIdentity) {
+    syncSessionAuthorityIdentity(currentSession, authorityIdentity);
     return currentSession;
   }
 
   if (currentSession) {
+    if (
+      shouldPreserveAuthoritySession(
+        currentSession,
+        safeIdentity,
+        authorityIdentity,
+        options
+      )
+    ) {
+      syncSessionAuthorityIdentity(currentSession, authorityIdentity);
+      return currentSession;
+    }
+
+    if (shouldRetargetSessionIdentity(currentSession, options)) {
+      const previousIdentity = currentSession.identity;
+      currentSession.identity = safeIdentity;
+      syncSessionAuthorityIdentity(currentSession, authorityIdentity);
+      emitBoxFlowLog(
+        currentSession,
+        options.retargetEventName || "interaction:retarget",
+        {
+          previousIdentity,
+          identity: safeIdentity,
+          ...payload,
+        },
+        targetWindow
+      );
+      return currentSession;
+    }
+
     Object.keys(currentSession.summaries || {}).forEach((summaryKey) => {
       flushSessionSummary(currentSession, summaryKey, "session-replaced", targetWindow);
     });
@@ -592,6 +870,7 @@ export function ensureCanvasBoxFlowSession(
     channel: safeChannel,
     token: `${safeChannel}#${nextCount}`,
     identity: safeIdentity,
+    authorityIdentity: authorityIdentity || null,
     startedAtMs: getNowMs(targetWindow),
     seq: 0,
     summaries: {},
@@ -628,12 +907,33 @@ export function logCanvasBoxFlow(
   if (!store) return null;
 
   let session = store.sessions[safeChannel];
-  const nextIdentity =
-    typeof options.identity === "undefined"
-      ? session?.identity || null
-      : normalizeIdentity(options.identity, safeChannel);
+  const nextIdentity = resolveSessionIdentity(
+    safeChannel,
+    options,
+    session,
+    store
+  );
+  const authorityIdentity = resolveAuthorityIdentity(
+    safeChannel,
+    options,
+    session,
+    store
+  );
 
-  if (!session || (nextIdentity && session.identity !== nextIdentity)) {
+  if (
+    session &&
+    shouldPreserveAuthoritySession(
+      session,
+      nextIdentity,
+      authorityIdentity,
+      options
+    )
+  ) {
+    syncSessionAuthorityIdentity(session, authorityIdentity);
+  } else if (!session || (nextIdentity && session.identity !== nextIdentity)) {
+    if (!session && !nextIdentity) {
+      return null;
+    }
     session = ensureCanvasBoxFlowSession(
       safeChannel,
       nextIdentity || `${safeChannel}:implicit`,
@@ -642,12 +942,14 @@ export function logCanvasBoxFlow(
         startEventName: options.startEventName,
         endEventName: options.endEventName,
         endReason: options.endReason,
+        authorityIdentity,
       },
       targetWindow
     );
   }
 
   if (!session) return null;
+  syncSessionAuthorityIdentity(session, authorityIdentity);
 
   if (Array.isArray(options.flushSummaryKeys)) {
     options.flushSummaryKeys.forEach((summaryKey) => {
@@ -660,7 +962,19 @@ export function logCanvasBoxFlow(
     });
   }
 
-  return emitBoxFlowLog(session, eventName, payload, targetWindow);
+  return emitBoxFlowLog(
+    session,
+    eventName,
+    maybeAttachEventIdentity(
+      payload,
+      options,
+      session.identity,
+      safeChannel,
+      store,
+      session
+    ),
+    targetWindow
+  );
 }
 
 export function recordCanvasBoxFlowSummary(
@@ -677,12 +991,33 @@ export function recordCanvasBoxFlowSummary(
   if (!store) return null;
 
   let session = store.sessions[safeChannel];
-  const nextIdentity =
-    typeof options.identity === "undefined"
-      ? session?.identity || null
-      : normalizeIdentity(options.identity, safeChannel);
+  const nextIdentity = resolveSessionIdentity(
+    safeChannel,
+    options,
+    session,
+    store
+  );
+  const authorityIdentity = resolveAuthorityIdentity(
+    safeChannel,
+    options,
+    session,
+    store
+  );
 
-  if (!session || (nextIdentity && session.identity !== nextIdentity)) {
+  if (
+    session &&
+    shouldPreserveAuthoritySession(
+      session,
+      nextIdentity,
+      authorityIdentity,
+      options
+    )
+  ) {
+    syncSessionAuthorityIdentity(session, authorityIdentity);
+  } else if (!session || (nextIdentity && session.identity !== nextIdentity)) {
+    if (!session && !nextIdentity) {
+      return null;
+    }
     session = ensureCanvasBoxFlowSession(
       safeChannel,
       nextIdentity || `${safeChannel}:implicit`,
@@ -691,16 +1026,27 @@ export function recordCanvasBoxFlowSummary(
         startEventName: options.startEventName,
         endEventName: options.endEventName,
         endReason: options.endReason,
+        authorityIdentity,
       },
       targetWindow
     );
   }
 
   if (!session) return null;
+  syncSessionAuthorityIdentity(session, authorityIdentity);
 
   const safeSummaryKey = String(summaryKey || "summary");
   const nowMs = getNowMs(targetWindow);
-  const compactPayload = sanitizeCompactValue(payload);
+  const compactPayload = sanitizeCompactValue(
+    maybeAttachEventIdentity(
+      payload,
+      options,
+      session.identity,
+      safeChannel,
+      store,
+      session
+    )
+  );
   const throttleMs = Math.max(
     0,
     Number(options.throttleMs ?? CANVAS_BOX_FLOW_SUMMARY_THROTTLE_MS) || 0
@@ -841,6 +1187,18 @@ export function endCanvasBoxFlowSession(
     payload,
     targetWindow
   );
+  const shouldRetireIdentity =
+    options.retireIdentity === true ||
+    payload?.reason === "drag-session-complete";
+  if (shouldRetireIdentity) {
+    retireCanvasBoxFlowIdentityInStore(
+      store,
+      safeChannel,
+      session.identity,
+      payload,
+      targetWindow
+    );
+  }
   store.sessions[safeChannel] = null;
   return entry;
 }
@@ -906,8 +1264,13 @@ export function buildCanvasBoxFlowBoundsDigest(bounds) {
 
 export function buildCanvasBoxFlowIdsDigest(ids) {
   if (!Array.isArray(ids)) return "";
-  return ids
-    .map((value) => String(value ?? "").trim())
-    .filter((value) => value !== "")
+  return Array.from(
+    new Set(
+      ids
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value !== "")
+    )
+  )
+    .sort((left, right) => left.localeCompare(right))
     .join(",");
 }

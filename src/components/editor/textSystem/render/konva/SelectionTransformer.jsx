@@ -9,6 +9,8 @@ import {
 import {
   buildCanvasBoxFlowBoundsDigest,
   flushCanvasBoxFlowSummary,
+  getActiveCanvasBoxFlowSession,
+  isCanvasBoxFlowIdentityRetired,
   logCanvasBoxFlow,
   recordCanvasBoxFlowSummary,
 } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
@@ -331,6 +333,7 @@ export default function SelectionBounds({
   isMobile = false,
   dragLayerRef = null,
   boxFlowIdentity = null,
+  boxFlowSessionIdentity = null,
   canvasInteractionEpoch = 0,
   canvasInteractionActive = false,
   canvasInteractionSettling = false,
@@ -850,6 +853,32 @@ export default function SelectionBounds({
     fallback ||
     "selection:implicit";
 
+  const resolveSelectionSessionIdentity = (
+    preferredIdentity = null,
+    fallback = null
+  ) => {
+    const candidates = [
+      preferredIdentity,
+      boxFlowSessionIdentity,
+      getActiveCanvasBoxFlowSession("selection")?.identity || null,
+      buildSelectionBoxFlowIdentity(fallback),
+    ];
+
+    for (const candidate of candidates) {
+      const safeCandidate = String(candidate ?? "").trim();
+      if (!safeCandidate) continue;
+      if (isCanvasBoxFlowIdentityRetired("selection", safeCandidate)) {
+        continue;
+      }
+      return safeCandidate;
+    }
+
+    return buildSelectionBoxFlowIdentity(fallback);
+  };
+
+  const buildSelectionBoxFlowSessionIdentity = (fallback = null) =>
+    resolveSelectionSessionIdentity(null, fallback);
+
   const collectTransformNodeIds = (nodes = []) =>
     nodes
       .map((node) => getTransformNodeId(node))
@@ -1116,7 +1145,7 @@ export default function SelectionBounds({
       attachedNodeIds,
       bounds: getTransformerBoundsDigest(tr),
     }, {
-      identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodosTransformables)),
+      identity: buildSelectionBoxFlowSessionIdentity(buildAttachedNodeIdsDigest(nodosTransformables)),
       flushSummaryKeys: ["transform-preview"],
       flushReason: "attach-applied",
     });
@@ -1128,7 +1157,7 @@ export default function SelectionBounds({
     const currentAttachedNodes =
       typeof tr?.nodes === "function" ? tr.nodes() || [] : [];
     const attachedNodeIds = collectTransformNodeIds(currentAttachedNodes);
-    const identity = buildSelectionBoxFlowIdentity(attachedNodeIds.join(","));
+    const identity = buildSelectionBoxFlowSessionIdentity(attachedNodeIds.join(","));
 
     logCanvasBoxFlow("selection", "bounds-sync:requested", {
       source,
@@ -2017,13 +2046,13 @@ export default function SelectionBounds({
         reason: "generic-transformer-disabled",
         forceAttach: Boolean(forceAttach),
       }, {
-        identity: buildSelectionBoxFlowIdentity(),
+        identity: buildSelectionBoxFlowSessionIdentity(),
       });
       return;
     }
 
     const restoreEpoch = canvasInteractionEpoch;
-    const identity = buildSelectionBoxFlowIdentity();
+    const identity = buildSelectionBoxFlowSessionIdentity();
     const schedulingStrategy =
       typeof scheduleCanvasUiAfterSettle === "function"
         ? "canvas-ui-settle"
@@ -2119,7 +2148,7 @@ export default function SelectionBounds({
         attachedNodeIds: attachedNodeIdsDigest,
         bounds: getTransformerBoundsDigest(tr),
       }, {
-        identity: buildSelectionBoxFlowIdentity(attachedNodeIdsDigest),
+        identity: buildSelectionBoxFlowSessionIdentity(attachedNodeIdsDigest),
       });
 
       if (textPreviewEndSnapshot && selectedElements.length === 1) {
@@ -2238,7 +2267,7 @@ export default function SelectionBounds({
         attachSuppressed: Boolean(isTransformerAttachBlocked),
         shouldUseGenericTransformer: Boolean(shouldUseGenericTransformer),
       }, {
-        identity: buildSelectionBoxFlowIdentity(attachedNodeIdsDigest),
+        identity: buildSelectionBoxFlowSessionIdentity(attachedNodeIdsDigest),
       });
     }
 
@@ -2502,7 +2531,7 @@ export default function SelectionBounds({
         attachedNodeIds: buildAttachedNodeIdsDigest(attachedNodes),
         visible: Boolean(transformerBoxFlowSnapshotRef.current?.visible),
       }, {
-        identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(attachedNodes)),
+        identity: buildSelectionBoxFlowSessionIdentity(buildAttachedNodeIdsDigest(attachedNodes)),
         flushSummaryKeys: ["transform-preview"],
         flushReason: "cleanup",
       });
@@ -2573,7 +2602,7 @@ export default function SelectionBounds({
           source: "selection-transformer",
           selectedIds: selectionKey || null,
         }, {
-          identity: buildSelectionBoxFlowIdentity(),
+          identity: buildSelectionBoxFlowSessionIdentity(),
         });
       }
       attachBlockSnapshotRef.current = null;
@@ -2593,7 +2622,7 @@ export default function SelectionBounds({
       selectedIds: selectionKey || null,
       ...nextSnapshot,
     }, {
-      identity: buildSelectionBoxFlowIdentity(),
+      identity: buildSelectionBoxFlowSessionIdentity(),
     });
   }, [
     canvasInteractionActive,
@@ -2681,7 +2710,7 @@ export default function SelectionBounds({
         selectedIds: selectionKey || null,
         wantedIds: elementosTransformables.map((obj) => obj.id),
       }, {
-        identity: buildSelectionBoxFlowIdentity(),
+        identity: buildSelectionBoxFlowSessionIdentity(),
       });
       return;
     }
@@ -2792,28 +2821,41 @@ export default function SelectionBounds({
     );
     const nextSnapshot = {
       visible: nextVisible,
-      identity: buildSelectionBoxFlowIdentity(attachedNodeIds),
+      sessionIdentity: buildSelectionBoxFlowSessionIdentity(attachedNodeIds),
+      visualIdentity: buildSelectionBoxFlowIdentity(attachedNodeIds),
       renderMode: transformerVisualMode.renderMode,
       attachedNodeIds,
       bounds: nextVisible ? getTransformerBoundsDigest(lifecycleNode) : null,
     };
     const previousSnapshot = transformerBoxFlowSnapshotRef.current;
     transformerBoxFlowSnapshotRef.current = nextSnapshot;
+    const previousSessionIdentity = resolveSelectionSessionIdentity(
+      previousSnapshot?.sessionIdentity || null,
+      previousSnapshot?.visualIdentity || attachedNodeIds
+    );
+    const nextSessionIdentity = resolveSelectionSessionIdentity(
+      nextSnapshot.sessionIdentity,
+      nextSnapshot.visualIdentity
+    );
 
     if (
       previousSnapshot?.visible &&
-      (!nextSnapshot.visible || previousSnapshot.identity !== nextSnapshot.identity)
+      (
+        !nextSnapshot.visible ||
+        previousSnapshot.sessionIdentity !== nextSnapshot.sessionIdentity ||
+        previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
+      )
     ) {
       flushCanvasBoxFlowSummary("selection", "transform-preview", {
         reason: "selection-box-hidden",
       });
       logCanvasBoxFlow("selection", "selection-box:hidden", {
         source: "transformer-primary",
-        selectedIds: previousSnapshot.identity,
+        selectedIds: previousSnapshot.visualIdentity,
         renderMode: previousSnapshot.renderMode,
         attachedNodeIds: previousSnapshot.attachedNodeIds || null,
         reason:
-          previousSnapshot.identity !== nextSnapshot.identity
+          previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
             ? "selection-changed"
             : hasDragOverlayVisualOwnership
               ? "drag-overlay-owned"
@@ -2821,22 +2863,26 @@ export default function SelectionBounds({
                 ? "drag-overlay-suppressed"
               : transformerVisualMode.renderMode,
       }, {
-        identity: previousSnapshot.identity,
+        identity: previousSessionIdentity,
       });
     }
 
     if (
       nextSnapshot.visible &&
-      (!previousSnapshot?.visible || previousSnapshot.identity !== nextSnapshot.identity)
+      (
+        !previousSnapshot?.visible ||
+        previousSnapshot.sessionIdentity !== nextSnapshot.sessionIdentity ||
+        previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
+      )
     ) {
       logCanvasBoxFlow("selection", "selection-box:shown", {
         source: "transformer-primary",
-        selectedIds: nextSnapshot.identity,
+        selectedIds: nextSnapshot.visualIdentity,
         renderMode: nextSnapshot.renderMode,
         attachedNodeIds: nextSnapshot.attachedNodeIds || null,
         bounds: nextSnapshot.bounds,
       }, {
-        identity: nextSnapshot.identity,
+        identity: nextSessionIdentity,
       });
     }
   }, [
@@ -2870,6 +2916,7 @@ export default function SelectionBounds({
         isMobile={isMobile}
         debugLog={slog}
         debugSource="line-indicator"
+        boxFlowSessionIdentity={boxFlowSessionIdentity || null}
       />
     );
   }
@@ -3272,7 +3319,7 @@ export default function SelectionBounds({
             reason: "inline-editing-active",
             selectedIds: selectionKey || null,
           }, {
-            identity: buildSelectionBoxFlowIdentity(),
+            identity: buildSelectionBoxFlowSessionIdentity(),
           });
           if (editingId && typeof requestInlineEditFinish === "function") {
             requestInlineEditFinish("transform-start");
@@ -3316,7 +3363,7 @@ export default function SelectionBounds({
             isImageSelection: Boolean(esImagenSeleccionada),
           }
         ), {
-          identity: buildSelectionBoxFlowIdentity(),
+          identity: buildSelectionBoxFlowSessionIdentity(),
           flushSummaryKeys: ["transform-preview"],
           flushReason: "transform-start",
         });
@@ -3769,7 +3816,7 @@ export default function SelectionBounds({
               pointerType: e?.evt?.pointerType ?? null,
             }),
             {
-              identity: buildSelectionBoxFlowIdentity(
+              identity: buildSelectionBoxFlowSessionIdentity(
                 buildAttachedNodeIdsDigest(nodes)
               ),
               eventName: "transform:summary",
@@ -4047,7 +4094,7 @@ export default function SelectionBounds({
               attachedNodeIds: buildAttachedNodeIdsDigest(nodes),
               bounds: getTransformerBoundsDigest(tr),
             }, {
-              identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodes)),
+              identity: buildSelectionBoxFlowSessionIdentity(buildAttachedNodeIdsDigest(nodes)),
               flushSummaryKeys: ["transform-preview"],
               flushReason: "transform-end-multi",
             });
@@ -4068,7 +4115,7 @@ export default function SelectionBounds({
               message: err?.message || String(err),
               branch: "multi",
             }, {
-              identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodes)),
+              identity: buildSelectionBoxFlowSessionIdentity(buildAttachedNodeIdsDigest(nodes)),
               flushSummaryKeys: ["transform-preview"],
               flushReason: "transform-error-multi",
             });
@@ -4089,7 +4136,7 @@ export default function SelectionBounds({
             selectedIds: selectionKey || null,
             reason: "missing-node",
           }, {
-            identity: buildSelectionBoxFlowIdentity(),
+            identity: buildSelectionBoxFlowSessionIdentity(),
             flushSummaryKeys: ["transform-preview"],
             flushReason: "transform-end-missing-node",
           });
@@ -4527,7 +4574,7 @@ export default function SelectionBounds({
               isFinal: true,
             }
           ), {
-            identity: buildSelectionBoxFlowIdentity(buildAttachedNodeIdsDigest(nodes)),
+            identity: buildSelectionBoxFlowSessionIdentity(buildAttachedNodeIdsDigest(nodes)),
             flushSummaryKeys: ["transform-preview"],
             flushReason: "transform-end-single",
           });
@@ -4542,7 +4589,7 @@ export default function SelectionBounds({
             selectedIds: selectionKey || null,
             message: error?.message || String(error),
           }, {
-            identity: buildSelectionBoxFlowIdentity(),
+            identity: buildSelectionBoxFlowSessionIdentity(),
             flushSummaryKeys: ["transform-preview"],
             flushReason: "transform-error",
           });

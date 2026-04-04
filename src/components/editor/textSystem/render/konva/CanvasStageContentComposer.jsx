@@ -39,6 +39,8 @@ import {
   endCanvasBoxFlowSession,
   ensureCanvasBoxFlowSession,
   flushCanvasBoxFlowSummary,
+  getActiveCanvasBoxFlowSession,
+  isCanvasBoxFlowIdentityRetired,
   isCanvasBoxFlowDebugEnabled,
   logCanvasBoxFlow,
   recordCanvasBoxFlowSummary,
@@ -266,6 +268,18 @@ function createEmptyDragOverlayBoxFlowSession() {
   };
 }
 
+function createEmptyDragInteractionSession() {
+  return {
+    sessionKey: null,
+    dragId: null,
+    selectedIds: [],
+    selectedIdsDigest: "",
+    interactionEpoch: 0,
+    phase: null,
+    overlaySessionKey: null,
+  };
+}
+
 const DRAG_OVERLAY_DRIFT_SUMMARY_KEY = "drag-overlay:drift";
 const DRAG_OVERLAY_STARTUP_SUMMARY_KEY = "drag-overlay:startup";
 const DRAG_OVERLAY_DRIFT_THROTTLE_MS = 120;
@@ -390,12 +404,32 @@ function areDragOverlayBoxFlowSessionsEqual(left, right) {
   );
 }
 
+function areDragInteractionSessionsEqual(left, right) {
+  return (
+    left?.sessionKey === right?.sessionKey &&
+    left?.dragId === right?.dragId &&
+    areSelectionIdListsEqual(left?.selectedIds, right?.selectedIds) &&
+    left?.selectedIdsDigest === right?.selectedIdsDigest &&
+    Number(left?.interactionEpoch || 0) === Number(right?.interactionEpoch || 0) &&
+    left?.phase === right?.phase &&
+    left?.overlaySessionKey === right?.overlaySessionKey
+  );
+}
+
 function buildDragOverlayBoxFlowSessionKey(sequence, dragId, selectedIdsDigest) {
   return [
     "drag-overlay",
     Number(sequence || 0) || 0,
     dragId || "selection",
     selectedIdsDigest || "none",
+  ].join(":");
+}
+
+function buildDragInteractionSessionKey(sequence, dragId) {
+  return [
+    "drag-session",
+    Number(sequence || 0) || 0,
+    dragId || "selection",
   ].join(":");
 }
 
@@ -761,8 +795,10 @@ export default function CanvasStageContent({
   const dragOverlayIndicatorRef = useRef(null);
   const dragSettleSessionRef = useRef(createEmptyDragSettleSession());
   const dragOverlayBoxFlowSessionCounterRef = useRef(0);
+  const dragInteractionSessionCounterRef = useRef(0);
   const dragOverlaySyncTokenCounterRef = useRef(0);
   const dragOverlayBoxFlowSessionRef = useRef(createEmptyDragOverlayBoxFlowSession());
+  const dragInteractionSessionRef = useRef(createEmptyDragInteractionSession());
   const dragOverlayControlledBoundsRef = useRef(
     createEmptyDragOverlayControlledBoundsState()
   );
@@ -806,6 +842,9 @@ export default function CanvasStageContent({
   const [isDragSelectionOverlayVisualReady, setIsDragSelectionOverlayVisualReady] = useState(false);
   const [dragOverlayBoxFlowSession, setDragOverlayBoxFlowSession] = useState(
     createEmptyDragOverlayBoxFlowSession()
+  );
+  const [dragInteractionSession, setDragInteractionSession] = useState(
+    createEmptyDragInteractionSession()
   );
   const readSelectionRuntimeSnapshot = useCallback(() => {
     if (typeof selectionRuntime?.readSnapshot === "function") {
@@ -990,6 +1029,26 @@ export default function CanvasStageContent({
   useEffect(() => {
     dragOverlayBoxFlowSessionRef.current = dragOverlayBoxFlowSession;
   }, [dragOverlayBoxFlowSession]);
+  useEffect(() => {
+    dragInteractionSessionRef.current = dragInteractionSession;
+  }, [dragInteractionSession]);
+  const resolveReusableSelectionSessionIdentity = useCallback((...candidates) => {
+    const candidateList = [
+      ...candidates,
+      dragInteractionSessionRef.current?.sessionKey || null,
+    ];
+
+    for (const candidate of candidateList) {
+      const safeCandidate = String(candidate ?? "").trim();
+      if (!safeCandidate) continue;
+      if (isCanvasBoxFlowIdentityRetired("selection", safeCandidate)) {
+        continue;
+      }
+      return safeCandidate;
+    }
+
+    return null;
+  }, []);
   const resetDragOverlayStartupGate = useCallback((sessionKey = null) => {
     dragOverlayStartupGateRef.current = createDragOverlayStartupGateState(
       sessionKey || null
@@ -1016,6 +1075,138 @@ export default function CanvasStageContent({
     ));
     return nextSession;
   }, []);
+  const commitDragInteractionSession = useCallback((updater) => {
+    const previousSession = dragInteractionSessionRef.current;
+    const nextSessionCandidate =
+      typeof updater === "function" ? updater(previousSession) : updater;
+    const nextSession = nextSessionCandidate?.sessionKey
+      ? nextSessionCandidate
+      : createEmptyDragInteractionSession();
+
+    if (areDragInteractionSessionsEqual(previousSession, nextSession)) {
+      return previousSession;
+    }
+
+    dragInteractionSessionRef.current = nextSession;
+    setDragInteractionSession((currentSession) => (
+      areDragInteractionSessionsEqual(currentSession, nextSession)
+        ? currentSession
+        : nextSession
+    ));
+    return nextSession;
+  }, []);
+  const allocateDragInteractionSession = useCallback(({
+    dragId = null,
+    selectedIds = [],
+    interactionEpoch = 0,
+    phase = "predrag",
+    overlaySessionKey = null,
+  } = {}) => {
+    const nextSelectedIds = sanitizeSelectionIds(selectedIds);
+    const nextSelectedIdsDigest =
+      buildCanvasBoxFlowIdsDigest(nextSelectedIds) || "";
+    dragInteractionSessionCounterRef.current += 1;
+    return {
+      sessionKey: buildDragInteractionSessionKey(
+        dragInteractionSessionCounterRef.current,
+        dragId
+      ),
+      dragId: dragId || null,
+      selectedIds: [...nextSelectedIds],
+      selectedIdsDigest: nextSelectedIdsDigest,
+      interactionEpoch: Number(interactionEpoch || 0),
+      phase: phase || null,
+      overlaySessionKey: overlaySessionKey || null,
+    };
+  }, []);
+  const ensureDragInteractionSession = useCallback(({
+    dragId = null,
+    selectedIds = [],
+    interactionEpoch = 0,
+    phase = "predrag",
+    overlaySessionKey = null,
+  } = {}) => {
+    const nextSelectedIds = sanitizeSelectionIds(selectedIds);
+    const nextInteractionEpoch = Number(interactionEpoch || 0);
+
+    return commitDragInteractionSession((currentSession) => {
+      if (!currentSession?.sessionKey) {
+        return allocateDragInteractionSession({
+          dragId,
+          selectedIds: nextSelectedIds,
+          interactionEpoch: nextInteractionEpoch,
+          phase,
+          overlaySessionKey,
+        });
+      }
+
+      const normalizedSelectedIds =
+        nextSelectedIds.length > 0
+          ? nextSelectedIds
+          : sanitizeSelectionIds(currentSession.selectedIds);
+      const normalizedSelectedIdsDigest =
+        buildCanvasBoxFlowIdsDigest(normalizedSelectedIds) ||
+        currentSession.selectedIdsDigest ||
+        "";
+      const normalizedDragId = dragId || currentSession.dragId || null;
+      const normalizedInteractionEpoch =
+        nextInteractionEpoch > 0
+          ? nextInteractionEpoch
+          : Number(currentSession.interactionEpoch || 0);
+      const normalizedPhase = phase || currentSession.phase || null;
+      const normalizedOverlaySessionKey =
+        overlaySessionKey || currentSession.overlaySessionKey || null;
+
+      if (
+        currentSession.dragId === normalizedDragId &&
+        areSelectionIdListsEqual(
+          currentSession.selectedIds,
+          normalizedSelectedIds
+        ) &&
+        currentSession.selectedIdsDigest === normalizedSelectedIdsDigest &&
+        Number(currentSession.interactionEpoch || 0) ===
+          normalizedInteractionEpoch &&
+        currentSession.phase === normalizedPhase &&
+        currentSession.overlaySessionKey === normalizedOverlaySessionKey
+      ) {
+        return currentSession;
+      }
+
+      return {
+        ...currentSession,
+        dragId: normalizedDragId,
+        selectedIds: [...normalizedSelectedIds],
+        selectedIdsDigest: normalizedSelectedIdsDigest,
+        interactionEpoch: normalizedInteractionEpoch,
+        phase: normalizedPhase,
+        overlaySessionKey: normalizedOverlaySessionKey,
+      };
+    });
+  }, [allocateDragInteractionSession, commitDragInteractionSession]);
+  const syncDragInteractionSessionFromOverlay = useCallback((overlaySession, phaseOverride = null) => {
+    if (!overlaySession?.sessionKey) {
+      return dragInteractionSessionRef.current;
+    }
+
+    return ensureDragInteractionSession({
+      dragId: overlaySession.dragId || null,
+      selectedIds: overlaySession.selectedIds,
+      interactionEpoch: Number(overlaySession.interactionEpoch || 0),
+      phase: phaseOverride || overlaySession.phase || null,
+      overlaySessionKey: overlaySession.sessionKey,
+    });
+  }, [ensureDragInteractionSession]);
+  const clearDragInteractionSession = useCallback((matcher = null) => (
+    commitDragInteractionSession((currentSession) => {
+      if (!currentSession?.sessionKey) {
+        return currentSession;
+      }
+      if (typeof matcher === "function" && matcher(currentSession) !== true) {
+        return currentSession;
+      }
+      return createEmptyDragInteractionSession();
+    })
+  ), [commitDragInteractionSession]);
   const allocateDragOverlayBoxFlowSession = useCallback(({
     dragId = null,
     selectedIds = [],
@@ -1075,12 +1266,24 @@ export default function CanvasStageContent({
     });
     resetDragOverlayStartupGate(nextSession?.sessionKey || null);
     if (nextSession?.sessionKey) {
-      ensureCanvasBoxFlowSession("selection", nextSession.sessionKey, {
+      const nextInteractionSession = syncDragInteractionSessionFromOverlay(
+        nextSession,
+        phase
+      );
+      const nextInteractionSessionKey =
+        nextInteractionSession?.sessionKey || nextSession.sessionKey;
+      ensureCanvasBoxFlowSession("selection", nextInteractionSessionKey, {
         source: "stage-composer",
         selectedIds: nextSession.selectedIdsDigest,
         dragOverlaySessionKey: nextSession.sessionKey,
         dragOverlayPhase: nextSession.phase,
+        dragInteractionSessionKey: nextInteractionSessionKey,
+        dragInteractionPhase:
+          nextInteractionSession?.phase || phase || nextSession.phase || null,
         dragOverlayInteractionEpoch: nextSession.interactionEpoch || null,
+      }, {
+        allowIdentityRetarget: true,
+        authorityIdentity: nextInteractionSessionKey,
       });
     }
     return nextSession;
@@ -1088,6 +1291,7 @@ export default function CanvasStageContent({
     allocateDragOverlayBoxFlowSession,
     commitDragOverlayBoxFlowSession,
     resetDragOverlayStartupGate,
+    syncDragInteractionSessionFromOverlay,
   ]);
   const activateDragOverlayBoxFlowSession = useCallback(({
     dragId = null,
@@ -1128,12 +1332,24 @@ export default function CanvasStageContent({
     });
     resetDragOverlayStartupGate(nextSession?.sessionKey || null);
     if (nextSession?.sessionKey) {
-      ensureCanvasBoxFlowSession("selection", nextSession.sessionKey, {
+      const nextInteractionSession = syncDragInteractionSessionFromOverlay(
+        nextSession,
+        phase
+      );
+      const nextInteractionSessionKey =
+        nextInteractionSession?.sessionKey || nextSession.sessionKey;
+      ensureCanvasBoxFlowSession("selection", nextInteractionSessionKey, {
         source: "stage-composer",
         selectedIds: nextSession.selectedIdsDigest,
         dragOverlaySessionKey: nextSession.sessionKey,
         dragOverlayPhase: nextSession.phase,
+        dragInteractionSessionKey: nextInteractionSessionKey,
+        dragInteractionPhase:
+          nextInteractionSession?.phase || phase || nextSession.phase || null,
         dragOverlayInteractionEpoch: nextSession.interactionEpoch || null,
+      }, {
+        allowIdentityRetarget: true,
+        authorityIdentity: nextInteractionSessionKey,
       });
     }
     return nextSession;
@@ -1141,12 +1357,13 @@ export default function CanvasStageContent({
     allocateDragOverlayBoxFlowSession,
     commitDragOverlayBoxFlowSession,
     resetDragOverlayStartupGate,
+    syncDragInteractionSessionFromOverlay,
   ]);
   const updateDragOverlayBoxFlowSessionPhase = useCallback((phase, {
     dragId = null,
     interactionEpoch = 0,
-  } = {}) => (
-    commitDragOverlayBoxFlowSession((currentSession) => {
+  } = {}) => {
+    const nextSession = commitDragOverlayBoxFlowSession((currentSession) => {
       if (!currentSession?.sessionKey) {
         return currentSession;
       }
@@ -1166,8 +1383,12 @@ export default function CanvasStageContent({
           Number(interactionEpoch || 0) || Number(currentSession.interactionEpoch || 0) || 0,
         phase,
       };
-    })
-  ), [commitDragOverlayBoxFlowSession]);
+    });
+    if (nextSession?.sessionKey) {
+      syncDragInteractionSessionFromOverlay(nextSession, phase);
+    }
+    return nextSession;
+  }, [commitDragOverlayBoxFlowSession, syncDragInteractionSessionFromOverlay]);
   const clearDragOverlayBoxFlowSession = useCallback((matcher = null) => (
     commitDragOverlayBoxFlowSession((currentSession) => {
       if (!currentSession?.sessionKey) {
@@ -1186,22 +1407,45 @@ export default function CanvasStageContent({
     };
     return dragOverlayControlledBoundsRef.current;
   }, []);
-  const resolveLiveDragSelectionBounds = useCallback((selectedIds = []) => {
+  const objectLookup = useMemo(() => {
+    const lookup = new Map();
+    (Array.isArray(objetos) ? objetos : []).forEach((objeto) => {
+      const objectId = String(objeto?.id ?? "").trim();
+      if (!objectId) return;
+      lookup.set(objectId, objeto);
+    });
+    return lookup;
+  }, [objetos]);
+  const resolveLiveDragSelectionSnapshot = useCallback((selectedIds = []) => {
     const safeSelectedIds = sanitizeSelectionIds(selectedIds);
     if (safeSelectedIds.length === 0) return null;
 
-    return resolveSelectionBounds({
+    const bounds = resolveSelectionBounds({
       selectedElements: safeSelectedIds,
       elementRefs,
       objetos,
+      objectLookup,
       isMobile,
       requireLiveNodes: true,
     });
-  }, [elementRefs, isMobile, objetos]);
+    if (!bounds) {
+      return null;
+    }
+
+    return {
+      selectedIds: safeSelectedIds,
+      selectedIdsDigest: buildCanvasBoxFlowIdsDigest(safeSelectedIds),
+      bounds,
+    };
+  }, [elementRefs, isMobile, objectLookup, objetos]);
+  const resolveLiveDragSelectionBounds = useCallback((selectedIds = []) => (
+    resolveLiveDragSelectionSnapshot(selectedIds)?.bounds || null
+  ), [resolveLiveDragSelectionSnapshot]);
   const syncControlledDragOverlayBounds = useCallback((selectedIds = [], {
     dragId = null,
     source = "controlled-sync",
     syncToken = null,
+    liveSelectionSnapshot = null,
   } = {}) => {
     const activeSession = dragOverlayBoxFlowSessionRef.current;
     const safeSelectedIds = sanitizeSelectionIds(selectedIds);
@@ -1227,7 +1471,12 @@ export default function CanvasStageContent({
         : null;
     }
 
-    const nextBounds = resolveLiveDragSelectionBounds(safeSelectedIds);
+    const resolvedLiveSelectionSnapshot =
+      liveSelectionSnapshot?.bounds &&
+      areSelectionIdListsEqual(liveSelectionSnapshot?.selectedIds, safeSelectedIds)
+        ? liveSelectionSnapshot
+        : resolveLiveDragSelectionSnapshot(safeSelectedIds);
+    const nextBounds = resolvedLiveSelectionSnapshot?.bounds || null;
     if (!nextBounds) {
       return existingSnapshot?.sessionKey === activeSession.sessionKey
         ? existingSnapshot
@@ -1280,7 +1529,7 @@ export default function CanvasStageContent({
     return nextSnapshot;
   }, [
     markDragOverlayStartupFrameVisible,
-    resolveLiveDragSelectionBounds,
+    resolveLiveDragSelectionSnapshot,
   ]);
   const clearControlledDragOverlayBounds = useCallback((reason = "overlay-hidden") => {
     const currentSnapshot = dragOverlayControlledBoundsRef.current;
@@ -1385,6 +1634,9 @@ export default function CanvasStageContent({
       },
       {
         identity: targetSessionKey,
+        sessionIdentity: resolveReusableSelectionSessionIdentity(
+          targetSessionKey
+        ),
         eventName: "startup:summary",
         throttleMs: 0,
       }
@@ -1473,6 +1725,9 @@ export default function CanvasStageContent({
       driftPayload,
       {
         identity: activeSession.sessionKey,
+        sessionIdentity: resolveReusableSelectionSessionIdentity(
+          activeSession.sessionKey
+        ),
         eventName: "drift:summary",
         throttleMs: DRAG_OVERLAY_DRIFT_THROTTLE_MS,
       }
@@ -1490,12 +1745,19 @@ export default function CanvasStageContent({
     selectedIds = [],
     pos = null,
     source = "drag-move",
+    liveSelectionSnapshot = null,
   } = {}) => {
     const activeSession = dragOverlayBoxFlowSessionRef.current;
     if (!activeSession?.sessionKey || activeSession.phase !== "drag") return null;
 
+    const safeSelectedIds = sanitizeSelectionIds(selectedIds);
+    const resolvedLiveSelectionSnapshot =
+      liveSelectionSnapshot?.bounds &&
+      areSelectionIdListsEqual(liveSelectionSnapshot?.selectedIds, safeSelectedIds)
+        ? liveSelectionSnapshot
+        : resolveLiveDragSelectionSnapshot(safeSelectedIds);
     const dragBounds = buildCanvasBoxFlowBoundsDigest(
-      resolveLiveDragSelectionBounds(selectedIds)
+      resolvedLiveSelectionSnapshot?.bounds || null
     );
     if (!dragBounds) return null;
 
@@ -1509,7 +1771,8 @@ export default function CanvasStageContent({
       syncToken,
       dragId: dragId || activeSession.dragId || null,
       selectedIdsDigest:
-        buildCanvasBoxFlowIdsDigest(sanitizeSelectionIds(selectedIds)) ||
+        resolvedLiveSelectionSnapshot?.selectedIdsDigest ||
+        buildCanvasBoxFlowIdsDigest(safeSelectedIds) ||
         activeSession.selectedIdsDigest ||
         null,
       source,
@@ -1565,7 +1828,7 @@ export default function CanvasStageContent({
     ensureDragOverlayDriftState,
     maybeEmitDragOverlayStartupSummary,
     queuePendingDragOverlayDriftSample,
-    resolveLiveDragSelectionBounds,
+    resolveLiveDragSelectionSnapshot,
   ]);
   const noteDragOverlayBoundsSample = useCallback((sample = null) => {
     if (!isCanvasBoxFlowDebugEnabled()) return null;
@@ -1681,6 +1944,9 @@ export default function CanvasStageContent({
           ...lastDrift,
         }, {
           identity: driftState.sessionKey,
+          sessionIdentity: resolveReusableSelectionSessionIdentity(
+            driftState.sessionKey
+          ),
         })
       : null;
     dragOverlayDriftStateRef.current = finalizedState.nextState;
@@ -1728,9 +1994,9 @@ export default function CanvasStageContent({
   const selectedObjectsForVisualMode = useMemo(
     () =>
       sanitizeSelectionIds(elementosSeleccionados)
-        .map((id) => objetos.find((obj) => obj.id === id) || null)
+        .map((id) => objectLookup.get(id) || null)
         .filter(Boolean),
-    [elementosSeleccionados, objetos]
+    [elementosSeleccionados, objectLookup]
   );
   const isAnyCanvasDragActive =
     Boolean(isDragging) ||
@@ -1809,7 +2075,12 @@ export default function CanvasStageContent({
   );
   const dragOverlayBoxFlowIdentity =
     dragOverlayBoxFlowSession.sessionKey || null;
+  const dragInteractionSessionKey =
+    resolveReusableSelectionSessionIdentity(
+      dragInteractionSession.sessionKey || null
+    );
   const selectionBoxFlowIdentity =
+    dragInteractionSessionKey ||
     dragOverlayBoxFlowIdentity ||
     selectedIdsDigest ||
     dragOverlaySelectionIdsDigest ||
@@ -1835,6 +2106,9 @@ export default function CanvasStageContent({
 
     logCanvasBoxFlow("selection", "drag-overlay:shown", emission.payload, {
       identity: emission.payload.dragOverlaySessionKey,
+      sessionIdentity: resolveReusableSelectionSessionIdentity(
+        emission.payload.dragOverlaySessionKey || null
+      ),
     });
     return true;
   }, [
@@ -1997,9 +2271,12 @@ export default function CanvasStageContent({
     const idsDigest = buildCanvasBoxFlowIdsDigest(
       Array.isArray(ids) ? ids : []
     );
+    const activeDragInteractionIdentity =
+      resolveReusableSelectionSessionIdentity();
     const activeDragOverlayIdentity =
       dragOverlayBoxFlowSessionRef.current?.sessionKey || null;
     return (
+      activeDragInteractionIdentity ||
       activeDragOverlayIdentity ||
       idsDigest ||
       selectionBoxFlowIdentity ||
@@ -2009,13 +2286,31 @@ export default function CanvasStageContent({
   }, [selectionBoxFlowIdentity]);
 
   const recordSelectionDragMoveSummary = useCallback((dragId, tipo, pos, meta = {}) => {
-    const safeSelectedIds = Array.isArray(meta.selectedIds) ? meta.selectedIds : [];
+    const safeSelectedIds = sanitizeSelectionIds(meta.selectedIds);
+    const liveSelectionSnapshot = resolveLiveDragSelectionSnapshot(safeSelectedIds);
+    const sessionIdentity =
+      resolveReusableSelectionSessionIdentity(
+        resolveSelectionBoxFlowIdentity(dragId, safeSelectedIds)
+      );
     const dragSample = noteDragOverlayDragSample({
       dragId,
       selectedIds: safeSelectedIds,
       pos,
       source: meta.source || "stage-composer",
+      liveSelectionSnapshot,
     });
+    if (safeSelectedIds.length > 1) {
+      trackCanvasDragPerf("drag:overlay-sync", {
+        elementId: dragId,
+        tipo: tipo || null,
+        source: meta.source || "stage-composer",
+        selectedCount: safeSelectedIds.length,
+        reusedLiveBounds: Boolean(liveSelectionSnapshot?.bounds),
+      }, {
+        throttleMs: 240,
+        throttleKey: `drag:overlay-sync:${dragId || "unknown"}`,
+      });
+    }
     recordCanvasBoxFlowSummary("selection", "selection-drag-move", {
       source: meta.source || "stage-composer",
       dragId,
@@ -2024,20 +2319,20 @@ export default function CanvasStageContent({
       x: Number(pos?.x ?? null),
       y: Number(pos?.y ?? null),
     }, {
-      identity: resolveSelectionBoxFlowIdentity(
-        dragId,
-        safeSelectedIds
-      ),
+      identity: sessionIdentity,
+      sessionIdentity,
       eventName: "drag:summary",
     });
     syncControlledDragOverlayBounds(safeSelectedIds, {
       dragId,
       source: "controlled-sync",
       syncToken: dragSample?.syncToken || null,
+      liveSelectionSnapshot,
     });
   }, [
     noteDragOverlayDragSample,
     resolveSelectionBoxFlowIdentity,
+    resolveLiveDragSelectionSnapshot,
     syncControlledDragOverlayBounds,
   ]);
 
@@ -2051,6 +2346,8 @@ export default function CanvasStageContent({
     reason = null,
   } = {}) => {
     const identity = resolveSelectionBoxFlowIdentity(dragId, selectedIds);
+    const sessionIdentity =
+      resolveReusableSelectionSessionIdentity(identity) || identity;
 
     if (eventName === "drag:summary") {
       recordSelectionDragMoveSummary(dragId, tipo, pos, {
@@ -2077,12 +2374,26 @@ export default function CanvasStageContent({
       y: Number(pos?.y ?? null),
     }, {
       identity,
+      sessionIdentity,
     });
   }, [recordSelectionDragMoveSummary, resolveSelectionBoxFlowIdentity]);
 
   useEffect(() => {
+    const nextOwnerKind = shouldShowDragSelectionOverlay
+      ? "drag-overlay"
+      : stageSelectionVisualMode.singleSelectedLineId
+        ? "line-controls"
+        : stageSelectionVisualMode.mountPrimarySelectionOverlay
+          ? "transformer-primary"
+          : "none";
     const nextSnapshot = {
       identity: selectionBoxFlowIdentity,
+      ownerKind: nextOwnerKind,
+      dragInteractionSessionKey: dragInteractionSessionKey,
+      dragInteractionEpoch: Number(
+        dragInteractionSession.interactionEpoch || 0
+      ),
+      dragInteractionPhase: dragInteractionSession.phase || null,
       dragOverlayBoxFlowIdentity,
       dragOverlayInteractionEpoch: Number(
         dragOverlayBoxFlowSession.interactionEpoch || 0
@@ -2102,6 +2413,12 @@ export default function CanvasStageContent({
     };
     const previousSnapshot = boxFlowSelectionSnapshotRef.current;
     boxFlowSelectionSnapshotRef.current = nextSnapshot;
+    const activeSelectionSession = getActiveCanvasBoxFlowSession("selection");
+    const hasLockedDragInteractionSession = Boolean(
+      activeSelectionSession?.authorityIdentity &&
+      activeSelectionSession?.identity === activeSelectionSession?.authorityIdentity &&
+      String(activeSelectionSession?.identity || "").startsWith("drag-session:")
+    );
     const overlayHiddenIdentity =
       previousSnapshot?.showDragSelectionOverlay && !nextSnapshot.showDragSelectionOverlay
         ? previousSnapshot.dragOverlayBoxFlowIdentity ||
@@ -2127,12 +2444,21 @@ export default function CanvasStageContent({
           Number(previousSnapshot?.dragOverlayInteractionEpoch || 0) || null,
       }, {
         identity: overlayHiddenIdentity,
+        sessionIdentity:
+          resolveReusableSelectionSessionIdentity(
+            previousSnapshot?.dragInteractionSessionKey,
+            overlayHiddenIdentity
+          ) ||
+          overlayHiddenIdentity,
         flushSummaryKeys: ["selection-drag-move"],
         flushReason: "drag-overlay-hidden",
       });
     }
 
     if (!selectionBoxFlowIdentity) {
+      if (hasLockedDragInteractionSession) {
+        return;
+      }
       if (previousSnapshot?.identity) {
         endCanvasBoxFlowSession("selection", {
           reason: "selection-cleared",
@@ -2152,30 +2478,34 @@ export default function CanvasStageContent({
       source: "stage-composer",
       selectedIds: selectedIdsDigest,
       dragOverlaySelectionIds: dragOverlaySelectionIdsDigest,
+      dragInteractionSessionKey: dragInteractionSessionKey,
+      dragInteractionPhase: nextSnapshot.dragInteractionPhase,
+      dragInteractionEpoch:
+        nextSnapshot.dragInteractionEpoch || null,
       dragOverlaySessionKey: dragOverlayBoxFlowIdentity,
       dragOverlayPhase: nextSnapshot.dragOverlayPhase,
       dragOverlayInteractionEpoch:
         nextSnapshot.dragOverlayInteractionEpoch || null,
+    }, {
+      allowIdentityRetarget: true,
+      authorityIdentity: dragInteractionSessionKey || null,
     });
 
     const didVisualModeChange =
       !previousSnapshot ||
       previousSnapshot.identity !== nextSnapshot.identity ||
-      previousSnapshot.mountPrimarySelectionOverlay !==
-        nextSnapshot.mountPrimarySelectionOverlay ||
-      previousSnapshot.showDragSelectionOverlay !==
-        nextSnapshot.showDragSelectionOverlay ||
-      previousSnapshot.predragActive !== nextSnapshot.predragActive ||
-      previousSnapshot.singleSelectedLineId !== nextSnapshot.singleSelectedLineId ||
-      previousSnapshot.activeInlineEditingId !== nextSnapshot.activeInlineEditingId ||
-      previousSnapshot.hasSectionDecorationEdit !==
-        nextSnapshot.hasSectionDecorationEdit;
+      previousSnapshot.ownerKind !== nextSnapshot.ownerKind;
 
     if (didVisualModeChange) {
       logCanvasBoxFlow("selection", "visual-mode:changed", {
         source: "stage-composer",
+        ownerKind: nextSnapshot.ownerKind,
         selectedIds: selectedIdsDigest,
         dragOverlaySelectionIds: dragOverlaySelectionIdsDigest,
+        dragInteractionSessionKey: dragInteractionSessionKey,
+        dragInteractionPhase: nextSnapshot.dragInteractionPhase,
+        dragInteractionEpoch:
+          nextSnapshot.dragInteractionEpoch || null,
         dragOverlaySessionKey: dragOverlayBoxFlowIdentity,
         dragOverlayPhase: nextSnapshot.dragOverlayPhase,
         dragOverlayInteractionEpoch:
@@ -2195,6 +2525,17 @@ export default function CanvasStageContent({
       previousSnapshot?.dragOverlayVisualReady !==
       nextSnapshot.dragOverlayVisualReady
     ) {
+      const isOverlayHideReadyReset =
+        overlayHiddenIdentity &&
+        nextSnapshot.dragOverlayVisualReady === false;
+      if (isOverlayHideReadyReset) {
+        if (overlayHiddenIdentity) {
+          clearDragOverlayBoxFlowSession((currentSession) => (
+            currentSession?.sessionKey === overlayHiddenIdentity
+          ));
+        }
+        return;
+      }
       const readyStateIdentity = nextSnapshot.showDragSelectionOverlay
         ? nextSnapshot.dragOverlayBoxFlowIdentity ||
           nextSnapshot.identity
@@ -2216,6 +2557,13 @@ export default function CanvasStageContent({
           : Number(previousSnapshot?.dragOverlayInteractionEpoch || 0) || null,
       }, {
         identity: readyStateIdentity,
+        sessionIdentity:
+          resolveReusableSelectionSessionIdentity(
+            nextSnapshot.dragInteractionSessionKey,
+            previousSnapshot?.dragInteractionSessionKey,
+            readyStateIdentity
+          ) ||
+          readyStateIdentity,
       });
     }
     if (overlayHiddenIdentity) {
@@ -2227,6 +2575,9 @@ export default function CanvasStageContent({
     activeInlineEditingId,
     clearControlledDragOverlayBounds,
     clearDragOverlayBoxFlowSession,
+    dragInteractionSession.interactionEpoch,
+    dragInteractionSession.phase,
+    dragInteractionSessionKey,
     dragOverlayBoxFlowIdentity,
     dragOverlayBoxFlowSession.interactionEpoch,
     dragOverlayBoxFlowSession.phase,
@@ -2243,6 +2594,60 @@ export default function CanvasStageContent({
     stageSelectionVisualMode.dragOverlaySelectionIds,
     stageSelectionVisualMode.mountPrimarySelectionOverlay,
     stageSelectionVisualMode.singleSelectedLineId,
+  ]);
+
+  useEffect(() => {
+    if (!dragInteractionSessionKey) {
+      return;
+    }
+
+    const hasSettlingWork =
+      Boolean(dragSettleSessionRef.current?.dragId) ||
+      dragVisualSelectionIds.length > 0 ||
+      isPredragVisualSelectionActive ||
+      Boolean(dragOverlayBoxFlowSession.sessionKey) ||
+      Boolean(shouldShowDragSelectionOverlay) ||
+      isAnyCanvasDragActive ||
+      canvasInteractionActive ||
+      canvasInteractionSettling;
+
+    if (hasSettlingWork) {
+      return;
+    }
+
+    const completedDragInteractionSessionKey = dragInteractionSessionKey;
+    clearDragInteractionSession((currentSession) => (
+      currentSession?.sessionKey === completedDragInteractionSessionKey
+    ));
+
+    const activeSelectionSession = getActiveCanvasBoxFlowSession("selection");
+    if (activeSelectionSession?.identity === completedDragInteractionSessionKey) {
+      endCanvasBoxFlowSession("selection", {
+        reason: "drag-session-complete",
+        selectedIds: selectedIdsDigest,
+        dragOverlaySelectionIds: dragOverlaySelectionIdsDigest,
+        dragInteractionSessionKey: completedDragInteractionSessionKey,
+        dragInteractionPhase: dragInteractionSession.phase || null,
+        dragInteractionEpoch:
+          Number(dragInteractionSession.interactionEpoch || 0) || null,
+      }, {
+        summaryReason: "drag-session-complete",
+      });
+    }
+  }, [
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    clearDragInteractionSession,
+    dragInteractionSession.interactionEpoch,
+    dragInteractionSession.phase,
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowSession.sessionKey,
+    dragOverlaySelectionIdsDigest,
+    dragVisualSelectionIds.length,
+    isAnyCanvasDragActive,
+    isPredragVisualSelectionActive,
+    selectedIdsDigest,
+    shouldShowDragSelectionOverlay,
   ]);
 
   useEffect(() => {
@@ -2279,6 +2684,8 @@ export default function CanvasStageContent({
       source: hoverMeta?.source || "stage-composer",
       hoverId: nextRawHoverId,
       targetType: hoverMeta?.targetType || null,
+    }, {
+      allowIdentityRetarget: true,
     });
 
     if (!previousSnapshot || previousSnapshot.rawHoverId !== nextRawHoverId) {
@@ -2810,6 +3217,11 @@ export default function CanvasStageContent({
       }, {
         identity:
           nextDragOverlaySession.sessionKey ||
+          resolveSelectionBoxFlowIdentity(dragId, nextSelection),
+        sessionIdentity:
+          resolveReusableSelectionSessionIdentity(
+            resolveSelectionBoxFlowIdentity(dragId, nextSelection)
+          ) ||
           resolveSelectionBoxFlowIdentity(dragId, nextSelection),
       });
 
@@ -5364,6 +5776,11 @@ export default function CanvasStageContent({
                         selectedElements={elementosSeleccionados}
                         elementRefs={elementRefs}
                         objetos={objetos}
+                        boxFlowSessionIdentity={
+                          resolveReusableSelectionSessionIdentity(
+                            dragInteractionSessionKey
+                          ) || null
+                        }
                         isDragging={isCanvasDragGestureActive}
                         isInteractionLocked={isImageCropInteracting}
                         isMobile={isMobile}
@@ -6108,6 +6525,11 @@ export default function CanvasStageContent({
                         isMobile={isMobile}
                         debugSource="drag-overlay"
                         boxFlowIdentity={dragOverlayBoxFlowIdentity}
+                        boxFlowSessionIdentity={
+                          resolveReusableSelectionSessionIdentity(
+                            dragInteractionSessionKey
+                          ) || null
+                        }
                         lifecycleKey={dragOverlayBoxFlowIdentity}
                         boundsControlMode="controlled"
                         bringToFront

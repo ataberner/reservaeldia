@@ -439,6 +439,9 @@ Important rule:
 - `role` / `rol` can override semantic role inference for motion/runtime attributes.
 - `motionEffect` is sanitized into the HTML runtime as `data-motion`.
 - `enlace` wraps an object with an anchor without changing the underlying geometry model.
+- Selection boxes, hover boxes, transformer state, `pendingDragSelection`, and `dragVisualSelection` are runtime-only editor state. They are not persisted in Firestore.
+- Persisted geometry fields such as `x`, `y`, `width`, `height`, and `rotation` are not always the geometry source for the visible selection box. During active drag, the controlled drag overlay uses live Konva node bounds only, while selected-phase auto bounds can still fall back to object geometry when live nodes are missing.
+- After drag end, the visible selection box can temporarily represent the last controlled live-drag snapshot during settling instead of freshly persisted object geometry.
 
 ## 6. Optional / Dynamic Fields
 ### Root Config: `rsvp`

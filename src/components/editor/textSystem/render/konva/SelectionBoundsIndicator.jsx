@@ -26,6 +26,7 @@ import {
   buildCanvasBoxFlowIdsDigest,
   flushCanvasBoxFlowSummary,
   getActiveCanvasBoxFlowSession,
+  isCanvasBoxFlowIdentityRetired,
   logCanvasBoxFlow,
   recordCanvasBoxFlowSummary,
 } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
@@ -196,6 +197,7 @@ export function resolveSelectionBounds({
   selectedElements,
   elementRefs,
   objetos,
+  objectLookup = null,
   isMobile,
   requireLiveNodes = false,
 }) {
@@ -229,8 +231,10 @@ export function resolveSelectionBounds({
   }
   const rectBounds = resolveSelectionFrameRect({
     selectedElements,
+    selectedObjects: elementosData,
     elementRefs,
     objetos,
+    objectLookup,
     isMobile,
     includePadding: true,
     requireLiveNodes,
@@ -281,6 +285,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   debugLog = () => {},
   debugSource = "selection-bounds-indicator",
   boxFlowIdentity = null,
+  boxFlowSessionIdentity = null,
   lifecycleKey = null,
   boundsControlMode = "auto",
   bringToFront = false,
@@ -317,17 +322,49 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     bringToFront,
     debugSource,
     boxFlowIdentity,
+    boxFlowSessionIdentity,
     lifecycleKey,
     selectedGroupObject,
     boundsControlMode,
   };
 
+  const resolveVisualIdentity = useCallback((inputs = latestInputsRef.current || {}, fallback = null) => (
+    inputs.boxFlowIdentity ||
+    inputs.selectedIdsDigest ||
+    inputs.debugSource ||
+    fallback ||
+    debugSource
+  ), [debugSource]);
+
+  const resolveSessionIdentity = useCallback((inputs = latestInputsRef.current || {}, fallback = null) => {
+    const candidates = [
+      inputs.boxFlowSessionIdentity || null,
+      getActiveCanvasBoxFlowSession("selection")?.identity || null,
+      resolveVisualIdentity(inputs, fallback),
+    ];
+
+    for (const candidate of candidates) {
+      const safeCandidate = String(candidate ?? "").trim();
+      if (!safeCandidate) continue;
+      if (isCanvasBoxFlowIdentityRetired("selection", safeCandidate)) {
+        continue;
+      }
+      return safeCandidate;
+    }
+
+    return resolveVisualIdentity(inputs, fallback);
+  }, [resolveVisualIdentity]);
+
   const shouldEmitForIdentity = useCallback((identity) => {
-    if (!boxFlowIdentity) {
+    if (!identity) return false;
+    if (isCanvasBoxFlowIdentityRetired("selection", identity)) {
+      return false;
+    }
+    if (!boxFlowSessionIdentity && !boxFlowIdentity) {
       return true;
     }
     return getActiveCanvasBoxFlowSession("selection")?.identity === identity;
-  }, [boxFlowIdentity]);
+  }, [boxFlowIdentity, boxFlowSessionIdentity]);
 
   const updateBadgeVisual = useCallback((bounds, inputs = latestInputsRef.current || {}) => {
     const badgeGroupNode = badgeGroupRef.current;
@@ -406,12 +443,15 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       meta.debugSource ||
       currentInputs.debugSource ||
       debugSource;
-    const currentIdentity =
+    const currentVisualIdentity =
+      meta.visualIdentity ||
       meta.identity ||
-      previousSnapshot?.identity ||
-      currentInputs.boxFlowIdentity ||
-      currentInputs.selectedIdsDigest ||
-      currentDebugSource;
+      previousSnapshot?.visualIdentity ||
+      resolveVisualIdentity(currentInputs, currentDebugSource);
+    const currentSessionIdentity =
+      meta.sessionIdentity ||
+      previousSnapshot?.sessionIdentity ||
+      resolveSessionIdentity(currentInputs, currentVisualIdentity);
 
     if (groupNode && rectNode && polygonNode) {
       let didChange = false;
@@ -432,16 +472,23 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       }
     }
 
-    if (previousSnapshot?.visible && shouldEmitForIdentity(previousSnapshot.identity)) {
+    const previousSessionIdentity = resolveSessionIdentity(
+      {
+        boxFlowSessionIdentity: previousSnapshot?.sessionIdentity || null,
+        boxFlowIdentity: previousSnapshot?.visualIdentity || null,
+      },
+      previousSnapshot?.visualIdentity || currentVisualIdentity
+    );
+    if (previousSnapshot?.visible && shouldEmitForIdentity(previousSessionIdentity)) {
       flushCanvasBoxFlowSummary("selection", `${currentDebugSource}:bounds`, {
         reason: meta.reason || "hidden",
       });
       logCanvasBoxFlow("selection", "selection-box:hidden", {
         source: currentDebugSource,
-        selectedIds: previousSnapshot.identity,
+        selectedIds: previousSnapshot.visualIdentity,
         reason: meta.reason || "hidden",
       }, {
-        identity: previousSnapshot.identity,
+        identity: previousSessionIdentity,
       });
     }
 
@@ -449,7 +496,8 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       visible: false,
       boundsDigest: null,
       debugSource: currentDebugSource,
-      identity: currentIdentity,
+      visualIdentity: currentVisualIdentity,
+      sessionIdentity: currentSessionIdentity,
     };
 
     if (isControlledMode && typeof onVisualReadyChange === "function") {
@@ -485,12 +533,18 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
             ? currentInputs.selectedElements
             : []
         );
-    const currentIdentity =
-      meta.identity ||
-      currentInputs.boxFlowIdentity ||
+    const currentSelectedIdsDigest =
+      buildCanvasBoxFlowIdsDigest(currentSelectedIds) ||
       currentInputs.selectedIdsDigest ||
-      currentDebugSource ||
-      debugSource;
+      null;
+    const currentVisualIdentity =
+      meta.visualIdentity ||
+      currentSelectedIdsDigest ||
+      meta.identity ||
+      resolveVisualIdentity(currentInputs, currentDebugSource);
+    const currentSessionIdentity =
+      meta.sessionIdentity ||
+      resolveSessionIdentity(currentInputs, currentVisualIdentity);
     const nextBoundsDigest = buildCanvasBoxFlowBoundsDigest(nextBounds);
     if (!nextBoundsDigest) return null;
 
@@ -558,10 +612,11 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
 
     const previousSnapshot = indicatorSnapshotRef.current;
     const shouldLogRecalc =
-      shouldEmitForIdentity(currentIdentity) &&
+      shouldEmitForIdentity(currentSessionIdentity) &&
       (
         !previousSnapshot?.visible ||
-        previousSnapshot.identity !== currentIdentity ||
+        previousSnapshot.sessionIdentity !== currentSessionIdentity ||
+        previousSnapshot.visualIdentity !== currentVisualIdentity ||
         !areBoundsDigestsEqual(previousSnapshot.boundsDigest, nextBoundsDigest) ||
         previousSnapshot.debugSource !== currentDebugSource
       );
@@ -569,17 +624,21 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       logCanvasBoxFlow("selection", "bounds:recalc", {
         source: meta.source || "manual",
         debugSource: currentDebugSource,
-        selectedIds: currentIdentity,
+        selectedIds: currentSelectedIdsDigest,
         bounds: nextBoundsDigest,
       }, {
-        identity: currentIdentity,
+        identity: currentSessionIdentity,
       });
     }
 
     if (
       isControlledMode &&
       typeof onFirstControlledFrameVisible === "function" &&
-      (!previousSnapshot?.visible || previousSnapshot.identity !== currentIdentity)
+      (
+        !previousSnapshot?.visible ||
+        previousSnapshot.sessionIdentity !== currentSessionIdentity ||
+        previousSnapshot.visualIdentity !== currentVisualIdentity
+      )
     ) {
       onFirstControlledFrameVisible({
         source: meta.source || "manual",
@@ -587,36 +646,41 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         selectedIds: [...currentSelectedIds],
         bounds: nextBoundsDigest,
         lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
-        boxFlowIdentity: currentIdentity,
+        boxFlowIdentity: currentVisualIdentity,
+        sessionIdentity: currentSessionIdentity,
         syncToken: meta.syncToken || null,
       });
     }
 
     if (
-      shouldEmitForIdentity(currentIdentity) &&
-      (!previousSnapshot?.visible || previousSnapshot.identity !== currentIdentity)
+      shouldEmitForIdentity(currentSessionIdentity) &&
+      (
+        !previousSnapshot?.visible ||
+        previousSnapshot.sessionIdentity !== currentSessionIdentity ||
+        previousSnapshot.visualIdentity !== currentVisualIdentity
+      )
     ) {
       logCanvasBoxFlow("selection", "selection-box:shown", {
         source: currentDebugSource,
-        selectedIds: currentIdentity,
+        selectedIds: currentSelectedIdsDigest,
         bounds: nextBoundsDigest,
       }, {
-        identity: currentIdentity,
+        identity: currentSessionIdentity,
       });
     }
 
-    if (shouldEmitForIdentity(currentIdentity)) {
+    if (shouldEmitForIdentity(currentSessionIdentity)) {
       recordCanvasBoxFlowSummary(
         "selection",
         `${currentDebugSource}:bounds`,
         {
           source: meta.source || "manual",
           debugSource: currentDebugSource,
-          selectedIds: currentIdentity,
+          selectedIds: currentSelectedIdsDigest,
           bounds: nextBoundsDigest,
         },
         {
-          identity: currentIdentity,
+          identity: currentSessionIdentity,
           eventName: "bounds:summary",
         }
       );
@@ -629,7 +693,8 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         selectedIds: [...currentSelectedIds],
         bounds: nextBoundsDigest,
         lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
-        boxFlowIdentity: currentIdentity,
+        boxFlowIdentity: currentVisualIdentity,
+        sessionIdentity: currentSessionIdentity,
         syncToken: meta.syncToken || null,
         paintMode: isControlledMode ? "immediate-draw" : "batched-draw",
       });
@@ -639,7 +704,8 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       visible: true,
       boundsDigest: nextBoundsDigest,
       debugSource: currentDebugSource,
-      identity: currentIdentity,
+      visualIdentity: currentVisualIdentity,
+      sessionIdentity: currentSessionIdentity,
     };
 
     if (
@@ -647,7 +713,8 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       typeof onVisualReadyChange === "function" &&
       (
         !previousSnapshot?.visible ||
-        previousSnapshot.identity !== currentIdentity
+        previousSnapshot.sessionIdentity !== currentSessionIdentity ||
+        previousSnapshot.visualIdentity !== currentVisualIdentity
       )
     ) {
       onVisualReadyChange(true);
@@ -675,11 +742,8 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     const currentSelectedNodes = Array.isArray(currentInputs.selectedNodes)
       ? currentInputs.selectedNodes
       : [];
-    const identity =
-      currentInputs.boxFlowIdentity ||
-      currentInputs.selectedIdsDigest ||
-      currentInputs.debugSource ||
-      debugSource;
+    const visualIdentity = resolveVisualIdentity(currentInputs, debugSource);
+    const sessionIdentity = resolveSessionIdentity(currentInputs, visualIdentity);
 
     if (
       (source === "node-x-change" || source === "node-y-change") &&
@@ -700,13 +764,16 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       source,
       debugSource: currentInputs.debugSource || debugSource,
       selectedIds: currentSelectedElements,
-      identity,
+      visualIdentity,
+      sessionIdentity,
       lifecycleKey: currentInputs.lifecycleKey || null,
     });
   }, [
     applyIndicatorBounds,
     debugSource,
     isControlledMode,
+    resolveSessionIdentity,
+    resolveVisualIdentity,
   ]);
 
   useEffect(() => {
@@ -717,15 +784,16 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
 
     if (selectedNodes.length === 0 && !stage) return;
 
-    const identity = boxFlowIdentity || selectedIdsDigest || debugSource;
-    if (shouldEmitForIdentity(identity)) {
+    const visualIdentity = resolveVisualIdentity();
+    const sessionIdentity = resolveSessionIdentity(latestInputsRef.current || {}, visualIdentity);
+    if (shouldEmitForIdentity(sessionIdentity)) {
       logCanvasBoxFlow("selection", "bounds:listeners-attached", {
         source: debugSource,
-        selectedIds: identity,
+        selectedIds: selectedIdsDigest,
         nodeCount: selectedNodes.length,
         stageBound: Boolean(stage),
       }, {
-        identity,
+        identity: sessionIdentity,
       });
     }
 
@@ -771,24 +839,27 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         node.off("scaleYChange.selection-bounds-indicator", scaleYChangeHandler);
       });
       stage?.off("dragmove.selection-bounds-indicator", stageDragMoveHandler);
-      if (shouldEmitForIdentity(identity)) {
+      if (shouldEmitForIdentity(sessionIdentity)) {
         flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
           reason: boxFlowIdentity ? "overlay-session-end" : "listeners-detached",
         });
         logCanvasBoxFlow("selection", "bounds:listeners-detached", {
           source: debugSource,
-          selectedIds: identity,
+          selectedIds: selectedIdsDigest,
           reason: boxFlowIdentity ? "overlay-session-end" : "listeners-detached",
         }, {
-          identity,
+          identity: sessionIdentity,
         });
       }
     };
   }, [
     boxFlowIdentity,
+    boxFlowSessionIdentity,
     debugSource,
     isControlledMode,
     lifecycleKey,
+    resolveSessionIdentity,
+    resolveVisualIdentity,
     selectedIdsDigest,
     selectedNodesKey,
     syncIndicatorBounds,
@@ -808,8 +879,10 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   const boundsDigest = isControlledMode
     ? null
     : buildCanvasBoxFlowBoundsDigest(bounds);
-  const indicatorIdentity =
-    boxFlowIdentity || selectedIdsDigest || debugSource;
+  const indicatorVisualIdentity =
+    resolveVisualIdentity();
+  const indicatorSessionIdentity =
+    resolveSessionIdentity(latestInputsRef.current || {}, indicatorVisualIdentity);
   const groupBadge = useMemo(
     () => (
       isControlledMode
@@ -825,28 +898,47 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       visible: hasBounds,
       boundsDigest,
       debugSource,
-      identity: indicatorIdentity,
+      visualIdentity: indicatorVisualIdentity,
+      sessionIdentity: indicatorSessionIdentity,
     };
     const previousSnapshot = indicatorSnapshotRef.current;
     indicatorSnapshotRef.current = nextSnapshot;
+    const previousSessionIdentity = resolveSessionIdentity(
+      {
+        boxFlowSessionIdentity: previousSnapshot?.sessionIdentity || null,
+        boxFlowIdentity: previousSnapshot?.visualIdentity || null,
+      },
+      previousSnapshot?.visualIdentity || debugSource
+    );
+    const nextSessionIdentity = resolveSessionIdentity(
+      {
+        boxFlowSessionIdentity: nextSnapshot.sessionIdentity,
+        boxFlowIdentity: nextSnapshot.visualIdentity,
+      },
+      nextSnapshot.visualIdentity || debugSource
+    );
 
     if (
       previousSnapshot?.visible &&
-      (!nextSnapshot.visible || previousSnapshot.identity !== nextSnapshot.identity)
+      (
+        !nextSnapshot.visible ||
+        previousSnapshot.sessionIdentity !== nextSnapshot.sessionIdentity ||
+        previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
+      )
     ) {
-      if (shouldEmitForIdentity(previousSnapshot.identity)) {
+      if (shouldEmitForIdentity(previousSessionIdentity)) {
         flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
           reason: boxFlowIdentity ? "overlay-hidden" : "hidden",
         });
         logCanvasBoxFlow("selection", "selection-box:hidden", {
           source: debugSource,
-          selectedIds: previousSnapshot.identity,
+          selectedIds: previousSnapshot.visualIdentity,
           reason:
-            previousSnapshot.identity !== nextSnapshot.identity
+            previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
               ? "selection-changed"
               : (boxFlowIdentity ? "overlay-hidden" : "hidden"),
         }, {
-          identity: previousSnapshot.identity,
+          identity: previousSessionIdentity,
         });
       }
     }
@@ -854,24 +946,33 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     if (!nextSnapshot.visible || !boundsDigest) return;
 
     if (
-      shouldEmitForIdentity(indicatorIdentity) &&
-      (!previousSnapshot?.visible || previousSnapshot.identity !== indicatorIdentity)
+      shouldEmitForIdentity(nextSessionIdentity) &&
+      (
+        !previousSnapshot?.visible ||
+        previousSnapshot.sessionIdentity !== indicatorSessionIdentity ||
+        previousSnapshot.visualIdentity !== indicatorVisualIdentity
+      )
     ) {
       logCanvasBoxFlow("selection", "selection-box:shown", {
         source: debugSource,
-        selectedIds: indicatorIdentity,
+        selectedIds: selectedIdsDigest,
         bounds: boundsDigest,
       }, {
-        identity: indicatorIdentity,
+        identity: nextSessionIdentity,
       });
     }
   }, [
     boundsDigest,
     boxFlowIdentity,
+    boxFlowSessionIdentity,
     debugSource,
     hasBounds,
-    indicatorIdentity,
+    indicatorSessionIdentity,
+    indicatorVisualIdentity,
     isControlledMode,
+    resolveSessionIdentity,
+    resolveVisualIdentity,
+    selectedIdsDigest,
     shouldEmitForIdentity,
   ]);
 
@@ -888,16 +989,23 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     return () => {
       const snapshot = indicatorSnapshotRef.current;
       if (!snapshot?.visible) return;
-      if (shouldEmitForIdentity(snapshot.identity)) {
+      const snapshotSessionIdentity = resolveSessionIdentity(
+        {
+          boxFlowSessionIdentity: snapshot.sessionIdentity || null,
+          boxFlowIdentity: snapshot.visualIdentity || null,
+        },
+        snapshot.visualIdentity || debugSource
+      );
+      if (shouldEmitForIdentity(snapshotSessionIdentity)) {
         flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
           reason: boxFlowIdentity ? "overlay-session-end" : "controlled-unmount",
         });
         logCanvasBoxFlow("selection", "selection-box:hidden", {
           source: debugSource,
-          selectedIds: snapshot.identity,
+          selectedIds: snapshot.visualIdentity,
           reason: boxFlowIdentity ? "overlay-session-end" : "controlled-unmount",
         }, {
-          identity: snapshot.identity,
+          identity: snapshotSessionIdentity,
         });
       }
       indicatorSnapshotRef.current = {
@@ -908,6 +1016,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     };
   }, [
     boxFlowIdentity,
+    boxFlowSessionIdentity,
     debugSource,
     isControlledMode,
     shouldEmitForIdentity,

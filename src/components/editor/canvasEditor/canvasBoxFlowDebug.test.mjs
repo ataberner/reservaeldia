@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   CANVAS_BOX_FLOW_SUMMARY_THROTTLE_MS,
+  buildCanvasBoxFlowIdsDigest,
   endCanvasBoxFlowSession,
   ensureCanvasBoxFlowSession,
   flushCanvasBoxFlowSummary,
+  isCanvasBoxFlowIdentityRetired,
   logCanvasBoxFlow,
   recordCanvasBoxFlowSummary,
   resetCanvasBoxFlowDebugState,
@@ -91,6 +93,253 @@ test("box-flow sessions keep stable token, sequence, and relative time", () => {
   assert.equal(
     fakeWindow.getLogs()[1][0],
     "[BOXFLOW][hover#1][#2][+5ms] target:resolved"
+  );
+});
+
+test("id digests are canonicalized so order-only multi-select changes do not create new identities", () => {
+  assert.equal(
+    buildCanvasBoxFlowIdsDigest(["obj-2", "obj-1", "obj-2", ""]),
+    "obj-1,obj-2"
+  );
+});
+
+test("ephemeral sessions can retarget identity without emitting an end/start pair", () => {
+  const fakeWindow = createFakeWindow();
+  resetCanvasBoxFlowDebugState(fakeWindow);
+
+  ensureCanvasBoxFlowSession(
+    "selection",
+    "obj-1",
+    { source: "selection" },
+    {},
+    fakeWindow
+  );
+
+  const session = ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-overlay:1:obj-1",
+    { source: "selection", dragOverlaySessionKey: "drag-overlay:1:obj-1" },
+    { allowIdentityRetarget: true },
+    fakeWindow
+  );
+
+  assert.equal(session?.token, "selection#1");
+  assert.equal(session?.identity, "drag-overlay:1:obj-1");
+  assert.equal(fakeWindow.getLogs().length, 2);
+  assert.equal(
+    fakeWindow.getLogs()[1][0],
+    "[BOXFLOW][selection#1][#2][+0ms] interaction:retarget"
+  );
+  assert.equal(fakeWindow.getLogs()[1][1]?.previousIdentity, "obj-1");
+  assert.equal(fakeWindow.getLogs()[1][1]?.identity, "drag-overlay:1:obj-1");
+});
+
+test("session identity keeps one logical drag session alive across event identity changes", () => {
+  const fakeWindow = createFakeWindow();
+  resetCanvasBoxFlowDebugState(fakeWindow);
+
+  ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-session:1",
+    { source: "selection" },
+    {},
+    fakeWindow
+  );
+
+  const firstEntry = logCanvasBoxFlow(
+    "selection",
+    "predrag:visual-start",
+    { selectedIds: "obj-1" },
+    {
+      sessionIdentity: "drag-session:1",
+      identity: "obj-1",
+    },
+    fakeWindow
+  );
+
+  const secondEntry = logCanvasBoxFlow(
+    "selection",
+    "selection-box:shown",
+    { selectedIds: "obj-1,obj-2" },
+    {
+      sessionIdentity: "drag-session:1",
+      identity: "obj-1,obj-2",
+    },
+    fakeWindow
+  );
+
+  assert.equal(firstEntry?.token, "selection#1");
+  assert.equal(secondEntry?.token, "selection#1");
+  assert.equal(fakeWindow.getLogs().length, 3);
+  assert.equal(secondEntry?.payload?.eventIdentity, "obj-1,obj-2");
+  assert.equal(
+    fakeWindow.getLogs().filter((entry) =>
+      String(entry?.[0] || "").includes("interaction:end")
+    ).length,
+    0
+  );
+});
+
+test("ensureCanvasBoxFlowSession reuses the same session token when session identity stays stable", () => {
+  const fakeWindow = createFakeWindow();
+  resetCanvasBoxFlowDebugState(fakeWindow);
+
+  const initialSession = ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-session:7",
+    {
+      source: "stage-composer",
+      dragOverlaySessionKey: "drag-overlay:1:obj-1:obj-1",
+    },
+    {},
+    fakeWindow
+  );
+
+  const reusedSession = ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-overlay:2:obj-1:obj-1,obj-2",
+    {
+      source: "stage-composer",
+      dragOverlaySessionKey: "drag-overlay:2:obj-1:obj-1,obj-2",
+    },
+    {
+      sessionIdentity: "drag-session:7",
+    },
+    fakeWindow
+  );
+
+  assert.equal(initialSession?.token, "selection#1");
+  assert.equal(reusedSession?.token, "selection#1");
+  assert.equal(reusedSession?.identity, "drag-session:7");
+  assert.equal(fakeWindow.getLogs().length, 1);
+  assert.equal(
+    fakeWindow.getLogs().filter((entry) =>
+      String(entry?.[0] || "").includes("interaction:end")
+    ).length,
+    0
+  );
+});
+
+test("authority-controlled drag session ignores element identity restarts while active", () => {
+  const fakeWindow = createFakeWindow();
+  resetCanvasBoxFlowDebugState(fakeWindow);
+
+  const session = ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-session:9",
+    {
+      source: "stage-composer",
+      dragOverlaySessionKey: "drag-overlay:9:obj-1",
+    },
+    {
+      authorityIdentity: "drag-session:9",
+    },
+    fakeWindow
+  );
+
+  const entry = logCanvasBoxFlow(
+    "selection",
+    "transformer:predrag-detach",
+    { elementId: "texto-titulo" },
+    {
+      identity: "texto-titulo",
+    },
+    fakeWindow
+  );
+
+  assert.equal(session?.token, "selection#1");
+  assert.equal(entry?.token, "selection#1");
+  assert.equal(entry?.payload?.eventIdentity, "texto-titulo");
+  assert.equal(fakeWindow.getLogs().length, 2);
+  assert.equal(
+    fakeWindow.getLogs().filter((logEntry) =>
+      String(logEntry?.[0] || "").includes("interaction:end")
+    ).length,
+    0
+  );
+});
+
+test("authority-controlled drag session blocks ensure-time identity replacement while active", () => {
+  const fakeWindow = createFakeWindow();
+  resetCanvasBoxFlowDebugState(fakeWindow);
+
+  const session = ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-session:12",
+    {
+      source: "stage-composer",
+    },
+    {
+      authorityIdentity: "drag-session:12",
+    },
+    fakeWindow
+  );
+
+  const sameSession = ensureCanvasBoxFlowSession(
+    "selection",
+    "titulo-principal",
+    {
+      source: "selection-transformer",
+    },
+    {},
+    fakeWindow
+  );
+
+  assert.equal(session?.token, "selection#1");
+  assert.equal(sameSession?.token, "selection#1");
+  assert.equal(sameSession?.identity, "drag-session:12");
+  assert.equal(fakeWindow.getLogs().length, 1);
+});
+
+test("drag-session-complete retires the drag session identity so it cannot reopen", () => {
+  const fakeWindow = createFakeWindow();
+  resetCanvasBoxFlowDebugState(fakeWindow);
+
+  ensureCanvasBoxFlowSession(
+    "selection",
+    "drag-session:21",
+    {
+      source: "stage-composer",
+    },
+    {
+      authorityIdentity: "drag-session:21",
+    },
+    fakeWindow
+  );
+
+  endCanvasBoxFlowSession(
+    "selection",
+    {
+      reason: "drag-session-complete",
+    },
+    {},
+    fakeWindow
+  );
+
+  assert.equal(
+    isCanvasBoxFlowIdentityRetired("selection", "drag-session:21", fakeWindow),
+    true
+  );
+
+  const entry = logCanvasBoxFlow(
+    "selection",
+    "selection-box:shown",
+    {
+      selectedIds: "titulo-principal",
+    },
+    {
+      sessionIdentity: "drag-session:21",
+      identity: "titulo-principal",
+    },
+    fakeWindow
+  );
+
+  assert.equal(entry?.identity, "titulo-principal");
+  assert.equal(
+    fakeWindow.getLogs().slice(2).some((logEntry) =>
+      JSON.stringify(logEntry).includes("drag-session:21")
+    ),
+    false
   );
 });
 

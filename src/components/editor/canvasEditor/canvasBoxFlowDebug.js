@@ -424,6 +424,446 @@ function buildSummaryInlineText(payload = {}) {
   return parts.join(" ");
 }
 
+function startsWithNormalized(value, prefix) {
+  const normalizedValue = normalizeSummaryToken(value);
+  const normalizedPrefix = normalizeSummaryToken(prefix);
+  return Boolean(
+    normalizedValue &&
+      normalizedPrefix &&
+      normalizedValue.startsWith(normalizedPrefix)
+  );
+}
+
+function looksLikeDragSessionIdentity(value) {
+  return startsWithNormalized(value, "drag-session:");
+}
+
+function looksLikeOverlaySessionIdentity(value) {
+  return startsWithNormalized(value, "drag-overlay:");
+}
+
+function normalizeIdDigestValue(value) {
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((item) => String(item ?? "").trim())
+      .filter((item) => item !== "")
+      .join(",");
+    return joined || null;
+  }
+
+  if (value && typeof value === "object") {
+    return null;
+  }
+
+  const normalizedValue = normalizeSummaryToken(value);
+  return normalizedValue || null;
+}
+
+function mapOwnerKind(value) {
+  const normalizedValue = normalizeSummaryToken(value);
+  if (!normalizedValue) return null;
+
+  if (
+    normalizedValue === "transformer-primary" ||
+    normalizedValue === "line-controls"
+  ) {
+    return "selected-phase";
+  }
+
+  return normalizedValue;
+}
+
+function inferOwnerFromEvent(entry) {
+  const payload = entry?.payload || {};
+  const payloadOwner = mapOwnerKind(payload.owner || payload.ownerKind);
+  if (payloadOwner) return payloadOwner;
+
+  const source = normalizeSummaryToken(payload.source);
+  const debugSource = normalizeSummaryToken(payload.debugSource);
+  const eventName = normalizeSummaryToken(entry?.eventName) || "";
+
+  if (
+    looksLikeOverlaySessionIdentity(payload.dragOverlaySessionKey) ||
+    source === "drag-overlay" ||
+    debugSource === "drag-overlay" ||
+    eventName.startsWith("drag-overlay:")
+  ) {
+    return "drag-overlay";
+  }
+
+  if (
+    source === "hover-indicator" ||
+    eventName === "forced-clear" ||
+    eventName.startsWith("target:") ||
+    eventName.startsWith("stage:") ||
+    normalizeSummaryToken(payload.hoverId)
+  ) {
+    return "hover-indicator";
+  }
+
+  if (
+    source === "transformer-primary" ||
+    source === "selection-transformer" ||
+    source === "line-indicator" ||
+    debugSource === "line-indicator" ||
+    eventName.startsWith("line-indicator:") ||
+    eventName.startsWith("attach:") ||
+    eventName.startsWith("transformer") ||
+    eventName.startsWith("bounds-sync:") ||
+    eventName.startsWith("restore-after-settle:")
+  ) {
+    return "selected-phase";
+  }
+
+  return null;
+}
+
+function inferPhaseFromEvent(entry, owner = null) {
+  const payload = entry?.payload || {};
+  const eventName = normalizeSummaryToken(entry?.eventName) || "";
+  const explicitPhase =
+    normalizeSummaryToken(payload.phase) ||
+    normalizeSummaryToken(payload.dragOverlayPhase) ||
+    normalizeSummaryToken(payload.dragInteractionPhase);
+
+  if (explicitPhase) return explicitPhase;
+  if (
+    payload.predragActive === true ||
+    payload.predragVisualSelectionActive === true ||
+    payload.pendingDragSelectionPhase === "predrag" ||
+    eventName.startsWith("predrag:")
+  ) {
+    return "predrag";
+  }
+  if (
+    payload.settling === true ||
+    payload.canvasInteractionSettling === true ||
+    eventName.startsWith("settling:")
+  ) {
+    return "settling";
+  }
+  if (
+    payload.canvasInteractionActive === true ||
+    payload.effectiveDragging === true ||
+    eventName.startsWith("drag:")
+  ) {
+    return "drag";
+  }
+  if (owner === "hover-indicator" || normalizeSummaryToken(payload.hoverId)) {
+    return "hover";
+  }
+  if (
+    owner === "selected-phase" ||
+    normalizeSummaryToken(payload.selectedIds) ||
+    normalizeSummaryToken(payload.renderMode)
+  ) {
+    return "selected";
+  }
+  return null;
+}
+
+function inferDragSessionIdentity(entry, session = null) {
+  const payload = entry?.payload || {};
+  const candidates = [
+    payload.dragSession,
+    payload.dragInteractionSessionKey,
+    payload.sessionIdentity,
+    session?.authorityIdentity,
+    session?.identity,
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedValue = normalizeSummaryToken(candidate);
+    if (looksLikeDragSessionIdentity(normalizedValue)) {
+      return normalizedValue;
+    }
+  }
+
+  return null;
+}
+
+function inferOverlaySessionIdentity(entry, session = null) {
+  const payload = entry?.payload || {};
+  const candidates = [
+    payload.overlaySession,
+    payload.dragOverlaySessionKey,
+    payload.lifecycleKey,
+    payload.boxFlowIdentity,
+    payload.eventIdentity,
+    session?.identity,
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedValue = normalizeSummaryToken(candidate);
+    if (looksLikeOverlaySessionIdentity(normalizedValue)) {
+      return normalizedValue;
+    }
+  }
+
+  return null;
+}
+
+function inferSelectionAuthority(entry, owner = null, phase = null) {
+  const payload = entry?.payload || {};
+  const explicitAuthority = normalizeSummaryToken(payload.selectionAuthority);
+  if (explicitAuthority) return explicitAuthority;
+
+  if (
+    owner === "drag-overlay" ||
+    phase === "predrag" ||
+    phase === "drag" ||
+    phase === "settling"
+  ) {
+    return "drag-session";
+  }
+  if (owner === "hover-indicator" || normalizeSummaryToken(payload.hoverId)) {
+    return "hover-target";
+  }
+  if (normalizeIdDigestValue(payload.selectedIds)) {
+    return "logical-selection";
+  }
+  return null;
+}
+
+function inferGeometryAuthority(entry, owner = null, phase = null) {
+  const payload = entry?.payload || {};
+  const explicitAuthority = normalizeSummaryToken(payload.geometryAuthority);
+  if (explicitAuthority) return explicitAuthority;
+
+  const source =
+    normalizeSummaryToken(payload.overlaySource) ||
+    normalizeSummaryToken(payload.source);
+  const debugSource = normalizeSummaryToken(payload.debugSource);
+
+  if (owner === "drag-overlay" && phase === "settling") {
+    return "frozen-controlled-snapshot";
+  }
+  if (owner === "drag-overlay") {
+    if (
+      source === "predrag-seed" ||
+      source === "drag-selection-seed" ||
+      source === "controlled-seed" ||
+      source === "group-drag-start"
+    ) {
+      return "startup-seed";
+    }
+    return "live-nodes";
+  }
+  if (owner === "hover-indicator") {
+    return "live-hover";
+  }
+  if (debugSource === "line-indicator" || source === "line-indicator") {
+    return "selected-auto-bounds";
+  }
+  if (source === "transformer-primary") {
+    return "transformer-live";
+  }
+  if (debugSource) {
+    return debugSource === "drag-overlay"
+      ? "live-nodes"
+      : "selected-auto-bounds";
+  }
+  return null;
+}
+
+function inferOverlayVisible(entry, owner = null) {
+  const payload = entry?.payload || {};
+  if (typeof payload.overlayVisible === "boolean") {
+    return payload.overlayVisible;
+  }
+  if (typeof payload.showDragSelectionOverlay === "boolean") {
+    return payload.showDragSelectionOverlay;
+  }
+  if (entry?.eventName === "drag-overlay:shown") return true;
+  if (entry?.eventName === "drag-overlay:hidden") return false;
+  if (owner === "drag-overlay" && entry?.eventName === "selection-box:shown") {
+    return true;
+  }
+  if (owner === "drag-overlay" && entry?.eventName === "selection-box:hidden") {
+    return false;
+  }
+  return null;
+}
+
+function inferSettling(entry, phase = null) {
+  const payload = entry?.payload || {};
+  if (typeof payload.settling === "boolean") return payload.settling;
+  if (typeof payload.canvasInteractionSettling === "boolean") {
+    return payload.canvasInteractionSettling;
+  }
+  return phase === "settling";
+}
+
+function formatInlineStringValue(value) {
+  const normalizedValue = String(value ?? "").trim();
+  if (!normalizedValue) return null;
+  return /\s/.test(normalizedValue) ? JSON.stringify(normalizedValue) : normalizedValue;
+}
+
+function formatInlineFieldValue(key, value) {
+  if (value == null) return null;
+
+  if (
+    key === "selectedIds" ||
+    key === "visualIds" ||
+    key === "suppressedLayers"
+  ) {
+    const normalizedDigest =
+      key === "suppressedLayers"
+        ? normalizeIdDigestValue(
+            Array.isArray(value) ? value : String(value ?? "").split(",")
+          )
+        : normalizeIdDigestValue(value);
+    return normalizedDigest ? `[${normalizedDigest}]` : null;
+  }
+
+  if (
+    key === "bounds" ||
+    key === "firstBounds" ||
+    key === "lastBounds" ||
+    key === "firstDragBounds" ||
+    key === "lastDragBounds" ||
+    key === "firstBoxBounds" ||
+    key === "lastBoxBounds"
+  ) {
+    const inlineBounds =
+      typeof value === "string" ? value : formatBoundsInline(value);
+    return inlineBounds ? formatInlineStringValue(inlineBounds) : null;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (typeof value === "number") {
+    const roundedValue = roundMetric(value, 3);
+    return roundedValue === null ? null : String(roundedValue);
+  }
+
+  if (Array.isArray(value)) {
+    const listValue = value
+      .map((item) => String(item ?? "").trim())
+      .filter((item) => item !== "")
+      .join(",");
+    return listValue ? `[${listValue}]` : null;
+  }
+
+  if (typeof value === "object") {
+    const inlineBounds = formatBoundsInline(value);
+    if (inlineBounds) {
+      return formatInlineStringValue(inlineBounds);
+    }
+    return formatInlineStringValue(JSON.stringify(sanitizeCompactValue(value)));
+  }
+
+  return formatInlineStringValue(value);
+}
+
+function pushInlineField(parts, key, value) {
+  const inlineValue = formatInlineFieldValue(key, value);
+  if (inlineValue === null) return;
+  parts.push(`${key}=${inlineValue}`);
+}
+
+function buildInlineEventParts(entry, session = null) {
+  const payload = entry?.payload || {};
+  const owner = inferOwnerFromEvent(entry);
+  const phase = inferPhaseFromEvent(entry, owner);
+  const dragSession = inferDragSessionIdentity(entry, session);
+  const overlaySession = inferOverlaySessionIdentity(entry, session);
+  const selectedIds = normalizeIdDigestValue(payload.selectedIds);
+  const visualIds =
+    normalizeIdDigestValue(payload.visualIds) ||
+    normalizeIdDigestValue(payload.dragOverlaySelectionIds) ||
+    normalizeIdDigestValue(payload.visualSelectionSnapshot) ||
+    normalizeIdDigestValue(payload.overlaySelectionSnapshot) ||
+    (
+      entry?.eventName === "selection-box:shown" ||
+      entry?.eventName === "selection-box:hidden"
+        ? selectedIds
+        : null
+    );
+  const selectionAuthority = inferSelectionAuthority(entry, owner, phase);
+  const geometryAuthority = inferGeometryAuthority(entry, owner, phase);
+  const overlayVisible = inferOverlayVisible(entry, owner);
+  const settling = inferSettling(entry, phase);
+  const preferredSource =
+    normalizeSummaryToken(payload.overlaySource) ||
+    normalizeSummaryToken(payload.source) ||
+    normalizeSummaryToken(payload.debugSource);
+
+  const parts = [
+    "[BOXFLOW]",
+    `token=${entry.token}`,
+    `seq=${entry.seq}`,
+    `t=${entry.relativeMs}ms`,
+    `event=${formatInlineFieldValue("event", entry.eventName)}`,
+  ];
+
+  pushInlineField(parts, "channel", entry.channel);
+  pushInlineField(parts, "phase", phase);
+  pushInlineField(parts, "owner", owner);
+  pushInlineField(parts, "dragSession", dragSession);
+  pushInlineField(parts, "overlaySession", overlaySession);
+  pushInlineField(parts, "dragId", payload.dragId);
+  pushInlineField(parts, "hoverId", payload.hoverId);
+  pushInlineField(parts, "targetId", payload.targetId);
+  pushInlineField(parts, "selectedIds", selectedIds);
+  pushInlineField(parts, "visualIds", visualIds);
+  pushInlineField(parts, "selectionAuthority", selectionAuthority);
+  pushInlineField(parts, "geometryAuthority", geometryAuthority);
+  pushInlineField(parts, "source", preferredSource);
+  pushInlineField(parts, "sources", payload.sources);
+  pushInlineField(parts, "debugSource", payload.debugSource || payload.debugSources);
+  pushInlineField(parts, "syncToken", payload.syncToken);
+  pushInlineField(parts, "overlayVisible", overlayVisible);
+  pushInlineField(parts, "visibilityAuthority", payload.visibilityAuthority);
+  pushInlineField(parts, "visibilityDriver", payload.visibilityDriver);
+  pushInlineField(parts, "nextVisibilityDriver", payload.nextVisibilityDriver);
+  pushInlineField(parts, "ready", payload.isReady);
+  pushInlineField(parts, "settling", settling);
+  pushInlineField(parts, "suppressedLayers", payload.suppressedLayers);
+  pushInlineField(parts, "reason", payload.reason);
+
+  if (payload.summaryKey) {
+    pushInlineField(parts, "summary", payload.summaryKey);
+    pushInlineField(parts, "count", payload.count);
+    if (Number.isFinite(Number(payload.durationMs))) {
+      pushInlineField(parts, "dur", `${payload.durationMs}ms`);
+    }
+    pushInlineField(parts, "firstPos", payload.firstPos);
+    pushInlineField(parts, "lastPos", payload.lastPos);
+    pushInlineField(parts, "firstBounds", payload.firstBounds);
+    pushInlineField(parts, "lastBounds", payload.lastBounds);
+    pushInlineField(parts, "firstDrift", payload.firstDrift);
+    pushInlineField(parts, "maxDrift", payload.maxDrift);
+    pushInlineField(parts, "lastDrift", payload.lastDrift);
+    pushInlineField(parts, "firstDragBounds", payload.firstDragBounds);
+    pushInlineField(parts, "lastDragBounds", payload.lastDragBounds);
+    pushInlineField(parts, "firstBoxBounds", payload.firstBoxBounds);
+    pushInlineField(parts, "lastBoxBounds", payload.lastBoxBounds);
+    pushInlineField(parts, "dragSources", payload.dragSources);
+    pushInlineField(parts, "boxSources", payload.boxSources);
+    pushInlineField(parts, "orders", payload.orders);
+    pushInlineField(parts, "startupJump", payload.startupJump);
+  } else {
+    pushInlineField(parts, "bounds", payload.bounds);
+  }
+
+  pushInlineField(parts, "renderMode", payload.renderMode);
+  pushInlineField(parts, "pipeline", payload.pipeline);
+  pushInlineField(parts, "eventIdentity", payload.eventIdentity);
+  pushInlineField(parts, "identity", payload.identity);
+  pushInlineField(parts, "previousIdentity", payload.previousIdentity);
+  pushInlineField(parts, "nextIdentity", payload.nextIdentity || payload.identity);
+
+  return parts;
+}
+
+function buildInlineEventLine(entry, session = null) {
+  return buildInlineEventParts(entry, session).join(" ");
+}
+
 function normalizeChannel(channel) {
   return channel === "hover" ? "hover" : "selection";
 }
@@ -699,18 +1139,10 @@ function buildLogEntry(session, eventName, payload = {}, targetWindow = null) {
 function emitBoxFlowLog(session, eventName, payload = {}, targetWindow = null) {
   const entry = buildLogEntry(session, eventName, payload, targetWindow);
   const logger = getDebugConsole(targetWindow);
-  const prefix = `[BOXFLOW][${entry.token}][#${entry.seq}][+${entry.relativeMs}ms] ${entry.eventName}`;
-  const summaryInlineText =
-    entry.payload && typeof entry.payload === "object" && entry.payload.summaryKey
-      ? buildSummaryInlineText(entry.payload)
-      : null;
+  const line = buildInlineEventLine(entry, session);
 
   try {
-    if (summaryInlineText) {
-      logger.log(prefix, summaryInlineText, entry.payload);
-    } else {
-      logger.log(prefix, entry.payload);
-    }
+    logger.log(line);
   } catch {
     // no-op
   }

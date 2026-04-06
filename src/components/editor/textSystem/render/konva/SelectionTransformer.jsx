@@ -317,6 +317,39 @@ function describeRotationSnapState(
   };
 }
 
+function resolveBoundsVisualReadiness(bounds) {
+  const width = Number(bounds?.width);
+  const height = Number(bounds?.height);
+  const hasBounds = Boolean(bounds);
+  const boundsValid =
+    hasBounds &&
+    Number.isFinite(width) &&
+    Number.isFinite(height);
+  const zeroBounds =
+    boundsValid &&
+    (width <= 0 || height <= 0);
+
+  return {
+    hasBounds,
+    boundsValid,
+    zeroBounds,
+    visuallyReadyBounds: boundsValid && width > 0 && height > 0,
+    width: boundsValid ? roundNodeMetric(width, 3) : null,
+    height: boundsValid ? roundNodeMetric(height, 3) : null,
+  };
+}
+
+function buildBoundsVisualReadinessKey(bounds) {
+  if (!bounds) return "none";
+  return [
+    String(bounds.kind || "rect"),
+    Number.isFinite(Number(bounds.x)) ? roundNodeMetric(bounds.x, 3) : "na",
+    Number.isFinite(Number(bounds.y)) ? roundNodeMetric(bounds.y, 3) : "na",
+    Number.isFinite(Number(bounds.width)) ? roundNodeMetric(bounds.width, 3) : "na",
+    Number.isFinite(Number(bounds.height)) ? roundNodeMetric(bounds.height, 3) : "na",
+  ].join(":");
+}
+
 
 export default function SelectionBounds({
   selectedElements,
@@ -342,6 +375,8 @@ export default function SelectionBounds({
   predragVisualSelectionActive = false,
   dragSelectionOverlayVisible = false,
   dragSelectionOverlayVisualReady = false,
+  onPrimarySelectionVisualReadyChange = null,
+  onPrimarySelectionVisibilityChange = null,
   selectionRuntime = null,
 }) {
   const transformerRef = useRef(null);
@@ -415,6 +450,13 @@ export default function SelectionBounds({
   const lastVisibilitySnapshotRef = useRef(null);
   const transformerBoxFlowSnapshotRef = useRef(null);
   const attachBlockSnapshotRef = useRef(null);
+  const lineIndicatorVisibilitySnapshotRef = useRef(null);
+  const selectedPhaseVisualReadyGateRef = useRef({
+    rafId: 0,
+    pendingKey: null,
+    confirmedKey: null,
+    blockedKey: null,
+  });
   const selectionBoxFlowIdentityRef = useRef(null);
   const pendingUiRestoreEpochRef = useRef(0);
   const isTransformingResizeRef = useRef(false);
@@ -561,6 +603,9 @@ export default function SelectionBounds({
 
   const hayLineas = elementosSeleccionadosData.some(
     (obj) => obj.tipo === "forma" && obj.figura === "line"
+  );
+  const hasPreservedGroupSelection = elementosSeleccionadosData.some(
+    (obj) => obj?.tipo === "grupo"
   );
   const pendingDragSelectionId =
     runtimeSelectionSnapshot?.pendingDragSelection?.id ||
@@ -2601,6 +2646,15 @@ export default function SelectionBounds({
         logCanvasBoxFlow("selection", "attach:block-cleared", {
           source: "selection-transformer",
           selectedIds: selectionKey || null,
+          visualIds: selectionKey || null,
+          phase: "selected",
+          owner: "selected-phase",
+          selectionAuthority: "logical-selection",
+          geometryAuthority: "transformer-live",
+          overlayVisible: false,
+          settling: false,
+          suppressedLayers: [],
+          reason: "selected-phase-allowed",
         }, {
           identity: buildSelectionBoxFlowSessionIdentity(),
         });
@@ -2620,6 +2674,26 @@ export default function SelectionBounds({
     logCanvasBoxFlow("selection", "attach:blocked", {
       source: "selection-transformer",
       selectedIds: selectionKey || null,
+      visualIds: selectionKey || null,
+      phase: predragVisualSelectionActive
+        ? "predrag"
+        : canvasInteractionSettling
+          ? "settling"
+          : (effectiveDragging || canvasInteractionActive ? "drag" : "selected"),
+      owner: "selected-phase",
+      selectionAuthority: "logical-selection",
+      geometryAuthority: "transformer-live",
+      overlayVisible: false,
+      settling: Boolean(canvasInteractionSettling),
+      suppressedLayers: ["selected-phase"],
+      reason:
+        hasDragOverlayVisualOwnership
+          ? "drag-overlay-owned"
+          : shouldHideTransformerDuringDrag
+            ? "drag-active"
+            : shouldSuppressDuringDeferredDrag
+              ? "deferred-drag"
+              : "attach-blocked",
       ...nextSnapshot,
     }, {
       identity: buildSelectionBoxFlowSessionIdentity(),
@@ -2852,6 +2926,18 @@ export default function SelectionBounds({
       logCanvasBoxFlow("selection", "selection-box:hidden", {
         source: "transformer-primary",
         selectedIds: previousSnapshot.visualIdentity,
+        visualIds: previousSnapshot.visualIdentity,
+        phase: "selected",
+        owner: "selected-phase",
+        selectionAuthority: "logical-selection",
+        geometryAuthority: "transformer-live",
+        overlayVisible: false,
+        settling: false,
+        suppressedLayers:
+          hasDragOverlayVisualOwnership ||
+          shouldSuppressTransformerVisualsForDragOverlay
+            ? ["selected-phase"]
+            : [],
         renderMode: previousSnapshot.renderMode,
         attachedNodeIds: previousSnapshot.attachedNodeIds || null,
         reason:
@@ -2864,6 +2950,42 @@ export default function SelectionBounds({
               : transformerVisualMode.renderMode,
       }, {
         identity: previousSessionIdentity,
+      });
+      onPrimarySelectionVisualReadyChange?.(false, {
+        source: "transformer-primary",
+        reason:
+          previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
+            ? "selection-changed"
+            : hasDragOverlayVisualOwnership
+              ? "drag-overlay-owned"
+              : shouldSuppressTransformerVisualsForDragOverlay
+                ? "drag-overlay-suppressed"
+                : transformerVisualMode.renderMode,
+        renderMode: previousSnapshot.renderMode,
+        readySource: "selection-box-hidden",
+        readySignal: "transformer-hidden",
+        postPaintConfirmed: false,
+        boundsValid: false,
+        zeroBounds: false,
+        visualIdentity: previousSnapshot.visualIdentity,
+        sessionIdentity: previousSessionIdentity,
+        bounds: previousSnapshot.bounds,
+      });
+      onPrimarySelectionVisibilityChange?.(false, {
+        source: "transformer-primary",
+        reason:
+          previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
+            ? "selection-changed"
+            : hasDragOverlayVisualOwnership
+              ? "drag-overlay-owned"
+              : shouldSuppressTransformerVisualsForDragOverlay
+                ? "drag-overlay-suppressed"
+                : transformerVisualMode.renderMode,
+        renderMode: previousSnapshot.renderMode,
+        visibilitySource: "selection-box-hidden",
+        visualIdentity: previousSnapshot.visualIdentity,
+        sessionIdentity: previousSessionIdentity,
+        bounds: previousSnapshot.bounds,
       });
     }
 
@@ -2878,14 +3000,33 @@ export default function SelectionBounds({
       logCanvasBoxFlow("selection", "selection-box:shown", {
         source: "transformer-primary",
         selectedIds: nextSnapshot.visualIdentity,
+        visualIds: nextSnapshot.visualIdentity,
+        phase: "selected",
+        owner: "selected-phase",
+        selectionAuthority: "logical-selection",
+        geometryAuthority: "transformer-live",
+        overlayVisible: false,
+        settling: false,
+        suppressedLayers: [],
         renderMode: nextSnapshot.renderMode,
         attachedNodeIds: nextSnapshot.attachedNodeIds || null,
         bounds: nextSnapshot.bounds,
       }, {
         identity: nextSessionIdentity,
       });
+      onPrimarySelectionVisibilityChange?.(true, {
+        source: "transformer-primary",
+        reason: "selection-box-shown",
+        renderMode: nextSnapshot.renderMode,
+        visibilitySource: "selection-box-shown",
+        visualIdentity: nextSnapshot.visualIdentity,
+        sessionIdentity: nextSessionIdentity,
+        bounds: nextSnapshot.bounds,
+      });
     }
   }, [
+    onPrimarySelectionVisibilityChange,
+    onPrimarySelectionVisualReadyChange,
     selectedElements.length,
     selectedGeomKey,
     selectionKey,
@@ -2893,6 +3034,361 @@ export default function SelectionBounds({
     shouldSuppressTransformerVisualsForDragOverlay,
     shouldUseGenericTransformer,
     transformTick,
+    transformerVisualMode.renderMode,
+  ]);
+
+  useEffect(() => {
+    const gateState = selectedPhaseVisualReadyGateRef.current;
+    const currentSnapshot = transformerBoxFlowSnapshotRef.current;
+    const currentSessionIdentity = resolveSelectionSessionIdentity(
+      currentSnapshot?.sessionIdentity || null,
+      currentSnapshot?.visualIdentity || null
+    );
+    const currentBounds = currentSnapshot?.bounds || null;
+    const boundsReadiness = resolveBoundsVisualReadiness(currentBounds);
+    const boundsKey = buildBoundsVisualReadinessKey(currentBounds);
+    const readyCandidateKey =
+      currentSnapshot?.visible && currentSessionIdentity && currentSnapshot?.visualIdentity
+        ? [
+            currentSessionIdentity,
+            currentSnapshot.visualIdentity,
+            boundsKey,
+          ].join("|")
+        : null;
+
+    if (!currentSnapshot?.visible) {
+      if (
+        gateState.rafId &&
+        typeof cancelAnimationFrame === "function"
+      ) {
+        cancelAnimationFrame(gateState.rafId);
+      }
+      gateState.rafId = 0;
+      gateState.pendingKey = null;
+      gateState.confirmedKey = null;
+      gateState.blockedKey = null;
+      return;
+    }
+
+    if (!boundsReadiness.visuallyReadyBounds) {
+      if (
+        gateState.rafId &&
+        typeof cancelAnimationFrame === "function"
+      ) {
+        cancelAnimationFrame(gateState.rafId);
+      }
+      gateState.rafId = 0;
+      gateState.pendingKey = null;
+      gateState.confirmedKey = null;
+      const blockedKey = [
+        currentSessionIdentity || "selection",
+        currentSnapshot.visualIdentity || "selection",
+        boundsKey,
+        boundsReadiness.zeroBounds ? "zero-bounds" : "invalid-bounds",
+      ].join("|");
+      if (gateState.blockedKey !== blockedKey) {
+        gateState.blockedKey = blockedKey;
+        logCanvasBoxFlow("selection", "selected-phase:ready-blocked", {
+          source: "transformer-primary",
+          phase: canvasInteractionSettling ? "settling" : "selected",
+          owner: "selected-phase",
+          selectedIds: currentSnapshot.visualIdentity,
+          visualIds: currentSnapshot.visualIdentity,
+          selectionAuthority: "logical-selection",
+          geometryAuthority: "transformer-live",
+          overlayVisible: Boolean(dragSelectionOverlayVisible),
+          settling: Boolean(canvasInteractionSettling),
+          suppressedLayers:
+            dragSelectionOverlayVisible
+              ? ["drag-overlay", "hover-indicator"]
+              : ["hover-indicator"],
+          reason: boundsReadiness.zeroBounds
+            ? "zero-bounds"
+            : (boundsReadiness.hasBounds ? "invalid-bounds" : "missing-bounds"),
+          readySource: "bounds-validation",
+          readySignal: "selection-box-shown",
+          postPaintConfirmed: false,
+          boundsValid: boundsReadiness.boundsValid,
+          zeroBounds: boundsReadiness.zeroBounds,
+          bounds: currentBounds,
+        }, {
+          identity: currentSessionIdentity || currentSnapshot.visualIdentity || null,
+        });
+      }
+      return;
+    }
+
+    gateState.blockedKey = null;
+    if (gateState.confirmedKey === readyCandidateKey) {
+      return;
+    }
+    if (gateState.pendingKey === readyCandidateKey) {
+      return;
+    }
+    if (
+      gateState.rafId &&
+      typeof cancelAnimationFrame === "function"
+    ) {
+      cancelAnimationFrame(gateState.rafId);
+    }
+    gateState.rafId = 0;
+    gateState.pendingKey = readyCandidateKey;
+
+    logCanvasBoxFlow("selection", "selected-phase:ready-pending", {
+      source: "transformer-primary",
+      phase: canvasInteractionSettling ? "settling" : "selected",
+      owner: "selected-phase",
+      selectedIds: currentSnapshot.visualIdentity,
+      visualIds: currentSnapshot.visualIdentity,
+      selectionAuthority: "logical-selection",
+      geometryAuthority: "transformer-live",
+      overlayVisible: Boolean(dragSelectionOverlayVisible),
+      settling: Boolean(canvasInteractionSettling),
+      suppressedLayers:
+        dragSelectionOverlayVisible
+          ? ["drag-overlay", "hover-indicator"]
+          : ["hover-indicator"],
+      reason: "await-post-paint-confirmation",
+      readySource: "bounds-visible",
+      readySignal: "selection-box-shown+valid-bounds",
+      postPaintConfirmed: false,
+      boundsValid: boundsReadiness.boundsValid,
+      zeroBounds: boundsReadiness.zeroBounds,
+      bounds: currentBounds,
+    }, {
+      identity: currentSessionIdentity || currentSnapshot.visualIdentity || null,
+    });
+
+    const confirmReady = () => {
+      const latestSnapshot = transformerBoxFlowSnapshotRef.current;
+      const latestSessionIdentity = resolveSelectionSessionIdentity(
+        latestSnapshot?.sessionIdentity || null,
+        latestSnapshot?.visualIdentity || null
+      );
+      const latestBounds = latestSnapshot?.bounds || null;
+      const latestBoundsReadiness = resolveBoundsVisualReadiness(latestBounds);
+      const latestBoundsKey = buildBoundsVisualReadinessKey(latestBounds);
+      const latestReadyCandidateKey =
+        latestSnapshot?.visible && latestSessionIdentity && latestSnapshot?.visualIdentity
+          ? [
+              latestSessionIdentity,
+              latestSnapshot.visualIdentity,
+              latestBoundsKey,
+            ].join("|")
+          : null;
+
+      gateState.rafId = 0;
+
+      if (
+        latestReadyCandidateKey !== readyCandidateKey ||
+        !latestBoundsReadiness.visuallyReadyBounds
+      ) {
+        gateState.pendingKey = null;
+        gateState.confirmedKey = null;
+        const blockedKey = [
+          latestSessionIdentity || currentSessionIdentity || "selection",
+          latestSnapshot?.visualIdentity || currentSnapshot.visualIdentity || "selection",
+          latestBoundsKey,
+          !latestSnapshot?.visible
+            ? "post-paint-hidden"
+            : latestBoundsReadiness.zeroBounds
+              ? "post-paint-zero-bounds"
+              : "post-paint-invalid-bounds",
+        ].join("|");
+        if (gateState.blockedKey !== blockedKey) {
+          gateState.blockedKey = blockedKey;
+          logCanvasBoxFlow("selection", "selected-phase:ready-blocked", {
+            source: "transformer-primary",
+            phase: canvasInteractionSettling ? "settling" : "selected",
+            owner: "selected-phase",
+            selectedIds:
+              latestSnapshot?.visualIdentity || currentSnapshot.visualIdentity,
+            visualIds:
+              latestSnapshot?.visualIdentity || currentSnapshot.visualIdentity,
+            selectionAuthority: "logical-selection",
+            geometryAuthority: "transformer-live",
+            overlayVisible: Boolean(dragSelectionOverlayVisible),
+            settling: Boolean(canvasInteractionSettling),
+            suppressedLayers:
+              dragSelectionOverlayVisible
+                ? ["drag-overlay", "hover-indicator"]
+                : ["hover-indicator"],
+            reason: !latestSnapshot?.visible
+              ? "post-paint-hidden"
+              : latestBoundsReadiness.zeroBounds
+                ? "post-paint-zero-bounds"
+                : "post-paint-invalid-bounds",
+            readySource: "post-paint-check",
+            readySignal: "selection-box-shown+valid-bounds",
+            postPaintConfirmed: false,
+            boundsValid: latestBoundsReadiness.boundsValid,
+            zeroBounds: latestBoundsReadiness.zeroBounds,
+            bounds: latestBounds,
+          }, {
+            identity:
+              latestSessionIdentity ||
+              latestSnapshot?.visualIdentity ||
+              currentSessionIdentity ||
+              currentSnapshot.visualIdentity ||
+              null,
+          });
+        }
+        return;
+      }
+
+      gateState.pendingKey = null;
+      gateState.confirmedKey = readyCandidateKey;
+      gateState.blockedKey = null;
+      logCanvasBoxFlow("selection", "selected-phase:ready-confirmed", {
+        source: "transformer-primary",
+        phase: canvasInteractionSettling ? "settling" : "selected",
+        owner: "selected-phase",
+        selectedIds: latestSnapshot.visualIdentity,
+        visualIds: latestSnapshot.visualIdentity,
+        selectionAuthority: "logical-selection",
+        geometryAuthority: "transformer-live",
+        overlayVisible: Boolean(dragSelectionOverlayVisible),
+        settling: Boolean(canvasInteractionSettling),
+        suppressedLayers:
+          dragSelectionOverlayVisible
+            ? ["drag-overlay", "hover-indicator"]
+            : ["hover-indicator"],
+        reason: "post-paint-visible-bounds",
+        readySource: "post-paint-confirmed",
+        readySignal: "selection-box-shown+valid-bounds+post-paint",
+        postPaintConfirmed: true,
+        boundsValid: latestBoundsReadiness.boundsValid,
+        zeroBounds: latestBoundsReadiness.zeroBounds,
+        bounds: latestBounds,
+      }, {
+        identity: latestSessionIdentity || latestSnapshot.visualIdentity || null,
+      });
+      onPrimarySelectionVisualReadyChange?.(true, {
+        source: "transformer-primary",
+        reason: "post-paint-visible-bounds",
+        renderMode: latestSnapshot.renderMode,
+        readySource: "post-paint-confirmed",
+        readySignal: "selection-box-shown+valid-bounds+post-paint",
+        postPaintConfirmed: true,
+        boundsValid: latestBoundsReadiness.boundsValid,
+        zeroBounds: latestBoundsReadiness.zeroBounds,
+        visualIdentity: latestSnapshot.visualIdentity,
+        sessionIdentity: latestSessionIdentity,
+        bounds: latestBounds,
+      });
+    };
+
+    if (typeof requestAnimationFrame !== "function") {
+      confirmReady();
+      return;
+    }
+
+    gateState.rafId = requestAnimationFrame(confirmReady);
+  }, [
+    canvasInteractionSettling,
+    dragSelectionOverlayVisible,
+    onPrimarySelectionVisualReadyChange,
+    selectedElements.length,
+    selectedGeomKey,
+    selectionKey,
+    hasDragOverlayVisualOwnership,
+    shouldSuppressTransformerVisualsForDragOverlay,
+    shouldUseGenericTransformer,
+    transformTick,
+    transformerVisualMode.renderMode,
+  ]);
+
+  useEffect(
+    () => () => {
+      const gateState = selectedPhaseVisualReadyGateRef.current;
+      if (
+        gateState.rafId &&
+        typeof cancelAnimationFrame === "function"
+      ) {
+        cancelAnimationFrame(gateState.rafId);
+      }
+      gateState.rafId = 0;
+      gateState.pendingKey = null;
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (transformerVisualMode.renderMode !== "line-indicator") {
+      lineIndicatorVisibilitySnapshotRef.current = null;
+      return;
+    }
+
+    const nextPhase = predragVisualSelectionActive
+      ? "predrag"
+      : canvasInteractionSettling
+        ? "settling"
+        : (effectiveDragging || canvasInteractionActive ? "drag" : "selected");
+    const nextSuppressed = Boolean(
+      isTransformerAttachBlocked ||
+      hasDragOverlayVisualOwnership ||
+      shouldSuppressTransformerVisualsForDragOverlay
+    );
+    const nextSelectionKind = hayLineas
+      ? "line"
+      : (hasPreservedGroupSelection ? "preserved-group" : "line-indicator");
+    const nextSnapshot = {
+      suppressed: nextSuppressed,
+      phase: nextPhase,
+      selectionKind: nextSelectionKind,
+      visualIds: selectionKey || null,
+    };
+    const previousSnapshot = lineIndicatorVisibilitySnapshotRef.current;
+    const didChange =
+      !previousSnapshot ||
+      previousSnapshot.suppressed !== nextSnapshot.suppressed ||
+      previousSnapshot.phase !== nextSnapshot.phase ||
+      previousSnapshot.selectionKind !== nextSnapshot.selectionKind ||
+      previousSnapshot.visualIds !== nextSnapshot.visualIds;
+
+    lineIndicatorVisibilitySnapshotRef.current = nextSnapshot;
+    if (!didChange) return;
+
+    logCanvasBoxFlow(
+      "selection",
+      nextSuppressed ? "line-indicator:suppressed" : "line-indicator:allowed",
+      {
+        source: "line-indicator",
+        phase: nextPhase,
+        owner: "selected-phase",
+        selectedIds: selectionKey || null,
+        visualIds: selectionKey || null,
+        selectionKind: nextSelectionKind,
+        selectionAuthority: "logical-selection",
+        geometryAuthority: "selected-auto-bounds",
+        overlayVisible: false,
+        settling: nextPhase === "settling",
+        suppressedLayers: nextSuppressed ? ["selected-phase"] : [],
+        reason: nextSuppressed
+          ? (
+              isTransformerAttachBlocked
+                ? "attach-blocked"
+                : hasDragOverlayVisualOwnership
+                  ? "drag-overlay-owned"
+                  : "drag-overlay-suppressed"
+            )
+          : "selected-phase-allowed",
+      },
+      {
+        identity: buildSelectionBoxFlowSessionIdentity(),
+      }
+    );
+  }, [
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    effectiveDragging,
+    hasDragOverlayVisualOwnership,
+    hasPreservedGroupSelection,
+    hayLineas,
+    isTransformerAttachBlocked,
+    predragVisualSelectionActive,
+    selectionKey,
+    shouldSuppressTransformerVisualsForDragOverlay,
     transformerVisualMode.renderMode,
   ]);
 
@@ -2908,6 +3404,14 @@ export default function SelectionBounds({
   if (selectedElements.length === 0) return null;
 
   if (transformerVisualMode.renderMode === "line-indicator") {
+    if (
+      isTransformerAttachBlocked ||
+      hasDragOverlayVisualOwnership ||
+      shouldSuppressTransformerVisualsForDragOverlay
+    ) {
+      return null;
+    }
+
     return (
       <SelectionBoundsIndicator
         selectedElements={selectedElements}

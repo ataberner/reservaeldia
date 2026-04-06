@@ -31,6 +31,8 @@ test("stage visual mode mounts the primary overlay for an idle committed selecti
     mountPrimarySelectionOverlay: true,
     showLineControls: false,
     showDragSelectionOverlay: false,
+    dragOverlayVisibilityDriver: null,
+    dragOverlayVisibilityAuthority: null,
     dragOverlaySelectionIds: [],
     singleSelectedLineId: null,
   });
@@ -73,6 +75,64 @@ test("stage visual mode enables line controls only for an idle single selected l
   assert.equal(draggingMode.showLineControls, false);
 });
 
+test("stage visual mode suppresses line controls during predrag drag-overlay ownership", () => {
+  const line = { id: "line-1", tipo: "forma", figura: "line" };
+
+  const mode = resolveStageSelectionVisualMode({
+    selectedIds: ["line-1"],
+    selectedObjects: [line],
+    predragVisualSelectionActive: true,
+    dragVisualSelectionIds: ["line-1"],
+    isAnyCanvasDragActive: false,
+    isImageRotateInteractionActive: false,
+  });
+
+  assert.equal(mode.showLineControls, false);
+  assert.equal(mode.showDragSelectionOverlay, true);
+});
+
+test("stage visual mode keeps the drag overlay visible from the active overlay session during drag even if auxiliary drag state drops", () => {
+  const mode = resolveStageSelectionVisualMode({
+    selectedIds: ["stale-1"],
+    selectedObjects: [{ id: "stale-1", tipo: "texto" }],
+    dragOverlaySessionSelectedIds: ["group-1", "group-2"],
+    dragOverlaySessionPhase: "drag",
+    predragVisualSelectionActive: false,
+    isCanvasDragCoordinatorActive: false,
+    isCanvasDragGestureActive: false,
+    canvasInteractionActive: false,
+    canvasInteractionSettling: false,
+    dragVisualSelectionIds: [],
+  });
+
+  assert.equal(mode.showDragSelectionOverlay, true);
+  assert.equal(mode.dragOverlayVisibilityAuthority, "session-phase");
+  assert.equal(mode.dragOverlayVisibilityDriver, "drag-overlay-session:drag");
+  assert.deepEqual(mode.dragOverlaySelectionIds, ["group-1", "group-2"]);
+});
+
+test("stage visual mode suppresses line controls while an active drag-overlay session owns drag visibility", () => {
+  const line = { id: "line-1", tipo: "forma", figura: "line" };
+  const mode = resolveStageSelectionVisualMode({
+    selectedIds: ["line-1"],
+    selectedObjects: [line],
+    dragOverlaySessionSelectedIds: ["line-1"],
+    dragOverlaySessionPhase: "drag",
+    predragVisualSelectionActive: false,
+    isCanvasDragCoordinatorActive: false,
+    isCanvasDragGestureActive: false,
+    canvasInteractionActive: false,
+    canvasInteractionSettling: false,
+    dragVisualSelectionIds: [],
+    isAnyCanvasDragActive: false,
+    isImageRotateInteractionActive: false,
+  });
+
+  assert.equal(mode.showDragSelectionOverlay, true);
+  assert.equal(mode.showLineControls, false);
+  assert.equal(mode.dragOverlayVisibilityDriver, "drag-overlay-session:drag");
+});
+
 test("stage visual mode activates the drag overlay for predrag and keeps explicit overlay ids", () => {
   const mode = resolveStageSelectionVisualMode({
     selectedIds: ["obj-1"],
@@ -83,6 +143,43 @@ test("stage visual mode activates the drag overlay for predrag and keeps explici
 
   assert.equal(mode.showDragSelectionOverlay, true);
   assert.deepEqual(mode.dragOverlaySelectionIds, ["obj-1", "obj-2"]);
+});
+
+test("stage visual mode keeps the drag overlay visible through settling while drag visual selection is active", () => {
+  const mode = resolveStageSelectionVisualMode({
+    selectedIds: ["obj-1"],
+    selectedObjects: [{ id: "obj-1", tipo: "texto" }],
+    dragVisualSelectionIds: ["obj-1"],
+    dragOverlaySessionSelectedIds: ["obj-1"],
+    dragOverlaySessionPhase: "settling",
+    predragVisualSelectionActive: false,
+    isCanvasDragCoordinatorActive: false,
+    isCanvasDragGestureActive: false,
+    canvasInteractionActive: false,
+    canvasInteractionSettling: false,
+  });
+
+  assert.equal(mode.showDragSelectionOverlay, true);
+  assert.equal(mode.dragOverlayVisibilityAuthority, "session-phase");
+  assert.equal(mode.dragOverlayVisibilityDriver, "drag-overlay-session:settling");
+  assert.deepEqual(mode.dragOverlaySelectionIds, ["obj-1"]);
+});
+
+test("stage visual mode does not keep the drag overlay visible after settling cleanup clears drag visual selection", () => {
+  const mode = resolveStageSelectionVisualMode({
+    selectedIds: ["obj-1"],
+    selectedObjects: [{ id: "obj-1", tipo: "texto" }],
+    dragVisualSelectionIds: [],
+    dragOverlaySessionPhase: "settling",
+    predragVisualSelectionActive: false,
+    isCanvasDragCoordinatorActive: false,
+    isCanvasDragGestureActive: false,
+    canvasInteractionActive: false,
+    canvasInteractionSettling: false,
+  });
+
+  assert.equal(mode.showDragSelectionOverlay, false);
+  assert.deepEqual(mode.dragOverlaySelectionIds, []);
 });
 
 test("stage visual mode prefers the active drag-overlay session identity when available", () => {

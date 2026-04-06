@@ -3,8 +3,10 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { Group, Line, Rect, Text } from "react-konva";
 import {
@@ -286,12 +288,14 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   debugSource = "selection-bounds-indicator",
   boxFlowIdentity = null,
   boxFlowSessionIdentity = null,
+  boxFlowPhase = null,
   lifecycleKey = null,
   boundsControlMode = "auto",
   bringToFront = false,
   onVisualReadyChange = null,
   onFirstControlledFrameVisible = null,
   onBoxFlowBoundsSample = null,
+  onControlledMountReady = null,
 }, forwardedRef) {
   const groupRef = useRef(null);
   const rectRef = useRef(null);
@@ -301,6 +305,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   const badgeTextRef = useRef(null);
   const indicatorSnapshotRef = useRef(null);
   const latestInputsRef = useRef(null);
+  const controlledModeInitializedRef = useRef(false);
+  const controlledMountReadyKeyRef = useRef(null);
+  const [controlledMountReadyVersion, setControlledMountReadyVersion] = useState(0);
   const isControlledMode = boundsControlMode === "controlled";
   const selectedIdsDigest = buildCanvasBoxFlowIdsDigest(selectedElements);
   const selectedNodes = selectedElements
@@ -323,6 +330,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     debugSource,
     boxFlowIdentity,
     boxFlowSessionIdentity,
+    boxFlowPhase,
     lifecycleKey,
     selectedGroupObject,
     boundsControlMode,
@@ -354,6 +362,50 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
 
     return resolveVisualIdentity(inputs, fallback);
   }, [resolveVisualIdentity]);
+
+  const resolveIndicatorOwner = useCallback((currentDebugSource = debugSource) => (
+    currentDebugSource === "drag-overlay" ? "drag-overlay" : "selected-phase"
+  ), [debugSource]);
+
+  const resolveIndicatorPhase = useCallback((
+    currentDebugSource = debugSource,
+    meta = null,
+    inputs = latestInputsRef.current || {}
+  ) => (
+    meta?.phase ||
+    inputs.boxFlowPhase ||
+    (currentDebugSource === "drag-overlay" ? null : "selected")
+  ), [debugSource]);
+
+  const resolveIndicatorGeometryAuthority = useCallback(
+    (currentDebugSource = debugSource, currentPhase = null, meta = null) => {
+      if (currentDebugSource === "drag-overlay") {
+        if (currentPhase === "settling") {
+          return "frozen-controlled-snapshot";
+        }
+        if (
+          meta?.source === "predrag-seed" ||
+          meta?.source === "drag-selection-seed" ||
+          meta?.source === "controlled-seed" ||
+          meta?.source === "group-drag-start"
+        ) {
+          return "startup-seed";
+        }
+        return "live-nodes";
+      }
+      return "selected-auto-bounds";
+    },
+    [debugSource]
+  );
+
+  const resolveIndicatorSuppressedLayers = useCallback(
+    (currentDebugSource = debugSource) => (
+      currentDebugSource === "drag-overlay"
+        ? ["hover-indicator", "selected-phase"]
+        : []
+    ),
+    [debugSource]
+  );
 
   const shouldEmitForIdentity = useCallback((identity) => {
     if (!identity) return false;
@@ -432,6 +484,29 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     return didChange;
   }, []);
 
+  const notifyControlledMountCandidateChanged = useCallback(() => {
+    if (!isControlledMode) return;
+    setControlledMountReadyVersion((current) => current + 1);
+  }, [isControlledMode]);
+
+  const setGroupNodeRef = useCallback((node) => {
+    if (groupRef.current === node) return;
+    groupRef.current = node;
+    notifyControlledMountCandidateChanged();
+  }, [notifyControlledMountCandidateChanged]);
+
+  const setPolygonNodeRef = useCallback((node) => {
+    if (polygonRef.current === node) return;
+    polygonRef.current = node;
+    notifyControlledMountCandidateChanged();
+  }, [notifyControlledMountCandidateChanged]);
+
+  const setRectNodeRef = useCallback((node) => {
+    if (rectRef.current === node) return;
+    rectRef.current = node;
+    notifyControlledMountCandidateChanged();
+  }, [notifyControlledMountCandidateChanged]);
+
   const clearIndicatorVisuals = useCallback((meta = {}) => {
     const groupNode = groupRef.current;
     const rectNode = rectRef.current;
@@ -480,12 +555,26 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       previousSnapshot?.visualIdentity || currentVisualIdentity
     );
     if (previousSnapshot?.visible && shouldEmitForIdentity(previousSessionIdentity)) {
+      const logPhase = resolveIndicatorPhase(currentDebugSource, meta);
       flushCanvasBoxFlowSummary("selection", `${currentDebugSource}:bounds`, {
         reason: meta.reason || "hidden",
       });
       logCanvasBoxFlow("selection", "selection-box:hidden", {
         source: currentDebugSource,
         selectedIds: previousSnapshot.visualIdentity,
+        visualIds: previousSnapshot.visualIdentity,
+        phase: logPhase,
+        owner: resolveIndicatorOwner(currentDebugSource),
+        selectionAuthority:
+          currentDebugSource === "drag-overlay" ? "drag-session" : "logical-selection",
+        geometryAuthority: resolveIndicatorGeometryAuthority(
+          currentDebugSource,
+          logPhase,
+          meta
+        ),
+        overlayVisible: currentDebugSource === "drag-overlay" ? false : false,
+        settling: logPhase === "settling",
+        suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
         reason: meta.reason || "hidden",
       }, {
         identity: previousSessionIdentity,
@@ -509,6 +598,10 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     debugSource,
     isControlledMode,
     onVisualReadyChange,
+    resolveIndicatorGeometryAuthority,
+    resolveIndicatorOwner,
+    resolveIndicatorPhase,
+    resolveIndicatorSuppressedLayers,
     shouldEmitForIdentity,
   ]);
 
@@ -621,10 +714,24 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         previousSnapshot.debugSource !== currentDebugSource
       );
     if (shouldLogRecalc) {
+      const logPhase = resolveIndicatorPhase(currentDebugSource, meta);
       logCanvasBoxFlow("selection", "bounds:recalc", {
         source: meta.source || "manual",
         debugSource: currentDebugSource,
         selectedIds: currentSelectedIdsDigest,
+        visualIds: currentSelectedIdsDigest,
+        phase: logPhase,
+        owner: resolveIndicatorOwner(currentDebugSource),
+        selectionAuthority:
+          currentDebugSource === "drag-overlay" ? "drag-session" : "logical-selection",
+        geometryAuthority: resolveIndicatorGeometryAuthority(
+          currentDebugSource,
+          logPhase,
+          meta
+        ),
+        overlayVisible: currentDebugSource === "drag-overlay",
+        settling: logPhase === "settling",
+        suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
         bounds: nextBoundsDigest,
       }, {
         identity: currentSessionIdentity,
@@ -660,16 +767,32 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         previousSnapshot.visualIdentity !== currentVisualIdentity
       )
     ) {
+      const logPhase = resolveIndicatorPhase(currentDebugSource, meta);
       logCanvasBoxFlow("selection", "selection-box:shown", {
         source: currentDebugSource,
         selectedIds: currentSelectedIdsDigest,
+        visualIds: currentSelectedIdsDigest,
+        phase: logPhase,
+        owner: resolveIndicatorOwner(currentDebugSource),
+        selectionAuthority:
+          currentDebugSource === "drag-overlay" ? "drag-session" : "logical-selection",
+        geometryAuthority: resolveIndicatorGeometryAuthority(
+          currentDebugSource,
+          logPhase,
+          meta
+        ),
+        overlayVisible: currentDebugSource === "drag-overlay",
+        settling: logPhase === "settling",
+        suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
         bounds: nextBoundsDigest,
+        syncToken: meta.syncToken || null,
       }, {
         identity: currentSessionIdentity,
       });
     }
 
     if (shouldEmitForIdentity(currentSessionIdentity)) {
+      const logPhase = resolveIndicatorPhase(currentDebugSource, meta);
       recordCanvasBoxFlowSummary(
         "selection",
         `${currentDebugSource}:bounds`,
@@ -677,6 +800,19 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
           source: meta.source || "manual",
           debugSource: currentDebugSource,
           selectedIds: currentSelectedIdsDigest,
+          visualIds: currentSelectedIdsDigest,
+          phase: logPhase,
+          owner: resolveIndicatorOwner(currentDebugSource),
+          selectionAuthority:
+            currentDebugSource === "drag-overlay" ? "drag-session" : "logical-selection",
+          geometryAuthority: resolveIndicatorGeometryAuthority(
+            currentDebugSource,
+            logPhase,
+            meta
+          ),
+          overlayVisible: currentDebugSource === "drag-overlay",
+          settling: logPhase === "settling",
+          suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
           bounds: nextBoundsDigest,
         },
         {
@@ -728,6 +864,10 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     onFirstControlledFrameVisible,
     onBoxFlowBoundsSample,
     onVisualReadyChange,
+    resolveIndicatorGeometryAuthority,
+    resolveIndicatorOwner,
+    resolveIndicatorPhase,
+    resolveIndicatorSuppressedLayers,
     shouldEmitForIdentity,
     updateBadgeVisual,
   ]);
@@ -933,6 +1073,14 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         logCanvasBoxFlow("selection", "selection-box:hidden", {
           source: debugSource,
           selectedIds: previousSnapshot.visualIdentity,
+          visualIds: previousSnapshot.visualIdentity,
+          phase: "selected",
+          owner: resolveIndicatorOwner(debugSource),
+          selectionAuthority: "logical-selection",
+          geometryAuthority: resolveIndicatorGeometryAuthority(debugSource, "selected"),
+          overlayVisible: false,
+          settling: false,
+          suppressedLayers: [],
           reason:
             previousSnapshot.visualIdentity !== nextSnapshot.visualIdentity
               ? "selection-changed"
@@ -956,6 +1104,14 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       logCanvasBoxFlow("selection", "selection-box:shown", {
         source: debugSource,
         selectedIds: selectedIdsDigest,
+        visualIds: selectedIdsDigest,
+        phase: "selected",
+        owner: resolveIndicatorOwner(debugSource),
+        selectionAuthority: "logical-selection",
+        geometryAuthority: resolveIndicatorGeometryAuthority(debugSource, "selected"),
+        overlayVisible: false,
+        settling: false,
+        suppressedLayers: [],
         bounds: boundsDigest,
       }, {
         identity: nextSessionIdentity,
@@ -970,6 +1126,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     indicatorSessionIdentity,
     indicatorVisualIdentity,
     isControlledMode,
+    resolveIndicatorGeometryAuthority,
+    resolveIndicatorOwner,
+    resolveIndicatorPhase,
     resolveSessionIdentity,
     resolveVisualIdentity,
     selectedIdsDigest,
@@ -979,31 +1138,123 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   useEffect(() => {
     if (!isControlledMode) return undefined;
 
-    try {
-      rectRef.current?.visible(false);
-      polygonRef.current?.visible(false);
-      badgeGroupRef.current?.visible(false);
-      flushIndicatorLayerDraw(groupRef.current, true);
-    } catch {}
+    if (!controlledModeInitializedRef.current) {
+      try {
+        rectRef.current?.visible(false);
+        polygonRef.current?.visible(false);
+        badgeGroupRef.current?.visible(false);
+        flushIndicatorLayerDraw(groupRef.current, true);
+      } catch {}
+      controlledModeInitializedRef.current = true;
+    }
 
     return () => {
       const snapshot = indicatorSnapshotRef.current;
       if (!snapshot?.visible) return;
+      const currentInputs = latestInputsRef.current || {};
+      const currentDebugSource =
+        currentInputs.debugSource ||
+        debugSource;
       const snapshotSessionIdentity = resolveSessionIdentity(
         {
           boxFlowSessionIdentity: snapshot.sessionIdentity || null,
           boxFlowIdentity: snapshot.visualIdentity || null,
         },
-        snapshot.visualIdentity || debugSource
+        snapshot.visualIdentity || currentDebugSource
       );
+      const cleanupPhase = resolveIndicatorPhase(
+        currentDebugSource,
+        null,
+        currentInputs
+      );
+      const cleanupReason =
+        currentInputs.boxFlowIdentity ? "overlay-session-end" : "controlled-unmount";
+      const isDragOverlay = currentDebugSource === "drag-overlay";
+      if (isDragOverlay && shouldEmitForIdentity(snapshotSessionIdentity)) {
+        logCanvasBoxFlow("selection", "drag-overlay:session-end-requested", {
+          source: currentDebugSource,
+          selectedIds: snapshot.visualIdentity,
+          visualIds: snapshot.visualIdentity,
+          phase: cleanupPhase,
+          owner: "drag-overlay",
+          dragOverlaySessionKey:
+            currentInputs.boxFlowIdentity ||
+            snapshot.visualIdentity ||
+            null,
+          selectionAuthority: "drag-session",
+          geometryAuthority: resolveIndicatorGeometryAuthority(
+            currentDebugSource,
+            cleanupPhase,
+            {
+              ...currentInputs,
+              reason: cleanupReason,
+            }
+          ),
+          overlayVisible: true,
+          overlayMounted: true,
+          settling: cleanupPhase === "settling",
+          suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
+          logicalCleanupOnly: true,
+          visualHideAuthorized: false,
+          reason: cleanupReason,
+        }, {
+          identity: snapshotSessionIdentity,
+        });
+        logCanvasBoxFlow("selection", "drag-overlay:session-end-visual-hide-blocked", {
+          source: currentDebugSource,
+          selectedIds: snapshot.visualIdentity,
+          visualIds: snapshot.visualIdentity,
+          phase: cleanupPhase,
+          owner: "drag-overlay",
+          dragOverlaySessionKey:
+            currentInputs.boxFlowIdentity ||
+            snapshot.visualIdentity ||
+            null,
+          selectionAuthority: "drag-session",
+          geometryAuthority: resolveIndicatorGeometryAuthority(
+            currentDebugSource,
+            cleanupPhase,
+            {
+              ...currentInputs,
+              reason: cleanupReason,
+            }
+          ),
+          overlayVisible: true,
+          overlayMounted: true,
+          settling: cleanupPhase === "settling",
+          suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
+          logicalCleanupOnly: true,
+          visualHideAuthorized: false,
+          reason: cleanupReason,
+        }, {
+          identity: snapshotSessionIdentity,
+        });
+        return;
+      }
       if (shouldEmitForIdentity(snapshotSessionIdentity)) {
         flushCanvasBoxFlowSummary("selection", `${debugSource}:bounds`, {
-          reason: boxFlowIdentity ? "overlay-session-end" : "controlled-unmount",
+          reason: cleanupReason,
         });
         logCanvasBoxFlow("selection", "selection-box:hidden", {
-          source: debugSource,
+          source: currentDebugSource,
           selectedIds: snapshot.visualIdentity,
-          reason: boxFlowIdentity ? "overlay-session-end" : "controlled-unmount",
+          visualIds: snapshot.visualIdentity,
+          phase: cleanupPhase,
+          owner: resolveIndicatorOwner(currentDebugSource),
+          selectionAuthority:
+            currentDebugSource === "drag-overlay" ? "drag-session" : "logical-selection",
+          geometryAuthority: resolveIndicatorGeometryAuthority(
+            currentDebugSource,
+            cleanupPhase,
+            {
+              ...currentInputs,
+              reason: cleanupReason,
+            }
+          ),
+          overlayVisible: false,
+          settling: cleanupPhase === "settling",
+          suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
+          reason: cleanupReason,
         }, {
           identity: snapshotSessionIdentity,
         });
@@ -1016,13 +1267,27 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     };
   }, [
     boxFlowIdentity,
+    boxFlowPhase,
     boxFlowSessionIdentity,
+    controlledModeInitializedRef,
     debugSource,
     isControlledMode,
+    resolveIndicatorGeometryAuthority,
+    resolveIndicatorOwner,
+    resolveIndicatorPhase,
+    resolveIndicatorSuppressedLayers,
     shouldEmitForIdentity,
   ]);
 
-  useImperativeHandle(forwardedRef, () => ({
+  useEffect(
+    () => () => {
+      controlledModeInitializedRef.current = false;
+      controlledMountReadyKeyRef.current = null;
+    },
+    []
+  );
+
+  const controlledIndicatorApi = useMemo(() => ({
     applyControlledBounds(nextBounds, meta = {}) {
       if (!isControlledMode) return null;
       return applyIndicatorBounds(nextBounds, {
@@ -1044,12 +1309,79 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     getAppliedBoundsDigest() {
       return indicatorSnapshotRef.current?.boundsDigest || null;
     },
+    isControlledMountReady() {
+      return Boolean(groupRef.current && rectRef.current && polygonRef.current);
+    },
   }), [
     applyIndicatorBounds,
     clearIndicatorVisuals,
     debugSource,
     isControlledMode,
     lifecycleKey,
+  ]);
+
+  useImperativeHandle(forwardedRef, () => controlledIndicatorApi, [
+    controlledIndicatorApi,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!isControlledMode) {
+      controlledMountReadyKeyRef.current = null;
+      return;
+    }
+    if (typeof onControlledMountReady !== "function") {
+      return;
+    }
+    if (!controlledIndicatorApi.isControlledMountReady()) {
+      return;
+    }
+
+    const currentInputs = latestInputsRef.current || {};
+    const currentVisualIdentity = resolveVisualIdentity(
+      currentInputs,
+      debugSource
+    );
+    const currentSessionIdentity = resolveSessionIdentity(
+      currentInputs,
+      currentVisualIdentity
+    );
+    const nextReadyKey = [
+      lifecycleKey || currentInputs.lifecycleKey || "",
+      currentSessionIdentity || "",
+      currentVisualIdentity || "",
+    ].join("|");
+
+    if (controlledMountReadyKeyRef.current === nextReadyKey) {
+      return;
+    }
+    controlledMountReadyKeyRef.current = nextReadyKey;
+
+    onControlledMountReady({
+      source: debugSource,
+      lifecycleKey: lifecycleKey || currentInputs.lifecycleKey || null,
+      boxFlowIdentity: currentVisualIdentity,
+      sessionIdentity: currentSessionIdentity,
+      phase: resolveIndicatorPhase(debugSource, null, currentInputs),
+      selectedIds: Array.isArray(currentInputs.selectedElements)
+        ? [...currentInputs.selectedElements]
+        : [],
+      schedulingBoundary: "controlled-layout-ready",
+      indicatorApi: controlledIndicatorApi,
+    });
+  }, [
+    boxFlowIdentity,
+    boxFlowPhase,
+    boxFlowSessionIdentity,
+    controlledIndicatorApi,
+    controlledMountReadyVersion,
+    debugSource,
+    isControlledMode,
+    lifecycleKey,
+    onControlledMountReady,
+    resolveIndicatorPhase,
+    resolveSessionIdentity,
+    resolveVisualIdentity,
+    selectedIdsDigest,
   ]);
 
   useEffect(() => {
@@ -1076,9 +1408,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   };
 
   return (
-    <Group ref={groupRef} name="ui selection-bounds-indicator" listening={false}>
+    <Group ref={setGroupNodeRef} name="ui selection-bounds-indicator" listening={false}>
       <Line
-        ref={polygonRef}
+        ref={setPolygonNodeRef}
         points={isControlledMode ? undefined : (renderBounds.kind === "polygon" ? renderBounds.points : [])}
         closed
         visible={isControlledMode ? undefined : renderBounds.kind === "polygon"}
@@ -1090,7 +1422,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         perfectDrawEnabled={false}
       />
       <Rect
-        ref={rectRef}
+        ref={setRectNodeRef}
         x={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.x : 0)}
         y={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.y : 0)}
         width={isControlledMode ? undefined : (renderBounds.kind === "rect" ? renderBounds.width : 0)}

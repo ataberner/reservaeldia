@@ -62,6 +62,7 @@ import {
   getCanvasPointerDebugInfo,
   getKonvaNodeDebugInfo,
   logSelectedDragDebug,
+  sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import {
   getActiveCanvasBoxFlowSession,
@@ -572,6 +573,7 @@ export default function ElementoCanvas({
   });
   const latestObjRef = useRef(obj);
   const latestOnChangeRef = useRef(onChange);
+  const latestOnDragMovePersonalizadoRef = useRef(onDragMovePersonalizado);
   const latestOnDragStartPersonalizadoRef = useRef(onDragStartPersonalizado);
   const latestOnDragEndPersonalizadoRef = useRef(onDragEndPersonalizado);
   const latestSelectionStateRef = useRef({
@@ -1550,6 +1552,7 @@ export default function ElementoCanvas({
   useEffect(() => {
     latestObjRef.current = obj;
     latestOnChangeRef.current = onChange;
+    latestOnDragMovePersonalizadoRef.current = onDragMovePersonalizado;
     latestOnDragStartPersonalizadoRef.current = onDragStartPersonalizado;
     latestOnDragEndPersonalizadoRef.current = onDragEndPersonalizado;
     latestSelectionStateRef.current = {
@@ -1562,10 +1565,91 @@ export default function ElementoCanvas({
     isSelected,
     obj,
     onChange,
+    onDragMovePersonalizado,
     onDragEndPersonalizado,
     onDragStartPersonalizado,
     selectionCount,
   ]);
+
+  const forwardManualGroupPreviewToDragOverlay = useCallback((session, reason = "manual-preview") => {
+    if (!session?.active || session.engine !== "manual-pointer") {
+      return false;
+    }
+
+    const onDragMovePersonalizadoCurrent = latestOnDragMovePersonalizadoRef.current;
+    if (typeof onDragMovePersonalizadoCurrent !== "function") {
+      return false;
+    }
+
+    const latestObj = latestObjRef.current || {};
+    const leaderId = session.leaderId || latestObj.id || null;
+    if (!leaderId) {
+      return false;
+    }
+
+    const leaderNode = resolveSessionLeaderNode(session) || elementNodeRef.current;
+    const previewPose = getManualGroupDragPreviewPose(leaderId);
+    const leaderPos =
+      leaderNode &&
+      typeof leaderNode.x === "function" &&
+      typeof leaderNode.y === "function"
+        ? {
+            x: leaderNode.x(),
+            y: leaderNode.y(),
+          }
+        : (
+            Number.isFinite(previewPose?.x) && Number.isFinite(previewPose?.y)
+              ? {
+                  x: previewPose.x,
+                  y: previewPose.y,
+                }
+              : null
+          );
+
+    if (!Number.isFinite(leaderPos?.x) || !Number.isFinite(leaderPos?.y)) {
+      return false;
+    }
+
+    onDragMovePersonalizadoCurrent(leaderPos, leaderId, {
+      pipeline: "group",
+      engine: "manual-pointer",
+      sessionId: session.sessionId || null,
+      leaderId,
+    });
+
+    const syncSample = sampleCanvasInteractionLog(
+      `drag-group-overlay-forward:${leaderId}`,
+      {
+        firstCount: 3,
+        throttleMs: 120,
+      }
+    );
+
+    if (syncSample.shouldLog) {
+      logCanvasBoxFlow("selection", "group-drag:overlay-sync-forwarded", {
+        source: "manual-group-pointermove",
+        reason,
+        phase: "drag",
+        owner: "drag-overlay",
+        dragId: leaderId,
+        selectedIds: Array.isArray(session.elementIds) ? session.elementIds : [leaderId],
+        visualIds: Array.isArray(session.elementIds) ? session.elementIds : [leaderId],
+        selectionAuthority: "drag-session",
+        geometryAuthority: "live-nodes",
+        overlayVisible: true,
+        settling: false,
+        suppressedLayers: ["hover-indicator", "selected-phase"],
+        pipeline: "group",
+      }, {
+        identity: session.sessionId || leaderId,
+        sessionIdentity: resolveActiveSelectionBoxFlowSessionIdentity(
+          session.sessionId || leaderId
+        ),
+      });
+    }
+
+    return true;
+  }, []);
 
   const cancelManualGroupFinishRetry = useCallback(() => {
     const runtime = manualGroupRuntimeRef.current;
@@ -1972,6 +2056,12 @@ export default function ElementoCanvas({
       }
 
       if (updateResult.mode === "activated" || updateResult.mode === "preview") {
+        if (updateResult.mode === "preview") {
+          forwardManualGroupPreviewToDragOverlay(
+            session,
+            "forward-preview-to-controlled-sync"
+          );
+        }
         if (nativeEvent?.cancelable) {
           try {
             nativeEvent.preventDefault();
@@ -2033,6 +2123,7 @@ export default function ElementoCanvas({
   }, [
     detachManualGroupWindowListeners,
     finishManualGroupPointerSession,
+    forwardManualGroupPreviewToDragOverlay,
     hasDragged,
     hasPointerEvents,
     logElementGestureDebug,

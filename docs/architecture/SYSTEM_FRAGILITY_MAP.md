@@ -59,6 +59,7 @@ The system is already partially hardened compared with older docs, but it is sti
   - `CanvasEditor.jsx` suppresses some hover/tracing behavior while `window._isDragging || window._grupoLider || window._resizeData?.isResizing`.
   - The controlled drag overlay samples bounds with `requireLiveNodes: true`, while selected-phase auto indicators can fall back to object `x/y/width/height`; different selection-box paths can therefore read different geometry sources.
   - Drag end does not immediately hand visual ownership back to committed selection. Settling can keep the last controlled drag-overlay bounds visible until deferred selection repair and cleanup finish.
+  - The selection-box model is now documented formally, but the runtime still carries fallback paths such as replayable controlled snapshots, idle cleanup, drag-start hover clear, and legacy mirrors. If those paths stop behaving as subordinate fallbacks, the runtime can violate the model without any code-level type boundary catching it.
 
 #### E4. The editor still has very large orchestration files with blurred boundaries
 

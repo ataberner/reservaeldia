@@ -107,19 +107,46 @@ export function resolveStageSelectionVisualMode(input = {}) {
   const singleSelectedLineId = isLineObject(singleSelectedObject)
     ? singleSelectedObject?.id || selectedIds[0] || null
     : null;
-
-  const showDragSelectionOverlay = Boolean(
-    input.predragVisualSelectionActive === true ||
-      input.isCanvasDragCoordinatorActive === true ||
+  const hasDragOverlaySessionDragOwnership = Boolean(
+    dragOverlaySessionSelectedIds.length > 0 &&
+      input.dragOverlaySessionPhase === "drag"
+  );
+  const hasSettlingDragOverlayOwnership = Boolean(
+    dragOverlaySessionSelectedIds.length > 0 &&
+      dragVisualSelectionIds.length > 0 &&
+      input.dragOverlaySessionPhase === "settling"
+  );
+  const hasAuxiliaryDragOverlayVisibility = Boolean(
+    dragVisualSelectionIds.length > 0 &&
       (
-        dragVisualSelectionIds.length > 0 &&
-        (
-          input.isCanvasDragGestureActive === true ||
-          input.canvasInteractionActive === true ||
-          input.canvasInteractionSettling === true
-        )
+        input.isCanvasDragGestureActive === true ||
+        input.canvasInteractionActive === true ||
+        input.canvasInteractionSettling === true
       )
   );
+  const dragOverlayVisibilityDriver =
+    input.predragVisualSelectionActive === true
+      ? "predrag-visual-selection"
+      : hasDragOverlaySessionDragOwnership
+        ? "drag-overlay-session:drag"
+        : hasSettlingDragOverlayOwnership
+          ? "drag-overlay-session:settling"
+          : input.isCanvasDragCoordinatorActive === true
+            ? "drag-coordinator"
+            : hasAuxiliaryDragOverlayVisibility
+              ? "drag-visual-selection"
+              : null;
+  const dragOverlayVisibilityAuthority =
+    dragOverlayVisibilityDriver === null
+      ? null
+      : dragOverlayVisibilityDriver.startsWith("drag-overlay-session:")
+        ? "session-phase"
+        : "aux-state";
+  const dragOverlayOwnsSelectedVisuals = Boolean(
+    dragOverlayVisibilityDriver
+  );
+
+  const showDragSelectionOverlay = Boolean(dragOverlayVisibilityDriver);
   const dragOverlaySelectionIds =
     dragOverlaySessionSelectedIds.length > 0
       ? dragOverlaySessionSelectedIds
@@ -137,9 +164,12 @@ export function resolveStageSelectionVisualMode(input = {}) {
     showLineControls: Boolean(
       singleSelectedLineId &&
         input.isAnyCanvasDragActive !== true &&
-        input.isImageRotateInteractionActive !== true
+        input.isImageRotateInteractionActive !== true &&
+        dragOverlayOwnsSelectedVisuals !== true
     ),
     showDragSelectionOverlay,
+    dragOverlayVisibilityDriver,
+    dragOverlayVisibilityAuthority,
     dragOverlaySelectionIds: showDragSelectionOverlay
       ? dragOverlaySelectionIds
       : [],

@@ -225,27 +225,28 @@ Current canonical identity contract:
 - If the current committed selection does not contain the active `dragId`, drag-overlay identity must collapse to `[dragId]` instead of preserving a mismatched multi-selection snapshot.
 - Settling and idle cleanup must only clear or restore drag-visual state when the visual snapshot still matches the active settling session identity.
 
-### Selection Box During Drag (Current Behavior)
-The full current behavior is documented in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
+### Selection Box Model
+The normative drag/selection-box model lives in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
 
-Short version:
+`EDITOR_SYSTEM.md` only summarizes the integration points that the rest of the editor must preserve:
 
-- The visible drag box is rendered by a drag-layer `SelectionBoundsIndicator` in `boundsControlMode="controlled"` and orchestrated by `CanvasStageContentComposer`.
-- During active drag, selection membership is a derived drag-session snapshot. The active drag-overlay session wins first, then `dragVisualSelection`, then committed selection, and the overlay collapses to `[dragId]` if the committed snapshot does not include the dragged id.
-- During active drag, geometry comes from live Konva node bounds only. Persisted object geometry is not the source for the controlled drag overlay.
-- During settling, the drag overlay can stay visible on the last applied controlled bounds while deferred selection commit, selection restoration, and guide cleanup run.
-- Outside the controlled drag overlay path, selected-phase bounds can still come from either `SelectionTransformer` or `SelectionBoundsIndicator` in `auto` mode, and `auto` mode may fall back to object geometry when live nodes are missing.
+- The primary drag lifecycle contract is `idle -> hover -> selected -> predrag -> drag -> settling -> selected|idle`. If a direct-start fallback path misses an explicit `predrag` transition, it must still satisfy the same predrag suppression and hover-clear obligations before the first visible drag frame.
+- Visible authority is phase-owned. `drag-overlay` outranks selected-phase visuals, and selected-phase visuals outrank hover.
+- Selection authority is split by phase: committed logical selection owns `selected`, but drag-session selection owns `predrag`, `drag`, and `settling`.
+- Geometry authority is split by phase: active drag uses live-node bounds only, selected auto-indicator paths may still use object-data fallback, and settling freezes the last controlled drag snapshot.
+- Startup authority is singular: the first visible drag frame must come from `controlled-sync`, not from seeds, buffered state, or generic replay.
+- Fallback paths remain allowed for resilience and compatibility, but they must stay subordinate to the documented phase and authority contracts.
 
 ### Interaction Phases And Visual Ownership
 Canvas interaction visuals must be treated as an explicit phase model, not as independent overlays that can decide visibility on their own. The active phase boundary is coordinated in `CanvasStageContentComposer.jsx` and `selectionVisualModes.js`, then rendered through `HoverIndicator`, `SelectionTransformer`, or drag-layer `SelectionBoundsIndicator`.
 
-Current visible-owner rule:
+Visible-owner contract:
 
-- Exactly one layer should be visibly owning the box-level affordance at a time.
+- Exactly one layer may visibly own the box-level affordance at a time.
 - Valid owners are `hover-indicator`, `transformer-primary`, and `drag-overlay`.
 - `LineControls` is a selected-phase variant and must obey the same exclusivity rule as `transformer-primary`.
 - Current implementation reaches that visible exclusivity through suppression, attach guards, settling delays, and cleanup effects rather than guaranteed immediate unmount of every competing layer.
-- Delayed cleanup and replay-safe snapshot retention still exist in the runtime. They are compatibility and resilience paths, not the intended visible owner of the box.
+- Delayed cleanup, replay-safe snapshots, and compatibility mirrors remain allowed only as fallback paths. They must not become independent visible authority.
 
 | Phase | Allowed visual owner | Systems that must stay suppressed | Notes |
 | --- | --- | --- | --- |

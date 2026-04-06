@@ -39,6 +39,10 @@ function createFakeWindow() {
   };
 }
 
+function getLogLine(fakeWindow, index) {
+  return String(fakeWindow.getLogs()?.[index]?.[0] || "");
+}
+
 test("disabled box-flow debug produces no session or log output", () => {
   const fakeWindow = createFakeWindow();
   fakeWindow.__DBG_CANVAS_BOX_FLOW = false;
@@ -90,10 +94,9 @@ test("box-flow sessions keep stable token, sequence, and relative time", () => {
   assert.equal(entry?.seq, 2);
   assert.equal(entry?.relativeMs, 5);
   assert.equal(fakeWindow.getLogs().length, 2);
-  assert.equal(
-    fakeWindow.getLogs()[1][0],
-    "[BOXFLOW][hover#1][#2][+5ms] target:resolved"
-  );
+  assert.match(getLogLine(fakeWindow, 1), /\[BOXFLOW\] token=hover#1 seq=2 t=5ms event=target:resolved/);
+  assert.match(getLogLine(fakeWindow, 1), /channel=hover/);
+  assert.match(getLogLine(fakeWindow, 1), /phase=hover/);
 });
 
 test("id digests are canonicalized so order-only multi-select changes do not create new identities", () => {
@@ -126,12 +129,9 @@ test("ephemeral sessions can retarget identity without emitting an end/start pai
   assert.equal(session?.token, "selection#1");
   assert.equal(session?.identity, "drag-overlay:1:obj-1");
   assert.equal(fakeWindow.getLogs().length, 2);
-  assert.equal(
-    fakeWindow.getLogs()[1][0],
-    "[BOXFLOW][selection#1][#2][+0ms] interaction:retarget"
-  );
-  assert.equal(fakeWindow.getLogs()[1][1]?.previousIdentity, "obj-1");
-  assert.equal(fakeWindow.getLogs()[1][1]?.identity, "drag-overlay:1:obj-1");
+  assert.match(getLogLine(fakeWindow, 1), /\[BOXFLOW\] token=selection#1 seq=2 t=0ms event=interaction:retarget/);
+  assert.match(getLogLine(fakeWindow, 1), /previousIdentity=obj-1/);
+  assert.match(getLogLine(fakeWindow, 1), /nextIdentity=drag-overlay:1:obj-1/);
 });
 
 test("session identity keeps one logical drag session alive across event identity changes", () => {
@@ -398,9 +398,10 @@ test("repeated movement summaries stay bounded and flush on the throttle window"
   assert.equal(summaryEntry?.payload?.lastPos, "x=18 y=28");
   assert.equal("first" in (summaryEntry?.payload || {}), false);
   assert.equal("last" in (summaryEntry?.payload || {}), false);
-  assert.match(fakeWindow.getLogs()[1][1], /summary=drag-move/);
-  assert.match(fakeWindow.getLogs()[1][1], /firstPos=x=10 y=20/);
-  assert.deepEqual(fakeWindow.getLogs()[1][2], summaryEntry?.payload);
+  assert.match(getLogLine(fakeWindow, 1), /summary=drag-move/);
+  assert.match(getLogLine(fakeWindow, 1), /count=3/);
+  assert.match(getLogLine(fakeWindow, 1), /firstPos=\"x=10 y=20\"/);
+  assert.match(getLogLine(fakeWindow, 1), /lastPos=\"x=18 y=28\"/);
 });
 
 test("ending a session flushes pending summaries before cleanup", () => {
@@ -452,10 +453,10 @@ test("ending a session flushes pending summaries before cleanup", () => {
   );
 
   assert.equal(fakeWindow.getLogs().length, 3);
-  assert.equal(fakeWindow.getLogs()[1][0], "[BOXFLOW][hover#1][#2][+16ms] bounds:summary");
-  assert.match(fakeWindow.getLogs()[1][1], /hover=obj-2/);
-  assert.match(fakeWindow.getLogs()[1][1], /firstBounds=rect@8,10 20x30/);
-  assert.match(fakeWindow.getLogs()[1][1], /lastBounds=rect@10,14 20x30/);
+  assert.match(getLogLine(fakeWindow, 1), /\[BOXFLOW\] token=hover#1 seq=2 t=16ms event=bounds:summary/);
+  assert.match(getLogLine(fakeWindow, 1), /hoverId=obj-2/);
+  assert.match(getLogLine(fakeWindow, 1), /firstBounds=\"rect@8,10 20x30\"/);
+  assert.match(getLogLine(fakeWindow, 1), /lastBounds=\"rect@10,14 20x30\"/);
   assert.equal(endEntry?.payload?.reason, "hidden");
 });
 
@@ -515,9 +516,10 @@ test("summary logs flatten bounds and source lineage into the top-level payload"
   assert.equal(summaryEntry?.payload?.lastSource, "node-dragmove");
   assert.equal(summaryEntry?.payload?.flowKind, "selection");
   assert.equal(fakeWindow.getLogs().length, 2);
-  assert.match(fakeWindow.getLogs()[1][1], /src=effect-init \| node-dragmove/);
-  assert.match(fakeWindow.getLogs()[1][1], /selected=obj-1/);
-  assert.deepEqual(fakeWindow.getLogs()[1][2], summaryEntry?.payload);
+  assert.match(getLogLine(fakeWindow, 1), /summary=drag-overlay:bounds/);
+  assert.match(getLogLine(fakeWindow, 1), /selectedIds=\[obj-1\]/);
+  assert.match(getLogLine(fakeWindow, 1), /firstBounds=\"rect@10,20 30x40\"/);
+  assert.match(getLogLine(fakeWindow, 1), /lastBounds=\"rect@14,24 30x40\"/);
 });
 
 test("drift summaries flatten lag metrics and drag-overlay lineage", () => {
@@ -602,18 +604,18 @@ test("drift summaries flatten lag metrics and drag-overlay lineage", () => {
   assert.equal(summaryEntry?.payload?.lastBoxBounds, "rect@113,211 30x40");
   assert.equal(summaryEntry?.payload?.driftPattern, "changing");
   assert.equal(summaryEntry?.payload?.maxEventGap, 2);
-  assert.match(fakeWindow.getLogs()[1][1], /maxDrift=dx=6 dy=2 dist=6.325/);
+  assert.match(getLogLine(fakeWindow, 1), /maxDrift=\"dx=6 dy=2 dist=6.325\"/);
   assert.match(
-    fakeWindow.getLogs()[1][1],
-    /dragSrc=element-drag-move/
+    getLogLine(fakeWindow, 1),
+    /dragSources=element-drag-move/
   );
   assert.match(
-    fakeWindow.getLogs()[1][1],
-    /boxSrc=node-dragmove/
+    getLogLine(fakeWindow, 1),
+    /boxSources=node-dragmove/
   );
   assert.match(
-    fakeWindow.getLogs()[1][1],
-    /order=overlay-before-drag \| overlay-after-drag/
+    getLogLine(fakeWindow, 1),
+    /orders=\"overlay-before-drag \| overlay-after-drag\"/
   );
 });
 
@@ -669,7 +671,7 @@ test("startup summaries expose first visible overlay frame versus first live dra
   assert.equal(summaryEntry?.payload?.firstVisibleBeforeLiveDrag, true);
   assert.equal(summaryEntry?.payload?.visibleSeedBeforeLiveDrag, true);
   assert.equal(summaryEntry?.payload?.startupJump, "dx=-10 dy=-12 dist=15.62");
-  assert.match(fakeWindow.getLogs()[1][1], /visibleBeforeLive=yes/);
-  assert.match(fakeWindow.getLogs()[1][1], /seedBeforeLive=yes/);
-  assert.match(fakeWindow.getLogs()[1][1], /startupJump=dx=-10 dy=-12 dist=15.62/);
+  assert.match(getLogLine(fakeWindow, 1), /summary=drag-overlay:startup/);
+  assert.match(getLogLine(fakeWindow, 1), /startupJump=\"dx=-10 dy=-12 dist=15.62\"/);
+  assert.match(getLogLine(fakeWindow, 1), /selectedIds=\[obj-1\]/);
 });

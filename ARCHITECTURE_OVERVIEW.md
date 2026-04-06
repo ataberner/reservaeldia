@@ -169,18 +169,18 @@ HTML generation today is shared between preview and publish:
 - Frontend owns live authoring state and preview boundary capture; backend owns publish preflight, public asset normalization, lifecycle enforcement, and final public artifact writes.
 
 ### Canvas Interaction Ownership
-The canvas editor still has to be reasoned about as a phase-driven interaction system, but the current implementation is hybrid rather than purely single-source.
+The canvas editor must be treated as a phase-owned interaction system with explicit visual, selection, and geometry authority.
 
-Current observed behavior:
+Model summary:
 
-- `HoverIndicator` owns hover-only boxes from live node geometry until predrag or drag boundaries force-clear it.
-- Selected-phase boxes are rendered either by `SelectionTransformer` or by `SelectionBoundsIndicator` in `auto` mode for line and preserved-group paths.
-- During `predrag`, `drag`, and `settling`, the visible selection box moves to a drag-layer `SelectionBoundsIndicator` in `controlled` mode. `CanvasStageContentComposer` owns that session and pushes bounds into it imperatively.
-- Active drag overlay membership is a derived drag-session snapshot, not always the same as committed selection. If the committed selection snapshot does not include the active `dragId`, the overlay collapses to `[dragId]`.
-- Active drag overlay geometry comes from live Konva node bounds only. After drag end, settling can keep the last controlled bounds visible while deferred selection commit, selection restoration, and guide cleanup run.
-- Visual exclusivity is enforced by suppression and delayed cleanup, not by an instant unmount guarantee across every competing layer.
+- The authoritative phase model is `idle -> hover -> selected -> predrag -> drag -> settling -> selected|idle`. If a direct-start fallback path misses an explicit `predrag` transition, it must still satisfy the same predrag suppression and hover-clear obligations before the first visible drag frame.
+- Visual authority is exclusive and prioritized: `drag-overlay` > selected-phase box > hover.
+- Selection authority is phase-specific: committed logical selection owns stable selected state, while drag-session selection owns the visible box during `predrag`, `drag`, and `settling`.
+- Geometry authority is phase-specific: active drag uses live-node bounds only, settling freezes the last controlled drag snapshot, and selected auto-indicator paths still permit object-data fallback.
+- Startup authority is singular: the first visible drag frame must come from the composer-owned `controlled-sync` path for the active session.
+- Fallback paths still exist, but they are subordinate resilience or compatibility paths, not independent visible authority.
 
-Detailed traceability for the current behavior lives in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
+The full normative model lives in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
 
 ## 10. Known Complexity Areas
 - `src/pages/dashboard.js`: large orchestration surface that mixes auth flow, dashboard home, editor route resolution, preview generation, publish gating, admin draft sessions, and template sessions.

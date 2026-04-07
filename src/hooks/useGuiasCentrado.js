@@ -19,6 +19,9 @@ import {
     logTextGeometryContractInvariant,
     recordTextGeometryContractSnapshot,
 } from "@/components/editor/canvasEditor/textGeometryContractDebug";
+import {
+    resolveNodeSelectionRect,
+} from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 
 function roundGuideMetric(value) {
     const numeric = Number(value);
@@ -559,7 +562,6 @@ export default function useGuiasCentrado({
     const getNodeBox = (node, stage, obj = null, options = {}) => {
         if (!node || !stage || typeof node.getClientRect !== "function") return null;
 
-        const rectOpts = { relativeTo: stage };
         const useLivePoseOnly = options?.requireLivePoseOnly === true;
         const requireAuthoritativeTextRect =
             options?.requireAuthoritativeTextRect === true;
@@ -626,11 +628,32 @@ export default function useGuiasCentrado({
             }
         }
 
+        let geometryFamily = null;
+
         if (!baseRect) {
-            try {
-                baseRect = node.getClientRect(rectOpts);
-            } catch {
-                return null;
+            baseRect = resolveNodeSelectionRect(obj, node, {
+                phase: "drag",
+                surface: "guide-geometry",
+                caller: "useGuiasCentrado:getNodeBox",
+                requireLiveNodes: true,
+                relativeTo: stage,
+            });
+            if (baseRect) {
+                geometryFamily =
+                    obj?.tipo === "texto"
+                        ? "authoritative-text-rect"
+                        : "selection-live-rect";
+            } else {
+                try {
+                    baseRect = node.getClientRect({
+                        relativeTo: stage,
+                        skipShadow: true,
+                        skipStroke: true,
+                    });
+                    geometryFamily = "client-rect-stage";
+                } catch {
+                    return null;
+                }
             }
         }
 
@@ -643,6 +666,7 @@ export default function useGuiasCentrado({
                 ? {
                     box: authoritativeTextRect,
                     geometrySource: "textRect",
+                    geometryFamily: "authoritative-text-rect",
                     usedInputPose: false,
                 }
                 : authoritativeTextRect;
@@ -662,7 +686,11 @@ export default function useGuiasCentrado({
             return returnDetails
                 ? {
                     box: baseRect,
-                    geometrySource: "live",
+                    geometrySource:
+                        geometryFamily === "authoritative-text-rect"
+                            ? "textRect"
+                            : "live",
+                    geometryFamily: geometryFamily || "selection-live-rect",
                     usedInputPose: false,
                 }
                 : baseRect;
@@ -674,6 +702,9 @@ export default function useGuiasCentrado({
             ? {
                 box: shiftedRect,
                 geometrySource: "fallback",
+                geometryFamily: geometryFamily
+                    ? `${geometryFamily}+input-pose-shift`
+                    : "client-rect-stage+input-pose-shift",
                 usedInputPose: true,
             }
             : shiftedRect;
@@ -1157,6 +1188,8 @@ export default function useGuiasCentrado({
                 source: guideRequest.source || null,
                 inputPosition: dragSnapshot.inputPosition || null,
                 activeDragBox: buildGuideBoxDebug(dragSnapshot.selfBox),
+                activeDragGeometrySource: initialBoxInfo?.geometrySource || "fallback",
+                activeDragGeometryFamily: initialBoxInfo?.geometryFamily || null,
                 sectionId: dragSnapshot.seccion.id,
                 sectionCenter: {
                     x: roundGuideDebugNumber(dragSnapshot.sectionCenterX),
@@ -1245,6 +1278,7 @@ export default function useGuiasCentrado({
                     activeDragBox: buildGuideBoxDebug(dragSnapshot.selfBox),
                 guideBox: preSnapTextDiagnostics?.guideBoxDebug || null,
                 guideGeometrySource: initialBoxInfo?.geometrySource || "fallback",
+                guideGeometryFamily: initialBoxInfo?.geometryFamily || null,
                 authoritativeTextBox:
                     preSnapTextDiagnostics?.authoritativeTextBoxDebug || null,
                     renderedTextContentBox:
@@ -1273,6 +1307,8 @@ export default function useGuiasCentrado({
                 elementId: dragSnapshot.elementId,
                 pipeline: guideRequest.pipeline,
                 source: dragSnapshot.source || null,
+                geometrySource: initialBoxInfo?.geometrySource || "fallback",
+                geometryFamily: initialBoxInfo?.geometryFamily || null,
                 sectionId: dragSnapshot.seccion.id,
                 inputX: roundGuideMetric(dragSnapshot.inputPosition?.x),
                 inputY: roundGuideMetric(dragSnapshot.inputPosition?.y),
@@ -1561,6 +1597,8 @@ export default function useGuiasCentrado({
                 postSnapBox: buildGuideBoxDebug(postSnapBox),
                 preSnapGeometrySource: initialBoxInfo?.geometrySource || "fallback",
                 postSnapGeometrySource: postSnapBoxInfo?.geometrySource || "fallback",
+                preSnapGeometryFamily: initialBoxInfo?.geometryFamily || null,
+                postSnapGeometryFamily: postSnapBoxInfo?.geometryFamily || null,
                 geometrySourceChanged:
                     (initialBoxInfo?.geometrySource || "fallback") !==
                     (postSnapBoxInfo?.geometrySource || "fallback"),
@@ -1722,6 +1760,7 @@ export default function useGuiasCentrado({
                     activeDragBox: buildGuideBoxDebug(postSnapBox),
                     guideBox: postSnapTextDiagnostics?.guideBoxDebug || null,
                     guideGeometrySource: postSnapBoxInfo?.geometrySource || "fallback",
+                    guideGeometryFamily: postSnapBoxInfo?.geometryFamily || null,
                     authoritativeTextBox:
                         postSnapTextDiagnostics?.authoritativeTextBoxDebug || null,
                     renderedTextContentBox:
@@ -1770,6 +1809,8 @@ export default function useGuiasCentrado({
                 snapMovedNode,
                 preSnapGeometrySource: initialBoxInfo?.geometrySource || "fallback",
                 postSnapGeometrySource: postSnapBoxInfo?.geometrySource || "fallback",
+                preSnapGeometryFamily: initialBoxInfo?.geometryFamily || null,
+                postSnapGeometryFamily: postSnapBoxInfo?.geometryFamily || null,
                 snapXSource: snapResX.source || "none",
                 snapYSource: snapResY.source || "none",
                 rapidFlip,

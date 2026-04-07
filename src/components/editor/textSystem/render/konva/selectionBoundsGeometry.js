@@ -136,18 +136,22 @@ function resolveLineSelectionRect(object, node) {
   };
 }
 
-function resolveNodeSelectionRect(object, node, debugMeta = null) {
+export function resolveNodeSelectionRect(object, node, debugMeta = null) {
   if (!node || typeof node.getClientRect !== "function") return null;
 
   if (object?.tipo === "forma" && object?.figura === "line") {
     return resolveLineSelectionRect(object, node);
   }
 
-  const rect = node.getClientRect({
+  const rectOptions = {
     skipTransform: false,
     skipShadow: true,
     skipStroke: true,
-  });
+  };
+  if (debugMeta?.relativeTo) {
+    rectOptions.relativeTo = debugMeta.relativeTo;
+  }
+  const rect = node.getClientRect(rectOptions);
   if (
     !rect ||
     !Number.isFinite(Number(rect.x)) ||

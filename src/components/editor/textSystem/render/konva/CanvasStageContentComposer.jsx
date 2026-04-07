@@ -1649,6 +1649,7 @@ export default function CanvasStageContent({
     const textSelectedObject =
       textSelectedId ? objectLookup.get(textSelectedId) || null : null;
     const isTextOverlaySync = textSelectedObject?.tipo === "texto";
+    const selectedFamily = textSelectedObject?.tipo || null;
 
     const resolvedLiveSelectionSnapshot =
       liveSelectionSnapshot?.bounds &&
@@ -1675,7 +1676,9 @@ export default function CanvasStageContent({
           source,
           syncToken: syncToken || null,
           selectedIds: safeSelectedIds,
+          selectedFamily,
           geometrySource: isTextOverlaySync ? "textRect" : "live",
+          geometryKind: nextBounds?.kind || "rect",
           reason: isTextOverlaySync
             ? "missing-authoritative-live-text-bounds"
             : "missing-live-selection-bounds",
@@ -1836,7 +1839,9 @@ export default function CanvasStageContent({
         source,
         syncToken: nextSnapshot.syncToken || null,
         selectedIds: safeSelectedIds,
+        selectedFamily,
         geometrySource,
+        geometryKind: nextBounds?.kind || "rect",
         geometrySourceChanged,
         previousGeometrySource: existingSnapshot?.geometrySource || null,
         liveSelectionSnapshotSource:
@@ -5300,6 +5305,8 @@ export default function CanvasStageContent({
     );
     const preResyncOverlayGeometrySource =
       dragOverlayControlledBoundsRef.current?.geometrySource || null;
+    const preResyncOverlayGeometryKind =
+      dragOverlayControlledBoundsRef.current?.bounds?.kind || "rect";
     const preResyncOverlayRect = resolveComposerBoundsRect(
       dragOverlayControlledBoundsRef.current?.bounds || null
     );
@@ -5327,6 +5334,19 @@ export default function CanvasStageContent({
         liveSelectionSnapshot,
       }
     );
+    const resyncedOverlayRect = resolveComposerBoundsRect(
+      resyncedOverlaySnapshot?.bounds || null
+    );
+    const overlayPostResyncDelta = buildComposerRectDelta(
+      postSnapLiveRect,
+      resyncedOverlayRect
+    );
+    const overlayMismatchPersistsAfterResync = Boolean(
+      Math.abs(Number(overlayPostResyncDelta?.dx || 0)) > 0.01 ||
+      Math.abs(Number(overlayPostResyncDelta?.dy || 0)) > 0.01 ||
+      Math.abs(Number(overlayPostResyncDelta?.dCenterX || 0)) > 0.01 ||
+      Math.abs(Number(overlayPostResyncDelta?.dCenterY || 0)) > 0.01
+    );
     const resyncSample = sampleCanvasInteractionLog(
       `guides:post-snap-overlay-sync:${payload.sessionId || payload.elementId || "unknown"}`,
       {
@@ -5340,6 +5360,7 @@ export default function CanvasStageContent({
         guideSessionId: payload.sessionId || null,
         interactionEpoch: payload.interactionEpoch || null,
         elementId: payload.elementId,
+        targetType: payload.targetType || null,
         source: payload.source || "drag-move",
         phase: activeOverlaySession?.phase || null,
         selectedIds: overlaySelectionIds,
@@ -5348,6 +5369,8 @@ export default function CanvasStageContent({
         snapMovedNode: guideOutcome?.snapMovedNode === true,
         preSnapGeometrySource: guideOutcome?.preSnapGeometrySource || null,
         postSnapGeometrySource: guideOutcome?.postSnapGeometrySource || null,
+        preSnapGeometryFamily: guideOutcome?.preSnapGeometryFamily || null,
+        postSnapGeometryFamily: guideOutcome?.postSnapGeometryFamily || null,
         rapidFlip: guideOutcome?.rapidFlip === true,
         rapidFlipCount: Number(guideOutcome?.rapidFlipCount || 0),
         thresholdOscillationLikely:
@@ -5355,8 +5378,24 @@ export default function CanvasStageContent({
         overlayGeometrySourceBeforeResync: preResyncOverlayGeometrySource,
         overlayGeometrySourceAfterResync:
           resyncedOverlaySnapshot?.geometrySource || null,
+        overlayGeometryKindBeforeResync: preResyncOverlayGeometryKind,
+        overlayGeometryKindAfterResync:
+          resyncedOverlaySnapshot?.bounds?.kind || "rect",
         overlayWouldDriftWithoutResync,
+        overlayRectBeforeResync: buildComposerDebugRect(preResyncOverlayRect),
+        postSnapLiveRect: buildComposerDebugRect(postSnapLiveRect),
+        overlayRectAfterResync: buildComposerDebugRect(resyncedOverlayRect),
         overlayPreResyncDelta,
+        overlayPostResyncDelta,
+        mismatchRelativeToSnap:
+          overlayWouldDriftWithoutResync
+            ? (
+                overlayMismatchPersistsAfterResync
+                  ? "after-post-snap-overlay-resync"
+                  : "before-post-snap-overlay-resync"
+              )
+            : "no-post-snap-overlay-drift",
+        overlayMismatchPersistsAfterResync,
         overlaySyncApplied: Boolean(resyncedOverlaySnapshot),
         perfNowMs: roundRotationMetric(getComposerVisualNowMs()),
       });
@@ -5418,8 +5457,12 @@ export default function CanvasStageContent({
       throttleKey: `guides:schedule:${guideRequest.elementId}`,
     });
 
-    const shouldFlushSynchronouslyForText = guideRequest.isText === true;
-    if (shouldFlushSynchronouslyForText) {
+    const shouldFlushSynchronouslyForStrictGeometryChain =
+      guideRequest.isText === true ||
+      guideRequest.targetType === "forma" ||
+      guideRequest.targetType === "icono" ||
+      guideRequest.targetType === "icono-svg";
+    if (shouldFlushSynchronouslyForStrictGeometryChain) {
       if (
         nextFrame.rafId &&
         typeof window !== "undefined" &&
@@ -5433,14 +5476,14 @@ export default function CanvasStageContent({
       };
 
       const syncFlushSample = sampleCanvasInteractionLog(
-        `guides:text-sync-flush:${guideRequest.sessionId || guideRequest.elementId || "unknown"}`,
+        `guides:strict-sync-flush:${guideRequest.sessionId || guideRequest.elementId || "unknown"}`,
         {
           firstCount: 8,
           throttleMs: 120,
         }
       );
       if (syncFlushSample.shouldLog) {
-        logSelectedDragDebug("guides:text-sync-flush", {
+        logSelectedDragDebug("guides:strict-sync-flush", {
           sampleCount: syncFlushSample.sampleCount,
           perfNowMs: roundRotationMetric(getComposerVisualNowMs()),
           guideSessionId: guideRequest.sessionId || null,
@@ -5452,7 +5495,10 @@ export default function CanvasStageContent({
           pos: guideRequest.pos || null,
           replacedPendingPayload: Boolean(current.payload),
           cancelledPendingRaf: Boolean(current.rafId),
-          flushReason: "text-drag-single-geometry-chain",
+          flushReason:
+            guideRequest.isText === true
+              ? "text-drag-single-geometry-chain"
+              : "shape-icon-drag-single-geometry-chain",
         });
       }
 

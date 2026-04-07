@@ -844,26 +844,27 @@ How controlled-sync is enforced:
 
 Phase 2 tightened steady-state drag geometry around one rule: active drag visuals now stay downstream of live Konva node geometry, not synthetic drag-time poses.
 
-The remaining text-plus-guides mismatch that required the final Phase 2 follow-up was this:
+The final Phase 2 follow-ups had to remove two family-specific guide mismatches:
 
-- text guide evaluation was still allowed to sit behind the ordinary dragmove overlay sync through RAF-coalesced scheduling
-- near centering-guide thresholds, that meant one drag sample could first show the raw dragmove text position and only afterward apply the snapped text reread plus overlay resync
-- the dominant geometry mismatch had already been removed earlier, but the remaining timing gap could still expose visible text/overlay disagreement specifically around guide activity
+- text still had a timing gap: guide evaluation could sit behind the ordinary dragmove overlay sync through RAF-coalesced scheduling, so near centering-guide thresholds one drag sample could first show the raw dragmove text position and only afterward apply the snapped text reread plus overlay resync
+- `forma` and `icono` still had both a timing gap and a geometry-basis gap: guide evaluation could still trail through RAF, and `useGuiasCentrado.js` could read a broader stage `getClientRect(...)` basis while drag-overlay sync used the selection live rect basis from `selectionBoundsGeometry.js`
+- that meant guide decisions and overlay resync could still reason about slightly different live envelopes for the same dragged non-text node, making threshold chatter visibly easier to expose for shapes/icons than for text once the text-specific path had already been corrected
 
 Current drag geometry flow after the change:
 
 1. `recordSelectionDragMoveSummary(...)` in `CanvasStageContentComposer.jsx` still resolves drag-overlay bounds from `resolveLiveDragSelectionSnapshot(...)`.
 2. That path still uses `resolveSelectionBounds({ requireLiveNodes: true })`, but drag-time text now refuses generic client-rect fallback: if `resolveAuthoritativeTextRect(...)` is unavailable for text, the drag snapshot resolves to `null` instead of silently falling back.
-3. `syncControlledDragOverlayBounds(...)` now logs `drag-overlay:geometry-sync` with `geometrySource` (`live` or `textRect`) and logs `drag-overlay:geometry-sync-skipped` when a drag-phase live snapshot cannot be resolved lawfully.
-4. `SelectionBoundsIndicator.jsx` now propagates `geometrySource` through controlled-bounds logs and samples, so the overlay render path exposes whether the active box came from generic live-node bounds or authoritative text bounds.
+3. For non-text families, the guide path now resolves the dragged box through `resolveNodeSelectionRect(..., { relativeTo: stage, requireLiveNodes: true })`, so guide evaluation and overlay sync share the same live selection rect basis for `forma`, `icono`, and `icono-svg` instead of mixing selection rects with a broader raw stage client rect.
+4. `syncControlledDragOverlayBounds(...)` now logs `drag-overlay:geometry-sync` with `geometrySource` (`live` or `textRect`) plus `geometryKind`, and logs `drag-overlay:geometry-sync-skipped` when a drag-phase live snapshot cannot be resolved lawfully.
+5. `SelectionBoundsIndicator.jsx` now propagates `geometrySource` through controlled-bounds logs and samples, so the overlay render path exposes whether the active box came from generic live-node bounds or authoritative text bounds.
 
 Current snap mutation timing after the change:
 
 1. Drag move still schedules eligible guide evaluation through `scheduleGuideEvaluation(...)`.
-2. For single dragged text elements, `scheduleGuideEvaluation(...)` now flushes guide evaluation synchronously instead of waiting for a later RAF boundary, so the guide decision, snap mutation, post-snap reread, and overlay resync remain inside the same drag sample.
-3. `mostrarGuias(...)` in `useGuiasCentrado.js` now reads the active drag box from the live node only; it no longer feeds drag input position into the active drag box reader.
-4. If snap commits, `mostrarGuias(...)` still mutates the live node, then immediately re-reads `postSnapBox` from the same live node before returning the guide outcome.
-5. `flushScheduledGuideEvaluation(...)` in the composer still performs `guide-post-snap-sync`, but it now records the pre-resync overlay delta against the post-snap live reread so drift would be observable if the resync failed.
+2. For single dragged `texto`, `forma`, `icono`, and `icono-svg` elements, `scheduleGuideEvaluation(...)` now flushes guide evaluation synchronously instead of waiting for a later RAF boundary, so the guide decision, snap mutation, post-snap reread, and overlay resync remain inside the same drag sample.
+3. `mostrarGuias(...)` in `useGuiasCentrado.js` now reads the active drag box from the live node only; it no longer feeds drag input position into the active drag box reader, and for non-text families it aligns that live reread with the same selection-rect basis used by overlay sync.
+4. If snap commits, `mostrarGuias(...)` still mutates the live node, then immediately re-reads `postSnapBox` from the same family-aligned live geometry path before returning the guide outcome.
+5. `flushScheduledGuideEvaluation(...)` in the composer still performs `guide-post-snap-sync`, but it now records the pre-resync and post-resync overlay rects, geometry families, and mismatch classification against the post-snap live reread so drift would be observable if the resync failed.
 
 Overlay resync mechanism after snap:
 
@@ -871,6 +872,7 @@ Overlay resync mechanism after snap:
 - It resolves a fresh live selection snapshot after snap mutation.
 - It computes `overlayPreResyncDelta` and `overlayWouldDriftWithoutResync`.
 - It immediately calls `syncControlledDragOverlayBounds(..., { source: "guide-post-snap-sync" })`.
+- It then records `overlayRectAfterResync`, `overlayPostResyncDelta`, and whether any mismatch persisted after resync.
 - The post-snap sync therefore reuses the same live-node authority as the ordinary drag sync path instead of introducing a second geometry authority.
 
 Corrected text drag geometry order after the final Phase 2 follow-up:
@@ -885,18 +887,21 @@ Corrected text drag geometry order after the final Phase 2 follow-up:
 
 This keeps the text node, guide evaluation, authoritative text rect, and drag-overlay on one drag-time geometry chain instead of letting guide snap land one visual step later.
 
-Text-specific handling after the change:
+Family-specific handling after the change:
 
 - `useGuiasCentrado.js` now requires authoritative text geometry for the active dragged text box and does not use input-position pose shifting for drag-time text snap evaluation.
+- `useGuiasCentrado.js` now resolves active dragged `forma` and `icono` boxes through the same live selection-rect helper used by overlay sync, rather than a broader raw stage client rect that could include a different envelope near guide thresholds.
+- Single dragged `forma`, `icono`, and `icono-svg` elements now use the same synchronous guide-evaluation timing rule as text so guide snap cannot lag one visual beat behind the raw dragmove sample.
 - `SelectionBoundsIndicator.jsx` now reads authoritative text rects, not generic `getClientRect(...)`, when comparing the rendered drag overlay against visible text geometry.
 - The verified root cause of the text vibration was both timing-sensitive snap resync and geometry inconsistency.
-- The dominant earlier correctness issue in code was geometry inconsistency: the guide path could reason from an input-position-adjusted text pose while the drag overlay was synchronized from live selection bounds.
-- The remaining Phase 2 bug after that first fix was the scheduling gap: text guide evaluation could still be deferred behind the ordinary dragmove sample, exposing raw-position text first and snapped overlay convergence later when guide activity was active.
-- Current instrumentation now logs threshold-oscillation hints (`rapidFlip`, `thresholdOscillationLikely`) and overlay/text alternation hints so the text-guide scenarios can be validated explicitly.
+- The dominant earlier correctness issue for text in code was geometry inconsistency: the guide path could reason from an input-position-adjusted text pose while the drag overlay was synchronized from live selection bounds.
+- The remaining Phase 2 bug after that first text fix was the scheduling gap: text guide evaluation could still be deferred behind the ordinary dragmove sample, exposing raw-position text first and snapped overlay convergence later when guide activity was active.
+- The verified remaining non-text correctness issue was a combined geometry-basis and scheduler mismatch: shapes/icons could still evaluate guide thresholds from a different live envelope than overlay sync, and that guide work could still be deferred one visual step through RAF.
+- Current instrumentation now logs threshold-oscillation hints (`rapidFlip`, `thresholdOscillationLikely`), geometry family (`authoritative-text-rect`, `selection-live-rect`, or fallback), before/after overlay rects, and mismatch classification so text, shape, and icon guide scenarios can be validated explicitly.
 
 Verification note:
 
-- The code-side Phase 2 follow-up is implemented, but this current-state document does not treat Phase 2 as operationally closed until the text drag scenarios near horizontal/vertical guides are manually re-verified in the browser with the new instrumentation.
+- The code-side Phase 2 follow-up is implemented, but this current-state document does not treat Phase 2 as operationally closed until the text, shape, and icon drag scenarios near horizontal/vertical guides are manually re-verified in the browser with the new instrumentation.
 
 ## 19. Architectural Unknowns
 

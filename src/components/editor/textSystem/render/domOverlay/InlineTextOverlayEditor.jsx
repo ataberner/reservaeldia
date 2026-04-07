@@ -638,8 +638,14 @@ export default function InlineTextEditor({
   const konvaLineHeight = nodeProps.lineHeightKonva;
   const rectSourceNode = textNode || node;
   const konvaProjection = useMemo(
-    () => getInlineKonvaProjectedRectViewport(rectSourceNode, stage, scaleVisual),
-    [rectSourceNode, scaleVisual, stage, viewportSyncRevision]
+    () => getInlineKonvaProjectedRectViewport(rectSourceNode, stage, scaleVisual, {
+      phase: isEditing ? "dom-editable" : "dom-preview",
+      surface: "dom-inline-overlay",
+      sessionIdentity: editingId || null,
+      elementId: editingId || null,
+      caller: "InlineTextOverlayEditor:projection",
+    }),
+    [editingId, isEditing, rectSourceNode, scaleVisual, stage, viewportSyncRevision]
   );
   const stageBox = konvaProjection.stageRect;
   const rect = konvaProjection.konvaTextClientRect;
@@ -3235,6 +3241,10 @@ export default function InlineTextEditor({
           runtimeRenderAuthorityPhase: runtimeRenderAuthorityPhase || null,
           editorVisualReady: Boolean(editorVisualReady),
           paintStable: Boolean(runtimePaintStable),
+          projectionGeometrySource:
+            konvaProjection?.konvaProjectionGeometrySource || null,
+          authoritativeTextRectAvailable:
+            konvaProjection?.authoritativeTextRectAvailable === true,
         },
         delta: projectionCheck.delta,
       },

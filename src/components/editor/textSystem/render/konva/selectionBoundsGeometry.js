@@ -88,6 +88,31 @@ function normalizeSelectedObjects(selectedObjects = []) {
   return asArray(selectedObjects).filter(Boolean);
 }
 
+function buildObjectDataSelectionRect(object) {
+  if (!object || typeof object !== "object") return null;
+
+  const fallbackX = toFiniteNumber(object?.x, null);
+  const fallbackY = toFiniteNumber(object?.y, null);
+  const fallbackWidth = Math.max(1, toFiniteNumber(object?.width, null) || 0);
+  const fallbackHeight = Math.max(1, toFiniteNumber(object?.height, null) || 0);
+
+  if (
+    !Number.isFinite(fallbackX) ||
+    !Number.isFinite(fallbackY) ||
+    !Number.isFinite(fallbackWidth) ||
+    !Number.isFinite(fallbackHeight)
+  ) {
+    return null;
+  }
+
+  return {
+    x: fallbackX,
+    y: fallbackY,
+    width: fallbackWidth,
+    height: fallbackHeight,
+  };
+}
+
 function buildSelectionData(selectedElements = [], objetos = [], objectLookup = null) {
   const selectedIds = normalizeSelectionIds(selectedElements);
   if (selectedIds.length === 0) return [];
@@ -162,6 +187,10 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
     return null;
   }
 
+  const textObjectDataFallbackRect =
+    object?.tipo === "texto" ? buildObjectDataSelectionRect(object) : null;
+  const allowTextClientRectFallback =
+    object?.tipo === "texto" && debugMeta?.allowTextClientRectFallback === true;
   const authoritativeTextRect = resolveAuthoritativeTextRect(node, object, {
     fallbackRect: rect,
   });
@@ -216,6 +245,8 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
           observedSources: {
             fallbackRectAvailable: true,
             requireLiveNodes: debugMeta?.requireLiveNodes === true,
+            clientRectFallbackAllowed: allowTextClientRectFallback,
+            objectDataFallbackAvailable: Boolean(textObjectDataFallbackRect),
           },
           delta: buildSelectionBoxDelta(authoritativeTextRect, rect),
         },
@@ -239,7 +270,9 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
       {
         phase: debugMeta?.phase || "selection-bounds-resolve",
         surface: debugMeta?.surface || "selection-bounds",
-        authoritySource: "client-rect-fallback",
+        authoritySource: allowTextClientRectFallback
+          ? "client-rect-explicit-fallback"
+          : "authoritative-text-required",
         caller: debugMeta?.caller || null,
         elementId: object.id || null,
         tipo: object.tipo || null,
@@ -251,14 +284,20 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
           null,
         pass: false,
         failureReason:
-          "text geometry fell back to generic client rect because authoritative text rect was unavailable",
+          allowTextClientRectFallback
+            ? "text geometry used an explicit generic client rect fallback because authoritative text rect was unavailable"
+            : "text geometry required the authoritative text rect; generic client rect fallback is disabled for this surface",
         observedRects: {
           authoritativeKonvaRect: null,
           renderedTextClientRect: buildTextGeometryContractRect(rect),
+          objectDataFallbackRect:
+            buildTextGeometryContractRect(textObjectDataFallbackRect),
         },
         observedSources: {
           fallbackRectAvailable: true,
           requireLiveNodes: debugMeta?.requireLiveNodes === true,
+          clientRectFallbackAllowed: allowTextClientRectFallback,
+          objectDataFallbackAvailable: Boolean(textObjectDataFallbackRect),
         },
       },
       {
@@ -270,7 +309,7 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
         force: true,
       }
     );
-    if (debugMeta?.requireLiveNodes === true) {
+    if (!allowTextClientRectFallback) {
       return null;
     }
   }
@@ -321,6 +360,7 @@ export function resolveSingleTextSelectionVisualBounds({
   node,
   isMobile = false,
   includePadding = true,
+  debugMeta = null,
 } = {}) {
   if (object?.tipo !== "texto" || !node) {
     return null;
@@ -345,9 +385,10 @@ export function resolveSingleTextSelectionVisualBounds({
   }
 
   const rect = resolveNodeSelectionRect(object, node, {
-    phase: "single-text-visual-bounds",
-    surface: "selection-bounds",
-    caller: "resolveSingleTextSelectionVisualBounds",
+    phase: debugMeta?.phase || "single-text-visual-bounds",
+    surface: debugMeta?.surface || "selection-bounds",
+    caller:
+      debugMeta?.caller || "resolveSingleTextSelectionVisualBounds",
     requireLiveNodes: true,
   });
   if (!rect) return null;
@@ -376,6 +417,7 @@ export function resolveSelectionUnionRect({
   objetos,
   objectLookup = null,
   requireLiveNodes = false,
+  debugMeta = null,
 } = {}) {
   const normalizedSelectedObjects = normalizeSelectedObjects(selectedObjects);
   const resolvedSelectedObjects =
@@ -393,9 +435,9 @@ export function resolveSelectionUnionRect({
   resolvedSelectedObjects.forEach((object) => {
     const node = elementRefs?.current?.[object.id] || null;
     const liveRect = resolveNodeSelectionRect(object, node, {
-      phase: requireLiveNodes ? "drag" : "selected",
-      surface: "selection-union",
-      caller: "resolveSelectionUnionRect",
+      phase: debugMeta?.phase || (requireLiveNodes ? "drag" : "selected"),
+      surface: debugMeta?.surface || "selection-union",
+      caller: debugMeta?.caller || "resolveSelectionUnionRect",
       requireLiveNodes,
     });
     if (liveRect) {
@@ -409,14 +451,57 @@ export function resolveSelectionUnionRect({
 
     if (requireLiveNodes) return;
 
-    const fallbackX = toFiniteNumber(object?.x, 0) || 0;
-    const fallbackY = toFiniteNumber(object?.y, 0) || 0;
-    const fallbackWidth = Math.max(1, toFiniteNumber(object?.width, 20) || 20);
-    const fallbackHeight = Math.max(1, toFiniteNumber(object?.height, 20) || 20);
-    minX = Math.min(minX, fallbackX);
-    minY = Math.min(minY, fallbackY);
-    maxX = Math.max(maxX, fallbackX + fallbackWidth);
-    maxY = Math.max(maxY, fallbackY + fallbackHeight);
+    const fallbackRect =
+      buildObjectDataSelectionRect(object) || {
+        x: toFiniteNumber(object?.x, 0) || 0,
+        y: toFiniteNumber(object?.y, 0) || 0,
+        width: Math.max(1, toFiniteNumber(object?.width, 20) || 20),
+        height: Math.max(1, toFiniteNumber(object?.height, 20) || 20),
+      };
+
+    if (object?.tipo === "texto") {
+      const selectionSession = getActiveCanvasBoxFlowSession("selection");
+      logTextGeometryContractInvariant(
+        "text-geometry-explicit-fallback",
+        {
+          phase: debugMeta?.phase || "selected",
+          surface: debugMeta?.surface || "selection-union",
+          authoritySource: "object-data-fallback",
+          caller: debugMeta?.caller || "resolveSelectionUnionRect",
+          elementId: object.id || null,
+          tipo: object.tipo || null,
+          sessionIdentity:
+            debugMeta?.sessionIdentity ||
+            selectionSession?.sessionIdentity ||
+            selectionSession?.identity ||
+            object.id ||
+            null,
+          pass: true,
+          failureReason: null,
+          observedRects: {
+            objectDataFallbackRect: buildTextGeometryContractRect(fallbackRect),
+          },
+          observedSources: {
+            liveGeometryAvailable: false,
+            requireLiveNodes,
+            fallbackReason: "authoritative-text-unavailable",
+          },
+        },
+        {
+          sampleKey: `text-contract:fallback:${object.id || "unknown"}:${
+            debugMeta?.surface || "selection-union"
+          }`,
+          firstCount: 4,
+          throttleMs: 160,
+          force: true,
+        }
+      );
+    }
+
+    minX = Math.min(minX, fallbackRect.x);
+    minY = Math.min(minY, fallbackRect.y);
+    maxX = Math.max(maxX, fallbackRect.x + fallbackRect.width);
+    maxY = Math.max(maxY, fallbackRect.y + fallbackRect.height);
   });
 
   if (requireLiveNodes && liveRectCount !== resolvedSelectedObjects.length) {
@@ -450,6 +535,7 @@ export function resolveSelectionFrameRect({
   isMobile = false,
   includePadding = true,
   requireLiveNodes = false,
+  debugMeta = null,
 } = {}) {
   const unionRect = resolveSelectionUnionRect({
     selectedElements,
@@ -458,6 +544,7 @@ export function resolveSelectionFrameRect({
     objetos,
     objectLookup,
     requireLiveNodes,
+    debugMeta,
   });
   if (!unionRect) return null;
 

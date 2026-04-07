@@ -849,12 +849,23 @@ function resolveInlineEditOutlineRect(editingId, elementRefs, stage, isMobile = 
       skipStroke: true,
     });
     if (!rect) return null;
+    const authoritativeObjectMeta =
+      textNode?.getClassName?.() === "Text"
+        ? {
+            id: editingId,
+            tipo: "texto",
+          }
+        : null;
+    const authoritativeRect =
+      resolveAuthoritativeTextRect(textNode, authoritativeObjectMeta, {
+        fallbackRect: rect,
+      }) || rect;
     const padding = getSelectionFramePadding(isMobile);
     return {
-      x: Number(rect.x) - padding,
-      y: Number(rect.y) - padding,
-      width: Number(rect.width) + padding * 2,
-      height: Number(rect.height) + padding * 2,
+      x: Number(authoritativeRect.x) - padding,
+      y: Number(authoritativeRect.y) - padding,
+      width: Number(authoritativeRect.width) + padding * 2,
+      height: Number(authoritativeRect.height) + padding * 2,
     };
   } catch {
     return null;
@@ -1687,6 +1698,11 @@ export default function CanvasStageContent({
       objectLookup,
       isMobile,
       requireLiveNodes: true,
+      debugMeta: {
+        phase: "drag",
+        surface: "drag-overlay",
+        caller: "CanvasStageContentComposer:resolveLiveDragSelectionSnapshot",
+      },
     });
     if (!bounds) {
       return null;

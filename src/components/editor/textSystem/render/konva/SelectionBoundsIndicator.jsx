@@ -575,6 +575,7 @@ export function resolveSelectionBounds({
   objectLookup = null,
   isMobile,
   requireLiveNodes = false,
+  debugMeta = null,
 }) {
   const elementosData = selectedElements
     .map((id) => objetos.find((obj) => obj.id === id))
@@ -613,6 +614,14 @@ export function resolveSelectionBounds({
     isMobile,
     includePadding: true,
     requireLiveNodes,
+    debugMeta: {
+      phase: debugMeta?.phase || (requireLiveNodes ? "drag" : "selected"),
+      surface:
+        debugMeta?.surface || (requireLiveNodes ? "drag-overlay" : "selected-phase"),
+      caller:
+        debugMeta?.caller || "SelectionBoundsIndicator:resolveSelectionBounds",
+      sessionIdentity: debugMeta?.sessionIdentity || null,
+    },
   });
   if (!rectBounds) return null;
 
@@ -1735,6 +1744,15 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       objetos: currentInputs.objetos || objetos,
       isMobile: Boolean(currentInputs.isMobile),
       requireLiveNodes: false,
+      debugMeta: {
+        phase: "selected",
+        surface:
+          currentInputs.debugSource === "selection-bounds-indicator"
+            ? "selected-phase"
+            : currentInputs.debugSource || debugSource,
+        caller: "SelectionBoundsIndicator:syncIndicatorBounds",
+        sessionIdentity,
+      },
     });
 
     return applyIndicatorBounds(nextBounds, {
@@ -1843,6 +1861,10 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     shouldEmitForIdentity,
   ]);
 
+  const indicatorVisualIdentity =
+    resolveVisualIdentity();
+  const indicatorSessionIdentity =
+    resolveSessionIdentity(latestInputsRef.current || {}, indicatorVisualIdentity);
   const bounds = isControlledMode
     ? null
     : resolveSelectionBounds({
@@ -1851,15 +1873,20 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         objetos,
         isMobile,
         debugLog,
+        debugMeta: {
+          phase: "selected",
+          surface:
+            debugSource === "selection-bounds-indicator"
+              ? "selected-phase"
+              : debugSource,
+          caller: "SelectionBoundsIndicator:render",
+          sessionIdentity: indicatorSessionIdentity,
+        },
       });
   const hasBounds = Boolean(bounds);
   const boundsDigest = isControlledMode
     ? null
     : buildCanvasBoxFlowBoundsDigest(bounds);
-  const indicatorVisualIdentity =
-    resolveVisualIdentity();
-  const indicatorSessionIdentity =
-    resolveSessionIdentity(latestInputsRef.current || {}, indicatorVisualIdentity);
   const groupBadge = useMemo(
     () => (
       isControlledMode

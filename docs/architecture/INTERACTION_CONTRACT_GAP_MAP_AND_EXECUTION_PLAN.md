@@ -51,14 +51,14 @@ The safest path is to stabilize the interaction lifecycle in the order users act
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Phase model discipline | One authoritative phase model must govern visual, geometry, and selection authority. | Phase transitions are now explicitly emitted from the composer through `phase:transition` with phase, owner, startup source, hover suppression reasons, and drag session identity. Enforcement is still distributed outside the startup boundary. | `CanvasStageContentComposer.jsx`, `selectionVisualModes.js`, `SelectionTransformer.jsx`, `HoverIndicator.jsx`, `useCanvasInteractionCoordinator.js` | Partially satisfied | High | startup jump, delayed teardown, flash between states | one subsystem transitions phases earlier or later than the others |
 | Visual authority contract | Only one visible box owner at a time; strict priority `drag-overlay > selected-phase > hover`. | Startup ownership remains tight, and Phase 3 now keeps drag-overlay as the sole visible owner through settling while transformer-backed selected-phase destinations prove readiness underneath it. `handoff:dual-ownership-violation` and `drag-overlay:teardown-violation` make early selected visibility or early overlay teardown explicit. Ownership is still split across separate modules, and single-line selected destinations still use their separate selected-phase path. | `CanvasStageContentComposer.jsx`, `SelectionTransformer.jsx`, `SelectionBoundsIndicator.jsx`, `HoverIndicator.jsx`, `selectionVisualModes.js` | Partially satisfied | Critical | stale selection box, overlay flicker, dual box flash | drag-overlay and selected-phase both render, or a line-specific selected path bypasses the generic handoff discipline |
-| Geometry authority contract | Drag and predrag must use live geometry only; settling must use frozen settle snapshot only; selected fallback must be explicit and non-mixed. | Phase 2 hardened active drag around live-node authority, and Phase 3 now keeps settling on the frozen drag-overlay settle snapshot until handoff completes. Selected-phase can still mix live and object-data fallback in one union after the handoff, so the full contract is not closed yet. | `selectionBoundsGeometry.js`, `SelectionBoundsIndicator.jsx`, `SelectionTransformer.jsx`, `CanvasStageContentComposer.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | text bounds mismatch, box drift, selected-phase fallback mismatch | selected-phase still mixes geometry sources outside drag, even though drag and settling now stay on lawful geometry authority |
+| Geometry authority contract | Drag and predrag must use live geometry only; settling must use frozen settle snapshot only; selected fallback must be explicit and non-mixed. | Phase 2 hardened active drag around live-node authority, Phase 3 keeps settling on the frozen drag-overlay settle snapshot until handoff completes, and Phase 5 now routes text surfaces through `resolveAuthoritativeTextRect(...)` or an explicit object-data fallback. The remaining open area is broader selected-phase fallback policy outside text and drag. | `selectionBoundsGeometry.js`, `SelectionBoundsIndicator.jsx`, `SelectionTransformer.jsx`, `CanvasStageContentComposer.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | text bounds mismatch, box drift, selected-phase fallback mismatch | a surface still bypasses the authoritative text rect or selected-phase fallback policy remains too loose outside text |
 | Selection authority contract | Committed selection is canonical except during drag-owned visual phases; transitional selection state must reconcile before handoff ends. | Phase 3 now resolves deferred selection repair before overlay release and rejects stale post-drag repair work on `dragId` or `interactionEpoch` mismatch. Committed selection, runtime selection, `pendingDragSelection`, and `dragVisualSelection` still converge through distributed guards rather than one hardened transaction model. | `CanvasEditor.jsx`, `useCanvasEditorSelectionRuntime.js`, `editorSelectionRuntime.js`, `CanvasStageContentComposer.jsx`, `ElementoCanvasRenderer.jsx` | Partially satisfied | High | stale selection box, wrong post-drag selection, session leakage | transient drag selection survives too long or restore/commit work targets the wrong session |
 | Drag lifecycle contract | Drag start, move, and end must follow one explicit lifecycle with no hidden alternate owners. | The drag lifecycle is explicit in the composer, but gallery/countdown/object paths all feed it and the lifecycle still depends on subtle guards and phase-specific cleanup. | `CanvasStageContentComposer.jsx`, `ElementoCanvasRenderer.jsx`, `GaleriaKonva.jsx`, `CountdownKonva.jsx` | Partially satisfied | High | inconsistent drag startup, delayed teardown, stale overlay | one path skips a required boundary or cleanup step |
 | Startup contract | First visible drag frame must come only from `controlled-sync`; seed/replay paths must never be visible. | Phase 1 now records blocked startup paths explicitly, keeps the selected-phase overlay out of predrag, and validates first-visible startup ownership through `drag-overlay:shown` plus `startup-contract:violation`. Seed/replay helpers still exist internally, but visible startup is tied to `controlled-sync`. | `CanvasStageContentComposer.jsx`, drag-overlay startup gate helpers, `ElementoCanvasRenderer.jsx` | Satisfied | Critical | startup jump | non-authoritative startup snapshot becomes visible first |
 | Handoff contract | Drag-overlay remains sole owner through settling until selected-phase is visible, ready, and post-paint confirmed. | Phase 3 now keeps overlay mounted until current-session selection repair completes, the selected-phase destination is known, transformer-backed destinations prove readiness under the overlay, and the composer-owned extra post-paint confirmation completes. Selected-phase identity is still implicit, and single-line selected destinations still depend on the existing separate line path rather than the generic hidden-ready probe. | `CanvasStageContentComposer.jsx`, `SelectionTransformer.jsx`, `SelectionBoundsIndicator.jsx` | Partially satisfied | Critical | delayed teardown, duplicate visuals, stale selected box | a non-transformer selected destination or stale session edge bypasses the generic handoff guard |
 | Hover contract | Hover only in lawful hover states; deterministic cleanup; no hover during predrag/drag/settling/inline authority; no same-target coexistence with selected-phase. | Phase 4 now routes stage hover through one composer-owned suppression gate, clears raw hover state when higher-priority owners take authority, blocks suppressed hover re-entry, distinguishes global no-hover suppression from selected-target conflict, and replays the latest lawful different-target hover that was blocked during the short post-drag handoff/settling window. Hover identity is still id-only and browser validation is still required before this area can be treated as closed. | `HoverIndicator.jsx`, `CanvasStageContentComposer.jsx`, `useCanvasEditorSelectionUi.js`, `selectionVisualModes.js` | Partially satisfied | High | hover lingering, hover flash during drag start, hover missing on other targets while selection exists | a lawful hover can still be lost if post-drag recovery or target-conflict replay discipline regresses |
 | Snap & guides contract | Guides are single-element drag only; they may mutate live nodes, but overlay must resync after snap and guides must not become authority. | Phase 2 now keeps single-element text and shape/icon guide evaluation inside the same drag sample instead of letting it trail through RAF scheduling, re-reads post-snap live geometry before returning the guide outcome, and logs pre-resync plus post-resync overlay deltas against the same post-snap live reread. It still relies on drag-session matching rather than a dedicated guide session identity. | `useGuiasCentrado.js`, `CanvasGuideLayer.jsx`, `CanvasStageContentComposer.jsx`, `CanvasEditor.jsx` | Partially satisfied | Medium | snap mismatch, guide lag, stale guide lines | stale guide work could still target the wrong drag if drag-session checks regress |
-| Inline text contract | Konva and DOM must never share visible editing authority; swap must be phase-atomic; text geometry must stay downstream of live Konva geometry. | Inline runtime is the most structured subsystem and already has mount session, swap ack, and authority phases, but it still relies on timing-sensitive focus/caret behavior and does not yet benefit from the same identity hardening as the drag/handoff path. | `useInlineSessionRuntime.js`, `useInlinePhaseAtomicLifecycle.js`, `resolveInlineCanvasVisibility.js`, `CanvasInlineEditingLayer.jsx`, `InlineTextOverlayEditor.jsx`, `HiddenSemanticTextBackend.jsx` | Partially satisfied | High | overlay flicker, focus instability, text overlay/canvas mismatch | late swap/focus work applies after authority has moved |
+| Inline text contract | Konva and DOM must never share visible editing authority; swap must be phase-atomic; text geometry must stay downstream of live Konva geometry. | Inline runtime is still the most structured subsystem. Phase 5 now projects DOM inline geometry from the same authoritative Konva text rect used by selection/drag/hover/snap readers, but focus/caret timing and broader session hardening still remain outside this phase. | `useInlineSessionRuntime.js`, `useInlinePhaseAtomicLifecycle.js`, `resolveInlineCanvasVisibility.js`, `CanvasInlineEditingLayer.jsx`, `InlineTextOverlayEditor.jsx`, `HiddenSemanticTextBackend.jsx` | Partially satisfied | High | overlay flicker, focus instability, text overlay/canvas mismatch | late swap/focus work applies after authority has moved even though geometry now stays on one text basis |
 | Session & identity contract | Drag, selected, hover, guide, and inline work must reject stale async work and prevent cross-session leakage. | Drag and inline have strong partial identity models. Selected-phase and hover do not. Guides rely on drag session checks rather than their own identity. | `CanvasStageContentComposer.jsx`, `editorSelectionRuntime.js`, `useInlineSessionRuntime.js`, `HoverIndicator.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | session resurrection risk, stale overlay, wrong teardown target | old session work mutates current visuals or cleanup |
 | Critical invariants | Key invariants must always hold and be observable. | Phase 1 startup invariants remain observable, Phase 2 drag/snap invariants remain observable, Phase 3 handoff invariants remain observable, and Phase 4 now adds `reentry:blocked`, `target-conflict:blocked`, `coexistence:allowed`, `stale-reentry:blocked`, and `visibility:violation` for hover. Selected-phase, guide, and hover session identity still need broader enforcement. | `CanvasStageContentComposer.jsx`, `SelectionBoundsIndicator.jsx`, `useGuiasCentrado.js`, `SelectionTransformer.jsx`, `HoverIndicator.jsx`, inline trace modules | Partially satisfied | Medium | hard-to-debug regressions, hidden non-determinism | contract breach happens without reliable detection |
 
@@ -396,6 +396,8 @@ Visible problems likely resolved:
 
 ### Phase 5: Text Geometry Parity
 
+- Status:
+  Implemented in code on 2026-04-07. Browser validation is still required before this phase can be treated as operationally closed.
 - Objective:
   Make text a first-class citizen of the geometry authority contract.
 - Exact contract areas addressed:
@@ -414,6 +416,17 @@ Visible problems likely resolved:
 - Expected visible improvement:
   - single-text hover/selection/drag box parity
   - less text box drift between states
+- Resolved in this phase:
+  - `selectionBoundsGeometry.js` now resolves authoritative text geometry first and no longer silently substitutes generic `getClientRect(...)` as the steady-state text source
+  - hover, selected-phase, and drag-overlay text bounds now carry explicit surface-aware text geometry logs instead of collapsing into one generic selection-bounds channel
+  - when selected-phase cannot read live text geometry outside drag, the fallback is now an explicit object-data fallback in `resolveSelectionUnionRect(...)`, not an accidental text client-rect fallback
+  - `useGuiasCentrado.js` no longer falls back to generic client rect for text guide geometry; text guides now fail closed if the authoritative text rect is unavailable
+  - `getInlineKonvaProjectedRectViewport(...)` now projects DOM inline geometry from the authoritative text rect when available, exposes the source used for projection, and logs fallback or mismatch explicitly
+  - inline edit outline geometry now also prefers the authoritative text rect so inline decorations stay on the same text basis as the rest of the runtime
+- Remaining edge cases for later phases:
+  - selected-phase still permits explicit object-data fallback when live text geometry is unavailable outside drag; that frame is now explicit and logged, but it is still lower-fidelity than live authoritative text geometry
+  - the line-specific selected path remains separate from the transformer-backed selected-phase path
+  - browser validation is still required for text selection, hover, drag, snap, inline enter/exit, and text-to-text reselection scenarios before this phase can be declared closed
 - Main regression risks:
   - text bounds become too tight/too loose
   - text snapping changes unintentionally
@@ -654,36 +667,21 @@ Instrumentation ownership by area:
 
 ## 11. FINAL RECOMMENDATION
 
-Phase 3 should remain open until the post-drag reselection scenarios are re-verified with the new selected-phase / handoff instrumentation.
+Phase 5 is now implemented in code, but it should remain open until the text geometry parity scenarios are re-verified in the browser with the updated text-contract instrumentation.
 
-Phase 4 should remain open until the hover scenarios are re-verified against that corrected post-drag selected-phase recovery.
-
-The immediate next step is a **Phase 3 + Phase 4 validation pass**, not Phase 5 yet.
+The immediate next step is a **Phase 5 validation pass**, not Phase 6 yet.
 
 That validation pass should check:
 
-- drag element A -> release -> selection remains on A
-- drag element A -> release -> click element B -> selection box moves from A to B immediately
-- drag element A -> release near guide -> click element B -> selection box moves from A to B immediately
-- drag element A -> release -> second drag -> release -> click another element
-- verify gear menu target, committed selection, selected-phase attachment, and visible selection box target all match after drag
-- verify the same scenarios across text, shape, icon, and multi-selection where relevant
+- select text
+- hover text
+- drag text
+- drag text near guides
+- drag text after snap
+- enter inline edit
+- exit inline edit
+- select text again after inline edit
+- click between different text elements
+- compare text against shape, icon, and image behavior as controls
 
-- plain hover on an idle element
-- hover -> selected
-- hover -> drag on an unselected element
-- one selected element, hover the same element
-- one selected element, hover a different element
-- one selected element, move hover across multiple other elements
-- drag element -> release -> hover different element
-- drag element -> release near guide -> hover different element
-- drag element -> release -> immediate hover switch across multiple elements
-- drag element -> release -> hover same selected element
-- drag element -> release -> second drag -> release -> hover another element
-- hover during settling
-- hover during inline edit
-- hover during resize
-- hover during crop / background-edit
-- repeated quick hover changes between nearby elements
-
-If those scenarios confirm lawful hover-only visibility, no lingering hover, no same-target coexistence with selected-phase, and lawful different-target selected-plus-hover coexistence while the logs stay on one lawful hover chain, then Phase 5 becomes the next implementation phase.
+If those scenarios confirm one coherent text geometry basis, no silent fallback switching, no text-specific selection-box drift, and no inline projection mismatch beyond the documented DOM projection boundary, then Phase 6 becomes the next implementation phase.

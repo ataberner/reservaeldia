@@ -510,7 +510,7 @@ Current ambiguity / race conditions:
 | Inline overlay | Inline mount session + swap ack state in `useInlineSessionRuntime.js`; visual ownership filtered by `resolveInlineCanvasVisibility.js` | Text controller, DOM backend, Konva visibility adapter | Swap requests, finish/cancel, focus controller | `konva -> dom-preview -> dom-editable -> konva` | Critical |
 | Snap guides | `useGuiasCentrado.js` guide state rendered by `CanvasGuideLayer.jsx` | Drag-overlay post-snap sync, live node drag path | `mostrarGuias(...)`, `limpiarGuias(...)`, guide layer imperative API | Appear only during eligible individual drag | Medium |
 | Centering guides | Same as snap guides | Same as snap guides | Same as snap guides | Same as snap guides | Medium |
-| Text bounds | Preferred authority is live Konva text geometry via `resolveAuthoritativeTextRect(...)` | Hover, selected-phase bounds, drag overlay, inline projection, snap | None as a standalone owner; consumers recompute from live node | Shared across hover/selected/drag/inline consumers | Critical because fallback generic rects still exist |
+| Text bounds | Authoritative owner is live Konva text geometry via `resolveAuthoritativeTextRect(...)`; explicit object-data fallback is allowed only where the phase contract permits it | Hover, selected-phase bounds, drag overlay, inline projection, snap | None as a standalone owner; consumers recompute from live node or explicit phase-legal fallback | Shared across hover/selected/drag/inline consumers | Critical because every text surface must stay on one geometry basis |
 | Drag bounds | Composer-owned controlled overlay snapshot during drag | Selected-phase handoff, drag readiness, debug traces | Composer controlled-sync and post-snap sync | `predrag -> drag -> settling` | Critical |
 
 Primary duplicated-ownership hotspots in the current code:
@@ -584,7 +584,7 @@ Known current drift boundaries:
 - selected-phase fallback bounds vs drag-phase live-only bounds
 - guide snap mutating the live node before overlay resync
 - DOM overlay projection depending on current stage container viewport metrics
-- text geometry consumers falling back from authoritative text rect to generic rects
+- text geometry readers needing an explicit fallback decision when authoritative live text geometry is unavailable
 
 ## 8. Temporal Execution Model
 
@@ -734,7 +734,7 @@ Current highest-risk interaction areas, ranked by severity:
 3. Selection-box ownership split
    - selected-phase and drag-phase use different owners and different geometry tolerance rules
 4. Text geometry consumers
-   - hover, selection, drag overlay, snap, and DOM overlay all depend on the same live text geometry but do not all fail the same way
+   - hover, selection, drag overlay, snap, and DOM overlay now share the same authoritative text basis, but selected-phase still has an explicit object-data fallback path when live text geometry is unavailable outside drag
 5. Guide/snap live mutation plus overlay resync
    - snapping is live-node mutation, not a pure preview calculation
 6. Compatibility globals and custom events
@@ -1064,18 +1064,87 @@ Verification note:
 
 - The code-side Phase 4 hover hardening is implemented, but this current-state document does not treat Phase 4 as operationally closed until the hover scenarios are manually re-verified in the browser with the new instrumentation.
 
-## 21. Architectural Unknowns
+## 21. Text Geometry Parity (Post Phase 5)
+
+Phase 5 closes the main text-geometry ambiguity by enforcing one shared rule in code: text geometry readers now resolve the authoritative live Konva text rect first and may only use a fallback through an explicit, surface-aware decision.
+
+Authoritative text geometry source:
+
+- `resolveAuthoritativeTextRect(...)` is the single authoritative base geometry for text.
+- `selectionBoundsGeometry.js` now treats text differently from generic objects:
+  - if the authoritative text rect exists, text readers return it
+  - if it does not exist, text readers no longer silently substitute the generic node `getClientRect(...)`
+  - the caller either fails closed for that surface or uses an explicit higher-level fallback that is legal for the current phase
+
+Current text-surface contract after Phase 5:
+
+- `HoverIndicator.jsx`
+  - hover text bounds go through `resolveSingleTextSelectionVisualBounds(...)`
+  - that helper now resolves text from the authoritative live rect only and logs the `hover` surface explicitly
+- `SelectionBoundsIndicator.jsx`
+  - selected-phase and drag-overlay reads now tag the text geometry surface explicitly (`selected-phase` or `drag-overlay`)
+  - for text, the shared resolver no longer treats generic client rect as a quiet fallback source
+- `CanvasStageContentComposer.jsx`
+  - drag-overlay live bounds still come from `resolveSelectionBounds(..., { requireLiveNodes: true })`
+  - inline-edit outline geometry now also prefers the authoritative text rect instead of raw client rect
+- `useGuiasCentrado.js`
+  - active text guide evaluation now fails closed if the authoritative text rect is unavailable
+  - generic client-rect fallback is no longer allowed for text guide geometry
+- `inlineGeometry.js`
+  - `getInlineKonvaProjectedRectViewport(...)` now projects DOM inline geometry from the authoritative text rect when available
+  - if that authoritative rect is unavailable, the helper exposes and logs the fallback explicitly instead of silently swapping geometry basis
+
+Legal fallbacks:
+
+- During `hover`, `predrag`, `drag`, and guide evaluation, text geometry now fails closed when the authoritative live text rect is unavailable.
+- During `selected`, explicit object-data fallback is still allowed by the broader geometry contract when live geometry is unavailable.
+- That selected-phase fallback is now explicit in `resolveSelectionUnionRect(...)` and logged as `object-data-fallback`; it is no longer the accidental result of a hidden text client-rect substitution.
+
+How text differs from generic object geometry now:
+
+- generic object readers may still use ordinary live selection rects or explicit object-data fallback depending on phase
+- text readers must first attempt the authoritative text rect
+- text may only fall back through an explicit surface/phase decision, not through an implicit generic client-rect path
+
+Inline DOM projection boundary:
+
+- DOM inline editing still owns visible caret and editing authority during DOM phases
+- the DOM overlay projection is now explicitly downstream of the same authoritative Konva text geometry used by hover/selection/drag/snap readers
+- the remaining DOM/Konva differences are therefore projection differences, not a separate text-bounds authority model
+
+Observability added for Phase 5:
+
+- surface-specific text geometry contract logs now distinguish:
+  - `hover`
+  - `selected-phase`
+  - `drag-overlay`
+  - `snap-system`
+  - `inline-dom-projection`
+- explicit fallback and mismatch cases are now observable through:
+  - `text-geometry-source-of-truth`
+  - `text-geometry-explicit-fallback`
+  - `guide-text-authority-source`
+  - `inline-projection-geometry-source`
+  - the existing drag/snap/inline overlay parity traces
+
+Remaining caveats:
+
+- selected-phase still allows explicit object-data fallback when live text geometry is unavailable outside drag; that is legal by the current contract, but it remains a lower-fidelity frame than live authoritative text geometry
+- the line-specific selected path is still separate from the transformer-backed selected-phase path
+- browser validation is still required for text selection, hover, drag, snap, inline enter/exit, and text-to-text reselection scenarios before Phase 5 can be treated as operationally closed
+
+## 22. Architectural Unknowns
 
 - The code provides strong local sequencing around drag-overlay startup and inline swap, but there is no single end-to-end runtime trace that proves every intra-frame ordering across all React effects in every browser.
 - Hover and guide behavior are clear for the main canvas path, but this audit did not attempt to enumerate every possible external caller of `window.setHoverIdGlobal`.
 - The exact cross-browser selection/caret quirks of `InlineTextOverlayEditor.jsx` are not fully documented in code comments; the runtime compensations are visible, but not all browser-specific motivations are explicit.
 
-## 22. Assumptions
+## 23. Assumptions
 
 - Assumption: where this document describes exact sub-frame ordering inside the inline DOM swap path, that order is inferred from the hook structure, emitted phase transitions, and runtime state transitions in the audited modules; the code does not expose one centralized timeline tracer for every inner step.
 - Assumption: template editor sessions use the same interaction/rendering subsystem as draft sessions unless a preview/publish-facing bridge explicitly branches by session kind. This matches the active `CanvasEditor.jsx` composition.
 
-## 23. Critical Invariants
+## 24. Critical Invariants
 
 These invariants are detectable in the current code and should be treated as explicit system rules for future work:
 
@@ -1090,5 +1159,5 @@ These invariants are detectable in the current code and should be treated as exp
 - Drag-overlay teardown after drag end is not allowed to preempt current-session selection repair, selected-phase readiness, or composer handoff-paint confirmation; selected-phase readiness may be proven while still hidden under the settling overlay, but dual visible ownership is forbidden.
 - If committed selection changes to a different non-empty target after drag end, the old drag settle target is no longer allowed to keep selected-phase or drag-overlay visual ownership; stale handoff-specific target state must be invalidated and selected-phase must rebind to the current committed selection.
 - Hover is lawful only when no global no-hover boundary is active and the hovered target does not conflict with the current selected target set; after drag end, the system returns to that target-aware hover state only once drag-overlay ownership, handoff wait, coordinator settling, and runtime drag suppression have all cleared, and any blocked lawful hover target from that window must be replayed or replaced by a newer hover write.
-- Text consumers should prefer authoritative live text geometry. Generic client-rect fallback is a compatibility path, not a preferred geometry source.
+- Text consumers must resolve authoritative live text geometry first. If it is unavailable, the surface must either fail closed or use an explicit phase-legal fallback; silent generic client-rect substitution is no longer a lawful steady-state path for text.
 - External consumers should read live editor state through `window.editorSnapshot`, documented bridges, or custom events, not through scratch globals.

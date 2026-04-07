@@ -127,6 +127,10 @@ Only these geometry sources are valid:
   - DOM inline projection
   - snap/guides consumers when text participates
 - Generic client rect fallback for text is a compatibility path only and MUST NOT become the preferred text geometry source.
+- If the authoritative text rect is unavailable, the consumer MUST either:
+  - fail closed for that surface, or
+  - use an explicit object-data fallback only where the current phase contract permits it
+- Implicit generic client-rect substitution is forbidden for text.
 
 ### 3.4 Snap and Geometry
 

@@ -644,6 +644,52 @@ export default function useGuiasCentrado({
                         ? "authoritative-text-rect"
                         : "selection-live-rect";
             } else {
+                if (obj?.tipo === "texto") {
+                    const guideSessionId =
+                        options?.sessionIdentity ||
+                        guideDebugContextRef.current?.sessionId ||
+                        obj?.id ||
+                        null;
+                    logTextGeometryContractInvariant(
+                        "guide-text-authority-source",
+                        {
+                            phase: "drag",
+                            surface: "snap-system",
+                            authoritySource: "authoritative-text-required",
+                            sessionIdentity: guideSessionId,
+                            guideSessionId,
+                            elementId: obj?.id || null,
+                            tipo: obj?.tipo || null,
+                            pass: false,
+                            failureReason:
+                                "guide geometry could not resolve the authoritative text rect; generic client rect fallback is disabled for text guides",
+                            observedRects: {
+                                guideEvaluationRect: null,
+                            },
+                            observedSources: {
+                                requireAuthoritativeTextRect:
+                                    requireAuthoritativeTextRect === true,
+                                requireLivePoseOnly: useLivePoseOnly,
+                            },
+                        },
+                        {
+                            sampleKey: `text-contract:guide-source:${
+                                guideSessionId || obj?.id || "unknown"
+                            }`,
+                            firstCount: 4,
+                            throttleMs: 120,
+                            force: true,
+                        }
+                    );
+                    return returnDetails
+                        ? {
+                            box: null,
+                            geometrySource: "authoritative-text-missing",
+                            geometryFamily: "authoritative-text-required",
+                            usedInputPose: false,
+                        }
+                        : null;
+                }
                 try {
                     baseRect = node.getClientRect({
                         relativeTo: stage,

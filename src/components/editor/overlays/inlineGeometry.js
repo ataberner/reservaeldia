@@ -1,3 +1,10 @@
+import { resolveAuthoritativeTextRect } from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
+import {
+  buildTextGeometryContractRect,
+  evaluateTextGeometryContractRectAlignment,
+  logTextGeometryContractInvariant,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
+
 function toFiniteNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -34,6 +41,24 @@ function readNodeProp(node, key, fallback = null) {
   } catch {
     return fallback;
   }
+  return fallback;
+}
+
+function readInlineNodeId(node, fallback = null) {
+  if (!node) return fallback;
+  try {
+    if (typeof node.id === "function") {
+      const value = node.id();
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+  } catch {}
+
+  if (typeof node?.attrs?.id === "string" && node.attrs.id.trim().length > 0) {
+    return node.attrs.id.trim();
+  }
+
   return fallback;
 }
 
@@ -134,21 +159,32 @@ export function projectInlineRectToViewport(rect, stageMetrics) {
   };
 }
 
-export function getInlineKonvaProjectedRectViewport(node, stage, scaleVisual = 1) {
+export function getInlineKonvaProjectedRectViewport(
+  node,
+  stage,
+  scaleVisual = 1,
+  options = {}
+) {
   const stageMetrics = resolveInlineStageViewportMetrics(stage, { scaleVisual });
   if (!node || !stage) {
     return {
       konvaTextClientRect: null,
+      konvaAuthoritativeTextRect: null,
+      konvaProjectionLocalRect: null,
       konvaProjectedRectViewport: null,
+      konvaProjectionGeometrySource: null,
+      authoritativeTextRectAvailable: false,
       ...stageMetrics,
     };
   }
 
-  let localRect = null;
+  const textNode = resolveInlineKonvaTextNode(node, stage) || node;
+
+  let renderedLocalRect = null;
   try {
-    localRect =
-      typeof node.getClientRect === "function"
-        ? node.getClientRect({
+    renderedLocalRect =
+      typeof textNode.getClientRect === "function"
+        ? textNode.getClientRect({
             relativeTo: stage,
             skipTransform: false,
             skipShadow: true,
@@ -156,15 +192,110 @@ export function getInlineKonvaProjectedRectViewport(node, stage, scaleVisual = 1
           })
         : null;
   } catch {
-    localRect = null;
+    renderedLocalRect = null;
   }
 
-  const konvaTextClientRect = rectToPayload(localRect);
-  const konvaProjectedRectViewport = projectInlineRectToViewport(localRect, stageMetrics);
+  const inferredElementId =
+    readInlineNodeId(textNode, readInlineNodeId(node, null)) || null;
+  const authoritativeTextRect = resolveAuthoritativeTextRect(
+    textNode,
+    options?.objectMeta ||
+      (textNode?.getClassName?.() === "Text"
+        ? {
+            id: inferredElementId,
+            tipo: "texto",
+          }
+        : null),
+    {
+      fallbackRect: renderedLocalRect,
+    }
+  );
+  const projectionLocalRect = authoritativeTextRect || renderedLocalRect || null;
+  const projectionGeometrySource = authoritativeTextRect
+    ? "authoritative-text-rect"
+    : renderedLocalRect
+      ? "client-rect-fallback"
+      : "missing";
+  const konvaTextClientRect = rectToPayload(renderedLocalRect);
+  const konvaAuthoritativeTextRect = rectToPayload(authoritativeTextRect);
+  const konvaProjectionLocalRect = rectToPayload(projectionLocalRect);
+  const konvaProjectedRectViewport = projectInlineRectToViewport(
+    projectionLocalRect,
+    stageMetrics
+  );
+  const projectionCheck = evaluateTextGeometryContractRectAlignment(
+    authoritativeTextRect,
+    projectionLocalRect,
+    {
+      tolerance: 0.5,
+      expectedLabel: "authoritative Konva text rect",
+      actualLabel: "inline projection local rect",
+    }
+  );
+
+  logTextGeometryContractInvariant(
+    "inline-projection-geometry-source",
+    {
+      phase: options?.phase || "inline-projection",
+      surface: options?.surface || "inline-dom-projection",
+      authoritySource: projectionGeometrySource,
+      sessionIdentity:
+        options?.sessionIdentity ||
+        inferredElementId ||
+        null,
+      elementId: options?.elementId || inferredElementId || null,
+      tipo: "texto",
+      caller: options?.caller || "getInlineKonvaProjectedRectViewport",
+      pass:
+        projectionGeometrySource === "authoritative-text-rect" &&
+        projectionCheck.pass,
+      failureReason:
+        projectionGeometrySource === "client-rect-fallback"
+          ? "inline projection fell back to generic client rect because authoritative text geometry was unavailable"
+          : projectionGeometrySource === "missing"
+            ? "inline projection could not resolve any Konva text geometry"
+            : projectionCheck.failureReason,
+      observedRects: {
+        authoritativeKonvaRect: buildTextGeometryContractRect(
+          authoritativeTextRect
+        ),
+        inlineProjectionLocalRect: buildTextGeometryContractRect(
+          projectionLocalRect
+        ),
+        renderedTextClientRect: buildTextGeometryContractRect(
+          renderedLocalRect
+        ),
+        inlineProjectedViewportRect: buildTextGeometryContractRect(
+          konvaProjectedRectViewport
+        ),
+      },
+      observedSources: {
+        authoritativeTextRectAvailable: Boolean(authoritativeTextRect),
+        projectionGeometrySource,
+        stageScaleSourceX: stageMetrics.scaleSourceX || null,
+        stageScaleSourceY: stageMetrics.scaleSourceY || null,
+      },
+      delta: projectionCheck.delta,
+    },
+    {
+      sampleKey: `text-contract:inline-source:${
+        options?.sessionIdentity || options?.elementId || inferredElementId || "unknown"
+      }`,
+      firstCount: 5,
+      throttleMs: 140,
+      force:
+        projectionGeometrySource !== "authoritative-text-rect" ||
+        !projectionCheck.pass,
+    }
+  );
 
   return {
     konvaTextClientRect,
+    konvaAuthoritativeTextRect,
+    konvaProjectionLocalRect,
     konvaProjectedRectViewport,
+    konvaProjectionGeometrySource: projectionGeometrySource,
+    authoritativeTextRectAvailable: Boolean(authoritativeTextRect),
     ...stageMetrics,
   };
 }

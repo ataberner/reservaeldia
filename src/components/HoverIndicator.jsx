@@ -125,6 +125,11 @@ const HoverIndicator = forwardRef(function HoverIndicator({
         node,
         isMobile,
         includePadding: true,
+        debugMeta: {
+          phase: "hover",
+          surface: "hover",
+          caller: "HoverIndicator",
+        },
       });
       boundsSource =
         renderBounds?.kind === "polygon"

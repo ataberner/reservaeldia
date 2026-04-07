@@ -279,7 +279,13 @@ export default function useCanvasEditorInlineRuntime({
       const stage = targetNode?.getStage?.() || stageRef.current?.getStage?.() || stageRef.current || null;
       const konvaTextNode = resolveInlineKonvaTextNode(targetNode, stage) || targetNode;
       const konvaProjection = konvaTextNode
-        ? getInlineKonvaProjectedRectViewport(konvaTextNode, stage, escalaVisual)
+        ? getInlineKonvaProjectedRectViewport(konvaTextNode, stage, escalaVisual, {
+            phase: details?.phase || eventName || "inline-visibility",
+            surface: "inline-session-runtime",
+            sessionIdentity: details?.sessionId || targetId || null,
+            elementId: targetId || null,
+            caller: "useInlineSessionRuntime:logInlineVisibility",
+          })
         : null;
       const konvaProjectedRect = konvaProjection?.konvaProjectedRectViewport || null;
       const konvaProjectedXRaw = toInlineFiniteNumber(konvaProjectedRect?.x);
@@ -333,6 +339,10 @@ export default function useCanvasEditorInlineRuntime({
               ? details.paintStable
               : Boolean(adapterDecision?.paintStable),
           eventLoopPhase: details?.eventLoopPhase || "sync",
+          projectionGeometrySource:
+            konvaProjection?.konvaProjectionGeometrySource || null,
+          authoritativeTextRectAvailable:
+            konvaProjection?.authoritativeTextRectAvailable === true,
           horizontal: {
             overlayX,
             overlayWidth,
@@ -418,6 +428,10 @@ export default function useCanvasEditorInlineRuntime({
           offsetSource: details?.offsetSource || null,
           offsetSpace: details?.offsetSpace || null,
           renderAuthority: details?.renderAuthority || adapterDecision?.renderAuthority || null,
+          projectionGeometrySource:
+            konvaProjection?.konvaProjectionGeometrySource || null,
+          authoritativeTextRectAvailable:
+            konvaProjection?.authoritativeTextRectAvailable === true,
           caretVisible:
             typeof details?.caretVisible === "boolean"
               ? details.caretVisible
@@ -1043,7 +1057,14 @@ export default function useCanvasEditorInlineRuntime({
     const konvaProjection = getInlineKonvaProjectedRectViewport(
       konvaTextNode,
       stage,
-      escalaVisual
+      escalaVisual,
+      {
+        phase: "inline-visibility-snapshot",
+        surface: "inline-session-runtime",
+        sessionIdentity: snapshotId || null,
+        elementId: snapshotId || null,
+        caller: "useInlineSessionRuntime:captureVisibilitySnapshot",
+      }
     );
     const konvaTextClientRect = konvaProjection.konvaTextClientRect;
     const konvaProjectedRectViewport = konvaProjection.konvaProjectedRectViewport;

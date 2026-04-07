@@ -1116,6 +1116,37 @@ export default function CanvasEditor({
       isBackgroundEditInteracting,
     canvasInteractionEpoch: canvasInteractionCoordinator.interactionEpoch,
   });
+  const postDragDiagnosticMenuTargetIds = useMemo(() => {
+    if (!overlaySelection) return [];
+
+    if (overlaySelection.kind === "canvas-object") {
+      return overlaySelection.objectId ? [overlaySelection.objectId] : [];
+    }
+
+    if (
+      overlaySelection.kind === "multi-selection" &&
+      Array.isArray(overlaySelection.selectedIds)
+    ) {
+      return overlaySelection.selectedIds.filter(
+        (id) => id !== null && typeof id !== "undefined" && id !== ""
+      );
+    }
+
+    if (overlaySelection.kind === "background-decoration") {
+      return overlaySelection.menuItem?.id ? [overlaySelection.menuItem.id] : [];
+    }
+
+    if (overlaySelection.kind === "section-base-image") {
+      if (overlaySelection.menuItem?.id) {
+        return [overlaySelection.menuItem.id];
+      }
+      return overlaySelection.sectionId
+        ? [`section-base-image:${overlaySelection.sectionId}`]
+        : [];
+    }
+
+    return [];
+  }, [overlaySelection]);
 
   const {
     handleTransformInteractionStart,
@@ -1551,6 +1582,7 @@ export default function CanvasEditor({
                 setSectionDecorationEdit={setSectionDecorationEdit}
                 onRegisterBackgroundEditNode={registerBackgroundEditNode}
                 onBackgroundEditInteractionChange={handleBackgroundEditInteractionChange}
+                postDragDiagnosticMenuTargetIds={postDragDiagnosticMenuTargetIds}
               />
 
 

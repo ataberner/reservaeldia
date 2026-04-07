@@ -21,7 +21,7 @@ No subsystem may invent an alternate visible phase model for box ownership, geom
 | Phase | Allowed visual owner | Allowed geometry source | Allowed selection authority | Forbidden states |
 | --- | --- | --- | --- | --- |
 | `idle` | none | none | committed selection may be empty only | visible hover, visible selected-phase box, visible drag-overlay box |
-| `hover` | hover only | live node geometry; for single text, authoritative text rect | committed selection remains authoritative; hover does not create selection authority | drag-overlay visibility, selected-phase visibility, fallback geometry, stale hover after ownership loss |
+| `hover` | hover owns the hovered target; selected-phase MAY remain visible on a different selected target | live node geometry; for single text, authoritative text rect | committed selection remains authoritative; hover does not create selection authority | drag-overlay visibility, same-target selected-phase + hover coexistence, fallback geometry, stale hover after ownership loss |
 | `selected` | selected-phase owner only | live node geometry; object-data fallback only when explicitly allowed by Section 3 | committed selection in React state is authoritative; runtime selection must converge to it | hover visibility, drag-overlay visibility, mixed live/fallback geometry in one frame |
 | `predrag` | drag-overlay owns box authority, but MAY remain visually hidden until valid startup visibility | live node geometry only; for single text, authoritative text rect only | drag visual selection becomes authoritative for the visible box | hover visibility, selected-phase ownership, seed/replay visibility, object-data fallback |
 | `drag` | drag-overlay only | live node geometry only; for single text, authoritative text rect only | drag visual selection is authoritative for visible selection | hover visibility, selected-phase visibility, object-data fallback, geometry mixing |
@@ -44,7 +44,7 @@ Visible box authority is strictly ordered:
 2. `selected-phase`
 3. `hover`
 
-No lower-priority owner may remain visible once a higher-priority owner has taken authority.
+No lower-priority owner may remain visible once a higher-priority owner has taken authority for the same target. Cross-target coexistence is allowed only where this contract explicitly permits it.
 
 ### 2.2 Owners
 
@@ -75,8 +75,8 @@ No lower-priority owner may remain visible once a higher-priority owner has take
 
 ### 2.4 Explicit Prohibitions
 
-- Dual box ownership is forbidden.
-- Visual duplication across hover, selected-phase, and drag-overlay is forbidden.
+- Dual box ownership on the same target is forbidden.
+- Visual duplication across hover, selected-phase, and drag-overlay on the same target is forbidden.
 - Fallback visuals that are not phase-aligned are forbidden.
 - A component MAY stay mounted for lifecycle reasons, but mount persistence MUST NOT imply visible authority.
 
@@ -279,6 +279,12 @@ Drag-overlay MAY release visible authority only when all of the following are tr
 - selected-phase visuals are ready
 - post-paint confirmation has completed
 
+Clarification:
+
+- Dual visible ownership remains forbidden.
+- The selected-phase renderer MAY complete readiness and post-paint confirmation while still visually suppressed beneath the drag-overlay.
+- In that case, "selected-phase visuals are visible" means the destination selected-phase renderer is mounted on the correct selection path and can become the sole visible owner immediately after overlay release; it does not permit simultaneous user-visible overlay + selected-phase rendering.
+
 ### 7.2 Selected-Phase Readiness
 
 Selected-phase readiness requires:
@@ -288,11 +294,17 @@ Selected-phase readiness requires:
 - valid visible bounds
 - a post-paint confirmation boundary
 
+Implementation note:
+
+- For transformer-backed destinations, readiness MAY be proven through a hidden underlay/ready-probe path while drag-overlay still owns visible authority.
+- If that hidden ready-probe path is used, its readiness bounds MUST be read from the current live selected target geometry, not from a visually suppressed transformer shell that can report `zero-bounds` while drag-overlay still owns visible authority.
+
 ### 7.3 Explicit Prohibitions
 
 - Premature drag-overlay teardown is forbidden.
 - Dual rendering between drag-overlay and selected-phase visuals is forbidden.
 - Selected-phase visibility without readiness is not sufficient to release drag-overlay authority.
+- Once a newer committed selection supersedes the stale drag settle target, that stale handoff target MUST be invalidated immediately; it MUST NOT keep drag-overlay ownership, selected-phase attachment, or visible box ownership.
 
 ## 8. HOVER CONTRACT
 
@@ -301,9 +313,14 @@ Selected-phase readiness requires:
 Hover is allowed only when:
 
 - phase is `hover`
-- no selected-phase owner is visible
 - no drag-overlay owner is active
 - no suppressing interaction boundary is active
+- if selected-phase is visible, the hover target differs from every selected-phase target
+
+Clarification:
+
+- selected-phase and hover MAY coexist across different targets when no global no-hover boundary is active
+- same-target selected-phase plus hover coexistence remains forbidden
 
 ### 8.2 No-Hover Zones
 

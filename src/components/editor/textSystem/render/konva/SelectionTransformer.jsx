@@ -357,6 +357,19 @@ function buildBoundsVisualReadinessKey(bounds) {
   ].join(":");
 }
 
+function normalizeSelectionIdsForHandoff(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((id) => String(id ?? "").trim())
+    .filter((id) => id !== "");
+}
+
+function areSelectionIdsEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  return left.every((id, index) => id === right[index]);
+}
+
 
 export default function SelectionBounds({
   selectedElements,
@@ -382,6 +395,9 @@ export default function SelectionBounds({
   predragVisualSelectionActive = false,
   dragSelectionOverlayVisible = false,
   dragSelectionOverlayVisualReady = false,
+  selectedPhaseHandoffActive = false,
+  selectedPhaseHandoffSelectionRepairPending = false,
+  selectedPhaseHandoffExpectedSelectionIds = [],
   onPrimarySelectionVisualReadyChange = null,
   onPrimarySelectionVisibilityChange = null,
   selectionRuntime = null,
@@ -456,6 +472,7 @@ export default function SelectionBounds({
   });
   const lastVisibilitySnapshotRef = useRef(null);
   const transformerBoxFlowSnapshotRef = useRef(null);
+  const transformerStaleAttachmentSnapshotRef = useRef(null);
   const attachBlockSnapshotRef = useRef(null);
   const lineIndicatorVisibilitySnapshotRef = useRef(null);
   const selectedPhaseVisualReadyGateRef = useRef({
@@ -463,6 +480,7 @@ export default function SelectionBounds({
     pendingKey: null,
     confirmedKey: null,
     blockedKey: null,
+    lastMeta: null,
   });
   const selectionBoxFlowIdentityRef = useRef(null);
   const pendingUiRestoreEpochRef = useRef(0);
@@ -641,6 +659,15 @@ export default function SelectionBounds({
   const effectiveDragging = Boolean(isDragging || globalDragging || groupDragging);
   const shouldUseLightweightRotateOverlay =
     esImagenSeleccionada && isImageRotateGestureActive;
+  const normalizedSelectedElements = normalizeSelectionIdsForHandoff(
+    selectedElements
+  );
+  const normalizedHandoffExpectedSelectionIds =
+    normalizeSelectionIdsForHandoff(selectedPhaseHandoffExpectedSelectionIds);
+  const selectionMatchesHandoffExpected = areSelectionIdsEqual(
+    normalizedSelectedElements,
+    normalizedHandoffExpectedSelectionIds
+  );
   const shouldSuppressBeforeFirstDragStart = Boolean(
     pendingDragSelectionPhase === "predrag" &&
     pendingDragSelectionId &&
@@ -681,6 +708,14 @@ export default function SelectionBounds({
     transformerVisualMode.shouldHideTransformerDuringDrag;
   const shouldSuppressTransformerVisualsForDragOverlay =
     transformerVisualMode.shouldSuppressTransformerVisualsForDragOverlay;
+  const shouldProbeSelectedPhaseReadinessUnderOverlay = Boolean(
+    selectedPhaseHandoffActive &&
+      dragSelectionOverlayVisible &&
+      shouldSuppressTransformerVisualsForDragOverlay &&
+      selectedPhaseHandoffSelectionRepairPending !== true &&
+      normalizedHandoffExpectedSelectionIds.length > 0 &&
+      selectionMatchesHandoffExpected
+  );
 
   useEffect(() => {
     const visibilitySnapshot = {
@@ -695,6 +730,14 @@ export default function SelectionBounds({
         shouldSuppressTransformerVisualsForDragOverlay
       ),
       dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
+      selectedPhaseHandoffActive: Boolean(selectedPhaseHandoffActive),
+      selectedPhaseHandoffSelectionRepairPending: Boolean(
+        selectedPhaseHandoffSelectionRepairPending
+      ),
+      selectionMatchesHandoffExpected: Boolean(selectionMatchesHandoffExpected),
+      shouldProbeSelectedPhaseReadinessUnderOverlay: Boolean(
+        shouldProbeSelectedPhaseReadinessUnderOverlay
+      ),
       attachSuppressed: Boolean(isTransformerAttachSuppressed),
       predragVisualSelectionActive: Boolean(predragVisualSelectionActive),
       manualGroupSessionId,
@@ -737,6 +780,14 @@ export default function SelectionBounds({
         shouldSuppressTransformerVisualsForDragOverlay
       ),
       dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
+      selectedPhaseHandoffActive: Boolean(selectedPhaseHandoffActive),
+      selectedPhaseHandoffSelectionRepairPending: Boolean(
+        selectedPhaseHandoffSelectionRepairPending
+      ),
+      selectionMatchesHandoffExpected: Boolean(selectionMatchesHandoffExpected),
+      shouldProbeSelectedPhaseReadinessUnderOverlay: Boolean(
+        shouldProbeSelectedPhaseReadinessUnderOverlay
+      ),
       canvasInteractionActive: Boolean(canvasInteractionActive),
       canvasInteractionSettling: Boolean(canvasInteractionSettling),
       attachSuppressed: Boolean(isTransformerAttachSuppressed),
@@ -763,6 +814,10 @@ export default function SelectionBounds({
     shouldHideTransformerDuringDrag,
     shouldSuppressTransformerVisualsForDragOverlay,
     dragSelectionOverlayVisualReady,
+    selectedPhaseHandoffActive,
+    selectedPhaseHandoffSelectionRepairPending,
+    selectionMatchesHandoffExpected,
+    shouldProbeSelectedPhaseReadinessUnderOverlay,
     canvasInteractionActive,
     canvasInteractionSettling,
     isTransformerAttachSuppressed,
@@ -801,6 +856,14 @@ export default function SelectionBounds({
       suppressDuringDeferredDrag: shouldSuppressDuringDeferredDrag,
       dragSelectionOverlayVisible: Boolean(dragSelectionOverlayVisible),
       dragSelectionOverlayVisualReady: Boolean(dragSelectionOverlayVisualReady),
+      selectedPhaseHandoffActive: Boolean(selectedPhaseHandoffActive),
+      selectedPhaseHandoffSelectionRepairPending: Boolean(
+        selectedPhaseHandoffSelectionRepairPending
+      ),
+      selectionMatchesHandoffExpected: Boolean(selectionMatchesHandoffExpected),
+      shouldProbeSelectedPhaseReadinessUnderOverlay: Boolean(
+        shouldProbeSelectedPhaseReadinessUnderOverlay
+      ),
       predragVisualSelectionActive: Boolean(predragVisualSelectionActive),
       transformerVisualSuppressedForOverlay: Boolean(
         shouldSuppressTransformerVisualsForDragOverlay
@@ -844,6 +907,10 @@ export default function SelectionBounds({
     predragVisualSelectionActive,
     dragSelectionOverlayVisible,
     dragSelectionOverlayVisualReady,
+    selectedPhaseHandoffActive,
+    selectedPhaseHandoffSelectionRepairPending,
+    selectionMatchesHandoffExpected,
+    shouldProbeSelectedPhaseReadinessUnderOverlay,
     shouldSuppressTransformerVisualsForDragOverlay,
     interactionLocked,
     transformTick,
@@ -974,6 +1041,61 @@ export default function SelectionBounds({
     } catch {
       return null;
     }
+  };
+
+  const getAttachedNodeProbeBoundsDigest = (nodes = []) => {
+    const attachedNodes = Array.isArray(nodes) ? nodes.filter(Boolean) : [];
+    if (attachedNodes.length === 0) return null;
+
+    if (attachedNodes.length === 1) {
+      const attachedNode = attachedNodes[0];
+      const attachedNodeId =
+        getTransformNodeId(attachedNode) ||
+        (selectedElements.length === 1 ? selectedElements[0] || null : null);
+      const selectedObject =
+        attachedNodeId && Array.isArray(objetos)
+          ? objetos.find((candidate) => candidate?.id === attachedNodeId) || null
+          : null;
+
+      if (selectedObject?.tipo === "texto") {
+        let fallbackRect = null;
+        try {
+          fallbackRect = attachedNode.getClientRect?.({
+            skipTransform: false,
+            skipShadow: true,
+            skipStroke: true,
+          }) || null;
+        } catch {
+          fallbackRect = null;
+        }
+
+        const authoritativeTextRect = resolveAuthoritativeTextRect(
+          attachedNode,
+          selectedObject,
+          { fallbackRect }
+        );
+        if (authoritativeTextRect) {
+          return buildCanvasBoxFlowBoundsDigest(authoritativeTextRect);
+        }
+      }
+    }
+
+    return buildCanvasBoxFlowBoundsDigest(rectFromNodes(attachedNodes));
+  };
+
+  const resolveSelectedPhaseBoundsDigest = ({
+    transformerNode = null,
+    attachedNodes = [],
+    preferAttachedNodeBounds = false,
+  } = {}) => {
+    const attachedNodeBounds = getAttachedNodeProbeBoundsDigest(attachedNodes);
+    const transformerBounds = getTransformerBoundsDigest(transformerNode);
+
+    if (preferAttachedNodeBounds) {
+      return attachedNodeBounds || transformerBounds || null;
+    }
+
+    return transformerBounds || attachedNodeBounds || null;
   };
 
   const buildTransformBoxFlowPayload = (node, transformData = {}, extra = {}) => {
@@ -2938,6 +3060,101 @@ export default function SelectionBounds({
   ]);
 
   useEffect(() => {
+    const lifecycleNode = getLifecycleTransformerNode();
+    const attachedNodes =
+      typeof lifecycleNode?.nodes === "function" ? lifecycleNode.nodes() || [] : [];
+    const attachedNodeIds = buildAttachedNodeIdsDigest(attachedNodes);
+    const desiredNodeIds = buildAttachedNodeIdsDigest(resolveTransformableNodes());
+    const nextSnapshot = {
+      selectionKey,
+      attachedNodeIds: attachedNodeIds || null,
+      desiredNodeIds: desiredNodeIds || null,
+      attachBlocked: Boolean(isTransformerAttachBlocked),
+      dragOverlayOwnerActive: Boolean(hasDragOverlayVisualOwnership),
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(selectedPhaseHandoffActive),
+      readyProbeActive: Boolean(shouldProbeSelectedPhaseReadinessUnderOverlay),
+    };
+    const previousSnapshot = transformerStaleAttachmentSnapshotRef.current;
+    transformerStaleAttachmentSnapshotRef.current = nextSnapshot;
+    const snapshotChanged =
+      !previousSnapshot ||
+      Object.keys(nextSnapshot).some(
+        (key) => previousSnapshot[key] !== nextSnapshot[key]
+      );
+
+    if (!snapshotChanged) {
+      return;
+    }
+
+    const hasStaleAttachment = Boolean(
+      nextSnapshot.attachedNodeIds &&
+        nextSnapshot.desiredNodeIds &&
+        nextSnapshot.attachedNodeIds !== nextSnapshot.desiredNodeIds
+    );
+    if (hasStaleAttachment) {
+      logCanvasBoxFlow("selection", "transformer:stale-attachment", {
+        source: "selection-transformer",
+        reason: "attached-node-ids-do-not-match-current-selection-target",
+        selectedIds: selectionKey || null,
+        visualIds: nextSnapshot.attachedNodeIds || null,
+        attachedNodeIds: nextSnapshot.attachedNodeIds || null,
+        desiredNodeIds: nextSnapshot.desiredNodeIds || null,
+        attachBlocked: nextSnapshot.attachBlocked,
+        dragOverlayOwnerActive: nextSnapshot.dragOverlayOwnerActive,
+        settlingActive: nextSnapshot.settlingActive,
+        handoffActive: nextSnapshot.handoffActive,
+        readyProbeActive: nextSnapshot.readyProbeActive,
+        overlayVisible: Boolean(dragSelectionOverlayVisible),
+      }, {
+        identity:
+          buildSelectionBoxFlowSessionIdentity(
+            nextSnapshot.attachedNodeIds || nextSnapshot.desiredNodeIds || selectionKey
+          ),
+      });
+    }
+
+    const attachmentRecovered = Boolean(
+      previousSnapshot?.attachedNodeIds &&
+        previousSnapshot?.desiredNodeIds &&
+        previousSnapshot.attachedNodeIds !== previousSnapshot.desiredNodeIds &&
+        nextSnapshot.attachedNodeIds &&
+        nextSnapshot.desiredNodeIds &&
+        nextSnapshot.attachedNodeIds === nextSnapshot.desiredNodeIds
+    );
+    if (attachmentRecovered) {
+      logCanvasBoxFlow("selection", "transformer:attachment-rebound", {
+        source: "selection-transformer",
+        reason: "attached-node-ids-rebound-to-current-selection-target",
+        selectedIds: selectionKey || null,
+        visualIds: nextSnapshot.attachedNodeIds || null,
+        attachedNodeIds: nextSnapshot.attachedNodeIds || null,
+        desiredNodeIds: nextSnapshot.desiredNodeIds || null,
+        attachBlocked: nextSnapshot.attachBlocked,
+        dragOverlayOwnerActive: nextSnapshot.dragOverlayOwnerActive,
+        settlingActive: nextSnapshot.settlingActive,
+        handoffActive: nextSnapshot.handoffActive,
+        readyProbeActive: nextSnapshot.readyProbeActive,
+        overlayVisible: Boolean(dragSelectionOverlayVisible),
+      }, {
+        identity:
+          buildSelectionBoxFlowSessionIdentity(
+            nextSnapshot.attachedNodeIds || selectionKey
+          ),
+      });
+    }
+  }, [
+    canvasInteractionSettling,
+    dragSelectionOverlayVisible,
+    hasDragOverlayVisualOwnership,
+    isTransformerAttachBlocked,
+    selectedPhaseHandoffActive,
+    selectionKey,
+    shouldProbeSelectedPhaseReadinessUnderOverlay,
+    transformTick,
+  ]);
+
+  useEffect(() => {
     const handler = (e) => {
       const id = e?.detail?.id;
       if (!id) return;
@@ -2969,13 +3186,30 @@ export default function SelectionBounds({
       transformerVisualMode.renderMode !== "line-indicator" &&
       !shouldSuppressTransformerVisualsForDragOverlay
     );
+    const nextReadyProbeActive = Boolean(
+      !nextVisible &&
+        selectedElements.length > 0 &&
+        attachedNodes.length > 0 &&
+        shouldUseGenericTransformer &&
+        transformerVisualMode.renderMode !== "none" &&
+        transformerVisualMode.renderMode !== "line-indicator" &&
+        shouldProbeSelectedPhaseReadinessUnderOverlay
+    );
     const nextSnapshot = {
       visible: nextVisible,
+      readyProbeActive: nextReadyProbeActive,
       sessionIdentity: buildSelectionBoxFlowSessionIdentity(attachedNodeIds),
       visualIdentity: buildSelectionBoxFlowIdentity(attachedNodeIds),
       renderMode: transformerVisualMode.renderMode,
       attachedNodeIds,
-      bounds: nextVisible ? getTransformerBoundsDigest(lifecycleNode) : null,
+      bounds:
+        nextVisible || nextReadyProbeActive
+          ? resolveSelectedPhaseBoundsDigest({
+              transformerNode: lifecycleNode,
+              attachedNodes,
+              preferAttachedNodeBounds: nextReadyProbeActive,
+            })
+          : null,
     };
     const previousSnapshot = transformerBoxFlowSnapshotRef.current;
     transformerBoxFlowSnapshotRef.current = nextSnapshot;
@@ -3046,6 +3280,9 @@ export default function SelectionBounds({
         visualIdentity: previousSnapshot.visualIdentity,
         sessionIdentity: previousSessionIdentity,
         bounds: previousSnapshot.bounds,
+        attachedNodeIds: previousSnapshot.attachedNodeIds || null,
+        readyProbeActive: Boolean(previousSnapshot.readyProbeActive),
+        selectedPhaseActuallyVisible: false,
       });
       onPrimarySelectionVisibilityChange?.(false, {
         source: "transformer-primary",
@@ -3062,6 +3299,9 @@ export default function SelectionBounds({
         visualIdentity: previousSnapshot.visualIdentity,
         sessionIdentity: previousSessionIdentity,
         bounds: previousSnapshot.bounds,
+        attachedNodeIds: previousSnapshot.attachedNodeIds || null,
+        readyProbeActive: Boolean(previousSnapshot.readyProbeActive),
+        selectedPhaseActuallyVisible: false,
       });
     }
 
@@ -3098,6 +3338,9 @@ export default function SelectionBounds({
         visualIdentity: nextSnapshot.visualIdentity,
         sessionIdentity: nextSessionIdentity,
         bounds: nextSnapshot.bounds,
+        attachedNodeIds: nextSnapshot.attachedNodeIds || null,
+        readyProbeActive: Boolean(nextSnapshot.readyProbeActive),
+        selectedPhaseActuallyVisible: true,
       });
     }
   }, [
@@ -3123,8 +3366,22 @@ export default function SelectionBounds({
     const currentBounds = currentSnapshot?.bounds || null;
     const boundsReadiness = resolveBoundsVisualReadiness(currentBounds);
     const boundsKey = buildBoundsVisualReadinessKey(currentBounds);
+    const currentReadyProbeActive = Boolean(
+      currentSnapshot?.readyProbeActive && !currentSnapshot?.visible
+    );
+    const currentReadinessEligible = Boolean(
+      currentSnapshot?.visualIdentity &&
+      currentSessionIdentity &&
+      (currentSnapshot?.visible || currentReadyProbeActive)
+    );
+    const currentReadySource = currentReadyProbeActive
+      ? "bounds-ready-probe"
+      : "bounds-visible";
+    const currentReadySignalBase = currentReadyProbeActive
+      ? "selection-box-ready-probe+valid-bounds"
+      : "selection-box-shown+valid-bounds";
     const readyCandidateKey =
-      currentSnapshot?.visible && currentSessionIdentity && currentSnapshot?.visualIdentity
+      currentReadinessEligible
         ? [
             currentSessionIdentity,
             currentSnapshot.visualIdentity,
@@ -3132,30 +3389,158 @@ export default function SelectionBounds({
           ].join("|")
         : null;
 
-    if (!currentSnapshot?.visible) {
+    const resetReadyState = (reason, meta = {}) => {
       if (
         gateState.rafId &&
         typeof cancelAnimationFrame === "function"
       ) {
         cancelAnimationFrame(gateState.rafId);
       }
+      const hadConfirmedReady = Boolean(gateState.confirmedKey && gateState.lastMeta);
       gateState.rafId = 0;
       gateState.pendingKey = null;
       gateState.confirmedKey = null;
       gateState.blockedKey = null;
+
+      if (!hadConfirmedReady) {
+        gateState.lastMeta = null;
+        return;
+      }
+
+      const lastMeta = gateState.lastMeta || {};
+      gateState.lastMeta = null;
+      logCanvasBoxFlow("selection", "selected-phase:ready-reset", {
+        source: "transformer-primary",
+        phase: canvasInteractionSettling ? "settling" : "selected",
+        owner: "selected-phase",
+        selectedIds:
+          meta.visualIdentity || lastMeta.visualIdentity || currentSnapshot?.visualIdentity || null,
+        visualIds:
+          meta.visualIdentity || lastMeta.visualIdentity || currentSnapshot?.visualIdentity || null,
+        selectionAuthority: "logical-selection",
+        geometryAuthority: "transformer-live",
+        overlayVisible: Boolean(dragSelectionOverlayVisible),
+        settling: Boolean(canvasInteractionSettling),
+        suppressedLayers:
+          dragSelectionOverlayVisible
+            ? ["drag-overlay", "hover-indicator"]
+            : ["hover-indicator"],
+        reason,
+        readySource: meta.readySource || lastMeta.readySource || null,
+        readySignal: meta.readySignal || lastMeta.readySignal || null,
+        postPaintConfirmed: false,
+        boundsValid:
+          typeof meta.boundsValid === "boolean"
+            ? meta.boundsValid
+            : (typeof lastMeta.boundsValid === "boolean" ? lastMeta.boundsValid : false),
+        zeroBounds:
+          typeof meta.zeroBounds === "boolean"
+            ? meta.zeroBounds
+            : (typeof lastMeta.zeroBounds === "boolean" ? lastMeta.zeroBounds : false),
+        bounds: meta.bounds || lastMeta.bounds || currentBounds,
+        readyProbeActive: Boolean(meta.readyProbeActive),
+        selectedPhaseActuallyVisible: Boolean(meta.selectedPhaseActuallyVisible),
+      }, {
+        identity:
+          meta.sessionIdentity ||
+          lastMeta.sessionIdentity ||
+          currentSessionIdentity ||
+          currentSnapshot?.visualIdentity ||
+          null,
+      });
+      onPrimarySelectionVisualReadyChange?.(false, {
+        source: "transformer-primary",
+        reason,
+        renderMode:
+          meta.renderMode || lastMeta.renderMode || currentSnapshot?.renderMode || null,
+        readySource: meta.readySource || lastMeta.readySource || null,
+        readySignal: meta.readySignal || lastMeta.readySignal || null,
+        postPaintConfirmed: false,
+        boundsValid:
+          typeof meta.boundsValid === "boolean"
+            ? meta.boundsValid
+            : (typeof lastMeta.boundsValid === "boolean" ? lastMeta.boundsValid : false),
+        zeroBounds:
+          typeof meta.zeroBounds === "boolean"
+            ? meta.zeroBounds
+            : (typeof lastMeta.zeroBounds === "boolean" ? lastMeta.zeroBounds : false),
+        visualIdentity:
+          meta.visualIdentity || lastMeta.visualIdentity || currentSnapshot?.visualIdentity || null,
+        sessionIdentity:
+          meta.sessionIdentity || lastMeta.sessionIdentity || currentSessionIdentity || null,
+        bounds: meta.bounds || lastMeta.bounds || currentBounds,
+        attachedNodeIds:
+          meta.attachedNodeIds ||
+          lastMeta.attachedNodeIds ||
+          currentSnapshot?.attachedNodeIds ||
+          null,
+        readyProbeActive: Boolean(
+          Object.prototype.hasOwnProperty.call(meta, "readyProbeActive")
+            ? meta.readyProbeActive
+            : (
+                Object.prototype.hasOwnProperty.call(lastMeta, "readyProbeActive")
+                  ? lastMeta.readyProbeActive
+                  : currentReadyProbeActive
+              )
+        ),
+        selectedPhaseActuallyVisible: Boolean(
+          Object.prototype.hasOwnProperty.call(meta, "selectedPhaseActuallyVisible")
+            ? meta.selectedPhaseActuallyVisible
+            : (
+                Object.prototype.hasOwnProperty.call(
+                  lastMeta,
+                  "selectedPhaseActuallyVisible"
+                )
+                  ? lastMeta.selectedPhaseActuallyVisible
+                  : currentSnapshot?.visible
+              )
+        ),
+      });
+    };
+
+    if (!currentReadinessEligible) {
+      resetReadyState(
+        currentSnapshot?.visible
+          ? "selection-session-unavailable"
+          : dragSelectionOverlayVisible && shouldSuppressTransformerVisualsForDragOverlay
+            ? "drag-overlay-suppressed"
+            : "selection-box-hidden",
+        {
+          readySource: currentReadyProbeActive
+            ? "ready-probe-reset"
+            : "selection-box-hidden",
+          readySignal: currentReadyProbeActive
+            ? "selection-box-ready-probe-lost"
+            : "transformer-hidden",
+          boundsValid: false,
+          zeroBounds: false,
+          bounds: currentBounds,
+          readyProbeActive: currentReadyProbeActive,
+          selectedPhaseActuallyVisible: Boolean(currentSnapshot?.visible),
+          visualIdentity: currentSnapshot?.visualIdentity || null,
+          sessionIdentity: currentSessionIdentity || null,
+          renderMode: currentSnapshot?.renderMode || null,
+        }
+      );
       return;
     }
 
     if (!boundsReadiness.visuallyReadyBounds) {
-      if (
-        gateState.rafId &&
-        typeof cancelAnimationFrame === "function"
-      ) {
-        cancelAnimationFrame(gateState.rafId);
-      }
-      gateState.rafId = 0;
-      gateState.pendingKey = null;
-      gateState.confirmedKey = null;
+      resetReadyState(
+        boundsReadiness.zeroBounds ? "zero-bounds" : "invalid-bounds",
+        {
+          readySource: currentReadySource,
+          readySignal: currentReadySignalBase,
+          boundsValid: boundsReadiness.boundsValid,
+          zeroBounds: boundsReadiness.zeroBounds,
+          bounds: currentBounds,
+          readyProbeActive: currentReadyProbeActive,
+          selectedPhaseActuallyVisible: Boolean(currentSnapshot?.visible),
+          visualIdentity: currentSnapshot.visualIdentity,
+          sessionIdentity: currentSessionIdentity,
+          renderMode: currentSnapshot.renderMode,
+        }
+      );
       const blockedKey = [
         currentSessionIdentity || "selection",
         currentSnapshot.visualIdentity || "selection",
@@ -3181,12 +3566,16 @@ export default function SelectionBounds({
           reason: boundsReadiness.zeroBounds
             ? "zero-bounds"
             : (boundsReadiness.hasBounds ? "invalid-bounds" : "missing-bounds"),
-          readySource: "bounds-validation",
-          readySignal: "selection-box-shown",
+          readySource: currentReadySource,
+          readySignal: currentReadyProbeActive
+            ? "selection-box-ready-probe"
+            : "selection-box-shown",
           postPaintConfirmed: false,
           boundsValid: boundsReadiness.boundsValid,
           zeroBounds: boundsReadiness.zeroBounds,
           bounds: currentBounds,
+          readyProbeActive: currentReadyProbeActive,
+          selectedPhaseActuallyVisible: Boolean(currentSnapshot.visible),
         }, {
           identity: currentSessionIdentity || currentSnapshot.visualIdentity || null,
         });
@@ -3224,13 +3613,17 @@ export default function SelectionBounds({
         dragSelectionOverlayVisible
           ? ["drag-overlay", "hover-indicator"]
           : ["hover-indicator"],
-      reason: "await-post-paint-confirmation",
-      readySource: "bounds-visible",
-      readySignal: "selection-box-shown+valid-bounds",
+      reason: currentReadyProbeActive
+        ? "await-post-paint-confirmation-under-overlay"
+        : "await-post-paint-confirmation",
+      readySource: currentReadySource,
+      readySignal: currentReadySignalBase,
       postPaintConfirmed: false,
       boundsValid: boundsReadiness.boundsValid,
       zeroBounds: boundsReadiness.zeroBounds,
       bounds: currentBounds,
+      readyProbeActive: currentReadyProbeActive,
+      selectedPhaseActuallyVisible: Boolean(currentSnapshot.visible),
     }, {
       identity: currentSessionIdentity || currentSnapshot.visualIdentity || null,
     });
@@ -3244,8 +3637,22 @@ export default function SelectionBounds({
       const latestBounds = latestSnapshot?.bounds || null;
       const latestBoundsReadiness = resolveBoundsVisualReadiness(latestBounds);
       const latestBoundsKey = buildBoundsVisualReadinessKey(latestBounds);
+      const latestReadyProbeActive = Boolean(
+        latestSnapshot?.readyProbeActive && !latestSnapshot?.visible
+      );
+      const latestReadinessEligible = Boolean(
+        latestSnapshot?.visualIdentity &&
+        latestSessionIdentity &&
+        (latestSnapshot?.visible || latestReadyProbeActive)
+      );
+      const latestReadyConfirmedSource = latestReadyProbeActive
+        ? "post-paint-ready-probe-confirmed"
+        : "post-paint-confirmed";
+      const latestReadyConfirmedSignal = latestReadyProbeActive
+        ? "selection-box-ready-probe+valid-bounds+post-paint"
+        : "selection-box-shown+valid-bounds+post-paint";
       const latestReadyCandidateKey =
-        latestSnapshot?.visible && latestSessionIdentity && latestSnapshot?.visualIdentity
+        latestReadinessEligible
           ? [
               latestSessionIdentity,
               latestSnapshot.visualIdentity,
@@ -3289,17 +3696,21 @@ export default function SelectionBounds({
               dragSelectionOverlayVisible
                 ? ["drag-overlay", "hover-indicator"]
                 : ["hover-indicator"],
-            reason: !latestSnapshot?.visible
-              ? "post-paint-hidden"
+            reason: !latestReadinessEligible
+              ? latestReadyProbeActive
+                ? "post-paint-ready-probe-hidden"
+                : "post-paint-hidden"
               : latestBoundsReadiness.zeroBounds
                 ? "post-paint-zero-bounds"
                 : "post-paint-invalid-bounds",
             readySource: "post-paint-check",
-            readySignal: "selection-box-shown+valid-bounds",
+            readySignal: currentReadySignalBase,
             postPaintConfirmed: false,
             boundsValid: latestBoundsReadiness.boundsValid,
             zeroBounds: latestBoundsReadiness.zeroBounds,
             bounds: latestBounds,
+            readyProbeActive: latestReadyProbeActive,
+            selectedPhaseActuallyVisible: Boolean(latestSnapshot?.visible),
           }, {
             identity:
               latestSessionIdentity ||
@@ -3315,6 +3726,19 @@ export default function SelectionBounds({
       gateState.pendingKey = null;
       gateState.confirmedKey = readyCandidateKey;
       gateState.blockedKey = null;
+      gateState.lastMeta = {
+        renderMode: latestSnapshot.renderMode,
+        readySource: latestReadyConfirmedSource,
+        readySignal: latestReadyConfirmedSignal,
+        boundsValid: latestBoundsReadiness.boundsValid,
+        zeroBounds: latestBoundsReadiness.zeroBounds,
+        visualIdentity: latestSnapshot.visualIdentity,
+        sessionIdentity: latestSessionIdentity,
+        bounds: latestBounds,
+        attachedNodeIds: latestSnapshot.attachedNodeIds || null,
+        readyProbeActive: latestReadyProbeActive,
+        selectedPhaseActuallyVisible: Boolean(latestSnapshot.visible),
+      };
       logCanvasBoxFlow("selection", "selected-phase:ready-confirmed", {
         source: "transformer-primary",
         phase: canvasInteractionSettling ? "settling" : "selected",
@@ -3329,28 +3753,37 @@ export default function SelectionBounds({
           dragSelectionOverlayVisible
             ? ["drag-overlay", "hover-indicator"]
             : ["hover-indicator"],
-        reason: "post-paint-visible-bounds",
-        readySource: "post-paint-confirmed",
-        readySignal: "selection-box-shown+valid-bounds+post-paint",
+        reason: latestReadyProbeActive
+          ? "post-paint-ready-probe-bounds"
+          : "post-paint-visible-bounds",
+        readySource: latestReadyConfirmedSource,
+        readySignal: latestReadyConfirmedSignal,
         postPaintConfirmed: true,
         boundsValid: latestBoundsReadiness.boundsValid,
         zeroBounds: latestBoundsReadiness.zeroBounds,
         bounds: latestBounds,
+        readyProbeActive: latestReadyProbeActive,
+        selectedPhaseActuallyVisible: Boolean(latestSnapshot.visible),
       }, {
         identity: latestSessionIdentity || latestSnapshot.visualIdentity || null,
       });
       onPrimarySelectionVisualReadyChange?.(true, {
         source: "transformer-primary",
-        reason: "post-paint-visible-bounds",
+        reason: latestReadyProbeActive
+          ? "post-paint-ready-probe-bounds"
+          : "post-paint-visible-bounds",
         renderMode: latestSnapshot.renderMode,
-        readySource: "post-paint-confirmed",
-        readySignal: "selection-box-shown+valid-bounds+post-paint",
+        readySource: latestReadyConfirmedSource,
+        readySignal: latestReadyConfirmedSignal,
         postPaintConfirmed: true,
         boundsValid: latestBoundsReadiness.boundsValid,
         zeroBounds: latestBoundsReadiness.zeroBounds,
         visualIdentity: latestSnapshot.visualIdentity,
         sessionIdentity: latestSessionIdentity,
         bounds: latestBounds,
+        attachedNodeIds: latestSnapshot.attachedNodeIds || null,
+        readyProbeActive: latestReadyProbeActive,
+        selectedPhaseActuallyVisible: Boolean(latestSnapshot.visible),
       });
     };
 
@@ -3369,6 +3802,7 @@ export default function SelectionBounds({
     selectionKey,
     hasDragOverlayVisualOwnership,
     shouldSuppressTransformerVisualsForDragOverlay,
+    shouldProbeSelectedPhaseReadinessUnderOverlay,
     shouldUseGenericTransformer,
     transformTick,
     transformerVisualMode.renderMode,
@@ -3385,6 +3819,9 @@ export default function SelectionBounds({
       }
       gateState.rafId = 0;
       gateState.pendingKey = null;
+      gateState.confirmedKey = null;
+      gateState.blockedKey = null;
+      gateState.lastMeta = null;
     },
     []
   );

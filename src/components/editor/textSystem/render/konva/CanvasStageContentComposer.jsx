@@ -160,6 +160,22 @@ function buildComposerDebugRect(rect = null) {
   };
 }
 
+function resolveHoverBoundaryPhase({
+  isPredragVisualSelectionActive = false,
+  shouldRenderDragSelectionOverlay = false,
+  dragOverlayPhase = null,
+  canvasInteractionSettling = false,
+  hasSelectedPhaseOwner = false,
+} = {}) {
+  if (isPredragVisualSelectionActive) return "predrag";
+  if (shouldRenderDragSelectionOverlay) {
+    return dragOverlayPhase || (canvasInteractionSettling ? "settling" : "drag");
+  }
+  if (canvasInteractionSettling) return "settling";
+  if (hasSelectedPhaseOwner) return "selected";
+  return "hover";
+}
+
 function buildComposerRectDelta(primaryRect = null, secondaryRect = null) {
   if (!primaryRect || !secondaryRect) return null;
   return {
@@ -221,6 +237,54 @@ function resolveComposerBoundsRect(bounds = null) {
 function sanitizeSelectionIds(value) {
   if (!Array.isArray(value)) return [];
   return value.filter((id) => id !== null && typeof id !== "undefined" && id !== "");
+}
+
+function normalizeHoverTargetId(value) {
+  if (value === null || typeof value === "undefined") return null;
+  const normalized = String(value).trim();
+  return normalized !== "" ? normalized : null;
+}
+
+function readLiveHoverInteractionSnapshot({
+  fallbackCanvasInteractionActive = false,
+  fallbackCanvasInteractionSettling = false,
+  fallbackRuntimeResizeActive = false,
+} = {}) {
+  if (typeof window === "undefined") {
+    return {
+      runtimeDragActive: false,
+      runtimeGroupDragActive: false,
+      runtimeResizeActive: Boolean(fallbackRuntimeResizeActive),
+      canvasInteractionActive: Boolean(fallbackCanvasInteractionActive),
+      canvasInteractionSettling: Boolean(fallbackCanvasInteractionSettling),
+      interactionEpoch: 0,
+      lastBegin: null,
+      lastEnd: null,
+    };
+  }
+
+  const coordinatorState = window.__CANVAS_INTERACTION_COORDINATOR_STATE || null;
+  const hasCoordinatorActive =
+    typeof coordinatorState?.isInteractionActive === "boolean";
+  const hasCoordinatorSettling =
+    typeof coordinatorState?.isSettling === "boolean";
+
+  return {
+    runtimeDragActive: Boolean(window._isDragging),
+    runtimeGroupDragActive: Boolean(window._grupoLider),
+    runtimeResizeActive: Boolean(
+      window._resizeData?.isResizing ?? fallbackRuntimeResizeActive
+    ),
+    canvasInteractionActive: hasCoordinatorActive
+      ? coordinatorState.isInteractionActive === true
+      : Boolean(fallbackCanvasInteractionActive),
+    canvasInteractionSettling: hasCoordinatorSettling
+      ? coordinatorState.isSettling === true
+      : Boolean(fallbackCanvasInteractionSettling),
+    interactionEpoch: Number(coordinatorState?.interactionEpoch || 0) || 0,
+    lastBegin: window.__CANVAS_INTERACTION_LAST_BEGIN || null,
+    lastEnd: window.__CANVAS_INTERACTION_LAST_END || null,
+  };
 }
 
 function areSelectionIdListsEqual(left, right) {
@@ -343,6 +407,28 @@ function createEmptyDragSettleSession() {
     hadVisualSelection: false,
     interactionEpoch: 0,
   };
+}
+
+function resolveDragSettleDestinationSelectionIds(session) {
+  const safeSession =
+    session && session.dragId ? session : createEmptyDragSettleSession();
+
+  if (!safeSession.dragId) return [];
+
+  if (safeSession.needsDeferredCommit) {
+    return sanitizeSelectionIds(
+      safeSession.dragId ? [safeSession.dragId] : []
+    );
+  }
+
+  const nextSelection = sanitizeSelectionIds(safeSession.selectionSnapshot);
+  if (nextSelection.length > 0) {
+    return nextSelection;
+  }
+
+  return sanitizeSelectionIds(
+    safeSession.dragId ? [safeSession.dragId] : []
+  );
 }
 
 function createEmptyDragOverlayBoxFlowSession() {
@@ -868,6 +954,7 @@ export default function CanvasStageContent({
   setSectionDecorationEdit,
   onRegisterBackgroundEditNode,
   onBackgroundEditInteractionChange,
+  postDragDiagnosticMenuTargetIds = [],
 }) {
   const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
   const inlineActivationRef = useRef({
@@ -915,6 +1002,10 @@ export default function CanvasStageContent({
   const boxFlowSelectionSnapshotRef = useRef(null);
   const boxFlowHoverSnapshotRef = useRef(null);
   const hoverBoxFlowMetaRef = useRef(null);
+  const hoverBoundaryClearRef = useRef(null);
+  const hoverPostDragPendingRef = useRef(null);
+  const hoverPostDragRecoverySnapshotRef = useRef(null);
+  const hoverSuppressionSnapshotRef = useRef(null);
   const activeTransformInteractionRef = useRef({
     isRotate: false,
     activeAnchor: null,
@@ -2528,39 +2619,6 @@ export default function CanvasStageContent({
       entry,
     };
   }, [finalizeDragOverlayDriftPairingState, resetDragOverlayDriftState]);
-  const hoverSuppressionState = resolveStageHoverSuppression({
-    isDragging: Boolean(isDragging),
-    backgroundEditSectionId,
-    isPredragVisualSelectionActive,
-    canvasInteractionActive,
-    canvasInteractionSettling,
-    isImageCropInteracting,
-    runtimeDragActive:
-      typeof window !== "undefined" ? Boolean(window._isDragging) : false,
-    runtimeGroupDragActive:
-      typeof window !== "undefined" ? Boolean(window._grupoLider) : false,
-    runtimeResizeActive:
-      typeof window !== "undefined"
-        ? Boolean(window._resizeData?.isResizing)
-        : false,
-  });
-  const isHoverSuppressed = hoverSuppressionState.suppressed;
-  const hoverSuppressionReasons = hoverSuppressionState.reasons;
-  const hoverSuppressionReasonsKey = hoverSuppressionReasons.join(",");
-  hoverSuppressionReasonsRef.current = [...hoverSuppressionReasons];
-  const effectiveHoverId = isHoverSuppressed ? null : hoverId;
-  const shouldMountHoverIndicator = shouldStageRenderHoverIndicator({
-    isPredragVisualSelectionActive,
-    isDragging: Boolean(isDragging),
-    runtimeDragActive:
-      typeof window !== "undefined" ? Boolean(window._isDragging) : false,
-    runtimeGroupDragActive:
-      typeof window !== "undefined" ? Boolean(window._grupoLider) : false,
-    runtimeResizeActive:
-      typeof window !== "undefined"
-        ? Boolean(window._resizeData?.isResizing)
-        : false,
-  });
   const selectedPrimaryObject =
     elementosSeleccionados.length === 1
       ? objetos.find((obj) => obj.id === elementosSeleccionados[0]) || null
@@ -2572,16 +2630,46 @@ export default function CanvasStageContent({
         .filter(Boolean),
     [elementosSeleccionados, objectLookup]
   );
+  const runtimeDragActive =
+    typeof window !== "undefined" ? Boolean(window._isDragging) : false;
+  const runtimeGroupDragActive =
+    typeof window !== "undefined" ? Boolean(window._grupoLider) : false;
+  const runtimeResizeActive =
+    typeof window !== "undefined"
+      ? Boolean(window._resizeData?.isResizing)
+      : false;
+  const liveHoverInteractionSnapshot = readLiveHoverInteractionSnapshot({
+    fallbackCanvasInteractionActive: canvasInteractionActive,
+    fallbackCanvasInteractionSettling: canvasInteractionSettling,
+    fallbackRuntimeResizeActive: runtimeResizeActive,
+  });
+  const hoverRuntimeDragActive = Boolean(
+    liveHoverInteractionSnapshot.runtimeDragActive
+  );
+  const hoverRuntimeGroupDragActive = Boolean(
+    liveHoverInteractionSnapshot.runtimeGroupDragActive
+  );
+  const hoverRuntimeResizeActive = Boolean(
+    liveHoverInteractionSnapshot.runtimeResizeActive
+  );
+  const hoverCanvasInteractionActive = Boolean(
+    liveHoverInteractionSnapshot.canvasInteractionActive
+  );
+  const hoverCanvasInteractionSettling = Boolean(
+    liveHoverInteractionSnapshot.canvasInteractionSettling
+  );
+  const hoverLastInteractionBegin = liveHoverInteractionSnapshot.lastBegin || null;
+  const hoverLastInteractionEnd = liveHoverInteractionSnapshot.lastEnd || null;
   const isAnyCanvasDragActive =
     Boolean(isDragging) ||
     canvasInteractionActive ||
     canvasInteractionSettling ||
-    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
-    (typeof window !== "undefined" && Boolean(window._grupoLider));
+    runtimeDragActive ||
+    runtimeGroupDragActive;
   const isCanvasDragGestureActive =
     Boolean(isDragging) ||
-    (typeof window !== "undefined" && Boolean(window._isDragging)) ||
-    (typeof window !== "undefined" && Boolean(window._grupoLider));
+    runtimeDragActive ||
+    runtimeGroupDragActive;
   const shouldRenderImageCropOverlay =
     !editing.id &&
     !isCanvasDragGestureActive &&
@@ -2639,6 +2727,21 @@ export default function CanvasStageContent({
   );
   const shouldShowDragSelectionOverlay =
     stageSelectionVisualMode.showDragSelectionOverlay;
+  const selectedHoverOwnerIds = useMemo(
+    () => (
+      runtimeSelectedIds.length > 0
+        ? sanitizeSelectionIds(runtimeSelectedIds)
+        : sanitizeSelectionIds(elementosSeleccionados)
+    )
+      .map((id) => normalizeHoverTargetId(id))
+      .filter(Boolean),
+    [elementosSeleccionados, runtimeSelectedIds]
+  );
+  const selectedHoverOwnerIdsDigest = selectedHoverOwnerIds.join(",");
+  const selectedHoverOwnerIdSet = useMemo(
+    () => new Set(selectedHoverOwnerIds),
+    [selectedHoverOwnerIdsDigest]
+  );
   const canonicalSelectedIdsForBoxFlow =
     dragOverlayBoxFlowSession.selectedIds.length > 0
       ? sanitizeSelectionIds(dragOverlayBoxFlowSession.selectedIds)
@@ -2647,6 +2750,25 @@ export default function CanvasStageContent({
             ? runtimeSelectedIds
             : sanitizeSelectionIds(elementosSeleccionados)
         );
+  const committedSelectedIds = sanitizeSelectionIds(elementosSeleccionados);
+  const committedSelectedIdsDigest = buildCanvasBoxFlowIdsDigest(
+    committedSelectedIds
+  );
+  const runtimeSelectedIdsDigest = buildCanvasBoxFlowIdsDigest(
+    runtimeSelectedIds
+  );
+  const runtimeDragVisualSelectionIds = sanitizeSelectionIds(
+    runtimeSelectionSnapshot?.dragVisualSelection?.ids
+  );
+  const runtimeDragVisualSelectionIdsDigest = buildCanvasBoxFlowIdsDigest(
+    runtimeDragVisualSelectionIds
+  );
+  const diagnosticMenuTargetIds = sanitizeSelectionIds(
+    postDragDiagnosticMenuTargetIds
+  );
+  const diagnosticMenuTargetIdsDigest = buildCanvasBoxFlowIdsDigest(
+    diagnosticMenuTargetIds
+  );
   const selectedIdsDigest = buildCanvasBoxFlowIdsDigest(
     canonicalSelectedIdsForBoxFlow
   );
@@ -2670,29 +2792,196 @@ export default function CanvasStageContent({
         dragOverlayBoxFlowSession.selectedIds.length > 0
       )
   );
+  const activeDragSettleSession = dragSettleSessionRef.current;
+  const activeDragSettleSelectionSnapshotIds = sanitizeSelectionIds(
+    activeDragSettleSession?.selectionSnapshot
+  );
+  const activeDragSettleSelectionSnapshotDigest =
+    buildCanvasBoxFlowIdsDigest(activeDragSettleSelectionSnapshotIds);
+  const activeDragSettleDestinationSelectionIds =
+    resolveDragSettleDestinationSelectionIds(activeDragSettleSession);
+  const activeDragSettleDestinationSelectionIdsDigest =
+    buildCanvasBoxFlowIdsDigest(activeDragSettleDestinationSelectionIds);
+  const isCurrentDragSettleSessionPending = Boolean(
+    dragOverlayBoxFlowIdentity &&
+      activeDragSettleSession?.dragId &&
+      activeDragSettleSession.dragId === dragOverlayBoxFlowSession.dragId &&
+      Number(activeDragSettleSession.interactionEpoch || 0) > 0 &&
+      Number(activeDragSettleSession.interactionEpoch || 0) ===
+        Number(dragOverlayBoxFlowSession.interactionEpoch || 0)
+  );
+  const hasCommittedSelectionOverrideAfterDrag = Boolean(
+    isCurrentDragSettleSessionPending &&
+      committedSelectedIds.length > 0 &&
+      committedSelectedIdsDigest &&
+      committedSelectedIdsDigest !==
+        activeDragSettleDestinationSelectionIdsDigest &&
+      committedSelectedIdsDigest !== activeDragSettleSelectionSnapshotDigest
+  );
+  const isCurrentDragSettleSessionRepairPending = Boolean(
+    isCurrentDragSettleSessionPending &&
+      !hasCommittedSelectionOverrideAfterDrag
+  );
+  const selectedPhaseDestinationSelectionIds =
+    isCurrentDragSettleSessionRepairPending
+      ? activeDragSettleDestinationSelectionIds
+      : (
+          runtimeSelectedIds.length > 0
+            ? sanitizeSelectionIds(runtimeSelectedIds)
+            : committedSelectedIds
+        );
+  const selectedPhaseDestinationObjects =
+    selectedPhaseDestinationSelectionIds
+      .map((id) => objectLookup.get(id) || null)
+      .filter(Boolean);
+  const selectedPhaseDestinationSingleLineId =
+    selectedPhaseDestinationSelectionIds.length === 1 &&
+    selectedPhaseDestinationObjects[0]?.tipo === "forma" &&
+    selectedPhaseDestinationObjects[0]?.figura === "line"
+      ? selectedPhaseDestinationSelectionIds[0]
+      : null;
+  const hasSelectedPhaseHandoffDestination = Boolean(
+    !selectedPhaseDestinationSingleLineId &&
+      selectedPhaseDestinationSelectionIds.length > 0
+  );
+  const selectedPhaseDestinationSelectionIdsDigest =
+    buildCanvasBoxFlowIdsDigest(selectedPhaseDestinationSelectionIds);
   const shouldKeepDragOverlayMountedForSelectedPhaseHandoff = Boolean(
     dragOverlayBoxFlowIdentity &&
       !shouldShowDragSelectionOverlay &&
-      hasSelectedPhaseReturnTarget &&
       (
-        !isSelectedPhaseBoxVisible ||
-        !isSelectedPhaseVisualReady ||
-        !isSelectedPhaseHandoffPaintConfirmed
+        isCurrentDragSettleSessionRepairPending ||
+        (
+          hasSelectedPhaseHandoffDestination &&
+          (
+            !isSelectedPhaseVisualReady ||
+            !isSelectedPhaseHandoffPaintConfirmed
+          )
+        )
       )
   );
   const shouldRenderDragSelectionOverlay = Boolean(
     shouldShowDragSelectionOverlay ||
       shouldKeepDragOverlayMountedForSelectedPhaseHandoff
   );
-  dragOverlayVisualCleanupGuardRef.current = {
-    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+  const hasSelectedPhaseHoverContext = Boolean(
+    selectedHoverOwnerIds.length > 0 &&
+      !shouldRenderDragSelectionOverlay &&
+      !isPredragVisualSelectionActive &&
+      !hoverCanvasInteractionSettling
+  );
+  const resolveHoverSuppressionForTarget = useCallback((targetHoverId) => {
+    const normalizedHoverTargetId = normalizeHoverTargetId(targetHoverId);
+    const hasSelectedPhaseTargetConflict = Boolean(
+      normalizedHoverTargetId &&
+        hasSelectedPhaseHoverContext &&
+        selectedHoverOwnerIdSet.has(normalizedHoverTargetId)
+    );
+    const suppressionState = resolveStageHoverSuppression({
+      isDragging: false,
+      backgroundEditSectionId,
+      isPredragVisualSelectionActive,
+      canvasInteractionActive: hoverCanvasInteractionActive,
+      canvasInteractionSettling: hoverCanvasInteractionSettling,
+      isImageCropInteracting,
+      runtimeDragActive: hoverRuntimeDragActive,
+      runtimeGroupDragActive: hoverRuntimeGroupDragActive,
+      runtimeResizeActive: hoverRuntimeResizeActive,
+      hasSelectedPhaseTargetConflict,
+      hasInlineVisibilityOwner: Boolean(activeInlineEditingId),
+      hasDragOverlayOwner: Boolean(shouldRenderDragSelectionOverlay),
+    });
+
+    return {
+      ...suppressionState,
+      hoverTargetId: normalizedHoverTargetId,
+      selectedTargetIds: selectedHoverOwnerIds,
+      hasSelectedPhaseTargetConflict,
+      selectedHoverOwnerIdsDigest,
+    };
+  }, [
+    activeInlineEditingId,
+    backgroundEditSectionId,
+    hasSelectedPhaseHoverContext,
+    hoverCanvasInteractionActive,
+    hoverCanvasInteractionSettling,
+    isImageCropInteracting,
+    isPredragVisualSelectionActive,
+    hoverRuntimeDragActive,
+    hoverRuntimeGroupDragActive,
+    hoverRuntimeResizeActive,
+    selectedHoverOwnerIdSet,
+    selectedHoverOwnerIds,
+    selectedHoverOwnerIdsDigest,
     shouldRenderDragSelectionOverlay,
-    isSelectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
-    isSelectedPhaseVisualReady: Boolean(isSelectedPhaseVisualReady),
-    isSelectedPhaseHandoffPaintConfirmed: Boolean(
-      isSelectedPhaseHandoffPaintConfirmed
-    ),
-  };
+  ]);
+  const hoverSuppressionState = resolveHoverSuppressionForTarget(hoverId);
+  const isHoverSuppressed = hoverSuppressionState.suppressed;
+  const hoverSuppressionReasons = hoverSuppressionState.reasons;
+  const hoverSuppressionReasonsKey = hoverSuppressionReasons.join(",");
+  const hoverHigherPriorityOwner =
+    hoverSuppressionState.higherPriorityOwner || "none";
+  const hoverSuppressionScope =
+    hoverSuppressionState.suppressionScope || "none";
+  const hasGlobalHoverSuppression = Boolean(
+    hoverSuppressionState.hasGlobalSuppression
+  );
+  const hasSelectedPhaseHoverTargetConflict = Boolean(
+    hoverSuppressionState.hasSelectedPhaseTargetConflict
+  );
+  const hoverPostDragRecoveryActive = Boolean(
+    hoverLastInteractionEnd?.kind === "drag" &&
+      Number(hoverLastInteractionEnd?.interactionEpoch || 0) > 0 &&
+      Number(hoverLastInteractionEnd?.interactionEpoch || 0) ===
+        Number(
+          liveHoverInteractionSnapshot.interactionEpoch || canvasInteractionEpoch || 0
+        ) &&
+      hoverLastInteractionBegin?.kind === "drag"
+  );
+  const hoverPostDragBoundaryActive = Boolean(
+    shouldRenderDragSelectionOverlay ||
+      shouldKeepDragOverlayMountedForSelectedPhaseHandoff ||
+      hoverCanvasInteractionActive ||
+      hoverCanvasInteractionSettling ||
+      hoverRuntimeDragActive ||
+      hoverRuntimeGroupDragActive
+  );
+  const hoverPostDragRecoveryReady = Boolean(
+    hoverPostDragRecoveryActive && !hoverPostDragBoundaryActive
+  );
+  const hasPendingPostDragHoverRecovery = Boolean(
+    hoverPostDragPendingRef.current?.hoverId
+  );
+  hoverSuppressionReasonsRef.current = [...hoverSuppressionReasons];
+  const effectiveHoverId = isHoverSuppressed
+    ? null
+    : (hoverSuppressionState.hoverTargetId || null);
+  const interactionPhase = shouldRenderDragSelectionOverlay
+    ? (
+        dragOverlayBoxFlowSession.phase ||
+        (isPredragVisualSelectionActive ? "predrag" : null) ||
+        dragInteractionSession.phase ||
+        "drag"
+      )
+    : effectiveHoverId
+      ? "hover"
+      : selectedIdsDigest
+        ? "selected"
+        : "idle";
+  const interactionVisualOwner = shouldRenderDragSelectionOverlay
+    ? "drag-overlay"
+    : effectiveHoverId
+      ? "hover"
+      : selectedIdsDigest
+        ? "selected-phase"
+        : "none";
+  const shouldMountHoverIndicator = shouldStageRenderHoverIndicator({
+    isPredragVisualSelectionActive,
+    isDragging: false,
+    runtimeDragActive: hoverRuntimeDragActive,
+    runtimeGroupDragActive: hoverRuntimeGroupDragActive,
+    runtimeResizeActive: hoverRuntimeResizeActive,
+  });
   const dragOverlayRenderSelectionIds =
     shouldShowDragSelectionOverlay
       ? stageSelectionVisualMode.dragOverlaySelectionIds
@@ -2712,6 +3001,364 @@ export default function CanvasStageContent({
   const dragOverlaySelectionIdsDigest = buildCanvasBoxFlowIdsDigest(
     dragOverlayRenderSelectionIds
   );
+  const resolveCurrentSelectionVisualTargets = useCallback(() => {
+    const selectedPhaseVisibleMeta = selectedPhaseVisibilityMetaRef.current || {};
+    const selectedPhaseReadyMeta = selectedPhaseVisualReadyMetaRef.current || {};
+    const selectedPhaseVisualTargetIds =
+      selectedPhaseVisibleMeta.visualIdentity ||
+      selectedPhaseReadyMeta.visualIdentity ||
+      null;
+    const selectedPhaseAttachedNodeIds =
+      selectedPhaseVisibleMeta.attachedNodeIds ||
+      selectedPhaseReadyMeta.attachedNodeIds ||
+      null;
+    const selectedPhaseReadyProbeActive = Boolean(
+      selectedPhaseVisibleMeta.readyProbeActive ||
+      selectedPhaseReadyMeta.readyProbeActive
+    );
+    const visibleSelectionBoxOwnerTargetIds = shouldRenderDragSelectionOverlay
+      ? (
+          dragOverlaySelectionIdsDigest ||
+          activeDragSettleDestinationSelectionIdsDigest ||
+          null
+        )
+      : (
+          isSelectedPhaseBoxVisible
+            ? (selectedPhaseVisualTargetIds || selectedIdsDigest || null)
+            : null
+        );
+
+    return {
+      selectedPhaseVisualTargetIds,
+      selectedPhaseAttachedNodeIds,
+      selectedPhaseReadyProbeActive,
+      visibleSelectionBoxOwnerTargetIds,
+    };
+  }, [
+    activeDragSettleDestinationSelectionIdsDigest,
+    dragOverlaySelectionIdsDigest,
+    isSelectedPhaseBoxVisible,
+    selectedIdsDigest,
+    shouldRenderDragSelectionOverlay,
+  ]);
+  const resolveElementLocalDraggingState = useCallback((targetId) => {
+    const safeTargetId = String(targetId || "").trim();
+    if (!safeTargetId) return null;
+    const node = elementRefs?.current?.[safeTargetId] || null;
+    if (!node || typeof node.isDragging !== "function") {
+      return null;
+    }
+
+    try {
+      return Boolean(node.isDragging());
+    } catch {
+      return null;
+    }
+  }, [elementRefs]);
+  const buildPostDragAlignmentIssues = useCallback(({
+    visibleSelectionBoxOwnerTargetIds = null,
+    selectedPhaseAttachedNodeIds = null,
+    selectedPhaseVisualTargetIds = null,
+    targetHoverId = null,
+  } = {}) => {
+    const issues = [];
+    if (
+      committedSelectedIdsDigest &&
+      runtimeSelectedIdsDigest &&
+      committedSelectedIdsDigest !== runtimeSelectedIdsDigest
+    ) {
+      issues.push("committed-vs-runtime-selection");
+    }
+    if (
+      committedSelectedIdsDigest &&
+      visibleSelectionBoxOwnerTargetIds &&
+      committedSelectedIdsDigest !== visibleSelectionBoxOwnerTargetIds
+    ) {
+      issues.push("committed-vs-visible-selection-box");
+    }
+    if (
+      committedSelectedIdsDigest &&
+      selectedPhaseVisualTargetIds &&
+      committedSelectedIdsDigest !== selectedPhaseVisualTargetIds
+    ) {
+      issues.push("committed-vs-selected-phase-visual");
+    }
+    if (
+      committedSelectedIdsDigest &&
+      selectedPhaseAttachedNodeIds &&
+      committedSelectedIdsDigest !== selectedPhaseAttachedNodeIds
+    ) {
+      issues.push("committed-vs-transformer-attachment");
+    }
+    if (
+      committedSelectedIdsDigest &&
+      diagnosticMenuTargetIdsDigest &&
+      committedSelectedIdsDigest !== diagnosticMenuTargetIdsDigest
+    ) {
+      issues.push("committed-vs-gear-menu-target");
+    }
+    if (
+      committedSelectedIdsDigest &&
+      selectedPhaseDestinationSelectionIdsDigest &&
+      committedSelectedIdsDigest !== selectedPhaseDestinationSelectionIdsDigest
+    ) {
+      issues.push("committed-vs-handoff-expected-selection");
+    }
+    if (runtimeDragVisualSelectionIdsDigest) {
+      issues.push("drag-visual-selection-still-present");
+    }
+    if (runtimePendingDragSelectionId || runtimePendingDragSelectionPhase) {
+      issues.push("pending-drag-selection-still-present");
+    }
+    if (
+      hoverPostDragRecoveryActive &&
+      !hoverPostDragBoundaryActive &&
+      hasGlobalHoverSuppression
+    ) {
+      issues.push("hover-global-suppression-after-boundary-cleared");
+    }
+    if (
+      targetHoverId &&
+      resolveElementLocalDraggingState(targetHoverId) === true
+    ) {
+      issues.push("hover-target-still-locally-dragging");
+    }
+    return issues;
+  }, [
+    committedSelectedIdsDigest,
+    diagnosticMenuTargetIdsDigest,
+    hasGlobalHoverSuppression,
+    hoverPostDragBoundaryActive,
+    hoverPostDragRecoveryActive,
+    resolveElementLocalDraggingState,
+    runtimeDragVisualSelectionIdsDigest,
+    runtimePendingDragSelectionId,
+    runtimePendingDragSelectionPhase,
+    runtimeSelectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
+  ]);
+  const buildPostDragDiagnosticPayload = useCallback((extra = {}) => {
+    const {
+      selectedPhaseVisualTargetIds,
+      selectedPhaseAttachedNodeIds,
+      selectedPhaseReadyProbeActive,
+      visibleSelectionBoxOwnerTargetIds,
+    } = resolveCurrentSelectionVisualTargets();
+    const targetHoverId =
+      extra.hoverId ||
+      extra.targetId ||
+      hoverId ||
+      effectiveHoverId ||
+      null;
+    const alignmentIssues = buildPostDragAlignmentIssues({
+      visibleSelectionBoxOwnerTargetIds,
+      selectedPhaseAttachedNodeIds,
+      selectedPhaseVisualTargetIds,
+      targetHoverId,
+    });
+
+    return {
+      source: extra.source || "stage-composer-diagnostic",
+      reason: extra.reason || null,
+      currentPhase: interactionPhase,
+      currentVisualOwner: interactionVisualOwner,
+      phase: interactionPhase,
+      owner: interactionVisualOwner,
+      dragId: extra.dragId || dragOverlayBoxFlowSession.dragId || activeDragSettleSession?.dragId || null,
+      selectedIds: committedSelectedIdsDigest || "",
+      runtimeSelectedIds: runtimeSelectedIdsDigest || "",
+      dragVisualSelectionIds: runtimeDragVisualSelectionIdsDigest || "",
+      pendingDragSelectionId: runtimePendingDragSelectionId || null,
+      pendingDragSelectionPhase: runtimePendingDragSelectionPhase || null,
+      visualIds: visibleSelectionBoxOwnerTargetIds || "",
+      visibleSelectionBoxTargetIds: visibleSelectionBoxOwnerTargetIds || null,
+      visibleSelectionBoxOwnerTargetIds: visibleSelectionBoxOwnerTargetIds || null,
+      selectedPhaseVisibleTargetIds: selectedPhaseVisualTargetIds || null,
+      transformerAttachedTargetIds: selectedPhaseAttachedNodeIds || null,
+      selectedPhaseAttachedNodeIds: selectedPhaseAttachedNodeIds || null,
+      gearMenuTargetIds: diagnosticMenuTargetIds,
+      gearMenuTargetIdsDigest: diagnosticMenuTargetIdsDigest || null,
+      alignmentStatus: alignmentIssues.length === 0 ? "aligned" : "diverged",
+      alignmentIssues,
+      oldDragTargetIds:
+        activeDragSettleDestinationSelectionIdsDigest ||
+        activeDragSettleSelectionSnapshotDigest ||
+        dragOverlaySelectionIdsDigest ||
+        null,
+      dragSettleSelectionSnapshotIds:
+        activeDragSettleSelectionSnapshotDigest || null,
+      dragSettleDestinationIds:
+        activeDragSettleDestinationSelectionIdsDigest || null,
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      dragOverlayVisible: Boolean(shouldRenderDragSelectionOverlay),
+      dragOverlaySessionKey: dragOverlayBoxFlowIdentity || null,
+      dragOverlayPhase: dragOverlayBoxFlowSession.phase || null,
+      dragInteractionSessionKey: dragInteractionSessionKey || null,
+      dragInteractionPhase: dragInteractionSession.phase || null,
+      dragInteractionEpoch:
+        Number(dragInteractionSession.interactionEpoch || 0) || null,
+      activeDragSettleDragId: activeDragSettleSession?.dragId || null,
+      activeDragSettleInteractionEpoch:
+        Number(activeDragSettleSession?.interactionEpoch || 0) || null,
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      selectedPhaseHandoffExpectedSelectionIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
+      handoffExpectedSelectionIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
+      staleHandoffTargetStillActive: Boolean(
+        committedSelectedIdsDigest &&
+          selectedPhaseDestinationSelectionIdsDigest &&
+          committedSelectedIdsDigest !== selectedPhaseDestinationSelectionIdsDigest
+      ),
+      staleSelectedPhaseDestinationCache: Boolean(
+        committedSelectedIdsDigest &&
+          selectedPhaseDestinationSelectionIdsDigest &&
+          committedSelectedIdsDigest !== selectedPhaseDestinationSelectionIdsDigest
+      ),
+      selectedPhaseReadyState: Boolean(isSelectedPhaseVisualReady),
+      selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+      selectedPhaseVisibleState: Boolean(isSelectedPhaseBoxVisible),
+      selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+      selectedPhaseHandoffPaintConfirmed: Boolean(
+        isSelectedPhaseHandoffPaintConfirmed
+      ),
+      readyProbeActive: selectedPhaseReadyProbeActive,
+      interactionCoordinatorActive: Boolean(canvasInteractionActive),
+      interactionCoordinatorSettling: Boolean(canvasInteractionSettling),
+      rawHoverTargetId: hoverId || null,
+      hoverId: hoverId || null,
+      effectiveHoverId: effectiveHoverId || null,
+      hoverSuppressionMode: hoverSuppressionScope,
+      hoverSuppressionScope,
+      hoverSuppressionReasons: [...hoverSuppressionReasons],
+      postDragPendingHoverReplayTargetId:
+        hoverPostDragPendingRef.current?.hoverId || null,
+      postDragPendingHoverReplayTarget:
+        hoverPostDragPendingRef.current?.hoverId || null,
+      windowIsDragging:
+        typeof window !== "undefined" ? Boolean(window._isDragging) : false,
+      hoverTargetLocalDragging: resolveElementLocalDraggingState(targetHoverId),
+      visualOwnerMatchesCommittedSelection: Boolean(
+        !visibleSelectionBoxOwnerTargetIds ||
+          !committedSelectedIdsDigest ||
+          visibleSelectionBoxOwnerTargetIds === committedSelectedIdsDigest
+      ),
+      gearMenuMatchesCommittedSelection: Boolean(
+        !diagnosticMenuTargetIdsDigest ||
+          !committedSelectedIdsDigest ||
+          diagnosticMenuTargetIdsDigest === committedSelectedIdsDigest
+      ),
+      hoverWriteBlockedAtCallbackTime:
+        typeof extra.hoverWriteBlockedAtCallbackTime === "boolean"
+          ? extra.hoverWriteBlockedAtCallbackTime
+          : null,
+      hoverReplayRanAfterSuppressionCleared:
+        typeof extra.hoverReplayRanAfterSuppressionCleared === "boolean"
+          ? extra.hoverReplayRanAfterSuppressionCleared
+          : null,
+      lastInteractionBeginKind: hoverLastInteractionBegin?.kind || null,
+      lastInteractionBeginEpoch:
+        Number(hoverLastInteractionBegin?.interactionEpoch || 0) || null,
+      lastInteractionEndKind: hoverLastInteractionEnd?.kind || null,
+      lastInteractionEndEpoch:
+        Number(hoverLastInteractionEnd?.interactionEpoch || 0) || null,
+      staleSessionEpochStillActive: Boolean(
+        activeDragSettleSession?.dragId &&
+          !shouldRenderDragSelectionOverlay &&
+          !canvasInteractionSettling &&
+          selectedPhaseDestinationSelectionIdsDigest &&
+          selectedPhaseDestinationSelectionIdsDigest !== committedSelectedIdsDigest
+      ),
+      ...extra,
+    };
+  }, [
+    activeDragSettleDestinationSelectionIdsDigest,
+    activeDragSettleSelectionSnapshotDigest,
+    activeDragSettleSession,
+    buildPostDragAlignmentIssues,
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    committedSelectedIdsDigest,
+    diagnosticMenuTargetIds,
+    diagnosticMenuTargetIdsDigest,
+    dragInteractionSession,
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
+    dragOverlayBoxFlowSession,
+    dragOverlaySelectionIdsDigest,
+    effectiveHoverId,
+    hoverId,
+    hoverLastInteractionBegin,
+    hoverLastInteractionEnd,
+    hoverSuppressionReasons,
+    hoverSuppressionScope,
+    interactionPhase,
+    interactionVisualOwner,
+    isSelectedPhaseBoxVisible,
+    isSelectedPhaseHandoffPaintConfirmed,
+    isSelectedPhaseVisualReady,
+    resolveCurrentSelectionVisualTargets,
+    resolveElementLocalDraggingState,
+    runtimeDragVisualSelectionIdsDigest,
+    runtimePendingDragSelectionId,
+    runtimePendingDragSelectionPhase,
+    runtimeSelectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+  ]);
+  const logPostDragRecoveryDiagnostic = useCallback((
+    channel,
+    eventName,
+    extra = {},
+    options = {}
+  ) => {
+    const payload = buildPostDragDiagnosticPayload(extra);
+    return logCanvasBoxFlow(channel, eventName, payload, {
+      identity:
+        options.identity ||
+        payload.dragOverlaySessionKey ||
+        dragInteractionSessionKey ||
+        payload.selectedIds ||
+        eventName,
+      sessionIdentity:
+        options.sessionIdentity ||
+        resolveReusableSelectionSessionIdentity(
+          payload.dragInteractionSessionKey,
+          payload.dragOverlaySessionKey,
+          payload.selectedIds
+        ) ||
+        payload.dragOverlaySessionKey ||
+        payload.dragInteractionSessionKey ||
+        payload.selectedIds ||
+        eventName,
+    });
+  }, [
+    buildPostDragDiagnosticPayload,
+    dragInteractionSessionKey,
+    resolveReusableSelectionSessionIdentity,
+  ]);
+  dragOverlayVisualCleanupGuardRef.current = {
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+    isSelectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+    isSelectedPhaseVisualReady: Boolean(isSelectedPhaseVisualReady),
+    isSelectedPhaseHandoffPaintConfirmed: Boolean(
+      isSelectedPhaseHandoffPaintConfirmed
+    ),
+    isSelectionRepairPending: Boolean(
+      isCurrentDragSettleSessionPending &&
+      !hasCommittedSelectionOverrideAfterDrag
+    ),
+    hasSelectedPhaseHandoffDestination: Boolean(
+      hasSelectedPhaseHandoffDestination
+    ),
+    selectedPhaseDestinationSelectionIdsDigest:
+      selectedPhaseDestinationSelectionIdsDigest || null,
+  };
   const selectionBoxFlowIdentity =
     dragInteractionSessionKey ||
     dragOverlayBoxFlowIdentity ||
@@ -2794,6 +3441,9 @@ export default function CanvasStageContent({
         readySignal: nextMeta.readySignal || null,
         postPaintConfirmed: Boolean(nextMeta.postPaintConfirmed),
         handoffPaintConfirmed: false,
+        selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+        selectedPhaseDestinationIds:
+          selectedPhaseDestinationSelectionIdsDigest || null,
         boundsValid:
           typeof nextMeta.boundsValid === "boolean" ? nextMeta.boundsValid : null,
         zeroBounds:
@@ -2846,6 +3496,9 @@ export default function CanvasStageContent({
           readySignal: latestMeta.readySignal || null,
           postPaintConfirmed: Boolean(latestMeta.postPaintConfirmed),
           handoffPaintConfirmed: true,
+          selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+          selectedPhaseDestinationIds:
+            selectedPhaseDestinationSelectionIdsDigest || null,
           boundsValid:
             typeof latestMeta.boundsValid === "boolean" ? latestMeta.boundsValid : null,
           zeroBounds:
@@ -2892,6 +3545,9 @@ export default function CanvasStageContent({
         readySignal: meta.readySignal || null,
         postPaintConfirmed: Boolean(meta.postPaintConfirmed),
         handoffPaintConfirmed: false,
+        selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+        selectedPhaseDestinationIds:
+          selectedPhaseDestinationSelectionIdsDigest || null,
         boundsValid:
           typeof meta.boundsValid === "boolean" ? meta.boundsValid : null,
         zeroBounds:
@@ -2903,7 +3559,9 @@ export default function CanvasStageContent({
       }
     );
   }, [
+    isCurrentDragSettleSessionRepairPending,
     selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
     selectionBoxFlowIdentity,
     shouldRenderDragSelectionOverlay,
   ]);
@@ -2917,6 +3575,382 @@ export default function CanvasStageContent({
       current === nextVisible ? current : nextVisible
     ));
   }, []);
+  const postDragSelectionRecoverySnapshotRef = useRef(null);
+  const postDragLifecycleTransitionSnapshotRef = useRef(null);
+  const postDragSelectionChangeSnapshotRef = useRef(null);
+  useEffect(() => {
+    const selectedPhaseVisibleMeta = selectedPhaseVisibilityMetaRef.current || {};
+    const selectedPhaseReadyMeta = selectedPhaseVisualReadyMetaRef.current || {};
+    const selectedPhaseVisualTargetIds =
+      selectedPhaseVisibleMeta.visualIdentity ||
+      selectedPhaseReadyMeta.visualIdentity ||
+      null;
+    const selectedPhaseAttachedNodeIds =
+      selectedPhaseVisibleMeta.attachedNodeIds ||
+      selectedPhaseReadyMeta.attachedNodeIds ||
+      null;
+    const selectedPhaseReadyProbeActive = Boolean(
+      selectedPhaseVisibleMeta.readyProbeActive ||
+      selectedPhaseReadyMeta.readyProbeActive
+    );
+    const visibleSelectionBoxOwnerTargetIds = shouldRenderDragSelectionOverlay
+      ? dragOverlaySelectionIdsDigest || null
+      : (
+          isSelectedPhaseBoxVisible
+            ? (selectedPhaseVisualTargetIds || selectedIdsDigest || null)
+            : null
+        );
+    const nextSnapshot = {
+      committedSelectedIdsDigest,
+      runtimeSelectedIdsDigest,
+      visibleSelectionBoxOwnerTargetIds,
+      selectedPhaseVisualTargetIds,
+      selectedPhaseAttachedNodeIds,
+      handoffExpectedSelectionIdsDigest:
+        selectedPhaseDestinationSelectionIdsDigest || null,
+      selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+      selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+      readyProbeActive: selectedPhaseReadyProbeActive,
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      interactionCoordinatorActive: Boolean(canvasInteractionActive),
+    };
+    const previousSnapshot = postDragSelectionRecoverySnapshotRef.current;
+    postDragSelectionRecoverySnapshotRef.current = nextSnapshot;
+    const snapshotChanged =
+      !previousSnapshot ||
+      Object.keys(nextSnapshot).some(
+        (key) => previousSnapshot[key] !== nextSnapshot[key]
+      );
+
+    if (!snapshotChanged) {
+      return;
+    }
+
+    logCanvasBoxFlow("selection", "selected-phase:recovery-state", {
+      source: "stage-composer",
+      phase: interactionPhase,
+      owner: interactionVisualOwner,
+      selectedIds: committedSelectedIdsDigest || "",
+      runtimeSelectedIds: runtimeSelectedIdsDigest || "",
+      visualIds: visibleSelectionBoxOwnerTargetIds || "",
+      selectedPhaseVisualTargetIds: selectedPhaseVisualTargetIds || "",
+      selectedPhaseAttachedNodeIds,
+      handoffExpectedSelectionIds:
+        selectedPhaseDestinationSelectionIdsDigest || "",
+      selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+      selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+      readyProbeActive: selectedPhaseReadyProbeActive,
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      interactionCoordinatorActive: Boolean(canvasInteractionActive),
+    }, {
+      identity:
+        dragOverlayBoxFlowIdentity ||
+        selectionBoxFlowIdentity ||
+        committedSelectedIdsDigest ||
+        "selection:recovery-state",
+    });
+    if (
+      hoverLastInteractionEnd?.kind === "drag" ||
+      nextSnapshot.dragOverlayOwnerActive ||
+      nextSnapshot.settlingActive ||
+      nextSnapshot.handoffActive
+    ) {
+      logPostDragRecoveryDiagnostic(
+        "selection",
+        "post-drag:selection-diagnostic-state",
+        {
+          source: "stage-composer-diagnostic",
+          reason: "post-drag-selection-recovery-snapshot-changed",
+        },
+        {
+          identity:
+            dragOverlayBoxFlowIdentity ||
+            selectionBoxFlowIdentity ||
+            committedSelectedIdsDigest ||
+            "selection:recovery-state",
+        }
+      );
+    }
+
+    const hasSelectionTargetDivergence = Boolean(
+      committedSelectedIdsDigest &&
+        visibleSelectionBoxOwnerTargetIds &&
+        visibleSelectionBoxOwnerTargetIds !== committedSelectedIdsDigest
+    );
+    if (hasSelectionTargetDivergence) {
+      logCanvasBoxFlow("selection", "selected-phase:divergence", {
+        source: "stage-composer",
+        reason: "visible-selection-box-target-does-not-match-committed-selection",
+        phase: interactionPhase,
+        owner: interactionVisualOwner,
+        selectedIds: committedSelectedIdsDigest || "",
+        runtimeSelectedIds: runtimeSelectedIdsDigest || "",
+        visualIds: visibleSelectionBoxOwnerTargetIds || "",
+        selectedPhaseVisualTargetIds: selectedPhaseVisualTargetIds || "",
+        selectedPhaseAttachedNodeIds,
+        handoffExpectedSelectionIds:
+          selectedPhaseDestinationSelectionIdsDigest || "",
+        selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+        selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+        readyProbeActive: selectedPhaseReadyProbeActive,
+        dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+        settlingActive: Boolean(canvasInteractionSettling),
+        handoffActive: Boolean(
+          shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+        ),
+        interactionCoordinatorActive: Boolean(canvasInteractionActive),
+        staleSelectedPhaseDestinationCache: Boolean(
+          selectedPhaseDestinationSelectionIdsDigest &&
+            selectedPhaseDestinationSelectionIdsDigest !==
+              committedSelectedIdsDigest
+        ),
+      }, {
+        identity:
+          dragOverlayBoxFlowIdentity ||
+          selectionBoxFlowIdentity ||
+          committedSelectedIdsDigest,
+      });
+      logPostDragRecoveryDiagnostic(
+        "selection",
+        "selected-phase:diverged-from-committed-selection",
+        {
+          source: "stage-composer",
+          reason:
+            "visible-selection-box-target-does-not-match-committed-selection",
+          selectedPhaseVisibleTargetIds: selectedPhaseVisualTargetIds || null,
+          staleSelectedPhaseDestinationCache: Boolean(
+            selectedPhaseDestinationSelectionIdsDigest &&
+              selectedPhaseDestinationSelectionIdsDigest !==
+                committedSelectedIdsDigest
+          ),
+        },
+        {
+          identity:
+            dragOverlayBoxFlowIdentity ||
+            selectionBoxFlowIdentity ||
+            committedSelectedIdsDigest,
+        }
+      );
+      if (
+        hoverLastInteractionEnd?.kind === "drag" &&
+        committedSelectedIdsDigest &&
+        diagnosticMenuTargetIdsDigest &&
+        diagnosticMenuTargetIdsDigest === committedSelectedIdsDigest
+      ) {
+        logPostDragRecoveryDiagnostic(
+          "selection",
+          "post-drag:why-selection-box-still-on-old-target",
+          {
+            source: "stage-composer",
+            reason:
+              "gear-menu-target-matches-committed-selection-but-visible-selection-box-still-points-to-old-target",
+            oldDragTargetIds:
+              activeDragSettleDestinationSelectionIdsDigest ||
+              activeDragSettleSelectionSnapshotDigest ||
+              visibleSelectionBoxOwnerTargetIds ||
+              null,
+          },
+          {
+            identity:
+              dragOverlayBoxFlowIdentity ||
+              selectionBoxFlowIdentity ||
+              committedSelectedIdsDigest,
+          }
+        );
+      }
+    }
+
+    const recoveredFromDivergence = Boolean(
+      previousSnapshot?.visibleSelectionBoxOwnerTargetIds &&
+        previousSnapshot.visibleSelectionBoxOwnerTargetIds !==
+          previousSnapshot.committedSelectedIdsDigest &&
+        visibleSelectionBoxOwnerTargetIds &&
+        committedSelectedIdsDigest &&
+        visibleSelectionBoxOwnerTargetIds === committedSelectedIdsDigest
+    );
+    if (recoveredFromDivergence) {
+      logCanvasBoxFlow("selection", "selected-phase:visual-recovered", {
+        source: "stage-composer",
+        reason: "visible-selection-box-target-rebound-to-committed-selection",
+        phase: interactionPhase,
+        owner: interactionVisualOwner,
+        selectedIds: committedSelectedIdsDigest || "",
+        runtimeSelectedIds: runtimeSelectedIdsDigest || "",
+        visualIds: visibleSelectionBoxOwnerTargetIds || "",
+        selectedPhaseVisualTargetIds: selectedPhaseVisualTargetIds || "",
+        selectedPhaseAttachedNodeIds,
+        handoffExpectedSelectionIds:
+          selectedPhaseDestinationSelectionIdsDigest || "",
+        selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+        selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+        readyProbeActive: selectedPhaseReadyProbeActive,
+        dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+        settlingActive: Boolean(canvasInteractionSettling),
+        handoffActive: Boolean(
+          shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+        ),
+        interactionCoordinatorActive: Boolean(canvasInteractionActive),
+      }, {
+        identity:
+          dragOverlayBoxFlowIdentity ||
+          selectionBoxFlowIdentity ||
+          committedSelectedIdsDigest,
+      });
+      logPostDragRecoveryDiagnostic(
+        "selection",
+        "selected-phase:rebound-to-current-selection",
+        {
+          source: "stage-composer",
+          reason:
+            "visible-selection-box-target-rebound-to-current-committed-selection",
+          selectedPhaseVisibleTargetIds: selectedPhaseVisualTargetIds || null,
+        },
+        {
+          identity:
+            dragOverlayBoxFlowIdentity ||
+            selectionBoxFlowIdentity ||
+            committedSelectedIdsDigest,
+        }
+      );
+    }
+  }, [
+    activeDragSettleDestinationSelectionIdsDigest,
+    activeDragSettleSelectionSnapshotDigest,
+    canvasInteractionActive,
+    canvasInteractionSettling,
+    committedSelectedIdsDigest,
+    diagnosticMenuTargetIdsDigest,
+    dragOverlayBoxFlowIdentity,
+    dragOverlaySelectionIdsDigest,
+    hoverLastInteractionEnd,
+    interactionPhase,
+    interactionVisualOwner,
+    isSelectedPhaseBoxVisible,
+    isSelectedPhaseVisualReady,
+    logPostDragRecoveryDiagnostic,
+    runtimeSelectedIdsDigest,
+    selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
+    selectionBoxFlowIdentity,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+  ]);
+  useEffect(() => {
+    const nextSnapshot = {
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      dragOverlaySessionKey: dragOverlayBoxFlowIdentity || null,
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+      selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+      interactionEpoch: Number(canvasInteractionEpoch || 0) || 0,
+      lastInteractionEndKind: hoverLastInteractionEnd?.kind || null,
+    };
+    const previousSnapshot = postDragLifecycleTransitionSnapshotRef.current;
+    postDragLifecycleTransitionSnapshotRef.current = nextSnapshot;
+
+    if (!previousSnapshot) {
+      return;
+    }
+
+    const dragRelatedTransition = Boolean(
+      nextSnapshot.dragOverlaySessionKey ||
+        previousSnapshot.dragOverlaySessionKey ||
+        hoverLastInteractionEnd?.kind === "drag"
+    );
+    if (!dragRelatedTransition) {
+      return;
+    }
+
+    if (!previousSnapshot.settlingActive && nextSnapshot.settlingActive) {
+      logPostDragRecoveryDiagnostic("selection", "settling:start", {
+        source: "stage-composer-diagnostic",
+        reason: "post-drag-settling-entered",
+      });
+    }
+    if (previousSnapshot.dragOverlayOwnerActive && !nextSnapshot.dragOverlayOwnerActive) {
+      logPostDragRecoveryDiagnostic("selection", "drag-overlay:hidden", {
+        source: "stage-composer-diagnostic",
+        reason: "post-drag-diagnostic-overlay-hidden",
+      });
+    }
+    if (previousSnapshot.handoffActive && !nextSnapshot.handoffActive) {
+      logPostDragRecoveryDiagnostic("selection", "handoff:complete", {
+        source: "stage-composer-diagnostic",
+        reason: "selected-phase-handoff-finished",
+      });
+    }
+    if (previousSnapshot.settlingActive && !nextSnapshot.settlingActive) {
+      logPostDragRecoveryDiagnostic("selection", "settling:end", {
+        source: "stage-composer-diagnostic",
+        reason: "post-drag-settling-cleared",
+      });
+    }
+  }, [
+    canvasInteractionEpoch,
+    canvasInteractionSettling,
+    dragOverlayBoxFlowIdentity,
+    hoverLastInteractionEnd,
+    isSelectedPhaseBoxVisible,
+    isSelectedPhaseVisualReady,
+    logPostDragRecoveryDiagnostic,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+  ]);
+  useEffect(() => {
+    const {
+      visibleSelectionBoxOwnerTargetIds,
+    } = resolveCurrentSelectionVisualTargets();
+    const nextSnapshot = {
+      committedSelectedIdsDigest,
+      runtimeSelectedIdsDigest,
+      visibleSelectionBoxOwnerTargetIds: visibleSelectionBoxOwnerTargetIds || null,
+      gearMenuTargetIdsDigest: diagnosticMenuTargetIdsDigest || null,
+      lastInteractionEndKind: hoverLastInteractionEnd?.kind || null,
+    };
+    const previousSnapshot = postDragSelectionChangeSnapshotRef.current;
+    postDragSelectionChangeSnapshotRef.current = nextSnapshot;
+
+    if (!previousSnapshot) {
+      return;
+    }
+    if (
+      previousSnapshot.committedSelectedIdsDigest ===
+        nextSnapshot.committedSelectedIdsDigest ||
+      hoverLastInteractionEnd?.kind !== "drag"
+    ) {
+      return;
+    }
+
+    logPostDragRecoveryDiagnostic("selection", "click:new-selection-after-drag", {
+      source: "stage-composer-diagnostic",
+      reason: "committed-selection-changed-after-drag",
+      previousCommittedSelectedIds:
+        previousSnapshot.committedSelectedIdsDigest || null,
+      previousVisualSelectionBoxTargetIds:
+        previousSnapshot.visibleSelectionBoxOwnerTargetIds || null,
+      previousGearMenuTargetIds:
+        previousSnapshot.gearMenuTargetIdsDigest || null,
+      selectionChangeInference: "post-drag-selection-change",
+    });
+  }, [
+    committedSelectedIdsDigest,
+    diagnosticMenuTargetIdsDigest,
+    hoverLastInteractionEnd,
+    logPostDragRecoveryDiagnostic,
+    resolveCurrentSelectionVisualTargets,
+    runtimeSelectedIdsDigest,
+  ]);
   useEffect(
     () => () => {
       if (
@@ -2971,6 +4005,9 @@ export default function CanvasStageContent({
       selectedPhaseActuallyVisible: true,
       handoffPaintConfirmed: true,
       waitedForPostPaintConfirmation: true,
+      selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+      selectedPhaseDestinationIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
       boundsValid:
         typeof readyMeta.boundsValid === "boolean"
           ? readyMeta.boundsValid
@@ -2992,11 +4029,13 @@ export default function CanvasStageContent({
     dragInteractionSessionKey,
     dragOverlayBoxFlowIdentity,
     dragOverlaySelectionIdsDigest,
+    isCurrentDragSettleSessionRepairPending,
     isSelectedPhaseBoxVisible,
     isSelectedPhaseHandoffPaintConfirmed,
     isSelectedPhaseVisualReady,
     resolveReusableSelectionSessionIdentity,
     selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
     shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
     shouldShowDragSelectionOverlay,
   ]);
@@ -3035,6 +4074,9 @@ export default function CanvasStageContent({
       cleanupDeferred: false,
       cleanupBlocked: false,
       visualHideDeniedBecause: null,
+      selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+      selectedPhaseDestinationIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
       selectedPhaseVisualReady: Boolean(isSelectedPhaseVisualReady),
       handoffPaintConfirmed: Boolean(isSelectedPhaseHandoffPaintConfirmed),
       waitedForPostPaintConfirmation: true,
@@ -3074,11 +4116,13 @@ export default function CanvasStageContent({
     dragOverlayBoxFlowIdentity,
     dragOverlaySelectionIdsDigest,
     hasDeferredOverlayVisualCleanup,
+    isCurrentDragSettleSessionRepairPending,
     isSelectedPhaseBoxVisible,
     isSelectedPhaseHandoffPaintConfirmed,
     isSelectedPhaseVisualReady,
     resolveReusableSelectionSessionIdentity,
     selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
     selectionBoxFlowIdentity,
     shouldRenderDragSelectionOverlay,
   ]);
@@ -3105,7 +4149,11 @@ export default function CanvasStageContent({
     logCanvasBoxFlow("selection", "drag-overlay:hide-deferred", {
       source: "stage-composer",
       reason: !isSelectedPhaseVisualReady
-        ? "waiting-selected-phase-visual-ready"
+        ? (
+            isCurrentDragSettleSessionRepairPending
+              ? "waiting-selection-repair"
+              : "waiting-selected-phase-visual-ready"
+          )
         : "waiting-selected-phase-handoff-paint-confirmation",
       phase: "settling",
       owner: "drag-overlay",
@@ -3123,6 +4171,9 @@ export default function CanvasStageContent({
       readySignal: readyMeta.readySignal || null,
       postPaintConfirmed: Boolean(readyMeta.postPaintConfirmed),
       handoffPaintConfirmed: Boolean(isSelectedPhaseHandoffPaintConfirmed),
+      selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+      selectedPhaseDestinationIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
       waitedForPostPaintConfirmation: Boolean(
         isSelectedPhaseVisualReady && !isSelectedPhaseHandoffPaintConfirmed
       ),
@@ -3147,12 +4198,149 @@ export default function CanvasStageContent({
     dragInteractionSessionKey,
     dragOverlayBoxFlowIdentity,
     dragOverlaySelectionIdsDigest,
+    isCurrentDragSettleSessionRepairPending,
     isSelectedPhaseBoxVisible,
     isSelectedPhaseHandoffPaintConfirmed,
     isSelectedPhaseVisualReady,
     resolveReusableSelectionSessionIdentity,
     selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
     shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+  ]);
+  useEffect(() => {
+    if (!shouldRenderDragSelectionOverlay) return;
+    if (!isSelectedPhaseBoxVisible) return;
+    const violationSample = sampleCanvasInteractionLog(
+      `handoff:dual-ownership:${dragOverlayBoxFlowIdentity || selectionBoxFlowIdentity || "selection"}`,
+      {
+        firstCount: 8,
+        throttleMs: 120,
+      }
+    );
+    if (!violationSample.shouldLog) return;
+
+    logCanvasBoxFlow("selection", "handoff:dual-ownership-violation", {
+      source: "stage-composer",
+      reason: "selected-phase-visible-while-drag-overlay-still-owned",
+      phase: dragOverlayBoxFlowSession.phase || "settling",
+      owner: "drag-overlay",
+      dragId: dragOverlayBoxFlowSession.dragId || null,
+      selectedIds: selectedIdsDigest,
+      visualIds: dragOverlaySelectionIdsDigest || selectedIdsDigest,
+      dragOverlaySessionKey: dragOverlayBoxFlowIdentity,
+      dragInteractionSessionKey: dragInteractionSessionKey || null,
+      selectionAuthority: "drag-session",
+      geometryAuthority:
+        dragOverlayBoxFlowSession.phase === "settling"
+          ? "frozen-controlled-snapshot"
+          : "live-nodes",
+      overlayVisible: true,
+      settling: dragOverlayBoxFlowSession.phase === "settling",
+      suppressedLayers: ["hover-indicator"],
+      dualOwnership: true,
+      selectedPhaseActuallyVisible: true,
+      selectedPhaseVisualReady: Boolean(isSelectedPhaseVisualReady),
+      handoffPaintConfirmed: Boolean(isSelectedPhaseHandoffPaintConfirmed),
+      selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+      selectedPhaseDestinationIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
+    }, {
+      identity: dragOverlayBoxFlowIdentity || selectionBoxFlowIdentity || null,
+      sessionIdentity:
+        resolveReusableSelectionSessionIdentity(
+          dragInteractionSessionKey,
+          dragOverlayBoxFlowIdentity,
+          selectionBoxFlowIdentity
+        ) ||
+        dragOverlayBoxFlowIdentity ||
+        selectionBoxFlowIdentity,
+    });
+  }, [
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
+    dragOverlayBoxFlowSession.dragId,
+    dragOverlayBoxFlowSession.phase,
+    dragOverlaySelectionIdsDigest,
+    isCurrentDragSettleSessionRepairPending,
+    isSelectedPhaseBoxVisible,
+    isSelectedPhaseHandoffPaintConfirmed,
+    isSelectedPhaseVisualReady,
+    resolveReusableSelectionSessionIdentity,
+    selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
+    selectionBoxFlowIdentity,
+    shouldRenderDragSelectionOverlay,
+  ]);
+  useEffect(() => {
+    if (shouldRenderDragSelectionOverlay) return;
+    if (dragOverlayBoxFlowSession.phase !== "settling") return;
+    const teardownDeniedBecause = isCurrentDragSettleSessionRepairPending
+      ? "selection-repair-pending"
+      : hasSelectedPhaseHandoffDestination && !isSelectedPhaseVisualReady
+        ? "selected-phase-not-ready"
+        : hasSelectedPhaseHandoffDestination && !isSelectedPhaseHandoffPaintConfirmed
+          ? "selected-phase-not-paint-confirmed"
+          : null;
+    if (!teardownDeniedBecause) return;
+
+    const violationSample = sampleCanvasInteractionLog(
+      `handoff:teardown-early:${dragOverlayBoxFlowIdentity || selectionBoxFlowIdentity || "selection"}`,
+      {
+        firstCount: 8,
+        throttleMs: 120,
+      }
+    );
+    if (!violationSample.shouldLog) return;
+
+    logCanvasBoxFlow("selection", "drag-overlay:teardown-violation", {
+      source: "stage-composer",
+      reason: teardownDeniedBecause,
+      phase: "settling",
+      owner: "drag-overlay",
+      dragId: dragOverlayBoxFlowSession.dragId || null,
+      selectedIds: selectedIdsDigest,
+      visualIds: dragOverlaySelectionIdsDigest || selectedIdsDigest,
+      dragOverlaySessionKey: dragOverlayBoxFlowIdentity,
+      dragInteractionSessionKey: dragInteractionSessionKey || null,
+      selectionAuthority: "drag-session",
+      geometryAuthority: "frozen-controlled-snapshot",
+      overlayVisible: false,
+      settling: true,
+      suppressedLayers: ["hover-indicator", "selected-phase"],
+      teardownTooEarly: true,
+      selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+      selectedPhaseVisualReady: Boolean(isSelectedPhaseVisualReady),
+      handoffPaintConfirmed: Boolean(isSelectedPhaseHandoffPaintConfirmed),
+      selectionRepairPending: Boolean(isCurrentDragSettleSessionRepairPending),
+      selectedPhaseDestinationIds:
+        selectedPhaseDestinationSelectionIdsDigest || null,
+    }, {
+      identity: dragOverlayBoxFlowIdentity || selectionBoxFlowIdentity || null,
+      sessionIdentity:
+        resolveReusableSelectionSessionIdentity(
+          dragInteractionSessionKey,
+          dragOverlayBoxFlowIdentity,
+          selectionBoxFlowIdentity
+        ) ||
+        dragOverlayBoxFlowIdentity ||
+        selectionBoxFlowIdentity,
+    });
+  }, [
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
+    dragOverlayBoxFlowSession.dragId,
+    dragOverlayBoxFlowSession.phase,
+    dragOverlaySelectionIdsDigest,
+    hasSelectedPhaseHandoffDestination,
+    isCurrentDragSettleSessionRepairPending,
+    isSelectedPhaseBoxVisible,
+    isSelectedPhaseHandoffPaintConfirmed,
+    isSelectedPhaseVisualReady,
+    resolveReusableSelectionSessionIdentity,
+    selectedIdsDigest,
+    selectedPhaseDestinationSelectionIdsDigest,
+    selectionBoxFlowIdentity,
+    shouldRenderDragSelectionOverlay,
   ]);
   const handleDragOverlayFirstVisibleFrame = useCallback((visibilitySample = null) => {
     const emission = resolveDragOverlayShownEmission({
@@ -3862,15 +5050,399 @@ export default function CanvasStageContent({
   ]);
 
   const setHoverIdWhenIdle = useCallback((nextHoverId, meta = null) => {
-    const dragActive =
-      Boolean(isDragging) ||
-      isPredragVisualSelectionActive ||
-      canvasInteractionActive ||
-      canvasInteractionSettling ||
-      (typeof window !== "undefined" &&
-        Boolean(window._isDragging || window._grupoLider));
+    const resolvedHoverId =
+      typeof nextHoverId === "function"
+        ? nextHoverId(hoverId || null)
+        : nextHoverId;
+    const normalizedHoverTargetId = normalizeHoverTargetId(resolvedHoverId);
+    const isHoverClear = normalizedHoverTargetId == null;
+    const liveHoverInteraction = readLiveHoverInteractionSnapshot({
+      fallbackCanvasInteractionActive: canvasInteractionActive,
+      fallbackCanvasInteractionSettling: canvasInteractionSettling,
+      fallbackRuntimeResizeActive: runtimeResizeActive,
+    });
+    const liveCleanupGuard = dragOverlayVisualCleanupGuardRef.current || {};
+    const liveShouldRenderDragSelectionOverlay =
+      typeof liveCleanupGuard.shouldRenderDragSelectionOverlay === "boolean"
+        ? liveCleanupGuard.shouldRenderDragSelectionOverlay === true
+        : Boolean(shouldRenderDragSelectionOverlay);
+    const liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff =
+      typeof liveCleanupGuard.shouldKeepDragOverlayMountedForSelectedPhaseHandoff === "boolean"
+        ? liveCleanupGuard.shouldKeepDragOverlayMountedForSelectedPhaseHandoff === true
+        : Boolean(shouldKeepDragOverlayMountedForSelectedPhaseHandoff);
+    const liveHasSelectedPhaseHoverContext = Boolean(
+      selectedHoverOwnerIds.length > 0 &&
+        !liveShouldRenderDragSelectionOverlay &&
+        !isPredragVisualSelectionActive &&
+        liveHoverInteraction.canvasInteractionSettling !== true
+    );
+    const liveHasSelectedPhaseTargetConflict = Boolean(
+      normalizedHoverTargetId &&
+        liveHasSelectedPhaseHoverContext &&
+        selectedHoverOwnerIdSet.has(normalizedHoverTargetId)
+    );
+    const nextHoverSuppressionState = (() => {
+      const suppressionState = resolveStageHoverSuppression({
+        isDragging: false,
+        backgroundEditSectionId,
+        isPredragVisualSelectionActive,
+        canvasInteractionActive: liveHoverInteraction.canvasInteractionActive,
+        canvasInteractionSettling: liveHoverInteraction.canvasInteractionSettling,
+        isImageCropInteracting,
+        runtimeDragActive: liveHoverInteraction.runtimeDragActive,
+        runtimeGroupDragActive: liveHoverInteraction.runtimeGroupDragActive,
+        runtimeResizeActive: liveHoverInteraction.runtimeResizeActive,
+        hasSelectedPhaseTargetConflict: liveHasSelectedPhaseTargetConflict,
+        hasInlineVisibilityOwner: Boolean(activeInlineEditingId),
+        hasDragOverlayOwner: liveShouldRenderDragSelectionOverlay,
+      });
 
-    if (dragActive) return;
+      return {
+        ...suppressionState,
+        hoverTargetId: normalizedHoverTargetId,
+        selectedTargetIds: selectedHoverOwnerIds,
+        hasSelectedPhaseTargetConflict: liveHasSelectedPhaseTargetConflict,
+        selectedHoverOwnerIdsDigest,
+      };
+    })();
+    const nextBoundaryPhase = resolveHoverBoundaryPhase({
+      isPredragVisualSelectionActive,
+      shouldRenderDragSelectionOverlay: liveShouldRenderDragSelectionOverlay,
+      dragOverlayPhase:
+        dragOverlayBoxFlowSessionRef.current?.phase ||
+        dragOverlayBoxFlowSession.phase ||
+        null,
+      canvasInteractionSettling: liveHoverInteraction.canvasInteractionSettling,
+      hasSelectedPhaseOwner: liveHasSelectedPhaseHoverContext,
+    });
+    const livePostDragRecoveryActive = Boolean(
+      liveHoverInteraction.lastEnd?.kind === "drag" &&
+        Number(liveHoverInteraction.lastEnd?.interactionEpoch || 0) > 0 &&
+        Number(liveHoverInteraction.lastEnd?.interactionEpoch || 0) ===
+          Number(liveHoverInteraction.interactionEpoch || 0) &&
+        liveHoverInteraction.lastBegin?.kind === "drag"
+    );
+    const livePostDragBoundaryActive = Boolean(
+      liveShouldRenderDragSelectionOverlay ||
+        liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff ||
+        liveHoverInteraction.canvasInteractionActive === true ||
+        liveHoverInteraction.canvasInteractionSettling === true ||
+        liveHoverInteraction.runtimeDragActive === true ||
+        liveHoverInteraction.runtimeGroupDragActive === true
+    );
+    const postDragBlockedOnDifferentTarget = Boolean(
+      livePostDragRecoveryActive &&
+        normalizedHoverTargetId &&
+        !nextHoverSuppressionState.hasSelectedPhaseTargetConflict
+    );
+    const suppressionShouldAlreadyBeCleared = Boolean(
+      postDragBlockedOnDifferentTarget &&
+        !livePostDragBoundaryActive &&
+        nextHoverSuppressionState.hasGlobalSuppression === true &&
+        nextHoverSuppressionState.hasSelectedPhaseTargetConflict !== true
+    );
+
+    if (nextHoverSuppressionState.suppressed && !isHoverClear) {
+      if (
+        postDragBlockedOnDifferentTarget &&
+        nextHoverSuppressionState.hasGlobalSuppression === true &&
+        nextHoverSuppressionState.hasSelectedPhaseTargetConflict !== true
+      ) {
+        hoverPostDragPendingRef.current = {
+          hoverId: normalizedHoverTargetId || null,
+          meta: meta || null,
+          phase: nextBoundaryPhase,
+          suppressionReasons: [...nextHoverSuppressionState.reasons],
+          suppressionScope:
+            nextHoverSuppressionState.suppressionScope || "none",
+          selectedIds: nextHoverSuppressionState.selectedTargetIds || [],
+          selectedIdsDigest:
+            nextHoverSuppressionState.selectedHoverOwnerIdsDigest || "",
+          dragOverlayOwnerActive: liveShouldRenderDragSelectionOverlay,
+          settlingActive: Boolean(
+            liveHoverInteraction.canvasInteractionSettling
+          ),
+          handoffActive:
+            liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+          interactionCoordinatorActive: Boolean(
+            liveHoverInteraction.canvasInteractionActive
+          ),
+          runtimeDragActive: Boolean(liveHoverInteraction.runtimeDragActive),
+          runtimeGroupDragActive: Boolean(
+            liveHoverInteraction.runtimeGroupDragActive
+          ),
+          runtimeResizeActive: Boolean(
+            liveHoverInteraction.runtimeResizeActive
+          ),
+          ts:
+            typeof performance !== "undefined" &&
+            typeof performance.now === "function"
+              ? performance.now()
+              : Date.now(),
+        };
+      } else if (
+        nextHoverSuppressionState.hasSelectedPhaseTargetConflict === true &&
+        hoverPostDragPendingRef.current?.hoverId === normalizedHoverTargetId
+      ) {
+        hoverPostDragPendingRef.current = null;
+      }
+      const blockedSample = sampleCanvasInteractionLog(
+        `hover:${
+          nextHoverSuppressionState.hasSelectedPhaseTargetConflict
+            ? "target-conflict-blocked"
+            : "reentry-blocked"
+        }:${normalizedHoverTargetId || "unknown"}:${
+          nextHoverSuppressionState.suppressionScope || "none"
+        }`,
+        {
+          firstCount: 8,
+          throttleMs: 120,
+        }
+      );
+      if (blockedSample.shouldLog) {
+        logCanvasBoxFlow(
+          "hover",
+          nextHoverSuppressionState.hasSelectedPhaseTargetConflict
+            ? "target-conflict:blocked"
+            : "reentry:blocked",
+          {
+          source: meta?.source || "stage-composer",
+          hoverId: normalizedHoverTargetId || null,
+          reason:
+            nextHoverSuppressionState.reasons[0] || "hover-suppressed",
+          phase: nextBoundaryPhase,
+          owner: "hover-indicator",
+          higherPriorityOwner:
+            nextHoverSuppressionState.higherPriorityOwner || "none",
+          suppressionReasons: [...nextHoverSuppressionState.reasons],
+          suppressionScope:
+            nextHoverSuppressionState.suppressionScope || "none",
+          selectedIds: nextHoverSuppressionState.selectedTargetIds || [],
+          selectedIdsDigest:
+            nextHoverSuppressionState.selectedHoverOwnerIdsDigest || "",
+          selectedPhaseTargetConflict: Boolean(
+            nextHoverSuppressionState.hasSelectedPhaseTargetConflict
+          ),
+          globalSuppression: Boolean(
+            nextHoverSuppressionState.hasGlobalSuppression
+          ),
+          dragOverlayOwnerActive: liveShouldRenderDragSelectionOverlay,
+          settlingActive: Boolean(liveHoverInteraction.canvasInteractionSettling),
+          handoffActive: liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+          interactionCoordinatorActive: Boolean(
+            liveHoverInteraction.canvasInteractionActive
+          ),
+          runtimeDragActive: Boolean(liveHoverInteraction.runtimeDragActive),
+          runtimeGroupDragActive: Boolean(
+            liveHoverInteraction.runtimeGroupDragActive
+          ),
+          runtimeResizeActive: Boolean(liveHoverInteraction.runtimeResizeActive),
+          isDraggingProp: Boolean(isDragging),
+          hoverBlockedAfterDragEnd: livePostDragRecoveryActive,
+          hoverBlockedDifferentTargetAfterDragEnd:
+            postDragBlockedOnDifferentTarget,
+          suppressionShouldAlreadyBeCleared,
+          clearDriver: "boundary-driven",
+          targetType: meta?.targetType || null,
+          },
+          {
+            identity: String(normalizedHoverTargetId || ""),
+          }
+        );
+      }
+      if (postDragBlockedOnDifferentTarget) {
+        const postDragBlockedSample = sampleCanvasInteractionLog(
+          `hover:post-drag-blocked:${normalizedHoverTargetId}:${
+            nextHoverSuppressionState.reasons[0] || "hover-suppressed"
+          }`,
+          {
+            firstCount: 8,
+            throttleMs: 120,
+          }
+        );
+        if (postDragBlockedSample.shouldLog) {
+          logCanvasBoxFlow("hover", "post-drag:blocked", {
+            source: meta?.source || "stage-composer",
+            hoverId: normalizedHoverTargetId || null,
+            reason:
+              nextHoverSuppressionState.reasons[0] || "hover-suppressed",
+            phase: nextBoundaryPhase,
+            owner: "hover-indicator",
+            higherPriorityOwner:
+              nextHoverSuppressionState.higherPriorityOwner || "none",
+            suppressionReasons: [...nextHoverSuppressionState.reasons],
+            suppressionScope:
+              nextHoverSuppressionState.suppressionScope || "none",
+            selectedIds: nextHoverSuppressionState.selectedTargetIds || [],
+            selectedIdsDigest:
+              nextHoverSuppressionState.selectedHoverOwnerIdsDigest || "",
+            selectedPhaseTargetConflict: false,
+            globalSuppression: Boolean(
+              nextHoverSuppressionState.hasGlobalSuppression
+            ),
+            dragOverlayOwnerActive: liveShouldRenderDragSelectionOverlay,
+            settlingActive: Boolean(
+              liveHoverInteraction.canvasInteractionSettling
+            ),
+            handoffActive: liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+            interactionCoordinatorActive: Boolean(
+              liveHoverInteraction.canvasInteractionActive
+            ),
+            runtimeDragActive: Boolean(liveHoverInteraction.runtimeDragActive),
+            runtimeGroupDragActive: Boolean(
+              liveHoverInteraction.runtimeGroupDragActive
+            ),
+            runtimeResizeActive: Boolean(
+              liveHoverInteraction.runtimeResizeActive
+            ),
+            isDraggingProp: Boolean(isDragging),
+            hoverBlockedAfterDragEnd: true,
+            hoverBlockedDifferentTargetAfterDragEnd: true,
+            suppressionShouldAlreadyBeCleared,
+            targetType: meta?.targetType || null,
+          }, {
+            identity: normalizedHoverTargetId,
+          });
+          logPostDragRecoveryDiagnostic("hover", "hover:blocked-after-drag", {
+            source: meta?.source || "stage-composer",
+            reason:
+              nextHoverSuppressionState.reasons[0] || "hover-suppressed",
+            hoverId: normalizedHoverTargetId || null,
+            targetId: normalizedHoverTargetId || null,
+            higherPriorityOwner:
+              nextHoverSuppressionState.higherPriorityOwner || "none",
+            hoverWriteBlockedAtCallbackTime: true,
+            hoverTargetType: meta?.targetType || null,
+          }, {
+            identity: normalizedHoverTargetId,
+          });
+        }
+      }
+      return;
+    }
+
+    if (isHoverClear) {
+      hoverPostDragPendingRef.current = null;
+    } else if (hoverPostDragPendingRef.current) {
+      hoverPostDragPendingRef.current = null;
+    }
+
+    if (
+      !isHoverClear &&
+      hasSelectedPhaseHoverContext &&
+      nextHoverSuppressionState.selectedTargetIds.length > 0 &&
+      !nextHoverSuppressionState.suppressed &&
+      !nextHoverSuppressionState.hasSelectedPhaseTargetConflict
+    ) {
+      const coexistenceSample = sampleCanvasInteractionLog(
+        `hover:coexistence-allowed:${normalizedHoverTargetId}:${
+          nextHoverSuppressionState.selectedHoverOwnerIdsDigest || "selected"
+        }`,
+        {
+          firstCount: 8,
+          throttleMs: 120,
+        }
+      );
+      if (coexistenceSample.shouldLog) {
+        logCanvasBoxFlow("hover", "coexistence:allowed", {
+          source: meta?.source || "stage-composer",
+          hoverId: normalizedHoverTargetId,
+          reason: "selected-phase-different-target",
+          phase: nextBoundaryPhase,
+          owner: "hover-indicator",
+          higherPriorityOwner: "selected-phase",
+          suppressionReasons: [],
+          suppressionScope: "none",
+          selectedIds: nextHoverSuppressionState.selectedTargetIds || [],
+          selectedIdsDigest:
+            nextHoverSuppressionState.selectedHoverOwnerIdsDigest || "",
+          selectedPhaseTargetConflict: false,
+          globalSuppression: false,
+          dragOverlayOwnerActive: liveShouldRenderDragSelectionOverlay,
+          settlingActive: Boolean(liveHoverInteraction.canvasInteractionSettling),
+          handoffActive: liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+          interactionCoordinatorActive: Boolean(
+            liveHoverInteraction.canvasInteractionActive
+          ),
+          runtimeDragActive: Boolean(liveHoverInteraction.runtimeDragActive),
+          runtimeGroupDragActive: Boolean(
+            liveHoverInteraction.runtimeGroupDragActive
+          ),
+          runtimeResizeActive: Boolean(liveHoverInteraction.runtimeResizeActive),
+          isDraggingProp: Boolean(isDragging),
+          hoverAllowedAfterDragEnd: livePostDragRecoveryActive,
+          targetType: meta?.targetType || null,
+        }, {
+          identity: normalizedHoverTargetId,
+        });
+      }
+    }
+    if (
+      !isHoverClear &&
+      livePostDragRecoveryActive &&
+      !nextHoverSuppressionState.suppressed
+    ) {
+      const postDragAllowedSample = sampleCanvasInteractionLog(
+        `hover:post-drag-allowed:${normalizedHoverTargetId || "unknown"}`,
+        {
+          firstCount: 8,
+          throttleMs: 120,
+        }
+      );
+      if (postDragAllowedSample.shouldLog) {
+        logCanvasBoxFlow("hover", "post-drag:allowed", {
+          source: meta?.source || "stage-composer",
+          hoverId: normalizedHoverTargetId || null,
+          reason: liveHasSelectedPhaseTargetConflict
+            ? "selected-phase-target-conflict"
+            : "post-drag-hover-recovered",
+          phase: nextBoundaryPhase,
+          owner: "hover-indicator",
+          higherPriorityOwner:
+            liveHasSelectedPhaseHoverContext ? "selected-phase" : "none",
+          suppressionReasons: [],
+          suppressionScope: "none",
+          selectedIds: nextHoverSuppressionState.selectedTargetIds || [],
+          selectedIdsDigest:
+            nextHoverSuppressionState.selectedHoverOwnerIdsDigest || "",
+          selectedPhaseTargetConflict: false,
+          globalSuppression: false,
+          dragOverlayOwnerActive: liveShouldRenderDragSelectionOverlay,
+          settlingActive: Boolean(liveHoverInteraction.canvasInteractionSettling),
+          handoffActive: liveShouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+          interactionCoordinatorActive: Boolean(
+            liveHoverInteraction.canvasInteractionActive
+          ),
+          runtimeDragActive: Boolean(liveHoverInteraction.runtimeDragActive),
+          runtimeGroupDragActive: Boolean(
+            liveHoverInteraction.runtimeGroupDragActive
+          ),
+          runtimeResizeActive: Boolean(liveHoverInteraction.runtimeResizeActive),
+          isDraggingProp: Boolean(isDragging),
+          hoverAllowedAfterDragEnd: true,
+          hoverBlockedAfterDragEnd: false,
+          targetType: meta?.targetType || null,
+        }, {
+          identity: normalizedHoverTargetId || "post-drag-hover",
+        });
+        logPostDragRecoveryDiagnostic("hover", "hover:allowed-after-drag", {
+          source: meta?.source || "stage-composer",
+          reason: liveHasSelectedPhaseTargetConflict
+            ? "selected-phase-target-conflict"
+            : "post-drag-hover-recovered",
+          hoverId: normalizedHoverTargetId || null,
+          targetId: normalizedHoverTargetId || null,
+          higherPriorityOwner:
+            liveHasSelectedPhaseHoverContext ? "selected-phase" : "none",
+          hoverWriteBlockedAtCallbackTime: false,
+          hoverReplayRanAfterSuppressionCleared:
+            meta?.source === "post-drag-replay",
+          hoverTargetType: meta?.targetType || null,
+        }, {
+          identity: normalizedHoverTargetId || "post-drag-hover",
+        });
+      }
+    }
 
     hoverBoxFlowMetaRef.current = meta || null;
 
@@ -3882,9 +5454,61 @@ export default function CanvasStageContent({
   }, [
     canvasInteractionActive,
     canvasInteractionSettling,
+    canvasInteractionEpoch,
+    dragOverlayBoxFlowSession.phase,
+    activeInlineEditingId,
+    hasSelectedPhaseHoverContext,
+    hoverId,
+    backgroundEditSectionId,
     isDragging,
+    isImageCropInteracting,
     isPredragVisualSelectionActive,
+    runtimeResizeActive,
+    selectedHoverOwnerIdSet,
+    selectedHoverOwnerIds,
+    selectedHoverOwnerIdsDigest,
     setHoverId,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+    logPostDragRecoveryDiagnostic,
+  ]);
+
+  useEffect(() => {
+    const pendingHoverRecovery = hoverPostDragPendingRef.current || null;
+    if (!pendingHoverRecovery?.hoverId) {
+      return;
+    }
+
+    if (hoverId && hoverId !== pendingHoverRecovery.hoverId) {
+      hoverPostDragPendingRef.current = null;
+      return;
+    }
+
+    const pendingSuppressionState = resolveHoverSuppressionForTarget(
+      pendingHoverRecovery.hoverId
+    );
+    if (pendingSuppressionState.suppressed) {
+      if (pendingSuppressionState.hasSelectedPhaseTargetConflict === true) {
+        hoverPostDragPendingRef.current = null;
+      }
+      return;
+    }
+
+    hoverPostDragPendingRef.current = null;
+    setHoverIdWhenIdle(pendingHoverRecovery.hoverId, {
+      ...(pendingHoverRecovery.meta || {}),
+      source: "post-drag-replay",
+      targetType:
+        pendingHoverRecovery.meta?.targetType ||
+        pendingHoverRecovery.targetType ||
+        null,
+    });
+  }, [
+    hoverId,
+    hoverPostDragRecoveryReady,
+    interactionPhase,
+    resolveHoverSuppressionForTarget,
+    setHoverIdWhenIdle,
   ]);
 
   const clearHoverForInteractionBoundary = useCallback(({
@@ -3892,6 +5516,15 @@ export default function CanvasStageContent({
     source = "interaction-clear",
     reason = "interaction-active",
     targetType = null,
+    phase = null,
+    higherPriorityOwner = null,
+    clearDriver = "boundary-driven",
+    suppressionReasons = [],
+    suppressionScope = "none",
+    selectedIds = [],
+    selectedIdsDigest = "",
+    selectedPhaseTargetConflict = false,
+    globalSuppression = false,
   } = {}) => {
     const nextHoverId =
       hoverId ||
@@ -3899,6 +5532,16 @@ export default function CanvasStageContent({
       null;
     if (!nextHoverId) return false;
 
+    hoverBoundaryClearRef.current = {
+      hoverId: nextHoverId,
+      reason,
+      source,
+      phase: phase || null,
+      higherPriorityOwner: higherPriorityOwner || null,
+      clearDriver,
+      suppressionScope,
+      ts: getComposerVisualNowMs(),
+    };
     hoverBoxFlowMetaRef.current = {
       source,
       targetType: targetType || null,
@@ -3908,14 +5551,24 @@ export default function CanvasStageContent({
       emitter: "stage-composer",
       hoverId: nextHoverId,
       dragId: dragId || null,
-      phase: source === "predrag-start-clear" ? "predrag" : "drag",
+      phase:
+        phase ||
+        (source === "predrag-start-clear" ? "predrag" : "drag"),
       owner: "hover-indicator",
       selectionAuthority: "hover-target",
       geometryAuthority: "live-hover",
       overlayVisible: false,
-      settling: false,
+      settling: phase === "settling",
       suppressedLayers: ["hover-indicator"],
       reason,
+      higherPriorityOwner: higherPriorityOwner || "none",
+      suppressionReasons,
+      suppressionScope,
+      selectedIds,
+      selectedIdsDigest,
+      selectedPhaseTargetConflict,
+      globalSuppression,
+      clearDriver,
       targetType: targetType || null,
     }, {
       identity: nextHoverId,
@@ -3931,6 +5584,109 @@ export default function CanvasStageContent({
     });
     return true;
   }, [hoverId, setHoverId]);
+
+  useEffect(() => {
+    const boundaryPhase = resolveHoverBoundaryPhase({
+      isPredragVisualSelectionActive,
+      shouldRenderDragSelectionOverlay,
+      dragOverlayPhase: dragOverlayBoxFlowSession.phase || null,
+      canvasInteractionSettling,
+      hasSelectedPhaseOwner: hasSelectedPhaseHoverContext,
+    });
+    const nextSnapshot = {
+      isSuppressed: Boolean(isHoverSuppressed),
+      reasonsKey: hoverSuppressionReasonsKey,
+      higherPriorityOwner: hoverHigherPriorityOwner,
+      suppressionScope: hoverSuppressionScope,
+      phase: boundaryPhase,
+    };
+    const previousSnapshot = hoverSuppressionSnapshotRef.current;
+    hoverSuppressionSnapshotRef.current = nextSnapshot;
+
+    if (!hoverId || !isHoverSuppressed) {
+      return;
+    }
+
+    const boundaryChanged =
+      !previousSnapshot ||
+      previousSnapshot.isSuppressed !== nextSnapshot.isSuppressed ||
+      previousSnapshot.reasonsKey !== nextSnapshot.reasonsKey ||
+      previousSnapshot.higherPriorityOwner !== nextSnapshot.higherPriorityOwner ||
+      previousSnapshot.phase !== nextSnapshot.phase;
+    const staleReentryAfterBoundary = Boolean(
+      !boundaryChanged && hoverBoundaryClearRef.current
+    );
+
+    if (!boundaryChanged && !staleReentryAfterBoundary) {
+      return;
+    }
+
+    if (staleReentryAfterBoundary) {
+      const staleSample = sampleCanvasInteractionLog(
+        `hover:stale-reentry:${hoverId}:${hoverSuppressionReasonsKey || "suppressed"}`,
+        {
+          firstCount: 8,
+          throttleMs: 120,
+        }
+      );
+      if (staleSample.shouldLog) {
+        logCanvasBoxFlow("hover", "stale-reentry:blocked", {
+          source: "stage-composer",
+          hoverId,
+          reason: hoverSuppressionReasons[0] || "hover-suppressed",
+          phase: boundaryPhase,
+          owner: "hover-indicator",
+          higherPriorityOwner: hoverHigherPriorityOwner,
+          suppressionReasons: [...hoverSuppressionReasons],
+          suppressionScope: hoverSuppressionScope,
+          selectedIds: selectedHoverOwnerIds,
+          selectedIdsDigest: selectedHoverOwnerIdsDigest,
+          selectedPhaseTargetConflict: Boolean(
+            hasSelectedPhaseHoverTargetConflict
+          ),
+          globalSuppression: hasGlobalHoverSuppression,
+          clearDriver: "boundary-driven",
+        }, {
+          identity: hoverId,
+        });
+      }
+    }
+
+    clearHoverForInteractionBoundary({
+      source: boundaryChanged
+        ? "hover-suppression-boundary"
+        : "hover-stale-reentry",
+      reason: hoverSuppressionReasons[0] || "hover-suppressed",
+      phase: boundaryPhase,
+      higherPriorityOwner: hoverHigherPriorityOwner,
+      clearDriver: "boundary-driven",
+      suppressionReasons: [...hoverSuppressionReasons],
+      suppressionScope: hoverSuppressionScope,
+      selectedIds: selectedHoverOwnerIds,
+      selectedIdsDigest: selectedHoverOwnerIdsDigest,
+      selectedPhaseTargetConflict: Boolean(
+        hasSelectedPhaseHoverTargetConflict
+      ),
+      globalSuppression: hasGlobalHoverSuppression,
+    });
+  }, [
+    canvasInteractionSettling,
+    clearHoverForInteractionBoundary,
+    dragOverlayBoxFlowSession.phase,
+    hasSelectedPhaseHoverContext,
+    hasSelectedPhaseHoverTargetConflict,
+    hasGlobalHoverSuppression,
+    hoverHigherPriorityOwner,
+    hoverId,
+    hoverSuppressionScope,
+    hoverSuppressionReasons,
+    hoverSuppressionReasonsKey,
+    isHoverSuppressed,
+    isPredragVisualSelectionActive,
+    selectedHoverOwnerIds,
+    selectedHoverOwnerIdsDigest,
+    shouldRenderDragSelectionOverlay,
+  ]);
 
   const recordSelectionDragMoveSummary = useCallback((dragId, tipo, pos, meta = {}) => {
     const safeSelectedIds = sanitizeSelectionIds(meta.selectedIds);
@@ -4398,8 +6154,8 @@ export default function CanvasStageContent({
     }
 
     const selectedPhaseAllowedAgain = Boolean(
-      previousSnapshot?.logicalShowDragSelectionOverlay &&
-      !nextSnapshot.logicalShowDragSelectionOverlay &&
+      previousSnapshot?.showDragSelectionOverlay &&
+      !nextSnapshot.showDragSelectionOverlay &&
       nextSnapshot.logicalOwnerKind !== "none"
     );
     if (selectedPhaseAllowedAgain) {
@@ -4663,25 +6419,6 @@ export default function CanvasStageContent({
   ]);
 
   const interactionPhaseSnapshotRef = useRef(null);
-  const interactionPhase = shouldRenderDragSelectionOverlay
-    ? (
-        dragOverlayBoxFlowSession.phase ||
-        (isPredragVisualSelectionActive ? "predrag" : null) ||
-        dragInteractionSession.phase ||
-        "drag"
-      )
-    : effectiveHoverId
-      ? "hover"
-      : selectedIdsDigest
-        ? "selected"
-        : "idle";
-  const interactionVisualOwner = shouldRenderDragSelectionOverlay
-    ? "drag-overlay"
-    : effectiveHoverId
-      ? "hover"
-      : selectedIdsDigest
-        ? "selected-phase"
-        : "none";
 
   useEffect(() => {
     const nextSnapshot = {
@@ -4807,6 +6544,211 @@ export default function CanvasStageContent({
   ]);
 
   useEffect(() => {
+    const visibleHoverId =
+      hoverIndicatorRef.current?.getVisibleHoverId?.() || null;
+    if (!visibleHoverId) {
+      return;
+    }
+    const normalizedVisibleHoverId = normalizeHoverTargetId(visibleHoverId);
+    const sameTargetSelectedPhaseConflict = Boolean(
+      normalizedVisibleHoverId &&
+        hasSelectedPhaseHoverContext &&
+        selectedHoverOwnerIdSet.has(normalizedVisibleHoverId)
+    );
+
+    const violationReason = shouldRenderDragSelectionOverlay
+      ? "hover-visible-while-drag-overlay-owned"
+      : hoverCanvasInteractionSettling
+        ? "hover-visible-during-settling"
+        : sameTargetSelectedPhaseConflict
+          ? "hover-visible-on-selected-target"
+          : activeInlineEditingId
+            ? "hover-visible-during-inline-dom-authority"
+            : isHoverSuppressed
+              ? "hover-visible-while-suppressed"
+              : null;
+    if (!violationReason) {
+      return;
+    }
+
+    const violationSample = sampleCanvasInteractionLog(
+      `hover:visibility-violation:${visibleHoverId}:${violationReason}`,
+      {
+        firstCount: 8,
+        throttleMs: 120,
+      }
+    );
+    if (!violationSample.shouldLog) {
+      return;
+    }
+
+    logCanvasBoxFlow("hover", "visibility:violation", {
+      source: "stage-composer",
+      hoverId: visibleHoverId,
+      reason: violationReason,
+      phase: interactionPhase,
+      owner: "hover-indicator",
+      higherPriorityOwner: hoverHigherPriorityOwner,
+      suppressionReasons:
+        hoverSuppressionReasonsKey
+          ? hoverSuppressionReasonsKey.split(",")
+          : [],
+      suppressionScope: hoverSuppressionScope,
+      dragOverlaySessionKey: dragOverlayBoxFlowIdentity || null,
+      selectedIds: selectedHoverOwnerIds,
+      selectedIdsDigest: selectedHoverOwnerIdsDigest || selectedIdsDigest,
+      selectedPhaseTargetConflict: sameTargetSelectedPhaseConflict,
+      overlayVisible: Boolean(shouldRenderDragSelectionOverlay),
+      settling: Boolean(hoverCanvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      interactionCoordinatorActive: Boolean(hoverCanvasInteractionActive),
+      runtimeDragActive: Boolean(hoverRuntimeDragActive),
+      runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+      runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+      isDraggingProp: Boolean(isDragging),
+      postDragRecoveryActive: Boolean(hoverPostDragRecoveryActive),
+      postDragRecoveryReady: Boolean(hoverPostDragRecoveryReady),
+      pendingPostDragRecovery: hasPendingPostDragHoverRecovery,
+      inlineEditingId: activeInlineEditingId || null,
+    }, {
+      identity: visibleHoverId,
+    });
+  }, [
+    activeInlineEditingId,
+    dragOverlayBoxFlowIdentity,
+    hasSelectedPhaseHoverContext,
+    hasPendingPostDragHoverRecovery,
+    hoverHigherPriorityOwner,
+    hoverCanvasInteractionActive,
+    hoverCanvasInteractionSettling,
+    hoverPostDragRecoveryActive,
+    hoverPostDragRecoveryReady,
+    hoverRuntimeDragActive,
+    hoverRuntimeGroupDragActive,
+    hoverRuntimeResizeActive,
+    hoverSuppressionScope,
+    hoverSuppressionReasonsKey,
+    interactionPhase,
+    isHoverSuppressed,
+    isDragging,
+    selectedIdsDigest,
+    selectedHoverOwnerIdSet,
+    selectedHoverOwnerIds,
+    selectedHoverOwnerIdsDigest,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+  ]);
+
+  useEffect(() => {
+    if (!hoverPostDragRecoveryActive) {
+      hoverPostDragRecoverySnapshotRef.current = null;
+      return;
+    }
+
+    const nextSnapshot = {
+      hoverId: hoverId || null,
+      effectiveHoverId: effectiveHoverId || null,
+      suppressionReasonsKey: hoverSuppressionReasonsKey,
+      suppressionScope: hoverSuppressionScope,
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      settlingActive: Boolean(hoverCanvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      interactionCoordinatorActive: Boolean(hoverCanvasInteractionActive),
+      runtimeDragActive: Boolean(hoverRuntimeDragActive),
+      runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+      runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+      pendingRecovery: hasPendingPostDragHoverRecovery,
+      ready: Boolean(hoverPostDragRecoveryReady),
+    };
+    const previousSnapshot = hoverPostDragRecoverySnapshotRef.current;
+    hoverPostDragRecoverySnapshotRef.current = nextSnapshot;
+
+    const snapshotChanged =
+      !previousSnapshot ||
+      previousSnapshot.hoverId !== nextSnapshot.hoverId ||
+      previousSnapshot.effectiveHoverId !== nextSnapshot.effectiveHoverId ||
+      previousSnapshot.suppressionReasonsKey !==
+        nextSnapshot.suppressionReasonsKey ||
+      previousSnapshot.suppressionScope !== nextSnapshot.suppressionScope ||
+      previousSnapshot.dragOverlayOwnerActive !==
+        nextSnapshot.dragOverlayOwnerActive ||
+      previousSnapshot.settlingActive !== nextSnapshot.settlingActive ||
+      previousSnapshot.handoffActive !== nextSnapshot.handoffActive ||
+      previousSnapshot.interactionCoordinatorActive !==
+        nextSnapshot.interactionCoordinatorActive ||
+      previousSnapshot.runtimeDragActive !== nextSnapshot.runtimeDragActive ||
+      previousSnapshot.runtimeGroupDragActive !==
+        nextSnapshot.runtimeGroupDragActive ||
+      previousSnapshot.runtimeResizeActive !==
+        nextSnapshot.runtimeResizeActive ||
+      previousSnapshot.pendingRecovery !== nextSnapshot.pendingRecovery ||
+      previousSnapshot.ready !== nextSnapshot.ready;
+
+    if (!snapshotChanged) {
+      return;
+    }
+
+    logCanvasBoxFlow("hover", "post-drag:recovery-state", {
+      source: "stage-composer",
+      hoverId: hoverId || null,
+      effectiveHoverId: effectiveHoverId || null,
+      phase: interactionPhase,
+      owner: interactionVisualOwner,
+      higherPriorityOwner: hoverHigherPriorityOwner,
+      suppressionReasons: hoverSuppressionReasonsKey
+        ? hoverSuppressionReasonsKey.split(",")
+        : [],
+      suppressionScope: hoverSuppressionScope,
+      selectedIds: selectedHoverOwnerIds,
+      selectedIdsDigest: selectedHoverOwnerIdsDigest,
+      selectedPhaseTargetConflict: Boolean(
+        hasSelectedPhaseHoverTargetConflict
+      ),
+      globalSuppression: Boolean(hasGlobalHoverSuppression),
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      settlingActive: Boolean(hoverCanvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      interactionCoordinatorActive: Boolean(hoverCanvasInteractionActive),
+      runtimeDragActive: Boolean(hoverRuntimeDragActive),
+      runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+      runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+      isDraggingProp: Boolean(isDragging),
+      postDragRecoveryActive: true,
+      postDragRecoveryReady: Boolean(hoverPostDragRecoveryReady),
+      pendingPostDragRecovery: hasPendingPostDragHoverRecovery,
+    });
+  }, [
+    effectiveHoverId,
+    hasGlobalHoverSuppression,
+    hasPendingPostDragHoverRecovery,
+    hasSelectedPhaseHoverTargetConflict,
+    hoverCanvasInteractionActive,
+    hoverCanvasInteractionSettling,
+    hoverHigherPriorityOwner,
+    hoverId,
+    hoverPostDragRecoveryActive,
+    hoverPostDragRecoveryReady,
+    hoverRuntimeDragActive,
+    hoverRuntimeGroupDragActive,
+    hoverRuntimeResizeActive,
+    hoverSuppressionReasonsKey,
+    hoverSuppressionScope,
+    interactionPhase,
+    interactionVisualOwner,
+    isDragging,
+    selectedHoverOwnerIds,
+    selectedHoverOwnerIdsDigest,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
+  ]);
+
+  useEffect(() => {
     if (!dragInteractionSessionKey) {
       return;
     }
@@ -4867,6 +6809,7 @@ export default function CanvasStageContent({
     const suppressionReasons = hoverSuppressionReasonsKey
       ? hoverSuppressionReasonsKey.split(",")
       : [];
+    const lastBoundaryClear = hoverBoundaryClearRef.current || null;
 
     const nextSnapshot = {
       rawHoverId: nextRawHoverId,
@@ -4907,11 +6850,73 @@ export default function CanvasStageContent({
           targetType: hoverMeta?.targetType || null,
           previousHoverId: previousSnapshot?.rawHoverId || null,
           hoverId: nextRawHoverId,
+          phase: interactionPhase,
+          owner: interactionVisualOwner,
+          higherPriorityOwner: hoverHigherPriorityOwner,
+          suppressionScope: hoverSuppressionScope,
+          selectedIds: selectedHoverOwnerIds,
+          selectedIdsDigest: selectedHoverOwnerIdsDigest,
+          selectedPhaseTargetConflict: Boolean(
+            hasSelectedPhaseHoverTargetConflict
+          ),
+          globalSuppression: hasGlobalHoverSuppression,
+          dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+          settlingActive: Boolean(hoverCanvasInteractionSettling),
+          handoffActive: Boolean(
+            shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+          ),
+          interactionCoordinatorActive: Boolean(hoverCanvasInteractionActive),
+          runtimeDragActive: Boolean(hoverRuntimeDragActive),
+          runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+          runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+          isDraggingProp: Boolean(isDragging),
+          postDragRecoveryActive: Boolean(hoverPostDragRecoveryActive),
+          postDragRecoveryReady: Boolean(hoverPostDragRecoveryReady),
+          pendingPostDragRecovery: hasPendingPostDragHoverRecovery,
         },
         {
           identity: nextRawHoverId,
         }
       );
+    }
+
+    if (
+      !previousSnapshot?.rawHoverId &&
+      nextRawHoverId &&
+      lastBoundaryClear
+    ) {
+      logCanvasBoxFlow("hover", "re-entry", {
+        source: hoverMeta?.source || "stage-composer",
+        hoverId: nextRawHoverId,
+        previousClearedHoverId: lastBoundaryClear.hoverId || null,
+        previousClearReason: lastBoundaryClear.reason || null,
+        phase: interactionPhase,
+        owner: interactionVisualOwner,
+        higherPriorityOwner: hoverHigherPriorityOwner,
+        suppressionScope: hoverSuppressionScope,
+        selectedIds: selectedHoverOwnerIds,
+        selectedIdsDigest: selectedHoverOwnerIdsDigest,
+        selectedPhaseTargetConflict: Boolean(
+          hasSelectedPhaseHoverTargetConflict
+        ),
+        globalSuppression: hasGlobalHoverSuppression,
+        dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+        settlingActive: Boolean(hoverCanvasInteractionSettling),
+        handoffActive: Boolean(
+          shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+        ),
+        interactionCoordinatorActive: Boolean(hoverCanvasInteractionActive),
+        runtimeDragActive: Boolean(hoverRuntimeDragActive),
+        runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+        runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+        isDraggingProp: Boolean(isDragging),
+        postDragRecoveryActive: Boolean(hoverPostDragRecoveryActive),
+        postDragRecoveryReady: Boolean(hoverPostDragRecoveryReady),
+        pendingPostDragRecovery: hasPendingPostDragHoverRecovery,
+      }, {
+        identity: nextRawHoverId,
+      });
+      hoverBoundaryClearRef.current = null;
     }
 
     if (
@@ -4925,6 +6930,29 @@ export default function CanvasStageContent({
           source: "stage-composer",
           hoverId: nextRawHoverId,
           reasons: suppressionReasons,
+          phase: interactionPhase,
+          owner: interactionVisualOwner,
+          higherPriorityOwner: hoverHigherPriorityOwner,
+          suppressionScope: hoverSuppressionScope,
+          selectedIds: selectedHoverOwnerIds,
+          selectedIdsDigest: selectedHoverOwnerIdsDigest,
+          selectedPhaseTargetConflict: Boolean(
+            hasSelectedPhaseHoverTargetConflict
+          ),
+          globalSuppression: hasGlobalHoverSuppression,
+          dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+          settlingActive: Boolean(hoverCanvasInteractionSettling),
+          handoffActive: Boolean(
+            shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+          ),
+          interactionCoordinatorActive: Boolean(hoverCanvasInteractionActive),
+          runtimeDragActive: Boolean(hoverRuntimeDragActive),
+          runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+          runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+          isDraggingProp: Boolean(isDragging),
+          postDragRecoveryActive: Boolean(hoverPostDragRecoveryActive),
+          postDragRecoveryReady: Boolean(hoverPostDragRecoveryReady),
+          pendingPostDragRecovery: hasPendingPostDragHoverRecovery,
         },
         {
           identity: nextRawHoverId,
@@ -4933,14 +6961,30 @@ export default function CanvasStageContent({
     }
   }, [
     backgroundEditSectionId,
-    canvasInteractionActive,
-    canvasInteractionSettling,
     effectiveHoverId,
+    hasGlobalHoverSuppression,
+    hasPendingPostDragHoverRecovery,
+    hasSelectedPhaseHoverTargetConflict,
     hoverId,
+    hoverCanvasInteractionActive,
+    hoverCanvasInteractionSettling,
+    hoverHigherPriorityOwner,
+    hoverPostDragRecoveryActive,
+    hoverPostDragRecoveryReady,
+    hoverRuntimeDragActive,
+    hoverRuntimeGroupDragActive,
+    hoverRuntimeResizeActive,
+    hoverSuppressionScope,
     hoverSuppressionReasonsKey,
+    interactionPhase,
+    interactionVisualOwner,
     isHoverSuppressed,
+    selectedHoverOwnerIds,
+    selectedHoverOwnerIdsDigest,
     isDragging,
     isImageCropInteracting,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
   ]);
 
   useEffect(
@@ -5126,16 +7170,17 @@ export default function CanvasStageContent({
   }, [objetos]);
 
   useEffect(() => {
-    if (!hoverId || !activeInlineEditingId || hoverId !== activeInlineEditingId) return;
-    hoverBoxFlowMetaRef.current = {
+    if (!hoverId || !activeInlineEditingId) return;
+    clearHoverForInteractionBoundary({
       source: "inline-editing-clear",
-      targetType: "texto",
-    };
-    setHoverId(null, {
-      source: "inline-editing-clear",
+      reason: "inline-dom-authority",
+      phase: "selected",
+      higherPriorityOwner: "inline-dom",
+      clearDriver: "boundary-driven",
+      suppressionReasons: ["inline-dom-authority"],
       targetType: "texto",
     });
-  }, [activeInlineEditingId, hoverId, setHoverId]);
+  }, [activeInlineEditingId, clearHoverForInteractionBoundary, hoverId]);
 
   useEffect(() => {
     const stage = stageRef?.current?.getStage?.() || stageRef?.current || null;
@@ -5893,7 +7938,9 @@ export default function CanvasStageContent({
       )
     );
     const visualHideDeniedBecause =
-      latestCleanupGuard.isSelectedPhaseActuallyVisible !== true
+      latestCleanupGuard.isSelectionRepairPending === true
+        ? "selection-repair-pending"
+        : latestCleanupGuard.isSelectedPhaseActuallyVisible !== true
         ? "selected-phase-not-visible"
         : latestCleanupGuard.isSelectedPhaseVisualReady !== true
           ? "selected-phase-not-ready"
@@ -5948,6 +7995,11 @@ export default function CanvasStageContent({
         selectedPhaseActuallyVisible: Boolean(
           latestCleanupGuard.isSelectedPhaseActuallyVisible
         ),
+        selectionRepairPending: Boolean(
+          latestCleanupGuard.isSelectionRepairPending
+        ),
+        selectedPhaseDestinationIds:
+          latestCleanupGuard.selectedPhaseDestinationSelectionIdsDigest || null,
         selectedPhaseVisualReady: Boolean(
           latestCleanupGuard.isSelectedPhaseVisualReady
         ),
@@ -6020,6 +8072,11 @@ export default function CanvasStageContent({
           selectedPhaseActuallyVisible: Boolean(
             latestCleanupGuard.isSelectedPhaseActuallyVisible
           ),
+          selectionRepairPending: Boolean(
+            latestCleanupGuard.isSelectionRepairPending
+          ),
+          selectedPhaseDestinationIds:
+            latestCleanupGuard.selectedPhaseDestinationSelectionIdsDigest || null,
           selectedPhaseVisualReady: Boolean(
             latestCleanupGuard.isSelectedPhaseVisualReady
           ),
@@ -6067,6 +8124,11 @@ export default function CanvasStageContent({
           selectedPhaseActuallyVisible: Boolean(
             latestCleanupGuard.isSelectedPhaseActuallyVisible
           ),
+          selectionRepairPending: Boolean(
+            latestCleanupGuard.isSelectionRepairPending
+          ),
+          selectedPhaseDestinationIds:
+            latestCleanupGuard.selectedPhaseDestinationSelectionIdsDigest || null,
           selectedPhaseVisualReady: Boolean(
             latestCleanupGuard.isSelectedPhaseVisualReady
           ),
@@ -6181,6 +8243,163 @@ export default function CanvasStageContent({
     };
   }, [elementosSeleccionados, readSelectionRuntimeSnapshot]);
 
+  useEffect(() => {
+    if (!hasCommittedSelectionOverrideAfterDrag) {
+      return;
+    }
+
+    const activeSession =
+      dragSettleSessionRef.current && dragSettleSessionRef.current.dragId
+        ? dragSettleSessionRef.current
+        : null;
+    if (!activeSession?.dragId) {
+      return;
+    }
+
+    const selectedPhaseVisibleMeta = selectedPhaseVisibilityMetaRef.current || {};
+    const selectedPhaseReadyMeta = selectedPhaseVisualReadyMetaRef.current || {};
+    const staleVisibleOwnerTargetIds =
+      dragOverlayVisualCleanupGuardRef.current?.shouldRenderDragSelectionOverlay === true
+        ? (
+            dragOverlaySelectionIdsDigest ||
+            activeDragSettleDestinationSelectionIdsDigest ||
+            null
+          )
+        : (
+            selectedPhaseVisibleMeta.visualIdentity ||
+            selectedPhaseReadyMeta.visualIdentity ||
+            null
+          );
+    const staleSelectedPhaseTarget =
+      staleVisibleOwnerTargetIds &&
+      staleVisibleOwnerTargetIds !== committedSelectedIdsDigest;
+    const staleRuntimeSelection =
+      runtimeSelectedIdsDigest &&
+      committedSelectedIdsDigest &&
+      runtimeSelectedIdsDigest !== committedSelectedIdsDigest;
+
+    logCanvasBoxFlow("selection", "selected-phase:post-drag-divergence", {
+      source: "stage-composer",
+      reason: "committed-selection-overrode-drag-settle-target",
+      phase: canvasInteractionSettling ? "settling" : "selected",
+      owner:
+        dragOverlayVisualCleanupGuardRef.current?.shouldRenderDragSelectionOverlay === true
+          ? "drag-overlay"
+          : "selected-phase",
+      dragId: activeSession.dragId || null,
+      selectedIds: committedSelectedIdsDigest || "",
+      visualIds: staleVisibleOwnerTargetIds || "",
+      runtimeSelectedIds: runtimeSelectedIdsDigest || "",
+      handoffExpectedSelectionIds:
+        activeDragSettleDestinationSelectionIdsDigest || "",
+      dragOverlaySessionKey: dragOverlayBoxFlowSessionRef.current?.sessionKey || null,
+      dragOverlayOwnerActive: Boolean(
+        dragOverlayVisualCleanupGuardRef.current?.shouldRenderDragSelectionOverlay
+      ),
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(
+        dragOverlayVisualCleanupGuardRef.current
+          ?.shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      selectedPhaseReady: Boolean(isSelectedPhaseVisualReady),
+      selectedPhaseActuallyVisible: Boolean(isSelectedPhaseBoxVisible),
+      selectedPhaseAttachedNodeIds:
+        selectedPhaseVisibleMeta.attachedNodeIds ||
+        selectedPhaseReadyMeta.attachedNodeIds ||
+        null,
+      readyProbeActive: Boolean(
+        selectedPhaseVisibleMeta.readyProbeActive ||
+        selectedPhaseReadyMeta.readyProbeActive
+      ),
+      staleSelectedPhaseTarget,
+      staleRuntimeSelection,
+      staleHandoffTargetStillActive:
+        activeDragSettleDestinationSelectionIdsDigest !== committedSelectedIdsDigest,
+      staleSelectedPhaseDestinationCache:
+        activeDragSettleSelectionSnapshotDigest !== committedSelectedIdsDigest,
+    }, {
+      identity:
+        dragOverlayBoxFlowSessionRef.current?.sessionKey ||
+        resolveSelectionBoxFlowIdentity(
+          activeSession.dragId,
+          committedSelectedIds
+        ),
+    });
+
+    if (
+      selectedPhaseHandoffPaintConfirmRafRef.current &&
+      typeof cancelAnimationFrame === "function"
+    ) {
+      cancelAnimationFrame(selectedPhaseHandoffPaintConfirmRafRef.current);
+    }
+    selectedPhaseHandoffPaintConfirmRafRef.current = 0;
+    selectedPhaseHandoffPaintConfirmKeyRef.current = null;
+    selectedPhaseVisualReadyMetaRef.current = null;
+    selectedPhaseVisibilityMetaRef.current = null;
+    deferredOverlayVisualCleanupRef.current = null;
+    setHasDeferredOverlayVisualCleanup((current) => (current ? false : current));
+    setIsSelectedPhaseHandoffPaintConfirmed((current) => (current ? false : current));
+    setIsSelectedPhaseVisualReady((current) => (current ? false : current));
+    setIsSelectedPhaseBoxVisible((current) => (current ? false : current));
+    setPendingDragSelectionRuntime(null, {
+      source: "selection-change-after-drag",
+    });
+    dragSettleSessionRef.current = createEmptyDragSettleSession();
+
+    clearDragVisualSelection({
+      source: "selection-change-after-drag",
+      reason: "selection-change-after-drag",
+    });
+    clearDragOverlayBoxFlowSession((currentSession) => (
+      currentSession?.dragId === activeSession.dragId ||
+      (
+        Number(currentSession?.interactionEpoch || 0) > 0 &&
+        Number(currentSession?.interactionEpoch || 0) ===
+          Number(activeSession.interactionEpoch || 0)
+      )
+    ));
+
+    logCanvasBoxFlow("selection", "selected-phase:stale-handoff-invalidated", {
+      source: "stage-composer",
+      reason: "committed-selection-overrode-drag-settle-target",
+      phase: canvasInteractionSettling ? "settling" : "selected",
+      owner: "selected-phase",
+      dragId: activeSession.dragId || null,
+      selectedIds: committedSelectedIdsDigest || "",
+      visualIds: committedSelectedIdsDigest || "",
+      runtimeSelectedIds: runtimeSelectedIdsDigest || "",
+      handoffExpectedSelectionIds: committedSelectedIdsDigest || "",
+      dragOverlayOwnerActive: false,
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: false,
+      selectedPhaseReady: false,
+      selectedPhaseActuallyVisible: false,
+      selectedPhaseAttachedNodeIds: null,
+      readyProbeActive: false,
+      staleSelectedPhaseTarget,
+      staleRuntimeSelection,
+      visualOwnershipRecoveryTarget: committedSelectedIdsDigest || "",
+    }, {
+      identity:
+        resolveSelectionBoxFlowIdentity(activeSession.dragId, committedSelectedIds),
+    });
+  }, [
+    activeDragSettleDestinationSelectionIdsDigest,
+    activeDragSettleSelectionSnapshotDigest,
+    canvasInteractionSettling,
+    clearDragOverlayBoxFlowSession,
+    clearDragVisualSelection,
+    committedSelectedIds,
+    committedSelectedIdsDigest,
+    dragOverlaySelectionIdsDigest,
+    hasCommittedSelectionOverrideAfterDrag,
+    isSelectedPhaseBoxVisible,
+    isSelectedPhaseVisualReady,
+    resolveSelectionBoxFlowIdentity,
+    runtimeSelectedIdsDigest,
+    setPendingDragSelectionRuntime,
+  ]);
+
   const resolveDragSettleOutcome = useCallback((session) => {
     const safeSession =
       session && session.dragId
@@ -6190,6 +8409,9 @@ export default function CanvasStageContent({
       dragId: safeSession.dragId || null,
       tipo: safeSession.tipo || null,
       interactionEpoch: Number(safeSession.interactionEpoch || 0),
+      selectionRepairCompleted: false,
+      selectionRepairResult: "not-run",
+      selectionOverrideAfterDrag: false,
       committedDeferredSelection: false,
       restoredSelectionAfterDrag: false,
       clearedVisualSelection: false,
@@ -6199,6 +8421,8 @@ export default function CanvasStageContent({
       selectionSnapshotFromWindow: [],
       currentSelectionSnapshot: [],
       nextSelectionSnapshot: [],
+      dragSettleSelectionSnapshot: [],
+      dragSettleDestinationSnapshot: [],
       expectedVisualSelectionSnapshot: [],
       visualSelectionSnapshot: [],
       hasWork: false,
@@ -6209,6 +8433,8 @@ export default function CanvasStageContent({
       setPendingDragSelectionRuntime(null, {
         source: "drag-settle:empty-session",
       });
+      outcome.selectionRepairCompleted = true;
+      outcome.selectionRepairResult = "empty-session";
       return outcome;
     }
 
@@ -6226,8 +8452,34 @@ export default function CanvasStageContent({
     outcome.currentSelectionSnapshot = [...effectiveSelection];
 
     let nextSelectionSnapshot = [...effectiveSelection];
+    const dragSettleSelectionSnapshot = sanitizeSelectionIds(
+      safeSession.selectionSnapshot
+    );
+    const dragSettleDestinationSnapshot =
+      resolveDragSettleDestinationSelectionIds(safeSession);
+    const currentSelectionDigest = buildCanvasBoxFlowIdsDigest(
+      effectiveSelection
+    );
+    const dragSettleSelectionSnapshotDigest = buildCanvasBoxFlowIdsDigest(
+      dragSettleSelectionSnapshot
+    );
+    const dragSettleDestinationSnapshotDigest = buildCanvasBoxFlowIdsDigest(
+      dragSettleDestinationSnapshot
+    );
+    const hasCommittedSelectionOverrideAfterDragSettle = Boolean(
+      effectiveSelection.length > 0 &&
+        currentSelectionDigest &&
+        currentSelectionDigest !== dragSettleDestinationSnapshotDigest &&
+        currentSelectionDigest !== dragSettleSelectionSnapshotDigest
+    );
+    outcome.dragSettleSelectionSnapshot = [...dragSettleSelectionSnapshot];
+    outcome.dragSettleDestinationSnapshot = [...dragSettleDestinationSnapshot];
+    outcome.selectionOverrideAfterDrag =
+      hasCommittedSelectionOverrideAfterDragSettle;
 
-    if (safeSession.needsDeferredCommit) {
+    if (hasCommittedSelectionOverrideAfterDragSettle) {
+      nextSelectionSnapshot = [...effectiveSelection];
+    } else if (safeSession.needsDeferredCommit) {
       if (!(effectiveSelection.length === 1 && effectiveSelection[0] === safeSession.dragId)) {
         outcome.committedDeferredSelection = true;
         nextSelectionSnapshot = [safeSession.dragId];
@@ -6248,6 +8500,14 @@ export default function CanvasStageContent({
       }
     }
     outcome.nextSelectionSnapshot = [...nextSelectionSnapshot];
+    outcome.selectionRepairCompleted = true;
+    outcome.selectionRepairResult = outcome.selectionOverrideAfterDrag
+      ? "selection-overridden"
+      : outcome.committedDeferredSelection
+        ? "deferred-commit"
+        : outcome.restoredSelectionAfterDrag
+          ? "restore-selection"
+          : "no-selection-change";
 
     const expectedVisualSelectionSnapshot = sanitizeSelectionIds(
       safeSession.overlaySelectionSnapshot
@@ -6272,6 +8532,7 @@ export default function CanvasStageContent({
     );
 
     outcome.hasWork = Boolean(
+      outcome.selectionOverrideAfterDrag ||
       outcome.committedDeferredSelection ||
       outcome.restoredSelectionAfterDrag ||
       outcome.deferredVisualSelectionCleanup ||
@@ -6304,26 +8565,76 @@ export default function CanvasStageContent({
       source: "canvas-object",
     });
   }, [beginCanvasInteraction, clearHoverForInteractionBoundary]);
+  const logDragEndEnterDiagnostic = useCallback(({
+    dragId = null,
+    tipo = null,
+    source = "drag-end",
+    pipeline = "individual",
+    overlaySelectionSnapshot = [],
+  } = {}) => {
+    logPostDragRecoveryDiagnostic("selection", "drag:end-enter", {
+      source,
+      reason: "drag-end-callback-entered",
+      dragId: dragId || null,
+      dragTargetType: tipo || null,
+      pipeline,
+      oldDragTargetIds: buildCanvasBoxFlowIdsDigest(overlaySelectionSnapshot),
+      visualIds: buildCanvasBoxFlowIdsDigest(overlaySelectionSnapshot),
+    }, {
+      identity:
+        dragOverlayBoxFlowIdentity ||
+        resolveSelectionBoxFlowIdentity(dragId, overlaySelectionSnapshot),
+    });
+  }, [
+    dragOverlayBoxFlowIdentity,
+    logPostDragRecoveryDiagnostic,
+    resolveSelectionBoxFlowIdentity,
+  ]);
 
-  const queuePostDragUiRefresh = useCallback((dragId, tipo = null, source = "element-drag-end") => {
+  const queuePostDragUiRefresh = useCallback((
+    dragId,
+    tipo = null,
+    source = "element-drag-end",
+    expectedInteractionEpoch = 0
+  ) => {
+    const normalizedExpectedInteractionEpoch =
+      Number(expectedInteractionEpoch || 0) || 0;
     publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:scheduled", {
       dragId,
       tipo,
       source,
+      expectedInteractionEpoch: normalizedExpectedInteractionEpoch || null,
       sessionSnapshot: dragSettleSessionRef.current || null,
     });
     const runPostDragUi = () => {
       const session = dragSettleSessionRef.current;
-      if (!session?.dragId || session.dragId !== dragId) {
-        setPendingDragSelectionRuntime(null, {
-          source: "post-drag-ui:missing-session",
-        });
-        dragSettleSessionRef.current = createEmptyDragSettleSession();
+      const sessionInteractionEpoch =
+        Number(session?.interactionEpoch || 0) || 0;
+      const staleSessionReason = !session?.dragId
+        ? "missing-session"
+        : session.dragId !== dragId
+          ? "stale-drag-id"
+          : (
+              normalizedExpectedInteractionEpoch > 0 &&
+              sessionInteractionEpoch > 0 &&
+              sessionInteractionEpoch !== normalizedExpectedInteractionEpoch
+            )
+            ? "stale-interaction-epoch"
+            : null;
+      if (staleSessionReason) {
+        if (staleSessionReason === "missing-session") {
+          setPendingDragSelectionRuntime(null, {
+            source: "post-drag-ui:missing-session",
+          });
+          dragSettleSessionRef.current = createEmptyDragSettleSession();
+        }
         publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:skipped", {
           dragId,
           tipo,
           source,
-          reason: "missing-or-mismatched-session",
+          reason: staleSessionReason,
+          expectedInteractionEpoch: normalizedExpectedInteractionEpoch || null,
+          sessionInteractionEpoch: sessionInteractionEpoch || null,
           sessionSnapshot: session || null,
         });
         return;
@@ -6337,6 +8648,56 @@ export default function CanvasStageContent({
           expectedSelectionIds: outcome.expectedVisualSelectionSnapshot,
         }) === true;
       }
+      logCanvasBoxFlow("selection", "selection:repair-complete", {
+        source,
+        phase: "settling",
+        owner: "drag-overlay",
+        dragId,
+        selectedIds: buildCanvasBoxFlowIdsDigest(
+          outcome.nextSelectionSnapshot
+        ),
+        visualIds: buildCanvasBoxFlowIdsDigest(
+          outcome.expectedVisualSelectionSnapshot
+        ),
+        dragOverlaySessionKey:
+          dragOverlayBoxFlowSessionRef.current?.sessionKey || null,
+        dragInteractionSessionKey:
+          dragInteractionSessionRef.current?.sessionKey || null,
+        selectionAuthority: "logical-selection",
+        geometryAuthority: "frozen-controlled-snapshot",
+        overlayVisible: Boolean(
+          dragOverlayVisualCleanupGuardRef.current
+            ?.shouldRenderDragSelectionOverlay
+        ),
+        settling: true,
+        suppressedLayers: ["hover-indicator", "selected-phase"],
+        selectionRepairCompleted: Boolean(outcome.selectionRepairCompleted),
+        selectionRepairResult: outcome.selectionRepairResult || null,
+        selectionOverrideAfterDrag: outcome.selectionOverrideAfterDrag,
+        committedDeferredSelection: outcome.committedDeferredSelection,
+        restoredSelectionAfterDrag: outcome.restoredSelectionAfterDrag,
+        deferredVisualSelectionCleanup: outcome.deferredVisualSelectionCleanup,
+        clearedVisualSelection: outcome.clearedVisualSelection,
+        visualSelectionMatchesSession: outcome.visualSelectionMatchesSession,
+        dragSettleSelectionSnapshot: buildCanvasBoxFlowIdsDigest(
+          outcome.dragSettleSelectionSnapshot
+        ),
+        dragSettleDestinationSnapshot: buildCanvasBoxFlowIdsDigest(
+          outcome.dragSettleDestinationSnapshot
+        ),
+      }, {
+        identity:
+          dragOverlayBoxFlowSessionRef.current?.sessionKey ||
+          resolveSelectionBoxFlowIdentity(dragId, outcome.nextSelectionSnapshot),
+        sessionIdentity:
+          resolveReusableSelectionSessionIdentity(
+            dragInteractionSessionRef.current?.sessionKey,
+            dragOverlayBoxFlowSessionRef.current?.sessionKey,
+            resolveSelectionBoxFlowIdentity(dragId, outcome.nextSelectionSnapshot)
+          ) ||
+          dragOverlayBoxFlowSessionRef.current?.sessionKey ||
+          resolveSelectionBoxFlowIdentity(dragId, outcome.nextSelectionSnapshot),
+      });
       if (!outcome.hasWork) {
         publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:no-work", {
           dragId,
@@ -6359,6 +8720,9 @@ export default function CanvasStageContent({
         tipo,
         source,
         interactionEpoch: outcome.interactionEpoch,
+        selectionRepairCompleted: outcome.selectionRepairCompleted,
+        selectionRepairResult: outcome.selectionRepairResult,
+        selectionOverrideAfterDrag: outcome.selectionOverrideAfterDrag,
         committedDeferredSelection: outcome.committedDeferredSelection,
         restoredSelectionAfterDrag: outcome.restoredSelectionAfterDrag,
         clearedVisualSelection: outcome.clearedVisualSelection,
@@ -6368,6 +8732,8 @@ export default function CanvasStageContent({
         selectionSnapshotFromWindow: outcome.selectionSnapshotFromWindow,
         currentSelectionSnapshot: outcome.currentSelectionSnapshot,
         nextSelectionSnapshot: outcome.nextSelectionSnapshot,
+        dragSettleSelectionSnapshot: outcome.dragSettleSelectionSnapshot,
+        dragSettleDestinationSnapshot: outcome.dragSettleDestinationSnapshot,
         expectedVisualSelectionSnapshot: outcome.expectedVisualSelectionSnapshot,
         visualSelectionSnapshot: outcome.visualSelectionSnapshot,
         selectedIdsFromWindow:
@@ -6380,7 +8746,7 @@ export default function CanvasStageContent({
       });
     };
 
-    const taskKey = `post-drag-ui:${source}:${dragId}`;
+    const taskKey = `post-drag-ui:${source}:${dragId}:${normalizedExpectedInteractionEpoch || "current"}`;
     if (typeof scheduleCanvasUiAfterSettle === "function") {
       scheduleCanvasUiAfterSettle(taskKey, runPostDragUi);
       return;
@@ -6394,6 +8760,11 @@ export default function CanvasStageContent({
     publishCountdownRuntimeDebug,
     resolveDragSettleOutcome,
     scheduleCanvasUiAfterSettle,
+    setPendingDragSelectionRuntime,
+    resolveSelectionBoxFlowIdentity,
+    resolveReusableSelectionSessionIdentity,
+    runtimeSelectedIds,
+    logSelectedDragDebug,
   ]);
 
   useEffect(() => {
@@ -7423,12 +9794,16 @@ export default function CanvasStageContent({
 
   const handleImageCropInteractionStart = useCallback((payload = {}) => {
     setIsImageCropInteracting(true);
-    setHoverId(null, {
+    clearHoverForInteractionBoundary({
       source: "image-crop-interaction-start",
-      reason: "transform-interaction",
+      reason: "image-crop",
+      phase: "selected",
+      higherPriorityOwner: "image-crop",
+      clearDriver: "boundary-driven",
+      suppressionReasons: ["image-crop"],
     });
     handleTransformInteractionStartWithInlineIntent(payload);
-  }, [handleTransformInteractionStartWithInlineIntent, setHoverId]);
+  }, [clearHoverForInteractionBoundary, handleTransformInteractionStartWithInlineIntent]);
 
   const handleImageCropInteractionEnd = useCallback((payload = {}) => {
     setIsImageCropInteracting(false);
@@ -7653,18 +10028,25 @@ export default function CanvasStageContent({
             });
           }}
           onDragEndPersonalizado={(dragId = obj.id, meta = null) => {
-            clearDragGuides({
-              dragId,
-              tipo: "galeria",
-              source: "gallery-drag-end",
-              reason: "drag-end",
-            });
             const overlaySelectionSnapshot = readActiveDragOverlaySelectionIds(
               dragId,
               runtimeSelectedIds.length > 0
                 ? runtimeSelectedIds
                 : sanitizeSelectionIds(elementosSeleccionados)
             );
+            logDragEndEnterDiagnostic({
+              dragId,
+              tipo: "galeria",
+              source: "gallery-drag-end",
+              pipeline: meta?.pipeline === "group" ? "group" : "individual",
+              overlaySelectionSnapshot,
+            });
+            clearDragGuides({
+              dragId,
+              tipo: "galeria",
+              source: "gallery-drag-end",
+              reason: "drag-end",
+            });
             logSelectionDragLifecycle("drag:end", {
               dragId,
               tipo: "galeria",
@@ -7679,7 +10061,12 @@ export default function CanvasStageContent({
               reason: "drag-end",
               pipeline: meta?.pipeline === "group" ? "group" : "individual",
             });
-            queuePostDragUiRefresh(dragId, "galeria", "gallery-drag-end");
+            queuePostDragUiRefresh(
+              dragId,
+              "galeria",
+              "gallery-drag-end",
+              dragOverlayBoxFlowSessionRef.current?.interactionEpoch || 0
+            );
             endCanvasInteraction("drag", {
               dragId,
               tipo: "galeria",
@@ -7856,6 +10243,13 @@ export default function CanvasStageContent({
                 ? runtimeSelectedIds
                 : sanitizeSelectionIds(elementosSeleccionados)
             );
+            logDragEndEnterDiagnostic({
+              dragId,
+              tipo: "countdown",
+              source: isGroupPipeline ? "countdown-group-drag-end" : "countdown-drag-end",
+              pipeline: isGroupPipeline ? "group" : "individual",
+              overlaySelectionSnapshot,
+            });
             publishCountdownRuntimeDebug("composer:countdown-dragend-callback", {
               dragId,
               selectedIds: overlaySelectionSnapshot,
@@ -7884,7 +10278,8 @@ export default function CanvasStageContent({
             queuePostDragUiRefresh(
               dragId,
               "countdown",
-              isGroupPipeline ? "countdown-group-drag-end" : "countdown-drag-end"
+              isGroupPipeline ? "countdown-group-drag-end" : "countdown-drag-end",
+              dragOverlayBoxFlowSessionRef.current?.interactionEpoch || 0
             );
             endCanvasInteraction("drag", {
               dragId,
@@ -8253,13 +10648,25 @@ export default function CanvasStageContent({
               ? runtimeSelectedIds
               : sanitizeSelectionIds(elementosSeleccionados)
           );
+          logDragEndEnterDiagnostic({
+            dragId,
+            tipo: obj.tipo || null,
+            source: dragEndSource,
+            pipeline: isGroupPipeline ? "group" : "individual",
+            overlaySelectionSnapshot,
+          });
           clearDragGuides({
             dragId,
             tipo: obj.tipo || null,
             source: dragEndSource,
             reason: "drag-end",
           });
-          queuePostDragUiRefresh(dragId, obj.tipo || null, dragEndSource);
+          queuePostDragUiRefresh(
+            dragId,
+            obj.tipo || null,
+            dragEndSource,
+            dragOverlayBoxFlowSessionRef.current?.interactionEpoch || 0
+          );
           logSelectionDragLifecycle("drag:end", {
             dragId,
             tipo: obj.tipo || null,
@@ -8797,9 +11204,18 @@ export default function CanvasStageContent({
                         canvasInteractionActive={canvasInteractionActive}
                         canvasInteractionSettling={canvasInteractionSettling}
                         predragVisualSelectionActive={isPredragVisualSelectionActive}
-                        dragSelectionOverlayVisible={shouldShowDragSelectionOverlay}
+                        dragSelectionOverlayVisible={shouldRenderDragSelectionOverlay}
                         dragSelectionOverlayVisualReady={
-                          shouldShowDragSelectionOverlay && isDragSelectionOverlayVisualReady
+                          shouldRenderDragSelectionOverlay && isDragSelectionOverlayVisualReady
+                        }
+                        selectedPhaseHandoffActive={
+                          shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+                        }
+                        selectedPhaseHandoffSelectionRepairPending={
+                          isCurrentDragSettleSessionRepairPending
+                        }
+                        selectedPhaseHandoffExpectedSelectionIds={
+                          selectedPhaseDestinationSelectionIds
                         }
                         onPrimarySelectionVisualReadyChange={
                           handleSelectedPhaseVisualReadyChange
@@ -9442,13 +11858,17 @@ export default function CanvasStageContent({
                       objetos={objetos}
                       activeInlineEditingId={activeInlineEditingId}
                       isMobile={isMobile}
+                      interactionPhase={interactionPhase}
+                      activeVisualOwner={interactionVisualOwner}
+                      higherPriorityOwner={hoverHigherPriorityOwner}
+                      suppressionReasons={hoverSuppressionReasons}
                     />
                   )}
 
 
 
                   {/* ?? Controles especiales para lÃ­neas seleccionadas */}
-                  {stageSelectionVisualMode.showLineControls && (() => {
+                  {!shouldRenderDragSelectionOverlay && stageSelectionVisualMode.showLineControls && (() => {
                     const elementoSeleccionado =
                       stageSelectionVisualMode.singleSelectedLineId
                         ? objetos.find(

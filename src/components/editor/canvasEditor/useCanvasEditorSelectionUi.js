@@ -1,20 +1,24 @@
 import { useCallback } from "react";
+import {
+  resolveGlobalHoverInteractionSuppression,
+} from "@/components/editor/textSystem/render/konva/hoverLifecycle";
 
-function isGlobalCanvasInteractionActive() {
-  return (
-    typeof window !== "undefined" &&
-    Boolean(
-      window._isDragging ||
-        window._grupoLider ||
-        window._resizeData?.isResizing
-    )
-  );
+function getGlobalHoverInteractionSuppressionState() {
+  if (typeof window === "undefined") {
+    return resolveGlobalHoverInteractionSuppression();
+  }
+
+  return resolveGlobalHoverInteractionSuppression({
+    runtimeDragActive: Boolean(window._isDragging),
+    runtimeGroupDragActive: Boolean(window._grupoLider),
+    runtimeResizeActive: Boolean(window._resizeData?.isResizing),
+  });
 }
 
 export function resolveCanvasHoverIdUpdate(
   currentHoverId,
   nextHoverId,
-  { interactionActive = false } = {}
+  { interactionSuppressed = false } = {}
 ) {
   const resolvedHoverId =
     typeof nextHoverId === "function"
@@ -22,7 +26,7 @@ export function resolveCanvasHoverIdUpdate(
       : nextHoverId;
 
   const isHoverClear = resolvedHoverId == null;
-  if (interactionActive && !isHoverClear) {
+  if (interactionSuppressed && !isHoverClear) {
     return currentHoverId;
   }
 
@@ -42,9 +46,10 @@ export default function useCanvasEditorSelectionUi({
 }) {
   const setHoverId = useCallback(
     (nextHoverId, _meta = null) => {
+      const hoverSuppressionState = getGlobalHoverInteractionSuppressionState();
       setHoverIdState((currentHoverId) => {
         return resolveCanvasHoverIdUpdate(currentHoverId, nextHoverId, {
-          interactionActive: isGlobalCanvasInteractionActive(),
+          interactionSuppressed: hoverSuppressionState.suppressed,
         });
       });
     },
@@ -73,7 +78,8 @@ export default function useCanvasEditorSelectionUi({
     cerrarMenusFlotantes,
   ]);
 
-  const isHoverSuppressed = isGlobalCanvasInteractionActive();
+  const isHoverSuppressed =
+    getGlobalHoverInteractionSuppressionState().suppressed;
   const effectiveHoverId = isHoverSuppressed ? null : hoverId;
 
   return {

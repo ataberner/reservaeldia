@@ -50,17 +50,17 @@ The safest path is to stabilize the interaction lifecycle in the order users act
 | Contract area | Contract rule | Current implementation status | Modules involved | Status | Severity | User-visible impact | Likely failure mode |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Phase model discipline | One authoritative phase model must govern visual, geometry, and selection authority. | Phase transitions are now explicitly emitted from the composer through `phase:transition` with phase, owner, startup source, hover suppression reasons, and drag session identity. Enforcement is still distributed outside the startup boundary. | `CanvasStageContentComposer.jsx`, `selectionVisualModes.js`, `SelectionTransformer.jsx`, `HoverIndicator.jsx`, `useCanvasInteractionCoordinator.js` | Partially satisfied | High | startup jump, delayed teardown, flash between states | one subsystem transitions phases earlier or later than the others |
-| Visual authority contract | Only one visible box owner at a time; strict priority `drag-overlay > selected-phase > hover`. | Startup ownership is tighter now: hover is cleared before predrag, the primary selected-phase overlay no longer mounts during predrag, and first-visible drag-overlay frames carry explicit contract-state logs. Ownership is still split across separate modules and remains fragile around settling. | `CanvasStageContentComposer.jsx`, `SelectionTransformer.jsx`, `SelectionBoundsIndicator.jsx`, `HoverIndicator.jsx`, `selectionVisualModes.js` | Partially satisfied | Critical | stale selection box, overlay flicker, dual box flash | drag-overlay and selected-phase both render, or hover survives after authority loss |
-| Geometry authority contract | Drag and predrag must use live geometry only; settling must use frozen settle snapshot only; selected fallback must be explicit and non-mixed. | Phase 2 now hardens active drag around live-node authority: drag-overlay sync records `geometrySource`, guide evaluation re-reads the active drag box from the live node only, drag-time text bounds now fail closed instead of falling back to generic client rect, and the non-text guide path now resolves `forma`/`icono` boxes through the same live selection-rect basis used by overlay sync. Selected-phase can still mix live and object-data fallback in one union, and settling is still Phase 3 work. | `selectionBoundsGeometry.js`, `SelectionBoundsIndicator.jsx`, `SelectionTransformer.jsx`, `CanvasStageContentComposer.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | text bounds mismatch, box drift, selected-phase fallback mismatch | selected-phase still mixes geometry sources outside drag, or a later phase reintroduces drag-time fallback |
-| Selection authority contract | Committed selection is canonical except during drag-owned visual phases; transitional selection state must reconcile before handoff ends. | Committed selection, runtime selection, `pendingDragSelection`, and `dragVisualSelection` are real and mostly explicit, but convergence depends on deferred repair and cleanup guards rather than one hardened transaction model. | `CanvasEditor.jsx`, `useCanvasEditorSelectionRuntime.js`, `editorSelectionRuntime.js`, `CanvasStageContentComposer.jsx`, `ElementoCanvasRenderer.jsx` | Partially satisfied | High | stale selection box, wrong post-drag selection, session leakage | transient drag selection survives too long or restores the wrong selection |
+| Visual authority contract | Only one visible box owner at a time; strict priority `drag-overlay > selected-phase > hover`. | Startup ownership remains tight, and Phase 3 now keeps drag-overlay as the sole visible owner through settling while transformer-backed selected-phase destinations prove readiness underneath it. `handoff:dual-ownership-violation` and `drag-overlay:teardown-violation` make early selected visibility or early overlay teardown explicit. Ownership is still split across separate modules, and single-line selected destinations still use their separate selected-phase path. | `CanvasStageContentComposer.jsx`, `SelectionTransformer.jsx`, `SelectionBoundsIndicator.jsx`, `HoverIndicator.jsx`, `selectionVisualModes.js` | Partially satisfied | Critical | stale selection box, overlay flicker, dual box flash | drag-overlay and selected-phase both render, or a line-specific selected path bypasses the generic handoff discipline |
+| Geometry authority contract | Drag and predrag must use live geometry only; settling must use frozen settle snapshot only; selected fallback must be explicit and non-mixed. | Phase 2 hardened active drag around live-node authority, and Phase 3 now keeps settling on the frozen drag-overlay settle snapshot until handoff completes. Selected-phase can still mix live and object-data fallback in one union after the handoff, so the full contract is not closed yet. | `selectionBoundsGeometry.js`, `SelectionBoundsIndicator.jsx`, `SelectionTransformer.jsx`, `CanvasStageContentComposer.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | text bounds mismatch, box drift, selected-phase fallback mismatch | selected-phase still mixes geometry sources outside drag, even though drag and settling now stay on lawful geometry authority |
+| Selection authority contract | Committed selection is canonical except during drag-owned visual phases; transitional selection state must reconcile before handoff ends. | Phase 3 now resolves deferred selection repair before overlay release and rejects stale post-drag repair work on `dragId` or `interactionEpoch` mismatch. Committed selection, runtime selection, `pendingDragSelection`, and `dragVisualSelection` still converge through distributed guards rather than one hardened transaction model. | `CanvasEditor.jsx`, `useCanvasEditorSelectionRuntime.js`, `editorSelectionRuntime.js`, `CanvasStageContentComposer.jsx`, `ElementoCanvasRenderer.jsx` | Partially satisfied | High | stale selection box, wrong post-drag selection, session leakage | transient drag selection survives too long or restore/commit work targets the wrong session |
 | Drag lifecycle contract | Drag start, move, and end must follow one explicit lifecycle with no hidden alternate owners. | The drag lifecycle is explicit in the composer, but gallery/countdown/object paths all feed it and the lifecycle still depends on subtle guards and phase-specific cleanup. | `CanvasStageContentComposer.jsx`, `ElementoCanvasRenderer.jsx`, `GaleriaKonva.jsx`, `CountdownKonva.jsx` | Partially satisfied | High | inconsistent drag startup, delayed teardown, stale overlay | one path skips a required boundary or cleanup step |
 | Startup contract | First visible drag frame must come only from `controlled-sync`; seed/replay paths must never be visible. | Phase 1 now records blocked startup paths explicitly, keeps the selected-phase overlay out of predrag, and validates first-visible startup ownership through `drag-overlay:shown` plus `startup-contract:violation`. Seed/replay helpers still exist internally, but visible startup is tied to `controlled-sync`. | `CanvasStageContentComposer.jsx`, drag-overlay startup gate helpers, `ElementoCanvasRenderer.jsx` | Satisfied | Critical | startup jump | non-authoritative startup snapshot becomes visible first |
-| Handoff contract | Drag-overlay remains sole owner through settling until selected-phase is visible, ready, and post-paint confirmed. | Current code has a real handoff guard and post-paint confirmation, but selected-phase identity is still implicit and handoff safety depends on several coordinated booleans instead of one hardened session model. | `CanvasStageContentComposer.jsx`, `SelectionTransformer.jsx`, `SelectionBoundsIndicator.jsx` | Partially satisfied | Critical | delayed teardown, duplicate visuals, stale selected box | drag-overlay tears down before selected-phase is truly ready |
-| Hover contract | Hover only in hover phase; deterministic cleanup; no hover during predrag/drag/settling/inline authority. | Hover suppression is broad and explicit, and Phase 1 now makes startup hover loss observable through `forced-clear`, `stage:suppressed`, `phase:transition`, and first-visible startup traces. Hover identity is still id-only and cleanup is still driven by multiple imperative writers. | `HoverIndicator.jsx`, `CanvasStageContentComposer.jsx`, `useCanvasEditorSelectionUi.js`, `selectionVisualModes.js` | Partially satisfied | High | hover lingering, hover flash during drag start | hover survives the predrag boundary or reappears from stale state |
-| Snap & guides contract | Guides are single-element drag only; they may mutate live nodes, but overlay must resync after snap and guides must not become authority. | Phase 2 now keeps single-element text and shape/icon guide evaluation inside the same drag sample instead of letting it trail through RAF scheduling, re-reads post-snap live geometry before returning the guide outcome, and logs pre-resync plus post-resync overlay deltas against the same post-snap live reread. It still relies on drag-session matching rather than a dedicated guide session identity, and the text/shape/icon guide scenarios still require manual verification before the phase can close. | `useGuiasCentrado.js`, `CanvasGuideLayer.jsx`, `CanvasStageContentComposer.jsx`, `CanvasEditor.jsx` | Partially satisfied | Medium | snap mismatch, guide lag, stale guide lines | stale guide work could still target the wrong drag if drag-session checks regress |
+| Handoff contract | Drag-overlay remains sole owner through settling until selected-phase is visible, ready, and post-paint confirmed. | Phase 3 now keeps overlay mounted until current-session selection repair completes, the selected-phase destination is known, transformer-backed destinations prove readiness under the overlay, and the composer-owned extra post-paint confirmation completes. Selected-phase identity is still implicit, and single-line selected destinations still depend on the existing separate line path rather than the generic hidden-ready probe. | `CanvasStageContentComposer.jsx`, `SelectionTransformer.jsx`, `SelectionBoundsIndicator.jsx` | Partially satisfied | Critical | delayed teardown, duplicate visuals, stale selected box | a non-transformer selected destination or stale session edge bypasses the generic handoff guard |
+| Hover contract | Hover only in lawful hover states; deterministic cleanup; no hover during predrag/drag/settling/inline authority; no same-target coexistence with selected-phase. | Phase 4 now routes stage hover through one composer-owned suppression gate, clears raw hover state when higher-priority owners take authority, blocks suppressed hover re-entry, distinguishes global no-hover suppression from selected-target conflict, and replays the latest lawful different-target hover that was blocked during the short post-drag handoff/settling window. Hover identity is still id-only and browser validation is still required before this area can be treated as closed. | `HoverIndicator.jsx`, `CanvasStageContentComposer.jsx`, `useCanvasEditorSelectionUi.js`, `selectionVisualModes.js` | Partially satisfied | High | hover lingering, hover flash during drag start, hover missing on other targets while selection exists | a lawful hover can still be lost if post-drag recovery or target-conflict replay discipline regresses |
+| Snap & guides contract | Guides are single-element drag only; they may mutate live nodes, but overlay must resync after snap and guides must not become authority. | Phase 2 now keeps single-element text and shape/icon guide evaluation inside the same drag sample instead of letting it trail through RAF scheduling, re-reads post-snap live geometry before returning the guide outcome, and logs pre-resync plus post-resync overlay deltas against the same post-snap live reread. It still relies on drag-session matching rather than a dedicated guide session identity. | `useGuiasCentrado.js`, `CanvasGuideLayer.jsx`, `CanvasStageContentComposer.jsx`, `CanvasEditor.jsx` | Partially satisfied | Medium | snap mismatch, guide lag, stale guide lines | stale guide work could still target the wrong drag if drag-session checks regress |
 | Inline text contract | Konva and DOM must never share visible editing authority; swap must be phase-atomic; text geometry must stay downstream of live Konva geometry. | Inline runtime is the most structured subsystem and already has mount session, swap ack, and authority phases, but it still relies on timing-sensitive focus/caret behavior and does not yet benefit from the same identity hardening as the drag/handoff path. | `useInlineSessionRuntime.js`, `useInlinePhaseAtomicLifecycle.js`, `resolveInlineCanvasVisibility.js`, `CanvasInlineEditingLayer.jsx`, `InlineTextOverlayEditor.jsx`, `HiddenSemanticTextBackend.jsx` | Partially satisfied | High | overlay flicker, focus instability, text overlay/canvas mismatch | late swap/focus work applies after authority has moved |
 | Session & identity contract | Drag, selected, hover, guide, and inline work must reject stale async work and prevent cross-session leakage. | Drag and inline have strong partial identity models. Selected-phase and hover do not. Guides rely on drag session checks rather than their own identity. | `CanvasStageContentComposer.jsx`, `editorSelectionRuntime.js`, `useInlineSessionRuntime.js`, `HoverIndicator.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | session resurrection risk, stale overlay, wrong teardown target | old session work mutates current visuals or cleanup |
-| Critical invariants | Key invariants must always hold and be observable. | Phase 1 startup invariants remain observable, and Phase 2 now adds `drag-overlay:geometry-sync`, `drag-overlay:geometry-sync-skipped`, geometry-source propagation through the controlled indicator, post-snap overlay drift detection in `guides:post-snap-overlay-sync`, geometry-family propagation for guide evaluation, and family-specific alternation/threshold-oscillation signals in the overlay and guide traces. Handoff and session invariants still need broader enforcement. | `CanvasStageContentComposer.jsx`, `SelectionBoundsIndicator.jsx`, `useGuiasCentrado.js`, `SelectionTransformer.jsx`, inline trace modules | Partially satisfied | Medium | hard-to-debug regressions, hidden non-determinism | contract breach happens without reliable detection |
+| Critical invariants | Key invariants must always hold and be observable. | Phase 1 startup invariants remain observable, Phase 2 drag/snap invariants remain observable, Phase 3 handoff invariants remain observable, and Phase 4 now adds `reentry:blocked`, `target-conflict:blocked`, `coexistence:allowed`, `stale-reentry:blocked`, and `visibility:violation` for hover. Selected-phase, guide, and hover session identity still need broader enforcement. | `CanvasStageContentComposer.jsx`, `SelectionBoundsIndicator.jsx`, `useGuiasCentrado.js`, `SelectionTransformer.jsx`, `HoverIndicator.jsx`, inline trace modules | Partially satisfied | Medium | hard-to-debug regressions, hidden non-determinism | contract breach happens without reliable detection |
 
 ## 3. GAP CLUSTERS
 
@@ -258,7 +258,7 @@ Visible problems likely resolved:
 ### Phase 2: Drag Steady-State Geometry and Snap Sync
 
 - Status:
-  In progress on 2026-04-07. The code-side follow-up for the remaining text-plus-guides and shape/icon-plus-guides vibration is now landed, but browser verification is still required before this phase can be closed.
+  Implemented on 2026-04-07.
 - Objective:
   Make active drag geometry lawful and keep overlay geometry synchronized after snap mutations.
 - Exact contract areas addressed:
@@ -299,7 +299,6 @@ Visible problems likely resolved:
   - selected-phase geometry can still mix live-node and object-data fallback outside drag
   - settling and drag-overlay -> selected handoff remain Phase 3 work
   - guide stale-work rejection still depends on drag-session matching instead of a dedicated guide identity
-  - Phase 2 itself remains open until the text, shape, and icon drag scenarios near horizontal/vertical guides confirm that the family-aligned synchronous guide path removed visible vibration
 - Main regression risks:
   - snap feels weaker/stronger accidentally
   - guide rendering lags or disappears
@@ -307,6 +306,8 @@ Visible problems likely resolved:
 
 ### Phase 3: Drag End / Settling / Selected Handoff
 
+- Status:
+  Reopened on 2026-04-07 after a stale post-drag selected-phase ownership bug was confirmed. The code now invalidates stale drag-settle visual ownership when a newer committed selection supersedes the old drag target, but browser validation is still required before this phase can be treated as operationally closed.
 - Objective:
   Make `drag -> settling -> selected|idle` deterministic and phase-correct.
 - Exact contract areas addressed:
@@ -328,13 +329,32 @@ Visible problems likely resolved:
   - no duplicate box during drag end
   - no early transformer return
   - cleaner drag-to-idle and drag-to-selected outcomes
+- Resolved in this phase:
+  - drag-overlay handoff now waits for current-session selection repair before teardown and logs `selection:repair-complete` with the repair result
+  - stale post-drag repair work is now rejected when `dragId` or `interactionEpoch` no longer matches the active settle session
+  - transformer-backed selected-phase destinations can now prove readiness under the settling overlay through `readyProbeActive` without creating dual visible ownership
+  - the composer now waits for both transformer post-paint readiness and a second compositor-owned handoff-paint confirmation before releasing drag-overlay ownership
+  - `handoff:dual-ownership-violation` and `drag-overlay:teardown-violation` now make early selected visibility or early overlay teardown observable
+  - the Phase 3 stale-ownership root cause was a stale drag settle / handoff target surviving after committed selection had already moved elsewhere; the composer now invalidates that stale target, clears stale drag visual ownership, and rebinds selected-phase destination state to the current committed selection
+  - the remaining post-drag deadlock root cause from BOXFLOW was narrower: once committed selection moved to a new target, the hidden selected-phase ready probe could still read bounds from the visually suppressed transformer shell itself; under drag-overlay suppression that shell could report `zero-bounds`, so `selected-phase:ready-blocked` repeated and drag-overlay teardown remained deferred on `waiting-selected-phase-visual-ready`
+  - `SelectionTransformer.jsx` now resolves hidden ready-probe bounds from the live attached selection target instead of the suppressed transformer shell, preferring authoritative live text rects for single-text selections when available and otherwise using the attached-node live union; this lets the current committed selection prove readiness and prevents stale old drag-overlay ownership from staying visible indefinitely
+  - `selected-phase:post-drag-divergence`, `selected-phase:stale-handoff-invalidated`, `selected-phase:recovery-state`, `selected-phase:visual-recovered`, `transformer:stale-attachment`, and `transformer:attachment-rebound` now make stale post-drag visual ownership observable
+  - because those earlier records still were not sufficient to explain the remaining post-drag bug, the composer now also emits unified post-drag diagnostic snapshots at `drag:end-enter`, `post-drag:selection-diagnostic-state`, `click:new-selection-after-drag`, `selected-phase:diverged-from-committed-selection`, `selected-phase:rebound-to-current-selection`, `post-drag:why-selection-box-still-on-old-target`, `handoff:complete`, `hover:blocked-after-drag`, and `hover:allowed-after-drag`
+- Remaining edge cases for later phases:
+  - single-line selected destinations still use the existing line-specific selected path rather than the generic hidden-ready probe
+  - selected-phase durable identity is still implicit and is not yet enforced as a first-class session token
+  - broader session hardening across hover, guides, and selected-phase attachment still belongs to Phase 6
+  - manual browser validation is still required for fast release, repeated release, reselection-after-drag, guide-snap release, `zero-bounds` recovery to a new target, and multi-selection release scenarios before this phase can be declared closed
 - Main regression risks:
   - overlay lingers forever
   - selected-phase never reappears
   - wrong post-drag selection restoration
+  - a stale drag settle target still outlives a newer committed selection
 
 ### Phase 4: Hover Discipline
 
+- Status:
+  Implemented in code on 2026-04-07, with target-aware selected-hover coexistence, post-drag hover recovery, stale post-drag selected-phase invalidation follow-ups, and the hidden-ready `zero-bounds` deadlock fix also landed on 2026-04-07. Browser validation is still required before this phase can be treated as operationally closed, and it now depends on the Phase 3 post-drag selected-phase recovery scenarios also passing.
 - Objective:
   Make hover lawful, deterministic, and subordinate to all higher-priority owners.
 - Exact contract areas addressed:
@@ -354,6 +374,22 @@ Visible problems likely resolved:
   - no hover lingering
   - no hover reappearing after drag end
   - no hover during inline authority ownership
+- Resolved in this phase:
+  - stage hover suppression now routes through one composer-owned gate that distinguishes true global no-hover boundaries from selected-target conflict
+  - selected-phase no longer blocks hover globally; same-target hover is suppressed, while different-target hover remains lawful when no global boundary is active
+  - higher-priority hover boundaries now clear the raw hover id instead of only hiding the visual
+  - hover writes attempted during global no-hover suppression are now blocked and logged as `reentry:blocked`
+  - same-target selected-phase hover writes are now blocked and logged as `target-conflict:blocked`
+  - lawful selected-phase-plus-hover coexistence is now logged as `coexistence:allowed`
+  - the Phase 4 post-drag over-suppression root cause was narrowed to lawful drag-end no-hover boundaries dropping hover writes from an event-driven `mouseenter` pipeline; the composer now keeps the latest blocked lawful hover target and replays it after drag-overlay ownership, handoff wait, coordinator settling, and runtime drag suppression clear
+  - hover-after-drag recovery now also depends on stale selected-phase / drag-overlay ownership being invalidated when a newer committed selection supersedes the old drag target, so hover suppression no longer keeps reasoning against the stale drag destination
+  - stale hover state that reappears after a boundary clear while suppression is still active is now logged as `stale-reentry:blocked` and cleared again immediately
+  - hover visibility violations are now observable through `visibility:violation`
+  - post-drag hover recovery is now observable through `post-drag:blocked`, `post-drag:allowed`, and `post-drag:recovery-state`
+- Remaining edge cases for later phases:
+  - hover still uses id-only identity; Phase 6 is still responsible for deeper stale-work/session hardening
+  - compatibility callers can still invoke `window.setHoverIdGlobal`, so the system still relies on suppression and re-clear discipline instead of rejecting those writes through a dedicated hover session token
+  - browser validation is still required for same-target selected hover, different-target selected hover, hover-after-drag, hover-after-guide-snap, hover-during-inline, resize, crop, and rapid hover-switch scenarios before this phase can be declared closed
 - Main regression risks:
   - hover stops appearing when it should
   - external hover clears via global bridge break
@@ -467,6 +503,8 @@ Validation modes:
 - Selected-phase visuals never appear before readiness plus post-paint confirmation.
 - `drag -> idle` leaves no stale drag-overlay or selected-phase box.
 - `drag -> selected` restores the correct destination selection without duplicate visuals.
+- After drag end, selecting a different element immediately retargets the visible selection box to the new committed selection rather than leaving it on the old drag target.
+- Gear-menu target, committed selection, selected-phase attachment, and visible selection-box target remain aligned after drag.
 
 Validation modes:
 
@@ -478,7 +516,8 @@ Validation modes:
 
 - Hover cannot remain visible after a higher-priority owner takes authority.
 - Hover is suppressed for `predrag`, `drag`, `settling`, inline DOM authority, resize, crop, and background-edit modes.
-- Hover reappears only in lawful `hover` phase states.
+- Same-target hover under selected-phase is suppressed, while different-target hover remains lawful when no global no-hover boundary is active.
+- After drag end fully completes, lawful different-target hover recovers again without requiring the user to cross a second synthetic boundary after a blocked post-drag `mouseenter`.
 - Hover cleanup is observable with a deterministic suppression/clear reason.
 
 Validation modes:
@@ -569,6 +608,7 @@ Additional signals strongly recommended:
 - selected-phase destination type
 - inline render authority (`konva`, `dom-preview`, `dom-editable`)
 - session mismatch rejections for drag, hover, guide, and inline work
+- post-drag diagnostic snapshots that combine committed selection, runtime selection, drag visual selection, pending drag selection, visible selection-box target, transformer attachment, gear-menu target ids, hover suppression, drag-overlay ownership, settling/handoff state, and stale session/epoch markers in one record
 
 Instrumentation ownership by area:
 
@@ -614,21 +654,36 @@ Instrumentation ownership by area:
 
 ## 11. FINAL RECOMMENDATION
 
-Phase 2 should remain open until the text, shape, and icon drag scenarios near guides are re-verified with the new instrumentation.
+Phase 3 should remain open until the post-drag reselection scenarios are re-verified with the new selected-phase / handoff instrumentation.
 
-The immediate next step is a **Phase 2 family-guide validation pass**, not Phase 3 yet.
+Phase 4 should remain open until the hover scenarios are re-verified against that corrected post-drag selected-phase recovery.
+
+The immediate next step is a **Phase 3 + Phase 4 validation pass**, not Phase 5 yet.
 
 That validation pass should check:
 
-- text drag far from guides
-- slow text drag into horizontal and vertical guides
-- text drag hovering near the snap threshold
-- fast text drag across the same guides
-- shape drag far from guides
-- slow shape drag into horizontal and vertical guides
-- slow icon drag into horizontal and vertical guides
-- shape/icon drag hovering near the snap threshold
-- fast shape/icon drag across the same guides
-- image drag near the same guides as a control comparison
+- drag element A -> release -> selection remains on A
+- drag element A -> release -> click element B -> selection box moves from A to B immediately
+- drag element A -> release near guide -> click element B -> selection box moves from A to B immediately
+- drag element A -> release -> second drag -> release -> click another element
+- verify gear menu target, committed selection, selected-phase attachment, and visible selection box target all match after drag
+- verify the same scenarios across text, shape, icon, and multi-selection where relevant
 
-If those scenarios confirm no visible text/overlay or shape/icon-overlay vibration and the new logs stay on one geometry chain, then Phase 3 becomes the next implementation phase.
+- plain hover on an idle element
+- hover -> selected
+- hover -> drag on an unselected element
+- one selected element, hover the same element
+- one selected element, hover a different element
+- one selected element, move hover across multiple other elements
+- drag element -> release -> hover different element
+- drag element -> release near guide -> hover different element
+- drag element -> release -> immediate hover switch across multiple elements
+- drag element -> release -> hover same selected element
+- drag element -> release -> second drag -> release -> hover another element
+- hover during settling
+- hover during inline edit
+- hover during resize
+- hover during crop / background-edit
+- repeated quick hover changes between nearby elements
+
+If those scenarios confirm lawful hover-only visibility, no lingering hover, no same-target coexistence with selected-phase, and lawful different-target selected-plus-hover coexistence while the logs stay on one lawful hover chain, then Phase 5 becomes the next implementation phase.

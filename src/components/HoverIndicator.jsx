@@ -4,7 +4,6 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
-  useState,
 } from "react";
 import { Rect, Group, Line } from "react-konva";
 import {
@@ -76,32 +75,15 @@ const HoverIndicator = forwardRef(function HoverIndicator({
   objetos = [],
   activeInlineEditingId = null,
   isMobile = false,
+  interactionPhase = null,
+  activeVisualOwner = "none",
+  higherPriorityOwner = "none",
+  suppressionReasons = [],
 }, forwardedRef) {
-  const [runtimeDragActive, setRuntimeDragActive] = useState(false);
   const groupRef = useRef(null);
   const rectRef = useRef(null);
   const lineRef = useRef(null);
   const hoverIndicatorSnapshotRef = useRef(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const syncDragState = () => {
-      setRuntimeDragActive(Boolean(window._isDragging));
-    };
-
-    const onDragStart = () => setRuntimeDragActive(true);
-    const onDragEnd = () => syncDragState();
-
-    window.addEventListener("dragging-start", onDragStart);
-    window.addEventListener("dragging-end", onDragEnd);
-    syncDragState();
-
-    return () => {
-      window.removeEventListener("dragging-start", onDragStart);
-      window.removeEventListener("dragging-end", onDragEnd);
-    };
-  }, []);
 
   const node = hoveredElement ? elementRefs?.current?.[hoveredElement] || null : null;
   const hoveredObj = Array.isArray(objetos)
@@ -116,18 +98,20 @@ const HoverIndicator = forwardRef(function HoverIndicator({
     isImageHoverTarget ||
     hoveredObj?.tipo === "forma" ||
     isFunctionalCtaButton(hoveredObj);
+  const suppressionReasonsList = Array.isArray(suppressionReasons)
+    ? suppressionReasons
+    : [];
+  const suppressionReasonsKey = suppressionReasonsList.join(",");
 
   let availabilityReason = null;
-  if (runtimeDragActive) {
-    availabilityReason = "runtime-drag-active";
-  } else if (!hoveredElement) {
+  if (!hoveredElement) {
     availabilityReason = "no-hover-target";
   } else if (!node) {
     availabilityReason = "missing-node";
   } else if (!node?.getStage?.()) {
     availabilityReason = "missing-stage";
   } else if (suppressInlineTextHover) {
-    availabilityReason = "inline-editing-active";
+    availabilityReason = "inline-editing-active-fallback";
   }
 
   let box = null;
@@ -275,6 +259,10 @@ const HoverIndicator = forwardRef(function HoverIndicator({
         hoverId,
         reason,
         boundsSource: previousSnapshot.boundsSource || null,
+        phase: interactionPhase || null,
+        owner: activeVisualOwner || "hover",
+        higherPriorityOwner: higherPriorityOwner || "none",
+        suppressionReasons: suppressionReasonsList,
       }, {
         identity: hoverId,
       });
@@ -350,13 +338,17 @@ const HoverIndicator = forwardRef(function HoverIndicator({
         previousSnapshot.hoverId !== hoveredElement ||
         previousSnapshot.availabilityReason !== availabilityReason
       ) {
-        logCanvasBoxFlow("hover", "box:unavailable", {
-          source: "hover-indicator",
-          hoverId: hoveredElement,
-          reason: availabilityReason,
-        }, {
-          identity: hoveredElement,
-        });
+      logCanvasBoxFlow("hover", "box:unavailable", {
+        source: "hover-indicator",
+        hoverId: hoveredElement,
+        reason: availabilityReason,
+        phase: interactionPhase || null,
+        owner: activeVisualOwner || "hover",
+        higherPriorityOwner: higherPriorityOwner || "none",
+        suppressionReasons: suppressionReasonsList,
+      }, {
+        identity: hoveredElement,
+      });
       }
       return;
     }
@@ -367,6 +359,10 @@ const HoverIndicator = forwardRef(function HoverIndicator({
         hoverId: hoveredElement,
         boundsSource: effectiveBoundsSource,
         bounds: boundsDigest,
+        phase: interactionPhase || null,
+        owner: activeVisualOwner || "hover",
+        higherPriorityOwner: higherPriorityOwner || "none",
+        suppressionReasons: suppressionReasonsList,
       }, {
         identity: hoveredElement,
       });
@@ -388,10 +384,14 @@ const HoverIndicator = forwardRef(function HoverIndicator({
     }
   }, [
     availabilityReason,
+    activeVisualOwner,
     boundsDigest,
     effectiveBoundsSource,
+    higherPriorityOwner,
     hoveredElement,
+    interactionPhase,
     shouldRender,
+    suppressionReasonsKey,
   ]);
 
   useEffect(
@@ -406,12 +406,16 @@ const HoverIndicator = forwardRef(function HoverIndicator({
         hoverId: previousSnapshot.hoverId,
         reason: "component-unmount",
         boundsSource: previousSnapshot.boundsSource || null,
+        phase: interactionPhase || null,
+        owner: activeVisualOwner || "hover",
+        higherPriorityOwner: higherPriorityOwner || "none",
+        suppressionReasons: suppressionReasonsList,
       }, {
         identity: previousSnapshot.hoverId,
       });
       drawHoverIndicatorLayer(previousSnapshot.layer);
     },
-    []
+    [activeVisualOwner, higherPriorityOwner, interactionPhase, suppressionReasonsKey]
   );
 
   if (!shouldRender) {

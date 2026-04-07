@@ -613,17 +613,18 @@ Timing-sensitive boundary:
 Current execution order around drag end is:
 
 1. drag end callback enters composer settle logic
-2. drag interaction ends in the interaction coordinator
-3. settling snapshot is frozen
-4. selected-phase visuals begin reattaching
-5. selected-phase visible/ready state is observed
-6. extra RAF post-paint confirmation runs
-7. drag-overlay handoff guard clears
-8. overlay teardown occurs
+2. `updateDragOverlayBoxFlowSessionPhase("settling", ...)` freezes the last lawful drag-overlay geometry as the settle snapshot
+3. the interaction coordinator ends the drag and runs its short settle window
+4. `queuePostDragUiRefresh(...)` waits for that settle window, then resolves deferred selection repair only if the queued `dragId` and `interactionEpoch` still match the active settle session
+5. while the drag overlay remains mounted, the selected-phase destination may mount underneath it
+6. for transformer-backed destinations, `SelectionTransformer.jsx` can run a hidden readiness probe under the overlay once selection repair is complete and the attached nodes match the expected handoff selection
+7. selected-phase readiness and the extra composer-level post-paint handoff confirmation both complete before the overlay handoff guard clears
+8. the drag overlay is then removed
+9. only after overlay removal does selected-phase become the user-visible owner again
 
 Timing-sensitive boundary:
 
-- the drag overlay can remain mounted after pointer up even though the drag interaction is logically finished
+- the drag overlay remains the sole visible owner during settling even though the selected-phase renderer may already be mounted and proving readiness underneath it
 
 ### 8.3 Inline DOM/Konva Swap
 
@@ -901,20 +902,180 @@ Family-specific handling after the change:
 
 Verification note:
 
-- The code-side Phase 2 follow-up is implemented, but this current-state document does not treat Phase 2 as operationally closed until the text, shape, and icon drag scenarios near horizontal/vertical guides are manually re-verified in the browser with the new instrumentation.
+- Phase 2 is now the current stable drag-geometry baseline. The Phase 2 instrumentation remains in place so later phases can verify they did not reintroduce drag/snap drift across text and non-text object families.
 
-## 19. Architectural Unknowns
+## 19. Drag End / Settling / Handoff (Post Phase 3)
+
+Phase 3 tightens drag end around one rule: once pointer-up enters settling, drag-overlay remains the sole visible box owner until the destination selected-phase is both selection-correct and paint-ready for the current session.
+
+Actual execution order after the Phase 3 changes:
+
+1. Drag end still enters `startDragSettleSession(...)` and `updateDragOverlayBoxFlowSessionPhase("settling", ...)`, so the last lawful drag geometry becomes the frozen settle snapshot.
+2. `queuePostDragUiRefresh(...)` now carries the current drag interaction epoch. When it eventually runs, it refuses stale settle work if either the `dragId` or the `interactionEpoch` no longer matches the active settle session.
+3. `resolveDragSettleOutcome(...)` still performs deferred selection repair, but it now reports `selectionRepairCompleted` and `selectionRepairResult`, and `selection:repair-complete` is emitted before handoff release is allowed.
+4. While `selectionRepairPending` remains true for the active settle session, `shouldKeepDragOverlayMountedForSelectedPhaseHandoff` forces drag-overlay ownership to stay mounted and visible.
+5. Once repair is complete, the composer computes the destination selection ids for handoff and passes them to `SelectionTransformer.jsx` as `selectedPhaseHandoffExpectedSelectionIds`.
+6. If the destination uses the transformer path, `SelectionTransformer.jsx` can attach to the live nodes and run a hidden readiness probe while drag-overlay still suppresses selected-phase visibility. The readiness gate now treats `readyProbeActive` as lawful readiness input, so it can emit `selected-phase:ready-pending` and `selected-phase:ready-confirmed` without creating dual visible ownership.
+7. The composer still performs one extra handoff RAF (`selected-phase:handoff-paint-pending` -> `selected-phase:handoff-paint-confirmed`) after the transformer reports post-paint readiness.
+8. Only after repair is complete and the destination selected-phase is ready plus handoff-paint-confirmed does `shouldKeepDragOverlayMountedForSelectedPhaseHandoff` clear and let the overlay disappear.
+9. The actual user-visible ownership transfer then happens on the next selected-phase render, not by showing both owners at once.
+10. If committed selection changes to a different non-empty target after drag end but before the old settle session finishes, the composer now treats that newer committed selection as an override of the stale drag handoff target.
+11. In that override case, the composer clears the stale settle session, clears stale drag visual selection / drag-overlay session state, resets selected-phase ready/visibility handoff caches, and recomputes selected-phase destination ids from the current committed selection instead of the old drag destination.
+12. The transformer now reports attached node ids and `readyProbeActive` through selected-phase visibility/ready callbacks, so the composer can log divergence between committed selection, selected-phase attachment, and the currently visible box owner.
+13. The verified remaining Phase 3 deadlock came from that hidden-ready path measuring the suppressed transformer shell itself during drag-overlay handoff. Because the transformer is intentionally hidden while drag-overlay still owns visible authority, that shell could report `zero-bounds` even when the newly selected live node was present and current, so `selected-phase:ready-blocked` repeated and drag-overlay teardown stayed deferred on `waiting-selected-phase-visual-ready`.
+14. The current code now resolves hidden ready-probe bounds from the live attached selection target instead of the suppressed transformer shell. For single-text selections it prefers the authoritative live text rect when available; otherwise it falls back to the attached-node live union. This lets the new committed selection prove readiness under the overlay and prevents the old drag-overlay owner from remaining visible indefinitely only because the hidden transformer shell measured as `0x0`.
+
+Settling snapshot behavior:
+
+- During settling, `CanvasStageContentComposer.jsx` continues to render the drag-overlay from the frozen controlled snapshot rather than recomputing fresh selected-phase geometry.
+- The settle snapshot remains the geometry authority until the overlay is actually removed.
+- Phase 3 therefore avoids any handoff-time geometry recomputation race between the drag-overlay and selected-phase paths.
+
+Selected-phase readiness detection now works like this:
+
+- Actual selected-phase visibility remains suppressed while `dragSelectionOverlayVisible` is true.
+- For transformer-backed destinations, readiness can still be proven underneath the overlay through the hidden ready probe once selection repair is complete and the attached selection matches the expected destination ids.
+- That hidden ready probe now measures the live attached selection target, not the visually suppressed transformer shell. This is the current fix for the verified `zero-bounds` deadlock that could otherwise keep stale drag-overlay ownership latched to the old drag target after committed selection had already moved.
+- If a newer committed selection overrides the stale drag settle target, the hidden-ready / handoff path for the old target is invalidated immediately rather than being allowed to keep driving selected-phase destination state.
+- The readiness gate now emits `selected-phase:ready-reset` if a previously confirmed hidden-ready state becomes stale, hidden, or invalid before release.
+- Single-line selected destinations still use the existing line-specific selected-phase path rather than the transformer hidden-ready probe. Assumption: that existing path remains lawful, but it is not yet instrumented with the same hidden-ready contract as generic transformer selections.
+
+Post-paint confirmation role:
+
+- `SelectionTransformer.jsx` still requires valid post-paint bounds before it reports ready.
+- `CanvasStageContentComposer.jsx` then adds one more compositor-owned RAF confirmation before overlay teardown.
+- This two-step confirmation means selected-phase readiness must survive both the transformer post-paint check and the composer handoff-paint check before ownership can move.
+
+Overlay teardown timing and observability:
+
+- `handoff:dual-ownership-violation` now fires if selected-phase becomes actually visible while the drag overlay is still rendered.
+- `drag-overlay:teardown-violation` now fires if the overlay disappears while repair is still pending or before selected-phase readiness / handoff paint confirmation is complete.
+- `selection:repair-complete` now records whether the current session deferred-committed, restored prior selection, or required no committed-selection change.
+- `selection:repair-complete` now also records `selection-overridden` when a newer committed selection supersedes the stale drag settle target before repair applies.
+- `selected-phase:post-drag-divergence`, `selected-phase:stale-handoff-invalidated`, `selected-phase:recovery-state`, and `selected-phase:visual-recovered` now expose:
+  - committed selected ids
+  - runtime selected ids
+  - current visible box owner target ids
+  - handoff expected selection ids
+  - selected-phase attached node ids
+  - `readyProbeActive`
+  - drag-overlay / settling / handoff activity
+- Earlier Phase 1 / Phase 2 instrumentation was too centered on startup, drag move, snap, and overlay sync to explain the remaining post-drag bug by itself. The current post-drag diagnostic layer now also emits:
+  - `drag:end-enter`
+  - `post-drag:selection-diagnostic-state`
+  - `click:new-selection-after-drag`
+  - `selected-phase:diverged-from-committed-selection`
+  - `selected-phase:rebound-to-current-selection`
+  - `post-drag:why-selection-box-still-on-old-target`
+  - `handoff:complete`
+  - `hover:blocked-after-drag`
+  - `hover:allowed-after-drag`
+- Those diagnostic records intentionally combine committed selection, runtime selection, drag visual selection, pending drag selection, visible selection-box target, transformer attachment, gear-menu target ids, hover suppression, drag-overlay ownership, settling/handoff state, and stale session/epoch markers in one payload so post-drag divergence can be traced as one timeline.
+- `transformer:stale-attachment` and `transformer:attachment-rebound` now expose when transformer attachment does or does not match the current committed selection target after drag.
+- `drag-overlay:hidden` and `settling:end` remain the authoritative teardown markers once the overlay is actually removed.
+
+Verification note:
+
+- The code-side Phase 3 handoff hardening now includes stale post-drag selected-phase invalidation and the hidden-ready `zero-bounds` deadlock fix, but this current-state document does not treat Phase 3 as operationally closed until the release and post-drag reselection scenarios are manually re-verified in the browser with the new instrumentation.
+
+## 20. Hover Behavior (Post Phase 4)
+
+Phase 4 tightens hover around one rule: raw hover id is no longer allowed to survive as a dormant state under higher-priority owners. The follow-up refinement makes selected-phase suppression target-aware, not globally blanket, and the latest post-drag recovery fix restores lawful different-target hover once drag-end no-hover boundaries have actually cleared.
+
+Actual hover visibility rules after the Phase 4 changes:
+
+1. `CanvasStageContentComposer.jsx` now resolves the stage hover gate through `resolveStageHoverSuppression(...)`.
+2. That suppression state now distinguishes:
+   - global no-hover boundaries
+     - `drag-overlay-owner`
+     - `predrag-visual-selection`
+     - `drag-prop`
+     - `global-drag`
+     - `group-drag`
+     - `canvas-interaction-settling`
+     - `inline-dom-authority`
+     - `resize`
+     - `image-crop`
+     - `background-edit`
+     - `canvas-interaction-active`
+   - target-conflict suppression
+     - `selected-phase-target-conflict`
+3. `effectiveHoverId` is now derived from that one composer-owned suppression result, so the hover indicator only receives a hover target when no global no-hover boundary is active and the hovered target does not conflict with the current selected target ids.
+4. Selected-phase no longer acts as a blanket hover blocker. If element `A` is selected and the pointer is over element `B`, hover on `B` is now lawful as long as no global no-hover boundary is active.
+5. Same-target coexistence remains forbidden. If the hovered target matches the selected target set, the composer suppresses that hover, blocks new writes through `setHoverIdWhenIdle(...)`, and clears stale same-target hover state if it reappears.
+6. Post-drag recovery now distinguishes two cases explicitly:
+   - if drag-overlay ownership, handoff wait, or coordinator settling is still active, different-target hover is still lawfully blocked as a global no-hover boundary
+   - once those boundaries clear, the last blocked post-drag hover target is replayed automatically so the system returns to ordinary selected-plus-hover coexistence without waiting for a second `mouseenter`
+7. The composer phase trace still reports `hover` when a lawful different-target hover exists, even while selected-phase remains visible on its own target. In that state the selected box stays mounted on the selected element and the hover box owns only the hovered target.
+8. Post-drag hover recovery now also depends on selected-phase visual recovery being current. If a stale drag handoff target is invalidated by a newer committed selection, hover suppression re-evaluates against the new selected target instead of the old drag destination.
+
+Suppression boundaries now treated as authoritative hover clear boundaries:
+
+- `predrag`
+- `drag`
+- `settling`
+- inline DOM authority
+- resize
+- image crop
+- background edit
+- any remaining active interaction-coordinator boundary that suppresses hover
+
+Selected-phase is no longer a global clear boundary by itself. It becomes a hover clear boundary only when the current raw hover target conflicts with the selected target set.
+
+Clear ownership model after the change:
+
+- `clearHoverForInteractionBoundary(...)` is now the shared boundary clear path for composer-owned hover teardown.
+- It records the higher-priority owner, suppression reasons, clear driver, and phase before calling both `HoverIndicator.forceHide(...)` and `setHoverId(null, ...)`.
+- The raw hover state therefore does not remain parked behind the visual gate once ownership has moved elsewhere.
+- Inline-entry hover clear and image-crop interaction start now both go through that same boundary clear helper instead of clearing hover ad hoc.
+
+Cleanup timing after the change:
+
+1. A higher-priority owner or suppression boundary becomes active.
+2. The composer suppression snapshot detects the transition.
+3. If raw hover state is still present under a global boundary or a same-target selected conflict, the composer emits `forced-clear` and clears it immediately through the shared boundary helper.
+4. If a stale hover write arrives while suppression is still active, the composer emits `stale-reentry:blocked` and clears it again.
+5. If a different-target hover write lands during the short post-drag global boundary window, the composer records it as pending recovery instead of dropping it permanently.
+6. When drag-overlay ownership, handoff wait, coordinator settling, and runtime drag flags have truly cleared, the composer replays that pending hover target through the normal hover gate.
+7. If selection remains active but the hovered target differs from the selected target set, the composer now logs `coexistence:allowed` instead of suppressing that hover globally.
+8. Once suppression ends, hover may re-enter through a fresh lawful hover write or through the pending post-drag replay path, both of which return the system to the normal target-aware hover state.
+
+Observability added in Phase 4:
+
+- `stage:suppressed` / `stage:resumed` now include the current phase, current owner, higher-priority owner, selected target ids, and whether suppression is `global`, `target-conflict`, or `mixed`.
+- `forced-clear` now records whether the clear was boundary-driven, which suppression reason triggered it, and whether the clear came from a global boundary or a selected-target conflict.
+- `reentry:blocked` records hover writes that were rejected before they could become visible under a global no-hover boundary.
+- `target-conflict:blocked` records hover writes that were rejected because the hovered target matched the selected target set.
+- `coexistence:allowed` records lawful selected-phase-plus-hover coexistence when the hovered target differs from the selected target set.
+- `post-drag:blocked`, `post-drag:allowed`, and `post-drag:recovery-state` now expose whether hover-after-drag is still under a lawful global boundary, has a pending replay target, or has returned to normal selected-plus-hover coexistence.
+- `stale-reentry:blocked` records raw hover state that tried to reappear after a boundary clear while suppression was still active.
+- `visibility:violation` now records any case where the hover indicator is still visibly mounted during a global no-hover boundary or on the same target already owned by selected-phase.
+- `HoverIndicator.jsx` now reports `box:shown`, `box:hidden`, and `box:unavailable` together with the current phase, current owner, higher-priority owner, and suppression reasons supplied by the composer.
+
+Remaining caveats:
+
+- Hover identity is still id-only. Phase 4 removes most visible hover leaks, but it does not introduce a first-class hover session token; deeper stale-work hardening still belongs to Phase 6.
+- `window.setHoverIdGlobal` remains available for compatibility. External callers can still attempt unlawful hover writes, but the composer now suppresses and clears them deterministically if they arrive during a no-hover boundary.
+- `useCanvasEditorSelectionUi.js` now shares the same runtime drag/group-drag/resize suppression helper as the composer for bridge compatibility, but the composer remains the authoritative hover visibility gate for stage rendering.
+- Same-target selected-phase conflict is currently determined from the selected target id set, not from a dedicated selected-phase session token. Phase 6 is still responsible for deeper identity hardening if stale selected membership ever becomes observable.
+- Post-drag hover recovery currently replays the latest blocked lawful hover target. Assumption: the last blocked target is the correct recovery target for the user-visible pointer position because the hover pipeline is still `mouseenter`/`mouseleave` driven rather than pointer-position sampled.
+
+Verification note:
+
+- The code-side Phase 4 hover hardening is implemented, but this current-state document does not treat Phase 4 as operationally closed until the hover scenarios are manually re-verified in the browser with the new instrumentation.
+
+## 21. Architectural Unknowns
 
 - The code provides strong local sequencing around drag-overlay startup and inline swap, but there is no single end-to-end runtime trace that proves every intra-frame ordering across all React effects in every browser.
 - Hover and guide behavior are clear for the main canvas path, but this audit did not attempt to enumerate every possible external caller of `window.setHoverIdGlobal`.
 - The exact cross-browser selection/caret quirks of `InlineTextOverlayEditor.jsx` are not fully documented in code comments; the runtime compensations are visible, but not all browser-specific motivations are explicit.
 
-## 20. Assumptions
+## 22. Assumptions
 
 - Assumption: where this document describes exact sub-frame ordering inside the inline DOM swap path, that order is inferred from the hook structure, emitted phase transitions, and runtime state transitions in the audited modules; the code does not expose one centralized timeline tracer for every inner step.
 - Assumption: template editor sessions use the same interaction/rendering subsystem as draft sessions unless a preview/publish-facing bridge explicitly branches by session kind. This matches the active `CanvasEditor.jsx` composition.
 
-## 21. Critical Invariants
+## 23. Critical Invariants
 
 These invariants are detectable in the current code and should be treated as explicit system rules for future work:
 
@@ -926,6 +1087,8 @@ These invariants are detectable in the current code and should be treated as exp
 - Guide evaluation only participates in the individual single-element drag pipeline; it is not the authority for multi-selection/group drag.
 - If guide snap mutates the live node during drag, the drag-overlay bounds must be resynchronized from live geometry afterward.
 - Inline DOM overlay visual ownership requires a matching inline mount session, matching session/token acknowledgement, `swapCommitted`, and `renderAuthority` in a DOM-owned phase.
-- Drag-overlay teardown after drag end is not allowed to preempt selected-phase readiness; the handoff waits for visible, ready, and post-paint confirmation.
+- Drag-overlay teardown after drag end is not allowed to preempt current-session selection repair, selected-phase readiness, or composer handoff-paint confirmation; selected-phase readiness may be proven while still hidden under the settling overlay, but dual visible ownership is forbidden.
+- If committed selection changes to a different non-empty target after drag end, the old drag settle target is no longer allowed to keep selected-phase or drag-overlay visual ownership; stale handoff-specific target state must be invalidated and selected-phase must rebind to the current committed selection.
+- Hover is lawful only when no global no-hover boundary is active and the hovered target does not conflict with the current selected target set; after drag end, the system returns to that target-aware hover state only once drag-overlay ownership, handoff wait, coordinator settling, and runtime drag suppression have all cleared, and any blocked lawful hover target from that window must be replayed or replaced by a newer hover write.
 - Text consumers should prefer authoritative live text geometry. Generic client-rect fallback is a compatibility path, not a preferred geometry source.
 - External consumers should read live editor state through `window.editorSnapshot`, documented bridges, or custom events, not through scratch globals.

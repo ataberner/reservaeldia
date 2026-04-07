@@ -4,7 +4,8 @@ Phase 1 freezes a lightweight visual-reference catalog for preview/publish parit
 
 Contract anchor:
 
-- `docs/architecture/PREVIEW_SYSTEM_TARGET.md`
+- `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`
+- `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`
 
 Shared fixture source of truth:
 

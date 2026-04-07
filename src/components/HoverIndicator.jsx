@@ -11,6 +11,9 @@ import {
   buildSelectionFramePolygon,
   getSelectionFramePadding,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import {
+  resolveSingleTextSelectionVisualBounds,
+} from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import {
   buildCanvasBoxFlowBoundsDigest,
@@ -106,10 +109,10 @@ const HoverIndicator = forwardRef(function HoverIndicator({
     : null;
   const suppressInlineTextHover =
     hoveredObj?.tipo === "texto" && hoveredElement === activeInlineEditingId;
+  const isTextHoverTarget = hoveredObj?.tipo === "texto";
   const isImageHoverTarget =
     hoveredObj?.tipo === "imagen" && !hoveredObj?.esFondo;
   const shouldUseRotatedFrame =
-    hoveredObj?.tipo === "texto" ||
     isImageHoverTarget ||
     hoveredObj?.tipo === "forma" ||
     isFunctionalCtaButton(hoveredObj);
@@ -129,9 +132,23 @@ const HoverIndicator = forwardRef(function HoverIndicator({
 
   let box = null;
   let boundsSource = null;
+  let renderBounds = null;
 
   if (!availabilityReason) {
-    if (
+    if (isTextHoverTarget) {
+      renderBounds = resolveSingleTextSelectionVisualBounds({
+        object: hoveredObj,
+        node,
+        isMobile,
+        includePadding: true,
+      });
+      boundsSource =
+        renderBounds?.kind === "polygon"
+          ? "text-visual-polygon"
+          : renderBounds?.kind === "rect"
+            ? "text-visual-rect"
+            : "text-visual-missing";
+    } else if (
       hoveredObj?.tipo === "galeria" &&
       Number.isFinite(Number(hoveredObj.width)) &&
       Number.isFinite(Number(hoveredObj.height))
@@ -170,25 +187,15 @@ const HoverIndicator = forwardRef(function HoverIndicator({
     ? 0
     : getSelectionFramePadding(isMobile);
   const framePoints =
-    !availabilityReason && shouldUseRotatedFrame
+    !availabilityReason && !isTextHoverTarget && shouldUseRotatedFrame
       ? buildSelectionFramePolygon(node, framePadding)
       : null;
   const hasFramePoints =
     Array.isArray(framePoints) &&
     framePoints.length === 8 &&
     framePoints.every((value) => Number.isFinite(Number(value)));
-  const effectiveBoundsSource = hasFramePoints ? "polygon" : boundsSource;
-
-  if (
-    !availabilityReason &&
-    !hasFramePoints &&
-    (!box || isNaN(box.x) || isNaN(box.y) || box.width <= 0 || box.height <= 0)
-  ) {
-    availabilityReason = "invalid-bounds";
-  }
-
-  const boundsDigest = buildCanvasBoxFlowBoundsDigest(
-    hasFramePoints
+  if (!renderBounds && !availabilityReason) {
+    renderBounds = hasFramePoints
       ? { kind: "polygon", points: framePoints }
       : box
         ? {
@@ -198,8 +205,34 @@ const HoverIndicator = forwardRef(function HoverIndicator({
             width: box.width + framePadding * 2,
             height: box.height + framePadding * 2,
           }
-        : null
-  );
+        : null;
+  }
+  const effectiveBoundsSource =
+    renderBounds?.kind === "polygon"
+      ? boundsSource === "text-visual-polygon"
+        ? boundsSource
+        : "polygon"
+      : boundsSource;
+
+  if (
+    !availabilityReason &&
+    (
+      !renderBounds ||
+      (
+        renderBounds.kind === "rect" &&
+        (
+          isNaN(renderBounds.x) ||
+          isNaN(renderBounds.y) ||
+          renderBounds.width <= 0 ||
+          renderBounds.height <= 0
+        )
+      )
+    )
+  ) {
+    availabilityReason = "invalid-bounds";
+  }
+
+  const boundsDigest = buildCanvasBoxFlowBoundsDigest(renderBounds);
   const shouldRender = Boolean(hoveredElement && !availabilityReason && boundsDigest);
 
   const forceHideHoverVisual = useCallback((meta = {}) => {
@@ -387,10 +420,10 @@ const HoverIndicator = forwardRef(function HoverIndicator({
 
   return (
     <Group ref={groupRef} name="ui-hover-indicator">
-      {hasFramePoints ? (
+      {renderBounds?.kind === "polygon" ? (
         <Line
           ref={lineRef}
-          points={framePoints}
+          points={renderBounds.points}
           closed
           fillEnabled={false}
           stroke="#9333EA"
@@ -401,10 +434,10 @@ const HoverIndicator = forwardRef(function HoverIndicator({
       ) : (
         <Rect
           ref={rectRef}
-          x={box.x - framePadding}
-          y={box.y - framePadding}
-          width={box.width + framePadding * 2}
-          height={box.height + framePadding * 2}
+          x={renderBounds?.kind === "rect" ? renderBounds.x : 0}
+          y={renderBounds?.kind === "rect" ? renderBounds.y : 0}
+          width={renderBounds?.kind === "rect" ? renderBounds.width : 0}
+          height={renderBounds?.kind === "rect" ? renderBounds.height : 0}
           fill="transparent"
           stroke="#9333EA"
           strokeWidth={2}

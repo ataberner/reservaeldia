@@ -32,6 +32,17 @@ import {
   logCanvasBoxFlow,
   recordCanvasBoxFlowSummary,
 } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
+import {
+  buildTextGeometryContractRect,
+  buildTextGeometryContractRectDelta,
+  evaluateTextGeometryContractRectAlignment,
+  logTextGeometryContractInvariant,
+  readTextGeometryContractSnapshot,
+  roundTextGeometryContractMetric,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
+import {
+  resolveAuthoritativeTextRect,
+} from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
 
 function hasFinitePolygonPoints(points) {
   return (
@@ -195,6 +206,368 @@ function flushIndicatorLayerDraw(groupNode, immediate = false) {
   layer.batchDraw?.();
 }
 
+function getSelectionVisualNowMs() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function roundSelectionVisualMetric(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const factor = 10 ** digits;
+  return Math.round(numeric * factor) / factor;
+}
+
+function buildSelectionVisualRect(rect = null) {
+  if (!rect) return null;
+  return {
+    x: roundSelectionVisualMetric(rect.x),
+    y: roundSelectionVisualMetric(rect.y),
+    width: roundSelectionVisualMetric(rect.width),
+    height: roundSelectionVisualMetric(rect.height),
+    centerX: roundSelectionVisualMetric(
+      Number(rect.x) + Number(rect.width) / 2
+    ),
+    centerY: roundSelectionVisualMetric(
+      Number(rect.y) + Number(rect.height) / 2
+    ),
+  };
+}
+
+function buildSelectionVisualRectDelta(previousRect = null, nextRect = null) {
+  if (!previousRect || !nextRect) return null;
+  return {
+    dx: roundSelectionVisualMetric(Number(nextRect.x) - Number(previousRect.x)),
+    dy: roundSelectionVisualMetric(Number(nextRect.y) - Number(previousRect.y)),
+    dWidth: roundSelectionVisualMetric(
+      Number(nextRect.width) - Number(previousRect.width)
+    ),
+    dHeight: roundSelectionVisualMetric(
+      Number(nextRect.height) - Number(previousRect.height)
+    ),
+    dCenterX: roundSelectionVisualMetric(
+      (
+        Number(nextRect.x) + Number(nextRect.width) / 2
+      ) - (
+        Number(previousRect.x) + Number(previousRect.width) / 2
+      )
+    ),
+    dCenterY: roundSelectionVisualMetric(
+      (
+        Number(nextRect.y) + Number(nextRect.height) / 2
+      ) - (
+        Number(previousRect.y) + Number(previousRect.height) / 2
+      )
+    ),
+  };
+}
+
+function hasMeaningfulSelectionVisualRectDelta(delta = null, threshold = 0.5) {
+  if (!delta) return false;
+  return [
+    delta.dx,
+    delta.dy,
+    delta.dWidth,
+    delta.dHeight,
+    delta.dCenterX,
+    delta.dCenterY,
+  ].some((value) => Math.abs(Number(value || 0)) >= threshold);
+}
+
+function buildSelectionVisualInsets(outerRect = null, innerRect = null) {
+  if (!outerRect || !innerRect) return null;
+  return {
+    left: roundSelectionVisualMetric(Number(innerRect.x) - Number(outerRect.x)),
+    top: roundSelectionVisualMetric(Number(innerRect.y) - Number(outerRect.y)),
+    right: roundSelectionVisualMetric(
+      Number(outerRect.x) +
+        Number(outerRect.width) -
+        (Number(innerRect.x) + Number(innerRect.width))
+    ),
+    bottom: roundSelectionVisualMetric(
+      Number(outerRect.y) +
+        Number(outerRect.height) -
+        (Number(innerRect.y) + Number(innerRect.height))
+    ),
+  };
+}
+
+function buildSelectionVisualInsetsDelta(previousInsets = null, nextInsets = null) {
+  if (!previousInsets || !nextInsets) return null;
+  return {
+    dLeft: roundSelectionVisualMetric(
+      Number(nextInsets.left) - Number(previousInsets.left)
+    ),
+    dTop: roundSelectionVisualMetric(
+      Number(nextInsets.top) - Number(previousInsets.top)
+    ),
+    dRight: roundSelectionVisualMetric(
+      Number(nextInsets.right) - Number(previousInsets.right)
+    ),
+    dBottom: roundSelectionVisualMetric(
+      Number(nextInsets.bottom) - Number(previousInsets.bottom)
+    ),
+  };
+}
+
+function hasMeaningfulSelectionVisualInsetsDelta(delta = null, threshold = 0.5) {
+  if (!delta) return false;
+  return [
+    delta.dLeft,
+    delta.dTop,
+    delta.dRight,
+    delta.dBottom,
+  ].some((value) => Math.abs(Number(value || 0)) >= threshold);
+}
+
+function hasMeaningfulSelectionVisualInsets(insets = null, threshold = 0.5) {
+  if (!insets) return false;
+  return [
+    insets.left,
+    insets.top,
+    insets.right,
+    insets.bottom,
+  ].some((value) => Math.abs(Number(value || 0)) >= threshold);
+}
+
+function didSelectionVisualMetricAlternate(previousValue, nextValue, threshold = 0.5) {
+  const previous = Number(previousValue);
+  const next = Number(nextValue);
+  if (!Number.isFinite(previous) || !Number.isFinite(next)) return false;
+  if (Math.abs(previous) <= threshold || Math.abs(next) <= threshold) {
+    return false;
+  }
+  return (previous < 0 && next > 0) || (previous > 0 && next < 0);
+}
+
+function detectSelectionVisualRectDeltaAlternation(
+  previousDelta = null,
+  nextDelta = null,
+  threshold = 0.5
+) {
+  if (!previousDelta || !nextDelta) {
+    return {
+      alternated: false,
+      axes: [],
+    };
+  }
+
+  const axes = [];
+  if (
+    didSelectionVisualMetricAlternate(previousDelta.dx, nextDelta.dx, threshold) ||
+    didSelectionVisualMetricAlternate(
+      previousDelta.dCenterX,
+      nextDelta.dCenterX,
+      threshold
+    )
+  ) {
+    axes.push("x");
+  }
+  if (
+    didSelectionVisualMetricAlternate(previousDelta.dy, nextDelta.dy, threshold) ||
+    didSelectionVisualMetricAlternate(
+      previousDelta.dCenterY,
+      nextDelta.dCenterY,
+      threshold
+    )
+  ) {
+    axes.push("y");
+  }
+
+  return {
+    alternated: axes.length > 0,
+    axes,
+  };
+}
+
+function boundsToSelectionVisualRect(bounds = null) {
+  if (!bounds || typeof bounds !== "object") return null;
+
+  if (bounds.kind === "polygon" && Array.isArray(bounds.points) && bounds.points.length >= 8) {
+    const xs = bounds.points
+      .filter((_, index) => index % 2 === 0)
+      .map((value) => Number(value))
+      .filter(Number.isFinite);
+    const ys = bounds.points
+      .filter((_, index) => index % 2 === 1)
+      .map((value) => Number(value))
+      .filter(Number.isFinite);
+    if (xs.length === 0 || ys.length === 0) return null;
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  return {
+    x: Number(bounds.x) || 0,
+    y: Number(bounds.y) || 0,
+    width: Number(bounds.width) || 0,
+    height: Number(bounds.height) || 0,
+  };
+}
+
+function readOverlayRenderedStageRect(rectNode, polygonNode, bounds = null) {
+  const fallbackRect = boundsToSelectionVisualRect(bounds);
+
+  if (bounds?.kind === "polygon") {
+    const polygonPoints =
+      typeof polygonNode?.points === "function" ? polygonNode.points() : null;
+    if (Array.isArray(polygonPoints) && polygonPoints.length >= 8) {
+      return boundsToSelectionVisualRect({
+        kind: "polygon",
+        points: polygonPoints,
+      });
+    }
+    return fallbackRect;
+  }
+
+  if (!rectNode) return fallbackRect;
+  return {
+    x: typeof rectNode.x === "function" ? Number(rectNode.x() || 0) : Number(bounds?.x || 0),
+    y: typeof rectNode.y === "function" ? Number(rectNode.y() || 0) : Number(bounds?.y || 0),
+    width:
+      typeof rectNode.width === "function"
+        ? Number(rectNode.width() || 0)
+        : Number(bounds?.width || 0),
+    height:
+      typeof rectNode.height === "function"
+        ? Number(rectNode.height() || 0)
+        : Number(bounds?.height || 0),
+  };
+}
+
+function readTextNodeStageRect(node, stage = null, objectMeta = null) {
+  if (!node || typeof node.getClientRect !== "function") return null;
+  try {
+    const rect = node.getClientRect({
+      relativeTo: stage || undefined,
+      skipTransform: false,
+      skipShadow: true,
+      skipStroke: true,
+    });
+    if (
+      !rect ||
+      !Number.isFinite(Number(rect.x)) ||
+      !Number.isFinite(Number(rect.y)) ||
+      !Number.isFinite(Number(rect.width)) ||
+      !Number.isFinite(Number(rect.height))
+    ) {
+      return null;
+    }
+    const authoritativeTextRect = resolveAuthoritativeTextRect(node, objectMeta, {
+      fallbackRect: rect,
+    });
+    if (authoritativeTextRect) {
+      return {
+        x: Number(authoritativeTextRect.x),
+        y: Number(authoritativeTextRect.y),
+        width: Number(authoritativeTextRect.width),
+        height: Number(authoritativeTextRect.height),
+      };
+    }
+    return {
+      x: Number(rect.x),
+      y: Number(rect.y),
+      width: Number(rect.width),
+      height: Number(rect.height),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function projectSelectionVisualRectToViewport(stage, rect = null) {
+  if (!stage || !rect) return null;
+
+  const containerRect = stage.container?.()?.getBoundingClientRect?.() || null;
+  const stageWidth =
+    typeof stage.width === "function" ? Number(stage.width() || 0) : 0;
+  const stageHeight =
+    typeof stage.height === "function" ? Number(stage.height() || 0) : 0;
+
+  if (
+    !containerRect ||
+    !Number.isFinite(containerRect.left) ||
+    !Number.isFinite(containerRect.top) ||
+    !Number.isFinite(containerRect.width) ||
+    !Number.isFinite(containerRect.height) ||
+    stageWidth <= 0 ||
+    stageHeight <= 0
+  ) {
+    return null;
+  }
+
+  const scaleX = containerRect.width / stageWidth;
+  const scaleY = containerRect.height / stageHeight;
+
+  return {
+    x: containerRect.left + Number(rect.x) * scaleX,
+    y: containerRect.top + Number(rect.y) * scaleY,
+    width: Number(rect.width) * scaleX,
+    height: Number(rect.height) * scaleY,
+    projectionScaleX: roundSelectionVisualMetric(scaleX, 4),
+    projectionScaleY: roundSelectionVisualMetric(scaleY, 4),
+  };
+}
+
+function buildTextNodeVisualMetrics(node, objectMeta = null) {
+  if (!node) return null;
+
+  return {
+    node: getKonvaNodeDebugInfo(node),
+    objectX: roundSelectionVisualMetric(objectMeta?.x),
+    objectY: roundSelectionVisualMetric(objectMeta?.y),
+    objectWidth: roundSelectionVisualMetric(objectMeta?.width),
+    objectHeight: roundSelectionVisualMetric(objectMeta?.height),
+    textLength: String(
+      (typeof node.text === "function" ? node.text() : objectMeta?.texto) || ""
+    ).length,
+    fontSize:
+      typeof node.fontSize === "function"
+        ? roundSelectionVisualMetric(node.fontSize(), 3)
+        : roundSelectionVisualMetric(objectMeta?.fontSize, 3),
+    lineHeight:
+      typeof node.lineHeight === "function"
+        ? roundSelectionVisualMetric(node.lineHeight(), 3)
+        : roundSelectionVisualMetric(objectMeta?.lineHeight, 3),
+    padding:
+      typeof node.padding === "function"
+        ? roundSelectionVisualMetric(node.padding(), 3)
+        : roundSelectionVisualMetric(objectMeta?.padding, 3),
+    align: typeof node.align === "function" ? node.align() || null : objectMeta?.align || null,
+    verticalAlign:
+      typeof node.verticalAlign === "function"
+        ? node.verticalAlign() || null
+        : objectMeta?.verticalAlign || null,
+    wrap: typeof node.wrap === "function" ? node.wrap() || null : objectMeta?.wrap || null,
+    ellipsis:
+      typeof node.ellipsis === "function"
+        ? Boolean(node.ellipsis())
+        : Boolean(objectMeta?.ellipsis),
+    letterSpacing:
+      typeof node.letterSpacing === "function"
+        ? roundSelectionVisualMetric(node.letterSpacing(), 3)
+        : roundSelectionVisualMetric(objectMeta?.letterSpacing, 3),
+    textWidth:
+      typeof node.textWidth === "function"
+        ? roundSelectionVisualMetric(node.textWidth(), 3)
+        : null,
+    textHeight:
+      typeof node.textHeight === "function"
+        ? roundSelectionVisualMetric(node.textHeight(), 3)
+        : null,
+  };
+}
+
 export function resolveSelectionBounds({
   selectedElements,
   elementRefs,
@@ -305,6 +678,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   const badgeTextRef = useRef(null);
   const indicatorSnapshotRef = useRef(null);
   const latestInputsRef = useRef(null);
+  const visualMismatchSnapshotRef = useRef(null);
   const controlledModeInitializedRef = useRef(false);
   const controlledMountReadyKeyRef = useRef(null);
   const [controlledMountReadyVersion, setControlledMountReadyVersion] = useState(0);
@@ -507,6 +881,453 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     notifyControlledMountCandidateChanged();
   }, [notifyControlledMountCandidateChanged]);
 
+  const maybeLogOverlayTextMismatch = useCallback((nextBounds, meta = {}) => {
+    const currentInputs = latestInputsRef.current || {};
+    const currentDebugSource =
+      meta.debugSource ||
+      currentInputs.debugSource ||
+      debugSource;
+
+    if (currentDebugSource !== "drag-overlay") return;
+
+    const currentSelectedElements = Array.isArray(meta.selectedIds)
+      ? meta.selectedIds
+      : (
+          Array.isArray(currentInputs.selectedElements)
+            ? currentInputs.selectedElements
+            : []
+        );
+    if (currentSelectedElements.length !== 1) return;
+
+    const selectedId = String(currentSelectedElements[0] || "").trim();
+    if (!selectedId) return;
+
+    const selectedObject = Array.isArray(currentInputs.objetos)
+      ? currentInputs.objetos.find((objeto) => objeto?.id === selectedId) || null
+      : null;
+    if (selectedObject?.tipo !== "texto") return;
+
+    const selectedNode = currentInputs.elementRefs?.current?.[selectedId] || null;
+    const stage =
+      selectedNode?.getStage?.() ||
+      groupRef.current?.getStage?.() ||
+      null;
+    if (!stage) return;
+
+    const overlayRequestedStageRect = boundsToSelectionVisualRect(nextBounds);
+    const overlayRenderedStageRect = readOverlayRenderedStageRect(
+      rectRef.current,
+      polygonRef.current,
+      nextBounds
+    );
+    const textStageRect = readTextNodeStageRect(selectedNode, stage, selectedObject);
+    const overlayRequestedViewportRect = projectSelectionVisualRectToViewport(
+      stage,
+      overlayRequestedStageRect
+    );
+    const overlayRenderedViewportRect = projectSelectionVisualRectToViewport(
+      stage,
+      overlayRenderedStageRect
+    );
+    const textViewportRect = projectSelectionVisualRectToViewport(
+      stage,
+      textStageRect
+    );
+    const stageInsets = buildSelectionVisualInsets(
+      overlayRenderedStageRect,
+      textStageRect
+    );
+    const viewportInsets = buildSelectionVisualInsets(
+      overlayRenderedViewportRect,
+      textViewportRect
+    );
+
+    const currentVisualIdentity =
+      meta.identity ||
+      currentInputs.boxFlowIdentity ||
+      selectedId;
+    const currentSessionIdentity =
+      meta.sessionIdentity ||
+      currentInputs.boxFlowSessionIdentity ||
+      currentVisualIdentity;
+    const previousSnapshot = visualMismatchSnapshotRef.current || {};
+    const overlayStageDelta = buildSelectionVisualRectDelta(
+      previousSnapshot.overlayRenderedStageRect,
+      overlayRenderedStageRect
+    );
+    const textStageDelta = buildSelectionVisualRectDelta(
+      previousSnapshot.textStageRect,
+      textStageRect
+    );
+    const overlayViewportDelta = buildSelectionVisualRectDelta(
+      previousSnapshot.overlayRenderedViewportRect,
+      overlayRenderedViewportRect
+    );
+    const textViewportDelta = buildSelectionVisualRectDelta(
+      previousSnapshot.textViewportRect,
+      textViewportRect
+    );
+    const stageInsetsDelta = buildSelectionVisualInsetsDelta(
+      previousSnapshot.stageInsets,
+      stageInsets
+    );
+    const viewportInsetsDelta = buildSelectionVisualInsetsDelta(
+      previousSnapshot.viewportInsets,
+      viewportInsets
+    );
+    const overlayMovedStage = hasMeaningfulSelectionVisualRectDelta(overlayStageDelta);
+    const textMovedStage = hasMeaningfulSelectionVisualRectDelta(textStageDelta);
+    const overlayMovedViewport = hasMeaningfulSelectionVisualRectDelta(overlayViewportDelta);
+    const textMovedViewport = hasMeaningfulSelectionVisualRectDelta(textViewportDelta);
+    const stageMismatchChanged =
+      hasMeaningfulSelectionVisualInsetsDelta(stageInsetsDelta);
+    const viewportMismatchChanged =
+      hasMeaningfulSelectionVisualInsetsDelta(viewportInsetsDelta);
+    const sample = sampleCanvasInteractionLog(
+      `drag-overlay:text-visual-compare:${currentSessionIdentity || selectedId}`,
+      {
+        firstCount: 6,
+        throttleMs: 120,
+      }
+    );
+    const shouldForceLog =
+      stageMismatchChanged ||
+      viewportMismatchChanged ||
+      overlayMovedStage !== textMovedStage ||
+      overlayMovedViewport !== textMovedViewport ||
+      meta.source === "dragmove-sync" ||
+      meta.source === "controlled-apply";
+    const hasStageMismatch = hasMeaningfulSelectionVisualInsets(stageInsets);
+    const hasViewportMismatch = hasMeaningfulSelectionVisualInsets(viewportInsets);
+    const mismatchFailureReason =
+      overlayMovedStage !== textMovedStage
+        ? "overlay rendered rect and visible text did not move together in stage space"
+        : overlayMovedViewport !== textMovedViewport
+          ? "overlay rendered rect and visible text did not move together in viewport space"
+          : hasStageMismatch
+            ? "overlay rendered rect diverged from visible text rect in stage space"
+            : hasViewportMismatch
+              ? "overlay rendered rect diverged from visible text rect in viewport space"
+              : null;
+    const latestSnapSnapshot = readTextGeometryContractSnapshot(
+      currentSessionIdentity,
+      selectedId,
+      {
+        preferPrimaryOnly: Boolean(currentSessionIdentity),
+      }
+    );
+    const snapAuthoritativeRect =
+      latestSnapSnapshot?.postRereadAuthoritativeRect || null;
+    const snapAppliedRect = latestSnapSnapshot?.snapAppliedRect || null;
+    const preSnapRect = latestSnapSnapshot?.preSnapRect || null;
+    const overlayToTextStageDelta = buildTextGeometryContractRectDelta(
+      textStageRect,
+      overlayRenderedStageRect
+    );
+    const overlayRequestedToTextStageDelta = buildTextGeometryContractRectDelta(
+      textStageRect,
+      overlayRequestedStageRect
+    );
+    const overlayToTextAlternation = detectSelectionVisualRectDeltaAlternation(
+      previousSnapshot.overlayToTextStageDelta,
+      overlayToTextStageDelta
+    );
+    const overlayRequestedToTextAlternation =
+      detectSelectionVisualRectDeltaAlternation(
+        previousSnapshot.overlayRequestedToTextStageDelta,
+        overlayRequestedToTextStageDelta
+      );
+    const textAlignedToSnapCheck = evaluateTextGeometryContractRectAlignment(
+      snapAuthoritativeRect,
+      textStageRect,
+      {
+        tolerance: 0.75,
+        expectedLabel: "post-snap authoritative rect",
+        actualLabel: "visible text rect",
+      }
+    );
+    const overlayAlignedToSnapCheck = evaluateTextGeometryContractRectAlignment(
+      snapAuthoritativeRect,
+      overlayRenderedStageRect,
+      {
+        tolerance: 0.75,
+        expectedLabel: "post-snap authoritative rect",
+        actualLabel: "overlay rendered rect",
+      }
+    );
+    const overlayRequestedAlignedToSnapCheck = evaluateTextGeometryContractRectAlignment(
+      snapAuthoritativeRect,
+      overlayRequestedStageRect,
+      {
+        tolerance: 0.75,
+        expectedLabel: "post-snap authoritative rect",
+        actualLabel: "overlay requested rect",
+      }
+    );
+    const staleSource =
+      !overlayRequestedAlignedToSnapCheck.pass
+        ? "selection-bounds-request"
+        : !overlayAlignedToSnapCheck.pass
+          ? "rendered-overlay-frame"
+          : null;
+    const explicitSnapOverlayFailure =
+      Boolean(latestSnapSnapshot?.snapCommitted) &&
+      textAlignedToSnapCheck.pass &&
+      !overlayAlignedToSnapCheck.pass;
+    const visualNowMs = getSelectionVisualNowMs();
+    const previousMismatchFrameCount = Number(previousSnapshot.mismatchFrameCount || 0);
+    const previousMismatchActive = previousSnapshot.explicitSnapOverlayFailure === true;
+    const mismatchFrameCount = explicitSnapOverlayFailure
+      ? previousMismatchActive
+        ? previousMismatchFrameCount + 1
+        : 1
+      : 0;
+    const mismatchFirstAtMs = explicitSnapOverlayFailure
+      ? previousMismatchActive
+        ? Number(previousSnapshot.mismatchFirstAtMs || visualNowMs)
+        : visualNowMs
+      : null;
+    const mismatchDurationMs = explicitSnapOverlayFailure
+      ? roundTextGeometryContractMetric(visualNowMs - Number(mismatchFirstAtMs || visualNowMs), 3)
+      : null;
+    const latestSnapRecordedAtMs = Number(latestSnapSnapshot?.recordedAtMs);
+    const latestSnapAgeMs = Number.isFinite(latestSnapRecordedAtMs)
+      ? roundTextGeometryContractMetric(visualNowMs - latestSnapRecordedAtMs, 3)
+      : null;
+    const alternatingGeometryValues =
+      overlayToTextAlternation.alternated ||
+      overlayRequestedToTextAlternation.alternated;
+    const previousAlternatingActive =
+      previousSnapshot.alternatingGeometryValues === true;
+    const alternatingMismatchCount = alternatingGeometryValues
+      ? previousAlternatingActive
+        ? Number(previousSnapshot.alternatingMismatchCount || 0) + 1
+        : 1
+      : 0;
+    const mismatchRelativeToSnap =
+      explicitSnapOverlayFailure
+        ? (
+            meta.source === "guide-post-snap-sync"
+              ? "after-post-snap-overlay-resync"
+              : "after-snap-before-overlay-convergence"
+          )
+        : (
+            latestSnapSnapshot?.snapCommitted
+              ? "post-snap-converged"
+              : "pre-snap-or-no-snap"
+          );
+    const thresholdOscillationLikely =
+      latestSnapSnapshot?.thresholdOscillationLikely === true ||
+      latestSnapSnapshot?.rapidFlip === true;
+
+    if (sample.shouldLog || shouldForceLog) {
+      logSelectedDragDebug("overlay:text-visual-compare", {
+        sampleCount: sample.sampleCount,
+        perfNowMs: roundSelectionVisualMetric(getSelectionVisualNowMs()),
+        dragOverlaySessionKey: currentVisualIdentity || null,
+        sessionIdentity: currentSessionIdentity || null,
+        lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
+        phase: meta.phase || currentInputs.boxFlowPhase || null,
+        dragId: meta.dragId || null,
+        elementId: selectedId,
+        tipo: selectedObject?.tipo || null,
+        source: meta.source || "manual",
+        overlayRequestedStageRect:
+          buildSelectionVisualRect(overlayRequestedStageRect),
+        overlayRenderedStageRect:
+          buildSelectionVisualRect(overlayRenderedStageRect),
+        textStageRect: buildSelectionVisualRect(textStageRect),
+        overlayRequestedViewportRect:
+          buildSelectionVisualRect(overlayRequestedViewportRect),
+        overlayRenderedViewportRect:
+          buildSelectionVisualRect(overlayRenderedViewportRect),
+        textViewportRect: buildSelectionVisualRect(textViewportRect),
+        stageInsets,
+        viewportInsets,
+        overlayStageDelta,
+        textStageDelta,
+        overlayViewportDelta,
+        textViewportDelta,
+        stageInsetsDelta,
+        viewportInsetsDelta,
+        overlayMovedStage,
+        textMovedStage,
+        overlayMovedViewport,
+        textMovedViewport,
+        stageMismatchChanged,
+        viewportMismatchChanged,
+        didOverlayAttrsChange: meta.didChange === true,
+        overlayRectVisible:
+          typeof rectRef.current?.visible === "function"
+            ? Boolean(rectRef.current.visible())
+            : null,
+        overlayPolygonVisible:
+          typeof polygonRef.current?.visible === "function"
+            ? Boolean(polygonRef.current.visible())
+            : null,
+        paintMode: isControlledMode ? "immediate-draw" : "batched-draw",
+        projectionScaleX:
+          overlayRenderedViewportRect?.projectionScaleX ||
+          overlayRequestedViewportRect?.projectionScaleX ||
+          null,
+        projectionScaleY:
+          overlayRenderedViewportRect?.projectionScaleY ||
+          overlayRequestedViewportRect?.projectionScaleY ||
+          null,
+        latestSnapSnapshot,
+        textAlignedToSnap: textAlignedToSnapCheck.pass,
+        overlayAlignedToSnap: overlayAlignedToSnapCheck.pass,
+        overlayRequestedAlignedToSnap:
+          overlayRequestedAlignedToSnapCheck.pass,
+        staleSource,
+        mismatchRelativeToSnap,
+        latestSnapAgeMs,
+        thresholdOscillationLikely,
+        mismatchFrameCount,
+        mismatchDurationMs,
+        overlayToTextStageDelta,
+        overlayRequestedToTextStageDelta,
+        alternatingGeometryValues,
+        alternatingMismatchCount,
+        overlayToTextAlternationAxes: overlayToTextAlternation.axes,
+        overlayRequestedToTextAlternationAxes:
+          overlayRequestedToTextAlternation.axes,
+        textNode: buildTextNodeVisualMetrics(selectedNode, selectedObject),
+      });
+    }
+
+    logTextGeometryContractInvariant(
+      "drag-overlay-rendered-vs-visible-text",
+      {
+        phase: meta.phase || currentInputs.boxFlowPhase || null,
+        surface: "drag-overlay",
+        authoritySource: meta.source || currentDebugSource || "manual",
+        sessionIdentity: currentSessionIdentity || null,
+        dragOverlaySessionKey: currentVisualIdentity || null,
+        lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
+        dragId: meta.dragId || null,
+        elementId: selectedId,
+        tipo: selectedObject?.tipo || null,
+        pass: !mismatchFailureReason,
+        failureReason: mismatchFailureReason,
+        observedRects: {
+          overlayRequestedStageRect:
+            buildTextGeometryContractRect(overlayRequestedStageRect),
+          overlayRenderedStageRect:
+            buildTextGeometryContractRect(overlayRenderedStageRect),
+          textStageRect: buildTextGeometryContractRect(textStageRect),
+          overlayRequestedViewportRect:
+            buildTextGeometryContractRect(overlayRequestedViewportRect),
+          overlayRenderedViewportRect:
+            buildTextGeometryContractRect(overlayRenderedViewportRect),
+          textViewportRect: buildTextGeometryContractRect(textViewportRect),
+        },
+        observedSources: {
+          currentDebugSource,
+          didOverlayAttrsChange: meta.didChange === true,
+          paintMode: isControlledMode ? "immediate-draw" : "batched-draw",
+          overlayMovedStage,
+          textMovedStage,
+          overlayMovedViewport,
+          textMovedViewport,
+        },
+        stageInsets,
+        viewportInsets,
+        stageInsetsDelta,
+        viewportInsetsDelta,
+      },
+      {
+        sampleKey: `text-contract:overlay-rendered:${currentSessionIdentity || selectedId}`,
+        firstCount: 5,
+        throttleMs: 120,
+        force: shouldForceLog || Boolean(mismatchFailureReason),
+      }
+    );
+
+    logTextGeometryContractInvariant(
+      "drag-overlay-stale-after-snap",
+      {
+        phase: meta.phase || currentInputs.boxFlowPhase || null,
+        surface: "drag-overlay",
+        authoritySource: staleSource || (meta.source || currentDebugSource || "manual"),
+        sessionIdentity: currentSessionIdentity || null,
+        dragOverlaySessionKey: currentVisualIdentity || null,
+        lifecycleKey: meta.lifecycleKey || currentInputs.lifecycleKey || null,
+        dragId: meta.dragId || null,
+        elementId: selectedId,
+        tipo: selectedObject?.tipo || null,
+        pass: !explicitSnapOverlayFailure,
+        failureReason: explicitSnapOverlayFailure
+          ? `visible text already matches post-snap authoritative rect, but overlay remains horizontally/visually stale from ${staleSource || "unknown-source"}`
+          : null,
+        observedRects: {
+          preSnapRect,
+          snapAppliedRect,
+          postRereadAuthoritativeRect: snapAuthoritativeRect,
+          renderedVisibleTextRect: buildTextGeometryContractRect(textStageRect),
+          overlayRequestedStageRect:
+            buildTextGeometryContractRect(overlayRequestedStageRect),
+          overlayRenderedStageRect:
+            buildTextGeometryContractRect(overlayRenderedStageRect),
+        },
+        observedSources: {
+          latestSnapType: latestSnapSnapshot?.type || null,
+          latestSnapSource: latestSnapSnapshot?.source || null,
+          latestSnapWinnerX: latestSnapSnapshot?.winnerX || null,
+          latestSnapWinnerY: latestSnapSnapshot?.winnerY || null,
+          latestSnapXSource: latestSnapSnapshot?.snapXSource || null,
+          latestSnapYSource: latestSnapSnapshot?.snapYSource || null,
+          latestSnapAgeMs,
+          thresholdOscillationLikely,
+          staleSource,
+          mismatchRelativeToSnap,
+          mismatchFrameCount,
+          mismatchDurationMs,
+          mismatchPersistsMultipleFrames: mismatchFrameCount > 1,
+          alternatingGeometryValues,
+          alternatingMismatchCount,
+          overlayToTextAlternationAxes: overlayToTextAlternation.axes,
+          overlayRequestedToTextAlternationAxes:
+            overlayRequestedToTextAlternation.axes,
+        },
+        deltas: {
+          textToSnap: textAlignedToSnapCheck.delta,
+          overlayRenderedToSnap: overlayAlignedToSnapCheck.delta,
+          overlayRequestedToSnap: overlayRequestedAlignedToSnapCheck.delta,
+          overlayToVisibleText: buildTextGeometryContractRectDelta(
+            textStageRect,
+            overlayRenderedStageRect
+          ),
+          overlayToTextStageDelta,
+          overlayRequestedToTextStageDelta,
+        },
+      },
+      {
+        sampleKey: `text-contract:overlay-stale-after-snap:${currentSessionIdentity || selectedId}`,
+        firstCount: 3,
+        throttleMs: 100,
+        force: explicitSnapOverlayFailure,
+      }
+    );
+
+    visualMismatchSnapshotRef.current = {
+      sessionIdentity: currentSessionIdentity,
+      overlayRenderedStageRect,
+      textStageRect,
+      overlayRenderedViewportRect,
+      textViewportRect,
+      stageInsets,
+      viewportInsets,
+      explicitSnapOverlayFailure,
+      mismatchFrameCount,
+      mismatchFirstAtMs,
+      overlayToTextStageDelta,
+      overlayRequestedToTextStageDelta,
+      alternatingGeometryValues,
+      alternatingMismatchCount,
+    };
+  }, [debugSource]);
+
   const clearIndicatorVisuals = useCallback((meta = {}) => {
     const groupNode = groupRef.current;
     const rectNode = rectRef.current;
@@ -588,6 +1409,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
       visualIdentity: currentVisualIdentity,
       sessionIdentity: currentSessionIdentity,
     };
+    visualMismatchSnapshotRef.current = null;
 
     if (isControlledMode && typeof onVisualReadyChange === "function") {
       onVisualReadyChange(false);
@@ -603,6 +1425,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     resolveIndicatorPhase,
     resolveIndicatorSuppressedLayers,
     shouldEmitForIdentity,
+    visualMismatchSnapshotRef,
   ]);
 
   const applyIndicatorBounds = useCallback((nextBounds, meta = {}) => {
@@ -729,6 +1552,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
           logPhase,
           meta
         ),
+        geometrySource: meta.geometrySource || null,
         overlayVisible: currentDebugSource === "drag-overlay",
         settling: logPhase === "settling",
         suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
@@ -781,6 +1605,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
           logPhase,
           meta
         ),
+        geometrySource: meta.geometrySource || null,
         overlayVisible: currentDebugSource === "drag-overlay",
         settling: logPhase === "settling",
         suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
@@ -810,6 +1635,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
             logPhase,
             meta
           ),
+          geometrySource: meta.geometrySource || null,
           overlayVisible: currentDebugSource === "drag-overlay",
           settling: logPhase === "settling",
           suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
@@ -832,9 +1658,19 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         boxFlowIdentity: currentVisualIdentity,
         sessionIdentity: currentSessionIdentity,
         syncToken: meta.syncToken || null,
+        geometrySource: meta.geometrySource || null,
         paintMode: isControlledMode ? "immediate-draw" : "batched-draw",
       });
     }
+
+    maybeLogOverlayTextMismatch(nextBounds, {
+      ...meta,
+      didChange,
+      debugSource: currentDebugSource,
+      selectedIds: currentSelectedIds,
+      sessionIdentity: currentSessionIdentity,
+      identity: currentVisualIdentity,
+    });
 
     indicatorSnapshotRef.current = {
       visible: true,
@@ -864,6 +1700,7 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     onFirstControlledFrameVisible,
     onBoxFlowBoundsSample,
     onVisualReadyChange,
+    maybeLogOverlayTextMismatch,
     resolveIndicatorGeometryAuthority,
     resolveIndicatorOwner,
     resolveIndicatorPhase,

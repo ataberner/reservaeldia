@@ -13,8 +13,13 @@ export function shouldUseTightSelectionFrame(selectedObjects = []) {
 
   return (
     selection.length === 1 &&
-    firstSelectedObject?.tipo === "imagen" &&
-    !firstSelectedObject?.esFondo
+    (
+      (
+        firstSelectedObject?.tipo === "imagen" &&
+        !firstSelectedObject?.esFondo
+      ) ||
+      firstSelectedObject?.tipo === "texto"
+    )
   );
 }
 

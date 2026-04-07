@@ -177,10 +177,12 @@ Model summary:
 - Visual authority is exclusive and prioritized: `drag-overlay` > selected-phase box > hover.
 - Selection authority is phase-specific: committed logical selection owns stable selected state, while drag-session selection owns the visible box during `predrag`, `drag`, and `settling`.
 - Geometry authority is phase-specific: active drag uses live-node bounds only, settling freezes the last controlled drag snapshot, and selected auto-indicator paths still permit object-data fallback.
+- Single-text box visuals are also phase-owned, but they now share one runtime visual-box source across hover, selected, and drag states: the live text visual bounds with no extra frame padding.
+- Text geometry across Konva text, snap, DOM inline overlay, and selection visuals is part of the current interaction architecture documented in `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`.
 - Startup authority is singular: the first visible drag frame must come from the composer-owned `controlled-sync` path for the active session.
 - Fallback paths still exist, but they are subordinate resilience or compatibility paths, not independent visible authority.
 
-The full normative model lives in [docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md](docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md).
+The detailed current-state interaction model lives in [docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md](docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md).
 
 ## 10. Known Complexity Areas
 - `src/pages/dashboard.js`: large orchestration surface that mixes auth flow, dashboard home, editor route resolution, preview generation, publish gating, admin draft sessions, and template sessions.

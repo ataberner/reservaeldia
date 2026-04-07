@@ -5,9 +5,20 @@ import {
     trackCanvasDragPerf,
 } from "@/components/editor/canvasEditor/canvasDragPerf";
 import {
-    getActiveGroupDragSession,
-    shouldSuppressIndividualDragForElement,
-} from "@/drag/dragGrupal";
+    resolveAuthoritativeTextRect,
+    shiftRectToCanonicalPose,
+} from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
+import {
+    isSelectedDragDebugEnabled,
+    logSelectedDragDebug,
+    sampleCanvasInteractionLog,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
+import {
+    buildTextGeometryContractRect,
+    evaluateTextGeometryContractRectAlignment,
+    logTextGeometryContractInvariant,
+    recordTextGeometryContractSnapshot,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
 
 function roundGuideMetric(value) {
     const numeric = Number(value);
@@ -29,6 +40,188 @@ function buildGuideLinesSignature(lines = []) {
         line?.style || "",
         ...(Array.isArray(line?.points) ? line.points.map(roundGuideMetric) : []),
     ].join(":")).join("|");
+}
+
+function normalizeGuideInputPosition(pos) {
+    const x = Number(pos?.x);
+    const y = Number(pos?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+}
+
+function resolveGuideEvaluationRequest(input, fallbackElementId = null) {
+    const isObjectInput = input && typeof input === "object" && !Array.isArray(input);
+    const elementId = isObjectInput
+        ? input.elementId || fallbackElementId || null
+        : fallbackElementId || null;
+
+    if (!elementId) return null;
+
+    return {
+        dragMode:
+            isObjectInput && typeof input.dragMode === "string"
+                ? input.dragMode
+                : "single-element",
+        pipeline:
+            isObjectInput && typeof input.pipeline === "string"
+                ? input.pipeline
+                : "individual",
+        source:
+            isObjectInput && typeof input.source === "string"
+                ? input.source
+                : "legacy",
+        sessionId:
+            isObjectInput && input.sessionId != null
+                ? String(input.sessionId)
+                : null,
+        interactionEpoch:
+            isObjectInput && Number.isFinite(Number(input.interactionEpoch))
+                ? Number(input.interactionEpoch)
+                : null,
+        elementId,
+        pos: isObjectInput ? (input.pos ?? null) : input,
+    };
+}
+
+function roundGuideDebugNumber(value, digits = 2) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    const factor = 10 ** digits;
+    return Math.round(numeric * factor) / factor;
+}
+
+function buildGuideBoxDebug(box = null) {
+    if (!box) return null;
+    return {
+        x: roundGuideDebugNumber(box.x),
+        y: roundGuideDebugNumber(box.y),
+        width: roundGuideDebugNumber(box.width),
+        height: roundGuideDebugNumber(box.height),
+        centerX: roundGuideDebugNumber(
+            Number(box.x) + Number(box.width) / 2
+        ),
+        centerY: roundGuideDebugNumber(
+            Number(box.y) + Number(box.height) / 2
+        ),
+    };
+}
+
+function buildGuideBoxDelta(primaryBox = null, secondaryBox = null) {
+    if (!primaryBox || !secondaryBox) return null;
+    return {
+        dx: roundGuideDebugNumber(Number(secondaryBox.x) - Number(primaryBox.x)),
+        dy: roundGuideDebugNumber(Number(secondaryBox.y) - Number(primaryBox.y)),
+        dWidth: roundGuideDebugNumber(
+            Number(secondaryBox.width) - Number(primaryBox.width)
+        ),
+        dHeight: roundGuideDebugNumber(
+            Number(secondaryBox.height) - Number(primaryBox.height)
+        ),
+        dCenterX: roundGuideDebugNumber(
+            (
+                Number(secondaryBox.x) + Number(secondaryBox.width) / 2
+            ) - (
+                Number(primaryBox.x) + Number(primaryBox.width) / 2
+            )
+        ),
+        dCenterY: roundGuideDebugNumber(
+            (
+                Number(secondaryBox.y) + Number(secondaryBox.height) / 2
+            ) - (
+                Number(primaryBox.y) + Number(primaryBox.height) / 2
+            )
+        ),
+    };
+}
+
+function buildGuideDecisionKey(decision = null) {
+    if (!decision) return "none";
+    const nearGuide = decision?.near?.g || null;
+    return [
+        decision.source || "none",
+        nearGuide?.type || "none",
+        roundGuideDebugNumber(nearGuide?.value),
+        decision.locked === true ? "locked" : "free",
+    ].join(":");
+}
+
+function buildGuideDecisionDebug(decision = null) {
+    if (!decision) {
+        return {
+            source: "none",
+            targetType: null,
+            targetValue: null,
+            locked: false,
+        };
+    }
+
+    return {
+        source: decision.source || "none",
+        targetType: decision?.near?.g?.type || null,
+        targetValue: roundGuideDebugNumber(decision?.near?.g?.value),
+        locked: decision.locked === true,
+        lockAgeMs: roundGuideDebugNumber(decision?.lockAgeMs),
+        candidateDist: roundGuideDebugNumber(decision?.near?.dist),
+    };
+}
+
+function buildGuideSnapDebug(snapRes = null, distAfter = null) {
+    if (!snapRes) return null;
+    return {
+        snapped: snapRes.snapped === true,
+        source: snapRes.source || "none",
+        axis: snapRes.axis || null,
+        deltaApplied: roundGuideDebugNumber(snapRes.deltaApplied),
+        distBefore: roundGuideDebugNumber(snapRes.distBefore),
+        distAfter: roundGuideDebugNumber(distAfter),
+        strength: roundGuideDebugNumber(snapRes.strength),
+        targetValue: roundGuideDebugNumber(snapRes.targetValue),
+        nearType: snapRes.nearType || null,
+    };
+}
+
+function buildGuideLinesDebug(lines = []) {
+    return (Array.isArray(lines) ? lines : []).map((line) => ({
+        type: line?.type || null,
+        priority: line?.priority || null,
+        style: line?.style || null,
+        points: Array.isArray(line?.points)
+            ? line.points.map((value) => roundGuideDebugNumber(value))
+            : [],
+    }));
+}
+
+function shouldForceGuideGeometryLog(diagnostics = null) {
+    if (!diagnostics?.delta) return false;
+    return (
+        Math.abs(Number(diagnostics.delta.dx || 0)) >= 0.5 ||
+        Math.abs(Number(diagnostics.delta.dy || 0)) >= 0.5 ||
+        Math.abs(Number(diagnostics.delta.dCenterX || 0)) >= 0.5 ||
+        Math.abs(Number(diagnostics.delta.dCenterY || 0)) >= 0.5 ||
+        Math.abs(Number(diagnostics.delta.dWidth || 0)) >= 0.5 ||
+        Math.abs(Number(diagnostics.delta.dHeight || 0)) >= 0.5
+    );
+}
+
+function maybeLogGuideDebug(eventName, payload = {}, options = {}) {
+    if (!isSelectedDragDebugEnabled()) return;
+
+    const sampleKey = options?.sampleKey || null;
+    const force = options?.force === true;
+    if (!force && sampleKey) {
+        const sample = sampleCanvasInteractionLog(sampleKey, {
+            firstCount: options?.firstCount ?? 4,
+            throttleMs: options?.throttleMs ?? 120,
+        });
+        if (!sample.shouldLog) return;
+        logSelectedDragDebug(eventName, {
+            sampleCount: sample.sampleCount,
+            ...payload,
+        });
+        return;
+    }
+
+    logSelectedDragDebug(eventName, payload);
 }
 
 /**
@@ -75,6 +268,20 @@ export default function useGuiasCentrado({
         x: null,
         y: null,
     });
+    const guideDebugContextRef = useRef({
+        sessionId: null,
+        interactionEpoch: null,
+        elementId: null,
+        tipo: null,
+        isText: false,
+    });
+    const guideDecisionDebugRef = useRef({
+        sessionId: null,
+        winnerXKey: "none",
+        winnerYKey: "none",
+        lastDecisionAtMs: 0,
+        rapidFlipCount: 0,
+    });
 
     const resetSnapLocks = useCallback(() => {
         snapLockRef.current = {
@@ -93,8 +300,9 @@ export default function useGuiasCentrado({
     const commitGuideLines = useCallback((nextLines = []) => {
         const safeLines = Array.isArray(nextLines) ? nextLines : [];
         const nextSignature = buildGuideLinesSignature(safeLines);
+        const previousSignature = lastGuideSignatureRef.current;
 
-        if (nextSignature === lastGuideSignatureRef.current) {
+        if (nextSignature === previousSignature) {
             trackCanvasDragPerf("guides:commit-skip", {
                 lines: safeLines.length,
                 signatureSize: nextSignature.length,
@@ -106,6 +314,26 @@ export default function useGuiasCentrado({
             pendingGuideLinesRef.current = null;
             return;
         }
+
+        const guideDebugContext = guideDebugContextRef.current || {};
+        maybeLogGuideDebug("guides:render-payload", {
+            perfNowMs: roundGuideDebugNumber(getGuidePerfNow()),
+            guideSessionId: guideDebugContext.sessionId || null,
+            interactionEpoch: guideDebugContext.interactionEpoch,
+            elementId: guideDebugContext.elementId || null,
+            tipo: guideDebugContext.tipo || null,
+            isText: guideDebugContext.isText === true,
+            change:
+                safeLines.length === 0
+                    ? "cleared"
+                    : previousSignature
+                    ? "changed"
+                    : "visible",
+            linesCount: safeLines.length,
+            lines: buildGuideLinesDebug(safeLines),
+        }, {
+            force: true,
+        });
 
         pendingGuideLinesRef.current = {
             lines: safeLines,
@@ -153,6 +381,20 @@ export default function useGuiasCentrado({
 
     const clearGuideLines = useCallback(() => {
         resetSnapLocks();
+        guideDebugContextRef.current = {
+            sessionId: null,
+            interactionEpoch: null,
+            elementId: null,
+            tipo: null,
+            isText: false,
+        };
+        guideDecisionDebugRef.current = {
+            sessionId: null,
+            winnerXKey: "none",
+            winnerYKey: "none",
+            lastDecisionAtMs: 0,
+            rapidFlipCount: 0,
+        };
         commitGuideLines([]);
     }, [commitGuideLines, resetSnapLocks]);
 
@@ -314,10 +556,29 @@ export default function useGuiasCentrado({
     };
 
     // ---- Candidatos de la MISMA sección (centros + bordes) ----
-    const getNodeBox = (node, stage, obj = null) => {
+    const getNodeBox = (node, stage, obj = null, options = {}) => {
         if (!node || !stage || typeof node.getClientRect !== "function") return null;
 
         const rectOpts = { relativeTo: stage };
+        const useLivePoseOnly = options?.requireLivePoseOnly === true;
+        const requireAuthoritativeTextRect =
+            options?.requireAuthoritativeTextRect === true;
+        const returnDetails = options?.returnDetails === true;
+        const inputPosition = useLivePoseOnly
+            ? null
+            : normalizeGuideInputPosition(options?.inputPosition);
+        const fallbackPose = inputPosition
+            ? {
+                x: inputPosition.x,
+                y: inputPosition.y,
+                rotation:
+                    typeof node.rotation === "function"
+                        ? node.rotation()
+                        : obj?.rotation,
+            }
+            : null;
+
+        let baseRect = null;
 
         if (
             obj?.tipo === "galeria" &&
@@ -343,20 +604,18 @@ export default function useGuiasCentrado({
                     ? absPos.y
                     : (typeof node.y === "function" ? node.y() : 0);
 
-            return {
+            baseRect = {
                 x,
                 y,
                 width: Number(obj.width),
                 height: Number(obj.height),
             };
-        }
-
-        // La galeria usa overlays por celda; medir su frame base evita offsets falsos.
-        if (obj?.tipo === "galeria" && typeof node.findOne === "function") {
+        } else if (obj?.tipo === "galeria" && typeof node.findOne === "function") {
+            // La galeria usa overlays por celda; medir su frame base evita offsets falsos.
             const galleryFrame = node.findOne(".gallery-transform-frame");
             if (galleryFrame && typeof galleryFrame.getClientRect === "function") {
                 try {
-                    return galleryFrame.getClientRect({
+                    baseRect = galleryFrame.getClientRect({
                         relativeTo: stage,
                         skipShadow: true,
                         skipStroke: true,
@@ -367,11 +626,57 @@ export default function useGuiasCentrado({
             }
         }
 
-        try {
-            return node.getClientRect(rectOpts);
-        } catch {
-            return null;
+        if (!baseRect) {
+            try {
+                baseRect = node.getClientRect(rectOpts);
+            } catch {
+                return null;
+            }
         }
+
+        const authoritativeTextRect = resolveAuthoritativeTextRect(node, obj, {
+            fallbackRect: baseRect,
+            fallbackPose,
+        });
+        if (authoritativeTextRect) {
+            return returnDetails
+                ? {
+                    box: authoritativeTextRect,
+                    geometrySource: "textRect",
+                    usedInputPose: false,
+                }
+                : authoritativeTextRect;
+        }
+
+        if (obj?.tipo === "texto" && requireAuthoritativeTextRect) {
+            return returnDetails
+                ? {
+                    box: null,
+                    geometrySource: "fallback",
+                    usedInputPose: false,
+                  }
+                : null;
+        }
+
+        if (!fallbackPose) {
+            return returnDetails
+                ? {
+                    box: baseRect,
+                    geometrySource: "live",
+                    usedInputPose: false,
+                }
+                : baseRect;
+        }
+
+        const shiftedRect =
+            shiftRectToCanonicalPose(baseRect, node, obj, fallbackPose) || baseRect;
+        return returnDetails
+            ? {
+                box: shiftedRect,
+                geometrySource: "fallback",
+                usedInputPose: true,
+            }
+            : shiftedRect;
     };
 
     const getSectionGuideTargets = useCallback((stage, objetosSeccion, elementRefs, idSelf, objById) => {
@@ -478,69 +783,77 @@ export default function useGuiasCentrado({
         return g;
     };
 
-    const getUnionBox = (ids, stage, elementRefs, objById) => {
-        if (!Array.isArray(ids) || ids.length === 0) return null;
+    const readActiveDragBox = ({ stage, node, objActual }) => (
+        getNodeBox(node, stage, objActual, {
+            requireLivePoseOnly: true,
+            requireAuthoritativeTextRect: true,
+            returnDetails: true,
+        })
+    );
 
-        let minX = Number.POSITIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
-
-        ids.forEach((id) => {
-            const n = elementRefs.current?.[id];
-            if (!n) return;
-            const b = getNodeBox(n, stage, objById.get(id) || null);
-            if (!b) return;
-            minX = Math.min(minX, b.x);
-            minY = Math.min(minY, b.y);
-            maxX = Math.max(maxX, b.x + b.width);
-            maxY = Math.max(maxY, b.y + b.height);
-        });
-
+    const readTextGuideGeometryDiagnostics = useCallback(({
+        stage,
+        node,
+        objActual,
+        authoritativeBox,
+    }) => {
         if (
-            !Number.isFinite(minX) ||
-            !Number.isFinite(minY) ||
-            !Number.isFinite(maxX) ||
-            !Number.isFinite(maxY)
+            objActual?.tipo !== "texto" ||
+            !node ||
+            !stage ||
+            typeof node.getClientRect !== "function"
         ) {
             return null;
         }
 
+        let contentBox = null;
+        try {
+            contentBox = node.getClientRect({
+                relativeTo: stage,
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+            });
+        } catch {
+            contentBox = null;
+        }
+
+        const authoritativeTextRect = resolveAuthoritativeTextRect(node, objActual, {
+            fallbackRect: contentBox || authoritativeBox,
+        }) || authoritativeBox;
+
         return {
-            x: minX,
-            y: minY,
-            width: Math.max(0, maxX - minX),
-            height: Math.max(0, maxY - minY),
+            guideBox: authoritativeBox || null,
+            authoritativeTextBox: authoritativeTextRect || null,
+            contentBox: contentBox || null,
+            guideBoxDebug: buildGuideBoxDebug(authoritativeBox),
+            authoritativeTextBoxDebug: buildGuideBoxDebug(authoritativeTextRect),
+            contentBoxDebug: buildGuideBoxDebug(contentBox),
+            guideVsAuthoritativeDelta: buildGuideBoxDelta(
+                authoritativeBox,
+                authoritativeTextRect
+            ),
+            guideVsContentDelta: buildGuideBoxDelta(
+                authoritativeBox,
+                contentBox
+            ),
+            authoritativeVsContentDelta: buildGuideBoxDelta(
+                authoritativeTextRect,
+                contentBox
+            ),
         };
-    };
-
-    const shiftNodes = (ids, axis, delta, elementRefs) => {
-        if (!Array.isArray(ids) || ids.length === 0 || !Number.isFinite(delta)) return;
-        if (Math.abs(delta) < 0.0001) return;
-
-        const shiftSingle = (node) => {
-            if (!node) return;
-            try {
-                if (axis === "x") {
-                    node.x(node.x() + delta);
-                } else {
-                    node.y(node.y() + delta);
-                }
-            } catch {
-                // silencioso para no cortar drag
-            }
-        };
-
-        ids.forEach((id) => {
-            const n = elementRefs.current?.[id];
-            shiftSingle(n);
-            // Algunas formas (rect/rsvp) renderizan el texto como nodo separado.
-            shiftSingle(elementRefs.current?.[`${id}-text`]);
-        });
-    };
+    }, []);
 
     // ---- Mostrar guías durante el drag ----
-    const mostrarGuias = useCallback((pos, idActual, objetos, elementRefs) => {
+    const mostrarGuias = useCallback((guideRequestInput, legacyIdActual, legacyObjetos, legacyElementRefs) => {
+        const isLegacyCall = typeof legacyElementRefs !== "undefined";
+        const guideRequest = resolveGuideEvaluationRequest(
+            guideRequestInput,
+            isLegacyCall ? legacyIdActual : null
+        );
+        const idActual = guideRequest?.elementId || null;
+        const objetos = isLegacyCall ? legacyObjetos : legacyIdActual;
+        const elementRefs = isLegacyCall ? legacyElementRefs : legacyObjetos;
         const perfStartedAt = getGuidePerfNow();
         let perfLastAt = perfStartedAt;
         const perfBreakdown = {};
@@ -555,44 +868,54 @@ export default function useGuiasCentrado({
             throttleMs: 180,
             throttleKey: `guides:evaluate:${idActual}`,
         });
+        if (
+            !guideRequest ||
+            guideRequest.dragMode !== "single-element" ||
+            guideRequest.pipeline !== "individual"
+        ) {
+            clearGuideLines();
+            finishPerf?.({
+                reason: "guide-request-not-eligible",
+                dragMode: guideRequest?.dragMode || null,
+                pipeline: guideRequest?.pipeline || null,
+                source: guideRequest?.source || null,
+            });
+            return null;
+        }
         const node = elementRefs.current?.[idActual];
         if (!node) {
             finishPerf?.({ reason: "missing-node" });
-            return;
+            return null;
         }
         const stage = node.getStage?.();
         if (!stage) {
             finishPerf?.({ reason: "missing-stage" });
-            return;
-        }
-
-        const activeGroupSession = getActiveGroupDragSession();
-        const shouldSuppressForGroupLeader = Boolean(
-            activeGroupSession?.active &&
-            activeGroupSession.leaderId === idActual
-        );
-        if (shouldSuppressForGroupLeader || shouldSuppressIndividualDragForElement(idActual)) {
-            clearGuideLines();
-            finishPerf?.({
-                reason: shouldSuppressForGroupLeader
-                    ? "group-leader-suppressed"
-                    : "group-drag-guard-suppressed",
-                sessionId: activeGroupSession?.sessionId || null,
-            });
-            return;
+            return null;
         }
 
         try {
             const { byId: objById, bySection } = getObjectCache(objetos);
             const objActual = objById.get(idActual) || null;
-            const isGroupLeader = window._grupoLider && idActual === window._grupoLider;
-            const rawGroupIds = Array.isArray(window._grupoElementos) && window._grupoElementos.length > 1
-                ? window._grupoElementos
-                : (Array.isArray(window._elementosSeleccionados) ? window._elementosSeleccionados : []);
-            const groupIds = isGroupLeader
-                ? [...new Set(rawGroupIds.filter(Boolean))]
-                : [];
-            const isGroupDrag = isGroupLeader && groupIds.length > 1;
+            const guideSessionId = guideRequest.sessionId || idActual;
+            const interactionEpoch = guideRequest.interactionEpoch ?? null;
+            const isTextElement = objActual?.tipo === "texto";
+
+            guideDebugContextRef.current = {
+                sessionId: guideSessionId,
+                interactionEpoch,
+                elementId: idActual,
+                tipo: objActual?.tipo || null,
+                isText: isTextElement,
+            };
+            if (guideDecisionDebugRef.current.sessionId !== guideSessionId) {
+                guideDecisionDebugRef.current = {
+                    sessionId: guideSessionId,
+                    winnerXKey: "none",
+                    winnerYKey: "none",
+                    lastDecisionAtMs: 0,
+                    rapidFlipCount: 0,
+                };
+            }
 
             if (snapLockRef.current.ownerId !== idActual) {
                 snapLockRef.current = {
@@ -602,16 +925,36 @@ export default function useGuiasCentrado({
                 };
             }
 
-            const selfBoxBefore = isGroupDrag
-                ? getUnionBox(groupIds, stage, elementRefs, objById)
-                : getNodeBox(node, stage, objActual);
-            if (!selfBoxBefore) {
+            const normalizedInputPosition = normalizeGuideInputPosition(guideRequest.pos);
+            const initialBoxInfo = readActiveDragBox({
+                stage,
+                node,
+                objActual,
+            });
+            const initialBox = initialBoxInfo?.box || null;
+            if (!initialBox) {
                 finishPerf?.({ reason: "missing-self-box-before" });
-                return;
+                return null;
             }
             capturePerfPhase("selfBoxResolveMs");
-            const selfCx = selfBoxBefore.x + selfBoxBefore.width / 2;
-            const selfCy = selfBoxBefore.y + selfBoxBefore.height / 2;
+
+            const preSnapTextDiagnostics = readTextGuideGeometryDiagnostics({
+                stage,
+                node,
+                objActual,
+                authoritativeBox: initialBox,
+                inputPosition: normalizedInputPosition,
+            });
+            const forcePreSnapTextLog =
+                shouldForceGuideGeometryLog({
+                    delta: preSnapTextDiagnostics?.guideVsAuthoritativeDelta,
+                }) ||
+                shouldForceGuideGeometryLog({
+                    delta: preSnapTextDiagnostics?.guideVsContentDelta,
+                }) ||
+                shouldForceGuideGeometryLog({
+                    delta: preSnapTextDiagnostics?.authoritativeVsContentDelta,
+                });
 
             const seccion = getSectionById(objActual?.seccionId);
             if (!seccion) {
@@ -628,38 +971,58 @@ export default function useGuiasCentrado({
             const lines = [];
 
             // 1) SECCIÓN: el snap evalúa el centro de la sección.
-            const distSecX = Math.abs(selfCx - secCx);
-            const distSecY = Math.abs(selfCy - secCy);
+            const distSecX = Math.abs(
+                initialBox.x + initialBox.width / 2 - secCx
+            );
+            const distSecY = Math.abs(
+                initialBox.y + initialBox.height / 2 - secCy
+            );
 
             // 2) ELEMENTOS (MISMA SECCIÓN): elegir mejor candidato por eje
-            const { targets: sectionGuideTargets, cacheHit: guideCacheHit } = isGroupDrag
-                ? { targets: [], cacheHit: false }
-                : getSectionGuideTargets(
-                    stage,
-                    sectionItems,
-                    elementRefs,
-                    idActual,
-                    objById
-                );
+            const { targets: sectionGuideTargets, cacheHit: guideCacheHit } = getSectionGuideTargets(
+                stage,
+                sectionItems,
+                elementRefs,
+                idActual,
+                objById
+            );
             capturePerfPhase("targetsLookupMs");
 
-            const elementGuides = isGroupDrag
-                ? []
-                : buildSameSectionGuides(selfBoxBefore, sectionGuideTargets);
+            const elementGuides = buildSameSectionGuides(initialBox, sectionGuideTargets);
 
-            const bestElX = isGroupDrag
-                ? null
-                : elementGuides
-                    .filter(g => g.axis === "x")
-                    .map(g => ({ g, dist: distForGuide("x", g.value, selfBoxBefore) }))
-                    .sort((a, b) => a.dist - b.dist)[0];
+            // One snapshot per evaluation frame keeps guide decisions and snap math
+            // aligned to the same drag-time geometry sample.
+            const dragSnapshot = {
+                elementId: idActual,
+                inputPosition: normalizedInputPosition,
+                source: guideRequest.source || null,
+                node,
+                stage,
+                objActual,
+                selfBox: initialBox,
+                selfCenterX: initialBox.x + initialBox.width / 2,
+                selfCenterY: initialBox.y + initialBox.height / 2,
+                seccion,
+                sectionOffsetY: offY,
+                sectionCenterX: secCx,
+                sectionCenterY: secCy,
+                sectionItems,
+                sectionGuideTargets,
+                guideCacheHit,
+                elementGuides,
+                distSecX,
+                distSecY,
+            };
 
-            const bestElY = isGroupDrag
-                ? null
-                : elementGuides
-                    .filter(g => g.axis === "y")
-                    .map(g => ({ g, dist: distForGuide("y", g.value, selfBoxBefore) }))
-                    .sort((a, b) => a.dist - b.dist)[0];
+            const bestElX = dragSnapshot.elementGuides
+                .filter(g => g.axis === "x")
+                .map(g => ({ g, dist: distForGuide("x", g.value, dragSnapshot.selfBox) }))
+                .sort((a, b) => a.dist - b.dist)[0];
+
+            const bestElY = dragSnapshot.elementGuides
+                .filter(g => g.axis === "y")
+                .map(g => ({ g, dist: distForGuide("y", g.value, dragSnapshot.selfBox) }))
+                .sort((a, b) => a.dist - b.dist)[0];
             capturePerfPhase("guideBuildMs");
 
             const resolveLockedDecision = (axis, secDistCenter, bestEl) => {
@@ -685,13 +1048,11 @@ export default function useGuiasCentrado({
                     return null;
                 }
 
-                if (isGroupDrag) return null;
-
-                const matchingGuide = elementGuides
+                const matchingGuide = dragSnapshot.elementGuides
                     .filter((guide) => guide.axis === axis)
                     .map((guide) => ({
                         g: guide,
-                        dist: distForGuide(axis, guide.value, selfBoxBefore),
+                        dist: distForGuide(axis, guide.value, dragSnapshot.selfBox),
                     }))
                     .filter(({ g }) => (
                         g.type === axisLock.nearType &&
@@ -701,7 +1062,7 @@ export default function useGuiasCentrado({
 
                 const lockedDist = matchingGuide?.dist ?? (
                     Number.isFinite(Number(axisLock.targetValue))
-                        ? distForGuide(axis, axisLock.targetValue, selfBoxBefore)
+                        ? distForGuide(axis, axisLock.targetValue, dragSnapshot.selfBox)
                         : Infinity
                 );
 
@@ -751,33 +1112,193 @@ export default function useGuiasCentrado({
                     : { source: "seccion" };
             };
 
-            const decisionX = resolveLockedDecision("x", distSecX, bestElX) || decidirSnap(distSecX, bestElX);
-            const decisionY = resolveLockedDecision("y", distSecY, bestElY) || decidirSnap(distSecY, bestElY);
+            const decisionX = resolveLockedDecision("x", dragSnapshot.distSecX, bestElX)
+                || decidirSnap(dragSnapshot.distSecX, bestElX);
+            const decisionY = resolveLockedDecision("y", dragSnapshot.distSecY, bestElY)
+                || decidirSnap(dragSnapshot.distSecY, bestElY);
             capturePerfPhase("decisionMs");
 
+            const previousDecisionDebug = guideDecisionDebugRef.current || {};
+            const nextWinnerXKey = buildGuideDecisionKey(decisionX);
+            const nextWinnerYKey = buildGuideDecisionKey(decisionY);
+            const changedX = previousDecisionDebug.winnerXKey !== nextWinnerXKey;
+            const changedY = previousDecisionDebug.winnerYKey !== nextWinnerYKey;
+            const decisionNowMs = getGuidePerfNow();
+            const previousDecisionAtMs = Number(previousDecisionDebug.lastDecisionAtMs || 0);
+            const decisionChanged = changedX || changedY;
+            const rapidFlip =
+                decisionChanged &&
+                previousDecisionAtMs > 0 &&
+                decisionNowMs - previousDecisionAtMs <= 120;
+            const rapidFlipCount = decisionChanged
+                ? (rapidFlip ? Number(previousDecisionDebug.rapidFlipCount || 0) + 1 : 0)
+                : Number(previousDecisionDebug.rapidFlipCount || 0);
+            const thresholdOscillationLikely = rapidFlip && (
+                Boolean(snapLockRef.current?.x) ||
+                Boolean(snapLockRef.current?.y)
+            );
+            guideDecisionDebugRef.current = {
+                sessionId: guideSessionId,
+                winnerXKey: nextWinnerXKey,
+                winnerYKey: nextWinnerYKey,
+                lastDecisionAtMs: decisionChanged
+                    ? decisionNowMs
+                    : previousDecisionAtMs,
+                rapidFlipCount,
+            };
+
+            maybeLogGuideDebug("guides:decision", {
+                perfNowMs: roundGuideDebugNumber(decisionNowMs),
+                guideSessionId,
+                interactionEpoch,
+                elementId: dragSnapshot.elementId,
+                tipo: objActual?.tipo || null,
+                isText: isTextElement,
+                source: guideRequest.source || null,
+                inputPosition: dragSnapshot.inputPosition || null,
+                activeDragBox: buildGuideBoxDebug(dragSnapshot.selfBox),
+                sectionId: dragSnapshot.seccion.id,
+                sectionCenter: {
+                    x: roundGuideDebugNumber(dragSnapshot.sectionCenterX),
+                    y: roundGuideDebugNumber(dragSnapshot.sectionCenterY),
+                },
+                distSecX: roundGuideDebugNumber(dragSnapshot.distSecX),
+                distSecY: roundGuideDebugNumber(dragSnapshot.distSecY),
+                bestElXDist: roundGuideDebugNumber(bestElX?.dist),
+                bestElYDist: roundGuideDebugNumber(bestElY?.dist),
+                winnerChangedX: changedX,
+                winnerChangedY: changedY,
+                rapidFlip,
+                rapidFlipCount,
+                thresholdOscillationLikely,
+                snapLockXActive: Boolean(snapLockRef.current?.x),
+                snapLockYActive: Boolean(snapLockRef.current?.y),
+                winnerX: buildGuideDecisionDebug(decisionX),
+                winnerY: buildGuideDecisionDebug(decisionY),
+            }, {
+                sampleKey: `guides:decision:${guideSessionId}`,
+                firstCount: 5,
+                throttleMs: 120,
+                force: decisionChanged || rapidFlip || forcePreSnapTextLog,
+            });
+
+            if (isTextElement) {
+                const preSnapAuthorityCheck = evaluateTextGeometryContractRectAlignment(
+                    preSnapTextDiagnostics?.authoritativeTextBox,
+                    dragSnapshot.selfBox,
+                    {
+                        tolerance: 0.5,
+                        expectedLabel: "authoritative Konva text rect",
+                        actualLabel: "guide evaluation box",
+                    }
+                );
+
+                logTextGeometryContractInvariant(
+                    "snap-preapply-text-authority",
+                    {
+                        phase: "drag-pre-snap",
+                        surface: "snap-system",
+                        authoritySource: "live-konva-text",
+                        sessionIdentity: guideSessionId,
+                        elementId: dragSnapshot.elementId,
+                        tipo: objActual?.tipo || null,
+                        pass: preSnapAuthorityCheck.pass,
+                        failureReason: preSnapAuthorityCheck.failureReason,
+                        observedRects: {
+                            guideEvaluationRect:
+                                buildTextGeometryContractRect(dragSnapshot.selfBox),
+                            authoritativeKonvaRect:
+                                buildTextGeometryContractRect(
+                                    preSnapTextDiagnostics?.authoritativeTextBox
+                                ),
+                            renderedTextRect:
+                                buildTextGeometryContractRect(
+                                    preSnapTextDiagnostics?.contentBox
+                                ),
+                        },
+                        observedSources: {
+                            snapAuthoritative: false,
+                            source: guideRequest.source || null,
+                            winnerX: decisionX?.source || "none",
+                            winnerY: decisionY?.source || "none",
+                        },
+                        delta: preSnapAuthorityCheck.delta,
+                    },
+                    {
+                        sampleKey: `text-contract:snap-pre:${guideSessionId}`,
+                        firstCount: 4,
+                        throttleMs: 120,
+                        force:
+                            !preSnapAuthorityCheck.pass ||
+                            forcePreSnapTextLog ||
+                            decisionChanged,
+                    }
+                );
+
+                maybeLogGuideDebug("guides:text-geometry", {
+                    perfNowMs: roundGuideDebugNumber(getGuidePerfNow()),
+                    guideSessionId,
+                    interactionEpoch,
+                    phase: "pre-snap",
+                    elementId: dragSnapshot.elementId,
+                    tipo: objActual?.tipo || null,
+                    activeDragBox: buildGuideBoxDebug(dragSnapshot.selfBox),
+                guideBox: preSnapTextDiagnostics?.guideBoxDebug || null,
+                guideGeometrySource: initialBoxInfo?.geometrySource || "fallback",
+                authoritativeTextBox:
+                    preSnapTextDiagnostics?.authoritativeTextBoxDebug || null,
+                    renderedTextContentBox:
+                        preSnapTextDiagnostics?.contentBoxDebug || null,
+                    guideVsAuthoritativeDelta:
+                        preSnapTextDiagnostics?.guideVsAuthoritativeDelta || null,
+                    guideVsContentDelta:
+                        preSnapTextDiagnostics?.guideVsContentDelta || null,
+                    authoritativeVsContentDelta:
+                        preSnapTextDiagnostics?.authoritativeVsContentDelta || null,
+                    winnerX: buildGuideDecisionDebug(decisionX),
+                    winnerY: buildGuideDecisionDebug(decisionY),
+                }, {
+                    sampleKey: `guides:text-geometry:pre:${guideSessionId}`,
+                    firstCount: 4,
+                    throttleMs: 120,
+                    force:
+                        forcePreSnapTextLog ||
+                        decisionX?.source === "seccion" ||
+                        decisionY?.source === "seccion" ||
+                        decisionChanged,
+                });
+            }
+
             trackCanvasDragPerf("guides:snapshot", {
-                elementId: idActual,
-                isGroupDrag,
-                sectionId: seccion.id,
-                sectionCandidates: sectionItems.length,
-                sectionGuideTargetsCount: sectionGuideTargets.length,
-                elementGuidesCount: elementGuides.length,
-                guideCacheHit,
-                distSecX: roundGuideMetric(distSecX),
-                distSecY: roundGuideMetric(distSecY),
+                elementId: dragSnapshot.elementId,
+                pipeline: guideRequest.pipeline,
+                source: dragSnapshot.source || null,
+                sectionId: dragSnapshot.seccion.id,
+                inputX: roundGuideMetric(dragSnapshot.inputPosition?.x),
+                inputY: roundGuideMetric(dragSnapshot.inputPosition?.y),
+                selfBoxX: roundGuideMetric(dragSnapshot.selfBox.x),
+                selfBoxY: roundGuideMetric(dragSnapshot.selfBox.y),
+                selfBoxWidth: roundGuideMetric(dragSnapshot.selfBox.width),
+                selfBoxHeight: roundGuideMetric(dragSnapshot.selfBox.height),
+                sectionCandidates: dragSnapshot.sectionItems.length,
+                sectionGuideTargetsCount: dragSnapshot.sectionGuideTargets.length,
+                elementGuidesCount: dragSnapshot.elementGuides.length,
+                guideCacheHit: dragSnapshot.guideCacheHit,
+                distSecX: roundGuideMetric(dragSnapshot.distSecX),
+                distSecY: roundGuideMetric(dragSnapshot.distSecY),
                 bestElXDist: roundGuideMetric(bestElX?.dist),
                 bestElYDist: roundGuideMetric(bestElY?.dist),
                 decisionX: decisionX?.source || "none",
                 decisionY: decisionY?.source || "none",
             }, {
                 throttleMs: 120,
-                throttleKey: `guides:snapshot:${idActual}`,
+                throttleKey: `guides:snapshot:${dragSnapshot.elementId}`,
             });
 
             const finishSnapPerf = startCanvasDragPerfSpan("guides:snap-apply", {
                 elementId: idActual,
                 sectionId: seccion.id,
-                isGroupDrag,
+                pipeline: guideRequest.pipeline,
             }, {
                 throttleMs: 120,
                 throttleKey: `guides:snap-apply:${idActual}`,
@@ -796,37 +1317,22 @@ export default function useGuiasCentrado({
                         nearType: null,
                     };
                 }
-                const fresh = isGroupDrag
-                    ? getUnionBox(groupIds, stage, elementRefs, objById)
-                    : getNodeBox(node, stage, objActual);
-                if (!fresh) {
-                    return {
-                        snapped: false,
-                        source: decision.source || "none",
-                        axis,
-                        deltaApplied: 0,
-                        distBefore: null,
-                        strength: null,
-                        targetValue: null,
-                        nearType: decision?.near?.g?.type || null,
-                        reason: "missing-fresh-box",
-                    };
-                }
+                const boxBeforeSnap = dragSnapshot.selfBox;
 
                 if (decision.source === "seccion") {
                     const nextCenter = axis === "x"
-                        ? fresh.x + fresh.width / 2
-                        : fresh.y + fresh.height / 2;
-                    const targetCenter = axis === "x" ? secCx : secCy;
+                        ? boxBeforeSnap.x + boxBeforeSnap.width / 2
+                        : boxBeforeSnap.y + boxBeforeSnap.height / 2;
+                    const targetCenter = axis === "x"
+                        ? dragSnapshot.sectionCenterX
+                        : dragSnapshot.sectionCenterY;
                     const distBefore = Math.abs(targetCenter - nextCenter);
                     const delta = (targetCenter - nextCenter) * effSectionSnapStrength;
 
                     if (axis === "x") {
-                        if (isGroupDrag) shiftNodes(groupIds, "x", delta, elementRefs);
-                        else node.x(node.x() + delta);
+                        node.x(node.x() + delta);
                     } else {
-                        if (isGroupDrag) shiftNodes(groupIds, "y", delta, elementRefs);
-                        else node.y(node.y() + delta);
+                        node.y(node.y() + delta);
                     }
                     return {
                         snapped: true,
@@ -840,21 +1346,7 @@ export default function useGuiasCentrado({
                     };
                 }
 
-                if (isGroupDrag) {
-                    return {
-                        snapped: false,
-                        source: "elemento",
-                        axis,
-                        deltaApplied: 0,
-                        distBefore: roundGuideMetric(decision?.near?.dist),
-                        strength: roundGuideMetric(effElementSnapStrength),
-                        targetValue: roundGuideMetric(decision?.near?.g?.value),
-                        nearType: decision?.near?.g?.type || null,
-                        reason: "group-element-snap-disabled",
-                    };
-                }
-
-                const delta = deltaForGuide(axis, decision.near.g.value, fresh);
+                const delta = deltaForGuide(axis, decision.near.g.value, boxBeforeSnap);
                 const appliedDelta = delta * effElementSnapStrength;
                 if (axis === "x") node.x(node.x() + appliedDelta);
                 else node.y(node.y() + appliedDelta);
@@ -923,26 +1415,38 @@ export default function useGuiasCentrado({
             updateSnapLock("x", snapResX, decisionX);
             updateSnapLock("y", snapResY, decisionY);
 
-            // Recalcular box luego del snap para dibujar reach exacta
-            const selfBoxAfter = isGroupDrag
-                ? getUnionBox(groupIds, stage, elementRefs, objById)
-                : getNodeBox(node, stage, objActual);
-            if (!selfBoxAfter) {
+            // Re-read once after snap so the rendered guide geometry matches the
+            // actual snapped node position for this evaluation frame.
+            const postSnapBoxInfo = readActiveDragBox({
+                stage,
+                node,
+                objActual,
+            });
+            const postSnapBox = postSnapBoxInfo?.box || null;
+            if (!postSnapBox) {
                 finishPerf?.({ reason: "missing-self-box-after" });
-                return;
+                return null;
             }
-            const selfCxAfter = selfBoxAfter.x + selfBoxAfter.width / 2;
-            const selfCyAfter = selfBoxAfter.y + selfBoxAfter.height / 2;
+            const postSnapTextDiagnostics = readTextGuideGeometryDiagnostics({
+                stage,
+                node,
+                objActual,
+                authoritativeBox: postSnapBox,
+            });
+            const selfCxAfter = postSnapBox.x + postSnapBox.width / 2;
+            const selfCyAfter = postSnapBox.y + postSnapBox.height / 2;
             const computeSnapAfterDistance = (axis, snapRes) => {
                 if (!snapRes?.snapped) return null;
                 if (snapRes.source === "seccion") {
                     const nextCenter = axis === "x" ? selfCxAfter : selfCyAfter;
-                    const targetCenter = axis === "x" ? secCx : secCy;
+                    const targetCenter = axis === "x"
+                        ? dragSnapshot.sectionCenterX
+                        : dragSnapshot.sectionCenterY;
                     return roundGuideMetric(Math.abs(nextCenter - targetCenter));
                 }
                 if (snapRes.source === "elemento" && snapRes.targetValue != null) {
                     return roundGuideMetric(
-                        distForGuide(axis, snapRes.targetValue, selfBoxAfter)
+                        distForGuide(axis, snapRes.targetValue, postSnapBox)
                     );
                 }
                 return null;
@@ -956,42 +1460,47 @@ export default function useGuiasCentrado({
             if (
                 snapResX.snapped &&
                 snapResX.source === "seccion" &&
-                Math.abs(selfCxAfter - secCx) <= sectionLineTolerance
+                Math.abs(selfCxAfter - dragSnapshot.sectionCenterX) <= sectionLineTolerance
             ) {
                 lines.push({
                     type: "seccion-cx",
                     priority: "seccion",
                     style: "solid",
-                    points: [secCx, offY, secCx, offY + seccion.altura]
+                    points: [
+                        dragSnapshot.sectionCenterX,
+                        dragSnapshot.sectionOffsetY,
+                        dragSnapshot.sectionCenterX,
+                        dragSnapshot.sectionOffsetY + dragSnapshot.seccion.altura
+                    ]
                 });
             }
             if (
                 snapResY.snapped &&
                 snapResY.source === "seccion" &&
-                Math.abs(selfCyAfter - secCy) <= sectionLineTolerance
+                Math.abs(selfCyAfter - dragSnapshot.sectionCenterY) <= sectionLineTolerance
             ) {
                 lines.push({
                     type: "seccion-cy",
                     priority: "seccion",
                     style: "solid",
-                    points: [0, secCy, anchoCanvas, secCy]
+                    points: [0, dragSnapshot.sectionCenterY, anchoCanvas, dragSnapshot.sectionCenterY]
                 });
             }
 
-            if (!isGroupDrag && snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
+            if (snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
                 lines.push({
                     type: "reach-x",
                     priority: "elemento",
                     style: "dashed",
-                    points: reachVertical(snapResX.near.g.value, selfBoxAfter, snapResX.near.g.targetBox)
+                    points: reachVertical(snapResX.near.g.value, postSnapBox, snapResX.near.g.targetBox)
                 });
             }
-            if (!isGroupDrag && snapResY.snapped && snapResY.source === "elemento" && snapResY.near?.g?.targetBox) {
+            if (snapResY.snapped && snapResY.source === "elemento" && snapResY.near?.g?.targetBox) {
                 lines.push({
                     type: "reach-y",
                     priority: "elemento",
                     style: "dashed",
-                    points: reachHorizontal(snapResY.near.g.value, selfBoxAfter, snapResY.near.g.targetBox)
+                    points: reachHorizontal(snapResY.near.g.value, postSnapBox, snapResY.near.g.targetBox)
                 });
             }
             capturePerfPhase("lineBuildMs");
@@ -999,7 +1508,7 @@ export default function useGuiasCentrado({
             if (decisionX || decisionY) {
                 finishSnapPerf?.({
                     sectionId: seccion.id,
-                    isGroupDrag,
+                    pipeline: guideRequest.pipeline,
                     xSource: snapResX.source || "none",
                     ySource: snapResY.source || "none",
                     xAppliedDelta: snapResX.deltaApplied ?? null,
@@ -1016,11 +1525,235 @@ export default function useGuiasCentrado({
                 });
             }
 
+            const postSnapBoxDelta = buildGuideBoxDelta(
+                dragSnapshot.selfBox,
+                postSnapBox
+            );
+            const snapBecameAuthoritative =
+                Boolean(snapResX?.snapped) || Boolean(snapResY?.snapped);
+            const snapMovedNode =
+                Math.abs(Number(postSnapBoxDelta?.dx || 0)) > 0.01 ||
+                Math.abs(Number(postSnapBoxDelta?.dy || 0)) > 0.01 ||
+                Math.abs(Number(postSnapBoxDelta?.dCenterX || 0)) > 0.01 ||
+                Math.abs(Number(postSnapBoxDelta?.dCenterY || 0)) > 0.01;
+            const xDistAfter = computeSnapAfterDistance("x", snapResX);
+            const yDistAfter = computeSnapAfterDistance("y", snapResY);
+            const forcePostSnapTextLog =
+                shouldForceGuideGeometryLog({
+                    delta: postSnapTextDiagnostics?.guideVsAuthoritativeDelta,
+                }) ||
+                shouldForceGuideGeometryLog({
+                    delta: postSnapTextDiagnostics?.guideVsContentDelta,
+                }) ||
+                shouldForceGuideGeometryLog({
+                    delta: postSnapTextDiagnostics?.authoritativeVsContentDelta,
+                });
+
+            maybeLogGuideDebug("guides:snap-result", {
+                perfNowMs: roundGuideDebugNumber(getGuidePerfNow()),
+                guideSessionId,
+                interactionEpoch,
+                elementId: dragSnapshot.elementId,
+                tipo: objActual?.tipo || null,
+                isText: isTextElement,
+                source: guideRequest.source || null,
+                preSnapBox: buildGuideBoxDebug(dragSnapshot.selfBox),
+                postSnapBox: buildGuideBoxDebug(postSnapBox),
+                preSnapGeometrySource: initialBoxInfo?.geometrySource || "fallback",
+                postSnapGeometrySource: postSnapBoxInfo?.geometrySource || "fallback",
+                geometrySourceChanged:
+                    (initialBoxInfo?.geometrySource || "fallback") !==
+                    (postSnapBoxInfo?.geometrySource || "fallback"),
+                preToPostDelta: postSnapBoxDelta,
+                snapX: buildGuideSnapDebug(snapResX, xDistAfter),
+                snapY: buildGuideSnapDebug(snapResY, yDistAfter),
+                winnerX: buildGuideDecisionDebug(decisionX),
+                winnerY: buildGuideDecisionDebug(decisionY),
+                linesPlanned: buildGuideLinesDebug(lines),
+                rapidFlip,
+                rapidFlipCount,
+                thresholdOscillationLikely,
+                snapLockXActive: Boolean(snapLockRef.current?.x),
+                snapLockYActive: Boolean(snapLockRef.current?.y),
+            }, {
+                sampleKey: `guides:snap-result:${guideSessionId}`,
+                firstCount: 5,
+                throttleMs: 120,
+                force:
+                    decisionChanged ||
+                    rapidFlip ||
+                    snapResX.source === "seccion" ||
+                    snapResY.source === "seccion",
+            });
+
+            if (isTextElement) {
+                const postSnapAuthorityCheck = evaluateTextGeometryContractRectAlignment(
+                    postSnapTextDiagnostics?.authoritativeTextBox,
+                    postSnapBox,
+                    {
+                        tolerance: 0.5,
+                        expectedLabel: "post-snap authoritative Konva text rect",
+                        actualLabel: "post-snap guide reread box",
+                    }
+                );
+                const stalePreSnapFailureReason =
+                    snapBecameAuthoritative &&
+                    !postSnapAuthorityCheck.pass &&
+                    (
+                        Math.abs(Number(postSnapBoxDelta?.dx || 0)) > 0.5 ||
+                        Math.abs(Number(postSnapBoxDelta?.dy || 0)) > 0.5 ||
+                        Math.abs(Number(postSnapBoxDelta?.dCenterX || 0)) > 0.5 ||
+                        Math.abs(Number(postSnapBoxDelta?.dCenterY || 0)) > 0.5
+                    )
+                        ? `${postSnapAuthorityCheck.failureReason}; snap committed but post-snap reread still diverged from authoritative Konva text rect`
+                        : postSnapAuthorityCheck.failureReason;
+
+                logTextGeometryContractInvariant(
+                    "snap-postapply-reread-authority",
+                    {
+                        phase: "drag-post-snap",
+                        surface: "snap-system",
+                        authoritySource: snapBecameAuthoritative
+                            ? "post-snap-reread"
+                            : "live-konva-text",
+                        sessionIdentity: guideSessionId,
+                        elementId: dragSnapshot.elementId,
+                        tipo: objActual?.tipo || null,
+                        pass: postSnapAuthorityCheck.pass,
+                        failureReason: stalePreSnapFailureReason,
+                        observedRects: {
+                            preSnapRect:
+                                buildTextGeometryContractRect(dragSnapshot.selfBox),
+                            postSnapGuideRect:
+                                buildTextGeometryContractRect(postSnapBox),
+                            authoritativeKonvaRect:
+                                buildTextGeometryContractRect(
+                                    postSnapTextDiagnostics?.authoritativeTextBox
+                                ),
+                            renderedTextRect:
+                                buildTextGeometryContractRect(
+                                    postSnapTextDiagnostics?.contentBox
+                                ),
+                        },
+                        observedSources: {
+                            snapAuthoritative: snapBecameAuthoritative,
+                            source: guideRequest.source || null,
+                            winnerX: decisionX?.source || "none",
+                            winnerY: decisionY?.source || "none",
+                            snapXSource: snapResX?.source || "none",
+                            snapYSource: snapResY?.source || "none",
+                            rapidFlip,
+                            rapidFlipCount,
+                            thresholdOscillationLikely,
+                        },
+                        delta: postSnapAuthorityCheck.delta,
+                        preToPostDelta: postSnapBoxDelta,
+                    },
+                    {
+                        sampleKey: `text-contract:snap-post:${guideSessionId}`,
+                        firstCount: 4,
+                        throttleMs: 120,
+                        force:
+                            !postSnapAuthorityCheck.pass ||
+                            snapBecameAuthoritative ||
+                            forcePostSnapTextLog ||
+                            rapidFlip,
+                    }
+                );
+
+                recordTextGeometryContractSnapshot(guideSessionId || dragSnapshot.elementId, {
+                    type: "snap-postapply-reread",
+                    guideSessionId,
+                    elementId: dragSnapshot.elementId,
+                    interactionEpoch,
+                    source: guideRequest.source || null,
+                    snapCommitted: snapBecameAuthoritative,
+                    winnerX: decisionX?.source || "none",
+                    winnerY: decisionY?.source || "none",
+                    snapXSource: snapResX?.source || "none",
+                    snapYSource: snapResY?.source || "none",
+                    rapidFlip,
+                    rapidFlipCount,
+                    thresholdOscillationLikely,
+                    preSnapRect: buildTextGeometryContractRect(dragSnapshot.selfBox),
+                    snapAppliedRect: buildTextGeometryContractRect(postSnapBox),
+                    postRereadAuthoritativeRect: buildTextGeometryContractRect(
+                        postSnapTextDiagnostics?.authoritativeTextBox
+                    ),
+                    renderedVisibleTextRect: buildTextGeometryContractRect(
+                        postSnapTextDiagnostics?.contentBox
+                    ),
+                    preToPostDelta: postSnapBoxDelta,
+                    deltaToAuthoritative: postSnapAuthorityCheck.delta,
+                });
+                recordTextGeometryContractSnapshot(dragSnapshot.elementId, {
+                    type: "snap-postapply-reread",
+                    guideSessionId,
+                    elementId: dragSnapshot.elementId,
+                    interactionEpoch,
+                    source: guideRequest.source || null,
+                    snapCommitted: snapBecameAuthoritative,
+                    winnerX: decisionX?.source || "none",
+                    winnerY: decisionY?.source || "none",
+                    snapXSource: snapResX?.source || "none",
+                    snapYSource: snapResY?.source || "none",
+                    rapidFlip,
+                    rapidFlipCount,
+                    thresholdOscillationLikely,
+                    preSnapRect: buildTextGeometryContractRect(dragSnapshot.selfBox),
+                    snapAppliedRect: buildTextGeometryContractRect(postSnapBox),
+                    postRereadAuthoritativeRect: buildTextGeometryContractRect(
+                        postSnapTextDiagnostics?.authoritativeTextBox
+                    ),
+                    renderedVisibleTextRect: buildTextGeometryContractRect(
+                        postSnapTextDiagnostics?.contentBox
+                    ),
+                    preToPostDelta: postSnapBoxDelta,
+                    deltaToAuthoritative: postSnapAuthorityCheck.delta,
+                });
+
+                maybeLogGuideDebug("guides:text-geometry", {
+                    perfNowMs: roundGuideDebugNumber(getGuidePerfNow()),
+                    guideSessionId,
+                    interactionEpoch,
+                    phase: "post-snap",
+                    elementId: dragSnapshot.elementId,
+                    tipo: objActual?.tipo || null,
+                    activeDragBox: buildGuideBoxDebug(postSnapBox),
+                    guideBox: postSnapTextDiagnostics?.guideBoxDebug || null,
+                    guideGeometrySource: postSnapBoxInfo?.geometrySource || "fallback",
+                    authoritativeTextBox:
+                        postSnapTextDiagnostics?.authoritativeTextBoxDebug || null,
+                    renderedTextContentBox:
+                        postSnapTextDiagnostics?.contentBoxDebug || null,
+                    guideVsAuthoritativeDelta:
+                        postSnapTextDiagnostics?.guideVsAuthoritativeDelta || null,
+                    guideVsContentDelta:
+                        postSnapTextDiagnostics?.guideVsContentDelta || null,
+                    authoritativeVsContentDelta:
+                        postSnapTextDiagnostics?.authoritativeVsContentDelta || null,
+                    preToPostDelta: postSnapBoxDelta,
+                    snapX: buildGuideSnapDebug(snapResX, xDistAfter),
+                    snapY: buildGuideSnapDebug(snapResY, yDistAfter),
+                }, {
+                    sampleKey: `guides:text-geometry:post:${guideSessionId}`,
+                    firstCount: 4,
+                    throttleMs: 120,
+                    force:
+                        forcePostSnapTextLog ||
+                        forcePreSnapTextLog ||
+                        snapResX.source === "seccion" ||
+                        snapResY.source === "seccion" ||
+                        rapidFlip,
+                });
+            }
+
             const commitStartedAt = getGuidePerfNow();
             commitGuideLines(lines);
             perfBreakdown.commitEnqueueMs = roundGuideMetric(getGuidePerfNow() - commitStartedAt);
             finishPerf?.({
-                isGroupDrag,
+                pipeline: guideRequest.pipeline,
+                source: guideRequest.source || null,
                 lines: lines.length,
                 sectionId: seccion.id,
                 guideCacheHit,
@@ -1029,6 +1762,21 @@ export default function useGuiasCentrado({
                 totalElapsedMs: roundGuideMetric(getGuidePerfNow() - perfStartedAt),
                 ...perfBreakdown,
             });
+            return {
+                guideSessionId,
+                interactionEpoch,
+                elementId: dragSnapshot.elementId,
+                snapCommitted: snapBecameAuthoritative,
+                snapMovedNode,
+                preSnapGeometrySource: initialBoxInfo?.geometrySource || "fallback",
+                postSnapGeometrySource: postSnapBoxInfo?.geometrySource || "fallback",
+                snapXSource: snapResX.source || "none",
+                snapYSource: snapResY.source || "none",
+                rapidFlip,
+                rapidFlipCount,
+                thresholdOscillationLikely,
+                preToPostDelta: postSnapBoxDelta,
+            };
         } catch (e) {
             finishPerf?.({
                 reason: "error",
@@ -1037,6 +1785,7 @@ export default function useGuiasCentrado({
                 ...perfBreakdown,
             });
             // silencioso para no cortar el drag
+            return null;
         }
     }, [
         anchoCanvas, altoCanvas,
@@ -1046,11 +1795,24 @@ export default function useGuiasCentrado({
         elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias,
         sectionSnapStrength, elementSnapStrength, sectionLineTolerance,
         clearGuideLines, commitGuideLines, getObjectCache, getSectionGuideTargets,
+        readTextGuideGeometryDiagnostics,
         effElementReleaseRadius, effSectionReleaseRadius,
         snapLockMinMs, snapSoftReleaseMultiplier
     ]);
 
-    const prepararGuias = useCallback((idActual, objetos, elementRefs) => {
+    const prepararGuias = useCallback((guideRequestInput, objetos, elementRefs) => {
+        const guideRequest = resolveGuideEvaluationRequest(
+            guideRequestInput,
+            typeof guideRequestInput === "string" ? guideRequestInput : null
+        );
+        const idActual = guideRequest?.elementId || null;
+        if (
+            !guideRequest ||
+            guideRequest.dragMode !== "single-element" ||
+            guideRequest.pipeline !== "individual"
+        ) {
+            return;
+        }
         const node = elementRefs.current?.[idActual];
         const stage = node?.getStage?.();
         if (!node || !stage) return;
@@ -1071,6 +1833,7 @@ export default function useGuiasCentrado({
 
             trackCanvasDragPerf("guides:prewarm", {
                 elementId: idActual,
+                source: guideRequest.source || null,
                 sectionId: objActual.seccionId,
                 sectionCandidates: sectionItems.length,
                 targets: targets.length,
@@ -1078,18 +1841,33 @@ export default function useGuiasCentrado({
                 throttleMs: 180,
                 throttleKey: `guides:prewarm:${idActual}`,
             });
+
+            maybeLogGuideDebug("guides:prewarm", {
+                perfNowMs: roundGuideDebugNumber(getGuidePerfNow()),
+                guideSessionId: guideRequest.sessionId || idActual,
+                interactionEpoch: guideRequest.interactionEpoch ?? null,
+                elementId: idActual,
+                tipo: objActual?.tipo || null,
+                isText: objActual?.tipo === "texto",
+                source: guideRequest.source || null,
+                sectionId: objActual.seccionId,
+                sectionCandidates: sectionItems.length,
+                targets: targets.length,
+            }, {
+                sampleKey: `guides:prewarm:${guideRequest.sessionId || idActual}`,
+                firstCount: 2,
+                throttleMs: 180,
+            });
         } catch {
             // silencioso para no cortar el drag
         }
     }, [getObjectCache, getSectionGuideTargets]);
 
     const limpiarGuias = useCallback(() => clearGuideLines(), [clearGuideLines]);
-    const configurarDragEnd = useCallback(() => clearGuideLines(), [clearGuideLines]);
 
     return {
         prepararGuias,
         mostrarGuias,
-        limpiarGuias,
-        configurarDragEnd
+        limpiarGuias
     };
 }

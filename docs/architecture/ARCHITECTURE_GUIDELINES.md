@@ -56,6 +56,12 @@ Never mix layers unnecessarily.
 - All transformations must be explicit and traceable.
 - Selection and drag documentation must name which layer owns the visible box in `selected`, `predrag`, `drag`, and `settling`, and which geometry source is authoritative in each phase.
 - Do not describe the selection box as a direct mirror of committed selection unless the implementation for that phase actually reads committed selection as its visible source.
+- When text can render through both Konva and DOM, documentation must name:
+  - the single authoritative base geometry source
+  - the render-authority handoff boundary
+  - the snap-authoritative boundary
+  - the only allowed offset/alignment model
+- Undocumented parallel geometry corrections across Konva, overlay, selection box, and snap are forbidden.
 
 ## 3.2 Global Feature Control
 - Animations and visual effects must be globally configurable.

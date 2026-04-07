@@ -48,7 +48,14 @@ import {
   resetCanvasInteractionLogSample,
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
+import {
+  buildTextGeometryContractRect,
+  logTextGeometryContractInvariant,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import {
+  resolveAuthoritativeTextRect,
+} from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
 import {
   getImageResizeNodeSnapshot,
   trackImageResizeDebug,
@@ -1270,6 +1277,75 @@ export default function SelectionBounds({
     }, {
       identity,
     });
+
+    if (selectedElements.length === 1) {
+      const selectedId = String(selectedElements[0] || "").trim();
+      const selectedObject =
+        selectedId && Array.isArray(objetos)
+          ? objetos.find((candidate) => candidate?.id === selectedId) || null
+          : null;
+      const selectedNode = selectedId ? elementRefs?.current?.[selectedId] || null : null;
+
+      if (selectedObject?.tipo === "texto") {
+        const fallbackRect =
+          typeof selectedNode?.getClientRect === "function"
+            ? selectedNode.getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              })
+            : null;
+        const authoritativeTextRect = selectedNode
+          ? resolveAuthoritativeTextRect(selectedNode, selectedObject, {
+              fallbackRect,
+            })
+          : null;
+        const transformerRect =
+          typeof tr?.getClientRect === "function"
+            ? tr.getClientRect({
+                skipTransform: false,
+                skipShadow: true,
+                skipStroke: true,
+              })
+            : null;
+        const pass = Boolean(selectedNode && authoritativeTextRect);
+
+        logTextGeometryContractInvariant(
+          "transformer-selected-phase-authority",
+          {
+            phase: "selected",
+            surface: "transformer",
+            authoritySource: "live-attached-konva-node",
+            sessionIdentity: identity,
+            elementId: selectedId,
+            tipo: selectedObject?.tipo || null,
+            pass,
+            failureReason: !selectedNode
+              ? "selected text transformer sync has no attached Konva node"
+              : !authoritativeTextRect
+                ? "selected text transformer sync could not resolve authoritative Konva text rect"
+                : null,
+            observedRects: {
+              authoritativeKonvaRect:
+                buildTextGeometryContractRect(authoritativeTextRect),
+              selectedNodeRect: buildTextGeometryContractRect(fallbackRect),
+              transformerRect: buildTextGeometryContractRect(transformerRect),
+            },
+            observedSources: {
+              source,
+              attachedNodeIds,
+              selectedIds: selectionKey || null,
+            },
+          },
+          {
+            sampleKey: `text-contract:transformer:${identity || selectedId}`,
+            firstCount: 4,
+            throttleMs: 160,
+            force: !pass || source === "selection-change",
+          }
+        );
+      }
+    }
     return true;
   };
 

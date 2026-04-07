@@ -454,14 +454,34 @@ export default function GaleriaKonva({
             })
           );
         }
-        onDragStartPersonalizado?.(obj.id);
+        onDragStartPersonalizado?.(obj.id, e, {
+          pipeline: "individual",
+          sessionId: null,
+          leaderId: null,
+        });
       }}
       onDragMove={isPassiveRender ? undefined : (e) => {
-        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
+        onDragMovePersonalizado?.(
+          { x: e.target.x(), y: e.target.y() },
+          obj.id,
+          {
+            pipeline: "individual",
+            sessionId: null,
+            leaderId: null,
+          }
+        );
       }}
       onDragEnd={isPassiveRender ? undefined : (e) => {
         notePostDragSelectionGuard();
-        onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
+        onDragMovePersonalizado?.(
+          { x: e.target.x(), y: e.target.y() },
+          obj.id,
+          {
+            pipeline: "individual",
+            sessionId: null,
+            leaderId: null,
+          }
+        );
 
         const finalX = e.target.x();
         const finalYAbs = e.target.y();
@@ -478,7 +498,11 @@ export default function GaleriaKonva({
             })
           );
         }
-        onDragEndPersonalizado?.(obj.id);
+        onDragEndPersonalizado?.(obj.id, {
+          pipeline: "individual",
+          sessionId: null,
+          leaderId: null,
+        });
         e.target.draggable(false);
         pressRef.current.active = false;
         pressRef.current.movedEnough = false;

@@ -2,7 +2,7 @@
 
 > Updated from code inspection on 2026-03-30.
 >
-> Reference documents reviewed for context: `ARCHITECTURE_OVERVIEW.md`, `EDITOR_SYSTEM.md`, `DATA_MODEL.md`, `ARCHITECTURE_GUIDELINES.md`.
+> Reference documents reviewed for context: `docs/architecture/ARCHITECTURE_OVERVIEW.md`, `docs/architecture/EDITOR_SYSTEM.md`, `docs/architecture/DATA_MODEL.md`, `docs/architecture/ARCHITECTURE_GUIDELINES.md`, `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`.
 >
 > Priority rule for this document: findings below are based on the current implementation, not on intended architecture.
 

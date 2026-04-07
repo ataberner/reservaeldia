@@ -62,6 +62,12 @@ import {
   emitInlineCaretScrollDebugEvent,
   isInlineCaretScrollDebugEnabled,
 } from "@/components/editor/textSystem/debug/inlineCaretScrollDebug";
+import {
+  buildTextGeometryContractRect,
+  evaluateTextGeometryContractRectAlignment,
+  logTextGeometryContractInvariant,
+  roundTextGeometryContractMetric,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
 
 function parseInlineDiagFlag(value, fallback = false) {
   if (typeof value === "undefined") return fallback;
@@ -538,6 +544,12 @@ export default function InlineTextEditor({
     residual: null,
   });
   const emitDebugRef = useRef(null);
+  const textGeometryContractSessionRef = useRef({
+    editingId: null,
+    sessionId: null,
+    renderAuthorityPhase: null,
+    overlayPhase: null,
+  });
 
   const normalizedFinishMode = normalizeFinishMode(finishMode);
   const normalizedWidthMode = normalizeWidthMode(widthMode);
@@ -3152,6 +3164,238 @@ export default function InlineTextEditor({
       }
     };
   }, [emitDebug]);
+  useEffect(() => {
+    if (!editingId) return;
+
+    const overlayRootRect = overlayRootRef.current?.getBoundingClientRect?.() || null;
+    const editorFrameRect = editorFrameRef.current?.getBoundingClientRect?.() || null;
+    const editorRect = editorRef.current?.getBoundingClientRect?.() || null;
+    const contentRect = contentBoxRef.current?.getBoundingClientRect?.() || null;
+    const projectionCheck = evaluateTextGeometryContractRectAlignment(
+      projectedKonvaRectBase,
+      overlayRootRect,
+      {
+        tolerance: 0.75,
+        expectedLabel: "Konva projected overlay rect",
+        actualLabel: "DOM overlay root rect",
+      }
+    );
+    const observedFrameOffset =
+      overlayRootRect && editorFrameRect
+        ? roundTextGeometryContractMetric(
+            Number(editorFrameRect.y) - Number(overlayRootRect.y),
+            3
+          )
+        : null;
+    const observedContentOffset =
+      editorFrameRect && editorRect
+        ? roundTextGeometryContractMetric(
+            Number(editorRect.y) - Number(editorFrameRect.y),
+            3
+          )
+        : null;
+    const expectedFrameOffset = roundTextGeometryContractMetric(
+      Number(effectiveVisualOffsetPx || 0),
+      3
+    );
+    const expectedContentOffset = roundTextGeometryContractMetric(
+      Number(effectiveInternalContentOffsetPx || 0),
+      3
+    );
+    const frameOffsetPass =
+      observedFrameOffset === null ||
+      Math.abs(Number(observedFrameOffset || 0) - Number(expectedFrameOffset || 0)) <= 0.75;
+    const contentOffsetPass =
+      observedContentOffset === null ||
+      Math.abs(Number(observedContentOffset || 0) - Number(expectedContentOffset || 0)) <= 0.75;
+    const overlayPhasePass =
+      renderAuthorityPhase === "konva" ||
+      renderAuthorityPhase === "dom-preview" ||
+      renderAuthorityPhase === "dom-editable";
+
+    logTextGeometryContractInvariant(
+      "inline-overlay-projection-from-konva",
+      {
+        phase: renderAuthorityPhase || "konva",
+        surface: "dom-inline-overlay",
+        authoritySource: "getInlineKonvaProjectedRectViewport",
+        sessionIdentity: overlaySessionIdRef.current || editingId || null,
+        elementId: editingId || null,
+        tipo: "texto",
+        renderAuthority: renderAuthorityPhase || "konva",
+        pass: projectionCheck.pass,
+        failureReason: projectionCheck.failureReason,
+        observedRects: {
+          projectedKonvaRect: buildTextGeometryContractRect(projectedKonvaRectBase),
+          domOverlayRootRect: buildTextGeometryContractRect(overlayRootRect),
+          contentRect: buildTextGeometryContractRect(contentRect),
+        },
+        observedSources: {
+          overlayPhase,
+          runtimeRenderAuthorityPhase: runtimeRenderAuthorityPhase || null,
+          editorVisualReady: Boolean(editorVisualReady),
+          paintStable: Boolean(runtimePaintStable),
+        },
+        delta: projectionCheck.delta,
+      },
+      {
+        sampleKey: `text-contract:inline-projection:${overlaySessionIdRef.current || editingId}`,
+        firstCount: 5,
+        throttleMs: 140,
+        force:
+          !projectionCheck.pass ||
+          renderAuthorityPhase === "dom-preview" ||
+          renderAuthorityPhase === "dom-editable",
+      }
+    );
+
+    logTextGeometryContractInvariant(
+      "inline-overlay-offset-model",
+      {
+        phase: renderAuthorityPhase || "konva",
+        surface: "dom-inline-overlay",
+        authoritySource: "inline-alignment-model",
+        sessionIdentity: overlaySessionIdRef.current || editingId || null,
+        elementId: editingId || null,
+        tipo: "texto",
+        renderAuthority: renderAuthorityPhase || "konva",
+        pass: frameOffsetPass && contentOffsetPass,
+        failureReason:
+          !frameOffsetPass
+            ? "editor frame offset does not match effectiveVisualOffsetPx"
+            : !contentOffsetPass
+              ? "editable content offset does not match internalContentOffsetPx"
+              : null,
+        observedRects: {
+          domOverlayRootRect: buildTextGeometryContractRect(overlayRootRect),
+          editorFrameRect: buildTextGeometryContractRect(editorFrameRect),
+          editorRect: buildTextGeometryContractRect(editorRect),
+        },
+        observedSources: {
+          overlayPhase,
+          expectedFrameOffset,
+          observedFrameOffset,
+          expectedContentOffset,
+          observedContentOffset,
+          domToKonvaBaseVisualOffsetPx: roundTextGeometryContractMetric(
+            Number(domToKonvaBaseVisualOffsetPx || 0),
+            3
+          ),
+          domToKonvaVisualOffsetPx: roundTextGeometryContractMetric(
+            Number(domToKonvaVisualOffsetPx || 0),
+            3
+          ),
+          domVisualNudgePx: roundTextGeometryContractMetric(
+            Number(domVisualNudgePx || 0),
+            3
+          ),
+        },
+      },
+      {
+        sampleKey: `text-contract:inline-offsets:${overlaySessionIdRef.current || editingId}`,
+        firstCount: 5,
+        throttleMs: 140,
+        force:
+          !frameOffsetPass ||
+          !contentOffsetPass ||
+          renderAuthorityPhase === "dom-editable",
+      }
+    );
+
+    logTextGeometryContractInvariant(
+      "inline-overlay-authority-phase",
+      {
+        phase: renderAuthorityPhase || "konva",
+        surface: "dom-inline-overlay",
+        authoritySource: renderAuthorityPhase || "konva",
+        sessionIdentity: overlaySessionIdRef.current || editingId || null,
+        elementId: editingId || null,
+        tipo: "texto",
+        renderAuthority: renderAuthorityPhase || "konva",
+        pass: overlayPhasePass,
+        failureReason: overlayPhasePass
+          ? null
+          : "renderAuthorityPhase is outside the documented konva/dom-preview/dom-editable contract",
+        observedRects: {
+          projectedKonvaRect: buildTextGeometryContractRect(projectedKonvaRectBase),
+          domOverlayRootRect: buildTextGeometryContractRect(overlayRootRect),
+        },
+        observedSources: {
+          overlayPhase,
+          renderAuthorityPhase: renderAuthorityPhase || null,
+          runtimeRenderAuthorityPhase: runtimeRenderAuthorityPhase || null,
+          editorVisualReady: Boolean(editorVisualReady),
+          caretVisible: Boolean(caretVisible),
+          runtimeCaretVisible: Boolean(runtimeCaretVisible),
+        },
+      },
+      {
+        sampleKey: `text-contract:inline-phase:${overlaySessionIdRef.current || editingId}`,
+        firstCount: 5,
+        throttleMs: 140,
+        force:
+          !overlayPhasePass ||
+          renderAuthorityPhase === "dom-preview" ||
+          renderAuthorityPhase === "dom-editable",
+      }
+    );
+  }, [
+    caretVisible,
+    contentBoxRef,
+    domToKonvaBaseVisualOffsetPx,
+    domToKonvaVisualOffsetPx,
+    domVisualNudgePx,
+    editingId,
+    editorFrameRef,
+    editorRef,
+    editorVisualReady,
+    effectiveInternalContentOffsetPx,
+    effectiveVisualOffsetPx,
+    overlayPhase,
+    projectedKonvaRectBase,
+    renderAuthorityPhase,
+    runtimeCaretVisible,
+    runtimePaintStable,
+    runtimeRenderAuthorityPhase,
+  ]);
+  useEffect(() => {
+    const previous = textGeometryContractSessionRef.current;
+
+    if (!editingId && previous?.editingId) {
+      logTextGeometryContractInvariant(
+        "inline-overlay-authority-exit",
+        {
+          phase: "inline-exit",
+          surface: "dom-inline-overlay",
+          authoritySource: previous.renderAuthorityPhase || "konva",
+          sessionIdentity: previous.sessionId || previous.editingId || null,
+          elementId: previous.editingId || null,
+          tipo: "texto",
+          renderAuthority: previous.renderAuthorityPhase || "konva",
+          pass: true,
+          failureReason: null,
+          observedSources: {
+            previousOverlayPhase: previous.overlayPhase || null,
+            previousRenderAuthorityPhase: previous.renderAuthorityPhase || null,
+            exitReason: "editing-id-cleared",
+          },
+        },
+        {
+          sampleKey: `text-contract:inline-exit:${previous.sessionId || previous.editingId}`,
+          firstCount: 2,
+          throttleMs: 120,
+          force: true,
+        }
+      );
+    }
+
+    textGeometryContractSessionRef.current = {
+      editingId: editingId || null,
+      sessionId: overlaySessionIdRef.current || null,
+      renderAuthorityPhase: renderAuthorityPhase || null,
+      overlayPhase: overlayPhase || null,
+    };
+  }, [editingId, overlayPhase, renderAuthorityPhase]);
   useEffect(() => {
     if (caretScrollBaselineRef.current.editingId !== editingId) {
       caretScrollBaselineRef.current = {

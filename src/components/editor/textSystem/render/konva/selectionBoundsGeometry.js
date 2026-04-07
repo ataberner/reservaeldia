@@ -1,7 +1,22 @@
 import {
+  buildSelectionFramePolygon,
   getSelectionFramePaddingForSelection,
   getSelectionFrameStrokeWidth,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import {
+  resolveAuthoritativeTextRect,
+} from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
+import {
+  logSelectedDragDebug,
+  sampleCanvasInteractionLog,
+} from "@/components/editor/canvasEditor/selectedDragDebug";
+import {
+  getActiveCanvasBoxFlowSession,
+} from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
+import {
+  buildTextGeometryContractRect,
+  logTextGeometryContractInvariant,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -10,6 +25,57 @@ function asArray(value) {
 function toFiniteNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function roundSelectionDebugNumber(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const factor = 10 ** digits;
+  return Math.round(numeric * factor) / factor;
+}
+
+function buildSelectionBoxDebug(box = null) {
+  if (!box) return null;
+  return {
+    x: roundSelectionDebugNumber(box.x),
+    y: roundSelectionDebugNumber(box.y),
+    width: roundSelectionDebugNumber(box.width),
+    height: roundSelectionDebugNumber(box.height),
+    centerX: roundSelectionDebugNumber(
+      Number(box.x) + Number(box.width) / 2
+    ),
+    centerY: roundSelectionDebugNumber(
+      Number(box.y) + Number(box.height) / 2
+    ),
+  };
+}
+
+function buildSelectionBoxDelta(primaryBox = null, secondaryBox = null) {
+  if (!primaryBox || !secondaryBox) return null;
+  return {
+    dx: roundSelectionDebugNumber(Number(secondaryBox.x) - Number(primaryBox.x)),
+    dy: roundSelectionDebugNumber(Number(secondaryBox.y) - Number(primaryBox.y)),
+    dWidth: roundSelectionDebugNumber(
+      Number(secondaryBox.width) - Number(primaryBox.width)
+    ),
+    dHeight: roundSelectionDebugNumber(
+      Number(secondaryBox.height) - Number(primaryBox.height)
+    ),
+    dCenterX: roundSelectionDebugNumber(
+      (
+        Number(secondaryBox.x) + Number(secondaryBox.width) / 2
+      ) - (
+        Number(primaryBox.x) + Number(primaryBox.width) / 2
+      )
+    ),
+    dCenterY: roundSelectionDebugNumber(
+      (
+        Number(secondaryBox.y) + Number(secondaryBox.height) / 2
+      ) - (
+        Number(primaryBox.y) + Number(primaryBox.height) / 2
+      )
+    ),
+  };
 }
 
 function normalizeSelectionIds(selectedElements = []) {
@@ -70,7 +136,7 @@ function resolveLineSelectionRect(object, node) {
   };
 }
 
-function resolveNodeSelectionRect(object, node) {
+function resolveNodeSelectionRect(object, node, debugMeta = null) {
   if (!node || typeof node.getClientRect !== "function") return null;
 
   if (object?.tipo === "forma" && object?.figura === "line") {
@@ -92,6 +158,119 @@ function resolveNodeSelectionRect(object, node) {
     return null;
   }
 
+  const authoritativeTextRect = resolveAuthoritativeTextRect(node, object, {
+    fallbackRect: rect,
+  });
+  if (authoritativeTextRect) {
+    if (object?.tipo === "texto") {
+      const selectionSession = getActiveCanvasBoxFlowSession("selection");
+      const sample = sampleCanvasInteractionLog(
+        `selection:text-authority:${object.id || "unknown"}`,
+        {
+          firstCount: 5,
+          throttleMs: 120,
+        }
+      );
+      if (sample.shouldLog) {
+        logSelectedDragDebug("selection:text-authority", {
+          sampleCount: sample.sampleCount,
+          selectionSessionId:
+            selectionSession?.sessionIdentity ||
+            selectionSession?.identity ||
+            null,
+          dragOverlaySessionKey: selectionSession?.dragOverlaySessionKey || null,
+          elementId: object.id || null,
+          tipo: object.tipo || null,
+          authoritativeSelectionBox: buildSelectionBoxDebug(authoritativeTextRect),
+          renderedTextContentBox: buildSelectionBoxDebug(rect),
+          delta: buildSelectionBoxDelta(authoritativeTextRect, rect),
+        });
+      }
+
+      logTextGeometryContractInvariant(
+        "text-geometry-source-of-truth",
+        {
+          phase: debugMeta?.phase || "selection-bounds-resolve",
+          surface: debugMeta?.surface || "selection-bounds",
+          authoritySource: "resolveAuthoritativeTextRect",
+          caller: debugMeta?.caller || null,
+          elementId: object.id || null,
+          tipo: object.tipo || null,
+          sessionIdentity:
+            debugMeta?.sessionIdentity ||
+            selectionSession?.sessionIdentity ||
+            selectionSession?.identity ||
+            object.id ||
+            null,
+          pass: true,
+          failureReason: null,
+          observedRects: {
+            authoritativeKonvaRect:
+              buildTextGeometryContractRect(authoritativeTextRect),
+            renderedTextClientRect: buildTextGeometryContractRect(rect),
+          },
+          observedSources: {
+            fallbackRectAvailable: true,
+            requireLiveNodes: debugMeta?.requireLiveNodes === true,
+          },
+          delta: buildSelectionBoxDelta(authoritativeTextRect, rect),
+        },
+        {
+          sampleKey: `text-contract:source:${object.id || "unknown"}:${
+            debugMeta?.surface || "selection-bounds"
+          }`,
+          firstCount: 4,
+          throttleMs: 160,
+          force: false,
+        }
+      );
+    }
+    return authoritativeTextRect;
+  }
+
+  if (object?.tipo === "texto") {
+    const selectionSession = getActiveCanvasBoxFlowSession("selection");
+    logTextGeometryContractInvariant(
+      "text-geometry-source-of-truth",
+      {
+        phase: debugMeta?.phase || "selection-bounds-resolve",
+        surface: debugMeta?.surface || "selection-bounds",
+        authoritySource: "client-rect-fallback",
+        caller: debugMeta?.caller || null,
+        elementId: object.id || null,
+        tipo: object.tipo || null,
+        sessionIdentity:
+          debugMeta?.sessionIdentity ||
+          selectionSession?.sessionIdentity ||
+          selectionSession?.identity ||
+          object.id ||
+          null,
+        pass: false,
+        failureReason:
+          "text geometry fell back to generic client rect because authoritative text rect was unavailable",
+        observedRects: {
+          authoritativeKonvaRect: null,
+          renderedTextClientRect: buildTextGeometryContractRect(rect),
+        },
+        observedSources: {
+          fallbackRectAvailable: true,
+          requireLiveNodes: debugMeta?.requireLiveNodes === true,
+        },
+      },
+      {
+        sampleKey: `text-contract:source:${object.id || "unknown"}:${
+          debugMeta?.surface || "selection-bounds"
+        }`,
+        firstCount: 4,
+        throttleMs: 160,
+        force: true,
+      }
+    );
+    if (debugMeta?.requireLiveNodes === true) {
+      return null;
+    }
+  }
+
   let width = rect.width;
   let height = rect.height;
   if (object?.tipo === "texto" && typeof node.height === "function") {
@@ -110,6 +289,79 @@ function resolveNodeSelectionRect(object, node) {
     y: rect.y,
     width,
     height,
+  };
+}
+
+function hasFiniteSelectionPolygonPoints(points) {
+  return (
+    Array.isArray(points) &&
+    points.length === 8 &&
+    points.every((value) => Number.isFinite(Number(value)))
+  );
+}
+
+function hasMeaningfulSelectionRotation(node, object) {
+  const rawRotation =
+    typeof node?.rotation === "function"
+      ? Number(node.rotation() || 0)
+      : Number(object?.rotation || 0);
+
+  if (!Number.isFinite(rawRotation)) return false;
+
+  const normalizedRotation = Math.abs(rawRotation % 360);
+  return normalizedRotation > 0.01 && Math.abs(normalizedRotation - 360) > 0.01;
+}
+
+export function resolveSingleTextSelectionVisualBounds({
+  object,
+  node,
+  isMobile = false,
+  includePadding = true,
+} = {}) {
+  if (object?.tipo !== "texto" || !node) {
+    return null;
+  }
+
+  const padding = includePadding
+    ? getSelectionFramePaddingForSelection([object], isMobile)
+    : 0;
+  const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
+
+  if (hasMeaningfulSelectionRotation(node, object)) {
+    const rotatedPoints = buildSelectionFramePolygon(node, padding);
+
+    if (hasFiniteSelectionPolygonPoints(rotatedPoints)) {
+      return {
+        kind: "polygon",
+        points: rotatedPoints,
+        strokeWidth,
+        padding,
+      };
+    }
+  }
+
+  const rect = resolveNodeSelectionRect(object, node, {
+    phase: "single-text-visual-bounds",
+    surface: "selection-bounds",
+    caller: "resolveSingleTextSelectionVisualBounds",
+    requireLiveNodes: true,
+  });
+  if (!rect) return null;
+
+  return {
+    kind: "rect",
+    x: rect.x - padding,
+    y: rect.y - padding,
+    width: rect.width + padding * 2,
+    height: rect.height + padding * 2,
+    strokeWidth,
+    padding,
+    unionRect: {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    },
   };
 }
 
@@ -136,7 +388,12 @@ export function resolveSelectionUnionRect({
 
   resolvedSelectedObjects.forEach((object) => {
     const node = elementRefs?.current?.[object.id] || null;
-    const liveRect = resolveNodeSelectionRect(object, node);
+    const liveRect = resolveNodeSelectionRect(object, node, {
+      phase: requireLiveNodes ? "drag" : "selected",
+      surface: "selection-union",
+      caller: "resolveSelectionUnionRect",
+      requireLiveNodes,
+    });
     if (liveRect) {
       liveRectCount += 1;
       minX = Math.min(minX, liveRect.x);

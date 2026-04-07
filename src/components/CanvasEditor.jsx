@@ -1081,8 +1081,7 @@ export default function CanvasEditor({
   const {
     prepararGuias,
     mostrarGuias,
-    limpiarGuias,
-    configurarDragEnd
+    limpiarGuias
   } = useGuiasCentrado({
     anchoCanvas: 800,
     altoCanvas: altoCanvasDinamico,
@@ -1530,7 +1529,6 @@ export default function CanvasEditor({
                 requestInlineEditFinish={requestInlineEditFinish}
                 onInlineEditCanvasPointer={textEditInteractionController.handleCanvasPointer}
                 inlineEditDecorations={textEditInteractionController.decorations}
-                configurarDragEnd={configurarDragEnd}
                 ajustarFontSizeAAnchoVisual={ajustarFontSizeAAnchoVisual}
                 calcularPosTextoDesdeCentro={calcularPosTextoDesdeCentro}
                 textResizeDebug={textResizeDebug}

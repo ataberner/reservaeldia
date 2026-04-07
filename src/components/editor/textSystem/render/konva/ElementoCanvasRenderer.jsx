@@ -65,6 +65,10 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import {
+  buildTextGeometryContractRect,
+  logTextGeometryContractInvariant,
+} from "@/components/editor/canvasEditor/textGeometryContractDebug";
+import {
   getActiveCanvasBoxFlowSession,
   logCanvasBoxFlow,
 } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
@@ -72,6 +76,9 @@ import {
   clearCanonicalPoseMetadata,
   markTextOriginOffsetCanonicalPose,
 } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import {
+  resolveAuthoritativeTextRect,
+} from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
 import {
   getImageResizeNodeSnapshot,
   trackImageResizeDebug,
@@ -492,6 +499,104 @@ export default function ElementoCanvas({
   const elementNodeRef = useRef(null);
   const textNodeRef = useRef(null);
   const baseTextLayoutRef = useRef(null); // guarda el centro/baseline inicial
+  const currentInlineEditingId = getCurrentInlineEditingId();
+  const inlineVisibilityForText = useMemo(
+    () => (
+      obj?.tipo === "texto"
+        ? resolveInlineCanvasVisibility({
+            overlayEngine: inlineOverlayEngine,
+            visibilityMode: inlineVisibilityMode,
+            inlineOverlayMountedId,
+            inlineOverlayMountSession,
+            objectId: obj.id,
+            editingId,
+            currentInlineEditingId,
+          })
+        : null
+    ),
+    [
+      currentInlineEditingId,
+      editingId,
+      inlineOverlayEngine,
+      inlineOverlayMountSession,
+      inlineOverlayMountedId,
+      inlineVisibilityMode,
+      obj?.id,
+      obj?.tipo,
+    ]
+  );
+
+  useEffect(() => {
+    if (obj?.tipo !== "texto") return;
+
+    const textNode = textNodeRef.current;
+    const renderAuthority = inlineVisibilityForText?.renderAuthority || "konva";
+    const overlayOwnsVisualAuthority =
+      inlineVisibilityForText?.overlayOwnsVisualAuthority === true;
+    const konvaVisible =
+      typeof textNode?.visible === "function" ? Boolean(textNode.visible()) : null;
+    const konvaOpacity =
+      typeof textNode?.opacity === "function" ? Number(textNode.opacity()) : 1;
+    const fallbackRect =
+      typeof textNode?.getClientRect === "function"
+        ? textNode.getClientRect({
+            skipTransform: false,
+            skipShadow: true,
+            skipStroke: true,
+          })
+        : null;
+    const authoritativeTextRect = textNode
+      ? resolveAuthoritativeTextRect(textNode, obj, {
+          fallbackRect,
+        })
+      : null;
+    const pass = overlayOwnsVisualAuthority
+      ? !(konvaVisible !== false && Number(konvaOpacity || 0) > 0.01)
+      : true;
+
+    logTextGeometryContractInvariant(
+      "inline-visibility-authority-swap",
+      {
+        phase: overlayOwnsVisualAuthority ? renderAuthority : "konva",
+        surface: "konva-text-visibility",
+        authoritySource: renderAuthority,
+        sessionIdentity:
+          inlineOverlayMountSession?.sessionId ||
+          getActiveCanvasBoxFlowSession("selection")?.identity ||
+          obj.id ||
+          null,
+        elementId: obj.id || null,
+        tipo: obj.tipo || null,
+        pass,
+        failureReason: pass
+          ? null
+          : "DOM inline overlay owns visual authority but the Konva text node remains visible with non-zero opacity",
+        observedRects: {
+          authoritativeKonvaRect: buildTextGeometryContractRect(authoritativeTextRect),
+        },
+        observedSources: {
+          overlayOwnsVisualAuthority,
+          overlayMountSwapCommitted:
+            inlineVisibilityForText?.overlayMountSwapCommitted === true,
+          overlayVisualReady: inlineVisibilityForText?.overlayVisualReady === true,
+          overlayFocused: inlineVisibilityForText?.overlayFocused === true,
+          konvaVisible,
+          konvaOpacity:
+            Number.isFinite(konvaOpacity) ? Number(konvaOpacity) : null,
+        },
+      },
+      {
+        sampleKey: `text-contract:inline-visibility:${obj.id || "unknown"}`,
+        firstCount: 4,
+        throttleMs: 160,
+        force: overlayOwnsVisualAuthority || !pass,
+      }
+    );
+  }, [
+    inlineOverlayMountSession,
+    inlineVisibilityForText,
+    obj,
+  ]);
   const readRuntimeSelectedIds = useCallback(() => {
     if (isPassiveRender) return [];
     if (typeof selectionRuntime?.readSnapshot === "function") {
@@ -3878,15 +3983,7 @@ export default function ElementoCanvas({
 
 
   if (obj.tipo === "texto") {
-        const inlineVisibility = resolveInlineCanvasVisibility({
-      overlayEngine: inlineOverlayEngine,
-      visibilityMode: inlineVisibilityMode,
-      inlineOverlayMountedId,
-      inlineOverlayMountSession,
-      objectId: obj.id,
-      editingId,
-      currentInlineEditingId: getCurrentInlineEditingId(),
-    });
+        const inlineVisibility = inlineVisibilityForText;
     const isEditing = inlineVisibility.isEditing;
     const fontFamily = obj.fontFamily || "sans-serif";
     const align = (obj.align || "left").toLowerCase();

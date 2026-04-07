@@ -26,7 +26,12 @@ import {
 } from "@/lib/editorBridgeContracts";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
-import { startDragGrupalLider, previewDragGrupal, endDragGrupal } from "@/drag/dragGrupal";
+import {
+  getActiveGroupDragSession,
+  startDragGrupalLider,
+  previewDragGrupal,
+  endDragGrupal,
+} from "@/drag/dragGrupal";
 import { startDragIndividual, previewDragIndividual, endDragIndividual } from "@/drag/dragIndividual";
 
 const UNIT_LABELS = Object.freeze({
@@ -1557,7 +1562,20 @@ export default function CountdownKonva({
         return;
       }
 
-      onDragStartPersonalizado?.(obj.id, e);
+      const dragPipelineMeta =
+        groupDragResult.mode === "started"
+          ? {
+              pipeline: "group",
+              sessionId: groupDragResult.sessionId || null,
+              leaderId: groupDragResult.leaderId || obj.id,
+            }
+          : {
+              pipeline: "individual",
+              sessionId: null,
+              leaderId: null,
+            };
+
+      onDragStartPersonalizado?.(obj.id, e, dragPipelineMeta);
       if (groupDragResult.mode !== "started") {
         if (typeof window !== "undefined") {
           window.dispatchEvent(
@@ -1588,15 +1606,28 @@ export default function CountdownKonva({
     (e) => {
       if (window._grupoLider) {
         if (obj.id === window._grupoLider) {
+          const activeGroupSession = getActiveGroupDragSession();
           previewDragGrupal(e, obj, onChange);
           logThrottledDragMove(e?.target || e?.currentTarget || rootRef.current, {
             groupMode: "leader",
           });
-          onDragMovePersonalizado?.({ x: e.target.x(), y: e.target.y() }, obj.id);
+          onDragMovePersonalizado?.(
+            { x: e.target.x(), y: e.target.y() },
+            obj.id,
+            {
+              pipeline: "group",
+              sessionId: activeGroupSession?.sessionId || null,
+              leaderId: activeGroupSession?.leaderId || obj.id,
+            }
+          );
         }
         return;
       }
-      previewDragIndividual(e, obj, onDragMovePersonalizado);
+      previewDragIndividual(e, obj, onDragMovePersonalizado, {
+        pipeline: "individual",
+        sessionId: null,
+        leaderId: null,
+      });
       logThrottledDragMove(e?.target || e?.currentTarget || rootRef.current, {
         groupMode: "individual",
       });
@@ -1694,7 +1725,11 @@ export default function CountdownKonva({
           );
         }
         if (groupDragResult.shouldRunPersonalizedEnd) {
-          onDragEndPersonalizado?.();
+          onDragEndPersonalizado?.(obj.id, {
+            pipeline: "group",
+            sessionId: groupDragResult.sessionId || null,
+            leaderId: groupDragResult.leaderId || obj.id,
+          });
         }
       } else {
         notePostDragSelectionGuard();
@@ -1709,7 +1744,18 @@ export default function CountdownKonva({
             })
           );
         }
-        endDragIndividual(obj, node, onChange, onDragEndPersonalizado, hasDragged);
+        endDragIndividual(
+          obj,
+          node,
+          onChange,
+          onDragEndPersonalizado,
+          hasDragged,
+          {
+            pipeline: "individual",
+            sessionId: null,
+            leaderId: null,
+          }
+        );
       }
 
       if (shouldSkipLocalCleanup) {

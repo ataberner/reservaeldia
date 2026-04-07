@@ -398,14 +398,19 @@ function canonicalizeFinalizedDragPatch({
 
 function createEmptyDragSettleSession() {
   return {
+    sessionKey: null,
     dragId: null,
     tipo: null,
     startedSelected: false,
     selectionSnapshot: [],
+    selectionSnapshotDigest: "",
     overlaySelectionSnapshot: [],
+    overlaySelectionSnapshotDigest: "",
     needsDeferredCommit: false,
     hadVisualSelection: false,
     interactionEpoch: 0,
+    dragOverlaySessionKey: null,
+    dragInteractionSessionKey: null,
   };
 }
 
@@ -606,6 +611,98 @@ function buildDragInteractionSessionKey(sequence, dragId) {
     Number(sequence || 0) || 0,
     dragId || "selection",
   ].join(":");
+}
+
+function buildDragSettleSessionKey(sequence, dragId, interactionEpoch) {
+  return [
+    "drag-settle",
+    Number(sequence || 0) || 0,
+    dragId || "selection",
+    Number(interactionEpoch || 0) || 0,
+  ].join(":");
+}
+
+function resolvePendingHoverReplayStaleReason(
+  pendingState = null,
+  {
+    currentInteractionEpoch = 0,
+    currentLastInteractionEnd = null,
+    currentDragInteractionSessionKey = null,
+    currentDragOverlaySessionKey = null,
+    currentCommittedSelectedIdsDigest = null,
+  } = {}
+) {
+  if (!pendingState?.hoverId) return null;
+
+  const pendingInteractionEpoch =
+    Number(pendingState.interactionEpoch || 0) || 0;
+  const pendingLastInteractionEndEpoch =
+    Number(pendingState.lastInteractionEndEpoch || 0) || 0;
+  const currentLastInteractionEndEpoch =
+    Number(currentLastInteractionEnd?.interactionEpoch || 0) || 0;
+  const pendingDragInteractionSessionKey = String(
+    pendingState.dragInteractionSessionKey || ""
+  ).trim();
+  const pendingDragOverlaySessionKey = String(
+    pendingState.dragOverlaySessionKey || ""
+  ).trim();
+  const pendingCommittedSelectedIdsDigest = String(
+    pendingState.committedSelectedIdsDigest || ""
+  ).trim();
+  const normalizedCurrentDragInteractionSessionKey = String(
+    currentDragInteractionSessionKey || ""
+  ).trim();
+  const normalizedCurrentDragOverlaySessionKey = String(
+    currentDragOverlaySessionKey || ""
+  ).trim();
+  const normalizedCurrentCommittedSelectedIdsDigest = String(
+    currentCommittedSelectedIdsDigest || ""
+  ).trim();
+
+  if (
+    pendingInteractionEpoch > 0 &&
+    Number(currentInteractionEpoch || 0) > 0 &&
+    pendingInteractionEpoch !== Number(currentInteractionEpoch || 0)
+  ) {
+    return "interaction-epoch-changed";
+  }
+
+  if (pendingLastInteractionEndEpoch > 0) {
+    if (currentLastInteractionEnd?.kind !== "drag") {
+      return "last-interaction-end-kind-changed";
+    }
+    if (
+      currentLastInteractionEndEpoch > 0 &&
+      currentLastInteractionEndEpoch !== pendingLastInteractionEndEpoch
+    ) {
+      return "last-drag-end-changed";
+    }
+  }
+
+  if (
+    pendingDragInteractionSessionKey &&
+    normalizedCurrentDragInteractionSessionKey &&
+    pendingDragInteractionSessionKey !== normalizedCurrentDragInteractionSessionKey
+  ) {
+    return "drag-session-replaced";
+  }
+
+  if (
+    pendingDragOverlaySessionKey &&
+    normalizedCurrentDragOverlaySessionKey &&
+    pendingDragOverlaySessionKey !== normalizedCurrentDragOverlaySessionKey
+  ) {
+    return "drag-overlay-session-replaced";
+  }
+
+  if (
+    pendingCommittedSelectedIdsDigest &&
+    pendingCommittedSelectedIdsDigest !== normalizedCurrentCommittedSelectedIdsDigest
+  ) {
+    return "committed-selection-changed";
+  }
+
+  return null;
 }
 
 function resolveDragVisualSelectionIds(dragId, selectionIds) {
@@ -980,6 +1077,7 @@ export default function CanvasStageContent({
   const dragLayerRef = useRef(null);
   const dragOverlayIndicatorRef = useRef(null);
   const dragSettleSessionRef = useRef(createEmptyDragSettleSession());
+  const dragSettleSessionCounterRef = useRef(0);
   const dragOverlayBoxFlowSessionCounterRef = useRef(0);
   const dragInteractionSessionCounterRef = useRef(0);
   const dragOverlaySyncTokenCounterRef = useRef(0);
@@ -2809,6 +2907,8 @@ export default function CanvasStageContent({
       )
   );
   const activeDragSettleSession = dragSettleSessionRef.current;
+  const activeDragSettleSessionKey =
+    activeDragSettleSession?.sessionKey || null;
   const activeDragSettleSelectionSnapshotIds = sanitizeSelectionIds(
     activeDragSettleSession?.selectionSnapshot
   );
@@ -3213,9 +3313,14 @@ export default function CanvasStageContent({
       dragInteractionPhase: dragInteractionSession.phase || null,
       dragInteractionEpoch:
         Number(dragInteractionSession.interactionEpoch || 0) || null,
+      activeDragSettleSessionKey,
       activeDragSettleDragId: activeDragSettleSession?.dragId || null,
       activeDragSettleInteractionEpoch:
         Number(activeDragSettleSession?.interactionEpoch || 0) || null,
+      activeDragSettleDragOverlaySessionKey:
+        activeDragSettleSession?.dragOverlaySessionKey || null,
+      activeDragSettleDragInteractionSessionKey:
+        activeDragSettleSession?.dragInteractionSessionKey || null,
       settlingActive: Boolean(canvasInteractionSettling),
       handoffActive: Boolean(
         shouldKeepDragOverlayMountedForSelectedPhaseHandoff
@@ -3254,6 +3359,16 @@ export default function CanvasStageContent({
         hoverPostDragPendingRef.current?.hoverId || null,
       postDragPendingHoverReplayTarget:
         hoverPostDragPendingRef.current?.hoverId || null,
+      postDragPendingHoverReplayInteractionEpoch:
+        Number(hoverPostDragPendingRef.current?.interactionEpoch || 0) || null,
+      postDragPendingHoverReplayLastEndEpoch:
+        Number(hoverPostDragPendingRef.current?.lastInteractionEndEpoch || 0) || null,
+      postDragPendingHoverReplayDragInteractionSessionKey:
+        hoverPostDragPendingRef.current?.dragInteractionSessionKey || null,
+      postDragPendingHoverReplayDragOverlaySessionKey:
+        hoverPostDragPendingRef.current?.dragOverlaySessionKey || null,
+      postDragPendingHoverReplayCommittedSelectionIds:
+        hoverPostDragPendingRef.current?.committedSelectedIdsDigest || null,
       windowIsDragging:
         typeof window !== "undefined" ? Boolean(window._isDragging) : false,
       hoverTargetLocalDragging: resolveElementLocalDraggingState(targetHoverId),
@@ -3336,6 +3451,7 @@ export default function CanvasStageContent({
     return logCanvasBoxFlow(channel, eventName, payload, {
       identity:
         options.identity ||
+        payload.activeDragSettleSessionKey ||
         payload.dragOverlaySessionKey ||
         dragInteractionSessionKey ||
         payload.selectedIds ||
@@ -3343,10 +3459,12 @@ export default function CanvasStageContent({
       sessionIdentity:
         options.sessionIdentity ||
         resolveReusableSelectionSessionIdentity(
+          payload.activeDragSettleSessionKey,
           payload.dragInteractionSessionKey,
           payload.dragOverlaySessionKey,
           payload.selectedIds
         ) ||
+        payload.activeDragSettleSessionKey ||
         payload.dragOverlaySessionKey ||
         payload.dragInteractionSessionKey ||
         payload.selectedIds ||
@@ -3356,6 +3474,136 @@ export default function CanvasStageContent({
     buildPostDragDiagnosticPayload,
     dragInteractionSessionKey,
     resolveReusableSelectionSessionIdentity,
+  ]);
+  const resolvePendingHoverRecoveryStaleReasonLive = useCallback((pendingState) => (
+    resolvePendingHoverReplayStaleReason(pendingState, {
+      currentInteractionEpoch: Number(canvasInteractionEpoch || 0) || 0,
+      currentLastInteractionEnd: hoverLastInteractionEnd || null,
+      currentDragInteractionSessionKey: dragInteractionSessionKey || null,
+      currentDragOverlaySessionKey: dragOverlayBoxFlowIdentity || null,
+      currentCommittedSelectedIdsDigest: committedSelectedIdsDigest || null,
+    })
+  ), [
+    canvasInteractionEpoch,
+    committedSelectedIdsDigest,
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
+    hoverLastInteractionEnd,
+  ]);
+  const invalidatePendingHoverRecovery = useCallback((
+    pendingState,
+    reason,
+    extra = {}
+  ) => {
+    if (!pendingState?.hoverId) {
+      return false;
+    }
+
+    hoverPostDragPendingRef.current = null;
+    logCanvasBoxFlow("hover", "post-drag:replay-ignored", {
+      source: extra.source || pendingState.meta?.source || "stage-composer",
+      hoverId: pendingState.hoverId || null,
+      reason,
+      phase: interactionPhase,
+      owner: "hover-indicator",
+      higherPriorityOwner: hoverHigherPriorityOwner || "none",
+      suppressionReasons: [...(pendingState.suppressionReasons || [])],
+      suppressionScope: pendingState.suppressionScope || "none",
+      selectedIds: pendingState.selectedIds || [],
+      selectedIdsDigest: pendingState.selectedIdsDigest || "",
+      dragOverlayOwnerActive: Boolean(shouldRenderDragSelectionOverlay),
+      settlingActive: Boolean(canvasInteractionSettling),
+      handoffActive: Boolean(
+        shouldKeepDragOverlayMountedForSelectedPhaseHandoff
+      ),
+      interactionCoordinatorActive: Boolean(canvasInteractionActive),
+      runtimeDragActive: Boolean(hoverRuntimeDragActive),
+      runtimeGroupDragActive: Boolean(hoverRuntimeGroupDragActive),
+      runtimeResizeActive: Boolean(hoverRuntimeResizeActive),
+      hoverReplayIgnored: true,
+      hoverReplayIgnoredReason: reason,
+      pendingInteractionEpoch:
+        Number(pendingState.interactionEpoch || 0) || null,
+      pendingLastInteractionEndEpoch:
+        Number(pendingState.lastInteractionEndEpoch || 0) || null,
+      pendingDragInteractionSessionKey:
+        pendingState.dragInteractionSessionKey || null,
+      pendingDragOverlaySessionKey:
+        pendingState.dragOverlaySessionKey || null,
+      pendingCommittedSelectedIdsDigest:
+        pendingState.committedSelectedIdsDigest || null,
+      currentInteractionEpoch:
+        Number(canvasInteractionEpoch || 0) || null,
+      currentLastInteractionEndEpoch:
+        Number(hoverLastInteractionEnd?.interactionEpoch || 0) || null,
+      currentDragInteractionSessionKey: dragInteractionSessionKey || null,
+      currentDragOverlaySessionKey: dragOverlayBoxFlowIdentity || null,
+      currentCommittedSelectedIdsDigest: committedSelectedIdsDigest || null,
+      targetType:
+        extra.targetType || pendingState.meta?.targetType || null,
+    }, {
+      identity: pendingState.hoverId,
+      sessionIdentity:
+        resolveReusableSelectionSessionIdentity(
+          pendingState.dragInteractionSessionKey,
+          pendingState.dragOverlaySessionKey,
+          dragInteractionSessionKey,
+          dragOverlayBoxFlowIdentity,
+          pendingState.hoverId
+        ) || pendingState.hoverId,
+    });
+    logPostDragRecoveryDiagnostic(
+      "hover",
+      "hover:stale-replay-ignored",
+      {
+        source: extra.source || pendingState.meta?.source || "stage-composer",
+        reason,
+        hoverId: pendingState.hoverId || null,
+        targetId: pendingState.hoverId || null,
+        hoverReplayRanAfterSuppressionCleared: false,
+        stalePendingHoverInteractionEpoch:
+          Number(pendingState.interactionEpoch || 0) || null,
+        stalePendingHoverLastEndEpoch:
+          Number(pendingState.lastInteractionEndEpoch || 0) || null,
+        stalePendingHoverDragInteractionSessionKey:
+          pendingState.dragInteractionSessionKey || null,
+        stalePendingHoverDragOverlaySessionKey:
+          pendingState.dragOverlaySessionKey || null,
+        stalePendingHoverCommittedSelectionIds:
+          pendingState.committedSelectedIdsDigest || null,
+        hoverTargetType:
+          extra.targetType || pendingState.meta?.targetType || null,
+      },
+      {
+        identity: pendingState.hoverId,
+        sessionIdentity:
+          resolveReusableSelectionSessionIdentity(
+            pendingState.dragInteractionSessionKey,
+            pendingState.dragOverlaySessionKey,
+            dragInteractionSessionKey,
+            dragOverlayBoxFlowIdentity,
+            pendingState.hoverId
+          ) || pendingState.hoverId,
+      }
+    );
+    return true;
+  }, [
+    canvasInteractionActive,
+    canvasInteractionEpoch,
+    canvasInteractionSettling,
+    committedSelectedIdsDigest,
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
+    hoverHigherPriorityOwner,
+    hoverLastInteractionEnd,
+    hoverRuntimeDragActive,
+    hoverRuntimeGroupDragActive,
+    hoverRuntimeResizeActive,
+    interactionPhase,
+    logPostDragRecoveryDiagnostic,
+    resolveReusableSelectionSessionIdentity,
+    shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
+    shouldRenderDragSelectionOverlay,
   ]);
   dragOverlayVisualCleanupGuardRef.current = {
     shouldKeepDragOverlayMountedForSelectedPhaseHandoff,
@@ -3485,6 +3733,70 @@ export default function CanvasStageContent({
             : null;
 
         if (!latestMeta?.isReady || latestReadyKey !== readinessKey) {
+          const staleSample = sampleCanvasInteractionLog(
+            `selected-phase:handoff-paint-stale:${readinessKey || "none"}:${latestReadyKey || "none"}`,
+            {
+              firstCount: 8,
+              throttleMs: 120,
+            }
+          );
+          if (staleSample.shouldLog) {
+            logCanvasBoxFlow("selection", "selected-phase:handoff-paint-ignored-stale-session", {
+              source: "stage-composer",
+              reason: !latestMeta?.isReady
+                ? "selected-phase-no-longer-ready"
+                : "readiness-key-changed-before-handoff-paint-confirmation",
+              phase: dragOverlayHandoffWaitRef.current ? "settling" : "selected",
+              owner: "selected-phase",
+              selectedIds:
+                latestMeta?.visualIdentity ||
+                nextMeta.visualIdentity ||
+                selectedIdsDigest,
+              visualIds:
+                latestMeta?.visualIdentity ||
+                nextMeta.visualIdentity ||
+                selectedIdsDigest,
+              selectionAuthority: "logical-selection",
+              geometryAuthority:
+                latestMeta?.renderMode === "transformer"
+                  ? "transformer-live"
+                  : "selected-auto-bounds",
+              overlayVisible: shouldRenderDragSelectionOverlay,
+              settling: dragOverlayHandoffWaitRef.current,
+              suppressedLayers:
+                dragOverlayHandoffWaitRef.current
+                  ? ["drag-overlay", "hover-indicator"]
+                  : ["hover-indicator"],
+              hideDeferred: dragOverlayHandoffWaitRef.current,
+              handoffPaintConfirmed: false,
+              pendingReadinessKey: readinessKey,
+              latestReadinessKey: latestReadyKey,
+              expectedSessionIdentity: nextMeta.sessionIdentity || null,
+              latestSessionIdentity: latestMeta?.sessionIdentity || null,
+              selectedPhaseDestinationIds:
+                selectedPhaseDestinationSelectionIdsDigest || null,
+            }, {
+              identity:
+                selectionBoxFlowIdentity ||
+                latestMeta?.visualIdentity ||
+                nextMeta.visualIdentity ||
+                selectedIdsDigest ||
+                null,
+              sessionIdentity:
+                resolveReusableSelectionSessionIdentity(
+                  latestMeta?.sessionIdentity,
+                  nextMeta.sessionIdentity,
+                  dragInteractionSessionKey,
+                  dragOverlayBoxFlowIdentity,
+                  selectedPhaseDestinationSelectionIdsDigest,
+                  latestMeta?.visualIdentity,
+                  nextMeta.visualIdentity
+                ) ||
+                latestMeta?.sessionIdentity ||
+                nextMeta.sessionIdentity ||
+                null,
+            });
+          }
           return;
         }
 
@@ -3575,7 +3887,10 @@ export default function CanvasStageContent({
       }
     );
   }, [
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
     isCurrentDragSettleSessionRepairPending,
+    resolveReusableSelectionSessionIdentity,
     selectedIdsDigest,
     selectedPhaseDestinationSelectionIdsDigest,
     selectionBoxFlowIdentity,
@@ -5168,6 +5483,15 @@ export default function CanvasStageContent({
           hoverId: normalizedHoverTargetId || null,
           meta: meta || null,
           phase: nextBoundaryPhase,
+          interactionEpoch:
+            Number(liveHoverInteraction.interactionEpoch || 0) || 0,
+          lastInteractionEndEpoch:
+            Number(liveHoverInteraction.lastEnd?.interactionEpoch || 0) || 0,
+          dragInteractionSessionKey:
+            dragInteractionSessionRef.current?.sessionKey || null,
+          dragOverlaySessionKey:
+            dragOverlayBoxFlowSessionRef.current?.sessionKey || null,
+          committedSelectedIdsDigest: committedSelectedIdsDigest || null,
           suppressionReasons: [...nextHoverSuppressionState.reasons],
           suppressionScope:
             nextHoverSuppressionState.suppressionScope || "none",
@@ -5471,6 +5795,7 @@ export default function CanvasStageContent({
     canvasInteractionActive,
     canvasInteractionSettling,
     canvasInteractionEpoch,
+    committedSelectedIdsDigest,
     dragOverlayBoxFlowSession.phase,
     activeInlineEditingId,
     hasSelectedPhaseHoverContext,
@@ -5492,6 +5817,40 @@ export default function CanvasStageContent({
   useEffect(() => {
     const pendingHoverRecovery = hoverPostDragPendingRef.current || null;
     if (!pendingHoverRecovery?.hoverId) {
+      return;
+    }
+
+    const staleReason =
+      resolvePendingHoverRecoveryStaleReasonLive(pendingHoverRecovery);
+    if (!staleReason) {
+      return;
+    }
+
+    invalidatePendingHoverRecovery(pendingHoverRecovery, staleReason, {
+      source: "post-drag-replay-watch",
+    });
+  }, [
+    canvasInteractionEpoch,
+    committedSelectedIdsDigest,
+    dragInteractionSessionKey,
+    dragOverlayBoxFlowIdentity,
+    hoverLastInteractionEnd,
+    invalidatePendingHoverRecovery,
+    resolvePendingHoverRecoveryStaleReasonLive,
+  ]);
+
+  useEffect(() => {
+    const pendingHoverRecovery = hoverPostDragPendingRef.current || null;
+    if (!pendingHoverRecovery?.hoverId) {
+      return;
+    }
+
+    const staleReason =
+      resolvePendingHoverRecoveryStaleReasonLive(pendingHoverRecovery);
+    if (staleReason) {
+      invalidatePendingHoverRecovery(pendingHoverRecovery, staleReason, {
+        source: "post-drag-replay-apply",
+      });
       return;
     }
 
@@ -5522,8 +5881,10 @@ export default function CanvasStageContent({
   }, [
     hoverId,
     hoverPostDragRecoveryReady,
+    invalidatePendingHoverRecovery,
     interactionPhase,
     resolveHoverSuppressionForTarget,
+    resolvePendingHoverRecoveryStaleReasonLive,
     setHoverIdWhenIdle,
   ]);
 
@@ -7651,28 +8012,78 @@ export default function CanvasStageContent({
         ? requestedOverlaySelection
         : resolveDragVisualSelectionIds(dragId, currentSelection);
     const startedSelected = currentSelection.includes(dragId);
+    const selectionSnapshotDigest =
+      buildCanvasBoxFlowIdsDigest(currentSelection) || "";
+    const overlaySelectionSnapshotDigest =
+      buildCanvasBoxFlowIdsDigest(overlaySelectionSnapshot) || "";
+    const nextInteractionEpoch = Number(interactionEpoch || 0);
+    dragSettleSessionCounterRef.current += 1;
     const nextSession = {
+      sessionKey: buildDragSettleSessionKey(
+        dragSettleSessionCounterRef.current,
+        dragId,
+        nextInteractionEpoch
+      ),
       dragId,
       tipo,
       startedSelected,
       selectionSnapshot: [...currentSelection],
+      selectionSnapshotDigest,
       overlaySelectionSnapshot: [...overlaySelectionSnapshot],
+      overlaySelectionSnapshotDigest,
       needsDeferredCommit: !startedSelected,
       hadVisualSelection:
         overlaySelectionSnapshot.length > 0,
-      interactionEpoch: Number(interactionEpoch || 0),
+      interactionEpoch: nextInteractionEpoch,
+      dragOverlaySessionKey:
+        dragOverlayBoxFlowSessionRef.current?.sessionKey || null,
+      dragInteractionSessionKey:
+        dragInteractionSessionRef.current?.sessionKey || null,
     };
 
     dragSettleSessionRef.current = nextSession;
     publishCountdownRuntimeDebug("composer:drag-settle-start", {
       dragId,
       tipo,
-      interactionEpoch: Number(interactionEpoch || 0),
+      interactionEpoch: nextInteractionEpoch,
+      sessionKey: nextSession.sessionKey,
+      dragOverlaySessionKey: nextSession.dragOverlaySessionKey,
+      dragInteractionSessionKey: nextSession.dragInteractionSessionKey,
       startedSelected,
       needsDeferredCommit: Boolean(nextSession.needsDeferredCommit),
       selectionSnapshot: [...currentSelection],
       overlaySelectionSnapshot: [...overlaySelectionSnapshot],
     });
+    logPostDragRecoveryDiagnostic(
+      "selection",
+      "drag-settle:session-started",
+      {
+        source: options?.source || "drag-session-start",
+        reason: "drag-settle-session-created",
+        dragId,
+        dragTargetType: tipo || null,
+        activeDragSettleSessionKey: nextSession.sessionKey,
+        activeDragSettleDragOverlaySessionKey:
+          nextSession.dragOverlaySessionKey,
+        activeDragSettleDragInteractionSessionKey:
+          nextSession.dragInteractionSessionKey,
+        dragSettleSelectionSnapshotIds:
+          selectionSnapshotDigest || null,
+        dragSettleDestinationIds:
+          overlaySelectionSnapshotDigest || null,
+      },
+      {
+        identity: nextSession.sessionKey,
+        sessionIdentity:
+          resolveReusableSelectionSessionIdentity(
+            nextSession.dragInteractionSessionKey,
+            nextSession.dragOverlaySessionKey,
+            nextSession.sessionKey,
+            overlaySelectionSnapshotDigest,
+            selectionSnapshotDigest
+          ) || nextSession.sessionKey,
+      }
+    );
 
     if (!nextSession.needsDeferredCommit) {
       setPendingDragSelectionRuntime(null, {
@@ -7710,7 +8121,9 @@ export default function CanvasStageContent({
     });
     return nextSession;
   }, [
+    logPostDragRecoveryDiagnostic,
     publishCountdownRuntimeDebug,
+    resolveReusableSelectionSessionIdentity,
     setPendingDragSelectionRuntime,
   ]);
 
@@ -8422,6 +8835,7 @@ export default function CanvasStageContent({
         ? session
         : createEmptyDragSettleSession();
     const outcome = {
+      sessionKey: safeSession.sessionKey || null,
       dragId: safeSession.dragId || null,
       tipo: safeSession.tipo || null,
       interactionEpoch: Number(safeSession.interactionEpoch || 0),
@@ -8615,19 +9029,29 @@ export default function CanvasStageContent({
   ) => {
     const normalizedExpectedInteractionEpoch =
       Number(expectedInteractionEpoch || 0) || 0;
+    const expectedSettleSessionKey =
+      dragSettleSessionRef.current?.sessionKey || null;
     publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:scheduled", {
       dragId,
       tipo,
       source,
       expectedInteractionEpoch: normalizedExpectedInteractionEpoch || null,
+      expectedSettleSessionKey,
       sessionSnapshot: dragSettleSessionRef.current || null,
     });
     const runPostDragUi = () => {
       const session = dragSettleSessionRef.current;
+      const sessionKey = session?.sessionKey || null;
       const sessionInteractionEpoch =
         Number(session?.interactionEpoch || 0) || 0;
       const staleSessionReason = !session?.dragId
         ? "missing-session"
+        : (
+            expectedSettleSessionKey &&
+            sessionKey &&
+            sessionKey !== expectedSettleSessionKey
+          )
+          ? "stale-settle-session"
         : session.dragId !== dragId
           ? "stale-drag-id"
           : (
@@ -8644,12 +9068,52 @@ export default function CanvasStageContent({
           });
           dragSettleSessionRef.current = createEmptyDragSettleSession();
         }
+        logPostDragRecoveryDiagnostic(
+          "selection",
+          "selection:repair-ignored-stale-session",
+          {
+            source,
+            reason: staleSessionReason,
+            dragId,
+            dragTargetType: tipo || null,
+            expectedInteractionEpoch:
+              normalizedExpectedInteractionEpoch || null,
+            expectedDragSettleSessionKey:
+              expectedSettleSessionKey || null,
+            activeDragSettleSessionKey: sessionKey || null,
+            sessionInteractionEpoch: sessionInteractionEpoch || null,
+            staleSessionAccepted: false,
+          },
+          {
+            identity:
+              expectedSettleSessionKey ||
+              sessionKey ||
+              dragId ||
+              source,
+            sessionIdentity:
+              resolveReusableSelectionSessionIdentity(
+                session?.dragInteractionSessionKey,
+                session?.dragOverlaySessionKey,
+                expectedSettleSessionKey,
+                sessionKey,
+                dragInteractionSessionRef.current?.sessionKey,
+                dragOverlayBoxFlowSessionRef.current?.sessionKey,
+                dragId
+              ) ||
+              expectedSettleSessionKey ||
+              sessionKey ||
+              dragId ||
+              source,
+          }
+        );
         publishCountdownRuntimeDebug("composer:post-drag-ui-refresh:skipped", {
           dragId,
           tipo,
           source,
           reason: staleSessionReason,
           expectedInteractionEpoch: normalizedExpectedInteractionEpoch || null,
+          expectedSettleSessionKey: expectedSettleSessionKey || null,
+          sessionKey,
           sessionInteractionEpoch: sessionInteractionEpoch || null,
           sessionSnapshot: session || null,
         });
@@ -8701,16 +9165,20 @@ export default function CanvasStageContent({
         dragSettleDestinationSnapshot: buildCanvasBoxFlowIdsDigest(
           outcome.dragSettleDestinationSnapshot
         ),
+        dragSettleSessionKey: outcome.sessionKey || null,
       }, {
         identity:
+          outcome.sessionKey ||
           dragOverlayBoxFlowSessionRef.current?.sessionKey ||
           resolveSelectionBoxFlowIdentity(dragId, outcome.nextSelectionSnapshot),
         sessionIdentity:
           resolveReusableSelectionSessionIdentity(
+            outcome.sessionKey,
             dragInteractionSessionRef.current?.sessionKey,
             dragOverlayBoxFlowSessionRef.current?.sessionKey,
             resolveSelectionBoxFlowIdentity(dragId, outcome.nextSelectionSnapshot)
           ) ||
+          outcome.sessionKey ||
           dragOverlayBoxFlowSessionRef.current?.sessionKey ||
           resolveSelectionBoxFlowIdentity(dragId, outcome.nextSelectionSnapshot),
       });
@@ -8773,6 +9241,7 @@ export default function CanvasStageContent({
     canvasInteractionEpoch,
     clearDragVisualSelection,
     elementosSeleccionados,
+    logPostDragRecoveryDiagnostic,
     publishCountdownRuntimeDebug,
     resolveDragSettleOutcome,
     scheduleCanvasUiAfterSettle,

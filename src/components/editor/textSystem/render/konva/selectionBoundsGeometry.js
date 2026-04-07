@@ -88,6 +88,13 @@ function normalizeSelectedObjects(selectedObjects = []) {
   return asArray(selectedObjects).filter(Boolean);
 }
 
+function buildSelectionIdsDigestFromObjects(selectedObjects = []) {
+  return normalizeSelectedObjects(selectedObjects)
+    .map((object) => String(object?.id || "").trim())
+    .filter(Boolean)
+    .join(",");
+}
+
 function buildObjectDataSelectionRect(object) {
   if (!object || typeof object !== "object") return null;
 
@@ -111,6 +118,115 @@ function buildObjectDataSelectionRect(object) {
     width: fallbackWidth,
     height: fallbackHeight,
   };
+}
+
+function resolveObjectDataSelectionFallbackRect(object) {
+  return (
+    buildObjectDataSelectionRect(object) || {
+      x: toFiniteNumber(object?.x, 0) || 0,
+      y: toFiniteNumber(object?.y, 0) || 0,
+      width: Math.max(1, toFiniteNumber(object?.width, 20) || 20),
+      height: Math.max(1, toFiniteNumber(object?.height, 20) || 20),
+    }
+  );
+}
+
+function buildSelectionUnionFromRects(rectEntries = []) {
+  if (!Array.isArray(rectEntries) || rectEntries.length === 0) {
+    return null;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  rectEntries.forEach((entry) => {
+    const rect = entry?.rect || null;
+    if (!rect) return;
+    minX = Math.min(minX, rect.x);
+    minY = Math.min(minY, rect.y);
+    maxX = Math.max(maxX, rect.x + rect.width);
+    maxY = Math.max(maxY, rect.y + rect.height);
+  });
+
+  if (
+    minX === Infinity ||
+    minY === Infinity ||
+    maxX === -Infinity ||
+    maxY === -Infinity
+  ) {
+    return null;
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function logSelectionUnionSourceDecision({
+  resolvedSelectedObjects = [],
+  debugMeta = null,
+  geometrySource = "unresolved",
+  liveRectCount = 0,
+  fallbackRectCount = 0,
+  mixedSourcePrevented = false,
+  failureReason = null,
+  requireLiveNodes = false,
+} = {}) {
+  const normalizedSelectedObjects = normalizeSelectedObjects(resolvedSelectedObjects);
+  const selectedIdsDigest = buildSelectionIdsDigestFromObjects(
+    normalizedSelectedObjects
+  );
+  const hasText = normalizedSelectedObjects.some(
+    (object) => object?.tipo === "texto"
+  );
+  const selectionSession = getActiveCanvasBoxFlowSession("selection");
+  const selectionIdentity =
+    debugMeta?.sessionIdentity ||
+    selectionSession?.sessionIdentity ||
+    selectionSession?.identity ||
+    selectedIdsDigest ||
+    null;
+  const sample = sampleCanvasInteractionLog(
+    `selection-union:${geometrySource}:${selectedIdsDigest || "none"}:${
+      debugMeta?.surface || "selection-union"
+    }`,
+    {
+      firstCount: 4,
+      throttleMs: 160,
+    }
+  );
+  const shouldLog =
+    sample.shouldLog ||
+    mixedSourcePrevented ||
+    geometrySource !== "live" ||
+    Boolean(failureReason);
+
+  if (!shouldLog) return;
+
+  logSelectedDragDebug("selection:union-source", {
+    sampleCount: sample.sampleCount,
+    phase: debugMeta?.phase || (requireLiveNodes ? "drag" : "selected"),
+    surface: debugMeta?.surface || "selection-union",
+    caller: debugMeta?.caller || "resolveSelectionUnionRect",
+    sessionIdentity: selectionIdentity,
+    selectedIds: selectedIdsDigest || null,
+    selectedCount: normalizedSelectedObjects.length,
+    hasText,
+    requireLiveNodes,
+    geometrySource,
+    allLive: geometrySource === "live",
+    allFallback: geometrySource === "object-data-fallback",
+    unresolved: geometrySource === "unresolved",
+    mixedSourcePrevented,
+    liveRectCount,
+    fallbackRectCount,
+    failureReason,
+  });
 }
 
 function buildSelectionData(selectedElements = [], objetos = [], objectLookup = null) {
@@ -426,11 +542,8 @@ export function resolveSelectionUnionRect({
       : buildSelectionData(selectedElements, objetos, objectLookup);
   if (resolvedSelectedObjects.length === 0) return null;
 
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let liveRectCount = 0;
+  const liveRectEntries = [];
+  const fallbackRectEntries = [];
 
   resolvedSelectedObjects.forEach((object) => {
     const node = elementRefs?.current?.[object.id] || null;
@@ -441,26 +554,60 @@ export function resolveSelectionUnionRect({
       requireLiveNodes,
     });
     if (liveRect) {
-      liveRectCount += 1;
-      minX = Math.min(minX, liveRect.x);
-      minY = Math.min(minY, liveRect.y);
-      maxX = Math.max(maxX, liveRect.x + liveRect.width);
-      maxY = Math.max(maxY, liveRect.y + liveRect.height);
-      return;
+      liveRectEntries.push({
+        object,
+        rect: liveRect,
+      });
     }
 
     if (requireLiveNodes) return;
 
-    const fallbackRect =
-      buildObjectDataSelectionRect(object) || {
-        x: toFiniteNumber(object?.x, 0) || 0,
-        y: toFiniteNumber(object?.y, 0) || 0,
-        width: Math.max(1, toFiniteNumber(object?.width, 20) || 20),
-        height: Math.max(1, toFiniteNumber(object?.height, 20) || 20),
-      };
+    fallbackRectEntries.push({
+      object,
+      rect: resolveObjectDataSelectionFallbackRect(object),
+    });
+  });
 
-    if (object?.tipo === "texto") {
+  const totalSelectedCount = resolvedSelectedObjects.length;
+  const liveRectCount = liveRectEntries.length;
+  const fallbackRectCount = fallbackRectEntries.length;
+  const allLiveAvailable = liveRectCount === totalSelectedCount;
+  const allFallbackAvailable = fallbackRectCount === totalSelectedCount;
+  const mixedSourcePrevented =
+    !requireLiveNodes &&
+    liveRectCount > 0 &&
+    liveRectCount !== totalSelectedCount &&
+    fallbackRectCount > 0;
+
+  let geometrySource = "unresolved";
+  let activeRectEntries = null;
+  let failureReason = null;
+
+  if (allLiveAvailable) {
+    geometrySource = "live";
+    activeRectEntries = liveRectEntries;
+  } else if (requireLiveNodes) {
+    geometrySource = "unresolved";
+    failureReason = "missing-live-geometry";
+  } else if (allFallbackAvailable) {
+    geometrySource = "object-data-fallback";
+    activeRectEntries = fallbackRectEntries;
+    failureReason =
+      liveRectCount > 0
+        ? "mixed-union-prevented-fell-back-to-source-pure-fallback"
+        : "live-geometry-unavailable-used-source-pure-fallback";
+  } else {
+    geometrySource = "unresolved";
+    failureReason = "no-lawful-source-for-selection-union";
+  }
+
+  if (geometrySource === "object-data-fallback") {
+    fallbackRectEntries.forEach(({ object, rect }) => {
+      if (object?.tipo !== "texto") return;
       const selectionSession = getActiveCanvasBoxFlowSession("selection");
+      const liveGeometryAvailable = liveRectEntries.some(
+        (entry) => entry?.object?.id === object.id
+      );
       logTextGeometryContractInvariant(
         "text-geometry-explicit-fallback",
         {
@@ -479,12 +626,14 @@ export function resolveSelectionUnionRect({
           pass: true,
           failureReason: null,
           observedRects: {
-            objectDataFallbackRect: buildTextGeometryContractRect(fallbackRect),
+            objectDataFallbackRect: buildTextGeometryContractRect(rect),
           },
           observedSources: {
-            liveGeometryAvailable: false,
+            liveGeometryAvailable,
             requireLiveNodes,
-            fallbackReason: "authoritative-text-unavailable",
+            fallbackReason: liveGeometryAvailable
+              ? "selected-union-source-purity"
+              : "authoritative-text-unavailable",
           },
         },
         {
@@ -496,32 +645,47 @@ export function resolveSelectionUnionRect({
           force: true,
         }
       );
-    }
+    });
+  }
 
-    minX = Math.min(minX, fallbackRect.x);
-    minY = Math.min(minY, fallbackRect.y);
-    maxX = Math.max(maxX, fallbackRect.x + fallbackRect.width);
-    maxY = Math.max(maxY, fallbackRect.y + fallbackRect.height);
+  logSelectionUnionSourceDecision({
+    resolvedSelectedObjects,
+    debugMeta,
+    geometrySource,
+    liveRectCount,
+    fallbackRectCount,
+    mixedSourcePrevented,
+    failureReason,
+    requireLiveNodes,
   });
 
-  if (requireLiveNodes && liveRectCount !== resolvedSelectedObjects.length) {
+  if (!activeRectEntries) {
     return null;
   }
 
-  if (
-    minX === Infinity ||
-    minY === Infinity ||
-    maxX === -Infinity ||
-    maxY === -Infinity
-  ) {
+  const unionRect = buildSelectionUnionFromRects(activeRectEntries);
+  if (!unionRect) {
+    logSelectionUnionSourceDecision({
+      resolvedSelectedObjects,
+      debugMeta,
+      geometrySource: "unresolved",
+      liveRectCount,
+      fallbackRectCount,
+      mixedSourcePrevented,
+      failureReason: "selection-union-build-failed",
+      requireLiveNodes,
+    });
     return null;
   }
 
   return {
-    x: minX,
-    y: minY,
-    width: maxX - minX,
-    height: maxY - minY,
+    x: unionRect.x,
+    y: unionRect.y,
+    width: unionRect.width,
+    height: unionRect.height,
+    geometrySource,
+    selectionUnionSource: geometrySource,
+    mixedSourcePrevented,
     selectedObjects: resolvedSelectedObjects,
   };
 }
@@ -566,6 +730,9 @@ export function resolveSelectionFrameRect({
     height: unionRect.height + padding * 2,
     strokeWidth: getSelectionFrameStrokeWidth(isMobile),
     padding,
+    geometrySource: unionRect.geometrySource || null,
+    selectionUnionSource: unionRect.selectionUnionSource || null,
+    mixedSourcePrevented: unionRect.mixedSourcePrevented === true,
     selectedObjects: resolvedSelectedObjects,
     unionRect: {
       x: unionRect.x,

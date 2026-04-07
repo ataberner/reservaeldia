@@ -104,6 +104,7 @@ Only these geometry sources are valid:
 - `selected`
   - SHOULD use live geometry
   - MAY use object-data fallback only for selected-phase visuals and only when live geometry is unavailable
+  - for selected-phase union frames, the chosen source MUST be source-pure: all-live or all-fallback
   - if fallback is used, the frame MUST be a fallback frame, not a mixed-source frame
 - `predrag`
   - MUST use live geometry only
@@ -405,12 +406,14 @@ A drag session MUST have a stable identity spanning:
 
 - drag interaction session
 - drag-overlay box-flow session
+- drag-settle / post-drag-repair session
 - `dragId`
 - drag visual selection membership
 
 Rules:
 
 - stale drag work MUST be ignored on session mismatch
+- post-drag repair / settle callbacks MUST verify the owning settle-session identity before applying
 - visual ownership MUST NOT leak across drag sessions
 - if committed selection and drag membership diverge at startup, visible drag selection MUST collapse to the actual dragged membership rather than preserving a mismatched snapshot
 
@@ -424,7 +427,23 @@ Required rule going forward:
 
 This is required even if the current code does not yet expose a dedicated selected-phase session token.
 
-### 11.3 Inline Sessions
+Additional rules:
+
+- selected-phase ready confirmation MUST verify that the ready candidate still belongs to the current selected-phase session before marking ready
+- composer-owned post-paint handoff confirmation MUST verify that the selected-phase session, target identity, and readiness key still match before releasing drag-overlay ownership
+- if a newer committed selection supersedes the older selected-phase target, older selected-phase ready / handoff confirmation work MUST be ignored
+
+### 11.3 Hover Recovery Sessions
+
+Hover is still target-id based for steady-state visibility, but post-drag hover replay is session-sensitive work.
+
+Rules:
+
+- a blocked post-drag hover replay target MUST carry the interaction epoch and the drag boundary identity that blocked it
+- replay MUST be ignored if a newer interaction epoch, newer drag-end marker, newer drag/overlay session, or newer committed selection supersedes that blocked hover target
+- stale hover replay MUST NOT reclaim visible hover ownership after newer user authority exists
+
+### 11.4 Inline Sessions
 
 Inline sessions MUST be identified by matching:
 
@@ -469,12 +488,13 @@ The following invariants MUST always hold and are intended to be testable or log
 
 ## 14. MIGRATION NOTES
 
-Current code areas that violate or only partially satisfy this contract:
+Current code areas that still need migration notes or only partially satisfy this contract:
 
-- Selected-phase fallback geometry can currently mix live-node and object-data bounds in one union when `requireLiveNodes` is false. That violates the contract prohibition on mixed geometry sources in one visible frame.
-- Hover does not currently have a dedicated session identity and relies on multiple imperative cleanup writers. That only partially satisfies the deterministic cleanup requirement.
+- Selected-phase fallback geometry no longer mixes live-node and object-data bounds in one union. The current rule in code is source-pure all-live or all-fallback resolution for selected-phase union frames when fallback is allowed.
+- General hover visibility is still target-id based and compatibility callers may still write through global hover bridges, but post-drag hover replay now carries explicit epoch/session/selection identity and rejects stale replay work.
 - The selected-phase path does not currently expose an explicit durable session token. Handoff safety is enforced indirectly through visibility/ready/post-paint guards rather than a formal selected-phase session identity.
 - Guide evaluation does not currently expose a durable public session identity of its own; it relies on the active drag-overlay session checks to reject stale work.
+- Inline authority did not show a current contract breach in the closure audit. The existing `sessionId` / swap / `renderAuthority` / paint-stable gates already enforce the DOM-vs-Konva authority boundary in code, so any Phase 7 follow-up is optional cleanup or validation work unless browser testing proves otherwise.
 - Transient globals such as `_isDragging`, `_resizeData`, and group-drag globals are still used by some selected-phase suppression logic. That only partially satisfies the contract goal of singular explicit authority boundaries.
 - Internal seed/replay/startup support paths still exist in the drag-overlay subsystem. They appear constrained away from visible startup ownership, but their coexistence remains temporary and must stay subordinate to the startup contract.
 - Selection-box ownership is still split across selected-phase and drag-overlay modules. The contract allows this only if phase exclusivity is maintained; current code treats this as a high-fragility area rather than a fully simplified model.

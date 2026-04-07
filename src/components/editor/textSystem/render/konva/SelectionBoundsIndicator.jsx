@@ -658,6 +658,9 @@ export function resolveSelectionBounds({
     width: rectBounds.width,
     height: rectBounds.height,
     strokeWidth,
+    geometrySource: rectBounds.geometrySource || null,
+    selectionUnionSource: rectBounds.selectionUnionSource || null,
+    mixedSourcePrevented: rectBounds.mixedSourcePrevented === true,
   };
 }
 
@@ -1470,6 +1473,13 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
     const currentSessionIdentity =
       meta.sessionIdentity ||
       resolveSessionIdentity(currentInputs, currentVisualIdentity);
+    const effectiveGeometrySource =
+      meta.geometrySource || nextBounds?.geometrySource || null;
+    const effectiveSelectionUnionSource =
+      meta.selectionUnionSource || nextBounds?.selectionUnionSource || null;
+    const mixedSourcePrevented =
+      meta.mixedSourcePrevented === true ||
+      nextBounds?.mixedSourcePrevented === true;
     const nextBoundsDigest = buildCanvasBoxFlowBoundsDigest(nextBounds);
     if (!nextBoundsDigest) return null;
 
@@ -1561,7 +1571,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
           logPhase,
           meta
         ),
-        geometrySource: meta.geometrySource || null,
+        geometrySource: effectiveGeometrySource,
+        selectionUnionSource: effectiveSelectionUnionSource,
+        mixedSourcePrevented,
         overlayVisible: currentDebugSource === "drag-overlay",
         settling: logPhase === "settling",
         suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
@@ -1614,7 +1626,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
           logPhase,
           meta
         ),
-        geometrySource: meta.geometrySource || null,
+        geometrySource: effectiveGeometrySource,
+        selectionUnionSource: effectiveSelectionUnionSource,
+        mixedSourcePrevented,
         overlayVisible: currentDebugSource === "drag-overlay",
         settling: logPhase === "settling",
         suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
@@ -1644,7 +1658,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
             logPhase,
             meta
           ),
-          geometrySource: meta.geometrySource || null,
+          geometrySource: effectiveGeometrySource,
+          selectionUnionSource: effectiveSelectionUnionSource,
+          mixedSourcePrevented,
           overlayVisible: currentDebugSource === "drag-overlay",
           settling: logPhase === "settling",
           suppressedLayers: resolveIndicatorSuppressedLayers(currentDebugSource),
@@ -1667,7 +1683,9 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
         boxFlowIdentity: currentVisualIdentity,
         sessionIdentity: currentSessionIdentity,
         syncToken: meta.syncToken || null,
-        geometrySource: meta.geometrySource || null,
+        geometrySource: effectiveGeometrySource,
+        selectionUnionSource: effectiveSelectionUnionSource,
+        mixedSourcePrevented,
         paintMode: isControlledMode ? "immediate-draw" : "batched-draw",
       });
     }

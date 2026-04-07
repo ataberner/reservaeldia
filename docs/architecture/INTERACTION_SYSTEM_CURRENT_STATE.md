@@ -566,7 +566,10 @@ Current selection union rules:
 - `requireLiveNodes: true`
   - returns `null` if any selected object lacks a live rect
 - `requireLiveNodes: false`
-  - can combine live-node rects and object-data fallback rects in one union
+  - resolves the frame as all-live when every selected object has lawful live geometry
+  - otherwise resolves the frame as all explicit object-data fallback when fallback is allowed for that phase
+  - mixed live-node plus object-data union frames are no longer allowed
+  - if no lawful full-frame source exists, the union fails closed
 
 Current hover rules:
 
@@ -734,7 +737,7 @@ Current highest-risk interaction areas, ranked by severity:
 3. Selection-box ownership split
    - selected-phase and drag-phase use different owners and different geometry tolerance rules
 4. Text geometry consumers
-   - hover, selection, drag overlay, snap, and DOM overlay now share the same authoritative text basis, but selected-phase still has an explicit object-data fallback path when live text geometry is unavailable outside drag
+   - hover, selection, drag overlay, snap, and DOM overlay now share the same authoritative text basis, but selected-phase still has an explicit source-pure object-data fallback path when live text geometry is unavailable outside drag
 5. Guide/snap live mutation plus overlay resync
    - snapping is live-node mutation, not a pure preview calculation
 6. Compatibility globals and custom events
@@ -1054,10 +1057,10 @@ Observability added in Phase 4:
 
 Remaining caveats:
 
-- Hover identity is still id-only. Phase 4 removes most visible hover leaks, but it does not introduce a first-class hover session token; deeper stale-work hardening still belongs to Phase 6.
+- Hover identity is still id-only for steady-state visibility. Phase 6 now hardens the replay path with epoch/session/selection checks, but that does not yet turn hover into a fully standalone session-token subsystem.
 - `window.setHoverIdGlobal` remains available for compatibility. External callers can still attempt unlawful hover writes, but the composer now suppresses and clears them deterministically if they arrive during a no-hover boundary.
 - `useCanvasEditorSelectionUi.js` now shares the same runtime drag/group-drag/resize suppression helper as the composer for bridge compatibility, but the composer remains the authoritative hover visibility gate for stage rendering.
-- Same-target selected-phase conflict is currently determined from the selected target id set, not from a dedicated selected-phase session token. Phase 6 is still responsible for deeper identity hardening if stale selected membership ever becomes observable.
+- Same-target selected-phase conflict is currently determined from the selected target id set, not from a dedicated selected-phase session token. Phase 6 now hardens the late ready/handoff apply points around that path, but the selected-phase identity still remains derived rather than fully first-class.
 - Post-drag hover recovery currently replays the latest blocked lawful hover target. Assumption: the last blocked target is the correct recovery target for the user-visible pointer position because the hover pipeline is still `mouseenter`/`mouseleave` driven rather than pointer-position sampled.
 
 Verification note:
@@ -1098,7 +1101,7 @@ Legal fallbacks:
 
 - During `hover`, `predrag`, `drag`, and guide evaluation, text geometry now fails closed when the authoritative live text rect is unavailable.
 - During `selected`, explicit object-data fallback is still allowed by the broader geometry contract when live geometry is unavailable.
-- That selected-phase fallback is now explicit in `resolveSelectionUnionRect(...)` and logged as `object-data-fallback`; it is no longer the accidental result of a hidden text client-rect substitution.
+- That selected-phase fallback is now explicit in `resolveSelectionUnionRect(...)`, logged as `object-data-fallback`, and applied as an all-fallback frame rather than a mixed live-plus-fallback union.
 
 How text differs from generic object geometry now:
 
@@ -1129,22 +1132,77 @@ Observability added for Phase 5:
 
 Remaining caveats:
 
-- selected-phase still allows explicit object-data fallback when live text geometry is unavailable outside drag; that is legal by the current contract, but it remains a lower-fidelity frame than live authoritative text geometry
+- selected-phase still allows explicit object-data fallback when live text geometry is unavailable outside drag; that is legal by the current contract, but it remains a lower-fidelity all-fallback frame than live authoritative text geometry
 - the line-specific selected path is still separate from the transformer-backed selected-phase path
 - browser validation is still required for text selection, hover, drag, snap, inline enter/exit, and text-to-text reselection scenarios before Phase 5 can be treated as operationally closed
 
-## 22. Architectural Unknowns
+## 22. Session Identity Hardening (Post Phase 6)
+
+Phase 6 hardens the interaction paths that were still vulnerable to late-session re-entry. The code now treats stale post-drag repair, stale selected-phase ready confirmation, stale handoff paint confirmation, and stale hover replay as explicit rejectable work instead of letting those paths fail only through incidental state drift.
+
+Main interaction/session identities now active in code:
+
+- `useCanvasInteractionCoordinator.js`
+  - `interactionEpoch` remains the outer interaction boundary for drag/transform settle work
+  - after-settle callbacks still run only for the settled epoch that scheduled them
+- `CanvasStageContentComposer.jsx`
+  - `dragInteractionSession.sessionKey` governs the drag interaction ownership lane
+  - `dragOverlayBoxFlowSession.sessionKey` governs drag-overlay visual ownership
+  - `dragSettleSession.sessionKey` now explicitly identifies the post-drag repair/handoff session and carries the owning drag id, interaction epoch, overlay session key, and drag interaction session key
+- `SelectionTransformer.jsx`
+  - selected-phase readiness still derives its effective session from the current attached selection target, but post-paint confirmation now explicitly rejects stale ready candidates instead of silently letting an older candidate finish
+- post-drag hover recovery
+  - pending hover replay now carries the interaction epoch, last drag-end epoch, drag interaction session key, drag-overlay session key, and the committed selection digest that was current when the replay target was blocked
+
+Current validity / rejection rules after Phase 6:
+
+- post-drag repair
+  - `queuePostDragUiRefresh(...)` now rejects repair work when the settle session is missing, the drag id no longer matches, the interaction epoch no longer matches, or the explicit `dragSettleSession.sessionKey` no longer matches the session that scheduled the repair
+  - stale repair rejection is now observable through `selection:repair-ignored-stale-session`
+- selected-phase ready confirmation
+  - `SelectionTransformer.jsx` now treats the ready candidate key as a session-scoped apply token
+  - if the attached target / visibility / bounds candidate changes before the RAF confirmation lands, the old ready candidate is ignored and logged as `selected-phase:stale-ready-ignored`
+- composer handoff-paint confirmation
+  - the second composer-owned post-paint confirmation now also verifies the latest ready metadata against the scheduled readiness key before applying
+  - stale confirmation is ignored and logged as `selected-phase:handoff-paint-ignored-stale-session`
+- post-drag hover replay
+  - pending replay is now invalidated when a newer interaction epoch, newer drag-end marker, newer drag session, newer drag-overlay session, or newer committed selection supersedes the blocked hover target
+  - stale replay rejection is now observable through `post-drag:replay-ignored` and `hover:stale-replay-ignored`
+
+Current-user-authority-wins rule in practice:
+
+- if a newer committed selection or newer interaction replaces the old drag/handoff context, stale settle repair can no longer complete against that old session
+- if selected-phase readiness changes before the old RAF confirmation lands, the old ready/handoff confirmation loses immediately
+- if a hover replay target belonged to an obsolete post-drag boundary, it is dropped instead of replaying into the new state
+
+Observability added for Phase 6:
+
+- `drag-settle:session-started`
+- `selection:repair-ignored-stale-session`
+- `selected-phase:stale-ready-ignored`
+- `selected-phase:handoff-paint-ignored-stale-session`
+- `post-drag:replay-ignored`
+- `hover:stale-replay-ignored`
+
+Remaining caveats:
+
+- selected-phase still does not expose one standalone durable public token; in practice its effective identity is still derived from committed selection membership plus the active attached selection target / ready candidate
+- guide evaluation still relies on active drag session checks rather than a first-class guide session identity
+- the line-specific selected path remains separate from the generic transformer-backed selected path
+- browser validation is still required for quick repeated drags, quick reselection after drag, hover-after-drag replay, and multi-selection/line-specific edge cases before Phase 6 can be treated as operationally closed
+
+## 23. Architectural Unknowns
 
 - The code provides strong local sequencing around drag-overlay startup and inline swap, but there is no single end-to-end runtime trace that proves every intra-frame ordering across all React effects in every browser.
 - Hover and guide behavior are clear for the main canvas path, but this audit did not attempt to enumerate every possible external caller of `window.setHoverIdGlobal`.
 - The exact cross-browser selection/caret quirks of `InlineTextOverlayEditor.jsx` are not fully documented in code comments; the runtime compensations are visible, but not all browser-specific motivations are explicit.
 
-## 23. Assumptions
+## 24. Assumptions
 
 - Assumption: where this document describes exact sub-frame ordering inside the inline DOM swap path, that order is inferred from the hook structure, emitted phase transitions, and runtime state transitions in the audited modules; the code does not expose one centralized timeline tracer for every inner step.
 - Assumption: template editor sessions use the same interaction/rendering subsystem as draft sessions unless a preview/publish-facing bridge explicitly branches by session kind. This matches the active `CanvasEditor.jsx` composition.
 
-## 24. Critical Invariants
+## 25. Critical Invariants
 
 These invariants are detectable in the current code and should be treated as explicit system rules for future work:
 
@@ -1159,5 +1217,28 @@ These invariants are detectable in the current code and should be treated as exp
 - Drag-overlay teardown after drag end is not allowed to preempt current-session selection repair, selected-phase readiness, or composer handoff-paint confirmation; selected-phase readiness may be proven while still hidden under the settling overlay, but dual visible ownership is forbidden.
 - If committed selection changes to a different non-empty target after drag end, the old drag settle target is no longer allowed to keep selected-phase or drag-overlay visual ownership; stale handoff-specific target state must be invalidated and selected-phase must rebind to the current committed selection.
 - Hover is lawful only when no global no-hover boundary is active and the hovered target does not conflict with the current selected target set; after drag end, the system returns to that target-aware hover state only once drag-overlay ownership, handoff wait, coordinator settling, and runtime drag suppression have all cleared, and any blocked lawful hover target from that window must be replayed or replaced by a newer hover write.
+- Post-drag repair, selected-phase ready/post-paint confirmation, and hover replay must all verify the session/epoch/target identity that scheduled them before they apply; if a newer interaction or committed selection has superseded that identity, the late work must be ignored.
 - Text consumers must resolve authoritative live text geometry first. If it is unavailable, the surface must either fail closed or use an explicit phase-legal fallback; silent generic client-rect substitution is no longer a lawful steady-state path for text.
 - External consumers should read live editor state through `window.editorSnapshot`, documented bridges, or custom events, not through scratch globals.
+
+## 26. Closure Audit Summary (Post Phases 1-6)
+
+The final post-implementation audit found the following current-state summary:
+
+- Phases 1 through 6 are implemented in code.
+- Phase 1 and Phase 2 do not show a remaining implementation gap in the audited code.
+- Phase 3 through Phase 6 still require browser validation before they should be called operationally closed.
+- No new broad implementation phase is justified by the current codebase.
+- The former mixed-source selected-phase union gap in `resolveSelectionUnionRect(...)` is now resolved: selected-phase unions are source-pure all-live or all-fallback, and mixed live+object-data frames are no longer allowed.
+
+Remaining non-blocking items:
+
+- line-specific selected rendering still uses its own path instead of the generic transformer hidden-ready probe
+- guide invalidation still relies on drag-session identity instead of a public guide session token
+- steady-state hover remains target-id based, even though stale post-drag replay is now identity-hardened
+
+Phase 7 decision:
+
+- Inline authority cleanup is optional later, not currently required for correctness
+- the inline path already enforces matching mount session, swap acknowledgment, render authority, and paint-stable conditions before DOM editable authority can claim visibility
+- any future Phase 7 work should be driven by browser validation findings or by cleanup goals, not by a currently demonstrated contract breach

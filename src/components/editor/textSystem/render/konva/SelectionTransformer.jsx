@@ -3662,10 +3662,59 @@ export default function SelectionBounds({
 
       gateState.rafId = 0;
 
-      if (
-        latestReadyCandidateKey !== readyCandidateKey ||
-        !latestBoundsReadiness.visuallyReadyBounds
-      ) {
+      if (latestReadyCandidateKey !== readyCandidateKey) {
+        gateState.pendingKey = null;
+        gateState.confirmedKey = null;
+        const staleReadySample = sampleCanvasInteractionLog(
+          `selected-phase:stale-ready:${readyCandidateKey || "none"}:${latestReadyCandidateKey || "none"}`,
+          {
+            firstCount: 8,
+            throttleMs: 120,
+          }
+        );
+        if (staleReadySample.shouldLog) {
+          logCanvasBoxFlow("selection", "selected-phase:stale-ready-ignored", {
+            source: "transformer-primary",
+            phase: canvasInteractionSettling ? "settling" : "selected",
+            owner: "selected-phase",
+            selectedIds:
+              latestSnapshot?.visualIdentity || currentSnapshot.visualIdentity,
+            visualIds:
+              latestSnapshot?.visualIdentity || currentSnapshot.visualIdentity,
+            selectionAuthority: "logical-selection",
+            geometryAuthority: "transformer-live",
+            overlayVisible: Boolean(dragSelectionOverlayVisible),
+            settling: Boolean(canvasInteractionSettling),
+            suppressedLayers:
+              dragSelectionOverlayVisible
+                ? ["drag-overlay", "hover-indicator"]
+                : ["hover-indicator"],
+            reason: !latestReadinessEligible
+              ? "selection-session-changed-before-post-paint-confirmation"
+              : "ready-candidate-changed-before-post-paint-confirmation",
+            readySource: "post-paint-check",
+            readySignal: currentReadySignalBase,
+            postPaintConfirmed: false,
+            pendingReadyCandidateKey: readyCandidateKey,
+            latestReadyCandidateKey,
+            expectedSessionIdentity: currentSessionIdentity || null,
+            latestSessionIdentity: latestSessionIdentity || null,
+            bounds: latestBounds,
+            readyProbeActive: latestReadyProbeActive,
+            selectedPhaseActuallyVisible: Boolean(latestSnapshot?.visible),
+          }, {
+            identity:
+              latestSessionIdentity ||
+              latestSnapshot?.visualIdentity ||
+              currentSessionIdentity ||
+              currentSnapshot.visualIdentity ||
+              null,
+          });
+        }
+        return;
+      }
+
+      if (!latestBoundsReadiness.visuallyReadyBounds) {
         gateState.pendingKey = null;
         gateState.confirmedKey = null;
         const blockedKey = [

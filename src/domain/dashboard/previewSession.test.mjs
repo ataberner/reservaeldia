@@ -18,6 +18,7 @@ import {
   buildDashboardPreviewSuccessStatePatch,
   buildPreviewDisplayUrl,
   createPublicationPreviewState,
+  generateDashboardPreviewHtmlFromRenderState,
   overlayLiveEditorSnapshot,
   prepareDashboardPreviewRenderState,
   PREVIEW_INACTIVE_PUBLICATION_MESSAGE,
@@ -213,13 +214,15 @@ test("publish validation settled patch preserves the current pending reset seman
   });
 });
 
-test("live editor snapshots override persisted preview reads without dropping unrelated fields", () => {
+test("live editor snapshots override persisted object and section reads without overriding persisted CTA root config", () => {
   const merged = overlayLiveEditorSnapshot(
     {
       nombre: "Borrador",
       portada: "cover.jpg",
       objetos: [{ id: "persisted" }],
       secciones: [{ id: "persisted-section" }],
+      rsvp: { enabled: false },
+      gifts: { enabled: true },
     },
     {
       objetos: [{ id: "live" }],
@@ -234,8 +237,8 @@ test("live editor snapshots override persisted preview reads without dropping un
     portada: "cover.jpg",
     objetos: [{ id: "live" }],
     secciones: [{ id: "live-section" }],
-    rsvp: { enabled: true },
-    gifts: { enabled: false },
+    rsvp: { enabled: false },
+    gifts: { enabled: true },
   });
 });
 
@@ -470,6 +473,65 @@ test("preview generator input prefers the normalized public slug and falls back 
     giftsSource: { enabled: false },
   });
   assert.equal(fallbackDraft.slugPreview, "draft-1");
+});
+
+test("shared preview html generation reuses the canonical prepared render payload and CTA generator options", async () => {
+  let generatorCall = null;
+
+  const result = await generateDashboardPreviewHtmlFromRenderState({
+    previewSourceData: {
+      objetos: [
+        createPreviewPreservedGroup(),
+        {
+          id: "rsvp-cta",
+          tipo: "rsvp-boton",
+          seccionId: "sec-hero",
+          texto: "Confirmar",
+        },
+      ],
+      secciones: [
+        {
+          id: "sec-hero",
+          orden: 1,
+          altoModo: "pantalla",
+        },
+      ],
+      rsvp: {
+        enabled: true,
+        title: "Confirmacion",
+      },
+      gifts: {
+        enabled: true,
+        introText: "Mesa de regalos",
+      },
+    },
+    slugInvitacion: "template-preview-cta",
+    generateHtmlFromSections: async (
+      secciones,
+      objetos,
+      rsvpPreviewConfig,
+      generatorOptions
+    ) => {
+      generatorCall = {
+        secciones,
+        objetos,
+        rsvpPreviewConfig,
+        generatorOptions,
+      };
+      return "<html>preview</html>";
+    },
+  });
+
+  assert.equal(result.htmlGenerado, "<html>preview</html>");
+  assert.equal(result.previewPayload.runtimeSupport.canRenderCurrentHtmlRuntime, true);
+  assert.equal(result.previewPayload.preparedRenderContract.objectUnits[0].kind, "group");
+  assert.equal(result.previewPayload.rsvpPreviewConfig.enabled, true);
+  assert.equal(result.previewPayload.giftPreviewConfig.enabled, true);
+  assert.equal(generatorCall.generatorOptions.slug, "template-preview-cta");
+  assert.equal(generatorCall.generatorOptions.isPreview, true);
+  assert.equal(generatorCall.generatorOptions.gifts.enabled, true);
+  assert.equal(generatorCall.generatorOptions.rsvpSource.enabled, true);
+  assert.equal(generatorCall.generatorOptions.giftsSource.enabled, true);
 });
 
 test("preview success patch preserves current publication warning copy and update capability", () => {

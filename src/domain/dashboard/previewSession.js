@@ -36,6 +36,10 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
+async function loadDashboardPreviewGeneratorModule() {
+  return import("../../../functions/src/utils/generarHTMLDesdeSecciones");
+}
+
 export function createPublicationPreviewState(overrides = {}) {
   return {
     ...INITIAL_PUBLICATION_PREVIEW_STATE,
@@ -125,8 +129,6 @@ export function overlayLiveEditorSnapshot(data, liveEditorSnapshot) {
     ...(data && typeof data === "object" ? data : {}),
     objetos: liveEditorSnapshot.objetos,
     secciones: liveEditorSnapshot.secciones,
-    rsvp: liveEditorSnapshot.rsvp,
-    gifts: liveEditorSnapshot.gifts,
   };
 }
 
@@ -237,6 +239,51 @@ export function buildDashboardPreviewGeneratorInput({
       rsvpSource: safePreviewPayload.rawRsvp ?? null,
       giftsSource: safePreviewPayload.rawGifts ?? null,
     },
+  };
+}
+
+export async function generateDashboardPreviewHtmlFromRenderState({
+  previewSourceData = null,
+  previewPayload = null,
+  slugPublicoDetectado = "",
+  urlPublicaDetectada = "",
+  slugInvitacion = "",
+  generateHtmlFromSections = null,
+} = {}) {
+  const resolvedPreviewPayload =
+    previewPayload && typeof previewPayload === "object"
+      ? previewPayload
+      : buildDashboardPreviewRenderPayload(previewSourceData);
+  const generatorInput = buildDashboardPreviewGeneratorInput({
+    previewPayload: resolvedPreviewPayload,
+    slugPublicoDetectado,
+    urlPublicaDetectada,
+    slugInvitacion,
+  });
+  const renderHtml =
+    typeof generateHtmlFromSections === "function"
+      ? generateHtmlFromSections
+      : async (secciones, objetos, rsvpPreviewConfig, generatorOptions) => {
+          const { generarHTMLDesdeSecciones } =
+            await loadDashboardPreviewGeneratorModule();
+          return generarHTMLDesdeSecciones(
+            secciones,
+            objetos,
+            rsvpPreviewConfig,
+            generatorOptions
+          );
+        };
+  const htmlGenerado = await renderHtml(
+    resolvedPreviewPayload.secciones,
+    resolvedPreviewPayload.objetos,
+    resolvedPreviewPayload.rsvpPreviewConfig,
+    generatorInput.generatorOptions
+  );
+
+  return {
+    previewPayload: resolvedPreviewPayload,
+    generatorInput,
+    htmlGenerado: String(htmlGenerado || ""),
   };
 }
 

@@ -1,6 +1,6 @@
 import {
-  buildDashboardPreviewGeneratorInput,
   buildDashboardPreviewRenderPayload,
+  generateDashboardPreviewHtmlFromRenderState,
   isPublicacionActiva,
   overlayLiveEditorSnapshot,
 } from "./previewSession.js";
@@ -192,21 +192,13 @@ export async function runDashboardPreviewPipeline({
     });
   }
 
-  const generatorInput = buildDashboardPreviewGeneratorInput({
+  const { htmlGenerado } = await generateDashboardPreviewHtmlFromRenderState({
     previewPayload,
     slugPublicoDetectado,
     urlPublicaDetectada,
     slugInvitacion,
+    generateHtmlFromSections,
   });
-  const htmlGenerado =
-    typeof generateHtmlFromSections === "function"
-      ? await generateHtmlFromSections(
-          previewPayload.secciones,
-          previewPayload.objetos,
-          previewPayload.rsvpPreviewConfig,
-          generatorInput.generatorOptions
-        )
-      : "";
   assertCurrentSession(assertCurrentSessionCallback);
 
   return {

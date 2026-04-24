@@ -419,6 +419,56 @@ test("keeps negative local child coordinates when the live group frame starts af
   assert.equal(result.group.children[1].y, 24);
 });
 
+test("groups pantalla objects using yNorm as the visual Y authority when raw y is stale", () => {
+  const result = buildGroupedSelectionState({
+    objetos: [
+      {
+        id: "title",
+        tipo: "texto",
+        seccionId: "hero",
+        anclaje: "content",
+        x: 40,
+        y: 100,
+        yNorm: 0.4,
+        width: 180,
+        texto: "Titulo",
+      },
+      {
+        id: "subtitle",
+        tipo: "texto",
+        seccionId: "hero",
+        anclaje: "content",
+        x: 52,
+        y: 132,
+        yNorm: 0.52,
+        width: 200,
+        texto: "Subtitulo",
+      },
+    ],
+    secciones: [createPantallaSection()],
+    selectedIds: ["subtitle", "title"],
+    selectionFrame: {
+      x: 40,
+      y: 200,
+      width: 212,
+      height: 120,
+    },
+    alturaPantalla: 500,
+    groupId: "group-pantalla-authority",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.group.y, 200);
+  assert.equal(result.group.yNorm, 0.4);
+  assert.deepEqual(
+    result.group.children.map((entry) => ({ id: entry.id, y: entry.y })),
+    [
+      { id: "title", y: 0 },
+      { id: "subtitle", y: 60 },
+    ]
+  );
+});
+
 test("ungroups a fixed-section preserved group back into root objects at the original index", () => {
   const result = buildUngroupedSelectionState({
     objetos: [
@@ -567,6 +617,54 @@ test("ungroups a pantalla preserved group and restores root yNorm from local chi
   assert.equal(result.nextObjetos[1].seccionId, "hero");
   assert.equal(result.nextObjetos[1].anclaje, "content");
   assert.deepEqual(result.selectedIds, ["hero-copy-star", "hero-copy"]);
+});
+
+test("ungroups a pantalla group using root yNorm as the visual Y authority when raw y is stale", () => {
+  const result = buildUngroupedSelectionState({
+    objetos: [
+      {
+        id: "group-stale-y",
+        tipo: "grupo",
+        seccionId: "hero",
+        anclaje: "content",
+        x: 96,
+        y: 120,
+        yNorm: 0.36,
+        width: 240,
+        height: 120,
+        children: [
+          {
+            id: "hero-title",
+            tipo: "texto",
+            x: 0,
+            y: 0,
+            width: 180,
+            texto: "Hola",
+          },
+          {
+            id: "hero-subtitle",
+            tipo: "texto",
+            x: 12,
+            y: 40,
+            width: 200,
+            texto: "Nos vemos pronto",
+          },
+        ],
+      },
+    ],
+    secciones: [createPantallaSection()],
+    selectedIds: ["group-stale-y"],
+    alturaPantalla: 500,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.nextObjetos.map((entry) => ({ id: entry.id, y: entry.y, yNorm: entry.yNorm })),
+    [
+      { id: "hero-title", y: 180, yNorm: 0.36 },
+      { id: "hero-subtitle", y: 220, yNorm: 0.44 },
+    ]
+  );
 });
 
 test("rejects ungrouping malformed or unsupported root groups", () => {

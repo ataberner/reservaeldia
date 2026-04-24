@@ -4,7 +4,6 @@ import { buildTemplateFormState } from "../domain/templates/formModel.js";
 import { normalizeTemplateMetadata } from "../domain/templates/metadata.js";
 import {
   generateTemplatePreviewHtml,
-  resolveTemplatePreviewSource,
 } from "../domain/templates/preview.js";
 import { pushEditorBreadcrumb } from "../lib/monitoring/editorIssueReporter.js";
 
@@ -33,6 +32,49 @@ function normalizeTemplateId(value) {
 
 function normalizeTemplateObject(value) {
   return value && typeof value === "object" ? value : null;
+}
+
+function stableSerializeTemplatePreviewValue(value) {
+  if (Array.isArray(value)) {
+    return `[${value
+      .map((entry) => stableSerializeTemplatePreviewValue(entry))
+      .join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).sort(([left], [right]) =>
+      left.localeCompare(right)
+    );
+    return `{${entries
+      .map(
+        ([key, nested]) =>
+          `${JSON.stringify(key)}:${stableSerializeTemplatePreviewValue(nested)}`
+      )
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value ?? null);
+}
+
+function buildTemplatePreviewCacheSignature(template) {
+  const safeTemplate = normalizeTemplateObject(template);
+  if (!safeTemplate) return "";
+
+  return stableSerializeTemplatePreviewValue({
+    id: normalizeTemplateId(safeTemplate.id),
+    updatedAt: safeTemplate.updatedAt ?? null,
+    portada: safeTemplate.portada ?? null,
+    objetos: Array.isArray(safeTemplate.objetos) ? safeTemplate.objetos : [],
+    secciones: Array.isArray(safeTemplate.secciones) ? safeTemplate.secciones : [],
+    rsvp:
+      safeTemplate.rsvp && typeof safeTemplate.rsvp === "object"
+        ? safeTemplate.rsvp
+        : null,
+    gifts:
+      safeTemplate.gifts && typeof safeTemplate.gifts === "object"
+        ? safeTemplate.gifts
+        : null,
+  });
 }
 
 function normalizeTemplateFormStateValue(nextState) {
@@ -135,7 +177,10 @@ function buildDashboardTemplateModalControllerDependencies(
     resolvePreviewSource:
       typeof safeOverrides.resolvePreviewSource === "function"
         ? safeOverrides.resolvePreviewSource
-        : resolveTemplatePreviewSource,
+        : () => ({
+            mode: "generated",
+            previewUrl: null,
+          }),
     reportTemplateEditorOpened:
       typeof safeOverrides.reportTemplateEditorOpened === "function"
         ? safeOverrides.reportTemplateEditorOpened
@@ -294,6 +339,7 @@ export function createDashboardTemplateModalControllerRuntime({
   selectedTemplateRef,
   templateFormStateRef,
   templatePreviewCacheRef,
+  templatePreviewCacheSignatureRef,
   isOpeningTemplateEditorRef,
   setSelectedTemplate,
   setIsTemplateModalOpen,
@@ -327,7 +373,6 @@ export function createDashboardTemplateModalControllerRuntime({
     getTemplateById,
     createDraftFromTemplateWithInput,
     generatePreviewHtml,
-    resolvePreviewSource,
     reportTemplateEditorOpened,
     showAlert,
     logTemplateLoadError,
@@ -355,6 +400,11 @@ export function createDashboardTemplateModalControllerRuntime({
   const resolvedTemplatePreviewCacheRef =
     templatePreviewCacheRef && typeof templatePreviewCacheRef === "object"
       ? templatePreviewCacheRef
+      : { current: {} };
+  const resolvedTemplatePreviewCacheSignatureRef =
+    templatePreviewCacheSignatureRef &&
+    typeof templatePreviewCacheSignatureRef === "object"
+      ? templatePreviewCacheSignatureRef
       : { current: {} };
   const resolvedIsOpeningTemplateEditorRef =
     isOpeningTemplateEditorRef &&
@@ -423,13 +473,15 @@ export function createDashboardTemplateModalControllerRuntime({
     }));
   };
 
-  const storeTemplatePreviewHtml = (templateId, html) => {
+  const storeTemplatePreviewHtml = (templateId, html, signature = "") => {
     const safeTemplateId = normalizeTemplateId(templateId);
     if (!safeTemplateId || !String(html || "").trim()) return;
 
     setTemplatePreviewCacheById((prev) => {
       const safePrev = prev && typeof prev === "object" ? prev : {};
-      if (safePrev[safeTemplateId]) return safePrev;
+      if (safePrev[safeTemplateId] === html) {
+        return safePrev;
+      }
       const next = {
         ...safePrev,
         [safeTemplateId]: html,
@@ -437,6 +489,10 @@ export function createDashboardTemplateModalControllerRuntime({
       resolvedTemplatePreviewCacheRef.current = next;
       return next;
     });
+    resolvedTemplatePreviewCacheSignatureRef.current = {
+      ...(resolvedTemplatePreviewCacheSignatureRef.current || {}),
+      [safeTemplateId]: String(signature || ""),
+    };
   };
 
   const handleTemplateModalFormStateChange = (nextState) => {
@@ -452,57 +508,21 @@ export function createDashboardTemplateModalControllerRuntime({
     const templateId = normalizeTemplateId(safeTemplate?.id);
     if (!templateId) return;
 
-    const hasPreviewCache = Boolean(
-      resolvedTemplatePreviewCacheRef.current?.[templateId]
-    );
     const hasRenderableContent = hasRenderableTemplateContent(safeTemplate);
-    const previewSource = resolvePreviewSource(safeTemplate);
-
-    if (previewSource.mode === "url" && previewSource.previewUrl) {
-      if (hasPreviewCache) {
-        setTemplatePreviewState(templateId, {
-          status: "ready",
-          error: "",
-        });
-        return;
-      }
-
-      if (!hasRenderableContent) {
-        setTemplatePreviewState(templateId, {
-          status: "ready",
-          error: "",
-        });
-        return;
-      }
-
-      setTemplatePreviewState(templateId, {
-        status: "loading",
-        error: "",
-      });
-
-      try {
-        const htmlFallback = await generatePreviewHtml(safeTemplate);
-        storeTemplatePreviewHtml(templateId, htmlFallback);
-      } catch {
-        // Si falla HTML generado, dejamos fallback al previewUrl.
-      } finally {
-        setTemplatePreviewState(templateId, {
-          status: "ready",
-          error: "",
-        });
-      }
-      return;
-    }
-
+    const previewCacheSignature = buildTemplatePreviewCacheSignature(safeTemplate);
+    const hasMatchingPreviewCache =
+      Boolean(resolvedTemplatePreviewCacheRef.current?.[templateId]) &&
+      resolvedTemplatePreviewCacheSignatureRef.current?.[templateId] ===
+        previewCacheSignature;
     if (!hasRenderableContent) {
       setTemplatePreviewState(templateId, {
-        status: "loading",
+        status: "ready",
         error: "",
       });
       return;
     }
 
-    if (hasPreviewCache) {
+    if (hasMatchingPreviewCache) {
       setTemplatePreviewState(templateId, {
         status: "ready",
         error: "",
@@ -517,7 +537,7 @@ export function createDashboardTemplateModalControllerRuntime({
 
     try {
       const html = await generatePreviewHtml(safeTemplate);
-      storeTemplatePreviewHtml(templateId, html);
+      storeTemplatePreviewHtml(templateId, html, previewCacheSignature);
       setTemplatePreviewState(templateId, {
         status: "ready",
         error: "",
@@ -699,6 +719,7 @@ export function useDashboardTemplateModalWithDependencies(
   const selectedTemplateRef = useRef(selectedTemplate);
   const templateFormStateRef = useRef(templateFormState);
   const templatePreviewCacheRef = useRef(templatePreviewCacheById);
+  const templatePreviewCacheSignatureRef = useRef({});
   const isOpeningTemplateEditorRef = useRef(isOpeningTemplateEditor);
 
   const setSelectedTemplate = useCallback((nextValue) => {
@@ -741,6 +762,7 @@ export function useDashboardTemplateModalWithDependencies(
         selectedTemplateRef,
         templateFormStateRef,
         templatePreviewCacheRef,
+        templatePreviewCacheSignatureRef,
         isOpeningTemplateEditorRef,
         setSelectedTemplate,
         setIsTemplateModalOpen: setIsTemplateModalOpenState,

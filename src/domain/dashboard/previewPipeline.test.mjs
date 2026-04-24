@@ -198,11 +198,11 @@ test("draft preview pipeline rereads persisted data, prefers the boundary snapsh
       tipo: "texto",
     },
   ]);
-  assert.equal(generatorCall.rsvpPreviewConfig.enabled, true);
+  assert.equal(generatorCall.rsvpPreviewConfig.enabled, false);
   assert.equal(debugPayload.objetos[0].id, "live-text-1");
 });
 
-test("draft preview pipeline rereads persisted data and overlays the live editor snapshot when no boundary snapshot is available", async () => {
+test("draft preview pipeline rereads persisted data and overlays live layout state without overriding persisted CTA root config", async () => {
   let draftReads = 0;
   let liveSnapshotReads = 0;
   let generatorCall = null;
@@ -278,8 +278,147 @@ test("draft preview pipeline rereads persisted data and overlays the live editor
       tipo: "texto",
     },
   ]);
-  assert.equal(generatorCall.rsvpPreviewConfig.enabled, true);
+  assert.equal(generatorCall.rsvpPreviewConfig.enabled, false);
   assert.equal(generatorCall.generatorOptions.slug, "draft-preview-live-overlay");
+});
+
+test("draft preview pipeline keeps CTA root config unavailable when a stale live snapshot still carries an old ready config", async () => {
+  let generatorCall = null;
+
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-preview-cta-root-parity",
+    readDraftDocument: async () =>
+      createSnapshotRecord("draft-preview-cta-root-parity", {
+        objetos: [
+          {
+            id: "rsvp-cta",
+            tipo: "rsvp-boton",
+            seccionId: "hero",
+            texto: "Confirmar asistencia",
+          },
+        ],
+        secciones: [
+          {
+            id: "hero",
+          },
+        ],
+        rsvp: null,
+      }),
+    readLiveEditorSnapshot: () => ({
+      objetos: [
+        {
+          id: "rsvp-cta",
+          tipo: "rsvp-boton",
+          seccionId: "hero",
+          texto: "Confirmar asistencia",
+        },
+      ],
+      secciones: [
+        {
+          id: "hero",
+        },
+      ],
+      rsvp: {
+        enabled: true,
+        title: "RSVP stale overlay",
+      },
+    }),
+    generateHtmlFromSections: async (
+      secciones,
+      objetos,
+      rsvpPreviewConfig,
+      generatorOptions
+    ) => {
+      generatorCall = {
+        secciones,
+        objetos,
+        rsvpPreviewConfig,
+        generatorOptions,
+      };
+      return "<html>preview-cta-root-parity</html>";
+    },
+  });
+
+  assert.equal(previewResult.status, "success");
+  assert.equal(previewResult.htmlGenerado, "<html>preview-cta-root-parity</html>");
+  assert.equal(generatorCall.rsvpPreviewConfig, null);
+  assert.equal(generatorCall.generatorOptions.rsvpSource, null);
+});
+
+test("draft preview pipeline keeps gifts CTA root config unavailable when a stale live snapshot still carries old usable gift data", async () => {
+  let generatorCall = null;
+
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-preview-gifts-root-parity",
+    readDraftDocument: async () =>
+      createSnapshotRecord("draft-preview-gifts-root-parity", {
+        objetos: [
+          {
+            id: "gift-cta",
+            tipo: "regalo-boton",
+            seccionId: "hero",
+            texto: "Ver regalos",
+          },
+        ],
+        secciones: [
+          {
+            id: "hero",
+          },
+        ],
+        gifts: {
+          enabled: true,
+          bank: {
+            alias: "",
+          },
+          visibility: {
+            alias: true,
+          },
+        },
+      }),
+    readLiveEditorSnapshot: () => ({
+      objetos: [
+        {
+          id: "gift-cta",
+          tipo: "regalo-boton",
+          seccionId: "hero",
+          texto: "Ver regalos",
+        },
+      ],
+      secciones: [
+        {
+          id: "hero",
+        },
+      ],
+      gifts: {
+        enabled: true,
+        bank: {
+          alias: "pareja.alias",
+        },
+        visibility: {
+          alias: true,
+        },
+      },
+    }),
+    generateHtmlFromSections: async (
+      secciones,
+      objetos,
+      rsvpPreviewConfig,
+      generatorOptions
+    ) => {
+      void rsvpPreviewConfig;
+      generatorCall = {
+        secciones,
+        objetos,
+        generatorOptions,
+      };
+      return "<html>preview-gifts-root-parity</html>";
+    },
+  });
+
+  assert.equal(previewResult.status, "success");
+  assert.equal(previewResult.htmlGenerado, "<html>preview-gifts-root-parity</html>");
+  assert.equal(generatorCall.generatorOptions.gifts.enabled, true);
+  assert.equal(generatorCall.generatorOptions.giftsSource.bank.alias, "");
 });
 
 test("template preview pipeline reads the template document and skips publication compatibility lookups", async () => {

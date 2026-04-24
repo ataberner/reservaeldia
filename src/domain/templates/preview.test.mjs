@@ -8,7 +8,7 @@ import {
 import { buildPreviewOperationsForField } from "./previewLivePatch.js";
 import { createRepresentativeTemplateFixture } from "./templatePreviewPersonalizationFixtures.mjs";
 
-test("preview runtime keeps URL-based templates on the external preview path", () => {
+test("preview runtime keeps previewUrl as metadata but never activates an external iframe path", () => {
   const template = createRepresentativeTemplateFixture({
     previewUrl: "https://preview.example.com/boda-floral",
   });
@@ -24,12 +24,14 @@ test("preview runtime keeps URL-based templates on the external preview path", (
     mode: "url",
     previewUrl: "https://preview.example.com/boda-floral",
   });
-  assert.equal(runtime.sourceMode, "url");
-  assert.equal(runtime.activeMode, "url");
-  assert.equal(runtime.shouldShowPreviewUrl, true);
+  assert.equal(runtime.sourceMode, "generated");
+  assert.equal(runtime.activeMode, "none");
+  assert.equal(runtime.shouldShowPreviewUrl, false);
   assert.equal(runtime.shouldShowGeneratedPreview, false);
+  assert.equal(runtime.hasPreviewUrl, true);
   assert.equal(runtime.canPatchPreview, false);
   assert.equal(runtime.canCaptureTextPositions, false);
+  assert.equal(runtime.shouldShowMissingPreviewState, true);
 });
 
 test("preview runtime exposes generated preview capabilities when HTML is ready", () => {

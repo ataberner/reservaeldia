@@ -2058,12 +2058,17 @@ background: ${cell.bg};
         const align = obj.align || "center";
 
         const baseStyle = stylePosBase(obj);
+        // Grouped CTAs must stay above decorative siblings so clicks keep hitting
+        // the functional node instead of an overlapping group child without CTA semantics.
+        const groupedReadyCtaLayerStyle =
+          isGroupChildRender && ctaReady ? "z-index: 2147483647;" : "";
 
         // RSVP (contenido): si está en pantalla, fittea (sContenidoVar)
         const sBtn = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
 
         const style = `
 ${baseStyle}
+${groupedReadyCtaLayerStyle}
 width: ${pxX(obj, w)};
 height: ${pxY(obj, h)};
 background: ${rsvpVisual.cssBackground};

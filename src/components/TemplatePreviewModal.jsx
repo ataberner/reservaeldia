@@ -135,7 +135,6 @@ export default function TemplatePreviewModal({
   const formRef = useRef(null);
   const inputPatchTimersRef = useRef({});
   const [mode, setMode] = useState("collapsed");
-  const [previewUrlFailed, setPreviewUrlFailed] = useState(false);
   const errorMessage = toText(
     previewStatus?.error,
     "No se pudo cargar la vista previa de esta plantilla."
@@ -149,17 +148,10 @@ export default function TemplatePreviewModal({
     template,
     previewHtml,
     previewStatus,
-    previewUrlFailed,
   });
-  const previewUrl = previewRuntime.previewUrl;
   const shouldShowGeneratedPreview = previewRuntime.shouldShowGeneratedPreview;
-  const shouldShowPreviewUrl = previewRuntime.shouldShowPreviewUrl;
   const canPatchPreview = previewRuntime.canPatchPreview;
   const isExpanded = mode === "expanded";
-
-  useEffect(() => {
-    setPreviewUrlFailed(false);
-  }, [previewUrl]);
 
   useEffect(() => {
     setMode("collapsed");
@@ -310,15 +302,6 @@ export default function TemplatePreviewModal({
               style={{ flexBasis: isExpanded ? "50%" : "100%" }}
             >
               <div className="absolute inset-0 bg-white">
-                {shouldShowPreviewUrl ? (
-                  <TemplatePreviewViewport
-                    src={previewUrl}
-                    sandbox="allow-scripts allow-same-origin"
-                    title={`Vista previa de ${title}`}
-                    onError={() => setPreviewUrlFailed(true)}
-                  />
-                ) : null}
-
                 {shouldShowGeneratedPreview ? (
                   <TemplatePreviewViewport
                     srcDoc={previewHtml}
@@ -363,78 +346,71 @@ export default function TemplatePreviewModal({
                 ) : null}
               </div>
               <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#120822]/24 via-transparent to-transparent sm:h-28" />
+            </div>
+
+            <div className="shrink-0 bg-[#f7f1ff] px-3 pb-3 pt-3 sm:px-5 sm:pb-5">
               <div
-                className={`pointer-events-none absolute inset-x-0 bottom-0 transition-[height,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                  isExpanded
-                    ? "h-36 bg-gradient-to-b from-transparent via-[#f7f1ff]/78 to-[#f7f1ff] opacity-100 sm:h-40"
-                    : "h-28 bg-gradient-to-b from-transparent via-[#fbf8ff]/72 to-[#fbf8ff] opacity-100 sm:h-32"
-                }`}
-              />
-
-              <div className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3 sm:px-5 sm:pb-5">
-                <div
-                  className="relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-3 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-4"
-                  style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
-                >
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.42),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),transparent_55%)]" />
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/55" />
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="relative min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="mr-auto text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
-                        {badges.map((badge) => (
-                          <span
-                            key={badge}
-                            className="rounded-full border border-white/35 bg-white/26 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#5f3596] backdrop-blur-md"
-                          >
-                            {badge}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {features.map((feature) => (
-                          <span
-                            key={feature}
-                            className="rounded-full border border-white/30 bg-white/20 px-2 py-0.5 text-[11px] font-medium text-[#5d2f9f] backdrop-blur-md"
-                          >
-                            {feature}
-                          </span>
-                        ))}
-                        {(categories.length ? categories : ["Evento"]).map((category) => (
-                          <span
-                            key={category}
-                            className="rounded-full border border-white/28 bg-white/18 px-2 py-0.5 text-[11px] text-slate-700 backdrop-blur-md"
-                          >
-                            {category}
-                          </span>
-                        ))}
-                      </div>
+                className="relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-3 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-4"
+                style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
+              >
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.42),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),transparent_55%)]" />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/55" />
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="relative min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="mr-auto text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
+                      {badges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-full border border-white/35 bg-white/26 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#5f3596] backdrop-blur-md"
+                        >
+                          {badge}
+                        </span>
+                      ))}
                     </div>
 
-                    <div className="relative flex flex-wrap gap-2 lg:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
-                        disabled={openingEditor}
-                        className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handlePrimaryAction}
-                        disabled={openingEditor}
-                        className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {openingEditor
-                          ? "Creando borrador..."
-                          : isExpanded
-                            ? "Crear invitacion"
-                            : "Editar plantilla"}
-                      </button>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {features.map((feature) => (
+                        <span
+                          key={feature}
+                          className="rounded-full border border-white/30 bg-white/20 px-2 py-0.5 text-[11px] font-medium text-[#5d2f9f] backdrop-blur-md"
+                        >
+                          {feature}
+                        </span>
+                      ))}
+                      {(categories.length ? categories : ["Evento"]).map((category) => (
+                        <span
+                          key={category}
+                          className="rounded-full border border-white/28 bg-white/18 px-2 py-0.5 text-[11px] text-slate-700 backdrop-blur-md"
+                        >
+                          {category}
+                        </span>
+                      ))}
                     </div>
+                  </div>
+
+                  <div className="relative flex flex-wrap gap-2 lg:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
+                      disabled={openingEditor}
+                      className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePrimaryAction}
+                      disabled={openingEditor}
+                      className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {openingEditor
+                        ? "Creando borrador..."
+                        : isExpanded
+                          ? "Crear invitacion"
+                          : "Editar plantilla"}
+                    </button>
                   </div>
                 </div>
               </div>

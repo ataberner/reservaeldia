@@ -187,6 +187,62 @@ function createPreservedCountdownGalleryGroup(overrides = {}) {
   };
 }
 
+function createPreservedFunctionalCtaGroup({
+  groupId = "functional-cta-group",
+  ctaId = "functional-cta-child",
+  ctaType = "rsvp-boton",
+  ctaText = "Confirmar asistencia",
+  overlayType = "forma",
+} = {}) {
+  const overlayChild =
+    overlayType === "texto"
+      ? {
+          id: `${groupId}-overlay-text`,
+          tipo: "texto",
+          x: 0,
+          y: 48,
+          width: 240,
+          height: 56,
+          texto: "Overlay",
+          fontSize: 26,
+          colorTexto: "#111111",
+          align: "center",
+        }
+      : {
+          id: `${groupId}-overlay-shape`,
+          tipo: "forma",
+          figura: "rect",
+          x: 0,
+          y: 48,
+          width: 240,
+          height: 56,
+          color: "rgba(255,0,0,0.01)",
+        };
+
+  return {
+    id: groupId,
+    tipo: "grupo",
+    seccionId: "section-details",
+    anclaje: "content",
+    x: 72,
+    y: 72,
+    width: 260,
+    height: 140,
+    children: [
+      {
+        id: ctaId,
+        tipo: ctaType,
+        x: 0,
+        y: 48,
+        width: 240,
+        height: 54,
+        texto: ctaText,
+      },
+      overlayChild,
+    ],
+  };
+}
+
 function deepClone(value) {
   if (Array.isArray(value)) {
     return value.map((entry) => deepClone(entry));
@@ -605,6 +661,70 @@ test("keeps CTA button output stable for ready, unavailable, and direct object r
   assert.match(unavailableHtml, /title="No disponible"/);
   assert.match(defaultHtml, /data-cta-state="ready"/);
   assert.match(defaultHtml, /data-rsvp-open/);
+});
+
+test("keeps grouped ready CTAs above overlapping decorative siblings while preserving trigger semantics", () => {
+  const groupedObjects = [
+    createPreservedFunctionalCtaGroup({
+      groupId: "grouped-rsvp",
+      ctaId: "grouped-rsvp-child",
+      ctaType: "rsvp-boton",
+      ctaText: "Confirmar asistencia",
+      overlayType: "forma",
+    }),
+    createPreservedFunctionalCtaGroup({
+      groupId: "grouped-gift",
+      ctaId: "grouped-gift-child",
+      ctaType: "regalo-boton",
+      ctaText: "Ver regalos",
+      overlayType: "texto",
+    }),
+  ];
+
+  const readyContract = resolveFunctionalCtaContract({
+    objetos: groupedObjects,
+    rsvpConfig: { enabled: true, presetId: "minimal" },
+    giftsConfig: {
+      enabled: true,
+      bank: {
+        holder: "",
+        bank: "",
+        alias: "alias.regalo",
+        cbu: "0001234500001234500012",
+        cuit: "",
+      },
+      visibility: {
+        holder: false,
+        bank: false,
+        alias: true,
+        cbu: true,
+        cuit: false,
+        giftListLink: false,
+      },
+      giftListUrl: "",
+    },
+  });
+
+  const html = generarHTMLDesdeObjetos(groupedObjects, CTA_SECTION, {
+    functionalCtaContract: readyContract,
+  });
+
+  assert.match(
+    html,
+    /data-group-child-id="grouped-rsvp-child"[\s\S]*class="group-child-root is-interactive rsvp-boton"[\s\S]*data-rsvp-open/
+  );
+  assert.match(
+    html,
+    /data-group-child-id="grouped-rsvp-child"[\s\S]*z-index: 2147483647;/
+  );
+  assert.match(
+    html,
+    /data-group-child-id="grouped-gift-child"[\s\S]*class="group-child-root is-interactive regalo-boton"[\s\S]*data-gift-open/
+  );
+  assert.match(
+    html,
+    /data-group-child-id="grouped-gift-child"[\s\S]*z-index: 2147483647;/
+  );
 });
 
 test("keeps RSVP modal generation tied to ready root config in representative drafts", () => {

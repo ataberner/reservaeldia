@@ -110,12 +110,27 @@ function isObjectSupportedForGrouping(object) {
   ].includes(tipo);
 }
 
-function resolveObjectLocalY(object, alturaPantalla) {
+function resolveObjectLocalY(
+  object,
+  {
+    alturaPantalla = 500,
+    sectionMode = "fijo",
+  } = {}
+) {
+  const normalizedSectionMode = normalizeSectionMode(sectionMode);
+  const safeHeight = Math.max(1, toFiniteNumber(alturaPantalla, 500) || 500);
+
+  if (normalizedSectionMode === "pantalla") {
+    const yNorm = clamp01(object?.yNorm);
+    if (Number.isFinite(yNorm)) {
+      return yNorm * safeHeight;
+    }
+  }
+
   const directY = toFiniteNumber(object?.y, null);
   if (Number.isFinite(directY)) return directY;
 
   const yNorm = clamp01(object?.yNorm);
-  const safeHeight = Math.max(1, toFiniteNumber(alturaPantalla, 500) || 500);
   return Number.isFinite(yNorm) ? yNorm * safeHeight : 0;
 }
 
@@ -351,7 +366,10 @@ export function buildGroupedSelectionState({
       const clonedChild = stripGroupChildRootFields(deepClone(object));
       const childX = toFiniteNumber(object?.x, 0) - safeFrame.x;
       const childY =
-        resolveObjectLocalY(object, alturaPantalla) - localY;
+        resolveObjectLocalY(object, {
+          alturaPantalla,
+          sectionMode,
+        }) - localY;
 
       return {
         ...clonedChild,
@@ -573,7 +591,10 @@ export function buildUngroupedSelectionState({
   const group = selection.group || null;
   const safeHeight = Math.max(1, toFiniteNumber(alturaPantalla, 500) || 500);
   const groupX = toFiniteNumber(group?.x, 0) || 0;
-  const groupLocalY = resolveObjectLocalY(group, safeHeight);
+  const groupLocalY = resolveObjectLocalY(group, {
+    alturaPantalla: safeHeight,
+    sectionMode: selection.sectionMode,
+  });
 
   const restoredChildren = selection.groupChildren.map((child) => {
     const nextChild = {

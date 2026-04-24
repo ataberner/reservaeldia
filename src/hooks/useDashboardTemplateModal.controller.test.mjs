@@ -353,6 +353,94 @@ test("preview html stays cached by template id across modal close and reopen", a
   );
 });
 
+test("preview html regenerates when the same template id changes CTA runtime inputs", async () => {
+  let templateRequestCount = 0;
+  let previewGenerationCount = 0;
+  const firstTemplate = createFullTemplate({
+    id: "tpl-rsvp",
+    nombre: "Plantilla sin RSVP listo",
+    objetos: [
+      {
+        id: "cta-rsvp",
+        tipo: "rsvp-boton",
+        seccionId: "sec-1",
+        texto: "Confirmar asistencia",
+      },
+    ],
+    rsvp: null,
+  });
+  const secondTemplate = createFullTemplate({
+    id: "tpl-rsvp",
+    nombre: "Plantilla con RSVP listo",
+    objetos: [
+      {
+        id: "cta-rsvp",
+        tipo: "rsvp-boton",
+        seccionId: "sec-1",
+        texto: "Confirmar asistencia",
+      },
+    ],
+    rsvp: {
+      enabled: true,
+      title: "Confirmacion",
+    },
+  });
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async () => {
+        templateRequestCount += 1;
+        return templateRequestCount === 1 ? firstTemplate : secondTemplate;
+      },
+      generatePreviewHtml: async (template) => {
+        previewGenerationCount += 1;
+        return template?.rsvp
+          ? "<html><body><button data-rsvp-open>RSVP</button><div id=\"modal-rsvp\"></div></body></html>"
+          : "<html><body><button class=\"rsvp-boton\">RSVP</button></body></html>";
+      },
+      resolvePreviewSource: () => ({
+        mode: "generated",
+        previewUrl: null,
+      }),
+    },
+  });
+
+  harness.controller.openTemplateModal(
+    createCatalogTemplate({
+      id: "tpl-rsvp",
+      nombre: "Plantilla con RSVP",
+    })
+  );
+  await flushMicrotasks();
+
+  assert.equal(previewGenerationCount, 1);
+  assert.equal(
+    harness.getDerivedViewState().selectedTemplatePreviewHtml.includes(
+      "modal-rsvp"
+    ),
+    false
+  );
+
+  harness.controller.closeTemplateModal();
+  await flushMicrotasks();
+
+  harness.controller.openTemplateModal(
+    createCatalogTemplate({
+      id: "tpl-rsvp",
+      nombre: "Plantilla con RSVP",
+    })
+  );
+  await flushMicrotasks();
+
+  assert.equal(previewGenerationCount, 2);
+  assert.equal(harness.getState().selectedTemplate?.rsvp?.enabled, true);
+  assert.equal(
+    harness.getDerivedViewState().selectedTemplatePreviewHtml.includes(
+      "modal-rsvp"
+    ),
+    true
+  );
+});
+
 test("opening the editor with changes preserves the current draft creation and handoff contract", async () => {
   const createDraftCalls = [];
   const reportCalls = [];

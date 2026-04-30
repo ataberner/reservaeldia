@@ -295,6 +295,24 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `role` / `rol` | Optional | Semantic role override used by motion/runtime data attributes. |
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
 
+### `grupo`
+Groups are preserved composition objects. The group root lives in `objetos` with
+`tipo: "grupo"`, owns `seccionId`, `anclaje`, `x`, `y`, optional `yNorm`, `width`,
+`height`, and carries a `children[]` array.
+
+Group children use the same object-family contracts as root objects, but with group-local
+geometry:
+
+- child `x` and `y` are relative to the group frame
+- child `seccionId`, `anclaje`, and `yNorm` are forbidden because those belong to the group
+- nested groups are not supported in the v1 group contract
+
+The HTML generator renders the group wrapper as the top-level object and delegates child
+rendering back through the normal object renderer. Full-document collectors must recurse
+into `children[]` for dependencies and runtimes such as Google Fonts, countdown scripts,
+gallery lightbox support, and functional CTA detection. The detailed contract lives in
+`docs/architecture/GROUP_RENDER_MODEL.md`.
+
 ### `texto`
 Current text objects use these fields:
 

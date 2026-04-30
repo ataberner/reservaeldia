@@ -13,6 +13,11 @@ import {
   type FunctionalCtaContract,
 } from "./functionalCtaContract";
 import { normalizeSectionBackgroundModel } from "./sectionBackground";
+import {
+  collectRenderObjectsDeep,
+  hasRenderObjectDeep,
+  normalizeRenderObjectType,
+} from "./renderObjectTraversal";
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
@@ -65,6 +70,26 @@ type GenerarHTMLOpciones = {
   giftsSource?: unknown;
   functionalCtaContract?: FunctionalCtaContract | null;
 };
+
+function collectGoogleFontFamilies(objetos: any[]): string[] {
+  return [
+    ...new Set(
+      collectRenderObjectsDeep(objetos)
+        .filter((objeto) => {
+          const tipo = normalizeRenderObjectType(objeto.tipo);
+          return (
+            (tipo === "texto" ||
+              tipo === "countdown" ||
+              tipo === "rsvp-boton" ||
+              tipo === "regalo-boton") &&
+            objeto.fontFamily
+          );
+        })
+        .map((objeto) => String(objeto.fontFamily || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+}
 
 function escapeAttr(str: string = ""): string {
   return String(str)
@@ -388,19 +413,7 @@ export function generarHTMLDesdeSecciones(
       giftsConfig: hasExplicitGiftsSource ? opciones?.giftsSource : opciones?.gifts,
     });
 
-  const fuentesUsadas = [
-    ...new Set(
-      objetos
-        .filter((o) =>
-          (o.tipo === "texto" ||
-            o.tipo === "countdown" ||
-            o.tipo === "rsvp-boton" ||
-            o.tipo === "regalo-boton") &&
-          o.fontFamily
-        )
-        .map((o) => o.fontFamily)
-    ),
-  ];
+  const fuentesUsadas = collectGoogleFontFamilies(objetos);
 
   const googleFontsLink = buildGoogleFontsLink(fuentesUsadas);
 
@@ -418,7 +431,10 @@ export function generarHTMLDesdeSecciones(
   const motionEffectsRuntime = generarMotionEffectsRuntimeHTML();
 
   function hayCountdown(objs: any[]) {
-    return Array.isArray(objs) && objs.some((o) => o?.tipo === "countdown");
+    return hasRenderObjectDeep(
+      objs,
+      (objeto) => normalizeRenderObjectType(objeto?.tipo) === "countdown"
+    );
   }
 
   const scriptCountdown = hayCountdown(objetos)

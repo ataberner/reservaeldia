@@ -339,7 +339,6 @@ export default function SectionActionsOverlay({
 
     return createPortal(
       <div
-        ref={overlayRootRef}
         className="fixed z-[90] flex flex-col items-end gap-2"
         style={{
           top: mobileSectionActionsTop,

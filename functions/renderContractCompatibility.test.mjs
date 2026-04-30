@@ -664,6 +664,68 @@ test("renders preserved groups as isolated top-level layout units without exposi
   assert.equal(starIndex < textIndex, true);
 });
 
+test("loads Google Fonts for grouped text children through the shared full-document collector", () => {
+  const fontFamily = "Cormorant Garamond";
+  const ungroupedHtml = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [
+      {
+        id: "ungrouped-google-font-text",
+        tipo: "texto",
+        seccionId: "section-1",
+        x: 72,
+        y: 96,
+        width: 320,
+        texto: "Ungrouped typography",
+        fontSize: 30,
+        fontFamily,
+      },
+    ],
+    null,
+    {}
+  );
+  const groupedHtml = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [
+      {
+        id: "grouped-google-font",
+        tipo: "grupo",
+        seccionId: "section-1",
+        x: 72,
+        y: 96,
+        width: 360,
+        height: 120,
+        children: [
+          {
+            id: "grouped-google-font-text",
+            tipo: "texto",
+            x: 0,
+            y: 0,
+            width: 320,
+            texto: "Grouped typography",
+            fontSize: 30,
+            fontFamily,
+          },
+        ],
+      },
+    ],
+    null,
+    {}
+  );
+
+  assert.match(ungroupedHtml, /family=Cormorant\+Garamond&display=swap/);
+  assert.match(groupedHtml, /family=Cormorant\+Garamond&display=swap/);
+  assert.match(
+    ungroupedHtml,
+    /data-obj-id="ungrouped-google-font-text"[\s\S]*font-family: Cormorant Garamond;/
+  );
+  assert.match(
+    groupedHtml,
+    /data-group-child-id="grouped-google-font-text"[\s\S]*font-family: Cormorant Garamond;/
+  );
+  assert.doesNotMatch(groupedHtml, /data-obj-id="grouped-google-font-text"/);
+});
+
 test("keeps preview mobile parity mode out of legacy iframe layout overrides", () => {
   const html = generarHTMLDesdeSecciones(
     FIXED_SECTION,
@@ -744,6 +806,21 @@ test("keeps grouped countdown and gallery compositions nested under one authored
   assert.doesNotMatch(html, /data-obj-id="gallery-child"/);
   assert.match(html, /data-group-child-id="countdown-child"[\s\S]*data-countdown/);
   assert.match(html, /data-group-child-id="gallery-child"[\s\S]*class="group-child-root galeria/);
+});
+
+test("activates document-level runtimes for grouped countdown and gallery children", () => {
+  const html = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [createPreservedCountdownGalleryGroup()],
+    null,
+    {}
+  );
+
+  assert.match(html, /data-group-child-id="countdown-child"[\s\S]*data-countdown/);
+  assert.match(html, /function resolveCountdownContract\(root\)/);
+  assert.match(html, /data-group-child-id="gallery-child"[\s\S]*class="group-child-root galeria/);
+  assert.match(html, /id="gallery-lightbox"/);
+  assert.match(html, /document\.querySelectorAll\("\.galeria"\)/);
 });
 
 test("keeps pantalla positioning branches stable for yNorm objects and y fallback objects", () => {

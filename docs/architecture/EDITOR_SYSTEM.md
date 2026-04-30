@@ -91,6 +91,8 @@ The normative role and conversion contract for image/content, free decorations, 
 
 Decoration creation and management controls are role-gated UI entry points. Regular users can use `Imagen (contenido)` and `Fondo de la sección`; `Decoración`, `Decoración arriba`, and `Decoración abajo` are visible only to admin/superadmin users through the existing `canManageSite` prop (`isAdmin || isSuperAdmin`). Existing decoration data remains render-compatible for all users. The section actions menu must not expose delete buttons for free, top, or bottom decorations; removal, when available, belongs to the decoration-specific settings menu.
 
+Preserved groups are stored as `tipo: "grupo"` roots in `objetos`. The group owns section placement and child objects keep group-local `x`/`y` coordinates while reusing the normal render contracts for text, images, shapes, CTAs, countdowns, and galleries. The detailed preview/publish contract lives in `docs/architecture/GROUP_RENDER_MODEL.md`.
+
 ### 3.4 Persistence Boundary
 
 `useBorradorSync.js` is the main persistence boundary.
@@ -119,6 +121,7 @@ These are active system boundaries, not incidental implementation details.
 - Whole product architecture: `docs/architecture/ARCHITECTURE_OVERVIEW.md`
 - Current interaction/rendering source of truth: `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`
 - Current preview pipeline: `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`
+- Preserved group render model: `docs/architecture/GROUP_RENDER_MODEL.md`
 - Current fragility map: `docs/architecture/SYSTEM_FRAGILITY_MAP.md`
 - Current render compatibility matrix: `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`
 - Image placement UX/render contract: `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`

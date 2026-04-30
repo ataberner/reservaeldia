@@ -1,29 +1,36 @@
+import {
+  hasRenderObjectDeep,
+  normalizeRenderObjectType,
+} from "./renderObjectTraversal";
+
 type GaleriaCell = {
   mediaUrl?: string | null;
 };
 
 type ObjetoGaleria = {
   tipo?: string;
+  children?: unknown[];
   cells?: GaleriaCell[];
 };
 
 export function hayGaleriaConImagenes(objetos: any[] = []): boolean {
-  return objetos.some((obj: ObjetoGaleria) => {
-    if (obj?.tipo !== "galeria" || !Array.isArray(obj?.cells)) return false;
-    return obj.cells.some(
+  return hasRenderObjectDeep(objetos, (objeto: ObjetoGaleria) =>
+    normalizeRenderObjectType(objeto?.tipo) === "galeria" &&
+    Array.isArray(objeto?.cells) &&
+    objeto.cells.some(
       (cell) => typeof cell?.mediaUrl === "string" && cell.mediaUrl.trim().length > 0
-    );
-  });
+    )
+  );
 }
 
 export function generarModalGaleriaHTML(): string {
   return `
 <style>
-  .objeto.galeria .galeria-celda--clickable {
+  .galeria .galeria-celda--clickable {
     cursor: zoom-in;
   }
 
-  .objeto.galeria .galeria-celda--clickable:focus-visible {
+  .galeria .galeria-celda--clickable:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.95);
     outline-offset: -2px;
   }
@@ -467,7 +474,7 @@ export function generarModalGaleriaHTML(): string {
       }, { passive: true });
     }
 
-    var galleries = Array.from(document.querySelectorAll(".objeto.galeria"));
+    var galleries = Array.from(document.querySelectorAll(".galeria"));
     galleries.forEach(function(gallery){
       var cells = Array.from(
         gallery.querySelectorAll('.galeria-celda[data-gallery-image="1"]')

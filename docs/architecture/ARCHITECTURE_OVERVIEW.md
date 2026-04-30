@@ -155,9 +155,11 @@ Finalization behavior:
 - Finalization writes a history snapshot into `publicadas_historial`, deletes the Storage artifact prefix `publicadas/{slug}/`, recursively deletes the active `publicadas/{slug}` document and subcollections, releases the slug reservation, and updates the linked draft to a finalized lifecycle state.
 
 HTML generation today is shared, but authority depends on the preview path:
-- `functions/src/utils/generarHTMLDesdeSecciones.ts` builds the full HTML document, section markup, section background layers, Google Fonts link aggregation, RSVP modal HTML, gifts modal HTML, gallery modal HTML, countdown runtime, invitation loader runtime, motion effects runtime, preview-only template patch runtime, and preview mobile scroll runtime.
-- `functions/src/utils/generarHTMLDesdeObjetos.ts` renders object-level HTML for text, image, icon, gallery, countdown, CTA buttons, generic buttons, lines, and shape families.
+- `functions/src/utils/generarHTMLDesdeSecciones.ts` builds the full HTML document, section markup, section background layers, recursive Google Fonts link aggregation, RSVP modal HTML, gifts modal HTML, gallery modal HTML, countdown runtime, invitation loader runtime, motion effects runtime, preview-only template patch runtime, and preview mobile scroll runtime.
+- `functions/src/utils/generarHTMLDesdeObjetos.ts` renders object-level HTML for text, image, icon, gallery, countdown, CTA buttons, generic buttons, lines, shape families, and preserved group children through the same object-rendering contract used for top-level objects.
 - `functions/src/utils/generarModalRSVP.ts` embeds the RSVP runtime and defaults `submitEndpoint` to `https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit` unless a config override is provided.
+
+The preserved group contract for `tipo: "grupo"` is documented in [GROUP_RENDER_MODEL.md](GROUP_RENDER_MODEL.md). Grouped children must not introduce separate render paths; document-level dependency collectors must recurse into `children[]`.
 
 Draft-authoritative preview and publish both enter generation through `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`. Template preview and local fallback preview still call the generator locally and remain visual-only.
 

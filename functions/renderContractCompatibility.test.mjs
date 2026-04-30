@@ -356,6 +356,10 @@ test("renders edge decorations as section-owned non-object layer", () => {
 
   assert.match(html, /class="sec-edge-layer"/);
   assert.match(html, /class="sec-edge-decor sec-edge-decor--top"/);
+  assert.match(html, /data-edge-decorations="1"/);
+  assert.match(html, /class="sec-zoom sec-zoom-backdrop"/);
+  assert.match(html, /class="sec-zoom sec-zoom-decor"/);
+  assert.match(html, /class="sec-zoom sec-zoom-content"/);
   assert.match(html, /data-edge-slot="top"/);
   assert.match(html, /data-edge-mode="cover-x"/);
   assert.match(html, /data-edge-height-model="intrinsic-clamp"/);
@@ -407,6 +411,31 @@ test("renders edge decorations as section-owned non-object layer", () => {
   assert.match(
     html,
     /\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--top \.sec-edge-decor-img,[\s\S]*\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--bottom \.sec-edge-decor-img\{[\s\S]*height: auto;[\s\S]*object-fit: contain;/
+  );
+  assert.match(
+    html,
+    /\.sec-zoom\{[\s\S]*position: absolute;[\s\S]*inset: 0;/
+  );
+  assert.match(html, /\.sec-zoom-backdrop\{[\s\S]*z-index: 0;/);
+  assert.match(html, /\.sec-zoom-decor\{[\s\S]*z-index: 2;/);
+  assert.match(html, /\.sec-zoom-content\{[\s\S]*z-index: 3;/);
+  assert.match(
+    html,
+    /@media \(min-width: 768px\)\{[\s\S]*\.sec\[data-edge-decorations="1"\] \.sec-edge-layer\{[\s\S]*overflow: visible;[\s\S]*\.sec\[data-modo="pantalla"\]\[data-edge-decorations="1"\]\{[\s\S]*overflow: visible;/
+  );
+  const backdropLayerIndex = html.indexOf('class="sec-zoom sec-zoom-backdrop"');
+  const edgeLayerIndex = html.indexOf('class="sec-edge-layer"');
+  const decorLayerIndex = html.indexOf('class="sec-zoom sec-zoom-decor"');
+  const contentLayerIndex = html.indexOf('class="sec-zoom sec-zoom-content"');
+  assert.ok(backdropLayerIndex !== -1, "Missing backdrop zoom layer");
+  assert.ok(edgeLayerIndex !== -1, "Missing edge layer");
+  assert.ok(decorLayerIndex !== -1, "Missing decoration zoom layer");
+  assert.ok(contentLayerIndex !== -1, "Missing content zoom layer");
+  assert.ok(
+    backdropLayerIndex < edgeLayerIndex &&
+      edgeLayerIndex < decorLayerIndex &&
+      decorLayerIndex < contentLayerIndex,
+    "Expected backdrop, edge, decoration, and content layers to stay ordered"
   );
   assert.match(
     html,

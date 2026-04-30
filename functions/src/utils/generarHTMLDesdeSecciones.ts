@@ -1286,6 +1286,8 @@ export function generarHTMLDesdeSecciones(
         backgroundModel.decoracionesBorde
       );
       const htmlDecoraciones = renderSectionDecorations(backgroundModel.decoraciones, modo);
+      const hasEdgeDecorations = Boolean(htmlDecoracionesBorde);
+      const edgeDecorationsAttr = hasEdgeDecorations ? ' data-edge-decorations="1"' : "";
 
       const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas, {
         functionalCtaContract,
@@ -1296,11 +1298,15 @@ export function generarHTMLDesdeSecciones(
 
 
       return `
-<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}" style="--hbase:${hbase}">
-  <div class="sec-zoom">
+<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}"${edgeDecorationsAttr} style="--hbase:${hbase}">
+  <div class="sec-zoom sec-zoom-backdrop">
     ${fondoLayerHtml}
-    ${htmlDecoracionesBorde}
+  </div>
+  ${htmlDecoracionesBorde}
+  <div class="sec-zoom sec-zoom-decor">
     ${htmlDecoraciones}
+  </div>
+  <div class="sec-zoom sec-zoom-content">
     <div class="sec-bleed">${htmlBleed}</div>
     <div class="sec-content">${htmlContenido}</div>
   </div>
@@ -1712,11 +1718,27 @@ export function generarHTMLDesdeSecciones(
 
     /* ✅ Wrapper que hace “zoom” centrado (evita corrimiento a la derecha) */
     .sec-zoom{
-      position: relative;
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       transform-origin: top center;
       transform: scale(var(--zoom, 1));
+    }
+
+    .sec-zoom-backdrop{
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .sec-zoom-decor{
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .sec-zoom-content{
+      z-index: 3;
+      pointer-events: none;
     }
 
     /* ✅ Pantalla ON: recorte para que el zoom no desborde */
@@ -1787,6 +1809,12 @@ export function generarHTMLDesdeSecciones(
       transform-origin: top center;
     }
 
+    .sec[data-modo="pantalla"] .sec-zoom-backdrop,
+    .sec[data-modo="pantalla"] .sec-zoom-decor,
+    .sec[data-modo="pantalla"] .sec-zoom-content{
+      overflow: hidden;
+    }
+
     .sec-edge-layer{
       position: absolute;
       inset: 0;
@@ -1798,6 +1826,16 @@ export function generarHTMLDesdeSecciones(
 
     .sec[data-modo="pantalla"] .sec-edge-layer{
       transform: scale(var(--edgezoom, 1));
+    }
+
+    @media (min-width: 768px){
+      .sec[data-edge-decorations="1"] .sec-edge-layer{
+        overflow: visible;
+      }
+
+      .sec[data-modo="pantalla"][data-edge-decorations="1"]{
+        overflow: visible;
+      }
     }
 
     .sec-edge-decor{
@@ -2609,7 +2647,6 @@ export function generarHTMLDesdeSecciones(
             // ✅ Mobile: mantenemos tu comportamiento actual (zoom hero suave)
             if (isMobile){
               zoom = zoomExtra;
-              edgezoom = 1 / Math.max(0.01, zoom);
               var bgVisualZoom = 1 + (zoomExtra - 1) * BG_ZOOM_FACTOR;
               if (fondoTipo === "imagen") {
                 bgzoom = bgVisualZoom / Math.max(0.01, zoom);

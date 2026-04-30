@@ -248,10 +248,19 @@ Selection rule:
 - Section-owned visuals render below normal content and outside smart-layout object flows.
 - Section-owned editor overlays are custom section edit surfaces, not normal object selection boxes.
 - The section actions menu does not expose delete buttons for free, top, or bottom decorations.
+- Desktop preview/publish uses controlled edge-layer overflow for top/bottom decorations so full edge artwork is not cropped merely because the preview viewport is wider than the 800px editor canvas.
 
 ## Preview / Publish Contract
 
 Draft-authoritative preview and publish both use the backend prepared render payload path. Section-owned visuals are generated in `generarHTMLDesdeSecciones.ts`, while normal image objects are generated in `generarHTMLDesdeObjetos.ts`.
+
+Edge decoration render strategy:
+
+- `Decoración arriba` and `Decoración abajo` render as section-owned edge layers, not as `.objeto` nodes.
+- Generated HTML keeps the base background, edge decoration, free decoration, and content surfaces in separate ordered layers.
+- Desktop preview/publish may allow controlled vertical overflow only for `decoracionesBorde` edge artwork. This preserves the full edge ornament when the editor canvas shows it fully.
+- Mobile edge behavior remains on the existing mobile sizing and offset path; desktop overflow changes must not redefine mobile geometry.
+- Edge decorations stay behind content and remain `pointer-events: none`.
 
 Publish preparation validates unresolved assets separately:
 
@@ -267,7 +276,7 @@ The final public HTML is stored in Firebase Storage as `publicadas/{slug}/index.
 - Edge decoration canvas editing changes `offsetDesktopPx` only. `offsetMobilePx` is preserved but not edited by the current overlay.
 - `decoracionesFondo` still carries legacy naming compatibility for `superior` / `inferior`, which can confuse the distinction between free decorations and edge decorations.
 - `decoracionesFondo.parallax` supports `none`, `soft`, and `dynamic`; other motion fields in the system use different option sets. Treat this as naming and behavior coupling, not as a unified motion contract.
-- Free decorations and edge decorations both use generated `z-index: 1`; internal overlap depends on DOM/layer order and should be tested if the two roles overlap visually.
+- Generated HTML intentionally separates base background, edge decorations, free decorations, and content into ordered layers. Internal overlap should still be tested when free decorations and edge decorations are visually close.
 - Role gating is currently UI-level. The underlying conversion/removal helpers remain available to existing editor code paths and are not a security boundary by themselves.
 
 ## Regression Risks

@@ -85,7 +85,7 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Level: LOW-MEDIUM
 - Type: Rendering, Visual Consistency
 - Revalidates: `R4`, `R6`
-- Evidence: `decoracionesBorde` is normalized through the shared section asset contract, validated by prepared render payload, and rendered by `generarHTMLDesdeSecciones.ts` as `.sec-edge-layer` inside `.sec-zoom` with `--edgezoom` compensation and responsive desktop/mobile height ratios. It is included in the visual baseline and mobile geometry parity snapshots.
+- Evidence: `decoracionesBorde` is normalized through the shared section asset contract, validated by prepared render payload, and rendered by `generarHTMLDesdeSecciones.ts` as a section-owned `.sec-edge-layer` between the base-background and content layers. Desktop preview/publish uses controlled edge-layer overflow for full edge artwork, while mobile remains on the existing responsive edge sizing and offset path. It is included in the visual baseline and mobile geometry parity snapshots.
 - Contract Mismatch: none known in draft-authoritative preview/publish; the remaining sensitivity is CSS layer order, responsive edge-band sizing, and `pantalla` zoom math.
 - Failure mode: edge ornaments could drift, become clipped, or accidentally enter object/smart-layout behavior if the layer contract is changed.
 - Action: keep the primitive section-owned, non-object, and covered by the `edge-decorations-pantalla` baseline.

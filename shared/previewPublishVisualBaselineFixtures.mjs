@@ -275,6 +275,91 @@ function createMobileReflowColumnObjects({ seccionId = "section-details" } = {})
   ];
 }
 
+function createMobileReflowTitleVisualColumnObjects({ seccionId = "section-details" } = {}) {
+  const iconPath = "M5 5h14v14H5z";
+  const iconViewBox = "0 0 24 24";
+
+  const createColumn = ({ prefix, x, label, time, place }) => [
+    {
+      id: `${prefix}-icon`,
+      tipo: "icono-svg",
+      seccionId,
+      x: x + 68,
+      y: 120,
+      width: 48,
+      height: 48,
+      viewBox: iconViewBox,
+      d: iconPath,
+      color: "#2f2a27",
+    },
+    {
+      id: `${prefix}-label`,
+      tipo: "texto",
+      seccionId,
+      x,
+      y: 180,
+      width: 184,
+      texto: label,
+      fontSize: 28,
+      align: "center",
+      colorTexto: "#2f2a27",
+    },
+    {
+      id: `${prefix}-time`,
+      tipo: "texto",
+      seccionId,
+      x,
+      y: 224,
+      width: 184,
+      texto: time,
+      fontSize: 19,
+      align: "center",
+      colorTexto: "#4c4640",
+    },
+    {
+      id: `${prefix}-place`,
+      tipo: "texto",
+      seccionId,
+      x,
+      y: 254,
+      width: 184,
+      texto: place,
+      fontSize: 18,
+      align: "center",
+      colorTexto: "#4c4640",
+    },
+  ];
+
+  return [
+    {
+      id: "where-title",
+      tipo: "texto",
+      seccionId,
+      x: 245,
+      y: 34,
+      width: 300,
+      texto: "¿Dónde?",
+      fontSize: 38,
+      align: "center",
+      colorTexto: "#2f2a27",
+    },
+    ...createColumn({
+      prefix: "ceremony",
+      x: 92,
+      label: "CEREMONIA",
+      time: "Sábado 20 de julio - 17 hs",
+      place: "Parroquia San José",
+    }),
+    ...createColumn({
+      prefix: "party",
+      x: 526,
+      label: "FIESTA",
+      time: "20 hs",
+      place: "Salón Las Rosas",
+    }),
+  ];
+}
+
 function createOverflowObjects({ seccionId = "section-details" } = {}) {
   return [
     {
@@ -534,6 +619,21 @@ const fixedReflowColumnsPublishDraft = upsertObjects(
     objectIds: [],
   }),
   createMobileReflowColumnObjects()
+);
+
+const fixedReflowTitleVisualColumnsPreviewDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createMobileReflowTitleVisualColumnObjects()
+);
+const fixedReflowTitleVisualColumnsPublishDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createMobileReflowTitleVisualColumnObjects()
 );
 
 const fixedOverflowPreviewDraft = upsertObjects(
@@ -819,6 +919,21 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
       "fixed sections remain the only smart-reflow section mode",
       "column groups stack consistently in mobile preview and publish",
       "section height after reflow stays within the same geometry tolerance",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-reflow-title-visual-columns",
+    label: "Fixed section title plus visual columns",
+    purpose: "Freeze centered section-title anchoring before two visual columns are stacked on mobile.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedReflowTitleVisualColumnsPreviewDraft,
+    publishDraft: fixedReflowTitleVisualColumnsPublishDraft,
+    focusCheckpoints: [
+      "the centered section title stays above the mobile flow",
+      "title geometry does not contaminate left/right lane bounding boxes",
+      "ceremony and party visual columns both stack on the mobile center axis",
+      "preview and publish keep the same centered-column geometry",
     ],
   }),
   createVisualBaselineCase({

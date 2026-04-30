@@ -151,6 +151,25 @@
       ]
     },
     {
+      "caseId": "fixed-reflow-title-visual-columns",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "the centered section title stays above the mobile flow",
+        "title geometry does not contaminate left/right lane bounding boxes",
+        "ceremony and party visual columns both stack on the mobile center axis",
+        "preview and publish keep the same centered-column geometry"
+      ]
+    },
+    {
       "caseId": "fixed-overflow-expansion",
       "sourceFixture": "preview-publish-hydrated-asset-parity",
       "requiredViews": [

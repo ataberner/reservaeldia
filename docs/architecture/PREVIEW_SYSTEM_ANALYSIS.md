@@ -142,6 +142,13 @@ Section height is decided by a combination of generation-time section mode and r
 
 The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It clusters generated DOM nodes, decides whether reflow is needed, stacks flow content when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
 
+Centered title rule:
+
+- A generated text object with semantic `data-role="title"`, `text-align:center`, a box centered on the fixed section content axis, and no same-row content peer is treated as a mobile anchor before column/lane detection.
+- This fixes the 2026-04-30 centered-title reflow bug where a top title such as `¿Dónde?` entered the flow, was assigned to one of the two visual lanes, and polluted that lane bounding box. The affected ceremony column was then centered against `title + column` instead of the mobile section center.
+- Column labels remain flow items because their own boxes are left/right of the section center, or because a centered middle-column label still has same-row peers.
+- The avoided risk is over-anchoring every centered text when icons/shapes are present. The legacy full-width text heuristic still only runs when no visible non-text object is present.
+
 Height model markers:
 
 - `data-msl-height-model="publish-like"`: normal publish-like height model, including parity preview.
@@ -171,3 +178,22 @@ Use these references for parity work:
 - `shared/previewPublishMobileGeometryParity.test.mjs`
 - `functions/renderContractCompatibility.test.mjs`
 - `functions/publicationPublishValidation.test.mjs`
+
+## 11. 2026-04-30 Centered Title Reflow Fix
+
+Modified files:
+
+- `functions/src/utils/mobileSmartLayout/scriptTemplate.ts`
+- `shared/previewPublishVisualBaselineFixtures.mjs`
+- `shared/previewPublishVisualBaseline.test.mjs`
+- `shared/previewPublishMobileGeometryParity.test.mjs`
+- `artifacts/preview-publish-baseline/manifest.json`
+- `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`
+- `docs/testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md`
+
+Manual validation steps:
+
+- Open or publish a fixed section with a centered `¿Dónde?` title above Ceremony and Fiesta visual columns.
+- Check mobile preview and mobile publish: title stays centered, Ceremony stacks centered below it, Fiesta stacks centered below Ceremony.
+- Remove the `¿Dónde?` title and repeat: Ceremony and Fiesta must remain centered.
+- Check desktop preview/publish: the original side-by-side desktop layout must not move.

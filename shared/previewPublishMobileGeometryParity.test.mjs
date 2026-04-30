@@ -262,6 +262,25 @@ test(
       return snapshot;
     }
 
+    function assertObjectCenteredOnSection(snapshot, objectId, message) {
+      const object = (snapshot?.objects || []).find((entry) => entry.id === objectId);
+      assert.ok(object, `${message}: missing ${objectId}`);
+
+      const section = (snapshot?.sections || []).find(
+        (entry) => entry.id === object.sectionId
+      );
+      assert.ok(section, `${message}: missing section for ${objectId}`);
+
+      const expectedCenter =
+        Number(section.contentRect?.left || 0) + Number(section.contentRect?.width || 0) / 2;
+      const actualCenter =
+        Number(object.rect?.left || 0) + Number(object.rect?.width || 0) / 2;
+      assert.ok(
+        Math.abs(actualCenter - expectedCenter) <= 3,
+        `${message}: ${objectId} center ${actualCenter.toFixed(2)} differs from section center ${expectedCenter.toFixed(2)}`
+      );
+    }
+
     for (const fixture of previewPublishVisualBaselineFixtures) {
       await t.test(fixture.id, async () => {
         const prepared = await prepareRenderPayload(fixture.publishDraft);
@@ -278,6 +297,30 @@ test(
           const publishSnapshot = await capturePublishSnapshot(publishHtml, viewport);
           const diffs = diffMobileGeometrySnapshots(previewSnapshot, publishSnapshot);
           assert.deepEqual(diffs, [], `${fixture.id} ${viewport.id}`);
+
+          if (fixture.id === "fixed-reflow-title-visual-columns") {
+            [
+              "ceremony-icon",
+              "ceremony-label",
+              "ceremony-time",
+              "ceremony-place",
+              "party-icon",
+              "party-label",
+              "party-time",
+              "party-place",
+            ].forEach((objectId) => {
+              assertObjectCenteredOnSection(
+                previewSnapshot,
+                objectId,
+                `${fixture.id} preview ${viewport.id}`
+              );
+              assertObjectCenteredOnSection(
+                publishSnapshot,
+                objectId,
+                `${fixture.id} publish ${viewport.id}`
+              );
+            });
+          }
         }
       });
     }

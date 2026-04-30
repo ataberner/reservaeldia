@@ -20,13 +20,14 @@ test("visual baseline fixtures keep the required case ids frozen", () => {
     "countdown",
     "mixed-fijo-pantalla",
     "fixed-reflow-columns",
+    "fixed-reflow-title-visual-columns",
     "fixed-overflow-expansion",
     "grouped-cta-fixed-section",
     "group-nested-children",
     "fixed-fullbleed-mixed-lanes",
     "pantalla-ynorm-positioning",
   ]);
-  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 13);
+  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 14);
 });
 
 test("visual baseline fixtures require the same capture views for every case", () => {

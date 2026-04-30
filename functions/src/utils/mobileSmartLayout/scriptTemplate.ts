@@ -990,8 +990,71 @@ export function buildScript(cfg: NormalizedConfig): string {
       // Esto impide que textos de una columna queden "congelados" en left original.
       var allowHeuristicAnchors = prominentNonTextCount === 0;
 
+      function readTextAlign(node){
+        var ta = (node && node.style && node.style.textAlign)
+          ? String(node.style.textAlign).toLowerCase()
+          : "";
+        if (!ta) {
+          try {
+            ta = String(getComputedStyle(node).textAlign || "").toLowerCase();
+          } catch(_e) {}
+        }
+        return ta;
+      }
+
+      function isRootCenteredText(it){
+        if (!it || !it.node || (it.node.getAttribute("data-debug-texto") || "") !== "1") return false;
+        if (!contentW || contentW <= 0) return false;
+        var itemCenterX = Number(it.left || 0) + Number(it.width || 0) / 2;
+        var rootCenterX = contentW / 2;
+        var centerTol = Math.max(14, contentW * 0.08);
+        return Math.abs(itemCenterX - rootCenterX) <= centerTol;
+      }
+
+      function hasSameRowPeer(it){
+        if (!it || !itemsAll || !itemsAll.length) return false;
+        var top = Number(it.top || 0);
+        var height = Math.max(0, Number(it.height || 0));
+        var centerY = top + height / 2;
+        var centerX = Number(it.left || 0) + Number(it.width || 0) / 2;
+        var minXDelta = Math.max(24, (contentW || 0) * 0.12);
+
+        for (var sr=0; sr<itemsAll.length; sr++){
+          var other = itemsAll[sr];
+          if (!other || other === it) continue;
+          var otherW = Math.max(0, Number(other.width || 0));
+          var otherH = Math.max(0, Number(other.height || 0));
+          if (otherW < 2 || otherH < 2) continue;
+
+          var otherTop = Number(other.top || 0);
+          var otherCenterY = otherTop + otherH / 2;
+          var yTol = Math.max(12, Math.min(Math.max(height, 1), otherH) * 0.75);
+          if (Math.abs(otherCenterY - centerY) > yTol) continue;
+
+          var otherCenterX = Number(other.left || 0) + otherW / 2;
+          if (Math.abs(otherCenterX - centerX) > minXDelta) return true;
+        }
+
+        return false;
+      }
+
+      function isSemanticTitleAnchor(it){
+        if (!it || !it.node || (it.node.getAttribute("data-debug-texto") || "") !== "1") return false;
+        var role = String(it.node.getAttribute("data-role") || "").toLowerCase();
+        if (role !== "title") return false;
+        if (readTextAlign(it.node) !== "center") return false;
+        if (hasSameRowPeer(it)) return false;
+        return isRootCenteredText(it);
+      }
+
       // ✅ Determinar qué nodos son "ANCHOR" (no se reflowean)
-      // Regla: texto centrado + casi full-width => título/hero, no mover.
+      // Reglas:
+      // - opt-out/anchor explícitos siempre se respetan.
+      // - un título semántico centrado en el eje de la sección es full-width
+      //   para el algoritmo mobile, aunque su caja no ocupe casi todo el ancho,
+      //   siempre que no comparta fila con otros elementos de contenido.
+      // - la heurística legacy de texto centrado + casi full-width solo corre
+      //   cuando no hay no-texto visible, para no congelar labels de columnas.
       function isAnchorNode(it){
         var node = it.node;
 
@@ -1006,14 +1069,10 @@ export function buildScript(cfg: NormalizedConfig): string {
         // heurística para textos
         var isText = (node.getAttribute("data-debug-texto") || "") === "1";
         if (!isText) return false;
+        if (isSemanticTitleAnchor(it)) return true;
         if (!allowHeuristicAnchors) return false;
 
-        var ta = (node.style && node.style.textAlign) ? String(node.style.textAlign).toLowerCase() : "";
-        if (!ta) {
-          try {
-            ta = String(getComputedStyle(node).textAlign || "").toLowerCase();
-          } catch(_e) {}
-        }
+        var ta = readTextAlign(node);
         if (ta !== "center") return false;
 
         // solo si realmente ocupa casi todo el ancho usable

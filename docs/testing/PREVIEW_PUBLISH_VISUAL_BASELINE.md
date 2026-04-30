@@ -51,11 +51,37 @@ These views freeze invitation rendering reference points only. They do not freez
 | `countdown` | Protect current countdown frame and unit composition. | `shared-parity` | all five baseline views | none | frame composition, unit structure, desktop/mobile countdown family |
 | `mixed-fijo-pantalla` | Protect section ordering across one `pantalla` section plus fixed sections. | `shared-parity` | all five baseline views | none | section order, `pantalla` to `fijo` relationship, cross-section stability |
 | `fixed-reflow-columns` | Protect the two-column mobile smart-layout path for fixed sections. | `shared-parity` | all five baseline views | none | fixed-only reflow, mobile column stacking, section height |
+| `fixed-reflow-title-visual-columns` | Protect a centered section title above two icon/text columns. | `shared-parity` | all five baseline views | none | title anchor, lane bbox isolation, centered Ceremony/Fiesta mobile stack |
 | `fixed-overflow-expansion` | Protect fixed-section expansion when mobile content exceeds authored height. | `shared-parity` | all five baseline views | none | overflow expansion, stale iframe gaps, downstream offsets |
 | `grouped-cta-fixed-section` | Protect grouped CTA positioning and hit-layer preservation in fixed sections. | `shared-parity` | all five baseline views | none | group wrapper unit, nested CTA semantics, sibling stacking |
 | `group-nested-children` | Protect group child offsets relative to the wrapper. | `shared-parity` | all five baseline views | none | atomic group movement, nested children, relative offsets |
 | `fixed-fullbleed-mixed-lanes` | Protect fullbleed/content lane separation inside fixed sections. | `shared-parity` | all five baseline views | none | bleed lane, content lane, fit-scale lane intent |
 | `pantalla-ynorm-positioning` | Protect multiple `yNorm` positions in one `pantalla` section. | `shared-parity` | all five baseline views | none | no fixed reflow, relative vertical spacing, viewport-fit formulas |
+
+## Centered Title Reflow Fix
+
+Root cause fixed on 2026-04-30:
+
+- A short centered title above two visual columns was not classified as a full-width mobile item when icons/shapes were present.
+- The title stayed in the flow, got assigned to one lane during two-column detection, and expanded that lane bounding box.
+- The stacker then preserved source offsets inside that contaminated lane, so the first visual column could render left of the mobile center.
+
+Corrected rule:
+
+- `data-role="title"` text with `text-align:center`, a box centered on the section content axis, and no same-row content peer is an anchor for mobile lane detection.
+- Centered labels inside visual columns remain flow items because their boxes are not centered on the section axis, or because a centered middle-column label still has same-row peers.
+
+Avoided risks:
+
+- The fix does not anchor every centered text when non-text content exists.
+- The legacy centered full-width heuristic remains restricted to sections without visible non-text objects.
+- Desktop geometry is untouched because the rule runs only inside the mobile smart-layout runtime.
+
+Manual validation:
+
+- With `¿Dónde?` present, mobile preview and mobile publish center Ceremony and Fiesta on the same axis.
+- With `¿Dónde?` removed, the previous centered Ceremony/Fiesta stack remains unchanged.
+- Desktop preview and publish keep the original side-by-side composition.
 
 ## Accepted Current Differences
 

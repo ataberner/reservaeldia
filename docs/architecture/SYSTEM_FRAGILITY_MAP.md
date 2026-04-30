@@ -175,6 +175,18 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Expected impact: reduces lifecycle ambiguity and makes finalization logs easier to trust.
 - Compatibility risk: Low if added as an additive field; medium if readers drop legacy fallback too early.
 
+### F8b. Checkout Success UI Can Drift From Backend Publication State
+
+- Level: MEDIUM
+- Type: State Management, UX, Publication Lifecycle
+- Revalidates: `P1`, `P4`, `V3`
+- Evidence: checkout success depends on the backend `publication_checkout_sessions` terminal `published` state and returned `publicUrl`, while the preview/dashboard parent also syncs `slugPublico`, `urlPublicaVistaPrevia`, and `urlPublicadaReciente` after publish. If a visible checkout modal reinitializes from those parent props, it can discard its terminal receipt state and show the slug/payment form again even though the backend publication already succeeded.
+- Contract Mismatch: parent publication sync is a reflection of backend truth, not a new checkout context.
+- Failure mode: duplicate publish modal or second publish prompt after successful payment/publication.
+- Action: checkout UI initialization must be keyed to modal open and checkout context (`draftSlug` + operation), while terminal success remains keyed to backend `sessionStatus: "published"` plus final public URL.
+- Expected impact: prevents post-payment UI loops without changing Mercado Pago, discount, slug reservation, or publish execution behavior.
+- Compatibility risk: Low. The change is frontend state-boundary only and keeps backend settlement authoritative.
+
 ### F9. Hardcoded URLs, Duplicated Contract Files, And Dual RSVP Payloads Still Create Environment Drift
 
 - Level: MEDIUM
@@ -207,6 +219,7 @@ No previous item is fully obsolete. Some are better constrained than before beca
 | Draft preview rendering | `flushEditorPersistenceBeforeCriticalAction()` + `prepareDraftPreviewRender` | backend prepared validation diverges from editor assumptions | preview is blocked with publish validation instead of showing untrusted HTML |
 | Template/fallback preview rendering | `previewAuthority: "template-visual"` or `"local-fallback"` + local preview generator import | preview render boundary is intentionally outside publish preparation | template/fallback preview shows a visual state that is not a publish-parity guarantee |
 | Publish generation | `prepareRenderPayload()` + `validatePreparedRenderPayload()` + generator adapter | prepared assets, CTA/root config, group contract, or layout contract diverges from editor assumptions | publish blocked, layout moved, or published HTML differs from canvas |
+| Checkout/payment/publish return | checkout modal local receipt state + parent preview publication sync | terminal backend `published` result updates parent props while modal is still visible | success state resets into the slug/payment form after payment |
 
 ## 6. Immediate Action Order
 

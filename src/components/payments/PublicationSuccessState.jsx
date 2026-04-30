@@ -70,7 +70,7 @@ export default function PublicationSuccessState({
             rel="noreferrer"
             className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
           >
-            Visitar invitacion
+            Ver invitación
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         ) : null}

@@ -681,6 +681,7 @@ It does not store:
 
 ### `publication_checkout_sessions`
 `publication_checkout_sessions/{sessionId}` stores the backend checkout/session lifecycle.
+It is the authoritative post-payment state for the frontend checkout UI: only `status: "published"` with a backend-provided `publicUrl`/`receipt.publicUrl` should drive the published success state.
 
 Observed fields include:
 
@@ -703,6 +704,12 @@ Current status values in code:
 - `published`
 - `approved_slug_conflict`
 - `expired`
+
+Relationship to publication state:
+
+- When an approved session settles successfully, the backend writes `publicadas/{publicSlug}`, stores the generated HTML artifact, mirrors `slugPublico` and `publicationLifecycle` onto `borradores/{draftSlug}`, marks the session `published`, and stores `publicUrl` plus `receipt`.
+- The dashboard may sync its preview/publication props from that result, but this sync is not a new checkout context and must not reset a visible checkout success state.
+- `payment_processing`, `payment_rejected`, `approved_slug_conflict`, and `expired` are not published-success states; they keep the user in a retry, wait, or conflict-resolution flow.
 
 ### `public_slug_reservations`
 `public_slug_reservations/{slug}` stores temporary public-slug claims for checkout flows that need a new public slug.

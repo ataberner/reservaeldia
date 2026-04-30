@@ -4,6 +4,12 @@ import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
 import { functions as cloudFunctions } from "@/firebase";
 import PublicationSuccessState from "@/components/payments/PublicationSuccessState";
 import {
+  buildCheckoutModalContextKey,
+  isPublishedCheckoutStatus,
+  resolveCheckoutModalInitialization,
+  resolveTerminalPublicationResult,
+} from "@/domain/payments/publicationCheckoutState";
+import {
   PUBLIC_SLUG_AVAILABILITY_REASONS,
   parseSlugFromPublicUrl,
   validatePublicSlug,
@@ -153,12 +159,20 @@ export default function PublicationCheckoutModal({
   const pollTimerRef = useRef(null);
   const notifiedPublishRef = useRef(false);
   const onPublishedRef = useRef(onPublished);
+  const modalInitializationRef = useRef({
+    visible: false,
+    contextKey: "",
+  });
 
   useEffect(() => {
     onPublishedRef.current = onPublished;
   }, [onPublished]);
 
   const isNewOperation = operation === "new";
+  const checkoutContextKey = useMemo(
+    () => buildCheckoutModalContextKey({ draftSlug, operation }),
+    [draftSlug, operation]
+  );
   const effectiveCurrentSlug = useMemo(
     () => currentPublicSlug || parseSlugFromPublicUrl(currentPublicUrl) || "",
     [currentPublicSlug, currentPublicUrl]
@@ -296,24 +310,37 @@ export default function PublicationCheckoutModal({
   };
 
   const applyTerminalPublishResult = ({ url, receiptData, slug }) => {
+    const terminalResult = resolveTerminalPublicationResult({
+      publicUrl: url,
+      publicSlug: slug,
+      receiptData,
+      operation,
+    });
+
+    if (!terminalResult.publicUrl) {
+      setCheckoutInfo("");
+      setCheckoutError(
+        "La publicacion se completo, pero no recibimos el enlace final. Actualiza la pagina para ver el estado publicado."
+      );
+      return;
+    }
+
     setHasApprovedSlugConflict(false);
-    if (url) setPublishedUrl(url);
-    if (receiptData) setReceipt(receiptData);
+    setPublishedUrl(terminalResult.publicUrl);
+    setReceipt(terminalResult.receipt);
     setCheckoutInfo("Pago aprobado y publicacion completada.");
     setCheckoutError("");
     logCheckoutDebug("checkout:published", {
       sessionId: sessionData?.sessionId || null,
-      publicUrl: url || null,
-      publicSlug: slug || parseSlugFromPublicUrl(url) || null,
-      paymentId: receiptData?.paymentId || null,
+      publicUrl: terminalResult.publicUrl,
+      publicSlug: terminalResult.publicSlug || null,
+      paymentId: terminalResult.receipt?.paymentId || null,
     });
-    if (url) {
-      notifyPublished({
-        url,
-        slug: slug || parseSlugFromPublicUrl(url),
-        receiptData,
-      });
-    }
+    notifyPublished({
+      url: terminalResult.publicUrl,
+      slug: terminalResult.publicSlug,
+      receiptData: terminalResult.receipt,
+    });
   };
 
   useEffect(() => {
@@ -332,7 +359,7 @@ export default function PublicationCheckoutModal({
       errorMessage: statusPayload?.errorMessage || null,
     });
 
-    if (status === "published") {
+    if (isPublishedCheckoutStatus(status)) {
       applyTerminalPublishResult({
         url: String(statusPayload?.publicUrl || "").trim(),
         receiptData: statusPayload?.receipt || null,
@@ -504,7 +531,7 @@ export default function PublicationCheckoutModal({
             publicUrl: payload?.publicUrl || null,
           });
 
-          if (payload?.sessionStatus === "published") {
+          if (isPublishedCheckoutStatus(payload?.sessionStatus)) {
             applyTerminalPublishResult({
               url: String(payload?.publicUrl || ""),
               receiptData: payload?.receipt || null,
@@ -590,7 +617,7 @@ export default function PublicationCheckoutModal({
         publicUrl: payload?.publicUrl || null,
       });
 
-      if (payload?.sessionStatus === "published") {
+      if (isPublishedCheckoutStatus(payload?.sessionStatus)) {
         applyTerminalPublishResult({
           url: String(payload?.publicUrl || ""),
           receiptData: payload?.receipt || null,
@@ -644,7 +671,7 @@ export default function PublicationCheckoutModal({
         publicUrl: data?.publicUrl || null,
       });
 
-      if (data?.sessionStatus === "published") {
+      if (isPublishedCheckoutStatus(data?.sessionStatus)) {
         setHasApprovedSlugConflict(false);
         const finalUrl = String(data?.publicUrl || "").trim();
         const receiptData = {
@@ -678,7 +705,18 @@ export default function PublicationCheckoutModal({
   };
 
   useEffect(() => {
+    const initialization = resolveCheckoutModalInitialization({
+      visible,
+      draftSlug,
+      operation,
+      previousVisible: modalInitializationRef.current.visible,
+      previousContextKey: modalInitializationRef.current.contextKey,
+    });
+
+    modalInitializationRef.current = initialization.nextTracker;
+
     if (!visible) return undefined;
+    if (!initialization.shouldInitialize) return undefined;
 
     const initialSlug = effectiveCurrentSlug || "";
     setSlugInput(initialSlug);
@@ -695,7 +733,7 @@ export default function PublicationCheckoutModal({
       clearPolling();
       unmountBrick();
     };
-  }, [visible, effectiveCurrentSlug]);
+  }, [visible, checkoutContextKey]);
 
   useEffect(() => {
     if (!visible || !isNewOperation) return undefined;

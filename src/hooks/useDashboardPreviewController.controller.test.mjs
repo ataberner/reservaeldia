@@ -625,6 +625,58 @@ test("handleCheckoutPublished preserves the current new and update success patch
   ]);
 });
 
+test("post-publish preview state keeps the final public URL after the checkout success modal closes", async () => {
+  const harness = createControllerHarness({
+    dependencyOverrides: createTestDependencies({
+      runPreviewPipeline: async () => ({
+        status: "success",
+        htmlGenerado: "<html>preview-post-publish</html>",
+        urlPublicaDetectada: "",
+        slugPublicoDetectado: "",
+        publicacionNoVigenteDetectada: false,
+      }),
+    }),
+  });
+
+  await harness.controller.generarVistaPrevia();
+  await flushMicrotasks();
+  await harness.controller.publicarDesdeVistaPrevia();
+  await flushMicrotasks();
+
+  assert.equal(harness.getState().mostrarCheckoutPublicacion, true);
+  assert.equal(harness.getState().operacionCheckoutPublicacion, "new");
+
+  harness.controller.handleCheckoutPublished({
+    operation: "new",
+    publicUrl: "https://reservaeldia.com.ar/i/publicado-final",
+    publicSlug: "publicado-final",
+  });
+  await flushMicrotasks();
+
+  harness.controller.closeCheckout();
+  await flushMicrotasks();
+
+  assert.deepEqual(
+    harness.getState(),
+    createExpectedDraftControllerState({
+      overrides: {
+        mostrarVistaPrevia: true,
+        htmlVistaPrevia: "<html>preview-post-publish</html>",
+        urlPublicaVistaPrevia: "https://reservaeldia.com.ar/i/publicado-final",
+        slugPublicoVistaPrevia: "publicado-final",
+        puedeActualizarPublicacion: true,
+        publicacionVistaPreviaOk: "Invitacion publicada correctamente.",
+        urlPublicadaReciente: "https://reservaeldia.com.ar/i/publicado-final",
+        operacionCheckoutPublicacion: "new",
+      },
+    })
+  );
+  assert.equal(
+    harness.getState().previewDisplayUrl,
+    "https://reservaeldia.com.ar/i/publicado-final"
+  );
+});
+
 test("closePreview fully resets the controller state after preview, validation, checkout, and publish success", async () => {
   const validationResult = {
     blockers: [],

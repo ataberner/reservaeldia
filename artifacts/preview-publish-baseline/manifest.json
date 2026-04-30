@@ -3,6 +3,25 @@
   "generatedFrom": "shared/previewPublishVisualBaselineFixtures.mjs",
   "cases": [
     {
+      "caseId": "edge-decorations-pantalla",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "top and bottom edge bands span the viewport width",
+        "responsive edge heights remain balanced in desktop and mobile",
+        "edge ornaments do not become .objeto nodes or smart-layout units",
+        "pantalla zoom compensation keeps edge anchors stable in mobile preview and publish"
+      ]
+    },
+    {
       "caseId": "simple-pantalla-section",
       "sourceFixture": "preview-publish-hydrated-asset-parity",
       "requiredViews": [
@@ -111,6 +130,114 @@
         "section order stays stable across pantalla and fijo sections",
         "pantalla hero rendering does not disturb downstream fixed sections",
         "cross-section relationships remain intact in desktop and mobile views"
+      ]
+    },
+    {
+      "caseId": "fixed-reflow-columns",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "fixed sections remain the only smart-reflow section mode",
+        "column groups stack consistently in mobile preview and publish",
+        "section height after reflow stays within the same geometry tolerance"
+      ]
+    },
+    {
+      "caseId": "fixed-overflow-expansion",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "overflowing content expands the fixed section consistently",
+        "preview does not preserve stale embedded iframe gaps",
+        "downstream section offsets stay stable after expansion"
+      ]
+    },
+    {
+      "caseId": "grouped-cta-fixed-section",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "group wrapper remains the mobile layout unit",
+        "CTA child remains nested and interactive",
+        "decorative grouped siblings do not change CTA stacking"
+      ]
+    },
+    {
+      "caseId": "group-nested-children",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "children stay nested rather than becoming top-level mobile reflow objects",
+        "child offsets remain relative to the group wrapper",
+        "mobile reflow moves the group atomically"
+      ]
+    },
+    {
+      "caseId": "fixed-fullbleed-mixed-lanes",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "fullbleed objects stay in the bleed lane",
+        "content objects stay in the content lane",
+        "fit scale does not collapse lane intent"
+      ]
+    },
+    {
+      "caseId": "pantalla-ynorm-positioning",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "pantalla sections do not enter fixed smart reflow",
+        "yNorm objects keep relative vertical spacing",
+        "viewport-fit formulas stay consistent between preview and publish"
       ]
     }
   ]

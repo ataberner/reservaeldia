@@ -50,6 +50,7 @@ function mapValidationIssueText(code, severity) {
     case "countdown-frame-unresolved":
     case "section-background-unresolved":
     case "section-decoration-unresolved":
+    case "section-edge-decoration-unresolved":
       return "Todavia falta preparar una imagen o recurso antes de publicar.";
     case "image-crop-not-materialized":
       return "Hay un recorte de imagen que todavia no puede publicarse como se ve en el editor.";

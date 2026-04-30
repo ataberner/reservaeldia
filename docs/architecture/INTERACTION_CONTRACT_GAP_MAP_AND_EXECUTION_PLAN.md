@@ -1,6 +1,6 @@
 # INTERACTION CONTRACT GAP MAP AND EXECUTION PLAN
 
-> Updated from code inspection and architecture documentation on 2026-04-07.
+> Updated from code inspection and architecture documentation on 2026-04-27.
 >
 > Source-of-truth inputs:
 > `docs/architecture/INTERACTION_CONTRACT.md`,
@@ -14,6 +14,9 @@
 > `docs/architecture/INTERACTION_FINAL_CLOSURE_AUDIT.md`
 > is now the authoritative closure status for Phases 1 through 6.
 > This document remains the historical gap map / execution record.
+>
+> Preview/publish note:
+> the draft preview/publish contract divergence is resolved for the `draft-authoritative` path. Draft preview now uses the backend prepared payload and validation boundary. Template preview and local fallback preview remain visual-only and outside publish parity.
 
 ## 1. EXECUTIVE SUMMARY
 
@@ -24,6 +27,8 @@ The current editor already contains many of the right building blocks for a cont
 - a split between committed selection, runtime selection, and drag visual selection
 - a dedicated inline DOM/Konva authority swap
 - guide/snap resync hooks
+
+Outside the editor interaction subsystem, the draft preview/publish contract divergence is no longer an open gap: backend-prepared draft preview and publish share the same prepared payload contract. This does not close template preview, fallback preview, or mobile runtime edge cases.
 
 The contract exists because those pieces are not yet enforced as one deterministic system. The highest-risk instability remains at the boundaries where authority changes hands:
 
@@ -66,6 +71,16 @@ The safest path is to stabilize the interaction lifecycle in the order users act
 | Inline text contract | Konva and DOM must never share visible editing authority; swap must be phase-atomic; text geometry must stay downstream of live Konva geometry. | Inline runtime is still the most structured subsystem. Phase 5 now projects DOM inline geometry from the same authoritative Konva text rect used by selection/drag/hover/snap readers, but focus/caret timing and broader session hardening still remain outside this phase. | `useInlineSessionRuntime.js`, `useInlinePhaseAtomicLifecycle.js`, `resolveInlineCanvasVisibility.js`, `CanvasInlineEditingLayer.jsx`, `InlineTextOverlayEditor.jsx`, `HiddenSemanticTextBackend.jsx` | Partially satisfied | High | overlay flicker, focus instability, text overlay/canvas mismatch | late swap/focus work applies after authority has moved even though geometry now stays on one text basis |
 | Session & identity contract | Drag, selected, hover, guide, and inline work must reject stale async work and prevent cross-session leakage. | Phase 6 now gives post-drag repair an explicit drag-settle session key, rejects stale repair by settle session / drag id / interaction epoch, rejects stale selected-phase ready and handoff-paint confirmations, and binds post-drag hover replay to interaction epoch plus drag-session / drag-overlay / selection context. Guides still rely on drag session checks rather than their own identity, and selected-phase still does not expose one standalone public durable token. | `CanvasStageContentComposer.jsx`, `editorSelectionRuntime.js`, `useInlineSessionRuntime.js`, `HoverIndicator.jsx`, `useGuiasCentrado.js` | Partially satisfied | High | session resurrection risk, stale overlay, wrong teardown target | old session work mutates current visuals or cleanup |
 | Critical invariants | Key invariants must always hold and be observable. | Phase 1 startup invariants remain observable, Phase 2 drag/snap invariants remain observable, Phase 3 handoff invariants remain observable, Phase 4 adds hover suppression observability, and Phase 6 now adds explicit stale-session rejection signals at repair, selected-phase ready, handoff-paint confirmation, and hover replay boundaries. Guide identity and the line-specific selected path still need broader coverage. | `CanvasStageContentComposer.jsx`, `SelectionBoundsIndicator.jsx`, `useGuiasCentrado.js`, `SelectionTransformer.jsx`, `HoverIndicator.jsx`, inline trace modules | Partially satisfied | Medium | hard-to-debug regressions, hidden non-determinism | contract breach happens without reliable detection |
+
+### Preview/Publish Gap Status
+
+| Gap | Status | Current read |
+| --- | --- | --- |
+| Draft preview/publish contract divergence | Resolved | `draft-authoritative` preview uses the backend prepared payload and validation boundary shared with publish. Validation blockers prevent trusted preview HTML. |
+| Template preview publish parity | Open by design | `template-visual` is pre-draft and visual-only. It must not be treated as publish-faithful. |
+| Local fallback preview publish parity | Open by design | `local-fallback` is an emergency visual path only. |
+| Editor interaction authority | Open | Selection, drag, hover, guide, and inline authority are still distributed across multiple runtime surfaces. |
+| Mobile preview edge cases | Open | Parity mode reduces iframe/publish drift, but mobile smart layout, fullbleed, and viewport timing still require parity tests. |
 
 ## 3. GAP CLUSTERS
 

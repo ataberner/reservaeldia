@@ -1,4 +1,7 @@
-import { generateDashboardPreviewHtmlFromRenderState } from "../dashboard/previewSession.js";
+import {
+  generateDashboardPreviewHtmlFromRenderState,
+  PREVIEW_AUTHORITY,
+} from "../dashboard/previewSession.js";
 import { resolveTemplatePreviewSource as resolveTemplatePreviewSourceContract } from "../../../shared/templates/contract.js";
 
 function normalizeTemplateArrays(template) {
@@ -63,6 +66,7 @@ export function resolveTemplatePreviewRuntimeState({
 
   return {
     status,
+    previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
     sourceMode: "generated",
     activeMode: shouldShowGeneratedPreview ? "generated" : "none",
     previewUrl,

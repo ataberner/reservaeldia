@@ -1,6 +1,7 @@
 import {
   resolveObjectPrimaryAssetUrl,
   resolveSectionDecorationAssetUrl,
+  resolveSectionEdgeDecorationAssetUrl,
 } from "../../../shared/renderAssetContract.js";
 const CANVAS_WIDTH = 800;
 const DEFAULT_SECTION_HEIGHT = 600;
@@ -8,6 +9,29 @@ const DEFAULT_DECORATION_WIDTH = 220;
 const DEFAULT_DECORATION_HEIGHT = 160;
 const MIN_DECORATION_SIZE = 32;
 const MIN_VISIBLE_DECORATION_PORTION = 24;
+const DEFAULT_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO = 0.36;
+const DEFAULT_EDGE_DECORATION_MOBILE_HEIGHT_RATIO = 0.2;
+const MIN_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO = 0.08;
+const MAX_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO = 0.55;
+const MIN_EDGE_DECORATION_MOBILE_HEIGHT_RATIO = 0.08;
+const MAX_EDGE_DECORATION_MOBILE_HEIGHT_RATIO = 0.32;
+const DEFAULT_EDGE_DECORATION_HEIGHT_MODEL = "intrinsic-clamp";
+const DEFAULT_EDGE_DECORATION_DESKTOP_MIN_HEIGHT_PX = 96;
+const DEFAULT_EDGE_DECORATION_DESKTOP_MAX_HEIGHT_PX = 280;
+const DEFAULT_EDGE_DECORATION_DESKTOP_MAX_SECTION_RATIO = 0.3;
+const DEFAULT_EDGE_DECORATION_DESKTOP_COMBINED_SECTION_RATIO = 0.58;
+const DEFAULT_EDGE_DECORATION_MOBILE_MIN_HEIGHT_PX = 64;
+const DEFAULT_EDGE_DECORATION_MOBILE_MAX_HEIGHT_PX = 150;
+const DEFAULT_EDGE_DECORATION_MOBILE_MAX_SECTION_RATIO = 0.24;
+const DEFAULT_EDGE_DECORATION_MOBILE_COMBINED_SECTION_RATIO = 0.4;
+const MIN_EDGE_DECORATION_HEIGHT_PX = 24;
+const MAX_EDGE_DECORATION_DESKTOP_HEIGHT_PX = 640;
+const MAX_EDGE_DECORATION_MOBILE_HEIGHT_PX = 360;
+const MIN_EDGE_DECORATION_COMBINED_SECTION_RATIO = 0.16;
+const MAX_EDGE_DECORATION_DESKTOP_COMBINED_SECTION_RATIO = 0.75;
+const MAX_EDGE_DECORATION_MOBILE_COMBINED_SECTION_RATIO = 0.6;
+const DEFAULT_EDGE_DECORATION_FALLBACK_ASPECT_RATIO = 0.22;
+const MAX_EDGE_DECORATION_OFFSET_PX = 240;
 export const BACKGROUND_DECORATION_PARALLAX_VALUES = Object.freeze([
   "none",
   "soft",
@@ -69,6 +93,240 @@ function toOrderNumber(value, fallback = 0) {
 
 function buildLegacyDecorationId(slot) {
   return `legacy-${normalizeText(slot).toLowerCase() || "decoracion"}`;
+}
+
+function getEdgeDecorationFallbackName(slot) {
+  return slot === "top" ? "Decoración arriba" : "Decoración abajo";
+}
+
+function normalizeEdgeDecorationMode(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "contain-x" ? "contain-x" : "cover-x";
+}
+
+function normalizeEdgeDecorationHeightModel(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "ratio-band" ? "ratio-band" : DEFAULT_EDGE_DECORATION_HEIGHT_MODEL;
+}
+
+function normalizeEdgeDecorationRatio(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return clamp(parsed, min, max);
+}
+
+function hasPositiveNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
+function normalizeEdgeDecorationDimension(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(clamp(parsed, 1, 20000) * 100) / 100;
+}
+
+function normalizeEdgeDecorationHeightPx(value, fallback, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.round(clamp(parsed, MIN_EDGE_DECORATION_HEIGHT_PX, max));
+}
+
+function normalizeEdgeDecorationMaxSectionRatio(
+  value,
+  legacyRatioValue,
+  fallback,
+  max
+) {
+  if (hasPositiveNumber(value)) {
+    return normalizeEdgeDecorationRatio(value, fallback, 0.08, max);
+  }
+
+  if (hasPositiveNumber(legacyRatioValue)) {
+    return normalizeEdgeDecorationRatio(legacyRatioValue, fallback, 0.08, max);
+  }
+
+  return fallback;
+}
+
+function normalizeEdgeDecorationOffsetPx(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return clamp(parsed, -MAX_EDGE_DECORATION_OFFSET_PX, MAX_EDGE_DECORATION_OFFSET_PX);
+}
+
+function normalizeEdgeDecorationsLayout(rawLayout) {
+  const safeRaw = asObject(rawLayout);
+  return {
+    maxCombinedSectionRatioDesktop: normalizeEdgeDecorationRatio(
+      safeRaw.maxCombinedSectionRatioDesktop,
+      DEFAULT_EDGE_DECORATION_DESKTOP_COMBINED_SECTION_RATIO,
+      MIN_EDGE_DECORATION_COMBINED_SECTION_RATIO,
+      MAX_EDGE_DECORATION_DESKTOP_COMBINED_SECTION_RATIO
+    ),
+    maxCombinedSectionRatioMobile: normalizeEdgeDecorationRatio(
+      safeRaw.maxCombinedSectionRatioMobile,
+      DEFAULT_EDGE_DECORATION_MOBILE_COMBINED_SECTION_RATIO,
+      MIN_EDGE_DECORATION_COMBINED_SECTION_RATIO,
+      MAX_EDGE_DECORATION_MOBILE_COMBINED_SECTION_RATIO
+    ),
+  };
+}
+
+function hasEdgeDecorationSlots(decoracionesBorde) {
+  return Boolean(decoracionesBorde?.top || decoracionesBorde?.bottom);
+}
+
+function resolveEdgeDecorationAspectRatio(decoration, image) {
+  const intrinsicWidth =
+    normalizeEdgeDecorationDimension(decoration?.intrinsicWidth) ||
+    normalizeEdgeDecorationDimension(image?.width);
+  const intrinsicHeight =
+    normalizeEdgeDecorationDimension(decoration?.intrinsicHeight) ||
+    normalizeEdgeDecorationDimension(image?.height);
+
+  if (intrinsicWidth && intrinsicHeight) {
+    return intrinsicHeight / intrinsicWidth;
+  }
+
+  return DEFAULT_EDGE_DECORATION_FALLBACK_ASPECT_RATIO;
+}
+
+export function resolveEdgeDecorationCanvasHeight(
+  decoration,
+  {
+    image,
+    imageWidth,
+    imageHeight,
+    sectionHeight = DEFAULT_SECTION_HEIGHT,
+    canvasWidth = CANVAS_WIDTH,
+    isMobile = false,
+  } = {}
+) {
+  const safeDecoration = asObject(decoration);
+  const safeCanvasWidth = resolveCanvasWidth(canvasWidth);
+  const safeSectionHeight = resolveSectionHeight(sectionHeight);
+  const rawImage =
+    image ||
+    (imageWidth || imageHeight
+      ? {
+          width: imageWidth,
+          height: imageHeight,
+        }
+      : null);
+  const aspectRatio = resolveEdgeDecorationAspectRatio(safeDecoration, rawImage);
+  const naturalHeight = Math.max(1, Math.round(safeCanvasWidth * aspectRatio));
+
+  if (normalizeEdgeDecorationHeightModel(safeDecoration.heightModel) === "ratio-band") {
+    return naturalHeight;
+  }
+
+  const minHeight = isMobile
+    ? normalizeEdgeDecorationHeightPx(
+        safeDecoration.minHeightMobilePx,
+        DEFAULT_EDGE_DECORATION_MOBILE_MIN_HEIGHT_PX,
+        MAX_EDGE_DECORATION_MOBILE_HEIGHT_PX
+      )
+    : normalizeEdgeDecorationHeightPx(
+        safeDecoration.minHeightDesktopPx,
+        DEFAULT_EDGE_DECORATION_DESKTOP_MIN_HEIGHT_PX,
+        MAX_EDGE_DECORATION_DESKTOP_HEIGHT_PX
+      );
+  const maxHeight = isMobile
+    ? normalizeEdgeDecorationHeightPx(
+        safeDecoration.maxHeightMobilePx,
+        DEFAULT_EDGE_DECORATION_MOBILE_MAX_HEIGHT_PX,
+        MAX_EDGE_DECORATION_MOBILE_HEIGHT_PX
+      )
+    : normalizeEdgeDecorationHeightPx(
+        safeDecoration.maxHeightDesktopPx,
+        DEFAULT_EDGE_DECORATION_DESKTOP_MAX_HEIGHT_PX,
+        MAX_EDGE_DECORATION_DESKTOP_HEIGHT_PX
+      );
+  const maxRatio = isMobile
+    ? normalizeEdgeDecorationMaxSectionRatio(
+        safeDecoration.maxSectionRatioMobile,
+        safeDecoration.heightMobileRatio,
+        DEFAULT_EDGE_DECORATION_MOBILE_MAX_SECTION_RATIO,
+        MAX_EDGE_DECORATION_MOBILE_HEIGHT_RATIO
+      )
+    : normalizeEdgeDecorationMaxSectionRatio(
+        safeDecoration.maxSectionRatioDesktop,
+        safeDecoration.heightDesktopRatio,
+        DEFAULT_EDGE_DECORATION_DESKTOP_MAX_SECTION_RATIO,
+        MAX_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO
+      );
+  const slotMax = Math.max(1, Math.min(maxHeight, safeSectionHeight * maxRatio));
+  const clampedHeight = Math.min(naturalHeight, slotMax);
+
+  return Math.round(clampedHeight < minHeight ? Math.min(minHeight, slotMax) : clampedHeight);
+}
+
+export function resolveEdgeDecorationCanvasRenderBox(
+  decoration,
+  {
+    slot = "top",
+    image,
+    imageWidth,
+    imageHeight,
+    sectionHeight = DEFAULT_SECTION_HEIGHT,
+    canvasWidth = CANVAS_WIDTH,
+    isMobile = false,
+  } = {}
+) {
+  const safeDecoration = asObject(decoration);
+  const bandWidth = resolveCanvasWidth(canvasWidth);
+  const bandHeight = resolveEdgeDecorationCanvasHeight(safeDecoration, {
+    image,
+    imageWidth,
+    imageHeight,
+    sectionHeight,
+    canvasWidth: bandWidth,
+    isMobile,
+  });
+  const rawImage =
+    image ||
+    (imageWidth || imageHeight
+      ? {
+          width: imageWidth,
+          height: imageHeight,
+        }
+      : null);
+  const aspectRatio = resolveEdgeDecorationAspectRatio(safeDecoration, rawImage);
+  const naturalHeight = Math.max(1, bandWidth * aspectRatio);
+  const mode = normalizeEdgeDecorationMode(safeDecoration.mode);
+  const isBottom = slot === "bottom";
+  let renderedWidth = bandWidth;
+  let renderedHeight = naturalHeight;
+
+  if (mode === "contain-x") {
+    if (renderedHeight > bandHeight) {
+      renderedHeight = bandHeight;
+      renderedWidth = bandHeight / aspectRatio;
+    }
+  } else if (renderedHeight < bandHeight) {
+    renderedHeight = bandHeight;
+    renderedWidth = bandHeight / aspectRatio;
+  }
+
+  const imageX = (bandWidth - renderedWidth) / 2;
+  const imageY =
+    mode === "contain-x"
+      ? isBottom
+        ? bandHeight - renderedHeight
+        : 0
+      : isBottom
+        ? bandHeight - renderedHeight
+        : 0;
+
+  return {
+    bandWidth,
+    bandHeight,
+    imageX,
+    imageY,
+    imageWidth: renderedWidth,
+    imageHeight: renderedHeight,
+  };
 }
 
 function resolveSectionHeight(sectionHeight) {
@@ -333,6 +591,104 @@ export function buildSectionDecorationsPayload(
   };
 }
 
+export function normalizeEdgeDecorationSlot(rawSlot, slot) {
+  const safeRaw = asObject(rawSlot);
+  const src = resolveSectionEdgeDecorationAssetUrl(safeRaw);
+  if (!src) return null;
+  const heightDesktopRatio = normalizeEdgeDecorationRatio(
+    safeRaw.heightDesktopRatio,
+    DEFAULT_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO,
+    MIN_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO,
+    MAX_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO
+  );
+  const heightMobileRatio = normalizeEdgeDecorationRatio(
+    safeRaw.heightMobileRatio,
+    DEFAULT_EDGE_DECORATION_MOBILE_HEIGHT_RATIO,
+    MIN_EDGE_DECORATION_MOBILE_HEIGHT_RATIO,
+    MAX_EDGE_DECORATION_MOBILE_HEIGHT_RATIO
+  );
+  const minHeightDesktopPx = normalizeEdgeDecorationHeightPx(
+    safeRaw.minHeightDesktopPx,
+    DEFAULT_EDGE_DECORATION_DESKTOP_MIN_HEIGHT_PX,
+    MAX_EDGE_DECORATION_DESKTOP_HEIGHT_PX
+  );
+  const minHeightMobilePx = normalizeEdgeDecorationHeightPx(
+    safeRaw.minHeightMobilePx,
+    DEFAULT_EDGE_DECORATION_MOBILE_MIN_HEIGHT_PX,
+    MAX_EDGE_DECORATION_MOBILE_HEIGHT_PX
+  );
+  const maxHeightDesktopPx = Math.max(
+    minHeightDesktopPx,
+    normalizeEdgeDecorationHeightPx(
+      safeRaw.maxHeightDesktopPx,
+      DEFAULT_EDGE_DECORATION_DESKTOP_MAX_HEIGHT_PX,
+      MAX_EDGE_DECORATION_DESKTOP_HEIGHT_PX
+    )
+  );
+  const maxHeightMobilePx = Math.max(
+    minHeightMobilePx,
+    normalizeEdgeDecorationHeightPx(
+      safeRaw.maxHeightMobilePx,
+      DEFAULT_EDGE_DECORATION_MOBILE_MAX_HEIGHT_PX,
+      MAX_EDGE_DECORATION_MOBILE_HEIGHT_PX
+    )
+  );
+
+  return {
+    enabled: safeRaw.enabled === false ? false : true,
+    src,
+    storagePath: normalizeText(safeRaw.storagePath) || null,
+    decorId: normalizeText(safeRaw.decorId) || null,
+    nombre:
+      normalizeText(safeRaw.nombre || safeRaw.label) ||
+      getEdgeDecorationFallbackName(slot),
+    heightModel: normalizeEdgeDecorationHeightModel(safeRaw.heightModel),
+    intrinsicWidth: normalizeEdgeDecorationDimension(safeRaw.intrinsicWidth),
+    intrinsicHeight: normalizeEdgeDecorationDimension(safeRaw.intrinsicHeight),
+    minHeightDesktopPx,
+    maxHeightDesktopPx,
+    maxSectionRatioDesktop: normalizeEdgeDecorationMaxSectionRatio(
+      safeRaw.maxSectionRatioDesktop,
+      hasPositiveNumber(safeRaw.heightDesktopRatio) ? heightDesktopRatio : null,
+      DEFAULT_EDGE_DECORATION_DESKTOP_MAX_SECTION_RATIO,
+      MAX_EDGE_DECORATION_DESKTOP_HEIGHT_RATIO
+    ),
+    minHeightMobilePx,
+    maxHeightMobilePx,
+    maxSectionRatioMobile: normalizeEdgeDecorationMaxSectionRatio(
+      safeRaw.maxSectionRatioMobile,
+      hasPositiveNumber(safeRaw.heightMobileRatio) ? heightMobileRatio : null,
+      DEFAULT_EDGE_DECORATION_MOBILE_MAX_SECTION_RATIO,
+      MAX_EDGE_DECORATION_MOBILE_HEIGHT_RATIO
+    ),
+    heightDesktopRatio,
+    heightMobileRatio,
+    offsetDesktopPx: normalizeEdgeDecorationOffsetPx(safeRaw.offsetDesktopPx),
+    offsetMobilePx: normalizeEdgeDecorationOffsetPx(safeRaw.offsetMobilePx),
+    mode: normalizeEdgeDecorationMode(safeRaw.mode),
+  };
+}
+
+export function normalizeEdgeDecorations(rawDecoracionesBorde) {
+  const safeRaw = asObject(rawDecoracionesBorde);
+  const normalized = ["top", "bottom"].reduce((acc, slot) => {
+    const normalizedSlot = normalizeEdgeDecorationSlot(safeRaw[slot], slot);
+    if (normalizedSlot) {
+      acc[slot] = normalizedSlot;
+    }
+    return acc;
+  }, {});
+  if (hasEdgeDecorationSlots(normalized)) {
+    normalized.layout = normalizeEdgeDecorationsLayout(safeRaw.layout);
+  }
+  return normalized;
+}
+
+export function buildSectionEdgeDecorationsPayload(sectionOrDecoraciones) {
+  const safeSource = asObject(sectionOrDecoraciones);
+  return normalizeEdgeDecorations(safeSource.decoracionesBorde ?? safeSource);
+}
+
 export function normalizeSectionBackgroundModel(
   section,
   {
@@ -360,6 +716,7 @@ export function normalizeSectionBackgroundModel(
       sectionHeight: safeSectionHeight,
       canvasWidth: safeCanvasWidth,
     }),
+    decoracionesBorde: normalizeEdgeDecorations(safeSection.decoracionesBorde),
   };
 }
 
@@ -510,7 +867,249 @@ export function listSectionVisualAssets(section) {
     });
   });
 
+  ["top", "bottom"].forEach((slot) => {
+    const decoration = model.decoracionesBorde[slot];
+    if (!decoration?.src) return;
+    if (decoration.enabled === false) return;
+    assets.push({
+      assetKey: `${sectionId}:borde:${slot}`,
+      sectionId,
+      kind: "edge-decoration",
+      slot,
+      decorationId: slot,
+      imageUrl: decoration.src,
+      storagePath: decoration.storagePath || null,
+    });
+  });
+
   return assets;
+}
+
+export function setSectionEdgeDecoration(
+  sections,
+  sectionId,
+  slot,
+  decoration
+) {
+  const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+  if (!safeSlot) return Array.isArray(sections) ? sections : [];
+
+  return (Array.isArray(sections) ? sections : []).map((section) => {
+    if (section?.id !== sectionId) return section;
+
+    const current = buildSectionEdgeDecorationsPayload(section);
+    const normalizedSlot = normalizeEdgeDecorationSlot(
+      {
+        ...asObject(decoration),
+        enabled: asObject(decoration).enabled === false ? false : true,
+      },
+      safeSlot
+    );
+    if (!normalizedSlot) return section;
+
+    return {
+      ...section,
+      decoracionesBorde: {
+        ...current,
+        [safeSlot]: normalizedSlot,
+      },
+    };
+  });
+}
+
+export function buildEdgeDecorationFromImageObject(imageObject, slot = "top") {
+  const safeImage = asObject(imageObject);
+  const safeSlot = slot === "bottom" ? "bottom" : "top";
+  const src = resolveObjectPrimaryAssetUrl(safeImage);
+  if (!src) return null;
+
+  return normalizeEdgeDecorationSlot(
+    {
+      enabled: true,
+      src,
+      storagePath: normalizeText(safeImage.storagePath) || null,
+      decorId: normalizeText(safeImage.decorId || safeImage.catalogItemId) || null,
+      intrinsicWidth:
+        normalizeEdgeDecorationDimension(safeImage.naturalWidth) ||
+        normalizeEdgeDecorationDimension(safeImage.imageWidth) ||
+        normalizeEdgeDecorationDimension(safeImage.width) ||
+        normalizeEdgeDecorationDimension(safeImage.ancho),
+      intrinsicHeight:
+        normalizeEdgeDecorationDimension(safeImage.naturalHeight) ||
+        normalizeEdgeDecorationDimension(safeImage.imageHeight) ||
+        normalizeEdgeDecorationDimension(safeImage.height) ||
+        normalizeEdgeDecorationDimension(safeImage.alto),
+      nombre:
+        normalizeText(safeImage.nombre || safeImage.label) ||
+        getEdgeDecorationFallbackName(safeSlot),
+    },
+    safeSlot
+  );
+}
+
+export function setSectionEdgeDecorationFromImageObject(
+  sections,
+  imageObject,
+  slot = "top"
+) {
+  const safeImage = asObject(imageObject);
+  const sectionId = normalizeText(safeImage.seccionId);
+  const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+  const decoration = safeSlot
+    ? buildEdgeDecorationFromImageObject(safeImage, safeSlot)
+    : null;
+
+  if (!sectionId || !safeSlot || !decoration) {
+    return {
+      sections: Array.isArray(sections) ? sections : [],
+      decoration: null,
+      sectionId: sectionId || null,
+      slot: safeSlot || null,
+    };
+  }
+
+  return {
+    sections: setSectionEdgeDecoration(sections, sectionId, safeSlot, decoration),
+    decoration,
+    sectionId,
+    slot: safeSlot,
+  };
+}
+
+export function convertImageObjectToSectionEdgeDecorationState({
+  sections,
+  objects,
+  imageObject,
+  slot = "top",
+} = {}) {
+  const safeObjects = Array.isArray(objects) ? objects : [];
+  const sourceObjectId = normalizeText(asObject(imageObject).id);
+
+  if (!sourceObjectId) {
+    return {
+      sections: Array.isArray(sections) ? sections : [],
+      objects: safeObjects,
+      decoration: null,
+      sectionId: null,
+      slot: null,
+      removedObjectId: null,
+    };
+  }
+
+  const result = setSectionEdgeDecorationFromImageObject(
+    sections,
+    imageObject,
+    slot
+  );
+
+  if (!result?.decoration || !Array.isArray(result.sections)) {
+    return {
+      sections: Array.isArray(sections) ? sections : [],
+      objects: safeObjects,
+      decoration: null,
+      sectionId: result?.sectionId || null,
+      slot: result?.slot || null,
+      removedObjectId: null,
+    };
+  }
+
+  return {
+    sections: result.sections,
+    objects: safeObjects.filter(
+      (item) => normalizeText(asObject(item).id) !== sourceObjectId
+    ),
+    decoration: result.decoration,
+    sectionId: result.sectionId,
+    slot: result.slot,
+    removedObjectId: sourceObjectId,
+  };
+}
+
+export function setSectionEdgeDecorationEnabled(
+  sections,
+  sectionId,
+  slot,
+  enabled
+) {
+  const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+  if (!safeSlot) return Array.isArray(sections) ? sections : [];
+
+  return (Array.isArray(sections) ? sections : []).map((section) => {
+    if (section?.id !== sectionId) return section;
+
+    const current = buildSectionEdgeDecorationsPayload(section);
+    const currentSlot = current[safeSlot];
+    if (!currentSlot) return section;
+
+    return {
+      ...section,
+      decoracionesBorde: {
+        ...current,
+        [safeSlot]: {
+          ...currentSlot,
+          enabled: Boolean(enabled),
+        },
+      },
+    };
+  });
+}
+
+export function updateSectionEdgeDecorationOffset(
+  sections,
+  sectionId,
+  slot,
+  patch
+) {
+  const safeSectionId = normalizeText(sectionId);
+  const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+  if (!safeSectionId || !safeSlot) return Array.isArray(sections) ? sections : [];
+
+  return (Array.isArray(sections) ? sections : []).map((section) => {
+    if (section?.id !== safeSectionId) return section;
+
+    const current = buildSectionEdgeDecorationsPayload(section);
+    const currentSlot = current[safeSlot];
+    if (!currentSlot) return section;
+
+    const normalizedSlot = normalizeEdgeDecorationSlot(
+      {
+        ...currentSlot,
+        ...asObject(patch),
+      },
+      safeSlot
+    );
+    if (!normalizedSlot) return section;
+
+    return {
+      ...section,
+      decoracionesBorde: {
+        ...current,
+        [safeSlot]: normalizedSlot,
+      },
+    };
+  });
+}
+
+export function removeSectionEdgeDecoration(sections, sectionId, slot) {
+  const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+  if (!safeSlot) return Array.isArray(sections) ? sections : [];
+
+  return (Array.isArray(sections) ? sections : []).map((section) => {
+    if (section?.id !== sectionId) return section;
+
+    const current = buildSectionEdgeDecorationsPayload(section);
+    const nextDecorations = { ...current };
+    delete nextDecorations[safeSlot];
+    const nextSection = { ...section };
+
+    if (hasEdgeDecorationSlots(nextDecorations)) {
+      nextSection.decoracionesBorde = nextDecorations;
+    } else {
+      delete nextSection.decoracionesBorde;
+    }
+
+    return nextSection;
+  });
 }
 
 function updateSectionDecorationsCollection(

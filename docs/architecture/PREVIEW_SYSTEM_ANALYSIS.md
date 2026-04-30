@@ -1,605 +1,173 @@
 # PREVIEW SYSTEM ANALYSIS
 
-> Updated from code inspection on 2026-03-30.
+> Updated from code inspection on 2026-04-27.
 >
-> Reference modules reviewed for this document: `src/components/DashboardHeader.jsx`, `src/pages/dashboard.js`, `src/hooks/useDashboardPreviewController.js`, `src/domain/dashboard/previewPipeline.js`, `src/domain/dashboard/previewSession.js`, `src/domain/drafts/criticalFlush.js`, `src/domain/drafts/flushGate.js`, `src/lib/editorRuntimeBridge.js`, `src/lib/editorSnapshotAdapter.js`, `src/components/CanvasEditor.jsx`, `src/components/editor/window/useEditorWindowBridge.js`, `src/components/editor/persistence/useBorradorSync.js`, `src/components/ModalVistaPrevia.jsx`, `src/components/preview/modalVistaPreviaLayout.js`, `functions/src/utils/generarHTMLDesdeSecciones.ts`, `functions/src/utils/generarHTMLDesdeObjetos.ts`, `functions/src/utils/mobileSmartSectionLayout.ts`, `functions/src/utils/mobileSmartLayout/*`.
->
-> Priority rule for this document: findings below are based on the current implementation, not on intended architecture.
+> This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
-## 1. High-Level Overview of Preview Flow
+Reviewed anchors:
 
-The current dashboard preview flow is a controller-driven pipeline that begins in the dashboard header, crosses an editor runtime boundary, forces a persistence boundary, re-reads the stored source document, optionally overlays a live editor snapshot, generates full HTML by importing the backend generator into the frontend path, and then renders that HTML inside a preview modal.
-
-For draft sessions, the visible trigger path is:
-
-- `DashboardHeader` calls `generarVistaPrevia`
-- `useDashboardPreviewController` starts a preview session and runs `ensureDraftFlushBeforeCriticalAction`
-- the critical action path first waits for inline editing to settle, then forces persistence flush
-- `runDashboardPreviewPipeline` re-reads `borradores/{slug}`, overlays a live editor snapshot, builds preview payload data, and dynamically imports `functions/src/utils/generarHTMLDesdeSecciones`
-- the controller commits `htmlVistaPrevia` and preview metadata into React state
-- `src/pages/dashboard.js` passes that state into `ModalVistaPrevia`
-- `ModalVistaPrevia` renders the same generated HTML into two `iframe srcDoc` previews, one desktop-sized and one mobile-sized
-
-For template sessions, the same controller path is used, but the document re-read comes from `getTemplateEditorDocument`, publish-compatibility reads are disabled, and the preview UI does not expose publish actions.
-
-The preview system is therefore not a direct render of current React editor state. It is a multi-step path that combines:
-
-- dashboard React state
-- editor bridge methods exposed on `window.canvasEditor`
-- a persistence flush transport
-- a Firestore or template-service re-read
-- a live render snapshot adapter
-- a full HTML generator runtime
-
-## 2. Step-by-Step Pipeline
-
-### 2.1 Trigger
-
-Preview is triggered from the dashboard header.
-
-- `src/components/DashboardHeader.jsx` renders the preview button and wires `onClick={generarVistaPrevia}`.
-- `src/components/DashboardLayout.jsx` receives `generarVistaPrevia` as a prop and passes it into `DashboardHeader`.
-- `src/pages/dashboard.js` gets `generarVistaPrevia` from `useDashboardPreviewController({ slugInvitacion, modoEditor, editorSession })`.
-
-Inside `src/hooks/useDashboardPreviewController.js`, `generarVistaPrevia` starts by:
-
-- creating a preview session with `beginPreviewSession()`
-- building a request identity from `slugInvitacion`, `editorSession`, and a sequence counter
-- using `assertCurrentPreviewSession` and `isCurrentPreviewSession` guards so stale async work cannot commit into a newer preview session
-
-This session guard remains active across the rest of the pipeline. After every async boundary, the controller checks whether the current preview request is still the active one.
-
-### 2.2 Inline Settle
-
-Before any preview flush or re-read, the controller waits for inline text editing to settle.
-
-- `generarVistaPrevia` calls `ensureDraftFlushBeforeCriticalAction("preview-before-open")`.
-- `ensureDraftFlushBeforeCriticalAction` first runs `runInlineCriticalBoundary`.
-- the default implementation is `runDashboardPreviewControllerInlineCriticalBoundary`.
-
-`runDashboardPreviewControllerInlineCriticalBoundary` reads a bridge method from the editor runtime:
-
-- `readCanvasEditorMethod("ensureInlineEditSettledBeforeCriticalAction")`
-
-That bridge method is exposed from `CanvasEditor` through `useEditorWindowBridge`, which writes the method into `window.canvasEditor`.
-
-Inside `src/components/CanvasEditor.jsx`, `ensureInlineEditSettledBeforeCriticalAction` delegates to:
-
-- `ensureInlineSessionSettledBeforeCriticalAction` from `src/components/editor/canvasEditor/inlineCriticalBoundary.js`
-
-The settle boundary reads current inline state through a getter that returns:
-
-- `editing.id` from React state in `CanvasEditor`
-- `getCurrentInlineEditingId()`, which reads `window._currentEditingId`
-- `inlineOverlayMountedId`
-- `inlineOverlayMountSession`
-
-Current settle behavior:
-
-- if there is no active inline session, it returns `{ ok: true, settled: true, skipped: true }`
-- if there is an active `editing.id`, it requests finish through `requestInlineEditFinish`
-- it then polls frame-by-frame until no active inline session remains
-- the wait window is bounded by `maxWaitMs`, which the preview controller sets to `120`
-- if the session is still active after that window, it returns a failure result and preview does not proceed
-
-The settle boundary therefore depends on both React-owned inline state and `window`-level inline state.
-
-### 2.3 Persistence Flush
-
-If the inline settle boundary succeeds, the controller forces persistence flush before preview proceeds.
-
-- `ensureDraftFlushBeforeCriticalAction` next calls `flushEditorPersistenceBeforeCriticalAction`
-- that function lives in `src/domain/drafts/criticalFlush.js`
-
-`flushEditorPersistenceBeforeCriticalAction` normalizes the editor session and branches by transport:
-
-- if there is no valid slug or `editorMode !== "konva"`, it returns a skipped success result
-- if the session kind is `template` and a direct flush bridge is available, it uses direct bridge transport
-- otherwise it uses the event-based flush transport
-
-Direct bridge transport:
-
-- `useBorradorSync` registers `flushNow` through `onRegisterPersistenceBridge`
-- `CanvasEditor` stores that bridge through `useCanvasEditorPersistenceBridge`
-- `useEditorWindowBridge` exposes it on `window.canvasEditor.flushPersistenceNow`
-- `flushEditorPersistenceBeforeCriticalAction` calls that bridge through `readCanvasEditorMethod("flushPersistenceNow")`
-
-Event transport:
-
-- `flushEditorPersistenceBeforeCriticalAction` calls `requestEditorDraftFlush`
-- `requestEditorDraftFlush` dispatches `editor:draft-flush:request` and waits for `editor:draft-flush:result`
-- the default timeout is `6000ms`
-- `useBorradorSync` listens for the request event, runs `flushPersistBoundary`, and dispatches the result event
-
-`useBorradorSync` performs the actual persistence boundary through its scheduler and current editor state snapshot. The flush path uses `latestStateRef.current`, which contains:
-
-- `slug`
-- normalized `editorSession`
-- `objetos`
-- `secciones`
-- `rsvp`
-- `gifts`
-- `cargado`
-
-If flush succeeds, `flushEditorPersistenceBeforeCriticalAction` captures a compatibility snapshot by calling:
-
-- `readEditorRenderSnapshot()`
-
-That snapshot is only captured after a successful flush result. The returned preview flush result can therefore include:
-
-- success/failure metadata
-- transport type
-- `compatibilitySnapshot`
-
-If flush fails, preview does not open and the controller commits an error state instead of continuing.
-
-### 2.4 Data Re-Read
-
-Once the critical boundary succeeds, `generarVistaPrevia` opens preview state and runs the preview pipeline.
-
-- the controller calls `runPreviewPipeline`
-- the default implementation is `runDashboardPreviewPipeline` in `src/domain/dashboard/previewPipeline.js`
-
-Current re-read behavior branches by session kind.
-
-For draft sessions:
-
-- `runDashboardPreviewPipeline` calls `readDraftDocument`
-- in the default controller wiring, that is `getDoc(doc(db, "borradores", draftSlug))`
-- `resolveDraftDocumentData` accepts Firestore `DocumentSnapshot` shapes and extracts plain object data
-
-For template sessions:
-
-- `runDashboardPreviewPipeline` calls `readTemplateEditorDocument`
-- in the default controller wiring, that dynamically imports `../domain/templates/adminService.js`
-- the current implementation then calls `getTemplateEditorDocument({ templateId })`
-- `resolveTemplateEditorDocument` reads `result.editorDocument`
-
-If the re-read does not resolve a document, the pipeline returns:
-
-- `{ status: "missing-draft" }` for missing drafts
-- `{ status: "missing-template" }` for missing template editor documents
-
-For draft sessions only, the preview pipeline can also run publication-link compatibility lookup.
-
-- `buildDashboardPreviewCompatibilityState` disables publish compatibility for template sessions
-- when compatibility is enabled, `runDashboardPreviewPipeline` calls `resolvePublicationLinkForDraftRead`
-- the current default readers are:
-  - `getDoc(doc(db, "publicadas", publicSlug))`
-  - a Firestore query on `publicadas` where `slugOriginal == draftSlug`, limited to one document
-
-This compatibility read happens after the draft/template source payload has already been selected and after snapshot overlay has been applied.
-
-### 2.5 Snapshot Overlay
-
-After the document re-read, the preview pipeline resolves a live editor snapshot.
-
-Current precedence:
-
-- `previewBoundarySnapshot` from the flush result if present
-- otherwise `readLiveEditorSnapshot()`, which is wired to `readEditorRenderSnapshot()`
-
-The overlay operation is implemented by `overlayLiveEditorSnapshot` in `src/domain/dashboard/previewSession.js`.
-
-Its current behavior is a shallow object merge:
-
-- start with the re-read document data
-- replace `objetos`
-- replace `secciones`
-- replace `rsvp`
-- replace `gifts`
-
-No deeper merge is performed inside those four render-state fields. If a live snapshot exists, those fields fully replace the corresponding fields from the re-read document.
-
-The resulting `previewSourceData` is then passed through:
-
-- `buildDashboardPreviewRenderPayload`
-
-That payload builder currently performs:
-
-- `prepareDashboardPreviewRenderState`
-- `normalizeDraftRenderState`
-- `normalizeRenderAssetState`
-- `normalizeRsvpConfig` for preview use
-- `normalizeGiftConfig` for preview use
-
-Preview-side asset preparation is explicitly browser-safe normalization only. Publish-only preparation remains on the backend publish path.
-
-### 2.6 HTML Generation
-
-After preview payload preparation, the pipeline builds generator input and generates full HTML.
-
-Generator input is created by:
-
-- `buildDashboardPreviewGeneratorInput`
-
-Current generator input behavior:
-
-- compute `slugPreview` from detected public slug, detected public URL, or `slugInvitacion`
-- set `generatorOptions.slug = slugPreview`
-- set `generatorOptions.isPreview = true`
-- pass root config through:
-  - `gifts`
-  - `rsvpSource`
-  - `giftsSource`
-
-The controller wiring dynamically imports the backend generator module into the frontend preview path:
-
-- `import("../../functions/src/utils/generarHTMLDesdeSecciones")`
-
-It then calls:
-
-- `generarHTMLDesdeSecciones(previewPayload.secciones, previewPayload.objetos, previewPayload.rsvpPreviewConfig, generatorOptions)`
-
-Inside `functions/src/utils/generarHTMLDesdeSecciones.ts`, the generator currently:
-
-- recomputes the functional CTA contract if one was not explicitly supplied
-- builds section HTML by splitting objects into content vs `fullbleed`
-- delegates object HTML to `generarHTMLDesdeObjetos`
-- injects document-level CSS and runtime scripts
-- marks the document as preview when `isPreview` is true by setting `data-preview="1"` on `<html>` and `<body>`
-- injects preview-only runtime such as:
-  - preview template patch runtime
-  - preview mobile scroll runtime
-
-HTML generation therefore happens after:
-
-- re-read
-- snapshot overlay
-- preview render-payload preparation
-
-and before the preview modal is rendered.
-
-### 2.7 Render in UI
-
-When the generator returns HTML, the controller commits it into preview state through:
-
-- `buildDashboardPreviewSuccessStatePatch`
-
-That state is returned from `useDashboardPreviewController` and rendered by `src/pages/dashboard.js`, which passes:
-
-- `visible={mostrarVistaPrevia}`
-- `htmlContent={htmlVistaPrevia}`
-- preview/public URL metadata
-- publish validation state
-
-into `src/components/ModalVistaPrevia.jsx`.
-
-`ModalVistaPrevia` renders the same `htmlContent` into two separate `iframe srcDoc` views:
-
-- a desktop preview using a fixed logical viewport of `1280 x 820`
-- a mobile preview using a fixed logical viewport of `390 x 844`
-
-The modal does not regenerate HTML per viewport. It uses the same HTML string twice and changes presentation through wrapper geometry and iframe viewport size.
-
-Modal layout is computed by:
-
-- `computeModalVistaPreviaLayout` in `src/components/preview/modalVistaPreviaLayout.js`
-
-That modal-level layout chooses one of three shell arrangements based on available stage size:
-
-- `showcase-overlap`
-- `dual-column-compact`
-- `stacked-priority`
-
-After each iframe loads, `ModalVistaPrevia` calls `applyPreviewFrameScale(event, scale, previewViewport)`:
-
-- writes `data-preview-scale` and `data-preview-viewport` onto the iframe document `<html>` and `<body>`
-- hides iframe scrollbars
-- for mobile preview, adjusts iframe root/body overflow behavior
-- stores `__previewScale` and `__previewViewportKind` on the iframe `window`
-- dispatches `preview:mobile-scroll:enable`
-- dispatches a `resize` event on the iframe window on the next animation frame
-
-The modal also supports a fullscreen path, but fullscreen uses a single full-window iframe without the desktop/mobile wrapper shells.
-
-## 3. Data Sources Involved at Each Step
-
-| Step | Active data sources | Current behavior |
-| --- | --- | --- |
-| Trigger | Dashboard React state, controller refs, `editorSession`, `slugInvitacion` | `useDashboardPreviewController` uses React state plus refs such as `previewStateRef`, `previewSessionSequenceRef`, and `activePreviewSessionRef` to manage preview sessions and stale-request guards. |
-| Inline settle | `window.canvasEditor`, `CanvasEditor` React state, `window._currentEditingId`, inline overlay mount state | The controller reads `ensureInlineEditSettledBeforeCriticalAction` through `readCanvasEditorMethod`. `CanvasEditor` resolves settle state from `editing.id`, `getCurrentInlineEditingId()`, `inlineOverlayMountedId`, and `inlineOverlayMountSession`. |
-| Persistence flush | `window.canvasEditor.flushPersistenceNow`, `editor:draft-flush:*` events, `useBorradorSync.latestStateRef` | Template sessions prefer direct bridge flush. Draft sessions use the request/result event transport. The persisted payload comes from the current editor state tracked inside `useBorradorSync`. |
-| Compatibility snapshot capture | `readEditorRenderSnapshot()`, snapshot adapter, legacy `window._*` globals | After successful flush, the controller captures a render snapshot. `readEditorRenderSnapshot` reads `window.editorSnapshot` first and falls back to legacy globals if needed. |
-| Data re-read | Firestore `borradores/{slug}`, template admin service, optional publication reads | Draft preview re-reads Firestore. Template preview re-reads the template editor document. Draft preview can also read `publicadas` and query `slugOriginal` through the compatibility helper. |
-| Snapshot overlay | Re-read payload plus live editor snapshot | `overlayLiveEditorSnapshot` shallow-copies the re-read object and replaces `objetos`, `secciones`, `rsvp`, and `gifts` with the live snapshot values. |
-| Preview payload preparation | In-memory render payload, shared asset normalizer, RSVP/gifts normalizers | `buildDashboardPreviewRenderPayload` normalizes draft render state and browser-safe asset aliases, then builds preview-specific RSVP and gifts config. |
-| HTML generation | Dynamic import of `functions/src` generator, in-memory payload | The frontend preview path imports `generarHTMLDesdeSecciones` and passes prepared `secciones`, `objetos`, `rsvpPreviewConfig`, and generator options. |
-| Render in UI | Preview React state, same HTML string rendered twice | `ModalVistaPrevia` receives `htmlVistaPrevia` from React state and injects the same HTML into separate desktop and mobile iframes. |
-
-### Snapshot Adapter Boundary
-
-The current live snapshot adapter boundary is `src/lib/editorSnapshotAdapter.js`.
-
-Current render snapshot read order:
-
-1. `window.editorSnapshot.getRenderSnapshot()` if the adapter exists
-2. legacy fallback from `window._objetosActuales`, `window._seccionesOrdenadas`, `window._rsvpConfigActual`, `window._giftsConfigActual`, and `window._giftConfigActual`
-
-The editor keeps both sides active today:
-
-- `useCanvasEditorGlobalsBridge` syncs `window.editorSnapshot`
-- the same bridge also writes legacy globals such as `window._objetosActuales` and `window._seccionesOrdenadas`
-
-## 4. Current Responsive Behavior
-
-### 4.1 Modal-Level Preview Shell Scaling
-
-The preview modal has its own responsive behavior before the generated document runs any of its own layout logic.
-
-This behavior lives in:
-
+- `src/hooks/useDashboardPreviewController.js`
+- `src/domain/dashboard/previewPipeline.js`
+- `src/domain/dashboard/previewSession.js`
+- `src/domain/drafts/criticalFlush.js`
 - `src/components/ModalVistaPrevia.jsx`
-- `src/components/preview/modalVistaPreviaLayout.js`
+- `src/components/preview/previewFrameRuntime.js`
+- `functions/src/payments/publicationPayments.ts`
+- `functions/src/render/prepareRenderPayload.ts`
+- `functions/src/utils/generarHTMLDesdeSecciones.ts`
+- `functions/src/utils/mobileSmartLayout/scriptTemplate.ts`
 
-Current modal behavior:
+## 1. Current Preview Contract
 
-- define fixed logical viewport sizes for desktop and mobile previews
-- compute wrapper scaling so those logical viewports fit inside the modal stage
-- choose one of three shell arrangements:
-  - overlap presentation for wide stages
-  - dual-column presentation for medium stages
-  - stacked presentation for narrower stages
+Preview has three explicit authority classes:
 
-This modal-level behavior scales the outer preview shells. It does not rewrite the generated HTML.
+| Authority | Path | Meaning |
+| --- | --- | --- |
+| `draft-authoritative` | backend `prepareDraftPreviewRender` | Publish-faithful draft preview. It uses the same prepared render payload contract as publish. |
+| `template-visual` | template preview local generation | Pre-draft visual preview only. It is not publish parity. |
+| `local-fallback` | rollback/emergency local generation | Visual fallback only. It is not authoritative. |
 
-### 4.2 Generated-Document Viewport and Scale Computation
+Only `draft-authoritative` preview participates in publish parity. Template preview must never be described as publish-faithful.
 
-The generated HTML contains its own responsive CSS and runtime logic in `functions/src/utils/generarHTMLDesdeSecciones.ts`.
+For draft preview, validation blockers prevent trusted preview HTML. The backend returns validation and `blocked: true`; the controller must not treat that result as a trustworthy generated preview. Validation warnings can still allow preview.
 
-Current document-level behavior:
+## 2. Draft Preview Flow
 
-- define `--content-w`, `--sx`, `--bx`, `--vh-safe`, `--vh-logical`, `--pantalla-y-base`, `--pantalla-y-compact`, and `--pantalla-y-offset`
-- center sections with `.sec { width: 100vw; left: 50%; transform: translateX(-50%); }`
-- keep `.sec-content` centered on desktop and switch it to `width: 100%` with safe-area padding on mobile
-- compute viewport values from a combination of:
-  - `document.documentElement.clientWidth` / `clientHeight`
-  - `window.innerWidth` / `innerHeight`
-  - `window.visualViewport`
-  - embedded-iframe detection
-  - screen short-side and long-side fallbacks
+The draft preview path is:
 
-The runtime computes:
+1. The dashboard starts a guarded preview session.
+2. `ensureDraftFlushBeforeCriticalAction("preview-before-open")` waits for inline editing to settle and forces persistence flush.
+3. The pipeline re-reads `borradores/{slug}` mainly to keep metadata and publication-link compatibility state current.
+4. If publish compatibility is enabled, the pipeline resolves the public slug/URL used for preview display and `slugPreview`.
+5. The pipeline calls `prepareDraftPreviewRender({ draftSlug, slugPreview })`.
+6. The backend reads the owned draft, builds `prepareRenderPayload(...)`, validates it with `validatePreparedRenderPayload(...)`, and generates preview HTML through `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })` only when validation allows it.
+7. The result is classified as `previewAuthority: "draft-authoritative"`.
 
-- `contentW = min(800, vw)`
-- `sx = contentW / 800`
-- `bx = vw / 800`
+The live editor snapshot still exists as a compatibility aid inside the local preview pipeline, but backend-prepared draft HTML is generated from the backend-owned draft read after the critical flush. Draft preview authority comes from the backend prepared payload, not from the frontend snapshot overlay.
 
-This logic runs on:
+## 3. Template And Fallback Preview
 
-- `load`
-- `resize`
-- `visualViewport.resize`
-- `visualViewport.scroll` when the runtime accepts it
-- `orientationchange`
+Template preview and rollback/local fallback preview still use the local preview generator path:
 
-### 4.3 Current Mobile `pantalla` Handling
+- the source document is re-read from the template admin service or Firestore
+- a compatible flush-boundary snapshot may be overlaid for visual recency
+- the frontend path calls `generarHTMLDesdeSecciones(..., { isPreview: true })`
 
-The current `pantalla` behavior is encoded inside the same generated-document runtime in `generarHTMLDesdeSecciones.ts`.
+These paths are intentionally visual-only:
 
-Current behavior for `pantalla` sections:
+- `template-visual`: pre-draft template preview
+- `local-fallback`: emergency local draft preview fallback
 
-- use a design-space height of `500`
-- on desktop, compute `sfinal` from safe viewport height divided by `500`
-- on desktop, also set `--content-w-pantalla` to `800 * sfinal`
-- on mobile, compute `zoomExtra` from device aspect ratio when the device is taller than the base design aspect ratio
-- on mobile, compute `bgzoom` separately from content zoom
-- on mobile, keep `TEXT_ZOOM_FACTOR` at `0`, so `sfinal` currently remains `sx` for content scaling even when hero zoom changes
-- on mobile, compute `pantallaTextZoom` from viewport-height thresholds
-- on mobile, compute `pantallaYBasePx` from spare logical vertical space
-- on mobile, set `--vh-logical` to `calc(var(--vh-safe) / var(--zoom))`
+Neither path performs publish asset preparation, publish validation, or publish-faithful CTA/config reconciliation. A successful template or fallback preview is not evidence that publish will pass.
 
-Current mobile `pantalla` behavior therefore includes:
+## 4. Publish Contract Relationship
 
-- viewport-fit logic
-- optional hero/background zoom
-- text zoom
-- a uniform vertical base offset
+Publish and draft-authoritative preview share the same backend prepared payload boundary:
 
-### 4.4 Object-Level Responsive Behavior
+- `prepareRenderPayload(...)`
+- `validatePreparedRenderPayload(...)`
+- `generateHtmlFromPreparedRenderPayload(...)`
 
-The current object-level responsive behavior lives in `functions/src/utils/generarHTMLDesdeObjetos.ts`.
+Publish stores final HTML in Firebase Storage and remains the delivery artifact source. Draft-authoritative preview uses the same preparation and validation contract before generating temporary preview HTML.
 
-Current scaling model:
+## 5. Preview Iframe Runtime
 
-- content objects use `sContenidoVar(obj)`
-- `sContenidoVar(obj)` resolves to:
-  - `var(--sfinal)` for objects inside `pantalla` sections
-  - `var(--sx)` for objects inside `fijo` sections
-- `fullbleed` objects use:
-  - `var(--bx)` for X scale
-  - `var(--sx)` for Y scale
+`ModalVistaPrevia` renders the generated HTML into iframe `srcDoc` views:
 
-Current object families with explicit mobile-aware behavior include:
+- desktop logical viewport: `1280 x 820`
+- mobile logical viewport: `390 x 844`
+- fullscreen preview: one full-window iframe using the current viewport kind
 
-- text objects:
-  - carry `data-debug-texto="1"`
-  - carry `data-text-scale-mode`
-  - use `--text-scale-effective`
-- countdown objects:
-  - carry `data-mobile-cluster="isolated"`
-  - carry `data-mobile-center="force"`
-- dynamic gallery objects:
-  - compute distinct desktop and mobile cell rectangles
-  - switch to mobile rect variables under `@media (max-width: 767px)`
+The modal does not request separate HTML for desktop and mobile. It uses the same HTML and changes the iframe viewport, wrapper scale, and preview metadata.
 
-### 4.5 Mobile Reflow Runtime
+Before iframe scripts run, `buildPreviewFrameSrcDoc(...)` injects:
 
-The generated HTML also injects a separate mobile reflow runtime through:
+- `data-preview-viewport="desktop|mobile"`
+- `data-preview-layout-mode="parity|legacy"`
 
-- `functions/src/utils/mobileSmartSectionLayout.ts`
-- `functions/src/utils/mobileSmartLayout/*`
+After load, `applyPreviewFrameScale(...)`:
 
-The current generator sets:
+- writes `data-preview-scale`
+- confirms viewport and layout-mode attributes on `<html>` and `<body>`
+- stores `__previewScale`, `__previewViewportKind`, and `__previewLayoutMode` on the iframe window
+- hides scrollbar chrome
+- dispatches `preview:mobile-scroll:enable`
+- dispatches `resize` on the next animation frame
 
-- `ENABLE_MOBILE_SMART_LAYOUT = true`
+These iframe mutations are preview-shell behavior. They must minimize layout distortion and should not be treated as changes to the invitation render contract.
 
-and injects the mobile smart layout script with options including:
+## 6. Mobile Preview Parity Mode
 
-- `onlyFixedSections: true`
-- `onlyWhenReordered: true`
-- fit-scale and gap parameters
+Mobile preview parity mode is the default.
 
-Current mobile smart layout behavior:
+Default behavior:
 
-- only runs on mobile
-- defaults to fixed sections only
-- reads absolutely positioned object nodes from `.sec-content` and `.sec-bleed`
-- clusters overlapping nodes
-- orders clusters for mobile reading
-- stacks clusters into a mobile reading flow
-- can expand fixed-section inline heights in the generated DOM
-- applies fit scaling to content and bleed wrappers
-- preserves and restores baseline inline styles through `data-msl-*` attributes
+- `data-preview-layout-mode="parity"`
+- embedded mobile preview uses the publish-like fixed-section height model
+- iframe shell styles keep the document scrollable while avoiding the old embedded-preview height mutation path
 
-This runtime operates on generated DOM after HTML generation. It does not mutate Firestore data or editor state.
+Rollback behavior:
 
-### 4.6 Preview-Specific Mobile Scroll Behavior
+- set `NEXT_PUBLIC_MOBILE_PREVIEW_PARITY_MODE=0`
+- the iframe uses `data-preview-layout-mode="legacy"`
+- legacy mode restores the older embedded-preview height/overflow mutation behavior
 
-`generarHTMLDesdeSecciones.ts` also injects a preview-only mobile scroll runtime.
+Parity mode means preview tries to match published mobile behavior. It does not mean the iframe is identical to a real public page: the preview is still embedded in a scaled shell, receives preview metadata, and runs preview-only scroll/runtime helpers.
 
-Current behavior:
+## 7. Mobile Scroll Ownership
 
-- only starts when the document is marked as preview, embedded, and the viewport kind is `mobile`
-- normalizes scroll handling for the iframe context
-- listens for `preview:mobile-scroll:enable`
-- coordinates iframe-root scrolling through the generated document runtime
+In mobile preview, scroll ownership belongs to the iframe document root:
 
-This runtime is activated by `ModalVistaPrevia` after the mobile iframe loads.
+- `<html>` is the scroll root
+- `<body>` remains visible-height content
+- the outer preview wrapper clips and scales the iframe but should not become the invitation scroll authority
 
-## 5. Current Layout Model
+The generated preview-only mobile scroll runtime starts only for preview, embedded, mobile documents. It waits for `preview:mobile-scroll:enable`, then normalizes wheel/body scroll back to the root document scroll.
 
-### 5.1 Container-Based vs Viewport-Based
+Constraints:
 
-The current layout model is mixed.
+- scroll must work inside mobile preview
+- the preview shell must not distort invitation layout to make scroll work
+- body-level scroll leakage should be redirected to the root
+- hiding scrollbar chrome is allowed; disabling scroll is not
 
-It is container-based in the sense that:
+## 8. Mobile Height Model
 
-- objects belong to sections through `seccionId`
-- object coordinates are section-local in persisted data
-- most objects are rendered inside `.sec-content`, not directly against the viewport
+Section height is decided by a combination of generation-time section mode and runtime mobile layout:
 
-It is also viewport-shaped in the sense that:
+- `fijo` sections start from persisted `altura` and width-based scale.
+- `pantalla` sections are viewport-height based and use the `pantalla`/`yNorm` placement model.
+- mobile smart layout can reflow and expand fixed sections after HTML generation.
+- mobile smart layout does not mutate Firestore or editor state.
 
-- each `.sec` spans `100vw`
-- mobile and desktop scale variables are computed from the current viewport
-- `pantalla` sections derive their geometry from viewport height and safe-area measurements
-- `fullbleed` objects use viewport-width scaling on the X axis
+The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It clusters generated DOM nodes, decides whether reflow is needed, stacks flow content when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
 
-The current generator therefore does not use a purely container-based or purely viewport-based model. It uses section-local authored coordinates that are later interpreted through viewport-derived scale variables.
+Height model markers:
 
-### 5.2 Section Modes: `fijo` vs `pantalla`
+- `data-msl-height-model="publish-like"`: normal publish-like height model, including parity preview.
+- `data-msl-height-model="publish-like-pending"`: parity preview fixed section skipped until prepared scale is available.
+- `data-msl-height-model="embedded-preview"`: legacy embedded-preview model.
 
-Current section modes come from `seccion.altoModo`.
+Runtime decisions are intentionally separate from generation decisions. Generation writes section/object HTML and base CSS; the runtime reacts to actual mobile viewport, font/image readiness, and DOM measurements.
 
-For `fijo` sections:
+`decoracionesBorde` is generated as a section-owned edge layer, not as an object. It stays out of mobile smart layout, uses renderer-owned `--edgezoom` compensation, and sizes the edge band from section height with separate desktop/mobile ratios. This keeps top/bottom ornaments viewport-width and visually balanced in `pantalla` sections during draft-authoritative preview and publish.
 
-- section height is based on persisted `altura`
-- CSS height is `calc(var(--sfinal) * var(--hbase) * 1px)`
-- in practice `--sfinal` stays aligned with width-based scaling
-- object top positions use persisted `y` scaled through `pxY`
+## 9. Known Constraints
 
-For `pantalla` sections:
+- Template preview is not authoritative.
+- Local fallback preview is not authoritative.
+- Draft preview is authoritative only when it comes from the backend prepared payload.
+- Mobile layout still relies partly on runtime logic.
+- Fullbleed, edge-decoration layering, and complex mobile layouts remain sensitive to viewport, fit-scale, and smart-layout timing.
+- The editor interaction system remains complex and is documented separately in `INTERACTION_SYSTEM_CURRENT_STATE.md`.
 
-- section height is viewport-height based
-- the design-space reference height is `500`
-- content scaling can be driven by safe viewport height on desktop
-- object top positions are computed from normalized vertical placement logic
+## 10. Testing Anchors
 
-### 5.3 Position Fields: `x`, `y`, `yNorm`
+Use these references for parity work:
 
-The current object renderer uses:
-
-- `x`
-- `y`
-- `yNorm`
-
-Current position behavior:
-
-- `x` is treated as authored horizontal position in editor space
-- `y` is used for normal section-local vertical position
-- `yNorm` is preferred for `pantalla` sections
-
-Inside `generarHTMLDesdeObjetos.ts`:
-
-- `getYPxEditor(obj)` prefers `yNorm * 500` when `yNorm` is present
-- if `yNorm` is missing, it falls back to numeric `y`
-- `topCSS(obj)` uses `topPantallaCSS` for `pantalla` sections and `pxY(obj, y)` otherwise
-
-Current `pantalla` top calculation includes:
-
-- normalized Y placement within a design-space block of `500px`
-- `--pantalla-y-base`
-- `--pantalla-y-offset`
-- `--pantalla-y-compact`
-
-### 5.4 Anchor Model: Content vs `fullbleed`
-
-Current section rendering splits objects into two anchor families:
-
-- content objects
-- `fullbleed` objects
-
-This split happens in `generarHTMLDesdeSecciones.ts`:
-
-- `objsBleed` are rendered into `.sec-bleed`
-- `objsContenido` are rendered into `.sec-content`
-
-Current scaling consequences:
-
-- content objects scale through `sContenidoVar`
-- `fullbleed` objects do not use `sfinal` on the X axis
-- `fullbleed` objects use viewport-oriented width scaling and width-spanning section placement
-
-### 5.5 Scale Variables: `--sx`, `--bx`, `--sfinal`
-
-The current generator uses three main scale variables.
-
-- `--sx`: content-width scale relative to the base width of `800`
-- `--bx`: viewport-width scale relative to the base width of `800`
-- `--sfinal`: final content scale used by `pantalla` content objects
-
-Current interpretation:
-
-- for normal fixed content, `--sx` is the main scale
-- for `pantalla` content, `--sfinal` is the main scale
-- for `fullbleed` X placement, `--bx` is used
-
-### 5.6 Family-Specific Layout Encoding
-
-Some layout rules are embedded directly into object-family renderers.
-
-Current examples:
-
-- text objects encode text scaling mode and preserve absolute geometry by applying visual text zoom through `transform`
-- countdown objects embed mobile clustering and centering hints through `data-mobile-*` attributes
-- galleries in `dynamic_media` mode precompute separate desktop and mobile cell layouts and expose them as CSS custom properties
-
-The current layout model is therefore not only section-level. Some responsive layout decisions are carried by object HTML and `data-*` attributes that later influence runtime reflow.
-
-## 6. Known Implicit Assumptions in the Code
-
-- The preview controller assumes a mounted editor runtime can expose `window.canvasEditor.ensureInlineEditSettledBeforeCriticalAction`. If that bridge method is unavailable, the inline critical boundary returns a failure result and preview does not continue.
-- The preview flush boundary assumes the active editable session is the Konva editor path. If `editorMode !== "konva"` or there is no usable slug, flush is treated as skipped.
-- The snapshot overlay path assumes the render-state boundary consists of four top-level fields: `objetos`, `secciones`, `rsvp`, and `gifts`. Those are the only fields replaced by `overlayLiveEditorSnapshot`.
-- The preview payload builder assumes browser-safe asset alias normalization is enough for preview generation. Publish-only preparation is intentionally left outside the preview path.
-- The generator path assumes one HTML string can serve both desktop and mobile preview. The modal changes viewport size and wrapper scale, but it does not request separate desktop and mobile HTML documents.
-- The generated document runtime assumes iframe/mobile preview may report unstable viewport values, so it uses embedded-context checks, `visualViewport`, and screen-dimension fallbacks to derive a more stable viewport width and height.
-- The mobile smart layout runtime assumes it can improve mobile reading order and fit by mutating generated DOM positions after HTML generation. It operates on absolute nodes inside the generated document rather than on source draft data.
-- The generator assumes functional CTA readiness can be derived from the object list plus root `rsvp` and `gifts` config when a resolved CTA contract is not passed in explicitly.
-- Draft preview assumes publication-link compatibility may still require fallback reads and fallback field families when publish compatibility is enabled.
-- Assumption: the template preview path uses the same generator/runtime semantics as the draft preview path after the document re-read, except where the controller explicitly disables publish compatibility and publish actions.
-
-## 7. Areas Where Behavior Depends on Timing or Side Effects
-
-- Inline settle is time-bounded. `ensureInlineSessionSettledBeforeCriticalAction` waits frame-by-frame and fails if the inline session remains active after `120ms`.
-- Draft flush over the event transport is time-bounded. `requestEditorDraftFlush` waits for `editor:draft-flush:result` and fails on timeout after `6000ms`.
-- Preview session state depends on stale-request guards. `useDashboardPreviewController` creates request keys and checks `assertCurrentPreviewSession` after async boundaries so older preview work cannot overwrite newer state.
-- Preview opens before HTML exists. `generarVistaPrevia` commits `buildDashboardPreviewOpenedState()` before the HTML generator resolves, so the modal can render its loading state first and receive HTML later.
-- Snapshot capture is a side effect of successful flush. The compatibility snapshot used for overlay is only captured after the flush boundary returns success.
-- Re-read and overlay are separate phases. The preview source document is re-read first and the live snapshot is overlaid afterward, so the final preview input is not identical to either the persisted document or the live editor state by itself.
-- The iframe document receives post-load mutations. `ModalVistaPrevia` mutates iframe document attributes and styles after load, writes preview metadata into the iframe window, and dispatches `preview:mobile-scroll:enable` plus `resize`.
-- Generated HTML layout depends on runtime events. The generated document recomputes viewport-derived layout on `load`, `resize`, `visualViewport` events, and `orientationchange`.
-- Preview-only scroll behavior depends on a custom event. The mobile preview scroll runtime waits for `preview:mobile-scroll:enable`, which is dispatched from the parent preview modal after iframe load.
-- Template preview patch behavior depends on `postMessage`. The preview patch runtime listens for `template-preview:apply`, applies DOM/text operations, and may defer scroll work through `requestAnimationFrame`.
-- Mobile smart layout depends on post-generation DOM reflow. The runtime restores baseline node styles, clusters absolute elements, reorders them for mobile reading, and can expand fixed section heights after the original HTML has already been generated.
+- `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`
+- `docs/testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md`
+- `shared/previewPublishParity.test.mjs`
+- `shared/previewPublishMobileGeometryParity.test.mjs`
+- `functions/renderContractCompatibility.test.mjs`
+- `functions/publicationPublishValidation.test.mjs`

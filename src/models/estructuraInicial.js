@@ -1,5 +1,8 @@
 // ✅ Paso 1.1 – Modelo de datos para secciones y objetos (en Firestore)
-import { buildSectionDecorationsPayload } from "@/domain/sections/backgrounds";
+import {
+  buildSectionDecorationsPayload,
+  buildSectionEdgeDecorationsPayload,
+} from "@/domain/sections/backgrounds";
 
 function sanitizeDecoracionesFondo(rawDecoracionesFondo, altura = 300) {
   return buildSectionDecorationsPayload(
@@ -27,8 +30,10 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
     altoModo,
     alturaFijoBackup,
     decoracionesFondo,
+    decoracionesBorde,
   } = datos;
   const maxOrden = Math.max(-1, ...seccionesExistentes.map((s) => s.orden ?? 0));
+  const edgeDecorations = buildSectionEdgeDecorationsPayload(decoracionesBorde);
 
   return {
     id: `seccion-${Date.now()}`,
@@ -56,6 +61,9 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
       ? { alturaFijoBackup: Number(alturaFijoBackup) }
       : {}),
     decoracionesFondo: sanitizeDecoracionesFondo(decoracionesFondo, altura),
+    ...(Object.keys(edgeDecorations).length
+      ? { decoracionesBorde: edgeDecorations }
+      : {}),
     orden: maxOrden + 1, // ✅ Siempre consecutivo
   };
 };

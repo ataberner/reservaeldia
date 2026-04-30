@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildPreviewDisplayUrl,
   createPublicationPreviewState,
+  PREVIEW_AUTHORITY,
 } from "../domain/dashboard/previewSession.js";
 import { createDashboardPreviewControllerRuntime } from "./useDashboardPreviewController.js";
 
@@ -196,6 +197,7 @@ test("preview open success keeps the preview visible before html generation sett
 
   previewPipeline.resolve({
     status: "success",
+    previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
     htmlGenerado: "<html>preview-open</html>",
     urlPublicaDetectada: "https://reservaeldia.com.ar/i/publico-1",
     slugPublicoDetectado: "publico-1",
@@ -210,6 +212,7 @@ test("preview open success keeps the preview visible before html generation sett
       overrides: {
         mostrarVistaPrevia: true,
         htmlVistaPrevia: "<html>preview-open</html>",
+        previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
         urlPublicaVistaPrevia: "https://reservaeldia.com.ar/i/publico-1",
         slugPublicoVistaPrevia: "publico-1",
         puedeActualizarPublicacion: true,
@@ -253,6 +256,52 @@ test("preview open failure on flush keeps the preview closed and preserves the c
     })
   );
   assert.deepEqual(showAlertCalls, []);
+});
+
+test("preview open with prepared-render blockers closes the preview and stores validation", async () => {
+  const validation = {
+    canPublish: false,
+    blockers: [{ code: "missing-section-reference" }],
+    warnings: [],
+    summary: {
+      blockerCount: 1,
+      warningCount: 0,
+      blockingMessage: "No se puede publicar todavia: falta una seccion.",
+      warningMessage: "",
+    },
+  };
+  const harness = createControllerHarness({
+    dependencyOverrides: createTestDependencies({
+      runPreviewPipeline: async () => ({
+        status: "blocked",
+        previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
+        validation,
+        blockingMessage: validation.summary.blockingMessage,
+      }),
+      resolvePublishAction: ({ validationResult }) => {
+        assert.equal(validationResult, validation);
+        return {
+          status: "blocked",
+          blockingMessage: validation.summary.blockingMessage,
+        };
+      },
+    }),
+  });
+
+  await harness.controller.generarVistaPrevia();
+  await flushMicrotasks();
+
+  assert.deepEqual(
+    harness.getState(),
+    createExpectedDraftControllerState({
+      overrides: {
+        publicacionVistaPreviaError:
+          "No se puede publicar todavia: falta una seccion.",
+        previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
+        publishValidationResult: validation,
+      },
+    })
+  );
 });
 
 test("inline boundary failure stops preview before flush and preserves the controller error path", async () => {

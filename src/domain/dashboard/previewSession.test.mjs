@@ -21,6 +21,7 @@ import {
   generateDashboardPreviewHtmlFromRenderState,
   overlayLiveEditorSnapshot,
   prepareDashboardPreviewRenderState,
+  PREVIEW_AUTHORITY,
   PREVIEW_INACTIVE_PUBLICATION_MESSAGE,
 } from "./previewSession.js";
 
@@ -64,6 +65,7 @@ test("preview state factory preserves current dashboard modal defaults", () => {
   assert.deepEqual(createPublicationPreviewState({ mostrarVistaPrevia: true }), {
     mostrarVistaPrevia: true,
     htmlVistaPrevia: null,
+    previewAuthority: null,
     urlPublicaVistaPrevia: null,
     slugPublicoVistaPrevia: null,
     puedeActualizarPublicacion: false,
@@ -91,6 +93,7 @@ test("preview close state preserves the current full reset semantics", () => {
   assert.deepEqual(buildDashboardPreviewCloseState(), {
     mostrarVistaPrevia: false,
     htmlVistaPrevia: null,
+    previewAuthority: null,
     urlPublicaVistaPrevia: null,
     slugPublicoVistaPrevia: null,
     puedeActualizarPublicacion: false,
@@ -567,6 +570,7 @@ test("template preview success patch never enables publish compatibility fields"
 
   assert.deepEqual(patch, {
     htmlVistaPrevia: "<html><body>template</body></html>",
+    previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
     urlPublicaVistaPrevia: null,
     slugPublicoVistaPrevia: null,
     puedeActualizarPublicacion: false,

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { getErrorMessage } from "../domain/dashboard/helpers.js";
+import { PREVIEW_AUTHORITY } from "../domain/dashboard/previewSession.js";
 import { buildTemplateFormState } from "../domain/templates/formModel.js";
 import { normalizeTemplateMetadata } from "../domain/templates/metadata.js";
 import {
@@ -10,6 +11,7 @@ import { pushEditorBreadcrumb } from "../lib/monitoring/editorIssueReporter.js";
 export const TEMPLATE_PREVIEW_STATUS_IDLE = Object.freeze({
   status: "idle",
   error: "",
+  previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
 });
 
 export const TEMPLATE_FORM_STATE_INITIAL = Object.freeze({
@@ -23,6 +25,7 @@ function createTemplatePreviewStatus(overrides = {}) {
   return {
     ...TEMPLATE_PREVIEW_STATUS_IDLE,
     ...overrides,
+    previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
   };
 }
 
@@ -291,7 +294,9 @@ export function resolveDashboardTemplateModalViewState({
       ? safePreviewCacheById[selectedTemplateId] || ""
       : "",
     selectedTemplatePreviewState: selectedTemplateId
-      ? safePreviewStatus[selectedTemplateId] || TEMPLATE_PREVIEW_STATUS_IDLE
+      ? createTemplatePreviewStatus(
+          safePreviewStatus[selectedTemplateId] || TEMPLATE_PREVIEW_STATUS_IDLE
+        )
       : TEMPLATE_PREVIEW_STATUS_IDLE,
     selectedTemplateFormState: selectedTemplateId
       ? normalizeTemplateFormStateValue(templateFormState)
@@ -317,10 +322,11 @@ export function buildTemplatePreviewModalProps({
     template: normalizeTemplateObject(template),
     metadata: metadata && typeof metadata === "object" ? metadata : {},
     previewHtml: typeof previewHtml === "string" ? previewHtml : "",
-    previewStatus:
+    previewStatus: createTemplatePreviewStatus(
       previewStatus && typeof previewStatus === "object"
         ? previewStatus
-        : TEMPLATE_PREVIEW_STATUS_IDLE,
+        : TEMPLATE_PREVIEW_STATUS_IDLE
+    ),
     onClose,
     onOpenEditorWithChanges,
     onOpenEditorWithoutChanges,

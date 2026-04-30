@@ -80,6 +80,10 @@ async function loadHtmlGeneratorModule() {
   return import("../../functions/src/utils/generarHTMLDesdeSecciones");
 }
 
+async function loadPublicationsServiceModule() {
+  return import("../domain/publications/service.js");
+}
+
 function isDashboardPreviewDebugEnabled() {
   if (typeof window === "undefined") return false;
 
@@ -89,6 +93,10 @@ function isDashboardPreviewDebugEnabled() {
   } catch {
     return false;
   }
+}
+
+function isPreparedDraftPreviewEnabled() {
+  return process.env.NEXT_PUBLIC_PREPARED_DRAFT_PREVIEW !== "0";
 }
 
 async function runDashboardPreviewControllerCriticalActionFlush({
@@ -167,6 +175,10 @@ async function runDashboardPreviewControllerPreviewPipeline({
   assertCurrentSession,
 } = {}) {
   const previewDebug = isDashboardPreviewDebugEnabled();
+  const useBackendPreparedDraftPreview =
+    !isTemplateSession &&
+    canUsePublishCompatibility &&
+    isPreparedDraftPreviewEnabled();
 
   return runDashboardPreviewPipeline({
     slugInvitacion,
@@ -208,6 +220,16 @@ async function runDashboardPreviewControllerPreviewPipeline({
         generatorOptions
       );
     },
+    prepareDraftPreviewRender: useBackendPreparedDraftPreview
+      ? async ({ draftSlug, slugPreview }) => {
+          const { prepareDraftPreviewRender } =
+            await loadPublicationsServiceModule();
+          return prepareDraftPreviewRender({
+            draftSlug,
+            slugPreview,
+          });
+        }
+      : null,
     onBeforeGenerateHtml: ({ previewPayload }) => {
       if (!previewDebug) return;
 
@@ -706,11 +728,35 @@ export function createDashboardPreviewControllerRuntime({
         return;
       }
 
+      if (previewResult.status === "blocked") {
+        const publishAction = resolvePublishAction({
+          validationResult: previewResult.validation,
+        });
+        const blockingMessage =
+          previewResult.blockingMessage ||
+          publishAction.blockingMessage ||
+          "Hay contratos de render que todavia no son seguros para publicar.";
+
+        commitPreviewState(previewSession, (prev) => ({
+          ...prev,
+          ...buildDashboardPreviewOpenFlushFailureStatePatch({
+            errorMessage: blockingMessage,
+          }),
+          previewAuthority: previewResult.previewAuthority || null,
+          ...buildDashboardPreviewPublishValidationResolvedStatePatch({
+            validationResult: previewResult.validation,
+          }),
+          ...buildDashboardPreviewPublishValidationSettledStatePatch(),
+        }));
+        return;
+      }
+
       if (
         !commitPreviewState(previewSession, (prev) => ({
           ...prev,
           ...buildDashboardPreviewSuccessStatePatch({
             htmlGenerado: previewResult.htmlGenerado,
+            previewAuthority: previewResult.previewAuthority,
             isTemplateEditorSession:
               resolvedPreviewCompatibilityState.isTemplateSession,
             urlPublicaDetectada: previewResult.urlPublicaDetectada,
@@ -719,13 +765,22 @@ export function createDashboardPreviewControllerRuntime({
               previewResult.publicacionNoVigenteDetectada,
             currentError: prev.publicacionVistaPreviaError,
           }),
+          ...(previewResult.validation
+            ? buildDashboardPreviewPublishValidationResolvedStatePatch({
+                validationResult: previewResult.validation,
+              })
+            : {}),
+          ...(previewResult.validation
+            ? buildDashboardPreviewPublishValidationSettledStatePatch()
+            : {}),
         }))
       ) {
         return;
       }
 
       if (
-        resolvedPreviewCompatibilityState.shouldRefreshPublishValidationAfterPreview
+        resolvedPreviewCompatibilityState.shouldRefreshPublishValidationAfterPreview &&
+        !previewResult.validation
       ) {
         void refreshPublishValidation(slugInvitacion, {
           previewSession,

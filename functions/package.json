@@ -9,7 +9,7 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "dev": "concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
+    "dev": "npm run build && concurrently -k \"npm:build:watch\" \"firebase emulators:start --only functions\""
   },
   "engines": {
     "node": "20"

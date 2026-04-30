@@ -38,6 +38,7 @@ export default function CanvasEditorOverlays({
   setSeccionActivaId,
   setSectionDecorationEdit,
   usarComoDecoracionFondo,
+  usarComoDecoracionBorde,
   abrirPanelRsvp,
   abrirPanelRegalos,
   canRenderTemplateAuthoringMenu,
@@ -65,6 +66,8 @@ export default function CanvasEditorOverlays({
   sectionDecorationEdit,
   onConvertirDecoracionFondoEnImagen,
   onEliminarDecoracionFondo,
+  onToggleDecoracionBorde,
+  onEliminarDecoracionBorde,
   onFinalizarAjusteDecoracionFondo,
   onActualizarMovimientoDecoracionFondo,
   onDesanclarImagenFondoBase,
@@ -83,15 +86,17 @@ export default function CanvasEditorOverlays({
   const overlayKind = overlaySelection?.kind || null;
   const menuSelection = overlaySelection?.menuItem || null;
   const isBackgroundDecorationEditing = overlayKind === "background-decoration";
+  const isSectionEdgeDecorationEditing = overlayKind === "section-edge-decoration";
   const isSectionBaseImageEditing = overlayKind === "section-base-image";
   const isMultiSelectionMenu = overlayKind === "multi-selection";
   const shouldShowOptionButton =
     !readOnly &&
     !editingId &&
     !isSelectionRotating &&
-    Boolean(overlaySelection);
-  const optionButtonTitle = isBackgroundDecorationEditing
-    ? "Opciones de la decoracion"
+    Boolean(overlaySelection) &&
+    (!(isBackgroundDecorationEditing || isSectionEdgeDecorationEditing) || canManageSite);
+  const optionButtonTitle = isBackgroundDecorationEditing || isSectionEdgeDecorationEditing
+    ? "Opciones de la decoración"
     : isSectionBaseImageEditing
       ? "Opciones del fondo"
       : isMultiSelectionMenu
@@ -200,8 +205,12 @@ export default function CanvasEditorOverlays({
           setSeccionActivaId={setSeccionActivaId}
           setSectionDecorationEdit={setSectionDecorationEdit}
           usarComoDecoracionFondo={usarComoDecoracionFondo}
+          usarComoDecoracionBorde={usarComoDecoracionBorde}
           onConvertirDecoracionFondoEnImagen={onConvertirDecoracionFondoEnImagen}
           onEliminarDecoracionFondo={onEliminarDecoracionFondo}
+          onToggleDecoracionBorde={onToggleDecoracionBorde}
+          onEliminarDecoracionBorde={onEliminarDecoracionBorde}
+          onFinalizarAjusteDecoracionBorde={onFinalizarAjusteDecoracionFondo}
           onFinalizarAjusteDecoracionFondo={onFinalizarAjusteDecoracionFondo}
           onActualizarMovimientoDecoracionFondo={onActualizarMovimientoDecoracionFondo}
           onDesanclarImagenFondoBase={onDesanclarImagenFondoBase}

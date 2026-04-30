@@ -4,6 +4,7 @@ import { resolveKonvaFill } from "@/domain/colors/presets";
 import {
   buildSectionBaseImagePatchFromRenderBox,
   normalizeSectionBackgroundModel,
+  resolveEdgeDecorationCanvasRenderBox,
   resolveSectionBaseImageLayout,
 } from "@/domain/sections/backgrounds";
 import useSharedImage from "@/hooks/useSharedImage";
@@ -79,6 +80,106 @@ function SectionDecorationImage({
   );
 }
 
+function SectionEdgeDecorationImage({
+  sectionId,
+  slot,
+  decoration,
+  offsetY,
+  alturaPx,
+  hidden = false,
+  onBackgroundImageStatusChange,
+  onSelect,
+  onRequestEdit,
+}) {
+  const src = typeof decoration?.src === "string" ? decoration.src : "";
+  const [image, imageStatus] = useSharedImage(src || null, "anonymous");
+  const renderBox = resolveEdgeDecorationCanvasRenderBox(decoration, {
+    slot,
+    image,
+    sectionHeight: alturaPx,
+    canvasWidth: 800,
+  });
+  const shouldClipToBand = decoration?.mode === "contain-x";
+  const offsetPx = Number.isFinite(Number(decoration?.offsetDesktopPx))
+    ? Number(decoration.offsetDesktopPx)
+    : 0;
+  const y =
+    slot === "bottom"
+      ? offsetY + alturaPx - renderBox.bandHeight - offsetPx
+      : offsetY + offsetPx;
+
+  useEffect(() => {
+    if (typeof onBackgroundImageStatusChange !== "function") return;
+
+    const hasBackgroundImage = Boolean(src);
+    const status = !hasBackgroundImage
+      ? "none"
+      : imageStatus === "loaded" || image
+        ? "loaded"
+        : imageStatus === "failed"
+          ? "failed"
+          : "loading";
+
+    onBackgroundImageStatusChange({
+      assetKey: `${sectionId}:borde:${slot}`,
+      sectionId,
+      kind: "edge-decoration",
+      decorationId: slot,
+      slot,
+      imageUrl: src,
+      hasBackgroundImage,
+      status,
+    });
+  }, [image, imageStatus, onBackgroundImageStatusChange, sectionId, slot, src]);
+
+  if (!src || !image || decoration?.enabled === false) return null;
+
+  const handleRequestEdit = (event) => {
+    event.cancelBubble = true;
+    onRequestEdit?.(sectionId, slot);
+  };
+
+  return (
+    <Group
+      x={0}
+      y={y}
+      listening={!hidden && typeof onRequestEdit === "function"}
+      opacity={hidden ? 0 : 1}
+      {...(shouldClipToBand
+        ? {
+            clipX: 0,
+            clipY: 0,
+            clipWidth: renderBox.bandWidth,
+            clipHeight: renderBox.bandHeight,
+          }
+        : {})}
+      onClick={() => {
+        onSelect?.();
+      }}
+      onTap={() => {
+        onSelect?.();
+      }}
+      onDblClick={typeof onRequestEdit === "function" ? handleRequestEdit : undefined}
+      onDblTap={typeof onRequestEdit === "function" ? handleRequestEdit : undefined}
+    >
+      <Rect
+        x={0}
+        y={0}
+        width={renderBox.bandWidth}
+        height={renderBox.bandHeight}
+        fill="rgba(255,255,255,0.001)"
+      />
+      <KonvaImage
+        image={image}
+        x={renderBox.imageX}
+        y={renderBox.imageY}
+        width={renderBox.imageWidth}
+        height={renderBox.imageHeight}
+      />
+    </Group>
+  );
+}
+
 function updateBodyCursor(nextCursor) {
   try {
     document.body.style.cursor = nextCursor;
@@ -98,9 +199,11 @@ export default function FondoSeccion({
   onRequestEdit,
   onBackgroundImageStatusChange,
   editingDecorationId = null,
+  editingEdgeSlot = null,
   onRegisterBackgroundNode,
   onInteractionChange,
   onRequestDecorationEdit,
+  onRequestEdgeDecorationEdit,
 }) {
   const backgroundModel = normalizeSectionBackgroundModel(seccion, {
     sectionHeight: alturaPx,
@@ -312,6 +415,26 @@ export default function FondoSeccion({
       </Group>
 
       <Group clipX={0} clipY={offsetY} clipWidth={canvasWidth} clipHeight={alturaPx}>
+        {["top", "bottom"].map((slot) => {
+          const edgeDecoration = backgroundModel.decoracionesBorde?.[slot];
+          if (!edgeDecoration?.src || edgeDecoration.enabled === false) return null;
+
+          return (
+            <SectionEdgeDecorationImage
+              key={slot}
+              sectionId={seccion.id}
+              slot={slot}
+              decoration={edgeDecoration}
+              offsetY={offsetY}
+              alturaPx={alturaPx}
+              hidden={editingEdgeSlot === slot}
+              onBackgroundImageStatusChange={onBackgroundImageStatusChange}
+              onSelect={onSelect}
+              onRequestEdit={onRequestEdgeDecorationEdit}
+            />
+          );
+        })}
+
         {backgroundModel.decoraciones.map((decoration) => (
           <SectionDecorationImage
             key={decoration.id}

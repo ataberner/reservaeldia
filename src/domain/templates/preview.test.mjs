@@ -5,6 +5,10 @@ import {
   resolveTemplatePreviewSource,
   resolveTemplatePreviewRuntimeState,
 } from "./preview.js";
+import {
+  isPublishAuthoritativePreviewAuthority,
+  PREVIEW_AUTHORITY,
+} from "../dashboard/previewSession.js";
 import { buildPreviewOperationsForField } from "./previewLivePatch.js";
 import { createRepresentativeTemplateFixture } from "./templatePreviewPersonalizationFixtures.mjs";
 
@@ -25,6 +29,11 @@ test("preview runtime keeps previewUrl as metadata but never activates an extern
     previewUrl: "https://preview.example.com/boda-floral",
   });
   assert.equal(runtime.sourceMode, "generated");
+  assert.equal(runtime.previewAuthority, PREVIEW_AUTHORITY.TEMPLATE_VISUAL);
+  assert.equal(
+    isPublishAuthoritativePreviewAuthority(runtime.previewAuthority),
+    false
+  );
   assert.equal(runtime.activeMode, "none");
   assert.equal(runtime.shouldShowPreviewUrl, false);
   assert.equal(runtime.shouldShowGeneratedPreview, false);
@@ -43,6 +52,11 @@ test("preview runtime exposes generated preview capabilities when HTML is ready"
   });
 
   assert.equal(runtime.sourceMode, "generated");
+  assert.equal(runtime.previewAuthority, PREVIEW_AUTHORITY.TEMPLATE_VISUAL);
+  assert.equal(
+    isPublishAuthoritativePreviewAuthority(runtime.previewAuthority),
+    false
+  );
   assert.equal(runtime.activeMode, "generated");
   assert.equal(runtime.shouldShowGeneratedPreview, true);
   assert.equal(runtime.shouldShowPreviewUrl, false);

@@ -1,8 +1,10 @@
 import {
+  buildDashboardPreviewGeneratorInput,
   buildDashboardPreviewRenderPayload,
   generateDashboardPreviewHtmlFromRenderState,
   isPublicacionActiva,
   overlayLiveEditorSnapshot,
+  PREVIEW_AUTHORITY,
 } from "./previewSession.js";
 import { resolvePublicationLinkForDraftRead } from "../invitations/readResolution.js";
 
@@ -119,10 +121,14 @@ export async function runDashboardPreviewPipeline({
   readPublicationBySlug,
   queryPublicationBySlugOriginal,
   generateHtmlFromSections,
+  prepareDraftPreviewRender,
   onBeforeGenerateHtml,
   assertCurrentSession: assertCurrentSessionCallback,
 } = {}) {
   let data = null;
+  const localPreviewAuthority = isTemplateSession
+    ? PREVIEW_AUTHORITY.TEMPLATE_VISUAL
+    : PREVIEW_AUTHORITY.LOCAL_FALLBACK;
 
   if (isTemplateSession) {
     const result =
@@ -135,7 +141,10 @@ export async function runDashboardPreviewPipeline({
 
     data = resolveTemplateEditorDocument(result);
     if (!data) {
-      return { status: "missing-template" };
+      return {
+        status: "missing-template",
+        previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+      };
     }
   } else {
     const result =
@@ -148,7 +157,10 @@ export async function runDashboardPreviewPipeline({
 
     data = resolveDraftDocumentData(result);
     if (!data) {
-      return { status: "missing-draft" };
+      return {
+        status: "missing-draft",
+        previewAuthority: PREVIEW_AUTHORITY.LOCAL_FALLBACK,
+      };
     }
   }
 
@@ -158,7 +170,6 @@ export async function runDashboardPreviewPipeline({
       ? readLiveEditorSnapshot()
       : null);
   const previewSourceData = overlayLiveEditorSnapshot(data, liveEditorSnapshot);
-  const previewPayload = buildDashboardPreviewRenderPayload(previewSourceData);
 
   let urlPublicaDetectada = "";
   let slugPublicoDetectado = "";
@@ -186,6 +197,69 @@ export async function runDashboardPreviewPipeline({
     publicacionNoVigenteDetectada = publicationRead?.matchedInactive === true;
   }
 
+  if (
+    !isTemplateSession &&
+    canUsePublishCompatibility &&
+    typeof prepareDraftPreviewRender === "function"
+  ) {
+    const { slugPreview } = buildDashboardPreviewGeneratorInput({
+      slugPublicoDetectado,
+      urlPublicaDetectada,
+      slugInvitacion,
+    });
+    const preparedPreviewResult = await prepareDraftPreviewRender({
+      draftSlug: slugInvitacion,
+      slugPreview,
+    });
+    assertCurrentSession(assertCurrentSessionCallback);
+
+    const validation = preparedPreviewResult?.validation || null;
+    const previewAuthority = PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE;
+    const previewPayload =
+      preparedPreviewResult?.previewPayload &&
+      typeof preparedPreviewResult.previewPayload === "object"
+        ? preparedPreviewResult.previewPayload
+        : buildDashboardPreviewRenderPayload(previewSourceData);
+
+    if (typeof onBeforeGenerateHtml === "function") {
+      onBeforeGenerateHtml({
+        previewPayload,
+      });
+    }
+
+    if (preparedPreviewResult?.blocked === true || validation?.canPublish === false) {
+      return {
+        status: "blocked",
+        previewAuthority,
+        previewPayload,
+        htmlGenerado: "",
+        validation,
+        blockingMessage: validation?.summary?.blockingMessage || "",
+        urlPublicaDetectada,
+        slugPublicoDetectado,
+        publicacionNoVigenteDetectada,
+      };
+    }
+
+    const htmlGenerado = String(preparedPreviewResult?.htmlGenerado || "");
+    if (!htmlGenerado) {
+      throw new Error("No se pudo generar la vista previa preparada.");
+    }
+
+    return {
+      status: "success",
+      previewAuthority,
+      previewPayload,
+      htmlGenerado,
+      validation,
+      urlPublicaDetectada,
+      slugPublicoDetectado,
+      publicacionNoVigenteDetectada,
+    };
+  }
+
+  const previewPayload = buildDashboardPreviewRenderPayload(previewSourceData);
+
   if (typeof onBeforeGenerateHtml === "function") {
     onBeforeGenerateHtml({
       previewPayload,
@@ -203,6 +277,7 @@ export async function runDashboardPreviewPipeline({
 
   return {
     status: "success",
+    previewAuthority: localPreviewAuthority,
     previewPayload,
     htmlGenerado,
     urlPublicaDetectada,

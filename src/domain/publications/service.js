@@ -9,6 +9,10 @@ const validateDraftForPublicationCallable = httpsCallable(
   cloudFunctions,
   "validateDraftForPublication"
 );
+const prepareDraftPreviewRenderCallable = httpsCallable(
+  cloudFunctions,
+  "prepareDraftPreviewRender"
+);
 
 export async function transitionPublishedInvitationState({
   slug,
@@ -41,6 +45,25 @@ export async function validateDraftForPublication({
 
   const result = await validateDraftForPublicationCallable({
     draftSlug: safeDraftSlug,
+  });
+
+  return result?.data || null;
+}
+
+export async function prepareDraftPreviewRender({
+  draftSlug,
+  slugPreview = "",
+}) {
+  const safeDraftSlug = typeof draftSlug === "string" ? draftSlug.trim() : "";
+  const safeSlugPreview =
+    typeof slugPreview === "string" ? slugPreview.trim() : "";
+  if (!safeDraftSlug) {
+    throw new Error("Slug invalido para preview preparado.");
+  }
+
+  const result = await prepareDraftPreviewRenderCallable({
+    draftSlug: safeDraftSlug,
+    slugPreview: safeSlugPreview,
   });
 
   return result?.data || null;

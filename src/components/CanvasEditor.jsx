@@ -998,6 +998,7 @@ export default function CanvasEditor({
   const {
     cambiarColorFondoSeccion,
     usarImagenComoDecoracionFondo,
+    usarImagenComoDecoracionBorde,
     registerBackgroundEditNode,
     handleBackgroundEditInteractionChange,
     requestBackgroundEdit,
@@ -1006,6 +1007,8 @@ export default function CanvasEditor({
     handleFinalizarAjusteFondoBase,
     handleConvertirDecoracionFondoEnImagen,
     handleEliminarDecoracionFondo,
+    handleToggleDecoracionBorde,
+    handleEliminarDecoracionBorde,
     handleFinalizarAjusteDecoracionFondo,
     handleActualizarMovimientoDecoracionFondo,
   } = useCanvasEditorSectionBackgroundUi({
@@ -1032,6 +1035,7 @@ export default function CanvasEditor({
     setSeccionActivaId,
     setMostrarPanelZ,
     selectionClearPolicy,
+    canManageSite,
   });
 
   const {
@@ -1133,6 +1137,10 @@ export default function CanvasEditor({
     }
 
     if (overlaySelection.kind === "background-decoration") {
+      return overlaySelection.menuItem?.id ? [overlaySelection.menuItem.id] : [];
+    }
+
+    if (overlaySelection.kind === "section-edge-decoration") {
       return overlaySelection.menuItem?.id ? [overlaySelection.menuItem.id] : [];
     }
 
@@ -1583,6 +1591,7 @@ export default function CanvasEditor({
                 onRegisterBackgroundEditNode={registerBackgroundEditNode}
                 onBackgroundEditInteractionChange={handleBackgroundEditInteractionChange}
                 postDragDiagnosticMenuTargetIds={postDragDiagnosticMenuTargetIds}
+                canManageSite={canManageSite}
               />
 
 
@@ -1650,6 +1659,7 @@ export default function CanvasEditor({
           setSeccionActivaId={setSeccionActivaId}
           setSectionDecorationEdit={setSectionDecorationEdit}
           usarComoDecoracionFondo={usarImagenComoDecoracionFondo}
+          usarComoDecoracionBorde={usarImagenComoDecoracionBorde}
           abrirPanelRsvp={abrirPanelRsvp}
           abrirPanelRegalos={abrirPanelRegalos}
           canRenderTemplateAuthoringMenu={canRenderTemplateAuthoringMenu}
@@ -1677,6 +1687,8 @@ export default function CanvasEditor({
           sectionDecorationEdit={sectionDecorationEdit}
           onConvertirDecoracionFondoEnImagen={handleConvertirDecoracionFondoEnImagen}
           onEliminarDecoracionFondo={handleEliminarDecoracionFondo}
+          onToggleDecoracionBorde={handleToggleDecoracionBorde}
+          onEliminarDecoracionBorde={handleEliminarDecoracionBorde}
           onFinalizarAjusteDecoracionFondo={handleFinalizarAjusteDecoracionFondo}
           onActualizarMovimientoDecoracionFondo={handleActualizarMovimientoDecoracionFondo}
           onDesanclarImagenFondoBase={handleDesanclarImagenFondoBase}

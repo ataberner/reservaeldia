@@ -43,6 +43,10 @@ function resolveSectionDecorationAssetUrl(value) {
   return normalizeText(safeValue.src) || normalizeText(safeValue.url);
 }
 
+function resolveSectionEdgeDecorationAssetUrl(value) {
+  return resolveSectionDecorationAssetUrl(value);
+}
+
 function normalizeRenderAssetObject(value) {
   const safeValue = asObject(value);
   if (!safeValue || Object.keys(safeValue).length === 0) return value;
@@ -107,6 +111,19 @@ function normalizeSectionDecorationRecord(value) {
   };
 }
 
+function normalizeSectionEdgeDecorationRecord(value) {
+  const safeValue = asObject(value);
+  if (!safeValue || Object.keys(safeValue).length === 0) return value;
+
+  const src = resolveSectionEdgeDecorationAssetUrl(safeValue);
+  if (!src) return safeValue;
+
+  return {
+    ...safeValue,
+    src,
+  };
+}
+
 function normalizeSectionDecorationsValue(value) {
   const safeValue = asObject(value);
   if (!safeValue || Object.keys(safeValue).length === 0) return value;
@@ -130,6 +147,25 @@ function normalizeSectionDecorationsValue(value) {
   return next;
 }
 
+function normalizeSectionEdgeDecorationsValue(value) {
+  const safeValue = asObject(value);
+  if (!safeValue || Object.keys(safeValue).length === 0) return value;
+
+  const next = {
+    ...safeValue,
+  };
+
+  if (safeValue.top && typeof safeValue.top === "object" && !Array.isArray(safeValue.top)) {
+    next.top = normalizeSectionEdgeDecorationRecord(safeValue.top);
+  }
+
+  if (safeValue.bottom && typeof safeValue.bottom === "object" && !Array.isArray(safeValue.bottom)) {
+    next.bottom = normalizeSectionEdgeDecorationRecord(safeValue.bottom);
+  }
+
+  return next;
+}
+
 function normalizeRenderAssetSection(value) {
   const safeValue = asObject(value);
   if (!safeValue || Object.keys(safeValue).length === 0) return value;
@@ -145,6 +181,10 @@ function normalizeRenderAssetSection(value) {
 
   if (safeValue.decoracionesFondo && typeof safeValue.decoracionesFondo === "object") {
     next.decoracionesFondo = normalizeSectionDecorationsValue(safeValue.decoracionesFondo);
+  }
+
+  if (safeValue.decoracionesBorde && typeof safeValue.decoracionesBorde === "object") {
+    next.decoracionesBorde = normalizeSectionEdgeDecorationsValue(safeValue.decoracionesBorde);
   }
 
   return next;
@@ -167,9 +207,11 @@ module.exports = {
   resolveObjectPrimaryAssetUrl,
   resolveGalleryCellMediaUrl,
   resolveSectionDecorationAssetUrl,
+  resolveSectionEdgeDecorationAssetUrl,
   normalizeRenderAssetObject,
   normalizeGalleryCellRecord,
   normalizeSectionDecorationRecord,
+  normalizeSectionEdgeDecorationRecord,
   normalizeRenderAssetSection,
   normalizeRenderAssetState,
 };

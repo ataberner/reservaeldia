@@ -5,6 +5,7 @@ import { subirImagenPublica } from "@/utils/imagenes";
 import { ALTURAS_SECCIONES } from "functions/src/models/dimensionesBase";
 import {
   buildSectionDecorationsPayload,
+  buildSectionEdgeDecorationsPayload,
   normalizeSectionBackgroundModel,
 } from "@/domain/sections/backgrounds";
 
@@ -29,6 +30,20 @@ function renderTemplatePreview(plantilla) {
           backgroundRepeat: "no-repeat",
         }}
       />
+
+      {["top", "bottom"].map((slot) => {
+        const edgeDecoration = backgroundModel.decoracionesBorde?.[slot];
+        if (!edgeDecoration?.src || edgeDecoration.enabled === false) return null;
+        return (
+          <img
+            key={`${plantilla?.id || plantilla?.nombre || "plantilla"}-borde-${slot}`}
+            src={edgeDecoration.src}
+            alt=""
+            className="absolute left-1/2 w-full max-w-none -translate-x-1/2 object-contain"
+            style={slot === "top" ? { top: 0 } : { bottom: 0 }}
+          />
+        );
+      })}
 
       {backgroundModel.decoraciones.map((decoracion) => (
         <img
@@ -282,6 +297,9 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
                 const backgroundModel = normalizeSectionBackgroundModel(plantillaSeleccionada, {
                   sectionHeight: plantillaSeleccionada.altura || 400,
                 });
+                const edgeDecorations = buildSectionEdgeDecorationsPayload(
+                  plantillaSeleccionada
+                );
                 onConfirm({
                   id: `sec-${Date.now()}`,
                   altura: plantillaSeleccionada.altura,
@@ -319,6 +337,9 @@ export default function ModalCrearSeccion({ visible, onClose, onConfirm }) {
                       sectionHeight: plantillaSeleccionada.altura || 400,
                     }
                   ),
+                  ...(Object.keys(edgeDecorations).length
+                    ? { decoracionesBorde: edgeDecorations }
+                    : {}),
                   objetos: (plantillaSeleccionada.objetos || []).map(obj => ({
                     ...obj,
                     seccionId: `sec-${Date.now()}`

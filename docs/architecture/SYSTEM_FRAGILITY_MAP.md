@@ -1,6 +1,6 @@
 # SYSTEM FRAGILITY MAP
 
-> Updated from code inspection on 2026-04-07.
+> Updated from code inspection on 2026-04-27.
 >
 > Required references revalidated: `docs/architecture/ARCHITECTURE_OVERVIEW.md`, `docs/architecture/ARCHITECTURE_GUIDELINES.md`, `docs/architecture/EDITOR_SYSTEM.md`, `docs/architecture/DATA_MODEL.md`, `docs/architecture/INTERACTION_CONTRACT.md`, `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`, `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`, `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`.
 >
@@ -10,11 +10,12 @@
 
 ## 1. Executive Read
 
-The previous fragility map was directionally correct, but the current codebase makes three risks much more explicit than before:
+The previous fragility map was directionally correct, but the current codebase makes four risks much more explicit than before:
 
-1. Preview and publish still do not consume the same prepared render contract.
+1. Publishable draft preview and publish now consume the same backend prepared render payload. Template/fallback preview and iframe framing remain separate paths, but preview code classifies their authority explicitly.
 2. Editor selection and drag still cross multiple authorities: committed React state, runtime mirrors, drag-only state, DOM overlay state, Konva live nodes, and legacy globals.
 3. Inline text editing is still a timing-sensitive DOM/Konva handoff, and the repo still contains active RCA instrumentation with no closure evidence for the focus issue.
+4. Mobile/reflow parity is now explicitly measured: the preview iframe can run in `data-preview-layout-mode="parity"` with a publish-like fixed-section height model, while the legacy iframe height/overflow mutation path remains behind `NEXT_PUBLIC_MOBILE_PREVIEW_PARITY_MODE=0`.
 
 No previous item is fully obsolete. Some are better constrained than before because the interaction contract, runtime adapters, and debug traces are now more explicit, but the critical boundaries are still live in code.
 
@@ -30,20 +31,21 @@ No previous item is fully obsolete. Some are better constrained than before beca
 | D1 | Still valid | HIGH | Data Contract | `normalizeDraftRenderState` is still intentionally shallow and permissive. |
 | D2 | Still valid | HIGH | Data Contract | Draft load can still mutate Firestore by backfilling `tipoInvitacion`. |
 | D3 | Reduced but valid | HIGH | State Management / Data Contract | Write queueing improved ordering, but autosave and flush still depend on transient interaction state and multiple transports. |
-| D4 | Still valid | HIGH | Data Contract / Rendering | Asset normalization still differs across load, preview, and publish. |
+| D4 | Reduced but valid | MEDIUM | Data Contract / Rendering | Publishable draft preview and publish share backend asset normalization; editor load, template copy, and template/fallback preview still differ. |
 | D5 | Still valid | HIGH | Data Contract | Draft/publication linkage still resolves through compatibility field families. |
-| R1 | Still valid | CRITICAL | Data Contract / Rendering | Preview overlay boundary still does not match publish preparation boundary. |
+| R1 | Reduced but valid | MEDIUM | Data Contract / Rendering | Publishable draft preview now uses the publish prepared payload; template/fallback preview still uses local overlay/generator behavior. |
 | R2 | Still valid | HIGH | Rendering | HTML generation is still concentrated in large, branched modules. |
 | R3 | Still valid | HIGH | Data Contract / Rendering | Legacy countdown and icon contracts are still active in live render paths. |
 | R4 | Still valid | HIGH | Rendering / UX / Visual Consistency | `pantalla`, `yNorm`, and `fullbleed` are still explicit drift zones in publish validation. |
+| R6 | Reduced but valid | MEDIUM | Rendering / UX / Visual Consistency | Mobile/reflow parity now has geometry fixtures and a preview iframe parity mode, but smart layout still performs runtime DOM mutation. |
 | R5 | Still valid | MEDIUM | Data Contract | Functional CTA behavior is still resolved from root config plus object presence, not from the button object alone. |
 | P1 | Reduced but valid | HIGH | Backend / Infra / Data Contract | Lifecycle logic is more centralized, but authority is still reconstructed from multiple persisted fields. |
-| P2 | Still valid | CRITICAL | Data Contract / Backend / Infra | Publish safety is still guaranteed only after backend preparation and validation. |
+| P2 | Reduced but valid | MEDIUM | Data Contract / Backend / Infra | Publish safety is now surfaced during backend-prepared preview and checkout, but final publish remains the authoritative gate. |
 | P3 | Still valid | HIGH | Backend / Infra | Finalization still permits warning-only partial success. |
 | P4 | Reduced but valid | HIGH | Backend / Infra | Publication/payment orchestration is more modular, but still dense and side-effect heavy. |
 | P5 | Still valid | MEDIUM | Backend / Infra | Public read/submit paths can still finalize expired publications. |
-| V1 | Still valid | CRITICAL | Rendering / State Management | Preview is still a timing-sensitive multi-step pipeline, not a pure "render current editor state" action. |
-| V2 | Still valid | HIGH | Rendering / Backend / Infra | Dashboard preview still imports backend generator source into the frontend path. |
+| V1 | Reduced but valid | HIGH | Rendering / State Management | Preview is still a timing-sensitive multi-step pipeline, but draft-authoritative HTML is now gated by backend prepared validation instead of local render trust. |
+| V2 | Reduced but valid | MEDIUM | Rendering / Backend / Infra | Publishable draft preview uses a backend callable; template/fallback preview still imports backend generator source into the frontend path. |
 | V3 | Still valid | HIGH | Data Contract / Backend / Infra | Dashboard/editor entry still depend on fallback-heavy read resolution. |
 | V4 | Still valid | MEDIUM | Backend / Infra | Public invitation URLs are still hardcoded in client-facing code. |
 | V5 | Partially valid | MEDIUM | Backend / Infra | Some read failures are still intentionally swallowed, although the boundaries are now better documented. |
@@ -54,17 +56,41 @@ No previous item is fully obsolete. Some are better constrained than before beca
 
 ## 3. Current Validated Fragilities
 
-### F1. Preview And Publish Still Do Not Share One Prepared Render Contract
+### F1. Template/Fallback Preview Is Explicitly Visual-Only
 
-- Level: CRITICAL
+- Level: MEDIUM
 - Type: Data Contract, Rendering
 - Revalidates: `R1`, `R4`, `P2`, `V1`
-- Evidence: preview re-reads the draft/template, then `overlayLiveEditorSnapshot()` replaces only `objetos`, `secciones`, `rsvp`, and `gifts`; `prepareDashboardPreviewRenderState()` explicitly keeps publish-only preparation on the backend path; publish instead runs `preparePublicationRenderState()`, asset normalization, `resolveFunctionalCtaContract()`, and `validatePreparedPublicationRenderState()`.
-- Contract Mismatch: preview treats the live boundary as a four-field overlay, while publish depends on server-prepared assets, crop materialization, grouped render preparation, and CTA/root config reconciliation that are not part of that overlay contract.
-- Failure mode: preview can look correct while publish blocks, repositions, or changes behavior for `pantalla`, `fullbleed`, unresolved assets, image crop, or functional CTA objects.
-- Action: `P0` add a single `buildPreparedRenderPayloadForPreview()` boundary that reuses the same preparation and validation rules as publish, and make `previewPipeline` render that prepared payload instead of raw `overlayLiveEditorSnapshot()` output.
-- Expected impact: removes the main "preview passed, publish broke" class and makes validation messages explain actual render behavior.
-- Compatibility risk: Medium. Preview will become stricter for drafts that currently benefit from preview-only leniency.
+- Evidence: publishable draft preview now calls `prepareDraftPreviewRender`, which uses `prepareRenderPayload()`, `validatePreparedRenderPayload()`, and `generateHtmlFromPreparedRenderPayload()`, and is classified as `previewAuthority: "draft-authoritative"`. Template preview is classified as `"template-visual"` and fallback local preview as `"local-fallback"`; both still use `overlayLiveEditorSnapshot()` plus local `generarHTMLDesdeSecciones(...)` where applicable.
+- Contract Mismatch: normal draft preview and publish share server-prepared assets, crop materialization, grouped render preparation, and CTA/root config reconciliation; template/fallback preview does not. This is documented and classified, so it is no longer hidden preview/publish contract drift.
+- Failure mode: template/fallback preview can still look correct while backend publish behavior would block, re-resolve assets, or change behavior for `pantalla`, `fullbleed`, unresolved assets, image crop, or functional CTA objects.
+- Action: keep template/fallback preview explicitly outside publish parity.
+- Expected impact: keeps the main draft "preview passed, publish broke" class closed while leaving template preview scope explicit.
+- Compatibility risk: Medium if template preview is moved to backend preparation later.
+
+### F1b. Mobile/Reflow Parity Is Measured, But Still Runtime-Mutated
+
+- Level: MEDIUM
+- Type: Rendering, Visual Consistency
+- Revalidates: `R4`, `R6`, `V1`
+- Evidence: `ModalVistaPrevia` now pre-injects `data-preview-viewport` and `data-preview-layout-mode` into iframe `srcDoc`; `functions/src/utils/mobileSmartLayout/scriptTemplate.ts` uses parity mode to keep embedded preview on the publish-like fixed-section height model; `shared/previewPublishMobileGeometryParity.mjs` captures viewport, section, object, group-child, edge-decoration, and smart-layout geometry across mobile viewports.
+- Contract Mismatch: the prepared payload is shared, but final mobile geometry still depends on runtime CSS variables, image/font readiness, viewport APIs, and smart-layout DOM mutation.
+- Failure mode: preview and publish can still diverge if runtime timing, fullbleed fit-scaling, `pantalla` viewport math, or grouped object bounds resolve differently after load.
+- Action: keep the geometry parity harness as the gate for future mobile changes; only change fullbleed fit-scale or smart-layout heuristics after the harness shows a real mismatch.
+- Expected impact: turns mobile drift from subjective screenshots into object/section geometry diffs.
+- Compatibility risk: Medium. The rollback flag keeps the legacy iframe behavior available.
+
+### F1c. Edge Decorations Are Additive But Layering-Sensitive
+
+- Level: LOW-MEDIUM
+- Type: Rendering, Visual Consistency
+- Revalidates: `R4`, `R6`
+- Evidence: `decoracionesBorde` is normalized through the shared section asset contract, validated by prepared render payload, and rendered by `generarHTMLDesdeSecciones.ts` as `.sec-edge-layer` inside `.sec-zoom` with `--edgezoom` compensation and responsive desktop/mobile height ratios. It is included in the visual baseline and mobile geometry parity snapshots.
+- Contract Mismatch: none known in draft-authoritative preview/publish; the remaining sensitivity is CSS layer order, responsive edge-band sizing, and `pantalla` zoom math.
+- Failure mode: edge ornaments could drift, become clipped, or accidentally enter object/smart-layout behavior if the layer contract is changed.
+- Action: keep the primitive section-owned, non-object, and covered by the `edge-decorations-pantalla` baseline.
+- Expected impact: avoids reusing fullbleed objects or cover backgrounds for edge ornaments.
+- Compatibility risk: Low for existing templates because the field is additive.
 
 ### F2. Selection Authority Is Still Split Across Committed State, Runtime Mirrors, Drag Visual State, Globals, And Live Nodes
 
@@ -130,11 +156,11 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Level: HIGH
 - Type: Data Contract, Backend / Infra
 - Revalidates: `D1`, `P2`, `R3`, `R5`
-- Evidence: `normalizeDraftRenderState()` is shallow; publish validation still needs to catch `missing-section-reference`, unsupported shapes, unresolved assets, crop materialization failures, `pantalla` drift, legacy countdown/icon branches, and CTA/root config issues such as `functional-cta-link-ignored`, `gift-missing-root-config`, and `rsvp-missing-root-config`.
+- Evidence: `normalizeDraftRenderState()` is shallow; backend prepared validation still needs to catch `missing-section-reference`, unsupported shapes, unresolved assets, crop materialization failures, `pantalla` drift, legacy countdown/icon branches, and CTA/root config issues such as `functional-cta-link-ignored`, `gift-missing-root-config`, and `rsvp-missing-root-config`.
 - Contract Mismatch: the editor lets object-level presence imply behavior, but publish resolves some behavior from root config plus prepared assets plus compatibility policy.
-- Failure mode: last-mile publish blockers, or published HTML honoring a stricter contract than the editor surface suggests.
-- Action: `P1` run `validatePreparedPublicationRenderState()` as a visible preflight during preview open and before enabling publish/checkout, not only at the final publish boundary.
-- Expected impact: shifts real publish failures earlier without changing generator behavior first.
+- Failure mode: editor surface still allows states that backend prepared preview/publish will block or warn about.
+- Action: `P1` improve editor-facing surfacing of prepared validation warnings, not only modal/checkout surfacing.
+- Expected impact: shifts real publish failures earlier into authoring without changing generator behavior.
 - Compatibility risk: Low for persisted data, medium for UI because more warnings will appear sooner.
 
 ### F8. Publication Lifecycle And Finalization Still Depend On Distributed Fields And Warning-Only Cleanup
@@ -178,17 +204,18 @@ No previous item is fully obsolete. Some are better constrained than before beca
 | Drag start and move | `CanvasStageContentComposer.jsx`, `dragIndividual.js`, `dragGrupal.js` | drag startup authority, membership collapse, or manual group fallback diverges from logical selection | startup jump, wrong drag box, or group drag member drift |
 | Post-drag stabilization | `dragSettleSessionRef` handoff + `useCanvasInteractionCoordinator()` + `SelectionTransformer.jsx` ready-probe | selected-phase readiness, post-paint confirmation, and deferred repair do not finish before overlay release | stale box, no box, or hover/selection replay on the wrong target |
 | Inline text editing | `InlineTextOverlayEditor.jsx` + `inlineCriticalBoundary.js` | overlay mounted, but focus/caret/session is not truly ready before preview/publish/selection change | extra click required, stale text, or overlay misalignment |
-| Preview rendering | `flushEditorPersistenceBeforeCriticalAction()` + `overlayLiveEditorSnapshot()` + preview generator import | flush boundary and preview render boundary are not the same as publish preparation | preview shows a state that is not actually publishable |
-| Publish generation | `preparePublicationRenderState()` + `validatePreparedPublicationRenderState()` + generator | prepared assets, CTA/root config, group contract, or layout contract diverges from editor assumptions | publish blocked, layout moved, or published HTML differs from canvas/preview |
+| Draft preview rendering | `flushEditorPersistenceBeforeCriticalAction()` + `prepareDraftPreviewRender` | backend prepared validation diverges from editor assumptions | preview is blocked with publish validation instead of showing untrusted HTML |
+| Template/fallback preview rendering | `previewAuthority: "template-visual"` or `"local-fallback"` + local preview generator import | preview render boundary is intentionally outside publish preparation | template/fallback preview shows a visual state that is not a publish-parity guarantee |
+| Publish generation | `prepareRenderPayload()` + `validatePreparedRenderPayload()` + generator adapter | prepared assets, CTA/root config, group contract, or layout contract diverges from editor assumptions | publish blocked, layout moved, or published HTML differs from canvas |
 
 ## 6. Immediate Action Order
 
-1. `P0` Unify preview and publish around one prepared render payload.
+1. `P0` Keep the prepared render payload boundary covered by regression tests as render contracts evolve.
 2. `P0` Collapse selection authority to one imperative runtime bridge and remove selection fallback reads from legacy globals.
 3. `P0` Export one explicit inline session state and make critical actions wait on that state.
 4. `P1` Sessionize drag/group-drag end-to-end and demote legacy drag globals to debug mirrors.
 5. `P1` Tighten post-drag handoff so the first selected-phase frame uses live geometry.
-6. `P1` Move publish validation earlier into preview/publish UI preflight.
+6. `P1` Surface prepared validation warnings earlier in the editor UI, not only at preview/checkout boundaries.
 7. `P1` Make lifecycle readers prefer one normalized persisted lifecycle snapshot.
 8. `P2` Centralize public URL and RSVP endpoint config, and reduce shared-contract duplication.
 
@@ -196,4 +223,4 @@ No previous item is fully obsolete. Some are better constrained than before beca
 
 The system is not mainly fragile because it is undocumented anymore. It is fragile because the editor, preview, and publish paths still cross different authority boundaries at the exact moments that matter: selection handoff, inline settle, preview preflight, and publish preparation.
 
-If only one thing changes first, it should be this: preview must stop rendering from a contract that publish does not use.
+If only one thing changes first, it should be this: any preview path that does not use the publish prepared payload must stay explicitly non-authoritative.

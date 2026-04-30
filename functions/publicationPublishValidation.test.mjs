@@ -19,7 +19,11 @@ import {
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 
 const {
+  buildPreviewRenderPayloadFromPreparedPayload,
+  generateHtmlFromPreparedRenderPayload,
+  prepareRenderPayload,
   preparePublicationRenderState,
+  validatePreparedRenderPayload,
   validatePreparedPublicationRenderState,
 } = requireBuiltModule("lib/payments/publicationPublishValidation.js");
 
@@ -269,6 +273,65 @@ test("prepares grouped image compositions recursively so publish validates the c
   assert.equal(groupedImage.alto, 4);
 });
 
+test("canonical prepared render payload preserves the publication wrapper and validation shape", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: createRepresentativeStorageFiles(),
+  });
+  t.after(() => storageMock.restore());
+
+  const draftState = createRepresentativePublishReadyDraftFixture();
+  const canonical = await prepareRenderPayload(draftState);
+  const compatibility = await preparePublicationRenderState(draftState);
+  const canonicalValidation = validatePreparedRenderPayload(canonical);
+  const compatibilityValidation = validatePreparedPublicationRenderState({
+    rawObjetos: compatibility.draftRenderState.objetos,
+    rawSecciones: compatibility.draftRenderState.secciones,
+    objetosFinales: compatibility.objetosFinales,
+    seccionesFinales: compatibility.seccionesFinales,
+    rawRsvp: compatibility.draftRenderState.rsvp,
+    rawGifts: compatibility.draftRenderState.gifts,
+    functionalCtaContract: compatibility.functionalCtaContract,
+  });
+
+  assert.deepEqual(canonical, compatibility);
+  assert.deepEqual(canonicalValidation, compatibilityValidation);
+});
+
+test("preview and publish html can be generated from the same prepared render payload", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: createRepresentativeStorageFiles(),
+  });
+  t.after(() => storageMock.restore());
+
+  const draftState = createRepresentativePublishReadyDraftFixture();
+  draftState.objetos.push(createGroupedImageCaptionObject());
+
+  const prepared = await prepareRenderPayload(draftState);
+  const previewPayload = buildPreviewRenderPayloadFromPreparedPayload(prepared);
+  const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+    slug: "fixture-public",
+    isPreview: true,
+  });
+  const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+    slug: "fixture-public",
+  });
+
+  assert.deepEqual(previewPayload.objetos, prepared.objetosFinales);
+  assert.deepEqual(previewPayload.secciones, prepared.seccionesFinales);
+  assert.equal(previewPayload.rsvpPreviewConfig.enabled, true);
+  assert.equal(previewPayload.giftPreviewConfig.enabled, true);
+  assert.match(previewHtml, /<html[^>]*data-preview="1"/);
+  assert.match(previewHtml, /<body[^>]*data-preview="1"/);
+  assert.doesNotMatch(publishHtml, /<html[^>]*data-preview="1"/);
+  assert.doesNotMatch(publishHtml, /<body[^>]*data-preview="1"/);
+  assert.match(previewHtml, /data-rsvp-open/);
+  assert.match(publishHtml, /data-rsvp-open/);
+  assert.match(previewHtml, /data-mobile-cluster="isolated"/);
+  assert.match(publishHtml, /data-mobile-cluster="isolated"/);
+});
+
 test("validates grouped countdown and gallery children through the normal publish contract", () => {
   const rawObjetos = [
     {
@@ -411,6 +474,41 @@ test("separates representative blockers from warnings when publish finalization 
   assert.equal(result.summary.warningCount, 5);
   assert.match(result.summary.blockingMessage, /^No se puede publicar todavia:/);
   assert.match(result.summary.warningMessage, /advertencias de compatibilidad/);
+});
+
+test("blocks unresolved enabled section edge decorations", () => {
+  const rawSecciones = [
+    {
+      id: "section-edge",
+      orden: 1,
+      altoModo: "pantalla",
+      altura: 500,
+      decoracionesBorde: {
+        top: {
+          enabled: true,
+          src: FIXTURE_PATHS.decorTop,
+          storagePath: FIXTURE_PATHS.decorTop,
+        },
+        bottom: {
+          enabled: false,
+          src: FIXTURE_PATHS.decorBottom,
+          storagePath: FIXTURE_PATHS.decorBottom,
+        },
+      },
+    },
+  ];
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos: [],
+    rawSecciones,
+    objetosFinales: [],
+    seccionesFinales: rawSecciones,
+  });
+
+  assert.equal(result.canPublish, false);
+  assert.deepEqual(issueKeys(result.blockers), [
+    "section-edge-decoration-unresolved|-|section-edge|decoracionesBorde.top.src",
+  ]);
 });
 
 test("blocks malformed preserved group contracts during publish validation", () => {

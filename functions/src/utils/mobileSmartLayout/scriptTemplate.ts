@@ -162,6 +162,25 @@ export function buildScript(cfg: NormalizedConfig): string {
     sec.removeAttribute("data-msl-base-height");
   }
 
+  function hasPreparedFixedSectionScale(sec){
+    if (!sec) return false;
+    var modo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
+    if (modo !== "fijo") return true;
+    var raw = "";
+    try {
+      var cs = window.getComputedStyle ? window.getComputedStyle(sec) : null;
+      raw = String(
+        (cs && cs.getPropertyValue("--sfinal")) ||
+        (sec.style && sec.style.getPropertyValue("--sfinal")) ||
+        ""
+      ).trim();
+    } catch(_e) {
+      raw = "";
+    }
+    var sfinal = parseFloat(raw);
+    return isFinite(sfinal) && sfinal > 0;
+  }
+
   function shouldProcessSection(sec){
     if(!sec) return false;
     if(!CFG.ONLY_FIXED) return true;
@@ -200,6 +219,34 @@ export function buildScript(cfg: NormalizedConfig): string {
       bodyPreview === "1" ||
       bodyPreview === "true"
     );
+  }
+
+  function readPreviewLayoutMode(){
+    var htmlMode = "";
+    var bodyMode = "";
+    var windowMode = "";
+    try {
+      htmlMode = String(
+        document && document.documentElement && document.documentElement.dataset
+          ? document.documentElement.dataset.previewLayoutMode || ""
+          : ""
+      ).toLowerCase();
+    } catch(_e1) {}
+    try {
+      bodyMode = String(
+        document && document.body && document.body.dataset
+          ? document.body.dataset.previewLayoutMode || ""
+          : ""
+      ).toLowerCase();
+    } catch(_e2) {}
+    try {
+      windowMode = String(window.__previewLayoutMode || "").toLowerCase();
+    } catch(_e3) {}
+    return htmlMode || bodyMode || windowMode || "";
+  }
+
+  function isPreviewParityLayoutMode(){
+    return readPreviewLayoutMode() === "parity";
   }
 
   function restoreNodeBaseline(node){
@@ -272,10 +319,11 @@ export function buildScript(cfg: NormalizedConfig): string {
     if(!ENABLED) return;
     var embeddedContext = detectEmbeddedContext();
     var previewDocument = isPreviewDocument();
+    var parityPreviewLayout = previewDocument && embeddedContext && isPreviewParityLayoutMode();
 
     if(!isMobile()) {
       Array.from(document.querySelectorAll(".sec")).forEach(function(sec){
-        if (previewDocument && embeddedContext) {
+        if (previewDocument && embeddedContext && !parityPreviewLayout) {
           resetFixedSectionInlineHeight(sec);
         }
         var content = sec.querySelector(".sec-content");
@@ -299,11 +347,24 @@ export function buildScript(cfg: NormalizedConfig): string {
       var secModo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
       var allowReflow = shouldProcessSection(sec);
       var isEmbeddedPreview = previewDocument && embeddedContext;
+      var usePublishLikeHeightModel = !isEmbeddedPreview || parityPreviewLayout;
       mslLog("section:start", { secIndex: secIndex, modo: secModo, allowReflow: allowReflow });
 
-      if (isEmbeddedPreview) {
+      if (isEmbeddedPreview && !parityPreviewLayout) {
         resetFixedSectionInlineHeight(sec);
       }
+      if (isEmbeddedPreview && parityPreviewLayout && secModo === "fijo") {
+        resetFixedSectionInlineHeight(sec);
+        if (!hasPreparedFixedSectionScale(sec)) {
+          sec.setAttribute("data-msl-height-model", "publish-like-pending");
+          mslLog("section:skip:pendingFixedScale", { secIndex: secIndex, modo: secModo });
+          return;
+        }
+      }
+      sec.setAttribute(
+        "data-msl-height-model",
+        usePublishLikeHeightModel ? "publish-like" : "embedded-preview"
+      );
 
       var content = sec.querySelector(".sec-content");
       if(!content) return;
@@ -388,7 +449,7 @@ export function buildScript(cfg: NormalizedConfig): string {
           finalNeededHeight: +neededHeight.toFixed(1)
         });
         if (secModo === "fijo") {
-          if (isEmbeddedPreview) {
+          if (isEmbeddedPreview && !parityPreviewLayout) {
             if (neededHeight > 0) {
               sec.style.height = Math.ceil(neededHeight) + "px";
             } else {
@@ -466,7 +527,7 @@ export function buildScript(cfg: NormalizedConfig): string {
       var contentW = contentRect.width || 0;
       var secCurrentH = sec.getBoundingClientRect().height || 0;
       var baseHeightAttr = "data-msl-base-height";
-      var shouldPersistBaseHeight = !isEmbeddedPreview;
+      var shouldPersistBaseHeight = usePublishLikeHeightModel;
       if (shouldPersistBaseHeight && !sec.hasAttribute(baseHeightAttr)) {
         sec.setAttribute(baseHeightAttr, String(secCurrentH));
       }
@@ -523,7 +584,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         if (btm > maxOriginalBottom) maxOriginalBottom = btm;
       }
       var baseBottomGap = Math.max(0, baseSecHeight - maxOriginalBottom);
-      if (isEmbeddedPreview) {
+      if (isEmbeddedPreview && !parityPreviewLayout) {
         // En preview embebida el viewport puede estabilizarse en varios ticks.
         // Evitamos conservar gaps de runs previos que inflan secciones fijas.
         baseBottomGap = Math.max(0, secCurrentH - maxOriginalBottom);
@@ -1193,7 +1254,7 @@ export function buildScript(cfg: NormalizedConfig): string {
   if(window.visualViewport){
     window.visualViewport.addEventListener("resize", runOnce);
     window.visualViewport.addEventListener("scroll", function(){
-      if (isPreviewDocument() && detectEmbeddedContext()) return;
+      if (isPreviewDocument() && detectEmbeddedContext() && !isPreviewParityLayoutMode()) return;
       runOnce();
     });
   }

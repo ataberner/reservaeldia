@@ -15,6 +15,11 @@ import {
   MOBILE_VIEWPORT_HEIGHT,
   MOBILE_VIEWPORT_WIDTH,
 } from "@/components/preview/modalVistaPreviaLayout";
+import {
+  applyPreviewFrameScale,
+  buildPreviewFrameSrcDoc,
+  resolvePreviewFrameLayoutMode,
+} from "@/components/preview/previewFrameRuntime";
 import PreviewPublishNoticeLayer from "@/components/preview/PreviewPublishNoticeLayer";
 
 const SECONDARY_TOOLBAR_BUTTON_CLASS =
@@ -23,103 +28,13 @@ const SECONDARY_TOOLBAR_BUTTON_CLASS =
 const ICON_TOOLBAR_BUTTON_CLASS =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd2f5] bg-white/92 text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
 
-function applyPreviewFrameScale(event, scale, previewViewport = "") {
-  const safeScale = Number(scale);
-  const frameDocument = event?.target?.contentDocument;
-  const frameWindow = event?.target?.contentWindow;
-  if (!frameDocument || !Number.isFinite(safeScale) || safeScale <= 0) return;
-
-  const scaleValue = String(safeScale);
-  const viewportValue = String(previewViewport || "").trim().toLowerCase();
-  frameDocument.documentElement?.setAttribute?.("data-preview-scale", scaleValue);
-  frameDocument.body?.setAttribute?.("data-preview-scale", scaleValue);
-  if (viewportValue) {
-    frameDocument.documentElement?.setAttribute?.("data-preview-viewport", viewportValue);
-    frameDocument.body?.setAttribute?.("data-preview-viewport", viewportValue);
-  }
-
-  try {
-    frameDocument.documentElement.style.scrollbarWidth = "none";
-    frameDocument.documentElement.style.msOverflowStyle = "none";
-    frameDocument.body.style.scrollbarWidth = "none";
-    frameDocument.body.style.msOverflowStyle = "none";
-    if (viewportValue === "mobile") {
-      frameDocument.documentElement.style.height = "auto";
-      frameDocument.documentElement.style.minHeight = "100%";
-      frameDocument.documentElement.style.overflowX = "hidden";
-      frameDocument.documentElement.style.overflowY = "auto";
-      frameDocument.documentElement.style.overscrollBehavior = "contain";
-      frameDocument.documentElement.style.overscrollBehaviorY = "contain";
-      frameDocument.documentElement.style.scrollBehavior = "auto";
-      frameDocument.body.style.height = "auto";
-      frameDocument.body.style.minHeight = "100%";
-      frameDocument.body.style.overflowX = "hidden";
-      frameDocument.body.style.overflowY = "hidden";
-      frameDocument.body.style.overscrollBehavior = "none";
-      frameDocument.body.style.overscrollBehaviorY = "none";
-    }
-
-    const styleId = "preview-frame-hide-scrollbars";
-    let styleNode = frameDocument.getElementById(styleId);
-    if (!styleNode) {
-      styleNode = frameDocument.createElement("style");
-      styleNode.id = styleId;
-      styleNode.textContent = `
-        html[data-preview-viewport="mobile"] {
-          height: auto !important;
-          min-height: 100% !important;
-          overflow-x: hidden !important;
-          overflow-y: auto !important;
-          overscroll-behavior: contain !important;
-          overscroll-behavior-y: contain !important;
-          scroll-behavior: auto !important;
-        }
-        body[data-preview-viewport="mobile"] {
-          height: auto !important;
-          min-height: 100% !important;
-          overflow-x: hidden !important;
-          overflow-y: hidden !important;
-          overscroll-behavior: none !important;
-          overscroll-behavior-y: none !important;
-        }
-        html::-webkit-scrollbar,
-        body::-webkit-scrollbar {
-          display: none !important;
-          width: 0 !important;
-          height: 0 !important;
-        }
-      `;
-      frameDocument.head?.appendChild(styleNode);
-    }
-  } catch (_error) {
-    // noop
-  }
-
-  try {
-    if (frameWindow) {
-      frameWindow.__previewScale = safeScale;
-      frameWindow.__previewViewportKind = viewportValue;
-      frameWindow.dispatchEvent(new frameWindow.Event("preview:mobile-scroll:enable"));
-    }
-  } catch (_error) {
-    // noop
-  }
-
-  if (!frameWindow?.requestAnimationFrame) return;
-  frameWindow.requestAnimationFrame(() => {
-    try {
-      frameWindow.dispatchEvent(new frameWindow.Event("resize"));
-    } catch (_error) {
-      // noop
-    }
-  });
-}
-
 function PreviewFrame({
   htmlContent,
   iframeKey,
   iframeTitle,
   scale,
+  previewViewport,
+  previewLayoutMode,
   viewportWidth,
   viewportHeight,
   scaledWidth,
@@ -145,7 +60,10 @@ function PreviewFrame({
         {htmlContent ? (
           <iframe
             key={iframeKey}
-            srcDoc={htmlContent}
+            srcDoc={buildPreviewFrameSrcDoc(htmlContent, {
+              previewViewport,
+              layoutMode: previewLayoutMode,
+            })}
             sandbox="allow-scripts allow-same-origin"
             title={iframeTitle}
             onLoad={(event) => {
@@ -223,6 +141,7 @@ function DesktopPreviewShell({
   iframeKey,
   onLoad,
   scale,
+  previewLayoutMode,
   variant = "compact",
   showFrameLabel = false,
 }) {
@@ -259,6 +178,8 @@ function DesktopPreviewShell({
             iframeKey={iframeKey}
             iframeTitle="Vista previa escritorio"
             scale={scale}
+            previewViewport="desktop"
+            previewLayoutMode={previewLayoutMode}
             viewportWidth={DESKTOP_VIEWPORT_WIDTH}
             viewportHeight={DESKTOP_VIEWPORT_HEIGHT}
             scaledWidth={frameWidth}
@@ -280,6 +201,7 @@ function MobilePreviewShell({
   iframeKey,
   onLoad,
   scale,
+  previewLayoutMode,
   variant = "compact",
 }) {
   const shellClass =
@@ -306,6 +228,8 @@ function MobilePreviewShell({
             iframeKey={iframeKey}
             iframeTitle="Vista previa movil"
             scale={scale}
+            previewViewport="mobile"
+            previewLayoutMode={previewLayoutMode}
             viewportWidth={MOBILE_VIEWPORT_WIDTH}
             viewportHeight={MOBILE_VIEWPORT_HEIGHT}
             scaledWidth={frameWidth}
@@ -344,11 +268,13 @@ export default function ModalVistaPrevia({
   const modalPanelRef = useRef(null);
   const publishActionsRef = useRef(null);
   const stageRef = useRef(null);
+  const previewLayoutMode = resolvePreviewFrameLayoutMode();
   const previewUrl =
     String(previewDisplayUrl || "").trim() || "https://reservaeldia.com.ar/i/...";
   const confirmedPublicUrl = String(publishedUrl || publicUrl || "").trim();
   const yaPublicada = Boolean(confirmedPublicUrl);
   const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
+  const fullscreenViewport = isMobileViewport ? "mobile" : "desktop";
   const layout = computeModalVistaPreviaLayout({
     stageWidth: stageSize.width,
     stageHeight: stageSize.height,
@@ -378,7 +304,8 @@ export default function ModalVistaPrevia({
   useEffect(() => {
     if (!visible) return;
     setIframeKey((k) => k + 1);
-  }, [visible]);
+    setFullscreenIframeKey((k) => k + 1);
+  }, [visible, htmlContent]);
 
   useEffect(() => {
     if (visible) return;
@@ -539,7 +466,9 @@ export default function ModalVistaPrevia({
 
   const handleDesktopLoad = ({ event, scale }) => {
     if (!htmlContent) return;
-    applyPreviewFrameScale(event, scale, "desktop");
+    applyPreviewFrameScale(event, scale, "desktop", {
+      layoutMode: previewLayoutMode,
+    });
     captureCountdownAuditFromHtmlString(htmlContent, {
       stage: showPublishActions
         ? "draft-preview-desktop"
@@ -554,7 +483,9 @@ export default function ModalVistaPrevia({
 
   const handleMobileLoad = ({ event, scale }) => {
     if (!htmlContent) return;
-    applyPreviewFrameScale(event, scale, "mobile");
+    applyPreviewFrameScale(event, scale, "mobile", {
+      layoutMode: previewLayoutMode,
+    });
     captureCountdownAuditFromHtmlString(htmlContent, {
       stage: showPublishActions
         ? "draft-preview-mobile"
@@ -576,6 +507,7 @@ export default function ModalVistaPrevia({
       htmlContent={htmlContent}
       iframeKey={`desktop-${iframeKey}`}
       scale={layout.desktopFrame.scale}
+      previewLayoutMode={previewLayoutMode}
       variant={desktopVariant}
       showFrameLabel={layout.mode !== "stacked-priority"}
       onLoad={handleDesktopLoad}
@@ -591,6 +523,7 @@ export default function ModalVistaPrevia({
       htmlContent={htmlContent}
       iframeKey={`mobile-${iframeKey}`}
       scale={layout.mobileFrame.scale}
+      previewLayoutMode={previewLayoutMode}
       variant={mobileVariant}
       onLoad={handleMobileLoad}
     />
@@ -613,7 +546,10 @@ export default function ModalVistaPrevia({
         {htmlContent ? (
           <iframe
             key={`fullscreen-${fullscreenIframeKey}`}
-            srcDoc={htmlContent}
+            srcDoc={buildPreviewFrameSrcDoc(htmlContent, {
+              previewViewport: fullscreenViewport,
+              layoutMode: previewLayoutMode,
+            })}
             sandbox="allow-scripts allow-same-origin"
             title={
               isMobileViewport
@@ -625,6 +561,14 @@ export default function ModalVistaPrevia({
               height: "100%",
               border: "none",
               display: "block",
+            }}
+            onLoad={(event) => {
+              applyPreviewFrameScale(
+                event,
+                1,
+                fullscreenViewport,
+                { layoutMode: previewLayoutMode }
+              );
             }}
           />
         ) : (

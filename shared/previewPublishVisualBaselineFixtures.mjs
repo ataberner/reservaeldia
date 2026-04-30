@@ -81,6 +81,75 @@ function upsertObject(draft, object) {
   return next;
 }
 
+function upsertObjects(draft, objects) {
+  return (Array.isArray(objects) ? objects : []).reduce(
+    (nextDraft, object) => upsertObject(nextDraft, object),
+    draft
+  );
+}
+
+function readFirstDecorationAsset(section, fallbackSlot) {
+  const decorations = section?.decoracionesFondo;
+  if (!decorations || typeof decorations !== "object") return null;
+
+  const direct =
+    fallbackSlot === "top"
+      ? decorations.superior
+      : decorations.inferior;
+  if (direct && typeof direct === "object") return direct;
+
+  const items = Array.isArray(decorations.items) ? decorations.items : [];
+  return fallbackSlot === "top" ? items[0] || null : items[1] || null;
+}
+
+function withHeroEdgeDecorations(draft) {
+  const next = deepClone(draft);
+  next.secciones = (Array.isArray(next.secciones) ? next.secciones : []).map((section) => {
+    if (section?.id !== "section-hero") return section;
+
+    const top = readFirstDecorationAsset(section, "top");
+    const bottom = readFirstDecorationAsset(section, "bottom");
+    return {
+      ...section,
+      decoracionesBorde: {
+        ...(top
+          ? {
+              top: {
+                enabled: true,
+                src: top.src || top.url || "",
+                storagePath: top.storagePath || null,
+                decorId: top.decorId || null,
+                nombre: top.nombre || "Decoracion superior",
+                heightDesktopRatio: 0.38,
+                heightMobileRatio: 0.22,
+                offsetDesktopPx: 0,
+                offsetMobilePx: 0,
+                mode: "cover-x",
+              },
+            }
+          : {}),
+        ...(bottom
+          ? {
+              bottom: {
+                enabled: true,
+                src: bottom.src || bottom.url || "",
+                storagePath: bottom.storagePath || null,
+                decorId: bottom.decorId || null,
+                nombre: bottom.nombre || "Decoracion inferior",
+                heightDesktopRatio: 0.34,
+                heightMobileRatio: 0.18,
+                offsetDesktopPx: 0,
+                offsetMobilePx: 0,
+                mode: "cover-x",
+              },
+            }
+          : {}),
+      },
+    };
+  });
+  return next;
+}
+
 function createPantallaTextObject({
   id = "hero-title",
   texto = "Nos casamos",
@@ -155,6 +224,149 @@ function createPreservedGroupObject({
       },
     ],
   };
+}
+
+function createMobileReflowColumnObjects({ seccionId = "section-details" } = {}) {
+  return [
+    {
+      id: "mobile-column-left-title",
+      tipo: "texto",
+      seccionId,
+      x: 72,
+      y: 78,
+      width: 220,
+      texto: "Ceremonia",
+      fontSize: 30,
+      colorTexto: "#2f2a27",
+    },
+    {
+      id: "mobile-column-left-copy",
+      tipo: "texto",
+      seccionId,
+      x: 72,
+      y: 124,
+      width: 220,
+      texto: "La ceremonia comienza puntual.",
+      fontSize: 20,
+      colorTexto: "#4c4640",
+    },
+    {
+      id: "mobile-column-right-title",
+      tipo: "texto",
+      seccionId,
+      x: 458,
+      y: 78,
+      width: 220,
+      texto: "Fiesta",
+      fontSize: 30,
+      colorTexto: "#2f2a27",
+    },
+    {
+      id: "mobile-column-right-copy",
+      tipo: "texto",
+      seccionId,
+      x: 458,
+      y: 124,
+      width: 220,
+      texto: "Cena, musica y brindis.",
+      fontSize: 20,
+      colorTexto: "#4c4640",
+    },
+  ];
+}
+
+function createOverflowObjects({ seccionId = "section-details" } = {}) {
+  return [
+    {
+      id: "overflow-title",
+      tipo: "texto",
+      seccionId,
+      x: 80,
+      y: 420,
+      width: 320,
+      texto: "Ultimos detalles",
+      fontSize: 34,
+      colorTexto: "#2f2a27",
+    },
+    {
+      id: "overflow-copy",
+      tipo: "texto",
+      seccionId,
+      x: 80,
+      y: 502,
+      width: 520,
+      texto: "Este bloque protege la expansion mobile de secciones fijas cuando el contenido queda por debajo del alto base.",
+      fontSize: 22,
+      colorTexto: "#4c4640",
+    },
+  ];
+}
+
+function createGroupedCtaObject({
+  id = "grouped-rsvp-visual",
+  seccionId = "section-details",
+} = {}) {
+  return {
+    id,
+    tipo: "grupo",
+    seccionId,
+    anclaje: "content",
+    x: 92,
+    y: 84,
+    width: 280,
+    height: 152,
+    children: [
+      {
+        id: `${id}-button`,
+        tipo: "rsvp-boton",
+        x: 18,
+        y: 54,
+        width: 240,
+        height: 54,
+        texto: "Confirmar asistencia",
+      },
+      {
+        id: `${id}-ornament`,
+        tipo: "forma",
+        figura: "rect",
+        x: 0,
+        y: 40,
+        width: 280,
+        height: 86,
+        color: "rgba(240,211,106,0.18)",
+        cornerRadius: 18,
+      },
+    ],
+  };
+}
+
+function createFullbleedMixedObjects({ seccionId = "section-details" } = {}) {
+  return [
+    {
+      id: "fixed-fullbleed-band",
+      tipo: "forma",
+      figura: "rect",
+      seccionId,
+      anclaje: "fullbleed",
+      x: 0,
+      y: 36,
+      width: 800,
+      height: 220,
+      color: "#edf7f8",
+    },
+    {
+      id: "fixed-content-over-bleed",
+      tipo: "texto",
+      seccionId,
+      anclaje: "content",
+      x: 96,
+      y: 104,
+      width: 360,
+      texto: "Contenido sobre banda fullbleed",
+      fontSize: 32,
+      colorTexto: "#2f2a27",
+    },
+  ];
 }
 
 function createVisualBaselineCase({
@@ -309,7 +521,184 @@ const mixedFixedAndScreenPublishDraft = upsertObject(
   })
 );
 
+const fixedReflowColumnsPreviewDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createMobileReflowColumnObjects()
+);
+const fixedReflowColumnsPublishDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createMobileReflowColumnObjects()
+);
+
+const fixedOverflowPreviewDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createOverflowObjects()
+);
+const fixedOverflowPublishDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createOverflowObjects()
+);
+
+const groupedCtaPreviewDraft = upsertObject(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createGroupedCtaObject()
+);
+const groupedCtaPublishDraft = upsertObject(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createGroupedCtaObject()
+);
+
+const groupNestedChildrenPreviewDraft = upsertObject(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createPreservedGroupObject({
+    id: "mobile-group-nested-children",
+    seccionId: "section-details",
+    x: 96,
+    y: 116,
+  })
+);
+const groupNestedChildrenPublishDraft = upsertObject(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createPreservedGroupObject({
+    id: "mobile-group-nested-children",
+    seccionId: "section-details",
+    x: 96,
+    y: 116,
+  })
+);
+
+const fixedFullbleedMixedPreviewDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createFullbleedMixedObjects()
+);
+const fixedFullbleedMixedPublishDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createFullbleedMixedObjects()
+);
+
+const pantallaYNormPreviewDraft = upsertObjects(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+      sectionIds: ["section-hero"],
+      objectIds: [],
+    })
+  ),
+  [
+    createPantallaTextObject({
+      id: "pantalla-ynorm-top",
+      texto: "Arriba",
+      x: 96,
+      y: 96,
+      yNorm: 0.19,
+      width: 260,
+      fontSize: 34,
+    }),
+    createPantallaTextObject({
+      id: "pantalla-ynorm-bottom",
+      texto: "Abajo",
+      x: 96,
+      y: 342,
+      yNorm: 0.684,
+      width: 260,
+      fontSize: 34,
+    }),
+  ]
+);
+const pantallaYNormPublishDraft = upsertObjects(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+      sectionIds: ["section-hero"],
+      objectIds: [],
+    })
+  ),
+  [
+    createPantallaTextObject({
+      id: "pantalla-ynorm-top",
+      texto: "Arriba",
+      x: 96,
+      y: 96,
+      yNorm: 0.19,
+      width: 260,
+      fontSize: 34,
+    }),
+    createPantallaTextObject({
+      id: "pantalla-ynorm-bottom",
+      texto: "Abajo",
+      x: 96,
+      y: 342,
+      yNorm: 0.684,
+      width: 260,
+      fontSize: 34,
+    }),
+  ]
+);
+
+const edgeDecorationsPreviewDraft = withHeroEdgeDecorations(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+      sectionIds: ["section-hero"],
+      objectIds: [],
+    })
+  )
+);
+const edgeDecorationsPublishDraft = withHeroEdgeDecorations(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+      sectionIds: ["section-hero"],
+      objectIds: [],
+    })
+  )
+);
+
 export const previewPublishVisualBaselineFixtures = Object.freeze([
+  createVisualBaselineCase({
+    id: "edge-decorations-pantalla",
+    label: "Edge decorations in pantalla section",
+    purpose: "Freeze top and bottom section-owned edge ornaments as viewport-width non-object layers.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: edgeDecorationsPreviewDraft,
+    publishDraft: edgeDecorationsPublishDraft,
+    focusCheckpoints: [
+      "top and bottom edge bands span the viewport width",
+      "responsive edge heights remain balanced in desktop and mobile",
+      "edge ornaments do not become .objeto nodes or smart-layout units",
+      "pantalla zoom compensation keeps edge anchors stable in mobile preview and publish",
+    ],
+    notes: [
+      "Uses the same decorative assets as the representative hero section but through decoracionesBorde.",
+    ],
+  }),
   createVisualBaselineCase({
     id: "simple-pantalla-section",
     label: "Simple pantalla section",
@@ -416,6 +805,90 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
     ],
     notes: [
       "Keeps the representative multi-section parity fixture intact and adds one pantalla title for legibility.",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-reflow-columns",
+    label: "Fixed section reflow columns",
+    purpose: "Freeze the two-column mobile smart-layout path for fixed sections.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedReflowColumnsPreviewDraft,
+    publishDraft: fixedReflowColumnsPublishDraft,
+    focusCheckpoints: [
+      "fixed sections remain the only smart-reflow section mode",
+      "column groups stack consistently in mobile preview and publish",
+      "section height after reflow stays within the same geometry tolerance",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-overflow-expansion",
+    label: "Fixed section overflow expansion",
+    purpose: "Freeze fixed-section expansion when mobile content exceeds the authored height.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedOverflowPreviewDraft,
+    publishDraft: fixedOverflowPublishDraft,
+    focusCheckpoints: [
+      "overflowing content expands the fixed section consistently",
+      "preview does not preserve stale embedded iframe gaps",
+      "downstream section offsets stay stable after expansion",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "grouped-cta-fixed-section",
+    label: "Grouped CTA in fixed section",
+    purpose: "Freeze grouped functional CTA positioning and hit-layer preservation in mobile reflow.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: groupedCtaPreviewDraft,
+    publishDraft: groupedCtaPublishDraft,
+    focusCheckpoints: [
+      "group wrapper remains the mobile layout unit",
+      "CTA child remains nested and interactive",
+      "decorative grouped siblings do not change CTA stacking",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "group-nested-children",
+    label: "Group with nested children",
+    purpose: "Freeze nested group child offsets relative to the group wrapper.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: groupNestedChildrenPreviewDraft,
+    publishDraft: groupNestedChildrenPublishDraft,
+    focusCheckpoints: [
+      "children stay nested rather than becoming top-level mobile reflow objects",
+      "child offsets remain relative to the group wrapper",
+      "mobile reflow moves the group atomically",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-fullbleed-mixed-lanes",
+    label: "Fixed fullbleed mixed lanes",
+    purpose: "Freeze fullbleed/content lane separation inside a fixed section.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedFullbleedMixedPreviewDraft,
+    publishDraft: fixedFullbleedMixedPublishDraft,
+    focusCheckpoints: [
+      "fullbleed objects stay in the bleed lane",
+      "content objects stay in the content lane",
+      "fit scale does not collapse lane intent",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "pantalla-ynorm-positioning",
+    label: "Pantalla yNorm positioning",
+    purpose: "Freeze multiple yNorm positions in one pantalla section.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: pantallaYNormPreviewDraft,
+    publishDraft: pantallaYNormPublishDraft,
+    focusCheckpoints: [
+      "pantalla sections do not enter fixed smart reflow",
+      "yNorm objects keep relative vertical spacing",
+      "viewport-fit formulas stay consistent between preview and publish",
     ],
   }),
 ]);

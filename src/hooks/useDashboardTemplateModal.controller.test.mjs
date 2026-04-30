@@ -6,6 +6,7 @@ import {
   createDashboardTemplateModalControllerRuntime,
   resolveDashboardTemplateModalViewState,
 } from "./useDashboardTemplateModal.js";
+import { PREVIEW_AUTHORITY } from "../domain/dashboard/previewSession.js";
 
 function createDeferred() {
   let resolve;
@@ -323,6 +324,7 @@ test("preview html stays cached by template id across modal close and reopen", a
     {
       status: "ready",
       error: "",
+      previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
     }
   );
 
@@ -349,6 +351,58 @@ test("preview html stays cached by template id across modal close and reopen", a
     {
       status: "ready",
       error: "",
+      previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+    }
+  );
+});
+
+test("catalog fallback template preview stays visual-only when full template lookup misses", async () => {
+  const previewCalls = [];
+  const catalogTemplate = createCatalogTemplate({
+    id: "tpl-catalog-fallback",
+    nombre: "Plantilla catalogo fallback",
+    secciones: [
+      {
+        id: "sec-catalog",
+      },
+    ],
+    objetos: [
+      {
+        id: "obj-catalog",
+        tipo: "texto",
+        seccionId: "sec-catalog",
+      },
+    ],
+  });
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async () => null,
+      generatePreviewHtml: async (template) => {
+        previewCalls.push(template);
+        return "<html>catalog-fallback-preview</html>";
+      },
+      resolvePreviewSource: () => ({
+        mode: "generated",
+        previewUrl: null,
+      }),
+    },
+  });
+
+  harness.controller.openTemplateModal(catalogTemplate);
+  await flushMicrotasks();
+
+  assert.equal(previewCalls.length, 1);
+  assert.equal(previewCalls[0].id, "tpl-catalog-fallback");
+  assert.equal(
+    harness.getDerivedViewState().selectedTemplatePreviewHtml,
+    "<html>catalog-fallback-preview</html>"
+  );
+  assert.deepEqual(
+    harness.getDerivedViewState().selectedTemplatePreviewState,
+    {
+      status: "ready",
+      error: "",
+      previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
     }
   );
 });

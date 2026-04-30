@@ -23,6 +23,7 @@ import {
   listPublicationDiscountCodesHandler,
   listPublicationDiscountCodeUsageHandler,
   processMercadoPagoWebhookRequest,
+  prepareDraftPreviewRenderHandler,
   purgeTrashedPublicationsHandler,
   publishWithApprovedPaymentSession,
   retryPaidPublicationWithNewSlugHandler,
@@ -1340,6 +1341,11 @@ export const checkPublicSlugAvailability = onCall(
 export const validateDraftForPublication = onCall(
   { region: "us-central1", memory: "256MiB" },
   async (request) => validateDraftForPublicationHandler(request)
+);
+
+export const prepareDraftPreviewRender = onCall(
+  { region: "us-central1", memory: "512MiB" },
+  async (request) => prepareDraftPreviewRenderHandler(request)
 );
 
 export const createPublicationCheckoutSession = onCall(

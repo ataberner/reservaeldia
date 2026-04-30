@@ -215,12 +215,15 @@ export default function useOptionButtonPosition({
       overlaySelection.selectedIds.length >= 2;
     const hasBackgroundDecorationSelection =
       overlayKind === "background-decoration" && Boolean(overlayMenuItem?.id);
+    const hasSectionEdgeDecorationSelection =
+      overlayKind === "section-edge-decoration" && Boolean(overlayMenuItem?.id);
     const hasSectionBaseImageSelection =
       overlayKind === "section-base-image" && Boolean(overlaySelection?.sectionId);
     if (
       !hasObjectSelection &&
       !hasMultiSelection &&
       !hasBackgroundDecorationSelection &&
+      !hasSectionEdgeDecorationSelection &&
       !hasSectionBaseImageSelection
     ) {
       return null;
@@ -233,13 +236,21 @@ export default function useOptionButtonPosition({
         ? "multi-selection"
       : hasSectionBaseImageSelection
         ? "section-base-image"
+      : hasSectionEdgeDecorationSelection
+        ? "section-edge-decoration"
         : "background-decoration";
     const nodeRef = hasObjectSelection
       ? elementRefs.current[elementosSeleccionados[0]]
       : hasSectionBaseImageSelection
         ? overlayNodeRefs?.current?.[overlaySelection.sectionId] || null
       : null;
-    if ((!nodeRef && !hasMultiSelection && !hasBackgroundDecorationSelection) || !stage) return null;
+    if (
+      (!nodeRef &&
+        !hasMultiSelection &&
+        !hasBackgroundDecorationSelection &&
+        !hasSectionEdgeDecorationSelection) ||
+      !stage
+    ) return null;
 
     try {
       const box =
@@ -299,6 +310,8 @@ export default function useOptionButtonPosition({
           ? `multi:${overlaySelection.selectedIds.join(",")}`
         : hasSectionBaseImageSelection
           ? overlayMenuItem?.id || `section-base-image:${overlaySelection.sectionId}`
+          : hasSectionEdgeDecorationSelection
+            ? overlayMenuItem?.id || "section-edge-decoration"
           : overlayMenuItem?.id || "background-decoration";
       const round = (value) => {
         const numeric = Number(value);
@@ -438,6 +451,8 @@ export default function useOptionButtonPosition({
           ? "multi-selection"
         : overlayKind === "section-base-image"
           ? "section-base-image"
+          : overlayKind === "section-edge-decoration"
+            ? "section-edge-decoration"
           : overlayKind === "background-decoration"
             ? "background-decoration"
             : "none";
@@ -449,6 +464,8 @@ export default function useOptionButtonPosition({
       overlaySelection.selectedIds.length >= 2;
     const hasBackgroundDecorationSelection =
       overlayKind === "background-decoration" && Boolean(overlayMenuItem?.id);
+    const hasSectionEdgeDecorationSelection =
+      overlayKind === "section-edge-decoration" && Boolean(overlayMenuItem?.id);
     const hasSectionBaseImageSelection =
       overlayKind === "section-base-image" && Boolean(overlaySelection?.sectionId);
 
@@ -456,6 +473,7 @@ export default function useOptionButtonPosition({
       !hasObjectSelection &&
       !hasMultiSelection &&
       !hasBackgroundDecorationSelection &&
+      !hasSectionEdgeDecorationSelection &&
       !hasSectionBaseImageSelection
     ) {
       ocultarBotonOpciones("selection-count", {
@@ -463,6 +481,7 @@ export default function useOptionButtonPosition({
         count: elementosSeleccionados.length,
         hasMultiSelection,
         hasBackgroundDecorationSelection,
+        hasSectionEdgeDecorationSelection,
         hasSectionBaseImageSelection,
       });
       finishPerf?.({ reason: "selection-count" });
@@ -475,13 +494,20 @@ export default function useOptionButtonPosition({
       : hasSectionBaseImageSelection
         ? overlayNodeRefs?.current?.[overlaySelection.sectionId] || null
       : null;
-    if ((!nodeRef && !hasMultiSelection && !hasBackgroundDecorationSelection) || !stage) {
+    if (
+      (!nodeRef &&
+        !hasMultiSelection &&
+        !hasBackgroundDecorationSelection &&
+        !hasSectionEdgeDecorationSelection) ||
+      !stage
+    ) {
       ocultarBotonOpciones("missing-node-or-stage", {
         source,
         hasNode: Boolean(nodeRef),
         hasStage: Boolean(stage),
         hasMultiSelection,
         hasBackgroundDecorationSelection,
+        hasSectionEdgeDecorationSelection,
         hasSectionBaseImageSelection,
       });
       finishPerf?.({ reason: "missing-node-or-stage" });
@@ -510,6 +536,7 @@ export default function useOptionButtonPosition({
           hasObjectSelection,
           hasMultiSelection,
           hasBackgroundDecorationSelection,
+          hasSectionEdgeDecorationSelection,
           hasSectionBaseImageSelection,
         });
         finishPerf?.({ reason: "missing-box" });
@@ -664,6 +691,8 @@ export default function useOptionButtonPosition({
           ? "object"
           : hasSectionBaseImageSelection
             ? "section-base-image"
+            : hasSectionEdgeDecorationSelection
+              ? "section-edge-decoration"
             : "background-decoration",
       });
 
@@ -689,6 +718,8 @@ export default function useOptionButtonPosition({
               ? "multi-selection"
             : hasSectionBaseImageSelection
               ? "section-base-image"
+              : hasSectionEdgeDecorationSelection
+                ? "section-edge-decoration"
               : "background-decoration",
           pointerType: nativeEvent?.pointerType ?? null,
           nativeEventType: nativeEvent?.type ?? null,
@@ -817,6 +848,8 @@ export default function useOptionButtonPosition({
             overlaySelection.selectedIds.length >= 2
         : overlaySelection?.kind === "background-decoration"
           ? Boolean(overlaySelection?.menuItem?.id)
+        : overlaySelection?.kind === "section-edge-decoration"
+          ? Boolean(overlaySelection?.menuItem?.id)
           : overlaySelection?.kind === "section-base-image"
             ? Boolean(overlaySelection?.sectionId)
             : false;
@@ -932,6 +965,8 @@ export default function useOptionButtonPosition({
           Array.isArray(overlaySelection?.selectedIds) &&
           overlaySelection.selectedIds.length >= 2) ||
         (overlaySelection?.kind === "background-decoration" &&
+          overlaySelection?.menuItem?.id) ||
+        (overlaySelection?.kind === "section-edge-decoration" &&
           overlaySelection?.menuItem?.id) ||
         (overlaySelection?.kind === "section-base-image" &&
           overlaySelection?.sectionId)

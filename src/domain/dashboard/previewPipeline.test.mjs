@@ -5,6 +5,7 @@ import {
   buildDashboardPreviewDebugSummary,
   runDashboardPreviewPipeline,
 } from "./previewPipeline.js";
+import { PREVIEW_AUTHORITY } from "./previewSession.js";
 
 function createSnapshotRecord(id, data, exists = true) {
   return {
@@ -179,6 +180,10 @@ test("draft preview pipeline rereads persisted data, prefers the boundary snapsh
   });
 
   assert.equal(previewResult.status, "success");
+  assert.equal(
+    previewResult.previewAuthority,
+    PREVIEW_AUTHORITY.LOCAL_FALLBACK
+  );
   assert.equal(previewResult.htmlGenerado, "<html>preview-draft</html>");
   assert.equal(
     previewResult.urlPublicaDetectada,
@@ -200,6 +205,124 @@ test("draft preview pipeline rereads persisted data, prefers the boundary snapsh
   ]);
   assert.equal(generatorCall.rsvpPreviewConfig.enabled, false);
   assert.equal(debugPayload.objetos[0].id, "live-text-1");
+});
+
+test("draft preview pipeline uses backend prepared render output when the preview callable is provided", async () => {
+  let prepareCall = null;
+  let debugPayload = null;
+
+  const validation = {
+    canPublish: true,
+    blockers: [],
+    warnings: [],
+    summary: {
+      blockerCount: 0,
+      warningCount: 0,
+      blockingMessage: "",
+      warningMessage: "",
+    },
+  };
+
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-backend-preview",
+    canUsePublishCompatibility: true,
+    previewBoundarySnapshot: {
+      objetos: [{ id: "live-local-only", seccionId: "hero", tipo: "texto" }],
+      secciones: [{ id: "hero" }],
+    },
+    readDraftDocument: async () =>
+      createSnapshotRecord("draft-backend-preview", {
+        publicationLifecycle: {
+          activePublicSlug: "Backend Slug",
+        },
+        objetos: [{ id: "persisted-local-only", seccionId: "hero", tipo: "texto" }],
+        secciones: [{ id: "hero" }],
+      }),
+    readPublicationBySlug: async (publicSlug) =>
+      createSnapshotRecord(publicSlug, {
+        urlPublica: "https://reservaeldia.com.ar/i/backend-slug",
+      }),
+    prepareDraftPreviewRender: async (input) => {
+      prepareCall = input;
+      return {
+        previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
+        htmlGenerado: "<html>backend-prepared-preview</html>",
+        previewPayload: {
+          objetos: [{ id: "prepared-object", seccionId: "hero", tipo: "texto" }],
+          secciones: [{ id: "hero" }],
+        },
+        validation,
+      };
+    },
+    generateHtmlFromSections: async () => {
+      throw new Error("local generator should not run for backend prepared previews");
+    },
+    onBeforeGenerateHtml: ({ previewPayload }) => {
+      debugPayload = previewPayload;
+    },
+  });
+
+  assert.equal(previewResult.status, "success");
+  assert.equal(
+    previewResult.previewAuthority,
+    PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE
+  );
+  assert.equal(previewResult.htmlGenerado, "<html>backend-prepared-preview</html>");
+  assert.equal(previewResult.validation, validation);
+  assert.deepEqual(prepareCall, {
+    draftSlug: "draft-backend-preview",
+    slugPreview: "backend-slug",
+  });
+  assert.equal(debugPayload.objetos[0].id, "prepared-object");
+  assert.equal(previewResult.previewPayload.objetos[0].id, "prepared-object");
+});
+
+test("draft preview pipeline blocks trusted preview html when backend prepared validation has blockers", async () => {
+  const validation = {
+    canPublish: false,
+    blockers: [{ code: "missing-section-reference" }],
+    warnings: [],
+    summary: {
+      blockerCount: 1,
+      warningCount: 0,
+      blockingMessage: "No se puede publicar todavia: falta una seccion.",
+      warningMessage: "",
+    },
+  };
+
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-backend-blocked",
+    canUsePublishCompatibility: true,
+    readDraftDocument: async () =>
+      createSnapshotRecord("draft-backend-blocked", {
+        objetos: [{ id: "broken", tipo: "texto", seccionId: "missing" }],
+        secciones: [],
+      }),
+    prepareDraftPreviewRender: async () => ({
+      blocked: true,
+      htmlGenerado: null,
+      previewPayload: {
+        objetos: [{ id: "broken", tipo: "texto", seccionId: "missing" }],
+        secciones: [],
+      },
+      validation,
+    }),
+    generateHtmlFromSections: async () => {
+      throw new Error("local generator should not run for blocked backend previews");
+    },
+  });
+
+  assert.equal(previewResult.status, "blocked");
+  assert.equal(
+    previewResult.previewAuthority,
+    PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE
+  );
+  assert.equal(previewResult.htmlGenerado, "");
+  assert.equal(previewResult.validation, validation);
+  assert.equal(
+    previewResult.blockingMessage,
+    "No se puede publicar todavia: falta una seccion."
+  );
 });
 
 test("draft preview pipeline rereads persisted data and overlays live layout state without overriding persisted CTA root config", async () => {
@@ -479,6 +602,10 @@ test("template preview pipeline reads the template document and skips publicatio
   });
 
   assert.equal(previewResult.status, "success");
+  assert.equal(
+    previewResult.previewAuthority,
+    PREVIEW_AUTHORITY.TEMPLATE_VISUAL
+  );
   assert.equal(previewResult.htmlGenerado, "<html>preview-template</html>");
   assert.equal(previewResult.slugPublicoDetectado, "");
   assert.equal(previewResult.urlPublicaDetectada, "");
@@ -506,6 +633,7 @@ test("preview pipeline returns missing-template when the template editor documen
 
   assert.deepEqual(previewResult, {
     status: "missing-template",
+    previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
   });
 });
 
@@ -519,6 +647,7 @@ test("preview pipeline returns missing-draft when the draft document cannot be r
 
   assert.deepEqual(previewResult, {
     status: "missing-draft",
+    previewAuthority: PREVIEW_AUTHORITY.LOCAL_FALLBACK,
   });
 });
 

@@ -1,7 +1,10 @@
 import { normalizeRsvpConfig } from "../../../domain/rsvp/config.js";
 import { normalizeGiftConfig } from "../../../domain/gifts/config.js";
 import { normalizePantallaObjectPosition } from "../../../domain/drafts/pantallaPosition.js";
-import { buildSectionDecorationsPayload } from "../../../domain/sections/backgrounds.js";
+import {
+  buildSectionDecorationsPayload,
+  buildSectionEdgeDecorationsPayload,
+} from "../../../domain/sections/backgrounds.js";
 import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
 
 function normalizeCountdownObjectGeometry(obj) {
@@ -35,12 +38,21 @@ function normalizeCountdownObjectGeometry(obj) {
 function normalizeSectionPersistenceShape(section) {
   if (!section || typeof section !== "object" || Array.isArray(section)) return section;
 
-  return {
+  const decoracionesBorde = buildSectionEdgeDecorationsPayload(section);
+  const next = {
     ...section,
     decoracionesFondo: buildSectionDecorationsPayload(section, {
       sectionHeight: section.altura,
     }),
   };
+
+  if (Object.keys(decoracionesBorde).length) {
+    next.decoracionesBorde = decoracionesBorde;
+  } else {
+    delete next.decoracionesBorde;
+  }
+
+  return next;
 }
 
 function cleanUndefinedDeep(value) {

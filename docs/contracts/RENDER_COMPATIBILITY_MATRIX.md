@@ -5,8 +5,9 @@
 Este documento resume la compatibilidad real entre:
 
 - editor (`CanvasEditor.jsx` + Konva)
-- preview HTML (`generarHTMLDesdeSecciones(..., { isPreview: true })`)
-- publish HTML (`preparePublicationRenderState` + `generarHTMLDesdeSecciones`)
+- publishable draft preview HTML (`prepareRenderPayload` + `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })`)
+- template/fallback preview HTML (`generarHTMLDesdeSecciones(..., { isPreview: true })`)
+- publish HTML (`prepareRenderPayload` + `generateHtmlFromPreparedRenderPayload`)
 
 Refleja implementacion y tests actuales del repositorio. No documenta arquitectura ideal.
 
@@ -15,8 +16,11 @@ Refleja implementacion y tests actuales del repositorio. No documenta arquitectu
 La compatibilidad preview vs publish ya no es difusa. Hoy existe caracterizacion explicita en:
 
 - `shared/previewPublishParity.test.mjs`
+- `shared/previewPublishMobileGeometryParity.test.mjs`
 - `functions/renderContractCompatibility.test.mjs`
 - `functions/publicationPublishValidation.test.mjs`
+
+La columna `Preview` indica que existe salida HTML de preview para esa rama. La paridad publish solo aplica a preview de borrador `draft-authoritative`; template preview (`template-visual`) y fallback local (`local-fallback`) son visuales y no deben usarse como prueba de publish.
 
 Casos con paridad compartida caracterizada:
 
@@ -28,6 +32,7 @@ Casos con paridad compartida caracterizada:
 - contrato funcional de CTA
 - contrato de config `rsvp`
 - contrato de config `gifts`
+- geometria mobile/reflow opt-in para preview iframe vs publish en `390x844`, `375x812`, y `414x896`
 
 Drifts explicitamente reconocidos por fixtures:
 
@@ -70,6 +75,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | fondo de seccion por color | `si` | `soportado` | `soportado` | `soportado` | `alta` | sin warning especifico | usar con checklist |
 | fondo base de seccion por imagen | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-background-unresolved` | usar con restricciones |
 | decoraciones de fondo | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-decoration-unresolved` | usar con restricciones |
+| decoraciones de borde (`decoracionesBorde`) | `si` | `soportado` | `soportado` | `soportado` | `alta` en prepared payload | puede bloquear por `section-edge-decoration-unresolved` | usar con checklist; `intrinsic-clamp` por defecto, `ratio-band` como fallback explicito |
 | `forma.rect` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer | sin warning especifico | usar con checklist |
 | `forma.circle` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por geometria | sin warning especifico | usar con checklist |
 | `forma.line` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por geometria | sin warning especifico | usar con checklist |
@@ -84,7 +90,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 
 Bloqueadores de publish hoy:
 
-- assets sin resolver para `imagen`, `icono` raster, `galeria`, `countdown` v2, fondos de seccion y decoraciones
+- assets sin resolver para `imagen`, `icono` raster, `galeria`, `countdown` v2, fondos de seccion, decoraciones de fondo y decoraciones de borde
 - crop de imagen no materializable
 - CTA funcional con config raiz deshabilitada
 - `figura` fuera del set soportado de publish
@@ -102,7 +108,9 @@ Advertencias de publish hoy:
 
 - No tratar una figura como "editor-only" si existe rama real en `generarHTMLDesdeObjetos.ts` y en `publicationPublishValidation.ts`.
 - No tratar una rama como "soportada" solo porque existe HTML. Si depende de assets resueltos o config raiz, queda `parcial`.
-- Para preview vs publish, la fuente de verdad actual es la combinacion de `previewPublishParity` y de `validatePreparedPublicationRenderState`, no inspeccion manual aislada del canvas.
+- Para preview vs publish, la fuente de verdad actual es la combinacion de `previewPublishParity`, `prepareRenderPayload`, y `validatePreparedRenderPayload`, no inspeccion manual aislada del canvas.
+- Para cambios de roles de imagen, usar tambien [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](/c:/Reservaeldia/docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). Ese contrato define la semantica normativa de conversion: una imagen normal convertida en visual propio de seccion debe eliminar el objeto original.
+- Para cambios mobile/reflow, usar `shared/previewPublishMobileGeometryParity.test.mjs`. La captura browser completa es opt-in con `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; los tests deterministas cubren fixtures, tolerancias y diff shape.
 - Si un cambio toca `imagen`, galerias, CTA funcionales, `pantalla/yNorm` o `fullbleed`, ejecutar tambien [EDITOR_REGRESSION_CHECKLIST.md](/c:/Reservaeldia/docs/testing/EDITOR_REGRESSION_CHECKLIST.md).
 
 ## Assumption

@@ -160,7 +160,7 @@ export default function SectionDecorationEditorOverlay({
   const decoration = findBackgroundDecoration(seccion, decorationId, {
     sectionHeight: alturaPx,
   });
-  const label = "Ajustando decoracion del fondo";
+  const label = "Ajustando decoración";
   const [image] = useSharedImage(decoration?.src || null, "anonymous");
 
   const handleExitInteraction = (event) => {

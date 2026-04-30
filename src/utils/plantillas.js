@@ -5,6 +5,7 @@ import { getAuth } from "firebase/auth";
 import { subirImagenPublica } from "@/utils/subirImagenPublica";
 import {
   buildSectionDecorationsPayload,
+  buildSectionEdgeDecorationsPayload,
   normalizeSectionBackgroundModel,
 } from "@/domain/sections/backgrounds";
 
@@ -47,6 +48,7 @@ export const guardarSeccionComoPlantilla = async ({
   const backgroundModel = normalizeSectionBackgroundModel(seccion, {
     sectionHeight: seccion.altura,
   });
+  const edgeDecorations = buildSectionEdgeDecorationsPayload(seccion);
 
   const plantilla = {
     nombre,
@@ -76,6 +78,9 @@ export const guardarSeccionComoPlantilla = async ({
         sectionHeight: seccion.altura,
       }
     ),
+    ...(Object.keys(edgeDecorations).length
+      ? { decoracionesBorde: edgeDecorations }
+      : {}),
     tipo: seccion.tipo,
     objetos: objetosFinales,
   };

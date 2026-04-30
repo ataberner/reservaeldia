@@ -8,6 +8,7 @@ import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
   resolveSectionDecorationAssetUrl,
+  resolveSectionEdgeDecorationAssetUrl,
 } from "./renderAssetContract.js";
 
 const { preparePublicationRenderState } = publicationPublishValidationModule;
@@ -141,6 +142,38 @@ function buildSectionAssetSnapshot(secciones, defaultBucketName) {
           defaultBucketName
         ),
       })),
+      decoracionesBorde: ["top", "bottom"]
+        .map((slot) => {
+          const decoration = backgroundModel.decoracionesBorde?.[slot];
+          if (!decoration?.src || decoration.enabled === false) return null;
+          return {
+            slot,
+            src: canonicalizeAssetIdentity(
+              resolveSectionEdgeDecorationAssetUrl(decoration),
+              decoration?.storagePath,
+              defaultBucketName
+            ),
+            mode: normalizeText(decoration?.mode),
+            heightModel: normalizeText(decoration?.heightModel),
+            intrinsicWidth: toFiniteNumberOrNull(decoration?.intrinsicWidth),
+            intrinsicHeight: toFiniteNumberOrNull(decoration?.intrinsicHeight),
+            minHeightDesktopPx: toFiniteNumberOrNull(decoration?.minHeightDesktopPx),
+            maxHeightDesktopPx: toFiniteNumberOrNull(decoration?.maxHeightDesktopPx),
+            maxSectionRatioDesktop: toFiniteNumberOrNull(
+              decoration?.maxSectionRatioDesktop
+            ),
+            minHeightMobilePx: toFiniteNumberOrNull(decoration?.minHeightMobilePx),
+            maxHeightMobilePx: toFiniteNumberOrNull(decoration?.maxHeightMobilePx),
+            maxSectionRatioMobile: toFiniteNumberOrNull(
+              decoration?.maxSectionRatioMobile
+            ),
+            heightDesktopRatio: toFiniteNumberOrNull(decoration?.heightDesktopRatio),
+            heightMobileRatio: toFiniteNumberOrNull(decoration?.heightMobileRatio),
+            offsetDesktopPx: toFiniteNumberOrNull(decoration?.offsetDesktopPx),
+            offsetMobilePx: toFiniteNumberOrNull(decoration?.offsetMobilePx),
+          };
+        })
+        .filter(Boolean),
     };
   });
 }

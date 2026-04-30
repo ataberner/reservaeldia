@@ -7,6 +7,7 @@ import GaleriaKonva from "@/components/editor/GaleriaKonva";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import ElementoCanvas from "@/components/ElementoCanvas";
 import SectionDecorationEditorOverlay from "@/components/editor/SectionDecorationEditorOverlay";
+import SectionEdgeDecorationEditorOverlay from "@/components/editor/SectionEdgeDecorationEditorOverlay";
 import SelectionBounds from "@/components/SelectionBounds";
 import SelectionBoundsIndicator, {
   resolveSelectionBounds,
@@ -120,7 +121,10 @@ import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
-import { updateBackgroundDecorationTransform } from "@/domain/sections/backgrounds";
+import {
+  updateBackgroundDecorationTransform,
+  updateSectionEdgeDecorationOffset,
+} from "@/domain/sections/backgrounds";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 
 const INLINE_INTENT_STALE_MS = 1500;
@@ -1063,6 +1067,7 @@ export default function CanvasStageContent({
   onRegisterBackgroundEditNode,
   onBackgroundEditInteractionChange,
   postDragDiagnosticMenuTargetIds = [],
+  canManageSite = false,
 }) {
   const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
   const inlineActivationRef = useRef({
@@ -10042,6 +10047,59 @@ export default function CanvasStageContent({
     setSectionDecorationEdit,
   ]);
 
+  const requestEdgeDecorationEdit = useCallback((sectionId, slot) => {
+    const safeSectionId = String(sectionId || "").trim();
+    const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+    if (!safeSectionId || !safeSlot) return;
+
+    if (editing.id) {
+      requestInlineEditFinish?.("edge-decoration-edit");
+    }
+
+    selectSectionAndClearInlineIntent(safeSectionId, "edge-decoration-edit");
+    if (
+      typeof selectionRuntime?.clearPolicy?.prepareForBackgroundDecorationEdit ===
+      "function"
+    ) {
+      selectionRuntime.clearPolicy.prepareForBackgroundDecorationEdit();
+    } else {
+      clearSelectionStateRuntime({
+        clearCommittedSelection: true,
+        clearPreselection: true,
+        clearMarquee: false,
+        clearBackgroundEdit: false,
+        clearBackgroundInteraction: false,
+        clearPendingDrag: true,
+        clearDragVisual: true,
+        source: "edge-decoration-edit",
+      });
+    }
+    setSectionDecorationEdit((previous) => {
+      if (
+        previous?.kind === "edge-decoration" &&
+        previous?.sectionId === safeSectionId &&
+        previous?.slot === safeSlot
+      ) {
+        return previous;
+      }
+
+      return {
+        kind: "edge-decoration",
+        sectionId: safeSectionId,
+        slot: safeSlot,
+        decorationId: `edge:${safeSlot}`,
+        overlayReady: false,
+      };
+    });
+  }, [
+    clearSelectionStateRuntime,
+    editing.id,
+    requestInlineEditFinish,
+    selectionRuntime,
+    selectSectionAndClearInlineIntent,
+    setSectionDecorationEdit,
+  ]);
+
   const handleStageMouseDownWithInlineIntent = useCallback((e) => {
     const target = e?.target || null;
     const targetClass = target?.getClassName?.() || null;
@@ -11277,14 +11335,27 @@ export default function CanvasStageContent({
                           onRequestEdit={() => onRequestBackgroundEdit?.(seccion.id)}
                           onBackgroundImageStatusChange={handleBackgroundImageStatusChange}
                           editingDecorationId={
+                            sectionDecorationEdit?.kind !== "edge-decoration" &&
                             sectionDecorationEdit?.sectionId === seccion.id &&
                             sectionDecorationEdit?.overlayReady === true
                               ? sectionDecorationEdit.decorationId
                               : null
                           }
+                          editingEdgeSlot={
+                            sectionDecorationEdit?.kind === "edge-decoration" &&
+                            sectionDecorationEdit?.sectionId === seccion.id &&
+                            sectionDecorationEdit?.overlayReady === true
+                              ? sectionDecorationEdit.slot
+                              : null
+                          }
                           onRegisterBackgroundNode={onRegisterBackgroundEditNode}
                           onInteractionChange={onBackgroundEditInteractionChange}
-                          onRequestDecorationEdit={requestBackgroundDecorationEdit}
+                          onRequestDecorationEdit={
+                            canManageSite ? requestBackgroundDecorationEdit : undefined
+                          }
+                          onRequestEdgeDecorationEdit={
+                            canManageSite ? requestEdgeDecorationEdit : undefined
+                          }
                         />
                       ) : (
                         <Rect
@@ -11599,7 +11670,7 @@ export default function CanvasStageContent({
                     />
                   )}
 
-                  {sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId && (() => {
+                  {canManageSite && sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId && (() => {
                     const editedSectionIndex = seccionesOrdenadas.findIndex(
                       (section) => section?.id === sectionDecorationEdit.sectionId
                     );
@@ -11611,6 +11682,59 @@ export default function CanvasStageContent({
                       editedSectionIndex,
                       altoCanvas
                     );
+                    const editKind =
+                      sectionDecorationEdit.kind === "edge-decoration"
+                        ? "edge-decoration"
+                        : "background-decoration";
+
+                    if (editKind === "edge-decoration") {
+                      const edgeSlot =
+                        sectionDecorationEdit.slot === "bottom"
+                          ? "bottom"
+                          : sectionDecorationEdit.slot === "top"
+                            ? "top"
+                            : null;
+                      if (!edgeSlot) return null;
+
+                      return (
+                        <SectionEdgeDecorationEditorOverlay
+                          seccion={editedSection}
+                          slot={edgeSlot}
+                          offsetY={editedSectionOffsetY}
+                          alturaPx={editedSection.altura}
+                          isMobile={isMobile}
+                          onCommitOffset={(offsetDesktopPx) => {
+                            setSecciones((prev) =>
+                              updateSectionEdgeDecorationOffset(
+                                prev,
+                                editedSection.id,
+                                edgeSlot,
+                                { offsetDesktopPx }
+                              )
+                            );
+                          }}
+                          onImageReadyChange={(isReady) => {
+                            setSectionDecorationEdit((previous) => {
+                              if (
+                                previous?.kind !== "edge-decoration" ||
+                                previous?.sectionId !== editedSection.id ||
+                                previous?.slot !== edgeSlot
+                              ) {
+                                return previous;
+                              }
+                              if (previous?.overlayReady === Boolean(isReady)) {
+                                return previous;
+                              }
+                              return {
+                                ...previous,
+                                overlayReady: Boolean(isReady),
+                              };
+                            });
+                          }}
+                          onExit={() => setSectionDecorationEdit(null)}
+                        />
+                      );
+                    }
 
                     return (
                       <SectionDecorationEditorOverlay
@@ -11634,6 +11758,7 @@ export default function CanvasStageContent({
                         onImageReadyChange={(isReady) => {
                           setSectionDecorationEdit((previous) => {
                             if (
+                              previous?.kind === "edge-decoration" ||
                               previous?.sectionId !== editedSection.id ||
                               previous?.decorationId !== sectionDecorationEdit.decorationId
                             ) {

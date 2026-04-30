@@ -12,14 +12,21 @@ import {
 
 test("visual baseline fixtures keep the required case ids frozen", () => {
   assert.deepEqual(previewPublishVisualBaselineCaseIds, [
+    "edge-decorations-pantalla",
     "simple-pantalla-section",
     "decorative-fullbleed",
     "text-with-decoration-behind",
     "gallery",
     "countdown",
     "mixed-fijo-pantalla",
+    "fixed-reflow-columns",
+    "fixed-overflow-expansion",
+    "grouped-cta-fixed-section",
+    "group-nested-children",
+    "fixed-fullbleed-mixed-lanes",
+    "pantalla-ynorm-positioning",
   ]);
-  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 6);
+  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 13);
 });
 
 test("visual baseline fixtures require the same capture views for every case", () => {

@@ -7,8 +7,12 @@ import {
 } from "@/utils/accionesFondo";
 import {
   applySectionSolidBackground,
+  convertImageObjectToSectionEdgeDecorationState,
   normalizeSectionBackgroundModel,
   removeBackgroundDecoration,
+  removeSectionEdgeDecoration,
+  resolveEdgeDecorationCanvasRenderBox,
+  setSectionEdgeDecorationEnabled,
   updateBackgroundDecorationsParallax,
 } from "@/domain/sections/backgrounds";
 import {
@@ -40,7 +44,17 @@ export default function useCanvasEditorSectionBackgroundUi({
   setSeccionActivaId,
   setMostrarPanelZ,
   selectionClearPolicy,
+  canManageSite = false,
 }) {
+  const canUseAdvancedDecorations = canManageSite === true;
+
+  useEffect(() => {
+    if (canUseAdvancedDecorations) return;
+    setSectionDecorationEdit((previous) =>
+      previous?.sectionId && previous?.decorationId ? null : previous
+    );
+  }, [canUseAdvancedDecorations, setSectionDecorationEdit]);
+
   useEffect(() => {
     setSectionDecorationEdit((previous) => {
       if (!previous?.sectionId || !previous?.decorationId) return previous;
@@ -48,9 +62,20 @@ export default function useCanvasEditorSectionBackgroundUi({
         (section) => section?.id === previous.sectionId
       );
       if (!targetSection) return null;
-      const decoration = normalizeSectionBackgroundModel(targetSection, {
+      const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
         sectionHeight: targetSection.altura,
-      }).decoraciones.find((item) => item.id === previous.decorationId);
+      });
+      if (previous.kind === "edge-decoration") {
+        const safeSlot =
+          previous.slot === "bottom" ? "bottom" : previous.slot === "top" ? "top" : "";
+        const decoration = safeSlot
+          ? backgroundModel.decoracionesBorde?.[safeSlot]
+          : null;
+        return decoration?.src && decoration.enabled !== false ? previous : null;
+      }
+      const decoration = backgroundModel.decoraciones.find(
+        (item) => item.id === previous.decorationId
+      );
       return decoration ? previous : null;
     });
   }, [secciones, setSectionDecorationEdit]);
@@ -169,6 +194,43 @@ export default function useCanvasEditorSectionBackgroundUi({
     ]
   );
 
+  const usarImagenComoDecoracionBorde = useCallback(
+    (elementoImagen, slot) => {
+      if (editingId) {
+        requestInlineEditFinishRef.current?.("edge-decoration-conversion");
+      }
+
+      const result = convertImageObjectToSectionEdgeDecorationState({
+        sections: secciones,
+        objects: objetos,
+        imageObject: elementoImagen,
+        slot,
+      });
+      if (!result?.decoration || !Array.isArray(result.sections)) return;
+
+      setSecciones(result.sections);
+      setObjetos(result.objects);
+      setElementosSeleccionados([]);
+      setSeccionActivaId?.(result.sectionId);
+      selectionClearPolicy?.prepareForBackgroundDecorationEdit?.();
+      setSectionDecorationEdit(null);
+      setMostrarPanelZ(false);
+    },
+    [
+      editingId,
+      objetos,
+      requestInlineEditFinishRef,
+      secciones,
+      selectionClearPolicy,
+      setElementosSeleccionados,
+      setObjetos,
+      setSeccionActivaId,
+      setSecciones,
+      setSectionDecorationEdit,
+      setMostrarPanelZ,
+    ]
+  );
+
   const registerBackgroundEditNode = useCallback(
     (sectionId, node) => {
       const safeSectionId = String(sectionId || "").trim();
@@ -220,7 +282,11 @@ export default function useCanvasEditorSectionBackgroundUi({
   );
 
   const activeBackgroundDecorationMenuItem = useMemo(() => {
+    if (!canUseAdvancedDecorations) return null;
     if (!sectionDecorationEdit?.sectionId || !sectionDecorationEdit?.decorationId) {
+      return null;
+    }
+    if (sectionDecorationEdit.kind === "edge-decoration") {
       return null;
     }
 
@@ -230,8 +296,9 @@ export default function useCanvasEditorSectionBackgroundUi({
     if (sectionIndex === -1) return null;
 
     const targetSection = seccionesOrdenadas[sectionIndex];
+    const sectionHeight = Math.max(1, Number(targetSection.altura) || 1);
     const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
-      sectionHeight: targetSection.altura,
+      sectionHeight,
     });
     const decoration = backgroundModel.decoraciones.find(
       (item) => item.id === sectionDecorationEdit.decorationId
@@ -242,7 +309,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     return {
       id: `decoracion-fondo:${targetSection.id}:${decoration.id}`,
       tipo: "decoracion-fondo",
-      nombre: decoration.nombre || "Decoracion del fondo",
+      nombre: decoration.nombre || "Decoración",
       src: decoration.src,
       seccionId: targetSection.id,
       decorationId: decoration.id,
@@ -253,7 +320,69 @@ export default function useCanvasEditorSectionBackgroundUi({
       rotation: decoration.rotation || 0,
       backgroundMotionMode: backgroundModel.parallax || "none",
     };
-  }, [altoCanvas, sectionDecorationEdit, seccionesOrdenadas]);
+  }, [altoCanvas, canUseAdvancedDecorations, sectionDecorationEdit, seccionesOrdenadas]);
+
+  const activeEdgeDecorationMenuItem = useMemo(() => {
+    if (!canUseAdvancedDecorations) return null;
+    if (
+      sectionDecorationEdit?.kind !== "edge-decoration" ||
+      !sectionDecorationEdit?.sectionId ||
+      !sectionDecorationEdit?.slot
+    ) {
+      return null;
+    }
+
+    const slot =
+      sectionDecorationEdit.slot === "bottom"
+        ? "bottom"
+        : sectionDecorationEdit.slot === "top"
+          ? "top"
+          : "";
+    if (!slot) return null;
+
+    const sectionIndex = seccionesOrdenadas.findIndex(
+      (section) => section?.id === sectionDecorationEdit.sectionId
+    );
+    if (sectionIndex === -1) return null;
+
+    const targetSection = seccionesOrdenadas[sectionIndex];
+    const sectionHeight = Math.max(1, Number(targetSection.altura) || 1);
+    const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
+      sectionHeight,
+    });
+    const decoration = backgroundModel.decoracionesBorde?.[slot];
+    if (!decoration?.src || decoration.enabled === false) return null;
+
+    const renderBox = resolveEdgeDecorationCanvasRenderBox(decoration, {
+      slot,
+      sectionHeight,
+      canvasWidth: 800,
+    });
+    const offsetY = calcularOffsetY(seccionesOrdenadas, sectionIndex, altoCanvas);
+    const offsetPx = Number.isFinite(Number(decoration.offsetDesktopPx))
+      ? Number(decoration.offsetDesktopPx)
+      : 0;
+    const localY =
+      slot === "bottom"
+        ? sectionHeight - renderBox.bandHeight - offsetPx
+        : offsetPx;
+
+    return {
+      id: `decoracion-borde:${targetSection.id}:${slot}`,
+      tipo: "decoracion-borde",
+      nombre: decoration.nombre || (slot === "top" ? "Decoración arriba" : "Decoración abajo"),
+      src: decoration.src,
+      seccionId: targetSection.id,
+      decorationId: `edge:${slot}`,
+      slot,
+      enabled: decoration.enabled !== false,
+      x: 0,
+      y: offsetY + localY,
+      width: renderBox.bandWidth,
+      height: renderBox.bandHeight,
+      rotation: 0,
+    };
+  }, [altoCanvas, canUseAdvancedDecorations, sectionDecorationEdit, seccionesOrdenadas]);
 
   const activeBaseBackgroundMenuItem = useMemo(() => {
     if (!backgroundEditSectionId) return null;
@@ -306,6 +435,13 @@ export default function useCanvasEditorSectionBackgroundUi({
   );
 
   const overlaySelection = useMemo(() => {
+    if (activeEdgeDecorationMenuItem) {
+      return {
+        kind: "section-edge-decoration",
+        menuItem: activeEdgeDecorationMenuItem,
+      };
+    }
+
     if (activeBackgroundDecorationMenuItem) {
       return {
         kind: "background-decoration",
@@ -343,6 +479,7 @@ export default function useCanvasEditorSectionBackgroundUi({
       menuItem: null,
     };
   }, [
+    activeEdgeDecorationMenuItem,
     activeBackgroundDecorationMenuItem,
     activeBaseBackgroundMenuItem,
     elementosSeleccionados,
@@ -447,6 +584,58 @@ export default function useCanvasEditorSectionBackgroundUi({
     setMostrarPanelZ,
   ]);
 
+  const handleToggleDecoracionBorde = useCallback(
+    (slot) => {
+      if (!activeEdgeDecorationMenuItem) return;
+      const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+      if (!safeSlot) return;
+
+      setSecciones((previous) =>
+        setSectionEdgeDecorationEnabled(
+          previous,
+          activeEdgeDecorationMenuItem.seccionId,
+          safeSlot,
+          activeEdgeDecorationMenuItem.enabled === false
+        )
+      );
+      setMostrarPanelZ(false);
+    },
+    [activeEdgeDecorationMenuItem, setSecciones, setMostrarPanelZ]
+  );
+
+  const handleEliminarDecoracionBorde = useCallback(
+    (slot) => {
+      if (!activeEdgeDecorationMenuItem) return;
+      const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
+      if (!safeSlot) return;
+
+      setSecciones((previous) =>
+        removeSectionEdgeDecoration(
+          previous,
+          activeEdgeDecorationMenuItem.seccionId,
+          safeSlot
+        )
+      );
+      setSectionDecorationEdit((previous) => {
+        if (
+          previous?.kind === "edge-decoration" &&
+          previous?.sectionId === activeEdgeDecorationMenuItem.seccionId &&
+          previous?.slot === safeSlot
+        ) {
+          return null;
+        }
+        return previous;
+      });
+      setMostrarPanelZ(false);
+    },
+    [
+      activeEdgeDecorationMenuItem,
+      setSecciones,
+      setSectionDecorationEdit,
+      setMostrarPanelZ,
+    ]
+  );
+
   const handleFinalizarAjusteDecoracionFondo = useCallback(() => {
     setSectionDecorationEdit(null);
     setMostrarPanelZ(false);
@@ -535,6 +724,7 @@ export default function useCanvasEditorSectionBackgroundUi({
   return {
     cambiarColorFondoSeccion,
     usarImagenComoDecoracionFondo,
+    usarImagenComoDecoracionBorde,
     registerBackgroundEditNode,
     handleBackgroundEditInteractionChange,
     requestBackgroundEdit,
@@ -545,6 +735,8 @@ export default function useCanvasEditorSectionBackgroundUi({
     handleFinalizarAjusteFondoBase,
     handleConvertirDecoracionFondoEnImagen,
     handleEliminarDecoracionFondo,
+    handleToggleDecoracionBorde,
+    handleEliminarDecoracionBorde,
     handleFinalizarAjusteDecoracionFondo,
     handleActualizarMovimientoDecoracionFondo,
   };

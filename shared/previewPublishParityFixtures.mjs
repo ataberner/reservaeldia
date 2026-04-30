@@ -69,6 +69,7 @@ function mergePreviewAssetsIntoDraft(draft) {
       const assetFields = pickAssetFields(previewSection, [
         "fondoImagen",
         "decoracionesFondo",
+        "decoracionesBorde",
       ]);
       return {
         ...entry,

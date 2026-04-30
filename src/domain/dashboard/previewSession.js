@@ -12,6 +12,7 @@ import {
 const INITIAL_PUBLICATION_PREVIEW_STATE = Object.freeze({
   mostrarVistaPrevia: false,
   htmlVistaPrevia: null,
+  previewAuthority: null,
   urlPublicaVistaPrevia: null,
   slugPublicoVistaPrevia: null,
   puedeActualizarPublicacion: false,
@@ -23,6 +24,16 @@ const INITIAL_PUBLICATION_PREVIEW_STATE = Object.freeze({
   mostrarCheckoutPublicacion: false,
   operacionCheckoutPublicacion: "new",
 });
+
+export const PREVIEW_AUTHORITY = Object.freeze({
+  DRAFT_AUTHORITATIVE: "draft-authoritative",
+  TEMPLATE_VISUAL: "template-visual",
+  LOCAL_FALLBACK: "local-fallback",
+});
+
+export function isPublishAuthoritativePreviewAuthority(value) {
+  return normalizeText(value) === PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE;
+}
 
 export const PREVIEW_INACTIVE_PUBLICATION_MESSAGE =
   "La publicacion anterior finalizo su vigencia. Puedes publicar nuevamente como nueva.";
@@ -322,14 +333,20 @@ export function resolveDashboardPreviewPublicationState({
 
 export function buildDashboardPreviewSuccessStatePatch({
   htmlGenerado,
+  previewAuthority = null,
   isTemplateEditorSession = false,
   urlPublicaDetectada = "",
   slugPublicoDetectado = "",
   publicacionNoVigenteDetectada = false,
   currentError = "",
 } = {}) {
+  const resolvedPreviewAuthority =
+    normalizeText(previewAuthority) ||
+    (isTemplateEditorSession ? PREVIEW_AUTHORITY.TEMPLATE_VISUAL : "");
+
   return {
     htmlVistaPrevia: String(htmlGenerado || ""),
+    previewAuthority: resolvedPreviewAuthority || null,
     ...resolveDashboardPreviewPublicationState({
       isTemplateEditorSession,
       urlPublicaDetectada,

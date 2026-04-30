@@ -301,7 +301,11 @@ function hydratePreviewAssetsIntoDraft(draft) {
 
       return {
         ...deepClone(entry),
-        ...pickAssetFields(previewSection, ["fondoImagen", "decoracionesFondo"]),
+        ...pickAssetFields(previewSection, [
+          "fondoImagen",
+          "decoracionesFondo",
+          "decoracionesBorde",
+        ]),
       };
     }),
   };
@@ -323,6 +327,172 @@ function extractBetween(html, startToken, endToken) {
 
   return html.slice(startIndex, endIndex);
 }
+
+test("renders edge decorations as section-owned non-object layer", () => {
+  const html = generarHTMLDesdeSecciones(
+    [
+      {
+        id: "section-edge",
+        orden: 1,
+        altoModo: "pantalla",
+        altura: 500,
+        fondo: "#ffffff",
+        decoracionesBorde: {
+          top: {
+            enabled: true,
+            src: "https://cdn.example.com/edge-top.png",
+            nombre: "Flor superior",
+          },
+          bottom: {
+            enabled: false,
+            src: "https://cdn.example.com/edge-bottom.png",
+            nombre: "Flor inferior",
+          },
+        },
+      },
+    ],
+    []
+  );
+
+  assert.match(html, /class="sec-edge-layer"/);
+  assert.match(html, /class="sec-edge-decor sec-edge-decor--top"/);
+  assert.match(html, /data-edge-slot="top"/);
+  assert.match(html, /data-edge-mode="cover-x"/);
+  assert.match(html, /data-edge-height-model="intrinsic-clamp"/);
+  assert.match(html, /--edge-height-desktop-ratio:0\.36/);
+  assert.match(html, /--edge-height-mobile-ratio:0\.2/);
+  assert.match(html, /--edge-min-height-desktop:96px/);
+  assert.match(html, /--edge-max-height-desktop:280px/);
+  assert.match(html, /--edge-max-section-ratio-desktop:0\.3/);
+  assert.match(html, /--edge-min-height-mobile:64px/);
+  assert.match(html, /--edge-max-height-mobile:150px/);
+  assert.match(html, /--edge-max-section-ratio-mobile:0\.24/);
+  assert.match(html, /--edge-offset-desktop:0px/);
+  assert.match(html, /--edge-offset-mobile:0px/);
+  assert.match(html, /--edge-combined-ratio-desktop:0\.58/);
+  assert.match(html, /--edge-combined-ratio-mobile:0\.4/);
+  assert.match(html, /class="sec-edge-decor-img"/);
+  assert.doesNotMatch(html, /data-edge-slot="bottom"/);
+  assert.doesNotMatch(html, /class="objeto"[\s\S]*edge-top/);
+  assert.match(html, /--edgezoom: 1;/);
+  assert.match(html, /--edge-offset-scale: var\(--sfinal, var\(--sx, 1\)\);/);
+  assert.match(html, /--edge-section-h: var\(--vh-safe\);/);
+  assert.match(html, /--edge-section-h: calc\(var\(--sfinal\) \* var\(--hbase\) \* 1px\);/);
+  assert.match(html, /object-fit: cover;/);
+  assert.match(html, /object-fit: contain;/);
+  assert.match(
+    html,
+    /\.sec-edge-decor--top\{[\s\S]*top: calc\(var\(--edge-offset-scale, 1\) \* var\(--edge-offset-desktop, 0px\)\);/
+  );
+  assert.match(
+    html,
+    /\.sec-edge-decor--bottom\{[\s\S]*bottom: calc\(var\(--edge-offset-scale, 1\) \* var\(--edge-offset-desktop, 0px\)\);/
+  );
+  assert.match(
+    html,
+    /@media \(max-width: 767px\)\{[\s\S]*\.sec-edge-decor--bottom\{[\s\S]*bottom: var\(--edge-offset-mobile, 0px\);/
+  );
+  assert.match(
+    html,
+    /\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--top \.sec-edge-decor-img\{[\s\S]*top: 0;[\s\S]*object-position: center top;/
+  );
+  assert.match(
+    html,
+    /\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--bottom \.sec-edge-decor-img\{[\s\S]*bottom: 0;[\s\S]*object-position: center bottom;/
+  );
+  assert.match(
+    html,
+    /\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--top,[\s\S]*\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--bottom\{[\s\S]*overflow: visible;/
+  );
+  assert.match(
+    html,
+    /\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--top \.sec-edge-decor-img,[\s\S]*\.sec-edge-decor\[data-edge-mode="cover-x"\]\.sec-edge-decor--bottom \.sec-edge-decor-img\{[\s\S]*height: auto;[\s\S]*object-fit: contain;/
+  );
+  assert.match(
+    html,
+    /\.sec-edge-decor\[data-edge-height-model="ratio-band"\]\{[\s\S]*height: calc\(var\(--edge-section-h, 100%\) \* var\(--edge-height-desktop-ratio, 0\.36\)\);/
+  );
+  assert.match(
+    html,
+    /@media \(min-width: 768px\)\{[\s\S]*\.sec-edge-decor\[data-edge-height-model="ratio-band"\]\[data-edge-mode="cover-x"\]\{[\s\S]*overflow: visible;/
+  );
+  assert.match(
+    html,
+    /function layoutSectionEdgeDecorations\(sec, isMobile, viewportWidth, sectionHeightPx, scheduleCompute\)/
+  );
+  assert.match(
+    html,
+    /--edge-used-height/
+  );
+  assert.match(html, /sec\.style\.setProperty\("--edgezoom", String\(edgezoom\)\);/);
+});
+
+test("renders explicit responsive edge decoration sizing fields", () => {
+  const html = generarHTMLDesdeSecciones(
+    [
+      {
+        id: "section-edge-responsive",
+        orden: 1,
+        altoModo: "fijo",
+        altura: 640,
+        decoracionesBorde: {
+          bottom: {
+            enabled: true,
+            src: "https://cdn.example.com/edge-bottom.png",
+            heightDesktopRatio: 0.44,
+            heightMobileRatio: 0.24,
+            offsetDesktopPx: 18,
+            offsetMobilePx: -12,
+            mode: "contain-x",
+          },
+        },
+      },
+    ],
+    []
+  );
+
+  assert.match(html, /data-edge-slot="bottom"/);
+  assert.match(html, /data-edge-mode="contain-x"/);
+  assert.match(html, /data-edge-height-model="intrinsic-clamp"/);
+  assert.match(html, /--edge-height-desktop-ratio:0\.44/);
+  assert.match(html, /--edge-height-mobile-ratio:0\.24/);
+  assert.match(html, /--edge-max-section-ratio-desktop:0\.44/);
+  assert.match(html, /--edge-max-section-ratio-mobile:0\.24/);
+  assert.match(html, /--edge-offset-desktop:18px/);
+  assert.match(html, /--edge-offset-mobile:-12px/);
+  assert.doesNotMatch(html, /class="objeto"[\s\S]*edge-bottom/);
+});
+
+test("preserves legacy ratio-band edge sizing as an explicit fallback", () => {
+  const html = generarHTMLDesdeSecciones(
+    [
+      {
+        id: "section-edge-ratio-band",
+        orden: 1,
+        altoModo: "fijo",
+        altura: 640,
+        decoracionesBorde: {
+          top: {
+            enabled: true,
+            src: "https://cdn.example.com/edge-top.png",
+            heightModel: "ratio-band",
+          },
+        },
+      },
+    ],
+    []
+  );
+
+  assert.match(html, /data-edge-height-model="ratio-band"/);
+  assert.match(
+    html,
+    /@media \(min-width: 768px\)\{[\s\S]*\.sec-edge-decor\[data-edge-height-model="ratio-band"\]\[data-edge-mode="cover-x"\]\{[\s\S]*overflow: visible;/
+  );
+  assert.match(
+    html,
+    /@media \(min-width: 768px\)\{[\s\S]*\.sec-edge-decor\[data-edge-height-model="ratio-band"\]\[data-edge-mode="cover-x"\]\.sec-edge-decor--top \.sec-edge-decor-img\{[\s\S]*top: 0;[\s\S]*bottom: auto;[\s\S]*object-position: center top;/
+  );
+});
 
 test("generates explicit countdown contract markers for v1 and v2 objects", () => {
   const legacyHtml = generarHTMLDesdeObjetos(
@@ -463,6 +633,45 @@ test("renders preserved groups as isolated top-level layout units without exposi
   assert.notEqual(starIndex, -1);
   assert.notEqual(textIndex, -1);
   assert.equal(starIndex < textIndex, true);
+});
+
+test("keeps preview mobile parity mode out of legacy iframe layout overrides", () => {
+  const html = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [
+      {
+        id: "mobile-parity-text",
+        tipo: "texto",
+        seccionId: "section-1",
+        x: 72,
+        y: 96,
+        width: 320,
+        texto: "Mobile parity",
+        fontSize: 28,
+      },
+    ],
+    null,
+    { isPreview: true }
+  );
+
+  assert.match(
+    html,
+    /html\[data-preview="1"\]:not\(\[data-preview-layout-mode="parity"\]\)/
+  );
+  assert.match(
+    html,
+    /html\[data-preview="1"\]\[data-preview-layout-mode="parity"\]\[data-preview-viewport="mobile"\]/
+  );
+  assert.match(
+    html,
+    /body\[data-preview="1"\]\[data-preview-layout-mode="parity"\]\[data-preview-viewport="mobile"\]\{\s*overflow-y: visible;/
+  );
+  assert.match(html, /function readPreviewLayoutMode\(\)/);
+  assert.match(html, /function isPreviewParityLayoutMode\(\)/);
+  assert.match(html, /function hasPreparedFixedSectionScale\(sec\)/);
+  assert.match(html, /data-msl-height-model", "publish-like-pending"/);
+  assert.match(html, /data-msl-height-model/);
+  assert.match(html, /usePublishLikeHeightModel/);
 });
 
 test("keeps grouped text plus icon compositions nested under one authored object id", () => {

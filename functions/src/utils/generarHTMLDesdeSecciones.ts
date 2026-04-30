@@ -176,6 +176,107 @@ function buildSectionDecorationStyle(decoration: any, mode: string): string {
   ].join(";");
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeEdgeCssNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeEdgeHeightModel(value: unknown): "intrinsic-clamp" | "ratio-band" {
+  return String(value || "").trim().toLowerCase() === "ratio-band"
+    ? "ratio-band"
+    : "intrinsic-clamp";
+}
+
+function normalizePositiveEdgeCssNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(clampNumber(parsed, 1, 20000) * 100) / 100;
+}
+
+function buildSectionEdgeDecorationStyle(decoration: any): string {
+  const heightDesktopRatio = clampNumber(
+    normalizeEdgeCssNumber(decoration?.heightDesktopRatio, 0.36),
+    0.08,
+    0.55
+  );
+  const heightMobileRatio = clampNumber(
+    normalizeEdgeCssNumber(decoration?.heightMobileRatio, 0.2),
+    0.08,
+    0.32
+  );
+  const offsetDesktopPx = clampNumber(
+    normalizeEdgeCssNumber(decoration?.offsetDesktopPx, 0),
+    -240,
+    240
+  );
+  const offsetMobilePx = clampNumber(
+    normalizeEdgeCssNumber(decoration?.offsetMobilePx, 0),
+    -240,
+    240
+  );
+  const minHeightDesktopPx = Math.round(
+    clampNumber(normalizeEdgeCssNumber(decoration?.minHeightDesktopPx, 96), 24, 640)
+  );
+  const maxHeightDesktopPx = Math.round(
+    clampNumber(normalizeEdgeCssNumber(decoration?.maxHeightDesktopPx, 280), 24, 640)
+  );
+  const minHeightMobilePx = Math.round(
+    clampNumber(normalizeEdgeCssNumber(decoration?.minHeightMobilePx, 64), 24, 360)
+  );
+  const maxHeightMobilePx = Math.round(
+    clampNumber(normalizeEdgeCssNumber(decoration?.maxHeightMobilePx, 150), 24, 360)
+  );
+  const maxSectionRatioDesktop = clampNumber(
+    normalizeEdgeCssNumber(decoration?.maxSectionRatioDesktop, 0.3),
+    0.08,
+    0.55
+  );
+  const maxSectionRatioMobile = clampNumber(
+    normalizeEdgeCssNumber(decoration?.maxSectionRatioMobile, 0.24),
+    0.08,
+    0.32
+  );
+
+  return [
+    `--edge-height-desktop-ratio:${heightDesktopRatio}`,
+    `--edge-height-mobile-ratio:${heightMobileRatio}`,
+    `--edge-min-height-desktop:${minHeightDesktopPx}px`,
+    `--edge-max-height-desktop:${Math.max(minHeightDesktopPx, maxHeightDesktopPx)}px`,
+    `--edge-max-section-ratio-desktop:${maxSectionRatioDesktop}`,
+    `--edge-min-height-mobile:${minHeightMobilePx}px`,
+    `--edge-max-height-mobile:${Math.max(minHeightMobilePx, maxHeightMobilePx)}px`,
+    `--edge-max-section-ratio-mobile:${maxSectionRatioMobile}`,
+    `--edge-offset-desktop:${offsetDesktopPx}px`,
+    `--edge-offset-mobile:${offsetMobilePx}px`,
+  ].join(";");
+}
+
+function buildSectionEdgeDecorationsLayoutStyle(decoracionesBorde: any): string {
+  const layout =
+    decoracionesBorde && typeof decoracionesBorde === "object"
+      ? decoracionesBorde.layout
+      : null;
+  const maxCombinedSectionRatioDesktop = clampNumber(
+    normalizeEdgeCssNumber(layout?.maxCombinedSectionRatioDesktop, 0.58),
+    0.16,
+    0.75
+  );
+  const maxCombinedSectionRatioMobile = clampNumber(
+    normalizeEdgeCssNumber(layout?.maxCombinedSectionRatioMobile, 0.4),
+    0.16,
+    0.6
+  );
+
+  return [
+    `--edge-combined-ratio-desktop:${maxCombinedSectionRatioDesktop}`,
+    `--edge-combined-ratio-mobile:${maxCombinedSectionRatioMobile}`,
+  ].join(";");
+}
+
 function buildSectionDecorationInnerStyle(decoration: any): string {
   const rotation = Number(decoration?.rotation) || 0;
   return [`transform:rotate(${rotation}deg)`, "transform-origin:center center"].join(";");
@@ -212,6 +313,51 @@ function renderSectionDecorations(decorations: any[], mode: string): string {
       <div class="sec-decor-content">
         ${items.join("\n")}
       </div>
+    </div>
+  `.trim();
+}
+
+function renderSectionEdgeDecorations(decoracionesBorde: any): string {
+  const source =
+    decoracionesBorde && typeof decoracionesBorde === "object"
+      ? decoracionesBorde
+      : {};
+  const items = (["top", "bottom"] as const)
+    .map((slot) => {
+      const decoration = source[slot];
+      if (!decoration || typeof decoration !== "object") return "";
+      if (decoration.enabled === false) return "";
+
+      const src = escapeAttr(normalizeImageBackgroundUrl(String(decoration.src || "").trim()));
+      if (!src) return "";
+
+      const slotClass = slot === "top" ? "sec-edge-decor--top" : "sec-edge-decor--bottom";
+      const mode = decoration.mode === "contain-x" ? "contain-x" : "cover-x";
+      const heightModel = normalizeEdgeHeightModel(decoration.heightModel);
+      const intrinsicWidth = normalizePositiveEdgeCssNumber(decoration.intrinsicWidth);
+      const intrinsicHeight = normalizePositiveEdgeCssNumber(decoration.intrinsicHeight);
+      const style = buildSectionEdgeDecorationStyle(decoration);
+      const intrinsicAttrs = [
+        intrinsicWidth ? `data-edge-intrinsic-width="${escapeAttr(String(intrinsicWidth))}"` : "",
+        intrinsicHeight ? `data-edge-intrinsic-height="${escapeAttr(String(intrinsicHeight))}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `
+        <div class="sec-edge-decor ${slotClass}" data-edge-slot="${slot}" data-edge-mode="${mode}" data-edge-height-model="${heightModel}" ${intrinsicAttrs} style="${style}">
+          <img class="sec-edge-decor-img" src="${src}" alt="" loading="eager" decoding="async" draggable="false" />
+        </div>
+      `.trim();
+    })
+    .filter(Boolean);
+
+  if (!items.length) return "";
+
+  const layerStyle = escapeAttr(buildSectionEdgeDecorationsLayoutStyle(source));
+
+  return `
+    <div class="sec-edge-layer" aria-hidden="true" style="${layerStyle}">
+      ${items.join("\n")}
     </div>
   `.trim();
 }
@@ -1136,6 +1282,9 @@ export function generarHTMLDesdeSecciones(
       );
 
       const fondoLayerHtml = renderSectionBackgroundLayer(seccion, backgroundModel);
+      const htmlDecoracionesBorde = renderSectionEdgeDecorations(
+        backgroundModel.decoracionesBorde
+      );
       const htmlDecoraciones = renderSectionDecorations(backgroundModel.decoraciones, modo);
 
       const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas, {
@@ -1150,6 +1299,7 @@ export function generarHTMLDesdeSecciones(
 <section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}" style="--hbase:${hbase}">
   <div class="sec-zoom">
     ${fondoLayerHtml}
+    ${htmlDecoracionesBorde}
     ${htmlDecoraciones}
     <div class="sec-bleed">${htmlBleed}</div>
     <div class="sec-content">${htmlContenido}</div>
@@ -1471,19 +1621,41 @@ export function generarHTMLDesdeSecciones(
       font-family: sans-serif;
     }
 
-    html[data-preview="1"],
-    body[data-preview="1"]{
+    html[data-preview="1"]:not([data-preview-layout-mode="parity"]),
+    body[data-preview="1"]:not([data-preview-layout-mode="parity"]){
       height: auto;
       min-height: 100%;
     }
 
-    html[data-preview="1"]{
+    html[data-preview="1"]:not([data-preview-layout-mode="parity"]){
       overflow-y: auto;
       overscroll-behavior-y: contain;
     }
 
-    body[data-preview="1"]{
+    body[data-preview="1"]:not([data-preview-layout-mode="parity"]){
       overflow-y: visible;
+    }
+
+    ${
+      isPreview
+        ? `
+    html[data-preview="1"][data-preview-layout-mode="parity"][data-preview-viewport="mobile"],
+    body[data-preview="1"][data-preview-layout-mode="parity"][data-preview-viewport="mobile"]{
+      height: auto;
+      min-height: 100%;
+    }
+
+    html[data-preview="1"][data-preview-layout-mode="parity"][data-preview-viewport="mobile"]{
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+      scroll-behavior: auto;
+    }
+
+    body[data-preview="1"][data-preview-layout-mode="parity"][data-preview-viewport="mobile"]{
+      overflow-y: visible;
+    }
+    `
+        : ""
     }
 
     /* ✅ SOLO MOBILE: evita “auto-resize / font boosting” del texto */
@@ -1534,6 +1706,8 @@ export function generarHTMLDesdeSecciones(
       left: 50%;
       transform: translateX(-50%);
       overflow: visible; /* bleed puede salirse */
+      --edge-section-h: 100%;
+      --edge-offset-scale: var(--sfinal, var(--sx, 1));
     }
 
     /* ✅ Wrapper que hace “zoom” centrado (evita corrimiento a la derecha) */
@@ -1559,7 +1733,9 @@ export function generarHTMLDesdeSecciones(
       /* el zoom extra va por --zoom (NO por sfinal) */
       --zoom: 1;
       --bgzoom: 1;
+      --edgezoom: 1;
       --pantalla-text-zoom: 1;
+      --edge-section-h: var(--vh-safe);
 
       /* factor final para CONTENIDO (se setea por JS) */
       --sfinal: 1;
@@ -1570,6 +1746,8 @@ export function generarHTMLDesdeSecciones(
       height: calc(var(--sfinal) * var(--hbase) * 1px);
       --zoom: 1;
       --bgzoom: 1;
+      --edgezoom: 1;
+      --edge-section-h: calc(var(--sfinal) * var(--hbase) * 1px);
     }
 
     /* Fondo */
@@ -1607,6 +1785,147 @@ export function generarHTMLDesdeSecciones(
     /* ✅ En fondos de imagen, compensamos desde el mismo origen que el wrapper */
     .sec[data-modo="pantalla"][data-fondo="imagen"] .sec-bg{
       transform-origin: top center;
+    }
+
+    .sec-edge-layer{
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+      pointer-events: none;
+      transform-origin: top center;
+    }
+
+    .sec[data-modo="pantalla"] .sec-edge-layer{
+      transform: scale(var(--edgezoom, 1));
+    }
+
+    .sec-edge-decor{
+      position: absolute;
+      left: 50%;
+      display: block;
+      width: 100vw;
+      height: var(--edge-used-height, min(var(--edge-max-height-desktop, 280px), calc(var(--edge-section-h, 100%) * var(--edge-max-section-ratio-desktop, 0.3))));
+      max-width: none;
+      max-height: none;
+      transform: translateX(-50%);
+      pointer-events: none;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .sec-edge-decor-img{
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: none;
+      max-height: none;
+      position: absolute;
+      left: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .sec-edge-decor[data-edge-mode="cover-x"] .sec-edge-decor-img{
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .sec-edge-decor[data-edge-mode="contain-x"] .sec-edge-decor-img{
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .sec-edge-decor--top{
+      top: calc(var(--edge-offset-scale, 1) * var(--edge-offset-desktop, 0px));
+    }
+
+    .sec-edge-decor--top .sec-edge-decor-img{
+      top: 0;
+      bottom: auto;
+      object-position: center top;
+    }
+
+    .sec-edge-decor--bottom{
+      bottom: calc(var(--edge-offset-scale, 1) * var(--edge-offset-desktop, 0px));
+    }
+
+    .sec-edge-decor--bottom .sec-edge-decor-img{
+      top: auto;
+      bottom: 0;
+      object-position: center bottom;
+    }
+
+    .sec-edge-decor[data-edge-mode="cover-x"].sec-edge-decor--top .sec-edge-decor-img{
+      top: 0;
+      bottom: auto;
+      object-position: center top;
+    }
+
+    .sec-edge-decor[data-edge-mode="cover-x"].sec-edge-decor--bottom .sec-edge-decor-img{
+      top: auto;
+      bottom: 0;
+      object-position: center bottom;
+    }
+
+    .sec-edge-decor[data-edge-mode="cover-x"].sec-edge-decor--top,
+    .sec-edge-decor[data-edge-mode="cover-x"].sec-edge-decor--bottom{
+      overflow: visible;
+    }
+
+    .sec-edge-decor[data-edge-mode="cover-x"].sec-edge-decor--top .sec-edge-decor-img,
+    .sec-edge-decor[data-edge-mode="cover-x"].sec-edge-decor--bottom .sec-edge-decor-img{
+      height: auto;
+      object-fit: contain;
+    }
+
+    .sec-edge-decor[data-edge-height-model="ratio-band"]{
+      height: calc(var(--edge-section-h, 100%) * var(--edge-height-desktop-ratio, 0.36));
+    }
+
+    @media (min-width: 768px){
+      .sec-edge-decor[data-edge-height-model="ratio-band"][data-edge-mode="cover-x"]{
+        overflow: visible;
+      }
+
+      .sec-edge-decor[data-edge-height-model="ratio-band"][data-edge-mode="cover-x"] .sec-edge-decor-img{
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: auto;
+      }
+
+      .sec-edge-decor[data-edge-height-model="ratio-band"][data-edge-mode="cover-x"].sec-edge-decor--top .sec-edge-decor-img{
+        top: 0;
+        bottom: auto;
+        object-position: center top;
+      }
+
+      .sec-edge-decor[data-edge-height-model="ratio-band"][data-edge-mode="cover-x"].sec-edge-decor--bottom .sec-edge-decor-img{
+        top: auto;
+        bottom: 0;
+        object-position: center bottom;
+      }
+    }
+
+    @media (max-width: 767px){
+      .sec-edge-decor{
+        height: var(--edge-used-height, min(var(--edge-max-height-mobile, 150px), calc(var(--edge-section-h, 100%) * var(--edge-max-section-ratio-mobile, 0.24))));
+      }
+
+      .sec-edge-decor[data-edge-height-model="ratio-band"]{
+        height: calc(var(--edge-section-h, 100%) * var(--edge-height-mobile-ratio, 0.2));
+      }
+
+      .sec-edge-decor--top{
+        top: var(--edge-offset-mobile, 0px);
+      }
+
+      .sec-edge-decor--bottom{
+        bottom: var(--edge-offset-mobile, 0px);
+      }
     }
 
     .sec-bleed{
@@ -1902,7 +2221,33 @@ export function generarHTMLDesdeSecciones(
           bodyPreview === "true"
         );
       }
+      function readPreviewLayoutMode(){
+        var htmlMode = "";
+        var bodyMode = "";
+        var windowMode = "";
+        try {
+          htmlMode = String(
+            document && document.documentElement && document.documentElement.dataset
+              ? document.documentElement.dataset.previewLayoutMode || ""
+              : ""
+          ).toLowerCase();
+        } catch(_e1) {}
+        try {
+          bodyMode = String(
+            document && document.body && document.body.dataset
+              ? document.body.dataset.previewLayoutMode || ""
+              : ""
+          ).toLowerCase();
+        } catch(_e2) {}
+        try {
+          windowMode = String(window.__previewLayoutMode || "").toLowerCase();
+        } catch(_e3) {}
+        return htmlMode || bodyMode || windowMode || "";
+      }
       function shouldLimitVisualViewportScrollCompute(){
+        if (isPreviewDocument() && readPreviewLayoutMode() === "parity") {
+          return false;
+        }
         return isPreviewDocument() || detectEmbeddedContext();
       }
       function updateVisualViewportSnapshot(){
@@ -1957,6 +2302,123 @@ export function generarHTMLDesdeSecciones(
           imageNode.style.removeProperty("transform");
           imageNode.style.setProperty("--bg-image-left", left.toFixed(2) + "px");
           imageNode.style.setProperty("--bg-image-top", top.toFixed(2) + "px");
+        });
+      }
+
+      function readCssNumber(node, propertyName, fallback){
+        try {
+          var parsed = parseFloat(getComputedStyle(node).getPropertyValue(propertyName));
+          return isFinite(parsed) ? parsed : fallback;
+        } catch(_e) {
+          return fallback;
+        }
+      }
+
+      function readPositiveDatasetNumber(node, name){
+        var parsed = Number(node && node.dataset ? node.dataset[name] : 0);
+        return (isFinite(parsed) && parsed > 0) ? parsed : 0;
+      }
+
+      function bindEdgeImageLoad(img, scheduleCompute){
+        if (!img || img.__edgeLayoutBound || typeof scheduleCompute !== "function") return;
+        var naturalWidth = Number(img.naturalWidth || 0);
+        var naturalHeight = Number(img.naturalHeight || 0);
+        if (naturalWidth > 0 && naturalHeight > 0) return;
+        img.__edgeLayoutBound = true;
+        var handleReady = function(){
+          img.__edgeLayoutBound = false;
+          scheduleCompute();
+        };
+        img.addEventListener("load", handleReady, { once: true });
+        img.addEventListener("error", handleReady, { once: true });
+      }
+
+      function resolveEdgeAspectRatio(edgeNode, img, scheduleCompute){
+        var intrinsicWidth = readPositiveDatasetNumber(edgeNode, "edgeIntrinsicWidth");
+        var intrinsicHeight = readPositiveDatasetNumber(edgeNode, "edgeIntrinsicHeight");
+
+        if (!(intrinsicWidth > 0 && intrinsicHeight > 0) && img) {
+          intrinsicWidth = Number(img.naturalWidth || img.width || 0);
+          intrinsicHeight = Number(img.naturalHeight || img.height || 0);
+          bindEdgeImageLoad(img, scheduleCompute);
+        }
+
+        if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+          return intrinsicHeight / intrinsicWidth;
+        }
+
+        return 0.22;
+      }
+
+      function resolveEdgeSlotHeight(edgeNode, isMobile, viewportWidth, sectionHeightPx, scheduleCompute){
+        var img = edgeNode.querySelector(".sec-edge-decor-img");
+        var aspectRatio = resolveEdgeAspectRatio(edgeNode, img, scheduleCompute);
+        var naturalHeight = Math.max(1, viewportWidth * aspectRatio);
+        var minHeight = isMobile
+          ? readCssNumber(edgeNode, "--edge-min-height-mobile", 64)
+          : readCssNumber(edgeNode, "--edge-min-height-desktop", 96);
+        var maxHeight = isMobile
+          ? readCssNumber(edgeNode, "--edge-max-height-mobile", 150)
+          : readCssNumber(edgeNode, "--edge-max-height-desktop", 280);
+        var maxSectionRatio = isMobile
+          ? readCssNumber(edgeNode, "--edge-max-section-ratio-mobile", 0.24)
+          : readCssNumber(edgeNode, "--edge-max-section-ratio-desktop", 0.3);
+        var slotMax = Math.max(1, Math.min(maxHeight, sectionHeightPx * maxSectionRatio));
+        var usedHeight = Math.min(naturalHeight, slotMax);
+        if (usedHeight < minHeight) {
+          usedHeight = Math.min(minHeight, slotMax);
+        }
+        return Math.max(1, usedHeight);
+      }
+
+      function layoutSectionEdgeDecorations(sec, isMobile, viewportWidth, sectionHeightPx, scheduleCompute){
+        var nodes = Array.from(sec.querySelectorAll(".sec-edge-decor"));
+        if (!nodes.length) return;
+
+        var layer = sec.querySelector(".sec-edge-layer");
+        var resolved = [];
+
+        nodes.forEach(function(edgeNode){
+          var heightModel = String(edgeNode.getAttribute("data-edge-height-model") || "intrinsic-clamp");
+          if (heightModel === "ratio-band") {
+            edgeNode.style.removeProperty("--edge-used-height");
+            return;
+          }
+
+          resolved.push({
+            node: edgeNode,
+            height: resolveEdgeSlotHeight(
+              edgeNode,
+              isMobile,
+              viewportWidth,
+              Math.max(1, sectionHeightPx),
+              scheduleCompute
+            ),
+          });
+        });
+
+        if (!resolved.length) return;
+
+        var combinedRatio = isMobile
+          ? readCssNumber(layer || sec, "--edge-combined-ratio-mobile", 0.4)
+          : readCssNumber(layer || sec, "--edge-combined-ratio-desktop", 0.58);
+        var combinedMax = Math.max(1, sectionHeightPx * combinedRatio);
+        var totalHeight = resolved.reduce(function(sum, item){
+          return sum + item.height;
+        }, 0);
+
+        if (totalHeight > combinedMax) {
+          var scale = combinedMax / totalHeight;
+          resolved = resolved.map(function(item){
+            return {
+              node: item.node,
+              height: Math.max(1, item.height * scale),
+            };
+          });
+        }
+
+        resolved.forEach(function(item){
+          item.node.style.setProperty("--edge-used-height", item.height.toFixed(2) + "px");
         });
       }
 
@@ -2115,12 +2577,15 @@ export function generarHTMLDesdeSecciones(
           // defaults
           var zoom = 1;
           var bgzoom = 1;
+          var edgezoom = 1;
 
           // ✅ Por defecto, tamaños escalan por ancho (comportamiento actual)
           var sfinal = sx;
           var pantallaYCompact = 0;
           var pantallaYBasePx = 0;
           var pantallaTextZoom = 1;
+          var hbase = parseFloat(sec.style.getPropertyValue("--hbase")) || DESIGN_H;
+          var edgeSectionHeightPx = sx * hbase;
 
           // limpiar custom width si no aplica
           sec.style.removeProperty("--content-w-pantalla");
@@ -2129,6 +2594,7 @@ export function generarHTMLDesdeSecciones(
             // vh-safe real en px
             var vhSafePx = Math.max(0, viewportH - safeTop - safeBottom);
             sec.style.setProperty("--vh-safe", vhSafePx + "px");
+            edgeSectionHeightPx = vhSafePx;
 
             // 🔥 Desktop: escalar el contenido por ALTURA (vhSafe/500)
             // Esto alinea el HTML publicado con lo que ves en preview
@@ -2143,6 +2609,7 @@ export function generarHTMLDesdeSecciones(
             // ✅ Mobile: mantenemos tu comportamiento actual (zoom hero suave)
             if (isMobile){
               zoom = zoomExtra;
+              edgezoom = 1 / Math.max(0.01, zoom);
               var bgVisualZoom = 1 + (zoomExtra - 1) * BG_ZOOM_FACTOR;
               if (fondoTipo === "imagen") {
                 bgzoom = bgVisualZoom / Math.max(0.01, zoom);
@@ -2169,11 +2636,14 @@ export function generarHTMLDesdeSecciones(
               var spareVerticalPx = Math.max(0, vhLogicalPx - designScaledHPx);
               pantallaYBasePx = spareVerticalPx * 0.36;
             }
+          } else {
+            edgeSectionHeightPx = sfinal * hbase;
           }
 
           sec.style.setProperty("--sfinal", String(sfinal));
           sec.style.setProperty("--zoom", String(zoom));
           sec.style.setProperty("--bgzoom", String(bgzoom));
+          sec.style.setProperty("--edgezoom", String(edgezoom));
           sec.style.setProperty("--pantalla-text-zoom", String(pantallaTextZoom));
 
           // ✅ Solo en mobile + pantalla: corregir el "vh" que después se escala con zoom
@@ -2186,6 +2656,7 @@ export function generarHTMLDesdeSecciones(
           }
           sec.style.setProperty("--pantalla-y-compact", String(pantallaYCompact));
           sec.style.setProperty("--pantalla-y-base", pantallaYBasePx + "px");
+          layoutSectionEdgeDecorations(sec, isMobile, vw, edgeSectionHeightPx, scheduleCompute);
         });
 
         layoutSectionBackgroundImages(scheduleCompute);

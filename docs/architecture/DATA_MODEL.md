@@ -179,6 +179,7 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `fondoImagenScale` | Optional | Base image scale. Section normalizers clamp it to `>= 1`. |
 | `fondoImagenDraggable` | Optional | Editor-only background interaction flag. |
 | `decoracionesFondo` | Optional but normalized | Background decoration payload normalized to `{ items, parallax }`. |
+| `decoracionesBorde` | Optional but normalized | Section edge decoration payload for top/bottom viewport-width ornaments. |
 
 ### Background Decoration Payload
 Current section background normalizers convert `decoracionesFondo` into this shape:
@@ -206,13 +207,69 @@ Each normalized background decoration item uses:
 | `rotation` | Required after normalization | Rotation in degrees. |
 | `orden` | Required after normalization | Decoration stacking/order index. |
 
+### Edge Decoration Payload
+`decoracionesBorde` is a section-owned render primitive for top/bottom edge ornaments, not an object and not a full-section background. The current shape is:
+
+```ts
+{
+  top?: EdgeDecorationSlot,
+  bottom?: EdgeDecorationSlot,
+  layout?: {
+    maxCombinedSectionRatioDesktop?: number | null,
+    maxCombinedSectionRatioMobile?: number | null,
+  },
+}
+
+type EdgeDecorationSlot = {
+  enabled?: boolean,
+  src: string,
+  storagePath?: string | null,
+  decorId?: string | null,
+  nombre?: string | null,
+  heightModel?: "intrinsic-clamp" | "ratio-band",
+  intrinsicWidth?: number | null,
+  intrinsicHeight?: number | null,
+  minHeightDesktopPx?: number | null,
+  maxHeightDesktopPx?: number | null,
+  maxSectionRatioDesktop?: number | null,
+  minHeightMobilePx?: number | null,
+  maxHeightMobilePx?: number | null,
+  maxSectionRatioMobile?: number | null,
+  heightDesktopRatio?: number | null,
+  heightMobileRatio?: number | null,
+  offsetDesktopPx?: number | null,
+  offsetMobilePx?: number | null,
+  mode?: "cover-x" | "contain-x",
+}
+```
+
+Rules:
+
+- `top` and `bottom` are the only supported slots.
+- Missing slot or `enabled === false` does not render.
+- Enabled slots require a publish-ready `src` after prepared-payload asset normalization; otherwise validation can block trusted preview/publish with `section-edge-decoration-unresolved`.
+- Edge decorations render as section layers inside generated HTML, not as `.objeto` nodes and not as mobile smart-layout units.
+- Default edge sizing uses `heightModel: "intrinsic-clamp"`: full-viewport width first, intrinsic aspect ratio when known, desktop/mobile min/max pixel caps, per-slot section-ratio caps, and a combined top+bottom section budget.
+- Default sizing values are desktop `96..280px`, max `0.30` per slot, combined `0.58`; mobile `64..150px`, max `0.24` per slot, combined `0.40`.
+- `heightDesktopRatio` and `heightMobileRatio` remain legacy/advanced fallback inputs. When `heightModel: "ratio-band"` is explicit, the renderer uses the ratio-band behavior instead of intrinsic clamp.
+- Offsets are explicit pixel offsets per desktop/mobile mode; default is `0`.
+- Offset convention is slot-relative: positive `top.offsetDesktopPx` moves the top decoration down into the section, while positive `bottom.offsetDesktopPx` moves the bottom decoration up into the section. Negative values move outward.
+- Current canvas interaction edits `offsetDesktopPx` only. `offsetMobilePx` is preserved separately and is not changed by the desktop canvas drag overlay.
+- `mode: "cover-x"` is the default. It fills the resolved edge band and preserves the content-facing side when controlled crop is needed. `mode: "contain-x"` preserves the full artwork inside the same band and may leave unused space.
+- Normalization clamps ratios, min/max heights, combined budgets, intrinsic dimensions, and offsets. Offsets are clamped to `-240..240px`.
+
 Important section rules:
 
 - The stage/editor derives absolute section offsets at runtime. Offsets are not stored per object.
 - Section visuals live on `secciones`, not in `objetos`.
-- `altoModo: "pantalla"` affects how object Y coordinates are restored and published.
+- `altoModo: "fijo"` starts from persisted `altura`; mobile smart layout can expand the generated section at runtime when content needs more height.
+- `altoModo: "pantalla"` uses viewport-height behavior and `yNorm` placement; it is not processed as a fixed-section smart-layout reflow.
+- Mobile smart layout records runtime height interpretation with `data-msl-height-model` values such as `publish-like`, `publish-like-pending`, and `embedded-preview`. This marker is generated/runtime state, not Firestore data.
 - `decoracionesFondo` supports legacy shapes (`superior` / `inferior`) but normalizes them into `items`.
+- `decoracionesBorde` is independent from `decoracionesFondo`: use it for top/bottom full-width ornaments, not arbitrary positioned decorations.
 - `fondo` can still act as a legacy image background fallback when it contains an image-like URL string.
+- The normative image role and conversion contract lives in `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`. When a normal `tipo: "imagen"` object is converted into a section-owned visual role, the original object must be removed from `objetos`; the section field becomes the single owner of that visual.
+- Role-gated authoring is an editor UI rule, not a Firestore schema distinction. Regular users can author `Imagen (contenido)` and `Fondo de la sección`; `Decoración`, `Decoración arriba`, and `Decoración abajo` creation/management controls are visible only to admin/superadmin users. Existing `decoracionesFondo` and `decoracionesBorde` data remains valid and renderable regardless of the viewing user's role.
 
 ## 4. Elements Model
 Elements are stored in the `objetos` array. The HTML generator groups them by `seccionId`, then splits each section into:
@@ -698,19 +755,25 @@ Output:
 #### 3. Preview
 Input:
 
-- a persisted draft/template re-read plus an optional critical-flush boundary snapshot
+- publishable draft preview: owned draft read by the backend after the critical flush
+- template/fallback preview: persisted template/draft re-read plus an optional critical-flush boundary snapshot
 
 Transformation:
 
 - preview requests a critical flush before opening
 - preview re-reads the draft document or template editor document
-- if a compatible editor boundary snapshot exists, preview overlays that snapshot on top of the re-read payload
-- preview normalizes `rsvp` and `gifts`
-- preview calls `generarHTMLDesdeSecciones(secciones, objetos, rsvp, opciones)`
+- publishable draft preview calls `prepareDraftPreviewRender`, which uses `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`
+- if backend validation has blockers, preview receives validation without trusted HTML
+- template/fallback preview can still overlay a compatible editor boundary snapshot and call `generarHTMLDesdeSecciones(secciones, objetos, rsvp, opciones)` locally
+- preview results carry explicit authority:
+  - `draft-authoritative`: backend prepared draft preview, publish-faithful
+  - `template-visual`: pre-draft template preview, visual-only
+  - `local-fallback`: rollback/emergency local preview, visual-only
 
 Output:
 
-- preview HTML string
+- preview HTML string when generation is allowed
+- `previewAuthority` classification
 
 #### 4. Publish
 Input:
@@ -720,9 +783,9 @@ Input:
 Transformation:
 
 - `normalizeDraftRenderState` extracts canonical render state
-- `preparePublicationRenderState(...)` resolves publish-ready assets and functional CTA state
-- `validatePreparedPublicationRenderState(...)` classifies blockers and warnings before HTML generation
-- `generarHTMLDesdeSecciones` builds final HTML
+- `prepareRenderPayload(...)` resolves publish-ready assets and functional CTA state
+- `validatePreparedRenderPayload(...)` classifies blockers and warnings before HTML generation
+- `generateHtmlFromPreparedRenderPayload(...)` builds final HTML through `generarHTMLDesdeSecciones`
 - HTML is saved to Storage
 - publication metadata is written to `publicadas/{publicSlug}`
 - draft-publication linkage fields are written back to `borradores/{slug}`
@@ -737,7 +800,7 @@ Output:
 - `altoModo`, `y`, and `yNorm` must mean the same thing in editor persistence and HTML generation.
 - section ordering must stay sortable by `orden`.
 - root `rsvp` and `gifts` must remain root-level configs, not embedded into button objects.
-- publish readiness is not inferred only from generator support. The current backend contract is `preparePublicationRenderState(...)` plus `validatePreparedPublicationRenderState(...)`, which can produce either blockers or warnings for the same stored render fields.
+- publish readiness is not inferred only from generator support. The current backend contract is `prepareRenderPayload(...)` plus `validatePreparedRenderPayload(...)`, which can produce either blockers or warnings for the same stored render fields.
 
 ## 9. Validation Rules and Constraints
 These are the current code-grounded rules that must not be broken:

@@ -6,13 +6,19 @@ import {
   MoveDown,
   PlusCircle,
   Monitor,
+  Eye,
+  EyeOff,
+  Image as ImageIcon,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
 import { guardarSeccionComoPlantilla } from "@/utils/plantillas";
-import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
+import {
+  normalizeSectionBackgroundModel,
+  setSectionEdgeDecorationEnabled,
+} from "@/domain/sections/backgrounds";
 
 const DESKTOP_PANEL_WIDTH = 76;
 const DESKTOP_PANEL_RIGHT = 12;
@@ -114,6 +120,7 @@ export default function SectionActionsOverlay({
   cambiarColorFondoSeccion,
   togglePantallaCompletaSeccion,
   secciones,
+  setSecciones,
   objetos,
   canManageSite,
   refrescarPlantillasDeSeccion,
@@ -136,6 +143,20 @@ export default function SectionActionsOverlay({
   const modoSeccion = normalizarAltoModo(seccion.altoModo);
   const esPantalla = modoSeccion === "pantalla";
   const colorInputValue = resolveColorInputValue(backgroundModel.base.fondo);
+  const edgeDecorations = backgroundModel.decoracionesBorde || {};
+
+  const handleToggleEdgeDecoration = (slot) => {
+    const current = edgeDecorations?.[slot];
+    if (!current?.src || typeof setSecciones !== "function") return;
+    setSecciones((previous) =>
+      setSectionEdgeDecorationEnabled(
+        previous,
+        seccion.id,
+        slot,
+        current.enabled === false
+      )
+    );
+  };
 
   const handleGuardarComoPlantilla = () =>
     guardarSeccionComoPlantilla({
@@ -172,6 +193,36 @@ export default function SectionActionsOverlay({
     </span>
   );
 
+  const renderMobileEdgeControls = (slot, label) => {
+    if (!canManageSite) return null;
+    const decoration = edgeDecorations?.[slot];
+    if (!decoration?.src) return null;
+    const enabled = decoration.enabled !== false;
+
+    return (
+      <div className="rounded-xl border border-[#e4d7f6] bg-white/95 px-3 py-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[#5f3596]">
+          <ImageIcon className="h-3.5 w-3.5" />
+          <span>{label}</span>
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            type="button"
+            onClick={() => handleToggleEdgeDecoration(slot)}
+            disabled={estaAnimando}
+            className={`${mobileButtonBase} ${
+              estaAnimando ? mobileButtonDisabled : mobileButtonNeutral
+            }`}
+            title={enabled ? "Ocultar decoración" : "Mostrar decoración"}
+            aria-label={enabled ? "Ocultar decoración" : "Mostrar decoración"}
+          >
+            {renderMobileActionContent(enabled ? EyeOff : Eye, enabled ? "Ocultar" : "Mostrar")}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const mobileActionButtons = (
     <>
       <label className="flex items-center justify-between gap-3 rounded-xl border border-[#e4d7f6] bg-white/95 px-3 py-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
@@ -187,6 +238,9 @@ export default function SectionActionsOverlay({
           />
         </span>
       </label>
+
+      {renderMobileEdgeControls("top", "Decoración arriba")}
+      {renderMobileEdgeControls("bottom", "Decoración abajo")}
 
       <button
         type="button"
@@ -319,6 +373,29 @@ export default function SectionActionsOverlay({
   }
 
   const desktopActionGroups = [
+    {
+      id: "edge-decorations",
+      items: canManageSite
+        ? ["top", "bottom"].flatMap((slot) => {
+            const decoration = edgeDecorations?.[slot];
+            if (!decoration?.src) return [];
+            const enabled = decoration.enabled !== false;
+            const label = slot === "top" ? "Decoración arriba" : "Decoración abajo";
+            return [
+              {
+                id: `edge-${slot}-toggle`,
+                icon: enabled ? EyeOff : Eye,
+                title: enabled ? `Ocultar ${label}` : `Mostrar ${label}`,
+                ariaLabel: enabled ? `Ocultar ${label}` : `Mostrar ${label}`,
+                variant: "neutral",
+                disabled: estaAnimando,
+                pulse: estaAnimando,
+                onClick: () => handleToggleEdgeDecoration(slot),
+              },
+            ];
+          })
+        : [],
+    },
     {
       id: "reorder",
       items: [

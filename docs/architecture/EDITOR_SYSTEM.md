@@ -85,6 +85,12 @@ The editor currently uses three coordinated visual surfaces:
 2. Konva overlay layers for selection, hover, line controls, guides, and drag-overlay visuals
 3. DOM overlay surfaces for inline text editing
 
+Section-owned visuals are authored through `secciones`, not `objetos`. The editor renders base backgrounds, `decoracionesFondo`, and `decoracionesBorde` in the section background surface. `decoracionesBorde` can be assigned from an existing image asset into the top or bottom slot; sizing follows the same bounded edge-decoration model documented in `DATA_MODEL.md`. A double click opens the section-owned decoration edit/settings flow for users with `canManageSite` access. The edge overlay commits `offsetDesktopPx`; it does not make the edge decoration a normal selectable object, and it does not enter resize, rotation, grouping, z-index, or smart-layout object flows.
+
+The normative role and conversion contract for image/content, free decorations, section backgrounds, and top/bottom decorations lives in `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`. That contract requires any conversion from a normal image object into a section-owned visual role to remove the original object from `objetos`; current top/bottom edge conversion follows that rule and clears stale object selection.
+
+Decoration creation and management controls are role-gated UI entry points. Regular users can use `Imagen (contenido)` and `Fondo de la sección`; `Decoración`, `Decoración arriba`, and `Decoración abajo` are visible only to admin/superadmin users through the existing `canManageSite` prop (`isAdmin || isSuperAdmin`). Existing decoration data remains render-compatible for all users. The section actions menu must not expose delete buttons for free, top, or bottom decorations; removal, when available, belongs to the decoration-specific settings menu.
+
 ### 3.4 Persistence Boundary
 
 `useBorradorSync.js` is the main persistence boundary.
@@ -115,3 +121,4 @@ These are active system boundaries, not incidental implementation details.
 - Current preview pipeline: `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`
 - Current fragility map: `docs/architecture/SYSTEM_FRAGILITY_MAP.md`
 - Current render compatibility matrix: `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`
+- Image placement UX/render contract: `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`

@@ -9,6 +9,7 @@ import {
   createTemplateModalSelectionSession,
   resolveDashboardTemplateModalViewState,
 } from "./useDashboardTemplateModal.js";
+import { PREVIEW_AUTHORITY } from "../domain/dashboard/previewSession.js";
 
 test("stale template modal selection sessions cannot overwrite the active selection", () => {
   const firstSession = createTemplateModalSelectionSession({
@@ -77,6 +78,7 @@ test("template modal derived state stays keyed by the selected template id", () 
   assert.deepEqual(derived.selectedTemplatePreviewState, {
     status: "error",
     error: "Preview B failed",
+    previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
   });
   assert.deepEqual(derived.selectedTemplateFormState, {
     rawValues: {
@@ -165,6 +167,10 @@ test("template modal prop shaping preserves the current modal contract", () => {
     "openingEditor",
   ]);
   assert.equal(props.visible, true);
+  assert.equal(
+    props.previewStatus.previewAuthority,
+    PREVIEW_AUTHORITY.TEMPLATE_VISUAL
+  );
   assert.equal(props.onClose, onClose);
   assert.equal(props.onOpenEditorWithChanges, onOpenEditorWithChanges);
   assert.equal(

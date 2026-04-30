@@ -178,6 +178,8 @@ Resultado esperado:
 
 ## 3. Preview boundary
 
+For normal draft sessions, expected preview means `draft-authoritative` backend prepared preview. If prepared validation returns blockers, the pass condition is that no trusted stale HTML is shown and the blocker message matches the current publish validation contract.
+
 ### [ ] Preview inmediatamente despues de editar un objeto
 
 1. Mover un objeto o cambiar su tamano.
@@ -327,6 +329,7 @@ Resultado esperado:
 Resultado esperado:
 
 - el estado visual y el funcional coinciden con la config raiz actual
+- en preview de borrador normal, el resultado es `draft-authoritative`
 - no asumir OK solo porque el boton se ve bien en canvas
 
 ## 7. Senales de alerta

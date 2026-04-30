@@ -53,10 +53,13 @@ import {
   loadCheckoutPricingConfig,
 } from "../siteSettings/pricing";
 import {
+  buildPreviewRenderPayloadFromPreparedPayload,
   buildPublicationValidationBlockingMessage,
-  preparePublicationRenderState,
-  validatePreparedPublicationRenderState,
-} from "./publicationPublishValidation";
+  generateHtmlFromPreparedRenderPayload,
+  prepareRenderPayload,
+  validatePreparedRenderPayload,
+  type PreparedRenderPayload,
+} from "../render/prepareRenderPayload";
 import { executePublicationPublish } from "./publicationPublishExecution";
 import {
   checkSlugAvailabilityFlow,
@@ -145,6 +148,7 @@ const bucket = getStorage().bucket();
 
 const UNKNOWN_TEMPLATE_ANALYTICS_ID = "unknown-template";
 const HISTORY_SCAN_PAGE_SIZE = 250;
+const DRAFT_AUTHORITATIVE_PREVIEW_AUTHORITY = "draft-authoritative";
 
 const FINALIZATION_REASON = Object.freeze({
   EXPIRED_CHECKOUT_UPDATE: "expired-before-update-checkout",
@@ -1161,21 +1165,11 @@ async function buildPublicationRenderArtifacts(
   seccionesFinales: Record<string, unknown>[];
   rsvp: ModalConfig | null;
   gifts: GiftsConfig | null;
-  functionalCtaContract: Awaited<
-    ReturnType<typeof preparePublicationRenderState>
-  >["functionalCtaContract"];
-  validation: ReturnType<typeof validatePreparedPublicationRenderState>;
+  functionalCtaContract: PreparedRenderPayload["functionalCtaContract"];
+  validation: ReturnType<typeof validatePreparedRenderPayload>;
 }> {
-  const prepared = await preparePublicationRenderState(draftData);
-  const validation = validatePreparedPublicationRenderState({
-    rawObjetos: prepared.draftRenderState.objetos,
-    rawSecciones: prepared.draftRenderState.secciones,
-    objetosFinales: prepared.objetosFinales,
-    seccionesFinales: prepared.seccionesFinales,
-    rawRsvp: prepared.draftRenderState.rsvp,
-    rawGifts: prepared.draftRenderState.gifts,
-    functionalCtaContract: prepared.functionalCtaContract,
-  });
+  const prepared = await prepareRenderPayload(draftData);
+  const validation = validatePreparedRenderPayload(prepared);
 
   return {
     draftRenderState: prepared.draftRenderState,
@@ -1193,7 +1187,7 @@ async function buildPublicationRenderArtifacts(
 }
 
 function assertPublicationValidationCanPublish(
-  validation: ReturnType<typeof validatePreparedPublicationRenderState>
+  validation: ReturnType<typeof validatePreparedRenderPayload>
 ): void {
   if (validation.canPublish) return;
 
@@ -1433,6 +1427,38 @@ export async function validateDraftForPublicationHandler(
   return {
     draftSlug,
     ...artifacts.validation,
+  };
+}
+
+export async function prepareDraftPreviewRenderHandler(
+  request: CallableRequest<{ draftSlug: string; slugPreview?: string }>
+) {
+  const uid = requireAuth(request);
+  const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
+  const draft = await ensureDraftOwnership(uid, draftSlug);
+  const draftData = draft.data as Record<string, unknown>;
+  const prepared = await prepareRenderPayload(draftData);
+  const validation = validatePreparedRenderPayload(prepared);
+  const previewPayload = buildPreviewRenderPayloadFromPreparedPayload(prepared);
+  const slugPreview =
+    normalizePublicSlug(request.data?.slugPreview) ||
+    normalizePublicSlug(draftData.slugPublico) ||
+    draftSlug;
+  const htmlGenerado = validation.canPublish
+    ? generateHtmlFromPreparedRenderPayload(prepared, {
+        slug: slugPreview,
+        isPreview: true,
+      })
+    : null;
+
+  return {
+    draftSlug,
+    slugPreview,
+    previewAuthority: DRAFT_AUTHORITATIVE_PREVIEW_AUTHORITY,
+    htmlGenerado,
+    previewPayload: cloneFirestoreSafe(previewPayload),
+    validation: cloneFirestoreSafe(validation),
+    blocked: !validation.canPublish,
   };
 }
 

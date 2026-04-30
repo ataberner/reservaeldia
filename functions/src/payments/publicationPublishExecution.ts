@@ -5,7 +5,7 @@ import {
   type DraftRenderState,
 } from "../drafts/sourceOfTruth";
 import { normalizeInvitationType } from "../utils/invitationType";
-import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
+import { generateHtmlFromPreparedRenderPayload } from "../render/prepareRenderPayload";
 import { planPublicationPublishOperations } from "./publicationOperationPlanning";
 import { type PreparedPublicationRenderState } from "./publicationPublishValidation";
 
@@ -140,18 +140,9 @@ export async function executePublicationPublish(
   const now = params.now || new Date();
   const nowGeneratedAtValue = createGeneratedAtValue(now);
 
-  const htmlFinal = generarHTMLDesdeSecciones(
-    artifacts.seccionesFinales as any[],
-    artifacts.objetosFinales as any[],
-    artifacts.rsvp || undefined,
-    {
-      slug: publicSlug,
-      gifts: artifacts.gifts,
-      rsvpSource: artifacts.draftRenderState.rsvp,
-      giftsSource: artifacts.draftRenderState.gifts,
-      functionalCtaContract: artifacts.functionalCtaContract,
-    }
-  );
+  const htmlFinal = generateHtmlFromPreparedRenderPayload(artifacts, {
+    slug: publicSlug,
+  });
 
   await savePublicHtml({
     filePath: `publicadas/${publicSlug}/index.html`,

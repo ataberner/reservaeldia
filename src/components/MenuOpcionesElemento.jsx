@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useR
 import { createPortal } from "react-dom";
 import {
     Copy, Trash2, Layers, ArrowDown, ArrowUp, MoveUp, MoveDown, PlusCircle, ClipboardPaste,
-    Link2, X, Image as ImageIcon, ImageOff, Check
+    Link2, X, Image as ImageIcon, ImageOff, Check, ChevronRight, Eye, EyeOff
 } from "lucide-react";
 import {
     getAllowedMotionEffectsForElement,
@@ -35,6 +35,7 @@ const DEFAULT_MENU_SIZE_WITH_AUTHORING = { width: 320, height: 360 };
 const DEFAULT_LINK_FLYOUT_SIZE = { width: 320, height: 180 };
 const DEFAULT_EFFECTS_FLYOUT_SIZE = { width: 300, height: 320 };
 const DEFAULT_LAYER_FLYOUT_SIZE = { width: 224, height: 180 };
+const DEFAULT_USE_AS_FLYOUT_SIZE = { width: 360, height: 360 };
 const BACKGROUND_MOTION_EFFECT_OPTIONS = Object.freeze([
     {
         value: "none",
@@ -130,7 +131,7 @@ export default function MenuOpcionesElemento({
     onEliminar,
     moverElemento,               // ("al-frente" | "al-fondo" | "subir" | "bajar")
     onCerrar,                    // cierra el menú en el padre (setMostrarPanelZ(false))
-    // Para "Usar como fondo"
+    // Image role conversion actions.
     reemplazarFondo,
     secciones,
     objetos,
@@ -140,8 +141,12 @@ export default function MenuOpcionesElemento({
     setSeccionActivaId,
     setSectionDecorationEdit,
     usarComoDecoracionFondo,
+    usarComoDecoracionBorde,
     onConvertirDecoracionFondoEnImagen,
     onEliminarDecoracionFondo,
+    onToggleDecoracionBorde,
+    onEliminarDecoracionBorde,
+    onFinalizarAjusteDecoracionBorde,
     onFinalizarAjusteDecoracionFondo,
     onActualizarMovimientoDecoracionFondo,
     onDesanclarImagenFondoBase,
@@ -184,7 +189,9 @@ export default function MenuOpcionesElemento({
     const esRegalo = elementoSeleccionado?.tipo === "regalo-boton";
     const esGrupo = elementoSeleccionado?.tipo === "grupo";
     const esDecoracionFondo = elementoSeleccionado?.tipo === "decoracion-fondo";
+    const esDecoracionBorde = elementoSeleccionado?.tipo === "decoracion-borde";
     const esImagenFondoSeccion = elementoSeleccionado?.tipo === "imagen-fondo-seccion";
+    const canUseAdvancedDecorations = canManageSite === true;
     const menuKind = menuContext?.kind || (elementoSeleccionado ? "canvas-object" : null);
     const isMultiSelectionMenu = menuKind === "multi-selection";
     const multiSelectionIds = useMemo(
@@ -282,6 +289,15 @@ export default function MenuOpcionesElemento({
         width: DEFAULT_EFFECTS_FLYOUT_SIZE.width,
     });
     const [efectosReady, setEfectosReady] = useState(false);
+    const [mostrarSubmenuUso, setMostrarSubmenuUso] = useState(false);
+    const btnUsoRef = useRef(null);
+    const submenuUsoRef = useRef(null);
+    const [usoPos, setUsoPos] = useState({
+        x: -9999,
+        y: -9999,
+        width: DEFAULT_USE_AS_FLYOUT_SIZE.width,
+    });
+    const [usoReady, setUsoReady] = useState(false);
 
     const allowedMotionEffects = getAllowedMotionEffectsForElement(elementoSeleccionado);
     const currentMotionEffect = sanitizeMotionEffect(elementoSeleccionado?.motionEffect);
@@ -302,6 +318,7 @@ export default function MenuOpcionesElemento({
         setMostrarSubmenuCapa(false);
         setMostrarSubmenuEnlace(false);
         setMostrarSubmenuEfectos(false);
+        setMostrarSubmenuUso(false);
     }, [isOpen]);
 
     // Posicionar los flyouts
@@ -321,6 +338,15 @@ export default function MenuOpcionesElemento({
         const measured = getMeasuredSize(submenuEfectosRef, DEFAULT_EFFECTS_FLYOUT_SIZE);
         const posResuelta = resolveAnchoredPosition(anchor, measured, 8);
         setEfectosPos({ x: posResuelta.x, y: posResuelta.y, width: posResuelta.width });
+    }, []);
+
+    const recalcularSubmenuUsoPos = useCallback(() => {
+        const btn = btnUsoRef.current;
+        if (!btn) return;
+        const anchor = btn.getBoundingClientRect();
+        const measured = getMeasuredSize(submenuUsoRef, DEFAULT_USE_AS_FLYOUT_SIZE);
+        const posResuelta = resolveAnchoredPosition(anchor, measured, 8);
+        setUsoPos({ x: posResuelta.x, y: posResuelta.y, width: posResuelta.width });
     }, []);
 
     useLayoutEffect(() => {
@@ -373,6 +399,31 @@ export default function MenuOpcionesElemento({
         };
     }, [mostrarSubmenuEfectos, recalcularSubmenuEfectosPos]);
 
+    useLayoutEffect(() => {
+        if (!mostrarSubmenuUso) {
+            setUsoReady(false);
+            setUsoPos({
+                x: -9999,
+                y: -9999,
+                width: DEFAULT_USE_AS_FLYOUT_SIZE.width,
+            });
+            return;
+        }
+        recalcularSubmenuUsoPos();
+        setUsoReady(true);
+    }, [mostrarSubmenuUso, recalcularSubmenuUsoPos]);
+
+    useEffect(() => {
+        if (!mostrarSubmenuUso) return;
+        const handle = () => recalcularSubmenuUsoPos();
+        window.addEventListener("resize", handle);
+        window.addEventListener("scroll", handle, true);
+        return () => {
+            window.removeEventListener("resize", handle);
+            window.removeEventListener("scroll", handle, true);
+        };
+    }, [mostrarSubmenuUso, recalcularSubmenuUsoPos]);
+
     const guardarEnlace = () => {
         const limpio = sanitizeURL(urlInput);
         if (!limpio) {
@@ -421,6 +472,7 @@ export default function MenuOpcionesElemento({
         setMostrarSubmenuCapa(false);
         setMostrarSubmenuEnlace(false);
         setMostrarSubmenuEfectos(false);
+        setMostrarSubmenuUso(false);
         onCerrar();
     };
 
@@ -430,6 +482,7 @@ export default function MenuOpcionesElemento({
         setMostrarSubmenuCapa(false);
         setMostrarSubmenuEnlace(false);
         setMostrarSubmenuEfectos(false);
+        setMostrarSubmenuUso(false);
         onActualizarMovimientoDecoracionFondo(nextMode);
         onCerrar();
     };
@@ -761,41 +814,116 @@ export default function MenuOpcionesElemento({
                         ) : null}
                         <div className="min-w-0">
                             <div className="truncate text-sm font-semibold text-[#5f3596]">
-                                {elementoSeleccionado?.nombre || "Decoracion del fondo"}
+                                {elementoSeleccionado?.nombre || "Decoración"}
                             </div>
                             <div className="text-[11px] text-slate-500">
-                                Opciones de la decoracion
+                                Opciones de la decoración
                             </div>
                         </div>
                     </div>
 
-                    <button
-                        onClick={() => {
-                            onConvertirDecoracionFondoEnImagen?.();
-                            onCerrar();
-                        }}
-                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-                    >
-                        <ImageIcon className="w-4 h-4" /> Volver a imagen
-                    </button>
+                    {canUseAdvancedDecorations ? (
+                        <>
+                            <button
+                                onClick={() => {
+                                    onConvertirDecoracionFondoEnImagen?.();
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <ImageIcon className="w-4 h-4" /> Volver a imagen
+                            </button>
 
-                    {renderBackgroundMotionMenu(
-                        "Activa un movimiento claro en el fondo al recorrer la invitacion."
+                            {renderBackgroundMotionMenu(
+                                "Activa un movimiento claro en el fondo al recorrer la invitación."
+                            )}
+
+                            <button
+                                onClick={() => {
+                                    onEliminarDecoracionFondo?.();
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <Trash2 className="w-4 h-4 text-red-500" /> Quitar decoración
+                            </button>
+                        </>
+                    ) : (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                            Opciones avanzadas disponibles solo para administradores.
+                        </div>
                     )}
 
                     <button
                         onClick={() => {
-                            onEliminarDecoracionFondo?.();
+                            onFinalizarAjusteDecoracionFondo?.();
                             onCerrar();
                         }}
                         className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
                     >
-                        <Trash2 className="w-4 h-4 text-red-500" /> Quitar decoracion
+                        <Check className="w-4 h-4 text-emerald-600" /> Terminar ajuste
                     </button>
+                </>
+            ) : esDecoracionBorde ? (
+                <>
+                    <div className="mb-2 flex items-center gap-3 rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
+                        {elementoSeleccionado?.src ? (
+                            <div className="h-11 w-11 overflow-hidden rounded-lg border border-[#dccaf7] bg-white">
+                                <img
+                                    src={elementoSeleccionado.src}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                />
+                            </div>
+                        ) : null}
+                        <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-[#5f3596]">
+                                {elementoSeleccionado?.nombre || "Decoración"}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                                Opciones de la decoración
+                            </div>
+                        </div>
+                    </div>
+
+                    {canUseAdvancedDecorations ? (
+                        <>
+                            <button
+                                onClick={() => {
+                                    onToggleDecoracionBorde?.(elementoSeleccionado?.slot);
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                {elementoSeleccionado?.enabled === false ? (
+                                    <Eye className="w-4 h-4" />
+                                ) : (
+                                    <EyeOff className="w-4 h-4" />
+                                )}
+                                {elementoSeleccionado?.enabled === false
+                                    ? "Mostrar decoración"
+                                    : "Ocultar decoración"}
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    onEliminarDecoracionBorde?.(elementoSeleccionado?.slot);
+                                    onCerrar();
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                            >
+                                <Trash2 className="w-4 h-4 text-red-500" /> Quitar decoración
+                            </button>
+                        </>
+                    ) : (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                            Opciones avanzadas disponibles solo para administradores.
+                        </div>
+                    )}
 
                     <button
                         onClick={() => {
-                            onFinalizarAjusteDecoracionFondo?.();
+                            onFinalizarAjusteDecoracionBorde?.();
                             onCerrar();
                         }}
                         className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
@@ -888,6 +1016,7 @@ export default function MenuOpcionesElemento({
                         // cerramos el de capa si estaba abierto, para no superponer
                         setMostrarSubmenuCapa(false);
                         setMostrarSubmenuEfectos(false);
+                        setMostrarSubmenuUso(false);
                         setMostrarSubmenuEnlace(prev => !prev);
                     }}
                     className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
@@ -991,6 +1120,7 @@ export default function MenuOpcionesElemento({
                     onClick={() => {
                         setMostrarSubmenuCapa(false);
                         setMostrarSubmenuEnlace(false);
+                        setMostrarSubmenuUso(false);
                         setMostrarSubmenuEfectos((prev) => !prev);
                     }}
                     className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
@@ -1057,39 +1187,179 @@ export default function MenuOpcionesElemento({
             </div>
             )}
 
-            {/* Usar como fondo (solo si es imagen) */}
+            {/* Usar como (roles de imagen) */}
             {!esGrupo && esImagen && (
-                <button
-                    onClick={() => {
-                        reemplazarFondo({
-                            elementoImagen: elementoSeleccionado,
-                            secciones,
-                            objetos,
-                            setSecciones,
-                            setObjetos,
-                            setElementosSeleccionados,
-                            setSeccionActivaId,
-                            setSectionDecorationEdit,
-                            setMostrarPanelZ: onCerrar, // reutilizamos onCerrar para cerrar el menú
-                        });
-                    }}
-                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-                >
-                    <div className="w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded" />
-                    Usar como fondo
-                </button>
-            )}
+                <div className="relative">
+                    <button
+                        ref={btnUsoRef}
+                        onClick={() => {
+                            setMostrarSubmenuCapa(false);
+                            setMostrarSubmenuEnlace(false);
+                            setMostrarSubmenuEfectos(false);
+                            setMostrarSubmenuUso((prev) => !prev);
+                        }}
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
+                    >
+                        <ImageIcon className="w-4 h-4" />
+                        <span>Usar como</span>
+                        <ChevronRight className="ml-auto h-4 w-4 text-slate-400" />
+                    </button>
 
-            {!esGrupo && esImagen && typeof usarComoDecoracionFondo === "function" && (
-                <button
-                    onClick={() => {
-                        usarComoDecoracionFondo(elementoSeleccionado);
-                    }}
-                    className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"
-                >
-                    <div className="w-4 h-4 rounded border border-[#dccaf7] bg-gradient-to-br from-[#f7f1ff] to-[#e8dcff]" />
-                    Usar como decoracion del fondo
-                </button>
+                    {mostrarSubmenuUso &&
+                        createPortal(
+                            <div
+                                ref={submenuUsoRef}
+                                className="fixed z-[60] bg-white border rounded shadow-lg p-2 space-y-1 menu-z-index"
+                                style={{
+                                    left: usoPos.x,
+                                    top: usoPos.y,
+                                    width: usoPos.width,
+                                    maxWidth: "calc(100vw - 16px)",
+                                    maxHeight: 360,
+                                    overflowY: "auto",
+                                    visibility: usoReady ? "visible" : "hidden",
+                                    borderColor: "#773dbe",
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="px-2 pb-1 text-xs font-semibold text-zinc-700">
+                                    Usar como
+                                </div>
+
+                                <button
+                                    title="Elemento de contenido. Podés moverlo, redimensionarlo, rotarlo y superponerlo con otros elementos."
+                                    onClick={() => {
+                                        setMostrarSubmenuUso(false);
+                                        onCerrar();
+                                    }}
+                                    className="flex w-full items-start gap-3 rounded px-3 py-2 text-left transition hover:bg-gray-100"
+                                >
+                                    <span className="mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded border border-slate-300 bg-white">
+                                        <Check className="h-3 w-3 text-[#773dbe]" />
+                                    </span>
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-slate-800">
+                                            Imagen (contenido)
+                                        </span>
+                                        <span className="block text-[11px] leading-snug text-slate-500">
+                                            Elemento de contenido. Podés moverlo, redimensionarlo, rotarlo y superponerlo con otros elementos.
+                                        </span>
+                                    </span>
+                                </button>
+
+                                {canUseAdvancedDecorations ? (
+                                    <button
+                                        title="Elemento visual que queda detrás del contenido y no afecta el diseño en mobile."
+                                        onClick={() => {
+                                            setMostrarSubmenuUso(false);
+                                            if (typeof usarComoDecoracionFondo !== "function") {
+                                                onCerrar();
+                                                return;
+                                            }
+                                            usarComoDecoracionFondo(elementoSeleccionado);
+                                        }}
+                                        className="flex w-full items-start gap-3 rounded px-3 py-2 text-left transition hover:bg-gray-100"
+                                    >
+                                        <span className="mt-0.5 h-4 w-4 rounded border border-[#dccaf7] bg-gradient-to-br from-[#f7f1ff] to-[#e8dcff]" />
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-medium text-slate-800">
+                                                Decoración
+                                            </span>
+                                            <span className="block text-[11px] leading-snug text-slate-500">
+                                                Elemento visual que queda detrás del contenido y no afecta el diseño en mobile.
+                                            </span>
+                                        </span>
+                                    </button>
+                                ) : null}
+
+                                <button
+                                    title="Imagen principal que cubre toda la sección."
+                                    onClick={() => {
+                                        setMostrarSubmenuUso(false);
+                                        if (typeof reemplazarFondo !== "function") {
+                                            onCerrar();
+                                            return;
+                                        }
+                                        reemplazarFondo({
+                                            elementoImagen: elementoSeleccionado,
+                                            secciones,
+                                            objetos,
+                                            setSecciones,
+                                            setObjetos,
+                                            setElementosSeleccionados,
+                                            setSeccionActivaId,
+                                            setSectionDecorationEdit,
+                                            setMostrarPanelZ: onCerrar,
+                                        });
+                                    }}
+                                    className="flex w-full items-start gap-3 rounded px-3 py-2 text-left transition hover:bg-gray-100"
+                                >
+                                    <span className="mt-0.5 h-4 w-4 rounded bg-gradient-to-br from-blue-400 to-purple-500" />
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-slate-800">
+                                            Fondo de la sección
+                                        </span>
+                                        <span className="block text-[11px] leading-snug text-slate-500">
+                                            Imagen principal que cubre toda la sección.
+                                        </span>
+                                    </span>
+                                </button>
+
+                                {canUseAdvancedDecorations ? (
+                                    <>
+                                        <button
+                                            title="Decoración anclada en la parte superior que se adapta al ancho de la pantalla."
+                                            onClick={() => {
+                                                setMostrarSubmenuUso(false);
+                                                if (typeof usarComoDecoracionBorde !== "function") {
+                                                    onCerrar();
+                                                    return;
+                                                }
+                                                usarComoDecoracionBorde(elementoSeleccionado, "top");
+                                            }}
+                                            className="flex w-full items-start gap-3 rounded px-3 py-2 text-left transition hover:bg-gray-100"
+                                        >
+                                            <span className="mt-0.5 h-4 w-4 rounded border border-[#d8eadf] bg-gradient-to-br from-[#f6fff8] to-[#dcfce7]" />
+                                            <span className="min-w-0">
+                                                <span className="block text-sm font-medium text-slate-800">
+                                                    Decoración arriba
+                                                </span>
+                                                <span className="block text-[11px] leading-snug text-slate-500">
+                                                    Decoración anclada en la parte superior que se adapta al ancho de la pantalla.
+                                                </span>
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            title="Decoración anclada en la parte inferior que se adapta al ancho de la pantalla."
+                                            onClick={() => {
+                                                setMostrarSubmenuUso(false);
+                                                if (typeof usarComoDecoracionBorde !== "function") {
+                                                    onCerrar();
+                                                    return;
+                                                }
+                                                usarComoDecoracionBorde(elementoSeleccionado, "bottom");
+                                            }}
+                                            className="flex w-full items-start gap-3 rounded px-3 py-2 text-left transition hover:bg-gray-100"
+                                        >
+                                            <span className="mt-0.5 h-4 w-4 rounded border border-[#f2d6bf] bg-gradient-to-br from-[#fff8ed] to-[#ffedd5]" />
+                                            <span className="min-w-0">
+                                                <span className="block text-sm font-medium text-slate-800">
+                                                    Decoración abajo
+                                                </span>
+                                                <span className="block text-[11px] leading-snug text-slate-500">
+                                                    Decoración anclada en la parte inferior que se adapta al ancho de la pantalla.
+                                                </span>
+                                            </span>
+                                        </button>
+                                    </>
+                                ) : null}
+                            </div>,
+                            document.body
+                        )
+                    }
+                </div>
             )}
 
             {esRsvp && (
@@ -1140,6 +1410,7 @@ export default function MenuOpcionesElemento({
                     onClick={() => {
                         setMostrarSubmenuEnlace(false);
                         setMostrarSubmenuEfectos(false);
+                        setMostrarSubmenuUso(false);
                         setMostrarSubmenuCapa((prev) => !prev);
                     }}
                     className="flex items-center gap-2 w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition"

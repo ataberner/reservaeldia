@@ -8,6 +8,7 @@ import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
   resolveSectionDecorationAssetUrl,
+  resolveSectionEdgeDecorationAssetUrl,
 } from "./renderAssetContract.js";
 import {
   FIXTURE_PATHS,
@@ -82,6 +83,21 @@ test("preserves canonical section background and decoration fields", () => {
         },
       ],
     },
+    decoracionesBorde: {
+      top: {
+        url: "https://cdn.example.com/edge-top.png",
+        enabled: true,
+        heightDesktopRatio: 0.42,
+        heightMobileRatio: 0.18,
+        offsetDesktopPx: 12,
+        offsetMobilePx: -8,
+        mode: "contain-x",
+      },
+      bottom: {
+        src: "https://cdn.example.com/edge-bottom.png",
+        enabled: false,
+      },
+    },
   });
 
   assert.equal(normalized.fondoImagen, "https://cdn.example.com/background.jpg");
@@ -89,6 +105,20 @@ test("preserves canonical section background and decoration fields", () => {
     normalized.decoracionesFondo.items[0].src,
     "https://cdn.example.com/decor.png"
   );
+  assert.equal(
+    resolveSectionEdgeDecorationAssetUrl(normalized.decoracionesBorde.top),
+    "https://cdn.example.com/edge-top.png"
+  );
+  assert.equal(normalized.decoracionesBorde.top.heightDesktopRatio, 0.42);
+  assert.equal(normalized.decoracionesBorde.top.heightMobileRatio, 0.18);
+  assert.equal(normalized.decoracionesBorde.top.offsetDesktopPx, 12);
+  assert.equal(normalized.decoracionesBorde.top.offsetMobilePx, -8);
+  assert.equal(normalized.decoracionesBorde.top.mode, "contain-x");
+  assert.equal(
+    normalized.decoracionesBorde.bottom.src,
+    "https://cdn.example.com/edge-bottom.png"
+  );
+  assert.equal(normalized.decoracionesBorde.bottom.enabled, false);
 });
 
 test("normalizes representative draft-load assets the same way preview preparation expects them", () => {

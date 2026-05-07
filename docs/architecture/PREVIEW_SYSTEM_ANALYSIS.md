@@ -70,6 +70,13 @@ Publish and draft-authoritative preview share the same backend prepared payload 
 
 Publish stores final HTML in Firebase Storage and remains the delivery artifact source. Draft-authoritative preview uses the same preparation and validation contract before generating temporary preview HTML.
 
+Successful publish also requires the generated social share artifact. The backend
+must capture the first `.inv > .sec` from the generated publish HTML, validate
+`publicadas/{slug}/share.jpg` as a JPEG `1200x630`, inject Open Graph metadata
+pointing to that generated image, and only then persist an active successful
+publication. Template preview and local fallback preview remain visual-only and
+must not be used as share-image authority.
+
 ## 5. Preview Iframe Runtime
 
 `ModalVistaPrevia` renders the generated HTML into iframe `srcDoc` views:

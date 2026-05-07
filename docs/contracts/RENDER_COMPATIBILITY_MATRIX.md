@@ -8,8 +8,11 @@ Este documento resume la compatibilidad real entre:
 - publishable draft preview HTML (`prepareRenderPayload` + `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })`)
 - template/fallback preview HTML (`generarHTMLDesdeSecciones(..., { isPreview: true })`)
 - publish HTML (`prepareRenderPayload` + `generateHtmlFromPreparedRenderPayload`)
+- published share image (`publicadas/{slug}/share.jpg`) derived from the first section of generated publish HTML
 
 Refleja implementacion y tests actuales del repositorio. No documenta arquitectura ideal.
+
+La imagen social publicada se documenta en [PUBLISHED_SHARE_IMAGE_CONTRACT.md](PUBLISHED_SHARE_IMAGE_CONTRACT.md). No crea un nuevo mapeo editor -> imagen: debe derivarse del HTML de publish ya generado.
 
 ## Anclas reales de compatibilidad
 
@@ -21,6 +24,8 @@ La compatibilidad preview vs publish ya no es difusa. Hoy existe caracterizacion
 - `functions/publicationPublishValidation.test.mjs`
 
 La columna `Preview` indica que existe salida HTML de preview para esa rama. La paridad publish solo aplica a preview de borrador `draft-authoritative`; template preview (`template-visual`) y fallback local (`local-fallback`) son visuales y no deben usarse como prueba de publish.
+
+Para la imagen social publicada, la ancla de compatibilidad es el HTML de publish generado, no el canvas, no el template preview y no una estructura simplificada. La primera seccion se identifica en el DOM renderizado como el primer `.inv > .sec`.
 
 Casos con paridad compartida caracterizada:
 
@@ -85,6 +90,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `anclaje: fullbleed` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque el canvas no representa la salida final | warning `fullbleed-editor-drift` | congelar contrato |
 | `enlace` | `si` | `parcial` | `soportado` | `soportado` | `parcial` | CTA funcional ignora `enlace` | usar con restricciones |
 | `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML | no tiene warning especifico actual | validar en HTML |
+| published share image | `publicadas.share` + `publicadas/{slug}/share.jpg` | no | no | artefacto derivado de publish HTML | deriva de la primera `.inv > .sec`; no agrega mapeo editor/render | bloquea publish si no se genera y confirma como JPEG `1200x630` | usar [PUBLISHED_SHARE_IMAGE_CONTRACT.md](PUBLISHED_SHARE_IMAGE_CONTRACT.md) |
 
 ## Bloqueadores y advertencias por tipo de riesgo
 
@@ -109,6 +115,8 @@ Advertencias de publish hoy:
 - No tratar una figura como "editor-only" si existe rama real en `generarHTMLDesdeObjetos.ts` y en `publicationPublishValidation.ts`.
 - No tratar una rama como "soportada" solo porque existe HTML. Si depende de assets resueltos o config raiz, queda `parcial`.
 - Para preview vs publish, la fuente de verdad actual es la combinacion de `previewPublishParity`, `prepareRenderPayload`, y `validatePreparedRenderPayload`, no inspeccion manual aislada del canvas.
+- Para imagen social publicada, usar solo el HTML de publish generado como fuente visual. El renderer debe esperar `document.readyState === "complete"`, `document.fonts.ready`, carga/error de imagenes, al menos dos animation frames, y el asentamiento acotado de animaciones/transiciones finitas de entrada en la primera seccion; luego debe capturar el primer `.inv > .sec` en `1200x630`. Los loops infinitos/decorativos no deben bloquear la captura.
+- La imagen social publicada es un artefacto obligatorio de publish. Si el renderer excede 5-8 segundos, encuentra error, o el `share.jpg` no se confirma como JPEG `1200x630`, el publish falla de forma controlada y no debe persistir una publicacion exitosa con fallback generico. El HTML final nunca debe publicar un `og:image` faltante.
 - Para cambios de roles de imagen, usar tambien [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](/c:/Reservaeldia/docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). Ese contrato define la semantica normativa de conversion: una imagen normal convertida en visual propio de seccion debe eliminar el objeto original.
 - Para cambios mobile/reflow, usar `shared/previewPublishMobileGeometryParity.test.mjs`. La captura browser completa es opt-in con `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; los tests deterministas cubren fixtures, tolerancias y diff shape.
 - Si un cambio toca `imagen`, galerias, CTA funcionales, `pantalla/yNorm` o `fullbleed`, ejecutar tambien [EDITOR_REGRESSION_CHECKLIST.md](/c:/Reservaeldia/docs/testing/EDITOR_REGRESSION_CHECKLIST.md).

@@ -5,6 +5,8 @@ Reserva el Dia is a Next.js application for creating, personalizing, and publish
 
 The current production flow is draft-first. The editable invitation source of truth is the render state stored in `borradores`, centered on `objetos`, `secciones`, `rsvp`, and `gifts`. `publicadas` stores the active public publication record, `publicadas_historial` stores finalized publication snapshots, and `publicadas/{slug}/index.html` in Storage is a generated delivery artifact. The dashboard also contains template authoring and admin flows; template workspaces currently coexist with user drafts inside the same application and, in some cases, inside the same `borradores` collection with `templateWorkspace.mode = "template_edit"`.
 
+Published social sharing support is defined by [PUBLISHED_SHARE_IMAGE_CONTRACT.md](../contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md). It defines a backend publish-pipeline artifact, `publicadas/{slug}/share.jpg`, generated from the first section of the generated published HTML and resolved into Open Graph metadata before the public publication document is persisted.
+
 ## 2. Tech Stack
 - Next.js + React: landing page, authenticated dashboard shell, template modal flows, and editor orchestration.
 - Next.js static export: in non-development builds the app uses `output: "export"` and is deployed from `out`.
@@ -29,7 +31,7 @@ The current production flow is draft-first. The editable invitation source of tr
 - **Template/editorial admin flow**: `functions/src/templates/editorialService.ts` and `src/domain/templates/adminService.js` provide template list, trash, tag, workspace, editor document, draft-to-template, and commit flows. Template workspaces are not written directly to `plantillas`; they go through intermediate editor/workspace documents.
 - **Backend entry point**: `functions/src/index.ts` is the deployed Functions surface. It re-exports many domain handlers, but it also still contains current inline handlers and legacy exports.
 - **Shared render contract layer**: `shared/renderAssetContract.*`, `shared/renderContractPolicy.*`, and `functions/src/utils/functionalCtaContract.ts` are the cross-runtime contract surface used by editor persistence, template flows, preview generation, publish validation, and final publish generation.
-- **Storage artifacts**: `publicadas/{slug}/index.html` is the published invitation artifact, `thumbnails_borradores/{uid}/{slug}.webp` is the draft thumbnail artifact, and `plantillas/{plantillaId}/assets/...` is the shared asset destination used when template copy detects private storage paths.
+- **Storage artifacts**: `publicadas/{slug}/index.html` is the published invitation artifact, `publicadas/{slug}/share.jpg` is the published social share artifact when generated, `thumbnails_borradores/{uid}/{slug}.webp` is the draft thumbnail artifact, and `plantillas/{plantillaId}/assets/...` is the shared asset destination used when template copy detects private storage paths. The share-image contract keeps the internal `storagePath` separate from the lifecycle-gated public `imageUrl` used by Open Graph metadata.
 
 ## 4. Data Flow
 1. The user authenticates and opens `/dashboard`. Firebase Hosting serves the static app shell, and the page resolves the active dashboard view in `src/pages/dashboard.js`.
@@ -140,8 +142,20 @@ The publish sequence implemented today is:
 3. Create a checkout session in `publication_checkout_sessions` and, when needed, initialize Mercado Pago preference/payment data.
 4. After payment approval, `publicationApprovedSessionFlow.ts` claims the session's `publishing` slot and short-circuits duplicate settlement attempts.
 5. `publishDraftToPublic` re-reads the draft, re-runs publish preflight, and keeps ownership/new-vs-update/conflict/expired-publication gating in `publicationPayments.ts`.
-6. `publicationPublishExecution.ts` generates final HTML, writes `publicadas/{slug}/index.html` to Storage, applies icon-usage delta, writes or updates `publicadas/{slug}`, and mirrors publication linkage back onto the source draft.
+6. `publicationPublishExecution.ts` generates base HTML, generates and confirms `publicadas/{slug}/share.jpg`, injects final Open Graph metadata, writes `publicadas/{slug}/index.html` to Storage, applies icon-usage delta, writes or updates `publicadas/{slug}`, and mirrors publication linkage back onto the source draft.
 7. `publicationWritePreparation.ts`, `publicationOperationPlanning.ts`, and `publicationOperationExecution.ts` shape and apply the linked Firestore writes without changing current document contracts.
+
+The published share-image contract extends the backend publish pipeline in this strict order:
+1. Prepare render payload.
+2. Generate base published HTML.
+3. Attempt first-section share image generation.
+4. Decode, normalize, upload, and confirm generated `share.jpg`.
+5. Resolve generated share metadata.
+6. Inject final Open Graph metadata using the generated image.
+7. Upload final `index.html`.
+8. Persist `publicadas/{slug}` including generated `share`.
+
+The final `index.html` must only be uploaded after `share.imageUrl` is resolved and confirmed as generated metadata for the current publish attempt. The final HTML must never reference a missing `og:image`. If `share.jpg` cannot be generated or confirmed, the backend must fail the publish attempt before persisting a successful active publication. Existing active publications remain accessible until republished or repaired, but new publish/republish success requires the generated share artifact.
 
 Active publication transitions are handled by `transitionPublishedInvitationState`:
 - `pause`: active -> paused
@@ -163,6 +177,8 @@ The preserved group contract for `tipo: "grupo"` is documented in [GROUP_RENDER_
 
 Draft-authoritative preview and publish both enter generation through `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`. Template preview and local fallback preview still call the generator locally and remain visual-only.
 
+Open Graph metadata injection belongs after base published HTML generation and after share metadata resolution. The share renderer must load the generated publish HTML, wait for document/font/image readiness, at least two animation frames, and bounded settling of finite first-section entrance motion, capture only the first `.inv > .sec` at `1200x630`, and hide other sections only inside the renderer context. It must not mutate the stored HTML source.
+
 Mobile preview parity is guarded at the iframe shell rather than by a separate render contract. `ModalVistaPrevia` injects `data-preview-viewport` and `data-preview-layout-mode="parity"` before iframe scripts run, and `NEXT_PUBLIC_MOBILE_PREVIEW_PARITY_MODE=0` rolls back to the legacy mobile iframe height/overflow mutation path. The smart-layout runtime uses that metadata to apply the publish-like fixed-section height model in embedded draft preview without changing published HTML generation. In mobile preview, the iframe document root owns scroll; the outer preview shell scales and clips the iframe instead of becoming the invitation scroll container.
 
 Section visuals now have three distinct primitives:
@@ -180,6 +196,7 @@ The UX/render contract for image roles, including the normative rule that conver
 - Template catalog and full template source are stored separately in `plantillas_catalog` and `plantillas`.
 - Public invitation delivery is artifact-based: the public route serves stored HTML from Storage through a Function-backed route.
 - Publication lifecycle is split across active publication docs, finalized history docs, Storage artifacts, and mirrored draft metadata.
+- Social share images are backend publish artifacts derived from generated published HTML, not editor output, template preview output, or a new render mapping.
 - Shared render contract code is used across frontend and backend, including compatibility branches for legacy countdown/icon contracts.
 - Template authoring and user draft editing currently coexist inside the same dashboard shell and partially inside the same Firestore collection surface.
 - Frontend owns live authoring state and preview boundary capture; backend owns publish preflight, public asset normalization, lifecycle enforcement, and final public artifact writes.

@@ -8,6 +8,15 @@ import { normalizeInvitationType } from "../utils/invitationType";
 import { generateHtmlFromPreparedRenderPayload } from "../render/prepareRenderPayload";
 import { planPublicationPublishOperations } from "./publicationOperationPlanning";
 import { type PreparedPublicationRenderState } from "./publicationPublishValidation";
+import {
+  buildPublicationOgDescription,
+  injectOpenGraphMetadata,
+  isPublishedShareImageEnabled,
+  resolveRequiredGeneratedPublishedShareImageMetadata,
+  type GeneratedShareImageResult,
+  type PublishedShareMetadata,
+} from "./publishedShareImage";
+import { type CaptureFirstSectionShareImageParams } from "./publishedShareImageRenderer";
 
 type PublishOperation = "new" | "update";
 
@@ -37,6 +46,12 @@ type RecordPublishedAnalyticsEventInput = {
   metadata: Record<string, unknown>;
 };
 
+type PublicArtifactSnapshot = {
+  content: Buffer;
+  contentType?: string | null;
+  cacheControl?: string | null;
+};
+
 export type ExecutePublicationPublishParams = {
   draftSlug: string;
   publicSlug: string;
@@ -50,6 +65,28 @@ export type ExecutePublicationPublishParams = {
   createUpdatedAtValue(): unknown;
   createGeneratedAtValue(date: Date): unknown;
   savePublicHtml(params: { filePath: string; html: string }): Promise<void>;
+  generateShareImage?(
+    params: CaptureFirstSectionShareImageParams
+  ): Promise<Buffer | GeneratedShareImageResult>;
+  savePublicShareImage(params: {
+    storagePath: string;
+    image: Buffer;
+    contentType: "image/jpeg";
+    cacheControl: string;
+  }): Promise<void>;
+  confirmPublicShareImage(params: { storagePath: string }): Promise<boolean>;
+  readPublicArtifact?(params: {
+    filePath: string;
+  }): Promise<PublicArtifactSnapshot | null>;
+  restorePublicArtifact?(params: {
+    filePath: string;
+    artifact: PublicArtifactSnapshot;
+  }): Promise<void>;
+  deletePublicArtifact?(params: { filePath: string }): Promise<void>;
+  shareImageEnabled?: boolean;
+  renderTimeoutMs?: number;
+  jpegQuality?: number;
+  defaultShareImageUrl?: string;
   applyIconUsageDelta(params: {
     objetos: unknown[];
     oldUsageMap: unknown;
@@ -115,6 +152,62 @@ function derivePublishedPortada(draftData: Record<string, unknown>): string | nu
   return portada || null;
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || "");
+}
+
+async function readExistingArtifact(params: {
+  filePath: string;
+  readPublicArtifact?: ExecutePublicationPublishParams["readPublicArtifact"];
+}): Promise<PublicArtifactSnapshot | null> {
+  if (!params.readPublicArtifact) return null;
+  return params.readPublicArtifact({ filePath: params.filePath });
+}
+
+async function restoreOrDeleteArtifact(params: {
+  filePath: string;
+  backup: PublicArtifactSnapshot | null;
+  deleteWhenMissing: boolean;
+  restorePublicArtifact?: ExecutePublicationPublishParams["restorePublicArtifact"];
+  deletePublicArtifact?: ExecutePublicationPublishParams["deletePublicArtifact"];
+  warn(message: string, context: Record<string, unknown>): void;
+  context: Record<string, unknown>;
+}): Promise<void> {
+  const {
+    filePath,
+    backup,
+    deleteWhenMissing,
+    restorePublicArtifact,
+    deletePublicArtifact,
+    warn,
+    context,
+  } = params;
+
+  try {
+    if (backup) {
+      if (!restorePublicArtifact) {
+        warn("No hay restaurador de artefactos publicados configurado", {
+          ...context,
+          filePath,
+        });
+        return;
+      }
+      await restorePublicArtifact({ filePath, artifact: backup });
+      return;
+    }
+
+    if (deleteWhenMissing && deletePublicArtifact) {
+      await deletePublicArtifact({ filePath });
+    }
+  } catch (rollbackError) {
+    warn("No se pudo restaurar artefacto publicado tras fallo de publish", {
+      ...context,
+      filePath,
+      error: getErrorMessage(rollbackError),
+    });
+  }
+}
+
 export async function executePublicationPublish(
   params: ExecutePublicationPublishParams
 ): Promise<ExecutePublicationPublishResult> {
@@ -131,6 +224,12 @@ export async function executePublicationPublish(
     createUpdatedAtValue,
     createGeneratedAtValue,
     savePublicHtml,
+    generateShareImage,
+    savePublicShareImage,
+    confirmPublicShareImage,
+    readPublicArtifact,
+    restorePublicArtifact,
+    deletePublicArtifact,
     applyIconUsageDelta,
     executePublicationWrites,
     recordPublishedAnalyticsEvent,
@@ -140,14 +239,41 @@ export async function executePublicationPublish(
   const now = params.now || new Date();
   const nowGeneratedAtValue = createGeneratedAtValue(now);
 
-  const htmlFinal = generateHtmlFromPreparedRenderPayload(artifacts, {
+  const baseHtml = generateHtmlFromPreparedRenderPayload(artifacts, {
     slug: publicSlug,
   });
 
-  await savePublicHtml({
-    filePath: `publicadas/${publicSlug}/index.html`,
-    html: htmlFinal,
+  const draftContentMeta = {
+    ...buildDraftContentMeta({
+      lastWriter: "publish",
+      reason: "publication-snapshot-read",
+    }),
+    updatedAt: createUpdatedAtValue(),
+  };
+
+  const plannedPublish = planPublicationPublishOperations({
+    draftSlug,
+    publicSlug,
+    operation,
+    existingData,
+    now,
+    paymentSessionId,
+    draftContentMeta,
   });
+
+  const publicationTitle = getString(draftData.nombre) || publicSlug;
+  const htmlPath = `publicadas/${publicSlug}/index.html`;
+  const sharePath = `publicadas/${publicSlug}/share.jpg`;
+  const shouldProtectExistingArtifacts = operation === "update" && Boolean(existingData);
+  const existingHtmlBackup = shouldProtectExistingArtifacts
+    ? await readExistingArtifact({ filePath: htmlPath, readPublicArtifact })
+    : null;
+  const existingShareBackup = shouldProtectExistingArtifacts
+    ? await readExistingArtifact({ filePath: sharePath, readPublicArtifact })
+    : null;
+  let shareWriteAttempted = false;
+  let htmlWriteAttempted = false;
+  let share: PublishedShareMetadata;
 
   let iconUsage: Record<string, number> = {};
   let iconUsageMeta: Record<string, unknown> = {
@@ -183,51 +309,105 @@ export async function executePublicationPublish(
     });
   }
 
-  const draftContentMeta = {
-    ...buildDraftContentMeta({
-      lastWriter: "publish",
-      reason: "publication-snapshot-read",
-    }),
-    updatedAt: createUpdatedAtValue(),
-  };
+  try {
+    share = await resolveRequiredGeneratedPublishedShareImageMetadata({
+      publicSlug,
+      publicUrl: plannedPublish.publicUrl,
+      baseHtml,
+      generatedAt: nowGeneratedAtValue,
+      shareImageEnabled:
+        typeof params.shareImageEnabled === "boolean"
+          ? params.shareImageEnabled
+          : isPublishedShareImageEnabled(),
+      renderTimeoutMs: params.renderTimeoutMs,
+      jpegQuality: params.jpegQuality,
+      generatedSource: "renderer",
+      generateShareImage,
+      saveGeneratedShareImage: async (input) => {
+        shareWriteAttempted = true;
+        return savePublicShareImage(input);
+      },
+      confirmGeneratedShareImage: confirmPublicShareImage,
+      warn,
+    });
 
-  const plannedPublish = planPublicationPublishOperations({
-    draftSlug,
-    publicSlug,
-    operation,
-    existingData,
-    now,
-    paymentSessionId,
-    draftContentMeta,
-  });
+    const finalHtml = injectOpenGraphMetadata(baseHtml, {
+      title: publicationTitle,
+      description: buildPublicationOgDescription(),
+      imageUrl: share.imageUrl,
+      url: plannedPublish.publicUrl,
+      imageWidth: share.width,
+      imageHeight: share.height,
+    });
 
-  const publicationWrite: Record<string, unknown> = {
-    slug: publicSlug,
-    userId: uid,
-    plantillaId: draftData.plantillaId || null,
-    urlPublica: plannedPublish.publicUrl,
-    nombre: draftData.nombre || publicSlug,
-    tipo: derivePublishedInvitationType(draftData),
-    portada: derivePublishedPortada(draftData),
-    invitadosCount: draftData.invitadosCount || 0,
-    rsvp: artifacts.rsvp,
-    gifts: artifacts.gifts,
-    ...plannedPublish.activeLifecyclePatch,
-    borradorSlug: draftSlug,
-    ultimaOperacion: operation,
-    lastPaymentSessionId: paymentSessionId,
-    iconUsage,
-    iconUsageMeta,
-  };
+    htmlWriteAttempted = true;
+    await savePublicHtml({
+      filePath: htmlPath,
+      html: finalHtml,
+    });
 
-  if (draftSlug !== publicSlug) {
-    publicationWrite.slugOriginal = draftSlug;
+    const publicationWrite: Record<string, unknown> = {
+      slug: publicSlug,
+      userId: uid,
+      plantillaId: draftData.plantillaId || null,
+      urlPublica: plannedPublish.publicUrl,
+      nombre: draftData.nombre || publicSlug,
+      tipo: derivePublishedInvitationType(draftData),
+      portada: derivePublishedPortada(draftData),
+      invitadosCount: draftData.invitadosCount || 0,
+      rsvp: artifacts.rsvp,
+      gifts: artifacts.gifts,
+      ...plannedPublish.activeLifecyclePatch,
+      borradorSlug: draftSlug,
+      ultimaOperacion: operation,
+      lastPaymentSessionId: paymentSessionId,
+      share,
+      iconUsage,
+      iconUsageMeta,
+    };
+
+    if (draftSlug !== publicSlug) {
+      publicationWrite.slugOriginal = draftSlug;
+    }
+
+    await executePublicationWrites({
+      publicationWrite,
+      draftWrite: plannedPublish.linkedDraftWrite,
+    });
+  } catch (publishError) {
+    const rollbackContext = {
+      draftSlug,
+      publicSlug,
+      operation,
+      error: getErrorMessage(publishError),
+    };
+
+    if (shareWriteAttempted || shouldProtectExistingArtifacts) {
+      await restoreOrDeleteArtifact({
+        filePath: sharePath,
+        backup: existingShareBackup,
+        deleteWhenMissing: !shouldProtectExistingArtifacts,
+        restorePublicArtifact,
+        deletePublicArtifact,
+        warn,
+        context: rollbackContext,
+      });
+    }
+
+    if (htmlWriteAttempted || shouldProtectExistingArtifacts) {
+      await restoreOrDeleteArtifact({
+        filePath: htmlPath,
+        backup: existingHtmlBackup,
+        deleteWhenMissing: !shouldProtectExistingArtifacts,
+        restorePublicArtifact,
+        deletePublicArtifact,
+        warn,
+        context: rollbackContext,
+      });
+    }
+
+    throw publishError;
   }
-
-  await executePublicationWrites({
-    publicationWrite,
-    draftWrite: plannedPublish.linkedDraftWrite,
-  });
 
   if (plannedPublish.isFirstPublication && recordPublishedAnalyticsEvent) {
     try {

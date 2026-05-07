@@ -62,6 +62,10 @@ import {
 } from "../render/prepareRenderPayload";
 import { executePublicationPublish } from "./publicationPublishExecution";
 import {
+  isCompliantPublishedShareImageBuffer,
+  isPublishedShareImageEnabled,
+} from "./publishedShareImage";
+import {
   checkSlugAvailabilityFlow,
   markReservationStatusFlow,
   reserveSlugForSessionFlow,
@@ -291,6 +295,10 @@ function serverTimestamp() {
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || "");
 }
 
 // Keep the public callable shell on this module while edge contracts live in
@@ -1309,6 +1317,55 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
           cacheControl: "public,max-age=3600",
         },
       }),
+    savePublicShareImage: async ({ storagePath, image, contentType, cacheControl }) =>
+      bucket.file(storagePath).save(image, {
+        contentType,
+        public: true,
+        metadata: {
+          cacheControl,
+        },
+      }),
+    confirmPublicShareImage: async ({ storagePath }) => {
+      const file = bucket.file(storagePath);
+      const [exists] = await file.exists();
+      if (!exists) return false;
+      const [image] = await file.download();
+      return isCompliantPublishedShareImageBuffer(image);
+    },
+    readPublicArtifact: async ({ filePath }) => {
+      const file = bucket.file(filePath);
+      const [exists] = await file.exists();
+      if (!exists) return null;
+      const [content] = await file.download();
+      const [metadata] = await file.getMetadata();
+      return {
+        content,
+        contentType: getString(metadata.contentType) || null,
+        cacheControl: getString(metadata.cacheControl) || null,
+      };
+    },
+    restorePublicArtifact: async ({ filePath, artifact }) =>
+      bucket.file(filePath).save(artifact.content, {
+        contentType:
+          getString(artifact.contentType) ||
+          (filePath.endsWith(".jpg") ? "image/jpeg" : "text/html"),
+        public: true,
+        metadata: {
+          cacheControl:
+            getString(artifact.cacheControl) ||
+            (filePath.endsWith(".jpg")
+              ? "public,max-age=31536000,immutable"
+              : "public,max-age=3600"),
+        },
+      }),
+    deletePublicArtifact: async ({ filePath }) => {
+      const file = bucket.file(filePath);
+      const [exists] = await file.exists();
+      if (exists) {
+        await file.delete();
+      }
+    },
+    shareImageEnabled: isPublishedShareImageEnabled(),
     applyIconUsageDelta: (input) => applyPublicationIconUsageDelta(input),
     executePublicationWrites: async ({ publicationWrite, draftWrite }) =>
       executePlannedPublicationWrites({

@@ -45,6 +45,10 @@ import {
   restoreDraftFromTrashHandler,
 } from "./drafts/draftTrashLifecycle";
 import {
+  isCompliantPublishedShareImageBuffer,
+  isCurrentGeneratedShareImageRequest,
+} from "./payments/publishedShareImage";
+import {
   archiveCountdownPreset as archiveCountdownPresetHandler,
   deleteCountdownPreset as deleteCountdownPresetHandler,
   listCountdownPresetsAdmin as listCountdownPresetsAdminHandler,
@@ -1099,15 +1103,15 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
 const app = express();
 
 
-app.get("/i/:slug", async (req: Request, res: Response) => {
-  const slug = normalizePublicSlug(req.params.slug);
-  if (!slug) return res.status(400).send("Falta el slug");
-
+async function resolvePublicInvitationAccess(slug: string): Promise<
+  | { ok: true; publicationData: Record<string, unknown> }
+  | { ok: false; status: number; message: string }
+> {
   try {
     const publicationRef = db.collection("publicadas").doc(slug);
     const publicationSnap = await publicationRef.get();
     if (!publicationSnap.exists) {
-      return res.status(404).send("Invitacion publicada no encontrada");
+      return { ok: false, status: 404, message: "Invitacion publicada no encontrada" };
     }
 
     const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
@@ -1116,7 +1120,7 @@ app.get("/i/:slug", async (req: Request, res: Response) => {
       !lifecycleSnapshot.rawPublicState ||
       !lifecycleSnapshot.isPubliclyAccessibleByState
     ) {
-      return res.status(404).send("Invitacion no disponible");
+      return { ok: false, status: 404, message: "Invitacion no disponible" };
     }
 
     if (lifecycleSnapshot.isExpired) {
@@ -1134,9 +1138,80 @@ app.get("/i/:slug", async (req: Request, res: Response) => {
               : String(finalizeError || ""),
         });
       }
-      return res.status(404).send("Invitacion no disponible");
+      return { ok: false, status: 404, message: "Invitacion no disponible" };
     }
 
+    return { ok: true, publicationData };
+  } catch (error) {
+    logger.error("Error resolviendo invitacion publica por slug", {
+      slug,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+    return { ok: false, status: 500, message: "No se pudo cargar la invitacion" };
+  }
+}
+
+app.get("/i/:slug/share.jpg", async (req: Request, res: Response) => {
+  const slug = normalizePublicSlug(req.params.slug);
+  if (!slug) return res.status(400).send("Falta el slug");
+
+  const access = await resolvePublicInvitationAccess(slug);
+  if (!access.ok) {
+    return res.status(access.status).send(access.message);
+  }
+
+  try {
+    const requestedVersion = Array.isArray(req.query.v)
+      ? String(req.query.v[0] || "")
+      : String(req.query.v || "");
+    if (
+      !isCurrentGeneratedShareImageRequest({
+        publicationData: access.publicationData,
+        publicSlug: slug,
+        requestedVersion,
+      })
+    ) {
+      return res.status(404).send("Imagen share no encontrada");
+    }
+
+    const file = bucket.file(`publicadas/${slug}/share.jpg`);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return res.status(404).send("Imagen share no encontrada");
+    }
+
+    const [contenido] = await file.download();
+    const isCompliant = await isCompliantPublishedShareImageBuffer(contenido);
+    if (!isCompliant) {
+      logger.warn("Imagen share publica no cumple dimensiones requeridas", {
+        slug,
+      });
+      return res.status(404).send("Imagen share no encontrada");
+    }
+
+    return res
+      .set("Content-Type", "image/jpeg")
+      .set("Cache-Control", "public,max-age=31536000,immutable")
+      .send(contenido);
+  } catch (error) {
+    logger.error("Error resolviendo imagen share publica por slug", {
+      slug,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+    return res.status(500).send("No se pudo cargar la imagen share");
+  }
+});
+
+app.get("/i/:slug", async (req: Request, res: Response) => {
+  const slug = normalizePublicSlug(req.params.slug);
+  if (!slug) return res.status(400).send("Falta el slug");
+
+  const access = await resolvePublicInvitationAccess(slug);
+  if (!access.ok) {
+    return res.status(access.status).send(access.message);
+  }
+
+  try {
     const file = bucket.file(`publicadas/${slug}/index.html`);
     const [exists] = await file.exists();
     if (!exists) {
@@ -1146,7 +1221,7 @@ app.get("/i/:slug", async (req: Request, res: Response) => {
     const [contenido] = await file.download();
     return res.set("Content-Type", "text/html").send(contenido.toString());
   } catch (error) {
-    logger.error("Error resolviendo invitacion publica por slug", {
+    logger.error("Error descargando invitacion publica por slug", {
       slug,
       error: error instanceof Error ? error.message : String(error || ""),
     });
@@ -1354,7 +1429,13 @@ export const createPublicationCheckoutSession = onCall(
 );
 
 export const createPublicationPayment = onCall(
-  { region: "us-central1", memory: "512MiB" },
+  {
+    region: "us-central1",
+    memory: "1GiB",
+    timeoutSeconds: 60,
+    cpu: 1,
+    concurrency: 1,
+  },
   async (request) => createPublicationPaymentHandler(request)
 );
 
@@ -1364,7 +1445,13 @@ export const getPublicationCheckoutStatus = onCall(
 );
 
 export const retryPaidPublicationWithNewSlug = onCall(
-  { region: "us-central1", memory: "256MiB" },
+  {
+    region: "us-central1",
+    memory: "1GiB",
+    timeoutSeconds: 60,
+    cpu: 1,
+    concurrency: 1,
+  },
   async (request) => retryPaidPublicationWithNewSlugHandler(request)
 );
 
@@ -1406,7 +1493,13 @@ export const listPublicationDiscountCodeUsage = onCall(
 );
 
 export const mercadoPagoWebhook = onRequest(
-  { region: "us-central1" },
+  {
+    region: "us-central1",
+    memory: "1GiB",
+    timeoutSeconds: 60,
+    cpu: 1,
+    concurrency: 1,
+  },
   async (req, res) => processMercadoPagoWebhookRequest(req, res)
 );
 
@@ -1567,7 +1660,13 @@ export const publicRsvpSubmit = onRequest(
 );
 
 export const publicarInvitacion = onCall(
-  { region: "us-central1", memory: "256MiB", cpu: "gcf_gen1" },
+  {
+    region: "us-central1",
+    memory: "1GiB",
+    timeoutSeconds: 60,
+    cpu: 1,
+    concurrency: 1,
+  },
   async (request) => {
     const uid = requireAuth(request);
     const slug = String(request.data?.slug || "").trim();

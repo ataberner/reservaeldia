@@ -120,7 +120,8 @@ Observed publication fields include:
 | `urlPublica` | `publicadas/{publicSlug}` | Public URL. |
 | `nombre` | `publicadas/{publicSlug}` | Display name copied from the draft. |
 | `tipo` | `publicadas/{publicSlug}` | Publication metadata field. Current publish code derives it from `tipoInvitacion`, then falls back to `tipo`, then `plantillaTipo`, and normalizes the result through `normalizeInvitationType`. |
-| `portada` | `publicadas/{publicSlug}` | Published preview image. |
+| `portada` | `publicadas/{publicSlug}` | Published preview image candidate. It is not a successful share-image artifact. |
+| `share` | `publicadas/{publicSlug}` | Published social share metadata. Successful publish writes generated Open Graph image metadata without storing render arrays. |
 | `invitadosCount` | `publicadas/{publicSlug}` | Auxiliary publication metric. |
 | `rsvp` | `publicadas/{publicSlug}` | Normalized published RSVP config. |
 | `gifts` | `publicadas/{publicSlug}` | Normalized published gifts config. |
@@ -142,6 +143,32 @@ Relationship summary:
 - `publicadas/{publicSlug}` is a publication wrapper and lifecycle record.
 - `publicadas/{publicSlug}` is not a fallback source for `objetos` or `secciones`.
 - Published HTML is stored separately at `publicadas/{publicSlug}/index.html` in Firebase Storage.
+
+`publicadas/{publicSlug}.share` metadata is defined by [PUBLISHED_SHARE_IMAGE_CONTRACT.md](../contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md). It is publication metadata for the generated Open Graph image, not an invitation render source. Existing active documents may contain legacy fallback states until republished or repaired.
+
+Shape:
+
+```ts
+{
+  share: {
+    status: "generated",
+    source: "renderer" | "published-html-first-section",
+    storagePath: string,
+    imageUrl: string,
+    width: 1200,
+    height: 630,
+    mimeType: "image/jpeg",
+    version: string,
+    generatedAt: Timestamp,
+    fallbackReason?: string | null,
+    errorCode?: string | null,
+  }
+}
+```
+
+`storagePath` is the internal Storage path, for example `publicadas/{publicSlug}/share.jpg`. `imageUrl` is the public URL used by `og:image`, for example `https://reservaeldia.com.ar/i/{publicSlug}/share.jpg?v={share.version}`. These fields must never be treated as interchangeable.
+
+Fallback share metadata is legacy/internal recovery metadata only and is not a successful publication result. Existing template `previewUrl` and `portada` fields are not aliases for a generated share image.
 
 ### Backend Lifecycle Interpretation
 The current backend source of truth for publication lifecycle interpretation is `functions/src/payments/publicationLifecycle.ts`.
@@ -740,6 +767,12 @@ Published HTML is stored in Firebase Storage, not Firestore:
 
 The HTML is always generated from draft render data, not edited in place as a Firestore document.
 
+Published share images add a second publication artifact when generation succeeds:
+
+- `publicadas/{publicSlug}/share.jpg`
+
+That artifact is generated from the first `.inv > .sec` in the generated published HTML. The public Open Graph URL for it is stored separately as `publicadas/{publicSlug}.share.imageUrl`.
+
 ## 8. Data Transformation Flow
 ### Editor State -> Firestore -> HTML Generation
 #### 1. Editor Load
@@ -815,6 +848,19 @@ Transformation:
 - publication metadata is written to `publicadas/{publicSlug}`
 - draft-publication linkage fields are written back to `borradores/{slug}`
 
+Share-image transformation preserves this render authority while inserting backend-only metadata resolution before the public document is persisted:
+
+1. Prepare render payload.
+2. Generate base published HTML.
+3. Attempt first-section share image generation.
+4. Decode, normalize, upload, and confirm generated `share.jpg`.
+5. Resolve generated share metadata.
+6. Inject final Open Graph metadata using the generated `share.imageUrl`.
+7. Upload final `index.html`.
+8. Persist `publicadas/{publicSlug}` including `share`.
+
+The final `index.html` must only be uploaded after `share.imageUrl` is resolved and confirmed as generated metadata for the current publish attempt. If `share.jpg` cannot be generated or confirmed, publish fails in a controlled way and must not persist active publication success with fallback/default metadata.
+
 Output:
 
 - `publicadas/{publicSlug}` Firestore metadata
@@ -826,6 +872,7 @@ Output:
 - section ordering must stay sortable by `orden`.
 - root `rsvp` and `gifts` must remain root-level configs, not embedded into button objects.
 - publish readiness is not inferred only from generator support. The current backend contract is `prepareRenderPayload(...)` plus `validatePreparedRenderPayload(...)`, which can produce either blockers or warnings for the same stored render fields.
+- Successful `share` metadata must be derived from generated publish HTML first-section capture. It must not add a new editor mapping, new render arrays in `publicadas`, a template-preview authority, or a canvas-derived social preview source.
 
 ## 9. Validation Rules and Constraints
 These are the current code-grounded rules that must not be broken:

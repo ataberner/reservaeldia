@@ -4,18 +4,13 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
 import {
-    ArrowLeft,
     ChevronDown,
     LogOut,
-    Minus,
-    MoreHorizontal,
     Plus,
-    Redo2,
     Sparkles,
     Trash2,
-    Undo2,
-    X,
 } from "lucide-react";
+import CanvasEditorHeader from "@/components/editor/header/CanvasEditorHeader";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
 import {
@@ -31,10 +26,6 @@ import {
     readCanvasEditorStage,
 } from "@/lib/editorRuntimeBridge";
 import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
-import {
-    triggerEditorRedo,
-    triggerEditorUndo,
-} from "@/utils/editorHistoryControls";
 
 const MOBILE_EDITOR_BREAKPOINT_PX = 768;
 
@@ -174,14 +165,12 @@ export default function DashboardHeader(props) {
 
     const [menuAbierto, setMenuAbierto] = useState(false);
     const menuRef = useRef(null);
-    const accionesMobileRef = useRef(null);
     const headerRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
     const [templateWorkspaceMeta, setTemplateWorkspaceMeta] = useState(() =>
         normalizeTemplateWorkspaceMeta(null)
     );
     const router = useRouter();
-    const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
     const emailNormalizado = String(usuario?.email || "").trim();
     const nombreNormalizado = String(usuario?.displayName || "").trim();
     const nombreDesdeEmail = emailNormalizado
@@ -223,7 +212,7 @@ export default function DashboardHeader(props) {
 
     useEffect(() => {
         if (!isMobile) return;
-        if (zoom !== 1) {
+        if (zoom === 1) {
             toggleZoom?.();
         }
     }, [isMobile, zoom, toggleZoom]);
@@ -315,12 +304,6 @@ export default function DashboardHeader(props) {
         return () =>
             document.removeEventListener("pointerdown", handlePointerDownOutside);
     }, []);
-
-    useEffect(() => {
-        if (!slugInvitacion || !isMobile) {
-            setAccionesMobileAbiertas(false);
-        }
-    }, [isMobile, slugInvitacion]);
 
     useEffect(() => {
         if (slugInvitacion && isMobile) {
@@ -596,7 +579,7 @@ export default function DashboardHeader(props) {
 
     const previewButtonLabel = isTemplateSession
         ? "Vista previa"
-        : "Vista previa y publicar";
+        : "Publicar";
     const documentNameLabel = isTemplateSession
         ? "Nombre de la plantilla"
         : "Nombre del borrador";
@@ -613,33 +596,12 @@ export default function DashboardHeader(props) {
     const showMobilePreviewButton = !editorReadOnly || canShowReadOnlyPreview;
     const showDesktopPreviewButton = !editorReadOnly || canShowReadOnlyPreview;
     const showStandaloneUserMenu = !(slugInvitacion && isMobile);
-    const canUndo = !editorReadOnly && historialExternos.length > 1;
-    const canRedo = !editorReadOnly && futurosExternos.length > 0;
-
-    const subtleHeaderButton =
-        "inline-flex items-center gap-1.5 rounded-xl border border-[#e6dbf8] bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_26px_rgba(119,61,190,0.16)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
-    const primaryHeaderButton =
-        "inline-flex items-center gap-1.5 rounded-xl border border-[#7e4dc6]/40 bg-gradient-to-r from-[#8a57cf] via-[#773dbe] to-[#6433b0] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_12px_26px_rgba(119,61,190,0.34)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#8050c8] hover:via-[#6f3bbc] hover:to-[#5b2ea6] hover:shadow-[0_16px_32px_rgba(119,61,190,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5]";
-    const templateHeaderButton =
-        "inline-flex items-center gap-1.5 rounded-xl border border-[#f3d37b] bg-gradient-to-r from-[#fff5cf] to-[#ffe5a8] px-3 py-1.5 text-xs font-semibold text-[#7a5103] shadow-[0_8px_18px_rgba(160,105,16,0.15)] transition-all duration-200 hover:-translate-y-[1px] hover:from-[#ffefc0] hover:to-[#ffdd92] hover:shadow-[0_12px_22px_rgba(160,105,16,0.22)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5db98]";
+    const showEditorAdminMenuActions =
+        Boolean(slugInvitacion) && !loadingAdminAccess && canManageSite && !editorReadOnly;
     const dashboardModeButton =
         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
-    const desktopDocumentShellClass =
-        "flex h-10 w-[clamp(260px,26vw,430px)] min-w-0 items-center gap-2 rounded-[22px] border border-[#ddd2f5] bg-white px-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition focus-within:border-[#d2bdf1] focus-within:ring-2 focus-within:ring-[#d8c3f5]";
-    const desktopDocumentBadgeClass =
-        "inline-flex shrink-0 items-center rounded-full border border-[#e3d8f6] bg-[#faf6ff] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500";
-    const desktopNameInputClass =
-        "h-full min-w-0 flex-1 bg-transparent text-[15px] font-medium text-slate-800 outline-none placeholder:text-slate-400";
-    const desktopReadOnlyNameClass =
-        "truncate text-[15px] font-medium text-slate-700";
-    const desktopHistoryGroupClass =
-        "hidden items-center rounded-2xl border border-[#e6dbf8] bg-white/95 p-1 shadow-[0_8px_20px_rgba(15,23,42,0.05)] md:flex";
-    const desktopHistoryButtonClass =
-        "inline-flex h-8 min-w-[42px] items-center justify-center gap-1 rounded-xl px-2 text-xs font-medium text-[#6f3bc0] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
-    const mobileIconButtonClass =
-        "inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#e6dbf8] bg-white text-[#6f3bc0] shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-[#d5c6f2] hover:bg-[#faf6ff] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
-    const mobileSheetActionButtonClass =
-        "flex w-full items-center justify-between rounded-2xl border border-[#e7dcf8] bg-white px-3 py-3 text-left text-sm font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:border-[#d7c4f4] hover:bg-[#faf6ff] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
+    const userMenuActionButton =
+        "group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300";
 
     const handleEditorBack = () => {
         markEditorSessionIntentionalExit({
@@ -669,305 +631,30 @@ export default function DashboardHeader(props) {
             className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-gray-200 bg-white px-3 py-2 shadow-sm md:px-4"
         >
             {slugInvitacion ? (
-                <>
-                    <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
-                        <button
-                            onClick={handleEditorBack}
-                            className={
-                                isMobile
-                                    ? mobileIconButtonClass
-                                    : `${subtleHeaderButton} shrink-0 text-sm`
-                            }
-                            aria-label="Volver al dashboard"
-                            title="Volver"
-                        >
-                            <ArrowLeft className="h-4 w-4" />
-                            {!isMobile ? <span>Volver</span> : null}
-                        </button>
-
-                        {isMobile ? (
-                            <div className="min-w-0 flex-1">
-                                <p
-                                    className="truncate text-sm font-semibold text-slate-800"
-                                    title={documentDisplayName}
-                                >
-                                    {documentDisplayName}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="min-w-0">
-                                <div className={desktopDocumentShellClass}>
-                                    <span className={desktopDocumentBadgeClass}>
-                                        {documentTypeBadgeLabel}
-                                    </span>
-                                    {editorReadOnly ? (
-                                        <div
-                                            className={desktopReadOnlyNameClass}
-                                            title={documentDisplayName}
-                                        >
-                                            {documentDisplayName}
-                                        </div>
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            value={nombreBorrador}
-                                            onChange={(e) => setNombreBorrador(e.target.value)}
-                                            onBlur={() => void guardarNombreDocumento()}
-                                            className={desktopNameInputClass}
-                                            title={documentNameTitle}
-                                            placeholder={documentNameLabel}
-                                        />
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="hidden min-w-0 items-center gap-2 md:flex">
-                            <div className={desktopHistoryGroupClass}>
-                                <button
-                                    onClick={triggerEditorUndo}
-                                    disabled={!canUndo}
-                                    className={`${desktopHistoryButtonClass} ${
-                                        canUndo
-                                            ? "hover:bg-[#faf6ff]"
-                                            : "cursor-not-allowed text-slate-300"
-                                    }`}
-                                    title="Deshacer"
-                                >
-                                    <Undo2 className="h-4 w-4" />
-                                    {historialExternos.length > 1 ? (
-                                        <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] leading-none text-purple-600">
-                                            {historialExternos.length - 1}
-                                        </span>
-                                    ) : null}
-                                </button>
-                                <div className="mx-1 h-5 w-px bg-[#eadff8]" />
-                                <button
-                                    onClick={triggerEditorRedo}
-                                    disabled={!canRedo}
-                                    className={`${desktopHistoryButtonClass} ${
-                                        canRedo
-                                            ? "hover:bg-[#faf6ff]"
-                                            : "cursor-not-allowed text-slate-300"
-                                    }`}
-                                    title="Rehacer"
-                                >
-                                    <Redo2 className="h-4 w-4" />
-                                    {futurosExternos.length > 0 ? (
-                                        <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] leading-none text-emerald-600">
-                                            {futurosExternos.length}
-                                        </span>
-                                    ) : null}
-                                </button>
-                            </div>
-
-                            {!loadingAdminAccess && (canManageSite || isSuperAdmin) ? (
-                                <div className="relative group">
-                                    <button
-                                        onClick={toggleZoom}
-                                        className={`${subtleHeaderButton} h-10 px-3`}
-                                    >
-                                        {zoom === 1 ? <Minus size={14} /> : <Plus size={14} />}
-                                        <span>{zoom === 1 ? "100%" : "50%"}</span>
-                                    </button>
-                                    <div className="absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black px-1 py-0.5 text-[10px] text-white opacity-0 transition group-hover:opacity-100">
-                                        {zoom === 1 ? "Alejar 50%" : "Acercar 100%"}
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {!loadingAdminAccess && canManageSite && !editorReadOnly ? (
-                                <div className="flex items-center gap-2 pl-1">
-                                    <button
-                                        onClick={abrirModalCrearSeccion}
-                                        className={`${subtleHeaderButton} h-10`}
-                                    >
-                                        <Plus size={14} />
-                                        Anadir seccion
-                                    </button>
-                                    <button
-                                        onClick={crearPlantillaDesdeHeader}
-                                        className={`${subtleHeaderButton} h-10`}
-                                    >
-                                        <Sparkles size={14} />
-                                        Crear plantilla
-                                    </button>
-                                    <button
-                                        onClick={guardarPlantilla}
-                                        className={`${templateHeaderButton} h-10`}
-                                    >
-                                        {isTemplateSession ? "Guardar cambios" : "Guardar plantilla"}
-                                    </button>
-                                </div>
-                            ) : null}
-                        </div>
-
-                        <div className="ml-auto flex shrink-0 items-center gap-2">
-                            {!isMobile && editorReadOnly ? (
-                                <span className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-semibold text-slate-600">
-                                    Modo solo lectura
-                                </span>
-                            ) : null}
-
-                            {showDesktopPreviewButton ? (
-                                <button
-                                    onClick={generarVistaPrevia}
-                                    className={`${primaryHeaderButton} hidden h-10 px-4 md:inline-flex`}
-                                >
-                                    {previewButtonLabel}
-                                </button>
-                            ) : null}
-
-                            {showMobilePreviewButton ? (
-                                <button
-                                    onClick={generarVistaPrevia}
-                                    className={`${primaryHeaderButton} h-10 px-3.5 text-[11px] md:hidden`}
-                                >
-                                    Vista previa
-                                </button>
-                            ) : null}
-
-                            <button
-                                type="button"
-                                onClick={() => setAccionesMobileAbiertas((prev) => !prev)}
-                                className={`${mobileIconButtonClass} md:hidden`}
-                                aria-label="Abrir opciones del editor"
-                                title="Mas opciones"
-                            >
-                                <MoreHorizontal className="h-4 w-4" />
-                            </button>
-                        </div>
-                    </div>
-
-                    {accionesMobileAbiertas ? (
-                        <div className="fixed inset-0 z-40 md:hidden">
-                            <button
-                                type="button"
-                                className="absolute inset-0 bg-slate-950/28 backdrop-blur-[2px]"
-                                aria-label="Cerrar opciones del editor"
-                                onClick={() => setAccionesMobileAbiertas(false)}
-                            />
-
-                            <div
-                                ref={accionesMobileRef}
-                                className="absolute inset-x-0 bottom-0 rounded-t-[28px] border border-[#e7dcf8] bg-white px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-4 shadow-[0_-24px_60px_rgba(15,23,42,0.2)]"
-                                role="dialog"
-                                aria-modal="true"
-                                aria-label="Opciones del editor"
-                            >
-                                <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d8ccea]" />
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-800">
-                                            Opciones del editor
-                                        </p>
-                                        <p className="mt-1 text-xs text-slate-500">
-                                            Ajustes y acciones secundarias del borrador.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAccionesMobileAbiertas(false)}
-                                        className={mobileIconButtonClass}
-                                        aria-label="Cerrar opciones del editor"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </button>
-                                </div>
-
-                                {editorReadOnly ? (
-                                    <div className="mt-4 inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">
-                                        Solo lectura
-                                    </div>
-                                ) : null}
-
-                                <div className="mt-4 rounded-[24px] border border-[#e7dcf8] bg-gradient-to-br from-white via-[#faf6ff] to-[#f4f8ff] p-4">
-                                    <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                        {documentNameLabel}
-                                    </label>
-                                    {editorReadOnly ? (
-                                        <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-700">
-                                            {documentDisplayName}
-                                        </div>
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            value={nombreBorrador}
-                                            onChange={(e) => setNombreBorrador(e.target.value)}
-                                            onBlur={() => void guardarNombreDocumento()}
-                                            className="mt-2 h-12 w-full rounded-2xl border border-[#ddd2f5] bg-white px-3 text-sm font-medium text-slate-800 shadow-[0_10px_24px_rgba(15,23,42,0.06)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5]"
-                                            placeholder="Sin nombre"
-                                        />
-                                    )}
-                                </div>
-
-                                {!loadingAdminAccess && canManageSite && !editorReadOnly ? (
-                                    <div className="mt-4 space-y-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setAccionesMobileAbiertas(false);
-                                                abrirModalCrearSeccion();
-                                            }}
-                                            className={mobileSheetActionButtonClass}
-                                        >
-                                            <span>Anadir seccion</span>
-                                            <Plus className="h-4 w-4 text-[#6f3bc0]" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setAccionesMobileAbiertas(false);
-                                                crearPlantillaDesdeHeader();
-                                            }}
-                                            className={mobileSheetActionButtonClass}
-                                        >
-                                            <span>Crear plantilla</span>
-                                            <Sparkles className="h-4 w-4 text-[#6f3bc0]" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setAccionesMobileAbiertas(false);
-                                                void guardarPlantilla();
-                                            }}
-                                            className="flex w-full items-center justify-between rounded-2xl border border-[#f3d37b] bg-gradient-to-r from-[#fff5cf] to-[#ffe5a8] px-3 py-3 text-left text-sm font-semibold text-[#7a5103] shadow-[0_10px_22px_rgba(160,105,16,0.14)] transition hover:from-[#ffefc0] hover:to-[#ffdd92] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5db98]"
-                                        >
-                                            <span>
-                                                {isTemplateSession
-                                                    ? "Guardar cambios"
-                                                    : "Guardar plantilla"}
-                                            </span>
-                                            <Sparkles className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                ) : null}
-
-                                <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                        Cuenta
-                                    </p>
-                                    <AccountSummary
-                                        usuario={usuario}
-                                        inicialUsuario={inicialUsuario}
-                                        nombreCompletoUsuario={nombreCompletoUsuario}
-                                        emailUsuario={emailUsuario}
-                                        avatarSizeClass="h-11 w-11"
-                                        textClass="text-sm"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleLogout()}
-                                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 transition hover:border-red-200 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-                                    >
-                                        <LogOut className="h-4 w-4" />
-                                        Cerrar sesion
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ) : null}
-                </>
+                <CanvasEditorHeader
+                    isMobile={isMobile}
+                    editorReadOnly={editorReadOnly}
+                    historialExternos={historialExternos}
+                    futurosExternos={futurosExternos}
+                    documentDisplayName={documentDisplayName}
+                    documentTypeBadgeLabel={documentTypeBadgeLabel}
+                    documentNameLabel={documentNameLabel}
+                    documentNameTitle={documentNameTitle}
+                    nombreBorrador={nombreBorrador}
+                    setNombreBorrador={setNombreBorrador}
+                    guardarNombreDocumento={guardarNombreDocumento}
+                    previewButtonLabel={previewButtonLabel}
+                    showDesktopPreviewButton={showDesktopPreviewButton}
+                    showMobilePreviewButton={showMobilePreviewButton}
+                    generarVistaPrevia={generarVistaPrevia}
+                    handleEditorBack={handleEditorBack}
+                    handleLogout={handleLogout}
+                    AccountSummaryComponent={AccountSummary}
+                    usuario={usuario}
+                    inicialUsuario={inicialUsuario}
+                    nombreCompletoUsuario={nombreCompletoUsuario}
+                    emailUsuario={emailUsuario}
+                />
             ) : (
                 <div className="flex flex-1 items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -1109,11 +796,53 @@ export default function DashboardHeader(props) {
                                         onCambiarVista?.("papelera");
                                         setMenuAbierto(false);
                                     }}
-                                    className="group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                                    className={userMenuActionButton}
                                 >
                                     <Trash2 size={14} className="shrink-0" />
                                     <span className="truncate">Papelera</span>
                                 </button>
+                            ) : null}
+
+                            {showEditorAdminMenuActions ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            abrirModalCrearSeccion();
+                                            setMenuAbierto(false);
+                                        }}
+                                        className={userMenuActionButton}
+                                    >
+                                        <Plus size={14} className="shrink-0" />
+                                        <span className="truncate">Anadir seccion</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            crearPlantillaDesdeHeader();
+                                            setMenuAbierto(false);
+                                        }}
+                                        className={userMenuActionButton}
+                                    >
+                                        <Sparkles size={14} className="shrink-0" />
+                                        <span className="truncate">Crear plantilla</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMenuAbierto(false);
+                                            void guardarPlantilla();
+                                        }}
+                                        className={userMenuActionButton}
+                                    >
+                                        <Sparkles size={14} className="shrink-0" />
+                                        <span className="truncate">
+                                            {isTemplateSession
+                                                ? "Guardar cambios"
+                                                : "Guardar plantilla"}
+                                        </span>
+                                    </button>
+                                </>
                             ) : null}
 
                             <button

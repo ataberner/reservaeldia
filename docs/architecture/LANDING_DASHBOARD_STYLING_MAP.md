@@ -19,6 +19,7 @@ This document is an ownership map for the current implementation. It does not au
 - `src/domain/dashboard/pageShell.js`
 - `src/components/DashboardLayout.jsx`
 - `src/components/DashboardHeader.jsx`
+- `src/components/editor/header/CanvasEditorHeader.jsx`
 - `src/components/DashboardSidebar.jsx`
 - `src/components/dashboard/home/*`
 - `src/components/dashboard/dashboardStyleClasses.js`
@@ -41,6 +42,8 @@ Facts:
 - `tailwind.config.js` scans `./src/**/*.{js,ts,jsx,tsx}`, uses `tailwind-scrollbar-hide`, and currently has an empty `theme.extend`.
 - No `*.module.css` or `*.module.scss` files are currently present under `src`.
 - Phase 2 introduced `src/components/dashboard/dashboardStyleClasses.js` with exact current class recipes only. It does not define new token values or a design system.
+- `DashboardHeader.jsx` remains the fixed header runtime shell owner and renders `CanvasEditorHeader.jsx` for editor-mode header content when a canvas/editor session is active.
+- `CanvasEditorHeader.jsx` owns editor-specific header content and actions only; it does not own header measurement, dashboard runtime data attributes, selection preservation attributes, or `--dashboard-header-height`.
 - Phase 3 is documentation-only. No selector rewrites, file moves, Bootstrap removal, Tailwind config redesign, CSS Modules migration, editor runtime changes, preview/publish changes, or generated invitation changes are authorized by this document.
 - The public invitation route `/i/{slug}` is not a Next route; `firebase.json` rewrites it to the publication delivery Function. App global CSS must not be treated as public invitation CSS.
 
@@ -57,7 +60,7 @@ Assumptions:
 | Landing `/` | `src/pages/index.js` | Bootstrap classes, `styles/styles.css`, `styles/globals.css`, inline hero styles | Header, hero, invitation examples, features, how-it-works, CTA, footer, auth notice, and modal entry live in one route file. |
 | Dashboard `/dashboard` | `src/pages/dashboard.js` plus `src/domain/dashboard/pageShell.js` | Tailwind classes in JSX, dashboard shell props, shared global dashboard card hook | The route coordinates dashboard home, editor mount, publications/trash/admin views, preview modal, and checkout modal. |
 | Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | Tailwind classes in JSX plus `.dashboard-invitation-card*` | Owns the home hero, drafts rail, publications rail, template sections, empty/error states, and horizontal rails. |
-| Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `DashboardSidebar.jsx` | Tailwind classes, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. |
+| Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `CanvasEditorHeader.jsx`, `DashboardSidebar.jsx` | Tailwind classes, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. `DashboardHeader.jsx` owns the runtime shell; `CanvasEditorHeader.jsx` owns only editor header content. |
 | Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `styles/styles.css`, Bootstrap button/modal classes, small inline styles | These modals use global `auth-*` styles plus generic `.modal-content`, `.close-btn`, `.error`, and Bootstrap `.btn-*`. |
 
 ## 5. Component Ownership
@@ -68,7 +71,8 @@ Assumptions:
 | `src/pages/dashboard.js` | Dashboard route orchestrator and view composition | Tailwind wrappers and state-dependent view containers | Avoid broad visual rewrites here; prefer child-component ownership later. |
 | `src/domain/dashboard/pageShell.js` | Dashboard view/layout prop derivation | No direct CSS; controls shell props such as `modoSelector`, `ocultarSidebar`, and `lockMainScroll` | Behavior boundary. Do not change during visual cleanup unless preserving exact view behavior. |
 | `DashboardLayout.jsx` | Fixed dashboard frame, main scroll root, child composition | Tailwind classes, inline main sizing, `[data-dashboard-scroll-root]` | Runtime-critical shell owner. |
-| `DashboardHeader.jsx` | Fixed header, editor/home header modes, user menu | Tailwind classes, runtime header-height variable, static avatar inline color | Runtime-critical hook owner. |
+| `DashboardHeader.jsx` | Fixed header shell, dashboard-home header mode, user menu, editor header mounting point | Tailwind shell classes, runtime header-height variable, static avatar inline color | Runtime-critical hook owner. Keeps `[data-dashboard-header]`, `[data-preserve-canvas-selection]`, header refs, and measured height ownership. |
+| `CanvasEditorHeader.jsx` | Editor/canvas header visual content, editor action buttons, document name controls, mobile editor options sheet | Tailwind classes and file-local editor header class recipes | Editor header content owner only. Safe future redesign target as long as shell hooks and callbacks remain stable. |
 | `DashboardSidebar.jsx` | Editor tool rail, mobile toolbar, sidebar panel | Tailwind classes, inline panel/mobile geometry, `[data-dashboard-sidebar]`, `#sidebar-panel` | Runtime-critical hook owner. |
 | `DashboardHomeHero.jsx` | Dashboard home hero CTA | Tailwind classes plus `.dashboard-invitation-card` | Shares global card motion with actual cards; treat as coupled. |
 | `DashboardHeroCelebrationVisual.jsx` | Hero visual artwork | Tailwind classes and component-local `style jsx` keyframes | Safe future scoped-animation candidate, but no migration in Phase 2. |
@@ -126,7 +130,7 @@ Current reusable primitives are informal:
 - `src/components/dashboard/dashboardStyleClasses.js` centralizes exact current class strings for the shared dashboard card shell, card media, card title, and dashboard home error panel.
 - `DashboardSectionShell.jsx` is a reusable dashboard section shell.
 - `TemplateCardShell.jsx` is a reusable template card shell used by dashboard template rails.
-- Header/sidebar button class constants inside `DashboardHeader.jsx` and `DashboardSidebar.jsx` are file-local reusable recipes.
+- Header/sidebar button class constants inside `CanvasEditorHeader.jsx`, `DashboardHeader.jsx`, and `DashboardSidebar.jsx` are file-local reusable recipes.
 
 Future cleanup should formalize these without changing output first.
 
@@ -166,6 +170,7 @@ Tailwind currently owns most dashboard React UI:
 
 - Dashboard route wrappers and startup/loading states in `src/pages/dashboard.js`.
 - Dashboard layout/header/sidebar class strings and local class constants.
+- Canvas editor header content class strings in `src/components/editor/header/CanvasEditorHeader.jsx`; runtime header shell classes remain in `DashboardHeader.jsx`.
 - Dashboard home hero, section shells, rails, cards, error/empty states, badges, and buttons.
 - Template card shell used by dashboard template rails.
 
@@ -212,6 +217,7 @@ Safe means lower-risk ownership for a future phased redesign, not safe to change
 | --- | --- | --- |
 | Landing route markup inside `src/pages/index.js` | It is route-local JSX | First isolate ownership from global Bootstrap/broad selectors; preserve current behavior until redesign phase. |
 | Dashboard home child components | They are mostly component-local Tailwind | Preserve data loading states, rail behavior, and shared card hook until formalized. |
+| Canvas editor header content | It is isolated in `src/components/editor/header/CanvasEditorHeader.jsx` | Preserve callbacks, mobile sheet behavior, document-name behavior, and the `DashboardHeader.jsx` runtime shell hooks. |
 | `DashboardSectionShell.jsx` | Focused reusable dashboard UI wrapper | Keep visual output identical during Phase 2 extraction/token work. |
 | `TemplateCardShell.jsx` | Focused reusable card shell | Coordinate with `.dashboard-invitation-card` consumers. |
 | Header/sidebar local class constants | Repeated recipes are local to files | Preserve runtime hooks and geometry variables. |
@@ -242,8 +248,14 @@ DashboardHeader.jsx
   -> writes --dashboard-header-height
   -> exposes [data-dashboard-header="true"]
   -> exposes [data-preserve-canvas-selection="true"]
+  -> renders CanvasEditorHeader.jsx for editor-mode header content
   -> consumed by DashboardLayout.jsx, DashboardSidebar.jsx, useOptionButtonPosition.js,
      FloatingTextToolbarView.jsx, and selection preservation policy
+
+CanvasEditorHeader.jsx
+  -> owns editor-specific header visual content/actions only
+  -> receives callbacks and state from DashboardHeader.jsx
+  -> does not write --dashboard-header-height or expose dashboard shell hooks
 
 DashboardLayout.jsx
   -> reads --dashboard-header-height for main sizing
@@ -285,7 +297,7 @@ This is an inventory of current repeated values only. It does not create new bra
 | `linear-gradient(to bottom, rgba(215, 184, 232, 0.8), rgba(255, 255, 255, 1))` | Legacy `--background-gradient` | Legacy landing/auth CSS variable. |
 | `linear-gradient(155deg, #ffffff 0%, #faf9ff 100%)` | Auth modal background | Auth-owned future token candidate. |
 | `linear-gradient(145deg, #6f5ba8 0%, #7f64b3 100%)` | Auth primary action | Auth-owned future token candidate. |
-| Dashboard arbitrary gradients such as `from-[#8a57cf] via-[#773dbe] to-[#6433b0]`, `from-[#faf7ff] to-[#f4edff]`, and `from-white via-[#faf6ff] to-[#f4f8ff]` | Dashboard hero, sidebar, and header mobile sheet | Dashboard-owned future token candidates; keep exact during cleanup. |
+| Dashboard arbitrary gradients such as `from-[#8a57cf] via-[#773dbe] to-[#6433b0]`, `from-[#faf7ff] to-[#f4edff]`, and `from-white via-[#faf6ff] to-[#f4f8ff]` | Dashboard hero, sidebar, and `CanvasEditorHeader.jsx` mobile sheet | Dashboard-owned future token candidates; keep exact during cleanup. |
 
 ### 15.2 Radius, Shadows, Motion, And Borders
 
@@ -462,7 +474,7 @@ Recommended visual redesign order:
 | 4 | Auth modal visual pass | Auth should be separated from landing and checked against Bootstrap/modal scroll behavior | Revert auth-owned selectors/components without touching landing content. |
 | 5 | Dashboard card primitive and dashboard home rails | Card primitive is shared, so redesign it intentionally after deciding shared vs split card families | Revert `.dashboard-invitation-card*` and `dashboardStyleClasses.js` changes together. |
 | 6 | Dashboard home sections around the card primitive | Home is mostly Tailwind and lower risk than shell chrome | Revert home child components without touching shell hooks. |
-| 7 | Dashboard header/sidebar visual pass | Highest app-UI risk because hooks feed editor overlays, modals, and selection preservation | Revert shell files as a unit and rerun editor/page-shell checks. |
+| 7 | Dashboard header/sidebar and canvas editor header visual pass | Highest app-UI risk because hooks feed editor overlays, modals, and selection preservation | Revert shell files as a unit and rerun editor/page-shell checks. Keep editor header content changes in `CanvasEditorHeader.jsx` unless shell hooks are intentionally coordinated. |
 | 8 | Bootstrap reduction | Only after landing/auth have app-owned style hooks | Revert Bootstrap-reduction phase without touching dashboard/editor. |
 | 9 | Global CSS reduction | Only after landing/auth/dashboard owners no longer depend on broad globals | Revert by CSS section; avoid mixed global cleanup commits. |
 
@@ -485,8 +497,9 @@ Required manual anchors before and after future visual changes:
 - Dashboard draft rail: card width, thumbnail media fit, title truncation, action text, hover/focus/active states.
 - Dashboard publication rail: status badges, paused card background, action buttons, card width, thumbnail grayscale for paused items.
 - Dashboard template rails: infinite rail behavior, card width across breakpoints, `TemplateCardShell` media/title/action.
-- Dashboard header/sidebar desktop: fixed header height, document title control, user menu, desktop sidebar rail, sidebar panel open/close, main content top/left offsets.
-- Dashboard header/sidebar mobile: mobile header sheet, bottom toolbar, sidebar panel height `min(52vh, 440px)`, safe-area padding, horizontal toolbar overflow mask.
+- Dashboard header/sidebar desktop: fixed header height, dashboard-home user menu, desktop sidebar rail, sidebar panel open/close, main content top/left offsets.
+- Dashboard header/sidebar mobile: dashboard-home user menu behavior, bottom toolbar, sidebar panel height `min(52vh, 440px)`, safe-area padding, horizontal toolbar overflow mask.
+- Canvas editor header desktop/mobile: document title control, preview button, editor options sheet, account/logout section, mobile truncation, and current visual class output.
 - Editor shell inside dashboard: canvas area sizing, option button placement, text toolbar placement, selection preservation when clicking header/sidebar/panel, delete-confirm modal scroll locking.
 - Preview modal desktop/mobile: draft preview opens, viewport mode changes, publish actions remain visible when allowed, modal scroll does not corrupt dashboard scroll root.
 - Publish checkout modal: checkout modal opens from preview/dashboard, slug/payment form, terminal success state, parent dashboard publication sync does not reset the receipt.

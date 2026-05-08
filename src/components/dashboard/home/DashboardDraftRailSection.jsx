@@ -1,6 +1,12 @@
 import { useState } from "react";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import DashboardCardTrashButton from "@/components/DashboardCardTrashButton";
+import {
+  DASHBOARD_HOME_ERROR_PANEL_CLASS,
+  DASHBOARD_INVITATION_CARD_CLASS,
+  DASHBOARD_INVITATION_CARD_MEDIA_CLASS,
+  DASHBOARD_INVITATION_CARD_TITLE_CLASS,
+} from "@/components/dashboard/dashboardStyleClasses";
 import DashboardSectionShell from "@/components/dashboard/home/DashboardSectionShell";
 import HorizontalRail from "@/components/dashboard/home/HorizontalRail";
 import { moveDraftToTrash } from "@/domain/drafts/service";
@@ -25,7 +31,7 @@ function DraftRailCard({ draft, onRequestDelete }) {
   };
 
   return (
-    <article className="dashboard-invitation-card group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)]">
+    <article className={DASHBOARD_INVITATION_CARD_CLASS}>
       <a
         href={`/dashboard?slug=${encodeURIComponent(draft?.slug || "")}`}
         className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f3bc0] focus-visible:ring-offset-0"
@@ -39,7 +45,7 @@ function DraftRailCard({ draft, onRequestDelete }) {
           <img
             src={previewSrc}
             alt={`Vista previa de ${draft?.nombre || draft?.slug || "borrador"}`}
-            className="dashboard-invitation-card__media h-full w-full object-cover object-top motion-reduce:transition-none"
+            className={DASHBOARD_INVITATION_CARD_MEDIA_CLASS}
             loading="lazy"
             decoding="async"
             fetchPriority="auto"
@@ -52,7 +58,7 @@ function DraftRailCard({ draft, onRequestDelete }) {
 
         <div className="p-3">
           <h3
-            className="dashboard-invitation-card__title truncate text-sm font-semibold text-gray-800"
+            className={DASHBOARD_INVITATION_CARD_TITLE_CLASS}
             title={draft?.nombre || draft?.slug || "Borrador"}
           >
             {draft?.nombre || draft?.slug || "Borrador"}
@@ -117,7 +123,7 @@ export default function DashboardDraftRailSection({
         eyebrow="Tu espacio"
       >
         {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className={DASHBOARD_HOME_ERROR_PANEL_CLASS}>
             {error}
           </div>
         ) : (

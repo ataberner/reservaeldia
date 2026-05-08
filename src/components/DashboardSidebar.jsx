@@ -407,6 +407,8 @@ export default function DashboardSidebar({
         });
     };
 
+    // Runtime-sensitive shell contract: the header-height variable keeps the
+    // editor tool rail aligned with the fixed dashboard header.
     const sidebarShellClass = `
     fixed bottom-0 left-0 z-50 h-[96px] w-full text-slate-700
     md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-16
@@ -469,6 +471,8 @@ export default function DashboardSidebar({
                     },
                 })}
 
+            {/* Runtime-sensitive hook: selection preservation and option menu
+                placement query this sidebar by data attribute. */}
             <aside
                 ref={asideRef}
                 data-dashboard-sidebar="true"
@@ -771,6 +775,8 @@ export default function DashboardSidebar({
 
 
             {(hoverSidebar || fijadoSidebar) && (
+                /* Runtime-sensitive hook: editor text toolbar geometry and
+                   selection preservation query #sidebar-panel. */
                 <div
                     ref={panelRef}
                     id="sidebar-panel"

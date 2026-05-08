@@ -1,5 +1,8 @@
-const CARD_CLASS =
-  "dashboard-invitation-card group relative overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)]";
+import {
+  DASHBOARD_INVITATION_CARD_CLASS,
+  DASHBOARD_INVITATION_CARD_MEDIA_CLASS,
+  DASHBOARD_INVITATION_CARD_TITLE_CLASS,
+} from "@/components/dashboard/dashboardStyleClasses";
 
 export default function TemplateCardShell({
   title,
@@ -17,7 +20,7 @@ export default function TemplateCardShell({
   bottomActions = null,
 }) {
   return (
-    <article className={CARD_CLASS}>
+    <article className={DASHBOARD_INVITATION_CARD_CLASS}>
       {deleteControl}
 
       <button
@@ -31,7 +34,7 @@ export default function TemplateCardShell({
           <img
             src={imageSrc || "/placeholder.jpg"}
             alt={imageAlt || title || "Vista previa de plantilla"}
-            className="dashboard-invitation-card__media h-full w-full object-cover object-top motion-reduce:transition-none"
+            className={DASHBOARD_INVITATION_CARD_MEDIA_CLASS}
             loading={eager ? "eager" : "lazy"}
             decoding="async"
             fetchPriority={eager ? "high" : "auto"}
@@ -53,7 +56,7 @@ export default function TemplateCardShell({
         <div className="space-y-3 p-3">
           <div>
             <h3
-              className="dashboard-invitation-card__title truncate text-sm font-semibold text-gray-800"
+              className={DASHBOARD_INVITATION_CARD_TITLE_CLASS}
               title={title}
             >
               {title || "Plantilla"}

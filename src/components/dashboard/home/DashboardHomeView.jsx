@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+import { DASHBOARD_HOME_ERROR_PANEL_CLASS } from "@/components/dashboard/dashboardStyleClasses";
 import DashboardDraftRailSection from "@/components/dashboard/home/DashboardDraftRailSection";
 import DashboardHomeHero from "@/components/dashboard/home/DashboardHomeHero";
 import DashboardPublicationRailSection from "@/components/dashboard/home/DashboardPublicationRailSection";
@@ -88,7 +89,7 @@ export default function DashboardHomeView({
       <DashboardHomeHero onCreateInvitation={handleCreateInvitation} />
 
       {hasCollectionLoadError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className={DASHBOARD_HOME_ERROR_PANEL_CLASS}>
           {configError || templatesError}
         </div>
       ) : null}

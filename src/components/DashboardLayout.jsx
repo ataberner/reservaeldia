@@ -36,6 +36,8 @@ export default function DashboardLayout({
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
   }, []);
 
+  // Runtime-sensitive shell contract: header/sidebar/editor overlays consume
+  // this CSS variable, so keep it in sync with DashboardHeader.
   const headerHeight = "var(--dashboard-header-height, 52px)";
   const mainBaseClass = modoSelector
     ? "absolute left-0 right-0 bg-gray-50"
@@ -97,6 +99,7 @@ export default function DashboardLayout({
       )}
 
       {/* Area principal */}
+      {/* Runtime-sensitive hook: ConfirmDeleteItemModal locks this scroll root. */}
       <main
         data-dashboard-scroll-root="true"
         className={`${mainBaseClass} ${mainScrollClass}`}

@@ -235,6 +235,8 @@ export default function DashboardHeader(props) {
 
         const updateHeaderHeightVar = () => {
             const nextHeight = Math.round(node.getBoundingClientRect().height || 52);
+            // Runtime-sensitive shell contract: layout, sidebar, and editor
+            // overlays consume this CSS variable for fixed-header offsets.
             document.documentElement.style.setProperty(
                 "--dashboard-header-height",
                 `${nextHeight}px`
@@ -658,6 +660,8 @@ export default function DashboardHeader(props) {
     };
 
     return (
+        /* Runtime-sensitive hooks: editor overlays and selection preservation
+           depend on these attributes. Keep them stable during visual cleanup. */
         <div
             ref={headerRef}
             data-dashboard-header="true"

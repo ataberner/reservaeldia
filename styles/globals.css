@@ -4,12 +4,21 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
 
+/* Phase 2 ownership freeze:
+   This file is app-global. Keep only Tailwind entry rules, true base rules,
+   documented compatibility hooks, and intentionally shared global hooks here.
+   Do not add route-specific landing/dashboard styles to this file. */
+
+/* Owner: editor/canvas compatibility.
+   Dangerous global element selector; kept only for current canvas behavior. */
 /* Fuente base para elementos del canvas */
 canvas {
   font-family: 'Roboto', sans-serif !important;
 }
 
 /* Estilos para textarea de edición inline */
+/* Owner: editor inline text compatibility.
+   Runtime attribute selector used by the DOM inline editor overlay. */
 textarea[style*="position: absolute"] {
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -24,6 +33,9 @@ textarea[style*="position: absolute"] {
    ========================================================== */
 
 /* --- Escritorio: siempre visible --- */
+/* Owner: legacy landing Bootstrap compatibility.
+   The landing navbar still uses Bootstrap class names from src/pages/index.js.
+   Do not add new Bootstrap namespace overrides here. */
 .navbar-collapse {
   display: flex;
   justify-content: flex-end;
@@ -107,6 +119,9 @@ textarea[style*="position: absolute"] {
    ========================================================== */
 
 /* Reset para Roboto */
+/* Owner: legacy app base.
+   Risk: body typography is also defined in styles/styles.css. Preserve values
+   until base typography ownership is consolidated. */
 body {
   font-family: 'Roboto', sans-serif;
   margin: 0;
@@ -114,6 +129,10 @@ body {
   box-sizing: border-box;
 }
 
+/* Owner: dashboard shared card primitive.
+   Runtime/public class hook: used by dashboard hero, dashboard rails, and
+   template card shells. Do not rename .dashboard-invitation-card* without
+   updating docs and every consumer. */
 .dashboard-invitation-card {
   --dashboard-card-duration: 160ms;
   --dashboard-card-easing: cubic-bezier(0.22, 1, 0.36, 1);
@@ -172,12 +191,16 @@ body {
 }
 
 
+/* Owner: legacy global keyframe.
+   Keep until direct consumers are either confirmed or migrated. */
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
+/* Owner: editor/shared runtime animation.
+   Used by editor toolbar paths; do not move during landing/dashboard cleanup. */
 @keyframes fadeInScale {
   from {
     opacity: 0;

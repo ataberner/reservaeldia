@@ -1,4 +1,10 @@
+/* Phase 2 ownership freeze:
+   This file is legacy app-global compatibility CSS. It currently owns landing,
+   auth, Bootstrap overrides, old dashboard candidates, and broad global rules.
+   Do not add new unrelated selectors here; migrate by owner in later phases. */
 
+/* Owner: legacy global base reset.
+   Dangerous global selectors: affects every Next app route. */
 /* Reset general */
 * {
   margin: 0;
@@ -6,6 +12,9 @@
   box-sizing: border-box;
 }
 
+/* Owner: legacy body/html scroll and typography.
+   Risk: dashboard/editor also rely on local scroll roots and measured shell
+   geometry, so do not change overflow/height without coordinated checks. */
 /* Asegurar que no haya desbordamiento lateral */
 html, body {
   width: 100%;
@@ -17,6 +26,9 @@ html, body {
 }
 
 
+/* Owner: legacy dashboard/layout candidates.
+   No exact active className usage was found in the Phase 1 pass. Keep until
+   usage is proven inactive; generic names can collide with app surfaces. */
 /* Estructura general */
 .layout {
   display: flex;
@@ -105,6 +117,8 @@ html, body {
 
 
 
+/* Owner: legacy invitation-type selector candidates.
+   Keep as compatibility until usage is proven inactive. */
 .tipo-selector-container {
   display: flex;
   flex-direction: column;
@@ -156,6 +170,8 @@ html, body {
 
 
 
+/* Owner: legacy template-card candidate.
+   Current dashboard template cards use Tailwind plus .dashboard-invitation-card. */
 .plantilla-card {
   width: 280px;
   background-color: white;
@@ -187,6 +203,8 @@ html, body {
 
 
 
+/* Owner: legacy app token variables.
+   Inventory only for Phase 2; do not change values without visual approval. */
 /***********************
  Variables de Colores
  ***********************/
@@ -206,6 +224,9 @@ html, body {
 
 
 
+/* Owner: auth modal legacy/global styles.
+   Bootstrap-dependent surface used by LoginModal, RegisterModal, and
+   ProfileCompletionModal. Keep class names stable until auth is scoped. */
 /* =======================
    Modal login
 ======================= */
@@ -718,6 +739,8 @@ html, body {
    Barra de Navegación Refinada
 ======================= */
 
+/* Owner: landing navbar legacy/Bootstrap styles.
+   Required by src/pages/index.js while Bootstrap markup remains. */
 .navbar {
   background: var(--background-light);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -773,6 +796,8 @@ html, body {
    Botones de Sesión
 ======================= */
 
+/* Owner: landing auth/session buttons.
+   Uses Bootstrap-adjacent button hooks; do not reuse for dashboard UI. */
 .btn-iniciar-sesion {
   background-color: white;
   color: black;
@@ -820,6 +845,8 @@ html, body {
 
 
 /* Sección Hero */
+/* Owner: landing hero legacy global styles.
+   Partially duplicated by the inline hero style in src/pages/index.js. */
 .hero {
   position: relative;
   width: 100vw;
@@ -872,6 +899,8 @@ html, body {
 /***********************
   Botón Principal Mejorado
 ***********************/
+/* Owner: landing/auth Bootstrap primary-button override.
+   Dangerous global selector: affects every .btn-primary in the Next app. */
 .btn-primary {
   font-family: 'Montserrat', sans-serif;
   background-color: var(--secondary-color); /* Morado profundo */
@@ -914,6 +943,7 @@ html, body {
 /***********************
  Sección Galería Ajustada
  ***********************/
+/* Owner: landing invitation examples section. */
 #invitaciones {
   text-align: center;
   padding: 80px 20px;
@@ -975,6 +1005,7 @@ html, body {
 /***********************
  Sección Funcionalidades
  ***********************/
+/* Owner: landing features section. */
  .funcionalidades {
   text-align: center;
   padding: 80px 20px;
@@ -1042,6 +1073,7 @@ html, body {
 /***********************
  Sección Cómo Funciona
  ***********************/
+/* Owner: landing how-it-works section. */
  .how-it-works {
   text-align: center;
   padding: 80px 20px;
@@ -1116,6 +1148,8 @@ html, body {
 /************************
  Sección de Testimonios
  ************************/
+/* Owner: inactive/legacy landing testimonials candidate.
+   No active landing markup was found in Phase 1; do not delete without proof. */
  .testimonials {
   text-align: center;
   border-radius: 10px;
@@ -1212,6 +1246,8 @@ html, body {
 /***********************
   Sección Precios 
 ***********************/
+/* Owner: inactive/commented landing pricing candidate.
+   Referenced by commented JSX only; do not delete without product decision. */
 .pricing {
   background: linear-gradient(to bottom, var(--background-mid), var(--background-light)); 
   padding: 80px 20px;
@@ -1324,6 +1360,7 @@ html, body {
 
 
 /* Iconos */
+/* Owner: legacy/investigation candidate for icon images. */
 .icon-img {
   width: 60px;
   height: 60px;
@@ -1357,6 +1394,9 @@ html, body {
 
 
 
+/* Dangerous global landing leakage.
+   Broad element selectors affect all app routes; preserve until route-scoped
+   ownership is introduced and visual impact is captured. */
 section {
   padding: 80px 20px;
   transition: background 0.5s ease-in-out, padding 0.3s ease-in-out;
@@ -1368,6 +1408,7 @@ h2, h3, p {
 /***********************
   Sección de Contacto Profesional 
 ***********************/
+/* Owner: inactive/legacy landing contact candidate. */
 .contacto {
   background: var(--secondary-color); /* Fondo sólido profesional */
   padding: 80px 20px;
@@ -1454,6 +1495,8 @@ h2, h3, p {
 /***********************
   Footer Mejorado y Separado
 ***********************/
+/* Owner: landing footer legacy global styles.
+   Dangerous global selector: affects any footer rendered in the app. */
 footer {
   background: #3a2a60; /* Color más oscuro para diferenciarse del contacto */
   padding: 50px 20px;
@@ -1535,6 +1578,7 @@ footer p {
 
 
 
+/* Owner: landing final CTA section. */
 #crear-invitacion {
   background: var(--background-light);
   padding: 80px 20px;

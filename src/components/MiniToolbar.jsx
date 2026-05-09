@@ -7,6 +7,7 @@ import MiniToolbarTabMenu from "@/components/MiniToolbarTabMenu";
 import MiniToolbarTabEfectos from "@/components/MiniToolbarTabEfectos";
 import MiniToolbarTabRsvp from "@/components/MiniToolbarTabRsvp";
 import MiniToolbarTabRegalos from "@/components/MiniToolbarTabRegalos";
+import MiniToolbarTabDetallesEvento from "@/components/MiniToolbarTabDetallesEvento";
 
 
 export default function MiniToolbar({
@@ -63,6 +64,8 @@ export default function MiniToolbar({
           seccionActivaId={seccionActivaId}
         />
       )}
+
+      {botonActivo === "detalles" && <MiniToolbarTabDetallesEvento />}
 
       {botonActivo === "imagen" && (
         <MiniToolbarTabImagen

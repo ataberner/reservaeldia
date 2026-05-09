@@ -30,6 +30,13 @@ const PRESET_COPY = {
   },
 };
 
+const effectButtonClass =
+  "w-[361px] max-w-full rounded-[3px] bg-white px-3 py-3 text-left [border:1px_solid_var(--Border,#00000029)] hover:[border-color:#692B9A] hover:bg-[#faf6ff] hover:[box-shadow:inset_0_0_0_1px_#692B9A]";
+const effectTitleClass =
+  "font-['Source_Sans_Pro',sans-serif] text-[16px] font-semibold leading-[24px] tracking-[0px] text-[#262626]";
+const effectDescriptionClass =
+  "mt-1 font-['Source_Sans_Pro',sans-serif] text-[14px] font-normal leading-[17px] tracking-[0px] text-[#262626]";
+
 export default function MiniToolbarTabEfectos() {
   const [lastSummary, setLastSummary] = useState(null);
 
@@ -69,20 +76,7 @@ export default function MiniToolbarTabEfectos() {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-xs text-zinc-600">
-        Elige un estilo global. Se asigna un efecto por elemento y, si hay
-        adornos en el fondo, tambien se ajusta su movimiento.
-      </p>
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-        Para ajustar un elemento puntual, selecciona ese elemento en el canvas y
-        abre su menu de opciones para editar sus Efectos.
-      </div>
-      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-        Los efectos y el movimiento del fondo tambien se muestran en la vista
-        previa de la invitacion.
-      </div>
-
+    <div className="flex flex-col items-center gap-3">
       {PRESET_ORDER.map((preset) => {
         const copy = PRESET_COPY[preset.id];
         if (!copy) return null;
@@ -91,22 +85,22 @@ export default function MiniToolbarTabEfectos() {
           <button
             key={preset.id}
             onClick={() => applyPreset(preset.id)}
-            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-sm transition-all hover:border-[#7a44ce] hover:bg-[#faf6ff]"
+            className={effectButtonClass}
           >
-            <div className="text-sm font-semibold text-zinc-800">{copy.title}</div>
-            <div className="mt-1 text-xs text-zinc-600">{copy.description}</div>
+            <div className={effectTitleClass}>{copy.title}</div>
+            <div className={effectDescriptionClass}>{copy.description}</div>
           </button>
         );
       })}
 
       <button
         onClick={() => applyPreset(CLEAR_ALL_MOTION_PRESET_ID)}
-        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-left shadow-sm transition-all hover:border-rose-300 hover:bg-rose-50"
+        className={effectButtonClass}
       >
-        <div className="text-sm font-semibold text-zinc-800">
+        <div className={effectTitleClass}>
           {PRESET_COPY[CLEAR_ALL_MOTION_PRESET_ID].title}
         </div>
-        <div className="mt-1 text-xs text-zinc-600">
+        <div className={effectDescriptionClass}>
           {PRESET_COPY[CLEAR_ALL_MOTION_PRESET_ID].description}
         </div>
       </button>

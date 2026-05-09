@@ -3,7 +3,18 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
-import { FaChevronRight, FaGift, FaRegClock, FaRegEnvelope, FaTimes } from "react-icons/fa";
+import {
+    FaChevronRight,
+    FaFont,
+    FaGift,
+    FaMagic,
+    FaRegCalendarAlt,
+    FaRegClock,
+    FaRegEnvelope,
+    FaRegImage,
+    FaShapes,
+    FaTimes,
+} from "react-icons/fa";
 import { Redo2, Undo2 } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
@@ -55,7 +66,7 @@ export default function DashboardSidebar({
     );
     const [showMobileScrollHint, setShowMobileScrollHint] = useState(false);
     const modalCrear = useModalCrearSeccion();
-    const [botonActivo, setBotonActivo] = useState(null); // 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
+    const [botonActivo, setBotonActivo] = useState(null); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
@@ -411,11 +422,11 @@ export default function DashboardSidebar({
     // editor tool rail aligned with the fixed dashboard header.
     const sidebarShellClass = `
     fixed bottom-0 left-0 z-50 h-[96px] w-full text-slate-700
-    md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-16
+    md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-[205px]
     flex items-center justify-center md:flex-col md:items-center md:justify-start
     border-t border-[#e6dbf8] md:border-t-0 md:border-r md:border-[#e6dbf8]
     bg-white md:bg-white/95 md:backdrop-blur-sm
-    shadow-[0_-4px_12px_rgba(15,23,42,0.08)] md:shadow-[8px_0_24px_rgba(15,23,42,0.08)]
+    shadow-[0_-4px_12px_rgba(15,23,42,0.08)] md:shadow-none
     px-2 py-1.5 md:px-0 md:py-2
   `;
 
@@ -437,6 +448,19 @@ export default function DashboardSidebar({
             ? "border-white/70 text-white ring-2 ring-white/55 shadow-[0_12px_24px_rgba(31,15,58,0.34)]"
             : "border-white/25 text-white/95 opacity-90 hover:-translate-y-[1px] hover:opacity-100 hover:border-white/40 hover:shadow-[0_12px_24px_rgba(31,15,58,0.28)]"
             }`;
+    };
+    const getDesktopToolButtonClass = (boton = null, { wide = false } = {}) => {
+        const isActive = boton && fijadoSidebar && botonActivo === boton;
+        const widthClass = wide ? "w-[158px]" : "w-[130px]";
+        return `inline-flex h-[42px] ${widthClass} items-center gap-2 rounded-[32px] px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[550] leading-[24px] tracking-[0px] text-[#262626] transition hover:bg-[#EFDFFB] ${isActive ? "bg-[#EFDFFB]" : ""}`;
+    };
+    const desktopToolIconClass = "h-4 w-4 shrink-0 text-[#262626]";
+    const desktopToolTextClass =
+        "whitespace-nowrap font-['Source_Sans_Pro',sans-serif] text-[14px] font-[550] leading-[24px] tracking-[0px] text-[#262626]";
+    const handleDesktopToolMouseLeave = (e) => {
+        const panel = panelRef.current;
+        if (safeContains(panel, e.relatedTarget)) return;
+        scheduleClosePanel();
     };
     const mobileHistoryButtonBase =
         "group flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-200";
@@ -480,156 +504,121 @@ export default function DashboardSidebar({
                 style={{ zIndex: 45, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
             >
                 {/* Escritorio: barra vertical a la izquierda */}
-                <div className="mt-2 hidden flex-col items-center gap-3 rounded-2xl border border-[#ede4fb] bg-gradient-to-b from-[#faf7ff] to-[#f4edff] px-2 py-3 md:flex">
-                    <div
-                        className="flex flex-col items-center gap-1"
-                        onMouseEnter={() => openPanel("texto")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
-                        }}
+                <div className="mt-2 hidden flex-col items-start gap-2 py-3 pl-0 pr-0 md:flex">
+                    <button
+                        type="button"
+                        onMouseEnter={() => openPanel("detalles")}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("detalles")}
+                        className={getDesktopToolButtonClass("detalles", { wide: true })}
+                        title="Detalles del evento"
                     >
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("texto")}
-                            className={getIconButtonClass("texto")}
-                            title="Texto"
-                        >
-                            <img src="/icons/texto.png" alt="Texto" className="w-6 h-6" />
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaRegCalendarAlt className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
+                            Detalles evento
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onMouseEnter={() => openPanel("texto")}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("texto")}
+                        className={getDesktopToolButtonClass("texto")}
+                        title="Texto"
+                    >
+                        <FaFont className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Texto
                         </span>
-                    </div>
+                    </button>
 
-                    <div
-                        className="flex flex-col items-center gap-1"
+                    <button
+                        type="button"
                         onMouseEnter={() => openPanel("forma")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
-                        }}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("forma")}
+                        className={getDesktopToolButtonClass("forma")}
+                        title="Elementos"
                     >
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("forma")}
-                            className={getIconButtonClass("forma")}
-                            title="Elementos"
-                        >
-                            <img src="/icons/forma.png" alt="Elementos" className="w-6 h-6" />
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaShapes className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Elementos
                         </span>
-                    </div>
+                    </button>
 
-                    <div
-                        className="flex flex-col items-center gap-1"
+                    <button
+                        type="button"
                         onMouseEnter={() => openPanel("imagen")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
-                        }}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("imagen")}
+                        className={getDesktopToolButtonClass("imagen")}
+                        title="Imagenes"
                     >
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("imagen")}
-                            className={getIconButtonClass("imagen")}
-                            title="Imagenes"
-                        >
-                            <img src="/icons/imagen.png" alt="Imagenes" className="w-6 h-6" />
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaRegImage className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Imagenes
                         </span>
-                    </div>
+                    </button>
 
-                    <div
-                        className="flex flex-col items-center gap-1"
+                    <button
+                        type="button"
                         onMouseEnter={() => openPanel("contador")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
-                        }}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("contador")}
+                        className={getDesktopToolButtonClass("contador")}
+                        title="Contador"
                     >
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("contador")}
-                            className={getIconButtonClass("contador")}
-                            title="Contador"
-                        >
-                            <FaRegClock className="text-lg" />
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaRegClock className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Contador
                         </span>
-                    </div>
+                    </button>
 
-                    <div
-                        className="flex flex-col items-center gap-1"
+                    <button
+                        type="button"
                         onMouseEnter={() => openPanel("rsvp")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => {
+                            setRsvpForcePresetSelection(false);
+                            alternarSidebarConBoton("rsvp");
                         }}
+                        className={getDesktopToolButtonClass("rsvp")}
+                        title="Asistencia"
                     >
-                        <button type="button"
-                            onClick={() => {
-                                setRsvpForcePresetSelection(false);
-                                alternarSidebarConBoton("rsvp");
-                            }}
-                            className={getIconButtonClass("rsvp")}
-                            title="Asistencia"
-                        >
-                            <FaRegEnvelope className="text-lg" />
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaRegEnvelope className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Asistencia
                         </span>
-                    </div>
+                    </button>
 
-                    <div
-                        className="flex flex-col items-center gap-1"
+                    <button
+                        type="button"
                         onMouseEnter={() => openPanel("regalos")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
-                        }}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("regalos")}
+                        className={getDesktopToolButtonClass("regalos")}
+                        title="Regalos"
                     >
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("regalos")}
-                            className={getIconButtonClass("regalos")}
-                            title="Regalos"
-                        >
-                            <FaGift className="text-lg" />
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaGift className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Regalos
                         </span>
-                    </div>
+                    </button>
 
-                    <div
-                        className="flex flex-col items-center gap-1"
+                    <button
+                        type="button"
                         onMouseEnter={() => openPanel("efectos")}
-                        onMouseLeave={(e) => {
-                            const panel = panelRef.current;
-                            if (safeContains(panel, e.relatedTarget)) return;
-                            scheduleClosePanel();
-                        }}
+                        onMouseLeave={handleDesktopToolMouseLeave}
+                        onClick={() => alternarSidebarConBoton("efectos")}
+                        className={getDesktopToolButtonClass("efectos")}
+                        title="Efectos"
                     >
-                        <button type="button"
-                            onClick={() => alternarSidebarConBoton("efectos")}
-                            className={getIconButtonClass("efectos")}
-                            title="Efectos"
-                        >
-                            <span className="text-sm font-semibold">Fx</span>
-                        </button>
-                        <span className="text-[10px] font-semibold text-[#5f3596] leading-none">
+                        <FaMagic className={desktopToolIconClass} aria-hidden="true" />
+                        <span className={desktopToolTextClass}>
                             Efectos
                         </span>
-                    </div>
+                    </button>
 
                 </div>
 
@@ -781,8 +770,7 @@ export default function DashboardSidebar({
                     ref={panelRef}
                     id="sidebar-panel"
                     className="
-      absolute z-40 rounded-2xl border border-[#e6dbf8] bg-white
-      md:rounded-2xl shadow-[0_20px_40px_rgba(15,23,42,0.12)]
+      absolute z-40 border border-[#e6dbf8] bg-white
       transition-all duration-200 animate-slideUp
     "
                     onMouseEnter={() => {
@@ -817,10 +805,10 @@ export default function DashboardSidebar({
                                 flexDirection: "column",
                             }
                             : {
-                                left: "4rem",
+                                left: "197px",
                                 top: "var(--dashboard-header-height, 52px)",
                                 height: "calc(100vh - var(--dashboard-header-height, 52px))",
-                                width: "18rem",
+                                width: "435px",
                                 overflowY: "auto",
                             }
                     }
@@ -848,15 +836,14 @@ export default function DashboardSidebar({
                             <button type="button"
                                 onClick={closeSidebarPanel}
                                 className="
-            absolute top-2 right-2 z-[60] flex h-8 w-8 items-center justify-center rounded-full
-            border border-[#dbc9f6] bg-white text-[#6d3eb6]
-            shadow-[0_8px_18px_rgba(95,53,150,0.18)] transition-all duration-200
-            hover:-translate-y-[1px] hover:bg-[#f8f2ff] hover:shadow-[0_12px_24px_rgba(95,53,150,0.26)]
+            absolute top-2 right-2 z-[60] flex h-8 w-8 items-center justify-center
+            bg-transparent text-[#262626] transition-colors duration-200
+            hover:text-[#692B9A]
             pointer-events-auto
           "
                                 title="Cerrar panel"
                             >
-                                <FaTimes className="text-sm" />
+                                <FaTimes className="text-[18px] font-light leading-[24px] tracking-[0px] text-[#262626]" />
                             </button>
                         )}
 
@@ -951,5 +938,3 @@ export default function DashboardSidebar({
         </>
     );
 }
-
-

@@ -817,6 +817,8 @@ export default function DashboardSidebar({
                         className={`relative w-full h-full min-h-0 flex flex-col text-slate-700 ${
                             botonActivo === "forma"
                                 ? "gap-0 px-2.5 pb-0.5 pt-8"
+                                : botonActivo === "detalles"
+                                    ? "gap-3 px-0 pb-3 pt-10"
                                 : "gap-3 px-2.5 pb-3 pt-10"
                         }`}
                         style={

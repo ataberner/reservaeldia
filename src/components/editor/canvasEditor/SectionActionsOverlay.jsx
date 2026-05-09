@@ -21,7 +21,9 @@ import {
 } from "@/domain/sections/backgrounds";
 
 const DESKTOP_PANEL_WIDTH = 76;
-const DESKTOP_PANEL_RIGHT = 12;
+const DESKTOP_CANVAS_WIDTH = 800;
+const DESKTOP_CANVAS_HALF_WIDTH = DESKTOP_CANVAS_WIDTH / 2;
+const DESKTOP_PANEL_CANVAS_GAP = 8;
 
 const DESKTOP_TOOLTIP_LABELS = Object.freeze({
   moveUp: "Subir seccion",
@@ -493,12 +495,14 @@ export default function SectionActionsOverlay({
     },
   ].filter((group) => Array.isArray(group.items) && group.items.length > 0);
 
+  const desktopPanelLeft = `calc(50% + ${DESKTOP_CANVAS_HALF_WIDTH + DESKTOP_PANEL_CANVAS_GAP}px)`;
+
   return (
     <div
       className="absolute"
       style={{
         top: offsetY + 20,
-        right: DESKTOP_PANEL_RIGHT,
+        left: desktopPanelLeft,
         zIndex: 25,
         width: DESKTOP_PANEL_WIDTH,
         transition: "top 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease, box-shadow 220ms ease",

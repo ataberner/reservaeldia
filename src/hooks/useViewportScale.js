@@ -25,6 +25,7 @@ export default function useViewportScale({
 
   // debug
   debug = false,
+  suspendResizeSync = false,
 } = {}) {
   const [isMobile, setIsMobile] = useState(false);
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
@@ -70,7 +71,7 @@ export default function useViewportScale({
 
   // scale: solo cuando zoom === 1 (igual que hoy)
   useEffect(() => {
-    if (!contenedorRef?.current || zoom !== 1) return;
+    if (!contenedorRef?.current || zoom !== 1 || suspendResizeSync) return;
 
     let raf = null;
 
@@ -107,25 +108,43 @@ export default function useViewportScale({
       if (raf) cancelAnimationFrame(raf);
       observer.disconnect();
     };
-  }, [contenedorRef, zoom, isMobilePortrait, baseDesktop, baseMobilePortrait, debug]);
+  }, [
+    contenedorRef,
+    zoom,
+    isMobilePortrait,
+    baseDesktop,
+    baseMobilePortrait,
+    debug,
+    suspendResizeSync,
+  ]);
 
   // anchoContenedor: siempre (igual que hoy)
   useEffect(() => {
     const el = contenedorRef?.current;
-    if (!el) return;
+    if (!el || suspendResizeSync) return;
+
+    let raf = null;
 
     const actualizar = () => {
       if (!contenedorRef.current) return;
-      setAnchoContenedor(contenedorRef.current.offsetWidth || 0);
+
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (!contenedorRef.current) return;
+        setAnchoContenedor(contenedorRef.current.offsetWidth || 0);
+      });
     };
 
-    requestAnimationFrame(actualizar);
+    actualizar();
 
     const observer = new ResizeObserver(actualizar);
     observer.observe(el);
 
-    return () => observer.disconnect();
-  }, [contenedorRef]);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [contenedorRef, suspendResizeSync]);
 
   // Derivados (identicos a tu logica actual)
   const escalaActiva = zoom === 1 ? scale : zoom;

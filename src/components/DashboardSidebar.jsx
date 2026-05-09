@@ -44,7 +44,31 @@ const MOBILE_BAR_HEIGHT_PX = 96;
 const MOBILE_PANEL_GUTTER_PX = 8;
 const MOBILE_PANEL_BOTTOM_EXTRA_PX = 2;
 const MOBILE_SCROLL_FADE_WIDTH_PX = 92;
+const DESKTOP_PANEL_LEFT_PX = 197;
+const DESKTOP_PANEL_WIDTH_PX = 435;
+const DESKTOP_PANEL_GAP_PX = 16;
 const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "contador", "efectos"]);
+
+function publishSidebarPanelLayout(detail = {}) {
+    if (typeof window === "undefined") return;
+
+    const nextDetail = {
+        pinned: false,
+        offsetLeft: 0,
+        panelLeft: DESKTOP_PANEL_LEFT_PX,
+        panelWidth: DESKTOP_PANEL_WIDTH_PX,
+        panelRight: DESKTOP_PANEL_LEFT_PX + DESKTOP_PANEL_WIDTH_PX,
+        botonActivo: null,
+        ...detail,
+    };
+
+    window.__dashboardSidebarPanelLayout = nextDetail;
+    window.dispatchEvent(
+        new CustomEvent("dashboard-sidebar-panel-layout-change", {
+            detail: nextDetail,
+        })
+    );
+}
 
 
 export default function DashboardSidebar({
@@ -189,6 +213,38 @@ export default function DashboardSidebar({
         setBotonActivo(null);
         setRsvpForcePresetSelection(false);
     }, []);
+
+    useEffect(() => {
+        return () => {
+            publishSidebarPanelLayout({
+                pinned: false,
+                offsetLeft: 0,
+                botonActivo: null,
+            });
+        };
+    }, []);
+
+    useEffect(() => {
+        const pinned = !modoSelector && !isMobileViewport && fijadoSidebar && Boolean(botonActivo);
+        const panelRect = panelRef.current?.getBoundingClientRect?.() || null;
+        const panelRight = pinned
+            ? Math.round(panelRect?.right || (DESKTOP_PANEL_LEFT_PX + DESKTOP_PANEL_WIDTH_PX))
+            : 0;
+
+        publishSidebarPanelLayout({
+            pinned,
+            offsetLeft: pinned ? panelRight + DESKTOP_PANEL_GAP_PX : 0,
+            panelLeft: DESKTOP_PANEL_LEFT_PX,
+            panelWidth: DESKTOP_PANEL_WIDTH_PX,
+            panelRight: pinned ? panelRight : DESKTOP_PANEL_LEFT_PX + DESKTOP_PANEL_WIDTH_PX,
+            botonActivo: pinned ? botonActivo : null,
+        });
+    }, [
+        botonActivo,
+        fijadoSidebar,
+        isMobileViewport,
+        modoSelector,
+    ]);
 
     useEffect(() => {
         if (!isMobileViewport) return;
@@ -805,10 +861,10 @@ export default function DashboardSidebar({
                                 flexDirection: "column",
                             }
                             : {
-                                left: "197px",
+                                left: `${DESKTOP_PANEL_LEFT_PX}px`,
                                 top: "var(--dashboard-header-height, 52px)",
                                 height: "calc(100vh - var(--dashboard-header-height, 52px))",
-                                width: "435px",
+                                width: `${DESKTOP_PANEL_WIDTH_PX}px`,
                                 overflowY: "auto",
                             }
                     }

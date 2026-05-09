@@ -90,6 +90,17 @@ import {
   PRESERVE_INLINE_EDIT_SELECTOR,
 } from "@/components/editor/canvasEditor/selectionPreservationPolicy";
 
+const DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT = "dashboard-sidebar-panel-layout-change";
+const SIDEBAR_PANEL_CANVAS_GAP_PX = 16;
+const SIDEBAR_PANEL_CANVAS_TRANSITION_MS = 220;
+const SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS = SIDEBAR_PANEL_CANVAS_TRANSITION_MS + 60;
+const CANVAS_DESKTOP_WIDTH_PX = 800;
+const SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX = 76;
+const SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX = 8;
+const SECTION_ACTIONS_DESKTOP_RIGHT_EXTENT_PX =
+  CANVAS_DESKTOP_WIDTH_PX / 2 +
+  SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX +
+  SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX;
 
 Konva.dragDistance = 8;
 
@@ -687,6 +698,10 @@ export default function CanvasEditor({
   );
   const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
   const botonOpcionesRef = useRef(null);
+  const [sidebarPanelInsetLeft, setSidebarPanelInsetLeft] = useState(0);
+  const [sidebarLayoutSettling, setSidebarLayoutSettling] = useState(false);
+  const sidebarPanelInsetLeftRef = useRef(0);
+  const sidebarLayoutSettleTimerRef = useRef(null);
 
 
   const {
@@ -701,7 +716,67 @@ export default function CanvasEditor({
   } = useCanvasScaleLayout({
     contenedorRef,
     zoom,
+    baseDesktop: readOnly
+      ? CANVAS_DESKTOP_WIDTH_PX
+      : CANVAS_DESKTOP_WIDTH_PX +
+        SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX +
+        SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX,
+    suspendResizeSync: sidebarLayoutSettling,
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const scheduleSidebarLayoutSettle = () => {
+      if (sidebarLayoutSettleTimerRef.current) {
+        window.clearTimeout(sidebarLayoutSettleTimerRef.current);
+      }
+
+      setSidebarLayoutSettling(true);
+      sidebarLayoutSettleTimerRef.current = window.setTimeout(() => {
+        sidebarLayoutSettleTimerRef.current = null;
+        setSidebarLayoutSettling(false);
+      }, SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS);
+    };
+
+    const syncSidebarPanelInset = (event) => {
+      const layoutState =
+        event?.detail ||
+        window.__dashboardSidebarPanelLayout ||
+        null;
+      const fallbackOffset =
+        Number(layoutState?.panelRight || 0) + SIDEBAR_PANEL_CANVAS_GAP_PX;
+      const nextInset =
+        !isMobile && layoutState?.pinned
+          ? Math.max(0, Number(layoutState?.offsetLeft || fallbackOffset) || 0)
+          : 0;
+
+      if (sidebarPanelInsetLeftRef.current !== nextInset) {
+        scheduleSidebarLayoutSettle();
+        sidebarPanelInsetLeftRef.current = nextInset;
+        setSidebarPanelInsetLeft(nextInset);
+      }
+    };
+
+    syncSidebarPanelInset();
+    window.addEventListener(
+      DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT,
+      syncSidebarPanelInset
+    );
+    window.addEventListener("resize", syncSidebarPanelInset);
+
+    return () => {
+      if (sidebarLayoutSettleTimerRef.current) {
+        window.clearTimeout(sidebarLayoutSettleTimerRef.current);
+        sidebarLayoutSettleTimerRef.current = null;
+      }
+      window.removeEventListener(
+        DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT,
+        syncSidebarPanelInset
+      );
+      window.removeEventListener("resize", syncSidebarPanelInset);
+    };
+  }, [isMobile]);
 
   const mobileTypographyToolbarVisible =
     isMobile && isTypographyEditableCanvasObject(objetoSeleccionado);
@@ -1409,6 +1484,22 @@ export default function CanvasEditor({
     ? (escalaVisual - 1) * altoCanvasDinamico
     : 0;
 
+  const desktopCanvasShiftX =
+    !isMobile &&
+    !readOnly &&
+    Number.isFinite(Number(anchoContenedor)) &&
+    Number(anchoContenedor) > 0 &&
+    Number.isFinite(Number(escalaVisual)) &&
+    Number(escalaVisual) > 0
+      ? Math.max(
+          0,
+          Math.ceil(
+            SECTION_ACTIONS_DESKTOP_RIGHT_EXTENT_PX -
+              Number(anchoContenedor) / (2 * Number(escalaVisual))
+          )
+        )
+      : 0;
+
 
 
   return (
@@ -1417,6 +1508,8 @@ export default function CanvasEditor({
       className="flex justify-center"
       style={{
         // ? Dejamos que el scroll lo maneje el <main> del DashboardLayout (un solo scroll)
+        width: "100%",
+        boxSizing: "border-box",
         marginTop: 0,
         position: "relative",
         overflowX: "hidden",
@@ -1426,9 +1519,11 @@ export default function CanvasEditor({
         WebkitOverflowScrolling: "touch",
 
         // ? espacio para que no â€œchoqueâ€ con header / barras
+        paddingLeft: sidebarPanelInsetLeft,
+        paddingRight: sidebarPanelInsetLeft ? SIDEBAR_PANEL_CANVAS_GAP_PX : 0,
         paddingTop: 12 + mobileCanvasToolbarOffset,
         paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
-        transition: "padding-top 180ms ease",
+        transition: "padding-left 220ms ease, padding-right 220ms ease, padding-top 180ms ease",
       }}
     >
 
@@ -1450,6 +1545,8 @@ export default function CanvasEditor({
           style={{
             transform: `scale(${escalaVisual})`,
             transformOrigin: 'top center',
+            transition: "transform 220ms ease, margin-bottom 220ms ease",
+            willChange: "transform",
             width: zoom === 0.8 ? "1220px" : "1000px", // ? 920px canvas + 150px cada lado
             position: "relative",
             marginBottom: scaledCanvasHeightCompensation,
@@ -1462,6 +1559,10 @@ export default function CanvasEditor({
               width: zoom === 0.8 ? "1220px" : "1000px", // ? AJUSTAR SEGÃšN ZOOM
               display: "flex",
               justifyContent: "center",
+              transform: desktopCanvasShiftX
+                ? `translateX(-${desktopCanvasShiftX}px)`
+                : "none",
+              transition: "transform 220ms ease",
             }}
           >
 

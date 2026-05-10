@@ -1003,6 +1003,38 @@ export function generarHTMLDesdeSecciones(
     existingImg.setAttribute("src", url);
   }
 
+  function normalizeGalleryRuntimeMediaKey(value){
+    var raw = toText(value);
+    if (!raw) return "";
+    if (/^https?:\\/\\//i.test(raw)) {
+      try {
+        return new URL(raw, window.location.href).href;
+      } catch (_err) {
+        return raw;
+      }
+    }
+    return raw;
+  }
+
+  function resolveGalleryRuntimeId(galleryRoot){
+    if (!galleryRoot) return "";
+    return (
+      toText(galleryRoot.getAttribute("data-gallery-id")) ||
+      toText(galleryRoot.getAttribute("data-obj-id")) ||
+      toText(galleryRoot.getAttribute("data-group-child-id")) ||
+      toText(galleryRoot.id) ||
+      toText(galleryRoot.closest("[data-obj-id]") && galleryRoot.closest("[data-obj-id]").getAttribute("data-obj-id")) ||
+      ""
+    );
+  }
+
+  function applyGalleryRuntimeCellMarkers(galleryRoot, cell, index, url){
+    if (!cell) return;
+    cell.setAttribute("data-gallery-id", normalizeGalleryRuntimeMediaKey(resolveGalleryRuntimeId(galleryRoot)));
+    cell.setAttribute("data-gallery-cell-index", String(index));
+    cell.setAttribute("data-gallery-media-key", normalizeGalleryRuntimeMediaKey(url));
+  }
+
   function renderDynamicGalleryCells(targetElement, urls, galleryLayout){
     if (!targetElement) return false;
     var galleryRoot = targetElement.classList && targetElement.classList.contains("galeria")
@@ -1082,6 +1114,7 @@ export function generarHTMLDesdeSecciones(
       cell.className = "galeria-celda galeria-celda--clickable";
       cell.setAttribute("data-index", String(i));
       cell.setAttribute("data-gallery-image", "1");
+      applyGalleryRuntimeCellMarkers(galleryRoot, cell, i, nextUrl);
       cell.setAttribute("role", "button");
       cell.setAttribute("tabindex", "0");
       cell.setAttribute("aria-label", "Ver imagen en pantalla completa");
@@ -1123,6 +1156,7 @@ export function generarHTMLDesdeSecciones(
       ensureGalleryCellImage(cell, nextUrl);
       cell.classList.add("galeria-celda--clickable");
       cell.setAttribute("data-gallery-image", "1");
+      applyGalleryRuntimeCellMarkers(galleryRoot, cell, i, nextUrl);
       cell.setAttribute("role", "button");
       cell.setAttribute("tabindex", "0");
       cell.setAttribute("aria-label", "Ver imagen en pantalla completa");

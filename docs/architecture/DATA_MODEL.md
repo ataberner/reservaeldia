@@ -446,6 +446,9 @@ Gallery objects use:
 | `galleryLayoutMode` | Optional | Current code recognizes `fixed` and `dynamic_media`. |
 | `galleryLayoutType` | Optional | Dynamic layout subtype. |
 | `galleryLayoutBlueprint` | Optional | Dynamic layout blueprint object used by the shared gallery layout resolver. |
+| `allowedLayouts` | Optional additive preset field | Stable preset ids selectable for this Gallery. Missing value keeps legacy fixed/dynamic fields authoritative. |
+| `defaultLayout` | Optional additive preset field | Template-authored fallback preset id when allowed. |
+| `currentLayout` | Optional additive preset field | Draft-selected preset id when allowed. |
 
 Gallery cell payload:
 
@@ -455,6 +458,10 @@ Gallery cell payload:
 | `url` / `src` | Compatibility fallback | Dynamic gallery rendering falls back to these when `mediaUrl` is absent. |
 | `fit` | Optional | `cover` or `contain`. |
 | `bg` | Optional | Cell background color. |
+
+Detailed Gallery behavior is defined in [`GALLERY_SYSTEM_CONTRACT.md`](../contracts/GALLERY_SYSTEM_CONTRACT.md). Editor/sidebar rules live in [`GALLERY_EDITOR_CONTRACT.md`](../contracts/GALLERY_EDITOR_CONTRACT.md), layout preset rules live in [`GALLERY_LAYOUT_PRESETS_CONTRACT.md`](../contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md), and preview/publish viewer rules live in [`GALLERY_VIEWER_RENDER_CONTRACT.md`](../contracts/GALLERY_VIEWER_RENDER_CONTRACT.md).
+
+The Gallery contracts define selected-Gallery sidebar editing, Gallery-local photo order, layout preset fields, global public lightbox collection, duplicate handling, and preview/publish parity. The canonical media field remains `mediaUrl`; `url` and `src` remain compatibility fallbacks.
 
 ### `countdown`
 Countdown objects have two active data shapes:

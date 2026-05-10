@@ -92,6 +92,8 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML | no tiene warning especifico actual | validar en HTML |
 | published share image | `publicadas.share` + `publicadas/{slug}/share.jpg` | no | no | artefacto derivado de publish HTML | deriva de la primera `.inv > .sec`; no agrega mapeo editor/render | bloquea publish si no se genera y confirma como JPEG `1200x630` | usar [PUBLISHED_SHARE_IMAGE_CONTRACT.md](PUBLISHED_SHARE_IMAGE_CONTRACT.md) |
 
+Gallery-specific behavior is summarized in [`GALLERY_SYSTEM_CONTRACT.md`](GALLERY_SYSTEM_CONTRACT.md). Global Gallery viewer behavior is owned by [`GALLERY_VIEWER_RENDER_CONTRACT.md`](GALLERY_VIEWER_RENDER_CONTRACT.md). The matrix rows above describe current render support and current publish blockers. Global viewer behavior is generated-HTML based and is covered by render compatibility, publication validation, preview/publish parity, and mobile geometry parity tests for multi-Gallery collection, duplicate handling, and clicked-photo index mapping.
+
 ## Bloqueadores y advertencias por tipo de riesgo
 
 Bloqueadores de publish hoy:

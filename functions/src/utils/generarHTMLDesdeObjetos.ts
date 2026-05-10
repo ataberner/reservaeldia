@@ -15,6 +15,9 @@ const {
   normalizeRenderAssetObject,
 } = require("../../shared/renderAssetContract.cjs");
 const {
+  applyGalleryLayoutPresetToRenderObject,
+} = require("../../shared/galleryLayoutPresets.cjs");
+const {
   classifyRenderObjectContract,
   resolveCountdownContract,
   resolveCountdownTargetIso,
@@ -36,6 +39,52 @@ function escapeAttr(str: string = ""): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function normalizeGalleryMediaIdentity(value: any): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      return new URL(raw).href;
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
+function resolveGalleryCellMediaKey(cell: any, mediaUrl: any): string {
+  return (
+    normalizeGalleryMediaIdentity(cell?.storagePath) ||
+    normalizeGalleryMediaIdentity(cell?.assetId) ||
+    normalizeGalleryMediaIdentity(mediaUrl)
+  );
+}
+
+function buildGalleryCellMarkerAttrs({
+  galleryId,
+  cell,
+  cellIndex,
+  mediaUrl,
+}: {
+  galleryId: any;
+  cell: any;
+  cellIndex: number;
+  mediaUrl: any;
+}): string {
+  const cellId = normalizeGalleryMediaIdentity(cell?.id);
+  const attrs = [
+    `data-gallery-id="${escapeAttr(normalizeGalleryMediaIdentity(galleryId))}"`,
+    `data-gallery-cell-index="${cellIndex}"`,
+    `data-gallery-media-key="${escapeAttr(resolveGalleryCellMediaKey(cell, mediaUrl))}"`,
+  ];
+
+  if (cellId) {
+    attrs.push(`data-gallery-cell-id="${escapeAttr(cellId)}"`);
+  }
+
+  return attrs.join("\n     ");
 }
 
 const MOTION_EFFECT_VALUES = new Set(["none", "reveal", "draw", "zoom", "hover", "pulse", "rsvp"]);
@@ -1840,19 +1889,20 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
 
       // ---------------- GALERÍA ----------------
       if (tipo === "galeria") {
-        const rows = Math.max(1, parseInt(obj.rows || 1, 10));
-        const cols = Math.max(1, parseInt(obj.cols || 1, 10));
-        const gapPx = Math.max(0, parseInt(obj.gap || 0, 10));
-        const radiusPx = Math.max(0, parseInt(obj.radius || 0, 10));
-        const layoutMode = normalizeGalleryLayoutMode(obj.galleryLayoutMode);
-        const layoutType = normalizeGalleryLayoutType(obj.galleryLayoutType);
+        const galleryRenderObj = applyGalleryLayoutPresetToRenderObject(obj);
+        const rows = Math.max(1, parseInt(galleryRenderObj.rows || 1, 10));
+        const cols = Math.max(1, parseInt(galleryRenderObj.cols || 1, 10));
+        const gapPx = Math.max(0, parseInt(galleryRenderObj.gap || 0, 10));
+        const radiusPx = Math.max(0, parseInt(galleryRenderObj.radius || 0, 10));
+        const layoutMode = normalizeGalleryLayoutMode(galleryRenderObj.galleryLayoutMode);
+        const layoutType = normalizeGalleryLayoutType(galleryRenderObj.galleryLayoutType);
 
-        const baseStyle = stylePosBase(obj);
-        const w = Number.isFinite(obj?.width) ? Number(obj.width) : 1;
-        const h = Number.isFinite(obj?.height) ? Number(obj.height) : undefined;
+        const baseStyle = stylePosBase(galleryRenderObj);
+        const w = Number.isFinite(galleryRenderObj?.width) ? Number(galleryRenderObj.width) : 1;
+        const h = Number.isFinite(galleryRenderObj?.height) ? Number(galleryRenderObj.height) : undefined;
 
-        const sGrid = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
-        const sourceCells = Array.isArray(obj.cells) ? obj.cells : [];
+        const sGrid = isFullBleed(galleryRenderObj) ? "var(--sx)" : sContenidoVar(galleryRenderObj);
+        const sourceCells = Array.isArray(galleryRenderObj.cells) ? galleryRenderObj.cells : [];
 
         if (layoutMode === "dynamic_media") {
           const mediaCells = sourceCells
@@ -1860,7 +1910,10 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
               const mediaUrl = String(cell?.mediaUrl || "").trim();
               if (!mediaUrl) return null;
               return {
+                id: cell?.id,
                 mediaUrl,
+                storagePath: cell?.storagePath,
+                assetId: cell?.assetId,
                 fit: cell?.fit === "contain" ? "contain" : "cover",
                 bg: sanitizeCssPaint(cell?.bg, "#f3f4f6"),
               };
@@ -1873,10 +1926,10 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
             rows,
             cols,
             gap: gapPx,
-            ratio: obj.ratio,
+            ratio: galleryRenderObj.ratio,
             layoutMode,
             layoutType,
-            layoutBlueprint: obj.galleryLayoutBlueprint,
+            layoutBlueprint: galleryRenderObj.galleryLayoutBlueprint,
             mediaUrls,
             isMobile: false,
           });
@@ -1885,10 +1938,10 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
             rows,
             cols,
             gap: gapPx,
-            ratio: obj.ratio,
+            ratio: galleryRenderObj.ratio,
             layoutMode,
             layoutType,
-            layoutBlueprint: obj.galleryLayoutBlueprint,
+            layoutBlueprint: galleryRenderObj.galleryLayoutBlueprint,
             mediaUrls,
             isMobile: true,
           });
@@ -1949,6 +2002,12 @@ background:${safeBg};
 <div class="galeria-celda galeria-celda--clickable"
      data-index="${idx}"
      data-gallery-image="1"
+     ${buildGalleryCellMarkerAttrs({
+       galleryId: obj?.id,
+       cell,
+       cellIndex: idx,
+       mediaUrl: cell.mediaUrl,
+     })}
      role="button"
      tabindex="0"
      aria-label="Ver imagen en pantalla completa"
@@ -1975,7 +2034,7 @@ background:${safeBg};
 
         const styleContenedor = `
 ${baseStyle}
-${styleSize(obj, w, h)}
+${styleSize(galleryRenderObj, w, h)}
 display: grid;
 grid-template-columns: repeat(${cols}, 1fr);
 grid-template-rows: repeat(${rows}, 1fr);
@@ -1987,7 +2046,10 @@ box-sizing: border-box;
         const cells = Array.from({ length: total }, (_, i) => {
           const c = sourceCells[i] || {};
           return {
+            id: c.id,
             mediaUrl: c.mediaUrl || "",
+            storagePath: c.storagePath,
+            assetId: c.assetId,
             fit: c.fit === "contain" ? "contain" : "cover",
             bg: sanitizeCssPaint(c.bg, "#f3f4f6"),
           };
@@ -2013,6 +2075,12 @@ background: ${cell.bg};
 <div class="galeria-celda galeria-celda--clickable"
      data-index="${idx}"
      data-gallery-image="1"
+     ${buildGalleryCellMarkerAttrs({
+       galleryId: obj?.id,
+       cell,
+       cellIndex: idx,
+       mediaUrl: cell.mediaUrl,
+     })}
      role="button"
      tabindex="0"
      aria-label="Ver imagen en pantalla completa"

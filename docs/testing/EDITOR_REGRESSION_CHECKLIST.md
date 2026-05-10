@@ -23,6 +23,7 @@ Preparar un borrador con:
 - una `forma`
 - una `forma.line`
 - dos o mas objetos cercanos para multiseleccion y drag grupal
+- una galeria `tipo: "galeria"` con tres fotos, una foto repetida en otra galeria, y `allowedLayouts/defaultLayout/currentLayout`
 - si el cambio toca CTA o countdown, incluir tambien esos objetos
 
 ## 1. Seleccion y drag
@@ -308,6 +309,58 @@ Resultado esperado:
 - la transformacion persiste
 
 ## 6. Publish-adjacent checks
+
+### [ ] Galerias: sidebar, presets y visor global
+
+1. En una sesion normal, seleccionar una galeria existente.
+2. Verificar que el panel muestra fotos de la galeria seleccionada separadas de imagenes disponibles.
+3. Agregar, reemplazar, quitar y reordenar una foto.
+4. Cambiar entre layouts permitidos.
+5. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
+
+Resultado esperado:
+
+- usuarios normales no ven el Gallery Builder ni herramientas de estructura
+- las operaciones afectan solo la galeria seleccionada
+- quitar una foto no elimina el asset subido
+- cambiar layout preserva todas las fotos, aunque algunas queden ocultas
+- el visor de preview recorre fotos clickeables de todas las galerias en orden DOM y de-duplica repetidas
+- publish sigue bloqueando `gallery-media-unresolved` si una celda con media no tiene URL publicable
+
+### [ ] Galerias: lista vertical futura
+
+Aplicar cuando se implemente la lista vertical sortable descrita en `GALLERY_EDITOR_CONTRACT.md`.
+
+1. Seleccionar una galeria con tres o mas fotos.
+2. Confirmar que las fotos aparecen una debajo de otra en el mismo orden local de la galeria.
+3. Intentar arrastrar desde la miniatura.
+4. Arrastrar desde el handle dedicado y soltar en otra posicion.
+5. Hacer click en una miniatura y reemplazarla desde el flujo de imagenes existente.
+6. Cambiar a un layout que oculte algunas fotos y repetir reorder con una foto oculta.
+7. En mobile, repetir con touch o usar el fallback Subir/Bajar si drag touch no esta habilitado.
+
+Resultado esperado:
+
+- solo el handle inicia drag
+- el drag no cambia seleccion de canvas, z-index, geometria ni celda activa
+- el nuevo orden se refleja en `cells[]` mediante `reorderGalleryPhotos`
+- `cell.id`, `mediaUrl`, `storagePath`, `assetId` y metadatos se conservan
+- la miniatura inicia reemplazo, no reorder
+- el reemplazo mantiene la posicion de la fila/celda y no borra el asset subido
+- las fotos ocultas por preset siguen gestionables en la lista
+- las celdas fijas vacias no aparecen como filas draggable
+
+### [ ] Gallery Builder restringido
+
+1. Abrir una sesion de autor de plantilla con permisos admin/superadmin.
+2. Confirmar que aparece el Builder de galeria.
+3. Repetir en una sesion normal o read-only.
+
+Resultado esperado:
+
+- el Builder solo aparece con `canManageSite`, sesion de plantilla y editor escribible
+- el Builder configura presets permitidos/default/current sin editar blueprints libres
+- no se crea un tipo `album` ni un segundo modelo de persistencia
 
 ### [ ] Checkout / publish entry despues de cambios pendientes
 

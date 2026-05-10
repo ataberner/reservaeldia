@@ -47,7 +47,7 @@ These views freeze invitation rendering reference points only. They do not freez
 | `simple-pantalla-section` | Protect the minimal `pantalla` text baseline. | `shared-parity` | all five baseline views | none | `pantalla` viewport fit, content anchoring, text hierarchy |
 | `decorative-fullbleed` | Protect current `fullbleed` behavior in a decorated `pantalla` section. | `warning-only` | all five baseline views | `fullbleed-editor-drift`, `pantalla-ynorm-drift` | bleed-layer width behavior, section decoration attachment, mobile anchor interpretation |
 | `text-with-decoration-behind` | Protect text layering over current section background/decor rendering. | `shared-parity` | all five baseline views | none | text stays above decorations, decoration does not detach, no accidental bleed reinterpretation |
-| `gallery` | Protect the current gallery layout family and cell ordering semantics. | `shared-parity` | all five baseline views | none | cell order, sizing pattern, desktop/mobile gallery family |
+| `gallery` | Protect the current gallery layout family, preset visibility, cell ordering, and generated global-viewer markers. | `shared-parity` | all five baseline views | none | cell order, sizing pattern, desktop/mobile gallery family, clickable-cell DOM order |
 | `countdown` | Protect current countdown frame and unit composition. | `shared-parity` | all five baseline views | none | frame composition, unit structure, desktop/mobile countdown family |
 | `mixed-fijo-pantalla` | Protect section ordering across one `pantalla` section plus fixed sections. | `shared-parity` | all five baseline views | none | section order, `pantalla` to `fijo` relationship, cross-section stability |
 | `fixed-reflow-columns` | Protect the two-column mobile smart-layout path for fixed sections. | `shared-parity` | all five baseline views | none | fixed-only reflow, mobile column stacking, section height |
@@ -102,7 +102,7 @@ Treat any of the following as a regression unless a new product or architecture 
 - changed anchor interpretation for `content` versus `fullbleed`
 - changed section-mode interpretation for `fijo` versus `pantalla`
 - changed layering or composition in the text-over-decoration case
-- changed gallery cell ordering, sizing pattern, or layout family
+- changed gallery cell ordering, sizing pattern, layout family, preset visibility, or generated global-viewer marker set
 - changed countdown frame or unit composition
 - changed cross-section order or changed `fijo`/`pantalla` relationship in the mixed case
 - changed mobile smart-layout height expansion between preview iframe and publish

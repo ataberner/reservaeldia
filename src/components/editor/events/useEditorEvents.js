@@ -26,11 +26,15 @@ import {
   buildGalleryLayoutBlueprintFromObject,
 } from "@/domain/templates/galleryDynamicMedia";
 import {
+  assignGalleryPhotoToCell,
+  getGalleryPhotos,
+  resolveGalleryPhotoMediaUrl,
+} from "@/domain/gallery/galleryMutations";
+import {
   readEditorObjectById,
   readEditorObjectByType,
   readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
-import { resolveGalleryCellMediaUrl } from "../../../../shared/renderAssetContract.js";
 import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
 
 const COUNTDOWN_STYLE_KEYS = [
@@ -178,63 +182,58 @@ export default function useEditorEvents({
   // 1) Exponer función global: asignar imagen a la celda activa
   // ------------------------------------------------------------
   useEffect(() => {
-    const getVisibleGalleryCells = (galleryObject) => {
-      const cells = Array.isArray(galleryObject?.cells) ? galleryObject.cells : [];
+    const resolveNextActiveCell = (galleryObject, indexActual, photoInput) => {
+      const hayImagenNueva = Boolean(resolveGalleryPhotoMediaUrl(photoInput));
+      if (!hayImagenNueva || !Number.isFinite(indexActual)) return null;
+
       const isDynamicGallery =
         String(galleryObject?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
 
-      if (!isDynamicGallery) {
-        return cells;
+      if (isDynamicGallery) {
+        const photos = getGalleryPhotos(galleryObject);
+        if (photos.length <= 1) return null;
+        const nextIndex = (indexActual + 1) % photos.length;
+        return nextIndex !== indexActual ? { objId: galleryObject.id, index: nextIndex } : null;
       }
 
-      return cells
-        .map((cell) => {
-          const mediaUrl = resolveGalleryCellMediaUrl(cell);
-          if (!mediaUrl) return null;
-          return {
-            ...cell,
-            mediaUrl,
-          };
-        })
-        .filter(Boolean);
+      const rows = Math.max(1, Number(galleryObject?.rows) || 1);
+      const cols = Math.max(1, Number(galleryObject?.cols) || 1);
+      const total = rows * cols;
+      if (total <= 1) return null;
+
+      const occupiedIndexes = new Set(
+        getGalleryPhotos(galleryObject).map((photo) => Number(photo.sourceIndex))
+      );
+      occupiedIndexes.add(indexActual);
+
+      for (let step = 1; step < total; step += 1) {
+        const candidate = (indexActual + step) % total;
+        if (!occupiedIndexes.has(candidate)) {
+          return { objId: galleryObject.id, index: candidate };
+        }
+      }
+
+      const nextIndex = (indexActual + 1) % total;
+      return nextIndex !== indexActual ? { objId: galleryObject.id, index: nextIndex } : null;
     };
 
-    window.asignarImagenACelda = (mediaUrl, fit = "cover", bg) => {
+    window.asignarImagenACelda = (mediaInput, fit = "cover", bg) => {
       if (!celdaGaleriaActiva) return false; // no hay slot activo
       const { objId, index } = celdaGaleriaActiva;
       const indexActual = Number(index);
-      let nextActiveCell = null;
+      if (!Number.isFinite(indexActual)) return false;
 
-      const hayImagenNueva = typeof mediaUrl === "string" && mediaUrl.trim().length > 0;
-      if (hayImagenNueva && Number.isFinite(indexActual)) {
-        const galeriaActual = readEditorObjectById(objId);
-        const cellsActuales = getVisibleGalleryCells(galeriaActual);
-
-        if (cellsActuales.length > 1) {
-          const projectedCells = [...cellsActuales];
-          projectedCells[indexActual] = {
-            ...(projectedCells[indexActual] || {}),
-            mediaUrl,
-          };
-
-          let siguienteVacia = -1;
-          for (let step = 1; step < projectedCells.length; step += 1) {
-            const candidate = (indexActual + step) % projectedCells.length;
-            if (!projectedCells[candidate]?.mediaUrl) {
-              siguienteVacia = candidate;
-              break;
-            }
+      const photoInput = resolveGalleryPhotoMediaUrl(mediaInput)
+        ? {
+            ...(mediaInput && typeof mediaInput === "object" ? mediaInput : { mediaUrl: mediaInput }),
+            fit,
+            bg,
           }
+        : null;
+      const galeriaActual = readEditorObjectById(objId);
+      if (!galeriaActual || galeriaActual.tipo !== "galeria") return false;
 
-          if (siguienteVacia === -1) {
-            siguienteVacia = (indexActual + 1) % projectedCells.length;
-          }
-
-          if (siguienteVacia !== indexActual) {
-            nextActiveCell = { objId, index: siguienteVacia };
-          }
-        }
-      }
+      const nextActiveCell = resolveNextActiveCell(galeriaActual, indexActual, photoInput);
 
       setObjetos((prev) => {
         const i = prev.findIndex((o) => o.id === objId);
@@ -243,54 +242,16 @@ export default function useEditorEvents({
         const obj = prev[i];
         if (obj.tipo !== "galeria") return prev;
 
+        const mutation = assignGalleryPhotoToCell(
+          obj,
+          { index: indexActual },
+          photoInput,
+          { clear: !photoInput }
+        );
+        if (!mutation.changed) return prev;
+
         const next = [...prev];
-        const isDynamicGallery =
-          String(obj?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
-
-        if (isDynamicGallery) {
-          const cells = getVisibleGalleryCells(obj);
-          if (!Number.isFinite(indexActual) || indexActual < 0 || indexActual >= cells.length) {
-            return prev;
-          }
-
-          let nextVisibleCells = [...cells];
-          if (typeof mediaUrl === "string" && mediaUrl.trim().length > 0) {
-            const prevCell = nextVisibleCells[indexActual] || {};
-            nextVisibleCells[indexActual] = {
-              ...prevCell,
-              mediaUrl,
-              fit: fit || prevCell.fit || "cover",
-              bg: bg ?? prevCell.bg ?? "#f3f4f6",
-            };
-          } else {
-            nextVisibleCells = nextVisibleCells.filter((_, cellIndex) => cellIndex !== indexActual);
-          }
-
-          const patch = buildDynamicGalleryObjectPatch({
-            galleryObject: {
-              ...obj,
-              cells: nextVisibleCells,
-            },
-            mediaUrls: nextVisibleCells.map((cell) => cell?.mediaUrl),
-          });
-
-          next[i] = {
-            ...obj,
-            ...patch,
-          };
-          return next;
-        }
-
-        const cells = Array.isArray(obj.cells) ? [...obj.cells] : [];
-        const prevCell = cells[indexActual] || {};
-        cells[indexActual] = {
-          ...prevCell,
-          mediaUrl,
-          fit: fit || prevCell.fit || "cover",
-          bg: bg ?? prevCell.bg ?? "#f3f4f6",
-        };
-
-        next[i] = { ...obj, cells };
+        next[i] = mutation.gallery;
         return next;
       });
 

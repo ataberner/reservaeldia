@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { JSDOM } from "jsdom";
 import {
   createRepresentativeCompatibilityWarningDraftFixture,
   createRepresentativePublishReadyDraftFixture,
@@ -316,6 +317,10 @@ function renderRepresentativeDraft(draft) {
   return generarHTMLDesdeSecciones(hydrated.secciones, hydrated.objetos, hydrated.rsvp, {
     gifts: hydrated.gifts,
   });
+}
+
+function countOccurrences(value, pattern) {
+  return (String(value || "").match(pattern) || []).length;
 }
 
 function extractBetween(html, startToken, endToken) {
@@ -808,6 +813,201 @@ test("keeps grouped countdown and gallery compositions nested under one authored
   assert.match(html, /data-group-child-id="gallery-child"[\s\S]*class="group-child-root galeria/);
 });
 
+test("renders gallery cells with global viewer identity markers", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "gallery-a",
+        tipo: "galeria",
+        seccionId: "section-1",
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 120,
+        rows: 1,
+        cols: 3,
+        cells: [
+          {
+            id: "cell-a-1",
+            mediaUrl: "https://cdn.example.com/a.jpg",
+            storagePath: "usuarios/user-1/imagenes/a.jpg",
+          },
+          { id: "cell-a-empty", mediaUrl: "" },
+          {
+            id: "cell-a-3",
+            mediaUrl: "https://cdn.example.com/shared-first.jpg",
+            assetId: "asset-shared",
+          },
+        ],
+      },
+      {
+        id: "gallery-b",
+        tipo: "galeria",
+        seccionId: "section-1",
+        x: 0,
+        y: 160,
+        width: 220,
+        height: 120,
+        rows: 1,
+        cols: 1,
+        cells: [
+          {
+            id: "cell-b-1",
+            mediaUrl: "https://cdn.example.com/shared-second.jpg",
+            assetId: "asset-shared",
+          },
+        ],
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.equal(countOccurrences(html, /data-gallery-image="1"/g), 3);
+  assert.match(html, /data-gallery-id="gallery-a"/);
+  assert.match(html, /data-gallery-cell-index="0"/);
+  assert.match(html, /data-gallery-cell-id="cell-a-1"/);
+  assert.match(html, /data-gallery-media-key="usuarios\/user-1\/imagenes\/a\.jpg"/);
+  assert.equal(countOccurrences(html, /data-gallery-media-key="asset-shared"/g), 2);
+
+  const emptyCellStart = html.indexOf('<div class="galeria-celda" data-index="1"');
+  assert.notEqual(emptyCellStart, -1, "Expected fixed Gallery empty slot to render");
+  const emptyCellEnd = html.indexOf("</div>", emptyCellStart);
+  const nextClickableMarker = html.indexOf('data-gallery-image="1"', emptyCellStart);
+  assert.ok(
+    nextClickableMarker === -1 || nextClickableMarker > emptyCellEnd,
+    "Empty fixed Gallery cells must not become clickable viewer items"
+  );
+});
+
+test("applies Gallery layout presets to generated HTML while preserving source photo state", () => {
+  const gallery = {
+    id: "gallery-preset-banner",
+    tipo: "galeria",
+    seccionId: "section-1",
+    x: 0,
+    y: 0,
+    width: 360,
+    height: 180,
+    rows: 2,
+    cols: 2,
+    allowedLayouts: ["banner", "squares"],
+    defaultLayout: "squares",
+    currentLayout: "banner",
+    cells: [
+      { id: "cell-1", mediaUrl: "https://cdn.example.com/a.jpg" },
+      { id: "cell-2", mediaUrl: "https://cdn.example.com/b.jpg" },
+      { id: "cell-3", src: "https://cdn.example.com/c.jpg" },
+    ],
+  };
+
+  const html = generarHTMLDesdeObjetos([gallery], FIXED_SECTION);
+
+  assert.equal(countOccurrences(html, /data-gallery-image="1"/g), 1);
+  assert.match(html, /grid-template-columns: repeat\(1, 1fr\)/);
+  assert.match(html, /grid-template-rows: repeat\(1, 1fr\)/);
+  assert.match(html, /data-gallery-cell-id="cell-1"/);
+  assert.doesNotMatch(html, /cell-2/);
+  assert.equal(gallery.rows, 2);
+  assert.equal(gallery.cells.length, 3);
+});
+
+test("global gallery viewer collects all galleries and maps duplicate clicks to the canonical item", async () => {
+  const html = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [
+      {
+        id: "gallery-global-a",
+        tipo: "galeria",
+        seccionId: "section-1",
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 120,
+        rows: 1,
+        cols: 2,
+        cells: [
+          {
+            id: "cell-global-a-1",
+            mediaUrl: "https://cdn.example.com/a.jpg",
+            storagePath: "usuarios/user-1/imagenes/a.jpg",
+          },
+          {
+            id: "cell-global-a-2",
+            mediaUrl: "https://cdn.example.com/shared-first.jpg",
+            storagePath: "usuarios/user-1/imagenes/shared.jpg",
+          },
+        ],
+      },
+      {
+        id: "gallery-global-b",
+        tipo: "galeria",
+        seccionId: "section-1",
+        x: 0,
+        y: 160,
+        width: 300,
+        height: 120,
+        rows: 1,
+        cols: 2,
+        cells: [
+          {
+            id: "cell-global-b-1",
+            mediaUrl: "https://cdn.example.com/b.jpg",
+            storagePath: "usuarios/user-1/imagenes/b.jpg",
+          },
+          {
+            id: "cell-global-b-2",
+            mediaUrl: "https://cdn.example.com/shared-second.jpg",
+            storagePath: "usuarios/user-1/imagenes/shared.jpg",
+          },
+        ],
+      },
+    ],
+    null,
+    {}
+  );
+  const dom = new JSDOM(html, {
+    runScripts: "dangerously",
+    url: "https://invitation.example.test/",
+    beforeParse(window) {
+      window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+      window.cancelAnimationFrame = (handle) => window.clearTimeout(handle);
+    },
+  });
+
+  await new Promise((resolve) => {
+    if (dom.window.document.readyState !== "loading") {
+      resolve();
+      return;
+    }
+    dom.window.document.addEventListener("DOMContentLoaded", resolve, { once: true });
+  });
+
+  const { document, MouseEvent } = dom.window;
+  const cells = Array.from(
+    document.querySelectorAll('.galeria-celda[data-gallery-image="1"]')
+  );
+  assert.equal(cells.length, 4);
+
+  cells[3].dispatchEvent(
+    new MouseEvent("click", { bubbles: true, cancelable: true })
+  );
+
+  const modal = document.getElementById("gallery-lightbox");
+  const currentImg = document.querySelector(
+    '[data-gallery-slot="current"] img'
+  );
+  const counter = document.querySelector("[data-gallery-counter]");
+
+  assert.equal(modal?.classList.contains("is-open"), true);
+  assert.equal(
+    currentImg?.getAttribute("src"),
+    "https://cdn.example.com/shared-first.jpg"
+  );
+  assert.equal(counter?.textContent, "2 / 3");
+
+  dom.window.close();
+});
+
 test("activates document-level runtimes for grouped countdown and gallery children", () => {
   const html = generarHTMLDesdeSecciones(
     FIXED_SECTION,
@@ -820,7 +1020,11 @@ test("activates document-level runtimes for grouped countdown and gallery childr
   assert.match(html, /function resolveCountdownContract\(root\)/);
   assert.match(html, /data-group-child-id="gallery-child"[\s\S]*class="group-child-root galeria/);
   assert.match(html, /id="gallery-lightbox"/);
-  assert.match(html, /document\.querySelectorAll\("\.galeria"\)/);
+  assert.match(html, /function collectGlobalGalleryItems\(\)/);
+  assert.match(
+    html,
+    /document\.querySelectorAll\('\.galeria-celda\[data-gallery-image="1"\]'\)/
+  );
 });
 
 test("keeps pantalla positioning branches stable for yNorm objects and y fallback objects", () => {

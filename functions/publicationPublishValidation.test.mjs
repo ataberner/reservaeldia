@@ -476,6 +476,37 @@ test("separates representative blockers from warnings when publish finalization 
   assert.match(result.summary.warningMessage, /advertencias de compatibilidad/);
 });
 
+test("blocks unresolved Gallery media even when a preset hides the cell", () => {
+  const gallery = {
+    id: "gallery-hidden-unresolved",
+    tipo: "galeria",
+    seccionId: "section-1",
+    width: 300,
+    height: 180,
+    rows: 2,
+    cols: 2,
+    allowedLayouts: ["banner", "squares"],
+    defaultLayout: "squares",
+    currentLayout: "banner",
+    cells: [
+      { mediaUrl: "https://cdn.example.com/visible.jpg" },
+      { mediaUrl: "usuarios/u/imagenes/hidden-unresolved.jpg" },
+    ],
+  };
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos: [gallery],
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: [gallery],
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, false);
+  assert.deepEqual(issueKeys(result.blockers), [
+    "gallery-media-unresolved|gallery-hidden-unresolved|section-1|cells[1].mediaUrl",
+  ]);
+});
+
 test("blocks unresolved enabled section edge decorations", () => {
   const rawSecciones = [
     {

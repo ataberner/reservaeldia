@@ -95,6 +95,9 @@ export default function DashboardLayout({
           historialExternos={historialExternos}
           futurosExternos={futurosExternos}
           editorReadOnly={editorReadOnly}
+          canManageSite={canManageSite}
+          editorSession={editorSession}
+          templateSessionMeta={templateSessionMeta}
         />
       )}
 

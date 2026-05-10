@@ -25,6 +25,8 @@ import {
     triggerEditorRedo,
     triggerEditorUndo,
 } from "@/utils/editorHistoryControls";
+import { canAccessGalleryBuilder } from "@/domain/gallery/sidebarModel";
+import { normalizeGalleryLayoutIds } from "@/domain/gallery/galleryLayoutPresets";
 
 
 /**
@@ -47,7 +49,7 @@ const MOBILE_SCROLL_FADE_WIDTH_PX = 92;
 const DESKTOP_PANEL_LEFT_PX = 197;
 const DESKTOP_PANEL_WIDTH_PX = 435;
 const DESKTOP_PANEL_GAP_PX = 16;
-const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "contador", "efectos"]);
+const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "gallery-builder", "contador", "efectos"]);
 
 function publishSidebarPanelLayout(detail = {}) {
     if (typeof window === "undefined") return;
@@ -77,6 +79,9 @@ export default function DashboardSidebar({
     historialExternos = [],
     futurosExternos = [],
     editorReadOnly = false,
+    canManageSite = false,
+    editorSession = null,
+    templateSessionMeta = null,
 }) {
     // --------------------------
     // Estados internos del sidebar
@@ -90,7 +95,7 @@ export default function DashboardSidebar({
     );
     const [showMobileScrollHint, setShowMobileScrollHint] = useState(false);
     const modalCrear = useModalCrearSeccion();
-    const [botonActivo, setBotonActivo] = useState(null); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
+    const [botonActivo, setBotonActivo] = useState(null); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'gallery-builder' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
@@ -103,6 +108,12 @@ export default function DashboardSidebar({
     } = useMisImagenes();
     const { abrirSelector, componenteInput, handleSeleccion } = useUploaderDeImagen(subirImagen);
     const sidebarAbierta = fijadoSidebar || hoverSidebar;
+    const canUseGalleryBuilder = canAccessGalleryBuilder({
+        canManageSite,
+        editorReadOnly,
+        editorSession,
+        templateSessionMeta,
+    });
 
     // --------------------------
     // Reset de paneles al cerrar sidebar
@@ -213,6 +224,12 @@ export default function DashboardSidebar({
         setBotonActivo(null);
         setRsvpForcePresetSelection(false);
     }, []);
+
+    useEffect(() => {
+        if (botonActivo !== "gallery-builder") return;
+        if (canUseGalleryBuilder) return;
+        closeSidebarPanel();
+    }, [botonActivo, canUseGalleryBuilder, closeSidebarPanel]);
 
     useEffect(() => {
         return () => {
@@ -423,11 +440,18 @@ export default function DashboardSidebar({
             window.removeEventListener("dashboard-crear-plantilla", handleCrearPlantillaDesdeHeader);
     }, [ejecutarCrearPlantilla]);
 
-    const insertarGaleria = useCallback((cfg) => {
+    const insertarGaleria = useCallback((cfg = {}) => {
         const rows = Math.max(1, cfg.rows || 1);
         const cols = Math.max(1, cfg.cols || 1);
         const total = rows * cols;
         const widthPct = Math.max(10, Math.min(100, Number(cfg.widthPct ?? 70)));
+        const allowedLayouts = normalizeGalleryLayoutIds(cfg.allowedLayouts);
+        const defaultLayout = allowedLayouts.includes(cfg.defaultLayout)
+            ? cfg.defaultLayout
+            : allowedLayouts[0] || "";
+        const currentLayout = allowedLayouts.includes(cfg.currentLayout)
+            ? cfg.currentLayout
+            : defaultLayout;
 
         window.dispatchEvent(new CustomEvent("insertar-elemento", {
             detail: {
@@ -442,6 +466,13 @@ export default function DashboardSidebar({
                 cells: Array.from({ length: total }, () => ({
                     mediaUrl: null, fit: "cover", bg: "#f3f4f6"
                 })),
+                ...(allowedLayouts.length
+                    ? {
+                        allowedLayouts,
+                        defaultLayout,
+                        currentLayout,
+                    }
+                    : {}),
             }
         }));
     }, []);
@@ -490,6 +521,7 @@ export default function DashboardSidebar({
         texto: "from-[#7c4cc9] to-[#6538af]",
         forma: "from-[#3f74bf] to-[#345ea5]",
         imagen: "from-[#2f9a8f] to-[#247e74]",
+        "gallery-builder": "from-[#8c6a1f] to-[#6d5015]",
         contador: "from-[#d27a47] to-[#b85b31]",
         rsvp: "from-[#2a8b6f] to-[#1d6f58]",
         regalos: "from-[#d15b7f] to-[#b64568]",
@@ -609,13 +641,29 @@ export default function DashboardSidebar({
                         onMouseLeave={handleDesktopToolMouseLeave}
                         onClick={() => alternarSidebarConBoton("imagen")}
                         className={getDesktopToolButtonClass("imagen")}
-                        title="Imagenes"
+                        title="Galería"
                     >
                         <FaRegImage className={desktopToolIconClass} aria-hidden="true" />
                         <span className={desktopToolTextClass}>
-                            Imagenes
+                            Galería
                         </span>
                     </button>
+
+                    {canUseGalleryBuilder && (
+                        <button
+                            type="button"
+                            onMouseEnter={() => openPanel("gallery-builder")}
+                            onMouseLeave={handleDesktopToolMouseLeave}
+                            onClick={() => alternarSidebarConBoton("gallery-builder")}
+                            className={getDesktopToolButtonClass("gallery-builder", { wide: true })}
+                            title="Builder de galeria"
+                        >
+                            <FaRegImage className={desktopToolIconClass} aria-hidden="true" />
+                            <span className={desktopToolTextClass}>
+                                Builder gal.
+                            </span>
+                        </button>
+                    )}
 
                     <button
                         type="button"
@@ -751,12 +799,25 @@ export default function DashboardSidebar({
                                 <button type="button"
                                     onClick={() => alternarSidebarConBoton("imagen")}
                                     className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
-                                    title="Imagenes"
+                                    title="Galería"
                                 >
-                                    <img src="/icons/imagen.png" alt="Imagenes" className="h-5 w-5" />
+                                    <img src="/icons/imagen.png" alt="Galería" className="h-5 w-5" />
                                 </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Imagenes</span>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Galería</span>
                             </div>
+
+                            {canUseGalleryBuilder && (
+                                <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                    <button type="button"
+                                        onClick={() => alternarSidebarConBoton("gallery-builder")}
+                                        className={`${getIconButtonClass("gallery-builder", { compact: true })} justify-self-center`}
+                                        title="Builder galeria"
+                                    >
+                                        <FaRegImage className="text-lg" />
+                                    </button>
+                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Builder</span>
+                                </div>
+                            )}
 
                             <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
                                 <button type="button"
@@ -979,6 +1040,8 @@ export default function DashboardSidebar({
                             setImagenesSeleccionadas={setImagenesSeleccionadas}
                             abrirSelector={abrirSelector}
                             onInsertarGaleria={insertarGaleria}
+                            canUseGalleryBuilder={canUseGalleryBuilder}
+                            templateSessionMeta={templateSessionMeta}
                             rsvpForcePresetSelection={rsvpForcePresetSelection}
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}
                         />

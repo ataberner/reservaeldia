@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import MiniToolbarTabTexto from "@/components/MiniToolbarTabTexto";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
+import MiniToolbarTabGalleryBuilder from "@/components/MiniToolbarTabGalleryBuilder";
 import MiniToolbarTabContador from "@/components/MiniToolbarTabContador";
 import MiniToolbarTabMenu from "@/components/MiniToolbarTabMenu";
 import MiniToolbarTabEfectos from "@/components/MiniToolbarTabEfectos";
@@ -26,6 +27,8 @@ export default function MiniToolbar({
   seccionActivaId: seccionProp,
   setImagenesSeleccionadas,
   onInsertarGaleria,
+  canUseGalleryBuilder = false,
+  templateSessionMeta = null,
   rsvpForcePresetSelection,
   onRsvpPresetSelectionComplete,
 }) {
@@ -78,8 +81,14 @@ export default function MiniToolbar({
           cargando={cargando}
           seccionActivaId={seccionActivaId}
           setMostrarGaleria={setMostrarGaleria}
-          onInsertarGaleria={onInsertarGaleria}
           setImagenesSeleccionadas={setImagenesSeleccionadas}
+        />
+      )}
+
+      {botonActivo === "gallery-builder" && canUseGalleryBuilder && (
+        <MiniToolbarTabGalleryBuilder
+          onInsertarGaleria={onInsertarGaleria}
+          templateSessionMeta={templateSessionMeta}
         />
       )}
 

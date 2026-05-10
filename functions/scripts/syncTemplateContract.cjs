@@ -36,6 +36,14 @@ const artifacts = [
     ],
   },
   {
+    label: "Presets de layout de galerias",
+    sourcePath: path.resolve(__dirname, "../../shared/galleryLayoutPresets.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/galleryLayoutPresets.cjs"),
+      path.resolve(__dirname, "../lib/shared/galleryLayoutPresets.cjs"),
+    ],
+  },
+  {
     label: "Contrato de grupos de render",
     sourcePath: path.resolve(__dirname, "../../shared/groupRenderContract.cjs"),
     targetPaths: [

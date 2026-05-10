@@ -77,6 +77,8 @@ pointing to that generated image, and only then persist an active successful
 publication. Template preview and local fallback preview remain visual-only and
 must not be used as share-image authority.
 
+Gallery preview/publish viewer behavior is governed by [`GALLERY_VIEWER_RENDER_CONTRACT.md`](../contracts/GALLERY_VIEWER_RENDER_CONTRACT.md). Gallery lightbox behavior is generated-HTML based: draft-authoritative preview and publish use the same global viewer runtime, collect clickable Gallery cells from the generated DOM, de-duplicate by media identity, and are covered by preview/publish parity tests.
+
 ## 5. Preview Iframe Runtime
 
 `ModalVistaPrevia` renders the generated HTML into iframe `srcDoc` views:

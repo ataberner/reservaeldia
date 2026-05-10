@@ -17,6 +17,8 @@ import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
+import { removeGalleryPhoto } from "@/domain/gallery/galleryMutations";
+import { applyGalleryLayoutPresetToRenderObject } from "@/domain/gallery/galleryLayoutPresets";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -139,14 +141,15 @@ export default function GaleriaKonva({
     sectionUsesYNorm,
     isPassiveRender,
   ]);
-  const radius = Math.max(0, toNum(obj.radius, 0));
-  const gap = Math.max(0, toNum(obj.gap, 0));
-  const rows = Math.max(1, toNum(obj.rows, 1));
-  const cols = Math.max(1, toNum(obj.cols, 1));
-  const width = Math.max(1, toNum(obj.width, 400));
+  const renderObj = useMemo(() => applyGalleryLayoutPresetToRenderObject(obj), [obj]);
+  const radius = Math.max(0, toNum(renderObj.radius, 0));
+  const gap = Math.max(0, toNum(renderObj.gap, 0));
+  const rows = Math.max(1, toNum(renderObj.rows, 1));
+  const cols = Math.max(1, toNum(renderObj.cols, 1));
+  const width = Math.max(1, toNum(renderObj.width, 400));
 
-  const isDynamicGallery = String(obj?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
-  const sourceCells = Array.isArray(obj.cells) ? obj.cells : [];
+  const isDynamicGallery = String(renderObj?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media";
+  const sourceCells = Array.isArray(renderObj.cells) ? renderObj.cells : [];
   const renderCells = useMemo(() => {
     if (isDynamicGallery) {
       return sourceCells
@@ -189,10 +192,10 @@ export default function GaleriaKonva({
         rows,
         cols,
         gap,
-        ratio: obj.ratio,
-        layoutMode: obj.galleryLayoutMode,
-        layoutType: obj.galleryLayoutType,
-        layoutBlueprint: obj.galleryLayoutBlueprint,
+        ratio: renderObj.ratio,
+        layoutMode: renderObj.galleryLayoutMode,
+        layoutType: renderObj.galleryLayoutType,
+        layoutBlueprint: renderObj.galleryLayoutBlueprint,
         mediaUrls,
         isMobile: false,
       });
@@ -203,10 +206,10 @@ export default function GaleriaKonva({
     cols,
     gap,
     mediaUrls,
-    obj.galleryLayoutBlueprint,
-    obj.galleryLayoutMode,
-    obj.galleryLayoutType,
-    obj.ratio,
+    renderObj.galleryLayoutBlueprint,
+    renderObj.galleryLayoutMode,
+    renderObj.galleryLayoutType,
+    renderObj.ratio,
     rows,
     width,
   ]);
@@ -395,14 +398,10 @@ export default function GaleriaKonva({
     if (pressRef.current.suppressClick) return;
     if (evt) evt.cancelBubble = true;
     if (evt?.evt) evt.evt.cancelBubble = true;
-    const nuevasCells = isDynamicGallery
-      ? renderCells.filter((_, cellIndex) => cellIndex !== index)
-      : (() => {
-          const next = [...sourceCells];
-          next[index] = { ...(next[index] || {}), mediaUrl: null };
-          return next;
-        })();
-    onChange?.(obj.id, { cells: nuevasCells });
+    const mutation = removeGalleryPhoto(obj, { index });
+    if (mutation.changed) {
+      onChange?.(obj.id, mutation.gallery);
+    }
   };
 
   useEffect(() => () => cleanupGlobal(), [cleanupGlobal]);

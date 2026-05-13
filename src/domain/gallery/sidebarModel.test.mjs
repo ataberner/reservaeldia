@@ -115,7 +115,7 @@ test("gallery layout sidebar state normalizes allowed/default/current selection"
     state.allowedLayoutOptions.map((option) => ({ id: option.id, label: option.label })),
     [
       { id: "banner", label: "Banner" },
-      { id: "squares", label: "Squares" },
+      { id: "squares", label: "Collage" },
     ]
   );
   assert.equal(state.defaultLayout, "banner");
@@ -133,4 +133,49 @@ test("gallery layout sidebar state normalizes allowed/default/current selection"
     }).selectedLayout,
     "squares"
   );
+});
+
+test("gallery layout sidebar state hides legacy full_width and exposes a safe fallback", () => {
+  const state = getGalleryAllowedLayoutState({
+    tipo: "galeria",
+    allowedLayouts: ["full_width"],
+    defaultLayout: "full_width",
+    currentLayout: "full_width",
+  });
+
+  assert.deepEqual(state.allowedLayouts, ["one_by_n"]);
+  assert.deepEqual(
+    state.allowedLayoutOptions.map((option) => ({ id: option.id, label: option.label })),
+    [{ id: "one_by_n", label: "1xN" }]
+  );
+  assert.equal(state.selectedLayout, "one_by_n");
+  assert.equal(state.reason, "legacy-full-width-fallback");
+});
+
+test("gallery layout sidebar state shows fallback buttons for draft galleries without allowedLayouts", () => {
+  const state = getGalleryAllowedLayoutState({
+    tipo: "galeria",
+    rows: 2,
+    cols: 2,
+    cells: [{ mediaUrl: "https://cdn.test/a.jpg" }],
+  });
+
+  assert.deepEqual(state.allowedLayouts, [
+    "one_by_n",
+    "two_by_n",
+    "three_by_n",
+    "squares",
+  ]);
+  assert.deepEqual(
+    state.allowedLayoutOptions.map((option) => ({ id: option.id, label: option.label })),
+    [
+      { id: "one_by_n", label: "1xN" },
+      { id: "two_by_n", label: "2xN" },
+      { id: "three_by_n", label: "2x3" },
+      { id: "squares", label: "Collage" },
+    ]
+  );
+  assert.equal(state.selectedLayout, "");
+  assert.equal(state.hasPresetContract, false);
+  assert.equal(state.reason, "editor-fallback-available");
 });

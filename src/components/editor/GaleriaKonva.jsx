@@ -11,14 +11,17 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Rect, Image as KonvaImage, Text as KonvaText } from "react-konva";
-import useImage from "use-image";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
 import { removeGalleryPhoto } from "@/domain/gallery/galleryMutations";
-import { applyGalleryLayoutPresetToRenderObject } from "@/domain/gallery/galleryLayoutPresets";
+import {
+  applyGalleryLayoutPresetToRenderObject,
+  resolveGalleryLayoutRenderCellLimit,
+} from "@/domain/gallery/galleryLayoutPresets";
+import useSharedImage from "@/hooks/useSharedImage";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -41,7 +44,7 @@ function getClientPoint(evt) {
 }
 
 function ImagenCelda({ src, fit = "cover", w, h }) {
-  const [img] = useImage(src, "anonymous");
+  const [img] = useSharedImage(src, "anonymous");
   if (!img) return null;
 
   const escContain = Math.min(w / img.width, h / img.height);
@@ -142,6 +145,7 @@ export default function GaleriaKonva({
     isPassiveRender,
   ]);
   const renderObj = useMemo(() => applyGalleryLayoutPresetToRenderObject(obj), [obj]);
+  const renderCellLimit = resolveGalleryLayoutRenderCellLimit(renderObj);
   const radius = Math.max(0, toNum(renderObj.radius, 0));
   const gap = Math.max(0, toNum(renderObj.gap, 0));
   const rows = Math.max(1, toNum(renderObj.rows, 1));
@@ -152,7 +156,19 @@ export default function GaleriaKonva({
   const sourceCells = Array.isArray(renderObj.cells) ? renderObj.cells : [];
   const renderCells = useMemo(() => {
     if (isDynamicGallery) {
-      return sourceCells
+      if (renderCellLimit !== null) {
+        return Array.from({ length: renderCellLimit }, (_, index) => {
+          const cell = sourceCells[index] || {};
+          return {
+            ...cell,
+            mediaUrl: resolveGalleryCellMediaUrl(cell) || null,
+            fit: cell?.fit || "cover",
+            bg: cell?.bg || "#f3f4f6",
+          };
+        });
+      }
+
+      const populatedCells = sourceCells
         .map((cell) => {
           const mediaUrl = resolveGalleryCellMediaUrl(cell);
           if (!mediaUrl) return null;
@@ -164,6 +180,7 @@ export default function GaleriaKonva({
           };
         })
         .filter(Boolean);
+      return populatedCells;
     }
 
     const total = Math.max(1, rows * cols);
@@ -176,13 +193,19 @@ export default function GaleriaKonva({
         bg: cell?.bg || "#f3f4f6",
       };
     });
-  }, [cols, isDynamicGallery, rows, sourceCells]);
-  const mediaUrls = useMemo(
+  }, [cols, isDynamicGallery, renderCellLimit, rows, sourceCells]);
+  const layoutMediaUrls = useMemo(
     () =>
       renderCells
-        .map((cell) => String(cell?.mediaUrl || "").trim())
+        .map((cell, index) => {
+          const mediaUrl = String(cell?.mediaUrl || "").trim();
+          if (mediaUrl) return mediaUrl;
+          return isDynamicGallery && renderCellLimit !== null
+            ? `__gallery_placeholder_${index}`
+            : "";
+        })
         .filter(Boolean),
-    [renderCells]
+    [isDynamicGallery, renderCellLimit, renderCells]
   );
 
   const { rects, totalHeight } = useMemo(() => {
@@ -196,7 +219,7 @@ export default function GaleriaKonva({
         layoutMode: renderObj.galleryLayoutMode,
         layoutType: renderObj.galleryLayoutType,
         layoutBlueprint: renderObj.galleryLayoutBlueprint,
-        mediaUrls,
+        mediaUrls: layoutMediaUrls,
         isMobile: false,
       });
     } catch {
@@ -205,7 +228,7 @@ export default function GaleriaKonva({
   }, [
     cols,
     gap,
-    mediaUrls,
+    layoutMediaUrls,
     renderObj.galleryLayoutBlueprint,
     renderObj.galleryLayoutMode,
     renderObj.galleryLayoutType,

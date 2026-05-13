@@ -103,6 +103,7 @@ Treat any of the following as a regression unless a new product or architecture 
 - changed section-mode interpretation for `fijo` versus `pantalla`
 - changed layering or composition in the text-over-decoration case
 - changed gallery cell ordering, sizing pattern, layout family, preset visibility, or generated global-viewer marker set
+- changed mapping for primary Gallery selector options (`1x4`, `2x2`, `2x3`/`three_by_n`, `Collage`/`squares`) without updating both editor/canvas and generated HTML baselines, or re-exposed legacy `full_width` as selectable
 - changed countdown frame or unit composition
 - changed cross-section order or changed `fijo`/`pantalla` relationship in the mixed case
 - changed mobile smart-layout height expansion between preview iframe and publish

@@ -315,15 +315,17 @@ Resultado esperado:
 1. En una sesion normal, seleccionar una galeria existente.
 2. Verificar que el panel muestra fotos de la galeria seleccionada separadas de imagenes disponibles.
 3. Agregar, reemplazar, quitar y reordenar una foto.
-4. Cambiar entre layouts permitidos.
+4. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
 5. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
 
 Resultado esperado:
 
 - usuarios normales no ven el Gallery Builder ni herramientas de estructura
 - las operaciones afectan solo la galeria seleccionada
+- el selector visual aparece arriba de la lista local de fotos y muestra `Collage` para el id interno `squares`
 - quitar una foto no elimina el asset subido
 - cambiar layout preserva todas las fotos, aunque algunas queden ocultas
+- el canvas cambia de forma inmediatamente al pasar, por ejemplo, de `1x4` a `2x3`, y `2x3` se renderiza como 2 filas por 3 columnas
 - el visor de preview recorre fotos clickeables de todas las galerias en orden DOM y de-duplica repetidas
 - publish sigue bloqueando `gallery-media-unresolved` si una celda con media no tiene URL publicable
 
@@ -354,12 +356,16 @@ Resultado esperado:
 
 1. Abrir una sesion de autor de plantilla con permisos admin/superadmin.
 2. Confirmar que aparece el Builder de galeria.
-3. Repetir en una sesion normal o read-only.
+3. Con una galeria seleccionada, cambiar layout desde el selector visual.
+4. Sin galeria seleccionada, elegir un layout desde el selector visual.
+5. Repetir en una sesion normal o read-only.
 
 Resultado esperado:
 
 - el Builder solo aparece con `canManageSite`, sesion de plantilla y editor escribible
 - el Builder configura presets permitidos/default/current sin editar blueprints libres
+- si hay galeria seleccionada, el selector actualiza esa galeria sin insertar otra
+- si no hay galeria seleccionada, el selector inserta una nueva `tipo: "galeria"` con ese layout
 - no se crea un tipo `album` ni un segundo modelo de persistencia
 
 ### [ ] Checkout / publish entry despues de cambios pendientes

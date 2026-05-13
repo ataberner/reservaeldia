@@ -4,6 +4,7 @@ import {
   resolveCountdownUnitWidth,
 } from "@/domain/countdownPresets/renderModel";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+import { applyGalleryLayoutPresetToRenderObject } from "@/domain/gallery/galleryLayoutPresets";
 import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
@@ -361,18 +362,9 @@ export default function computeInsertDefaults({
       100
     );
     const width = incomingWidth ?? (CANVAS_WIDTH * widthPct) / 100;
-    const height =
-      incomingHeight ??
-      calcGalleryHeight({
-        width,
-        rows,
-        cols,
-        gap,
-        ratio: payload.ratio,
-      });
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
     const y = incomingY ?? 120;
-    next = {
+    const galleryBase = {
       ...next,
       rows,
       cols,
@@ -381,6 +373,25 @@ export default function computeInsertDefaults({
       x,
       y,
       width,
+    };
+    const renderedGallery = applyGalleryLayoutPresetToRenderObject(galleryBase);
+    const renderedRows = Math.max(1, toNumber(renderedGallery.rows, rows));
+    const renderedCols = Math.max(1, toNumber(renderedGallery.cols, cols));
+    const height =
+      incomingHeight ??
+      toNumber(renderedGallery.height) ??
+      calcGalleryHeight({
+        width,
+        rows: renderedRows,
+        cols: renderedCols,
+        gap,
+        ratio: renderedGallery.ratio || payload.ratio,
+      });
+    next = {
+      ...galleryBase,
+      ...renderedGallery,
+      rows: renderedRows,
+      cols: renderedCols,
       height,
     };
   } else if (tipo === "countdown") {

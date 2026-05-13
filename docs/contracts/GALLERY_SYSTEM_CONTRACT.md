@@ -73,13 +73,15 @@ These invariants apply to current behavior and future implementation:
 
 ```js
 {
-  allowedLayouts: ["banner", "squares", "slideshow"],
-  defaultLayout: "banner",
-  currentLayout: "banner"
+  allowedLayouts: ["one_by_n", "two_by_n", "three_by_n", "squares"],
+  defaultLayout: "one_by_n",
+  currentLayout: "one_by_n"
 }
 ```
 
 **Current:** Layout switching preserves all Gallery photo usages in local `cells[]` order. Layouts decide how many photos are visible/rendered; switching layouts does not delete hidden photos and does not mutate uploaded assets.
+
+**Current:** The primary visual layout selector labels are `1x4`, `2x2`, `2x3`, and `Collage`. These labels map to stable preset ids in [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md). `2x3` is a UI label for the existing internal `three_by_n` id, and `Collage` is a UI label for the existing internal `squares` id. `full_width` remains a legacy render-compatible id but is no longer a selectable option.
 
 **Current:** Preview and published invitations use one generated-HTML viewer runtime that collects clickable Gallery cells globally from the generated invitation DOM.
 
@@ -155,5 +157,4 @@ Required coverage:
 
 - Whether fixed Galleries with no empty slot should auto-expand the grid or reject add-photo actions.
 - Whether hidden preserved photos in a low-visible-count layout should remain viewer-inaccessible until a layout displays them, or whether a future generated HTML metadata channel should expose them. The v1 contract treats the viewer as clickable generated DOM only.
-- The exact admin Builder UI location and naming.
-- The exact visual design of layout preview thumbnails.
+- Whether legacy selectable ids such as `banner`, `side_by_side`, and `single_page` should remain visible in future Builder defaults or become compatibility-only after templates are migrated.

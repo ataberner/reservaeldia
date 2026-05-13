@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
+import GalleryLayoutSelector from "@/components/gallery/GalleryLayoutSelector";
 import {
   readEditorObjectById,
   readEditorSelectionSnapshot,
@@ -145,6 +146,7 @@ export default function MiniToolbarTabImagen({
   const [galleryEditMode, setGalleryEditMode] = useState("add");
   const [galleryDragState, setGalleryDragState] = useState(null);
   const [optimisticGalleryOrder, setOptimisticGalleryOrder] = useState(null);
+  const [selectionRefreshToken, setSelectionRefreshToken] = useState(0);
   const galleryPhotoListRef = useRef(null);
   const galleryPhotoRowNodesRef = useRef(new Map());
   const galleryPhotoRowRectsBeforeUpdateRef = useRef(null);
@@ -224,7 +226,7 @@ export default function MiniToolbarTabImagen({
     const selectedId = editorSelection.selectedIds[0];
     const obj = readEditorObjectById(selectedId);
     return obj?.tipo === "galeria" ? obj : null;
-  }, [editorSelection.selectedIds]);
+  }, [editorSelection.selectedIds, selectionRefreshToken]);
 
   const selectedGalleryPhotos = useMemo(
     () => getSelectedGalleryPhotoUsages(galeriaSeleccionada),
@@ -256,7 +258,7 @@ export default function MiniToolbarTabImagen({
   );
 
   const orderedGalleryPhotoRows = useMemo(() => {
-    if (optimisticGalleryOrder?.galleryId !== galeriaSeleccionada?.id) {
+    if (!optimisticGalleryOrder || optimisticGalleryOrder.galleryId !== galeriaSeleccionada?.id) {
       return selectedGalleryPhotoRows;
     }
 
@@ -394,7 +396,7 @@ export default function MiniToolbarTabImagen({
   }, [galeriaSeleccionada?.id]);
 
   useEffect(() => {
-    if (optimisticGalleryOrder?.galleryId !== galeriaSeleccionada?.id) return;
+    if (!optimisticGalleryOrder || optimisticGalleryOrder.galleryId !== galeriaSeleccionada?.id) return;
 
     const currentKeys = selectedGalleryPhotoRows.map((row) => row.rowKey);
     if (!haveSameItems(currentKeys, optimisticGalleryOrder.rowKeys)) {
@@ -464,6 +466,7 @@ export default function MiniToolbarTabImagen({
         },
       })
     );
+    setSelectionRefreshToken((value) => value + 1);
     setPanelNotice(successMessage);
     return true;
   }, [galeriaSeleccionada]);
@@ -810,6 +813,22 @@ export default function MiniToolbarTabImagen({
 
         {galeriaSeleccionada && (
           <>
+            <div className="mt-2">
+              <GalleryLayoutSelector
+                title="Layout permitido"
+                options={layoutState.allowedLayoutOptions}
+                activeLayoutId={layoutState.selectedLayout}
+                onSelect={handleSwitchLayout}
+                compact={isMobileViewport}
+                emptyMessage="Esta galeria usa el layout actual sin presets configurados."
+              />
+              {layoutState.hasPresetContract && (
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  Solo se muestran layouts permitidos por la plantilla; las fotos ocultas se conservan.
+                </p>
+              )}
+            </div>
+
             {selectedGalleryPhotos.length > 0 ? (
               <div
                 ref={galleryPhotoListRef}
@@ -1004,31 +1023,6 @@ export default function MiniToolbarTabImagen({
               </button>
             </div>
 
-            <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 px-2 py-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                Layout permitido
-              </div>
-              {layoutState.hasPresetContract ? (
-                <select
-                  value={layoutState.selectedLayout}
-                  className="mt-1 w-full rounded border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600"
-                  onChange={(event) => handleSwitchLayout(event.target.value)}
-                >
-                  {layoutState.allowedLayoutOptions.map((layoutOption) => (
-                    <option key={layoutOption.id} value={layoutOption.id}>
-                      {layoutOption.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="mt-1 text-xs text-zinc-500">
-                  Esta galeria usa el layout actual sin presets configurados.
-                </p>
-              )}
-              <p className="mt-1 text-[11px] text-zinc-400">
-                Solo se muestran layouts permitidos por la plantilla; las fotos ocultas se conservan.
-              </p>
-            </div>
           </>
         )}
       </section>

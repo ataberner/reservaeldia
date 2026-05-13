@@ -7,6 +7,7 @@ export const getGalleryLayoutPresets = runtime.getGalleryLayoutPresets;
 export const isKnownGalleryLayoutPreset = runtime.isKnownGalleryLayoutPreset;
 export const isSelectableGalleryLayoutPreset = runtime.isSelectableGalleryLayoutPreset;
 export const normalizeGalleryLayoutIds = runtime.normalizeGalleryLayoutIds;
+export const resolveGalleryLayoutRenderCellLimit = runtime.resolveGalleryLayoutRenderCellLimit;
 export const resolveGalleryLayoutSelection = runtime.resolveGalleryLayoutSelection;
 
 export default runtime;

@@ -2126,6 +2126,7 @@ export function generarHTMLDesdeSecciones(
       overflow: hidden;
       border-radius: calc(var(--gallery-scale, 1) * var(--gallery-cell-radius, 0) * 1px);
       box-sizing: border-box;
+      z-index: var(--cell-z-index, 1);
     }
 
     .objeto.galeria.galeria--dynamic .galeria-celda img{

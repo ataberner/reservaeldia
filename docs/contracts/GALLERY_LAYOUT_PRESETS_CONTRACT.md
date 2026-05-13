@@ -38,6 +38,9 @@ Status: Implemented core contract with deferred advanced renderers. This documen
 
 Example preset ids:
 
+- `one_by_n`
+- `two_by_n`
+- `three_by_n`
 - `banner`
 - `full_width`
 - `side_by_side`
@@ -49,11 +52,24 @@ Example preset ids:
 
 The implemented selectable v1 preset catalog is:
 
+- `one_by_n`
+- `two_by_n`
+- `three_by_n`
 - `squares`
 - `banner`
-- `full_width`
 - `side_by_side`
 - `single_page`
+
+The primary visual selector exposes these user-facing options:
+
+| User-facing label | Internal preset id | Notes |
+| --- | --- | --- |
+| `1x4` | `one_by_n` | One fixed row; columns are resolved from the current populated photo count, falling back to the preset recommendation for empty Galleries. |
+| `2x2` | `two_by_n` | Two fixed rows; columns are resolved from the current populated photo count, falling back to the preset recommendation for empty Galleries. |
+| `2x3` | `three_by_n` | Legacy internal id retained; renders as two fixed rows and three fixed columns. Do not rename saved data from `three_by_n`. |
+| `Collage` | `squares` | UI-only rename of the existing `squares` preset id. Do not migrate existing data from `squares`. The visual selector icon should use a lightweight static overlapping-photo preview. |
+
+Legacy ids such as `banner`, `side_by_side`, `single_page`, and `full_width` remain readable/renderable for existing Galleries. `full_width` is no longer selectable in the normal Gallery tab or the admin/superadmin Builder selector. Existing Gallery data that references only `full_width` should fall back to a current selectable layout rather than crashing or exposing `full_width` again. New default Builder configuration should prefer the primary visual selector options above.
 
 The catalog also reserves non-selectable ids for deferred renderers:
 
@@ -92,6 +108,10 @@ Implemented global preset definition shape:
 
 **Current:** If a preset maps to the current renderer, it maps to existing `galleryLayoutMode`, `galleryLayoutType`, row/column, and ratio behavior rather than adding a second renderer.
 
+**Current:** Row-count presets such as `one_by_n` and `two_by_n` are resolved inside the shared preset application helper. They do not introduce a second renderer. The helper may derive the fixed-grid `cols` and render `height` from the selected preset, current Gallery photo count, and existing Gallery width so editor canvas, preview, and publish use the same render shape.
+
+**Current:** The legacy internal `three_by_n` id is now the user-facing `2x3` preset. Its renderer must use exactly 2 rows and 3 columns. The id remains unchanged for compatibility.
+
 **Future:** Presets that require behavior outside current fixed/dynamic rendering, such as slideshow or marquee, must still render through the same generated invitation HTML pipeline. They must not create a separate public viewer pipeline.
 
 ## Gallery-Level Layout Availability
@@ -100,9 +120,9 @@ Recommended additive Gallery object fields:
 
 ```js
 {
-  allowedLayouts: ["banner", "squares", "slideshow"],
-  defaultLayout: "banner",
-  currentLayout: "banner"
+  allowedLayouts: ["one_by_n", "two_by_n", "three_by_n", "squares"],
+  defaultLayout: "one_by_n",
+  currentLayout: "one_by_n"
 }
 ```
 
@@ -167,3 +187,4 @@ Recommended additive Gallery object fields:
 - Switching layouts does not mutate uploaded image-library assets.
 - Legacy Galleries without preset fields still render through current fixed/dynamic fields.
 - Preset-to-current-renderer mapping preserves preview/publish parity.
+- Visual selector labels can differ from internal preset ids; `Collage` must continue to write/read `squares`.

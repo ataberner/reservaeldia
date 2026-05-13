@@ -16,6 +16,7 @@ const {
 } = require("../../shared/renderAssetContract.cjs");
 const {
   applyGalleryLayoutPresetToRenderObject,
+  resolveGalleryLayoutRenderCellLimit,
 } = require("../../shared/galleryLayoutPresets.cjs");
 const {
   classifyRenderObjectContract,
@@ -1903,12 +1904,11 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
 
         const sGrid = isFullBleed(galleryRenderObj) ? "var(--sx)" : sContenidoVar(galleryRenderObj);
         const sourceCells = Array.isArray(galleryRenderObj.cells) ? galleryRenderObj.cells : [];
+        const renderCellLimit = resolveGalleryLayoutRenderCellLimit(galleryRenderObj);
 
         if (layoutMode === "dynamic_media") {
-          const mediaCells = sourceCells
-            .map((cell: any) => {
+          const normalizeDynamicCell = (cell: any = {}) => {
               const mediaUrl = String(cell?.mediaUrl || "").trim();
-              if (!mediaUrl) return null;
               return {
                 id: cell?.id,
                 mediaUrl,
@@ -1917,10 +1917,22 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
                 fit: cell?.fit === "contain" ? "contain" : "cover",
                 bg: sanitizeCssPaint(cell?.bg, "#f3f4f6"),
               };
-            })
-            .filter(Boolean);
+          };
 
-          const mediaUrls = mediaCells.map((cell: any) => cell.mediaUrl);
+          const visibleMediaCells =
+            renderCellLimit !== null
+              ? Array.from({ length: renderCellLimit }, (_, idx) =>
+                  normalizeDynamicCell(sourceCells[idx] || {})
+                )
+              : sourceCells
+                  .map((cell: any) => normalizeDynamicCell(cell))
+                  .filter((cell: any) => cell.mediaUrl);
+
+          const mediaUrls = visibleMediaCells
+            .map((cell: any, idx: number) =>
+              cell.mediaUrl || (renderCellLimit !== null ? `__gallery_placeholder_${idx}` : "")
+            )
+            .filter(Boolean);
           const desktopLayout = resolveGalleryRenderLayout({
             width: w,
             rows,
@@ -1977,7 +1989,7 @@ width: ${pxX(obj, desktopWidth)};
 box-sizing: border-box;
 `.trim();
 
-          const htmlCeldas = mediaCells
+          const htmlCeldas = visibleMediaCells
             .map((cell: any, idx: number) => {
               const desktopRect = desktopLayout?.rects?.[idx];
               const mobileRect = mobileLayout?.rects?.[idx] || desktopRect;
@@ -1995,8 +2007,13 @@ box-sizing: border-box;
 --cell-y-mobile:${Number(mobileRect.y) || 0};
 --cell-w-mobile:${Number(mobileRect.width) || 0};
 --cell-h-mobile:${Number(mobileRect.height) || 0};
+--cell-z-index:${idx + 1};
 background:${safeBg};
 `.trim();
+
+              if (!safeSrc) {
+                return `<div class="galeria-celda" data-index="${idx}" style="${celdaStyle}"></div>`;
+              }
 
               return `
 <div class="galeria-celda galeria-celda--clickable"

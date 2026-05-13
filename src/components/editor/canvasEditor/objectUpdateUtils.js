@@ -2,6 +2,9 @@ import {
   resolveGalleryLayoutForObject,
   scaleDynamicGalleryBlueprintToVisibleWidth,
 } from "@/domain/templates/galleryDynamicMedia";
+import {
+  applyGalleryLayoutPresetToRenderObject,
+} from "@/domain/gallery/galleryLayoutPresets";
 
 export function mergeObjectForUpdate(currentObject, nuevo = {}) {
   if (!currentObject) return currentObject;
@@ -36,19 +39,20 @@ export function applyObjectUpdateById(prevObjects, id, cambios = {}) {
 
 export function normalizarMedidasGaleria(galeria, widthCandidate, xCandidate) {
   const canvasWidth = 800;
-  const rows = Math.max(1, Number(galeria?.rows) || 1);
-  const cols = Math.max(1, Number(galeria?.cols) || 1);
-  const gap = Math.max(0, Number(galeria?.gap) || 0);
+  const renderGaleria = applyGalleryLayoutPresetToRenderObject(galeria);
+  const rows = Math.max(1, Number(renderGaleria?.rows) || 1);
+  const cols = Math.max(1, Number(renderGaleria?.cols) || 1);
+  const gap = Math.max(0, Number(renderGaleria?.gap) || 0);
   const cellRatio =
-    galeria?.ratio === "4:3"
+    renderGaleria?.ratio === "4:3"
       ? 3 / 4
-      : galeria?.ratio === "16:9"
+      : renderGaleria?.ratio === "16:9"
         ? 9 / 16
         : 1;
 
   const minGridWidth = gap * (cols - 1) + cols;
   let widthPct = (Number(widthCandidate) / canvasWidth) * 100;
-  if (!Number.isFinite(widthPct)) widthPct = Number(galeria?.widthPct);
+  if (!Number.isFinite(widthPct)) widthPct = Number(renderGaleria?.widthPct);
   if (!Number.isFinite(widthPct)) widthPct = 70;
   widthPct = Math.max(10, Math.min(100, widthPct));
 
@@ -56,17 +60,17 @@ export function normalizarMedidasGaleria(galeria, widthCandidate, xCandidate) {
   width = Math.min(canvasWidth, Math.max(minGridWidth, width));
   widthPct = Math.max(10, Math.min(100, (width / canvasWidth) * 100));
 
-  const fallbackX = Number.isFinite(Number(galeria?.x)) ? Number(galeria.x) : 0;
+  const fallbackX = Number.isFinite(Number(renderGaleria?.x)) ? Number(renderGaleria.x) : 0;
   const rawX = Number.isFinite(Number(xCandidate)) ? Number(xCandidate) : fallbackX;
 
-  if (String(galeria?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media") {
+  if (String(renderGaleria?.galleryLayoutMode || "").trim().toLowerCase() === "dynamic_media") {
     const galleryLayoutBlueprint = scaleDynamicGalleryBlueprintToVisibleWidth(
-      galeria,
+      renderGaleria,
       width
     );
     const layout = resolveGalleryLayoutForObject({
       galleryObject: {
-        ...galeria,
+        ...renderGaleria,
         width,
         galleryLayoutBlueprint,
       },

@@ -73,6 +73,9 @@ import {
 import {
   resolveTransformerVisualMode,
 } from "./selectionVisualModes.js";
+import {
+  applyGalleryLayoutPresetToRenderObject,
+} from "@/domain/gallery/galleryLayoutPresets";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -931,6 +934,23 @@ export default function SelectionBounds({
         o.gap ?? "",
         o.paddingX ?? "",
         o.paddingY ?? "",
+        o.galleryLayoutMode ?? "",
+        o.galleryLayoutType ?? "",
+        o.currentLayout ?? "",
+        o.defaultLayout ?? "",
+        Array.isArray(o.allowedLayouts) ? o.allowedLayouts.join(",") : "",
+        o.galleryLayoutBlueprint ? JSON.stringify(o.galleryLayoutBlueprint) : "",
+        Array.isArray(o.cells)
+          ? o.cells
+              .map((cell) =>
+                [
+                  cell?.mediaUrl ?? "",
+                  cell?.url ?? "",
+                  cell?.src ?? "",
+                ].join("/")
+              )
+              .join(",")
+          : "",
       ].join(":")
     )
     .join("|");
@@ -4270,24 +4290,40 @@ export default function SelectionBounds({
         const minSize = esTexto ? 20 : 10;
         const maxSize = 800;
         if (esGaleria) {
-          const rows = Math.max(1, Number(primerElemento?.rows) || 1);
-          const cols = Math.max(1, Number(primerElemento?.cols) || 1);
-          const gap = Math.max(0, Number(primerElemento?.gap) || 0);
+          const currentRenderGallery =
+            applyGalleryLayoutPresetToRenderObject(primerElemento) || primerElemento;
+          const rows = Math.max(1, Number(currentRenderGallery?.rows) || 1);
+          const cols = Math.max(1, Number(currentRenderGallery?.cols) || 1);
+          const gap = Math.max(0, Number(currentRenderGallery?.gap) || 0);
           const cellRatio =
-            primerElemento?.ratio === "4:3"
+            currentRenderGallery?.ratio === "4:3"
               ? 3 / 4
-              : primerElemento?.ratio === "16:9"
+              : currentRenderGallery?.ratio === "16:9"
                 ? 9 / 16
                 : 1;
+          const hasPresetContract =
+            Array.isArray(primerElemento?.allowedLayouts) &&
+            primerElemento.allowedLayouts.length > 0;
 
           const minGridWidth = gap * (cols - 1) + cols;
           const nextWidth = Math.min(
             maxSize,
             Math.max(minSize, minGridWidth, Math.abs(newBox.width))
           );
+          const nextRenderGallery =
+            applyGalleryLayoutPresetToRenderObject({
+              ...primerElemento,
+              width: nextWidth,
+            }) || {
+              ...currentRenderGallery,
+              width: nextWidth,
+            };
           const cellW = Math.max(1, (nextWidth - gap * (cols - 1)) / cols);
-          const cellH = cellW * cellRatio;
-          const nextHeight = rows * cellH + gap * (rows - 1);
+          const fallbackHeight = rows * (cellW * cellRatio) + gap * (rows - 1);
+          const nextHeight =
+            hasPresetContract && Number.isFinite(Number(nextRenderGallery?.height))
+              ? Number(nextRenderGallery.height)
+              : fallbackHeight;
 
           return resolveStageBoundBox(oldBox, {
             ...newBox,

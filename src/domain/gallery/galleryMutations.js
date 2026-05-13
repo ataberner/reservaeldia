@@ -1,5 +1,9 @@
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
-import { resolveGalleryLayoutSelection } from "./galleryLayoutPresets.js";
+import {
+  normalizeGalleryLayoutIds,
+  resolveGalleryLayoutSelection,
+  resolveGalleryLayoutSelectionForEditor,
+} from "./galleryLayoutPresets.js";
 import { buildDynamicGalleryObjectPatch } from "../templates/galleryDynamicMedia.js";
 
 const DEFAULT_CELL_BG = "#f3f4f6";
@@ -541,13 +545,19 @@ export function switchGalleryLayout(gallery, layoutId) {
   if (!isGalleryObject(gallery)) return noop(gallery, "switch-layout", "not-gallery");
 
   const safeLayoutId = normalizeText(layoutId);
-  const { allowedLayouts } = resolveGalleryLayoutSelection(gallery);
+  const savedSelection = resolveGalleryLayoutSelection(gallery);
+  const editorSelection = savedSelection.allowedLayouts.length > 0
+    ? savedSelection
+    : resolveGalleryLayoutSelectionForEditor(gallery);
+  const { allowedLayouts } = editorSelection;
+  const shouldMaterializeEditorFallback =
+    !savedSelection.hasPresetContract && editorSelection.allowedLayouts.length > 0;
 
   if (!safeLayoutId || !allowedLayouts.includes(safeLayoutId)) {
     return noop(gallery, "switch-layout", "layout-not-allowed");
   }
 
-  if (normalizeText(gallery.currentLayout) === safeLayoutId) {
+  if (!shouldMaterializeEditorFallback && normalizeText(gallery.currentLayout) === safeLayoutId) {
     return noop(gallery, "switch-layout", "already-selected");
   }
 
@@ -555,6 +565,12 @@ export function switchGalleryLayout(gallery, layoutId) {
     gallery,
     {
       ...gallery,
+      ...(shouldMaterializeEditorFallback
+        ? {
+            allowedLayouts: editorSelection.allowedLayouts,
+            defaultLayout: safeLayoutId,
+          }
+        : {}),
       currentLayout: safeLayoutId,
     },
     {
@@ -562,6 +578,51 @@ export function switchGalleryLayout(gallery, layoutId) {
       changed: true,
     }
   );
+}
+
+function arraysEqual(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((item, index) => item === b[index]);
+}
+
+export function configureGalleryLayout(gallery, layoutId, options = {}) {
+  if (!isGalleryObject(gallery)) return noop(gallery, "configure-layout", "not-gallery");
+
+  const safeLayoutId = normalizeText(layoutId);
+  const existingAllowed = normalizeGalleryLayoutIds(gallery.allowedLayouts);
+  const requestedAllowed = normalizeGalleryLayoutIds(options.allowedLayouts);
+  const baseAllowed = requestedAllowed.length > 0 ? requestedAllowed : existingAllowed;
+  const allowedLayouts = normalizeGalleryLayoutIds([...baseAllowed, safeLayoutId]);
+
+  if (!safeLayoutId || !allowedLayouts.includes(safeLayoutId)) {
+    return noop(gallery, "configure-layout", "layout-not-allowed");
+  }
+
+  const requestedDefault = normalizeText(options.defaultLayout);
+  const existingDefault = normalizeText(gallery.defaultLayout);
+  const defaultLayout = allowedLayouts.includes(requestedDefault)
+    ? requestedDefault
+    : allowedLayouts.includes(existingDefault)
+      ? existingDefault
+      : safeLayoutId;
+
+  const nextGallery = {
+    ...gallery,
+    allowedLayouts,
+    defaultLayout,
+    currentLayout: safeLayoutId,
+  };
+
+  const changed =
+    !arraysEqual(normalizeGalleryLayoutIds(gallery.allowedLayouts), allowedLayouts) ||
+    normalizeText(gallery.defaultLayout) !== defaultLayout ||
+    normalizeText(gallery.currentLayout) !== safeLayoutId;
+
+  return buildResult(gallery, nextGallery, {
+    action: "configure-layout",
+    changed,
+    reason: changed ? "" : "already-selected",
+  });
 }
 
 export function applyGalleryMutationToObjects(objects, galleryId, mutateGallery) {

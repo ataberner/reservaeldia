@@ -1,5 +1,5 @@
 import { getGalleryPhotos } from "./galleryMutations.js";
-import { getGalleryLayoutPreset, resolveGalleryLayoutSelection } from "./galleryLayoutPresets.js";
+import { getGalleryLayoutPreset, resolveGalleryLayoutSelectionForEditor } from "./galleryLayoutPresets.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -59,7 +59,7 @@ export function getGalleryAllowedLayoutState(gallery) {
     };
   }
 
-  const selection = resolveGalleryLayoutSelection(gallery);
+  const selection = resolveGalleryLayoutSelectionForEditor(gallery);
   const allowedLayoutOptions = selection.allowedLayouts.map((id) => {
     const preset = getGalleryLayoutPreset(id);
     return {

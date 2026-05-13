@@ -34,6 +34,14 @@ Status: Implemented core contract. This document owns Gallery behavior in the ca
 
 **Current:** The Builder must not write a second Gallery persistence model. It configures existing `tipo: "galeria"` objects and additive Gallery fields.
 
+**Current:** The Builder uses the same visual layout selector model as the normal Gallery tab.
+
+**Current:** If a Gallery is selected in the Builder context, selecting a layout configures that selected Gallery through the Gallery mutation boundary. The selected layout becomes `currentLayout`; if needed, the Builder may add that preset id to the Gallery's `allowedLayouts` so the resulting state remains valid.
+
+**Current:** If no Gallery is selected, selecting a layout inserts a new Gallery immediately through the existing `insertar-elemento` / `tipo: "galeria"` insertion path, using the configured `allowedLayouts`, `defaultLayout`, and selected `currentLayout`.
+
+**Current:** The Builder remains visible only in writable template-authoring sessions for admin/superadmin users through the existing `canManageSite` / `canAccessGalleryBuilder(...)` gate. Normal users must not see Builder insertion/configuration controls.
+
 ### End User Gallery Editing
 
 **Current:** Normal users do not create Gallery object structures.
@@ -67,6 +75,20 @@ Supported selected-Gallery operations:
 - Replace photo usages.
 - Reorder photo usages.
 - Switch `currentLayout` among allowed layouts.
+
+### Selected-Gallery Layout Selector
+
+**Current:** When exactly one Gallery object is selected, the Gallery sidebar owns a visual layout selector near the top of the Gallery panel, above the selected-Gallery photo list.
+
+**Current:** The selector displays only layouts allowed by the selected Gallery/template configuration. It shows a clear selected state for the active resolved layout and commits layout changes through `switchGalleryLayout(gallery, layoutId)` in `src/domain/gallery/galleryMutations.js`.
+
+**Current:** Draft/legacy Galleries that do not yet carry `allowedLayouts` still show the primary safe selector options in the normal Gallery tab. This is an editor-only fallback for visibility and switching; it must not change preview/publish rendering until the user selects a layout. On first selection, the Gallery mutation boundary materializes additive `allowedLayouts`, `defaultLayout`, and `currentLayout` fields on that selected Gallery so the existing renderer can update the canvas immediately.
+
+**Current:** The primary user-facing selector labels are `1x4`, `2x2`, `2x3`, and `Collage`. Labels are UI presentation; persisted state remains stable preset ids as defined by [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md). In particular, `2x3` maps to the existing internal `three_by_n` id and `Collage` maps to the existing internal `squares` id. `Full width` / `Ancho completo` is legacy-renderable but no longer selectable in either the normal Gallery tab or Builder selector.
+
+**Current:** Layout previews are lightweight static CSS/SVG/icon previews. They are not live mini-rendered Galleries and do not create a second Gallery render path.
+
+**Current:** Selecting a layout changes only the selected Gallery object's layout fields, preserves all `cells[]` photo usages, and leaves other Galleries untouched. Hidden/unrendered photos remain stored and manageable in the selected-Gallery photo list.
 
 ## Future Selected-Gallery Photo List UX
 
@@ -233,7 +255,8 @@ Required operations:
 | `removeGalleryPhoto(gallery, target)` | Remove one usage from the selected Gallery only. It must not delete the uploaded asset. |
 | `replaceGalleryPhoto(gallery, target, photo)` | Replace one usage in place while preserving local position and cell styling such as `fit` and `bg`. |
 | `reorderGalleryPhotos(gallery, from, to)` | Reorder populated usages inside the selected Gallery only while preserving Gallery layout identity. |
-| `switchGalleryLayout(gallery, layoutId)` | Set `currentLayout` only when `layoutId` is a known selectable preset allowed by the Gallery and preserve all photo usages. Preset-to-render mapping is applied by render helpers, not by deleting or reshaping `cells[]`. |
+| `switchGalleryLayout(gallery, layoutId)` | Set `currentLayout` only when `layoutId` is a known selectable preset allowed by the Gallery and preserve all photo usages. For draft/legacy Galleries with no `allowedLayouts`, materialize the safe primary `allowedLayouts` fallback plus `defaultLayout` on first switch. Preset-to-render mapping is applied by render helpers, not by deleting or reshaping `cells[]`. |
+| `configureGalleryLayout(gallery, layoutId, options)` | Builder-only configuration helper. Preserve all photo usages, ensure the selected layout is allowed, and keep `defaultLayout` / `currentLayout` valid without creating a new Gallery. |
 | `normalizeGalleryState(gallery, context)` | Normalize fixed/dynamic state, canonicalize cell media, and preserve backward compatibility with existing Gallery objects. |
 | `resolveGalleryMediaKey(cell)` | Resolve identity with `storagePath`, then `assetId`, then normalized `mediaUrl`. |
 
@@ -271,6 +294,8 @@ Required operations:
 - Add/remove/replace/reorder mutate only the selected Gallery object.
 - Removing a Gallery usage does not delete the uploaded asset.
 - Layout switching respects `allowedLayouts`.
+- Visual layout selector appears above the selected-Gallery photo list and displays `Collage` for the `squares` id.
+- Builder selector updates the selected Gallery when one is selected and inserts a new `tipo: "galeria"` only when no Gallery is selected.
 - Normal users cannot open the Gallery Builder.
 - Admin/superadmin Builder is available only in template-authoring context.
 - Current side-channel bridges still work during migration.

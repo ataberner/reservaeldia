@@ -11,6 +11,7 @@ import {
   getSelectionFramePadding,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 import {
+  resolveNodeSelectionRect,
   resolveSingleTextSelectionVisualBounds,
 } from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
@@ -137,11 +138,13 @@ const HoverIndicator = forwardRef(function HoverIndicator({
           : renderBounds?.kind === "rect"
             ? "text-visual-rect"
             : "text-visual-missing";
-    } else if (
-      hoveredObj?.tipo === "galeria" &&
-      Number.isFinite(Number(hoveredObj.width)) &&
-      Number.isFinite(Number(hoveredObj.height))
-    ) {
+    } else if (hoveredObj?.tipo === "galeria") {
+      box = resolveNodeSelectionRect(hoveredObj, node, {
+        phase: "hover",
+        surface: "hover",
+        caller: "HoverIndicator",
+      });
+      let galleryBoundsSource = box ? "gallery-frame-live" : null;
       const absPos =
         typeof node.getAbsolutePosition === "function"
           ? node.getAbsolutePosition()
@@ -150,13 +153,22 @@ const HoverIndicator = forwardRef(function HoverIndicator({
               y: typeof node.y === "function" ? node.y() : 0,
             };
 
-      box = {
-        x: absPos.x,
-        y: absPos.y,
-        width: Number(hoveredObj.width),
-        height: Number(hoveredObj.height),
-      };
-      boundsSource = "gallery-frame";
+      if (!box) {
+        const fallbackWidth = Number(hoveredObj.width);
+        const fallbackHeight = Number(hoveredObj.height);
+        if (!Number.isFinite(fallbackWidth) || !Number.isFinite(fallbackHeight)) {
+          galleryBoundsSource = "gallery-frame-missing";
+        } else {
+          box = {
+            x: absPos.x,
+            y: absPos.y,
+            width: fallbackWidth,
+            height: fallbackHeight,
+          };
+          galleryBoundsSource = "gallery-frame-fallback";
+        }
+      }
+      boundsSource = galleryBoundsSource || "gallery-frame";
     } else if (hoveredObj?.tipo === "countdown") {
       box = getCountdownHoverBox(node);
       boundsSource = "countdown-hitbox";

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   addGalleryPhotos,
   applyGalleryMutationToObjects,
+  configureGalleryLayout,
   getGalleryPhotos,
   removeGalleryPhoto,
   replaceGalleryPhoto,
@@ -208,6 +209,79 @@ test("switchGalleryLayout changes currentLayout only when allowed", () => {
   assert.equal(rejected.reason, "layout-not-allowed");
   assert.equal(unavailable.changed, false);
   assert.equal(unavailable.reason, "layout-not-allowed");
+});
+
+test("switchGalleryLayout materializes safe layout fields for draft galleries without allowedLayouts", () => {
+  const gallery = fixedGallery({
+    allowedLayouts: undefined,
+    defaultLayout: undefined,
+    currentLayout: undefined,
+  });
+
+  const switched = switchGalleryLayout(gallery, "two_by_n");
+
+  assert.equal(switched.changed, true);
+  assert.deepEqual(switched.gallery.allowedLayouts, [
+    "one_by_n",
+    "two_by_n",
+    "three_by_n",
+    "squares",
+  ]);
+  assert.equal(switched.gallery.defaultLayout, "two_by_n");
+  assert.equal(switched.gallery.currentLayout, "two_by_n");
+  assert.equal(switched.gallery.cells, gallery.cells);
+});
+
+test("switchGalleryLayout materializes draft fallback even when currentLayout already matches", () => {
+  const gallery = fixedGallery({
+    allowedLayouts: undefined,
+    defaultLayout: undefined,
+    currentLayout: "squares",
+  });
+
+  const switched = switchGalleryLayout(gallery, "squares");
+
+  assert.equal(switched.changed, true);
+  assert.deepEqual(switched.gallery.allowedLayouts, [
+    "one_by_n",
+    "two_by_n",
+    "three_by_n",
+    "squares",
+  ]);
+  assert.equal(switched.gallery.defaultLayout, "squares");
+  assert.equal(switched.gallery.currentLayout, "squares");
+  assert.equal(switched.gallery.cells, gallery.cells);
+});
+
+test("configureGalleryLayout can add a Builder-selected layout without changing photos", () => {
+  const gallery = fixedGallery({
+    allowedLayouts: ["squares"],
+    defaultLayout: "squares",
+    currentLayout: "squares",
+  });
+
+  const configured = configureGalleryLayout(gallery, "two_by_n");
+
+  assert.equal(configured.changed, true);
+  assert.deepEqual(configured.gallery.allowedLayouts, ["squares", "two_by_n"]);
+  assert.equal(configured.gallery.defaultLayout, "squares");
+  assert.equal(configured.gallery.currentLayout, "two_by_n");
+  assert.equal(configured.gallery.cells, gallery.cells);
+});
+
+test("configureGalleryLayout rejects unknown and nonselectable layouts", () => {
+  const gallery = fixedGallery({
+    allowedLayouts: ["squares"],
+    defaultLayout: "squares",
+    currentLayout: "squares",
+  });
+
+  assert.equal(configureGalleryLayout(gallery, "unknown").changed, false);
+  assert.equal(configureGalleryLayout(gallery, "unknown").reason, "layout-not-allowed");
+  assert.equal(configureGalleryLayout(gallery, "slideshow").changed, false);
+  assert.equal(configureGalleryLayout(gallery, "slideshow").reason, "layout-not-allowed");
+  assert.equal(configureGalleryLayout(gallery, "full_width").changed, false);
+  assert.equal(configureGalleryLayout(gallery, "full_width").reason, "layout-not-allowed");
 });
 
 test("resolveGalleryMediaKey prefers storagePath, assetId, then mediaUrl", () => {

@@ -17,6 +17,9 @@ import {
   buildTextGeometryContractRect,
   logTextGeometryContractInvariant,
 } from "@/components/editor/canvasEditor/textGeometryContractDebug";
+import {
+  applyGalleryLayoutPresetToRenderObject,
+} from "@/domain/gallery/galleryLayoutPresets";
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -95,7 +98,7 @@ function buildSelectionIdsDigestFromObjects(selectedObjects = []) {
     .join(",");
 }
 
-function buildObjectDataSelectionRect(object) {
+function buildRawObjectDataSelectionRect(object) {
   if (!object || typeof object !== "object") return null;
 
   const fallbackX = toFiniteNumber(object?.x, null);
@@ -118,6 +121,16 @@ function buildObjectDataSelectionRect(object) {
     width: fallbackWidth,
     height: fallbackHeight,
   };
+}
+
+function buildObjectDataSelectionRect(object) {
+  if (object?.tipo === "galeria") {
+    return buildRawObjectDataSelectionRect(
+      applyGalleryLayoutPresetToRenderObject(object)
+    );
+  }
+
+  return buildRawObjectDataSelectionRect(object);
 }
 
 function resolveObjectDataSelectionFallbackRect(object) {
@@ -277,11 +290,85 @@ function resolveLineSelectionRect(object, node) {
   };
 }
 
+function resolveGalleryFrameNode(node) {
+  if (!node) return null;
+
+  try {
+    const nodeName =
+      typeof node?.name === "function" ? node.name() : node?.attrs?.name;
+    if (String(nodeName || "").split(/\s+/).includes("gallery-transform-frame")) {
+      return node;
+    }
+  } catch {}
+
+  try {
+    const frame = node?.findOne?.(".gallery-transform-frame");
+    if (frame && typeof frame.getClientRect === "function") {
+      return frame;
+    }
+  } catch {}
+
+  return null;
+}
+
+function resolveKonvaNodeRect(node, rectOptions) {
+  if (!node || typeof node.getClientRect !== "function") return null;
+
+  try {
+    const rect = node.getClientRect(rectOptions);
+    if (
+      rect &&
+      Number.isFinite(Number(rect.x)) &&
+      Number.isFinite(Number(rect.y)) &&
+      Number.isFinite(Number(rect.width)) &&
+      Number.isFinite(Number(rect.height))
+    ) {
+      return {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
+  } catch {}
+
+  return null;
+}
+
+export function resolveGallerySelectionRect(object, node, debugMeta = null) {
+  if (object?.tipo !== "galeria") return null;
+
+  const rectOptions = {
+    skipTransform: false,
+    skipShadow: true,
+    skipStroke: true,
+  };
+  if (debugMeta?.relativeTo) {
+    rectOptions.relativeTo = debugMeta.relativeTo;
+  }
+
+  const frameNode = resolveGalleryFrameNode(node);
+  const liveRect =
+    resolveKonvaNodeRect(frameNode, rectOptions) ||
+    resolveKonvaNodeRect(node, rectOptions);
+  if (liveRect) return liveRect;
+  if (debugMeta?.allowObjectFallback === false) return null;
+  return buildObjectDataSelectionRect(object);
+}
+
 export function resolveNodeSelectionRect(object, node, debugMeta = null) {
   if (!node || typeof node.getClientRect !== "function") return null;
 
   if (object?.tipo === "forma" && object?.figura === "line") {
     return resolveLineSelectionRect(object, node);
+  }
+
+  if (object?.tipo === "galeria") {
+    const galleryRect = resolveGallerySelectionRect(object, node, {
+      ...debugMeta,
+      allowObjectFallback: false,
+    });
+    if (galleryRect) return galleryRect;
   }
 
   const rectOptions = {

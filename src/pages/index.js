@@ -101,6 +101,37 @@ const HERO_CORNER_MARKERS = [
   ],
 ];
 
+const FEATURE_DETAIL_CARDS = [
+  {
+    title: "Control de asistencia",
+    description:
+      "Llevá el registro de quién va, sus acompañantes, cuántas respuestas faltan en tiempo real.",
+    imageSrc: "/assets/img/landing-funcionalidades/control-asistencia.jpg",
+    imageAlt: "Detalle de una lista de invitados para organizar asistencias",
+  },
+  {
+    title: "Logística y regalos",
+    description:
+      "Juntá la información clave: cuenta regresiva, mapas y tus datos bancarios integrados de forma sutil y directa.",
+    imageSrc: "/assets/img/landing-funcionalidades/logistica-regalos.jpg",
+    imageAlt: "Detalle de datos de logística y regalos para un casamiento",
+  },
+  {
+    title: "Preguntas a medida",
+    description:
+      "Consultá sobre restricciones alimentarias o agregá preguntas específicas para organizar la logística.",
+    imageSrc: "/assets/img/landing-funcionalidades/preguntas-a-medida.jpg",
+    imageAlt: "Detalle de preguntas personalizadas para invitados",
+  },
+  {
+    title: "Contá tu historia",
+    description:
+      "Personalizá la invitación sumando un álbum con las mejores fotos de la pareja.",
+    imageSrc: "/assets/img/landing-funcionalidades/conta-tu-historia.jpg",
+    imageAlt: "Pareja revisando fotos para contar su historia",
+  },
+];
+
 
 
 export default function Home() {
@@ -329,6 +360,44 @@ export default function Home() {
           <a className={`landing-hero-cta ${landingStyles.heroCta}`} href="#invitaciones">
             Elegir diseño
           </a>
+        </div>
+      </section>
+
+
+      <section
+        className={landingStyles.featureDetails}
+        aria-labelledby="landing-feature-details-title"
+      >
+        <div className={landingStyles.featureDetailsInner}>
+          <h2
+            id="landing-feature-details-title"
+            className={landingStyles.featureDetailsTitle}
+          >
+            Más que una imagen, una{" "}
+            <span className={landingStyles.featureDetailsTitleGradient}>
+              herramienta
+            </span>{" "}
+            para tu casamiento
+          </h2>
+
+          <div className={landingStyles.featureDetailsGrid}>
+            {FEATURE_DETAIL_CARDS.map((feature) => (
+              <article key={feature.title} className={landingStyles.featureCard}>
+                <img
+                  src={feature.imageSrc}
+                  alt={feature.imageAlt}
+                  className={landingStyles.featureCardImage}
+                  loading="lazy"
+                />
+                <div className={landingStyles.featureCardCopy}>
+                  <h3 className={landingStyles.featureCardTitle}>{feature.title}</h3>
+                  <p className={landingStyles.featureCardText}>
+                    {feature.description}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 

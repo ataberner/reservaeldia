@@ -155,7 +155,29 @@ const HOW_IT_WORKS_STEPS = [
   },
 ];
 
+const LANDING_TEMPLATES_ANCHOR = "#plantillas";
 
+const SHARE_INVITATION_MOCKUP_SRC =
+  "/assets/img/landing/compartir-invitacion-mockup.png";
+
+const LANDING_PRICING_BENEFITS = [
+  "Invitados ilimitados",
+  "Todas las funciones incluidas",
+  "Pagás solo al publicar",
+];
+
+const LANDING_FOOTER_NAV_ITEMS = [
+  { label: "Inicio", href: "/" },
+  { label: "Invitaciones", href: LANDING_TEMPLATES_ANCHOR },
+  { label: "Preguntas Frecuentes", href: "#preguntas-frecuentes" },
+  { label: "Cómo funciona", href: "#como-funciona" },
+  { label: "Contacto", href: "#contacto" },
+];
+
+const LANDING_FOOTER_LEGAL_LINKS = [
+  { label: "Política de privacidad", href: "#politica-de-privacidad" },
+  { label: "Términos de uso", href: "#terminos-de-uso" },
+];
 
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
@@ -384,7 +406,10 @@ export default function Home() {
             Tu invitación y la gestión de tus invitados en un solo link.<br />
             Creala y enviala por whatsapp o email en minutos.
           </p>
-          <a className={`landing-hero-cta ${landingStyles.heroCta}`} href="#plantillas">
+          <a
+            className={`landing-hero-cta ${landingStyles.heroCta}`}
+            href={LANDING_TEMPLATES_ANCHOR}
+          >
             Elegir diseño
           </a>
         </div>
@@ -458,11 +483,160 @@ export default function Home() {
         </div>
       </section>
 
+      <section
+        id="precios"
+        className={landingStyles.pricingSection}
+        aria-labelledby="landing-pricing-title"
+      >
+        <article className={landingStyles.pricingCard}>
+          <div className={landingStyles.pricingTop}>
+            <h2
+              id="landing-pricing-title"
+              className={landingStyles.pricingHeading}
+            >
+              <span className={landingStyles.pricingAmount}>$29.000</span>
+              {" "}
+              <span className={landingStyles.pricingTitle}>
+                Precio único por invitación. Sin vueltas.
+              </span>
+            </h2>
 
-      
+            <p className={landingStyles.pricingDescription}>
+              Sin suscripciones. Accedé a todas las funciones y gestioná tus
+              invitados por un costo fijo.
+            </p>
+          </div>
 
-      <footer className="text-center py-4">
-        <p>&copy; 2026 Reserva el Día - Todos los derechos reservados</p>
+          <ul
+            className={landingStyles.pricingBenefits}
+            aria-label="Beneficios incluidos"
+          >
+            {LANDING_PRICING_BENEFITS.map((benefit) => (
+              <li key={benefit} className={landingStyles.pricingBenefit}>
+                <span
+                  className={landingStyles.pricingBenefitIcon}
+                  aria-hidden="true"
+                />
+                <span>{benefit}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      </section>
+
+      <section
+        className={landingStyles.shareSection}
+        aria-labelledby="landing-share-title"
+      >
+        <div className={landingStyles.shareContainer}>
+          <div className={landingStyles.shareMedia}>
+            <img
+              src={SHARE_INVITATION_MOCKUP_SRC}
+              alt="Mockup de invitación digital compartida en celular, tablet y tarjeta"
+              className={landingStyles.shareImage}
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+
+          <div className={landingStyles.shareContent}>
+            <h2 id="landing-share-title" className={landingStyles.shareTitle}>
+              <span className={landingStyles.shareHighlight}>
+                Olvidate de repartir sobres.
+              </span>{" "}
+              Mandá una invitación que además te organiza la fiesta.
+            </h2>
+
+            <p className={landingStyles.shareDescription}>
+              Compartí un link único por{" "}
+              <span className={landingStyles.shareDescriptionHighlight}>
+                WhatsApp, mail o redes sociales.
+              </span>{" "}
+              Tus invitados reciben la invitación al instante y vos empezás a
+              recibir confirmaciones en tiempo real.
+            </p>
+
+            <a
+              className={landingStyles.shareButton}
+              href={LANDING_TEMPLATES_ANCHOR}
+            >
+              Elegir diseño
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <footer
+        id="contacto"
+        className={landingStyles.landingFooter}
+        aria-label="Pie de página"
+      >
+        <div className={landingStyles.landingFooterInner}>
+          <div className={landingStyles.landingFooterBrand}>
+            <a
+              className={landingStyles.landingFooterLogo}
+              href="/"
+              aria-label="Reserva el Día - inicio"
+            >
+              Reserva el Día
+            </a>
+            <p className={landingStyles.landingFooterSubtitle}>
+              Diseño y gestión integral de invitaciones digitales.
+            </p>
+          </div>
+
+          <nav
+            className={landingStyles.landingFooterNav}
+            aria-label="Navegación del pie de página"
+          >
+            {LANDING_FOOTER_NAV_ITEMS.map((item, index) => (
+              <span
+                key={item.label}
+                className={landingStyles.landingFooterNavItem}
+              >
+                <a
+                  className={landingStyles.landingFooterNavLink}
+                  href={item.href}
+                >
+                  {item.label}
+                </a>
+                {index < LANDING_FOOTER_NAV_ITEMS.length - 1 ? (
+                  <span
+                    className={landingStyles.landingFooterNavSeparator}
+                    aria-hidden="true"
+                  >
+                    |
+                  </span>
+                ) : null}
+              </span>
+            ))}
+          </nav>
+
+          <div className={landingStyles.landingFooterBottom}>
+            <p className={landingStyles.landingFooterCopyright}>
+              © 2026 Reserva el Día. Todos los derechos reservados.
+            </p>
+
+            <div className={landingStyles.landingFooterLegalLinks}>
+              {LANDING_FOOTER_LEGAL_LINKS.map((item, index) => (
+                <span
+                  key={item.label}
+                  className={landingStyles.landingFooterLegalItem}
+                >
+                  <a href={item.href}>{item.label}</a>
+                  {index < LANDING_FOOTER_LEGAL_LINKS.length - 1 ? (
+                    <span
+                      className={landingStyles.landingFooterLegalSeparator}
+                      aria-hidden="true"
+                    >
+                      |
+                    </span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
       </footer>
 
       </main>

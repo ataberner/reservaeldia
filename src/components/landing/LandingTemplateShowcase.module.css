@@ -1,7 +1,7 @@
 .root {
   box-sizing: border-box;
   width: 100%;
-  padding: 36px max(20px, calc((100vw - 1264px) / 2)) 88px;
+  padding: 36px max(20px, calc((100vw - 1440px) / 2)) 128px;
   background: #f8f7f9;
   color: #262626;
   text-align: left;
@@ -10,15 +10,17 @@
 .inner {
   display: grid;
   width: 100%;
-  max-width: 1264px;
+  max-width: 1440px;
   margin: 0 auto;
-  gap: 58px;
+  margin: 0 auto;
+  gap: 92px;
 }
 
 .railSection {
   display: grid;
   gap: 28px;
   min-width: 0;
+  padding: 0 0 0 40px;
 }
 
 .railTitle {
@@ -49,7 +51,7 @@
 }
 
 .railViewport {
-  width: 100%;
+  width: calc(100vw - max(20px, calc((100vw - 1440px) / 2)) - 20px);
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0 0 8px;
@@ -296,7 +298,7 @@
   }
 
   .inner {
-    gap: 44px;
+    gap: 92px;
   }
 
   .railTrack {

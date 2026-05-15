@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listTemplates } from "@/domain/templates/service";
 import styles from "./LandingTemplateShowcase.module.css";
 
-const PREFERRED_TAG_ORDER = ["boda", "populares"];
+const PREFERRED_TAG_ORDER = ["populares", "boda"];
 
 function normalizeText(value) {
   return String(value || "").trim();

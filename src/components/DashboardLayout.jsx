@@ -39,9 +39,10 @@ export default function DashboardLayout({
   // Runtime-sensitive shell contract: header/sidebar/editor overlays consume
   // this CSS variable, so keep it in sync with DashboardHeader.
   const headerHeight = "var(--dashboard-header-height, 52px)";
+  const shellBackgroundClass = modoSelector ? "bg-gray-100" : "bg-white";
   const mainBaseClass = modoSelector
     ? "absolute left-0 right-0 bg-gray-50"
-    : "flex-1 px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3";
+    : "flex-1 bg-white px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3";
   const mainScrollClass = lockMainScroll ? "overflow-hidden" : "overflow-y-auto";
   const mainStyle = modoSelector
     ? {
@@ -61,7 +62,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="relative flex h-screen bg-gray-100">
+    <div className={`relative flex h-screen ${shellBackgroundClass}`}>
       {/* Barra superior */}
       <DashboardHeader
         slugInvitacion={slugInvitacion}

@@ -69,6 +69,16 @@ function buildGalleryPhotoRows(photos) {
   });
 }
 
+function buildGalleryPhotoTarget(photo) {
+  if (!photo) return null;
+  return {
+    cellId: photo.cellId,
+    sourceIndex: photo.sourceIndex,
+    displayIndex: photo.displayIndex,
+    mediaUrl: photo.mediaUrl,
+  };
+}
+
 function moveArrayItemForPreview(items, from, to) {
   if (!Array.isArray(items)) return [];
   if (!Number.isInteger(from) || !Number.isInteger(to)) return items;
@@ -472,21 +482,51 @@ export default function MiniToolbarTabImagen({
   }, [galeriaSeleccionada]);
 
   const selectGalleryPhoto = useCallback((photo) => {
-    setSelectedPhotoTarget({
-      cellId: photo.cellId,
-      sourceIndex: photo.sourceIndex,
-      displayIndex: photo.displayIndex,
-      mediaUrl: photo.mediaUrl,
-    });
+    const target = buildGalleryPhotoTarget(photo);
+    if (!target) return;
+    setSelectedPhotoTarget(target);
   }, []);
 
-  const startPhotoReplacement = useCallback((photo) => {
+  const replaceGalleryPhotoTargetWithUpload = useCallback((target, uploadedUrl) => {
+    if (!galeriaSeleccionada || !target) return false;
+    if (typeof uploadedUrl !== "string" || !uploadedUrl) return false;
+
+    const committed = commitGalleryMutation(
+      replaceGalleryPhoto(galeriaSeleccionada, target, uploadedUrl),
+      "Foto reemplazada en la galeria seleccionada."
+    );
+    if (committed) {
+      setSelectedPhotoTarget(target);
+      setGalleryEditMode("add");
+    }
+    return committed;
+  }, [commitGalleryMutation, galeriaSeleccionada]);
+
+  const startPhotoReplacement = useCallback((photo, options = {}) => {
+    const target = buildGalleryPhotoTarget(photo);
+    if (!target) return;
+
     selectGalleryPhoto(photo);
     setGalleryEditMode("replace");
+    const photoPosition = Number(photo?.displayIndex || 0) + 1;
+
+    if (options.openFilePicker === true) {
+      if (typeof abrirSelector !== "function") {
+        setPanelNotice("No se encontro el selector de archivos para subir la imagen.");
+        return;
+      }
+
+      setPanelNotice(`Selecciona una imagen del sistema para reemplazar la foto ${photoPosition}.`);
+      abrirSelector((uploadedUrl) => {
+        replaceGalleryPhotoTargetWithUpload(target, uploadedUrl);
+      });
+      return;
+    }
+
     setPanelNotice(
-      `Elige una imagen disponible o sube una nueva para reemplazar la foto ${Number(photo?.displayIndex || 0) + 1}.`
+      `Elige una imagen disponible o sube una nueva para reemplazar la foto ${photoPosition}.`
     );
-  }, [selectGalleryPhoto]);
+  }, [abrirSelector, replaceGalleryPhotoTargetWithUpload, selectGalleryPhoto]);
 
   const cleanupGalleryPhotoDrag = useCallback(() => {
     if (galleryPhotoDragCleanupRef.current) {
@@ -724,6 +764,24 @@ export default function MiniToolbarTabImagen({
     selectedPhotoTarget,
   ]);
 
+  const openSelectedPhotoReplacementPicker = useCallback(() => {
+    if (!selectedPhotoTarget) {
+      setPanelNotice("Selecciona una foto de esta galeria primero.");
+      return;
+    }
+
+    setGalleryEditMode("replace");
+    if (typeof abrirSelector !== "function") {
+      setPanelNotice("Elige una imagen disponible para reemplazar la foto seleccionada.");
+      return;
+    }
+
+    setPanelNotice("Selecciona una imagen del sistema para reemplazar la foto seleccionada.");
+    abrirSelector((uploadedUrl) => {
+      replaceGalleryPhotoTargetWithUpload(selectedPhotoTarget, uploadedUrl);
+    });
+  }, [abrirSelector, replaceGalleryPhotoTargetWithUpload, selectedPhotoTarget]);
+
   const handleSwitchLayout = useCallback((layoutId) => {
     if (!galeriaSeleccionada) return;
     commitGalleryMutation(
@@ -786,6 +844,27 @@ export default function MiniToolbarTabImagen({
     setMostrarGaleria,
   ]);
 
+  const handleUploadButtonClick = useCallback(() => {
+    if (galeriaSeleccionada && !celdaActiva && galleryEditMode === "replace" && selectedPhotoTarget) {
+      openSelectedPhotoReplacementPicker();
+      return;
+    }
+
+    if (typeof abrirSelector !== "function") {
+      setPanelNotice("No se encontro el selector de archivos para subir la imagen.");
+      return;
+    }
+
+    abrirSelector();
+  }, [
+    abrirSelector,
+    celdaActiva,
+    galeriaSeleccionada,
+    galleryEditMode,
+    openSelectedPhotoReplacementPicker,
+    selectedPhotoTarget,
+  ]);
+
   return (
     <div className={`flex flex-col flex-1 min-h-0 ${isMobileViewport ? "gap-2" : "gap-3"}`}>
       <section
@@ -822,11 +901,7 @@ export default function MiniToolbarTabImagen({
                 compact={isMobileViewport}
                 emptyMessage="Esta galeria usa el layout actual sin presets configurados."
               />
-              {layoutState.hasPresetContract && (
-                <p className="mt-1 text-[11px] text-zinc-400">
-                  Solo se muestran layouts permitidos por la plantilla; las fotos ocultas se conservan.
-                </p>
-              )}
+              
             </div>
 
             {selectedGalleryPhotos.length > 0 ? (
@@ -885,7 +960,7 @@ export default function MiniToolbarTabImagen({
 
                       <button
                         type="button"
-                        onClick={() => startPhotoReplacement(photo)}
+                        onClick={() => startPhotoReplacement(photo, { openFilePicker: true })}
                         aria-label={`Reemplazar ${positionLabel}`}
                         className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100"
                         title="Reemplazar foto"
@@ -920,7 +995,7 @@ export default function MiniToolbarTabImagen({
 
                       <button
                         type="button"
-                        onClick={() => startPhotoReplacement(photo)}
+                        onClick={() => startPhotoReplacement(photo, { openFilePicker: true })}
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
                         aria-label={`Subir o elegir reemplazo para ${positionLabel}`}
                         title="Reemplazar"
@@ -1001,10 +1076,7 @@ export default function MiniToolbarTabImagen({
               <button
                 type="button"
                 disabled={!selectedPhotoTarget}
-                onClick={() => {
-                  setGalleryEditMode("replace");
-                  setPanelNotice("Elige una imagen disponible o sube una nueva para reemplazar la foto seleccionada.");
-                }}
+                onClick={openSelectedPhotoReplacementPicker}
                 className={`rounded border px-1.5 py-1 text-[11px] ${
                   galleryEditMode === "replace"
                     ? "border-purple-300 bg-purple-50 text-purple-700"
@@ -1064,7 +1136,7 @@ export default function MiniToolbarTabImagen({
       )}
 
       <button
-        onClick={abrirSelector}
+        onClick={handleUploadButtonClick}
         className={`flex items-center gap-2 w-full font-medium shadow-sm transition-all ${
           isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
         } ${

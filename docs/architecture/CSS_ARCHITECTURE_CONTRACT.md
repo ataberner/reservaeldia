@@ -5,11 +5,14 @@ This document defines where CSS belongs in the current Reserva el Dia codebase a
 
 This is a structure and maintainability contract only. It does not define visual changes, brand changes, spacing changes, typography changes, or layout redesigns.
 
+Visual identity, brand tokens, typography, and future token recommendations are documented in [DESIGN_SYSTEM.md](../design/DESIGN_SYSTEM.md). Use that document as the product UI visual source of truth, and use this contract to decide where any future implementation belongs.
+
 The contract is based on the current codebase:
 - The Next app imports `styles/globals.css` and `styles/styles.css` from `src/pages/_app.js`.
 - Tailwind is enabled through `styles/globals.css` and `tailwind.config.js`.
 - Bootstrap CSS and JS are loaded globally from `src/pages/_document.js`.
 - Most React UI is styled with Tailwind utility classes in `className`.
+- Scoped CSS Modules are used for the shared `AppHeader` visual component and the landing route hero/main styling.
 - Template and public invitation CSS also exists under `plantillas/` and `public/`.
 - Editor/canvas surfaces use a mix of Tailwind classes, inline styles, generated styles, and runtime geometry.
 
@@ -106,7 +109,8 @@ Rules:
 - Component-specific keyframes should live with the component or in the component's module.
 
 Current state:
-- The repo currently has no `*.module.css` files. Introducing CSS Modules is a migration step, not a current convention.
+- The repo currently uses CSS Modules for `src/components/appHeader/AppHeader.module.css` and `src/pages/index.module.css`.
+- Introducing additional CSS Modules remains a scoped migration step. Prefer them when the touched surface needs local selectors, pseudo/state styling, or route-owned styles that should not go into global CSS.
 
 Assumption:
 - Next.js CSS Modules support is available because this is a Next.js app. No separate dependency is expected for basic `.module.css` usage.
@@ -132,7 +136,7 @@ Migration direction:
 ### 5.1 Landing And Dashboard Styling Boundary
 The current landing and dashboard surfaces are intentionally different styling domains:
 
-- Landing route ownership starts at `src/pages/index.js`. The active markup uses Bootstrap classes, route-specific global selectors in `styles/styles.css`, landing/navbar compatibility rules in `styles/globals.css`, and static inline hero styles.
+- Landing route ownership starts at `src/pages/index.js`. The active markup uses Bootstrap classes, route-specific global selectors in `styles/styles.css`, landing/navbar compatibility rules in `styles/globals.css`, and `src/pages/index.module.css` for the current landing hero/main static styles.
 - Auth modal ownership starts in `src/lib/components/LoginModal.js`, `src/lib/components/RegisterModal.js`, and `src/lib/components/ProfileCompletionModal.js`. The active styles live in `styles/styles.css` and mix app-owned `auth-*` selectors with Bootstrap button/modal classes.
 - Dashboard route ownership starts at `src/pages/dashboard.js` and `src/domain/dashboard/pageShell.js`. Most visible dashboard UI uses Tailwind classes inside React components.
 - Dashboard home ownership starts in `src/components/dashboard/home/`. Card and rail components use Tailwind plus the shared global `.dashboard-invitation-card` hook.

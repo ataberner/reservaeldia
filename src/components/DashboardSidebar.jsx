@@ -107,6 +107,12 @@ export default function DashboardSidebar({
         cargando
     } = useMisImagenes();
     const { abrirSelector, componenteInput, handleSeleccion } = useUploaderDeImagen(subirImagen);
+    const pendingUploadedImageHandlerRef = useRef(null);
+    const abrirSelectorImagen = useCallback((onUploadedImage) => {
+        pendingUploadedImageHandlerRef.current =
+            typeof onUploadedImage === "function" ? onUploadedImage : null;
+        abrirSelector();
+    }, [abrirSelector]);
     const sidebarAbierta = fijadoSidebar || hoverSidebar;
     const canUseGalleryBuilder = canAccessGalleryBuilder({
         canManageSite,
@@ -572,13 +578,26 @@ export default function DashboardSidebar({
             {componenteInput &&
                 React.cloneElement(componenteInput, {
                     onChange: async (e) => {
-                        const uploadedUrl = await handleSeleccion(e);
-                        if (
-                            typeof uploadedUrl === "string" &&
-                            uploadedUrl &&
-                            typeof window.asignarImagenACelda === "function"
-                        ) {
-                            window.asignarImagenACelda(uploadedUrl, "cover");
+                        const uploadedImageHandler = pendingUploadedImageHandlerRef.current;
+
+                        try {
+                            const uploadedUrl = await handleSeleccion(e);
+                            if (typeof uploadedUrl !== "string" || !uploadedUrl) return;
+
+                            if (typeof uploadedImageHandler === "function") {
+                                uploadedImageHandler(uploadedUrl);
+                                return;
+                            }
+
+                            if (typeof window.asignarImagenACelda === "function") {
+                                window.asignarImagenACelda(uploadedUrl, "cover");
+                            }
+                        } catch (error) {
+                            console.error("Error al subir imagen desde el sidebar:", error);
+                        } finally {
+                            if (pendingUploadedImageHandlerRef.current === uploadedImageHandler) {
+                                pendingUploadedImageHandlerRef.current = null;
+                            }
                         }
                     },
                 })}
@@ -1038,7 +1057,7 @@ export default function DashboardSidebar({
                             cargando={cargando}
                             seccionActivaId={seccionActivaId}
                             setImagenesSeleccionadas={setImagenesSeleccionadas}
-                            abrirSelector={abrirSelector}
+                            abrirSelector={abrirSelectorImagen}
                             onInsertarGaleria={insertarGaleria}
                             canUseGalleryBuilder={canUseGalleryBuilder}
                             templateSessionMeta={templateSessionMeta}

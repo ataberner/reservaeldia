@@ -4,6 +4,8 @@ import Head from 'next/head';
 import { useState, useEffect } from 'react';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
+import AppHeader from '@/components/appHeader/AppHeader';
+import landingStyles from './index.module.css';
 import Link from 'next/link';
 import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase";
@@ -80,11 +82,29 @@ function getAuthNoticeMessage(code) {
   return "";
 }
 
+const HERO_CORNER_MARKERS = [
+  [
+    "top-left",
+    `hero-corner hero-corner-top-left ${landingStyles.heroCorner} ${landingStyles.heroCornerTopLeft}`,
+  ],
+  [
+    "top-right",
+    `hero-corner hero-corner-top-right ${landingStyles.heroCorner} ${landingStyles.heroCornerTopRight}`,
+  ],
+  [
+    "bottom-left",
+    `hero-corner hero-corner-bottom-left ${landingStyles.heroCorner} ${landingStyles.heroCornerBottomLeft}`,
+  ],
+  [
+    "bottom-right",
+    `hero-corner hero-corner-bottom-right ${landingStyles.heroCorner} ${landingStyles.heroCornerBottomRight}`,
+  ],
+];
+
 
 
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
   const [isAuthTransitioning, setIsAuthTransitioning] = useState(false);
@@ -235,77 +255,31 @@ export default function Home() {
         </div>
       )}
       
-      <header className="navbar navbar-expand-lg navbar-light bg-light fixed-top py-3">
-        <div className="container">
-          <Link href="/" className="navbar-brand">
-            <img src="/assets/img/logo.png" alt="Reserva el Día - Invitaciones Digitales" width="200" />
-          </Link>
+      <AppHeader
+        variant="landing"
+        placement="fixed"
+        logo={{
+          href: "/",
+        }}
+        actions={[
+          {
+            key: "login",
+            label: "Ingresar",
+            tone: "secondary",
+            variant: "landingLogin",
+            onClick: () => setShowLogin(true),
+          },
+          {
+            key: "create-invitation",
+            label: "Crear invitación",
+            tone: "primary",
+            variant: "landingCreateInvitation",
+            onClick: () => setShowRegister(true),
+          },
+        ]}
+      />
 
-          <button
-            className="navbar-toggler"
-            type="button"
-            onClick={() => setMenuOpen((prev) => !prev)}
-            aria-label="Toggle navigation"
-          >
-            <span className="navbar-toggler-icon"></span>
-          </button>
-
-          <div className={`navbar-collapse ${menuOpen ? "show" : ""}`} id="navbarNav">
-            <ul className="navbar-nav ms-auto me-0">
-              <li className="nav-item">
-                <a href="#hero" className="nav-link" onClick={() => setMenuOpen(false)}>
-                  Inicio
-                </a>
-              </li>
-              <li className="nav-item">
-                <a
-                  href="#funcionalidades"
-                  className="nav-link"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  Funcionalidades
-                </a>
-              </li>
-              <li className="nav-item">
-                <a
-                  href="#como-funciona"
-                  className="nav-link"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  Cómo Funciona
-                </a>
-              </li>
-              <li className="nav-item">
-                <a href="#precios" className="nav-link" onClick={() => setMenuOpen(false)}>
-                  Precios
-                </a>
-              </li>
-            </ul>
-
-            <div className="d-flex gap-2 ms-lg-3 mt-3 mt-lg-0 justify-content-center">
-              <button
-                className="btn btn-iniciar-sesion"
-                onClick={() => {
-                  setShowLogin(true);
-                  setMenuOpen(false);
-                }}
-              >
-                Iniciar sesión
-              </button>
-              <button
-                className="btn btn-registrarme"
-                onClick={() => {
-                  setShowRegister(true);
-                  setMenuOpen(false);
-                }}
-              >
-                Registrarme
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+      <main className={landingStyles.main}>
       {authNotice && (
         <div
           className={`auth-notice-banner ${showGoogleAuthDebugLogo ? "google-auth-failure-banner" : ""}`}
@@ -332,232 +306,40 @@ export default function Home() {
       )}
 
       {/* Hero principal */}
-      <section className="hero" style={{ backgroundImage: "url(/assets/img/portada1.webp)", backgroundSize: 'cover', height: '100vh', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <div className="hero-content">
-          <h1>Invitaciones Digitales para Bodas</h1>
-          <p>Tu invitación perfecta, diseñada a tu manera. En minutos.</p>
-          <p>Creá una invitación digital única para tu evento.<br />Elegí una plantilla, personalizala visualmente y compartila con un solo click.<br />¡Conocé nuestros modelos ahora!</p>
-          <button onClick={() => {
-            setShowRegister(true);
-            setMenuOpen(false);
-          }}
-            className="btn btn-primary">
-            Crear mi invitación
-          </button>
+      <section className={`hero ${landingStyles.hero}`}>
+        <div className={`hero-content ${landingStyles.heroContent}`}>
+          {HERO_CORNER_MARKERS.map(([key, className]) => (
+            <span key={key} className={className} aria-hidden="true" />
+          ))}
+          <h1 className={landingStyles.heroTitle}>
+            Resolvé la{' '}
+            <span className="landing-hero-title-gradient">
+              invitación de tu
+            </span>
+            <br />
+            <span className="landing-hero-title-gradient">
+              casamiento
+            </span>{' '}
+            hoy
+          </h1>
+          <p className={landingStyles.heroSubtitle}>
+            Tu invitación y la gestión de tus invitados en un solo link.<br />
+            Creala y enviala por whatsapp o email en minutos.
+          </p>
+          <a className={`landing-hero-cta ${landingStyles.heroCta}`} href="#invitaciones">
+            Elegir diseño
+          </a>
         </div>
       </section>
 
 
-      <section id="invitaciones" className="container-fluid py-4">
-        <h2 className="text-center">Diseños de invitaciones digitales</h2>
-        <div className="container">
-          <div className="row align-items-center">
-            {/* Imagen más ancha a la izquierda*/}
-            <div className="col-12 col-md-6 text-center">
-              <img src="assets/img/Invitación modelo pc + iphone.png" alt="Ejemplo de invitación digital en computadora y teléfono móvil" className="img-fluid w-100" loading="lazy" />
-            </div>
-            {/*Contenedor de los dos ítems alineados a la derecha*/}
-            <div className="col-12 col-md-6 d-flex justify-content-center">
-              <div className="d-flex gap-4">
-                {/* Item 2*/}
-                <div className="text-center">
-                  <Link href="#">
-                    <img src="/assets/img/celu2.png" alt="Ejemplo de invitación digital clásica" className="img-fluid" loading="lazy" />
-
-                  </Link>
-                </div>
-                {/* Item 3 */}
-                <div className="text-center">
-                  <Link href="#">
-                    <img src="/assets/img/celu3.png" alt="Ejemplo de invitación digital premium" className="img-fluid" loading="lazy" />
-
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-      <section id="funcionalidades" className="funcionalidades">
-        <h2>Funcionalidades de las Invitaciones Digitales</h2>
-        <div className="container">
-          <div className="row d-flex flex-wrap justify-content-center">
-            {/* Item 1 */}
-            <div className="col-6 col-md-3 mb-3">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/rsvp-negro.png" alt="RSVP" loading="lazy" />
-                <h5>RSVP</h5>
-                <p>Tus invitados confirman con un clic.</p>
-              </div>
-            </div>
-
-            {/* Item 2 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/ubicacion-negro.png" alt="Ubicación con mapa" loading="lazy" />
-                <h5>Ubicación con mapa</h5>
-                <p>Enlace directo a Google Maps.</p>
-              </div>
-            </div>
-
-            {/* Item 3 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/dresscode-negro.png" alt="Código de vestimenta" loading="lazy" />
-                <h5>Código de vestimenta</h5>
-                <p>Indica el dress code del evento.</p>
-              </div>
-            </div>
-
-            {/* Item 4 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/regalo-negro.png" alt="Lista de regalos" loading="lazy" />
-                <h5>Lista de regalos</h5>
-                <p>Comparte tu mesa de regalos.</p>
-              </div>
-            </div>
-
-            {/* Item 5 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/menu-negro.png" alt="Selección de menú" loading="lazy" />
-                <h5>Selección de menú</h5>
-                <p>Tus invitados eligen su comida.</p>
-              </div>
-            </div>
-
-            {/* Item 6 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/countdown-negro.png" alt="Cuenta regresiva" loading="lazy" />
-                <h5>Cuenta regresiva</h5>
-                <p>Días y horas hasta el evento.</p>
-              </div>
-            </div>
-
-            {/* Item 7 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/redes-negro.png" alt="Integración con redes sociales" loading="lazy" />
-                <h5>Redes sociales</h5>
-                <p>Comparte tu invitación fácilmente.</p>
-              </div>
-            </div>
-
-            {/* Item 8 */}
-            <div className="col-6 col-md-3 mb-4">
-              <div className="funcionalidad">
-                <img src="/assets/img/iconos/fotos-negro.png" alt="Álbum de fotos" loading="lazy" />
-                <h5>Álbum de fotos</h5>
-                <p>Sube y comparte imágenes del evento.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-
-      <section id="como-funciona" className="how-it-works">
-        <h2>¿Cómo Funciona?</h2>
-        <div className="steps-container">
-          <div className="step">
-            <div className="icon">🎨</div>
-            <h3>1. Elegís una plantilla</h3>
-            <p>Seleccioná un diseño base según tu evento (boda, cumpleaños, bautismo, etc.).</p>
-          </div>
-          <div className="step">
-            <div className="icon">🖌️</div>
-            <h3>2. La personalizás visualmente</h3>
-            <p>Editá textos, colores, imágenes y todo el diseño.</p>
-          </div>
-          <div className="step">
-            <div className="icon">⚙️</div>
-            <h3>3. Selecciona Funcionalidades</h3>
-            <p>Agregá la opcion para tus invitacods confirmen, vean la ubicación del evento o la lista de regalos.</p>
-          </div>
-          <div className="step">
-            <div className="icon">📩</div>
-            <h3>4. Envía y Comparte</h3>
-            <p>Comparte tu invitación con amigos y familiares a través de WhatsApp, correo o redes sociales.</p>
-          </div>
-        </div>
-      </section>
-
-      {/*      <section id="precios" className="pricing">
-        <h2>Nuestros Planes</h2>
-        <div className="pricing-container">
-          {/* Plan Estándar 
-          <div className="pricing-card">
-            <h3>Plan Estándar</h3>
-            <p className="price">$24,900</p>
-            <ul>
-              <li>✅ Invitación digital ilimitada</li>
-              <li>✅ Personalización de colores</li>
-              <li>✅ Selección de funcionalidades</li>
-              <li>✅ Galería de hasta 8 fotos</li>
-              <li className="not-included">❌ Foto de portada</li>
-              <li className="not-included">❌ RSVP</li>
-              <li className="not-included">❌ Playlist para el evento</li>
-              <li className="not-included">❌ Selección de menú</li>
-            </ul>
-            <a
-              href="https://wa.me/5491153119126?text=¡¡Hola!!Estoy%20interesado%20en%20la%20*invitaci%C3%B3n%20cl%C3%A1sica*%20para%20un%20casamiento..."
-              target="_blank"
-              rel="noopener noreferrer">
-              <button>Elegir Plan</button>
-            </a>
-          </div>
-
-          {/* Plan Premium 
-          <div className="pricing-card premium">
-            <h3>Plan Premium</h3>
-            <p className="price">$29,900</p>
-            <ul>
-              <li>✅ Invitación digital ilimitada</li>
-              <li>✅ Personalización de colores</li>
-              <li>✅ Selección de funcionalidades</li>
-              <li>✅ Galería de hasta 8 fotos</li>
-              <li className="highlight">📷 Foto de portada</li>
-              <li className="highlight">✨ RSVP</li>
-              <li className="highlight">🎵 Playlist para el evento</li>
-              <li className="highlight">🍽️ Selección de menú</li>
-            </ul>
-            <a
-              href="https://wa.me/5491153119126?text=¡¡Hola!!Estoy%20interesado%20en%20la%20*invitaci%C3%B3n%20premium*%20para%20un%20casamiento..."
-              target="_blank"
-              rel="noopener noreferrer">
-
-              <button>Elegir Plan</button>
-            </a>
-          </div>
-        </div>
-      </section>*/}
-
-
-      <section id="crear-invitacion" className="py-5 bg-light">
-        <div className="container text-center">
-          <h2>Creá tu invitación ahora</h2>
-
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setShowRegister(true);
-              setMenuOpen(false);
-            }}
-          >
-            Registrarme
-          </button>
-        </div>
-      </section>
-
+      
 
       <footer className="text-center py-4">
         <p>&copy; 2025 Reserva el Día - Todos los derechos reservados</p>
       </footer>
+
+      </main>
 
       {showLogin && (
         <LoginModal
@@ -586,4 +368,3 @@ export default function Home() {
     </>
   );
 }
-

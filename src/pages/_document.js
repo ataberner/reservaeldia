@@ -14,7 +14,7 @@ export default function Document() {
 
         {/* ✅ Google Fonts con todos los pesos necesarios */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;900&family=Poppins:wght@400;700&family=Raleway:wght@400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@400;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500&family=Montserrat:wght@300;400;600;900&family=Poppins:wght@400;700&family=Raleway:wght@400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@400;700&family=Source+Sans+3:wght@400&family=Yellowtail&display=swap"
           rel="stylesheet"
         />
 

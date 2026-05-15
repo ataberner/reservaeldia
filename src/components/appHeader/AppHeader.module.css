@@ -1,0 +1,603 @@
+.root {
+  --app-header-border: #e7dcf8;
+  --app-header-ink: #1f2937;
+  /* Shared container values keep landing and dashboard headers aligned
+     without relying on Figma-frame pixel offsets. */
+  --app-header-max-width: 1280px;
+  --app-header-muted: #667085;
+  --app-header-purple: #6f3bc0;
+  --app-header-purple-dark: #563092;
+  --app-header-x-padding: clamp(18px, 4vw, 40px);
+  box-sizing: border-box;
+  width: 100%;
+  color: var(--app-header-ink);
+  font-family: "Montserrat", "Segoe UI", sans-serif;
+  text-align: left;
+  text-shadow: none;
+}
+
+.root *,
+.root *::before,
+.root *::after {
+  box-sizing: border-box;
+  text-shadow: none;
+}
+
+.fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.embedded {
+  position: relative;
+}
+
+.landing {
+  background: #fff;
+  box-shadow: none;
+}
+
+.dashboard {
+  background: transparent;
+}
+
+.inner {
+  display: flex;
+  min-height: 56px;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(12px, 3vw, 32px);
+}
+
+.landing .inner {
+  max-width: var(--app-header-max-width);
+  margin: 0 auto;
+  padding: 8px var(--app-header-x-padding);
+}
+
+.dashboard .inner {
+  min-height: 36px;
+  max-width: var(--app-header-max-width);
+  margin: 0 auto;
+  padding: 0 var(--app-header-x-padding);
+}
+
+.logoLink {
+  display: inline-flex;
+  min-height: 40px;
+  min-width: 0;
+  flex-shrink: 0;
+  align-items: center;
+  color: #692b9a;
+  text-decoration: none;
+}
+
+.brandText {
+  display: block;
+  overflow: visible;
+  color: #692b9a;
+  font-family: "Yellowtail", cursive;
+  font-size: 29px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.centerNav {
+  display: none;
+  align-items: center;
+  gap: clamp(20px, 2.4vw, 34px);
+}
+
+.centerNavButton {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: #262626;
+  cursor: pointer;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 24px;
+  padding: 4px 0;
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.centerNavButton:hover,
+.centerNavButton:focus-visible {
+  color: var(--app-header-purple);
+  outline: none;
+}
+
+.rightCluster {
+  display: flex;
+  min-width: 0;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.desktopActions,
+.dashboardActions,
+.mobileActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktopActions {
+  display: none;
+}
+
+.dashboardActions {
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-end;
+  overflow-x: auto;
+  padding: 1px 2px;
+}
+
+.action,
+.menuItem,
+.accountButton,
+.mobileToggle {
+  border: 0;
+  font: inherit;
+}
+
+.action {
+  display: inline-flex;
+  min-height: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+}
+
+.action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.action:not(:disabled) {
+  cursor: pointer;
+}
+
+.action:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.actionPrimary {
+  border: 1px solid rgba(126, 77, 198, 0.35);
+  background: linear-gradient(135deg, #8554cf, #6f3bc0);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(111, 59, 192, 0.22);
+}
+
+.actionSecondary {
+  border: 1px solid #e2d5f7;
+  background: #fff;
+  color: #475467;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+}
+
+.actionSecondary:not(:disabled):hover {
+  border-color: #d2c1ef;
+  background: #faf6ff;
+  color: var(--app-header-purple-dark);
+}
+
+.actionLandingLogin {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 33px;
+  background: transparent;
+  box-shadow: none;
+  color: #0a0a0a;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 24px;
+  padding: 6px 12px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.actionLandingLogin:not(:disabled):hover {
+  border-color: rgba(10, 10, 10, 0.12);
+  background: #fbf7f9;
+  color: #0a0a0a;
+  box-shadow: none;
+  transform: none;
+}
+
+.actionLandingLogin:focus-visible {
+  border-color: rgba(105, 43, 154, 0.32);
+  background: #fff;
+  color: #0a0a0a;
+  box-shadow: 0 0 0 3px rgba(105, 43, 154, 0.16);
+  outline: none;
+  transform: none;
+}
+
+.actionLandingLogin:not(:disabled):active {
+  background: #f4f0f4;
+  transform: none;
+}
+
+.actionActive {
+  border: 1px solid #d9c5f6;
+  background: #f7f1ff;
+  color: var(--app-header-purple);
+  box-shadow: 0 10px 22px rgba(119, 61, 190, 0.16);
+}
+
+.actionDanger {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b42318;
+}
+
+.actionLandingCreateInvitation {
+  width: 180px;
+  height: 38px;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #0c0c0c;
+  border-radius: 33px;
+  background: #0c0c0c;
+  box-shadow: none;
+  color: #fff;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 1px;
+  line-height: 20px;
+  padding: 6px 30px 8px;
+  text-align: center;
+  text-transform: none;
+  vertical-align: middle;
+}
+
+.actionLandingCreateInvitation:not(:disabled):hover {
+  border-color: #1b1b1b;
+  background: #1b1b1b;
+  box-shadow: 0 8px 18px rgba(12, 12, 12, 0.16);
+}
+
+.actionLandingCreateInvitation:focus-visible {
+  border-color: #0c0c0c;
+  background: #0c0c0c;
+  box-shadow: 0 0 0 3px rgba(105, 43, 154, 0.22);
+  outline: none;
+}
+
+.actionLandingCreateInvitation:not(:disabled):active {
+  background: #000;
+  box-shadow: 0 4px 12px rgba(12, 12, 12, 0.14);
+  transform: translateY(0);
+}
+
+.actionMyInvitations {
+  display: flex;
+  width: 183px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid #00000057;
+  border-radius: 33px;
+  background: transparent;
+  box-shadow: none;
+  color: #262626;
+  font-family: "DM Sans", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 24px;
+  opacity: 1;
+  padding: 6px 30px 8px;
+  text-align: center;
+}
+
+.actionMyInvitations:not(:disabled):hover,
+.actionMyInvitations:focus-visible {
+  border-color: #00000057;
+  background: transparent;
+  color: #262626;
+  outline: none;
+  transform: none;
+}
+
+.actionIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.mobileToggle {
+  display: inline-flex;
+  height: 40px;
+  width: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2d5f7;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--app-header-purple);
+  cursor: pointer;
+}
+
+.mobilePanel {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  padding: 10px 18px 16px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.mobileCenterNav,
+.mobileActions {
+  display: grid;
+  gap: 8px;
+}
+
+.mobileCenterNav .centerNavButton,
+.mobileActions .action {
+  width: 100%;
+  justify-content: center;
+}
+
+.account {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.accountButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e4d8f7;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  padding: 4px 6px;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.accountButton:hover,
+.accountButtonOpen {
+  border-color: #d3c0f0;
+  background: #faf6ff;
+  box-shadow: 0 8px 18px rgba(111, 59, 192, 0.12);
+}
+
+.avatarImage,
+.avatarFallback {
+  height: 28px;
+  width: 28px;
+  border-radius: 999px;
+}
+
+.avatarImage {
+  object-fit: cover;
+}
+
+.avatarFallback,
+.summaryAvatarFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-header-purple);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accountChevron {
+  color: #667085;
+  transition: transform 160ms ease;
+}
+
+.accountChevronOpen {
+  transform: rotate(180deg);
+}
+
+.accountMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: min(288px, 88vw);
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+}
+
+.accountSummary {
+  border-bottom: 1px solid #eef0f4;
+  background: linear-gradient(90deg, #f8f2ff, #fff);
+  padding: 10px 12px;
+}
+
+.accountLabel,
+.accountName,
+.accountEmail {
+  margin: 0;
+}
+
+.accountLabel {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.accountIdentity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+}
+
+.summaryAvatar,
+.summaryAvatarFallback {
+  height: 34px;
+  width: 34px;
+  flex-shrink: 0;
+  border-radius: 999px;
+}
+
+.summaryAvatar {
+  object-fit: cover;
+}
+
+.accountText {
+  min-width: 0;
+}
+
+.accountName,
+.accountEmail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountName {
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accountEmail {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.menuItems {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
+.menuItem {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #fff;
+  color: #475467;
+  cursor: pointer;
+  padding: 9px 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+  outline: none;
+}
+
+.menuItemDanger {
+  color: #b42318;
+}
+
+.menuItemDanger:hover,
+.menuItemDanger:focus-visible {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.menuItemIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+@media (min-width: 860px) {
+  /* Equal flexible side regions keep the center nav visually centered
+     without locking the layout to the 1512px Figma frame. */
+  .inner {
+    justify-content: center;
+  }
+
+  .logoLink {
+    flex: 1 1 0;
+    justify-content: flex-start;
+  }
+
+  .centerNav {
+    display: flex;
+    flex: 0 0 auto;
+  }
+
+  .rightCluster {
+    flex: 1 1 0;
+  }
+
+  .desktopActions {
+    display: flex;
+  }
+
+  .mobileToggle,
+  .mobilePanel {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboardActions {
+    gap: 6px;
+  }
+
+  .dashboardActions .action {
+    min-height: 32px;
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+
+  .brandText {
+    max-width: 168px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root *,
+  .root *::before,
+  .root *::after {
+    transition: none;
+  }
+}

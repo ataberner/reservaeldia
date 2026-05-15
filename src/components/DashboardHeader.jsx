@@ -8,8 +8,10 @@ import {
     LogOut,
     Plus,
     Sparkles,
+    Settings,
     Trash2,
 } from "lucide-react";
+import AppHeader from "@/components/appHeader/AppHeader";
 import CanvasEditorHeader from "@/components/editor/header/CanvasEditorHeader";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
@@ -596,10 +598,10 @@ export default function DashboardHeader(props) {
     const showMobilePreviewButton = !editorReadOnly || canShowReadOnlyPreview;
     const showDesktopPreviewButton = !editorReadOnly || canShowReadOnlyPreview;
     const showStandaloneUserMenu = !(slugInvitacion && isMobile);
+    const showEditorStandaloneUserMenu =
+        Boolean(slugInvitacion) && showStandaloneUserMenu;
     const showEditorAdminMenuActions =
         Boolean(slugInvitacion) && !loadingAdminAccess && canManageSite && !editorReadOnly;
-    const dashboardModeButton =
-        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9c5f6]";
     const userMenuActionButton =
         "group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300";
 
@@ -621,6 +623,77 @@ export default function DashboardHeader(props) {
         window.location.href = "/";
     };
 
+    const isDashboardPublicationView =
+        vistaActual === "publicadas" || vistaActual === "papelera";
+    const canShowCreativePanelAction = !loadingAdminAccess && canManageSite;
+    const canShowSiteManagementAction = !loadingAdminAccess && isSuperAdmin;
+    const dashboardActions = !slugInvitacion
+        ? [
+              {
+                  key: "published-toggle",
+                  label: isDashboardPublicationView
+                      ? "Volver al dashboard"
+                      : "Mis invitaciones",
+                  tone: isDashboardPublicationView ? "active" : "secondary",
+                  variant: "myInvitations",
+                  title: isDashboardPublicationView
+                      ? "Volver al inicio del dashboard"
+                      : "Ver tus invitaciones publicadas",
+                  onClick: () =>
+                      onCambiarVista?.(isDashboardPublicationView ? "home" : "publicadas"),
+              },
+          ]
+        : [];
+    const dashboardUserMenu = !slugInvitacion
+        ? {
+              avatarUrl: usuario?.photoURL || "",
+              initials: inicialUsuario,
+              name: nombreCompletoUsuario,
+              email: emailUsuario,
+              items: [
+                  {
+                      key: "trash",
+                      label: "Papelera",
+                      icon: <Trash2 size={14} />,
+                      onClick: () => onCambiarVista?.("papelera"),
+                  },
+                  ...(canShowCreativePanelAction
+                      ? [
+                            {
+                                key: "creative-panel",
+                                label: "Panel creativo",
+                                icon: <Sparkles size={14} />,
+                                onClick: abrirPanelCreativo,
+                            },
+                        ]
+                      : []),
+                  ...(canShowSiteManagementAction
+                      ? [
+                            {
+                                key: "site-management",
+                                label:
+                                    vistaActual === "gestion"
+                                        ? "Volver al dashboard"
+                                        : "Gestion del sitio",
+                                icon: <Settings size={14} />,
+                                onClick: () =>
+                                    onCambiarVista?.(
+                                        vistaActual === "gestion" ? "home" : "gestion"
+                                    ),
+                            },
+                        ]
+                      : []),
+                  {
+                      key: "logout",
+                      label: "Cerrar sesion",
+                      tone: "danger",
+                      icon: <LogOut size={14} />,
+                      onClick: () => void handleLogout(),
+                  },
+              ],
+          }
+        : null;
+
     return (
         /* Runtime-sensitive hooks: editor overlays and selection preservation
            depend on these attributes. Keep them stable during visual cleanup. */
@@ -628,7 +701,11 @@ export default function DashboardHeader(props) {
             ref={headerRef}
             data-dashboard-header="true"
             data-preserve-canvas-selection="true"
-            className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-gray-200 bg-white px-3 py-2 shadow-sm md:px-4"
+            className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b bg-white py-2 ${
+                slugInvitacion
+                    ? "border-gray-200 px-3 shadow-sm md:px-4"
+                    : "border-slate-100 px-0 shadow-none"
+            }`}
         >
             {slugInvitacion ? (
                 <CanvasEditorHeader
@@ -656,82 +733,18 @@ export default function DashboardHeader(props) {
                     emailUsuario={emailUsuario}
                 />
             ) : (
-                <div className="flex flex-1 items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                        <img src="/assets/img/logo.png" alt="Logo" className="h-5" />
-                        <span className="hidden text-xs font-semibold text-gray-700 sm:block">
-                            DASHBOARD
-                        </span>
-                    </div>
-
-                    <div className="mr-2 flex items-center gap-2">
-                        <button
-                            onClick={() =>
-                                onCambiarVista(
-                                    vistaActual === "publicadas" ||
-                                        vistaActual === "papelera"
-                                        ? "home"
-                                        : "publicadas"
-                                )
-                            }
-                            className={`${dashboardModeButton} ${
-                                vistaActual === "publicadas" ||
-                                vistaActual === "papelera"
-                                    ? "border-[#d9c5f6] bg-[#f7f1ff] text-[#6f3bc0] shadow-[0_10px_22px_rgba(119,61,190,0.18)] hover:bg-[#f3ebff]"
-                                    : "border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]"
-                            }`}
-                            title={
-                                vistaActual === "publicadas" ||
-                                vistaActual === "papelera"
-                                    ? "Volver al inicio del dashboard"
-                                    : "Ver tus invitaciones publicadas"
-                            }
-                        >
-                            {vistaActual === "publicadas" || vistaActual === "papelera"
-                                ? "Volver al dashboard"
-                                : "Mis invitaciones publicadas"}
-                        </button>
-
-                        {!loadingAdminAccess && canManageSite ? (
-                            <button
-                                onClick={abrirPanelCreativo}
-                                className={`${dashboardModeButton} border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]`}
-                                title="Abrir panel creativo"
-                            >
-                                Panel creativo
-                            </button>
-                        ) : null}
-
-                        {!loadingAdminAccess && isSuperAdmin ? (
-                            <button
-                                onClick={() =>
-                                    onCambiarVista(
-                                        vistaActual === "gestion" ? "home" : "gestion"
-                                    )
-                                }
-                                className={`${dashboardModeButton} ${
-                                    vistaActual === "gestion"
-                                        ? "border-[#d9c5f6] bg-[#f7f1ff] text-[#6f3bc0] shadow-[0_10px_22px_rgba(119,61,190,0.18)] hover:bg-[#f3ebff]"
-                                        : "border-[#e6dbf8] bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-[1px] hover:border-[#d5c6f2] hover:bg-[#faf6ff] hover:text-[#5f3596] hover:shadow-[0_12px_24px_rgba(119,61,190,0.14)]"
-                                }`}
-                                title={
-                                    vistaActual === "gestion"
-                                        ? "Volver al inicio del dashboard"
-                                        : isSuperAdmin
-                                          ? "Abrir tablero de gestion (superadmin)"
-                                          : "Abrir tablero de gestion (admin)"
-                                }
-                            >
-                                {vistaActual === "gestion"
-                                    ? "Volver al dashboard"
-                                    : "Gestion del sitio"}
-                            </button>
-                        ) : null}
-                    </div>
-                </div>
+                <AppHeader
+                    variant="dashboard"
+                    placement="embedded"
+                    logo={{
+                        href: "/dashboard",
+                    }}
+                    actions={dashboardActions}
+                    userMenu={dashboardUserMenu}
+                />
             )}
 
-            {showStandaloneUserMenu ? (
+            {showEditorStandaloneUserMenu ? (
                 <div className="relative ml-2" ref={menuRef}>
                     <div
                         className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-1.5 py-1 transition-all duration-200 ${

@@ -28,7 +28,9 @@ export async function listTemplates({ tipo } = {}) {
   const normalizedType = normalizeInvitationType(tipo);
   const templatesQuery = query(
     collection(db, TEMPLATE_CATALOG_COLLECTION),
-    where("tipo", "==", normalizedType)
+    where("tipo", "==", normalizedType),
+    where("estado", "==", "active"),
+    where("estadoEditorial", "==", "publicada")
   );
   const snapshot = await getDocs(templatesQuery);
 

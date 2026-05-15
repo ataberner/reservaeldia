@@ -22,6 +22,7 @@
 # =========================
 .next/
 .next-dev/
+.next-dev-*/
 out/
 build/
 
@@ -80,5 +81,6 @@ Thumbs.db
 # =========================
 .next/cache
 .next-dev/cache
+.next-dev-*/cache
 *.pack.gz
 trace

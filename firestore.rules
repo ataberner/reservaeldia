@@ -31,6 +31,11 @@ service cloud.firestore {
         (!("estadoEditorial" in resource.data) || resource.data.estadoEditorial == "publicada");
     }
 
+    function isPublishedTemplateCatalogResource() {
+      return resource.data.estado == "active" &&
+        resource.data.estadoEditorial == "publicada";
+    }
+
     match /borradores/{draftId} {
       allow create: if isDraftOwnerOnCreate();
       allow read, delete: if isDraftOwner();
@@ -44,7 +49,7 @@ service cloud.firestore {
     }
 
     match /plantillas_catalog/{templateId} {
-      allow read: if isSignedIn() && isPublishedTemplateResource();
+      allow read: if isPublishedTemplateCatalogResource();
       allow create, update, delete: if false;
     }
 

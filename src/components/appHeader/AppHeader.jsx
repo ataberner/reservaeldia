@@ -32,7 +32,7 @@ function getDefaultCenterNavItems(isAuthenticated) {
       label: isAuthenticated ? "Plantillas" : "Invitaciones",
       href: isAuthenticated
         ? "/dashboard#dashboard-home-template-collections"
-        : "#invitaciones",
+        : "#plantillas",
     },
     {
       key: "how-it-works",

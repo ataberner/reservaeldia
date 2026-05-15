@@ -5,8 +5,8 @@ import { useState, useEffect } from 'react';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
 import AppHeader from '@/components/appHeader/AppHeader';
+import LandingTemplateShowcase from '@/components/landing/LandingTemplateShowcase';
 import landingStyles from './index.module.css';
-import Link from 'next/link';
 import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase";
 import { useRouter } from "next/router";
@@ -132,6 +132,29 @@ const FEATURE_DETAIL_CARDS = [
   },
 ];
 
+const HOW_IT_WORKS_STEPS = [
+  {
+    title: "Elegí un diseño",
+    description:
+      "Explorá nuestro catálogo y seleccioná la plantilla que mejor se adapte al estilo de tu casamiento.",
+  },
+  {
+    title: "Personalizá los detalles",
+    description:
+      "Cargá tu información, sumá fotos y activá solo los módulos que necesites (mapas, regalos, preguntas de asistencia).",
+  },
+  {
+    title: "Enviá",
+    description:
+      "Enviá la invitación por WhatsApp o correo de forma masiva o personalizada.",
+  },
+  {
+    title: "Gestioná la asistencia",
+    description:
+      "Monitoreá las confirmaciones y organizá a tus invitados desde tu panel en tiempo real.",
+  },
+];
+
 
 
 export default function Home() {
@@ -142,6 +165,10 @@ export default function Home() {
   const router = useRouter();
   const showGoogleAuthDebugLogo =
     typeof authNotice === "string" && authNotice.includes("[debug:");
+  const handleUseLandingTemplate = () => {
+    setShowLogin(false);
+    setShowRegister(true);
+  };
 
   useEffect(() => {
     if (auth.currentUser) {
@@ -357,7 +384,7 @@ export default function Home() {
             Tu invitación y la gestión de tus invitados en un solo link.<br />
             Creala y enviala por whatsapp o email en minutos.
           </p>
-          <a className={`landing-hero-cta ${landingStyles.heroCta}`} href="#invitaciones">
+          <a className={`landing-hero-cta ${landingStyles.heroCta}`} href="#plantillas">
             Elegir diseño
           </a>
         </div>
@@ -402,10 +429,40 @@ export default function Home() {
       </section>
 
 
+      <LandingTemplateShowcase
+        tipo="boda"
+        onUseTemplate={handleUseLandingTemplate}
+      />
+
+      <section
+        id="como-funciona"
+        className={landingStyles.howItWorksSection}
+        aria-label="Cómo funciona"
+      >
+        <div className={landingStyles.howItWorksInner}>
+          <ol className={landingStyles.howItWorksGrid}>
+            {HOW_IT_WORKS_STEPS.map((step, index) => (
+              <li key={step.title} className={landingStyles.howItWorksStep}>
+                <span className={landingStyles.howItWorksMarker} aria-hidden="true">
+                  {index + 1}
+                </span>
+                <h3 className={landingStyles.howItWorksStepTitle}>
+                  {step.title}
+                </h3>
+                <p className={landingStyles.howItWorksStepText}>
+                  {step.description}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+
       
 
       <footer className="text-center py-4">
-        <p>&copy; 2025 Reserva el Día - Todos los derechos reservados</p>
+        <p>&copy; 2026 Reserva el Día - Todos los derechos reservados</p>
       </footer>
 
       </main>

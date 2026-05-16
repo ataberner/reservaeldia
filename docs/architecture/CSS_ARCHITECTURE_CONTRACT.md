@@ -12,7 +12,7 @@ The contract is based on the current codebase:
 - Tailwind is enabled through `styles/globals.css` and `tailwind.config.js`.
 - Bootstrap CSS and JS are loaded globally from `src/pages/_document.js`.
 - Most React UI is styled with Tailwind utility classes in `className`.
-- Scoped CSS Modules are used for the shared `AppHeader` visual component and the landing route hero/main styling.
+- Scoped CSS Modules are used for shared visual components such as `AppHeader` and `LandingHero`, plus landing route section styling.
 - Template and public invitation CSS also exists under `plantillas/` and `public/`.
 - Editor/canvas surfaces use a mix of Tailwind classes, inline styles, generated styles, and runtime geometry.
 
@@ -109,7 +109,7 @@ Rules:
 - Component-specific keyframes should live with the component or in the component's module.
 
 Current state:
-- The repo currently uses CSS Modules for `src/components/appHeader/AppHeader.module.css` and `src/pages/index.module.css`.
+- The repo currently uses CSS Modules for shared app UI such as `src/components/appHeader/AppHeader.module.css`, `src/components/landing/LandingHero.module.css`, and route/component styling such as `src/pages/index.module.css`.
 - Introducing additional CSS Modules remains a scoped migration step. Prefer them when the touched surface needs local selectors, pseudo/state styling, or route-owned styles that should not go into global CSS.
 
 Assumption:
@@ -136,7 +136,7 @@ Migration direction:
 ### 5.1 Landing And Dashboard Styling Boundary
 The current landing and dashboard surfaces are intentionally different styling domains:
 
-- Landing route ownership starts at `src/pages/index.js`. The active markup uses Bootstrap classes, route-specific global selectors in `styles/styles.css`, landing/navbar compatibility rules in `styles/globals.css`, and `src/pages/index.module.css` for the current landing hero/main static styles.
+- Landing route ownership starts at `src/pages/index.js`. The active markup uses Bootstrap classes, route-specific global selectors in `styles/styles.css`, landing/navbar compatibility rules in `styles/globals.css`, `src/components/landing/LandingHero.module.css` for the shared hero, and `src/pages/index.module.css` for route main/section styles.
 - Auth modal ownership starts in `src/lib/components/LoginModal.js`, `src/lib/components/RegisterModal.js`, and `src/lib/components/ProfileCompletionModal.js`. The active styles live in `styles/styles.css` and mix app-owned `auth-*` selectors with Bootstrap button/modal classes.
 - Dashboard route ownership starts at `src/pages/dashboard.js` and `src/domain/dashboard/pageShell.js`. Most visible dashboard UI uses Tailwind classes inside React components.
 - Dashboard home ownership starts in `src/components/dashboard/home/`. Card and rail components use Tailwind plus the shared global `.dashboard-invitation-card` hook.
@@ -285,7 +285,7 @@ Allowed:
 - Generic global class names can collide with future app or template styles.
 - Bootstrap class names are used as app styling hooks.
 - Dashboard shell data attributes and `#sidebar-panel` are consumed by editor and modal code, so purely visual shell changes can cause runtime regressions.
-- `.dashboard-invitation-card` is shared by dashboard hero, draft cards, publication cards, and template cards, so changing it is broader than changing one card.
+- `.dashboard-invitation-card` is shared by draft cards, publication cards, and template cards, so changing it is broader than changing one card.
 - Template CSS has duplicate copies and unclear source/artifact ownership.
 - Public/generated CSS can be mistaken for source CSS.
 - Breakpoints are split between Tailwind defaults, Bootstrap compatibility values, and hardcoded media queries.

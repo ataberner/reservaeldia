@@ -1,0 +1,337 @@
+.dashboardPublicationSummary {
+  width: 100%;
+  padding: 80px 0;
+  background: #ffffff;
+  text-align: left;
+}
+
+.dashboardPublicationSummaryInner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 754px);
+  align-items: center;
+  gap: 0px;
+  
+}
+
+.dashboardPublicationSummaryContent {
+  min-width: 0;
+  max-width: 520px;
+  transform: translateY(-55px);
+}
+
+.dashboardPublicationSummaryTitle {
+  margin: 0;
+  font-family: "DM Sans", sans-serif;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 44px;
+  letter-spacing: 0;
+  color: #262626;
+}
+
+.dashboardPublicationSummarySubtitle {
+  margin: 18px 0 0;
+  font-family: "DM Sans", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 28px;
+  color: #262626;
+}
+
+.dashboardPublicationVisual {
+  position: relative;
+  justify-self: end;
+  width: min(100%, 754px);
+  min-height: 354px;
+  transform: translateX(-24px);
+}
+
+.dashboardPublicationCard {
+  position: absolute;
+  top: -20px;
+  left: 190px;
+  z-index: 1;
+  display: flex;
+  width: 564px;
+  height: 329px;
+  min-height: 329px;
+  overflow: visible;
+  border: 1px solid #00000057;
+  background: #ffffff;
+}
+
+.dashboardPublicationPreview {
+  position: absolute;
+  top: 30%;
+  left: 80px;
+  z-index: 2;
+  width: 239px;
+  height: 334px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  background: #ffffff;
+  transform: translateY(-50%);
+}
+
+.dashboardPublicationPreviewImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.dashboardPublicationInfo {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  padding: 48px 28px 24px 158px;
+  text-align: left;
+}
+
+.dashboardPublicationEventTitle {
+  margin: 0;
+  font-family: "DM Sans", sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 23px;
+  color: #262626;
+}
+
+.dashboardPublicationStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.dashboardPublicationStatus {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 33px;
+  background: #ceead7;
+  padding: 2px 12px 4px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 17px;
+  color: #262626;
+}
+
+.dashboardPublicationDate {
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  color: #262626;
+}
+
+.dashboardPublicationStats {
+  display: flex;
+  align-items: flex-start;
+  gap: 44px;
+  margin-top: 28px;
+}
+
+.dashboardPublicationStat {
+  display: flex;
+  min-width: 82px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboardPublicationStatNumber {
+  font-family: "DM Sans", sans-serif;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 44px;
+  color: #262626;
+}
+
+.dashboardPublicationStatLabel {
+  font-family: "DM Sans", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.dashboardPublicationStatLabelAttend {
+  color: #692b9a;
+}
+
+.dashboardPublicationStatLabelDecline {
+  color: #d14d4d;
+}
+
+.dashboardPublicationActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 0;
+}
+
+.dashboardPublicationPrimaryAction,
+.dashboardPublicationSecondaryAction {
+  display: inline-flex;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 33px;
+  padding: 12px 30px 14px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.dashboardPublicationPrimaryAction {
+  border: 1px solid #0c0c0c;
+  background: #0c0c0c;
+  color: #ffffff;
+}
+
+.dashboardPublicationSecondaryAction {
+  min-height: 52px;
+  border: 1px solid rgba(0, 0, 0, 0.34);
+  background: transparent;
+  color: #262626;
+}
+
+.dashboardPublicationPrimaryAction:hover,
+.dashboardPublicationSecondaryAction:hover {
+  transform: translateY(-1px);
+}
+
+.dashboardPublicationPrimaryAction:focus-visible,
+.dashboardPublicationSecondaryAction:focus-visible {
+  outline: 2px solid #692b9a;
+  outline-offset: 3px;
+}
+
+@media (max-width: 1180px) {
+  .dashboardPublicationSummaryInner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 630px);
+    gap: 32px;
+  }
+
+  .dashboardPublicationVisual {
+    width: min(100%, 630px);
+    min-height: 318px;
+  }
+
+  .dashboardPublicationPreview {
+    width: 200px;
+    height: 300px;
+  }
+
+  .dashboardPublicationCard {
+    top: 4px;
+    left: 110px;
+    width: 520px;
+    height: 292px;
+    min-height: 292px;
+  }
+
+  .dashboardPublicationInfo {
+    padding: 24px 22px 22px 128px;
+  }
+
+  .dashboardPublicationStats {
+    gap: 30px;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboardPublicationSummaryInner {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .dashboardPublicationSummaryContent {
+    max-width: none;
+    transform: none;
+  }
+
+  .dashboardPublicationSummaryTitle {
+    max-width: 420px;
+    font-size: 32px;
+    line-height: 36px;
+    letter-spacing: 0;
+  }
+
+  .dashboardPublicationSummarySubtitle {
+    margin-top: 12px;
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .dashboardPublicationVisual {
+    display: flex;
+    width: 100%;
+    min-height: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    transform: none;
+  }
+
+  .dashboardPublicationPreview {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: min(239px, 72vw);
+    height: auto;
+    aspect-ratio: 239 / 334;
+    transform: none;
+  }
+
+  .dashboardPublicationCard {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    height: auto;
+    max-width: none;
+    min-height: 0;
+  }
+
+  .dashboardPublicationInfo {
+    padding: 22px;
+  }
+
+  .dashboardPublicationStats {
+    gap: 32px;
+  }
+
+  .dashboardPublicationActions {
+    margin-top: 26px;
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 440px) {
+  .dashboardPublicationSummaryTitle {
+    font-size: 30px;
+    line-height: 34px;
+  }
+
+  .dashboardPublicationStats {
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .dashboardPublicationPrimaryAction,
+  .dashboardPublicationSecondaryAction {
+    width: 100%;
+  }
+}

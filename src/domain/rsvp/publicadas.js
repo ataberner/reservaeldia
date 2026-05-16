@@ -1,4 +1,4 @@
-﻿import { normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { normalizeRsvpConfig } from "./config.js";
 
 const FALLBACK_QUESTION_MAP = Object.freeze({
   full_name: { id: "full_name", label: "Invitado", type: "short_text" },
@@ -361,4 +361,23 @@ export function computeSummaryCards(rows = [], snapshot = null) {
 export function computeConfirmedGuestsFromRaw(record) {
   const adapted = adaptRsvpResponse(record, null);
   return adapted.metrics.confirmedGuests;
+}
+
+export function computeAttendanceResponseSummary(rows = []) {
+  let attendingResponses = 0;
+  let declinedResponses = 0;
+
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const attendance =
+      row?.metrics && typeof row.metrics === "object"
+        ? row.metrics.attendance
+        : null;
+    if (attendance === "yes") attendingResponses += 1;
+    if (attendance === "no") declinedResponses += 1;
+  });
+
+  return {
+    attendingResponses,
+    declinedResponses,
+  };
 }

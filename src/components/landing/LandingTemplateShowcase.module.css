@@ -1,7 +1,7 @@
 .root {
   box-sizing: border-box;
   width: 100%;
-  padding: 36px max(20px, calc((100vw - 1440px) / 2)) 128px;
+  padding: 36px max(20px, calc((100vw - 1440px) / 2)) 88px;
   background: #f8f7f9;
   color: #262626;
   text-align: left;

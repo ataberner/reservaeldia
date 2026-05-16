@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import ConfirmDeleteItemModal from "@/components/ConfirmDeleteItemModal";
 import ResolvedPreviewImage from "@/components/publications/ResolvedPreviewImage";
+import { copyPublicationUrlToClipboard } from "@/domain/publications/share";
 import {
   adaptRsvpResponse,
   buildColumns,
@@ -104,7 +105,7 @@ function buildHistoricSummaryCards(summary) {
   ];
 }
 
-export default function PublicadasGrid({ usuario }) {
+export default function PublicadasGrid({ usuario, focusPublicSlug = "" }) {
   const [items, setItems] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -115,6 +116,7 @@ export default function PublicadasGrid({ usuario }) {
   const [refreshTick, setRefreshTick] = useState(0);
 
   const [publicacionIdSeleccionada, setPublicacionIdSeleccionada] = useState(null);
+  const consumedFocusPublicSlugRef = useRef("");
   const [rsvps, setRsvps] = useState([]);
   const [cargandoRsvps, setCargandoRsvps] = useState(false);
   const [errorRsvps, setErrorRsvps] = useState("");
@@ -283,6 +285,21 @@ export default function PublicadasGrid({ usuario }) {
       setPublicacionIdSeleccionada(filas[0].id);
     }
   }, [filas, publicacionIdSeleccionada]);
+
+  useEffect(() => {
+    const safeFocusPublicSlug = String(focusPublicSlug || "").trim();
+    if (!safeFocusPublicSlug) return;
+    if (consumedFocusPublicSlugRef.current === safeFocusPublicSlug) return;
+
+    const focusedRow = filas.find(
+      (fila) =>
+        fila.publicSlug === safeFocusPublicSlug || fila.id === safeFocusPublicSlug
+    );
+    if (!focusedRow?.id) return;
+
+    consumedFocusPublicSlugRef.current = safeFocusPublicSlug;
+    setPublicacionIdSeleccionada(focusedRow.id);
+  }, [filas, focusPublicSlug]);
 
   useEffect(() => {
     setDetalleId(null);
@@ -913,7 +930,7 @@ function EstadoPill({ valor }) {
 
 async function copiar(texto) {
   try {
-    await navigator.clipboard.writeText(texto);
+    await copyPublicationUrlToClipboard(texto);
   } catch (error) {
     console.warn("No se pudo copiar al portapapeles", error);
   }

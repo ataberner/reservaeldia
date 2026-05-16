@@ -125,6 +125,7 @@ export default function Dashboard() {
   const [zoom, setZoom] = useState(0.8);
   const [historialExternos, setHistorialExternos] = useState([]);
   const [futurosExternos, setFuturosExternos] = useState([]);
+  const [focusedPublicSlug, setFocusedPublicSlug] = useState("");
   const pageViewState = buildDashboardPageViewState({
     slugInvitacion,
     vista,
@@ -156,6 +157,13 @@ export default function Dashboard() {
   });
   const toggleZoom = () => {
     setZoom((prev) => (prev === 1 ? 0.8 : 1));
+  };
+  const handleOpenPublicationResponses = (publicSlug) => {
+    const safePublicSlug = String(publicSlug || "").trim();
+    if (safePublicSlug) {
+      setFocusedPublicSlug(safePublicSlug);
+    }
+    setVista("publicadas");
   };
   const layoutProps = buildDashboardLayoutProps({
     slugInvitacion,
@@ -295,11 +303,11 @@ export default function Dashboard() {
 
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
       {pageViewState.isHomeView && (
-        <div className="relative w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+        <div className="relative w-full bg-white">
           {shouldRenderHomeStartupLoader && (
             <div
               className={
-                "absolute inset-0 z-20 flex items-start justify-center rounded-2xl bg-gradient-to-b from-gray-50/80 via-gray-50/55 to-gray-50/30 pt-20 backdrop-blur-[1.5px] transition-all duration-300 ease-out " +
+                "absolute inset-0 z-20 flex items-start justify-center bg-gradient-to-b from-white/85 via-white/65 to-white/35 pt-20 backdrop-blur-[1.5px] transition-all duration-300 ease-out " +
                 (isHomeStartupLoaderExiting
                   ? "pointer-events-none opacity-0 backdrop-blur-0"
                   : "opacity-100")
@@ -334,6 +342,7 @@ export default function Dashboard() {
             tipoInvitacion={tipoSeleccionado}
             isSuperAdmin={isSuperAdmin}
             onSelectTemplate={openTemplateModal}
+            onOpenPublicationResponses={handleOpenPublicationResponses}
             onReadyChange={handleHomeViewReadyChange}
           />
           </div>
@@ -343,7 +352,10 @@ export default function Dashboard() {
       {/* PUBLISHED view */}
       {pageViewState.showPublicationsView && (
         <div className="w-full px-4 pb-8">
-          <PublicadasGrid usuario={usuario} />
+          <PublicadasGrid
+            usuario={usuario}
+            focusPublicSlug={focusedPublicSlug}
+          />
         </div>
       )}
 

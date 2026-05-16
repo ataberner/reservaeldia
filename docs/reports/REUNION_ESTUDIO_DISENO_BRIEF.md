@@ -415,7 +415,7 @@ Si el estudio o alguien de tu equipo te pide "donde esta eso", estas son las ref
 - Register modal: `src/lib/components/RegisterModal.js`
 - Completar perfil: `src/lib/components/ProfileCompletionModal.js`
 - Home del dashboard: `src/components/dashboard/home/DashboardHomeView.jsx`
-- Hero del dashboard: `src/components/dashboard/home/DashboardHomeHero.jsx`
+- Hero compartido landing/dashboard: `src/components/landing/LandingHero.jsx`
 - Rail de plantillas: `src/components/dashboard/home/DashboardTemplateRailSection.jsx`
 - Card de plantilla: `src/components/templates/DashboardTemplateCard.jsx`
 - Modal de preview de plantilla: `src/components/TemplatePreviewModal.jsx`

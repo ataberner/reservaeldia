@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
 import AppHeader from '@/components/appHeader/AppHeader';
+import LandingHero from '@/components/landing/LandingHero';
 import LandingTemplateShowcase from '@/components/landing/LandingTemplateShowcase';
 import landingStyles from './index.module.css';
 import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
@@ -81,25 +82,6 @@ function getAuthNoticeMessage(code) {
 
   return "";
 }
-
-const HERO_CORNER_MARKERS = [
-  [
-    "top-left",
-    `hero-corner hero-corner-top-left ${landingStyles.heroCorner} ${landingStyles.heroCornerTopLeft}`,
-  ],
-  [
-    "top-right",
-    `hero-corner hero-corner-top-right ${landingStyles.heroCorner} ${landingStyles.heroCornerTopRight}`,
-  ],
-  [
-    "bottom-left",
-    `hero-corner hero-corner-bottom-left ${landingStyles.heroCorner} ${landingStyles.heroCornerBottomLeft}`,
-  ],
-  [
-    "bottom-right",
-    `hero-corner hero-corner-bottom-right ${landingStyles.heroCorner} ${landingStyles.heroCornerBottomRight}`,
-  ],
-];
 
 const FEATURE_DETAIL_CARDS = [
   {
@@ -386,34 +368,7 @@ export default function Home() {
       )}
 
       {/* Hero principal */}
-      <section className={`hero ${landingStyles.hero}`}>
-        <div className={`hero-content ${landingStyles.heroContent}`}>
-          {HERO_CORNER_MARKERS.map(([key, className]) => (
-            <span key={key} className={className} aria-hidden="true" />
-          ))}
-          <h1 className={landingStyles.heroTitle}>
-            Resolvé la{' '}
-            <span className="landing-hero-title-gradient">
-              invitación de tu
-            </span>
-            <br />
-            <span className="landing-hero-title-gradient">
-              casamiento
-            </span>{' '}
-            hoy
-          </h1>
-          <p className={landingStyles.heroSubtitle}>
-            Tu invitación y la gestión de tus invitados en un solo link.<br />
-            Creala y enviala por whatsapp o email en minutos.
-          </p>
-          <a
-            className={`landing-hero-cta ${landingStyles.heroCta}`}
-            href={LANDING_TEMPLATES_ANCHOR}
-          >
-            Elegir diseño
-          </a>
-        </div>
-      </section>
+      <LandingHero ctaHref={LANDING_TEMPLATES_ANCHOR} />
 
 
       <section

@@ -16,6 +16,10 @@ This document is an ownership map for the current implementation. It does not au
 
 - `src/pages/index.js`
 - `src/pages/index.module.css`
+- `src/components/landing/LandingHero.jsx`
+- `src/components/landing/LandingHero.module.css`
+- `src/components/dashboard/home/DashboardPublicationSummarySection.jsx`
+- `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
 - `src/components/appHeader/AppHeader.jsx`
 - `src/components/appHeader/AppHeader.module.css`
 - `src/pages/dashboard.js`
@@ -44,7 +48,9 @@ Facts:
 - `src/pages/_document.js` loads Bootstrap CSS/JS globally from CDN and also loads several Google Font families globally.
 - `tailwind.config.js` scans `./src/**/*.{js,ts,jsx,tsx}`, uses `tailwind-scrollbar-hide`, and currently has an empty `theme.extend`.
 - `src/components/appHeader/AppHeader.module.css` is the scoped style owner for the shared landing/dashboard visual header.
-- `src/pages/index.module.css` is the scoped style owner for the current landing main offset and hero styles.
+- `src/components/landing/LandingHero.module.css` is the scoped style owner for the shared landing/dashboard hero.
+- `src/components/dashboard/home/DashboardPublicationSummarySection.module.css` is the scoped style owner for the dashboard latest-publication summary below the hero.
+- `src/pages/index.module.css` is the scoped style owner for the current landing main offset and remaining landing section styles.
 - Phase 2 introduced `src/components/dashboard/dashboardStyleClasses.js` with exact current class recipes only. It does not define new token values or a design system.
 - `DashboardHeader.jsx` remains the fixed header runtime shell owner and renders `CanvasEditorHeader.jsx` for editor-mode header content when a canvas/editor session is active.
 - `AppHeader.jsx` owns shared visual header content for public landing and authenticated non-editor dashboard chrome only. It does not own editor runtime data attributes, header height measurement, shell layout, or editor selection preservation contracts.
@@ -62,9 +68,9 @@ Assumptions:
 
 | Route/surface | Owner | Styling sources | Notes |
 | --- | --- | --- | --- |
-| Landing `/` | `src/pages/index.js` plus `src/components/appHeader/AppHeader.jsx` | `AppHeader.module.css` for the shared header; `src/pages/index.module.css` for current hero/main styles; Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | Header visual content is extracted to `AppHeader`. Hero styles are now route-scoped. Invitation examples, features, how-it-works, final CTA, footer, auth notice, and modal entry remain in the route file. |
+| Landing `/` | `src/pages/index.js` plus `src/components/appHeader/AppHeader.jsx` and `src/components/landing/LandingHero.jsx` | `AppHeader.module.css` for the shared header; `LandingHero.module.css` for the shared hero; `src/pages/index.module.css`, Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | Header visual content is extracted to `AppHeader`. Hero visual content is extracted to `LandingHero`. Invitation examples, features, how-it-works, final CTA, footer, auth notice, and modal entry remain in the route file. |
 | Dashboard `/dashboard` | `src/pages/dashboard.js` plus `src/domain/dashboard/pageShell.js` | Tailwind classes in JSX, dashboard shell props, shared global dashboard card hook | The route coordinates dashboard home, editor mount, publications/trash/admin views, preview modal, and checkout modal. |
-| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | Tailwind classes in JSX plus `.dashboard-invitation-card*` | Owns the home hero, drafts rail, publications rail, template sections, empty/error states, and horizontal rails. |
+| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; Tailwind classes in JSX plus `.dashboard-invitation-card*` for rails/cards | Owns placement of the shared hero, latest-publication summary, drafts rail, publications rail, template sections, empty/error states, and horizontal rails. |
 | Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `AppHeader.jsx`, `CanvasEditorHeader.jsx`, `DashboardSidebar.jsx` | Tailwind shell classes, `AppHeader.module.css` for non-editor dashboard header visuals, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. `DashboardHeader.jsx` owns the runtime shell; `AppHeader.jsx` owns non-editor dashboard header visuals; `CanvasEditorHeader.jsx` owns only editor header content. |
 | Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `styles/styles.css`, Bootstrap button/modal classes, small inline styles | These modals use global `auth-*` styles plus generic `.modal-content`, `.close-btn`, `.error`, and Bootstrap `.btn-*`. |
 
@@ -72,7 +78,7 @@ Assumptions:
 
 | Component/file | Current role | Styling ownership | Redesign note |
 | --- | --- | --- | --- |
-| `src/pages/index.js` | Landing page structure and auth modal triggers; passes public header configuration to `AppHeader` | `src/pages/index.module.css` for current hero/main styles; Bootstrap + global landing selectors for remaining sections | Header markup is no longer inline here. The current hero has a landing-owned CSS boundary; remaining sections still need migration out of globals later. |
+| `src/pages/index.js` | Landing page structure and auth modal triggers; passes public header configuration to `AppHeader` and renders `LandingHero` | `LandingHero.module.css` for the shared hero; `src/pages/index.module.css` for current main/section styles; Bootstrap + global landing selectors for remaining sections | Header and hero markup are no longer inline here. Remaining sections still need migration out of globals later. |
 | `src/components/appHeader/AppHeader.jsx` | Shared visual header for public landing and authenticated non-editor dashboard chrome | `src/components/appHeader/AppHeader.module.css` | Visual-only owner. Does not own editor runtime attributes, header measurement, scroll roots, sidebar geometry, or preview/publish behavior. |
 | `src/pages/dashboard.js` | Dashboard route orchestrator and view composition | Tailwind wrappers and state-dependent view containers | Avoid broad visual rewrites here; prefer child-component ownership later. |
 | `src/domain/dashboard/pageShell.js` | Dashboard view/layout prop derivation | No direct CSS; controls shell props such as `modoSelector`, `ocultarSidebar`, and `lockMainScroll` | Behavior boundary. Do not change during visual cleanup unless preserving exact view behavior. |
@@ -80,8 +86,8 @@ Assumptions:
 | `DashboardHeader.jsx` | Fixed measured dashboard/editor header shell and editor header mounting point; passes non-editor dashboard header config to `AppHeader` | Tailwind shell classes and runtime header-height variable; non-editor visual content comes from `AppHeader.module.css` | Runtime-critical hook owner. Keeps `[data-dashboard-header]`, `[data-preserve-canvas-selection]`, header refs, and measured height ownership. |
 | `CanvasEditorHeader.jsx` | Editor/canvas header visual content, editor action buttons, document name controls, mobile editor options sheet | Tailwind classes and file-local editor header class recipes | Editor header content owner only. Safe future redesign target as long as shell hooks and callbacks remain stable. |
 | `DashboardSidebar.jsx` | Editor tool rail, mobile toolbar, sidebar panel | Tailwind classes, inline panel/mobile geometry, `[data-dashboard-sidebar]`, `#sidebar-panel` | Runtime-critical hook owner. |
-| `DashboardHomeHero.jsx` | Dashboard home hero CTA | Tailwind classes plus `.dashboard-invitation-card` | Shares global card motion with actual cards; treat as coupled. |
-| `DashboardHeroCelebrationVisual.jsx` | Hero visual artwork | Tailwind classes and component-local `style jsx` keyframes | Safe future scoped-animation candidate, but no migration in Phase 2. |
+| `src/components/landing/LandingHero.jsx` | Shared landing/dashboard hero CTA | `src/components/landing/LandingHero.module.css` plus legacy landing hook class names retained on DOM | Shared visual primitive for the landing hero and dashboard home hero placement. |
+| `DashboardPublicationSummarySection.jsx` | Dashboard home summary for the latest active publication | `src/components/dashboard/home/DashboardPublicationSummarySection.module.css` | Scoped app UI owner. Avoids `.dashboard-invitation-card*`, global CSS, editor hooks, preview/publish, and generated invitation CSS. |
 | `DashboardSectionShell.jsx` | Reusable dashboard section panel | Tailwind classes | Candidate reusable UI primitive for future cleanup. |
 | `HorizontalRail.jsx` / `InfiniteTemplateRail.jsx` | Horizontal scroll rails | Tailwind classes and wheel-to-horizontal behavior | Visual cleanup must preserve wheel behavior and responsive overflow. |
 | `DashboardDraftRailSection.jsx` | Draft cards rail | Tailwind classes plus `.dashboard-invitation-card*` | Card visual changes affect shared card hook. |
@@ -96,8 +102,8 @@ Assumptions:
 
 Current route-owned styling is incomplete:
 
-- Landing header styles are owned by `src/components/appHeader/AppHeader.module.css`; current landing hero/main static styles are owned by `src/pages/index.module.css`; the remaining landing route styles are functionally route-owned by `src/pages/index.js`, but still physically live in app-global CSS.
-- Dashboard home styles are mostly component-owned Tailwind class strings, with one shared global card hook.
+- Landing header styles are owned by `src/components/appHeader/AppHeader.module.css`; shared landing/dashboard hero styles are owned by `src/components/landing/LandingHero.module.css`; current landing main/section static styles are owned by `src/pages/index.module.css`; the remaining landing route styles are functionally route-owned by `src/pages/index.js`, but still physically live in app-global CSS.
+- Dashboard home styles are mostly component-owned Tailwind class strings, with one shared global card hook. The latest-publication summary is scoped to `DashboardPublicationSummarySection.module.css` and does not use the shared card hook.
 - Dashboard shell styles are component-owned Tailwind/inline runtime geometry plus runtime selectors consumed by editor/modal systems.
 - The authenticated non-editor dashboard header visual content is owned by `AppHeader.module.css`; the fixed shell, height measurement, and runtime attributes remain in `DashboardHeader.jsx`.
 
@@ -154,7 +160,7 @@ These hooks must remain stable during landing/dashboard cleanup unless every con
 | `#sidebar-panel` | `DashboardSidebar.jsx` | `selectionPreservationPolicy.js`, `FloatingTextToolbarView.jsx` | Floating text toolbar and selection preservation use the panel as a geometry/preserve target. |
 | `--dashboard-header-height` | `DashboardHeader.jsx` writes it; `DashboardLayout.jsx`, `DashboardSidebar.jsx`, and editor overlay code read it | Shell layout, sidebar panel sizing, floating toolbar top offset, option button positioning | Incorrect values can break main content height, sidebar height, and editor toolbar positions. |
 | `[data-preserve-canvas-selection="true"]` | Dashboard header and several editor/color/tool UI components | `selectionPreservationPolicy.js` | Clicks inside these UI islands must not clear canvas selection. |
-| `.dashboard-invitation-card*` | `styles/globals.css` | Dashboard hero, draft cards, publication cards, template card shell | Shared card motion/media/title/action styles; visual edits are cross-surface. |
+| `.dashboard-invitation-card*` | `styles/globals.css` | Draft cards, publication cards, template card shell | Shared card motion/media/title/action styles; visual edits are cross-surface. |
 
 ## 8. Bootstrap Dependencies
 
@@ -193,7 +199,7 @@ Phase 2 cleanup should preserve exact current values before introducing any visu
 
 Current inline styles observed:
 
-- Landing hero/main static styles live in `src/pages/index.module.css` after the scoped extraction. Remaining landing section styles still rely on app-global CSS.
+- Shared landing/dashboard hero static styles live in `src/components/landing/LandingHero.module.css`; landing main/section styles live in `src/pages/index.module.css`. Remaining landing section styles still rely on app-global CSS.
 - Auth modals use small static inline styles for Google button spinner placement and simple spacing.
 - `DashboardLayout.jsx` uses inline styles for measured main area margin/height/top/overflow/touch behavior.
 - `DashboardHeader.jsx` writes `--dashboard-header-height` on the document root and uses static inline avatar background color.
@@ -215,7 +221,7 @@ Do not change these during landing/dashboard visual preparation without a separa
 - `[data-dashboard-header]`, `[data-dashboard-sidebar]`, `[data-dashboard-scroll-root]`, `#sidebar-panel`, `[data-preserve-canvas-selection]`, and `--dashboard-header-height`.
 - Body/html overflow, root height, dashboard scroll root locking, or modal scroll locking without manual editor/modal checks.
 - Global Bootstrap class overrides such as `.btn-primary`, `.navbar-*`, `.modal-content`, `.container`, `.row`, `.col-*`, `.d-flex`.
-- `.dashboard-invitation-card*` unless the change is intended to affect all documented dashboard card/hero/template-card consumers.
+- `.dashboard-invitation-card*` unless the change is intended to affect all documented dashboard card/template-card consumers.
 
 ## 12. Redesign-Safe Zones
 
@@ -299,7 +305,7 @@ This is an inventory of current repeated values only. It does not create new bra
 
 | Value | Current use | Current owner/status |
 | --- | --- | --- |
-| `#773dbe` | `--secondary-color`, landing register/primary button color, dashboard avatar fallback, dashboard hero gradient | Existing app purple value; no Tailwind token owner. |
+| `#773dbe` | `--secondary-color`, landing register/primary button color, dashboard avatar fallback, dashboard controls | Existing app purple value; no Tailwind token owner. |
 | `#6f3bc0` | Dashboard focus rings, card action text, spinner top border, section eyebrow text, template rail badges | Existing dashboard accent; repeated as Tailwind arbitrary value. |
 | `#5f3596` | Dashboard sidebar labels and sidebar hover text | Existing dashboard sidebar accent. |
 | `#503d84`, `#3e2e6c`, `#4b2990` | Landing/auth/session button and legacy dashboard candidates | Legacy global CSS values in `styles/styles.css`. |
@@ -386,7 +392,7 @@ Current landing route-specific styles are partially physically global:
 - Route structure and behavior live in `src/pages/index.js`.
 - Legacy landing navbar/section CSS lives primarily in `styles/styles.css`.
 - Legacy landing mobile navbar compatibility also lives in `styles/globals.css`, but the extracted `AppHeader` does not use those hooks.
-- The hero background/layout/color now lives in `src/pages/index.module.css`.
+- The hero background/layout/color now lives in `src/components/landing/LandingHero.module.css`.
 - Bootstrap classes such as `container`, `row`, `col-*`, `d-flex`, `btn`, and `btn-primary` are still active in the landing markup outside the extracted header.
 
 Future target boundary:
@@ -440,7 +446,7 @@ Current audit:
 - `.dashboard-invitation-card` and child hooks live in `styles/globals.css`.
 - `dashboardStyleClasses.js` centralizes the exact shared shell/media/title/error class recipes introduced in Phase 2.
 - `DashboardDraftRailSection.jsx`, `DashboardPublicationRailSection.jsx`, and `TemplateCardShell.jsx` use the shared constants.
-- `DashboardHomeHero.jsx` uses `.dashboard-invitation-card` directly as a hero shell variant.
+- The dashboard home hero now uses the shared `LandingHero` primitive and no longer consumes `.dashboard-invitation-card` as a hero shell variant.
 - `TemplateCardShell.jsx` is also used outside the dashboard home rail path, including template/admin surfaces that render template cards.
 
 Decision:

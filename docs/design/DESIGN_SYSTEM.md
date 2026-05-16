@@ -26,7 +26,7 @@ Current implementation summary:
 - App global CSS is imported from `src/pages/_app.js`: `styles/globals.css` and `styles/styles.css`.
 - Bootstrap CSS and JS are loaded globally from `src/pages/_document.js`.
 - Tailwind is enabled, but `tailwind.config.js` has an empty `theme.extend`; there are no Tailwind design tokens yet.
-- The only CSS Module currently found is `src/components/appHeader/AppHeader.module.css`.
+- Shared app UI CSS Modules include `src/components/appHeader/AppHeader.module.css` and `src/components/landing/LandingHero.module.css`; route/component CSS Modules also exist for landing surfaces.
 - `styles/styles.css` has legacy CSS custom properties such as `--primary-color: #d7b8e8` and `--secondary-color: #773dbe`; these are not the Figma brand tokens.
 - Dashboard UI is mostly Tailwind utilities plus shared class constants in `src/components/dashboard/dashboardStyleClasses.js`.
 - Landing/auth still mix Bootstrap classes, global CSS, app-owned selectors, and static inline styles.
@@ -313,7 +313,7 @@ Do not modify these as part of design-system documentation or low-risk token pla
 - Public invitation route `/i/{slug}` and generated `publicadas/{slug}/index.html` artifacts.
 - Template source CSS and public/static invitation CSS unless the task is specifically about template source ownership.
 - `styles/styles.css` body/html overflow, height, or global typography without landing, auth, dashboard, editor shell, modal, preview, and publish checks.
-- `.dashboard-invitation-card*` unless every dashboard hero, draft card, publication card, and template card consumer is intentionally included.
+- `.dashboard-invitation-card*` unless every draft card, publication card, and template card consumer is intentionally included.
 
 ## 12. Current Figma Mismatches To Resolve Later
 
@@ -327,7 +327,7 @@ Known mismatches between the supplied Figma style and current implementation:
 - Typography: Figma uses `DM Sans` and `Source Sans 3`; current global body ownership conflicts between Roboto and Montserrat, with Poppins in auth and Tailwind defaults in many dashboard components.
 - Font loading: current Google Fonts link does not load all required `DM Sans` weights for the Figma hierarchy.
 - Iconography: Figma says Font Awesome Regular for icons only, while the app currently uses `lucide-react`, `react-icons/fa`, and local Phosphor SVG assets.
-- Gradient: the Figma brand gradient exists in the landing hero text, but dashboard/auth use other purple gradients.
+- Gradient: the Figma brand gradient exists in the shared landing/dashboard hero text, but auth and several dashboard controls still use other purple gradients.
 - CSS systems: Bootstrap, Tailwind, CSS Modules, global CSS, inline styles, template CSS, and generated/public CSS are mixed. The CSS architecture contract defines how to reduce that safely.
 
 ## 13. Future Implementation Steps

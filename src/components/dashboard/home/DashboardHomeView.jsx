@@ -125,11 +125,12 @@ export default function DashboardHomeView({
         <LandingHowItWorks id="dashboard-como-funciona" />
       </div>
 
-      <LandingPricing id="dashboard-precios" />
+      <LandingPricing id="dashboard-precios" compactBottom />
 
       <LandingFeatureDetails
         titleId="dashboard-funcionalidades-title"
         blendWithShareBackground
+        compactTop
       />
 
       <LandingShareSection

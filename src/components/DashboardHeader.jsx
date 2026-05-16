@@ -701,10 +701,10 @@ export default function DashboardHeader(props) {
             ref={headerRef}
             data-dashboard-header="true"
             data-preserve-canvas-selection="true"
-            className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b bg-white py-2 ${
+            className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-white py-2 ${
                 slugInvitacion
-                    ? "border-gray-200 px-3 shadow-sm md:px-4"
-                    : "border-slate-100 px-0 shadow-none"
+                    ? "border-b border-gray-200 px-3 shadow-sm md:px-4"
+                    : "border-b-0 px-0 shadow-none"
             }`}
         >
             {slugInvitacion ? (

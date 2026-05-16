@@ -1,6 +1,6 @@
 .featureDetails {
   box-sizing: border-box;
-  --feature-details-share-split-y: 383px;
+  --feature-details-share-split-y: 351px;
   width: 100%;
   padding: 59px max(20px, calc((100vw - 1264px) / 2)) 96px;
   background: #ffffff;
@@ -8,6 +8,10 @@
   text-align: left;
   text-shadow: none;
   transition: none;
+}
+
+.featureDetailsCompactTop {
+  padding-top: 28px;
 }
 
 .featureDetailsShareBlend {
@@ -130,6 +134,10 @@
     --feature-details-share-split-y: 270px;
     padding-top: 48px;
     padding-bottom: 72px;
+  }
+
+  .featureDetailsCompactTop {
+    padding-top: 36px;
   }
 
   .featureDetailsTitle {

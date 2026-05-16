@@ -12,6 +12,10 @@
   transition: none;
 }
 
+.pricingSectionCompactBottom {
+  padding-bottom: 56px;
+}
+
 .pricingSection *,
 .pricingSection *::before,
 .pricingSection *::after {
@@ -168,6 +172,10 @@
     padding-right: 20px;
     padding-bottom: 80px;
     padding-left: 20px;
+  }
+
+  .pricingSectionCompactBottom {
+    padding-bottom: 48px;
   }
 
   .pricingCard {

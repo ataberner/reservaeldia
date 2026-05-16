@@ -34,10 +34,15 @@ const FEATURE_DETAIL_CARDS = [
 export default function LandingFeatureDetails({
   titleId = "landing-feature-details-title",
   blendWithShareBackground = false,
+  compactTop = false,
 }) {
-  const sectionClassName = blendWithShareBackground
-    ? `${styles.featureDetails} ${styles.featureDetailsShareBlend}`
-    : styles.featureDetails;
+  const sectionClassName = [
+    styles.featureDetails,
+    blendWithShareBackground ? styles.featureDetailsShareBlend : "",
+    compactTop ? styles.featureDetailsCompactTop : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <section

@@ -6,13 +6,16 @@ const PRICING_BENEFITS = [
   "Pagás solo al publicar",
 ];
 
-export default function LandingPricing({ id = "precios" }) {
+export default function LandingPricing({ id = "precios", compactBottom = false }) {
   const titleId = id === "precios" ? "landing-pricing-title" : `${id}-title`;
+  const sectionClassName = compactBottom
+    ? `${styles.pricingSection} ${styles.pricingSectionCompactBottom}`
+    : styles.pricingSection;
 
   return (
     <section
       id={id || undefined}
-      className={styles.pricingSection}
+      className={sectionClassName}
       aria-labelledby={titleId}
     >
       <article className={styles.pricingCard}>

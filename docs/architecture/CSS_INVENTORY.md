@@ -7,6 +7,7 @@ Scope:
 - `styles/styles.css`
 - `src/components/appHeader/AppHeader.module.css`
 - `src/components/landing/LandingHero.module.css`
+- `src/components/landing/LandingTemplateShowcase.module.css`
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
 - `src/pages/index.module.css`
 - `src/components/dashboard/dashboardStyleClasses.js`
@@ -22,6 +23,7 @@ The current CSS system has two app-level global files:
 - `styles/styles.css`: legacy global stylesheet containing base reset, legacy layout/sidebar rules, auth modal styles, Bootstrap overrides, landing page sections, inactive/unused section candidates, and route-specific selectors.
 - `src/components/appHeader/AppHeader.module.css`: component-scoped visual header styles for the landing header and authenticated non-editor dashboard header.
 - `src/components/landing/LandingHero.module.css`: component-scoped shared landing/dashboard hero styles, including the current hero layout, white hero box, corner markers, title/subtitle typography, and hero CTA states.
+- `src/components/landing/LandingTemplateShowcase.module.css`: component-scoped landing template carousel styles now reused by the dashboard home carousel block through `LandingTemplateCarouselPrimitives.jsx`.
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`: component-scoped dashboard home publication summary styles. This owns the premium latest-publication summary below the shared hero and does not use global dashboard card hooks.
 - `src/pages/index.module.css`: route-scoped landing main and remaining landing section styles.
 - `src/components/dashboard/dashboardStyleClasses.js`: exact current Tailwind/class recipes shared by dashboard invitation cards and dashboard home error panels. It is not a design system and does not introduce new values.
@@ -51,8 +53,8 @@ This section records the current landing/dashboard ownership map after Phase 2 c
 | Dashboard header shell | `src/components/DashboardHeader.jsx` | Tailwind in JSX for the fixed runtime shell plus runtime `--dashboard-header-height`; renders `AppHeader.module.css` header content in non-editor dashboard mode | Owns `[data-dashboard-header="true"]`, `[data-preserve-canvas-selection="true"]`, header measurement, and the editor-safe shell. Renders `CanvasEditorHeader.jsx` for editor-mode content and `AppHeader.jsx` for non-editor dashboard visual content. |
 | Canvas editor header content | `src/components/editor/header/CanvasEditorHeader.jsx` | Tailwind in JSX plus file-local editor header class recipes | Owns editor-specific header content/actions only. Does not own header refs, runtime data attributes, height measurement, or `--dashboard-header-height`. |
 | Dashboard sidebar | `src/components/DashboardSidebar.jsx` | Tailwind in JSX plus inline panel/mobile geometry styles | Owns `[data-dashboard-sidebar="true"]`, `#sidebar-panel`, and sidebar panel position/height. |
-| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; Tailwind in JSX plus shared `.dashboard-invitation-card` global hook for rails/cards | Composes shared hero, latest-publication summary, draft rail, publication rail, template rails, and section shells. |
-| Dashboard cards/rails | `DashboardDraftRailSection.jsx`, `DashboardPublicationRailSection.jsx`, `DashboardTemplateRailSection.jsx`, `HorizontalRail.jsx`, `InfiniteTemplateRail.jsx`, `src/components/templates/TemplateCardShell.jsx` | Tailwind in JSX plus `.dashboard-invitation-card*` in `globals.css` | Shared card hook is active across draft, publication, and template card surfaces. |
+| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; `LandingTemplateShowcase.module.css` through shared carousel primitives for the post-summary carousel block | Composes shared hero, latest-publication summary, and the landing-style carousel block for publicadas, borradores, and template sections. |
+| Dashboard legacy cards/rails | `DashboardDraftRailSection.jsx`, `DashboardPublicationRailSection.jsx`, `DashboardTemplateRailSection.jsx`, `HorizontalRail.jsx`, `InfiniteTemplateRail.jsx`, `src/components/templates/TemplateCardShell.jsx` | Tailwind in JSX plus `.dashboard-invitation-card*` in `globals.css` | Legacy dashboard rail/card components remain available but are no longer used by dashboard home after the landing-style carousel replacement. |
 | Dashboard shared class constants | `src/components/dashboard/dashboardStyleClasses.js` | Exact existing class strings | Phase 2 helper for repeated dashboard card/error recipes. It preserves current class values and is not a token/theme layer. |
 | Global app CSS | `src/pages/_app.js` imports both global CSS files | `styles/globals.css` and `styles/styles.css` | Both files apply to all Next app routes, including landing and dashboard. |
 | Global Bootstrap dependency | `src/pages/_document.js` | Bootstrap CSS/JS CDN | Bootstrap is global, not route-scoped. Landing/auth depend on it today. |
@@ -115,7 +117,7 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | 20-29 | absolute-positioned textarea normalization | editor | Allowed exception | Stay for now | Attribute selector targets generated inline editor DOM; broad-ish but runtime-specific. |
 | 35-113 | `.navbar-collapse`, `.navbar-nav`, `.nav-link`, `.btn`, `slideUp`, `.animate-slideUp` | legacy landing / Bootstrap compatibility | Remaining legacy exception | Move later | The extracted landing header no longer uses these navbar hooks. They remain global risk until old Bootstrap/header compatibility is safely removed or proven unused. |
 | 121-129 | `body` reset and Roboto | base | Partially allowed | Investigate | Conflicts with `styles.css` `html, body` Montserrat rule. Base ownership should be singular. |
-| 132-190 | `.dashboard-invitation-card*` shared card behavior | dashboard | Allowed current exception | Stay or formalize later | Shared dashboard hook is app-owned and prefixed; currently used by dashboard rails and template card shells. |
+| 132-190 | `.dashboard-invitation-card*` shared card behavior | dashboard | Allowed current exception | Stay or formalize later | Shared dashboard hook is app-owned and prefixed; currently used by legacy dashboard rails and template card shells. The dashboard home post-summary carousel block now uses landing carousel primitives instead. |
 | 193-199 | global `@keyframes spin` | unknown / base compatibility | Unclear | Investigate | Global keyframe name collides with Tailwind's animation concept; no direct app-owned `animation: spin` usage found in CSS inventory pass. |
 | 201-210 | global `@keyframes fadeInScale` | editor | Tolerated current use | Move later | Used by editor/toolbar inline styles; better future home is editor-scoped/shared animation ownership. |
 

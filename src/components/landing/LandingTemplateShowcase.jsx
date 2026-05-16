@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { listTemplates } from "@/domain/templates/service";
+import {
+  LandingTemplateCarouselBlock,
+  LandingTemplateCarouselRail,
+  LandingTemplatePreviewDialog,
+} from "./LandingTemplateCarouselPrimitives";
 import styles from "./LandingTemplateShowcase.module.css";
 
 const PREFERRED_TAG_ORDER = ["populares", "boda"];
@@ -74,161 +79,6 @@ function buildTemplateTagSections(templates) {
     .sort(compareTagSections);
 }
 
-function TemplateRail({ section, onUseTemplate, onPreviewTemplate }) {
-  return (
-    <section
-      className={styles.railSection}
-      aria-labelledby={`landing-template-section-${section.tagSlug}`}
-    >
-      <h2
-        id={`landing-template-section-${section.tagSlug}`}
-        className={styles.railTitle}
-      >
-        <span className={styles.railTitleBase}>
-          {getTemplateSectionTitlePrefix(section)}
-        </span>
-        <span className={styles.railTitleAccent}>{section.tagLabel}</span>
-      </h2>
-
-      <div className={styles.railViewport}>
-        <div className={styles.railTrack}>
-          {section.items.map((template, index) => (
-            <article
-              key={`${section.tagSlug}-${template?.id || template?.slug || index}`}
-              className={styles.templateCard}
-            >
-              <button
-                type="button"
-                className={styles.previewButton}
-                onClick={() => onPreviewTemplate?.(template)}
-                aria-label={`Ver vista previa de ${template?.nombre || "plantilla"}`}
-              >
-                <img
-                  src={template?.portada || "/placeholder.jpg"}
-                  alt={`Vista previa de ${template?.nombre || "plantilla"}`}
-                  className={styles.previewImage}
-                  loading={index === 0 ? "eager" : "lazy"}
-                  decoding="async"
-                  fetchPriority={index === 0 ? "high" : "auto"}
-                  onError={(event) => {
-                    const image = event.currentTarget;
-                    if (image.dataset.fallbackApplied === "1") return;
-                    image.dataset.fallbackApplied = "1";
-                    image.src = "/placeholder.jpg";
-                  }}
-                />
-              </button>
-
-              <div className={styles.cardCopy}>
-                <h3 className={styles.cardTitle} title={template?.nombre || "Plantilla"}>
-                  {template?.nombre || "Plantilla"}
-                </h3>
-
-                <div className={styles.cardActions}>
-                  <button
-                    type="button"
-                    className={styles.useButton}
-                    onClick={() => onUseTemplate?.(template)}
-                  >
-                    Usar plantilla
-                  </button>
-                  <span className={styles.actionDivider} aria-hidden="true" />
-                  <button
-                    type="button"
-                    className={styles.previewAction}
-                    onClick={() => onPreviewTemplate?.(template)}
-                  >
-                    Vista previa
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TemplatePreviewDialog({ template, onClose, onUseTemplate }) {
-  useEffect(() => {
-    if (!template || typeof window === "undefined") return undefined;
-
-    const handleKeyDown = (event) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onClose?.();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, template]);
-
-  if (!template) return null;
-
-  const title = template?.nombre || "Plantilla";
-
-  return (
-    <div
-      className={styles.previewModalBackdrop}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose?.();
-        }
-      }}
-    >
-      <div
-        className={styles.previewModal}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="landing-template-preview-title"
-      >
-        <button
-          type="button"
-          className={styles.previewModalClose}
-          onClick={onClose}
-          aria-label="Cerrar vista previa"
-        >
-          x
-        </button>
-
-        <div className={styles.previewModalImageFrame}>
-          <img
-            src={template?.portada || "/placeholder.jpg"}
-            alt={`Vista previa ampliada de ${title}`}
-            className={styles.previewModalImage}
-            onError={(event) => {
-              const image = event.currentTarget;
-              if (image.dataset.fallbackApplied === "1") return;
-              image.dataset.fallbackApplied = "1";
-              image.src = "/placeholder.jpg";
-            }}
-          />
-        </div>
-
-        <div className={styles.previewModalFooter}>
-          <h3 id="landing-template-preview-title" className={styles.previewModalTitle}>
-            {title}
-          </h3>
-          <button
-            type="button"
-            className={styles.previewModalUse}
-            onClick={() => {
-              onClose?.();
-              onUseTemplate?.(template);
-            }}
-          >
-            Usar plantilla
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function LandingTemplateShowcase({
   tipo = "boda",
   onUseTemplate,
@@ -271,44 +121,59 @@ export default function LandingTemplateShowcase({
 
   if (loading) {
     return (
-      <section id="plantillas" className={styles.root} aria-busy="true">
-        <div className={styles.inner}>
-          <div className={styles.loadingState}>Cargando plantillas...</div>
-        </div>
-      </section>
+      <LandingTemplateCarouselBlock id="plantillas" ariaBusy>
+        <div className={styles.loadingState}>Cargando plantillas...</div>
+      </LandingTemplateCarouselBlock>
     );
   }
 
   if (error || sections.length === 0) {
     return (
-      <section id="plantillas" className={styles.root}>
-        <div className={styles.inner}>
-          <div className={styles.emptyState}>
-            {error || "Pronto vas a poder explorar nuevas plantillas."}
-          </div>
+      <LandingTemplateCarouselBlock id="plantillas">
+        <div className={styles.emptyState}>
+          {error || "Pronto vas a poder explorar nuevas plantillas."}
         </div>
-      </section>
+      </LandingTemplateCarouselBlock>
     );
   }
 
   return (
-    <section id="plantillas" className={styles.root}>
-      <div className={styles.inner}>
-        {sections.map((section) => (
-          <TemplateRail
-            key={section.tagSlug}
-            section={section}
-            onUseTemplate={onUseTemplate}
-            onPreviewTemplate={setPreviewTemplate}
-          />
-        ))}
-      </div>
+    <LandingTemplateCarouselBlock id="plantillas">
+      {sections.map((section) => (
+        <LandingTemplateCarouselRail
+          key={section.tagSlug}
+          sectionId={`landing-template-section-${section.tagSlug}`}
+          titleBase={getTemplateSectionTitlePrefix(section)}
+          titleAccent={section.tagLabel}
+          items={section.items}
+          getItemKey={(template, index) => template?.id || template?.slug || index}
+          getTitle={(template) => template?.nombre || "Plantilla"}
+          getImageSrc={(template) => template?.portada || "/placeholder.jpg"}
+          getImageAlt={(template) =>
+            `Vista previa de ${template?.nombre || "plantilla"}`
+          }
+          onImageClick={setPreviewTemplate}
+          primaryAction={(template) => ({
+            label: "Usar plantilla",
+            onClick: () => onUseTemplate?.(template),
+          })}
+          secondaryAction={(template) => ({
+            label: "Vista previa",
+            onClick: () => setPreviewTemplate(template),
+          })}
+        />
+      ))}
 
-      <TemplatePreviewDialog
-        template={previewTemplate}
+      <LandingTemplatePreviewDialog
+        item={previewTemplate}
         onClose={() => setPreviewTemplate(null)}
-        onUseTemplate={onUseTemplate}
+        onUse={onUseTemplate}
+        getTitle={(template) => template?.nombre || "Plantilla"}
+        getImageSrc={(template) => template?.portada || "/placeholder.jpg"}
+        getImageAlt={(template) =>
+          `Vista previa ampliada de ${template?.nombre || "Plantilla"}`
+        }
       />
-    </section>
+    </LandingTemplateCarouselBlock>
   );
 }

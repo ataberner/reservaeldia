@@ -1,10 +1,6 @@
 import { useCallback, useEffect } from "react";
-import { DASHBOARD_HOME_ERROR_PANEL_CLASS } from "@/components/dashboard/dashboardStyleClasses";
-import DashboardDraftRailSection from "@/components/dashboard/home/DashboardDraftRailSection";
+import DashboardLandingCarouselSections from "@/components/dashboard/home/DashboardLandingCarouselSections";
 import DashboardPublicationSummarySection from "@/components/dashboard/home/DashboardPublicationSummarySection";
-import DashboardPublicationRailSection from "@/components/dashboard/home/DashboardPublicationRailSection";
-import DashboardSectionShell from "@/components/dashboard/home/DashboardSectionShell";
-import DashboardTemplateRailSection from "@/components/dashboard/home/DashboardTemplateRailSection";
 import LandingHero from "@/components/landing/LandingHero";
 import { useDashboardDrafts } from "@/hooks/useDashboardDrafts";
 import { useDashboardHomeConfig } from "@/hooks/useDashboardHomeConfig";
@@ -17,7 +13,6 @@ const TEMPLATE_COLLECTIONS_ANCHOR_ID = "dashboard-home-template-collections";
 export default function DashboardHomeView({
   usuario,
   tipoInvitacion,
-  isSuperAdmin = false,
   onSelectTemplate,
   onOpenPublicationResponses,
   onReadyChange,
@@ -33,13 +28,11 @@ export default function DashboardHomeView({
     publications,
     loading: loadingPublications,
     error: publicationsError,
-    refresh: refreshPublications,
   } = useDashboardPublications({ userUid });
   const {
     templates,
     loading: loadingTemplates,
     error: templatesError,
-    removeTemplate,
   } = useDashboardHomeTemplates({ tipo: tipoInvitacion });
   const {
     config,
@@ -83,11 +76,10 @@ export default function DashboardHomeView({
     });
   }, [heroTargetId]);
 
-  const hasCollectionLoadError = Boolean(configError || templatesError);
   const safeSections = Array.isArray(sections) ? sections : [];
 
   return (
-    <div className="w-full space-y-8">
+    <div className="w-full">
       <LandingHero
         ctaHref={`#${heroTargetId || TEMPLATE_COLLECTIONS_ANCHOR_ID}`}
         onCtaClick={handleCreateInvitation}
@@ -101,74 +93,20 @@ export default function DashboardHomeView({
         />
       </div>
 
-      <div className="mx-auto w-full max-w-7xl space-y-8 px-4 pb-10 sm:px-6 lg:px-8">
-        {hasCollectionLoadError ? (
-          <div className={DASHBOARD_HOME_ERROR_PANEL_CLASS}>
-            {configError || templatesError}
-          </div>
-        ) : null}
-
-        {safeSections
-          .filter(
-            (section) =>
-              section?.kind === "publications" || section?.kind === "drafts"
-          )
-          .map((section) => {
-            if (section.kind === "publications") {
-              return (
-                <DashboardPublicationRailSection
-                  key={section.id}
-                  items={section.items}
-                  error={publicationsError}
-                  onRefresh={refreshPublications}
-                />
-              );
-            }
-
-            return (
-              <DashboardDraftRailSection
-                key={section.id}
-                items={section.items}
-                error={draftsError}
-                onDraftRemoved={removeDraft}
-              />
-            );
-          })}
-
-        <div id={TEMPLATE_COLLECTIONS_ANCHOR_ID} className="space-y-8">
-          {safeSections
-            .filter(
-              (section) =>
-                section?.kind === "featured_templates" ||
-                section?.kind === "template_category"
-            )
-            .map((section) => (
-              <DashboardTemplateRailSection
-                key={section.id}
-                anchorId={section.anchorId}
-                title={section.title}
-                description={section.description}
-                tagLabel={section.tagLabel}
-                items={section.items}
-                isSuperAdmin={isSuperAdmin}
-                onSelectTemplate={onSelectTemplate}
-                onTemplateRemoved={removeTemplate}
-              />
-            ))}
-
-          {!hasTemplateSections && !loadingTemplates && !loadingConfig ? (
-            <DashboardSectionShell
-              title="Colecciones editoriales en preparacion"
-              description="Este dashboard se organiza desde Gestion del sitio con etiquetas editoriales existentes. Cuando haya colecciones activas, apareceran aqui."
-              eyebrow="Explorar plantillas"
-            >
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/75 px-5 py-8 text-sm text-slate-600">
-                Aun no hay categorias editoriales activas para mostrar en el dashboard.
-              </div>
-            </DashboardSectionShell>
-          ) : null}
-        </div>
-      </div>
+      <DashboardLandingCarouselSections
+        rootId={TEMPLATE_COLLECTIONS_ANCHOR_ID}
+        sections={safeSections}
+        draftsError={draftsError}
+        publicationsError={publicationsError}
+        templatesError={templatesError}
+        configError={configError}
+        loadingTemplates={loadingTemplates}
+        loadingConfig={loadingConfig}
+        hasTemplateSections={hasTemplateSections}
+        onDraftRemoved={removeDraft}
+        onOpenPublicationResponses={onOpenPublicationResponses}
+        onSelectTemplate={onSelectTemplate}
+      />
     </div>
   );
 }

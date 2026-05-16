@@ -18,6 +18,10 @@ This document is an ownership map for the current implementation. It does not au
 - `src/pages/index.module.css`
 - `src/components/landing/LandingHero.jsx`
 - `src/components/landing/LandingHero.module.css`
+- `src/components/landing/LandingTemplateCarouselPrimitives.jsx`
+- `src/components/landing/LandingTemplateShowcase.jsx`
+- `src/components/landing/LandingTemplateShowcase.module.css`
+- `src/components/dashboard/home/DashboardLandingCarouselSections.jsx`
 - `src/components/dashboard/home/DashboardPublicationSummarySection.jsx`
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
 - `src/components/appHeader/AppHeader.jsx`
@@ -49,6 +53,7 @@ Facts:
 - `tailwind.config.js` scans `./src/**/*.{js,ts,jsx,tsx}`, uses `tailwind-scrollbar-hide`, and currently has an empty `theme.extend`.
 - `src/components/appHeader/AppHeader.module.css` is the scoped style owner for the shared landing/dashboard visual header.
 - `src/components/landing/LandingHero.module.css` is the scoped style owner for the shared landing/dashboard hero.
+- `src/components/landing/LandingTemplateShowcase.module.css` owns the landing-style template carousel primitives now shared by the landing page and the dashboard home post-summary carousel block.
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css` is the scoped style owner for the dashboard latest-publication summary below the hero.
 - `src/pages/index.module.css` is the scoped style owner for the current landing main offset and remaining landing section styles.
 - Phase 2 introduced `src/components/dashboard/dashboardStyleClasses.js` with exact current class recipes only. It does not define new token values or a design system.
@@ -70,7 +75,7 @@ Assumptions:
 | --- | --- | --- | --- |
 | Landing `/` | `src/pages/index.js` plus `src/components/appHeader/AppHeader.jsx` and `src/components/landing/LandingHero.jsx` | `AppHeader.module.css` for the shared header; `LandingHero.module.css` for the shared hero; `src/pages/index.module.css`, Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | Header visual content is extracted to `AppHeader`. Hero visual content is extracted to `LandingHero`. Invitation examples, features, how-it-works, final CTA, footer, auth notice, and modal entry remain in the route file. |
 | Dashboard `/dashboard` | `src/pages/dashboard.js` plus `src/domain/dashboard/pageShell.js` | Tailwind classes in JSX, dashboard shell props, shared global dashboard card hook | The route coordinates dashboard home, editor mount, publications/trash/admin views, preview modal, and checkout modal. |
-| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; Tailwind classes in JSX plus `.dashboard-invitation-card*` for rails/cards | Owns placement of the shared hero, latest-publication summary, drafts rail, publications rail, template sections, empty/error states, and horizontal rails. |
+| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; `LandingTemplateShowcase.module.css` through `LandingTemplateCarouselPrimitives.jsx` for the post-summary carousel block | Owns placement of the shared hero, latest-publication summary, and landing-style carousel sections for publicadas, borradores, and plantillas. |
 | Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `AppHeader.jsx`, `CanvasEditorHeader.jsx`, `DashboardSidebar.jsx` | Tailwind shell classes, `AppHeader.module.css` for non-editor dashboard header visuals, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. `DashboardHeader.jsx` owns the runtime shell; `AppHeader.jsx` owns non-editor dashboard header visuals; `CanvasEditorHeader.jsx` owns only editor header content. |
 | Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `styles/styles.css`, Bootstrap button/modal classes, small inline styles | These modals use global `auth-*` styles plus generic `.modal-content`, `.close-btn`, `.error`, and Bootstrap `.btn-*`. |
 
@@ -87,12 +92,14 @@ Assumptions:
 | `CanvasEditorHeader.jsx` | Editor/canvas header visual content, editor action buttons, document name controls, mobile editor options sheet | Tailwind classes and file-local editor header class recipes | Editor header content owner only. Safe future redesign target as long as shell hooks and callbacks remain stable. |
 | `DashboardSidebar.jsx` | Editor tool rail, mobile toolbar, sidebar panel | Tailwind classes, inline panel/mobile geometry, `[data-dashboard-sidebar]`, `#sidebar-panel` | Runtime-critical hook owner. |
 | `src/components/landing/LandingHero.jsx` | Shared landing/dashboard hero CTA | `src/components/landing/LandingHero.module.css` plus legacy landing hook class names retained on DOM | Shared visual primitive for the landing hero and dashboard home hero placement. |
+| `src/components/landing/LandingTemplateCarouselPrimitives.jsx` | Shared landing-style carousel rail/card/modal primitives | `src/components/landing/LandingTemplateShowcase.module.css` | Visual primitive reused by the landing template showcase and dashboard home carousel block. |
+| `DashboardLandingCarouselSections.jsx` | Dashboard home post-summary carousel composition | `src/components/landing/LandingTemplateShowcase.module.css` through shared primitives plus dashboard error class constant | Maps dashboard publicadas, borradores, and template sections to landing-style rails without using `.dashboard-invitation-card*`. |
 | `DashboardPublicationSummarySection.jsx` | Dashboard home summary for the latest active publication | `src/components/dashboard/home/DashboardPublicationSummarySection.module.css` | Scoped app UI owner. Avoids `.dashboard-invitation-card*`, global CSS, editor hooks, preview/publish, and generated invitation CSS. |
-| `DashboardSectionShell.jsx` | Reusable dashboard section panel | Tailwind classes | Candidate reusable UI primitive for future cleanup. |
-| `HorizontalRail.jsx` / `InfiniteTemplateRail.jsx` | Horizontal scroll rails | Tailwind classes and wheel-to-horizontal behavior | Visual cleanup must preserve wheel behavior and responsive overflow. |
-| `DashboardDraftRailSection.jsx` | Draft cards rail | Tailwind classes plus `.dashboard-invitation-card*` | Card visual changes affect shared card hook. |
-| `DashboardPublicationRailSection.jsx` | Publication cards rail | Tailwind classes plus `.dashboard-invitation-card*` | Card visual changes affect shared card hook. |
-| `DashboardTemplateRailSection.jsx` | Template section composition | Tailwind classes and `TemplateCardShell` | Template cards share dashboard card styling, not public invitation CSS. |
+| `DashboardSectionShell.jsx` | Reusable dashboard section panel | Tailwind classes | Legacy dashboard panel primitive; no longer used by dashboard home post-summary carousels. |
+| `HorizontalRail.jsx` / `InfiniteTemplateRail.jsx` | Horizontal scroll rails | Tailwind classes and wheel-to-horizontal behavior | Legacy dashboard home rails remain available but the current dashboard home carousel block uses landing carousel primitives. |
+| `DashboardDraftRailSection.jsx` | Legacy draft cards rail | Tailwind classes plus `.dashboard-invitation-card*` | No longer used by dashboard home after the landing-style carousel replacement. |
+| `DashboardPublicationRailSection.jsx` | Legacy publication cards rail | Tailwind classes plus `.dashboard-invitation-card*` | No longer used by dashboard home after the landing-style carousel replacement. |
+| `DashboardTemplateRailSection.jsx` | Legacy template section composition | Tailwind classes and `TemplateCardShell` | No longer used by dashboard home after the landing-style carousel replacement. |
 | `dashboardStyleClasses.js` | Exact shared dashboard class recipes | Existing class strings for dashboard invitation card shell/media/title and dashboard home error panel | Phase 2 helper only. Changing values is visual redesign work. |
 | `TemplateCardShell.jsx` | Reusable template card shell | Tailwind classes plus `.dashboard-invitation-card*` | Shared card primitive candidate. |
 
@@ -103,7 +110,7 @@ Assumptions:
 Current route-owned styling is incomplete:
 
 - Landing header styles are owned by `src/components/appHeader/AppHeader.module.css`; shared landing/dashboard hero styles are owned by `src/components/landing/LandingHero.module.css`; current landing main/section static styles are owned by `src/pages/index.module.css`; the remaining landing route styles are functionally route-owned by `src/pages/index.js`, but still physically live in app-global CSS.
-- Dashboard home styles are mostly component-owned Tailwind class strings, with one shared global card hook. The latest-publication summary is scoped to `DashboardPublicationSummarySection.module.css` and does not use the shared card hook.
+- Dashboard home styles are split between shared landing primitives and focused dashboard modules: hero via `LandingHero.module.css`, latest-publication summary via `DashboardPublicationSummarySection.module.css`, and post-summary carousels via `LandingTemplateShowcase.module.css` through `LandingTemplateCarouselPrimitives.jsx`.
 - Dashboard shell styles are component-owned Tailwind/inline runtime geometry plus runtime selectors consumed by editor/modal systems.
 - The authenticated non-editor dashboard header visual content is owned by `AppHeader.module.css`; the fixed shell, height measurement, and runtime attributes remain in `DashboardHeader.jsx`.
 
@@ -445,7 +452,7 @@ Current audit:
 
 - `.dashboard-invitation-card` and child hooks live in `styles/globals.css`.
 - `dashboardStyleClasses.js` centralizes the exact shared shell/media/title/error class recipes introduced in Phase 2.
-- `DashboardDraftRailSection.jsx`, `DashboardPublicationRailSection.jsx`, and `TemplateCardShell.jsx` use the shared constants.
+- Legacy dashboard rail components and `TemplateCardShell.jsx` use the shared constants; dashboard home post-summary carousels now use landing carousel primitives instead.
 - The dashboard home hero now uses the shared `LandingHero` primitive and no longer consumes `.dashboard-invitation-card` as a hero shell variant.
 - `TemplateCardShell.jsx` is also used outside the dashboard home rail path, including template/admin surfaces that render template cards.
 
@@ -492,8 +499,8 @@ Recommended visual redesign order:
 | 2 | Landing content sections, excluding auth modal internals and public invitation routes | Lowest editor/runtime risk and route-local JSX owner is clear | Revert landing route/styles for section-only changes. |
 | 3 | Landing header/menu after Bootstrap dependency is mapped per selector | The extracted header is scoped, but legacy Bootstrap navbar globals remain until removed | Revert header/menu changes independently from content sections. |
 | 4 | Auth modal visual pass | Auth should be separated from landing and checked against Bootstrap/modal scroll behavior | Revert auth-owned selectors/components without touching landing content. |
-| 5 | Dashboard card primitive and dashboard home rails | Card primitive is shared, so redesign it intentionally after deciding shared vs split card families | Revert `.dashboard-invitation-card*` and `dashboardStyleClasses.js` changes together. |
-| 6 | Dashboard home sections around the card primitive | Home is mostly Tailwind and lower risk than shell chrome | Revert home child components without touching shell hooks. |
+| 5 | Dashboard legacy card primitive and non-home card consumers | Card primitive is still shared outside the new home carousel path, so redesign it intentionally after deciding shared vs split card families | Revert `.dashboard-invitation-card*` and `dashboardStyleClasses.js` changes together. |
+| 6 | Dashboard home post-summary carousel sections | Home now uses shared landing carousel primitives and is lower risk than shell chrome | Revert `DashboardLandingCarouselSections.jsx` and carousel primitive consumers without touching shell hooks. |
 | 7 | Dashboard header/sidebar and canvas editor header visual pass | Highest app-UI risk because hooks feed editor overlays, modals, and selection preservation | Revert shell files as a unit and rerun editor/page-shell checks. Keep editor header content changes in `CanvasEditorHeader.jsx` unless shell hooks are intentionally coordinated. |
 | 8 | Bootstrap reduction | Only after landing/auth have app-owned style hooks | Revert Bootstrap-reduction phase without touching dashboard/editor. |
 | 9 | Global CSS reduction | Only after landing/auth/dashboard owners no longer depend on broad globals | Revert by CSS section; avoid mixed global cleanup commits. |
@@ -513,10 +520,10 @@ Required manual anchors before and after future visual changes:
 - Auth modal register state: modal backdrop/card, fields, validation errors, Google button, close button, switch-to-login link.
 - Dashboard home loading state: startup loader, shell spacing, centered loader card.
 - Dashboard home empty state: hero, empty draft/publication/template states, CTA visibility.
-- Dashboard home populated state: hero, draft rail, publication rail, template collections anchor, horizontal rail overflow/fades.
-- Dashboard draft rail: card width, thumbnail media fit, title truncation, action text, hover/focus/active states.
-- Dashboard publication rail: status badges, paused card background, action buttons, card width, thumbnail grayscale for paused items.
-- Dashboard template rails: infinite rail behavior, card width across breakpoints, `TemplateCardShell` media/title/action.
+- Dashboard home populated state: hero, latest-publication summary, landing-style draft/publication/template carousel block, template collections anchor, horizontal overflow/fades.
+- Dashboard draft carousel: card width, thumbnail media fit, title truncation, `Abrir borrador` and `Eliminar` text actions, hover/focus states.
+- Dashboard publication carousel: publicada card width, thumbnail media fit, `Ver respuestas` and `Vista previa` text actions.
+- Dashboard template carousel: landing-style card width across breakpoints, preview modal, `Usar plantilla` and `Vista previa` text actions.
 - Dashboard header/sidebar desktop: fixed header height, dashboard-home user menu, desktop sidebar rail, sidebar panel open/close, main content top/left offsets.
 - Dashboard header/sidebar mobile: dashboard-home user menu behavior, bottom toolbar, sidebar panel height `min(52vh, 440px)`, safe-area padding, horizontal toolbar overflow mask.
 - Canvas editor header desktop/mobile: document title control, preview button, editor options sheet, account/logout section, mobile truncation, and current visual class output.

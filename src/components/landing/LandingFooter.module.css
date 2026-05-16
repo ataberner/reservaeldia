@@ -1,0 +1,264 @@
+.landingFooter {
+  width: 100%;
+  margin: 0;
+  padding: 0 max(20px, calc((100vw - 1264px) / 2));
+  border-top: 0;
+  background: #ffffff;
+  color: #262626;
+  text-align: center;
+  text-shadow: none;
+}
+
+.landingFooter *,
+.landingFooter *::before,
+.landingFooter *::after {
+  box-sizing: border-box;
+  text-shadow: none;
+}
+
+.landingFooterInner {
+  display: flex;
+  width: 100%;
+  max-width: 1264px;
+  min-height: 381px;
+  margin: 0 auto;
+  padding-top: 45px;
+  flex-direction: column;
+  align-items: center;
+  border-top: 1px solid #e6e0ea;
+}
+
+.landingFooterBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.landingFooterLogo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #692b9a;
+  font-family: "Yellowtail", cursive;
+  font-size: 38px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 1px;
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.landingFooterLogo:hover,
+.landingFooterLogo:focus-visible {
+  color: #8a3ec0;
+  text-decoration: none;
+}
+
+.landingFooterLogo:focus-visible,
+.landingFooterNavLink:focus-visible,
+.landingFooterLegalLinks a:focus-visible {
+  outline: 2px solid rgba(105, 43, 154, 0.28);
+  outline-offset: 4px;
+}
+
+.landingFooterSubtitle {
+  max-width: 520px;
+  margin: 0;
+  color: #262626;
+  font-family: "Plus Jakarta Sans", "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.landingFooterNav {
+  display: flex;
+  margin-top: 54px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #262626;
+  font-family: "Plus Jakarta Sans", "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.landingFooterNavItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landingFooterNavLink {
+  color: #262626;
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.landingFooterNavLink:hover,
+.landingFooterNavLink:focus-visible {
+  color: #692b9a;
+  text-decoration: none;
+}
+
+.landingFooterNavSeparator,
+.landingFooterLegalSeparator {
+  color: #262626;
+  opacity: 0.45;
+}
+
+.landingFooterBottom {
+  display: flex;
+  width: 100%;
+  min-height: 49px;
+  margin-top: auto;
+  padding: 16px 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-top: 1px solid #e6e0ea;
+}
+
+.landingFooterCopyright {
+  margin: 0;
+  color: #262626;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 17px;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.landingFooterLegalLinks {
+  display: inline-flex;
+  margin: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: #262626;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 17px;
+  letter-spacing: 0;
+  text-align: right;
+}
+
+.landingFooterLegalItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.landingFooterLegalLinks a {
+  color: #262626;
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.landingFooterLegalLinks a:hover,
+.landingFooterLegalLinks a:focus-visible {
+  color: #692b9a;
+  text-decoration: none;
+}
+
+@media (max-width: 960px) {
+  .landingFooter {
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+
+  .landingFooterInner {
+    min-height: 360px;
+  }
+
+  .landingFooterNav {
+    max-width: 620px;
+    margin-top: 44px;
+    gap: 8px;
+  }
+
+  .landingFooterBottom {
+    gap: 18px;
+  }
+}
+
+@media (max-width: 680px) {
+  .landingFooter {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .landingFooterInner {
+    min-height: auto;
+    padding-top: 40px;
+  }
+
+  .landingFooterBrand {
+    gap: 20px;
+  }
+
+  .landingFooterLogo {
+    font-size: 34px;
+    line-height: 18px;
+  }
+
+  .landingFooterSubtitle {
+    max-width: 310px;
+  }
+
+  .landingFooterNav {
+    max-width: 340px;
+    margin-top: 36px;
+    row-gap: 12px;
+  }
+
+  .landingFooterNavItem {
+    gap: 8px;
+  }
+
+  .landingFooterBottom {
+    margin-top: 40px;
+    padding: 16px 0 20px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .landingFooterCopyright,
+  .landingFooterLegalLinks {
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .landingFooterNav {
+    max-width: 300px;
+  }
+
+  .landingFooterLegalLinks {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landingFooterLogo,
+  .landingFooterNavLink,
+  .landingFooterLegalLinks a {
+    transition: none;
+  }
+}

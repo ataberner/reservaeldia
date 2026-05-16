@@ -1,7 +1,12 @@
 import { useCallback, useEffect } from "react";
 import DashboardLandingCarouselSections from "@/components/dashboard/home/DashboardLandingCarouselSections";
 import DashboardPublicationSummarySection from "@/components/dashboard/home/DashboardPublicationSummarySection";
+import LandingFeatureDetails from "@/components/landing/LandingFeatureDetails";
+import LandingFooter from "@/components/landing/LandingFooter";
 import LandingHero from "@/components/landing/LandingHero";
+import LandingHowItWorks from "@/components/landing/LandingHowItWorks";
+import LandingPricing from "@/components/landing/LandingPricing";
+import LandingShareSection from "@/components/landing/LandingShareSection";
 import { useDashboardDrafts } from "@/hooks/useDashboardDrafts";
 import { useDashboardHomeConfig } from "@/hooks/useDashboardHomeConfig";
 import { useDashboardHomeSections } from "@/hooks/useDashboardHomeSections";
@@ -9,6 +14,14 @@ import { useDashboardHomeTemplates } from "@/hooks/useDashboardHomeTemplates";
 import { useDashboardPublications } from "@/hooks/useDashboardPublications";
 
 const TEMPLATE_COLLECTIONS_ANCHOR_ID = "dashboard-home-template-collections";
+
+const DASHBOARD_FOOTER_NAV_ITEMS = [
+  { label: "Inicio", href: "/dashboard" },
+  { label: "Invitaciones", href: `#${TEMPLATE_COLLECTIONS_ANCHOR_ID}` },
+  { label: "Preguntas Frecuentes", href: "#preguntas-frecuentes" },
+  { label: "Cómo funciona", href: "#dashboard-como-funciona" },
+  { label: "Contacto", href: "#dashboard-contacto" },
+];
 
 export default function DashboardHomeView({
   usuario,
@@ -106,6 +119,28 @@ export default function DashboardHomeView({
         onDraftRemoved={removeDraft}
         onOpenPublicationResponses={onOpenPublicationResponses}
         onSelectTemplate={onSelectTemplate}
+      />
+
+      <div className="mt-[10px]">
+        <LandingHowItWorks id="dashboard-como-funciona" />
+      </div>
+
+      <LandingPricing id="dashboard-precios" />
+
+      <LandingFeatureDetails
+        titleId="dashboard-funcionalidades-title"
+        blendWithShareBackground
+      />
+
+      <LandingShareSection
+        titleId="dashboard-compartir-title"
+        ctaHref={`#${heroTargetId || TEMPLATE_COLLECTIONS_ANCHOR_ID}`}
+        onCtaClick={handleCreateInvitation}
+      />
+
+      <LandingFooter
+        id="dashboard-contacto"
+        navItems={DASHBOARD_FOOTER_NAV_ITEMS}
       />
     </div>
   );

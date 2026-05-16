@@ -6,7 +6,12 @@ Scope:
 - `styles/globals.css`
 - `styles/styles.css`
 - `src/components/appHeader/AppHeader.module.css`
+- `src/components/landing/LandingFeatureDetails.module.css`
+- `src/components/landing/LandingFooter.module.css`
 - `src/components/landing/LandingHero.module.css`
+- `src/components/landing/LandingHowItWorks.module.css`
+- `src/components/landing/LandingPricing.module.css`
+- `src/components/landing/LandingShareSection.module.css`
 - `src/components/landing/LandingTemplateShowcase.module.css`
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
 - `src/pages/index.module.css`
@@ -22,7 +27,12 @@ The current CSS system has two app-level global files:
 - `styles/globals.css`: Tailwind entry point plus editor compatibility, landing navbar compatibility, shared dashboard card hooks, and global keyframes.
 - `styles/styles.css`: legacy global stylesheet containing base reset, legacy layout/sidebar rules, auth modal styles, Bootstrap overrides, landing page sections, inactive/unused section candidates, and route-specific selectors.
 - `src/components/appHeader/AppHeader.module.css`: component-scoped visual header styles for the landing header and authenticated non-editor dashboard header.
+- `src/components/landing/LandingFeatureDetails.module.css`: component-scoped shared landing/dashboard feature-details section styles.
+- `src/components/landing/LandingFooter.module.css`: component-scoped shared landing/dashboard footer styles.
 - `src/components/landing/LandingHero.module.css`: component-scoped shared landing/dashboard hero styles, including the current hero layout, white hero box, corner markers, title/subtitle typography, and hero CTA states.
+- `src/components/landing/LandingHowItWorks.module.css`: component-scoped shared landing/dashboard "como funciona" step-circle section styles.
+- `src/components/landing/LandingPricing.module.css`: component-scoped shared landing/dashboard pricing section styles.
+- `src/components/landing/LandingShareSection.module.css`: component-scoped shared landing/dashboard share section styles.
 - `src/components/landing/LandingTemplateShowcase.module.css`: component-scoped landing template carousel styles now reused by the dashboard home carousel block through `LandingTemplateCarouselPrimitives.jsx`.
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`: component-scoped dashboard home publication summary styles. This owns the premium latest-publication summary below the shared hero and does not use global dashboard card hooks.
 - `src/pages/index.module.css`: route-scoped landing main and remaining landing section styles.
@@ -44,7 +54,7 @@ This section records the current landing/dashboard ownership map after Phase 2 c
 
 | Surface | Route/component owner | Current style owner | Notes |
 | --- | --- | --- | --- |
-| Landing route | `src/pages/index.js` plus `src/components/appHeader/AppHeader.jsx` and `src/components/landing/LandingHero.jsx` | `AppHeader.module.css` for the header; `LandingHero.module.css` for the shared hero; `src/pages/index.module.css`, Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | The landing header is extracted to the shared visual header. The hero has shared component CSS Module ownership. Invitation examples, feature grid, how-it-works, final CTA, footer, auth notice, and modal entry remain in one page file. |
+| Landing route | `src/pages/index.js` plus shared landing components | `AppHeader.module.css` for the header; `LandingHero.module.css` for the shared hero; `LandingFeatureDetails.module.css` for the shared feature-details section; `LandingHowItWorks.module.css` for the shared step-circle section; `LandingPricing.module.css` for the shared pricing section; `LandingShareSection.module.css` for the shared share section; `LandingFooter.module.css` for the shared footer; `src/pages/index.module.css`, Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | The landing header, hero, feature-details, how-it-works, pricing, share, and footer sections are extracted to shared visual components. Auth notice and modal entry remain in one page file. |
 | Landing auth entry | `src/pages/index.js` plus `src/lib/components/LoginModal.js` and `src/lib/components/RegisterModal.js` | `styles/styles.css` auth section plus Bootstrap button/modal classes | Auth modal CSS mixes app-owned `auth-*` selectors with generic `.modal-content`, `.close-btn`, `.error`, and Bootstrap `.btn-*`. |
 | Profile completion modal | `src/lib/components/ProfileCompletionModal.js` | Same auth/global CSS group in `styles/styles.css` | Uses the same modal/backdrop/auth selector family as login/register. |
 | Dashboard route shell | `src/pages/dashboard.js` and `src/domain/dashboard/pageShell.js` | Tailwind in JSX plus shell runtime props | Owns view selection, layout props, editor mount state, preview modal mount, and checkout modal mount. |
@@ -53,7 +63,7 @@ This section records the current landing/dashboard ownership map after Phase 2 c
 | Dashboard header shell | `src/components/DashboardHeader.jsx` | Tailwind in JSX for the fixed runtime shell plus runtime `--dashboard-header-height`; renders `AppHeader.module.css` header content in non-editor dashboard mode | Owns `[data-dashboard-header="true"]`, `[data-preserve-canvas-selection="true"]`, header measurement, and the editor-safe shell. Renders `CanvasEditorHeader.jsx` for editor-mode content and `AppHeader.jsx` for non-editor dashboard visual content. |
 | Canvas editor header content | `src/components/editor/header/CanvasEditorHeader.jsx` | Tailwind in JSX plus file-local editor header class recipes | Owns editor-specific header content/actions only. Does not own header refs, runtime data attributes, height measurement, or `--dashboard-header-height`. |
 | Dashboard sidebar | `src/components/DashboardSidebar.jsx` | Tailwind in JSX plus inline panel/mobile geometry styles | Owns `[data-dashboard-sidebar="true"]`, `#sidebar-panel`, and sidebar panel position/height. |
-| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; `LandingTemplateShowcase.module.css` through shared carousel primitives for the post-summary carousel block | Composes shared hero, latest-publication summary, and the landing-style carousel block for publicadas, borradores, and template sections. |
+| Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest-publication summary; `LandingTemplateShowcase.module.css` through shared carousel primitives for the post-summary carousel block; `LandingHowItWorks.module.css` for the shared step-circle section; `LandingPricing.module.css` for the shared pricing section; `LandingFeatureDetails.module.css` for the shared feature-details section; `LandingShareSection.module.css` for the shared share section; `LandingFooter.module.css` for the shared footer | Composes shared hero, latest-publication summary, landing-style carousel block, shared how-it-works section, shared pricing section, shared feature-details section, shared share section, and shared footer. |
 | Dashboard legacy cards/rails | `DashboardDraftRailSection.jsx`, `DashboardPublicationRailSection.jsx`, `DashboardTemplateRailSection.jsx`, `HorizontalRail.jsx`, `InfiniteTemplateRail.jsx`, `src/components/templates/TemplateCardShell.jsx` | Tailwind in JSX plus `.dashboard-invitation-card*` in `globals.css` | Legacy dashboard rail/card components remain available but are no longer used by dashboard home after the landing-style carousel replacement. |
 | Dashboard shared class constants | `src/components/dashboard/dashboardStyleClasses.js` | Exact existing class strings | Phase 2 helper for repeated dashboard card/error recipes. It preserves current class values and is not a token/theme layer. |
 | Global app CSS | `src/pages/_app.js` imports both global CSS files | `styles/globals.css` and `styles/styles.css` | Both files apply to all Next app routes, including landing and dashboard. |
@@ -99,7 +109,31 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 
 | Section | Owner/domain | Contract status | Disposition | Risk notes |
 | --- | --- | --- | --- | --- |
-| `.main` and landing section classes below the hero | landing route sections | Allowed route-scoped owner | Stay | Hero styles moved to `LandingHero.module.css`; remaining landing sections still coexist with legacy global landing selectors during gradual migration. |
+| `.main` and landing section classes below the shared landing components | landing route sections | Allowed route-scoped owner | Stay | Hero styles moved to `LandingHero.module.css`; feature-details styles moved to `LandingFeatureDetails.module.css`; how-it-works styles moved to `LandingHowItWorks.module.css`; pricing styles moved to `LandingPricing.module.css`; share styles moved to `LandingShareSection.module.css`; footer styles moved to `LandingFooter.module.css`; remaining landing sections still coexist with legacy global landing selectors during gradual migration. |
+
+### 3.1.1.1 `src/components/landing/LandingFooter.module.css`
+
+| Section | Owner/domain | Contract status | Disposition | Risk notes |
+| --- | --- | --- | --- | --- |
+| `.landingFooter*` | shared landing/dashboard footer | Allowed scoped component owner | Stay | Shared visual footer rendered on the landing route and at the bottom of dashboard home. Dashboard supplies route-local footer links while preserving the same visual treatment. |
+
+### 3.1.1.2 `src/components/landing/LandingFeatureDetails.module.css`
+
+| Section | Owner/domain | Contract status | Disposition | Risk notes |
+| --- | --- | --- | --- | --- |
+| `.featureDetails*`, `.featureCard*` | shared landing/dashboard feature-details section | Allowed scoped component owner | Stay | Shared visual primitive rendered on the landing route and below dashboard home pricing. Dashboard can opt into `.featureDetailsShareBlend` so the share-section background begins halfway through the feature images. Uses the landing feature images from `/assets/img/landing-funcionalidades/`. |
+
+### 3.1.1.3 `src/components/landing/LandingPricing.module.css`
+
+| Section | Owner/domain | Contract status | Disposition | Risk notes |
+| --- | --- | --- | --- | --- |
+| `.pricing*` | shared landing/dashboard pricing section | Allowed scoped component owner | Stay | Shared visual primitive rendered on the landing route and below dashboard home how-it-works. It is separate from legacy global `.pricing` plan selectors in `styles/styles.css`. |
+
+### 3.1.1.4 `src/components/landing/LandingShareSection.module.css`
+
+| Section | Owner/domain | Contract status | Disposition | Risk notes |
+| --- | --- | --- | --- | --- |
+| `.share*` | shared landing/dashboard share section | Allowed scoped component owner | Stay | Shared visual primitive rendered on the landing route and below dashboard home feature-details. Uses the landing share mockup asset and accepts a CTA target from each surface. |
 
 ### 3.1.2 `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
 
@@ -136,9 +170,9 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | 900-935 | `.btn-primary` | landing / auth / Bootstrap compatibility | Allowed current exception | Move later | Global Bootstrap override; `!important` active/focus rules; affects auth buttons and landing buttons. |
 | 943-1001 | `#invitaciones` and mobile functionality tweaks | landing / Bootstrap compatibility | Tolerated legacy | Move later | Route-specific IDs; descendant Bootstrap utility selectors `.d-flex`, `.text-center`; hardcoded `576px`. |
 | 1005-1069 | `.funcionalidades`, `.funcionalidad`, `.funcionalidades-grid` | landing | Tolerated legacy | Move later | Active landing section; route-specific global classes. `.funcionalidades-grid` has no exact active use found. |
-| 1073-1145 | `.how-it-works`, `.steps-container`, `.step`, `.icon` | landing | Tolerated legacy | Move later | Active landing section; `.step` and `.icon` are generic global class names. |
+| 1073-1145 | `.how-it-works`, `.steps-container`, `.step`, `.icon` | landing legacy | Tolerated legacy | Move later | The active shared section is now styled by `LandingHowItWorks.module.css`; these legacy global hooks remain migration/removal candidates. `.step` and `.icon` are generic global class names. |
 | 1149-1239 | testimonials and `fadeIn` | unused candidate / landing | Not allowed for new work | Investigate | No active testimonials markup found in current `src/pages/index.js`; generic `.testimonial` and global `fadeIn`. |
-| 1247-1359 | pricing plans | unused candidate / landing | Not allowed for new work | Investigate | Referenced only inside commented JSX in `src/pages/index.js`; generic `.price`, `.premium`, `.highlight`. |
+| 1247-1359 | pricing plans | unused candidate / landing | Not allowed for new work | Investigate | The active landing/dashboard pricing section is now styled by `LandingPricing.module.css`; these legacy global pricing-plan selectors are separate inactive candidates with generic `.price`, `.premium`, and `.highlight` hooks. |
 | 1364-1392 | `.icon-img`, responsive hero/btn/gallery-item | mixed landing / unused candidate | Tolerated legacy | Investigate / move later | `.gallery-item` and `.icon-img` have no exact active use found; `768px` and `500px` breakpoints. |
 | 1397-1405 | broad `section` and `h2, h3, p` | landing/base leakage | Not allowed for new work | Move later / investigate impact | Broad element selectors affect any page loaded with global CSS. |
 | 1409-1491 | contact section | unused candidate / landing | Not allowed for new work | Investigate | No active contact markup found in `src/pages/index.js`; route-specific global classes. |
@@ -252,7 +286,7 @@ Priority follows the CSS Architecture Contract cleanup order.
 ## 6. Investigation Notes
 
 - `styles.css` contains several selectors with no exact active `className` match in the inspected `src` files. This inventory marks them as unused candidates only, not unused facts.
-- The pricing section appears in commented JSX in `src/pages/index.js`; its CSS should not be removed without confirming whether the commented section is intentionally retained.
+- The active pricing section is the shared `LandingPricing.jsx` / `LandingPricing.module.css` component. Legacy global pricing-plan CSS in `styles/styles.css` remains an inactive cleanup candidate and should be removed only after confirming no archived/commented surface still depends on it.
 - `globals.css` defines global `@keyframes spin`; app code uses Tailwind `animate-spin` frequently, but this inventory did not find direct app-owned `animation: spin` usage.
 - `fadeInScale` is referenced by editor toolbar inline styles, so it is not an unused candidate.
 - `dashboard-invitation-card` hooks are active and shared by dashboard home rails and template card shells.

@@ -41,9 +41,11 @@ export default function DashboardLayout({
   const headerHeight = "var(--dashboard-header-height, 52px)";
   const shellBackgroundClass = "bg-white";
   const mainBaseClass = modoSelector
-    ? "absolute left-0 right-0 bg-white"
-    : "flex-1 bg-white px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3";
-  const mainScrollClass = lockMainScroll ? "overflow-hidden" : "overflow-y-auto";
+    ? "absolute left-0 right-0 min-w-0 bg-white"
+    : "min-w-0 flex-1 bg-white px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3";
+  const mainScrollClass = lockMainScroll
+    ? "overflow-hidden"
+    : "overflow-x-hidden overflow-y-auto";
   const mainStyle = modoSelector
     ? {
         top: headerHeight,
@@ -62,7 +64,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className={`relative flex h-screen ${shellBackgroundClass}`}>
+    <div className={`relative flex h-screen overflow-hidden ${shellBackgroundClass}`}>
       {/* Barra superior */}
       <DashboardHeader
         slugInvitacion={slugInvitacion}

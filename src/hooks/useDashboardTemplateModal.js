@@ -606,6 +606,47 @@ export function createDashboardTemplateModalControllerRuntime({
     resetTemplateModalController();
   };
 
+  const createTemplateDraftAndOpenEditor = async ({
+    template,
+    applyChanges,
+    rawValues = {},
+    touchedKeys = [],
+    galleryFilesByField = {},
+    previewTextPositions = null,
+    resetModalAfterOpen = true,
+  }) => {
+    const activeTemplate = normalizeTemplateObject(template);
+    const templateId = normalizeTemplateId(activeTemplate?.id);
+    if (!templateId) return null;
+
+    const result = await createDraftFromTemplateWithInput({
+      template: activeTemplate,
+      userId: userUid,
+      rawValues: rawValues && typeof rawValues === "object" ? rawValues : {},
+      touchedKeys: Array.isArray(touchedKeys) ? touchedKeys : [],
+      galleryFilesByField,
+      previewTextPositions,
+      applyChanges: applyChanges === true,
+    });
+    const slug = String(result?.slug || "").trim();
+    if (!slug) {
+      throw new Error("No se pudo crear el borrador de plantilla.");
+    }
+
+    reportTemplateEditorOpened({
+      slug,
+      templateId,
+      applyChanges: applyChanges === true,
+    });
+
+    if (resetModalAfterOpen) {
+      resetTemplateModalController();
+    }
+
+    void openDraftInEditor?.(slug);
+    return { slug };
+  };
+
   const openTemplateEditor = async ({
     applyChanges,
     rawValues = {},
@@ -617,7 +658,7 @@ export function createDashboardTemplateModalControllerRuntime({
       resolvedSelectedTemplateRef.current
     );
     const templateId = normalizeTemplateId(activeTemplate?.id);
-    if (!templateId || resolvedIsOpeningTemplateEditorRef.current) return;
+    if (!templateId || resolvedIsOpeningTemplateEditorRef.current) return null;
 
     const currentFormState = normalizeTemplateFormStateValue(
       resolvedTemplateFormStateRef.current
@@ -626,9 +667,8 @@ export function createDashboardTemplateModalControllerRuntime({
     setTemplateEditorOpeningValue(true);
 
     try {
-      const result = await createDraftFromTemplateWithInput({
+      return await createTemplateDraftAndOpenEditor({
         template: activeTemplate,
-        userId: userUid,
         rawValues:
           rawValues && typeof rawValues === "object"
             ? rawValues
@@ -639,25 +679,48 @@ export function createDashboardTemplateModalControllerRuntime({
         galleryFilesByField,
         previewTextPositions,
         applyChanges: applyChanges === true,
+        resetModalAfterOpen: true,
       });
-      const slug = String(result?.slug || "").trim();
-      if (!slug) {
-        throw new Error("No se pudo crear el borrador de plantilla.");
-      }
-
-      reportTemplateEditorOpened({
-        slug,
-        templateId,
-        applyChanges: applyChanges === true,
-      });
-
-      resetTemplateModalController();
-      void openDraftInEditor?.(slug);
     } catch (error) {
       showAlert(
         getErrorMessage(error, "No se pudo abrir la plantilla en el editor.")
       );
       logTemplateEditorError(error);
+      return null;
+    } finally {
+      setTemplateEditorOpeningValue(false);
+    }
+  };
+
+  const openTemplateEditorFromTemplateId = async (templateId) => {
+    const safeTemplateId = normalizeTemplateId(templateId);
+    if (!safeTemplateId || resolvedIsOpeningTemplateEditorRef.current) {
+      return null;
+    }
+
+    setTemplateEditorOpeningValue(true);
+
+    try {
+      const fullTemplate = await getTemplateById(safeTemplateId);
+      if (!fullTemplate) {
+        throw new Error("No se encontro la plantilla seleccionada.");
+      }
+
+      return await createTemplateDraftAndOpenEditor({
+        template: fullTemplate,
+        rawValues: {},
+        touchedKeys: [],
+        galleryFilesByField: {},
+        previewTextPositions: null,
+        applyChanges: false,
+        resetModalAfterOpen: false,
+      });
+    } catch (error) {
+      showAlert(
+        getErrorMessage(error, "No se pudo abrir la plantilla en el editor.")
+      );
+      logTemplateEditorError(error);
+      return null;
     } finally {
       setTemplateEditorOpeningValue(false);
     }
@@ -699,6 +762,7 @@ export function createDashboardTemplateModalControllerRuntime({
     handleTemplateModalFormStateChange,
     handleOpenEditorWithoutChanges,
     handleOpenEditorWithChanges,
+    openTemplateEditorFromTemplateId,
   };
 }
 
@@ -836,6 +900,7 @@ export function useDashboardTemplateModalWithDependencies(
 
   return {
     openTemplateModal: runtime.openTemplateModal,
+    openTemplateEditorFromTemplateId: runtime.openTemplateEditorFromTemplateId,
     templatePreviewModalProps,
   };
 }

@@ -53,6 +53,7 @@ export function useDashboardEditorRoute({
   const [editorSession, setEditorSession] = useState(() =>
     createDashboardEditorSession()
   );
+  const [hasSyncedEditorRoute, setHasSyncedEditorRoute] = useState(false);
 
   const adminDraftSnapshotCallable = useMemo(
     () => httpsCallable(cloudFunctions, "getAdminDraftSnapshot"),
@@ -370,6 +371,7 @@ export function useDashboardEditorRoute({
     if (loadingAdminAccess) return;
 
     let cancelled = false;
+    setHasSyncedEditorRoute(false);
 
     const rawSlugParam = getFirstQueryValue(router.query?.slug);
     const slugURL = sanitizeDraftSlug(rawSlugParam);
@@ -752,7 +754,11 @@ export function useDashboardEditorRoute({
       setVista((prev) => (prev === "editor" ? "home" : prev));
     };
 
-    void syncEditorSlugFromQuery();
+    void syncEditorSlugFromQuery().finally(() => {
+      if (!cancelled) {
+        setHasSyncedEditorRoute(true);
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -822,5 +828,6 @@ export function useDashboardEditorRoute({
     pendingEditorRouteLabel,
     handleOpenTemplateSession,
     abrirBorradorEnEditor,
+    hasSyncedEditorRoute,
   };
 }

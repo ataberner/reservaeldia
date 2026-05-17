@@ -133,9 +133,11 @@ import {
   adminListPricingHistoryV1 as adminListPricingHistoryV1Handler,
   adminUpdatePricingConfigV1 as adminUpdatePricingConfigV1Handler,
 } from "./siteSettings/pricing";
+import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 
 import * as logger from "firebase-functions/logger";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
+const { prepareGroupAwareRenderState } = require("../shared/groupRenderContract.cjs");
 
 function loadJSDOM() {
   // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
@@ -1421,6 +1423,97 @@ export const validateDraftForPublication = onCall(
 export const prepareDraftPreviewRender = onCall(
   { region: "us-central1", memory: "512MiB" },
   async (request) => prepareDraftPreviewRenderHandler(request)
+);
+
+export const preparePublicTemplatePreview = onCall(
+  { region: "us-central1", memory: "512MiB" },
+  async (
+    request: CallableRequest<{ templateId?: string }>
+  ): Promise<{ templateId: string; previewHtml: string }> => {
+    const templateId = normalizeOptionalText(request.data?.templateId);
+    if (!templateId) {
+      throw new HttpsError("invalid-argument", "Plantilla invalida.");
+    }
+
+    const templateSnap = await db.collection("plantillas").doc(templateId).get();
+    if (!templateSnap.exists) {
+      throw new HttpsError("not-found", "Plantilla no encontrada.");
+    }
+
+    const normalizedTemplate = await normalizeTemplateContractDocument(
+      {
+        id: templateSnap.id,
+        ...((templateSnap.data() || {}) as Record<string, unknown>),
+      },
+      templateSnap.id
+    );
+
+    if (
+      normalizedTemplate?.estado === "archived" ||
+      normalizedTemplate?.estadoEditorial !== "publicada"
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "La plantilla no esta disponible para vista previa publica."
+      );
+    }
+
+    const objetos = Array.isArray(normalizedTemplate.objetos)
+      ? normalizedTemplate.objetos
+      : [];
+    const secciones = Array.isArray(normalizedTemplate.secciones)
+      ? normalizedTemplate.secciones
+      : [];
+
+    if (!objetos.length || !secciones.length) {
+      throw new HttpsError(
+        "failed-precondition",
+        "La plantilla no tiene contenido renderizable."
+      );
+    }
+
+    const renderAssetState = normalizeRenderAssetState({
+      objetos,
+      secciones,
+    });
+    const groupAwareState = prepareGroupAwareRenderState({
+      objetos: renderAssetState.objetos,
+      secciones: renderAssetState.secciones,
+    });
+    const rsvp =
+      normalizedTemplate.rsvp && typeof normalizedTemplate.rsvp === "object"
+        ? (normalizedTemplate.rsvp as Record<string, unknown>)
+        : null;
+    const gifts =
+      normalizedTemplate.gifts && typeof normalizedTemplate.gifts === "object"
+        ? (normalizedTemplate.gifts as Record<string, unknown>)
+        : null;
+
+    const previewHtml = generarHTMLDesdeSecciones(
+      groupAwareState.secciones,
+      groupAwareState.objetos,
+      rsvp as any,
+      {
+        slug: templateId,
+        isPreview: true,
+        gifts: gifts as any,
+        rsvpSource: rsvp as any,
+        giftsSource: gifts as any,
+      }
+    );
+
+    if (!normalizeOptionalText(previewHtml)) {
+      throw new HttpsError(
+        "internal",
+        "No se pudo generar la vista previa de esta plantilla."
+      );
+    }
+
+    return {
+      templateId,
+      previewHtml,
+    };
+  }
 );
 
 export const createPublicationCheckoutSession = onCall(

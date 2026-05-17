@@ -30,6 +30,10 @@ import {
 import { resolveTemplatePersonalizationInput } from "./personalizationContract.js";
 
 const copiarPlantillaCallable = httpsCallable(cloudFunctions, "copiarPlantilla");
+const preparePublicTemplatePreviewCallable = httpsCallable(
+  cloudFunctions,
+  "preparePublicTemplatePreview"
+);
 const CREATE_DRAFT_CALLABLE_TIMEOUT_MS = 12000;
 const DRAFT_CREATION_CONFIRMATION_DELAYS_MS = [0, 220, 420, 760, 1100, 1800, 2600];
 const DRAFT_READ_RETRY_DELAYS_MS = [0, 180, 320, 520, 800];
@@ -514,4 +518,26 @@ export async function listTemplates({ tipo } = {}) {
 
 export async function getTemplateById(id) {
   return getTemplateByIdFromRepository(id);
+}
+
+export async function preparePublicTemplatePreview({ templateId } = {}) {
+  const safeTemplateId = normalizeText(templateId);
+  if (!safeTemplateId) {
+    throw new Error("No se pudo cargar la vista previa: plantilla invalida.");
+  }
+
+  const result = await preparePublicTemplatePreviewCallable({
+    templateId: safeTemplateId,
+  });
+  const data = result?.data && typeof result.data === "object" ? result.data : {};
+  const previewHtml = normalizeText(data.previewHtml);
+
+  if (!previewHtml) {
+    throw new Error("No se pudo generar la vista previa de esta plantilla.");
+  }
+
+  return {
+    templateId: normalizeText(data.templateId) || safeTemplateId,
+    previewHtml,
+  };
 }

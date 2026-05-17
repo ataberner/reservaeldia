@@ -695,3 +695,103 @@ test("draft creation failure keeps the modal open, preserves the alert copy, and
   assert.equal(harness.getState().isTemplateModalOpen, true);
   assert.equal(harness.getState().isOpeningTemplateEditor, false);
 });
+
+test("opens a template directly by id without showing the preview modal", async () => {
+  const getTemplateCalls = [];
+  const createDraftCalls = [];
+  const reportCalls = [];
+  const fullTemplate = createFullTemplate({
+    id: "tpl-landing-direct",
+    nombre: "Plantilla landing directa",
+  });
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async (templateId) => {
+        getTemplateCalls.push(templateId);
+        return fullTemplate;
+      },
+      createDraftFromTemplateWithInput: async (payload) => {
+        createDraftCalls.push(payload);
+        return {
+          slug: "draft-from-landing",
+        };
+      },
+      reportTemplateEditorOpened: (payload) => {
+        reportCalls.push(payload);
+      },
+    },
+  });
+
+  const result =
+    await harness.controller.openTemplateEditorFromTemplateId(
+      "tpl-landing-direct"
+    );
+  await flushMicrotasks();
+
+  assert.deepEqual(result, {
+    slug: "draft-from-landing",
+  });
+  assert.deepEqual(getTemplateCalls, ["tpl-landing-direct"]);
+  assert.deepEqual(createDraftCalls, [
+    {
+      template: fullTemplate,
+      userId: "user-1",
+      rawValues: {},
+      touchedKeys: [],
+      galleryFilesByField: {},
+      previewTextPositions: null,
+      applyChanges: false,
+    },
+  ]);
+  assert.deepEqual(reportCalls, [
+    {
+      slug: "draft-from-landing",
+      templateId: "tpl-landing-direct",
+      applyChanges: false,
+    },
+  ]);
+  assert.deepEqual(harness.openDraftInEditorCalls, ["draft-from-landing"]);
+  assert.equal(harness.getState().isTemplateModalOpen, false);
+  assert.equal(harness.getState().selectedTemplate, null);
+  assert.equal(harness.getState().isOpeningTemplateEditor, false);
+});
+
+test("direct template opening blocks duplicate attempts while loading", async () => {
+  const templateDeferred = createDeferred();
+  const createDraftCalls = [];
+  const fullTemplate = createFullTemplate({
+    id: "tpl-direct-blocked",
+    nombre: "Plantilla directa bloqueada",
+  });
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async () => templateDeferred.promise,
+      createDraftFromTemplateWithInput: async (payload) => {
+        createDraftCalls.push(payload);
+        return {
+          slug: "draft-direct-blocked",
+        };
+      },
+    },
+  });
+
+  const firstOpen =
+    harness.controller.openTemplateEditorFromTemplateId("tpl-direct-blocked");
+  await flushMicrotasks();
+
+  assert.equal(harness.getState().isOpeningTemplateEditor, true);
+  assert.equal(
+    await harness.controller.openTemplateEditorFromTemplateId(
+      "tpl-direct-blocked"
+    ),
+    null
+  );
+
+  templateDeferred.resolve(fullTemplate);
+  await firstOpen;
+  await flushMicrotasks();
+
+  assert.equal(createDraftCalls.length, 1);
+  assert.deepEqual(harness.openDraftInEditorCalls, ["draft-direct-blocked"]);
+  assert.equal(harness.getState().isOpeningTemplateEditor, false);
+});

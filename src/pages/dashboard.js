@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
 import DashboardHomeView from "@/components/dashboard/home/DashboardHomeView";
@@ -15,6 +15,9 @@ import { useDashboardEditorRoute } from "@/hooks/useDashboardEditorRoute";
 import { useDashboardPreviewController } from "@/hooks/useDashboardPreviewController";
 import { useDashboardStartupLoaders } from "@/hooks/useDashboardStartupLoaders";
 import { useDashboardTemplateModal } from "@/hooks/useDashboardTemplateModal";
+import {
+  consumePendingLandingTemplateSelection,
+} from "@/domain/templates/pendingLandingTemplateSelection";
 import {
   buildDashboardCanvasEditorProps,
   buildDashboardLayoutProps,
@@ -62,6 +65,7 @@ export default function Dashboard() {
     isAdminReadOnlyView,
     isEditorReadOnly,
     isTemplateEditorSession,
+    hasSyncedEditorRoute,
     requestedRouteSlug,
     isResolvingEditorRoute,
     pendingEditorRouteLabel,
@@ -77,6 +81,7 @@ export default function Dashboard() {
   });
   const {
     openTemplateModal,
+    openTemplateEditorFromTemplateId,
     templatePreviewModalProps,
   } = useDashboardTemplateModal({
     userUid: usuario?.uid,
@@ -126,6 +131,7 @@ export default function Dashboard() {
   const [historialExternos, setHistorialExternos] = useState([]);
   const [futurosExternos, setFuturosExternos] = useState([]);
   const [focusedPublicSlug, setFocusedPublicSlug] = useState("");
+  const pendingLandingTemplateOpenRef = useRef(false);
   const pageViewState = buildDashboardPageViewState({
     slugInvitacion,
     vista,
@@ -224,6 +230,40 @@ export default function Dashboard() {
       window.removeEventListener("abrir-borrador", handleAbrirBorrador);
     };
   }, [abrirBorradorEnEditor]);
+
+  // Resume the template selected on the landing after auth/profile gates finish.
+  useEffect(() => {
+    if (pendingLandingTemplateOpenRef.current) return;
+    if (!router.isReady) return;
+    if (
+      checkingAuth ||
+      loadingAdminAccess ||
+      !usuario?.uid ||
+      showProfileCompletion ||
+      !hasSyncedEditorRoute
+    ) {
+      return;
+    }
+    if (isResolvingEditorRoute || slugInvitacion || requestedRouteSlug) return;
+
+    const pendingSelection = consumePendingLandingTemplateSelection();
+    const templateId = String(pendingSelection?.templateId || "").trim();
+    if (!templateId) return;
+
+    pendingLandingTemplateOpenRef.current = true;
+    void openTemplateEditorFromTemplateId(templateId);
+  }, [
+    checkingAuth,
+    hasSyncedEditorRoute,
+    isResolvingEditorRoute,
+    loadingAdminAccess,
+    openTemplateEditorFromTemplateId,
+    requestedRouteSlug,
+    router.isReady,
+    showProfileCompletion,
+    slugInvitacion,
+    usuario?.uid,
+  ]);
 
   // Page-level access guard: only superadmin can keep the management view.
   useEffect(() => {

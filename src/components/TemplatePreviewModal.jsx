@@ -126,6 +126,9 @@ export default function TemplatePreviewModal({
   onClose,
   onOpenEditorWithChanges,
   onOpenEditorWithoutChanges,
+  onUseTemplate,
+  actionMode = "editor",
+  useTemplateLabel = "Usar plantilla",
   formState,
   onFormStateChange,
   openingEditor = false,
@@ -149,9 +152,10 @@ export default function TemplatePreviewModal({
     previewHtml,
     previewStatus,
   });
+  const isLandingMode = actionMode === "landing";
   const shouldShowGeneratedPreview = previewRuntime.shouldShowGeneratedPreview;
   const canPatchPreview = previewRuntime.canPatchPreview;
-  const isExpanded = mode === "expanded";
+  const isExpanded = !isLandingMode && mode === "expanded";
 
   useEffect(() => {
     setMode("collapsed");
@@ -236,6 +240,10 @@ export default function TemplatePreviewModal({
 
     onOpenEditorWithoutChanges?.();
   }, [isExpanded, onOpenEditorWithoutChanges]);
+
+  const handleLandingUseTemplate = useCallback(() => {
+    onUseTemplate?.(template);
+  }, [onUseTemplate, template]);
 
   const handleSaveAndOpenWithPreview = useCallback(
     async (payload) => {
@@ -390,48 +398,63 @@ export default function TemplatePreviewModal({
                   </div>
 
                   <div className="relative flex flex-wrap gap-2 lg:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
-                      disabled={openingEditor}
-                      className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
-                    </button>
+                    {isLandingMode ? (
+                      <button
+                        type="button"
+                        onClick={handleLandingUseTemplate}
+                        disabled={openingEditor}
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {useTemplateLabel}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
+                          disabled={openingEditor}
+                          className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={handlePrimaryAction}
-                      disabled={openingEditor}
-                      className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {openingEditor
-                        ? "Creando borrador..."
-                        : isExpanded
-                          ? "Crear invitacion"
-                          : "Editar plantilla"}
-                    </button>
+                        <button
+                          type="button"
+                          onClick={handlePrimaryAction}
+                          disabled={openingEditor}
+                          className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {openingEditor
+                            ? "Creando borrador..."
+                            : isExpanded
+                              ? "Crear invitacion"
+                              : "Editar plantilla"}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div
-              className={`relative overflow-hidden bg-[#f7f1ff] ${
-                isExpanded ? "min-h-0 flex-1" : "basis-0"
-              }`}
-            >
-              <TemplateEventForm
-                ref={formRef}
-                template={template}
-                formState={formState}
-                onFormStateChange={onFormStateChange}
-                onLiveFieldUpdate={handleLiveFieldUpdate}
-                onSaveAndOpen={handleSaveAndOpenWithPreview}
-                openingEditor={openingEditor}
-                mode={mode}
-              />
-            </div>
+            {!isLandingMode ? (
+              <div
+                className={`relative overflow-hidden bg-[#f7f1ff] ${
+                  isExpanded ? "min-h-0 flex-1" : "basis-0"
+                }`}
+              >
+                <TemplateEventForm
+                  ref={formRef}
+                  template={template}
+                  formState={formState}
+                  onFormStateChange={onFormStateChange}
+                  onLiveFieldUpdate={handleLiveFieldUpdate}
+                  onSaveAndOpen={handleSaveAndOpenWithPreview}
+                  openingEditor={openingEditor}
+                  mode={mode}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

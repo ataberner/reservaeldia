@@ -1,16 +1,98 @@
-import { useEffect, useMemo, useState } from "react";
-import { listTemplates } from "@/domain/templates/service";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import TemplatePreviewModal from "@/components/TemplatePreviewModal";
+import {
+  listTemplates,
+  preparePublicTemplatePreview,
+} from "@/domain/templates/service";
+import { normalizeTemplateMetadata } from "@/domain/templates/metadata";
 import {
   LandingTemplateCarouselBlock,
   LandingTemplateCarouselRail,
-  LandingTemplatePreviewDialog,
 } from "./LandingTemplateCarouselPrimitives";
 import styles from "./LandingTemplateShowcase.module.css";
 
 const PREFERRED_TAG_ORDER = ["populares", "boda"];
+const TEMPLATE_VISUAL_PREVIEW_AUTHORITY = "template-visual";
+const EMPTY_TEMPLATE_PREVIEW_MODAL = Object.freeze({
+  visible: false,
+  template: null,
+  metadata: {},
+  previewHtml: "",
+  previewStatus: {
+    status: "idle",
+    error: "",
+    previewAuthority: TEMPLATE_VISUAL_PREVIEW_AUTHORITY,
+  },
+});
 
 function normalizeText(value) {
   return String(value || "").trim();
+}
+
+function createTemplatePreviewStatus(status, error = "") {
+  return {
+    status: normalizeText(status) || "idle",
+    error: normalizeText(error),
+    previewAuthority: TEMPLATE_VISUAL_PREVIEW_AUTHORITY,
+  };
+}
+
+function getErrorMessage(error, fallback) {
+  const message = normalizeText(error?.message || error);
+  return message || fallback;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildCoverPreviewHtml(template) {
+  const imageSrc = normalizeText(template?.portada);
+  if (!imageSrc) return "";
+
+  const title = normalizeText(template?.nombre) || "Plantilla";
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #fbf7f9;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      font-family: "DM Sans", Arial, sans-serif;
+    }
+
+    img {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: top center;
+    }
+  </style>
+</head>
+<body>
+  <img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(title)}" />
+</body>
+</html>`;
 }
 
 function normalizeTagSlug(value) {
@@ -86,7 +168,8 @@ export default function LandingTemplateShowcase({
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [previewModal, setPreviewModal] = useState(EMPTY_TEMPLATE_PREVIEW_MODAL);
+  const previewRequestRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +201,75 @@ export default function LandingTemplateShowcase({
   }, [tipo]);
 
   const sections = useMemo(() => buildTemplateTagSections(templates), [templates]);
+
+  const closeTemplatePreview = useCallback(() => {
+    previewRequestRef.current += 1;
+    setPreviewModal(EMPTY_TEMPLATE_PREVIEW_MODAL);
+  }, []);
+
+  const openTemplatePreview = useCallback(async (template) => {
+    const safeTemplate = template && typeof template === "object" ? template : null;
+    const templateId = normalizeText(safeTemplate?.id || safeTemplate?.slug);
+    if (!safeTemplate || !templateId) return;
+
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
+
+    setPreviewModal({
+      visible: true,
+      template: safeTemplate,
+      metadata: normalizeTemplateMetadata(safeTemplate),
+      previewHtml: "",
+      previewStatus: createTemplatePreviewStatus("loading"),
+    });
+
+    try {
+      const { previewHtml } = await preparePublicTemplatePreview({ templateId });
+      if (previewRequestRef.current !== requestId) return;
+
+      setPreviewModal({
+        visible: true,
+        template: safeTemplate,
+        metadata: normalizeTemplateMetadata(safeTemplate),
+        previewHtml,
+        previewStatus: createTemplatePreviewStatus("ready"),
+      });
+    } catch (previewError) {
+      if (previewRequestRef.current !== requestId) return;
+
+      const fallbackHtml = buildCoverPreviewHtml(safeTemplate);
+      if (fallbackHtml) {
+        setPreviewModal({
+          visible: true,
+          template: safeTemplate,
+          metadata: normalizeTemplateMetadata(safeTemplate),
+          previewHtml: fallbackHtml,
+          previewStatus: createTemplatePreviewStatus("ready"),
+        });
+        return;
+      }
+
+      setPreviewModal((current) => ({
+        ...current,
+        previewHtml: "",
+        previewStatus: createTemplatePreviewStatus(
+          "error",
+          getErrorMessage(
+            previewError,
+            "No se pudo cargar la vista previa de esta plantilla."
+          )
+        ),
+      }));
+    }
+  }, []);
+
+  const handlePreviewUseTemplate = useCallback(
+    (template) => {
+      closeTemplatePreview();
+      onUseTemplate?.(template);
+    },
+    [closeTemplatePreview, onUseTemplate]
+  );
 
   if (loading) {
     return (
@@ -152,27 +304,28 @@ export default function LandingTemplateShowcase({
           getImageAlt={(template) =>
             `Vista previa de ${template?.nombre || "plantilla"}`
           }
-          onImageClick={setPreviewTemplate}
+          onImageClick={openTemplatePreview}
           primaryAction={(template) => ({
             label: "Usar plantilla",
             onClick: () => onUseTemplate?.(template),
           })}
           secondaryAction={(template) => ({
             label: "Vista previa",
-            onClick: () => setPreviewTemplate(template),
+            onClick: () => openTemplatePreview(template),
           })}
         />
       ))}
 
-      <LandingTemplatePreviewDialog
-        item={previewTemplate}
-        onClose={() => setPreviewTemplate(null)}
-        onUse={onUseTemplate}
-        getTitle={(template) => template?.nombre || "Plantilla"}
-        getImageSrc={(template) => template?.portada || "/placeholder.jpg"}
-        getImageAlt={(template) =>
-          `Vista previa ampliada de ${template?.nombre || "Plantilla"}`
-        }
+      <TemplatePreviewModal
+        visible={previewModal.visible}
+        template={previewModal.template}
+        metadata={previewModal.metadata}
+        previewHtml={previewModal.previewHtml}
+        previewStatus={previewModal.previewStatus}
+        onClose={closeTemplatePreview}
+        onUseTemplate={handlePreviewUseTemplate}
+        actionMode="landing"
+        useTemplateLabel="Usar plantilla"
       />
     </LandingTemplateCarouselBlock>
   );

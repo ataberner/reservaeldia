@@ -17,6 +17,10 @@ import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase";
 import { useRouter } from "next/router";
 import {
+  clearPendingLandingTemplateSelection,
+  savePendingLandingTemplateSelection,
+} from "@/domain/templates/pendingLandingTemplateSelection";
+import {
   clearGoogleRedirectPending,
   formatGoogleAuthDebugContext,
   getGoogleAuthDebugContext,
@@ -98,9 +102,35 @@ export default function Home() {
   const router = useRouter();
   const showGoogleAuthDebugLogo =
     typeof authNotice === "string" && authNotice.includes("[debug:");
-  const handleUseLandingTemplate = () => {
+  const handleUseLandingTemplate = (template) => {
+    const selection = savePendingLandingTemplateSelection(template);
+    if (auth.currentUser && selection?.templateId) {
+      setIsAuthTransitioning(true);
+      setShowLogin(false);
+      setShowRegister(false);
+      router.replace("/dashboard");
+      return;
+    }
+
     setShowLogin(false);
     setShowRegister(true);
+  };
+  const handleOpenGenericLogin = () => {
+    clearPendingLandingTemplateSelection();
+    setShowRegister(false);
+    setShowLogin(true);
+  };
+  const handleOpenGenericRegister = () => {
+    clearPendingLandingTemplateSelection();
+    setShowLogin(false);
+    setShowRegister(true);
+  };
+  const handleCloseAuthModal = () => {
+    if (!auth.currentUser) {
+      clearPendingLandingTemplateSelection();
+    }
+    setShowLogin(false);
+    setShowRegister(false);
   };
 
   useEffect(() => {
@@ -258,14 +288,14 @@ export default function Home() {
             label: "Ingresar",
             tone: "secondary",
             variant: "landingLogin",
-            onClick: () => setShowLogin(true),
+            onClick: handleOpenGenericLogin,
           },
           {
             key: "create-invitation",
             label: "Crear invitación",
             tone: "primary",
             variant: "landingCreateInvitation",
-            onClick: () => setShowRegister(true),
+            onClick: handleOpenGenericRegister,
           },
         ]}
       />
@@ -318,7 +348,7 @@ export default function Home() {
 
       {showLogin && (
         <LoginModal
-          onClose={() => setShowLogin(false)}
+          onClose={handleCloseAuthModal}
           onAuthNotice={(message) => setAuthNotice(message)}
           onGoToRegister={() => {
             setShowLogin(false);
@@ -329,7 +359,7 @@ export default function Home() {
 
       {showRegister && (
         <RegisterModal
-          onClose={() => setShowRegister(false)}
+          onClose={handleCloseAuthModal}
           onAuthNotice={(message) => setAuthNotice(message)}
           onGoToLogin={() => {
             setShowRegister(false);

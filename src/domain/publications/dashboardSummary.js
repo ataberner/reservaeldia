@@ -121,3 +121,60 @@ export function buildDashboardPublicationSummary(publications = []) {
     previewCandidates,
   };
 }
+
+export function resolveDashboardDraftUpdatedMs(draft) {
+  return (
+    Number(draft?.updatedAtMs || 0) ||
+    toMs(draft?.raw?.ultimaEdicion) ||
+    toMs(draft?.raw?.updatedAt) ||
+    toMs(draft?.raw?.fechaActualizacion) ||
+    toMs(draft?.raw?.creadoEn) ||
+    toMs(draft?.raw?.createdAt) ||
+    0
+  );
+}
+
+export function selectLatestDashboardDraft(drafts = []) {
+  return (Array.isArray(drafts) ? drafts : [])
+    .filter((draft) => normalizeText(draft?.slug || draft?.id))
+    .sort((left, right) => {
+      const dateDelta =
+        resolveDashboardDraftUpdatedMs(right) -
+        resolveDashboardDraftUpdatedMs(left);
+      if (dateDelta !== 0) return dateDelta;
+      return normalizeText(right?.slug || right?.id).localeCompare(
+        normalizeText(left?.slug || left?.id)
+      );
+    })[0] || null;
+}
+
+export function resolveDashboardDraftPreviewCandidates(draft) {
+  return uniqueStrings([
+    ...(Array.isArray(draft?.previewCandidates) ? draft.previewCandidates : []),
+    draft?.previewSrc,
+    draft?.raw?.portada,
+  ]).filter(isImageSrc);
+}
+
+export function buildDashboardDraftSummary(drafts = []) {
+  const draft = selectLatestDashboardDraft(drafts);
+  if (!draft) return null;
+
+  const updatedMs = resolveDashboardDraftUpdatedMs(draft);
+  const updatedDateLabel =
+    formatDashboardPublishedDate(updatedMs) || normalizeText(draft.updatedLabel);
+  const previewCandidates = resolveDashboardDraftPreviewCandidates(draft);
+
+  if (!updatedDateLabel || !previewCandidates.length) {
+    return null;
+  }
+
+  return {
+    draft,
+    slug: normalizeText(draft.slug || draft.id),
+    title: "¡Nos casamos!",
+    updatedMs,
+    updatedDateLabel,
+    previewCandidates,
+  };
+}

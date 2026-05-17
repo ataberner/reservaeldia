@@ -41,6 +41,7 @@ export default function DashboardHomeView({
     publications,
     loading: loadingPublications,
     error: publicationsError,
+    refresh: refreshPublications,
   } = useDashboardPublications({ userUid });
   const {
     templates,
@@ -89,6 +90,31 @@ export default function DashboardHomeView({
     });
   }, [heroTargetId]);
 
+  const handleOpenDraft = useCallback((draft) => {
+    const slug = String(draft?.slug || "").trim();
+    if (!slug || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("abrir-borrador", {
+        detail: {
+          slug,
+          editor: "konva",
+        },
+      })
+    );
+  }, []);
+
+  const handleViewInvitations = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const node =
+      document.getElementById("dashboard-invitations") ||
+      document.getElementById(TEMPLATE_COLLECTIONS_ANCHOR_ID);
+    if (!node) return;
+    node.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+
   const safeSections = Array.isArray(sections) ? sections : [];
 
   return (
@@ -101,8 +127,12 @@ export default function DashboardHomeView({
       <div className="mx-auto w-full max-w-7xl">
         <DashboardPublicationSummarySection
           publications={publications}
+          drafts={drafts}
           loading={loadingPublications}
+          loadingDrafts={loadingDrafts}
           onOpenResponses={onOpenPublicationResponses}
+          onOpenDraft={handleOpenDraft}
+          onViewInvitations={handleViewInvitations}
         />
       </div>
 
@@ -118,6 +148,7 @@ export default function DashboardHomeView({
         hasTemplateSections={hasTemplateSections}
         onDraftRemoved={removeDraft}
         onOpenPublicationResponses={onOpenPublicationResponses}
+        onPublicationsRefresh={refreshPublications}
         onSelectTemplate={onSelectTemplate}
       />
 

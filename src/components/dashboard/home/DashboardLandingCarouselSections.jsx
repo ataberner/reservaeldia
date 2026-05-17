@@ -8,6 +8,7 @@ import {
 } from "@/components/landing/LandingTemplateCarouselPrimitives";
 import landingStyles from "@/components/landing/LandingTemplateShowcase.module.css";
 import { moveDraftToTrash } from "@/domain/drafts/service";
+import { transitionPublishedInvitationState } from "@/domain/publications/service";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -98,6 +99,7 @@ function InvitationFilterChips({
           <button
             key={filter.id}
             type="button"
+            data-filter-chip={filter.id}
             className={`${landingStyles.filterChip} ${
               isSelected ? landingStyles.filterChipSelected : ""
             }`}
@@ -128,11 +130,17 @@ export default function DashboardLandingCarouselSections({
   hasTemplateSections = false,
   onDraftRemoved,
   onOpenPublicationResponses,
+  onPublicationsRefresh,
   onSelectTemplate,
 }) {
   const safeSections = Array.isArray(sections) ? sections : [];
   const [deletingSlug, setDeletingSlug] = useState("");
   const [draftPendingDelete, setDraftPendingDelete] = useState(null);
+  const [publicationTrashPendingItem, setPublicationTrashPendingItem] =
+    useState(null);
+  const [pendingPublicationActionKey, setPendingPublicationActionKey] =
+    useState("");
+  const [publicationActionError, setPublicationActionError] = useState("");
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [invitationFilter, setInvitationFilter] = useState("all");
 
@@ -197,6 +205,48 @@ export default function DashboardLandingCarouselSections({
     }
   };
 
+  const handlePublicationTransition = async (item, action) => {
+    const publicSlug = normalizeText(item?.publicSlug);
+    const safeAction = normalizeText(action);
+    if (!publicSlug || !safeAction || pendingPublicationActionKey) return false;
+
+    const actionKey = `${publicSlug}:${safeAction}`;
+    setPendingPublicationActionKey(actionKey);
+    setPublicationActionError("");
+
+    try {
+      await transitionPublishedInvitationState({
+        slug: publicSlug,
+        action: safeAction,
+      });
+      onPublicationsRefresh?.();
+      return true;
+    } catch (transitionError) {
+      const message =
+        transitionError?.message ||
+        "No se pudo actualizar el estado de la invitacion.";
+      setPublicationActionError(
+        typeof message === "string"
+          ? message
+          : "No se pudo actualizar el estado de la invitacion."
+      );
+      return false;
+    } finally {
+      setPendingPublicationActionKey("");
+    }
+  };
+
+  const handleConfirmPublicationTrash = async () => {
+    if (!publicationTrashPendingItem?.publicSlug) return;
+    const moved = await handlePublicationTransition(
+      publicationTrashPendingItem,
+      "move_to_trash"
+    );
+    if (moved) {
+      setPublicationTrashPendingItem(null);
+    }
+  };
+
   const renderSection = (section) => {
     const safeItems = Array.isArray(section?.items) ? section.items : [];
     if (!safeItems.length) return null;
@@ -243,6 +293,7 @@ export default function DashboardLandingCarouselSections({
       <LandingTemplateCarouselBlock id={rootId} variant="dashboard">
         <SectionError>{configError || templatesError}</SectionError>
         <SectionError>{publicationsError}</SectionError>
+        <SectionError>{publicationActionError}</SectionError>
         <SectionError>{draftsError}</SectionError>
 
         {hasInvitationItems ? (
@@ -306,16 +357,47 @@ export default function DashboardLandingCarouselSections({
             }}
             secondaryAction={(row) => {
               if (row.kind === "published") {
-                return row.item?.url
-                  ? {
-                      label: "Vista previa",
-                      onClick: () => openUrl(row.item.url),
-                    }
-                  : null;
+                const item = row.item || {};
+                const publicSlug = normalizeText(item.publicSlug);
+                const action = item.isPaused ? "resume" : item.isActive ? "pause" : "";
+                if (item.source !== "active" || item.isFinalized || !publicSlug || !action) {
+                  return null;
+                }
+
+                return {
+                  label: item.isPaused ? "Publicar" : "Pausar",
+                  onClick: () => handlePublicationTransition(item, action),
+                  disabled: Boolean(pendingPublicationActionKey),
+                  ariaLabel: `${item.isPaused ? "Publicar" : "Pausar"} ${
+                    item.nombre || "invitacion"
+                  }`,
+                };
               }
               return {
                 label: "Eliminar",
                 onClick: () => setDraftPendingDelete(row.item),
+              };
+            }}
+            tertiaryAction={(row) => {
+              if (row.kind !== "published") return null;
+
+              const item = row.item || {};
+              const publicSlug = normalizeText(item.publicSlug);
+              if (
+                item.source !== "active" ||
+                item.isFinalized ||
+                !item.isPaused ||
+                !publicSlug
+              ) {
+                return null;
+              }
+
+              return {
+                label: "Eliminar",
+                onClick: () => setPublicationTrashPendingItem(item),
+                disabled: Boolean(pendingPublicationActionKey),
+                ariaLabel: `Eliminar ${item.nombre || "invitacion"}`,
+                tone: "danger",
               };
             }}
           />
@@ -356,6 +438,36 @@ export default function DashboardLandingCarouselSections({
           setDraftPendingDelete(null);
         }}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ConfirmDeleteItemModal
+        isOpen={Boolean(publicationTrashPendingItem)}
+        itemTypeLabel="invitacion"
+        itemName={
+          publicationTrashPendingItem?.nombre ||
+          publicationTrashPendingItem?.publicSlug
+        }
+        isDeleting={
+          Boolean(publicationTrashPendingItem?.publicSlug) &&
+          pendingPublicationActionKey ===
+            `${publicationTrashPendingItem.publicSlug}:move_to_trash`
+        }
+        dialogTitle="Mover invitacion a papelera"
+        dialogDescription={`"${publicationTrashPendingItem?.nombre || publicationTrashPendingItem?.publicSlug || "Esta invitacion"}" se movera a papelera.`}
+        warningText="Dejara de aparecer en publicadas. Podras restaurarla luego como pausada."
+        confirmButtonText="Mover a papelera"
+        confirmingButtonText="Moviendo..."
+        onCancel={() => {
+          if (
+            publicationTrashPendingItem?.publicSlug &&
+            pendingPublicationActionKey ===
+              `${publicationTrashPendingItem.publicSlug}:move_to_trash`
+          ) {
+            return;
+          }
+          setPublicationTrashPendingItem(null);
+        }}
+        onConfirm={handleConfirmPublicationTrash}
       />
     </>
   );

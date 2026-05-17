@@ -2,10 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildDashboardDraftSummary,
   buildDashboardPublicationSummary,
   formatDashboardPublishedDate,
   resolveDashboardPublicationPreviewCandidates,
+  resolveDashboardDraftPreviewCandidates,
   resolvePublicationPublishedMs,
+  selectLatestDashboardDraft,
   selectLatestActiveDashboardPublication,
 } from "./dashboardSummary.js";
 
@@ -158,5 +161,61 @@ test("resolveDashboardPublicationPreviewCandidates ignores fallback share metada
       },
     }),
     []
+  );
+});
+
+test("buildDashboardDraftSummary uses the latest edited draft and real preview", () => {
+  const olderDraft = {
+    id: "older",
+    slug: "older",
+    updatedAtMs: Date.UTC(2026, 4, 1, 10),
+    previewCandidates: ["https://cdn.example.com/older.jpg"],
+  };
+  const latestDraft = {
+    id: "latest",
+    slug: "latest",
+    updatedAtMs: Date.UTC(2026, 4, 3, 10),
+    previewCandidates: [
+      "/placeholder.jpg",
+      "https://cdn.example.com/latest.jpg",
+    ],
+  };
+
+  assert.equal(
+    selectLatestDashboardDraft([olderDraft, latestDraft])?.slug,
+    "latest"
+  );
+
+  const summary = buildDashboardDraftSummary([olderDraft, latestDraft]);
+
+  assert.equal(summary.slug, "latest");
+  assert.equal(summary.title, "¡Nos casamos!");
+  assert.equal(summary.updatedDateLabel, "3 de mayo, 2026");
+  assert.deepEqual(summary.previewCandidates, [
+    "https://cdn.example.com/latest.jpg",
+  ]);
+});
+
+test("buildDashboardDraftSummary returns null without draft date or real preview", () => {
+  assert.equal(buildDashboardDraftSummary([]), null);
+  assert.equal(
+    buildDashboardDraftSummary([
+      {
+        id: "placeholder",
+        slug: "placeholder",
+        updatedAtMs: Date.UTC(2026, 4, 3, 10),
+        previewCandidates: ["/placeholder.jpg"],
+      },
+    ]),
+    null
+  );
+  assert.deepEqual(
+    resolveDashboardDraftPreviewCandidates({
+      previewSrc: "/placeholder.jpg",
+      raw: {
+        portada: "https://cdn.example.com/cover.jpg",
+      },
+    }),
+    ["https://cdn.example.com/cover.jpg"]
   );
 });

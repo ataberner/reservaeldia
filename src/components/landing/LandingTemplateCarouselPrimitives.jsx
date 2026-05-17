@@ -22,6 +22,7 @@ function resolveAction(action, item) {
     onClick: typeof resolved.onClick === "function" ? resolved.onClick : null,
     disabled: resolved.disabled === true,
     ariaLabel: normalizeText(resolved.ariaLabel),
+    tone: normalizeText(resolved.tone),
   };
 }
 
@@ -66,6 +67,7 @@ export function LandingTemplateCarouselRail({
   onImageClick,
   primaryAction,
   secondaryAction,
+  tertiaryAction,
   headerAddon = null,
   renderWhenEmpty = false,
 }) {
@@ -101,7 +103,9 @@ export function LandingTemplateCarouselRail({
               `Vista previa de ${title}`;
             const primary = resolveAction(primaryAction, item);
             const secondary = resolveAction(secondaryAction, item);
-            const hasActions = Boolean(primary || secondary);
+            const tertiary = resolveAction(tertiaryAction, item);
+            const actions = [primary, secondary, tertiary].filter(Boolean);
+            const hasActions = actions.length > 0;
             const itemKey =
               normalizeText(getItemKey?.(item, index)) ||
               normalizeText(item?.id || item?.slug || item?.publicSlug) ||
@@ -137,32 +141,34 @@ export function LandingTemplateCarouselRail({
                   </h3>
 
                   {hasActions ? (
-                    <div className={styles.cardActions}>
-                      {primary ? (
-                        <button
-                          type="button"
-                          className={styles.useButton}
-                          onClick={() => primary.onClick?.(item)}
-                          disabled={primary.disabled}
-                          aria-label={primary.ariaLabel || undefined}
+                    <div
+                      className={styles.cardActions}
+                      data-action-count={actions.length}
+                    >
+                      {actions.map((action, actionIndex) => (
+                        <span
+                          key={`${itemKey}-action-${actionIndex}`}
+                          className={styles.cardActionItem}
                         >
-                          {primary.label}
-                        </button>
-                      ) : null}
-                      {primary && secondary ? (
-                        <span className={styles.actionDivider} aria-hidden="true" />
-                      ) : null}
-                      {secondary ? (
-                        <button
-                          type="button"
-                          className={styles.previewAction}
-                          onClick={() => secondary.onClick?.(item)}
-                          disabled={secondary.disabled}
-                          aria-label={secondary.ariaLabel || undefined}
-                        >
-                          {secondary.label}
-                        </button>
-                      ) : null}
+                          {actionIndex > 0 ? (
+                            <span
+                              className={styles.actionDivider}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <button
+                            type="button"
+                            className={`${actionIndex === 0 ? styles.useButton : styles.previewAction} ${
+                              action.tone === "danger" ? styles.dangerAction : ""
+                            }`}
+                            onClick={() => action.onClick?.(item)}
+                            disabled={action.disabled}
+                            aria-label={action.ariaLabel || undefined}
+                          >
+                            {action.label}
+                          </button>
+                        </span>
+                      ))}
                     </div>
                   ) : null}
                 </div>

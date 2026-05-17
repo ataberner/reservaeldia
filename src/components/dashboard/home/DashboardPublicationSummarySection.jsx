@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildDashboardPublicationSummary } from "@/domain/publications/dashboardSummary";
+import {
+  buildDashboardDraftSummary,
+  buildDashboardPublicationSummary,
+  selectLatestActiveDashboardPublication,
+} from "@/domain/publications/dashboardSummary";
 import { copyPublicationUrlToClipboard } from "@/domain/publications/share";
 import { useDashboardPublicationRsvpSummary } from "@/hooks/useDashboardPublicationRsvpSummary";
 import styles from "./DashboardPublicationSummarySection.module.css";
@@ -49,15 +53,29 @@ function PublicationPreviewImage({ candidates, alt, onAllFailed }) {
 
 export default function DashboardPublicationSummarySection({
   publications,
+  drafts,
   loading = false,
+  loadingDrafts = false,
   onOpenResponses,
+  onOpenDraft,
+  onViewInvitations,
 }) {
-  const summary = useMemo(
+  const publicationSummary = useMemo(
     () => buildDashboardPublicationSummary(publications),
     [publications]
   );
+  const hasActivePublication = useMemo(
+    () => Boolean(selectLatestActiveDashboardPublication(publications)),
+    [publications]
+  );
+  const draftSummary = useMemo(
+    () => (hasActivePublication ? null : buildDashboardDraftSummary(drafts)),
+    [drafts, hasActivePublication]
+  );
+  const summary = publicationSummary || draftSummary;
+  const summaryMode = publicationSummary ? "publication" : draftSummary ? "draft" : "";
   const rsvpSummary = useDashboardPublicationRsvpSummary({
-    publication: summary?.publication || null,
+    publication: publicationSummary?.publication || null,
   });
   const previewKey = summary?.previewCandidates?.join("||") || "";
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -76,28 +94,34 @@ export default function DashboardPublicationSummarySection({
   }, [shareState]);
 
   const handleOpenResponses = useCallback(() => {
-    if (!summary?.publicSlug) return;
-    onOpenResponses?.(summary.publicSlug);
-  }, [onOpenResponses, summary?.publicSlug]);
+    if (!publicationSummary?.publicSlug) return;
+    onOpenResponses?.(publicationSummary.publicSlug);
+  }, [onOpenResponses, publicationSummary?.publicSlug]);
 
   const handleShare = useCallback(async () => {
-    if (!summary?.publicUrl) return;
+    if (!publicationSummary?.publicUrl) return;
 
     try {
-      await copyPublicationUrlToClipboard(summary.publicUrl);
+      await copyPublicationUrlToClipboard(publicationSummary.publicUrl);
       setShareState("copied");
     } catch (error) {
       console.warn("No se pudo copiar el enlace de la publicacion", error);
       setShareState("idle");
     }
-  }, [summary?.publicUrl]);
+  }, [publicationSummary?.publicUrl]);
+
+  const handleOpenDraft = useCallback(() => {
+    if (!draftSummary?.draft) return;
+    onOpenDraft?.(draftSummary.draft);
+  }, [draftSummary?.draft, onOpenDraft]);
+
+  if (loading || loadingDrafts || !summary || previewFailed) {
+    return null;
+  }
 
   if (
-    loading ||
-    !summary ||
-    !rsvpSummary.ready ||
-    rsvpSummary.error ||
-    previewFailed
+    summaryMode === "publication" &&
+    (!rsvpSummary.ready || rsvpSummary.error)
   ) {
     return null;
   }
@@ -113,10 +137,14 @@ export default function DashboardPublicationSummarySection({
             id="dashboard-publication-summary-title"
             className={styles.dashboardPublicationSummaryTitle}
           >
-            El resumen de tu casamiento en tiempo real.
+            {summaryMode === "draft"
+              ? "Estás a un paso de enviar tu invitación."
+              : "El resumen de tu casamiento en tiempo real."}
           </h2>
           <p className={styles.dashboardPublicationSummarySubtitle}>
-            Publicaste tu invitaci&oacute;n el {summary.publishedDateLabel}
+            {summaryMode === "draft"
+              ? "Retomá el diseño donde lo dejaste y empezá a compartirlo con tus invitados."
+              : `Publicaste tu invitación el ${summary.publishedDateLabel}`}
           </p>
         </div>
 
@@ -135,53 +163,82 @@ export default function DashboardPublicationSummarySection({
                 {summary.title}
               </h3>
 
-              <div className={styles.dashboardPublicationStatusRow}>
-                <span className={styles.dashboardPublicationStatus}>Activa</span>
-                <span className={styles.dashboardPublicationDate}>
-                  {summary.publishedDateLabel}
-                </span>
-              </div>
+              {summaryMode === "draft" ? (
+                <>
+                  <p className={styles.dashboardDraftUpdatedText}>
+                    Última edición el {summary.updatedDateLabel}
+                  </p>
 
-              <div className={styles.dashboardPublicationStats}>
-                <div className={styles.dashboardPublicationStat}>
-                  <span className={styles.dashboardPublicationStatNumber}>
-                    {rsvpSummary.attendingResponses}
-                  </span>
-                  <span
-                    className={`${styles.dashboardPublicationStatLabel} ${styles.dashboardPublicationStatLabelAttend}`}
-                  >
-                    Asisten
-                  </span>
-                </div>
+                  <div className={styles.dashboardDraftActions}>
+                    <button
+                      type="button"
+                      className={`${styles.dashboardPublicationPrimaryAction} ${styles.dashboardDraftPrimaryAction}`}
+                      onClick={handleOpenDraft}
+                    >
+                      Continuar edición
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.dashboardPublicationSecondaryAction} ${styles.dashboardDraftSecondaryAction}`}
+                      onClick={onViewInvitations}
+                    >
+                      Mis invitaciones
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={styles.dashboardPublicationStatusRow}>
+                    <span className={styles.dashboardPublicationStatus}>
+                      Activa
+                    </span>
+                    <span className={styles.dashboardPublicationDate}>
+                      {summary.publishedDateLabel}
+                    </span>
+                  </div>
 
-                <div className={styles.dashboardPublicationStat}>
-                  <span className={styles.dashboardPublicationStatNumber}>
-                    {rsvpSummary.declinedResponses}
-                  </span>
-                  <span
-                    className={`${styles.dashboardPublicationStatLabel} ${styles.dashboardPublicationStatLabelDecline}`}
-                  >
-                    No asisten
-                  </span>
-                </div>
-              </div>
+                  <div className={styles.dashboardPublicationStats}>
+                    <div className={styles.dashboardPublicationStat}>
+                      <span className={styles.dashboardPublicationStatNumber}>
+                        {rsvpSummary.attendingResponses}
+                      </span>
+                      <span
+                        className={`${styles.dashboardPublicationStatLabel} ${styles.dashboardPublicationStatLabelAttend}`}
+                      >
+                        Asisten
+                      </span>
+                    </div>
 
-              <div className={styles.dashboardPublicationActions}>
-                <button
-                  type="button"
-                  className={styles.dashboardPublicationPrimaryAction}
-                  onClick={handleOpenResponses}
-                >
-                  Ver respuestas
-                </button>
-                <button
-                  type="button"
-                  className={styles.dashboardPublicationSecondaryAction}
-                  onClick={handleShare}
-                >
-                  {shareState === "copied" ? "Copiado" : "Compartir"}
-                </button>
-              </div>
+                    <div className={styles.dashboardPublicationStat}>
+                      <span className={styles.dashboardPublicationStatNumber}>
+                        {rsvpSummary.declinedResponses}
+                      </span>
+                      <span
+                        className={`${styles.dashboardPublicationStatLabel} ${styles.dashboardPublicationStatLabelDecline}`}
+                      >
+                        No asisten
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={styles.dashboardPublicationActions}>
+                    <button
+                      type="button"
+                      className={styles.dashboardPublicationPrimaryAction}
+                      onClick={handleOpenResponses}
+                    >
+                      Ver respuestas
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.dashboardPublicationSecondaryAction}
+                      onClick={handleShare}
+                    >
+                      {shareState === "copied" ? "Copiado" : "Compartir"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </article>
         </div>

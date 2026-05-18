@@ -235,7 +235,7 @@ async function run() {
       const hasCanvasContainer = Boolean(document.querySelector('[data-canvas-container="true"]'));
       const isLikelyAuthGate =
         bodyTextNormalized.includes("iniciar sesion") ||
-        bodyTextNormalized.includes("completando inicio de sesion") ||
+        bodyTextNormalized.includes("Iniciando sesion") ||
         bodyTextNormalized.includes("inicia sesion con google") ||
         bodyTextNormalized.includes("sign in with google") ||
         bodyTextNormalized.includes("google");

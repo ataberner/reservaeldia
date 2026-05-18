@@ -1,0 +1,385 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(38, 38, 38, 0.38);
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal {
+  position: relative;
+  display: flex;
+  width: min(724px, calc(100vw - 32px));
+  height: min(628px, calc(100dvh - 32px));
+  justify-content: center;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 12px 40px 2px #0000000f;
+  color: #262626;
+  text-align: left;
+}
+
+.registerModal {
+  height: min(740px, calc(100dvh - 32px));
+}
+
+.content {
+  display: flex;
+  width: min(508px, calc(100% - 48px));
+  flex-direction: column;
+  align-items: stretch;
+  padding: 46px 0 32px;
+}
+
+.title {
+  margin: 0 0 32px;
+  color: #262626;
+  font-family: "DM Sans", sans-serif;
+  font-size: 30px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 32px;
+  text-align: left;
+}
+
+.googleButton,
+.primaryButton,
+.secondaryButton,
+.forgotButton,
+.registerLink {
+  font: inherit;
+}
+
+.googleButton {
+  display: inline-flex;
+  width: 100%;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  border: 1px solid #00000029;
+  border-radius: 2px;
+  background: #faf5ff;
+  color: #262626;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 24px;
+  padding: 16px 24px;
+  text-align: center;
+}
+
+.googleButton:disabled,
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.forgotButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.googleButton:focus-visible,
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.forgotButton:focus-visible,
+.registerLink:focus-visible,
+.rememberOption input:focus-visible {
+  outline: 3px solid #efdbff;
+  outline-offset: 2px;
+}
+
+.googleIcon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.separator {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0 18px;
+  color: #262626;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 24px;
+  text-align: center;
+}
+
+.separator::before,
+.separator::after {
+  content: "";
+  flex: 1 1 0;
+  border-top: 1px solid #00000029;
+}
+
+.separator span {
+  flex: 0 0 auto;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.registerForm {
+  gap: 12px;
+}
+
+.inlineFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inputGroup label,
+.rememberOption,
+.forgotButton,
+.registerLink {
+  color: #262626;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 24px;
+}
+
+.inputGroup input {
+  width: 100%;
+  height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #00000029;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #262626;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  padding: 6px 14px 8px;
+}
+
+.inputGroup input:focus {
+  border-color: #692b9a;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(239, 219, 255, 0.95);
+}
+
+.inputGroup input.inputError {
+  border-color: #b3261e;
+}
+
+.fieldError {
+  margin: 0;
+  color: #b3261e;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.loginOptions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rememberOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.rememberOption input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #692b9a;
+}
+
+.forgotButton {
+  border: 0;
+  background: transparent;
+  color: #b3261e;
+  cursor: pointer;
+  padding: 0;
+  text-align: right;
+}
+
+.primaryButton {
+  display: inline-flex;
+  width: min(510px, calc(100% + 2px));
+  height: 38px;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  gap: 38px;
+  box-sizing: border-box;
+  margin-top: 19px;
+  border: 0;
+  border-radius: 33px;
+  background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%);
+  color: #ffffff;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  line-height: 20px;
+  padding: 6px 30px 8px;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #692b9a;
+}
+
+.registerPrimaryButton {
+  margin-top: 19px;
+}
+
+.secondaryButton {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #00000029;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #262626;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  padding: 8px 14px;
+}
+
+.registerLink {
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: #262626;
+  cursor: pointer;
+  margin-top: 18px;
+  padding: 0;
+  text-align: center;
+}
+
+.error,
+.status {
+  margin: 0;
+  border-radius: 2px;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  padding: 8px 10px;
+}
+
+.error {
+  border: 1px solid #ffdada;
+  background: #fff7f7;
+  color: #b3261e;
+}
+
+.googleAuthFailure {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.googleAuthFailureLogo {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.success {
+  border: 1px solid rgba(2, 155, 74, 0.24);
+  background: rgba(2, 155, 74, 0.08);
+  color: #026c35;
+}
+
+.warning {
+  border: 1px solid #fff1c2;
+  background: #fffaf0;
+  color: #7a4d00;
+}
+
+@media (max-width: 620px) {
+  .content {
+    width: min(508px, calc(100% - 28px));
+    padding: 40px 0 24px;
+  }
+
+  .title {
+    margin-bottom: 24px;
+  }
+
+  .loginOptions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inlineFields {
+    grid-template-columns: 1fr;
+  }
+
+  .forgotButton {
+    text-align: left;
+  }
+}
+
+@media (max-height: 660px) {
+  .backdrop {
+    align-items: flex-start;
+  }
+
+  .modal {
+    height: auto;
+    min-height: min(628px, calc(100dvh - 32px));
+  }
+
+  .registerModal {
+    min-height: min(740px, calc(100dvh - 32px));
+  }
+
+  .content {
+    padding-top: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .googleButton,
+  .primaryButton,
+  .secondaryButton,
+  .forgotButton,
+  .registerLink {
+    transition: none;
+  }
+}

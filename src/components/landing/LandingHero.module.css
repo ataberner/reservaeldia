@@ -135,6 +135,7 @@
 
 .heroCta:hover {
   color: #ffffff;
+  background: #692b9a;
   box-shadow:
     0 18px 34px rgba(105, 43, 154, 0.28),
     0 8px 18px rgba(243, 159, 95, 0.22);

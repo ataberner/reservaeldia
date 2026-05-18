@@ -12,6 +12,7 @@ import { httpsCallable } from "firebase/functions";
 import { auth, functions } from "@/firebase";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
+import styles from "./AuthModal.module.css";
 import {
   clearGoogleRedirectPending,
   formatGoogleAuthDebugContext,
@@ -163,13 +164,9 @@ function signInWithRedirectWithTimeout(timeoutMs, provider) {
 export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [fechaNacimiento, setFechaNacimiento] = useState("");
-
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -228,12 +225,6 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
       nextErrors.password = "Ingresa una contrasena.";
     } else if (password.length < 6) {
       nextErrors.password = "La contrasena debe tener al menos 6 caracteres.";
-    }
-
-    if (!confirm) {
-      nextErrors.confirm = "Confirma tu contrasena.";
-    } else if (password !== confirm) {
-      nextErrors.confirm = "Las contrasenas no coinciden.";
     }
 
     setFieldErrors(nextErrors);
@@ -453,237 +444,201 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
     error?.includes("email-already-in-use");
   const isGoogleAuthDebugError =
     typeof error === "string" && error.includes("[debug:");
+  const handleBackdropClick = (event) => {
+    if (event.target !== event.currentTarget) return;
+    onClose?.();
+  };
 
   return (
     <>
-      <div className="modal-backdrop">
-        <div className="modal-content auth-modal register-modal">
-          <button className="close-btn" onClick={onClose} type="button">
-            x
-          </button>
+      <div className={styles.backdrop} onClick={handleBackdropClick}>
+        <div
+          className={`${styles.modal} ${styles.registerModal}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="register-modal-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className={styles.content}>
+            <h2 id="register-modal-title" className={styles.title}>Registrarme</h2>
 
-          <h2>Crear cuenta</h2>
-          <p className="auth-modal-subtitle">
-            Completa tus datos para registrarte.
-          </p>
-
-          <form onSubmit={handleRegister} className="auth-form">
-            <div className="register-form-grid">
-            <div className="auth-input-group">
-              <label htmlFor="register-nombre">Nombre</label>
-              <input
-                id="register-nombre"
-                type="text"
-                value={nombre}
-                onChange={(event) => {
-                  setNombre(event.target.value);
-                  setFieldErrors((prev) => ({ ...prev, nombre: "" }));
-                }}
-                autoComplete="given-name"
-                className={fieldErrors.nombre ? "auth-input-error" : ""}
-                required
+            <button
+              type="button"
+              className={styles.googleButton}
+              onClick={handleGoogleRegister}
+              disabled={loadingGoogle}
+            >
+              <img
+                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                alt=""
+                aria-hidden="true"
+                className={styles.googleIcon}
               />
-              {fieldErrors.nombre && (
-                <p className="field-error">{fieldErrors.nombre}</p>
-              )}
+              <span>{loadingGoogle ? "Conectando..." : "Ingresar con Google"}</span>
+            </button>
+
+            <div className={styles.separator}>
+              <span>O ingresar con usuario</span>
             </div>
 
-            <div className="auth-input-group">
-              <label htmlFor="register-apellido">Apellido</label>
-              <input
-                id="register-apellido"
-                type="text"
-                value={apellido}
-                onChange={(event) => {
-                  setApellido(event.target.value);
-                  setFieldErrors((prev) => ({ ...prev, apellido: "" }));
-                }}
-                autoComplete="family-name"
-                className={fieldErrors.apellido ? "auth-input-error" : ""}
-                required
-              />
-              {fieldErrors.apellido && (
-                <p className="field-error">{fieldErrors.apellido}</p>
-              )}
-            </div>
+            <form onSubmit={handleRegister} className={`${styles.form} ${styles.registerForm}`}>
+              <div className={styles.inputGroup}>
+                <label htmlFor="register-email">Email</label>
+                <input
+                  id="register-email"
+                  type="email"
+                  placeholder="tu@email.com"
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setFieldErrors((prev) => ({ ...prev, email: "" }));
+                  }}
+                  autoComplete="email"
+                  className={fieldErrors.email ? styles.inputError : ""}
+                  required
+                />
+                {fieldErrors.email && (
+                  <p className={styles.fieldError}>{fieldErrors.email}</p>
+                )}
+              </div>
 
-            <div className="auth-input-group">
-              <label htmlFor="register-birthdate">Fecha de nacimiento</label>
-              <input
-                id="register-birthdate"
-                type="date"
-                value={fechaNacimiento}
-                onChange={(event) => {
-                  setFechaNacimiento(event.target.value);
-                  setFieldErrors((prev) => ({ ...prev, fechaNacimiento: "" }));
-                }}
-                className={fieldErrors.fechaNacimiento ? "auth-input-error" : ""}
-                required
-              />
-              {fieldErrors.fechaNacimiento && (
-                <p className="field-error">{fieldErrors.fechaNacimiento}</p>
-              )}
-            </div>
-
-            <div className="auth-input-group">
-              <label htmlFor="register-email">Correo</label>
-              <input
-                id="register-email"
-                type="email"
-                placeholder="tu@email.com"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setFieldErrors((prev) => ({ ...prev, email: "" }));
-                }}
-                autoComplete="email"
-                className={fieldErrors.email ? "auth-input-error" : ""}
-                required
-              />
-              {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
-            </div>
-
-            <div className="auth-input-group">
-              <label htmlFor="register-password">Contrasena</label>
-              <div className="auth-password-wrap">
+              <div className={styles.inputGroup}>
+                <label htmlFor="register-password">Contraseña</label>
                 <input
                   id="register-password"
-                  type={showPassword ? "text" : "password"}
+                  type="password"
                   value={password}
                   onChange={(event) => {
                     setPassword(event.target.value);
                     setFieldErrors((prev) => ({ ...prev, password: "" }));
                   }}
                   autoComplete="new-password"
-                  className={fieldErrors.password ? "auth-input-error" : ""}
+                  className={fieldErrors.password ? styles.inputError : ""}
                   required
                 />
-                <button
-                  type="button"
-                  className="auth-password-toggle"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                >
-                  {showPassword ? "Ocultar" : "Mostrar"}
-                </button>
-              </div>
-              {fieldErrors.password && (
-                <p className="field-error">{fieldErrors.password}</p>
-              )}
-            </div>
-
-            <div className="auth-input-group">
-              <label htmlFor="register-confirm">Confirmar contrasena</label>
-              <div className="auth-password-wrap">
-                <input
-                  id="register-confirm"
-                  type={showConfirm ? "text" : "password"}
-                  value={confirm}
-                  onChange={(event) => {
-                    setConfirm(event.target.value);
-                    setFieldErrors((prev) => ({ ...prev, confirm: "" }));
-                  }}
-                  autoComplete="new-password"
-                  className={fieldErrors.confirm ? "auth-input-error" : ""}
-                  required
-                />
-                <button
-                  type="button"
-                  className="auth-password-toggle"
-                  onClick={() => setShowConfirm((prev) => !prev)}
-                >
-                  {showConfirm ? "Ocultar" : "Mostrar"}
-                </button>
-              </div>
-              {fieldErrors.confirm && (
-                <p className="field-error">{fieldErrors.confirm}</p>
-              )}
-            </div>
-            </div>
-
-            {error && (
-              <p className={`error ${isGoogleAuthDebugError ? "google-auth-failure" : ""}`}>
-                {isGoogleAuthDebugError && (
-                  <img
-                    src="/assets/img/google-auth-fail-logo.svg"
-                    alt="Diagnostico Google"
-                    className="google-auth-failure-logo"
-                  />
+                {fieldErrors.password && (
+                  <p className={styles.fieldError}>{fieldErrors.password}</p>
                 )}
-                <span>{error}</span>
-              </p>
-            )}
-            {info && (
-              <p className={`auth-status ${verificationPending ? "warning" : "success"}`}>
-                {info}
-              </p>
-            )}
+              </div>
 
-            {verificationPending && (
+              <div className={styles.inlineFields}>
+                <div className={styles.inputGroup}>
+                  <label htmlFor="register-nombre">Nombre</label>
+                  <input
+                    id="register-nombre"
+                    type="text"
+                    value={nombre}
+                    onChange={(event) => {
+                      setNombre(event.target.value);
+                      setFieldErrors((prev) => ({ ...prev, nombre: "" }));
+                    }}
+                    autoComplete="given-name"
+                    className={fieldErrors.nombre ? styles.inputError : ""}
+                    required
+                  />
+                  {fieldErrors.nombre && (
+                    <p className={styles.fieldError}>{fieldErrors.nombre}</p>
+                  )}
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label htmlFor="register-apellido">Apellido</label>
+                  <input
+                    id="register-apellido"
+                    type="text"
+                    value={apellido}
+                    onChange={(event) => {
+                      setApellido(event.target.value);
+                      setFieldErrors((prev) => ({ ...prev, apellido: "" }));
+                    }}
+                    autoComplete="family-name"
+                    className={fieldErrors.apellido ? styles.inputError : ""}
+                    required
+                  />
+                  {fieldErrors.apellido && (
+                    <p className={styles.fieldError}>{fieldErrors.apellido}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label htmlFor="register-birthdate">Fecha de nacimiento</label>
+                <input
+                  id="register-birthdate"
+                  type="date"
+                  value={fechaNacimiento}
+                  onChange={(event) => {
+                    setFechaNacimiento(event.target.value);
+                    setFieldErrors((prev) => ({ ...prev, fechaNacimiento: "" }));
+                  }}
+                  className={fieldErrors.fechaNacimiento ? styles.inputError : ""}
+                  required
+                />
+                {fieldErrors.fechaNacimiento && (
+                  <p className={styles.fieldError}>{fieldErrors.fechaNacimiento}</p>
+                )}
+              </div>
+
+              {error && (
+                <p className={`${styles.error} ${isGoogleAuthDebugError ? styles.googleAuthFailure : ""}`}>
+                  {isGoogleAuthDebugError && (
+                    <img
+                      src="/assets/img/google-auth-fail-logo.svg"
+                      alt="Diagnostico Google"
+                      className={styles.googleAuthFailureLogo}
+                    />
+                  )}
+                  <span>{error}</span>
+                </p>
+              )}
+              {info && (
+                <p className={`${styles.status} ${verificationPending ? styles.warning : styles.success}`}>
+                  {info}
+                </p>
+              )}
+
+              {verificationPending && (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={handleResendVerification}
+                  disabled={sendingVerification}
+                >
+                  {sendingVerification ? "Reenviando..." : "Reenviar verificacion"}
+                </button>
+              )}
+
+              {wantsLogin && (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    onClose?.();
+                    onGoToLogin?.();
+                  }}
+                >
+                  Ir a iniciar sesion
+                </button>
+              )}
+
               <button
-                type="button"
-                className="btn btn-outline-dark w-100 mt-2 auth-secondary-btn"
-                onClick={handleResendVerification}
-                disabled={sendingVerification}
+                type="submit"
+                className={`${styles.primaryButton} ${styles.registerPrimaryButton}`}
+                disabled={loadingEmail}
               >
-                {sendingVerification ? "Reenviando..." : "Reenviar verificacion"}
+                {loadingEmail ? "Registrando..." : "Registrarme"}
               </button>
-            )}
+            </form>
 
-            {wantsLogin && (
-              <button
-                type="button"
-                className="btn btn-outline-dark w-100 mt-2 auth-secondary-btn"
-                onClick={() => {
-                  onClose?.();
-                  onGoToLogin?.();
-                }}
-              >
-                Ir a iniciar sesion
-              </button>
-            )}
-
-            <button
-              type="submit"
-              className="btn btn-primary w-100 mt-2 auth-primary-btn"
-              disabled={loadingEmail}
-            >
-              {loadingEmail ? "Registrando..." : "Registrarme"}
-            </button>
-          </form>
-
-          <div className="auth-separator">o</div>
-
-          <button
-            type="button"
-            className="btn btn-outline-dark position-relative w-100 auth-google-btn"
-            onClick={handleGoogleRegister}
-            disabled={loadingGoogle}
-          >
-            <img
-              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-              alt="Google"
-              style={{
-                position: "absolute",
-                left: "0.75rem",
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: "20px",
-                height: "20px",
-              }}
-            />
-            {loadingGoogle ? "Conectando..." : "Usar Google"}
-          </button>
-
-          <div style={{ marginTop: 12, textAlign: "center" }}>
             <button
               type="button"
-              className="btn btn-link auth-link-btn"
+              className={styles.registerLink}
               onClick={() => {
                 onClose?.();
                 onGoToLogin?.();
               }}
             >
-              Ya tengo cuenta - Iniciar sesion
+              Ya tengo cuenta / Ingresar
             </button>
           </div>
         </div>

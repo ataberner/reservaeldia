@@ -12,6 +12,7 @@ import { httpsCallable } from "firebase/functions";
 import { auth, functions } from "@/firebase";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import { sendVerificationEmailLocalized } from "@/lib/auth/emailVerification";
+import styles from "./AuthModal.module.css";
 import {
   clearGoogleRedirectPending,
   formatGoogleAuthDebugContext,
@@ -142,7 +143,7 @@ function signInWithRedirectWithTimeout(timeoutMs, provider) {
 export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -419,23 +420,46 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
     error?.includes("registrarte") || error?.includes("no existe");
   const isGoogleAuthDebugError =
     typeof error === "string" && error.includes("[debug:");
+  const handleBackdropClick = (event) => {
+    if (event.target !== event.currentTarget) return;
+    onClose?.();
+  };
 
   return (
     <>
-      <div className="modal-backdrop">
-        <div className="modal-content auth-modal">
-          <button className="close-btn" onClick={onClose} type="button">
-            x
-          </button>
+      <div className={styles.backdrop} onClick={handleBackdropClick}>
+        <div
+          className={styles.modal}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="login-modal-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className={styles.content}>
+            <h2 id="login-modal-title" className={styles.title}>Ingresar</h2>
 
-          <h2>Iniciar sesion</h2>
-          <p className="auth-modal-subtitle">
-            Ingresa con tu correo o con Google.
-          </p>
+            <button
+              type="button"
+              className={styles.googleButton}
+              onClick={handleGoogleLogin}
+              disabled={loadingGoogle}
+            >
+              <img
+                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                alt=""
+                aria-hidden="true"
+                className={styles.googleIcon}
+              />
+              <span>{loadingGoogle ? "Conectando..." : "Ingresar con Google"}</span>
+            </button>
 
-          <form onSubmit={handleLogin} className="auth-form">
-            <div className="auth-input-group">
-              <label htmlFor="login-email">Correo</label>
+            <div className={styles.separator}>
+              <span>O ingresar con usuario</span>
+            </div>
+
+            <form onSubmit={handleLogin} className={styles.form}>
+            <div className={styles.inputGroup}>
+              <label htmlFor="login-email">Email</label>
               <input
                 id="login-email"
                 type="email"
@@ -446,66 +470,65 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
                   setFieldErrors((prev) => ({ ...prev, email: "" }));
                 }}
                 autoComplete="email"
-                className={fieldErrors.email ? "auth-input-error" : ""}
+                className={fieldErrors.email ? styles.inputError : ""}
                 required
               />
-              {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
+              {fieldErrors.email && <p className={styles.fieldError}>{fieldErrors.email}</p>}
             </div>
 
-            <div className="auth-input-group">
-              <label htmlFor="login-password">Contrasena</label>
-              <div className="auth-password-wrap">
-                <input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Tu contrasena"
-                  value={password}
-                  onChange={(event) => {
-                    setPassword(event.target.value);
-                    setFieldErrors((prev) => ({ ...prev, password: "" }));
-                  }}
-                  autoComplete="current-password"
-                  className={fieldErrors.password ? "auth-input-error" : ""}
-                  required
-                />
-                <button
-                  type="button"
-                  className="auth-password-toggle"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                >
-                  {showPassword ? "Ocultar" : "Mostrar"}
-                </button>
-              </div>
+            <div className={styles.inputGroup}>
+              <label htmlFor="login-password">Contraseña</label>
+              <input
+                id="login-password"
+                type="password"
+                placeholder="Tu contraseña"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setFieldErrors((prev) => ({ ...prev, password: "" }));
+                }}
+                autoComplete="current-password"
+                className={fieldErrors.password ? styles.inputError : ""}
+                required
+              />
               {fieldErrors.password && (
-                <p className="field-error">{fieldErrors.password}</p>
+                <p className={styles.fieldError}>{fieldErrors.password}</p>
               )}
             </div>
 
-            <div className="auth-inline-actions">
+            <div className={styles.loginOptions}>
+              <label className={styles.rememberOption}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                />
+                <span>Recordarme</span>
+              </label>
               <button
                 type="button"
-                className="btn btn-link p-0 auth-link-btn"
+                className={styles.forgotButton}
                 onClick={handleForgotPassword}
                 disabled={sendingReset}
               >
-                {sendingReset ? "Enviando..." : "Olvide mi contrasena"}
+                {sendingReset ? "Enviando..." : "Olvidaste la contraseña?"}
               </button>
             </div>
 
             {error && (
-              <p className={`error ${isGoogleAuthDebugError ? "google-auth-failure" : ""}`}>
+              <p className={`${styles.error} ${isGoogleAuthDebugError ? styles.googleAuthFailure : ""}`}>
                 {isGoogleAuthDebugError && (
                   <img
                     src="/assets/img/google-auth-fail-logo.svg"
                     alt="Diagnostico Google"
-                    className="google-auth-failure-logo"
+                    className={styles.googleAuthFailureLogo}
                   />
                 )}
                 <span>{error}</span>
               </p>
             )}
             {info && (
-              <p className={`auth-status ${needsVerification ? "warning" : "success"}`}>
+              <p className={`${styles.status} ${needsVerification ? styles.warning : styles.success}`}>
                 {info}
               </p>
             )}
@@ -513,7 +536,7 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
             {needsVerification && (
               <button
                 type="button"
-                className="btn btn-outline-dark w-100 mt-2 auth-secondary-btn"
+                className={styles.secondaryButton}
                 onClick={handleResendVerification}
                 disabled={sendingVerification}
               >
@@ -524,7 +547,7 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
             {shouldSuggestRegister && (
               <button
                 type="button"
-                className="btn btn-outline-dark w-100 mt-2 auth-secondary-btn"
+                className={styles.secondaryButton}
                 onClick={() => {
                   onClose?.();
                   onGoToRegister?.();
@@ -536,46 +559,22 @@ export default function LoginModal({ onClose, onGoToRegister, onAuthNotice }) {
 
             <button
               type="submit"
-              className="btn btn-primary w-100 mt-2 auth-primary-btn"
+              className={styles.primaryButton}
               disabled={loadingEmail}
             >
               {loadingEmail ? "Ingresando..." : "Ingresar"}
             </button>
           </form>
 
-          <div className="auth-separator">o</div>
-
-          <button
-            type="button"
-            className="btn btn-outline-dark position-relative w-100 auth-google-btn"
-            onClick={handleGoogleLogin}
-            disabled={loadingGoogle}
-          >
-            <img
-              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-              alt="Google"
-              style={{
-                position: "absolute",
-                left: "0.75rem",
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: "20px",
-                height: "20px",
-              }}
-            />
-            {loadingGoogle ? "Conectando..." : "Usar Google"}
-          </button>
-
-          <div style={{ marginTop: 12, textAlign: "center" }}>
             <button
               type="button"
-              className="btn btn-link auth-link-btn"
+              className={styles.registerLink}
               onClick={() => {
                 onClose?.();
                 onGoToRegister?.();
               }}
             >
-              No tengo cuenta - Registrarme
+              No tengo cuenta / Registrarme
             </button>
           </div>
         </div>

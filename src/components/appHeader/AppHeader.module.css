@@ -230,7 +230,7 @@
 
 .actionLandingLogin:not(:disabled):hover {
   border-color: rgba(10, 10, 10, 0.12);
-  background: #fbf7f9;
+  background: #faf5ff;
   color: #0a0a0a;
   box-shadow: none;
   transform: none;
@@ -286,8 +286,8 @@
 }
 
 .actionLandingCreateInvitation:not(:disabled):hover {
-  border-color: #1b1b1b;
-  background: #1b1b1b;
+  border-color: #692b9a;
+  background: #692b9a;
   box-shadow: 0 8px 18px rgba(12, 12, 12, 0.16);
 }
 

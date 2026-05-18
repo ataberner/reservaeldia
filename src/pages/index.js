@@ -271,7 +271,7 @@ export default function Home() {
         <div className="auth-transition-overlay" role="status" aria-live="polite">
           <div className="auth-transition-card">
             <span className="auth-transition-spinner" aria-hidden="true" />
-            <p>Completando inicio de sesion...</p>
+            <p>Iniciando sesion...</p>
           </div>
         </div>
       )}

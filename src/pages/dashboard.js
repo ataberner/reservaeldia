@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
 import DashboardHomeView from "@/components/dashboard/home/DashboardHomeView";
@@ -36,6 +36,7 @@ const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
 });
 const DEFAULT_TIPO_INVITACION = "boda";
+const DASHBOARD_TEMPLATE_COLLECTIONS_ANCHOR_ID = "dashboard-home-template-collections";
 
 applyDefaultEditorConsoleDebugFlags();
 
@@ -132,6 +133,7 @@ export default function Dashboard() {
   const [futurosExternos, setFuturosExternos] = useState([]);
   const [focusedPublicSlug, setFocusedPublicSlug] = useState("");
   const pendingLandingTemplateOpenRef = useRef(false);
+  const pendingHomeScrollTargetRef = useRef("");
   const pageViewState = buildDashboardPageViewState({
     slugInvitacion,
     vista,
@@ -171,6 +173,44 @@ export default function Dashboard() {
     }
     setVista("publicadas");
   };
+  const handleCreateInvitationFromPublications = useCallback(() => {
+    pendingHomeScrollTargetRef.current = DASHBOARD_TEMPLATE_COLLECTIONS_ANCHOR_ID;
+    setVista("home");
+  }, [setVista]);
+  const handleUseTemplateFromDashboard = useCallback(
+    (template) => {
+      const templateId = String(template?.id || template?.slug || "").trim();
+      if (!templateId) return;
+      void openTemplateEditorFromTemplateId(templateId);
+    },
+    [openTemplateEditorFromTemplateId]
+  );
+
+  useEffect(() => {
+    if (!pageViewState.isHomeView || !pendingHomeScrollTargetRef.current) return undefined;
+
+    const targetId = pendingHomeScrollTargetRef.current;
+    let timeoutId = null;
+    let frameId = null;
+    const scrollToTarget = () => {
+      const node = document.getElementById(targetId);
+      if (!node) return;
+      pendingHomeScrollTargetRef.current = "";
+      node.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    };
+
+    frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(scrollToTarget, 80);
+    });
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [pageViewState.isHomeView]);
   const layoutProps = buildDashboardLayoutProps({
     slugInvitacion,
     setSlugInvitacion,
@@ -382,6 +422,8 @@ export default function Dashboard() {
             tipoInvitacion={tipoSeleccionado}
             isSuperAdmin={isSuperAdmin}
             onSelectTemplate={openTemplateModal}
+            onPreviewTemplate={openTemplateModal}
+            onUseTemplate={handleUseTemplateFromDashboard}
             onOpenPublicationResponses={handleOpenPublicationResponses}
             onReadyChange={handleHomeViewReadyChange}
           />
@@ -395,6 +437,7 @@ export default function Dashboard() {
           <PublicadasGrid
             usuario={usuario}
             focusPublicSlug={focusedPublicSlug}
+            onCreateInvitation={handleCreateInvitationFromPublications}
           />
         </div>
       )}
@@ -457,7 +500,11 @@ export default function Dashboard() {
 
 
 
-      <TemplatePreviewModal {...templatePreviewModalProps} />
+      <TemplatePreviewModal
+        {...templatePreviewModalProps}
+        showEventCustomization={false}
+        useTemplateLabel="Usar plantilla"
+      />
 
       {/* Modal de vista previa */}
       <ModalVistaPrevia

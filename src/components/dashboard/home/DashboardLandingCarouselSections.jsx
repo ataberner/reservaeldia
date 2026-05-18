@@ -4,7 +4,6 @@ import { DASHBOARD_HOME_ERROR_PANEL_CLASS } from "@/components/dashboard/dashboa
 import {
   LandingTemplateCarouselBlock,
   LandingTemplateCarouselRail,
-  LandingTemplatePreviewDialog,
 } from "@/components/landing/LandingTemplateCarouselPrimitives";
 import landingStyles from "@/components/landing/LandingTemplateShowcase.module.css";
 import { moveDraftToTrash } from "@/domain/drafts/service";
@@ -131,7 +130,9 @@ export default function DashboardLandingCarouselSections({
   onDraftRemoved,
   onOpenPublicationResponses,
   onPublicationsRefresh,
+  onPreviewTemplate,
   onSelectTemplate,
+  onUseTemplate,
 }) {
   const safeSections = Array.isArray(sections) ? sections : [];
   const [deletingSlug, setDeletingSlug] = useState("");
@@ -141,8 +142,19 @@ export default function DashboardLandingCarouselSections({
   const [pendingPublicationActionKey, setPendingPublicationActionKey] =
     useState("");
   const [publicationActionError, setPublicationActionError] = useState("");
-  const [previewTemplate, setPreviewTemplate] = useState(null);
   const [invitationFilter, setInvitationFilter] = useState("all");
+  const handlePreviewTemplate =
+    typeof onPreviewTemplate === "function"
+      ? onPreviewTemplate
+      : typeof onSelectTemplate === "function"
+        ? onSelectTemplate
+        : null;
+  const handleUseTemplate =
+    typeof onUseTemplate === "function"
+      ? onUseTemplate
+      : typeof onSelectTemplate === "function"
+        ? onSelectTemplate
+        : null;
 
   const publicationItems = safeSections
     .filter((section) => section?.kind === "publications")
@@ -272,14 +284,14 @@ export default function DashboardLandingCarouselSections({
           getImageAlt={(template) =>
             `Vista previa de ${template?.nombre || "plantilla"}`
           }
-          onImageClick={setPreviewTemplate}
+          onImageClick={(template) => handlePreviewTemplate?.(template)}
           primaryAction={(template) => ({
             label: "Usar plantilla",
-            onClick: () => onSelectTemplate?.(template),
+            onClick: () => handleUseTemplate?.(template),
           })}
           secondaryAction={(template) => ({
             label: "Vista previa",
-            onClick: () => setPreviewTemplate(template),
+            onClick: () => handlePreviewTemplate?.(template),
           })}
         />
       );
@@ -411,17 +423,6 @@ export default function DashboardLandingCarouselSections({
           </div>
         ) : null}
       </LandingTemplateCarouselBlock>
-
-      <LandingTemplatePreviewDialog
-        item={previewTemplate}
-        onClose={() => setPreviewTemplate(null)}
-        onUse={onSelectTemplate}
-        getTitle={(template) => template?.nombre || "Plantilla"}
-        getImageSrc={resolveTemplateImage}
-        getImageAlt={(template) =>
-          `Vista previa ampliada de ${template?.nombre || "Plantilla"}`
-        }
-      />
 
       <ConfirmDeleteItemModal
         isOpen={Boolean(draftPendingDelete)}

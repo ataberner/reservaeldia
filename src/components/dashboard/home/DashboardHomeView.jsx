@@ -27,6 +27,8 @@ export default function DashboardHomeView({
   usuario,
   tipoInvitacion,
   onSelectTemplate,
+  onPreviewTemplate,
+  onUseTemplate,
   onOpenPublicationResponses,
   onReadyChange,
 }) {
@@ -149,7 +151,9 @@ export default function DashboardHomeView({
         onDraftRemoved={removeDraft}
         onOpenPublicationResponses={onOpenPublicationResponses}
         onPublicationsRefresh={refreshPublications}
+        onPreviewTemplate={onPreviewTemplate || onSelectTemplate}
         onSelectTemplate={onSelectTemplate}
+        onUseTemplate={onUseTemplate || onSelectTemplate}
       />
 
       <div className="mt-[10px]">

@@ -14,6 +14,8 @@ import { logTemplateDraftDebug } from "@/domain/templates/draftPersonalizationDe
 
 const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
 const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
+const SITE_PRIMARY_BUTTON_CLASS =
+  "inline-flex h-10 min-w-[132px] items-center justify-center rounded-[33px] border border-transparent bg-gradient-to-r from-[#692B9A] to-[#F39F5F] px-5 text-sm font-semibold text-white shadow-none transition-all duration-200 hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F39F5F]/40 disabled:cursor-not-allowed disabled:opacity-70";
 
 function toText(value, fallback = "") {
   const safe = String(value || "").trim();
@@ -132,6 +134,7 @@ export default function TemplatePreviewModal({
   formState,
   onFormStateChange,
   openingEditor = false,
+  showEventCustomization = true,
 }) {
   const modalPanelRef = useRef(null);
   const previewFrameRef = useRef(null);
@@ -153,13 +156,20 @@ export default function TemplatePreviewModal({
     previewStatus,
   });
   const isLandingMode = actionMode === "landing";
+  const canCustomizeEvent = !isLandingMode && showEventCustomization !== false;
   const shouldShowGeneratedPreview = previewRuntime.shouldShowGeneratedPreview;
   const canPatchPreview = previewRuntime.canPatchPreview;
-  const isExpanded = !isLandingMode && mode === "expanded";
+  const isExpanded = canCustomizeEvent && mode === "expanded";
 
   useEffect(() => {
     setMode("collapsed");
   }, [template?.id, visible]);
+
+  useEffect(() => {
+    if (!canCustomizeEvent && mode !== "collapsed") {
+      setMode("collapsed");
+    }
+  }, [canCustomizeEvent, mode]);
 
   useEffect(
     () => () => {
@@ -403,32 +413,34 @@ export default function TemplatePreviewModal({
                         type="button"
                         onClick={handleLandingUseTemplate}
                         disabled={openingEditor}
-                        className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                        className={SITE_PRIMARY_BUTTON_CLASS}
                       >
                         {useTemplateLabel}
                       </button>
                     ) : (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
-                          disabled={openingEditor}
-                          className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
-                        </button>
+                        {canCustomizeEvent ? (
+                          <button
+                            type="button"
+                            onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
+                            disabled={openingEditor}
+                            className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
+                          </button>
+                        ) : null}
 
                         <button
                           type="button"
                           onClick={handlePrimaryAction}
                           disabled={openingEditor}
-                          className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,rgba(130,72,203,0.92)_0%,rgba(115,62,191,0.9)_52%,rgba(99,52,173,0.88)_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_12px_26px_rgba(111,59,192,0.28),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                          className={SITE_PRIMARY_BUTTON_CLASS}
                         >
                           {openingEditor
                             ? "Creando borrador..."
                             : isExpanded
                               ? "Crear invitacion"
-                              : "Editar plantilla"}
+                              : useTemplateLabel}
                         </button>
                       </>
                     )}
@@ -437,7 +449,7 @@ export default function TemplatePreviewModal({
               </div>
             </div>
 
-            {!isLandingMode ? (
+            {canCustomizeEvent ? (
               <div
                 className={`relative overflow-hidden bg-[#f7f1ff] ${
                   isExpanded ? "min-h-0 flex-1" : "basis-0"

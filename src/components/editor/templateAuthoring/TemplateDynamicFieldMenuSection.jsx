@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  EVENT_PERSON_NAME_ROLES,
+} from "@/domain/eventDetails/personNames.js";
+import {
+  EVENT_LOCATION_ROLES,
+} from "@/domain/eventDetails/location.js";
+import {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } from "../../../../shared/renderContractPolicy.js";
@@ -63,6 +69,8 @@ export default function TemplateDynamicFieldMenuSection({
   onRefreshFields,
   onCreateField,
   onLinkField,
+  onLinkEventPersonName,
+  onLinkEventLocation,
   onEditField,
   onUnlinkField,
   onDeleteField,
@@ -172,6 +180,10 @@ export default function TemplateDynamicFieldMenuSection({
   if (!visible) return null;
 
   const hasLinkedField = Boolean(selectedField?.key);
+  const canUseEventPersonNameLinks =
+    selectedElementType === "texto" && typeof onLinkEventPersonName === "function";
+  const canUseEventLocationLinks =
+    selectedElementType === "texto" && typeof onLinkEventLocation === "function";
 
   const sectionButtonBase =
     "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] transition";
@@ -278,6 +290,38 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
+  const handleLinkEventPersonName = async (role) => {
+    if (typeof onLinkEventPersonName !== "function") return;
+    setSubmitError("");
+
+    try {
+      await onLinkEventPersonName(role);
+      setMode("");
+    } catch (linkError) {
+      setSubmitError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo vincular el texto a los nombres del evento."
+      );
+    }
+  };
+
+  const handleLinkEventLocation = async (role) => {
+    if (typeof onLinkEventLocation !== "function") return;
+    setSubmitError("");
+
+    try {
+      await onLinkEventLocation(role);
+      setMode("");
+    } catch (linkError) {
+      setSubmitError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo vincular el texto a la ubicacion del evento."
+      );
+    }
+  };
+
   const refreshAvailableFields = async () => {
     if (typeof onRefreshFields !== "function") return;
     setSubmitError("");
@@ -363,6 +407,64 @@ export default function TemplateDynamicFieldMenuSection({
           <strong>Campo activo:</strong> {selectedField.label || selectedField.key}
           <div className="text-[10px] text-violet-600">
             key: {selectedField.key} - grupo: {selectedField.group || "Datos principales"}
+          </div>
+        </div>
+      ) : null}
+
+      {canUseEventPersonNameLinks || canUseEventLocationLinks ? (
+        <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
+          <p className="mb-1 text-[11px] font-semibold text-violet-700">
+            Detalles del evento
+          </p>
+          <div className="space-y-1.5">
+            {canUseEventPersonNameLinks ? (
+              <>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventPersonName(EVENT_PERSON_NAME_ROLES.PRIMARY)}
+                >
+                  Vincular a primera persona
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventPersonName(EVENT_PERSON_NAME_ROLES.SECONDARY)}
+                >
+                  Vincular a segunda persona
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventPersonName(EVENT_PERSON_NAME_ROLES.COUPLE)}
+                >
+                  Vincular a nombres juntos
+                </button>
+              </>
+            ) : null}
+            {canUseEventLocationLinks ? (
+              <>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_NAME)}
+                >
+                  Vincular a nombre del lugar
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_ADDRESS)}
+                >
+                  Vincular a direccion
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       ) : null}

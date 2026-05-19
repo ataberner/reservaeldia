@@ -999,6 +999,8 @@ export default function MenuOpcionesElemento({
                     onRefreshFields={authoringConfig?.onRefreshFields}
                     onCreateField={authoringConfig?.onCreateField}
                     onLinkField={authoringConfig?.onLinkField}
+                    onLinkEventPersonName={authoringConfig?.onLinkEventPersonName}
+                    onLinkEventLocation={authoringConfig?.onLinkEventLocation}
                     onEditField={authoringConfig?.onEditField}
                     onUnlinkField={authoringConfig?.onUnlinkField}
                     onDeleteField={authoringConfig?.onDeleteField}

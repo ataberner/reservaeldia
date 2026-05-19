@@ -234,6 +234,8 @@ export default function CanvasEditorOverlays({
                   onRefreshFields: templateAuthoring.reloadAvailableFields,
                   onCreateField: templateAuthoring.createFieldFromSelection,
                   onLinkField: templateAuthoring.linkSelectionToField,
+                  onLinkEventPersonName: templateAuthoring.linkSelectionToEventPersonName,
+                  onLinkEventLocation: templateAuthoring.linkSelectionToEventLocation,
                   onEditField: templateAuthoring.editField,
                   onUnlinkField: templateAuthoring.unlinkSelection,
                   onDeleteField: templateAuthoring.deleteField,

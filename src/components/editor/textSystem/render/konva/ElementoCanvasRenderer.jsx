@@ -4230,6 +4230,92 @@ export default function ElementoCanvas({
     );
   }
 
+  if (obj.tipo === "mapa-google") {
+    const width = Math.max(200, Number(obj.width) || 361);
+    const height = Math.max(200, Number(obj.height) || 220);
+    const hasPlace = String(obj.googlePlaceId || "").trim().length > 0;
+    const title = String(
+      obj.googleDisplayName ||
+        obj.googleFormattedAddress ||
+        (hasPlace ? "Mapa de Google" : "Mapa sin ubicacion")
+    );
+
+    return (
+      <Group
+        {...commonProps}
+        id={obj.id}
+        ref={handleRef}
+        width={width}
+        height={height}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <Rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="rgba(0,0,0,0.001)"
+          stroke="transparent"
+          listening={true}
+          draggable={false}
+          onClick={handleClick}
+          onTap={handleClick}
+          onDblClick={handleDoubleClick}
+          onDblTap={handleDoubleClick}
+        />
+        <Rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="#f8fafc"
+          stroke={isSelected || preSeleccionado ? "#773dbe" : "#d8dbe2"}
+          strokeWidth={isSelected || preSeleccionado ? 2 : 1}
+          cornerRadius={10}
+          shadowColor="rgba(15,23,42,0.12)"
+          shadowBlur={8}
+          shadowOffset={{ x: 0, y: 3 }}
+          listening={false}
+        />
+        <Rect
+          x={12}
+          y={12}
+          width={width - 24}
+          height={Math.max(1, height - 24)}
+          fill="#eef2f7"
+          stroke="#d8dbe2"
+          strokeWidth={1}
+          cornerRadius={8}
+          listening={false}
+        />
+        <Text
+          x={24}
+          y={Math.max(22, height / 2 - 28)}
+          width={width - 48}
+          text={title}
+          align="center"
+          fontSize={16}
+          fontFamily="Source Sans Pro, sans-serif"
+          fontStyle="bold"
+          fill="#262626"
+          listening={false}
+        />
+        <Text
+          x={24}
+          y={Math.max(48, height / 2 + 2)}
+          width={width - 48}
+          text={hasPlace ? "Mapa embebido en vista previa y publicacion" : "Selecciona una ubicacion de Google Maps"}
+          align="center"
+          fontSize={12}
+          fontFamily="Source Sans Pro, sans-serif"
+          fill="#64748b"
+          listening={false}
+        />
+      </Group>
+    );
+  }
+
   if (isFunctionalCtaButton(obj)) {
     const fontFamily = obj.fontFamily || "sans-serif";
     const rsvpVisual = resolveRsvpButtonVisual(obj);

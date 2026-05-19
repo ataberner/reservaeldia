@@ -206,6 +206,107 @@ test("keeps v2 frame validation blocking while avoiding false legacy warnings", 
   assert.deepEqual(issueKeys(result.warnings), []);
 });
 
+test("skips countdown publish validation when the event details visibility flag is false", () => {
+  const rawObjetos = [
+    {
+      id: "count-legacy-hidden",
+      tipo: "countdown",
+      seccionId: "section-1",
+      fechaISO: "2026-05-10T20:00:00.000Z",
+      mostrarCuentaRegresiva: false,
+      width: 280,
+      height: 96,
+    },
+    {
+      id: "count-modern-hidden",
+      tipo: "countdown",
+      seccionId: "section-1",
+      countdownSchemaVersion: 2,
+      fechaObjetivo: "2026-05-10T20:00:00.000Z",
+      frameSvgUrl: "gs://private/frame.svg",
+      mostrarCuentaRegresiva: false,
+      width: 320,
+      height: 120,
+    },
+  ];
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos,
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: rawObjetos,
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, true);
+  assert.deepEqual(issueKeys(result.blockers), []);
+  assert.deepEqual(issueKeys(result.warnings), []);
+});
+
+test("validates google map visibility without publishing broken embeds", () => {
+  const previousPublicKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const previousEmbedKey = process.env.GOOGLE_MAPS_EMBED_API_KEY;
+  delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  delete process.env.GOOGLE_MAPS_EMBED_API_KEY;
+
+  try {
+    const visibleMap = {
+      id: "map-visible",
+      tipo: "mapa-google",
+      seccionId: "section-1",
+      googlePlaceId: "place-123",
+      mostrarMapa: true,
+      width: 320,
+      height: 220,
+    };
+    const missingPlaceMap = {
+      ...visibleMap,
+      id: "map-missing-place",
+      googlePlaceId: "",
+    };
+    const hiddenMap = {
+      ...visibleMap,
+      id: "map-hidden",
+      mostrarMapa: false,
+      googlePlaceId: "",
+    };
+
+    const blocked = validatePreparedPublicationRenderState({
+      rawObjetos: [visibleMap, missingPlaceMap, hiddenMap],
+      rawSecciones: FIXED_SECTION,
+      objetosFinales: [visibleMap, missingPlaceMap, hiddenMap],
+      seccionesFinales: FIXED_SECTION,
+    });
+    assert.equal(blocked.canPublish, false);
+    assert.deepEqual(issueKeys(blocked.blockers), [
+      "google-map-api-key-missing|map-missing-place|section-1|googlePlaceId",
+      "google-map-api-key-missing|map-visible|section-1|googlePlaceId",
+      "google-map-place-id-missing|map-missing-place|section-1|googlePlaceId",
+    ]);
+
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "test-map-key";
+    const allowed = validatePreparedPublicationRenderState({
+      rawObjetos: [visibleMap, hiddenMap],
+      rawSecciones: FIXED_SECTION,
+      objetosFinales: [visibleMap, hiddenMap],
+      seccionesFinales: FIXED_SECTION,
+    });
+    assert.equal(allowed.canPublish, true);
+    assert.deepEqual(issueKeys(allowed.blockers), []);
+    assert.deepEqual(issueKeys(allowed.warnings), []);
+  } finally {
+    if (typeof previousPublicKey === "undefined") {
+      delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = previousPublicKey;
+    }
+    if (typeof previousEmbedKey === "undefined") {
+      delete process.env.GOOGLE_MAPS_EMBED_API_KEY;
+    } else {
+      process.env.GOOGLE_MAPS_EMBED_API_KEY = previousEmbedKey;
+    }
+  }
+});
+
 test("allows editor pill shapes once published HTML supports them", () => {
   const rawObjetos = [
     {

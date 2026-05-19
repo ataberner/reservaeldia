@@ -75,6 +75,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `galeria` `dynamic_media` | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `gallery-media-unresolved` | usar con restricciones |
 | `countdown` schema v1 | `si` | `soportado` | `soportado` | `soportado` | `parcial` | warning `legacy-countdown-schema-v1-frozen` | congelar contrato |
 | `countdown` schema v2 | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `countdown-frame-unresolved` | usar con restricciones |
+| `mapa-google` | `si` | placeholder | `soportado` | omitido | `alta` en preview/publish, no participa en share image | puede bloquear si falta `placeId` o API key para publish | el iframe real se excluye de `share.jpg` |
 | `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial | warning `rsvp-missing-root-config`, blocker `rsvp-disabled-with-button`, warning `functional-cta-link-ignored` | validar contrato completo |
 | `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial | warning `gift-missing-root-config`, warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, blocker `gift-disabled-with-button`, warning `functional-cta-link-ignored` | validar contrato completo |
 | fondo de seccion por color | `si` | `soportado` | `soportado` | `soportado` | `alta` | sin warning especifico | usar con checklist |

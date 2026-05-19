@@ -1,5 +1,5 @@
 // src/components/DashboardHeader.jsx
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useRouter } from "next/router";
@@ -28,6 +28,10 @@ import {
     readCanvasEditorStage,
 } from "@/lib/editorRuntimeBridge";
 import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
+import {
+    DASHBOARD_DOCUMENT_NAME_EVENTS,
+    publishDashboardDocumentNameState,
+} from "@/lib/dashboardDocumentNameBridge";
 
 const MOBILE_EDITOR_BREAKPOINT_PX = 768;
 
@@ -296,6 +300,15 @@ export default function DashboardHeader(props) {
     ]);
 
     useEffect(() => {
+        publishDashboardDocumentNameState({
+            name: nombreBorrador,
+            documentId: slugInvitacion,
+            documentKind: isTemplateSession ? "template" : "draft",
+            editable: Boolean(slugInvitacion) && !editorReadOnly,
+        });
+    }, [editorReadOnly, isTemplateSession, nombreBorrador, slugInvitacion]);
+
+    useEffect(() => {
         const handlePointerDownOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
                 setMenuAbierto(false);
@@ -541,29 +554,64 @@ export default function DashboardHeader(props) {
         }
     };
 
-    const guardarNombreDocumento = async () => {
-        const currentId = normalizeText(slugInvitacion);
-        if (!currentId) return;
+    const guardarNombreDocumento = useCallback(
+        async (nombreDocumento = nombreBorrador) => {
+            const currentId = normalizeText(slugInvitacion);
+            if (!currentId) return;
+            const nextName = String(nombreDocumento ?? "");
 
-        if (isTemplateSession) {
-            await saveTemplateEditorDocument({
-                templateId: currentId,
-                document: {
-                    nombre: nombreBorrador,
-                },
+            if (isTemplateSession) {
+                await saveTemplateEditorDocument({
+                    templateId: currentId,
+                    document: {
+                        nombre: nextName,
+                    },
+                });
+                setTemplateWorkspaceMeta((previous) => ({
+                    ...previous,
+                    templateName: normalizeText(nextName) || previous.templateName,
+                }));
+                setNombreBorrador(nextName);
+                return;
+            }
+
+            const ref = doc(db, "borradores", currentId);
+            await updateDoc(ref, {
+                nombre: nextName,
             });
-            setTemplateWorkspaceMeta((previous) => ({
-                ...previous,
-                templateName: normalizeText(nombreBorrador) || previous.templateName,
-            }));
-            return;
-        }
+            setNombreBorrador(nextName);
+        },
+        [isTemplateSession, nombreBorrador, slugInvitacion]
+    );
 
-        const ref = doc(db, "borradores", currentId);
-        await updateDoc(ref, {
-            nombre: nombreBorrador,
-        });
-    };
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const handleDocumentNameUpdateRequest = (event) => {
+            if (editorReadOnly || !slugInvitacion) return;
+
+            const nextName = String(event?.detail?.name ?? "");
+            setNombreBorrador(nextName);
+
+            if (event?.detail?.persist === false) return;
+
+            void guardarNombreDocumento(nextName).catch((error) => {
+                console.error("Error guardando nombre del borrador:", error);
+            });
+        };
+
+        window.addEventListener(
+            DASHBOARD_DOCUMENT_NAME_EVENTS.UPDATE_REQUEST,
+            handleDocumentNameUpdateRequest
+        );
+
+        return () => {
+            window.removeEventListener(
+                DASHBOARD_DOCUMENT_NAME_EVENTS.UPDATE_REQUEST,
+                handleDocumentNameUpdateRequest
+            );
+        };
+    }, [editorReadOnly, guardarNombreDocumento, slugInvitacion]);
 
     const abrirModalCrearSeccion = () => {
         if (typeof window === "undefined") return;

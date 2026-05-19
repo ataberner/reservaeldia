@@ -35,6 +35,25 @@ export interface TemplateFieldApplyTargetTransform {
   preset?: string;
 }
 
+export type TemplateDateTextFormatPreset =
+  | "event_date_long_es_ar"
+  | "event_date_short_es_ar"
+  | "event_date_day_month_es_ar"
+  | "event_datetime_long_es_ar"
+  | "event_datetime_short_es_ar";
+
+export type TemplateEventDetailsRole =
+  | "primary_person_name"
+  | "secondary_person_name"
+  | "couple_names"
+  | "venue_name"
+  | "venue_address";
+
+export type TemplateEventDetailsFormat =
+  | "and"
+  | "ampersand"
+  | "linebreak";
+
 export interface TemplateFieldApplyTarget {
   scope: "objeto" | "seccion" | "rsvp";
   id?: string;
@@ -51,6 +70,9 @@ export interface TemplateField {
   placeholder?: string;
   helperText?: string;
   optional: boolean;
+  dateTextFormatPreset?: TemplateDateTextFormatPreset;
+  eventDetailsRole?: TemplateEventDetailsRole;
+  eventDetailsFormat?: TemplateEventDetailsFormat;
   validation?: TemplateFieldValidation;
   updateMode?: TemplateFieldUpdateMode;
   applyTargets?: TemplateFieldApplyTarget[];

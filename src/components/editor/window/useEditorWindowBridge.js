@@ -1,6 +1,7 @@
 ﻿// src/components/editor/window/useEditorWindowBridge.js
 import { useEffect } from "react";
 import { registerCountdownAuditContext } from "@/domain/countdownAudit/runtime";
+import { isCountdownVisible } from "@/domain/eventDetails/countdownEventDetails";
 import {
   CANVAS_EDITOR_COMPATIBILITY_KEYS,
 } from "@/lib/editorBridgeContracts";
@@ -33,6 +34,10 @@ export default function useEditorWindowBridge({
   stageRef,
   getTemplateAuthoringSnapshot,
   getTemplateAuthoringStatus,
+  updateTemplateAuthoringDefault,
+  updateTemplateAuthoringDateTextFormat,
+  updateTemplateAuthoringEventPersonNames,
+  updateTemplateAuthoringEventLocation,
   repairTemplateAuthoringState,
   ensureInlineEditSettledBeforeCriticalAction,
   flushPersistenceNow,
@@ -85,6 +90,22 @@ export default function useEditorWindowBridge({
         typeof getTemplateAuthoringSnapshot === "function"
           ? getTemplateAuthoringSnapshot
           : undefined,
+      updateTemplateAuthoringDefault:
+        typeof updateTemplateAuthoringDefault === "function"
+          ? updateTemplateAuthoringDefault
+          : undefined,
+      updateTemplateAuthoringDateTextFormat:
+        typeof updateTemplateAuthoringDateTextFormat === "function"
+          ? updateTemplateAuthoringDateTextFormat
+          : undefined,
+      updateTemplateAuthoringEventPersonNames:
+        typeof updateTemplateAuthoringEventPersonNames === "function"
+          ? updateTemplateAuthoringEventPersonNames
+          : undefined,
+      updateTemplateAuthoringEventLocation:
+        typeof updateTemplateAuthoringEventLocation === "function"
+          ? updateTemplateAuthoringEventLocation
+          : undefined,
       getTemplateAuthoringStatus:
         typeof getTemplateAuthoringStatus === "function"
           ? getTemplateAuthoringStatus
@@ -113,6 +134,10 @@ export default function useEditorWindowBridge({
     stageRef,
     getTemplateAuthoringSnapshot,
     getTemplateAuthoringStatus,
+    updateTemplateAuthoringDefault,
+    updateTemplateAuthoringDateTextFormat,
+    updateTemplateAuthoringEventPersonNames,
+    updateTemplateAuthoringEventLocation,
     repairTemplateAuthoringState,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow,
@@ -121,7 +146,9 @@ export default function useEditorWindowBridge({
   useEffect(() => {
     registerCountdownAuditContext({
       getCurrentCountdown: () =>
-        (Array.isArray(objetos) ? objetos : []).find((item) => item?.tipo === "countdown") || null,
+        (Array.isArray(objetos) ? objetos : []).find(
+          (item) => item?.tipo === "countdown" && isCountdownVisible(item)
+        ) || null,
       getCurrentSections: () => (Array.isArray(seccionesOrdenadas) ? [...seccionesOrdenadas] : []),
       stageRef,
       seccionActivaId,

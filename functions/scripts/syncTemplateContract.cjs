@@ -28,6 +28,14 @@ const artifacts = [
     ],
   },
   {
+    label: "Detalles de evento para countdown",
+    sourcePath: path.resolve(__dirname, "../../shared/countdownEventDetails.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/countdownEventDetails.cjs"),
+      path.resolve(__dirname, "../lib/shared/countdownEventDetails.cjs"),
+    ],
+  },
+  {
     label: "Contrato de assets de render",
     sourcePath: path.resolve(__dirname, "../../shared/renderAssetContract.cjs"),
     targetPaths: [

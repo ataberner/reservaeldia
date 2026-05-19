@@ -30,6 +30,7 @@ const {
   isCompliantPublishedShareImageBuffer,
   isCurrentGeneratedShareImageRequest,
   isPublishedShareImageEnabled,
+  preparePublishedShareImageHtml,
   resolveRequiredGeneratedPublishedShareImageMetadata,
   resolvePublishedShareImageMetadata,
 } = requireBuiltModule("lib/payments/publishedShareImage.js");
@@ -602,6 +603,67 @@ test("resolvePublishedShareImageMetadata follows fallback order from portada to 
   assert.equal(share.source, "template-share-image");
   assert.equal(share.storagePath, null);
   assert.match(share.imageUrl, /^https:\/\/cdn\.example\.test\/template-share\.jpg\?v=/);
+});
+
+test("preparePublishedShareImageHtml removes Google Maps embeds only for share rendering", () => {
+  const html = `<!doctype html>
+    <html>
+      <body>
+        <div class="inv">
+          <section class="sec">
+            <div class="objeto texto">Nos casamos</div>
+            <div class="objeto mapa-google" data-type="mapa-google">
+              <iframe src="https://www.google.com/maps/embed/v1/place?key=test&q=place_id:test"></iframe>
+            </div>
+            <iframe src="https://example.test/keep-me"></iframe>
+          </section>
+        </div>
+      </body>
+    </html>`;
+
+  const prepared = preparePublishedShareImageHtml(html);
+
+  assert.match(prepared, /Nos casamos/);
+  assert.match(prepared, /https:\/\/example\.test\/keep-me/);
+  assert.doesNotMatch(prepared, /mapa-google/);
+  assert.doesNotMatch(prepared, /google\.com\/maps\/embed/);
+});
+
+test("resolvePublishedShareImageMetadata sends map-free HTML to renderer", async () => {
+  let rendererHtml = "";
+
+  const share = await resolvePublishedShareImageMetadata({
+    publicSlug: "mi-slug",
+    publicUrl: "https://reservaeldia.com.ar/i/mi-slug",
+    baseHtml: `<html><body><div class="inv"><section class="sec">
+      <div class="objeto texto">Nos casamos</div>
+      <div class="objeto mapa-google" data-type="mapa-google">
+        <iframe src="https://www.google.com/maps/embed/v1/place?key=test&q=place_id:test"></iframe>
+      </div>
+    </section></div></body></html>`,
+    title: "Titulo",
+    description: "Descripcion",
+    generatedAt: "generated-at",
+    shareImageEnabled: true,
+    async generateShareImage(input) {
+      rendererHtml = input.html;
+      return {
+        buffer: await createJpegBuffer(),
+        width: 1200,
+        height: 630,
+        mimeType: "image/jpeg",
+      };
+    },
+    async saveGeneratedShareImage() {},
+    async confirmGeneratedShareImage() {
+      return true;
+    },
+  });
+
+  assert.equal(share.status, "generated");
+  assert.match(rendererHtml, /Nos casamos/);
+  assert.doesNotMatch(rendererHtml, /mapa-google/);
+  assert.doesNotMatch(rendererHtml, /google\.com\/maps\/embed/);
 });
 
 test("resolvePublishedShareImageMetadata rejects tall fallback portada and uses valid template share image", async (t) => {

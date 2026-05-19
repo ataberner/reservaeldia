@@ -409,6 +409,7 @@ export default function computeInsertDefaults({
       height,
       fechaObjetivo: countdownTarget.targetISO,
       ...presetProps,
+      mostrarCuentaRegresiva: payload.mostrarCuentaRegresiva !== false,
     };
   } else if (tipo === "rsvp-boton" || tipo === "regalo-boton") {
     const width = incomingWidth ?? 200;
@@ -443,6 +444,28 @@ export default function computeInsertDefaults({
       ancho: width,
       alto: height,
       cornerRadius: Number.isFinite(payload.cornerRadius) ? payload.cornerRadius : 8,
+    };
+  } else if (tipo === "mapa-google") {
+    const width = Math.max(200, incomingWidth ?? 361);
+    const height = Math.max(200, incomingHeight ?? 220);
+    const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
+    const y = incomingY ?? 140;
+    next = {
+      ...next,
+      x,
+      y,
+      width,
+      height,
+      mostrarMapa: payload.mostrarMapa !== false,
+      googlePlaceId: payload.googlePlaceId ?? "",
+      googleDisplayName: payload.googleDisplayName ?? "",
+      googleFormattedAddress: payload.googleFormattedAddress ?? "",
+      googleLat: Number.isFinite(Number(payload.googleLat))
+        ? Number(payload.googleLat)
+        : null,
+      googleLng: Number.isFinite(Number(payload.googleLng))
+        ? Number(payload.googleLng)
+        : null,
     };
   } else {
     next = {

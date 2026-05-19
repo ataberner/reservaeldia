@@ -38,6 +38,14 @@ const FIELD_TYPES = new Set([
   "images",
 ]);
 const FIELD_UPDATE_MODES = new Set(["input", "blur", "confirm"]);
+const EVENT_DETAILS_ROLES = new Set([
+  "primary_person_name",
+  "secondary_person_name",
+  "couple_names",
+  "venue_name",
+  "venue_address",
+]);
+const EVENT_DETAILS_FORMATS = new Set(["and", "ampersand", "linebreak"]);
 const APPLY_TARGET_SCOPES = new Set(["objeto", "seccion", "rsvp"]);
 const APPLY_TARGET_MODES = new Set(["set", "replace"]);
 const APPLY_TARGET_TRANSFORM_KINDS = new Set([
@@ -47,6 +55,14 @@ const APPLY_TARGET_TRANSFORM_KINDS = new Set([
   "images_to_first_url",
 ]);
 const DEFAULT_DATE_TEXT_TRANSFORM_PRESET = "event_date_long_es_ar";
+const DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET = "event_datetime_long_es_ar";
+const DATE_TEXT_FORMAT_PRESETS = new Set([
+  "event_date_long_es_ar",
+  "event_date_short_es_ar",
+  "event_date_day_month_es_ar",
+  "event_datetime_long_es_ar",
+  "event_datetime_short_es_ar",
+]);
 
 const VIEWPORT_HINTS = new Set(["mobileFirst", "desktop", "responsive"]);
 const ACTIVE_STATES = new Set(["active", "archived"]);
@@ -193,6 +209,28 @@ function normalizeFieldType(value) {
   return token;
 }
 
+function normalizeDateTextFormatPreset(value, fieldType = "") {
+  const preset = normalizeText(value);
+  if (DATE_TEXT_FORMAT_PRESETS.has(preset)) return preset;
+
+  return normalizeText(fieldType).toLowerCase() === "datetime"
+    ? DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET
+    : DEFAULT_DATE_TEXT_TRANSFORM_PRESET;
+}
+
+function normalizeEventDetailsRole(value) {
+  const token = normalizeText(value).toLowerCase();
+  if (!EVENT_DETAILS_ROLES.has(token)) return undefined;
+  return token;
+}
+
+function normalizeEventDetailsFormat(value, role = "") {
+  if (role !== "couple_names") return undefined;
+  const token = normalizeText(value).toLowerCase();
+  if (!EVENT_DETAILS_FORMATS.has(token)) return "and";
+  return token;
+}
+
 function normalizeFieldUpdateMode(value) {
   const token = normalizeToken(value);
   if (!token || !FIELD_UPDATE_MODES.has(token)) return undefined;
@@ -211,7 +249,7 @@ function normalizeApplyTargetMode(value) {
   return token;
 }
 
-function normalizeApplyTargetTransform(raw) {
+function normalizeApplyTargetTransform(raw, fieldType = "") {
   const source = asObject(raw);
   const kind = normalizeText(source.kind).toLowerCase();
   if (!kind || !APPLY_TARGET_TRANSFORM_KINDS.has(kind)) return undefined;
@@ -219,14 +257,14 @@ function normalizeApplyTargetTransform(raw) {
   if (kind === "date_to_text") {
     return {
       kind,
-      preset: normalizeText(source.preset) || DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
+      preset: normalizeDateTextFormatPreset(source.preset, fieldType),
     };
   }
 
   return { kind };
 }
 
-function normalizeFieldApplyTarget(raw) {
+function normalizeFieldApplyTarget(raw, fieldType = "") {
   const source = asObject(raw);
   const scope = normalizeApplyTargetScope(source.scope);
   if (!scope) return null;
@@ -238,7 +276,7 @@ function normalizeFieldApplyTarget(raw) {
   if ((scope === "objeto" || scope === "seccion") && !id) return null;
 
   const mode = normalizeApplyTargetMode(source.mode);
-  const transform = normalizeApplyTargetTransform(source.transform);
+  const transform = normalizeApplyTargetTransform(source.transform, fieldType);
 
   return {
     scope,
@@ -249,13 +287,13 @@ function normalizeFieldApplyTarget(raw) {
   };
 }
 
-function normalizeFieldApplyTargets(value) {
+function normalizeFieldApplyTargets(value, fieldType = "") {
   if (!Array.isArray(value)) return [];
   const out = [];
   const seen = new Set();
 
   for (const raw of value) {
-    const item = normalizeFieldApplyTarget(raw);
+    const item = normalizeFieldApplyTarget(raw, fieldType);
     if (!item) continue;
     const key = `${item.scope}|${item.id || ""}|${item.path}|${item.mode}|${
       item.transform?.kind || ""
@@ -311,7 +349,16 @@ function normalizeFieldSchemaItem(raw, index) {
   const optional = toBoolean(source.optional, false);
   const validation = normalizeFieldValidation(source.validation, type);
   const updateMode = normalizeFieldUpdateMode(source.updateMode);
-  const applyTargets = normalizeFieldApplyTargets(source.applyTargets);
+  const applyTargets = normalizeFieldApplyTargets(source.applyTargets, type);
+  const eventDetailsRole = normalizeEventDetailsRole(source.eventDetailsRole);
+  const eventDetailsFormat = normalizeEventDetailsFormat(
+    source.eventDetailsFormat,
+    eventDetailsRole
+  );
+  const dateTextFormatPreset =
+    type === "date" || type === "datetime"
+      ? normalizeDateTextFormatPreset(source.dateTextFormatPreset, type)
+      : undefined;
 
   return {
     key,
@@ -319,6 +366,9 @@ function normalizeFieldSchemaItem(raw, index) {
     type,
     group,
     optional,
+    ...(eventDetailsRole ? { eventDetailsRole } : {}),
+    ...(eventDetailsFormat ? { eventDetailsFormat } : {}),
+    ...(dateTextFormatPreset ? { dateTextFormatPreset } : {}),
     ...(placeholder ? { placeholder } : {}),
     ...(helperText ? { helperText } : {}),
     ...(validation ? { validation } : {}),

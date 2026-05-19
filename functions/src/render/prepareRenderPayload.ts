@@ -25,6 +25,9 @@ const {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } = require("../../shared/renderContractPolicy.cjs");
+const {
+  isCountdownVisible,
+} = require("../../shared/countdownEventDetails.cjs");
 
 type UnknownRecord = Record<string, unknown>;
 const ALTURA_EDITOR_PANTALLA = 500;
@@ -101,6 +104,20 @@ function getString(value: unknown): string {
 
 function normalizeText(value: unknown): string {
   return getString(value).toLowerCase();
+}
+
+function getGoogleMapsEmbedApiKey(): string {
+  return getString(
+    process.env.GOOGLE_MAPS_EMBED_API_KEY ||
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  );
+}
+
+function isGoogleMapPublishEnabled(object: UnknownRecord): boolean {
+  return Boolean(
+    normalizeText(object.tipo) === "mapa-google" &&
+      object.mostrarMapa !== false
+  );
 }
 
 function toFiniteNumber(value: unknown): number | null {
@@ -511,6 +528,19 @@ export function validatePreparedPublicationRenderState(params: {
     const sectionMode = normalizeSectionMode(
       rawSection?.altoModo ?? finalSection?.altoModo
     );
+    if (
+      objectType === "countdown" &&
+      (!isCountdownVisible(rawObject) || !isCountdownVisible(finalObject))
+    ) {
+      return;
+    }
+    if (
+      objectType === "mapa-google" &&
+      (!isGoogleMapPublishEnabled(rawObject) || !isGoogleMapPublishEnabled(finalObject))
+    ) {
+      return;
+    }
+
     const renderContract = classifyRenderObjectContract(rawObject);
     const toFieldPath = (fieldPath: string | null) =>
       resolveFieldPath(pathPrefix, fieldPath);
@@ -770,6 +800,34 @@ export function validatePreparedPublicationRenderState(params: {
             objectId,
             sectionId,
             fieldPath: toFieldPath("frameSvgUrl"),
+          })
+        );
+      }
+    }
+
+    if (objectType === "mapa-google") {
+      if (!getString(rawObject.googlePlaceId)) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "google-map-place-id-missing",
+            message: `${objectLabel} esta visible pero no tiene una ubicacion de Google seleccionada.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath("googlePlaceId"),
+          })
+        );
+      }
+
+      if (!getGoogleMapsEmbedApiKey()) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "google-map-api-key-missing",
+            message: `${objectLabel} necesita GOOGLE_MAPS_EMBED_API_KEY o NEXT_PUBLIC_GOOGLE_MAPS_API_KEY para publicar el mapa embebido.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath("googlePlaceId"),
           })
         );
       }

@@ -121,6 +121,7 @@ import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
+import { isCountdownVisible } from "@/domain/eventDetails/countdownEventDetails";
 import {
   updateBackgroundDecorationTransform,
   updateSectionEdgeDecorationOffset,
@@ -10463,6 +10464,10 @@ export default function CanvasStageContent({
   ]);
 
   const renderCanvasObject = (obj) => {
+    if (obj?.tipo === "countdown" && !isCountdownVisible(obj)) {
+      return null;
+    }
+
     const isInlineEditableObject = obj.tipo === "texto";
     const isInEditMode =
       isInlineEditableObject &&

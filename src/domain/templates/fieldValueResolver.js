@@ -11,6 +11,41 @@ const IMAGE_TARGET_PATHS = new Set(["src", "url", "mediaurl", "fondoimagen"]);
 
 export const DEFAULT_DATE_TEXT_TRANSFORM_PRESET = "event_date_long_es_ar";
 export const DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET = "event_datetime_long_es_ar";
+export const DATE_TEXT_FORMAT_PRESETS = Object.freeze([
+  "event_date_long_es_ar",
+  "event_date_short_es_ar",
+  "event_date_day_month_es_ar",
+  "event_datetime_long_es_ar",
+  "event_datetime_short_es_ar",
+]);
+export const DATE_TEXT_FORMAT_PRESET_OPTIONS = Object.freeze([
+  {
+    value: "event_date_long_es_ar",
+    label: "Fecha larga",
+    example: "13 de diciembre de 2026",
+  },
+  {
+    value: "event_date_short_es_ar",
+    label: "Fecha corta",
+    example: "13/12/2026",
+  },
+  {
+    value: "event_date_day_month_es_ar",
+    label: "Dia y mes",
+    example: "13 de diciembre",
+  },
+  {
+    value: "event_datetime_long_es_ar",
+    label: "Fecha y hora larga",
+    example: "13 de diciembre de 2026, 18:00",
+  },
+  {
+    value: "event_datetime_short_es_ar",
+    label: "Fecha y hora corta",
+    example: "13/12/2026, 18:00",
+  },
+]);
+const DATE_TEXT_FORMAT_PRESET_SET = new Set(DATE_TEXT_FORMAT_PRESETS);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -42,6 +77,16 @@ function formatDateTimeInputValue(date) {
   return `${formatDateInputValue(date)}T${padDateSegment(date.getHours())}:${padDateSegment(
     date.getMinutes()
   )}`;
+}
+
+function formatShortDateText(date) {
+  return `${padDateSegment(date.getDate())}/${padDateSegment(
+    date.getMonth() + 1
+  )}/${date.getFullYear()}`;
+}
+
+function formatTimeText(date) {
+  return `${padDateSegment(date.getHours())}:${padDateSegment(date.getMinutes())}`;
 }
 
 function parseTemplateDateValue(value) {
@@ -100,33 +145,55 @@ function buildDateTextFormatOptions(includeTime = false) {
   };
 }
 
-function shouldIncludeTimeInDateText(fieldType, preset) {
-  const safeFieldType = normalizeText(fieldType).toLowerCase();
+function shouldIncludeTimeInDateText(preset) {
   const safePreset = normalizeText(preset);
 
-  if (safePreset === DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET) {
-    return true;
-  }
-
-  // Compatibilidad backward: las plantillas viejas guardaban el preset date-only
-  // incluso para fields datetime, pero el comportamiento esperado es mostrar ambos.
-  if (safeFieldType === "datetime") {
+  if (
+    safePreset === DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET ||
+    safePreset === "event_datetime_short_es_ar"
+  ) {
     return true;
   }
 
   return false;
 }
 
+export function normalizeDateTextFormatPreset(preset, fieldType = "") {
+  const safePreset = normalizeText(preset);
+  if (DATE_TEXT_FORMAT_PRESET_SET.has(safePreset)) return safePreset;
+
+  return normalizeText(fieldType).toLowerCase() === "datetime"
+    ? DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET
+    : DEFAULT_DATE_TEXT_TRANSFORM_PRESET;
+}
+
 function formatDateTextPreset(date, preset, fieldType = "") {
-  const safePreset = normalizeText(preset) || DEFAULT_DATE_TEXT_TRANSFORM_PRESET;
-  const includeTime = shouldIncludeTimeInDateText(fieldType, safePreset);
+  const safePreset = normalizeDateTextFormatPreset(preset, fieldType);
+  const includeTime = shouldIncludeTimeInDateText(safePreset);
 
   if (safePreset === "event_date_long_es_ar") {
     return new Intl.DateTimeFormat("es-AR", buildDateTextFormatOptions(includeTime)).format(date);
   }
 
+  if (safePreset === "event_date_short_es_ar") {
+    return includeTime
+      ? `${formatShortDateText(date)}, ${formatTimeText(date)}`
+      : formatShortDateText(date);
+  }
+
+  if (safePreset === "event_date_day_month_es_ar") {
+    return new Intl.DateTimeFormat("es-AR", {
+      day: "numeric",
+      month: "long",
+    }).format(date);
+  }
+
   if (safePreset === DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET) {
     return new Intl.DateTimeFormat("es-AR", buildDateTextFormatOptions(true)).format(date);
+  }
+
+  if (safePreset === "event_datetime_short_es_ar") {
+    return `${formatShortDateText(date)}, ${formatTimeText(date)}`;
   }
 
   return new Intl.DateTimeFormat("es-AR", buildDateTextFormatOptions(includeTime)).format(date);
@@ -144,7 +211,7 @@ export function isImageTemplateTargetPath(path) {
   return IMAGE_TARGET_PATHS.has(normalizeText(path).toLowerCase());
 }
 
-export function normalizeTemplateTargetTransform(rawTransform) {
+export function normalizeTemplateTargetTransform(rawTransform, fieldType = "") {
   const source = asObject(rawTransform);
   const kind = normalizeText(source.kind).toLowerCase();
   if (!kind || !TARGET_TRANSFORM_KINDS.has(kind)) return undefined;
@@ -152,18 +219,51 @@ export function normalizeTemplateTargetTransform(rawTransform) {
   if (kind === "date_to_text") {
     return {
       kind,
-      preset: normalizeText(source.preset) || DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
+      preset: normalizeDateTextFormatPreset(source.preset, fieldType),
     };
   }
 
   return { kind };
 }
 
-export function buildSuggestedTemplateTargetTransform({ fieldType, path } = {}) {
+export function resolveFieldDateTextFormatPreset(field) {
+  const safeField = asObject(field);
+  const ownPreset = normalizeText(safeField.dateTextFormatPreset);
+  if (DATE_TEXT_FORMAT_PRESET_SET.has(ownPreset)) return ownPreset;
+
+  const targets = Array.isArray(safeField.applyTargets) ? safeField.applyTargets : [];
+  for (const target of targets) {
+    if (!isTextualTemplateTargetPath(target?.path)) continue;
+    const transform = asObject(target?.transform);
+    const preset = normalizeText(transform.preset);
+    if (
+      normalizeText(transform.kind).toLowerCase() === "date_to_text" &&
+      DATE_TEXT_FORMAT_PRESET_SET.has(preset)
+    ) {
+      return preset;
+    }
+  }
+
+  return normalizeDateTextFormatPreset("", safeField.type);
+}
+
+export function buildDateTextTransformForField(field, preset = "") {
+  return {
+    kind: "date_to_text",
+    preset: normalizeDateTextFormatPreset(
+      preset || resolveFieldDateTextFormatPreset(field),
+      field?.type
+    ),
+  };
+}
+
+export function buildSuggestedTemplateTargetTransform({ field, fieldType, path } = {}) {
+  const safeField = asObject(field);
+  const resolvedFieldType = normalizeText(fieldType || safeField.type);
   const safePath = normalizeText(path);
   if (!safePath) return undefined;
 
-  if (normalizeText(fieldType).toLowerCase() === "images" && isImageTemplateTargetPath(safePath)) {
+  if (resolvedFieldType.toLowerCase() === "images" && isImageTemplateTargetPath(safePath)) {
     return {
       kind: "images_to_first_url",
     };
@@ -175,21 +275,19 @@ export function buildSuggestedTemplateTargetTransform({ fieldType, path } = {}) 
     };
   }
 
-  if (isDateLikeTemplateFieldType(fieldType) && isTextualTemplateTargetPath(safePath)) {
-    return {
-      kind: "date_to_text",
-      preset:
-        normalizeText(fieldType).toLowerCase() === "datetime"
-          ? DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET
-          : DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
-    };
+  if (isDateLikeTemplateFieldType(resolvedFieldType) && isTextualTemplateTargetPath(safePath)) {
+    return buildDateTextTransformForField(
+      Object.keys(safeField).length
+        ? { ...safeField, type: resolvedFieldType }
+        : { type: resolvedFieldType }
+    );
   }
 
   return undefined;
 }
 
 export function resolveEffectiveTemplateTargetTransform({ field, target } = {}) {
-  const explicitTransform = normalizeTemplateTargetTransform(target?.transform);
+  const explicitTransform = normalizeTemplateTargetTransform(target?.transform, field?.type);
   if (explicitTransform) return explicitTransform;
 
   const safePath = normalizeText(target?.path).toLowerCase();

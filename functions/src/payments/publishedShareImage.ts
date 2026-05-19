@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { JSDOM } from "jsdom";
 import sharp from "sharp";
 import {
   captureFirstSectionShareImage,
@@ -252,6 +253,29 @@ export function extractTemplateShareImageUrl(
   return getString(share.imageUrl) || null;
 }
 
+export function preparePublishedShareImageHtml(html: string): string {
+  const sourceHtml = String(html || "");
+  if (!sourceHtml) return sourceHtml;
+
+  try {
+    const dom = new JSDOM(sourceHtml);
+    const { document } = dom.window;
+
+    document
+      .querySelectorAll(
+        ".objeto.mapa-google,[data-type='mapa-google'],iframe[src*='google.com/maps/embed'],iframe[src*='www.google.com/maps/embed']"
+      )
+      .forEach((element) => {
+        const wrapper = element.closest?.(".objeto.mapa-google,[data-type='mapa-google']");
+        (wrapper || element).remove();
+      });
+
+    return dom.serialize();
+  } catch {
+    return sourceHtml;
+  }
+}
+
 async function defaultValidatePublicImageUrl(params: {
   imageUrl: string;
 }): Promise<boolean> {
@@ -458,8 +482,9 @@ async function resolveGeneratedShareMetadata(
   const renderDelayMs = Math.max(0, Math.floor(params.renderDelayMs || 0));
   const jpegQuality = params.jpegQuality || PUBLISHED_SHARE_IMAGE_QUALITY;
   const generatedSource = params.generatedSource || "renderer";
+  const rendererHtml = preparePublishedShareImageHtml(params.baseHtml);
   const renderParams = {
-    html: params.baseHtml,
+    html: rendererHtml,
     width: PUBLISHED_SHARE_IMAGE_WIDTH,
     height: PUBLISHED_SHARE_IMAGE_HEIGHT,
     quality: jpegQuality,

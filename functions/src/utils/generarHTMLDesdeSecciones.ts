@@ -18,6 +18,9 @@ import {
   hasRenderObjectDeep,
   normalizeRenderObjectType,
 } from "./renderObjectTraversal";
+const {
+  isCountdownVisible,
+} = require("../../shared/countdownEventDetails.cjs");
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
@@ -433,7 +436,9 @@ export function generarHTMLDesdeSecciones(
   function hayCountdown(objs: any[]) {
     return hasRenderObjectDeep(
       objs,
-      (objeto) => normalizeRenderObjectType(objeto?.tipo) === "countdown"
+      (objeto) =>
+        normalizeRenderObjectType(objeto?.tipo) === "countdown" &&
+        isCountdownVisible(objeto)
     );
   }
 

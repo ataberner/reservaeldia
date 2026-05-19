@@ -96,6 +96,11 @@ after Open Graph metadata is injected.
 The source HTML must not be rewritten to isolate the section. Section isolation
 is a renderer-context operation only.
 
+Interactive embeds that are not useful in a static social image, such as
+`mapa-google` / Google Maps iframes, must be removed from the renderer input
+only. They remain part of the final published HTML and preview/publication
+experience.
+
 ## First Section Identification
 
 The first section is the rendered DOM element matching:

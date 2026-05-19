@@ -347,6 +347,7 @@ export default function useEditorEvents({
           ...existingCountdown,
           ...stylePatch,
           fechaObjetivo: nuevoConSeccion.fechaObjetivo ?? existingCountdown.fechaObjetivo,
+          mostrarCuentaRegresiva: nuevoConSeccion.mostrarCuentaRegresiva !== false,
           presetId: nuevoConSeccion.presetId,
         };
 
@@ -469,6 +470,14 @@ export default function useEditorEvents({
         return next;
       });
 
+      if (cambios.mostrarCuentaRegresiva === false) {
+        setElementosSeleccionados((prev) =>
+          Array.isArray(prev)
+            ? prev.filter((selectedId) => selectedId !== targetId)
+            : prev
+        );
+      }
+
       // ✅ NUEVO: avisar a SelectionBounds que reattach el transformer
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -483,7 +492,7 @@ export default function useEditorEvents({
 
     window.addEventListener("actualizar-elemento", handler);
     return () => window.removeEventListener("actualizar-elemento", handler);
-  }, [setObjetos]);
+  }, [setElementosSeleccionados, setObjetos]);
 
   // ------------------------------------------------------------
   // 4) Evento global: aplicar-estilo-efectos

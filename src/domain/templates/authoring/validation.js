@@ -4,6 +4,8 @@ import {
   isTextualTemplateTargetPath,
   normalizeTemplateTargetTransform,
 } from "@/domain/templates/fieldValueResolver.js";
+import { isEventPersonNameField } from "@/domain/eventDetails/personNames.js";
+import { isEventLocationField } from "@/domain/eventDetails/location.js";
 
 const ALLOWED_FIELD_TYPES = new Set([
   "text",
@@ -102,7 +104,11 @@ export function validateAuthoringState({
       issues.push(`Campo '${key}': falta default asociado.`);
     }
 
-    if (!applyTargets.length) {
+    if (
+      !applyTargets.length &&
+      !isEventPersonNameField(safeField) &&
+      !isEventLocationField(safeField)
+    ) {
       issues.push(`Campo '${key}': sin applyTargets.`);
       return;
     }
@@ -113,7 +119,7 @@ export function validateAuthoringState({
       const scope = normalizeText(safeTarget.scope).toLowerCase();
       const targetId = normalizeText(safeTarget.id);
       const path = normalizeText(safeTarget.path);
-      const transform = normalizeTemplateTargetTransform(safeTarget.transform);
+      const transform = normalizeTemplateTargetTransform(safeTarget.transform, type);
 
       if (!scope || !path) {
         issues.push(`Campo '${key}': applyTarget #${targetIndex + 1} invalido (scope/path).`);

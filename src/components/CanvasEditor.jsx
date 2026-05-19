@@ -667,6 +667,7 @@ export default function CanvasEditor({
     editorSession,
     userId,
     objetos,
+    secciones,
     selectedElement: objetoSeleccionado,
     draftMeta,
     onPatchObject: (objectId, patch) => {
@@ -1402,6 +1403,10 @@ export default function CanvasEditor({
     stageRef,
     getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
+    updateTemplateAuthoringDefault: templateAuthoring.updateFieldDefaultValue,
+    updateTemplateAuthoringDateTextFormat: templateAuthoring.updateFieldDateTextFormat,
+    updateTemplateAuthoringEventPersonNames: templateAuthoring.updateEventPersonNames,
+    updateTemplateAuthoringEventLocation: templateAuthoring.updateEventLocation,
     repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow: flushEditorPersistence,

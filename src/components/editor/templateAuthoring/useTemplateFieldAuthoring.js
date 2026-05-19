@@ -12,12 +12,38 @@ import {
   unlinkElementFromField,
   updateFieldConfig,
 } from "@/domain/templates/authoring/model.js";
+import {
+  EVENT_PERSON_NAME_ROLES,
+  buildEventPersonNameDefaults,
+  collectEventPersonNameFields,
+  ensureEventPersonNameFields,
+  getEventPersonNameFieldKey,
+  inferEventCoupleNamesFormat,
+  normalizeEventPersonNameRole,
+  resolveEventPersonNamesFromAuthoring,
+  splitEventCoupleNamesText,
+} from "@/domain/eventDetails/personNames.js";
+import {
+  buildEventLocationDefaults,
+  collectEventLocationFields,
+  ensureEventLocationFields,
+  getEventLocationFieldKey,
+  normalizeEventLocationRole,
+  resolveEventLocationFromAuthoring,
+  updateEventAddressTextFormatInSchema,
+} from "@/domain/eventDetails/location.js";
 import { validateAuthoringState } from "@/domain/templates/authoring/validation.js";
 import {
   AUTHORING_DRAFT_VERSION,
   loadAuthoringState,
   saveAuthoringDraft,
 } from "@/domain/templates/authoring/service.js";
+import {
+  buildTemplateAuthoringTargetPatches,
+  resolveFieldValueFromLinkedCountdown,
+  updateFieldDateTextFormatInSchema,
+} from "@/domain/templates/authoring/targetApplication.js";
+import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
   buildDynamicGalleryObjectPatch,
   buildFixedGalleryObjectPatch,
@@ -40,6 +66,14 @@ function isCountdownCompatibleFieldType(fieldType) {
 function isMediaAuthoringElementType(elementType) {
   const safeType = normalizeText(elementType).toLowerCase();
   return safeType === "imagen" || safeType === "galeria";
+}
+
+function areValuesMapsEqual(left, right) {
+  try {
+    return JSON.stringify(left || {}) === JSON.stringify(right || {});
+  } catch {
+    return false;
+  }
 }
 
 function normalizeSelectedElementDefaultValue(value) {
@@ -149,6 +183,7 @@ export default function useTemplateFieldAuthoring({
   editorSession = null,
   userId,
   objetos,
+  secciones = [],
   selectedElement,
   draftMeta,
   onPatchObject = null,
@@ -164,6 +199,7 @@ export default function useTemplateFieldAuthoring({
   const autoRepairSignatureRef = useRef("");
 
   const safeObjetos = Array.isArray(objetos) ? objetos : [];
+  const safeSecciones = Array.isArray(secciones) ? secciones : [];
   const selectedElementId = normalizeText(selectedElement?.id);
   const selectedElementType = normalizeText(selectedElement?.tipo).toLowerCase();
   const selectedIsSupportedElement = isSupportedAuthoringElementType(selectedElementType);
@@ -430,6 +466,398 @@ export default function useTemplateFieldAuthoring({
 
   const canConfigure = enabled && Boolean(sourceTemplateId);
 
+  const applyFieldTargetsToObjects = useCallback(
+    (field, value, { targetObjectIds = null } = {}) => {
+      if (typeof onPatchObject !== "function") return false;
+
+      const patches = buildTemplateAuthoringTargetPatches({
+        field,
+        value,
+        objetos: safeObjetos,
+        secciones: safeSecciones,
+        targetObjectIds,
+      });
+
+      patches.forEach(({ objectId, patch }) => {
+        onPatchObject(objectId, patch);
+      });
+
+      return patches.length > 0;
+    },
+    [onPatchObject, safeObjetos, safeSecciones]
+  );
+
+  const applyEventPersonNameTargetsToObjects = useCallback(
+    (nextFieldsSchema, nextDefaults) => {
+      let targetsApplied = false;
+      collectEventPersonNameFields(nextFieldsSchema).forEach((field) => {
+        const fieldKey = normalizeText(field?.key);
+        if (!fieldKey) return;
+        const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
+        targetsApplied = targetsApplied || applied;
+      });
+      return targetsApplied;
+    },
+    [applyFieldTargetsToObjects]
+  );
+
+  const applyEventLocationTargetsToObjects = useCallback(
+    (nextFieldsSchema, nextDefaults) => {
+      let targetsApplied = false;
+      collectEventLocationFields(nextFieldsSchema).forEach((field) => {
+        const fieldKey = normalizeText(field?.key);
+        if (!fieldKey) return;
+        const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
+        targetsApplied = targetsApplied || applied;
+      });
+      return targetsApplied;
+    },
+    [applyFieldTargetsToObjects]
+  );
+
+  const updateEventPersonNames = useCallback(
+    async (patch = {}) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const currentNames = resolveEventPersonNamesFromAuthoring({
+        fieldsSchema,
+        defaults,
+      });
+      const safePatch = asObject(patch);
+      const nextNames = {
+        primaryName: Object.prototype.hasOwnProperty.call(safePatch, "primaryName")
+          ? normalizeText(safePatch.primaryName)
+          : currentNames.primaryName,
+        secondaryName: Object.prototype.hasOwnProperty.call(safePatch, "secondaryName")
+          ? normalizeText(safePatch.secondaryName)
+          : currentNames.secondaryName,
+      };
+      const ensureResult = ensureEventPersonNameFields({
+        fieldsSchema,
+        includeBaseFields: true,
+        coupleFormats: collectEventPersonNameFields(fieldsSchema)
+          .filter(
+            (field) =>
+              normalizeEventPersonNameRole(field.eventDetailsRole) ===
+              EVENT_PERSON_NAME_ROLES.COUPLE
+          )
+          .map((field) => field.eventDetailsFormat),
+      });
+      const nextFieldsSchema = ensureResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        buildEventPersonNameDefaults({
+          fieldsSchema: nextFieldsSchema,
+          defaults,
+          names: nextNames,
+        })
+      );
+      const targetsApplied = applyEventPersonNameTargetsToObjects(
+        nextFieldsSchema,
+        nextDefaults
+      );
+
+      if (
+        !ensureResult.changed &&
+        areValuesMapsEqual(nextDefaults, defaults)
+      ) {
+        return targetsApplied;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+      return true;
+    },
+    [
+      applyEventPersonNameTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const linkSelectionToEventPersonName = useCallback(
+    async (role) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+      if (selectedElementType !== "texto" || !selectedElementId) {
+        throw new Error("Selecciona un texto para vincular nombres del evento.");
+      }
+
+      const safeRole = normalizeEventPersonNameRole(role);
+      if (!safeRole) {
+        throw new Error("Tipo de nombre de evento invalido.");
+      }
+
+      const selectedText = normalizeText(selectedElement?.texto);
+      const currentNames = resolveEventPersonNamesFromAuthoring({
+        fieldsSchema,
+        defaults,
+      });
+      let nextNames = { ...currentNames };
+      let targetFieldKey = "";
+      let coupleFormat = "";
+
+      if (safeRole === EVENT_PERSON_NAME_ROLES.PRIMARY) {
+        if (!nextNames.primaryName && selectedText) {
+          nextNames.primaryName = selectedText;
+        }
+        targetFieldKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+      } else if (safeRole === EVENT_PERSON_NAME_ROLES.SECONDARY) {
+        if (!nextNames.secondaryName && selectedText) {
+          nextNames.secondaryName = selectedText;
+        }
+        targetFieldKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+      } else {
+        const parsedNames = splitEventCoupleNamesText(selectedText);
+        coupleFormat = inferEventCoupleNamesFormat(selectedText);
+        if (!nextNames.primaryName && parsedNames.primaryName) {
+          nextNames.primaryName = parsedNames.primaryName;
+        }
+        if (!nextNames.secondaryName && parsedNames.secondaryName) {
+          nextNames.secondaryName = parsedNames.secondaryName;
+        }
+        targetFieldKey = getEventPersonNameFieldKey(
+          EVENT_PERSON_NAME_ROLES.COUPLE,
+          coupleFormat
+        );
+      }
+
+      const ensureResult = ensureEventPersonNameFields({
+        fieldsSchema,
+        includeBaseFields: true,
+        coupleFormats: coupleFormat ? [coupleFormat] : [],
+      });
+      const linkResult = linkElementToField({
+        fieldsSchema: ensureResult.fieldsSchema,
+        fieldKey: targetFieldKey,
+        elementId: selectedElementId,
+        path: selectedElementFieldPath || "texto",
+      });
+      const nextFieldsSchema = linkResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        buildEventPersonNameDefaults({
+          fieldsSchema: nextFieldsSchema,
+          defaults,
+          names: nextNames,
+        })
+      );
+
+      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextDefaults, defaults)) {
+        return false;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      applyEventPersonNameTargetsToObjects(nextFieldsSchema, nextDefaults);
+      return true;
+    },
+    [
+      applyEventPersonNameTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      selectedElement,
+      selectedElementId,
+      selectedElementFieldPath,
+      selectedElementType,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const updateEventLocation = useCallback(
+    async (patch = {}) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const currentLocation = resolveEventLocationFromAuthoring({
+        fieldsSchema,
+        defaults,
+        objetos: safeObjetos,
+      });
+      const safePatch = asObject(patch);
+      const nextLocation = {
+        ...currentLocation,
+        venueName: Object.prototype.hasOwnProperty.call(safePatch, "venueName")
+          ? normalizeText(safePatch.venueName)
+          : currentLocation.venueName,
+        address: Object.prototype.hasOwnProperty.call(safePatch, "address")
+          ? normalizeText(safePatch.address)
+          : currentLocation.address,
+        googlePlaceId: Object.prototype.hasOwnProperty.call(safePatch, "googlePlaceId")
+          ? normalizeText(safePatch.googlePlaceId)
+          : currentLocation.googlePlaceId,
+        googleDisplayName: Object.prototype.hasOwnProperty.call(safePatch, "googleDisplayName")
+          ? normalizeText(safePatch.googleDisplayName)
+          : currentLocation.googleDisplayName,
+        googleFormattedAddress: Object.prototype.hasOwnProperty.call(safePatch, "googleFormattedAddress")
+          ? normalizeText(safePatch.googleFormattedAddress)
+          : currentLocation.googleFormattedAddress,
+        googleAddressComponents: Object.prototype.hasOwnProperty.call(safePatch, "googleAddressComponents")
+          ? safePatch.googleAddressComponents
+          : currentLocation.googleAddressComponents,
+        addressTextFormatPreset: Object.prototype.hasOwnProperty.call(safePatch, "addressTextFormatPreset")
+          ? safePatch.addressTextFormatPreset
+          : currentLocation.addressTextFormatPreset,
+      };
+      const ensureResult = ensureEventLocationFields({ fieldsSchema });
+      const formatResult = Object.prototype.hasOwnProperty.call(
+        safePatch,
+        "addressTextFormatPreset"
+      )
+        ? updateEventAddressTextFormatInSchema({
+            fieldsSchema: ensureResult.fieldsSchema,
+            preset: safePatch.addressTextFormatPreset,
+          })
+        : {
+            fieldsSchema: ensureResult.fieldsSchema,
+            changed: false,
+          };
+      const nextFieldsSchema = formatResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        buildEventLocationDefaults({
+          fieldsSchema: nextFieldsSchema,
+          defaults,
+          location: nextLocation,
+        })
+      );
+      const targetsApplied = applyEventLocationTargetsToObjects(
+        nextFieldsSchema,
+        nextDefaults
+      );
+
+      if (
+        !ensureResult.changed &&
+        !formatResult.changed &&
+        areValuesMapsEqual(nextDefaults, defaults)
+      ) {
+        return targetsApplied;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+      return true;
+    },
+    [
+      applyEventLocationTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      safeObjetos,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const linkSelectionToEventLocation = useCallback(
+    async (role) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+      if (selectedElementType !== "texto" || !selectedElementId) {
+        throw new Error("Selecciona un texto para vincular ubicacion del evento.");
+      }
+
+      const safeRole = normalizeEventLocationRole(role);
+      if (!safeRole) {
+        throw new Error("Campo de ubicacion invalido.");
+      }
+
+      const selectedText = normalizeText(selectedElement?.texto);
+      const currentLocation = resolveEventLocationFromAuthoring({
+        fieldsSchema,
+        defaults,
+        objetos: safeObjetos,
+      });
+      const nextLocation = { ...currentLocation };
+      if (
+        safeRole === "venue_name" &&
+        !nextLocation.venueName &&
+        selectedText
+      ) {
+        nextLocation.venueName = selectedText;
+      }
+      if (
+        safeRole === "venue_address" &&
+        !nextLocation.address &&
+        selectedText
+      ) {
+        nextLocation.address = selectedText;
+      }
+
+      const targetFieldKey = getEventLocationFieldKey(safeRole);
+      const ensureResult = ensureEventLocationFields({ fieldsSchema });
+      const linkResult = linkElementToField({
+        fieldsSchema: ensureResult.fieldsSchema,
+        fieldKey: targetFieldKey,
+        elementId: selectedElementId,
+        path: selectedElementFieldPath || "texto",
+      });
+      const nextFieldsSchema = linkResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        buildEventLocationDefaults({
+          fieldsSchema: nextFieldsSchema,
+          defaults,
+          location: nextLocation,
+        })
+      );
+
+      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextDefaults, defaults)) {
+        return false;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      applyEventLocationTargetsToObjects(nextFieldsSchema, nextDefaults);
+      return true;
+    },
+    [
+      applyEventLocationTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      safeObjetos,
+      selectedElement,
+      selectedElementId,
+      selectedElementFieldPath,
+      selectedElementType,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
   const createFieldFromSelection = useCallback(
     async ({ label, type, group, optional } = {}) => {
       if (!canConfigure) {
@@ -544,9 +972,22 @@ export default function useTemplateFieldAuthoring({
         defaults: nextDefaults,
       });
       syncSelectedGalleryAuthoringState(nextFieldsSchema);
+
+      const linkedField = nextFieldsSchema.find(
+        (field) => normalizeText(field?.key) === normalizeText(fieldKey)
+      );
+      if (isCountdownCompatibleFieldType(linkedField?.type)) {
+        const linkedValue = resolveFieldValueFromLinkedCountdown({
+          field: linkedField,
+          objetos: safeObjetos,
+          fallbackValue: nextDefaults[normalizeText(fieldKey)],
+        });
+        applyFieldTargetsToObjects(linkedField, linkedValue);
+      }
       return true;
     },
     [
+      applyFieldTargetsToObjects,
       canConfigure,
       commitSnapshot,
       defaults,
@@ -653,6 +1094,97 @@ export default function useTemplateFieldAuthoring({
       return true;
     },
     [canConfigure, commitSnapshot, defaults, fieldsSchema, snapshot, sourceTemplateId]
+  );
+
+  const updateFieldDefaultValue = useCallback(
+    async (fieldKey, value, options = {}) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const safeFieldKey = normalizeText(fieldKey);
+      if (!safeFieldKey) return false;
+
+      const targetField = fieldsSchema.find(
+        (field) => normalizeText(field?.key) === safeFieldKey
+      );
+      if (!targetField) return false;
+
+      const shouldApplyTargets = options?.applyTargets === true;
+      const targetsApplied = shouldApplyTargets
+        ? applyFieldTargetsToObjects(targetField, value)
+        : false;
+      if (arePatchValuesEqual(defaults[safeFieldKey], value)) {
+        return targetsApplied;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema,
+        defaults: ensureDefaultsForSchema(fieldsSchema, {
+          ...defaults,
+          [safeFieldKey]: value,
+        }),
+      });
+      return true;
+    },
+    [
+      applyFieldTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const updateFieldDateTextFormat = useCallback(
+    async (fieldKey, preset) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const safeFieldKey = normalizeText(fieldKey);
+      if (!safeFieldKey) return false;
+
+      const updateResult = updateFieldDateTextFormatInSchema({
+        fieldsSchema,
+        fieldKey: safeFieldKey,
+        preset,
+      });
+      if (!updateResult.field) return false;
+
+      const linkedValue = resolveFieldValueFromLinkedCountdown({
+        field: updateResult.field,
+        objetos: safeObjetos,
+        fallbackValue: defaults[safeFieldKey],
+      });
+      const targetsApplied = applyFieldTargetsToObjects(updateResult.field, linkedValue, {
+        targetObjectIds: updateResult.targetObjectIds,
+      });
+
+      if (!updateResult.changed) return targetsApplied;
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: updateResult.fieldsSchema,
+        defaults: ensureDefaultsForSchema(updateResult.fieldsSchema, defaults),
+      });
+      return true;
+    },
+    [
+      applyFieldTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      safeObjetos,
+      snapshot,
+      sourceTemplateId,
+    ]
   );
 
   const getFieldUsage = useCallback(
@@ -769,6 +1301,20 @@ export default function useTemplateFieldAuthoring({
     });
   }, [autoRepairSignature, canConfigure, enabled, loading, repairSnapshot, saving]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE, {
+        detail: {
+          sourceTemplateId,
+          fieldsSchema,
+          defaults,
+          status,
+        },
+      })
+    );
+  }, [defaults, fieldsSchema, sourceTemplateId, status]);
+
   return {
     loading,
     saving,
@@ -789,6 +1335,12 @@ export default function useTemplateFieldAuthoring({
     editField,
     unlinkSelection,
     deleteField,
+    updateFieldDefaultValue,
+    updateFieldDateTextFormat,
+    updateEventPersonNames,
+    linkSelectionToEventPersonName,
+    updateEventLocation,
+    linkSelectionToEventLocation,
     getFieldUsage,
     repairSnapshot,
     reloadAvailableFields,

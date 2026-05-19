@@ -23,6 +23,9 @@ const {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } = require("../../shared/renderContractPolicy.cjs");
+const {
+  isCountdownVisible,
+} = require("../../shared/countdownEventDetails.cjs");
 
 // ✅ Escapar strings para meterlos en atributos/HTML
 function escHTML(str: any = ""): string {
@@ -40,6 +43,36 @@ function escapeAttr(str: string = ""): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function getGoogleMapsEmbedApiKey(): string {
+  return String(
+    process.env.GOOGLE_MAPS_EMBED_API_KEY ||
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      ""
+  ).trim();
+}
+
+function isGoogleMapObjectVisible(obj: any): boolean {
+  return Boolean(
+    String(obj?.tipo || "").trim().toLowerCase() === "mapa-google" &&
+      String(obj?.googlePlaceId || "").trim() &&
+      obj?.mostrarMapa !== false
+  );
+}
+
+function buildGoogleMapEmbedSrc(obj: any): string {
+  const apiKey = getGoogleMapsEmbedApiKey();
+  const placeId = String(obj?.googlePlaceId || "").trim();
+  if (!apiKey || !placeId) return "";
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    q: `place_id:${placeId}`,
+    language: "es-419",
+    region: "AR",
+  });
+  return `https://www.google.com/maps/embed/v1/place?${params.toString()}`;
 }
 
 function normalizeGalleryMediaIdentity(value: any): string {
@@ -1254,6 +1287,14 @@ pointer-events: auto;
       obj = inheritGroupLayoutFields(normalizeRenderAssetObject(obj));
       const tipo = obj?.tipo;
 
+      if (tipo === "countdown" && !isCountdownVisible(obj)) {
+        return "";
+      }
+
+      if (tipo === "mapa-google" && !isGoogleMapObjectVisible(obj)) {
+        return "";
+      }
+
       if (tipo === "grupo") {
         const children = Array.isArray(obj?.children) ? obj.children : [];
         const hasLinkedChildren = children.some((child: any) => Boolean(getLinkProps(child)));
@@ -1290,6 +1331,46 @@ box-sizing: border-box;
             allowLinkWrap: !hasLinkedChildren,
           }
         );
+      }
+
+      // ---------------- MAPA GOOGLE ----------------
+      if (tipo === "mapa-google") {
+        const src = buildGoogleMapEmbedSrc(obj);
+        if (!src) return "";
+
+        const baseStyle = stylePosBase(obj);
+        const width = Math.max(200, Number.isFinite(obj?.width) ? obj.width : 361);
+        const height = Math.max(200, Number.isFinite(obj?.height) ? obj.height : 220);
+        const title = String(
+          obj.googleDisplayName ||
+            obj.googleFormattedAddress ||
+            "Mapa de la ubicacion del evento"
+        );
+        const wrapperStyle = `
+${baseStyle}
+${styleSize(obj, width, height)}
+display: block;
+overflow: hidden;
+border-radius: ${Number.isFinite(obj?.cornerRadius) ? obj.cornerRadius : 10}px;
+background: #f8fafc;
+box-sizing: border-box;
+`.trim();
+
+        return `
+<div class="objeto mapa-google" data-type="mapa-google" data-google-place-id="${escapeAttr(
+          String(obj.googlePlaceId || "")
+        )}" style="${wrapperStyle}">
+  <iframe
+    title="${escapeAttr(title)}"
+    src="${escapeAttr(src)}"
+    width="100%"
+    height="100%"
+    style="border:0;display:block;width:100%;height:100%;"
+    loading="lazy"
+    allowfullscreen
+    referrerpolicy="no-referrer-when-downgrade"></iframe>
+</div>
+`.trim();
       }
 
       // ---------------- TEXTO ----------------

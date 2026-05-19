@@ -1,7 +1,16 @@
 import {
   buildSuggestedTemplateTargetTransform,
+  isDateLikeTemplateFieldType,
+  normalizeDateTextFormatPreset,
   normalizeTemplateTargetTransform,
+  resolveFieldDateTextFormatPreset,
 } from "@/domain/templates/fieldValueResolver.js";
+import {
+  isEventPersonNameField,
+} from "@/domain/eventDetails/personNames.js";
+import {
+  isEventLocationField,
+} from "@/domain/eventDetails/location.js";
 import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
@@ -191,20 +200,21 @@ function stripUndefinedTransform(target) {
   return rest;
 }
 
-function resolveSuggestedTransformForTarget(fieldType, path) {
+function resolveSuggestedTransformForTarget({ field, fieldType, path } = {}) {
   return buildSuggestedTemplateTargetTransform({
+    field,
     fieldType,
     path,
   });
 }
 
-function normalizeApplyTarget(rawTarget) {
+function normalizeApplyTarget(rawTarget, fieldType = "") {
   const source = asObject(rawTarget);
   const scope = normalizeText(source.scope).toLowerCase();
   const id = normalizeText(source.id);
   const path = normalizeText(source.path);
   const mode = normalizeText(source.mode).toLowerCase() === "replace" ? "replace" : "set";
-  const transform = normalizeTemplateTargetTransform(source.transform);
+  const transform = normalizeTemplateTargetTransform(source.transform, fieldType);
 
   if (!scope || !path) return null;
   if ((scope === "objeto" || scope === "seccion") && !id) return null;
@@ -229,15 +239,32 @@ function normalizeField(field, index = 0) {
   const validation = normalizeFieldValidation(source.validation, type);
   const applyTargets = Array.isArray(source.applyTargets)
     ? source.applyTargets
-        .map((target) => normalizeApplyTarget(target))
+        .map((target) => normalizeApplyTarget(target, type))
         .filter(Boolean)
     : [];
+  const dateTextFormatPreset = isDateLikeTemplateFieldType(type)
+    ? (
+        normalizeText(source.dateTextFormatPreset)
+          ? normalizeDateTextFormatPreset(source.dateTextFormatPreset, type)
+          : resolveFieldDateTextFormatPreset({
+              ...source,
+              type,
+              applyTargets,
+            })
+      )
+    : undefined;
 
   const {
     helperText: _unusedHelperText,
     validation: _unusedValidation,
+    dateTextFormatPreset: _unusedDateTextFormatPreset,
     ...restSource
   } = source;
+  const fieldForTransforms = {
+    key,
+    type,
+    ...(dateTextFormatPreset ? { dateTextFormatPreset } : {}),
+  };
 
   return {
     ...restSource,
@@ -246,13 +273,22 @@ function normalizeField(field, index = 0) {
     type,
     group,
     optional,
+    ...(dateTextFormatPreset ? { dateTextFormatPreset } : {}),
     ...(helperText ? { helperText } : {}),
     ...(validation ? { validation } : {}),
     applyTargets: applyTargets
       .map((target) => {
+        const resolvedTransform =
+          normalizeTemplateTargetTransform(target.transform, type) ||
+          resolveSuggestedTransformForTarget({
+            field: fieldForTransforms,
+            fieldType: type,
+            path: target.path,
+          });
         const suggestedTransform =
-          normalizeTemplateTargetTransform(target.transform) ||
-          resolveSuggestedTransformForTarget(type, target.path);
+          resolvedTransform?.kind === "date_to_text" && dateTextFormatPreset
+            ? { ...resolvedTransform, preset: dateTextFormatPreset }
+            : resolvedTransform;
         return stripUndefinedTransform({
           ...target,
           ...(suggestedTransform ? { transform: suggestedTransform } : {}),
@@ -392,6 +428,13 @@ export function buildFieldFromElement({
     elementType === "imagen" || elementType === "galeria"
       ? normalizeFieldGroup(group || DEFAULT_MEDIA_GROUP)
       : normalizeFieldGroup(group);
+  const dateTextFormatPreset = isDateLikeTemplateFieldType(normalizedType)
+    ? normalizeDateTextFormatPreset("", normalizedType)
+    : undefined;
+  const fieldForTransforms = {
+    type: normalizedType,
+    ...(dateTextFormatPreset ? { dateTextFormatPreset } : {}),
+  };
 
   return {
     key,
@@ -399,6 +442,7 @@ export function buildFieldFromElement({
     type: normalizedType,
     group: resolvedGroup,
     optional: normalizeBoolean(optional, false),
+    ...(dateTextFormatPreset ? { dateTextFormatPreset } : {}),
     ...(targetConfig.helperText ? { helperText: targetConfig.helperText } : {}),
     ...(targetConfig.validation ? { validation: targetConfig.validation } : {}),
     applyTargets: [
@@ -408,10 +452,11 @@ export function buildFieldFromElement({
         path: targetConfig.path,
         mode: "set",
         ...(() => {
-          const suggestedTransform = resolveSuggestedTransformForTarget(
-            normalizedType,
-            targetConfig.path
-          );
+          const suggestedTransform = resolveSuggestedTransformForTarget({
+            field: fieldForTransforms,
+            fieldType: normalizedType,
+            path: targetConfig.path,
+          });
           return suggestedTransform ? { transform: suggestedTransform } : {};
         })(),
       },
@@ -493,7 +538,11 @@ export function linkElementToField({
       target.id === safeElementId &&
       target.path === safePath
   );
-  const suggestedTransform = resolveSuggestedTransformForTarget(targetField.type, safePath);
+  const suggestedTransform = resolveSuggestedTransformForTarget({
+    field: targetField,
+    fieldType: targetField.type,
+    path: safePath,
+  });
 
   if (!alreadyLinked) {
     changed = true;
@@ -520,7 +569,10 @@ export function linkElementToField({
         return target;
       }
 
-      const normalizedTransform = normalizeTemplateTargetTransform(target.transform);
+      const normalizedTransform = normalizeTemplateTargetTransform(
+        target.transform,
+        targetField.type
+      );
       const sameTransform =
         (normalizedTransform?.kind || "") === (suggestedTransform?.kind || "") &&
         (normalizedTransform?.preset || "") === (suggestedTransform?.preset || "");
@@ -634,11 +686,34 @@ export function updateFieldConfig({
         : normalized.validation,
       nextType
     );
+    const nextDateTextFormatPreset = isDateLikeTemplateFieldType(nextType)
+      ? normalizeDateTextFormatPreset(
+          Object.prototype.hasOwnProperty.call(safePatch, "dateTextFormatPreset")
+            ? safePatch.dateTextFormatPreset
+            : normalized.dateTextFormatPreset,
+          nextType
+        )
+      : undefined;
+    const fieldForTransforms = {
+      ...normalized,
+      type: nextType,
+      ...(nextDateTextFormatPreset ? { dateTextFormatPreset: nextDateTextFormatPreset } : {}),
+    };
     const nextTargets = normalized.applyTargets.map((target) =>
       stripUndefinedTransform({
         ...target,
-        ...(resolveSuggestedTransformForTarget(nextType, target.path)
-          ? { transform: resolveSuggestedTransformForTarget(nextType, target.path) }
+        ...(resolveSuggestedTransformForTarget({
+          field: fieldForTransforms,
+          fieldType: nextType,
+          path: target.path,
+        })
+          ? {
+              transform: resolveSuggestedTransformForTarget({
+                field: fieldForTransforms,
+                fieldType: nextType,
+                path: target.path,
+              }),
+            }
           : {}),
       })
     );
@@ -648,6 +723,7 @@ export function updateFieldConfig({
       nextType !== normalized.type ||
       nextGroup !== normalized.group ||
       nextOptional !== normalized.optional ||
+      nextDateTextFormatPreset !== normalized.dateTextFormatPreset ||
       nextHelperText !== normalizeFieldHelperText(normalized.helperText) ||
       JSON.stringify(nextValidation || null) !== JSON.stringify(normalized.validation || null) ||
       JSON.stringify(nextTargets) !== JSON.stringify(normalized.applyTargets)
@@ -658,6 +734,7 @@ export function updateFieldConfig({
     const {
       helperText: _unusedHelperText,
       validation: _unusedValidation,
+      dateTextFormatPreset: _unusedDateTextFormatPreset,
       ...restNormalized
     } = normalized;
     return {
@@ -666,6 +743,7 @@ export function updateFieldConfig({
       type: nextType,
       group: nextGroup,
       optional: nextOptional,
+      ...(nextDateTextFormatPreset ? { dateTextFormatPreset: nextDateTextFormatPreset } : {}),
       ...(nextHelperText ? { helperText: nextHelperText } : {}),
       ...(nextValidation ? { validation: nextValidation } : {}),
       applyTargets: nextTargets,
@@ -775,6 +853,8 @@ export function sanitizeAuthoringSchema({
     })
     .filter((field) => {
       if (!dropOrphans) return true;
+      if (isEventPersonNameField(field)) return true;
+      if (isEventLocationField(field)) return true;
       if (Array.isArray(field.applyTargets) && field.applyTargets.length > 0) {
         return true;
       }

@@ -570,6 +570,123 @@ test("generates explicit countdown contract markers for v1 and v2 objects", () =
   assert.match(modernHtml, /data-countdown-target-source="fechaObjetivo"/);
 });
 
+test("omits countdown HTML when the event details visibility flag is false", () => {
+  const visibleHtml = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-visible",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2026-05-10T20:00:00.000Z",
+        width: 320,
+        height: 120,
+      },
+    ],
+    FIXED_SECTION
+  );
+  const hiddenHtml = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-hidden",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2026-05-10T20:00:00.000Z",
+        mostrarCuentaRegresiva: false,
+        width: 320,
+        height: 120,
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(visibleHtml, /data-countdown/);
+  assert.doesNotMatch(hiddenHtml, /data-countdown/);
+  assert.equal(hiddenHtml.trim(), "");
+
+  const fullDocumentHtml = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [
+      {
+        id: "count-hidden",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2026-05-10T20:00:00.000Z",
+        mostrarCuentaRegresiva: false,
+        width: 320,
+        height: 120,
+      },
+    ],
+    { renderMode: "publish" }
+  );
+
+  assert.doesNotMatch(fullDocumentHtml, /data-countdown/);
+  assert.doesNotMatch(fullDocumentHtml, /UNIT_ORDER/);
+});
+
+test("renders google map iframe only when visible and place id is available", () => {
+  const previousPublicKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "test-map-key";
+  try {
+    const visibleHtml = generarHTMLDesdeObjetos(
+      [
+        {
+          id: "map-visible",
+          tipo: "mapa-google",
+          seccionId: "section-1",
+          googlePlaceId: "place-123",
+          googleDisplayName: "Salon Las Acacias",
+          width: 320,
+          height: 220,
+        },
+      ],
+      FIXED_SECTION
+    );
+    const hiddenHtml = generarHTMLDesdeObjetos(
+      [
+        {
+          id: "map-hidden",
+          tipo: "mapa-google",
+          seccionId: "section-1",
+          googlePlaceId: "place-123",
+          mostrarMapa: false,
+          width: 320,
+          height: 220,
+        },
+      ],
+      FIXED_SECTION
+    );
+    const missingPlaceHtml = generarHTMLDesdeObjetos(
+      [
+        {
+          id: "map-missing-place",
+          tipo: "mapa-google",
+          seccionId: "section-1",
+          mostrarMapa: true,
+          width: 320,
+          height: 220,
+        },
+      ],
+      FIXED_SECTION
+    );
+
+    assert.match(visibleHtml, /class="objeto mapa-google"/);
+    assert.match(visibleHtml, /maps\/embed\/v1\/place/);
+    assert.match(visibleHtml, /q=place_id%3Aplace-123/);
+    assert.match(visibleHtml, /loading="lazy"/);
+    assert.equal(hiddenHtml.trim(), "");
+    assert.equal(missingPlaceHtml.trim(), "");
+  } finally {
+    if (typeof previousPublicKey === "undefined") {
+      delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = previousPublicKey;
+    }
+  }
+});
+
 test("injects runtime branching based on explicit countdown contracts", () => {
   const html = generarHTMLDesdeSecciones(
     FIXED_SECTION,

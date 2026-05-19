@@ -1,6 +1,6 @@
 # Reserva el Dia Design System
 
-Status: documentation source of truth for product UI visual identity.
+Status: Canonical Design Reference.
 
 This document records the Figma brand style supplied for Reserva el Dia and maps it onto the current codebase ownership model. It does not change runtime behavior, create a token system, migrate CSS, or authorize visual changes by itself.
 
@@ -113,9 +113,9 @@ Implementation note:
 
 Current implementation notes:
 
-- `_document.js` currently loads `DM Sans` weight `500` and `Source Sans 3` weight `400`, plus Montserrat, Poppins, Raleway, Playfair Display, Roboto, and Yellowtail.
-- The Figma hierarchy requires `DM Sans` weights `400`, `500`, and `600`; the current Google Fonts link does not load every required `DM Sans` weight.
-- Current app UI still uses Montserrat, Poppins, Roboto, Tailwind default font stacks, Yellowtail for the logo, and editor/template font catalogs. This is a mismatch to resolve in a future implementation phase.
+- `_document.js` currently loads `DM Sans` weights `400`, `500`, and `600`, `Source Sans 3` weight `400`, plus Montserrat, Plus Jakarta Sans, Poppins, Raleway, Playfair Display, Roboto, and Yellowtail.
+- The required `DM Sans` weights for the Figma hierarchy are now loaded globally. Typography drift remains a usage/ownership issue, not a missing-font-loading issue.
+- Current app UI still uses Montserrat, Poppins, Roboto, Tailwind default font stacks, Yellowtail for the logo, Plus Jakarta Sans in the footer, and editor/template font catalogs. This is a mismatch to resolve by surface in a future implementation phase.
 - The current icon implementation uses `lucide-react`, `react-icons/fa`, and local Phosphor SVG assets. Font Awesome Regular is not the only icon source in code today.
 
 ### Letter-Spacing Convention
@@ -324,8 +324,8 @@ Known mismatches between the supplied Figma style and current implementation:
 - Secondary color: Figma uses `#020B0A`; current text/neutral values use `#333333`, Tailwind slate/gray, and `#262626` in newer header/hero work.
 - Backgrounds: Figma defines `#FBF7F9`, `#FAF5ED`, and `#FAF5FF`; current surfaces mostly use white, slate/gray Tailwind values, `#faf6ff`, `#faf7ff`, `#f4edff`, `#f4f0fe`, and `#f8f7ff`.
 - State colors: Figma alert/warning/success tokens do not match current red/amber/green palettes in auth and dashboard.
-- Typography: Figma uses `DM Sans` and `Source Sans 3`; current global body ownership conflicts between Roboto and Montserrat, with Poppins in auth and Tailwind defaults in many dashboard components.
-- Font loading: current Google Fonts link does not load all required `DM Sans` weights for the Figma hierarchy.
+- Typography: Figma uses `DM Sans` and `Source Sans 3`; current global body ownership conflicts between Roboto and Montserrat, while some legacy auth/profile styles still use Poppins and many dashboard components rely on Tailwind/system stacks or local utility recipes. Login/Register have moved to `AuthModal.module.css` using `DM Sans` / `Source Sans 3`.
+- Font loading: the current Google Fonts link loads the required `DM Sans` weights, but loaded families are broader than the target design-system set and should not be treated as permission to add new font usage.
 - Iconography: Figma says Font Awesome Regular for icons only, while the app currently uses `lucide-react`, `react-icons/fa`, and local Phosphor SVG assets.
 - Gradient: the Figma brand gradient exists in the shared landing/dashboard hero text, but auth and several dashboard controls still use other purple gradients.
 - CSS systems: Bootstrap, Tailwind, CSS Modules, global CSS, inline styles, template CSS, and generated/public CSS are mixed. The CSS architecture contract defines how to reduce that safely.
@@ -334,8 +334,8 @@ Known mismatches between the supplied Figma style and current implementation:
 
 Recommended order for a future visual implementation phase:
 
-1. Confirm Figma letter-spacing units and font weight availability.
-2. Update font loading to include required `DM Sans` weights only after testing layout impact.
+1. Confirm Figma letter-spacing units and font usage per surface.
+2. Preserve the current `DM Sans` weight loading while auditing/removing legacy font-family usage by surface; do not remove globally loaded legacy fonts until affected surfaces are migrated and tested.
 3. Create runtime tokens in Tailwind and/or `styles/tokens.css` behind a focused migration plan.
 4. Map current legacy purples, backgrounds, state colors, and text colors to the Figma tokens by surface, not by broad search/replace.
 5. Start with landing route visual cleanup outside auth internals and outside public invitation rendering.

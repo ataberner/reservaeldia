@@ -1,5 +1,7 @@
 # Brief Para Reunion Con Estudio De Diseno
 
+Status: Reference.
+
 Fecha: 2026-04-16
 
 Objetivo de este brief:

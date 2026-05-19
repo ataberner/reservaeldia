@@ -1,5 +1,7 @@
 # Preview/Publish Visual Baseline
 
+Status: Testing Baseline.
+
 This document freezes a lightweight visual-reference catalog for preview/publish parity work without changing runtime rendering behavior.
 
 Contract anchor:

@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   buildCheckoutModalContextKey,
+  isProcessingCheckoutStatus,
   isPublishedCheckoutStatus,
-  isRetryablePreSuccessCheckoutStatus,
+  isRecoverableCheckoutStatus,
+  isTerminalCheckoutFailureStatus,
+  resolveCheckoutStatusFlowState,
   resolveCheckoutModalInitialization,
   resolveTerminalPublicationResult,
 } from "./publicationCheckoutState.js";
@@ -116,13 +119,86 @@ test("terminal publication result can expose the final URL from the backend rece
   });
 });
 
-test("checkout status helpers only treat published as terminal success", () => {
+test("checkout status helpers classify lifecycle states by explicit role", () => {
   assert.equal(isPublishedCheckoutStatus("published"), true);
 
-  ["payment_processing", "payment_approved", "payment_rejected", "expired"].forEach(
-    (status) => {
-      assert.equal(isPublishedCheckoutStatus(status), false);
-      assert.equal(isRetryablePreSuccessCheckoutStatus(status), true);
-    }
-  );
+  ["payment_processing", "payment_approved", "publishing"].forEach((status) => {
+    assert.equal(isPublishedCheckoutStatus(status), false);
+    assert.equal(isProcessingCheckoutStatus(status), true);
+    assert.equal(isTerminalCheckoutFailureStatus(status), false);
+    assert.equal(isRecoverableCheckoutStatus(status), false);
+  });
+
+  ["payment_rejected", "expired"].forEach((status) => {
+    assert.equal(isPublishedCheckoutStatus(status), false);
+    assert.equal(isProcessingCheckoutStatus(status), false);
+    assert.equal(isTerminalCheckoutFailureStatus(status), true);
+    assert.equal(isRecoverableCheckoutStatus(status), false);
+  });
+
+  assert.equal(isPublishedCheckoutStatus("approved_slug_conflict"), false);
+  assert.equal(isProcessingCheckoutStatus("approved_slug_conflict"), false);
+  assert.equal(isTerminalCheckoutFailureStatus("approved_slug_conflict"), false);
+  assert.equal(isRecoverableCheckoutStatus("approved_slug_conflict"), true);
+});
+
+test("publishing stays in progress and published still needs a final backend URL", () => {
+  assert.equal(isPublishedCheckoutStatus("publishing"), false);
+  assert.equal(isProcessingCheckoutStatus("publishing"), true);
+
+  assert.deepEqual(resolveCheckoutStatusFlowState("publishing"), {
+    status: "publishing",
+    isProcessing: true,
+    isRecoverable: false,
+    isTerminalSuccess: false,
+    isTerminalFailure: false,
+    shouldContinuePolling: true,
+    shouldClearPolling: false,
+  });
+
+  const missingUrlResult = resolveTerminalPublicationResult({
+    publicUrl: "",
+    receiptData: {
+      operation: "new",
+      paymentId: "pay-1",
+    },
+  });
+
+  assert.deepEqual(missingUrlResult, {
+    publicUrl: "",
+    publicSlug: "",
+    receipt: null,
+  });
+});
+
+test("terminal and recoverable checkout flow states stop polling without reporting success", () => {
+  assert.deepEqual(resolveCheckoutStatusFlowState("payment_rejected"), {
+    status: "payment_rejected",
+    isProcessing: false,
+    isRecoverable: false,
+    isTerminalSuccess: false,
+    isTerminalFailure: true,
+    shouldContinuePolling: false,
+    shouldClearPolling: true,
+  });
+
+  assert.deepEqual(resolveCheckoutStatusFlowState("expired"), {
+    status: "expired",
+    isProcessing: false,
+    isRecoverable: false,
+    isTerminalSuccess: false,
+    isTerminalFailure: true,
+    shouldContinuePolling: false,
+    shouldClearPolling: true,
+  });
+
+  assert.deepEqual(resolveCheckoutStatusFlowState("approved_slug_conflict"), {
+    status: "approved_slug_conflict",
+    isProcessing: false,
+    isRecoverable: true,
+    isTerminalSuccess: false,
+    isTerminalFailure: false,
+    shouldContinuePolling: false,
+    shouldClearPolling: true,
+  });
 });

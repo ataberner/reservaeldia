@@ -1,5 +1,7 @@
 # PREVIEW SYSTEM ANALYSIS
 
+> Status: Current Implementation Map.
+>
 > Updated from code inspection on 2026-04-27.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.

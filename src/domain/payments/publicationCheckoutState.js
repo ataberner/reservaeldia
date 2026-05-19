@@ -81,12 +81,38 @@ export function isPublishedCheckoutStatus(value) {
   return normalizeText(value) === "published";
 }
 
-export function isRetryablePreSuccessCheckoutStatus(value) {
+export function isProcessingCheckoutStatus(value) {
   const status = normalizeText(value);
   return (
     status === "payment_processing" ||
     status === "payment_approved" ||
-    status === "payment_rejected" ||
-    status === "expired"
+    status === "publishing"
   );
+}
+
+export function isTerminalCheckoutFailureStatus(value) {
+  const status = normalizeText(value);
+  return status === "payment_rejected" || status === "expired";
+}
+
+export function isRecoverableCheckoutStatus(value) {
+  return normalizeText(value) === "approved_slug_conflict";
+}
+
+export function resolveCheckoutStatusFlowState(value) {
+  const status = normalizeText(value);
+  const isTerminalSuccess = isPublishedCheckoutStatus(status);
+  const isProcessing = isProcessingCheckoutStatus(status);
+  const isRecoverable = isRecoverableCheckoutStatus(status);
+  const isTerminalFailure = isTerminalCheckoutFailureStatus(status);
+
+  return {
+    status,
+    isProcessing,
+    isRecoverable,
+    isTerminalSuccess,
+    isTerminalFailure,
+    shouldContinuePolling: isProcessing,
+    shouldClearPolling: isTerminalSuccess || isRecoverable || isTerminalFailure,
+  };
 }

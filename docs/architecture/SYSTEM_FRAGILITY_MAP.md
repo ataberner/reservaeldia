@@ -1,8 +1,10 @@
 # SYSTEM FRAGILITY MAP
 
+> Status: Current Audit / Risk Map.
+>
 > Updated from code inspection on 2026-04-27.
 >
-> Required references revalidated: `docs/architecture/ARCHITECTURE_OVERVIEW.md`, `docs/architecture/ARCHITECTURE_GUIDELINES.md`, `docs/architecture/EDITOR_SYSTEM.md`, `docs/architecture/DATA_MODEL.md`, `docs/architecture/INTERACTION_CONTRACT.md`, `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`, `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`, `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`.
+> Required references revalidated: `docs/architecture/ARCHITECTURE_OVERVIEW.md`, `docs/architecture/ARCHITECTURE_GUIDELINES.md`, `docs/architecture/EDITOR_SYSTEM.md`, `docs/architecture/DATA_MODEL.md`, `docs/architecture/INTERACTION_CONTRACT.md`, `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`, `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`, `docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md`, `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`, `docs/contracts/GALLERY_SYSTEM_CONTRACT.md`, `docs/contracts/GALLERY_EDITOR_CONTRACT.md`, `docs/contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md`, `docs/contracts/GALLERY_VIEWER_RENDER_CONTRACT.md`.
 >
 > Debug evidence reviewed: `docs/debug/inline-focus-rca-evidence.md`.
 >
@@ -181,6 +183,7 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Type: State Management, UX, Publication Lifecycle
 - Revalidates: `P1`, `P4`, `V3`
 - Evidence: checkout success depends on the backend `publication_checkout_sessions` terminal `published` state and returned `publicUrl`, while the preview/dashboard parent also syncs `slugPublico`, `urlPublicaVistaPrevia`, and `urlPublicadaReciente` after publish. If a visible checkout modal reinitializes from those parent props, it can discard its terminal receipt state and show the slug/payment form again even though the backend publication already succeeded.
+- Contract: the authoritative lifecycle is now captured in `docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md`.
 - Contract Mismatch: parent publication sync is a reflection of backend truth, not a new checkout context.
 - Failure mode: duplicate publish modal or second publish prompt after successful payment/publication.
 - Action: checkout UI initialization must be keyed to modal open and checkout context (`draftSlug` + operation), while terminal success remains keyed to backend `sessionStatus: "published"` plus final public URL.

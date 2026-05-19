@@ -1,5 +1,7 @@
 # CSS INVENTORY
 
+Status: Current Implementation Inventory.
+
 Phase: CSS Architecture Contract, Phase 2: Ownership Labels And Low-Risk Class Constants.
 
 Scope:
@@ -14,6 +16,7 @@ Scope:
 - `src/components/landing/LandingShareSection.module.css`
 - `src/components/landing/LandingTemplateShowcase.module.css`
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
+- `src/lib/components/AuthModal.module.css`
 - `src/pages/index.module.css`
 - `src/components/dashboard/dashboardStyleClasses.js`
 
@@ -25,7 +28,7 @@ Brand colors, typography, gradient usage, accessibility guidance, and future tok
 
 The current CSS system has two app-level global files:
 - `styles/globals.css`: Tailwind entry point plus editor compatibility, landing navbar compatibility, shared dashboard card hooks, and global keyframes.
-- `styles/styles.css`: legacy global stylesheet containing base reset, legacy layout/sidebar rules, auth modal styles, Bootstrap overrides, landing page sections, inactive/unused section candidates, and route-specific selectors.
+- `styles/styles.css`: legacy global stylesheet containing base reset, legacy layout/sidebar rules, residual legacy auth/profile styles for `ProfileCompletionModal`, Bootstrap overrides, landing page sections, inactive/unused section candidates, and route-specific selectors.
 - `src/components/appHeader/AppHeader.module.css`: component-scoped visual header styles for the landing header and authenticated non-editor dashboard header.
 - `src/components/landing/LandingFeatureDetails.module.css`: component-scoped shared landing/dashboard feature-details section styles.
 - `src/components/landing/LandingFooter.module.css`: component-scoped shared landing/dashboard footer styles.
@@ -35,13 +38,14 @@ The current CSS system has two app-level global files:
 - `src/components/landing/LandingShareSection.module.css`: component-scoped shared landing/dashboard share section styles.
 - `src/components/landing/LandingTemplateShowcase.module.css`: component-scoped landing template carousel styles now reused by the dashboard home carousel block through `LandingTemplateCarouselPrimitives.jsx`.
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`: component-scoped dashboard home publication/draft summary styles. This owns the premium latest-publication summary below the shared hero plus the latest-draft fallback state, and does not use global dashboard card hooks.
+- `src/lib/components/AuthModal.module.css`: component-scoped auth modal styles for `LoginModal.js` and `RegisterModal.js`.
 - `src/pages/index.module.css`: route-scoped landing main and remaining landing section styles.
 - `src/components/dashboard/dashboardStyleClasses.js`: exact current Tailwind/class recipes shared by dashboard invitation cards and dashboard home error panels. It is not a design system and does not introduce new values.
 
 Contract interpretation:
 - `globals.css` can keep Tailwind, app base, true global compatibility, and intentionally shared hooks.
 - `styles.css` is legacy compatibility only. New unrelated rules should not be added there.
-- Existing landing/auth Bootstrap-dependent styles are tolerated until migrated. The landing header no longer uses Bootstrap navbar classes after the shared `AppHeader` extraction, and the shared landing/dashboard hero static styles now live in `src/components/landing/LandingHero.module.css`, but the remaining landing sections and auth modals still depend on Bootstrap/global CSS.
+- Existing landing/ProfileCompletion Bootstrap-dependent styles are tolerated until migrated. The landing header no longer uses Bootstrap navbar classes after the shared `AppHeader` extraction, Login/Register now use `src/lib/components/AuthModal.module.css`, and the shared landing/dashboard hero static styles now live in `src/components/landing/LandingHero.module.css`. Remaining landing sections and `ProfileCompletionModal.js` still depend on Bootstrap/global CSS.
 - Broad selectors, Bootstrap overrides, and generic class names are risk markers, not immediate deletion instructions.
 - Phase 2 added owner/freeze comments only inside global CSS. Selectors and declarations were not rewritten.
 - Phase 3 added the detailed current-value token inventory, manual visual baseline checklist, landing/auth boundary decisions, and redesign order to `docs/architecture/LANDING_DASHBOARD_STYLING_MAP.md`. No selector ownership or CSS file contents changed for Phase 3.
@@ -55,8 +59,8 @@ This section records the current landing/dashboard ownership map after Phase 2 c
 | Surface | Route/component owner | Current style owner | Notes |
 | --- | --- | --- | --- |
 | Landing route | `src/pages/index.js` plus shared landing components | `AppHeader.module.css` for the header; `LandingHero.module.css` for the shared hero; `LandingFeatureDetails.module.css` for the shared feature-details section; `LandingHowItWorks.module.css` for the shared step-circle section; `LandingPricing.module.css` for the shared pricing section; `LandingShareSection.module.css` for the shared share section; `LandingFooter.module.css` for the shared footer; `src/pages/index.module.css`, Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | The landing header, hero, feature-details, how-it-works, pricing, share, and footer sections are extracted to shared visual components. Auth notice and modal entry remain in one page file. |
-| Landing auth entry | `src/pages/index.js` plus `src/lib/components/LoginModal.js` and `src/lib/components/RegisterModal.js` | `styles/styles.css` auth section plus Bootstrap button/modal classes | Auth modal CSS mixes app-owned `auth-*` selectors with generic `.modal-content`, `.close-btn`, `.error`, and Bootstrap `.btn-*`. |
-| Profile completion modal | `src/lib/components/ProfileCompletionModal.js` | Same auth/global CSS group in `styles/styles.css` | Uses the same modal/backdrop/auth selector family as login/register. |
+| Landing auth entry | `src/pages/index.js` plus `src/lib/components/LoginModal.js` and `src/lib/components/RegisterModal.js` | `src/lib/components/AuthModal.module.css` | Login/Register primary modal styling is scoped and no longer owned by `styles/styles.css` or Bootstrap modal selectors. |
+| Profile completion modal | `src/lib/components/ProfileCompletionModal.js` | Legacy auth/global CSS group in `styles/styles.css` plus Bootstrap button/modal classes | Still uses `modal-content auth-modal profile-modal`, `close-btn`, `auth-input-group`, `auth-primary-btn`, `.error`, and Bootstrap button utility classes. This is the remaining auth global-style exception. |
 | Dashboard route shell | `src/pages/dashboard.js` and `src/domain/dashboard/pageShell.js` | Tailwind in JSX plus shell runtime props | Owns view selection, layout props, editor mount state, preview modal mount, and checkout modal mount. |
 | Shared dashboard layout | `src/components/DashboardLayout.jsx` | Tailwind in JSX plus inline measured layout styles | Owns `[data-dashboard-scroll-root="true"]` and main scroll/height behavior. |
 | Shared app visual header | `src/components/appHeader/AppHeader.jsx` | `src/components/appHeader/AppHeader.module.css` | Visual-only owner for public landing and authenticated non-editor dashboard header content. Does not own editor runtime data attributes, shell measurement, or `--dashboard-header-height`. |
@@ -141,6 +145,12 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | --- | --- | --- | --- | --- |
 | `.dashboardPublicationSummary*`, `.dashboardDraft*` | dashboard home latest-publication and latest-draft summary | Allowed scoped component owner | Stay | Local premium summary below the dashboard hero. Shows latest publication when present; otherwise can show the latest edited draft. It intentionally avoids `.dashboard-invitation-card*` because that hook is shared by rails/cards. |
 
+### 3.1.3 `src/lib/components/AuthModal.module.css`
+
+| Section | Owner/domain | Contract status | Disposition | Risk notes |
+| --- | --- | --- | --- | --- |
+| `.backdrop`, `.modal`, `.content`, form/input/button/status classes | Login/Register auth modals | Allowed scoped component owner | Stay | Owns `LoginModal.js` and `RegisterModal.js`. Do not move new Login/Register styling back into `styles/styles.css`. `ProfileCompletionModal.js` is not yet migrated and still uses legacy global auth/ProfileCompletion selectors. |
+
 ### 3.2 `styles/globals.css`
 
 | Lines | Section | Owner/domain | Contract status | Disposition | Risk notes |
@@ -164,7 +174,7 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | 118-165 | `.tipo-selector-*`, `.tipo-btn` | unused candidate / legacy component | Not allowed for new work | Investigate | No exact active className usage found in `src`; generic component CSS in global legacy file. |
 | 171-200 | `.plantilla-card` | unused candidate / legacy template card | Not allowed for new work | Investigate | Current template card UI uses Tailwind and `dashboard-invitation-card`; no exact active className usage found. |
 | 207-225 | `:root` color variables | base / tokens | Tolerated legacy | Move later | Token ownership belongs in global token layer or Tailwind config; current variables are only in legacy global file. |
-| 230-733 | auth modal and auth transition styles | auth / Bootstrap compatibility | Allowed current exception | Move later | Mixes app-owned `auth-*` with Bootstrap `.modal-content`, `.btn-*`, `.close-btn`, `.error`; includes `!important` on `.auth-input-error`. |
+| 230-733 | legacy auth/profile and auth transition styles | ProfileCompletion auth / Bootstrap compatibility / residual legacy auth | Allowed current exception for ProfileCompletion only | Move later | `LoginModal.js` and `RegisterModal.js` have moved to `AuthModal.module.css`. `ProfileCompletionModal.js` still uses app-owned `auth-*` with Bootstrap `.modal-content`, `.btn-*`, `.close-btn`, `.error`; includes `!important` on `.auth-input-error`. |
 | 740-842 | navbar and session buttons | legacy landing / Bootstrap compatibility | Remaining legacy exception | Move later | Overrides Bootstrap `.navbar`, `.navbar-brand`, `.navbar-nav`, `.navbar-toggler`, `.navbar .container`, `.navbar .d-flex`. The new shared header does not use these classes. |
 | 846-895 | `.hero` and `.hero-content` | landing legacy compatibility | Tolerated legacy | Move later | Route-specific landing styles in global file; current shared hero output is owned by `src/components/landing/LandingHero.module.css` while legacy hooks remain on the DOM for compatibility. |
 | 900-935 | `.btn-primary` | landing / auth / Bootstrap compatibility | Allowed current exception | Move later | Global Bootstrap override; `!important` active/focus rules; affects auth buttons and landing buttons. |
@@ -199,8 +209,8 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | Selector group | File | Lines | Risk |
 | --- | --- | --- | --- |
 | `.navbar-collapse`, `.navbar-nav`, `.nav-link`, `.navbar-collapse .btn` | `globals.css` | 39-113 | Legacy Bootstrap header compatibility remains global even though `AppHeader` no longer uses these class names. |
-| `.modal-content`, `.btn-outline-dark`, `.btn-google` | `styles.css` | 234-288 | Auth UI styles Bootstrap/global modal/button names. |
-| `.auth-modal .btn-outline-dark` | `styles.css` | 505-514 | Scoped to auth but still overrides Bootstrap button namespace. |
+| `.modal-content`, `.btn-outline-dark`, `.btn-google` | `styles.css` | 234-288 | Legacy auth/ProfileCompletion styling and residual Bootstrap/global modal/button names. Login/Register should not add new dependencies here. |
+| `.auth-modal .btn-outline-dark` | `styles.css` | 505-514 | Scoped to legacy auth/ProfileCompletion but still overrides Bootstrap button namespace. |
 | `.navbar`, `.navbar-brand`, `.navbar .container`, `.navbar-nav .nav-link`, `.navbar-toggler`, `.navbar.fixed-top` | `styles.css` | 744-794 | Global legacy Bootstrap navbar override; not used by the extracted `AppHeader`. |
 | `.navbar .d-flex` | `styles.css` | 833-839 | Legacy Bootstrap utility descendant override; not used by the extracted `AppHeader`. |
 | `.btn-primary` | `styles.css` | 904-934 | Global Bootstrap primary button override used by landing and auth. |
@@ -211,7 +221,7 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | Selector | File | Lines | Risk |
 | --- | --- | --- | --- |
 | `.layout`, `.sidebar`, `.main`, `.main-card` | `styles.css` | 33-114 | Generic names and likely legacy/unused. |
-| `.close-btn`, `.error` | `styles.css` | 252-265 | Generic names used by auth; can collide outside auth. |
+| `.close-btn`, `.error` | `styles.css` | 252-265 | Generic names still used by legacy profile/auth paths; can collide outside auth. |
 | `.step`, `.icon` | `styles.css` | 1104-1135 | Generic names used by landing "how it works"; collision risk. |
 | `.testimonial`, `.price`, `.premium`, `.highlight`, `.not-included` | `styles.css` | 1178-1335 | Generic names, mostly inactive/commented landing sections. |
 | `.gallery-item`, `.icon-img` | `styles.css` | 1364-1392 | Generic or unclear usage; no exact active use found. |
@@ -249,9 +259,10 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 
 Priority follows the CSS Architecture Contract cleanup order.
 
-1. Auth modal styles: `styles.css` 230-733.
-   - Move toward an auth-owned boundary or scoped CSS.
-   - Replace Bootstrap class-name ownership with app-owned auth selectors.
+1. Remaining ProfileCompletion/auth legacy styles: `styles.css` 230-733.
+   - Login/Register are already behind `AuthModal.module.css`.
+   - Move `ProfileCompletionModal.js` toward the same auth-owned boundary or another scoped CSS owner.
+   - Replace remaining Bootstrap class-name ownership with app-owned auth selectors.
 
 2. Landing Bootstrap and section styles: `styles.css` 740-1620 plus `globals.css` 35-113.
    - Move toward landing-owned CSS or Tailwind/component ownership.

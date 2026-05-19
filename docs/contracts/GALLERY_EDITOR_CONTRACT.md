@@ -1,6 +1,6 @@
 # Gallery Editor Contract
 
-Status: Implemented core contract. This document owns Gallery behavior in the canvas editor, sidebar, role-based authoring model, and mutation boundary. It depends on [GALLERY_SYSTEM_CONTRACT.md](GALLERY_SYSTEM_CONTRACT.md) for invariants and on [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md) for layout preset rules.
+Status: Canonical Contract. This document owns Gallery behavior in the canvas editor, sidebar, role-based authoring model, and mutation boundary. It depends on [GALLERY_SYSTEM_CONTRACT.md](GALLERY_SYSTEM_CONTRACT.md) for invariants and on [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md) for layout preset rules.
 
 ## Current Editor Behavior
 

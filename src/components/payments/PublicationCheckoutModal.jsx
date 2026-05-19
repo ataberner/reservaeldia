@@ -5,6 +5,7 @@ import { functions as cloudFunctions } from "@/firebase";
 import PublicationSuccessState from "@/components/payments/PublicationSuccessState";
 import {
   buildCheckoutModalContextKey,
+  isProcessingCheckoutStatus,
   isPublishedCheckoutStatus,
   resolveCheckoutModalInitialization,
   resolveTerminalPublicationResult,
@@ -390,7 +391,7 @@ export default function PublicationCheckoutModal({
       return;
     }
 
-    if (status === "payment_processing" || status === "payment_approved") {
+    if (isProcessingCheckoutStatus(status)) {
       setCheckoutInfo("Estamos confirmando tu pago. Esto puede tardar unos segundos.");
       setCheckoutError("");
     }

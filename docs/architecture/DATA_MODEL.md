@@ -1,5 +1,7 @@
 # DATA MODEL
 
+Status: Canonical Data Contract.
+
 ## 1. Overview
 The data model is the contract that keeps three different runtimes aligned:
 

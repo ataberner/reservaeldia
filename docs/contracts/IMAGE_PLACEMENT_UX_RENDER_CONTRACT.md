@@ -1,5 +1,7 @@
 # Image Placement UX / Render Contract
 
+Status: Canonical Contract.
+
 Updated from implementation and code inspection on 2026-04-29.
 
 This document is normative for the intended image-placement UX and technical contract. It also records the current implementation where it differs from the intended contract. No code behavior is changed by this document.

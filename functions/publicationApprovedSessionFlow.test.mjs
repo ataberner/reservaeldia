@@ -333,6 +333,67 @@ test("finalizeApprovedSessionFlow keeps retryable failures on payment_approved w
   assert.equal(harness.calls.logs[0]?.message, "Error publicando sesion aprobada");
 });
 
+test("finalizeApprovedSessionFlow can recover a paid non-conflict publish failure without duplicate authority", async () => {
+  let publishAttempt = 0;
+  const harness = createSettlementHarness(createBaseSession(), {
+    approvedPaymentAnalytics: null,
+    async publishDraftToPublic(input) {
+      publishAttempt += 1;
+      harness.calls.publish.push(clone({ ...input, attempt: publishAttempt }));
+      if (publishAttempt === 1) {
+        throw new Error("storage artifact unavailable");
+      }
+      return {
+        publicSlug: input.publicSlug,
+        publicUrl: `https://reservaeldia.com.ar/i/${input.publicSlug}`,
+      };
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      finalizeApprovedSessionFlow({
+        sessionId: "session-1",
+        fallbackPaymentId: "pay-1",
+        ...harness.deps,
+      }),
+    (error) => {
+      assert.equal(error?.code, "failed-precondition");
+      assert.equal(error?.message, "storage artifact unavailable");
+      return true;
+    }
+  );
+
+  assert.equal(harness.runtime.state.session.status, "payment_approved");
+  assert.equal(harness.runtime.state.session.lastError, "storage artifact unavailable");
+  assert.equal(harness.runtime.state.session.publicUrl, undefined);
+  assert.equal(harness.calls.reservationUpdates.length, 0);
+
+  const recovered = await finalizeApprovedSessionFlow({
+    sessionId: "session-1",
+    fallbackPaymentId: "pay-1",
+    approvedAt: "2026-03-27T12:00:00.000Z",
+    ...harness.deps,
+  });
+
+  assert.equal(recovered.sessionStatus, "published");
+  assert.equal(recovered.publicUrl, "https://reservaeldia.com.ar/i/mi-slug");
+  assert.equal(harness.runtime.state.session.status, "published");
+  assert.equal(harness.runtime.state.session.lastError, null);
+  assert.equal(harness.runtime.state.session.publicUrl, "https://reservaeldia.com.ar/i/mi-slug");
+  assert.deepEqual(
+    harness.calls.publish.map((item) => item.attempt),
+    [1, 2]
+  );
+  assert.deepEqual(harness.calls.reservationUpdates, [
+    {
+      slug: "mi-slug",
+      sessionId: "session-1",
+      nextStatus: "consumed",
+    },
+  ]);
+});
+
 test("processMercadoPagoPaymentFlow keeps rejected payments local to the session result", async () => {
   const runtime = createSessionRuntime(
     createBaseSession({

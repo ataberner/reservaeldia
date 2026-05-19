@@ -1,6 +1,6 @@
 # Gallery System Contract
 
-Status: Implemented core contract with known deferred preset renderers. This document is the entry point for the Gallery system contract. It describes current implementation truth, non-negotiable invariants, and links to focused subcontracts for editor behavior, layout presets, and preview/publish viewer rendering.
+Status: Canonical Contract with known deferred preset renderers. This document is the entry point for the Gallery system contract. It describes current implementation truth, non-negotiable invariants, and links to focused subcontracts for editor behavior, layout presets, and preview/publish viewer rendering.
 
 This is an evolution of the existing `tipo: "galeria"` system. It is not a replacement, not a new `album` object type, and not a parallel Gallery render pipeline.
 

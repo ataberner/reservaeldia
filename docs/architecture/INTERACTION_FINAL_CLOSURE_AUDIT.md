@@ -2,6 +2,11 @@
 
 > Updated from code inspection and architecture documentation on 2026-04-07.
 >
+> Status: Historical / Deprecated.
+> Use this document for phase-completion context and residual validation gaps only.
+> The current implementation map is `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`;
+> the normative interaction contract is `docs/architecture/INTERACTION_CONTRACT.md`.
+>
 > Scope:
 > `docs/architecture/INTERACTION_CONTRACT.md`,
 > `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`,

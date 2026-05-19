@@ -1,5 +1,7 @@
 # EDITOR SYSTEM
 
+> Status: Current Architecture/System Map.
+>
 > Updated from code inspection on 2026-04-07.
 >
 > This document is a high-level overview of the current editor runtime. Detailed interaction/rendering behavior lives in `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`.
@@ -127,3 +129,7 @@ These are active system boundaries, not incidental implementation details.
 - Current fragility map: `docs/architecture/SYSTEM_FRAGILITY_MAP.md`
 - Current render compatibility matrix: `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`
 - Image placement UX/render contract: `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`
+- Gallery system contract: `docs/contracts/GALLERY_SYSTEM_CONTRACT.md`
+- Gallery editor/sidebar contract: `docs/contracts/GALLERY_EDITOR_CONTRACT.md`
+- Gallery layout preset contract: `docs/contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md`
+- Gallery preview/publish viewer contract: `docs/contracts/GALLERY_VIEWER_RENDER_CONTRACT.md`

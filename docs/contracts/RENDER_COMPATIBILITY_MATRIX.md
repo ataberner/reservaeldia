@@ -1,5 +1,7 @@
 # Render Compatibility Matrix
 
+Status: Canonical Contract.
+
 ## Proposito
 
 Este documento resume la compatibilidad real entre:
@@ -120,9 +122,9 @@ Advertencias de publish hoy:
 - Para preview vs publish, la fuente de verdad actual es la combinacion de `previewPublishParity`, `prepareRenderPayload`, y `validatePreparedRenderPayload`, no inspeccion manual aislada del canvas.
 - Para imagen social publicada, usar solo el HTML de publish generado como fuente visual. El renderer debe esperar `document.readyState === "complete"`, `document.fonts.ready`, carga/error de imagenes, al menos dos animation frames, y el asentamiento acotado de animaciones/transiciones finitas de entrada en la primera seccion; luego debe capturar el primer `.inv > .sec` en `1200x630`. Los loops infinitos/decorativos no deben bloquear la captura.
 - La imagen social publicada es un artefacto obligatorio de publish. Si el renderer excede 5-8 segundos, encuentra error, o el `share.jpg` no se confirma como JPEG `1200x630`, el publish falla de forma controlada y no debe persistir una publicacion exitosa con fallback generico. El HTML final nunca debe publicar un `og:image` faltante.
-- Para cambios de roles de imagen, usar tambien [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](/c:/Reservaeldia/docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). Ese contrato define la semantica normativa de conversion: una imagen normal convertida en visual propio de seccion debe eliminar el objeto original.
+- Para cambios de roles de imagen, usar tambien [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). Ese contrato define la semantica normativa de conversion: una imagen normal convertida en visual propio de seccion debe eliminar el objeto original.
 - Para cambios mobile/reflow, usar `shared/previewPublishMobileGeometryParity.test.mjs`. La captura browser completa es opt-in con `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; los tests deterministas cubren fixtures, tolerancias y diff shape.
-- Si un cambio toca `imagen`, galerias, CTA funcionales, `pantalla/yNorm` o `fullbleed`, ejecutar tambien [EDITOR_REGRESSION_CHECKLIST.md](/c:/Reservaeldia/docs/testing/EDITOR_REGRESSION_CHECKLIST.md).
+- Si un cambio toca `imagen`, galerias, CTA funcionales, `pantalla/yNorm` o `fullbleed`, ejecutar tambien [EDITOR_REGRESSION_CHECKLIST.md](../testing/EDITOR_REGRESSION_CHECKLIST.md).
 
 ## Assumption
 

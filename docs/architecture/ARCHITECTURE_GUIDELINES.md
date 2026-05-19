@@ -1,7 +1,10 @@
 # Architecture Guidelines - Reserva el Dia
 
+Status: Canonical Governance Reference.
+
 This document defines mandatory architectural and product principles.
 All features, refactors and architectural decisions must respect these rules.
+For documentation routing and status definitions, start with [DOCUMENTATION_INDEX.md](../DOCUMENTATION_INDEX.md).
 
 The goal is to build a scalable, premium, and simple creative SaaS platform.
 

@@ -1,5 +1,7 @@
 # INTERACTION CONTRACT
 
+> Status: Canonical Contract.
+>
 > Updated from code inspection and architecture documentation on 2026-04-07.
 >
 > This document is the enforceable interaction contract for the dashboard editor subsystem.

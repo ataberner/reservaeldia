@@ -1,6 +1,6 @@
 # Gallery Layout Presets Contract
 
-Status: Implemented core contract with deferred advanced renderers. This document owns the Gallery layout preset model. It is additive to the current Gallery object shape and preserves the existing `tipo: "galeria"`, `cells[]`, `mediaUrl`, and fixed/dynamic layout fields.
+Status: Canonical Contract with deferred advanced renderers. This document owns the Gallery layout preset model. It is additive to the current Gallery object shape and preserves the existing `tipo: "galeria"`, `cells[]`, `mediaUrl`, and fixed/dynamic layout fields.
 
 ## Current Layout Model
 

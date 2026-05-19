@@ -1,6 +1,6 @@
 # Gallery Viewer Render Contract
 
-Status: Implemented core contract. This document owns Gallery generated HTML, preview/publish behavior, and public viewer/lightbox behavior. It depends on [GALLERY_SYSTEM_CONTRACT.md](GALLERY_SYSTEM_CONTRACT.md) for invariants and on [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md) for layout visibility rules.
+Status: Canonical Contract. This document owns Gallery generated HTML, preview/publish behavior, and public viewer/lightbox behavior. It depends on [GALLERY_SYSTEM_CONTRACT.md](GALLERY_SYSTEM_CONTRACT.md) for invariants and on [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md) for layout visibility rules.
 
 ## Current Preview / Publish Behavior
 

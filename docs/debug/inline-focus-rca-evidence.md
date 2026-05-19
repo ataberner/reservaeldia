@@ -1,5 +1,7 @@
 # RCA Inline Focus (Click 2) - Evidencia Operativa
 
+Status: Operational Diagnostic Evidence.
+
 Estado: evidencia operativa vigente. Este documento sigue siendo una guia de diagnostico; no prueba por si solo cierre definitivo de RCA.
 Fuente arquitectonica: `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`
 

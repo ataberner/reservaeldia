@@ -1,5 +1,7 @@
 # PREVIEW / PUBLISH INTERACTIVITY CONTRACT
 
+Status: Canonical Contract.
+
 This document defines the current functional CTA contract across Editor, Preview, and Publish.
 
 Scope is intentionally narrow:

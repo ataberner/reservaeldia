@@ -1,5 +1,7 @@
 # Editor Regression Checklist
 
+Status: Testing Baseline.
+
 ## Como usar este checklist
 
 Aplicarlo en cualquier cambio que toque:

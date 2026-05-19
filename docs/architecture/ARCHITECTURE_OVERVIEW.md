@@ -1,11 +1,17 @@
 # ARCHITECTURE OVERVIEW
 
+Status: Canonical Architecture Reference.
+
+For documentation routing, status definitions, and subsystem reading order, use [DOCUMENTATION_INDEX.md](../DOCUMENTATION_INDEX.md).
+
 ## 1. High-Level Overview
 Reserva el Dia is a Next.js application for creating, personalizing, and publishing digital event invitations. The authenticated dashboard at `/dashboard` is served as a static Next export from `out` through Firebase Hosting. The public invitation route `/i/{slug}` is not rendered by Next.js; Hosting rewrites it to the Cloud Function `verInvitacionPublicada`, which serves a stored HTML artifact from Firebase Storage after validating publication state.
 
 The current production flow is draft-first. The editable invitation source of truth is the render state stored in `borradores`, centered on `objetos`, `secciones`, `rsvp`, and `gifts`. `publicadas` stores the active public publication record, `publicadas_historial` stores finalized publication snapshots, and `publicadas/{slug}/index.html` in Storage is a generated delivery artifact. The dashboard also contains template authoring and admin flows; template workspaces currently coexist with user drafts inside the same application and, in some cases, inside the same `borradores` collection with `templateWorkspace.mode = "template_edit"`.
 
 Published social sharing support is defined by [PUBLISHED_SHARE_IMAGE_CONTRACT.md](../contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md). It defines a backend publish-pipeline artifact, `publicadas/{slug}/share.jpg`, generated from the first section of the generated published HTML and resolved into Open Graph metadata before the public publication document is persisted.
+
+Checkout, payment approval, slug reservation, retry, public URL creation, and post-payment UI state are governed by [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](../contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md). That contract owns lifecycle authority across `publication_checkout_sessions`, `public_slug_reservations`, `publicadas`, Storage artifacts, and the `/i/{slug}` delivery route.
 
 ## 2. Tech Stack
 - Next.js + React: landing page, authenticated dashboard shell, template modal flows, and editor orchestration.
@@ -31,6 +37,7 @@ Published social sharing support is defined by [PUBLISHED_SHARE_IMAGE_CONTRACT.m
 - **Template/editorial admin flow**: `functions/src/templates/editorialService.ts` and `src/domain/templates/adminService.js` provide template list, trash, tag, workspace, editor document, draft-to-template, and commit flows. Template workspaces are not written directly to `plantillas`; they go through intermediate editor/workspace documents.
 - **Backend entry point**: `functions/src/index.ts` is the deployed Functions surface. It re-exports many domain handlers, but it also still contains current inline handlers and legacy exports.
 - **Shared render contract layer**: `shared/renderAssetContract.*`, `shared/renderContractPolicy.*`, and `functions/src/utils/functionalCtaContract.ts` are the cross-runtime contract surface used by editor persistence, template flows, preview generation, publish validation, and final publish generation.
+- **Gallery contract layer**: Gallery remains the existing `tipo: "galeria"` object family in `objetos[]`. System-wide Gallery behavior is routed through [GALLERY_SYSTEM_CONTRACT.md](../contracts/GALLERY_SYSTEM_CONTRACT.md), with focused contracts for editor/sidebar behavior, layout presets, and generated-HTML viewer behavior.
 - **Storage artifacts**: `publicadas/{slug}/index.html` is the published invitation artifact, `publicadas/{slug}/share.jpg` is the published social share artifact when generated, `thumbnails_borradores/{uid}/{slug}.webp` is the draft thumbnail artifact, and `plantillas/{plantillaId}/assets/...` is the shared asset destination used when template copy detects private storage paths. The share-image contract keeps the internal `storagePath` separate from the lifecycle-gated public `imageUrl` used by Open Graph metadata.
 
 ## 4. Data Flow
@@ -145,6 +152,8 @@ The publish sequence implemented today is:
 6. `publicationPublishExecution.ts` generates base HTML, generates and confirms `publicadas/{slug}/share.jpg`, injects final Open Graph metadata, writes `publicadas/{slug}/index.html` to Storage, applies icon-usage delta, writes or updates `publicadas/{slug}`, and mirrors publication linkage back onto the source draft.
 7. `publicationWritePreparation.ts`, `publicationOperationPlanning.ts`, and `publicationOperationExecution.ts` shape and apply the linked Firestore writes without changing current document contracts.
 
+The normative source for checkout/payment/publication lifecycle behavior is [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](../contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md). This overview is an implementation map; use the contract for exact session statuses, slug reservation transitions, retry rules, and frontend post-payment authority.
+
 The published share-image contract extends the backend publish pipeline in this strict order:
 1. Prepare render payload.
 2. Generate base published HTML.
@@ -174,6 +183,8 @@ HTML generation today is shared, but authority depends on the preview path:
 - `functions/src/utils/generarModalRSVP.ts` embeds the RSVP runtime and defaults `submitEndpoint` to `https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit` unless a config override is provided.
 
 The preserved group contract for `tipo: "grupo"` is documented in [GROUP_RENDER_MODEL.md](GROUP_RENDER_MODEL.md). Grouped children must not introduce separate render paths; document-level dependency collectors must recurse into `children[]`.
+
+Gallery generated HTML, public viewer/lightbox behavior, layout presets, and selected-Gallery editor mutations are documented in [GALLERY_SYSTEM_CONTRACT.md](../contracts/GALLERY_SYSTEM_CONTRACT.md), [GALLERY_EDITOR_CONTRACT.md](../contracts/GALLERY_EDITOR_CONTRACT.md), [GALLERY_LAYOUT_PRESETS_CONTRACT.md](../contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md), and [GALLERY_VIEWER_RENDER_CONTRACT.md](../contracts/GALLERY_VIEWER_RENDER_CONTRACT.md). These contracts preserve `tipo: "galeria"` as the only Gallery object type and do not create a parallel Gallery render pipeline.
 
 Draft-authoritative preview and publish both enter generation through `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`. Template preview and local fallback preview still call the generator locally and remain visual-only.
 

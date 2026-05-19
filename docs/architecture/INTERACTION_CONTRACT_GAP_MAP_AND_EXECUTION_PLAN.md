@@ -2,6 +2,13 @@
 
 > Updated from code inspection and architecture documentation on 2026-04-27.
 >
+> Status: Historical / Deprecated.
+> Do not use this document as the current implementation map or as a planning authority for new interaction work.
+> Current implementation behavior lives in `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`;
+> normative phase/invariant rules live in `docs/architecture/INTERACTION_CONTRACT.md`;
+> high-level subsystem routing lives in `docs/architecture/EDITOR_SYSTEM.md`;
+> phase completion status lives in `docs/architecture/INTERACTION_FINAL_CLOSURE_AUDIT.md`.
+>
 > Source-of-truth inputs:
 > `docs/architecture/INTERACTION_CONTRACT.md`,
 > `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`,

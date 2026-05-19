@@ -1,5 +1,7 @@
 # GROUP RENDER MODEL
 
+> Status: Canonical Contract.
+>
 > Current grouped-object render contract for `tipo: "grupo"`.
 
 ## 1. Purpose
@@ -67,4 +69,3 @@ Draft-authoritative preview and publish both enter the prepared render payload a
 same HTML generator. A valid group must therefore render the same in preview and publish.
 Template preview and local fallback preview may be visual-only, but when they use the
 shared generator they must respect the same group traversal rules.
-

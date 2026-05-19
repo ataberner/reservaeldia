@@ -1,5 +1,7 @@
 # CSS ARCHITECTURE CONTRACT
 
+Status: Canonical CSS Ownership Contract.
+
 ## 1. Purpose
 This document defines where CSS belongs in the current Reserva el Dia codebase and how new styling decisions should be organized.
 
@@ -12,7 +14,7 @@ The contract is based on the current codebase:
 - Tailwind is enabled through `styles/globals.css` and `tailwind.config.js`.
 - Bootstrap CSS and JS are loaded globally from `src/pages/_document.js`.
 - Most React UI is styled with Tailwind utility classes in `className`.
-- Scoped CSS Modules are used for shared visual components such as `AppHeader` and `LandingHero`, plus landing route section styling.
+- Scoped CSS Modules are used for shared visual components such as `AppHeader` and `LandingHero`, landing route section styling, and the current Login/Register auth modal shell in `src/lib/components/AuthModal.module.css`.
 - Template and public invitation CSS also exists under `plantillas/` and `public/`.
 - Editor/canvas surfaces use a mix of Tailwind classes, inline styles, generated styles, and runtime geometry.
 
@@ -41,6 +43,7 @@ Current tolerated legacy content:
 - `dashboard-invitation-card` animation styles exist in `globals.css` and are shared by multiple dashboard card surfaces.
 - Canvas and inline textarea compatibility rules exist in `globals.css`.
 - Dashboard shell runtime hooks such as `[data-dashboard-header]`, `[data-dashboard-sidebar]`, `[data-dashboard-scroll-root]`, `#sidebar-panel`, and `--dashboard-header-height` are not general styling hooks. They are cross-component runtime contracts used by editor overlays, selection preservation, modal scroll locking, and toolbar positioning. They must remain stable unless every consumer is updated in the same change.
+- Legacy auth/profile selectors in `styles.css` remain tolerated only for `ProfileCompletionModal.js` and residual Bootstrap/global compatibility. Login/Register styles are owned by `src/lib/components/AuthModal.module.css`.
 
 Migration direction:
 - Move route-specific or component-specific rules out of `globals.css` when touching those surfaces for unrelated work.
@@ -51,7 +54,7 @@ Migration direction:
 
 Allowed in `styles.css` during migration:
 - Existing legacy landing-page styles until the landing page is migrated to route-scoped or component-scoped styling.
-- Existing auth modal styles until auth UI receives scoped ownership.
+- Existing legacy auth/profile styles that still back `ProfileCompletionModal.js`; Login/Register now have scoped ownership in `AuthModal.module.css`.
 - Existing Bootstrap compatibility overrides until the Bootstrap dependency boundary is reduced.
 - Temporary compatibility rules with a short comment explaining the owning surface and removal condition.
 
@@ -110,13 +113,14 @@ Rules:
 
 Current state:
 - The repo currently uses CSS Modules for shared app UI such as `src/components/appHeader/AppHeader.module.css`, `src/components/landing/LandingHero.module.css`, and route/component styling such as `src/pages/index.module.css`.
+- `src/lib/components/AuthModal.module.css` is the scoped owner for `LoginModal.js` and `RegisterModal.js`. Do not add new Login/Register modal styling to `styles/styles.css`.
 - Introducing additional CSS Modules remains a scoped migration step. Prefer them when the touched surface needs local selectors, pseudo/state styling, or route-owned styles that should not go into global CSS.
 
 Assumption:
 - Next.js CSS Modules support is available because this is a Next.js app. No separate dependency is expected for basic `.module.css` usage.
 
 ## 5. Bootstrap Boundary
-Bootstrap is currently loaded globally and used by the landing/auth surfaces through classes such as `navbar`, `container`, `row`, `col-*`, `d-flex`, `py-*`, `btn`, `btn-primary`, `btn-outline-dark`, and `modal-content`.
+Bootstrap is currently loaded globally and used by remaining landing surfaces and legacy auth/profile paths through classes such as `container`, `row`, `col-*`, `d-flex`, `py-*`, `btn`, `btn-primary`, `btn-outline-dark`, and `modal-content`. The extracted `AppHeader` no longer uses Bootstrap navbar classes, and Login/Register modal shells no longer use Bootstrap/global modal class names for their primary styling.
 
 Contract:
 - App-owned UI must avoid using Bootstrap class names as styling ownership names.
@@ -125,8 +129,9 @@ Contract:
 - Do not add new global rules targeting `.btn-*`, `.modal-*`, `.navbar-*`, `.container`, `.row`, `.col-*`, `.d-flex`, or Bootstrap spacing classes.
 - If Bootstrap must be used for compatibility, wrap the surface in an explicit owner boundary and document it as Bootstrap-dependent.
 
-Allowed current exception:
-- Landing and auth markup currently use Bootstrap classes and global overrides. This is legacy-compatible until migrated.
+Allowed current exceptions:
+- Remaining landing markup may keep existing Bootstrap classes and global overrides until an explicit migration changes that surface.
+- `ProfileCompletionModal.js` may keep the current global auth/ProfileCompletion/Bootstrap class path until it is migrated to scoped ownership.
 
 Migration direction:
 - Replace app-owned Bootstrap overrides with app-owned class names.
@@ -136,8 +141,8 @@ Migration direction:
 ### 5.1 Landing And Dashboard Styling Boundary
 The current landing and dashboard surfaces are intentionally different styling domains:
 
-- Landing route ownership starts at `src/pages/index.js`. The active markup uses Bootstrap classes, route-specific global selectors in `styles/styles.css`, landing/navbar compatibility rules in `styles/globals.css`, `src/components/landing/LandingHero.module.css` for the shared hero, and `src/pages/index.module.css` for route main/section styles.
-- Auth modal ownership starts in `src/lib/components/LoginModal.js`, `src/lib/components/RegisterModal.js`, and `src/lib/components/ProfileCompletionModal.js`. The active styles live in `styles/styles.css` and mix app-owned `auth-*` selectors with Bootstrap button/modal classes.
+- Landing route ownership starts at `src/pages/index.js`. The active markup uses shared landing CSS Modules, route-specific scoped styles, remaining Bootstrap classes, route-specific global selectors in `styles/styles.css`, and landing/navbar compatibility rules in `styles/globals.css`.
+- Auth modal ownership is split in the current implementation: `src/lib/components/LoginModal.js` and `src/lib/components/RegisterModal.js` use `src/lib/components/AuthModal.module.css`; `src/lib/components/ProfileCompletionModal.js` still uses legacy global auth selectors in `styles/styles.css` plus Bootstrap button/modal classes.
 - Dashboard route ownership starts at `src/pages/dashboard.js` and `src/domain/dashboard/pageShell.js`. Most visible dashboard UI uses Tailwind classes inside React components.
 - Dashboard home ownership starts in `src/components/dashboard/home/`. Card and rail components use Tailwind plus the shared global `.dashboard-invitation-card` hook.
 - Shared dashboard shell ownership starts in `src/components/DashboardLayout.jsx`, `src/components/DashboardHeader.jsx`, and `src/components/DashboardSidebar.jsx`. These files own dashboard chrome layout and runtime shell hooks.
@@ -145,6 +150,8 @@ The current landing and dashboard surfaces are intentionally different styling d
 Contract:
 - Redesign work must not treat app-global CSS as the owner of new landing or dashboard visuals.
 - Landing cleanup may reduce Bootstrap dependency later, but current Bootstrap behavior must be preserved until an explicit migration phase changes it.
+- Login/Register auth work must stay inside `AuthModal.module.css` unless a broader auth styling migration is explicitly planned.
+- Profile completion styling remains a legacy global exception until that component is migrated.
 - Dashboard redesign work must preserve shell runtime hooks and measured layout variables until editor/modal consumers are migrated with tests.
 - `.dashboard-invitation-card` is a reusable dashboard UI primitive in the current implementation, not a landing hook and not a template/public invitation hook.
 

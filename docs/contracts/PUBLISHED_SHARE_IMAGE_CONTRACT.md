@@ -1,5 +1,7 @@
 # Published Share Image Contract
 
+Status: Canonical Contract.
+
 ## Scope
 
 This document defines the normative contract for published social share images.

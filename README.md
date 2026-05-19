@@ -14,6 +14,7 @@ Current canonical documentation lives under `docs/`.
 
 Recommended starting points:
 
+- `docs/DOCUMENTATION_INDEX.md`
 - `docs/architecture/ARCHITECTURE_OVERVIEW.md`
 - `docs/architecture/EDITOR_SYSTEM.md`
 - `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`

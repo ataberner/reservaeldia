@@ -45,9 +45,11 @@ import {
   restoreDraftFromTrashHandler,
 } from "./drafts/draftTrashLifecycle";
 import {
-  isCompliantPublishedShareImageBuffer,
-  isCurrentGeneratedShareImageRequest,
-} from "./payments/publishedShareImage";
+  resolvePublicInvitationAccessFlow,
+  resolvePublicInvitationHtmlResponse,
+  resolvePublicShareImageResponse,
+  type PublicDeliveryResponse,
+} from "./payments/publicDeliveryRoutes";
 import {
   archiveCountdownPreset as archiveCountdownPresetHandler,
   deleteCountdownPreset as deleteCountdownPresetHandler,
@@ -1105,130 +1107,68 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
 const app = express();
 
 
+async function loadPublicPublicationData(
+  slug: string
+): Promise<Record<string, unknown> | null> {
+  const publicationRef = db.collection("publicadas").doc(slug);
+  const publicationSnap = await publicationRef.get();
+  return publicationSnap.exists
+    ? ((publicationSnap.data() || {}) as Record<string, unknown>)
+    : null;
+}
+
 async function resolvePublicInvitationAccess(slug: string): Promise<
   | { ok: true; publicationData: Record<string, unknown> }
   | { ok: false; status: number; message: string }
 > {
-  try {
-    const publicationRef = db.collection("publicadas").doc(slug);
-    const publicationSnap = await publicationRef.get();
-    if (!publicationSnap.exists) {
-      return { ok: false, status: 404, message: "Invitacion publicada no encontrada" };
-    }
+  return resolvePublicInvitationAccessFlow({
+    slug,
+    loadPublicationData: loadPublicPublicationData,
+    finalizeExpiredPublication: (input) => finalizePublicationBySlug(input),
+    logger,
+  });
+}
 
-    const publicationData = (publicationSnap.data() || {}) as Record<string, unknown>;
-    const lifecycleSnapshot = resolvePublicationLifecycleSnapshotFromData(publicationData);
-    if (
-      !lifecycleSnapshot.rawPublicState ||
-      !lifecycleSnapshot.isPubliclyAccessibleByState
-    ) {
-      return { ok: false, status: 404, message: "Invitacion no disponible" };
-    }
-
-    if (lifecycleSnapshot.isExpired) {
-      try {
-        await finalizePublicationBySlug({
-          slug,
-          reason: "expired-public-slug-request",
-        });
-      } catch (finalizeError) {
-        logger.warn("No se pudo finalizar una publicacion vencida en acceso por slug", {
-          slug,
-          error:
-            finalizeError instanceof Error
-              ? finalizeError.message
-              : String(finalizeError || ""),
-        });
-      }
-      return { ok: false, status: 404, message: "Invitacion no disponible" };
-    }
-
-    return { ok: true, publicationData };
-  } catch (error) {
-    logger.error("Error resolviendo invitacion publica por slug", {
-      slug,
-      error: error instanceof Error ? error.message : String(error || ""),
-    });
-    return { ok: false, status: 500, message: "No se pudo cargar la invitacion" };
+function sendPublicDeliveryResponse(res: Response, result: PublicDeliveryResponse) {
+  for (const [name, value] of Object.entries(result.headers || {})) {
+    res.set(name, value);
   }
+  return res.status(result.status).send(result.body);
 }
 
 app.get("/i/:slug/share.jpg", async (req: Request, res: Response) => {
-  const slug = normalizePublicSlug(req.params.slug);
-  if (!slug) return res.status(400).send("Falta el slug");
-
-  const access = await resolvePublicInvitationAccess(slug);
-  if (!access.ok) {
-    return res.status(access.status).send(access.message);
-  }
-
-  try {
-    const requestedVersion = Array.isArray(req.query.v)
-      ? String(req.query.v[0] || "")
-      : String(req.query.v || "");
-    if (
-      !isCurrentGeneratedShareImageRequest({
-        publicationData: access.publicationData,
-        publicSlug: slug,
-        requestedVersion,
-      })
-    ) {
-      return res.status(404).send("Imagen share no encontrada");
-    }
-
-    const file = bucket.file(`publicadas/${slug}/share.jpg`);
-    const [exists] = await file.exists();
-    if (!exists) {
-      return res.status(404).send("Imagen share no encontrada");
-    }
-
-    const [contenido] = await file.download();
-    const isCompliant = await isCompliantPublishedShareImageBuffer(contenido);
-    if (!isCompliant) {
-      logger.warn("Imagen share publica no cumple dimensiones requeridas", {
-        slug,
-      });
-      return res.status(404).send("Imagen share no encontrada");
-    }
-
-    return res
-      .set("Content-Type", "image/jpeg")
-      .set("Cache-Control", "public,max-age=31536000,immutable")
-      .send(contenido);
-  } catch (error) {
-    logger.error("Error resolviendo imagen share publica por slug", {
-      slug,
-      error: error instanceof Error ? error.message : String(error || ""),
-    });
-    return res.status(500).send("No se pudo cargar la imagen share");
-  }
+  const result = await resolvePublicShareImageResponse({
+    slugInput: req.params.slug,
+    requestedVersionInput: req.query.v,
+    loadPublicationData: loadPublicPublicationData,
+    finalizeExpiredPublication: (input) => finalizePublicationBySlug(input),
+    readPublicShareImageArtifact: async (slug) => {
+      const file = bucket.file(`publicadas/${slug}/share.jpg`);
+      const [exists] = await file.exists();
+      if (!exists) return null;
+      const [contenido] = await file.download();
+      return contenido;
+    },
+    logger,
+  });
+  return sendPublicDeliveryResponse(res, result);
 });
 
 app.get("/i/:slug", async (req: Request, res: Response) => {
-  const slug = normalizePublicSlug(req.params.slug);
-  if (!slug) return res.status(400).send("Falta el slug");
-
-  const access = await resolvePublicInvitationAccess(slug);
-  if (!access.ok) {
-    return res.status(access.status).send(access.message);
-  }
-
-  try {
-    const file = bucket.file(`publicadas/${slug}/index.html`);
-    const [exists] = await file.exists();
-    if (!exists) {
-      return res.status(404).send("Invitacion publicada no encontrada");
-    }
-
-    const [contenido] = await file.download();
-    return res.set("Content-Type", "text/html").send(contenido.toString());
-  } catch (error) {
-    logger.error("Error descargando invitacion publica por slug", {
-      slug,
-      error: error instanceof Error ? error.message : String(error || ""),
-    });
-    return res.status(500).send("No se pudo cargar la invitacion");
-  }
+  const result = await resolvePublicInvitationHtmlResponse({
+    slugInput: req.params.slug,
+    loadPublicationData: loadPublicPublicationData,
+    finalizeExpiredPublication: (input) => finalizePublicationBySlug(input),
+    readPublicHtmlArtifact: async (slug) => {
+      const file = bucket.file(`publicadas/${slug}/index.html`);
+      const [exists] = await file.exists();
+      if (!exists) return null;
+      const [contenido] = await file.download();
+      return contenido;
+    },
+    logger,
+  });
+  return sendPublicDeliveryResponse(res, result);
 });
 
 export const verInvitacionPublicada = onRequest(

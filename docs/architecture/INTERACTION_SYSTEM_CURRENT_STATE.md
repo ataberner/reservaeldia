@@ -1,6 +1,10 @@
 # INTERACTION SYSTEM CURRENT STATE
 
+> Status: Current Implementation Map.
+>
 > Updated from code inspection on 2026-04-07.
+>
+> Documentation routing corrected on 2026-05-19.
 >
 > Priority rule: this document describes the current implementation only. When documentation and code disagree, the code wins.
 
@@ -52,13 +56,24 @@ This document is the canonical current-state reference for the dashboard editor 
 
 It does not define future architecture. It is a baseline for later fixes.
 
+### 1.1 Interaction Documentation Hierarchy
+
+Use the interaction documents in this order:
+
+- Current implementation map: this document. It records the live editor interaction/rendering behavior observed in code.
+- Normative interaction contract: `docs/architecture/INTERACTION_CONTRACT.md`. It owns the phase model and rules future interaction work must preserve.
+- High-level editor overview: `docs/architecture/EDITOR_SYSTEM.md`. It names subsystem boundaries and routes to focused contracts.
+- Historical execution plan: `docs/architecture/INTERACTION_CONTRACT_GAP_MAP_AND_EXECUTION_PLAN.md`. It is deprecated as a planning authority and remains only as historical implementation context.
+- Closure/audit record: `docs/architecture/INTERACTION_FINAL_CLOSURE_AUDIT.md`. It records phase completion status and residual validation gaps; it is not a replacement for the current map or normative contract.
+- Preserved group rendering: `docs/architecture/GROUP_RENDER_MODEL.md`. It is the active group render contract and must not be treated as an obsolete interaction target doc.
+
 ## 2. Current Documentation Inventory
 
 The following inventory classifies the repo documentation that existed at audit time.
 
 | Document | What it claims to describe | Accuracy | Missing / wrong | Action |
 | --- | --- | --- | --- | --- |
-| `README.md` | Repo/project overview | Outdated | It was still the default Next.js starter README and described `pages/api`/Vercel defaults instead of the actual Firebase-hosted dashboard + Functions architecture. | Update |
+| `README.md` | Repo/project overview | Current enough for onboarding | It describes the Firebase-hosted static Next dashboard, Cloud Functions backend, Firestore, Storage, and production workflow at a repo-overview level. It is not an interaction contract. | Keep |
 | `docs/architecture/ARCHITECTURE_OVERVIEW.md` | Whole-system architecture | Partially accurate | System description is mostly current, but the interaction section pointed at duplicated specialist docs that no longer serve as the canonical source. | Keep and update |
 | `docs/architecture/ARCHITECTURE_GUIDELINES.md` | Architectural working rules | Fully accurate as a guideline document | It is policy/guidance, not a runtime contract. | Keep |
 | `docs/architecture/DATA_MODEL.md` | Invitation/editor data model | Mostly accurate | It does not need to own interaction timing or visual authority rules. | Keep |
@@ -71,14 +86,14 @@ The following inventory classifies the repo documentation that existed at audit 
 | `docs/architecture/DRAG_ALIGNMENT_GUIDES_GAP_ANALYSIS.md` | Current vs target gaps for guides | Outdated for canonical docs | Gap analysis is not a current-state contract. | Delete |
 | `docs/architecture/DRAG_ALIGNMENT_GUIDES_TARGET.md` | Target guide architecture | Misleading in a current-state set | It describes intended behavior, not the running system. | Delete |
 | `docs/architecture/DRAG_OVERLAY_STARTUP_TARGET.md` | Target drag-overlay startup contract | Misleading in a current-state set | It is a target-state document, not the current implementation baseline. | Delete |
-| `docs/architecture/GROUP_RENDER_MODEL.md` | Group render model | Misleading in a current-state set | It explicitly described a phase contract that is not the authoritative current runtime doc. | Delete |
+| `docs/architecture/GROUP_RENDER_MODEL.md` | Group render model | Accurate for its scope | It is the active contract for `tipo: "grupo"` render/publish behavior and recursive dependency collection. It is not an editor interaction phase document. | Keep |
 | `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md` | Preview pipeline analysis | Fully accurate for its scope | It is preview-specific and should not own interaction runtime rules. | Keep |
 | `docs/architecture/PREVIEW_SYSTEM_GAPS.md` | Preview gap analysis | Outdated for canonical docs | Gap analysis overlaps fragility work and is not a source of truth. | Delete |
 | `docs/architecture/PREVIEW_SYSTEM_TARGET.md` | Target preview architecture | Misleading in a current-state set | It describes intended architecture rather than actual runtime. | Delete |
 | `docs/architecture/SYSTEM_FRAGILITY_MAP.md` | Current fragility map | Fully accurate for its scope | It needed path updates after doc reorganization. | Keep and update |
 | `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md` | Current editor/preview/publish compatibility | Fully accurate for its scope | It is a compatibility matrix, not an interaction contract. | Keep |
 | `docs/testing/EDITOR_REGRESSION_CHECKLIST.md` | Manual regression checklist | Fully accurate for its scope | It benefits from pointing to the canonical interaction architecture doc rather than duplicated contracts. | Keep |
-| `docs/testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md` | Preview/publish visual baseline | Partially accurate | Its contract anchor pointed at `PREVIEW_SYSTEM_TARGET.md`, which is target-state documentation. | Keep and update |
+| `docs/testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md` | Preview/publish visual baseline | Accurate for its scope | It now anchors to the current preview/publish architecture instead of target-state documentation. | Keep |
 | `docs/debug/inline-focus-rca-evidence.md` | Inline focus RCA evidence | Partially accurate | Its architecture source pointed at `text-system-rules.md`, which was not an appropriate canonical source. | Keep and update |
 
 ## 3. Canonical Documentation Set After Cleanup
@@ -86,13 +101,19 @@ The following inventory classifies the repo documentation that existed at audit 
 After this audit, the minimal current-state documentation set is:
 
 - `docs/architecture/ARCHITECTURE_OVERVIEW.md`
+- `docs/architecture/INTERACTION_CONTRACT.md`
 - `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`
 - `docs/architecture/EDITOR_SYSTEM.md`
 - `docs/architecture/DATA_MODEL.md`
 - `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`
 - `docs/architecture/SYSTEM_FRAGILITY_MAP.md`
 - `docs/architecture/ARCHITECTURE_GUIDELINES.md`
+- `docs/architecture/GROUP_RENDER_MODEL.md`
 - `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`
+- `docs/contracts/GALLERY_SYSTEM_CONTRACT.md`
+- `docs/contracts/GALLERY_EDITOR_CONTRACT.md`
+- `docs/contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md`
+- `docs/contracts/GALLERY_VIEWER_RENDER_CONTRACT.md`
 - `docs/testing/EDITOR_REGRESSION_CHECKLIST.md`
 - `docs/testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md`
 - `docs/debug/inline-focus-rca-evidence.md`
@@ -102,9 +123,12 @@ Single-source-of-truth rule after cleanup:
 - whole product architecture: `ARCHITECTURE_OVERVIEW.md`
 - editor runtime boundaries: `EDITOR_SYSTEM.md`
 - interaction/rendering current state: this document
+- normative editor interaction invariants: `INTERACTION_CONTRACT.md`
 - render/publish compatibility: `RENDER_COMPATIBILITY_MATRIX.md`
 - preview pipeline: `PREVIEW_SYSTEM_ANALYSIS.md`
 - known fragility/risk map: `SYSTEM_FRAGILITY_MAP.md`
+- grouped render behavior: `GROUP_RENDER_MODEL.md`
+- Gallery behavior: `GALLERY_SYSTEM_CONTRACT.md` and its focused editor/layout/viewer contracts
 
 ## 4. Runtime Architecture Map
 
@@ -705,12 +729,11 @@ This mismatch is one of the main reasons selection-box behavior remains timing-s
 
 | Documentation claim | What the code currently does | Why it matters |
 | --- | --- | --- |
-| `README.md` described a standard create-next-app project with `pages/api` and Vercel deployment defaults. | The repo is a Firebase-hosted Next.js dashboard with Cloud Functions, Firestore, Storage, and an imported backend generator path. | Repo onboarding from the README was actively misleading. |
 | `DRAG_ALIGNMENT_GUIDES_ANALYSIS.md` described `scheduleGuideEvaluation` as effectively an immediate flush behind a scheduling name. | `CanvasStageContentComposer.jsx` now uses RAF coalescing when `requestAnimationFrame` is available and only falls back to immediate flush when RAF is unavailable. | Guide timing, lag, and overlay resync analysis change materially if scheduling is no longer immediate. |
-| `PREVIEW_PUBLISH_VISUAL_BASELINE.md` anchored itself to `PREVIEW_SYSTEM_TARGET.md`. | The current preview source of truth is `PREVIEW_SYSTEM_ANALYSIS.md` plus the compatibility matrix/tests, not the target doc. | Test/baseline readers were being sent to intended architecture instead of current behavior. |
+| Older preview baseline references anchored themselves to `PREVIEW_SYSTEM_TARGET.md`. | The current preview source of truth is `PREVIEW_SYSTEM_ANALYSIS.md` plus the compatibility matrix/tests, not target-state docs. | Test/baseline readers must be sent to current behavior rather than intended architecture. |
 | `inline-focus-rca-evidence.md` used `text-system-rules.md` as its architecture source. | The actual current-state inline architecture is distributed across the live runtime modules audited here. | Diagnostic notes need to point to a verified current-state source, not a mixed rules document. |
 | `SELECTION_BOX_DRAG_BEHAVIOR.md`, `TEXT_GEOMETRY_CONTRACT.md`, `TEXT_VISUAL_BOX_AUTHORITY.md`, and `text-system-rules.md` acted as separate current-state contracts. | Current behavior is split across composer state, selection visual modes, transformer suppression, inline runtime, hover logic, and guide scheduling. No single one of those deleted documents matched the running system by itself. | Multiple partially-overlapping contract docs create contradictions faster than they reduce ambiguity. |
-| Target/gap docs (`*_TARGET.md`, `*_GAPS.md`, `GROUP_RENDER_MODEL.md`) sat next to current-state docs without strong separation. | The code contains current behavior plus compatibility/fallback branches that do not match those target-state documents exactly. | Readers could mistake desired architecture for implemented behavior. |
+| Target/gap docs (`*_TARGET.md`, `*_GAPS.md`) sat next to current-state docs without strong separation. | The code contains current behavior plus compatibility/fallback branches that do not match target-state documents exactly. Existing execution-plan docs are now historical records, not current authorities. | Readers could mistake desired architecture for implemented behavior. |
 
 ## 12. Failure Taxonomy
 
@@ -756,7 +779,7 @@ This audit reduces ambiguity substantially, but the repo still lacks a few usefu
 
 ### 15.1 Delete
 
-Delete these outdated or overlapping documents:
+If these outdated or overlapping documents reappear, keep them out of the canonical current-state set or mark them deprecated. They have already been superseded by this document and the normative interaction contract:
 
 - `docs/architecture/SELECTION_BOX_DRAG_BEHAVIOR.md`
 - `docs/architecture/TEXT_GEOMETRY_CONTRACT.md`
@@ -766,23 +789,23 @@ Delete these outdated or overlapping documents:
 - `docs/architecture/DRAG_ALIGNMENT_GUIDES_GAP_ANALYSIS.md`
 - `docs/architecture/DRAG_ALIGNMENT_GUIDES_TARGET.md`
 - `docs/architecture/DRAG_OVERLAY_STARTUP_TARGET.md`
-- `docs/architecture/GROUP_RENDER_MODEL.md`
 - `docs/architecture/PREVIEW_SYSTEM_GAPS.md`
 - `docs/architecture/PREVIEW_SYSTEM_TARGET.md`
 
-### 15.2 Rewrite from Scratch
+### 15.2 Historical / Deprecated
 
-Rewrite these docs to reduce duplication and point to one canonical source:
+Keep these documents for context only. They must not be used as the current implementation map:
 
-- `README.md`
-- `docs/architecture/EDITOR_SYSTEM.md`
+- `docs/architecture/INTERACTION_CONTRACT_GAP_MAP_AND_EXECUTION_PLAN.md`
 
-### 15.3 Update and Keep
+### 15.3 Keep Current
 
-Update cross-references in:
+Keep these as active references with their current roles:
 
-- `docs/architecture/ARCHITECTURE_OVERVIEW.md`
-- `docs/architecture/SYSTEM_FRAGILITY_MAP.md`
+- `README.md`: repo onboarding and workflow overview
+- `docs/architecture/EDITOR_SYSTEM.md`: high-level editor overview
+- `docs/architecture/GROUP_RENDER_MODEL.md`: active preserved group render contract
+- `docs/architecture/INTERACTION_FINAL_CLOSURE_AUDIT.md`: historical closure status and validation-gap record
 - `docs/testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md`
 - `docs/debug/inline-focus-rca-evidence.md`
 
